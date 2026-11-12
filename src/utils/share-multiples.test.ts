@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { liveTrailingPE } from "../market-data/quotes/live-valuation";
+import { liveForwardPE, liveTrailingPE } from "../market-data/quotes/live-valuation";
+import { withFiledTrailingEps } from "../time-series/filed-trailing-eps";
 import type { Fundamentals, Quote, TickerFinancials } from "../types/financials";
-import { notMeaningfulMultiples, NOT_MEANINGFUL } from "./price-earnings";
+import { comparablePriceEarnings, notMeaningfulMultiples, NOT_MEANINGFUL } from "./price-earnings";
+import cases from "./share-multiples.cases.json";
 import { epsAgainstIncome, notTheShare, withShareMultiples } from "./share-multiples";
 
 type Inputs = Pick<TickerFinancials, "quote" | "profile" | "fundamentals">;
@@ -33,12 +35,12 @@ describe("notTheShare", () => {
     const noRatio = "a depositary receipt with no ratio on record to the share the EPS is per";
     // SOFTBANK80: a Thai receipt at 7.85 THB over SoftBank's 203.71 THB a share read 0.04x; nothing flags it.
     expect(notTheShare(listing("SOFTBANK80:SET", "SET", "SoftBank Group Corp.", {}, "JP"))).toBe(noRatio);
-    // LV on NEO, LVMH's Canadian receipt at CA$8.99, flagged with no ratio; NEST, Nestlé's, not flagged.
+    // LV on NEO, LVMH's Canadian receipt at CA$8.99, which Gloom Cloud flags; where a company is from flags nothing.
     expect(notTheShare(listing("LV", "NEO", "LVMH Moët Hennessy - Louis Vuitton", { isDepositaryReceipt: true }, "FR"))).toBe(noRatio);
-    expect(notTheShare(listing("NEST", "NEO", "Nestlé S.A.", {}, "CH"))).toBe(noRatio);
     for (const [symbol, exchange, fundamentals, country] of [
       ["SCB80", "SET", {}, "TH"],
-      ["SHOP", "TSX", {}, "CA"],
+      ["NEST", "NEO", {}, "CH"],
+      ["XAU", "TSX", {}, "VG"],
       ["TSM", "NYSE", { isDepositaryReceipt: true, adrRatio: 5 }, "TW"],
       ["SOFTBANK80:SET", "SET", { adrRatio: 0.01 }, "JP"],
     ] as const) expect(notTheShare(listing(symbol, exchange, "Company", fundamentals, country))).toBeUndefined();
@@ -80,4 +82,40 @@ test("withShareMultiples withdraws the multiples it has, every view reads N/M wi
   expect(notMeaningfulMultiples(once.fundamentals).trailingPE).toBe("a warrant is not the share the EPS is per");
   const share = listing("JPM", "NYSE", "JP Morgan Chase & Co.", { eps: 23.84, trailingPE: 14.4, netIncome: 64.5e9, sharesOutstanding: 2.66e9 });
   expect(withShareMultiples(share)).toBe(share);
+});
+
+// The same cases sit beside the screener's server projection: one listing, one P/E, or none for one reason.
+describe("one P/E for a listing in valuation and EQS", () => {
+  const now = Date.parse(cases.now);
+  type Case = (typeof cases.cases)[number] & {
+    profile?: TickerFinancials["profile"];
+    financialCurrency?: string;
+    annualStatements?: unknown[];
+    quarterlyStatements?: unknown[];
+    /** What Gloom Cloud adds to the stored payload when it serves it. */
+    served?: { isDepositaryReceipt?: boolean };
+    expect: { trailingPE: number | null; forwardPE?: null; because?: string };
+  };
+  for (const item of cases.cases as Case[]) {
+    test(item.name, () => {
+      const financials = {
+        quote: { symbol: item.symbol, listingExchangeName: item.exchange, exchangeName: item.exchange, lastUpdated: now - 30 * 60_000, ...item.quote, ...item.served },
+        fundamentals: { ...item.fundamentals, ...item.served },
+        profile: item.profile,
+        financialCurrency: item.financialCurrency,
+        annualStatements: item.annualStatements ?? [],
+        quarterlyStatements: item.quarterlyStatements ?? [],
+        priceHistory: [],
+      } as unknown as TickerFinancials;
+      // As the provider router reads every payload.
+      const priced = withShareMultiples(withFiledTrailingEps(financials, now));
+      const trailing = liveTrailingPE(priced.quote, priced.fundamentals);
+      const { trailingPE, forwardPE, because } = item.expect;
+      if (trailingPE === null) {
+        expect(trailing).toBe(NOT_MEANINGFUL);
+        expect(notMeaningfulMultiples(priced.fundamentals).trailingPE?.toLowerCase()).toContain(because!.toLowerCase());
+      } else expect(comparablePriceEarnings(trailing)!).toBeCloseTo(trailingPE, 6);
+      if (forwardPE === null) expect(liveForwardPE(priced.quote, priced.fundamentals)).toBe(NOT_MEANINGFUL);
+    });
+  }
 });

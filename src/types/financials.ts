@@ -414,6 +414,12 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   epsCurrency?: string;
   /** Set when `trailingPE` divides the price by the trailing EPS converted from another currency. */
   trailingPEConversion?: TrailingPEConversion;
+  /**
+   * What the trailing EPS was worked out from where Gloom Cloud did not take
+   * its source's: `statements` (net income over shares), `home` (a receipt's
+   * home line, per receipt), `cpo` (a CPO line's company, per CPO).
+   */
+  trailingEpsBasis?: "statements" | "home" | "cpo";
   /** Provider-reported issuer market cap; marketCapCurrency identifies its units when known. */
   marketCap?: number;
   marketCapCurrency?: string;
