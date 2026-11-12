@@ -39,6 +39,7 @@ import {
   NO_LATCH,
   snapMovedRect,
   snapResizedRect,
+  TERMINAL_MAGNET_REST_MS,
   type MagnetDistances,
   type MagnetGlide,
   type MagnetLatch,
@@ -203,15 +204,16 @@ export function useShellActiveDrag({
       return { rect, partners: rects };
     };
     const magnetArea = { x: 0, y: 0, width, height: contentHeight };
-    // Desktop: past the travel speed a release lands the pane where the
-    // pointer puts it, its magnets left out (the rest check runs the last move
-    // again once the pointer has stopped, so a release then catches). What
-    // they hold to still follows every move, so it rests where it would have.
+    // The move run again once the pointer rests. A release lands where the
+    // pane is drawn: no catch after it.
+    const runAgain = event.type === "drag" ? () => { if (dragRef.current === drag) handleRef.current(event); } : undefined;
+    // Past the travel speed a release lands the pane where the pointer puts
+    // it, its magnets left out (the rest check runs the last move again once
+    // the pointer has stopped, so a release then catches). What they hold to
+    // still follows every move, so it rests where it would have.
     const travelling = () => {
-      if (!nativePaneChrome || drag.type !== "pane-drag") return false;
-      // A release lands where the pane is drawn: no catch after it.
-      const rest = event.type === "drag" ? () => { if (dragRef.current === drag) handleRef.current(event); } : undefined;
-      return memo.pace.travelling({ t: performance.now(), x: preciseX, y: preciseShellY }, magnetDistances, rest);
+      if (drag.type !== "pane-drag") return false;
+      return memo.pace.travelling({ t: performance.now(), x: preciseX, y: preciseShellY }, magnetDistances, runAgain);
     };
     // Where a move lands the pane (`rect`), and where its magnets hold it as
     // the pointer slows down (`snapped`).
@@ -224,13 +226,16 @@ export function useShellActiveDrag({
       memo.latch = snapped.latch;
       return { rect: travelling() ? rect : snapped.rect, snapped: snapped.rect };
     };
-    // Desktop: the moving pane is drawn under the pointer while it moves, and
-    // where its magnets hold it once the pointer slows down to place it,
-    // gliding between the two (the frames after the pointer stops carry the
-    // glide on). The terminal draws where a release would land it.
+    // The moving pane is drawn under the pointer while it moves, and where
+    // its magnets hold it once the pointer slows down to place it. The
+    // desktop glides between the two (the frames after the pointer stops
+    // carry the glide on); the terminal steps onto the magnets, on the move
+    // run again once the pointer rests.
     const drawMove = (paneId: string, free: FloatingRect, moved: { rect: FloatingRect; snapped: FloatingRect }) => {
       if (!nativePaneChrome) {
-        updateDragFloatingRect({ paneId, rect: moved.rect });
+        const placing = memo.pace.placing(performance.now(), magnetDistances);
+        updateDragFloatingRect({ paneId, rect: placing ? moved.snapped : free });
+        if (!placing && runAgain) memo.pace.rest(runAgain, TERMINAL_MAGNET_REST_MS);
         return;
       }
       const { snapped } = moved;
