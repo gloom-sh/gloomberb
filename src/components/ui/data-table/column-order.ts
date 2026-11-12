@@ -5,8 +5,12 @@
  * applies to the columns a pane passes, and how a move is written back.
  */
 
-/** The pane setting a table's remembered column order is kept under, by table (`columnOrderKey`). */
-export const COLUMN_ORDER_SETTING = "columnOrder";
+/**
+ * The pane setting a table's remembered column order is kept under, by table
+ * (`DataTableColumnReorder.key`). Every kit table in every pane writes it, so
+ * it takes the reserved `pane.` prefix: a plugin's own settings never use it.
+ */
+export const COLUMN_ORDER_SETTING = "pane.columnOrder";
 
 /** How far a press on a header moves before it drags its column rather than sorting: pixels on the desktop and the web. */
 export const COLUMN_DRAG_THRESHOLD_PX = 5;
@@ -72,17 +76,26 @@ export function orderColumns<C extends { id: string }>(
 /**
  * The gap a dragged column would drop into, for a pointer at `x`: 0 before the
  * first column, `spans.length` after the last, never before the anchored ones.
- * `spans` are the columns' extents in the same units as `x`.
+ * `spans` are the columns' extents in the same units as `x`. `frozenEnd` is
+ * where a frozen first column ends on screen while the table is scrolled
+ * under it: the columns it covers cannot be dropped beside, so a pointer over
+ * it means the first gap past it, and a column it half covers is judged by
+ * the part that shows.
  */
 export function columnDropBoundary(
   spans: readonly { start: number; end: number }[],
   x: number,
   anchored: number,
+  frozenEnd?: number,
 ): number {
+  const reach = frozenEnd ?? Number.NEGATIVE_INFINITY;
+  const at = Math.max(x, reach);
   let boundary = spans.length;
   for (let index = 0; index < spans.length; index += 1) {
     const span = spans[index]!;
-    if (x < (span.start + span.end) / 2) {
+    if (index > 0 && span.end <= reach) continue;
+    const start = index > 0 ? Math.max(span.start, reach) : span.start;
+    if (at < (start + span.end) / 2) {
       boundary = index;
       break;
     }

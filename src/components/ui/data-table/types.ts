@@ -98,8 +98,9 @@ export interface DataTableColumnReorder {
   anchored?: number;
   /**
    * Names this table's remembered order, for a pane that shows several
-   * tables starting with the same column whose other columns differ. Unset,
-   * the first column's id.
+   * tables naming their rows with the same column whose other columns
+   * differ. Unset, the id of the column that names the row (the last
+   * anchored one).
    */
   key?: string;
   /**
@@ -110,9 +111,14 @@ export interface DataTableColumnReorder {
    */
   control?: {
     order: readonly string[];
-    /** The order Reset Columns puts the list back in; without it the pane menu offers none. */
+    /**
+     * The list the pane shows while its setting is unset. Reset Columns puts
+     * the list back in this order (without it the pane menu offers none),
+     * and a list that comes out the same is `undefined` to `onChange`.
+     */
     defaultOrder?: readonly string[];
-    onChange: (order: string[]) => void;
+    /** The list to keep, or undefined to remove the setting, so columns later added to the defaults reach the pane. */
+    onChange: (order: string[] | undefined) => void;
   };
 }
 
@@ -142,7 +148,8 @@ export interface DataTableProps<
   onHeaderClick?: (columnId: string) => void;
   /**
    * Dragging a header moves its column (once the press moves a few pixels or
-   * two cells; a click still sorts), and the pane remembers the order: Reset
+   * two cells; a click still sorts, on the release rather than the press),
+   * and the pane remembers the order under `pane.columnOrder`: Reset
    * Columns in the pane menu puts the pane's own back. The columns that name
    * the row stay first. `false` keeps the pane's order, for columns that are
    * one ordered axis (periods, tenors, strikes) or a fixed format.

@@ -18,6 +18,15 @@ import {
 } from "./column-order";
 import type { DataTableColumn, DataTableColumnReorder } from "./types";
 
+/**
+ * A pane's column list to write, or undefined where it is the pane's own default
+ * list, so the pane's setting goes and columns later added to its defaults still
+ * reach it.
+ */
+function listOrDefault(order: string[], defaultOrder: readonly string[] | undefined): string[] | undefined {
+  return defaultOrder && sameIds(order, defaultOrder) ? undefined : order;
+}
+
 /** Joins a remembered order into one string, so the selector's value only changes when the order does. */
 const ID_SEPARATOR = "\u0000";
 
@@ -49,7 +58,8 @@ export function useDataTableColumnOrder<C extends DataTableColumn>(
   const options = reorder === false ? null : reorder ?? {};
   const control = options?.control;
   const anchored = Math.min(columns.length, options?.anchored ?? rowAnchorColumnCount(columns));
-  const key = options?.key ?? columns[0]?.id ?? "";
+  // Kept under the column that names the row, so a mark before it that comes and goes with the width keeps the order.
+  const key = options?.key ?? columns[anchored - 1]?.id ?? columns[0]?.id ?? "";
   const enabled = options !== null && (control !== undefined || paneId !== null) && columns.length - anchored >= 2;
   const savedText = useAppSelector((state) => {
     if (!enabled || control || !paneId) return null;
@@ -75,9 +85,13 @@ export function useDataTableColumnOrder<C extends DataTableColumn>(
     const after = moveColumnId(before, columnId, toIndex, current.anchored);
     if (!after) return;
     if (current.control) {
-      // Columns the pane adds on its own (a portfolio's target weights) keep their own place.
-      const listed = new Set(current.control.order);
-      current.control.onChange(rememberColumnOrder(current.control.order, before, after).filter((id) => listed.has(id)));
+      // Columns the pane adds on its own and does not list (a portfolio's target weights, its CCY column) stay
+      // out of the list and are drawn where the pane puts them. So a column dropped between two of them is
+      // written beside them in the list, and once they are drawn back in their own place it can land on their
+      // other side. Accepted: they follow the pane's rules, not the reader's order.
+      const { order, defaultOrder, onChange } = current.control;
+      const listed = new Set(order);
+      onChange(listOrDefault(rememberColumnOrder(order, before, after).filter((id) => listed.has(id)), defaultOrder));
       return;
     }
     const defaults = current.columns.map((column) => column.id);
@@ -92,12 +106,16 @@ export function useDataTableColumnOrder<C extends DataTableColumn>(
   }, [updateSetting]);
 
   const reset = useCallback(() => {
-    const current = latest.current.control;
+    const { control: current, key: tableKey } = latest.current;
     if (!current) {
-      updateSetting(() => undefined);
+      // Only this table's order: another table or tab in the pane keeps its own.
+      updateSetting((value) => {
+        const { [tableKey]: _reset, ...others } = readColumnOrders(value);
+        return Object.keys(others).length > 0 ? others : undefined;
+      });
       return;
     }
-    if (current.defaultOrder) current.onChange(defaultColumnOrder(current.order, current.defaultOrder));
+    if (current.defaultOrder) current.onChange(listOrDefault(defaultColumnOrder(current.order, current.defaultOrder), current.defaultOrder));
   }, [updateSetting]);
 
   const customized = enabled && (control

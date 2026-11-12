@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer, type BoxRenderable } from "../../../../ui";
-import { capturePointerDrag } from "../../../../ui/pointer-drag";
+import { capturePointerDrag, releasePointerDrag } from "../../../../ui/pointer-drag";
 import { hoverBg } from "../../../../theme/colors";
 import { selectedRowCellColor } from "../../../../theme/tone-contrast";
 import { useThemeColors } from "../../../../theme/theme-context";
@@ -426,11 +426,15 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     () => displayColumns.map((column, index) => ({ start: columnStarts[index] ?? 0, end: (columnStarts[index] ?? 0) + column.width })),
     [columnStarts, displayColumns],
   );
+  // Scrolled sideways, a frozen first column covers the columns under it: it ends here, in the row's
+  // coordinates past its padding, and nothing drops among the columns it covers.
+  const frozenEnd = freezeFirstColumn ? frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap : undefined;
   const dropBoundaryAt = useCallback((event?: { x?: number }) => {
     const row = headerRowRef.current;
     if (typeof event?.x !== "number" || !row) return null;
-    return columnDropBoundary(columnSpans, event.x - (row.x ?? 0) - horizontalPadding, anchoredColumns);
-  }, [anchoredColumns, columnSpans, horizontalPadding]);
+    // row.x is where the scrolled row starts on screen, so this is the pointer's place among the columns.
+    return columnDropBoundary(columnSpans, event.x - (row.x ?? 0) - horizontalPadding, anchoredColumns, frozenEnd);
+  }, [anchoredColumns, columnSpans, frozenEnd, horizontalPadding]);
   const dragHeader = useCallback((event?: HeaderDragEvent) => {
     const press = headerPressRef.current;
     if (!press || typeof event?.x !== "number") return;
@@ -442,6 +446,20 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     const next = { from: press.from, boundary: boundary !== null && columnDropIndex(press.from, boundary) !== null ? boundary : null };
     setColumnDrag((current) => current?.from === next.from && current.boundary === next.boundary ? current : next);
   }, [dropBoundaryAt]);
+  // A press that never sees its release (let go outside the window) ends at the next move with no button
+  // held, the next press or the terminal losing focus: no move, no sort, and the header is put down.
+  const cancelHeaderPress = useCallback(() => {
+    if (!headerPressRef.current) return;
+    headerPressRef.current = null;
+    setColumnDrag(null);
+    releasePointerDrag(nativeRenderer);
+  }, [nativeRenderer]);
+  const dragging = columnDrag !== null;
+  useEffect(() => {
+    if (!dragging || typeof nativeRenderer?.on !== "function") return;
+    nativeRenderer.on("blur", cancelHeaderPress);
+    return () => nativeRenderer.off("blur", cancelHeaderPress);
+  }, [cancelHeaderPress, dragging, nativeRenderer]);
   // Esc while a column drags puts it back; the release then does nothing.
   useShortcut((event) => {
     if (event.name !== "escape" || !headerPressRef.current?.dragging) return;
@@ -449,7 +467,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     event.stopPropagation?.();
     headerPressRef.current = null;
     setColumnDrag(null);
-  }, { enabled: columnDrag !== null, phase: "capture" });
+  }, { enabled: dragging, phase: "capture" });
   const releaseHeader = useCallback((event?: HeaderDragEvent) => {
     const press = headerPressRef.current;
     headerPressRef.current = null;
@@ -471,12 +489,18 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     ? tableFarEdgePad({ columns: displayColumns, columnGap, horizontalPadding, contentWidth, viewportWidth: measuredViewportWidth })
     : 0);
   const lastColumn = displayColumns.length - 1;
-  // The gap's own blank cell, before the column it would land in front of or after the last one.
+  // The gap's own blank cell, before the column it would land in front of or after the last one; never under a
+  // frozen first column, but in its trailing blank cell when the column it lands before is partly behind it, and
+  // at the viewport's last cell when the gap after the last column is past it.
   const dropMarkerLeft = columnDrag?.boundary == null ? null : Math.min(
     scrollContentWidth - 1,
-    horizontalPadding + (columnDrag.boundary <= lastColumn
-      ? (columnStarts[columnDrag.boundary] ?? 0) - 1
-      : (columnStarts[lastColumn] ?? 0) + (displayColumns[lastColumn]?.width ?? 0)),
+    measuredViewportWidth > 0 ? frozenColumnOffset + measuredViewportWidth - 1 : Number.POSITIVE_INFINITY,
+    horizontalPadding + Math.max(
+      frozenEnd === undefined ? Number.NEGATIVE_INFINITY : frozenEnd - 1,
+      columnDrag.boundary <= lastColumn
+        ? (columnStarts[columnDrag.boundary] ?? 0) - 1
+        : (columnStarts[lastColumn] ?? 0) + (displayColumns[lastColumn]?.width ?? 0),
+    ),
   );
   // Columns out of view past the right edge: the header row ends in "more ⇧→" there, a press on it scrolls to
   // them, and the rows leave its cells blank, so a narrow pane says it has more than it shows. The header's
@@ -737,6 +761,12 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
           backgroundColor={colors.panel}
           onMouseDrag={onColumnMove ? dragHeader : undefined}
           onMouseDragEnd={onColumnMove ? releaseHeader : undefined}
+          // While the row holds a press, every other mouse event comes here: one with no button held, or a
+          // new press (sent to the row itself, not bubbled up from a header), means the release went missing.
+          onMouseMove={onColumnMove ? cancelHeaderPress : undefined}
+          onMouseDown={onColumnMove ? (event: any) => {
+            if (event?.target === headerRowRef.current) cancelHeaderPress();
+          } : undefined}
         >
           {displayColumns.map((column, columnIndex) => {
             const frozen = freezeFirstColumn && columnIndex === 0;

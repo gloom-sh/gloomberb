@@ -459,9 +459,10 @@ it, the text keeps its own selection color, and exports read only the text.
 
 **Moving columns.** Every kit table's columns move. A header dragged
 sideways (past a few pixels on the desktop and the web, two cells in the
-terminal; a click still sorts) drops its column where the accent line shows,
+terminal; a click still sorts, on the release) drops its column where the
+accent line shows,
 a `│` in the terminal's header row, and the pane keeps the order in its
-settings (`columnOrder`), saved and synced with the layout. "Move Column…"
+settings (`pane.columnOrder`), saved and synced with the layout. "Move Column…"
 in the pane menu does the same from the keyboard, and "Reset Columns" puts
 the pane's own order back. The columns that name the row stay first: the
 first column, with a narrow mark before it (a status dot, a rank). Exports
@@ -479,10 +480,11 @@ this, except:
 - A pane whose settings choose and order its columns (an ordered-multi-select,
   PF's and FUT's Columns) passes them as `columnReorder={{ control }}`, so a
   drag rewrites that setting and Settings lists the columns as the table
-  shows them.
+  shows them. Back in the pane's default order, the setting goes, so columns
+  added to the defaults later still show.
 - `anchored` keeps more leading columns in place (the session mark and
-  symbol in FUT and WEI); `key` separates two tables in one pane that start with the same
-  column but are otherwise unrelated.
+  symbol in FUT and WEI); `key` separates two tables in one pane that name
+  their rows with the same column but are otherwise unrelated.
 
 **Country flags.** Wherever a row or a field names a country (ECO's country,
 a balance's or a board's country or jurisdiction, a venue's market, an IPO's

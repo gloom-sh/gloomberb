@@ -35,7 +35,11 @@ function savedOrder(store: AppContextStoreValue) {
   return findPaneInstance(store.getState().config.layout, PANE)?.settings?.[COLUMN_ORDER_SETTING];
 }
 
-async function renderTable(store: AppContextStoreValue, props: Partial<DataTableProps<typeof ROWS[number]>> = {}) {
+async function renderTable(
+  store: AppContextStoreValue,
+  props: Partial<DataTableProps<typeof ROWS[number]>> = {},
+  width = 60,
+) {
   const menu: { items: ContextMenuItem[] } = { items: [] };
   const sorted: string[] = [];
   await tui.render(
@@ -44,7 +48,7 @@ async function renderTable(store: AppContextStoreValue, props: Partial<DataTable
         <PaneFooterProvider>{(footer) => {
           menu.items = footer.menu;
           return (
-            <Box width={60} height={8}>
+            <Box width={width} height={8}>
               <DataTableView
                 focused
                 columns={COLUMNS}
@@ -55,7 +59,7 @@ async function renderTable(store: AppContextStoreValue, props: Partial<DataTable
                 sortDirection="asc"
                 onHeaderClick={(columnId) => sorted.push(columnId)}
                 emptyStateTitle="No quotes."
-                renderCell={(row, column) => ({ text: column.id === "ticker" ? row.id : row[column.id as "price"] })}
+                renderCell={(row, column) => ({ text: column.id === "ticker" ? row.id : row[column.id as "price"] ?? "" })}
                 {...props}
               />
             </Box>
@@ -88,6 +92,19 @@ async function dragHeader(label: string, cells: number) {
   await tui.renderFrames();
 }
 
+/** Presses on a header label and holds it at `to`, with the button still down. */
+async function holdHeader(label: string, to: number) {
+  const { mockMouse, renderOnce } = tui.setup();
+  const x = labelX(label) + 1;
+  await act(async () => {
+    await mockMouse.pressDown(x, 0);
+    for (const at of [x - 1, x - 2, to]) await mockMouse.emitMouseEvent("drag", at, 0);
+    await renderOnce();
+  });
+  await tui.renderFrames();
+  return to;
+}
+
 test("dragging a header moves its column, remembers it in the pane's settings, and opens that way again", async () => {
   const store = newStore();
   const { sorted } = await renderTable(store);
@@ -98,9 +115,12 @@ test("dragging a header moves its column, remembers it in the pane's settings, a
   expect(sorted).toEqual([]);
   expect(savedOrder(store)).toEqual({ ticker: ["ticker", "volume", "price", "change"] });
 
-  // A restart reads the saved layout: the table opens in the reader's order.
+  // A restart reads the saved layout: the table opens in the reader's order, with or without a mark before the
+  // ticker, which the pane may show only when it is wide enough.
   const reopened = newStore(findPaneInstance(store.getState().config.layout, PANE)?.settings);
   await renderTable(reopened);
+  expect(headerLine()).toBe("TICKER VOL LAST CHG%");
+  await renderTable(reopened, { columns: [{ id: "mark", label: "", width: 1, align: "left" }, ...COLUMNS] });
   expect(headerLine()).toBe("TICKER VOL LAST CHG%");
 });
 
@@ -124,8 +144,9 @@ test("the row's name stays first: it does not drag and nothing drops before it",
   expect(sorted).toEqual(["ticker"]);
 });
 
-test("Reset Columns in the pane menu puts the pane's own order back", async () => {
-  const store = newStore({ [COLUMN_ORDER_SETTING]: { ticker: ["ticker", "change", "volume", "price"] } });
+test("Reset Columns in the pane menu puts the pane's own order back, and only this table's", async () => {
+  const other = { symbol: ["symbol", "bid", "ask"] };
+  const store = newStore({ [COLUMN_ORDER_SETTING]: { ticker: ["ticker", "change", "volume", "price"], ...other } });
   const { menu } = await renderTable(store);
   expect(headerLine()).toBe("TICKER CHG% VOL LAST");
   const reset = menu.items.find((item) => item.type !== "divider" && item.id === "reset-columns");
@@ -136,7 +157,7 @@ test("Reset Columns in the pane menu puts the pane's own order back", async () =
   });
   await tui.renderFrames();
   expect(headerLine()).toBe("TICKER LAST CHG% VOL");
-  expect(savedOrder(store)).toBeUndefined();
+  expect(savedOrder(store)).toEqual(other);
   expect(menu.items.some((item) => item.type !== "divider" && item.id === "reset-columns")).toBe(false);
 });
 
@@ -150,12 +171,63 @@ test("a table that opts out keeps its order and sorts on the press", async () =>
 });
 
 test("a pane whose settings order its columns gets its own list back, with the columns it hides and none it adds", async () => {
-  const changes: string[][] = [];
+  const changes: Array<string[] | undefined> = [];
+  const onChange = (next: string[] | undefined) => changes.push(next);
   // The pane's list also has NAME, which it drops at this width, and the table shows CHG% it adds on its own.
   const order = ["ticker", "price", "name", "volume"];
-  await renderTable(newStore(), {
-    columnReorder: { control: { order, defaultOrder: order, onChange: (next) => changes.push(next) } },
-  });
+  await renderTable(newStore(), { columnReorder: { control: { order, defaultOrder: order, onChange } } });
   await dragHeader("VOL", labelX("TICKER") + 5 - labelX("VOL"));
   expect(changes).toEqual([["ticker", "volume", "price", "name"]]);
+
+  // Moved back to the pane's own order, the setting goes, so columns later added to the defaults reach the pane.
+  const moved = ["ticker", "volume", "price", "change"];
+  await renderTable(newStore(), {
+    columns: moved.map((id) => COLUMNS.find((column) => column.id === id)!),
+    columnReorder: { control: { order: moved, defaultOrder: COLUMNS.map((column) => column.id), onChange } },
+  });
+  await dragHeader("VOL", labelX("CHG%") + 6 - labelX("VOL"));
+  expect(changes).toEqual([["ticker", "volume", "price", "name"], undefined]);
+});
+
+test("scrolled under a frozen first column, a drop over it lands in the first gap that shows", async () => {
+  const store = newStore();
+  await renderTable(store, { freezeFirstColumn: true, showHorizontalScrollbar: true }, 30);
+  await act(async () => { await tui.emitKeypress({ name: "right", shift: true }); });
+  await tui.renderFrames();
+  expect(headerLine()).toBe("TICKER CHG% VOL");
+
+  // Held over the frozen ticker, the marker stands in the blank cell past it, never on its label.
+  await holdHeader("VOL", labelX("TICKER") + 2);
+  expect(tui.frame().split("\n")[0]).toMatch(/^ TICKER +│ +CHG% +VOL/);
+  const { mockMouse, renderOnce } = tui.setup();
+  await act(async () => {
+    await mockMouse.release(labelX("TICKER") + 2, 0);
+    await renderOnce();
+  });
+  await tui.renderFrames();
+  expect(savedOrder(store)).toEqual({ ticker: ["ticker", "price", "volume", "change"] });
+});
+
+test("a release lost outside the window puts the column down at the next move without the button", async () => {
+  const store = newStore();
+  const { sorted } = await renderTable(store);
+  await holdHeader("VOL", labelX("LAST"));
+  expect(tui.frame().split("\n")[0]).toContain("│");
+
+  const { mockMouse, renderOnce } = tui.setup();
+  await act(async () => {
+    await mockMouse.emitMouseEvent("move", labelX("LAST"), 4);
+    await renderOnce();
+  });
+  await tui.renderFrames();
+  expect(tui.frame().split("\n")[0]).not.toContain("│");
+  // The release that finally comes elsewhere neither moves nor sorts.
+  await act(async () => {
+    await mockMouse.release(labelX("LAST"), 4);
+    await renderOnce();
+  });
+  await tui.clickFrameText("CHG%");
+  expect(headerLine()).toBe("TICKER LAST CHG% VOL");
+  expect(savedOrder(store)).toBeUndefined();
+  expect(sorted).toEqual(["change"]);
 });

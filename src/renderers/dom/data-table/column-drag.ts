@@ -68,12 +68,15 @@ export function useWebColumnDrag({
         const bounds = cell.getBoundingClientRect();
         return { start: bounds.left, end: bounds.right };
       });
-      return { spans, boundary: columnDropBoundary(spans, pointerX, latest.current.anchoredColumns) };
+      // A frozen first column stays put while the others scroll under it: nothing drops among those it covers.
+      const frozenEnd = cells[0]?.style.position === "sticky" ? spans[0]?.end : undefined;
+      return { spans, frozenEnd, boundary: columnDropBoundary(spans, pointerX, latest.current.anchoredColumns, frozenEnd) };
     };
     const show = () => {
-      const { spans, boundary } = measure();
+      const { spans, frozenEnd, boundary } = measure();
       const content = contentRef.current?.getBoundingClientRect();
-      const lineX = columnDropIndex(from, boundary) === null ? null : dropLineX(spans, boundary);
+      const gapX = columnDropIndex(from, boundary) === null ? null : dropLineX(spans, boundary);
+      const lineX = gapX === null || frozenEnd === undefined ? gapX : Math.max(gapX, frozenEnd);
       const dropLeft = lineX === null || !content ? null : lineX - content.left;
       setDrag((current) => current?.from === from && current.dropLeft === dropLeft ? current : { from, dropLeft });
     };

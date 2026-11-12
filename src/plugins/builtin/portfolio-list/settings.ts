@@ -83,14 +83,6 @@ const PORTFOLIO_COLUMN_DEFS: ColumnConfig[] = [
   { id: "as_of", label: "AS OF UTC", width: 10, align: "right" },
 ];
 
-/**
- * The order Reset Columns puts the pane's columns in: the default set as a
- * new pane shows it, then every other column as Settings lists it.
- */
-export const PORTFOLIO_DEFAULT_COLUMN_ORDER: readonly string[] = [
-  ...new Set([...DEFAULT_PORTFOLIO_COLUMN_IDS, ...PORTFOLIO_COLUMN_DEFS.map((column) => column.id)]),
-];
-
 const PORTFOLIO_COLUMNS_BY_ID = new Map(PORTFOLIO_COLUMN_DEFS.map((column) => [column.id, column]));
 const PORTFOLIO_ONLY_COLUMN_IDS = new Set([
   "side",
