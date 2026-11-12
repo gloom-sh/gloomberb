@@ -200,6 +200,7 @@ export function PortfolioTickerTable({
   width,
   answeredSnapshots,
   exportName,
+  allocationRows,
 }: {
   columns: ColumnConfig[];
   focused?: boolean;
@@ -234,6 +235,8 @@ export function PortfolioTickerTable({
   answeredSnapshots?: ReadonlySet<string>;
   /** The list's name, which names its exported file. */
   exportName?: string;
+  /** The book's CASH and TOTAL rows under its holdings (`allocationSummaryRows`). */
+  allocationRows?: readonly TickerTableSummaryRow[];
 }) {
   const cellCacheRef = useRef(createRowValueCache<string, ReturnType<typeof getColumnValue> & TickerTableCell>(5000));
   const openPerpetualRef = useRef(onOpenPerpetual);
@@ -320,14 +323,24 @@ export function PortfolioTickerTable({
   }, [hiddenColumnIds, sizedColumns]);
   // Over a period, the FX line under the rows, so P&L adds up to the header's total as portfolio show --from prints it.
   const periodFx = columnContext.periodPnl?.fx ?? null;
-  const summaryRows = useMemo<TickerTableSummaryRow[] | undefined>(() => periodFx ? [{
-    id: "period-fx",
-    cells: {
-      [displayColumns.some((column) => column.id === "ticker") ? "ticker" : displayColumns[0]?.id ?? "ticker"]: { text: `FX (${periodFx.currencies})` },
-      pnl: periodPnlFigure(periodFx.pnl, "pnl"),
-      pnl_pct: periodPnlFigure(periodFx.contribution, "contribution"),
-    },
-  }] : undefined, [displayColumns, periodFx]);
+  const summaryRows = useMemo<TickerTableSummaryRow[] | undefined>(() => {
+    // A row's label goes in TICKER, or the first column when the pane shows none.
+    const labelColumn = displayColumns.some((column) => column.id === "ticker") ? "ticker" : displayColumns[0]?.id ?? "ticker";
+    const labelled = (row: TickerTableSummaryRow): TickerTableSummaryRow => labelColumn === "ticker" || !row.cells.ticker ? row
+      : { ...row, cells: { ...row.cells, [labelColumn]: row.cells.ticker } };
+    const rows = [
+      ...(periodFx ? [{
+        id: "period-fx",
+        cells: {
+          ticker: { text: `FX (${periodFx.currencies})` },
+          pnl: periodPnlFigure(periodFx.pnl, "pnl"),
+          pnl_pct: periodPnlFigure(periodFx.contribution, "contribution"),
+        },
+      }] : []),
+      ...(allocationRows ?? []),
+    ].map(labelled);
+    return rows.length > 0 ? rows : undefined;
+  }, [allocationRows, displayColumns, periodFx]);
   // The table offers "Sort by…" while it has a sort column. A watchlist starts
   // unsorted and a third header click turns sorting off, so the unsorted state
   // needs its own entry until TickerListTableView takes `sortable`.

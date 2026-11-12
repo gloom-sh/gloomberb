@@ -102,6 +102,26 @@ test("the pane's live row keeps Last, Chg% and MCAP at the regular session and p
   expect(paneRow(snapshotRow(), { ...quotes().regular, lastUpdated: Date.parse("2026-10-09T15:00:00Z") }).metrics.price.value).toBe(198.78);
 });
 
+test("a row's P/Es and P/B move with the price it shows, as valuation reprices them, and it takes the quote's name", () => {
+  // The snapshot's P/E 41.7 and forward 24.1 are over its 190.00 row price; the live 199.10 reprices them.
+  const snapshot = snapshotRow(190, 0.2);
+  snapshot.metrics.price.observedAt = "2026-10-09T16:45:00.000Z";
+  snapshot.name = "APPLE INC";
+  snapshot.metrics.trailingPE = metric(41.7, "x", "2026-10-09");
+  snapshot.metrics.forwardPE = metric(24.1, "x", "2026-10-09");
+  snapshot.metrics.priceToBook = metric(5.2, "x", "2026-10-09");
+  const row = paneRow(snapshot, { ...quotes().regular, name: "Apple Inc." });
+  expect(row.metrics.price.value).toBe(199.1);
+  expect(row.metrics.trailingPE.value).toBeCloseTo(41.7 * 199.1 / 190, 9);
+  expect(row.metrics.forwardPE.value).toBeCloseTo(24.1 * 199.1 / 190, 9);
+  expect(row.metrics.priceToBook.value).toBeCloseTo(5.2 * 199.1 / 190, 9);
+  expect(row.name).toBe("Apple Inc.");
+  // A P/E sort is redone on the repriced figures: 43.70 now ranks after 43, which the snapshot's 41.7 did not.
+  const cheap = { ...snapshotRow(), symbol: "CHEAP" };
+  cheap.metrics.trailingPE = metric(43, "x", "2026-10-09");
+  expect(sortLiveScreenRows([row, cheap], { field: "trailingPE", direction: "asc" }).map((entry) => entry.symbol)).toEqual(["CHEAP", "AAPL"]);
+});
+
 /** EQS's report over one row, its quote read through `marketData`. */
 async function report(snapshot: ScreenRow, quote: Quote) {
   const data: ScreenPayload = screenFixture();

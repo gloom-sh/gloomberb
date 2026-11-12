@@ -96,6 +96,7 @@ import {
   listingReadNotes,
   screenYtdBase,
   splitGradeReason,
+  firstScreenSortDirection,
 } from "./model";
 import { findNamedCollection, readWatchlistArgument } from "../../../portfolio/collection-name";
 import { useScreenResults } from "./results";
@@ -1061,7 +1062,7 @@ function EquityScreenView({
                 setMetric(value as NumericField);
                 apply({
                   ...definition,
-                  sort: { field: value as NumericField, direction: "desc" },
+                  sort: { field: value as NumericField, direction: firstScreenSortDirection(value) },
                 });
               },
             }]}
@@ -1155,11 +1156,10 @@ function EquityScreenView({
                 ...definition,
                 sort: {
                   field,
-                  direction:
-                    definition.sort.field === field &&
-                    definition.sort.direction === "desc"
-                      ? "asc"
-                      : "desc",
+                  // The same column flips; another starts the way it ranks, a multiple cheapest first.
+                  direction: definition.sort.field === field
+                    ? definition.sort.direction === "desc" ? "asc" : "desc"
+                    : firstScreenSortDirection(field),
                 },
               });
             }}

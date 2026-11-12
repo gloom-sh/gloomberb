@@ -246,8 +246,11 @@ export function buildPortfolioSummarySegments({
   brokerPortfolio = false,
   valuationBasis,
   period = null,
+  cashInTable = false,
 }: {
   totals: PortfolioSummaryTotals;
+  /** The table shows the cash as its own row (with its target and trade), so the header leaves it out. */
+  cashInTable?: boolean;
   /**
    * P&L between two closes (the pane's P&L From) in place of P&L since cost:
    * its label names the closes, the total takes in the FX line, and the
@@ -333,8 +336,8 @@ export function buildPortfolioSummarySegments({
   }
 
   // A broker account always states its cash, so a missing balance reads as unknown rather than zero.
-  if (broker && !manualCash) candidates.push(accountValue("cash", "Cash", account?.totalCashValue ?? Number.NaN)!);
-  if (manualCash) {
+  if (broker && !manualCash && !cashInTable) candidates.push(accountValue("cash", "Cash", account?.totalCashValue ?? Number.NaN)!);
+  if (manualCash && !cashInTable) {
     const drift = formatAllocationDrift(manualCash.drift);
     candidates.push(createSummarySegment("cash", [
       { text: "Cash", tone: "label" },

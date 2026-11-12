@@ -185,14 +185,16 @@ const TARGET_COLUMN_IDS = new Set(["target_weight", "drift", "trade", "trade_val
 const REBALANCE_COLUMN_IDS = ["weight", "target_weight", "drift", "trade"];
 
 /**
- * A portfolio with target weights shows WEIGHT, TGT WT, DRIFT and TRADE beside
- * its market value, unless the pane's columns already pick target columns.
+ * A portfolio with target weights shows WEIGHT, TGT WT, DRIFT and TRADE right
+ * after TICKER, where a rebalance reads them first, unless the pane's columns
+ * already pick target columns. A WEIGHT the columns place keeps its place,
+ * with the others after it.
  */
 function withTargetColumns(columnIds: string[]): string[] {
   if (columnIds.some((id) => TARGET_COLUMN_IDS.has(id))) return columnIds;
   const missing = REBALANCE_COLUMN_IDS.filter((id) => !columnIds.includes(id));
-  const anchor = columnIds.includes("weight") ? columnIds.indexOf("weight") : columnIds.indexOf("mkt_value");
-  const at = anchor >= 0 ? anchor + 1 : columnIds.length;
+  const anchor = columnIds.includes("weight") ? columnIds.indexOf("weight") : columnIds.indexOf("ticker");
+  const at = anchor + 1;
   return [...columnIds.slice(0, at), ...missing, ...columnIds.slice(at)];
 }
 

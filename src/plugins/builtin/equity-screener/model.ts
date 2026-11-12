@@ -358,6 +358,17 @@ export function screenColumnLabel(field: NumericField, ytdBase: string | null, f
 export const columnWidth = (field: NumericField, label = SHORT_LABELS[field]) =>
   Math.max(field === "price" ? 10 : field === "gradeComposite" ? 12 : 8, label.length);
 
+/** Valuation multiples, where the cheapest is what a screen looks for first. */
+const CHEAPEST_FIRST_FIELDS: ReadonlySet<string> = new Set(["trailingPE", "forwardPE", "enterpriseToRevenue", "priceToBook", "evToEbitda"]);
+
+/**
+ * The order a field ranks in when picked as the metric or its header is first
+ * pressed: a valuation multiple cheapest first, anything else largest first.
+ */
+export function firstScreenSortDirection(field: string): "asc" | "desc" {
+  return CHEAPEST_FIRST_FIELDS.has(field) ? "asc" : "desc";
+}
+
 export const DEFAULT_SCREEN: ScreenDefinition = {
   version: 1,
   currency: "USD",

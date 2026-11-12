@@ -31,6 +31,7 @@ import {
   exchangeName,
   isKnownExchangeCode,
   isSharedExchangeCode,
+  isUsEquityExchange,
   isUsListingExchange,
   usShareClassSpellings,
   parsePublicTickerKey,
@@ -1412,6 +1413,12 @@ export async function resolveCliListing(
     const future = await resolveCliListing(commodity.contract.symbol, null, deps, options);
     return { ...future, readAs: [commodityFutureReadAs(typed, commodity), future.readAs].filter(Boolean).join(" "), readFromName: true };
   }
+  // "BRK B" is Berkshire's class B with a space for its mark, never a fund whose name carries "BRK/B".
+  const shareClass = exchangeOption?.trim() ? null : await readShareClassCode(typed, deps);
+  if (shareClass) {
+    const line = await resolveCliListing(shareClass.key, null, deps, options);
+    return { ...line, readAs: shareClass.readAs, readFromName: true, typed: typed.trim() };
+  }
   const read = await readTerminalCodeArg(deps.dataProvider, typed);
   // A company's name, an entry of a comma list (`WHR, Whirlpool Corporation`), is the listing search names for it.
   // A name before a legal form ("SAP SE", "SIEMENS AG") is looked up first: SE is also SIX Swiss's market code.
@@ -1473,6 +1480,65 @@ export async function resolveCliListing(
       ? { symbol: listing.key, exchange: listing.exchange }
       : { symbol: listing.symbol, exchange: saved?.metadata.exchange ?? "" },
   };
+}
+
+/** A US share class typed with a space for its mark: `BRK B`, `brk b`. */
+const SPACED_SHARE_CLASS = /^([A-Za-z]{1,5})\s+([A-Za-z])$/;
+/** A US share class typed with no mark at all, in capitals: `BRKB`, `BFB`. */
+const JOINED_SHARE_CLASS = /^([A-Z]{2,5})([A-Z])$/;
+/** Lines of the joined code abroad a read names. */
+const SHARE_CLASS_OTHER_LINES = 3;
+
+/**
+ * A US share class typed without its mark, read as that class's listing:
+ * `BRK B` and `BRKB` are BRK.B, the row saved for it first, then the US line
+ * search lists for it (a listing exchange before IEX), as `search` ranks it.
+ * The answer says so and names the joined code's lines abroad ("Read "BRKB"
+ * as BRK.B (Berkshire Hathaway Inc.); also BRKB:BMV, BRKB:WSE."). The
+ * spaced form reads so wherever the class trades. The joined form is a code
+ * of its own first: one saved under it, one a US venue lists, or one abroad
+ * of another company (HEIA is Heineken, not HEI.A) stays as typed, and
+ * without `unsaved` only a saved class reads it, so a plain ticker costs no
+ * search. Null for anything else, and when no US line of the class is found.
+ */
+export async function readShareClassCode(
+  typed: string,
+  deps: ListingDeps,
+  { unsaved = false }: { unsaved?: boolean } = {},
+): Promise<ListingArg | null> {
+  const words = typed.trim();
+  const spaced = SPACED_SHARE_CLASS.exec(words);
+  const joined = spaced ? null : JOINED_SHARE_CLASS.exec(words);
+  const parts = spaced ?? joined;
+  if (!parts) return null;
+  const code = `${parts[1]}${parts[2]}`.toUpperCase();
+  const dotted = `${parts[1]}.${parts[2]}`.toUpperCase();
+  const quiet = <T,>(fallback: T) => logFailure("cli.listing-arg", "Read a share class failed", fallback);
+  const saved = await loadSavedListing(deps.store, parseListingArg(dotted)).catch(quiet(null));
+  if (joined && (!saved && !unsaved || await deps.store.loadTicker(code).catch(quiet(null)))) return null;
+  const venues = await listingVenues(code, deps).catch(quiet([] as ListingVenue[]));
+  // BRKB has no US line; a code that has one is a ticker of its own.
+  if (joined && venues.some((venue) => isUsEquityExchange(venue.exchange))) return null;
+  const line = saved
+    ? { symbol: saved.metadata.ticker, exchange: canonicalExchange(saved.metadata.exchange), name: saved.metadata.name }
+    : await usShareClassLine(dotted, deps);
+  if (!line || !isUsEquityExchange(line.exchange)) return null;
+  const abroad = venues.filter((venue) => !isUsEquityExchange(venue.exchange));
+  if (joined && abroad.some((venue) => venue.name && line.name && !sameCompany(venue.name, line.name))) return null;
+  const shown = abroad.slice(0, SHARE_CLASS_OTHER_LINES).map((venue) => `${venue.symbol ?? code}:${venue.exchange}`);
+  const also = shown.length ? `; also ${shown.join(", ")}${abroad.length > shown.length ? ` and ${abroad.length - shown.length} more` : ""}` : "";
+  // A US listing is read bare, as BRK.B is; another US venue keeps its name.
+  const key = isUsListingExchange(line.exchange) ? line.symbol : `${line.symbol}:${line.exchange}`;
+  return { ...parseListingArg(key), readAs: `Read "${words}" as ${line.symbol} (${line.name || "share class"})${also}.`, readFromName: true };
+}
+
+/** The US line search lists for a share class (BRK.B on NYSE before IEX), null when it lists none. */
+async function usShareClassLine(dotted: string, deps: ListingDeps): Promise<{ symbol: string; exchange: string; name: string } | null> {
+  const spellings = new Set(usShareClassSpellings(dotted) ?? [dotted]);
+  const venues = (await listingVenues(dotted, deps)).filter((venue) => isUsEquityExchange(venue.exchange)
+    && (!venue.symbol || spellings.has(venue.symbol)));
+  const venue = venues.find((entry) => isUsListingExchange(entry.exchange)) ?? venues[0];
+  return venue ? { symbol: dotted, exchange: venue.exchange, name: venue.name } : null;
 }
 
 /**

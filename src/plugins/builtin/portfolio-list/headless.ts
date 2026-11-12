@@ -219,7 +219,7 @@ function resolveTarget(rawArgument: string, ctx: HeadlessPaneContext): Collectio
     if (watchlist) return { kind: "watchlist", id: watchlist.id, name: watchlist.name };
     throw new Error("No portfolios or watchlists are set up.");
   }
-  const match = findCollection(config, raw);
+  const match = findCollection(config, raw, { prefix: true });
   if (match) return match;
   const collections = [...config.portfolios, ...config.watchlists];
   throw new Error(

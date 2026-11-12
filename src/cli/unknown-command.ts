@@ -192,7 +192,10 @@ export interface UnknownCommandPointers {
   fn: { code: string; command: string } | null;
   /** The word is a slip from one function's code (RCDF for RDCF), read only when it is no code, no command is close to it and the catalog finds nothing for it. */
   nearFn: { code: string; label: string; command: string } | null;
-  /** Functions the catalog finds for the word, read only when it is no code and no command is close to it. */
+  /**
+   * Functions the catalog finds for the word when it is no code. Beside a command close to it, only those whose
+   * name carries the word (`screen`, Equity Screener), which lead the answer before the command it may be a slip of.
+   */
   hits: CatalogCommandHit[];
   /** What the reader typed after the word, which a pointer runs the function with. */
   args: readonly string[];
@@ -248,9 +251,10 @@ export function unknownCommandReply(
       details: [`Run: ${pointers.nearFn.command}`, ticker].filter(Boolean).join("\n"),
     };
   }
-  const catalog = suggestion ? null : exported ?? catalogPointer(token, pointers.hits, pointers.args);
+  // A function named for the word (`screen`, the screener) comes before the command it may be a slip of (`screenshot`).
+  const catalog = suggestion ? catalogPointer(token, pointers.hits, pointers.args) : exported ?? catalogPointer(token, pointers.hits, pointers.args);
   const help = suggestion
-    ? `Did you mean ${suggestion}? Run gloom help to see every command.`
+    ? [catalog, `Did you mean ${suggestion}? Run gloom help to see every command.`].filter(Boolean).join("\n")
     : catalog ? `${catalog}\nRun gloom help to see every command.` : "Run gloom help to see every command.";
   return { message: `Unknown command "${token}".`, details: ticker ? `${ticker}\n${help}` : help };
 }

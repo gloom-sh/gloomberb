@@ -4,7 +4,7 @@ import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import {
   joinCompanyNameWords, listCoinNotes, ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg,
-  resolveCliListing, usListingsOnlyMessage,
+  readShareClassCode, resolveCliListing, usListingsOnlyMessage,
 } from "./listing-arg";
 import { LISTING_SEARCH_LIMIT } from "../tickers/search";
 import { FUTURES_CONTRACTS } from "../market-data/futures-board";
@@ -110,6 +110,49 @@ test("an exchange code the app does not know is refused unless the symbol trades
   expect(bare.request).toEqual({ symbol: "SAN", exchange: "" });
   expect((await resolveCliListing("SAN:XPAR", undefined, deps)).saved?.metadata.name).toBe("Sanofi");
   expect((await resolveCliListing("SAN:NYSE", undefined, deps)).saved).toBeNull();
+});
+
+test("BRK B and BRKB are Berkshire's class B, the saved row first, never the ETN named for it, naming the code's lines abroad", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const row = { providerId: "test", currency: "USD", type: "Common Stock" };
+  const berkshire = { ...row, name: "Berkshire Hathaway Inc. Class B" };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      const asked = query.replace(/:$/, "").toUpperCase();
+      if (asked === "BRK.B") return [{ ...berkshire, symbol: "BRK.B", exchange: "IEX" }, { ...berkshire, symbol: "BRK.B", exchange: "NYSE" }];
+      if (asked === "BRKB") return [{ ...berkshire, symbol: "BRKB", exchange: "BMV", currency: "MXN" }, { ...berkshire, symbol: "BRKB", exchange: "WSE", currency: "PLN" }];
+      // HEIA is Heineken's code in Amsterdam, whatever HEICO's class A is.
+      if (asked === "HEIA") return [{ ...row, symbol: "HEIA", name: "Heineken N.V.", exchange: "AMS", currency: "EUR" }];
+      // What the words "BRK B" find as a name: the fund whose name carries BRK/B.
+      return [{ ...row, symbol: "^BRKU", name: "Direxion Daily BRK/B Bull 2X Shares", exchange: "NIM", type: "ETN" }];
+    },
+  });
+  const deps = { store, dataProvider };
+
+  // Nothing saved: the spaced class is the US listing search lists, NYSE before IEX; the joined code is left to `quote`.
+  const spaced = await resolveCliListing("BRK B", undefined, deps);
+  expect(spaced.request).toEqual({ symbol: "BRK.B", exchange: "" });
+  expect(spaced.readAs).toBe('Read "BRK B" as BRK.B (Berkshire Hathaway Inc. Class B); also BRKB:BMV, BRKB:WSE.');
+  expect((await resolveCliListing("BRKB", undefined, deps)).request).toEqual({ symbol: "BRKB", exchange: "" });
+  expect((await readShareClassCode("BRKB", deps, { unsaved: true }))?.key).toBe("BRK.B");
+
+  // The held row reads both spellings, under the spelling it was saved as.
+  await store.createTicker({
+    ticker: "BRK-B", exchange: "NYSE", currency: "USD", name: "Berkshire Hathaway Inc.", portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
+  });
+  for (const typed of ["BRK B", "brk b", "BRKB"]) {
+    const listing = await resolveCliListing(typed, undefined, deps);
+    expect(listing.saved?.metadata.ticker, typed).toBe("BRK-B");
+    expect(listing.readAs, typed).toBe(`Read "${typed}" as BRK-B (Berkshire Hathaway Inc.); also BRKB:BMV, BRKB:WSE.`);
+  }
+  // A code of another company abroad stays that company's, and a plain ticker never reads as a class.
+  await store.createTicker({
+    ticker: "HEI.A", exchange: "NYSE", currency: "USD", name: "HEICO Corporation", portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
+  });
+  expect(await readShareClassCode("HEIA", deps, { unsaved: true })).toBeNull();
+  expect(await readShareClassCode("AAPL", deps, { unsaved: true })).toBeNull();
 });
 
 test("a Hong Kong code without its leading zeros is its HKEX listing where search marks it, unless a row is saved under it", async () => {

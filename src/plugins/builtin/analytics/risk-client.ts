@@ -15,6 +15,7 @@ import { resolveDatedReturns, type DatedReturn } from "../../../portfolio/return
 import { qualifySharpeCadence } from "./sharpe-cadence";
 import type { RiskEpisodeState } from "./risk-episodes";
 import { evidenceDay } from "./risk-evidence";
+import { regularSessionCloseOn } from "../../../market-data/market/freshness";
 import { FX_LIVE_RATE_MAX_DEVIATION } from "../../../market-data/coordinator/fx-legs";
 import {
   accountFxPair,
@@ -163,6 +164,13 @@ function validateRiskQuote(
  * risk math. With a conversion the listing quotes in that currency and its
  * closes are restated in USD at same-date FX closes on the basket's calendar.
  */
+/** Whether the venue's regular session on `today` (a UTC day) has closed by `now`, so its bar is final. */
+function finalCloseToday(exchange: string, today: string, now: Date): boolean {
+  if (!exchange) return false;
+  const close = regularSessionCloseOn(exchange, today);
+  return close != null && close <= now.getTime();
+}
+
 export function validateRiskHistory(
   response: CloudMarketResponse<CloudPricePointPayload[]>,
   instrument: RiskInstrument,
@@ -222,6 +230,9 @@ export function validateRiskHistory(
   if (response.data.length > 1500)
     throw new Error("Cloud daily history exceeds the supported buffer");
   const today = now.toISOString().slice(0, 10);
+  // Today's bar is still trading until the listing's session ends; after its close it is final (PORT at 23:10Z
+  // on 11 Nov runs through the 11 Nov close). A venue whose hours are unknown keeps waiting for tomorrow.
+  const todayClosed = finalCloseToday(exchange, today, now);
   const dated = new Map<string, CloudPricePointPayload>();
   for (const row of response.data) {
     if (
@@ -234,7 +245,7 @@ export function validateRiskHistory(
     )
       throw new Error("Cloud daily history contains invalid observations");
     const date = new Date(row.date).toISOString().slice(0, 10);
-    if (date >= today) continue;
+    if (date > today || (date === today && !todayClosed)) continue;
     const previous = dated.get(date);
     if (
       previous &&
@@ -393,8 +404,8 @@ export async function fetchPortfolioRiskMarket(
   const historyParams = {
     interval: "1day",
     startDate,
-    // validateRiskHistory drops today's bar; ending on yesterday
-    // loses yesterday's close for most listings.
+    // validateRiskHistory keeps today's bar only once its session closed; ending on
+    // yesterday loses yesterday's close for most listings.
     endDate: today,
     outputsize: 1000,
     rangeKey: "2Y",

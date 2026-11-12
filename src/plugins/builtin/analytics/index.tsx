@@ -496,13 +496,13 @@ export const portfolioAnalyticsModule: PluginModule = {
       shortcut: {
         prefix, argKind: "text", argOptional: true, argPlaceholder: "portfolio-id",
         // `PORT Nope` names no portfolio: the bar says so, not the first portfolio's risk.
-        argError: (arg, context) => unknownCollectionArgError(arg, context.config.portfolios, "portfolio"),
+        argError: (arg, context) => unknownCollectionArgError(arg, context.config.portfolios, "portfolio", undefined, { prefix: true }),
       },
       headless: portfolioRiskHeadless,
       canCreate: (context) => context.config.portfolios.length > 0,
       createInstance: (context, options) => {
-        // `PORT Family` opens Family by its name or id, in any case, as `fn PORT` reads it.
-        const portfolioId = findNamedCollection(context.config.portfolios, options?.arg)?.id ?? resolveTemplatePortfolioId(context.config.portfolios, context.activeCollectionId);
+        // `PORT Family` opens Family by its name or id, in any case, or the start of one name, as `fn PORT` reads it.
+        const portfolioId = findNamedCollection(context.config.portfolios, options?.arg, { prefix: true })?.id ?? resolveTemplatePortfolioId(context.config.portfolios, context.activeCollectionId);
         return portfolioId ? { params: { portfolioId }, settings: { analyticsView: "risk" } } : null;
       },
     })),

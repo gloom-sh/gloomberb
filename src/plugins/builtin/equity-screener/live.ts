@@ -30,6 +30,19 @@ function liveMetric(metric: ScreenMetric, value: number, asOf: string, observedA
 }
 
 /**
+ * Multiples of the price, which move with it as `valuation` reprices them:
+ * the snapshot serves each over its row's price (its cap, for P/B), so over
+ * the quote's price it is the snapshot's times the price's move.
+ */
+const PRICE_MULTIPLE_FIELDS = ["trailingPE", "forwardPE", "priceToBook"] as const;
+
+/** The company's name as its quote gives it, so a row reads as `quote` does; the snapshot's without one. */
+function quoteNamed(row: ScreenRow, quote: Quote): ScreenRow {
+  const name = quote.name?.trim();
+  return name && name !== row.name ? { ...row, name } : row;
+}
+
+/**
  * Price, day change, volume and market cap from a quote, over a snapshot row,
  * as `quote` headlines them: the live quote while the regular session trades,
  * then the completed session's close and its move (getRegularSessionQuoteDisplay,
@@ -42,8 +55,10 @@ function liveMetric(metric: ScreenMetric, value: number, asOf: string, observedA
  * live quote observed before it, a quote of an earlier day than the
  * snapshot's price) leaves the row alone.
  */
-function overlayLiveScreenRow(row: ScreenRow, quote: Quote | null | undefined): LiveScreenRow {
-  if (!quote || quote.stale === true || !isFiniteNumber(quote.price) || quote.price <= 0 || !isFiniteNumber(quote.lastUpdated)) return row;
+function overlayLiveScreenRow(snapshotRow: ScreenRow, quote: Quote | null | undefined): LiveScreenRow {
+  if (!quote) return snapshotRow;
+  const row = quoteNamed(snapshotRow, quote);
+  if (quote.stale === true || !isFiniteNumber(quote.price) || quote.price <= 0 || !isFiniteNumber(quote.lastUpdated)) return row;
   const quoteCurrency = quote.currency?.trim();
   if (quoteCurrency && row.currency && quoteCurrency !== row.currency) return row;
   const snapshotPrice = row.metrics.price;
@@ -74,9 +89,16 @@ function overlayLiveScreenRow(row: ScreenRow, quote: Quote | null | undefined): 
   if (!headline.completed && isFiniteNumber(quote.volume) && quote.volume >= 0) {
     metrics.volume = liveMetric(metrics.volume, quote.volume, asOf, observedAt);
   }
-  const cap = metrics.marketCap;
-  if (isFiniteNumber(cap.value) && isFiniteNumber(snapshotPrice.value) && snapshotPrice.value > 0) {
-    metrics.marketCap = liveMetric(cap, cap.value * (headline.price / snapshotPrice.value), asOf, observedAt);
+  if (isFiniteNumber(snapshotPrice.value) && snapshotPrice.value > 0) {
+    const move = headline.price / snapshotPrice.value;
+    const cap = metrics.marketCap;
+    if (isFiniteNumber(cap.value)) metrics.marketCap = liveMetric(cap, cap.value * move, asOf, observedAt);
+    // Over the price the row shows, as `valuation` reprices them: one ticker, one P/E at one time. The
+    // earnings or book under it keep the snapshot's date and state.
+    for (const field of PRICE_MULTIPLE_FIELDS) {
+      const metric = metrics[field];
+      if (metric && isFiniteNumber(metric.value) && metric.value > 0 && move !== 1) metrics[field] = { ...metric, value: metric.value * move };
+    }
   }
   return { ...row, metrics, ...(extended ? { extended } : {}) };
 }
@@ -113,11 +135,11 @@ export function overlayScreenQuotes(rows: readonly ScreenRow[], quotes: Readonly
 }
 
 /** The fields a quote moves on a row (overlayLiveScreenRow). */
-const LIVE_SORT_FIELDS: ReadonlySet<string> = new Set(["price", "changePercent", "volume", "marketCap"]);
+const LIVE_SORT_FIELDS: ReadonlySet<string> = new Set(["price", "changePercent", "volume", "marketCap", ...PRICE_MULTIPLE_FIELDS]);
 
 /**
  * Rows in the screen's order by the figures they show. A sort on a field the
- * quotes move (price, change, volume, market cap) is redone on the overlaid
+ * quotes move (price, change, volume, market cap, the P/Es and P/B) is redone on the overlaid
  * values, so the column reads monotone: GRAB's snapshot cap, two closes old,
  * kept it above MANH after its quote moved it below. Rows without a
  * value stay last, and ties keep the snapshot's order. Any other sort is the
@@ -125,7 +147,7 @@ const LIVE_SORT_FIELDS: ReadonlySet<string> = new Set(["price", "changePercent",
  */
 export function sortLiveScreenRows<T extends ScreenRow>(rows: readonly T[], sort: ScreenDefinition["sort"]): T[] {
   if (!LIVE_SORT_FIELDS.has(sort.field)) return [...rows];
-  const field = sort.field as "price" | "changePercent" | "volume" | "marketCap";
+  const field = sort.field as "price" | "changePercent" | "volume" | "marketCap" | (typeof PRICE_MULTIPLE_FIELDS)[number];
   const sign = sort.direction === "desc" ? -1 : 1;
   return rows
     .map((row, index) => ({ row, index, value: row.metrics[field]?.value }))

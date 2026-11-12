@@ -88,6 +88,8 @@ const IV_DAILY: FunctionFreshness = { free: "Daily, 15 minutes after the pre-clo
 const pro = (value: string): FunctionFreshness => ({ free: "Pro only", pro: value });
 
 const TABS = key("h/l", " tabs");
+/** A wide table's columns past the pane's edge. */
+const COLUMNS = key("Shift+←/→", " columns");
 const OPEN = key("Enter", " open");
 const SEARCH = key("/", "search");
 const OPEN_SOURCE = key("o", "pen source");
@@ -245,7 +247,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
       + "Grades: Value, Growth, Profitability, Momentum and Revisions, F to A+, each ranked within the sector, and their equal-weighted 1-5 composite labelled Top, Strong, Neutral, Weak or Bottom. "
       + "Ideas holds ready technical screens, Value, Quality and GARP, screens on the classic scores and Top grades. The pane menu saves the matches to a watchlist.",
     usage: ["EQS", "gloom fn EQS --preset golden-cross", "gloom fn EQS --preset quality", "gloom fn EQS --preset magic-formula", "gloom fn EQS --preset top-grades"],
-    keys: [key("a", "dd criterion"), key("m", "etric"), key("t", "check ticker", "Check ticker"), key("s", "ave screen"), key("o", "pen research")],
+    keys: [TABS, key("a", "dd criterion"), key("m", "etric"), key("t", "check ticker", "Check ticker"), key("s", "ave screen"), key("o", "pen research"),
+      key("Enter", " run idea"), COLUMNS],
     data: same("Daily snapshot, statements as filed"),
     bloomberg: ["EQS"],
   },
@@ -1147,7 +1150,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   PF: {
     summary: "Your portfolio or watchlist with live quotes, market value, P&L, weights of the total with cash, and sparklines. With target weights set, each holding adds its target, drift and the trade that rebalances it; broker-synced and manual positions sit in the same table.",
     usage: ["PF", "PF Family"],
-    keys: [key("a", "dd"), OPEN, key("s", " grid")],
+    keys: [key("a", "dd"), OPEN, key("s", " grid"), key("t", "arget weight"), key("Shift+T", " clear target"), TABS, COLUMNS],
     data: QUOTES,
     bloomberg: [],
     docs: "https://gloom.sh/docs/portfolio",

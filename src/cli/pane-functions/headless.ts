@@ -222,13 +222,14 @@ export function createHeadlessPaneContext(
     },
     resolveBroker: context.resolveBroker,
     async resolvePortfolio(id) {
-      const portfolio = findNamedCollection(context.config.portfolios, id);
+      // A report reads a portfolio by the start of its name too, as the command bar opens it (`PORT family`).
+      const portfolio = findNamedCollection(context.config.portfolios, id, { prefix: true });
       if (!portfolio) return null;
       const tickers = (await context.store.loadAllTickers()).filter(row => row.metadata.portfolios.includes(portfolio.id));
       return { portfolio, tickers, account: findCachedPortfolioAccount(context.config, portfolio, context.persistence?.resources) };
     },
     async resolveWatchlist(id) {
-      const watchlist = findNamedCollection(context.config.watchlists, id);
+      const watchlist = findNamedCollection(context.config.watchlists, id, { prefix: true });
       if (!watchlist) return null;
       return (await context.store.loadAllTickers()).filter(row => row.metadata.watchlists.includes(watchlist.id));
     },

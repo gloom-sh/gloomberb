@@ -88,7 +88,7 @@ async function text(run: () => Promise<unknown>): Promise<string> {
   return output.join("\n");
 }
 
-test("portfolio show reads cents in rand, converts income, owes a short's dividend, and names each unknown holding's cause in one line without counting it as $0", async () => {
+test("portfolio show reads cents in rand, converts income, owes a short's dividend, and TOTAL sums the income it has, naming each holding left out and why", async () => {
   // SLOW never answers: the shared deadline leaves it unread.
   const read = (symbol: string) => histories[symbol] ? Promise.resolve(histories[symbol]!) : new Promise<CorporateActionsData>(() => {});
   setCliColorEnabledOverride(false);
@@ -110,10 +110,11 @@ test("portfolio show reads cents in rand, converts income, owes a short's divide
     const shown = await text(() => showCollection("main", market(read).context, { dividendDeadlineMs: 50, drip: { years: 1, withholding: 20 } }));
     expect(shown).toMatch(/SBK[^\n]*\$180\.00 +6\.00%/);
     expect(shown).toMatch(/PEP[^\n]*— +— /);
-    // The book holds a short, so it is weighed on its gross exposure and TOTAL claims no 100%.
-    expect(shown).toMatch(/TOTAL +0\.00% +\$14,500 +— +— +— /);
-    expect(shown).toContain("Income unavailable: no GBP exchange rate for BP:NYSE; no dividend history for PEP:NASDAQ; "
-      + "dividends not read within 0.05s for SLOW:NYSE. The other 3 holdings pay $360.00 a year.");
+    // The book holds a short, so it is weighed on its gross exposure and TOTAL claims no 100%. Its income is the
+    // holdings' it has, $360.00 over their $13,500 gross, never $0 for the others nor a "—" for all.
+    expect(shown).toMatch(/TOTAL +0\.00% +\$14,500 +— +\$360\.00 +2\.67% /);
+    expect(shown).toContain("TOTAL income and yield leave out BP:NYSE (no GBP exchange rate); PEP:NASDAQ (no dividend history); "
+      + "SLOW:NYSE (dividends not read within 0.05s).");
     // The short's cost repeats in the projection, nothing reinvested; unknown holdings are not projected.
     expect(shown).toMatch(/MO:NYSE +-10 +-10 +-\$20\.00/);
     expect(shown).toContain("Not projected: BP:NYSE, PEP:NASDAQ, SLOW:NYSE (income unavailable above).");

@@ -61,23 +61,36 @@ type ResolveTickerTableCell = (
 
 /**
  * A row after the tickers that adds them up, such as a book's FX line over a
- * period: its cells by column id, read-only, never selected, with no menu.
+ * period, its cash or its total: its cells by column id, read-only, with no
+ * menu and nothing to open.
  */
 export interface TickerTableSummaryRow {
   id: string;
   cells: Readonly<Record<string, Pick<TickerTableCell, "text" | "color" | "value">>>;
+  /**
+   * The cursor lands on it as on a ticker, so the pane's own actions reach the
+   * line (a book's cash takes a target weight). The cursor is then at
+   * `summaryRowKey(id)`. Never selected otherwise.
+   */
+  selectable?: boolean;
+}
+
+/** What the cursor reads on a selectable summary row: no ticker has this key. */
+export function summaryRowKey(id: string): string {
+  return `\u0000summary:${id}`;
 }
 
 /** The record a summary row stands in the table's items as, and the row it is. */
 const summaryRowOf = new WeakMap<TickerRecord, TickerTableSummaryRow>();
 
 function summaryRecord(row: TickerTableSummaryRow): TickerRecord {
-  const record = { metadata: { ticker: `\u0000summary:${row.id}`, exchange: "", currency: "", name: "", portfolios: [], watchlists: [], positions: [] } } as unknown as TickerRecord;
+  const record = { metadata: { ticker: summaryRowKey(row.id), exchange: "", currency: "", name: "", portfolios: [], watchlists: [], positions: [] } } as unknown as TickerRecord;
   summaryRowOf.set(record, row);
   return record;
 }
 
 const isTickerRow = (item: TickerRecord) => !summaryRowOf.has(item);
+const isNavigableRow = (item: TickerRecord) => summaryRowOf.get(item)?.selectable ?? true;
 
 export interface TickerListVisibleRange {
   start: number;
@@ -308,7 +321,8 @@ export function TickerListTableView({
     const summary = summaryRowOf.get(ticker);
     if (summary) {
       const cell = summary.cells[column.id];
-      return { text: cell?.text ?? "", ...(cell?.color ? { color: cell.color } : {}), ...(cell?.value !== undefined ? { value: cell.value } : {}), attributes: TextAttributes.NONE };
+      const color = cell?.color || (rowState.selected ? colors.selectedText : undefined);
+      return { text: cell?.text ?? "", ...(color ? { color } : {}), ...(cell?.value !== undefined ? { value: cell.value } : {}), attributes: TextAttributes.NONE };
     }
     const financials = financialsRef.current.get(ticker.metadata.ticker);
     if (column.id === PRICE_SPARKLINE_COLUMN_ID) {
@@ -427,7 +441,7 @@ export function TickerListTableView({
       focused={focused}
       columns={columns}
       items={items}
-      isNavigable={summaries.length ? isTickerRow : undefined}
+      isNavigable={summaries.length ? isNavigableRow : undefined}
       sortColumnId={sortColumnId ?? null}
       sortDirection={sortDirection}
       onHeaderClick={onHeaderClick}

@@ -362,11 +362,20 @@ async function unknownCommandPointers(
   commands: CliCommandDef[],
 ): Promise<UnknownCommandPointers> {
   const fn = await functionCodeCommand(ctx, token, args);
-  const command = fn || nearCommand(token, commands);
-  const hits = command ? [] : await catalogCommandHits(ctx, token);
+  const near = fn ? null : nearCommand(token, commands);
+  const found = fn ? [] : await catalogCommandHits(ctx, token);
+  // A word close to a command is that command's slip, unless a function is named for it: `screen` is the
+  // screener before it is `screenshot` mistyped.
+  const hits = near ? found.filter((hit) => namesFunction(hit.label, token)) : found;
   // What the catalog finds for a word (`comps`) outranks the code it happens to be a slip from.
-  const nearFn = command || hits.length > 0 ? null : await nearFunctionCodeCommand(ctx, token, args);
+  const nearFn = fn || near || hits.length > 0 ? null : await nearFunctionCodeCommand(ctx, token, args);
   return { fn, nearFn, hits, args };
+}
+
+/** Whether a function's name has a word that starts with what was typed: `screen` in Equity Screener. */
+function namesFunction(label: string, token: string): boolean {
+  const word = token.trim().toLowerCase();
+  return word.length >= 4 && label.toLowerCase().split(/[^a-z0-9]+/).some((part) => part.startsWith(word));
 }
 
 /** An unknown command word, answered as unknownCommandReply says. */
