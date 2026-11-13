@@ -65,7 +65,7 @@ test("a dense NAV card keeps the published date beside its monetary price and da
     const entry = { ...createIdleEntry<Quote>(), phase: "ready" as const, data: quote };
     for (const width of [28, 40]) {
       const frame = await renderCard(entry, width, 3);
-      expect(frame).toContain("NAV · as of Oct 6");
+      expect(frame).toContain("NAV · as of 6 Oct");
       expect(frame).toContain("$721.63");
       expect(frame).toContain("+3.13");
       expect(frame).toContain("+0.44%");
