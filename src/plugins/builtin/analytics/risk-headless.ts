@@ -80,8 +80,13 @@ function emptyPortfolioHint(name: string, listed: readonly string[]): string {
  */
 function riskSectionEmpty(
   view: RiskView,
-  { name, brokerLinked, unvaluedOptions }: { name: string; brokerLinked: boolean; unvaluedOptions: boolean },
+  { name, brokerLinked, unvaluedOptions, failedHistories }: {
+    name: string; brokerLinked: boolean; unvaluedOptions: boolean;
+    /** Holdings whose daily closes did not load: the reason a view of returns is empty, not what the book holds. */
+    failedHistories: readonly string[];
+  },
 ): string {
+  if (failedHistories.length > 0 && !RISK_OWN_DATA_VIEWS.has(view)) return failedClosesText(failedHistories);
   switch (view) {
     case "performance":
       return `No account history${brokerLinked ? " from its broker" : ""} (daily values and flows) to measure. `
@@ -95,6 +100,20 @@ function riskSectionEmpty(
     default:
       return "No holding has the daily closes this view needs.";
   }
+}
+
+/** Views read from the account's own records or option positions, not from its holdings' daily closes. */
+const RISK_OWN_DATA_VIEWS: ReadonlySet<RiskView> = new Set(["performance", "attribution", "greeks"]);
+
+/** The holdings whose daily closes did not load, for an empty view's reason. */
+function failedHistories(coverage: RiskCoverage | undefined): string[] {
+  return (coverage?.leftOut ?? []).filter((line) => line.historyFailed).map((line) => line.symbol);
+}
+
+/** "Daily closes did not load for US02, US03 and 4 more; try again in a moment." */
+function failedClosesText(symbols: readonly string[]): string {
+  const more = symbols.length > 3 ? ` and ${symbols.length - 3} more` : "";
+  return `Daily closes did not load for ${symbols.slice(0, 3).join(", ")}${more}; try again in a moment.`;
 }
 
 /** Rows of one view in the compact result; the pane and reports keep every row. */
@@ -153,7 +172,11 @@ function coverageSummary(coverage: RiskCoverage, limit = Infinity) {
 function coverageLine(coverage: RiskCoverage | undefined): { error?: string; note?: string } {
   const shortfall = riskCoverageShortfall(coverage);
   // No estimate at all is a failure; an estimate that leaves holdings out is a caveat.
-  if (shortfall) return { error: `Basket estimates unavailable: ${shortfall.title} ${shortfall.message}`.trim() };
+  if (shortfall) {
+    // Closes that did not load are why, which asked again may not be.
+    const failed = failedHistories(coverage);
+    return { error: [`Basket estimates unavailable: ${shortfall.title} ${shortfall.message}`.trim(), ...failed.length ? [failedClosesText(failed)] : []].join(" ") };
+  }
   const line = coverage?.leftOut.length ? riskCoverageLine(coverage) : null;
   return line ? { note: `${line[0]!.toUpperCase()}${line.slice(1)}; metadata.coverage lists each with its reason.` } : {};
 }
@@ -438,6 +461,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
         name: local.portfolio.name,
         brokerLinked: !!(local.portfolio.brokerId || local.portfolio.brokerInstanceId),
         unvaluedOptions: (model.greeks?.warnings.length ?? 0) > 0,
+        failedHistories: failedHistories(model.coverage),
       }) } : {}) })),
       metadata: { coverage: coverageSummary(model.coverage), model, benchmark: model.benchmark, window: model.window,
         notices: [...(shortfall ? [shortfall] : []), ...notices] },
@@ -461,6 +485,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       sections: [{ title: view, columns: RISK_COLUMNS, rows: rows.map(displayRow), ...(rows.length === 0 ? { empty: riskSectionEmpty(view, {
         name: model.portfolio.name, brokerLinked: !!(model.portfolio.brokerId || model.portfolio.brokerInstanceId),
         unvaluedOptions: (model.greeks?.warnings.length ?? 0) > 0,
+        failedHistories: failedHistories(model.coverage),
       }) } : {}) }],
       metadata: {
         portfolio: {

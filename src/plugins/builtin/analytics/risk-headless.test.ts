@@ -324,6 +324,17 @@ test("each view with nothing to show says why in one line, and performance point
     expect(text).not.toContain("No data.");
     const greeks = await portfolioRiskHeadless.load({ ...args, options: { view: "greeks" } }, context);
     expect(greeks.sections[0]).toMatchObject({ empty: "No option positions in this portfolio." });
+    // Closes that did not load say so, and to try again, rather than "Needs two holdings with 60 daily returns each.":
+    // US02's request times out beside US01's, which is most of the book.
+    const pair = [{ symbol: "US01", exchange: "NASDAQ", currency: "USD", quantity: 1_000, price: 100 }, { symbol: "US02", exchange: "NYSE", currency: "USD", quantity: 10, price: 100 }];
+    const client = brokerRiskClient(now, pair);
+    const failing = { ...client, getCloudHistory: async (symbol: string, exchange: string) => {
+      if (symbol === "US02") throw new Error("Cloud market request timed out after 10000ms");
+      return client.getCloudHistory(symbol, exchange);
+    } };
+    const correlation = await portfolioRiskHeadless.load({ ...args, options: { view: "correlation" } }, { ...context, apiClient: failing,
+      resolvePortfolio: async () => ({ portfolio: book, tickers: brokerFixtureTickers(pair) }) } as unknown as HeadlessPaneContext);
+    expect(correlation.sections[0]).toMatchObject({ title: "correlation", rows: [], empty: "Daily closes did not load for US02; try again in a moment." });
   } finally {
     setSystemTime();
   }

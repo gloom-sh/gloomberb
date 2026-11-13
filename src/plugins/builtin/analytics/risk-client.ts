@@ -68,6 +68,8 @@ interface RiskMarketHistory {
     fxBridged?: string[];
   } | null;
   error: string | null;
+  /** Set when its daily closes did not load (the service failed or did not answer), which asked again they may. */
+  loadFailed?: true;
 }
 export interface RiskMarketSnapshot {
   histories: RiskMarketHistory[];
@@ -654,9 +656,13 @@ export async function fetchPortfolioRiskMarket(
           entry = histories[index]!,
           conversion = conversions.get(instruments[index]![0]),
           { instrument, quote } = entry;
+        // Whether its closes' request failed, which asked again may answer; an answer without them, or a pair's FX, is a reason.
+        let requesting = false;
         try {
           const fxCloses = conversion ? await fxHistory(conversion) : null;
+          requesting = true;
           const response = await historyOf(instrument.symbol, instrument.exchange || quote?.listingExchangeName || "");
+          requesting = false;
           const { latestClose, fxBridged, ...resolved } = validateRiskHistory(
             response,
             instrument,
@@ -691,7 +697,7 @@ export async function fetchPortfolioRiskMarket(
           };
         } catch (error) {
           if (isAccessDenied(error) || signal?.aborted) throw error;
-          histories[index] = { ...entry, error: message(error) };
+          histories[index] = { ...entry, error: message(error), ...(requesting ? { loadFailed: true as const } : {}) };
         }
       }
     }),

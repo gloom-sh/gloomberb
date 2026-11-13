@@ -93,6 +93,8 @@ interface PortfolioRiskHolding {
   error: string | null;
   /** Why the holding is outside the basket; null when it qualifies. */
   leftOut: string | null;
+  /** Set when that is its daily closes not loading, which asked again they may. */
+  historyFailed?: true;
 }
 /** A holding or a currency's cash outside the basket, with its share of the book when one is known. */
 interface RiskLeftOut {
@@ -103,6 +105,8 @@ interface RiskLeftOut {
   share: number | null;
   /** Set on a currency's cash, which is never in the basket and does not make a report incomplete. */
   cash?: true;
+  /** Set when its daily closes did not load, which asked again they may. */
+  historyFailed?: true;
 }
 /** One currency of the book's cash, valued in the account currency. */
 interface RiskCashHolding extends RiskCashLine {
@@ -805,6 +809,7 @@ export function buildPortfolioRisk(
       fxBridged: holdingFxBridges(convertedFrom, history?.converted?.fxBridged, account, inAccount?.bridged),
       error,
       leftOut,
+      ...(history?.loadFailed && leftOut === history.error ? { historyFailed: true as const } : {}),
     };
   });
   // Each currency's cash once, valued in the portfolio currency.
@@ -855,6 +860,7 @@ export function buildPortfolioRisk(
           reason: row.leftOut!,
           value: row.marketValue,
           share: bookShare(row.marketValue),
+          ...(row.historyFailed ? { historyFailed: true as const } : {}),
         })),
       ...cashHoldings.map((row): RiskLeftOut => {
         const value = row.value == null ? null : Math.abs(row.value);
