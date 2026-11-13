@@ -16,6 +16,7 @@ import { colors } from "../../../theme/colors";
 import type { HeadlessPaneColumn } from "../../../types/headless";
 import { TextAttributes } from "../../../ui";
 import { compareSortValues, nextHeaderSort, type SortComparableValue, type SortPreference } from "../../../utils/sort-values";
+import { displayWidth } from "../../../utils/format";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { fetchDividendData } from "./client";
@@ -106,7 +107,9 @@ export function DividendRankingView({ symbols, focused, width, height, loadData 
   const columns = useMemo<RankingColumn[]>(() => (section?.columns ?? []).map((column) => ({
     id: column.key,
     label: column.header,
-    width: Math.max(column.header.length, COLUMN_WIDTHS[column.key] ?? 0),
+    // The ticker column grows to its longest key, so a listing abroad shows whole.
+    width: Math.max(column.header.length, COLUMN_WIDTHS[column.key] ?? 0,
+      ...column.key === "symbol" ? (section?.rows ?? []).map((row) => displayWidth(String(row.symbol ?? ""))) : []),
     align: column.align === "right" ? "right" : "left",
     source: column,
   })), [section]);

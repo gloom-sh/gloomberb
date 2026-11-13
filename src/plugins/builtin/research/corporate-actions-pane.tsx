@@ -35,7 +35,7 @@ import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
 import { loadEarningsCalendar } from "../earnings/data/cache";
-import { calendarEventOf, newYorkDay, withResolvedEarnings } from "../shared/earnings-calendar";
+import { calendarEventOf, listingDay, withResolvedEarnings } from "../shared/earnings-calendar";
 import {
   documentContentKey,
   formatCompactDocumentLabel,
@@ -478,7 +478,8 @@ export function CorporateActionsView({
     reload: reloadActions,
   } = useTickerRequest<CorporateActionsData>(actionsLoader, symbol, exchange);
   const { data: calendarEvent, reload: reloadCalendar } = useTickerRequest(calendarLoader, symbol, exchange);
-  const today = newYorkDay();
+  // The listing's own day, as `earnings` reads a report date: SIE:XETRA's has passed once Berlin's day has.
+  const today = listingDay(exchange);
   const actionsData = useMemo(
     () => (recordedActions ? withResolvedEarnings(recordedActions, calendarEvent, today) : recordedActions),
     [calendarEvent, recordedActions, today],

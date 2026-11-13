@@ -287,10 +287,15 @@ function sampleArgForTemplate(template: PaneTemplateDef): string {
   }
 }
 
+/**
+ * A template's catalog entry. Without a market context (a search from the app,
+ * `functionsForQuestion`) no instance is made to read its default settings
+ * from, and no example is given: only what the template itself says.
+ */
 async function buildTemplateCatalogEntry(
   template: PaneTemplateDef,
   pane: PaneDef,
-  context: MarketContext,
+  context: MarketContext | null,
   token: string,
 ): Promise<PaneCatalogEntry> {
   const sampleArg = sampleArgForTemplate(template);
@@ -298,7 +303,7 @@ async function buildTemplateCatalogEntry(
   const primarySymbol = createOptions?.symbol ?? createOptions?.symbols?.[0] ?? null;
   let defaultSettings: Record<string, unknown> = template.catalogSettings ?? {};
 
-  if (template.catalogSettings === undefined && template.createInstance) {
+  if (context && template.catalogSettings === undefined && template.createInstance) {
     try {
       const spec = await template.createInstance(buildTemplateContext(context, primarySymbol), createOptions);
       defaultSettings = spec?.settings ?? {};
@@ -321,7 +326,7 @@ async function buildTemplateCatalogEntry(
     aliases: [...(template.shortcut?.aliases ?? [])],
     argKind: argument.kind,
     argPlaceholder: argument.placeholder,
-    ...argExamples(headless, context),
+    ...context ? argExamples(headless, context, pane) : null,
     ...(headless?.argument.kind === "tickers" && template.shortcut?.argKind === "ticker"
       ? { shotArgument: argumentHint({ argKind: "ticker", argPlaceholder: template.shortcut.argPlaceholder }) } : {}),
     keywords: template.keywords ?? [],
@@ -335,8 +340,9 @@ async function buildTemplateCatalogEntry(
  * for a list of more than two symbols, a watchlist's name, which stands for
  * its symbols (the reader's first watchlist).
  */
-function argExamples(headless: HeadlessPaneDefinition | undefined, context: MarketContext): { argExamples: readonly string[] } | null {
-  const own = headless?.argument.examples ?? [];
+function argExamples(headless: HeadlessPaneDefinition | undefined, context: MarketContext, pane?: PaneDef): { argExamples: readonly string[] } | null {
+  // A rendered view's own examples (VIEW's spec) stand where a headless model would give them.
+  const own = headless?.argument.examples ?? pane?.reportArgument?.examples ?? [];
   const argument = headless?.argument;
   const list = (argument?.kind === "symbol-list" || argument?.kind === "tickers") && (argument.maximum == null || argument.maximum > 2);
   const name = context.config.watchlists[0]?.name ?? "Watchlist";
@@ -353,7 +359,7 @@ function argExamples(headless: HeadlessPaneDefinition | undefined, context: Mark
  */
 export async function buildPaneCatalogEntries(
   registry: PaneFunctionCatalog,
-  context: MarketContext,
+  context: MarketContext | null,
   { unlisted = false, appPanes = false }: { unlisted?: boolean; appPanes?: boolean } = {},
 ): Promise<PaneCatalogEntry[]> {
   const entries: PaneCatalogEntry[] = [];
@@ -388,7 +394,7 @@ export async function buildPaneCatalogEntries(
       aliases,
       argKind: argument.kind,
       argPlaceholder: argument.placeholder,
-      ...argExamples(pane.headless, context),
+      ...context ? argExamples(pane.headless, context, pane) : null,
       keywords: [],
       defaultSettings: {},
       capability: getPaneFunctionCapability(undefined, pane),
@@ -725,6 +731,48 @@ export async function suggestPaneFunctions(
   const entries = await buildPaneCatalogEntries(registry, context);
   const { shown, loose } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, name), name, SUGGESTION_LIMIT);
   return loose ? [] : shown;
+}
+
+/**
+ * Words a question asks with, which name nothing a function covers: "what did the DAX do yesterday" asks about the
+ * DAX, and "do" alone found DOE and DOCS.
+ */
+const QUESTION_WORDS = new Set([
+  "what", "whats", "what's", "which", "who", "why", "when", "where", "how", "much", "many", "did", "does", "do", "done", "is", "are", "was",
+  "were", "will", "would", "could", "should", "can", "has", "have", "had", "been", "be", "me", "my", "i", "we", "you", "it", "its", "it's",
+  "this", "that", "these", "those", "there", "show", "tell", "give", "get", "about", "today", "yesterday", "tonight", "now", "last",
+  "latest", "current", "currently", "doing", "happen", "happened", "going", "go", "went", "please", "the", "a", "an", "of", "on", "in",
+  "for", "to", "and", "or", "at", "by", "with", "from", "up", "down",
+]);
+
+/** A question's topic: its words without the ones it asks with ("dax" for "what did the DAX do yesterday?"); empty when it is all asking. */
+function questionTopic(question: string): string {
+  return question.toLowerCase().replace(/[?!.,;:"]/g, " ").split(/\s+/).filter((word) => word && !QUESTION_WORDS.has(word)).join(" ");
+}
+
+/** A function a question names, as ASKG offers it signed out. */
+export interface FunctionForQuestion {
+  code: string;
+  label: string;
+  /** `gloom fn WEI`, `gloom fn CMP <tickers>`: the command that runs it. */
+  command: string;
+}
+
+/**
+ * The functions `catalog` finds for a question's topic, best first, up to
+ * `limit`: what Ask Gloom offers without an account ("what did the DAX do
+ * yesterday" finds WEI and CMP). Built from the templates alone, without a
+ * market context, so the app's pane asks it as the command line does.
+ */
+export async function functionsForQuestion(registry: PaneFunctionCatalog, question: string, limit = 3): Promise<FunctionForQuestion[]> {
+  const topic = questionTopic(question);
+  if (!topic) return [];
+  const entries = await buildPaneCatalogEntries(registry, null);
+  const { shown } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, topic), topic, limit);
+  return shown.map((entry) => {
+    const argument = argumentHint(entry);
+    return { code: entry.token, label: entry.label, command: `gloom fn ${entry.token}${argument ? ` ${argument}` : ""}` };
+  });
 }
 
 const CATALOG_TEXT_WIDTH = 100;

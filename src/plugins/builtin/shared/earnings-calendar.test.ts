@@ -3,7 +3,7 @@ import type { EarningsHistoryPayload } from "../../../api-client/earnings";
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsAction } from "../../../types/financials";
 import { historyRows } from "../earnings/history-model";
-import { resolveCalendarEvent, resolveEarningsActions, resolveListingEvents, upcomingReportDate, withResolvedEarnings } from "./earnings-calendar";
+import { listingDay, resolveCalendarEvent, resolveEarningsActions, resolveListingEvents, upcomingReportDate, withResolvedEarnings } from "./earnings-calendar";
 
 // The four companies as Gloom Cloud served them on 2026-10-21 and 22.
 const TODAY = "2026-10-22";
@@ -127,4 +127,16 @@ test("a report out today is reported in every source once Gloom Cloud has it out
     .toMatchObject({ date: TODAY, dateStatus: "reported", upcoming: true });
   // Before it is out, today's report is still confirmed.
   expect(resolveCalendarEvent({ ...meta, dateStatus: undefined }, null, TODAY).dateStatus).toBe("confirmed");
+});
+
+// `earnings SIE:XETRA` at 02:45 UTC on Fri 13 Nov 2026 read Siemens' 12 Nov report "confirmed": New York was still on
+// Thursday, Berlin on Friday.
+test("a listing's report date is read on its own venue's day, so a date gone by there is reported", async () => {
+  const now = Date.parse("2026-11-13T02:45:00Z");
+  expect(listingDay("XETRA", now)).toBe("2026-11-13");
+  expect(listingDay("NYSE", now)).toBe("2026-11-12");
+  const siemens = event("SIE:XETRA", "2026-11-12T00:00:00Z", { timing: "", epsEstimate: 3.14 });
+  const read = (today: string) => resolveListingEvents({}, [{ key: "SIE:XETRA", symbol: "SIE", exchange: "XETRA", today }], [siemens], "2026-11-12");
+  expect((await read(listingDay("XETRA", now))).get("SIE:XETRA")?.dateStatus).toBe("reported");
+  expect((await read(listingDay("NYSE", now))).get("SIE:XETRA")?.dateStatus).toBe("confirmed");
 });

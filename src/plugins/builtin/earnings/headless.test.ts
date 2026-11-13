@@ -254,6 +254,29 @@ test("ERN for a listing abroad shows its next report and names the company's US 
   ]);
 });
 
+// `fn ERN VOW3:XETRA`, 13 Nov 2026: no next report on the calendar, yet the notice promised one and the table was bare.
+test("ERN for a listing abroad with no next report says so, with its last report, and promises none", async () => {
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => { throw new Error("A US ticker symbol is required"); },
+    upcoming: async () => [],
+  });
+  const marketData = {
+    search: async () => [],
+    getQuote: async () => ({ symbol: "VOW3", name: "Volkswagen AG", price: 90, currency: "EUR" }),
+    getCorporateActions: async () => ({ earnings: [
+      { date: "2026-10-29", dateType: "announcement", epsActual: 1.62, fiscalPeriod: "2026-09-30" },
+      { date: "2027-03-10", dateType: "announcement", epsActual: null },
+    ] }),
+    getTickerFinancials: async () => ({ quarterlyStatements: [] }),
+  } as unknown as HeadlessPaneContext["marketData"];
+  const result = await definition.load({ rawArgument: "VOW3:XETRA", argument: ["VOW3:XETRA"], symbols: ["VOW3:XETRA"], options: {} },
+    { marketData } as HeadlessPaneContext);
+  expect(result.rows).toEqual([]);
+  expect(result.metadata?.notices).toEqual(["Past reports, surprises and implied moves cover US, Hong Kong, Singapore and China A listings only."]);
+  expect(result.empty).toBe("VOW3:XETRA: no next report date on record; last reported 2026-10-29 (quarter ended 2026-09-30). Headlines: gloom news VOW3:XETRA");
+});
+
 test("ERN for a Hong Kong listing reads its own reports: each in its period and currency, a half never a quarter", async () => {
   const tencent = (fields: Partial<HistoryReport> & Pick<HistoryReport, "date">) =>
     report({ symbol: "0700:HKEX", name: "Tencent", timing: null, timingSource: null, currency: "CNY", dateStatus: "reported", ...fields });

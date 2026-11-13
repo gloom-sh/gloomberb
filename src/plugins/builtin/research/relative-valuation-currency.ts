@@ -46,6 +46,22 @@ function olderOf(left: string | null, right: string | null): string | null {
 }
 
 /**
+ * The currency RV compares market caps in, the same in the pane and `fn RV`:
+ * the asked one, else the peers' own when they share one (four Xetra names in
+ * euros), else the app's base currency, dollars unless set.
+ */
+export function relativeCapCurrency(
+  asked: string | null | undefined,
+  capCurrencies: ReadonlyArray<string | null | undefined>,
+  baseCurrency: string | null | undefined,
+): string {
+  if (asked) return asked;
+  const shared = new Set(capCurrencies.filter((currency): currency is string => !!currency));
+  if (shared.size === 1) return [...shared][0]!;
+  return baseCurrency || "USD";
+}
+
+/**
  * Every row's market cap in `target`, through each currency's US dollar
  * rate (a pence cap is first made pounds). A row already in `target`, or
  * with no cap, stays as it is. A currency with no usable rate leaves its

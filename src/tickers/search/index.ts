@@ -90,6 +90,10 @@ export class AmbiguousTickerError extends Error {
     readonly listingNames: Readonly<Record<string, string>> = {},
     /** The listings among them their exchange withdrew, by key (`0011:HKEX`). */
     readonly listingWithdrawals: Readonly<Record<string, ListingWithdrawal>> = {},
+    /** Each listing's company as the data service identifies it (`companyId`), by key, where it sent one. */
+    readonly listingCompanies: Readonly<Record<string, string>> = {},
+    /** The listings the data service marks as their company's home line (`homeListing`), by key. */
+    readonly listingHomes: readonly string[] = [],
   ) {
     // Every listing is a choice: a list cut short could leave out the one meant.
     const more = listings.length - MAX_NAMED_LISTINGS;
@@ -634,7 +638,9 @@ async function resolveTickerSymbol(
   ])), Object.fromEntries(matches.flatMap((item) => {
     const withdrawal = parseListingWithdrawal(item.result!.withdrawal);
     return withdrawal ? [[publicTickerKey(item.symbol, listingExchange(item.result!)), withdrawal]] : [];
-  })));
+  })), Object.fromEntries(matches.flatMap((item) => typeof item.result!.companyId === "string" && item.result!.companyId
+    ? [[publicTickerKey(item.symbol, listingExchange(item.result!)), item.result!.companyId]] : [])),
+  matches.filter((item) => item.result!.homeListing === true).map((item) => publicTickerKey(item.symbol, listingExchange(item.result!))));
   if (pickerQuery && listings.size > 1) throw ambiguity(pickerQuery);
   // A code that names several venues (TSE) the symbol trades on more than one of is a choice.
   if (!saved && isSharedExchangeCode(typedExchangeCode(symbol))

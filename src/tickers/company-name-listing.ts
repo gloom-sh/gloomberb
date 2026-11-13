@@ -64,8 +64,8 @@ const NOT_COMMON = /preferred|warrant|right|unit|note|bond|debenture/i;
  */
 const DEBT_NAME = /\d(?:[.,]\d+)?\s?%|\bsubordinated\b|\b(?:notes?|bonds?|debentures?)\s+due\b|\bdue\s+(?:\d{1,2}\s+\p{L}+\s+)?(?:19|20)\d{2}\b/iu;
 
-/** Whether a search row is a bond, by its type or by its name. */
-function isDebtLine(type: string, name: string | null | undefined): boolean {
+/** Whether a search row is a bond or another line that is not the common share, by its type or by its name. */
+export function isDebtLine(type: string, name: string | null | undefined): boolean {
   return NOT_COMMON.test(type) || DEBT_NAME.test(name ?? "");
 }
 

@@ -10,6 +10,14 @@ export interface PaneLock {
   token?: string;
   /** The session is signed in and its email is not verified yet. */
   verifyEmail?: boolean;
+  /** The text the report was asked with, for a pane whose argument is free text (ASKG's question). */
+  argument?: string;
+  /**
+   * The functions the catalog finds for a question, best first, up to
+   * `limit`, with the command that runs each: what a note can offer in place
+   * of the locked pane. Absent where no catalog is at hand.
+   */
+  functionsFor?(question: string, limit: number): Promise<Array<{ code: string; label: string; command: string }>>;
   /**
    * Reads data as the report does, so a note can check that a free route it
    * would name has data for the symbol before naming it. Absent where nothing
