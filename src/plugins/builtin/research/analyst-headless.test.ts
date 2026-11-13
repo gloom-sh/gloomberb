@@ -85,8 +85,7 @@ describe("analyst research headless model", () => {
     const listed = async (symbol: string) => (await headless.load({ ...args(), symbols: [symbol] }, createTestHeadlessContext())).sections[1]!;
     const abroad = await listed("VOW3:XETRA");
     expect(abroad).toMatchObject({ rows: [] });
-    expect("empty" in abroad && abroad.empty).toBe("No upgrades, downgrades or target changes for VOW3:XETRA: the source lists them mainly for North American listings."
-      + " The targets and rating mix above are current.");
+    expect("empty" in abroad && abroad.empty).toBe("No upgrades, downgrades or target changes for VOW3:XETRA: the source lists them mainly for North American listings.");
     expect(await listed("AMD")).toMatchObject({ empty: "No upgrades, downgrades or target changes on record for AMD." });
   });
   test("measures the upside from Last, as `analyst` does, and dates the price it is from", async () => {

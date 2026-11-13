@@ -45,6 +45,6 @@ export function noAnalystCoverageText(symbol: string): string {
 export function noAnalystActionsText(symbol: string, exchange = ""): string {
   const venue = typedExchangeCode(symbol) || exchange;
   return venue && !isUsEquityExchange(venue)
-    ? `No upgrades, downgrades or target changes for ${symbol}: the source lists them mainly for North American listings. The targets and rating mix above are current.`
+    ? `No upgrades, downgrades or target changes for ${symbol}: the source lists them mainly for North American listings.`
     : `No upgrades, downgrades or target changes on record for ${symbol}.`;
 }
