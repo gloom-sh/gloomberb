@@ -10,6 +10,7 @@ import { getActiveQuoteDisplay } from "../market-data/market/status";
 import { installTestWebSocket, verifiedUser } from "../test-support/cloud-api";
 import type { AssistCommandDescriptor } from "./types";
 import { SyncRevisionConflictError } from "../sync/types";
+import { getLanguage, setLanguage } from "../i18n";
 
 const originalFetch = globalThis.fetch;
 const originalWebSocket = globalThis.WebSocket;
@@ -171,6 +172,30 @@ test("a sync push names the revision it merged with, and a refused one is a conf
   await expect(apiClient.putSyncSnapshot(snapshot, { baseRevision: 7 })).rejects.toBeInstanceOf(SyncRevisionConflictError);
   await expect(apiClient.putSyncSnapshot(snapshot, { baseRevision: 0 })).rejects.toBeInstanceOf(SyncRevisionConflictError);
   expect(ifMatch).toEqual(["7", "0"]);
+});
+
+test("a checkout tells the server the app's language", async () => {
+  const language = getLanguage();
+  const sent: unknown[] = [];
+  globalThis.fetch = mockFetch(async (input, init) => {
+    const request = input instanceof Request ? input : new Request(String(input), init);
+    expect(new URL(request.url).pathname).toEndWith("/stripe/checkout");
+    sent.push(await request.json());
+    return Response.json({ url: "https://checkout.stripe.com/c/pay/cs_test" });
+  });
+
+  try {
+    setLanguage("zh-TW");
+    await apiClient.createCloudCheckout(undefined, "year");
+    setLanguage("en");
+    await apiClient.createCloudCheckout("https://term.gloom.sh/");
+  } finally {
+    setLanguage(language);
+  }
+  expect(sent).toEqual([
+    { interval: "year", lang: "zh-TW" },
+    { returnTo: "https://term.gloom.sh/", interval: "month", lang: "en" },
+  ]);
 });
 
 describe("apiClient auth cookies", () => {
