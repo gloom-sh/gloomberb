@@ -24,7 +24,7 @@ import { isVenueAbroad, lineMayHaveMoved, listingChangeLine, loadListingFate, Mo
 import { quotedListingName } from "../tickers/listing-name";
 import { withdrawalLabel } from "../market-data/quotes/delisting";
 import { cliStyles } from "../utils/cli-output";
-import { companyNameExtraWords, groupByCompany, namesDepositaryReceipt, sameCompany, sameListedName, shortCompanyName } from "../tickers/company-name";
+import { companyNameExtraWords, groupByCompany, namesDepositaryReceipt, sameCompany, sameCompanyName, sameListedName, shortCompanyName } from "../tickers/company-name";
 import {
   canonicalExchange,
   exchangeCodeVenues,
@@ -441,9 +441,10 @@ function namedByCode(symbol: string, venue: ListingVenue): boolean {
  * any of them, each company's venues in search order. Venues with one id are
  * one company, never two because each names it its own way (DHL Group AG on
  * Xetra, Deutsche Post AG in Vienna). A venue with no id is a company's whose
- * identified venue it is named like (Deutsche Post AG in Hanover), else
- * another company (BMW Industries on BSE beside Bayerische Motoren Werke on
- * Xetra). A venue with no name, one that names its line by the code alone, and
+ * identified venue it is named like, or whose name that venue's company is
+ * known by besides (Deutsche Post AG, DHL Group's former name, on a line the
+ * service cannot link), else another company (BMW Industries on BSE beside
+ * Bayerische Motoren Werke on Xetra). A venue with no name, one that names its line by the code alone, and
  * a receipt named like no company there are none. Null when no venue has an id.
  */
 function identifiedCompanies(symbol: string, venues: readonly ListingVenue[]): ListingVenue[][] | null {
@@ -458,7 +459,9 @@ function identifiedCompanies(symbol: string, venues: readonly ListingVenue[]): L
   for (const venue of venues) {
     if (venue.companyId || !venue.name.trim() || namedByCode(symbol, venue)) continue;
     const named = (other: ListingVenue) => sameListedName(other.name, venue.name);
-    const group = groups.find((entry) => entry.id && entry.venues.some((other) => !!other.companyId && named(other)))
+    // Or named as the company is known besides: the former name the service sends on its rows (Deutsche Post AG).
+    const known = (other: ListingVenue) => (other.aliases ?? []).some((alias) => sameCompanyName(alias, venue.name));
+    const group = groups.find((entry) => entry.id && entry.venues.some((other) => !!other.companyId && (named(other) || known(other))))
       ?? groups.find((entry) => !entry.id && entry.venues.some(named));
     if (group) group.venues.push(venue);
     else if (!namesDepositaryReceipt(venue.name)) groups.push({ id: null, venues: [venue] });
