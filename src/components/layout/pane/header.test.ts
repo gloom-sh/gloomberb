@@ -15,7 +15,7 @@ describe("stackTabSpans", () => {
   test("cut to fit, the tab shown keeps its name, the others share what is left, and a count stands for the rest", () => {
     // Where a click lands on each: the pointer runtime reads the same spans.
     expect(stackTabSpans(["Fear & Greed", "Gloom Trending"], 1, 24)).toEqual([
-      { index: 0, start: 0, text: "Fear..." },
+      { index: 0, start: 0, text: "Fear &…" },
       { index: 1, start: 10, text: "Gloom Trending" },
     ]);
 
@@ -38,6 +38,6 @@ describe("stackTabSpans", () => {
   });
 
   test("with no room for the count beside a letter of the name shown, the name goes alone", () => {
-    expect(stackTabSpans(["Fear & Greed", "Gloom Trending"], 0, 5)).toEqual([{ index: 0, start: 0, text: "Fe..." }]);
+    expect(stackTabSpans(["Fear & Greed", "Gloom Trending"], 0, 5)).toEqual([{ index: 0, start: 0, text: "Fear…" }]);
   });
 });

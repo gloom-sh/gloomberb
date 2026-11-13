@@ -4,7 +4,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { formatNumber, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import type { MarketState } from "../../../types/financials";
 import { loadWorldIndexQuotes, NOT_IN_FEED, type WorldIndexQuoteResult } from "./client";
@@ -28,26 +28,26 @@ const COLUMNS = [
     header: "Last",
     align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : value == null
-      ? "-"
+      ? MISSING_VALUE
       : formatNumber(Number(value), 2),
   },
   {
     key: "change",
     header: "Change",
     align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : value == null ? "-" : `${Number(value) >= 0 ? "+" : ""}${formatNumber(Number(value), 2)}`,
+    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : value == null ? MISSING_VALUE : `${Number(value) >= 0 ? "+" : ""}${formatNumber(Number(value), 2)}`,
   },
   {
     key: "changePercent",
     header: "Change %",
     align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : value == null ? "-" : formatPercentRaw(Number(value)),
+    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : value == null ? MISSING_VALUE : formatPercentRaw(Number(value)),
   },
   {
     key: "marketState",
     header: "Session",
     shrink: false,
-    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : typeof value === "string" && value ? marketStateLabel(value as MarketState) ?? value : "-",
+    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : typeof value === "string" && value ? marketStateLabel(value as MarketState) ?? value : MISSING_VALUE,
   },
   {
     key: "lastUpdated",
@@ -55,7 +55,7 @@ const COLUMNS = [
     shrink: false,
     format: (value: unknown, row: Record<string, unknown>) => {
       const time = value == null ? Number.NaN : Number(value);
-      return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 16).replace("T", " ")} UTC` : isGap(row) ? NOT_IN_FEED : "-";
+      return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 16).replace("T", " ")} UTC` : isGap(row) ? NOT_IN_FEED : MISSING_VALUE;
     },
   },
 ];
@@ -68,7 +68,7 @@ function extendedColumn(session: ExtendedSession) {
     align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => row.extendedSession === session && typeof value === "number"
       ? `${formatNumber(value, 2)} ${formatPercentRaw(typeof row.extendedChangePercent === "number" ? row.extendedChangePercent : undefined)}`
-      : isGap(row) ? "" : "-",
+      : isGap(row) ? "" : MISSING_VALUE,
   };
 }
 

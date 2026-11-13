@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import {
@@ -87,7 +88,7 @@ function orderPriceText(order: BrokerOrder): string {
 }
 
 function age(timestamp: number, now: number): string {
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return "--";
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return MISSING_VALUE;
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1_000));
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
@@ -156,7 +157,7 @@ function renderExecutionCell(execution: BrokerExecution, column: DataTableColumn
     case "side": return { text: execution.side, content: <Badge label={execution.side} tone={isBuySide(execution.side) ? "positive" : "negative"} /> };
     case "quantity": return { text: quantity(execution.shares), value: execution.shares };
     case "price": return { text: price(execution.price), value: execution.price };
-    case "fees": return { text: execution.commission === undefined ? "--" : `${price(execution.commission)} ${execution.commissionCurrency ?? ""}`.trim() };
+    case "fees": return { text: execution.commission === undefined ? MISSING_VALUE : `${price(execution.commission)} ${execution.commissionCurrency ?? ""}`.trim() };
     default: return { text: age(execution.time, now), color: colors.textDim };
   }
 }

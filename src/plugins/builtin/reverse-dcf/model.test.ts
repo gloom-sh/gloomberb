@@ -99,7 +99,7 @@ describe("an EV the source withdrew", () => {
       minorityAndPreferred: 30, balanceSheetDate: "2026-06-30", fx: { from: "EUR", rate: 1.1 } };
     const model = projectReverseDcf(financials({ enterpriseValue: undefined, unavailableFields: ["enterpriseValue"], enterpriseValueCheck: check,
       marketCap: 2_000, freeCashFlow: 100, financialCurrency: "USD", marketCapCurrency: "USD" }), { symbol: "X", discountRate: 0.09 });
-    expect(model).toMatchObject({ enterpriseValue: 2_080, enterpriseValueSheet: "Jun 30, 2026", missing: [], error: null,
+    expect(model).toMatchObject({ enterpriseValue: 2_080, enterpriseValueSheet: "30 Jun 2026", missing: [], error: null,
       implied: solveImpliedGrowth(2_080, 100, 0.09, 0.025) });
     expect(model.enterpriseValueNote).toContain("(balance sheet 2026-06-30, EUR/USD 1.1000 at its date's close)");
     // Its balance sheet is not among the statements here: its cash is called cash, and a minority interest it did not
@@ -118,7 +118,7 @@ describe("an EV the source withdrew", () => {
     const model = run(halfYears({ totalDebt: 0, cashCashEquivalentsAndShortTermInvestments: 14_000,
       totalEquityGrossMinorityInterest: 23_300, commonStockEquity: 23_000 }), results);
     // 195,000 + (0 + 3,700 - 14,000 + 300) x 1.2 = 183,000, never at the trailing figures' 1.3
-    expect(model).toMatchObject({ enterpriseValue: 183_000, enterpriseValueSheet: "Jun 30, 2026", missing: [], error: null });
+    expect(model).toMatchObject({ enterpriseValue: 183_000, enterpriseValueSheet: "30 Jun 2026", missing: [], error: null });
     expect(model.enterpriseValueNote).toBe("EV 183k HKD is market cap 195k + total debt 0 + leases 4.4k - cash and short-term investments 16.8k"
       + " + minority interest and preferred equity 360 (balance sheet 2026-06-30, CNY/HKD 1.2000 at the 2026-06-30 close),"
       + " in place of the provider's 104.9k, which failed validation against it."
@@ -144,25 +144,25 @@ describe("an EV the source withdrew", () => {
   test("reads the borrowings from the debt-and-lease lines of a sheet with no total debt, and names cash alone and a missing minority line", () => {
     const model = run(halfYears({ longTermDebtAndCapitalLeaseObligation: 3_060, currentDebtAndCapitalLeaseObligation: 640, cashAndCashEquivalents: 14_000 }));
     // 195,000 + (0 + 3,700 - 14,000) x 1.2 = 182,640
-    expect(model).toMatchObject({ enterpriseValue: 182_640, enterpriseValueSheet: "Jun 30, 2026", missing: [], error: null });
+    expect(model).toMatchObject({ enterpriseValue: 182_640, enterpriseValueSheet: "30 Jun 2026", missing: [], error: null });
     expect(model.enterpriseValueNote).toContain(" - cash 16.8k (balance sheet");
     expect(model.enterpriseValueNote).toEndWith("; the balance sheet has no minority interest line, so none is added.");
     // Lines short of the leases they hold are not read as borrowings.
     expect(run(halfYears({ longTermDebtAndCapitalLeaseObligation: 1_000, currentDebtAndCapitalLeaseObligation: 640,
-      cashCashEquivalentsAndShortTermInvestments: 14_000 })).missing[0]?.needs).toBe("total debt on the Jun 30, 2026 balance sheet");
+      cashCashEquivalentsAndShortTermInvestments: 14_000 })).missing[0]?.needs).toBe("total debt on the 30 Jun 2026 balance sheet");
   });
 
   test("refuses a sheet without our close on its date, one that states no currency, and one older than 550 days, saying why", () => {
     const sheet = { totalDebt: 0, cashCashEquivalentsAndShortTermInvestments: 14_000 };
     const needs = (data: TickerFinancials) => run(data).missing.map((item) => item.needs);
-    expect(needs(halfYears(sheet, { balanceSheetRate: undefined }))).toEqual(["the CNY/HKD close on Jun 30, 2026"]);
+    expect(needs(halfYears(sheet, { balanceSheetRate: undefined }))).toEqual(["the CNY/HKD close on 30 Jun 2026"]);
     expect(balanceSheetRateWanted(halfYears(sheet, { balanceSheetRate: undefined }))).toEqual({ from: "CNY", to: "HKD", date: "2026-06-30" });
-    expect(needs(halfYears({ ...sheet, currency: "" }))).toEqual(["the currency of the Jun 30, 2026 balance sheet, which states none"]);
+    expect(needs(halfYears({ ...sheet, currency: "" }))).toEqual(["the currency of the 30 Jun 2026 balance sheet, which states none"]);
     const old = halfYears(sheet);
     expect(projectReverseDcf(old, { symbol: "9992:HKEX", discountRate: 0.09 }).missing).toEqual([]);
     const later = Date.parse("2028-01-10T00:00:00Z");
     expect(listingEnterpriseValue(old, later)).toEqual({ kind: "unavailable",
-      needs: "a balance sheet from the last 550 days; the latest is Jun 30, 2026" });
+      needs: "a balance sheet from the last 550 days; the latest is 30 Jun 2026" });
   });
 
   test("shows the EV beside a missing FCF, which names its latest statement and the results announcement that has the next", () => {
@@ -206,10 +206,10 @@ describe("an EV the source withdrew", () => {
   test("names what the statements lack and where to read them, as a limit and not an error", () => {
     const model = run(halfYears({ cashCashEquivalentsAndShortTermInvestments: 14_000 }));
     expect(model).toMatchObject({ enterpriseValue: null, implied: null, error: null,
-      missing: [{ input: "enterpriseValue", needs: "total debt on the Jun 30, 2026 balance sheet", statement: "balance" }] });
+      missing: [{ input: "enterpriseValue", needs: "total debt on the 30 Jun 2026 balance sheet", statement: "balance" }] });
     const noFlow = run({ ...halfYears({ cashCashEquivalentsAndShortTermInvestments: 14_000 }),
       fundamentals: { ...halfYears({}).fundamentals!, freeCashFlow: undefined } });
-    expect(noFlow.missing.map((item) => item.needs)).toEqual(["total debt on the Jun 30, 2026 balance sheet",
+    expect(noFlow.missing.map((item) => item.needs)).toEqual(["total debt on the 30 Jun 2026 balance sheet",
       "a trailing figure; the latest cash flow statement is FY2024"]);
     expect(missingInputsNote(noFlow.missing, "9992:HKEX")).toBe("Inputs on file: fn FA 9992:HKEX --statement balance; fn FA 9992:HKEX --statement cashflow");
   });

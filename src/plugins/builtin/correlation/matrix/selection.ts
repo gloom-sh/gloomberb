@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../../utils/format";
 import { chartTableLayout } from "../../../../components/chart-table/layout";
 import { alignDailyCloses, pairedChanges } from "../compute";
 import { buildRollingCorrelationPoints } from "../relationship/model";
@@ -74,6 +75,6 @@ export function matrixPairRead(
   fullPeriod: number | null,
   history: Pick<ReturnType<typeof buildMatrixPairHistory>, "window" | "latest" | "min" | "max">,
 ): string {
-  const value = (number: number | null) => number !== null && Number.isFinite(number) ? number.toFixed(2) : "—";
+  const value = (number: number | null) => number !== null && Number.isFinite(number) ? number.toFixed(2) : MISSING_VALUE;
   return `${pair[0]} and ${pair[1]}: full period ${value(fullPeriod)}, now ${value(history.latest)} (${history.window} day), range ${value(history.min)} to ${value(history.max)}`;
 }

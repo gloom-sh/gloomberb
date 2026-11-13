@@ -253,7 +253,7 @@ describe("payoff and probability of profit on the fixture chain", () => {
       - chanceAbove(trade, trade.breakEvens[1]!, sold!.volatility), 3);
     expect([trade.expiry, trade.farExpiry]).toEqual(["2026-11-20", "2026-12-18"]);
     expect(trade.rewardToRisk!).toBeCloseTo(trade.maxGain! / trade.maxLoss!, 10);
-    expect(trade.text).toBe(`Sell ${sold!.strike}c · buy Dec 18 ${sold!.strike}c`);
+    expect(trade.text).toBe(`Sell ${sold!.strike}c · buy 18 Dec ${sold!.strike}c`);
   });
 });
 

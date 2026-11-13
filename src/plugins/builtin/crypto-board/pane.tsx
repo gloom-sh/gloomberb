@@ -33,7 +33,7 @@ import type { Quote } from "../../../types/financials";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { PaneProps } from "../../../types/plugin";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { formatCompact, formatCompactAmount } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCompactAmount } from "../../../utils/format";
 import { SERIES_COLORS } from "../../../theme/series-colors";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useCommandTab } from "../shared/command-tab";
@@ -133,11 +133,11 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, logos: boolean):
         content: <PriceSparkline priceHistory={row.history} width={column.width} period="1M" />,
       };
     case "volume24h":
-      return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h, { fixedDecimals: true }), color: colors.textDim };
+      return { text: row.volume24h == null ? MISSING_VALUE : formatCompact(row.volume24h, { fixedDecimals: true }), color: colors.textDim };
     case "marketCap":
-      return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap, { fixedDecimals: true }), color: colors.textDim };
+      return { text: row.marketCap == null ? MISSING_VALUE : formatCompact(row.marketCap, { fixedDecimals: true }), color: colors.textDim };
     case "pegText":
-      return { text: row.pegText || "—", color: row.peg?.accrues || (row.peg && row.peg.currency !== "USD") ? colors.text : colors.textDim };
+      return { text: row.pegText || MISSING_VALUE, color: row.peg?.accrues || (row.peg && row.peg.currency !== "USD") ? colors.text : colors.textDim };
     case "offPegBp": {
       const severity = offPegSeverity(row.offPegBp);
       return {
@@ -156,7 +156,7 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, logos: boolean):
     case "high24hAt":
       return { text: formatDayRangeTime(row.high24hAt), value: row.high24hAt == null ? null : new Date(row.high24hAt), color: colors.textDim };
     case "supply":
-      return { text: row.supply == null ? "—" : formatCompact(row.supply, { fixedDecimals: true }) };
+      return { text: row.supply == null ? MISSING_VALUE : formatCompact(row.supply, { fixedDecimals: true }) };
     case "supply7dPercent":
       return signed(row.supply7dPercent);
     case "supply30dPercent":
@@ -166,13 +166,13 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, logos: boolean):
     case "supply30d":
       return signedAmount(row.supply30d);
     case "supplyShare":
-      return { text: row.supplyShare == null ? "—" : `${row.supplyShare.toFixed(2)}%`, color: colors.textDim };
+      return { text: row.supplyShare == null ? MISSING_VALUE : `${row.supplyShare.toFixed(2)}%`, color: colors.textDim };
   }
 }
 
 function signedAmount(value: number | null): DataTableCell {
   return {
-    text: value == null ? "—" : formatCompactAmount(value, { signed: true }),
+    text: value == null ? MISSING_VALUE : formatCompactAmount(value, { signed: true }),
     color: value == null ? colors.textDim : priceColor(value),
   };
 }
@@ -184,7 +184,7 @@ function supplyChangeFigure(id: string, label: string, amount: number | null, pe
   return {
     id,
     label,
-    value: amount == null ? "—" : formatCompactAmount(amount, { signed: true }),
+    value: amount == null ? MISSING_VALUE : formatCompactAmount(amount, { signed: true }),
     detail: formatCryptoPercent(percent),
     ...(amount == null ? {} : { color: priceColor(amount) }),
   };

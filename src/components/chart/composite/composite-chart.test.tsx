@@ -451,8 +451,8 @@ describe("CompositeChart", () => {
     expect(frame).toContain("ACME Price");
     expect(frame).toContain("OTHER Revenue");
     expect(frame).toContain("$103");
-    expect(frame.match(/Jan 1/g)).toHaveLength(1);
-    expect(frame.match(/Jan 3/g)).toHaveLength(1);
+    expect(frame.match(/1 Jan/g)).toHaveLength(1);
+    expect(frame.match(/3 Jan/g)).toHaveLength(1);
   });
 
   test("a futures price reads in the legend as its number and contract unit, while its axis keeps the currency", async () => {
@@ -610,7 +610,7 @@ describe("CompositeChart", () => {
     const legend = tui.frame().split("\n")[0]!;
     expect(legend).toContain("MSFT:XNAS Revenue $90.01B");
     // Cut at whole words, the value whole after it, and the right axis it reads against.
-    expect(legend).toContain("Very long issuer... -49.6% (right axis)");
+    expect(legend).toContain("Very long issuer… -49.6% (right axis)");
     expect(legend).toContain("腾讯控股腾讯控股");
     expect(legend.match(/\$90\.01B/g)).toHaveLength(2);
   });
@@ -629,7 +629,7 @@ describe("CompositeChart", () => {
     };
     expect(await legendAt(100)).toContain("SI=F Silver Dec 2026 $51.8 (right axis)");
     // Names lose their last words first; the note goes only where every name is down to its first word.
-    expect(await legendAt(64)).toContain("SI=F...Dec 2026 $51.8 (right axis)");
+    expect(await legendAt(64)).toContain("SI=F Silver Dec… $51.8 (right axis)");
     const narrow = await legendAt(40);
     expect(narrow).not.toContain("(right axis)");
     expect(narrow).toContain("$51.8");
@@ -889,8 +889,9 @@ describe("CompositeChart", () => {
       return tui.frame().split("\n").filter((line) => labels.some((label) => line.includes(label.split(" ")[0]!)));
     };
     // Every word a legend line shows is one of a name's words, whole: "Malacca", never "Malacc" or "transi".
-    const cutWords = (shown: readonly string[]) => shown.flatMap((line) => line.split(/\s+|\.\.\./))
-      .filter((token) => /^[A-Za-z][A-Za-z-]*$/.test(token) && !words.has(token));
+    // A series' one-letter marker (o) is not a word.
+    const cutWords = (shown: readonly string[]) => shown.flatMap((line) => line.split(/\s+|…/))
+      .filter((token) => /^[A-Za-z][A-Za-z-]+$/.test(token) && !words.has(token));
     const wrapped = await lines(24);
     expect(wrapped.length).toBeGreaterThan(1);
     expect(cutWords(wrapped)).toEqual([]);
@@ -1567,7 +1568,7 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => tui.setup().renderOnce());
-    expect(tui.frame()).toContain("Jan 1");
+    expect(tui.frame()).toContain("1 Jan");
     expect(viewportChanges).toEqual([]);
 
     const zoomIn = keyEvent("=");
@@ -1577,13 +1578,13 @@ describe("CompositeChart", () => {
     await act(async () => tui.setup().renderOnce());
 
     expect(zoomIn.defaultPrevented).toBe(true);
-    expect(tui.frame()).not.toContain("Jan 1");
+    expect(tui.frame()).not.toContain("1 Jan");
     expect(viewportChanges.at(-1)?.start).not.toBe("2025-01-01T00:00:00.000Z");
     expect(viewportInteractions.at(-1)).toBe("zoom");
 
     await act(async () => chartShortcut?.(keyEvent("0")));
     await act(async () => tui.setup().renderOnce());
-    expect(tui.frame()).toContain("Jan 1");
+    expect(tui.frame()).toContain("1 Jan");
     expect(viewportChanges.at(-1)).toBeNull();
     expect(viewportInteractions.at(-1)).toBe("reset");
   });
@@ -1795,7 +1796,7 @@ describe("CompositeChart", () => {
     expect(viewportChanges.at(-1)).toEqual(pannedViewport);
     expect(viewportInteractions).not.toContain("sync");
     expect(tui.frame()).not.toContain("No chart data");
-    expect(tui.frame()).not.toContain("Jan 9");
+    expect(tui.frame()).not.toContain("9 Jan");
   });
 
   test("keeps the latest pan through delayed adaptive viewport and series echoes", async () => {
@@ -1957,7 +1958,7 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => tui.setup().renderOnce());
-    expect(tui.frame()).toContain("Jan 5");
+    expect(tui.frame()).toContain("5 Jan");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(10, 3));
@@ -1968,7 +1969,7 @@ describe("CompositeChart", () => {
 
     expect(activations).toBe(1);
     expect(cursorChanges.length).toBeGreaterThan(0);
-    expect(tui.frame()).toContain("Jan 3");
+    expect(tui.frame()).toContain("3 Jan");
   });
 
   test("zooms to a shift-drag selection instead of panning", async () => {
@@ -3008,9 +3009,9 @@ describe("CompositeChart", () => {
     );
     await act(async () => tui.setup().renderOnce());
     const frame = tui.frame();
-    expect(frame).toContain("Aug 10");
-    expect(frame).toContain("Sep 10");
-    expect(frame).not.toContain("Jul 31");
+    expect(frame).toContain("10 Aug");
+    expect(frame).toContain("10 Sep");
+    expect(frame).not.toContain("31 Jul");
   });
 
   test("zooms around the mouse pointer with control-wheel", async () => {
@@ -3032,7 +3033,7 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => tui.setup().renderOnce());
-    expect(tui.frame()).toContain("Jan 9");
+    expect(tui.frame()).toContain("9 Jan");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
@@ -3042,7 +3043,7 @@ describe("CompositeChart", () => {
     });
     await act(async () => tui.setup().renderOnce());
 
-    expect(tui.frame()).not.toContain("Jan 9");
+    expect(tui.frame()).not.toContain("9 Jan");
   });
 
   test("uses a supplied market timeline to keep control-wheel zoom under the pointer", async () => {

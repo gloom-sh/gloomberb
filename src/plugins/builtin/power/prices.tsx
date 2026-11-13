@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo } from "react";
 import type { CarbonBoard, PowerPriceRow } from "../../../api-client/europe-energy";
@@ -33,7 +34,7 @@ function boardRow(row: PowerPriceRow): PriceBoardRow {
   return {
     id: row.code, label: row.name, value: row.price, valueText: formatPowerPrice(row.price),
     change: row.change, changeText: formatPowerChange(row.change),
-    percentile: position, percentileText: position == null ? "--" : `${position}%`,
+    percentile: position, percentileText: position == null ? MISSING_VALUE : `${position}%`,
     asOf: row.date, status: row.price == null ? "unavailable" : "available",
     history: row.trail.map((point) => ({ date: new Date(`${point.date}T00:00:00Z`), close: point.value })),
     price: row,

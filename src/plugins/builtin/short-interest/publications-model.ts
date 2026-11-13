@@ -1,7 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 import type { HeadlessPaneColumn } from "../../../types/plugin";
 import type { PublicationKind, PublicationPayload } from "./publications-client";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 
 export interface PublicationRow {
   id: string;
@@ -13,9 +13,9 @@ export interface PublicationColumn extends DataTableColumn {
   detailLabel: string;
   format?: (value: string | number | null) => string;
 }
-const shares = (value: string | number | null) => value == null ? "--" : formatCompact(Number(value), { fixedDecimals: true });
-const percentage = (value: string | number | null) => value == null ? "--" : `${Number(value).toFixed(2)}%`;
-const price = (value: string | number | null) => value == null ? "--" : `$${Number(value).toFixed(2)}`;
+const shares = (value: string | number | null) => value == null ? MISSING_VALUE : formatCompact(Number(value), { fixedDecimals: true });
+const percentage = (value: string | number | null) => value == null ? MISSING_VALUE : `${Number(value).toFixed(2)}%`;
+const price = (value: string | number | null) => value == null ? MISSING_VALUE : `$${Number(value).toFixed(2)}`;
 const FTD_COLUMNS: PublicationColumn[] = [
   { id: "date", label: "SETTLEMENT", detailLabel: "Settlement date", width: 12, align: "left" },
   { id: "quantity", label: "FAIL SHARES", detailLabel: "Outstanding fail shares", width: 14, align: "right", format: shares },
@@ -60,7 +60,7 @@ export function publicationRows(data: PublicationPayload): PublicationRow[] {
     : { ...row, id: row.weekStart, date: row.weekStart });
 }
 export const publicationCell = (column: PublicationColumn, value: string | number | null) =>
-  column.format ? column.format(value) : String(value ?? "--");
+  column.format ? column.format(value) : String(value ?? MISSING_VALUE);
 /** Reports retain exact quantities; compact display values are never the exported data. */
 export function publicationReportColumns(kind: PublicationKind): HeadlessPaneColumn[] {
   return publicationColumns(kind).map((column) => ({

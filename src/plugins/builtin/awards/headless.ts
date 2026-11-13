@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { AwardFilter, AwardRow, AwardType } from "../../../api-client/awards";
 import { notATickerSymbol } from "../../../sources/provider-errors";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/headless";
@@ -48,15 +49,15 @@ const awardRecord = (row: AwardRow) => ({ id: row.id, date: row.awardDate, dateB
  * types and scopes by name. Amounts are decimal strings from the source, so
  * exports keep them whole: the compact form is the text report's alone.
  */
-const text = (value: unknown) => value == null || value === "" ? "--" : String(value);
+const text = (value: unknown) => value == null || value === "" ? MISSING_VALUE : String(value);
 const amount = (key: string, header: string): HeadlessPaneColumn => ({ key, header, align: "right", textFormat: (value) => money(value as string | null) });
 const nested = (pick: (row: HeadlessPaneRow) => unknown, key: string, header: string): HeadlessPaneColumn => ({ key, header, align: "right",
   format: (_value, row) => text(pick(row)), textFormat: (_value, row) => money(pick(row) as string | null) });
-const share: HeadlessPaneColumn = { key: "sharePercent", header: "Share %", align: "right", format: (value) => typeof value === "number" ? `${value.toFixed(1)}%` : "--" };
-const count: HeadlessPaneColumn = { key: "count", header: "Awards", align: "right", textFormat: (value) => typeof value === "number" ? value.toLocaleString("en-US") : "--" };
-const scope: HeadlessPaneColumn = { key: "source", header: "Scope", format: (value) => typeof value === "string" ? awardScope(value) : "--" };
-const type: HeadlessPaneColumn = { key: "awardType", header: "Type", format: (value) => typeof value === "string" ? awardTypeLabel(value as AwardType) : "--" };
-const period = (_value: unknown, row: HeadlessPaneRow) => row.periodStart || row.periodEnd ? `${text(row.periodStart)} / ${text(row.periodEnd)}` : "--";
+const share: HeadlessPaneColumn = { key: "sharePercent", header: "Share %", align: "right", format: (value) => typeof value === "number" ? `${value.toFixed(1)}%` : MISSING_VALUE };
+const count: HeadlessPaneColumn = { key: "count", header: "Awards", align: "right", textFormat: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE };
+const scope: HeadlessPaneColumn = { key: "source", header: "Scope", format: (value) => typeof value === "string" ? awardScope(value) : MISSING_VALUE };
+const type: HeadlessPaneColumn = { key: "awardType", header: "Type", format: (value) => typeof value === "string" ? awardTypeLabel(value as AwardType) : MISSING_VALUE };
+const period = (_value: unknown, row: HeadlessPaneRow) => row.periodStart || row.periodEnd ? `${text(row.periodStart)} / ${text(row.periodEnd)}` : MISSING_VALUE;
 const dateBasis = (value: unknown) => value === "period-start" ? "Period start" : value === "publication" ? "Publication" : "Award date";
 const comparison = (row: HeadlessPaneRow) => row.revenueComparison as { awardAmount?: string; annualRevenue?: string; basis?: string; periodEnd?: string } | null;
 const FEED_COLUMNS: HeadlessPaneColumn[] = [
@@ -66,7 +67,7 @@ const FEED_COLUMNS: HeadlessPaneColumn[] = [
 ];
 const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" }, { key: "recipient", header: "Awardee" }, { key: "ticker", header: "Ticker" },
-  { key: "annualRevenuePercent", header: "% revenue", align: "right", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : "--" },
+  { key: "annualRevenuePercent", header: "% revenue", align: "right", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : MISSING_VALUE },
   { key: "currency", header: "CCY" }, nested((row) => comparison(row)?.awardAmount, "comparedValue", "Compared value"),
   nested((row) => comparison(row)?.annualRevenue, "annualRevenue", "Annual revenue"),
   { key: "revenueComparison", header: "Value basis", format: (_value, row) => comparison(row)?.basis === "obligated" ? "Obligated" : "Award value" },

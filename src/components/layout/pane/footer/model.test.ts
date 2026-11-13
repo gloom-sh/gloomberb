@@ -90,17 +90,17 @@ describe("footer hint row", () => {
   });
 
   test("a note with a shorter form keeps its full text while the status after it can give way", () => {
-    const listed: PaneFooterSegment = { id: "listed", parts: [{ text: "No events listed after Mon Aug 24", tone: "warning" }] };
+    const listed: PaneFooterSegment = { id: "listed", parts: [{ text: "No events listed after Mon 24 Aug", tone: "warning" }] };
     const note: PaneFooterSegment = { id: "note", parts: [{ text: "-- forecast = no consensus yet" }], variants: [[{ text: "no consensus yet" }]] };
     const updated: PaneFooterSegment = { id: "updated", parts: [{ text: "updated 1m ago" }] };
     const all = 33 + 3 + 30 + 3 + 14;
     expect(fitPaneFooterInfo([listed, note, updated], all)).toEqual([listed, note, updated]);
     // A column short: the update time goes, and the note stays whole.
     expect(fitPaneFooterInfo([listed, note, updated], all - 9).map((segment) => segment.parts[0]!.text))
-      .toEqual(["No events listed after Mon Aug 24", "-- forecast = no consensus yet"]);
+      .toEqual(["No events listed after Mon 24 Aug", "-- forecast = no consensus yet"]);
     // Only once the note alone does not fit does it take its shorter form.
     const short = fitPaneFooterInfo([listed, note, updated], 33 + 3 + 20);
-    expect(short.map((segment) => segment.parts[0]!.text)).toEqual(["No events listed after Mon Aug 24", "no consensus yet"]);
+    expect(short.map((segment) => segment.parts[0]!.text)).toEqual(["No events listed after Mon 24 Aug", "no consensus yet"]);
     expect(short[1]!.title).toBe("-- forecast = no consensus yet");
   });
 

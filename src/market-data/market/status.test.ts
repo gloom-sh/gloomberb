@@ -300,14 +300,14 @@ describe("a quote older than its venue's latest completed session", () => {
     // TWTR's last quote says REGULAR; NYSE removed it the day after its last session.
     const twitter: Quote = { ...nyse("REGULAR", "2022-10-27T23:59:59Z"), symbol: "TWTR", stale: true,
       delisting: { status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04" } };
-    expect(quoteSessionLabel(twitter, regular)).toBe("Delisted Oct 27, 2022");
-    expect(quoteMarketStateLabel(twitter, regular)).toBe("Delisted Oct 27, 2022");
+    expect(quoteSessionLabel(twitter, regular)).toBe("Delisted 27 Oct 2022");
+    expect(quoteMarketStateLabel(twitter, regular)).toBe("Delisted 27 Oct 2022");
     expect(quoteSessionStateLabel(twitter, regular)).toBe("DELISTED");
     expect(quoteSessionColor(twitter, colors, regular)).toBe(colors.warning);
     expect(quoteDotMarketState(twitter, regular)).toBeUndefined();
     // Only its last trade known (First Republic, a bank, files no exchange removal with SEC).
     const firstRepublic = { ...twitter, symbol: "FRC", delisting: { status: "inactive" as const, lastTradeDate: "2023-04-28", historyStart: "2016-01-04" } };
-    expect(quoteSessionLabel(firstRepublic, regular)).toBe("Last traded Apr 28, 2023");
+    expect(quoteSessionLabel(firstRepublic, regular)).toBe("Last traded 28 Apr 2023");
     expect(quoteSessionStateLabel(firstRepublic, regular)).toBe("INACTIVE");
     // Its last close, which moves no more, and no extended print, whatever an old quote carries.
     const lateQuote = { ...twitter, change: 0.51, changePercent: 0.96, marketState: "POST" as const, postMarketPrice: 53.9,

@@ -1,7 +1,7 @@
 import type { Portfolio, PortfolioCash } from "../types/ticker";
 import type { BrokerAccount } from "../types/trading";
 import { currencyMinorDigits, getCurrencySymbol, resolveAssetDisplayKind } from "../market-data/market/format";
-import { formatNumber } from "../utils/format";
+import { MISSING_VALUE, formatNumber } from "../utils/format";
 import { parseTypedNumber } from "../utils/decimal-comma";
 
 /**
@@ -264,14 +264,14 @@ export function describeTargetSum(targetSum: number | null, basis: WeightBasis =
 
 /** A weight to one decimal: 12.3%. */
 export function formatAllocationWeight(value: number | null | undefined): string {
-  if (!finite(value)) return "—";
+  if (!finite(value)) return MISSING_VALUE;
   const fixed = value.toFixed(1);
   return `${/[1-9]/.test(fixed) ? fixed : fixed.replace("-", "")}%`;
 }
 
 /** Drift in percentage points, always signed unless it rounds to zero: +2.3pp. */
 export function formatAllocationDrift(value: number | null | undefined): string {
-  if (!finite(value)) return "—";
+  if (!finite(value)) return MISSING_VALUE;
   const fixed = Math.abs(value).toFixed(1);
   if (!/[1-9]/.test(fixed)) return `${fixed}pp`;
   return `${value > 0 ? "+" : "-"}${fixed}pp`;
@@ -287,7 +287,7 @@ export function formatTradeUnits(
   value: number | null | undefined,
   { units, assetCategory }: { units: number; assetCategory?: string },
 ): string {
-  if (!finite(value)) return "—";
+  if (!finite(value)) return MISSING_VALUE;
   const kind = resolveAssetDisplayKind({ assetCategory });
   const whole = kind !== "crypto" && kind !== "cash" && Number.isInteger(units);
   const decimals = whole ? 0 : kind === "crypto" ? 4 : 2;
@@ -307,7 +307,7 @@ export function formatAllocationMoney(
   currency: string,
   { signed = false, whole = false }: { signed?: boolean; whole?: boolean } = {},
 ): string {
-  if (!finite(value)) return "—";
+  if (!finite(value)) return MISSING_VALUE;
   const digits = whole ? 0 : currencyMinorDigits(currency);
   const body = formatNumber(Math.abs(value), digits);
   const zero = !/[1-9]/.test(body);

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type {
   HeadlessBundleResult,
   HeadlessBundleSection,
@@ -78,7 +79,7 @@ const ISSUER_COLUMNS: HeadlessPaneColumn[] = [
   quotedColumn("level", "5Y", false),
   quotedColumn("change1W", "1W", true),
   quotedColumn("change1M", "1M", true),
-  { key: "spread5yDate", header: "5Y date", shrink: false, format: (value: unknown) => (typeof value === "string" ? value : "--") },
+  { key: "spread5yDate", header: "5Y date", shrink: false, format: (value: unknown) => (typeof value === "string" ? value : MISSING_VALUE) },
 ];
 
 /**
@@ -190,7 +191,7 @@ const POINTS_COLUMN: HeadlessPaneColumn = {
   key: "pointsUpfront",
   header: "Points",
   align: "right",
-  format: (value: unknown) => (typeof value === "number" ? String(value) : "--"),
+  format: (value: unknown) => (typeof value === "number" ? String(value) : MISSING_VALUE),
   textFormat: (value: unknown) => formatPoints(numberOrNull(value)),
 };
 

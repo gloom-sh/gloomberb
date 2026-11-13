@@ -49,7 +49,7 @@ import {
   type ScreenField,
 } from "../../../api-client/equity-screener";
 import type { PaneProps } from "../../../types/plugin";
-import { formatPercentileRank, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank, formatPercentRaw } from "../../../utils/format";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { EXTENDED_SESSION_LABELS, extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { useOpenDescription } from "../shared/open-description";
@@ -120,9 +120,9 @@ const TABS = [
 ];
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Request failed.";
-const date = (value: string | null) => value?.slice(0, 10) ?? "--";
+const date = (value: string | null) => value?.slice(0, 10) ?? MISSING_VALUE;
 const rank = (value: number | null) =>
-  value == null ? "--" : value.toFixed(0);
+  value == null ? MISSING_VALUE : value.toFixed(0);
 
 const EXTENDED_COLUMN_PREFIX = "ext:";
 
@@ -218,7 +218,7 @@ function ScreenDetail({
         <KeyValueRow
           label="Listing"
           value={`${row.symbol}:${row.exchange}`}
-          detail={[row.currency, row.sector, row.industry].filter(Boolean).join(" \u00b7 ") || "--"}
+          detail={[row.currency, row.sector, row.industry].filter(Boolean).join(" \u00b7 ") || MISSING_VALUE}
         />
         {NUMERIC_FIELDS.map((field) => {
           const metric = row.metrics[field];
@@ -1115,7 +1115,7 @@ function EquityScreenView({
                 // The extended print's move from the close in PRICE and CHG%.
                 const move = screenExtendedMove(row, column.id.slice(EXTENDED_COLUMN_PREFIX.length) as ExtendedSession);
                 return move == null
-                  ? { text: "--", color: colors.textDim }
+                  ? { text: MISSING_VALUE, color: colors.textDim }
                   : { text: formatPercentRaw(move), color: shownPriceColor(move, 2, colors) };
               }
               const field = column.id.startsWith("m:")
@@ -1138,8 +1138,8 @@ function EquityScreenView({
                 return focus.state === "stale"
                   ? { text: metricDate(focus).text, color: colors.warning }
                   : { text: "" };
-              if (column.id === "name") return withCompanyLogo({ text: row.name ?? "--" }, row.name ? row : null, logos);
-              return { text: String(row[column.id as "symbol"] ?? "--") };
+              if (column.id === "name") return withCompanyLogo({ text: row.name ?? MISSING_VALUE }, row.name ? row : null, logos);
+              return { text: String(row[column.id as "symbol"] ?? MISSING_VALUE) };
             }}
             sortColumnId={
               (NUMERIC_FIELDS as readonly string[]).includes(definition.sort.field)

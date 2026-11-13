@@ -1,4 +1,4 @@
-import { formatCompact, formatCompactAmount } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCompactAmount } from "../../../utils/format";
 import { formatExpDate, formatStrikeLabel } from "../../../utils/options";
 import { formatUtcTime } from "../../../utils/utc-time";
 import {
@@ -90,23 +90,23 @@ export const isCoinContract = (contract: { unit: string } | null | undefined) =>
 /** A count of contracts: whole for a US listing's, to tenths for a coin's (Deribit's 0.1 BTC step). */
 export function formatContracts(value: number | null | undefined, coin: boolean): string {
   if (!coin) return formatCount(value);
-  return value == null || !Number.isFinite(value) ? "--" : value.toLocaleString("en-US", { maximumFractionDigits: 1 });
+  return value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toLocaleString("en-US", { maximumFractionDigits: 1 });
 }
 
 export function formatCount(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value) ? "--" : Math.round(value).toLocaleString("en-US");
+  return value == null || !Number.isFinite(value) ? MISSING_VALUE : Math.round(value).toLocaleString("en-US");
 }
 export function formatCountChange(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const rounded = Math.round(value);
   return rounded === 0 ? "0" : `${rounded > 0 ? "+" : "-"}${Math.abs(rounded).toLocaleString("en-US")}`;
 }
 export function formatRatio(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
+  return value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toFixed(2);
 }
 /** A price level (spot, the gamma flip) written as OMON and OVDV write spot. */
 export function formatLevel(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value) ? "--" : formatModelSpotPrice(value);
+  return value == null || !Number.isFinite(value) ? MISSING_VALUE : formatModelSpotPrice(value);
 }
 /**
  * The spot of a positioning answer as the options panes stamp theirs: the
@@ -145,7 +145,7 @@ export function positioningSpotDetail(spot: number | null | undefined, spotAsOf:
 /** The spot as a report says it: `770.88 pre-market Wed 21 Oct 09:35 UTC`, `770.10 last Wed 21 Oct 14:05 UTC`, `7,722.60 close Tue 27 Oct`. */
 export function formatPositioningSpot(spot: number | null | undefined, spotAsOf: string | null | undefined, venue?: string, basis?: "close"): string {
   const at = spotAsOf ? Date.parse(spotAsOf) : Number.NaN;
-  if (spot == null || !Number.isFinite(spot)) return "--";
+  if (spot == null || !Number.isFinite(spot)) return MISSING_VALUE;
   if (venue) return Number.isFinite(at) ? `${formatLevel(spot)} ${venue} index ${formatUtcTime(new Date(at).toISOString())}` : formatLevel(spot);
   return Number.isFinite(at) ? `${formatLevel(spot)} ${modelSpotLabel(positioningModelSpot(spot, at, basis))}` : formatLevel(spot);
 }
@@ -197,17 +197,17 @@ export function gammaTimesFigure(gammaAsOf: string | null | undefined, quotesAsO
 
 /** Where a level sits against spot: +0.6%. */
 export function formatDistance(level: number | null | undefined, spot: number | null | undefined): string {
-  if (level == null || spot == null || !(spot > 0)) return "--";
+  if (level == null || spot == null || !(spot > 0)) return MISSING_VALUE;
   const percent = (level / spot - 1) * 100;
   const fixed = Math.abs(percent).toFixed(1);
   return `${/[1-9]/.test(fixed) ? (percent > 0 ? "+" : "-") : ""}${fixed}%`;
 }
 /** Dollars of dealer delta per 1% move, signed: +1.22B. */
 export function formatGamma(value: number | null | undefined): string {
-  return value == null ? "--" : formatCompactAmount(value, { signed: true });
+  return value == null ? MISSING_VALUE : formatCompactAmount(value, { signed: true });
 }
 export function formatPayout(value: number | null | undefined): string {
-  return value == null ? "--" : formatCompact(value);
+  return value == null ? MISSING_VALUE : formatCompact(value);
 }
 
 /** Both sides, or blank when either was not reported. A reported zero stays zero. */

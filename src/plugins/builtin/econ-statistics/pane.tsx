@@ -9,7 +9,7 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
@@ -105,7 +105,7 @@ function cellsFor(view: StatViewModel): Record<ColumnId, DataTableCell> {
       color: changeColor(view.stat.direction, view.changeOnPrevious),
     },
     previous: {
-      text: view.previous ? view.stat.formatValue(view.previous.value) : "--",
+      text: view.previous ? view.stat.formatValue(view.previous.value) : MISSING_VALUE,
       color: colors.textMuted,
     },
     period: { text: view.period, color: colors.textMuted },

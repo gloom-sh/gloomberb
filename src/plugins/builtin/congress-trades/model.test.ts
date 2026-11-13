@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import { cloudCongressHousePath } from "../../../api-client/paths";
 import type { CloudCongressHousePayload } from "../../../api-client";
@@ -176,7 +177,7 @@ describe("congress return columns", () => {
     expect(formatCongressReturn(-0.04)).toBe("0.0%");
     expect(formatCongressReturn(-3)).toBe("-3.0%");
     expect(formatCongressReturn(12.34)).toBe("+12.3%");
-    expect(formatCongressReturn(null)).toBe("--");
+    expect(formatCongressReturn(null)).toBe(MISSING_VALUE);
   });
 
   test("a member's trades end on VS SPY, and their own lag goes before it", () => {

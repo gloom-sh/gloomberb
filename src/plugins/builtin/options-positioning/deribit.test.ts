@@ -38,8 +38,8 @@ test("a Deribit expiry is labelled with its 08:00 UTC settlement, a US one by it
   expect(settlementTime("2026-10-30T08:00:00.000Z")).toBe("08:00 UTC");
   expect(settlementTime(undefined)).toBeNull();
   expect(settlementTime("2026-10-30T00:00:00.000Z")).toBeNull();
-  expect(expiryWithTimeLabel({ date: "2026-10-30", expiresAt: "2026-10-30T08:00:00.000Z" })).toBe("Oct 30 '26 08:00 UTC");
-  expect(expiryWithTimeLabel({ date: "2026-10-30" })).toBe("Oct 30 '26");
+  expect(expiryWithTimeLabel({ date: "2026-10-30", expiresAt: "2026-10-30T08:00:00.000Z" })).toBe("30 Oct '26 08:00 UTC");
+  expect(expiryWithTimeLabel({ date: "2026-10-30" })).toBe("30 Oct '26");
 });
 
 test("coin open interest keeps its tenths, and the spot is the venue's index with no US session", () => {
@@ -75,7 +75,7 @@ test("OPX BTC-USD reports max pain and walls per expiry, settling at 08:00 UTC, 
   const text = renderHeadlessPaneText(definition, result, args, "OPX", freshness);
   expect(text).toContain("Venue                Deribit");
   expect(text).toContain("1 BTC; OI counts BTC");
-  expect(text).toContain("Strikes · Oct 30 '26 08:00 UTC");
+  expect(text).toContain("Strikes · 30 Oct '26 08:00 UTC");
   expect(text).toContain("87,461.9");
   // The book is read live, not a day-old OI session.
   expect(freshness.status).toBe("live");

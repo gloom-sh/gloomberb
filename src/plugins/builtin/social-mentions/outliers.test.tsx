@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -115,7 +116,7 @@ test("BUZZ alone ranks the outliers; Enter opens the ticker's BUZZ here and Esc 
   expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+2026-11-05\s+1,826\s+200\s+9\.1x\s+\+0\.42\s+\+3\.25%/);
   expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+2026-11-05\s+840\s+160\s+5\.3x\s+-0\.31\s+-2\.10%/);
   // No stance scored and no price: dashes, never zeros.
-  expect(frame).toMatch(/FBKM\s+Fabrikam Bancorp\s+2026-11-05\s+96\s+40\s+2\.4x\s+--\s+--/);
+  expect(frame).toMatch(new RegExp(String.raw`FBKM\s+Fabrikam Bancorp\s+2026-11-05\s+96\s+40\s+2\.4x\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
 
   await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
   await act(async () => { tui.setup().mockInput.pressEnter(); });
@@ -176,7 +177,7 @@ test("an empty ranking, a load, a failure and a refused session each say so in t
   seed = { "social-mentions:outliers:minPosts": 0 };
   await mount(async (params) => answer(params, []));
   expect(asked).toEqual([{ window: "day", limit: 100 }]);
-  expect(tui.frame()).toContain("No ticker has been counted since Nov 3, 2026.");
+  expect(tui.frame()).toContain("No ticker has been counted since 3 Nov 2026.");
   // The query bar stays, so another window is one click away.
   expect(tui.frame()).toContain("Today");
 
@@ -232,7 +233,7 @@ test("tickers are named as ticker search names them, in one batched search: capi
   expect(frame).toMatch(/NWBI\s+Northwind Biologics, Inc\.\s+2026-11-05/);
   expect(frame).toMatch(/CTSO\s+Contoso Energy Corporation\s+2026-11-05/);
   expect(frame).toMatch(/FBKM\s+Fabrikam Semiconductor ETF\s+2026-11-05/);
-  expect(frame).not.toMatch(/NORTHWIND|CONTOSO|FBKM\s+--/);
+  expect(frame).not.toMatch(new RegExp(String.raw`NORTHWIND|CONTOSO|FBKM\s+${MISSING_VALUE}`));
   // One request for the whole ranking, never one a row.
   expect(batches).toEqual([["NWBI", "CTSO", "FBKM"]]);
   expect(singles).toEqual([]);

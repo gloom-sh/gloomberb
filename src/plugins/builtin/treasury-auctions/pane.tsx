@@ -20,7 +20,7 @@ import { usePaneInstance } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatRelativeAge, formatShortDate } from "../../../utils/datetime-format";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
@@ -82,7 +82,7 @@ import { HkTendersView } from "./hk-view";
 import { auctionViewHints } from "./keys";
 
 function formatRate(value: number | null): string {
-  return value == null ? "—" : `${value.toFixed(3)}%`;
+  return value == null ? MISSING_VALUE : `${value.toFixed(3)}%`;
 }
 
 /**
@@ -91,18 +91,18 @@ function formatRate(value: number | null): string {
  * 2008-04-07. "—" stays for an announced auction whose results are not out yet.
  */
 function formatRatio(value: number | null, auction?: TreasuryAuction): string {
-  if (value == null) return auction && !isPendingAuction(auction) ? "" : "—";
+  if (value == null) return auction && !isPendingAuction(auction) ? "" : MISSING_VALUE;
   return value.toFixed(2);
 }
 
 function formatPct(value: number | null, auction?: TreasuryAuction): string {
-  if (value == null) return auction && !isPendingAuction(auction) ? "" : "—";
+  if (value == null) return auction && !isPendingAuction(auction) ? "" : MISSING_VALUE;
   return `${value.toFixed(1)}%`;
 }
 
 /** The stop-out against the median reads in basis points, like an FRN margin. */
 function formatBp(value: number | null): string {
-  return value == null ? "—" : `${value.toFixed(1)}bp`;
+  return value == null ? MISSING_VALUE : `${value.toFixed(1)}bp`;
 }
 
 /** A yield's move after the auction, in whole bp under a header that says bp; blank until the session is in. */
@@ -113,7 +113,7 @@ function formatMove(value: number | null): string {
 const VIEW_OPTIONS = AUCTION_VIEWS.map((value) => ({ value, label: value === "after" ? "After" : "Results" }));
 
 function formatMoney(value: number | null): string {
-  return value == null ? "—" : `$${formatCompact(value)}`;
+  return value == null ? MISSING_VALUE : `$${formatCompact(value)}`;
 }
 
 function secTypeColor(secType: string, selected: boolean): string {
@@ -158,7 +158,7 @@ function renderAuctionCell(
       // Announced auctions have no results yet: Rate reads Pending, the other
       // metric cells "—", and the date is bright.
       return {
-        text: showYear ? auction.auctionDate : formatShortDate(auction.auctionDate, { year: false, utc: true, fallback: "\u2014" }),
+        text: formatShortDate(auction.auctionDate, { year: showYear ? "numeric" : false, utc: true, fallback: MISSING_VALUE }),
         color: rowState.selected ? colors.selectedText : isPendingAuction(auction) ? colors.textBright : colors.textDim,
       };
     case "type":
@@ -173,7 +173,7 @@ function renderAuctionCell(
       // An announced auction says its results are pending, as its detail does; other metric cells stay "—".
       return isPendingAuction(auction)
         ? { text: RESULTS_PENDING, color: dimmed }
-        : { text: formatAuctionRate(auction, rateValue(auction), "—"), color: selected ?? colors.textBright };
+        : { text: formatAuctionRate(auction, rateValue(auction), MISSING_VALUE), color: selected ?? colors.textBright };
     case "stopOut":
       return { text: formatBp(stopOutVsAvgBp(auction)), color: selected ?? colors.text };
     case "btc":
@@ -215,12 +215,12 @@ function TreasuryAuctionDetail({ auction, width, after }: { auction: TreasuryAuc
     <ScrollBox flexGrow={1} scrollY>
       <Box flexDirection="column" paddingX={1} width={width}>
         <Box flexDirection="row" height={1} gap={2}>
-          <Text fg={colors.textDim}>{formatShortDate(auction.auctionDate, { utc: true, fallback: "\u2014" })}</Text>
+          <Text fg={colors.textDim}>{formatShortDate(auction.auctionDate, { utc: true, fallback: MISSING_VALUE })}</Text>
           {isPendingAuction(auction) && <Text fg={colors.textDim}>results pending</Text>}
           {auction.cusip && <Text fg={colors.textDim}>{auction.cusip}</Text>}
         </Box>
         <Box height={1} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={rateLabel(auction)} value={formatAuctionRate(auction, rateValue(auction), "—")} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={rateLabel(auction)} value={formatAuctionRate(auction, rateValue(auction), MISSING_VALUE)} />
         {isBill(auction) && auction.highDiscountRate != null && (
           <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High discount rate" value={formatRate(auction.highDiscountRate)} />
         )}
@@ -235,9 +235,9 @@ function TreasuryAuctionDetail({ auction, width, after }: { auction: TreasuryAuc
         )}
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Bid-to-cover" value={formatRatio(auction.bidToCoverRatio)} />
         <Box height={1} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High price" value={auction.highPrice?.toFixed(4) ?? "—"} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={publishesMedian(auction) ? "Median price" : "Average price"} value={auction.avgMedPrice?.toFixed(4) ?? "—"} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Low price" value={auction.lowPrice?.toFixed(4) ?? "—"} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High price" value={auction.highPrice?.toFixed(4) ?? MISSING_VALUE} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={publishesMedian(auction) ? "Median price" : "Average price"} value={auction.avgMedPrice?.toFixed(4) ?? MISSING_VALUE} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Low price" value={auction.lowPrice?.toFixed(4) ?? MISSING_VALUE} />
         <Box height={1} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Offering" value={formatMoney(auction.offeringAmount)} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Total accepted" value={formatMoney(auction.totalAccepted)} />
@@ -249,14 +249,14 @@ function TreasuryAuctionDetail({ auction, width, after }: { auction: TreasuryAuc
           <Box height={1} />
           {stopOutVsAvgBp(auction) != null && (
             <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={`${stopOutLabel(auction)} pctl`}
-              value={after.stopOutPercentile == null ? "—" : String(after.stopOutPercentile)} />
+              value={after.stopOutPercentile == null ? MISSING_VALUE : String(after.stopOutPercentile)} />
           )}
-          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="B/C percentile" value={after.btcPercentile == null ? "—" : String(after.btcPercentile)} />
-          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Indirect percentile" value={after.indirectPercentile == null ? "—" : String(after.indirectPercentile)} />
-          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Dealer percentile" value={after.dealerPercentile == null ? "—" : String(after.dealerPercentile)} />
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="B/C percentile" value={after.btcPercentile == null ? MISSING_VALUE : String(after.btcPercentile)} />
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Indirect percentile" value={after.indirectPercentile == null ? MISSING_VALUE : String(after.indirectPercentile)} />
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Dealer percentile" value={after.dealerPercentile == null ? MISSING_VALUE : String(after.dealerPercentile)} />
           {after.cmt && ([[1, after.after1d], [5, after.after5d], [20, after.after20d]] as const).map(([sessions, value]) => (
             <KeyValueRow key={sessions} labelWidth={22} width={Math.max(1, width - 2)} emphasis={false}
-              label={`${after.cmt} yield +${sessions}d`} value={value == null ? "—" : `${formatMove(value)}bp`} />
+              label={`${after.cmt} yield +${sessions}d`} value={value == null ? MISSING_VALUE : `${formatMove(value)}bp`} />
           ))}
         </>}
       </Box>

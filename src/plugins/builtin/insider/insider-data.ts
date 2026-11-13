@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { decodeHtmlEntities } from "../../../utils/html-entities";
 
 export interface InsiderTransaction {
@@ -172,5 +173,5 @@ export function transactionTypeLabel(type: InsiderTransaction["transactionType"]
     E: "EXPIRATION", H: "CANCELLATION", I: "DISCRETIONARY", J: "OTHER", K: "SWAP",
     L: "SMALL ACQUISITION", U: "TENDER", W: "INHERITANCE", Z: "TRUST TRANSFER",
   };
-  return labels[type] ?? (type || "—");
+  return labels[type] ?? (type || MISSING_VALUE);
 }

@@ -2,7 +2,7 @@ import type { BrokerAdapter } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerExecution, BrokerOrder, BrokerOrderRequest } from "../../../types/trading";
 import type { Quote } from "../../../types/financials";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 
 export interface BrokerOrdersSnapshot {
   brokerInstanceId: string;
@@ -60,8 +60,8 @@ export function canChangeBrokerOrder(order: BrokerOrder): boolean {
   return !DONE.has(status) && status !== "Pending cancel" && status !== "UNKNOWN" && order.remaining > 0;
 }
 
-export const formatOrderQuantity = (value: number) => Number.isFinite(value) ? formatNumber(value, Number.isInteger(value) ? 0 : 4) : "--";
-export const formatOrderPrice = (value: number | undefined) => value != null && Number.isFinite(value) ? formatNumber(value, 2) : "--";
+export const formatOrderQuantity = (value: number) => Number.isFinite(value) ? formatNumber(value, Number.isInteger(value) ? 0 : 4) : MISSING_VALUE;
+export const formatOrderPrice = (value: number | undefined) => value != null && Number.isFinite(value) ? formatNumber(value, 2) : MISSING_VALUE;
 /** Execution sides as brokers write them: BUY, BOT or B. */
 export const isBuySide = (side: string) => ["BUY", "BOT", "B"].includes(side.toUpperCase());
 

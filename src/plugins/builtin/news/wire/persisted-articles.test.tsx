@@ -90,7 +90,7 @@ test("a folded row of routine notices restored from the pane's state reads its n
     </TestPaneProvider>;
   }
   await tui.render(<Harness />);
-  await tui.waitForFrameToContain("8 notices since Oct 30");
+  await tui.waitForFrameToContain("8 notices since 30 Oct");
   expect(restored[0]?.routine?.since).toBeInstanceOf(Date);
   expect(restored[0]?.routine?.since.toISOString()).toBe("2026-10-30T18:32:16.000Z");
 });

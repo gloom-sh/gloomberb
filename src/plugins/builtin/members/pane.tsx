@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { Breadth } from "./breadth-pane";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { FundChange, FundMember, MemberFundsPayload, StockFund } from "../../../api-client/members";
@@ -89,9 +90,9 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
   const renderCell = useCallback((item: SectionedRow<FundMember>, column: DataTableColumn): DataTableCell => {
     if (!isSectionedItemRow(item)) return { text: "" };
     const row = item.item;
-    if (column.id === "symbol") return { text: row.symbol ?? "--", color: colors.textBright };
-    if (column.id === "name" || column.id === "sector") return { text: row[column.id] ?? "--", color: colors.text };
-    if (column.id === "weight") return { text: row.weight == null ? "--" : decimal(row.weight * 100), value: row.weight == null ? null : row.weight * 100 };
+    if (column.id === "symbol") return { text: row.symbol ?? MISSING_VALUE, color: colors.textBright };
+    if (column.id === "name" || column.id === "sector") return { text: row[column.id] ?? MISSING_VALUE, color: colors.text };
+    if (column.id === "weight") return { text: row.weight == null ? MISSING_VALUE : decimal(row.weight * 100), value: row.weight == null ? null : row.weight * 100 };
     if (column.id === "shares") return { text: decimal(row.shares, 0), value: row.shares };
     if (column.id === "price") return { text: decimal(row.price), value: row.price };
     const value = row[column.id as "changePercent"];
@@ -133,10 +134,10 @@ function Changes({ fund, width, height, focused, active }: ViewProps) {
     info: data?.asOf ? [{ id: "updated", parts: [{ text: `as of ${data.asOf.slice(0, 10)}`, tone: "muted" }] }] : [] });
   usePaneNoticeFooter({ registrationId: "members:changes-notices", focused, notices: resource.error || resource.data?.refreshError ? [resource.error ?? resource.data!.refreshError!] : [] });
   const renderCell = useCallback((row: FundChange, column: DataTableColumn): DataTableCell => {
-    if (column.id === "effectiveDate") return { text: row.effectiveDate ?? "--" };
-    if (column.id === "daysToGo") return { text: row.daysToGo === null ? "--" : `${row.daysToGo}${column.label === "In" ? "d" : ""}`, value: row.daysToGo, color: row.daysToGo === null ? colors.textMuted : colors.warning, keepColorWhenSelected: row.daysToGo !== null };
-    if (column.id === "added") return { text: row.added ?? "--", color: colors.positive };
-    if (column.id === "removed") return { text: row.removed ?? "--", color: colors.negative };
+    if (column.id === "effectiveDate") return { text: row.effectiveDate ?? MISSING_VALUE };
+    if (column.id === "daysToGo") return { text: row.daysToGo === null ? MISSING_VALUE : `${row.daysToGo}${column.label === "In" ? "d" : ""}`, value: row.daysToGo, color: row.daysToGo === null ? colors.textMuted : colors.warning, keepColorWhenSelected: row.daysToGo !== null };
+    if (column.id === "added") return { text: row.added ?? MISSING_VALUE, color: colors.positive };
+    if (column.id === "removed") return { text: row.removed ?? MISSING_VALUE, color: colors.negative };
     if (column.id === "estimate") { const value = row.estimates.length === 1 ? row.estimates[0]!.days : null; return { text: percent(value, ""), value }; }
     return { text: changeReason(row), color: colors.text };
   }, [colors]);
@@ -191,7 +192,7 @@ function FundPicker({ width, height, focused, choose }: Pick<PaneProps, "width" 
     {resource.data && <DataTableView items={resource.data.payload.funds} emptyStateTitle="No covered funds." rootWidth={width} rootHeight={height} focused={focused}
       columns={[{ id: "ticker", label: "Fund", align: "left", width: 8 }, { id: "name", label: "Index", align: "left", width: 24, flexGrow: 1 }, { id: "asOf", label: "Holdings as of", align: "left", width: 16 }]}
       getItemKey={(row) => row.ticker} selection={{ kind: "id", selectedId: selected, getId: (row) => row.ticker, onChange: (id) => setSelected(String(id)) }}
-      onActivate={(row) => choose(row.ticker)} sortColumnId={null} sortDirection="asc" renderCell={(row, col) => ({ text: String(row[col.id as "ticker"] ?? "--") })} />}
+      onActivate={(row) => choose(row.ticker)} sortColumnId={null} sortDirection="asc" renderCell={(row, col) => ({ text: String(row[col.id as "ticker"] ?? MISSING_VALUE) })} />}
   </PaneStatusBody>;
 }
 type ListProps = Pick<PaneProps, "width" | "height" | "focused">;
@@ -216,7 +217,7 @@ function StockFunds({ symbol, width, height, focused }: ListProps & { symbol: st
     const row = item.item;
     if (column.id === "ticker") return { text: row.ticker, color: colors.textBright };
     if (column.id === "name") return { text: row.name, color: colors.text };
-    if (column.id === "weight") return { text: row.weight == null ? "--" : decimal(row.weight * 100), value: row.weight == null ? null : row.weight * 100 };
+    if (column.id === "weight") return { text: row.weight == null ? MISSING_VALUE : decimal(row.weight * 100), value: row.weight == null ? null : row.weight * 100 };
     return { text: stockFundAsOf(row, !stockFundAsOfFits(width)), color: colors.textMuted };
   }, [colors, width]);
   const none = noStockFundsMessage(symbol, "pane");

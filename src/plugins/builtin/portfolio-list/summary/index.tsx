@@ -8,8 +8,8 @@ import type { BrokerConnectionStatus } from "../../../../types/broker";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
-import { formatShortDate } from "../../../../utils/datetime-format";
-import { displayWidth, formatPercentRaw } from "../../../../utils/format";
+import { formatClockTime, formatShortDate } from "../../../../utils/datetime-format";
+import { MISSING_VALUE, displayWidth, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
 import {
   resolvePortfolioAccountMetrics,
@@ -133,7 +133,7 @@ function formatSourceBadge(account: BrokerAccount, liveGateway: boolean): { labe
       label: !syncedAt
         ? "Synced"
         : today
-          ? `Synced ${syncedAt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}`
+          ? `Synced ${formatClockTime(syncedAt)}`
           : `Synced ${formatShortDate(syncedAt, { year: false })}`,
       kind: "cloud",
     };
@@ -493,7 +493,7 @@ export function buildPortfolioFooterSegments({
   // Where the quotes are from and the newest's time, as `quote` ends (`Gloom Cloud · 14:44 UTC · markets open`):
   // a bare local time ("Thu 12:25") named neither.
   const quoted = refreshingSize > 0 ? null : quoteSourceFooterSegment(quotes, { id: "refresh" });
-  const refresh: PaneFooterSegment = quoted ?? { id: "refresh", parts: [{ text: refreshingSize > 0 ? "Refreshing..." : "-", tone: "muted" }] };
+  const refresh: PaneFooterSegment = quoted ?? { id: "refresh", parts: [{ text: refreshingSize > 0 ? "Refreshing..." : MISSING_VALUE, tone: "muted" }] };
   return [...accountStatus, refresh];
 }
 

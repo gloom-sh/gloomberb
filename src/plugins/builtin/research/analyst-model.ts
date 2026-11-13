@@ -2,7 +2,7 @@ import type { DataTableColumn, PaneFooterSegment } from "../../../components";
 import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { formatRelativeTime } from "../../../utils/datetime-format";
-import { displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
@@ -113,7 +113,7 @@ function analystReferenceWhen(reference: AnalystReferencePrice, now: number): st
  * retrieval Wed 21 Oct 21:30 UTC".
  */
 export function formatAnalystReference(reference: AnalystReferencePrice, currency: string | undefined, now = Date.now()): string {
-  if (reference.price == null || !Number.isFinite(reference.price)) return "-";
+  if (reference.price == null || !Number.isFinite(reference.price)) return MISSING_VALUE;
   const price = formatAnalystPrice(reference.price, currency);
   const when = analystReferenceWhen(reference, now);
   if (!reference.live) return `${price}, provider reference${when ? ` at retrieval ${when}` : ""}`;
@@ -175,14 +175,14 @@ export function ratingSplit(data: AnalystResearchData | null) {
  */
 export function formatRecommendationMix(data: AnalystResearchData | null): string {
   const rec = recommendationMix(data);
-  if (!rec) return "-";
+  if (!rec) return MISSING_VALUE;
   const sells = rec.sell != null && rec.strongSell != null ? rec.sell + rec.strongSell : null;
   return [[rec.strongBuy, "Strong Buy"], [rec.buy, "Buy"], [rec.hold, "Hold"], [sells, "Sell"]]
-    .map(([count, label]) => `${count ?? "-"} ${label}`).join(" · ");
+    .map(([count, label]) => `${count ?? MISSING_VALUE} ${label}`).join(" · ");
 }
 
 export function formatRatingLabel(value: number | undefined): string {
-  return value == null || !Number.isFinite(value) ? "-" : `${formatNumber(value, 1)}/10`;
+  return value == null || !Number.isFinite(value) ? MISSING_VALUE : `${formatNumber(value, 1)}/10`;
 }
 
 export function analystTargetCurrency(data: AnalystResearchData | null): string | undefined {
@@ -190,7 +190,7 @@ export function analystTargetCurrency(data: AnalystResearchData | null): string 
 }
 
 export function formatAnalystPrice(value: number | undefined, currency: string | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "-";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   if (!currency?.trim()) return `${formatNumber(value)} (ccy?)`;
   const unit = resolveCurrencyUnit(currency);
   return formatCurrency(value / unit.divisor, unit.currency);
@@ -225,7 +225,7 @@ export function formatRatingTarget(
 ): string {
   const current = row.currentPriceTarget;
   const prior = priorRatingTarget(row);
-  if (current == null && prior == null) return "-";
+  if (current == null && prior == null) return MISSING_VALUE;
   if (current == null) return ` ${formatPriceTarget(prior, currency)}`;
   if (prior == null) return ` ${formatPriceTarget(current, currency)}`;
 

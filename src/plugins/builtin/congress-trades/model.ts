@@ -1,7 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-layout";
 import type { ShortDateOptions } from "../../../utils/datetime-format";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import type { SortDirection } from "../../../utils/sort-values";
 import type {
   CloudCongressHousePayload,
@@ -84,7 +84,7 @@ export function sortedTickers(tickers: CloudCongressTickerPayload[], sort: { col
 }
 
 /** Filing dates are "YYYY-MM-DD" calendar days, shown as "Jan 5". */
-export const FILING_DAY_FORMAT: ShortDateOptions = { year: false, utc: true, fallback: "--" };
+export const FILING_DAY_FORMAT: ShortDateOptions = { year: false, utc: true, fallback: MISSING_VALUE };
 
 function dateValue(value: string | null): number {
   if (!value) return 0;
@@ -93,17 +93,17 @@ function dateValue(value: string | null): number {
 }
 
 export function formatLag(value: number | null): string {
-  return value == null ? "--" : `${value}d`;
+  return value == null ? MISSING_VALUE : `${value}d`;
 }
 
 /** A disclosure bracket's bound, as the filing's range names it ($1k-15k): a label, short even in a table column. */
 function formatMoneyShort(value: number | null): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   return `$${formatCompact(value, { fixedDecimals: false })}`;
 }
 
 export function formatAmountRange(low: number | null, high: number | null, raw?: string): string {
-  if (low == null && high == null) return raw || "--";
+  if (low == null && high == null) return raw || MISSING_VALUE;
   if (low != null && high == null) return `>${formatMoneyShort(low)}`;
   if (low != null && high != null && low !== high) {
     return `${formatMoneyShort(low)}-${formatMoneyShort(high).replace(/^\$/, "")}`;
@@ -417,7 +417,7 @@ export function mergeCongressPages(
 
 /** Percent to one decimal; a figure that rounds to zero reads 0.0%, never -0.0%. */
 export function formatCongressReturn(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const shown = roundCongressReturn(value);
   return `${shown > 0 ? "+" : ""}${shown === 0 ? "0.0" : shown.toFixed(1)}%`;
 }

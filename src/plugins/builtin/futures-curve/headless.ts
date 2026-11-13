@@ -1,7 +1,7 @@
 import type { FuturesContract, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { futuresSpecLines } from "../../../market-data/futures-contract";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, HeadlessPaneFreshness } from "../../../types/plugin";
-import { formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { fetchFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
 import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curveIncompleteDetail, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSessionNote, curveSettleShown, curveStandIn, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
@@ -54,8 +54,8 @@ function contractRow(row: FuturesContract, data: FuturesCurvePayload, root: stri
  * export dates it, where the text leaves its minute to As Of UTC, the trade's.
  */
 function contractColumns(root: string, settlementDate: string | null, options: { basis: boolean; last: boolean; notice: boolean; text?: boolean }): HeadlessPaneColumn[] {
-  const price = (value: unknown) => typeof value === "number" ? curvePrice(value, root) : "--";
-  const date = (value: unknown) => typeof value === "string" ? value : "--";
+  const price = (value: unknown) => typeof value === "number" ? curvePrice(value, root) : MISSING_VALUE;
+  const date = (value: unknown) => typeof value === "string" ? value : MISSING_VALUE;
   // An export has every column whatever the root, so CL's and GC's headers are the same; the text drops the ones a root leaves blank.
   const exported = !options.text;
   return [
@@ -63,26 +63,26 @@ function contractColumns(root: string, settlementDate: string | null, options: {
     { key: "lastTrade", header: "Last Trade", shrink: false, format: date },
     // Cash-settled roots have no first notice day.
     ...options.notice || exported ? [{ key: "firstNotice", header: "1st Notice", shrink: false,
-      format: (value: unknown, row: Record<string, unknown>) => typeof value === "string" ? `${value}${row.inDelivery ? " passed" : ""}` : "--" }] : [],
+      format: (value: unknown, row: Record<string, unknown>) => typeof value === "string" ? `${value}${row.inDelivery ? " passed" : ""}` : MISSING_VALUE }] : [],
     // One header whatever the session: an export dates each settlement in its own column, the text in the header.
     { key: "settlement", header: "Settle", ...settlementDate ? { textHeader: `Settle ${settlementDate}` } : {}, align: "right", format: price },
     ...options.text ? [] : [{ key: "settlementDate", header: "settle_date", literalHeader: true, shrink: false, format: date }],
     // A Cboe price is the settlement itself, with no separate last trade: an export leaves its Last blank.
-    ...options.last || exported ? [{ key: "price", header: "Last", align: "right" as const, format: options.last ? price : () => "--" }] : [],
-    { key: "change", header: "Change", align: "right", format: (value) => typeof value === "number" ? curveChangeText(value, root) : "--" },
+    ...options.last || exported ? [{ key: "price", header: "Last", align: "right" as const, format: options.last ? price : () => MISSING_VALUE }] : [],
+    { key: "change", header: "Change", align: "right", format: (value) => typeof value === "number" ? curveChangeText(value, root) : MISSING_VALUE },
     ...options.basis || exported ? [{ key: "spot", header: "Spot", align: "right" as const, format: price },
-      ...options.text ? [] : [{ key: "spotTime", header: "Spot Time UTC", shrink: false, format: (value: unknown) => typeof value === "string" ? curveTimestamp(value) : "--" }],
+      ...options.text ? [] : [{ key: "spotTime", header: "Spot Time UTC", shrink: false, format: (value: unknown) => typeof value === "string" ? curveTimestamp(value) : MISSING_VALUE }],
       { key: "vsSpotPct", header: "Vs Spot", align: "right" as const, format: (value: unknown) => curveBasisPercent(typeof value === "number" ? value : null, 2) },
-      { key: "daysToExpiry", header: "Days to Expiry", textHeader: "Days", align: "right" as const, format: (value: unknown) => typeof value === "number" ? value.toFixed(1) : "--" },
+      { key: "daysToExpiry", header: "Days to Expiry", textHeader: "Days", align: "right" as const, format: (value: unknown) => typeof value === "number" ? value.toFixed(1) : MISSING_VALUE },
       { key: "annualisedBasisPct", header: "Ann Basis", align: "right" as const, format: (value: unknown) => curveBasisPercent(typeof value === "number" ? value : null, 1) }] : [],
     // A month with no trade since the settlement it shows is dated by that settlement, never read as an old print:
     // the text says so, an export leaves the cell empty (settle_date dates it).
     { key: "asOf", header: "As Of UTC", shrink: false,
-      format: (value, row) => typeof row.settleShown === "string" ? "--" : typeof value === "string" ? curveTimestamp(value) : "--",
-      textFormat: (value, row) => typeof row.settleShown === "string" ? `settle ${row.settleShown}` : typeof value === "string" ? curveTimestamp(value) : "--" },
-    { key: "openInterest", header: "Open Int", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : "--" },
-    { key: "volume", header: "Volume", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : "--" },
-    { key: "percentile", header: "Pctl", align: "right", format: (value) => typeof value === "number" ? String(value) : "--" },
+      format: (value, row) => typeof row.settleShown === "string" ? MISSING_VALUE : typeof value === "string" ? curveTimestamp(value) : MISSING_VALUE,
+      textFormat: (value, row) => typeof row.settleShown === "string" ? `settle ${row.settleShown}` : typeof value === "string" ? curveTimestamp(value) : MISSING_VALUE },
+    { key: "openInterest", header: "Open Int", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE },
+    { key: "volume", header: "Volume", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE },
+    { key: "percentile", header: "Pctl", align: "right", format: (value) => typeof value === "number" ? String(value) : MISSING_VALUE },
   ];
 }
 
@@ -109,7 +109,7 @@ function spreadColumns(row: Record<string, unknown>, formats: Record<string, Hea
 
 /** The fields naming a contract, written in every section as the Contracts table writes it: CLZ26, never CLZ26.NYM. */
 const SYMBOL_FIELDS: ReadonlySet<string> = new Set(["symbol", "frontSymbol", "nextSymbol", "thinSymbol"]);
-const contractCodeFormat = (value: unknown) => typeof value === "string" && value ? curveContractCode(value) : "-";
+const contractCodeFormat = (value: unknown) => typeof value === "string" && value ? curveContractCode(value) : MISSING_VALUE;
 
 // `basis` says which prices the value subtracts: two last trades made together, or the settlements of the session in `asOf`.
 const FRONT_SPREAD_FIELDS = ["label", "frontSymbol", "nextSymbol", "value", "annualizedRollYield", "percentile", "rollPercentile",
@@ -118,10 +118,10 @@ const FRONT_SPREAD_FIELDS = ["label", "frontSymbol", "nextSymbol", "value", "ann
 const SKIPPED_FIELD = "skippedSymbols";
 const GHOST_FIELDS = ["symbol", "expiration", "price", "asOf"];
 /** The annualized roll yield reads as the percent it is (+32.36%); an export keeps the number. */
-const ROLL_YIELD_FORMAT = { annualizedRollYield: (value: unknown) => typeof value === "number" ? formatPercentRaw(value) : "--" };
+const ROLL_YIELD_FORMAT = { annualizedRollYield: (value: unknown) => typeof value === "number" ? formatPercentRaw(value) : MISSING_VALUE };
 /** A Treasury root's prices read in 32nds in every section, as its contracts do; an export keeps the number. */
 const thirtySecondsFormat = (root: string, key: string): Record<string, HeadlessPaneColumn["textFormat"]> => curveReadsThirtySeconds(root)
-  ? { [key]: (value: unknown) => typeof value === "number" ? curvePrice(value, root) : "--" } : {};
+  ? { [key]: (value: unknown) => typeof value === "number" ? curvePrice(value, root) : MISSING_VALUE } : {};
 
 /**
  * Spot against the front contract, both marks of the curve's settlement
@@ -130,9 +130,9 @@ const thirtySecondsFormat = (root: string, key: string): Record<string, Headless
 function spotPremiumEntries(premium: CurveSpotPremium, root: string): HeadlessPaneEntry[] {
   return [
     { key: "spot", label: premium.label, value: premium.close,
-      formatted: premium.close == null ? "--" : `${premium.close.toFixed(2)}${premium.date ? `, ${premium.date} close` : ""}` },
+      formatted: premium.close == null ? MISSING_VALUE : `${premium.close.toFixed(2)}${premium.date ? `, ${premium.date} close` : ""}` },
     { key: "frontPremium", label: "Front premium", value: premium.premium,
-      formatted: premium.premium == null ? "--"
+      formatted: premium.premium == null ? MISSING_VALUE
         : `${curveChangeText(premium.premium, root)}${premium.frontSymbol ? `, ${curveContractCode(premium.frontSymbol)} settle less spot` : ""}` },
   ];
 }

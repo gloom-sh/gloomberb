@@ -199,7 +199,7 @@ describe("paging below the live tape", () => {
 
   test("an expiry past this year carries its year", () => {
     const now = Date.UTC(2026, 10, 5);
-    expect(formatFlowExpiry("2026-12-18", now)).toBe("12/18");
-    expect(formatFlowExpiry("2027-06-17", now)).toBe("06/17/27");
+    expect(formatFlowExpiry("2026-12-18", now)).toBe("18 Dec");
+    expect(formatFlowExpiry("2027-06-17", now)).toBe("17 Jun '27");
   });
 });

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CotClass, CotClassSummary, CotContractPayload, CotFamily, CotHistoryPoint } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCotBoard, fetchCotContract } from "./client";
@@ -10,8 +11,8 @@ const camelClass = (id: CotClass) => id.replace(/-(\w)/g, (_match, letter: strin
 const rounded = (value: number | null, digits: number) => value == null ? null : Number(value.toFixed(digits));
 const count = (value: unknown) => cotInteger(typeof value === "number" ? value : null);
 const signed = (value: unknown) => cotInteger(typeof value === "number" ? value : null, true);
-const percent = (value: unknown) => typeof value === "number" ? `${value > 0 ? "+" : ""}${value.toFixed(1)}%` : "--";
-const rank = (value: unknown) => typeof value === "number" ? value.toFixed(0) : "--";
+const percent = (value: unknown) => typeof value === "number" ? `${value > 0 ? "+" : ""}${value.toFixed(1)}%` : MISSING_VALUE;
+const rank = (value: unknown) => typeof value === "number" ? value.toFixed(0) : MISSING_VALUE;
 
 /**
  * The report's release, by the CFTC's schedule, as Gloom Cloud states it (else

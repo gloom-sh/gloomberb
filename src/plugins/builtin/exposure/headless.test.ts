@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import type { ExposureExtensionObservation, ExposurePayload, ExposureRequest, ExposureScenario } from "../../../api-client/exposure";
@@ -93,7 +94,7 @@ test("the text report prints every section as the pane draws it within 100 colum
   // What cannot fit is cut after a whole word.
   expect(text).toMatch(/^AAPL +Drawn +265\.00M USD +2026-03-31 +\$1\.0 billion revolving line of…\n/m);
   expect(text).toMatch(/^AAPL +Consolidated leverage… +Uncomputable +2025-12-31 .*\n {2}Covenant boundary inclusivity is not established\n/m);
-  expect(line(/^NVDA +NVDA → 2317/)).toMatch(/Unknown +Unknown +-- +2026-01-25$/);
+  expect(line(/^NVDA +NVDA → 2317/)).toMatch(new RegExp(String.raw`Unknown +Unknown +${MISSING_VALUE} +2026-01-25$`));
   // Stress lines say how much of the book they could not see; concentrations name their kind and holding.
   expect(text).toMatch(/^NVDA +Revenue +5\.9% +-5\.9% +2026-01-25 +30\.0%\n {2}Unknown gross holding weight: 65\.0%\n/m);
   expect(line(/^Country +NVDA +United States/)).toMatch(/Revenue +20\.8% +2026-01-25 +30\.0%$/);
@@ -126,13 +127,13 @@ test("a one-holding preview prints the period's end date when it fits and leaves
   payload.portfolio.concentrations.find(row => row.label === "News Corp")!.label = "Undisclosed supplier (Vendor two)";
   const text = (await report(payload, "AAPL")).text();
 
-  expect(text).toMatch(/^AAPL +Revenue +167\.04B USD +FY2024 · Sep 28, 2024 +Americas · geographic segment$/m);
+  expect(text).toMatch(/^AAPL +Revenue +167\.04B USD +FY2024 · 28 Sep 2024 +Americas · geographic segment$/m);
   expect(text).toContain("Portfolio operating stress\nNo data.");
   expect(text).toMatch(/^Kind +Target +Basis +Gross exp\. % +Bound +Period$/m);
   expect(text).toMatch(/^Country +United States +Revenue +9\.1% +Partial +2025-09-27$/m);
   expect(text).toMatch(/^Country +Greater China +Revenue +3\.9% +2025-09-27$/m);
   // An anonymous counterparty leads with its filing's name; the Kind column already says supplier.
-  expect(text).toMatch(/^Supplier +Vendor two \(undisclosed\) +-- +Unknown +2026-06-30$/m);
+  expect(text).toMatch(new RegExp(String.raw`^Supplier +Vendor two \(undisclosed\) +${MISSING_VALUE} +Unknown +2026-06-30$`, "m"));
   // The preview is the standard Pro line; what the server says about the subset's weights is a note, never an error.
   const flat = text.replace(/\n(?! )/g, " ");
   expect(flat).toContain("Pro: Free shows the first holding, one relationship hop deep. Gloom Pro adds the other 4 holdings and paths up to four hops · gloom.sh/cloud");

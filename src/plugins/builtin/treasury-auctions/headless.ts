@@ -9,7 +9,7 @@ import {
 } from "./after";
 import { isoDateOption } from "../../../utils/calendar-date";
 import { LIKE_LIMIT, likeTarget, rankAuctionAnalogs, summarizeAnalogMoves, type AuctionAnalog } from "./like";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_START, fetchTreasuryAuctions, type AuctionHistoryWindow } from "./client";
 import { loadTreasuryAuctions, type TreasuryAuctionsResult } from "./cache";
 import { unansweredRefreshError } from "../../../data/saved-copies";
@@ -78,7 +78,7 @@ const lacksMetrics = (auction: TreasuryAuction) => !isPendingAuction(auction)
  * are not published yet.
  */
 const rateCell = (value: unknown, row: Record<string, unknown>) => {
-  const text = formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), pending(row) ? RESULTS_NOT_PUBLISHED : "-");
+  const text = formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), pending(row) ? RESULTS_NOT_PUBLISHED : MISSING_VALUE);
   const qualifier = value == null ? null : rateQualifier(row as unknown as TreasuryAuction);
   return qualifier ? `${text} ${qualifier}` : text;
 };
@@ -92,7 +92,7 @@ const LEAD_COLUMNS: HeadlessPaneColumn[] = [
     header: "Rate",
     align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => formatAuctionRate(
-      row as unknown as TreasuryAuction, value == null ? null : Number(value), pending(row) ? RESULTS_NOT_PUBLISHED : "-",
+      row as unknown as TreasuryAuction, value == null ? null : Number(value), pending(row) ? RESULTS_NOT_PUBLISHED : MISSING_VALUE,
     ),
     textFormat: rateCell,
   },
@@ -101,13 +101,13 @@ const LEAD_COLUMNS: HeadlessPaneColumn[] = [
 /** A bill's high discount rate, beside the investment rate its Rate is: the rate Treasury's announcement leads with. */
 const DISCOUNT_RATE_COLUMN: HeadlessPaneColumn = {
   key: "highDiscountRate", header: "Discount rate", align: "right" as const,
-  format: (value: unknown, row: Record<string, unknown>) => value == null ? pending(row) ? "" : "-" : `${Number(value).toFixed(3)}%`,
+  format: (value: unknown, row: Record<string, unknown>) => value == null ? pending(row) ? "" : MISSING_VALUE : `${Number(value).toFixed(3)}%`,
 };
 
 const STOP_OUT_COLUMN: HeadlessPaneColumn = {
   // Exports keep the name scripts read it by: the spread against the published average, or the median from November 1998.
   key: "stopOutVsAvgBp", header: "Stop-out vs avg (bp)", align: "right" as const,
-  format: (value: unknown, row: Record<string, unknown>) => value == null ? pending(row) ? "" : "-" : Number(value).toFixed(1),
+  format: (value: unknown, row: Record<string, unknown>) => value == null ? pending(row) ? "" : MISSING_VALUE : Number(value).toFixed(1),
 };
 const BTC_COLUMN: HeadlessPaneColumn = {
   key: "bidToCoverRatio", header: "B/C", align: "right" as const, format: (value: unknown) => value == null ? "" : Number(value).toFixed(2),
@@ -120,7 +120,7 @@ const RESULT_COLUMNS: HeadlessPaneColumn[] = [
   INDIRECT_COLUMN,
   { key: "directPercent", header: "Direct", align: "right" as const, format: formatPercent },
   { key: "dealerPercent", header: "Dealer", align: "right" as const, format: formatPercent },
-  { key: "size", header: "Size", align: "right" as const, format: (value: unknown) => value == null ? "-" : `$${formatCompact(Number(value))}` },
+  { key: "size", header: "Size", align: "right" as const, format: (value: unknown) => value == null ? MISSING_VALUE : `$${formatCompact(Number(value))}` },
   { key: "cusip", header: "CUSIP" },
 ];
 

@@ -7,6 +7,7 @@ import { tokenizeTickerText } from "../tickers/tokenizer";
 import type { InlineTickerCatalogEntry } from "../state/hooks/inline-tickers";
 import { colors } from "../theme/colors";
 import { displayWidth } from "../utils/format";
+import { wrapSegmentLines } from "../utils/text-wrap";
 import { useUiCapabilities } from "../ui";
 import { MARKDOWN_HEADING_RE, markdownListItem, parseInlineMarkdown, type MarkdownSegment } from "../utils/markdown";
 
@@ -99,6 +100,11 @@ type MarkdownBlock =
 
 /** One rendered line of a table, already padded to its column widths. */
 type TableLine = StyledSegment[];
+
+/** The half blocks a citation chip's square is drawn between in the terminal (`PaneLinkMarker`). */
+const CHIP_OPEN = "\u2590";
+const CHIP_CLOSE = "\u258c";
+const CHIP_ENDS = /[\u2590\u258c]/g;
 
 const TABLE_DELIMITER_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 const TABLE_GAP = 2;
@@ -536,6 +542,36 @@ function MarkdownLine({
   const fullText = parsed.segments.map((s) => s.text).join("");
   const tickerTokens = tokenizeTickerText(fullText);
   const hasTickers = tickerTokens.some((t) => t.kind === "ticker" && catalog[t.symbol]?.status !== "missing");
+
+  if (!hasTickers && !nativePaneChrome && lineWidth != null) {
+    // The terminal's own word wrap breaks after punctuation (`(0.` / `20.0)`), so
+    // the line is laid out here at its spaces, as the reader kit lays out prose;
+    // a list item's later lines hang under its text, as on the desktop.
+    const marker = parsed.segments[0];
+    const hang = parsed.heading || !marker || !/^([-*\u2022]|\d+\.) $/.test(marker.text) ? 0 : indent + displayWidth(marker.text);
+    // A chip is measured as drawn (`[ 3 ]` is `▐3▌`), so a line holding one never runs over.
+    const chips = linkChips && onOpenLink;
+    const asDrawn = (segments: readonly StyledSegment[]) => chips
+      ? segments.map((segment) => segment.link ? { ...segment, text: `${CHIP_OPEN}${segment.text.trim()}${CHIP_CLOSE}` } : segment)
+      : segments;
+    const lines = (hang > 0
+      ? wrapSegmentLines(asDrawn(parsed.segments.slice(1)), Math.max(1, lineWidth - hang))
+      : wrapSegmentLines([{ text: indentStr }, ...asDrawn(parsed.segments)], lineWidth)
+    ).map((line) => chips ? line.map((segment) => segment.link ? { ...segment, text: segment.text.replace(CHIP_ENDS, "") } : segment) : line);
+    return (
+      <Box flexDirection="column" width={lineWidth}>
+        {lines.map((line, lineIndex) => (
+          <Text key={lineIndex} fg={textColor}>
+            {hang > 0 ? (lineIndex === 0 ? indentStr : " ".repeat(hang)) : ""}
+            {hang > 0 && lineIndex === 0 ? <SegmentSpan segment={marker!} onOpenLink={onOpenLink} linkChips={linkChips} /> : null}
+            {line.map((segment, index) => (
+              <SegmentSpan key={index} segment={segment} onOpenLink={onOpenLink} linkChips={linkChips} />
+            ))}
+          </Text>
+        ))}
+      </Box>
+    );
+  }
 
   if (!hasTickers) {
     // Simple case: no tickers, render as styled text

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableStackView, DataTableView, KeyValueRow, QueryBar, usePagedRows, usePaneNoticeFooter, useQueryBarSearch, useTableLoadMore, type DataTableColumn, type PageRequest } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -191,7 +192,7 @@ function EtfOverlapDetail({ data, etf, file, overlap, loading, focused, width, m
   const period = data.latestForm?.periodOfReport;
   return <Box flexDirection="column" flexGrow={1}>
     <KeyValueRow label="13F" value={data.name} detail={period} />
-    <KeyValueRow label={`${etf.symbol} holdings`} value={file ? file.asOf.slice(0, 10) : "--"} detail={etf.ticker !== etf.symbol ? `${etf.ticker} file` : undefined} />
+    <KeyValueRow label={`${etf.symbol} holdings`} value={file ? file.asOf.slice(0, 10) : MISSING_VALUE} detail={etf.ticker !== etf.symbol ? `${etf.ticker} file` : undefined} />
     {overlap ? <KeyValueRow label="Overlap" value={formatWeightMaybe(overlap.overlap)} detail={`active share ${formatWeightMaybe(overlap.activeShare)}`} /> : null}
     <QueryBar width={width} filters={[{ id: "mine", kind: "toggle", label: "Mine", value: mineOnly, onChange: onMineOnly }]} />
     <DataTableView<ManagerEtfRow, DataTableColumn> focused={focused} columns={columns} items={rows} getItemKey={row => row.id}

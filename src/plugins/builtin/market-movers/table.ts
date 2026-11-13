@@ -3,13 +3,13 @@ import { withCompanyLogo } from "../../../components/company-logo";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { TextAttributes } from "../../../ui";
 import { colors, priceColor } from "../../../theme/colors";
-import { formatCompact, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatPercentRaw } from "../../../utils/format";
 import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import type { MarketMoverColumn, MarketMoverRow } from "./model";
 import { fiftyTwoWeekPositionPercent, formatMoverPrice, moverExtendedMove, moverReferencePrice } from "./model";
 
 export function formatVolRatio(ratio: number | null): string {
-  if (ratio == null || !Number.isFinite(ratio) || ratio < 0) return "—";
+  if (ratio == null || !Number.isFinite(ratio) || ratio < 0) return MISSING_VALUE;
   if (ratio >= 10) return `${Math.round(ratio)}x`;
   return `${ratio.toFixed(1)}x`;
 }
@@ -22,7 +22,7 @@ export function volRatioColor(ratio: number | null): string {
 
 function fiftyTwoWeekPosition(price: number | null, low: number | undefined, high: number | undefined): string {
   const pct = fiftyTwoWeekPositionPercent(price, low, high);
-  return pct == null ? "—" : `${Math.round(pct)}%`;
+  return pct == null ? MISSING_VALUE : `${Math.round(pct)}%`;
 }
 
 const EXTENDED_COLUMN_WIDTH = 9;
@@ -125,13 +125,13 @@ export function renderMarketMoverCell(
       };
     case "marketCap":
       return {
-        text: row.marketCap != null ? formatCompact(row.marketCap, { fixedDecimals: true }) : "—",
+        text: row.marketCap != null ? formatCompact(row.marketCap, { fixedDecimals: true }) : MISSING_VALUE,
         value: row.marketCap,
         color: colors.textDim,
       };
     case "floatShares":
       return {
-        text: row.floatShares != null ? formatCompact(row.floatShares, { fixedDecimals: true }) : "—",
+        text: row.floatShares != null ? formatCompact(row.floatShares, { fixedDecimals: true }) : MISSING_VALUE,
         value: row.floatShares ?? null,
         color: colors.textDim,
       };

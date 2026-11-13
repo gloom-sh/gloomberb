@@ -125,7 +125,7 @@ test("signed out, the groups and counts read, the one quiet line says Pro member
   expect(order.every((index) => index >= 0)).toBe(true);
   expect([...order].sort((a, b) => a - b)).toEqual(order);
   expect(lines.find((line) => line.includes("Screener on the phone"))).toMatch(/Screener on the phone in one line\.\s+12\b/);
-  expect(lines.find((line) => line.includes("Live scanner"))).toMatch(/40\s+Oct 25, 2026/);
+  expect(lines.find((line) => line.includes("Live scanner"))).toMatch(/40\s+25 Oct 2026/);
   expect(frame).toContain("Pro members vote");
   expect(frame).not.toMatch(/\[v\]/);
   expect(frame).not.toMatch(/upgrade/i);
@@ -324,7 +324,7 @@ test("ROADMAP opens on the roadmap; the Changelog tab lists the versions, and sw
   expect(lines(frame)[0]).toMatch(/Features\s+Changelog/);
   expect(lines(frame)[1]).toMatch(/DATE\b.*VERSION\b.*TITLE\s+UPDATES/);
   // One row for 0.19, its newest update's date and its first update's title.
-  expect(lines(frame).find((line) => line.includes("v0.19"))).toMatch(/Oct 29, 2026\s+v0\.19\s+Faster charts\s+2/);
+  expect(lines(frame).find((line) => line.includes("v0.19"))).toMatch(/29 Oct 2026\s+v0\.19\s+Faster charts\s+2/);
   expect(frame).not.toContain("nightly");
   expect(frame).not.toContain("Threads in chat");
   // The roadmap's vote hint belongs to its own view.

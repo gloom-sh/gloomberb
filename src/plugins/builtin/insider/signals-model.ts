@@ -10,7 +10,7 @@ import type {
   InsiderSignalsPayload,
 } from "../../../api-client/insider-signals";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { displayWidth, formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCompact } from "../../../utils/format";
 import type { SortComparableValue } from "../../../utils/sort-values";
 import { formatInsiderName } from "./display";
 import { MARKET_CAP_BAND_OPTIONS } from "../shared/market-cap-bands";
@@ -231,7 +231,7 @@ export function insiderSignalsFiltered(query: InsiderSignalsQuery): boolean {
 }
 
 /** What a cell shows without a fact: no history, no balance, or a book traded both ways. */
-export const INSIDER_SIGNAL_NONE = "--";
+export const INSIDER_SIGNAL_NONE = MISSING_VALUE;
 /**
  * After a stake counted on the net of an insider's buys and sales, drawn
  * muted: bought and sold. One cell in every monospace font; an arrow pair
@@ -453,7 +453,7 @@ export function formatSignalValue(value: number): string {
 
 /** A trade day as ISO, 2026-11-04, as the Filed column beside it: 11/4/26 reads as 11 April to a day-first reader. */
 export function formatSignalDay(day: string): string {
-  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : "--";
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : MISSING_VALUE;
 }
 
 export function insiderSignalsEmptyTitle(window: number, side: InsiderSignalSide = "buy", filtered = false): string {

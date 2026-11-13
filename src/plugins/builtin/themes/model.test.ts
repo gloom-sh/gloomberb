@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { THEME_PERIODS, type ThemeMember, type ThemeSummary } from "../../../api-client/themes";
 import { fitTableCellText, tableColumnWidth } from "../../../components/ui/table-layout";
@@ -26,7 +27,7 @@ test("formatting distinguishes zero, missing and partial coverage without negati
   expect(aggregateText({ value: 1.2, covered: 10, total: 10 })).toBe("+1.20%");
   // Partial coverage is spelled `9 of 10`: `9/10` beside a return reads as a fraction of it.
   expect(aggregateText({ value: 1.2, covered: 9, total: 10 })).toBe("+1.20% 9 of 10");
-  expect(aggregateText({ value: null, covered: 4, total: 10 })).toBe("-- 4 of 10");
+  expect(aggregateText({ value: null, covered: 4, total: 10 })).toBe(`${MISSING_VALUE} 4 of 10`);
   expect(aggregateText({ value: 0, covered: 10, total: 10 }, true)).toBe("0%");
 });
 

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, test } from "bun:test";
 import type { HiringBuildingBoard, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringPayload } from "../../../api-client/hiring";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -75,7 +76,7 @@ test("real app captures preserve missing velocity, rating provenance and ordinal
   // A detail reads in words: no revision, confidence, dash, raw timestamp or bare address.
   const evidence = model.sections.evidence.rows[0]!;
   expect(evidence.details!.map((entry) => entry.label)).not.toContain("Revision");
-  expect(evidence.details!.every((entry) => entry.value !== "--" && !/\d{4}-\d{2}-\d{2}T|^https?:/.test(entry.value))).toBe(true);
+  expect(evidence.details!.every((entry) => entry.value !== MISSING_VALUE && !/\d{4}-\d{2}-\d{2}T|^https?:/.test(entry.value))).toBe(true);
   expect(evidence.links?.every((link) => /^https?:/.test(link.url))).toBe(true);
   payload.apps[0]!.rating = 8;
   expect(() => validateAttention("apps", payload)).toThrow("unreadable");

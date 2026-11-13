@@ -16,7 +16,7 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { shortInterestPublicationSegments } from "./schedule";
 import { loadShortWatch } from "./watch-client";
@@ -56,8 +56,8 @@ const COLUMNS: WatchColumn[] = [
 const DEFAULT_SORT = { columnId: "setup" as ShortWatchSortId, direction: "desc" as SortDirection };
 const rowKey = (row: ShortWatchRow) => row.symbol;
 
-const day = (iso: string | null) => iso ? formatShortDate(`${iso}T00:00:00Z`, { year: false, utc: true, fallback: "--" }) : "--";
-const signed = (value: number | null, digits = 1) => value == null ? "--" : `${value > 0 ? "+" : ""}${formatNumber(value, digits)}%`;
+const day = (iso: string | null) => iso ? formatShortDate(`${iso}T00:00:00Z`, { year: false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
+const signed = (value: number | null, digits = 1) => value == null ? MISSING_VALUE : `${value > 0 ? "+" : ""}${formatNumber(value, digits)}%`;
 const signColor = (value: number | null) => value == null || value === 0 ? colors.textDim : value > 0 ? colors.positive : colors.negative;
 
 export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "width" | "height" | "focused">) {
@@ -120,12 +120,12 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
     switch (column.id) {
       case "symbol": return { text: row.symbol, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "setup": return { text: setupLabel(row.setup), color: row.setup === "crowded-rising" ? colors.warning : colors.textDim };
-      case "percentFloat": return { text: row.percentFloat == null ? "--" : `${formatNumber(row.percentFloat, 1)}%`,
+      case "percentFloat": return { text: row.percentFloat == null ? MISSING_VALUE : `${formatNumber(row.percentFloat, 1)}%`,
         color: row.setup ? colors.textBright : colors.text, value: row.percentFloat ?? undefined };
-      case "daysToCover": return { text: row.daysToCover == null ? "--" : formatNumber(row.daysToCover, 1), value: row.daysToCover ?? undefined };
+      case "daysToCover": return { text: row.daysToCover == null ? MISSING_VALUE : formatNumber(row.daysToCover, 1), value: row.daysToCover ?? undefined };
       case "changePercent": return { text: signed(row.changePercent), value: row.changePercent ?? undefined };
       case "return1M": return { text: signed(row.return1M), color: signColor(row.return1M), value: row.return1M ?? undefined };
-      case "sharesShort": return { text: row.sharesShort == null ? "--" : formatCompact(row.sharesShort), color: colors.textDim,
+      case "sharesShort": return { text: row.sharesShort == null ? MISSING_VALUE : formatCompact(row.sharesShort), color: colors.textDim,
         value: row.sharesShort ?? undefined };
       case "settlementDate": return { text: day(row.settlementDate), color: colors.textDim, value: row.settlementDate ?? undefined };
       case "closeDate": return { text: day(row.closeDate), color: colors.textDim, value: row.closeDate ?? undefined };

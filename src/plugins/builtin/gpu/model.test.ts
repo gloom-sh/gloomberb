@@ -259,5 +259,5 @@ test("backfilled observed changes stay on their evidence date while published no
   const published = gpuEvent({ origin: "published", observedAt: "2026-10-03T00:00:00.000Z", effectiveAt: "2026-10-01T00:00:00.000Z" });
   expect(gpuEventDate(observed)).toBe(observed.observedAt);
   expect(gpuEventDate(published)).toBe(published.effectiveAt!);
-  expect(gpuEventSections([observed, published]).map(section => section.label)).toEqual(["Thu, Oct 1, 2026", "Fri, Mar 1, 2024"]);
+  expect(gpuEventSections([observed, published]).map(section => section.label)).toEqual(["Thu 1 Oct 2026", "Fri 1 Mar 2024"]);
 });

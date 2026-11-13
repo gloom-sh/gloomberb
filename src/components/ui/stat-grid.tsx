@@ -2,7 +2,7 @@ import { t } from "../../i18n";
 import type { ThemeColors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
-import { clipToDisplayWidth, displayWidth, padTo, truncateToDisplayWidth } from "../../utils/format";
+import { clipToDisplayWidth, displayWidth, padTo } from "../../utils/format";
 import { SplitBar, type SplitBarPart } from "./split-bar";
 
 export type StatTone = "neutral" | "positive" | "negative" | "warning" | "accent" | "muted";
@@ -156,6 +156,27 @@ function clipWords(text: string, room: number): string {
 }
 
 /**
+ * A one-line cell's detail in `room` cells: whole, else its leading ` · `
+ * parts that fit, else its leading words behind a `…` where they keep at
+ * least half of it; otherwise none, as a figure cut to `0...` or a stub such
+ * as `to…` says nothing (review, 12 Nov 2026: OMON's `pctl 4...`, `25d...`).
+ */
+function oneLineDetail(text: string, room: number): string {
+  if (displayWidth(text) <= room) return text;
+  const parts = text.split(" · ");
+  for (let count = parts.length - 1; count > 0; count--) {
+    const kept = parts.slice(0, count).join(" · ");
+    if (displayWidth(kept) <= room) return kept;
+  }
+  const words = parts[0]!.split(" ");
+  for (let count = words.length - 1; count > 0; count--) {
+    const kept = words.slice(0, count).join(" ");
+    if (displayWidth(kept) + 1 <= room) return displayWidth(kept) * 2 >= displayWidth(text) ? `${kept}…` : "";
+  }
+  return "";
+}
+
+/**
  * `text` cut to `width` without cutting a date: its ` · ` parts that have none
  * give way first, from the last, cut short at a word and then to a `…` that
  * says something is left out; then the words before a part's date
@@ -182,7 +203,7 @@ function cutKeepingDates(text: string, width: number): string {
     const room = roomFor(index) - displayWidth(date) - 1;
     parts[index] = room >= 4 ? `${clipWords(part.slice(0, at).trimEnd(), room)} ${date}` : date;
   }
-  return truncateToDisplayWidth(joined(), width);
+  return clipToDisplayWidth(joined(), width);
 }
 
 /**
@@ -205,7 +226,7 @@ function twoLines(text: string, width: number): string[] {
     const words = parts[0]!.split(" ");
     let count = 0;
     while (count < words.length && displayWidth(words.slice(0, count + 1).join(" ")) <= width) count++;
-    first = count ? words.slice(0, count).join(" ") : truncateToDisplayWidth(words[0]!, width);
+    first = count ? words.slice(0, count).join(" ") : clipToDisplayWidth(words[0]!, width);
     rest = [words.slice(Math.max(1, count)).join(" "), ...parts.slice(1)].filter(Boolean).join(" · ");
   }
   return rest ? [first, cutKeepingDates(rest, width)] : [first];
@@ -309,7 +330,7 @@ export function statGridWithin(items: StatItem[], width: number, maxLines: numbe
 
 /** A label in its column, cut and padded by terminal cells, so a wide character keeps the values aligned. */
 function labelText(label: string, labelWidth: number): string {
-  return padTo(truncateToDisplayWidth(label, labelWidth - 1), labelWidth);
+  return padTo(clipToDisplayWidth(label, labelWidth - 1), labelWidth);
 }
 
 /**
@@ -390,7 +411,7 @@ export function StatGrid({ items, width, columns: columnsProp, maxLines }: StatG
             const width = item.wide ? innerWidth : cellWidth;
             const labelWidth = cellLabelWidth(width, labels, widestValue);
             const valueWidth = Math.max(1, width - labelWidth);
-            const value = nativePaneChrome ? item.value : truncateToDisplayWidth(item.value, valueWidth);
+            const value = nativePaneChrome ? item.value : clipToDisplayWidth(item.value, valueWidth);
             // The bar shows only whole enough to read; the value never gives way to it.
             const barRoom = valueWidth - displayWidth(value) - 1;
             const barCells = !item.split ? 0 : nativePaneChrome ? SPLIT_BAR_CELLS : splitBarCells(barRoom);
@@ -402,7 +423,7 @@ export function StatGrid({ items, width, columns: columnsProp, maxLines }: StatG
               : detailWidth);
             const detail = !shownDetail
               ? ""
-              : nativePaneChrome ? shownDetail : detailWidth > 1 ? truncateToDisplayWidth(shownDetail, detailWidth) : "";
+              : nativePaneChrome ? shownDetail : oneLineDetail(shownDetail, detailWidth);
             return (
               <Box
                 key={item.id ?? `${rowIndex}:${index}`}

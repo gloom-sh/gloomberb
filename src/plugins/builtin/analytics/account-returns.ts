@@ -1,6 +1,7 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import { colors } from "../../../theme/colors";
 import type { BrokerPortfolioPerformance } from "../../../types/trading";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import { formatReturn } from "./display";
 import { alignedAssetReturns, computeDatedBeta, computeSharpeRatio, type DatedReturn } from "../../../portfolio/return-metrics";
@@ -65,9 +66,7 @@ export function maxDrawdown(returns: DatedReturn[]): number | null {
 }
 
 function compactDate(value: string): string {
-  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "2-digit", month: "short", year: "2-digit", timeZone: "UTC",
-  }).replaceAll(" ", "");
+  return formatShortDate(value, { day: "2-digit", year: "2-digit", utc: true }).replaceAll(" ", "");
 }
 
 function sampleWindow(sample: DatedReturn[]): string | undefined {
@@ -98,12 +97,12 @@ export function buildAccountRiskRows({
     {
       id: "beta",
       label: "Beta (SPY)",
-      value: beta == null ? "—" : formatNumber(beta, 2),
+      value: beta == null ? MISSING_VALUE : formatNumber(beta, 2),
       detail: benchmarkIntegrity
         ? "SPY benchmark: inconsistent OHLC history"
         : beta == null ? "Insufficient overlap with SPY" : `Account · ${sampleWindow(betaSample)}`,
     },
-    { id: "volatility", label: "Volatility", value: volatility == null ? "—" : formatReturn(volatility).replace("+", ""), detail },
-    { id: "max-drawdown", label: "Max drawdown", value: drawdown == null ? "—" : drawdown === 0 ? "0.00%" : formatReturn(drawdown), detail },
+    { id: "volatility", label: "Volatility", value: volatility == null ? MISSING_VALUE : formatReturn(volatility).replace("+", ""), detail },
+    { id: "max-drawdown", label: "Max drawdown", value: drawdown == null ? MISSING_VALUE : drawdown === 0 ? "0.00%" : formatReturn(drawdown), detail },
   ].map((row) => ({ ...row, color: colors.textMuted }));
 }

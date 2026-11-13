@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import { getThemeColors } from "../../../theme/colors";
 import { DEFAULT_THEME, getThemeIds } from "../../../theme/themes";
@@ -69,7 +70,7 @@ test("phases read as one label, a study with none as a dash", () => {
   expect(trialPhaseLabel(["PHASE3", "PHASE2"], true)).toBe("Ph 2/3");
   expect(trialPhaseLabel(["EARLY_PHASE1"])).toBe("Early phase 1");
   expect(trialPhaseLabel(["NA"])).toBe("N/A");
-  expect(trialPhaseLabel([])).toBe("--");
+  expect(trialPhaseLabel([])).toBe(MISSING_VALUE);
 });
 
 test("filters keep only the registry's codes, whatever a saved layout or a share carries", () => {

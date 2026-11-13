@@ -29,6 +29,24 @@ test("a detail's shorter forms keep the band's columns, and the cell shows the l
 
 const lines = (frame: string) => frame.split("\n").map((line) => line.trimEnd());
 
+/** Review, 12 Nov 2026: OMON's band read `pctl 4...`, `5.66 USD  ...` and `25d...`. */
+test("a one-line cell shows its detail whole, its leading parts or most of its words, else none, never a stub", async () => {
+  const items: StatItem[] = [
+    { label: "IVR", value: "20", detail: "pctl 45 · 11-11" },
+    { label: "Straddle", value: "5.66 USD", detail: "0.75%" },
+    { label: "Slope", value: "-5.16 pp", detail: "to Nov 16 '26" },
+    { label: "Range", value: "12", detail: "the prior close" },
+  ];
+  await tui.render(<StatGrid items={items} width={100} columns={4} />);
+  const frame = await tui.waitForFrameToContain("Straddle");
+  expect(frame).not.toContain("...");
+  expect(frame).toContain("20  pctl 45 ");
+  expect(frame).toMatch(/5\.66 USD +Slope/);
+  expect(frame).toMatch(/-5\.16 pp +Range/);
+  expect(frame).toContain("12  the prior…");
+});
+
+
 test("a whole-row figure too narrow for its line takes a second for its detail, cut where it has no date, and counts its rows", async () => {
   // DDIS at 45 columns: four figures, then the newer 10-Q's row across the grid.
   const debt: StatItem[] = [

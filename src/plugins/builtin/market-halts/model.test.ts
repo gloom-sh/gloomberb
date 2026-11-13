@@ -220,7 +220,7 @@ describe("halt table", () => {
     const overnight = records.find((row) => row.symbol === "OVER")!;
     const sameDay = records.find((row) => row.symbol === "ADXN")!;
 
-    expect(formatEtResumption(overnight.tradeResumeAt, overnight.haltedAt)).toBe("08/20 09:30");
+    expect(formatEtResumption(overnight.tradeResumeAt, overnight.haltedAt)).toBe("20 Aug 09:30");
     expect(formatEtResumption(sameDay.tradeResumeAt, sameDay.haltedAt)).toBe("15:46:44");
   });
 });

@@ -2,7 +2,7 @@ import type { HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/hea
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import { parseHedgeAmount } from "../options-scenario/hedge";
-import { convertCurrency, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, convertCurrency, formatNumber } from "../../../utils/format";
 import { fxRateCurrencies } from "../../../utils/currency-units";
 import { buildBinaryOutcomes, solveKellyFraction } from "./model";
 import {
@@ -173,12 +173,12 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
           title: bankroll == null ? "Sizing" : `Sizing on ${formatNumber(bankroll, 0)} ${baseCurrency}`,
           columns: [
             { key: "kelly", header: "Kelly" },
-            { key: "fraction", header: "% of bankroll", align: "right", format: (value) => typeof value === "number" ? formatPct(value, 2) : "--" },
+            { key: "fraction", header: "% of bankroll", align: "right", format: (value) => typeof value === "number" ? formatPct(value, 2) : MISSING_VALUE },
             ...(bankroll == null ? [] : [
               { key: "position", header: `Position ${baseCurrency}`, align: "right" as const,
-                format: (value: unknown) => typeof value === "number" ? formatNumber(value, 0) : "--" },
+                format: (value: unknown) => typeof value === "number" ? formatNumber(value, 0) : MISSING_VALUE },
               ...(unitPrice == null ? [] : [{ key: "shares", header: units, align: "right" as const,
-                format: (value: unknown) => typeof value === "number" ? formatNumber(value, coin ? 2 : 0) : "--" }]),
+                format: (value: unknown) => typeof value === "number" ? formatNumber(value, coin ? 2 : 0) : MISSING_VALUE }]),
             ]),
           ],
           rows,

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { createDefaultConfig } from "../../../types/config";
@@ -131,7 +132,7 @@ test("the report and its compact form state what the basket covers and why each 
     expect(full.notes).toContain("TWD1 (3.8% of the book) is excluded from the risk estimate: foreign holdings: daily FX closes unavailable.");
     expect(full.notes?.[0]).toBe("TRY cash (4.1% of the book) is excluded from the risk estimate: cash is outside the equity basket; its USD value moves with TRY.");
     // Every risk row is a number, not a dash.
-    expect(full.sections.find((section) => section.title === "risk")!.rows!.every((row) => row.value !== "--")).toBe(true);
+    expect(full.sections.find((section) => section.title === "risk")!.rows!.every((row) => row.value !== MISSING_VALUE)).toBe(true);
     // The tail losses in money name their method and what the basket they are taken on is of the book; the other rows do not.
     const riskRows = full.sections.find((section) => section.title === "risk")!.rows!;
     const line = "basket 365,500 USD = 75% of book; left out: TRY cash 4%, EUR2 4%, 8 more 17%";
@@ -258,8 +259,8 @@ test("a stress report whose episode closes did not load is not complete and says
     const report = await portfolioRiskHeadless.load(args, context);
     const rows = report.sections[0]!.rows!;
     // The regression scenarios have values; the episodes have none, and the report says why rather than only in each row.
-    expect(rows.find((row) => row.label === "Index -10%")!.value).not.toBe("--");
-    expect(rows.find((row) => row.label === "Covid crash 2020")!.value).toBe("--");
+    expect(rows.find((row) => row.label === "Index -10%")!.value).not.toBe(MISSING_VALUE);
+    expect(rows.find((row) => row.label === "Covid crash 2020")!.value).toBe(MISSING_VALUE);
     expect(report.errors).toContain("Historical episodes: SPY daily closes did not load: UPSTREAM_RATE_LIMIT.");
     expect(report.complete).toBe(false);
   } finally {

@@ -1,7 +1,7 @@
 import type { DataTableColumn, StatItem } from "../../../components";
 import { spanDigits } from "../../../components/chart-table";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 import { compareSortValues } from "../../../utils/sort-values";
 import { shortInterestPublished } from "./schedule";
 import type { ShortInterestRecord } from "./types";
@@ -53,18 +53,18 @@ function formatDate(date: Date): string {
 }
 
 export function formatMaybeCompact(value: number | null): string {
-  return value == null ? "-" : formatCompact(value);
+  return value == null ? MISSING_VALUE : formatCompact(value);
 }
 
 /** A table column's figure: its decimals kept, so 12.00M lines up under 10.73M. */
-const columnFigure = (value: number | null) => value == null ? "-" : formatCompact(value, { fixedDecimals: true });
+const columnFigure = (value: number | null) => value == null ? MISSING_VALUE : formatCompact(value, { fixedDecimals: true });
 
 function formatRatio(value: number | null): string {
-  return value == null ? "-" : formatNumber(value, 2);
+  return value == null ? MISSING_VALUE : formatNumber(value, 2);
 }
 
 function formatPercent(value: number | null): string {
-  return value == null ? "-" : `${formatNumber(value, 2)}%`;
+  return value == null ? MISSING_VALUE : `${formatNumber(value, 2)}%`;
 }
 
 const finiteNumber = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value);
@@ -157,8 +157,8 @@ export function buildRows(records: ShortInterestRecord[]): ShortInterestRow[] {
     key: `${record.settlementDate.toISOString()}:${index}`,
     record,
     settlementDate: formatDate(record.settlementDate),
-    publishedDate: shortInterestPublished(formatDate(record.settlementDate)) ?? "-",
-    floatAsOf: record.shortPercentFloat == null ? "-" : record.floatAsOf || (record.floatCurrent ? "current" : "-"),
+    publishedDate: shortInterestPublished(formatDate(record.settlementDate)) ?? MISSING_VALUE,
+    floatAsOf: record.shortPercentFloat == null ? MISSING_VALUE : record.floatAsOf || (record.floatCurrent ? "current" : MISSING_VALUE),
     sharesShort: columnFigure(record.sharesShort),
     shortRatio: formatRatio(record.shortRatio),
     averageDailyVolume: columnFigure(record.averageDailyVolume),
@@ -171,10 +171,10 @@ function sortValue(row: ShortInterestRow, columnId: ShortInterestColumnId): stri
     case "settlementDate":
       return row.record.settlementDate.getTime();
     case "publishedDate":
-      return row.publishedDate === "-" ? null : row.publishedDate;
+      return row.publishedDate === MISSING_VALUE ? null : row.publishedDate;
     case "floatAsOf":
       // `current` is today's float, so it sorts after every dated one.
-      return row.floatAsOf === "-" ? null : row.floatAsOf;
+      return row.floatAsOf === MISSING_VALUE ? null : row.floatAsOf;
     case "sharesShort":
       return row.record.sharesShort;
     case "shortRatio":

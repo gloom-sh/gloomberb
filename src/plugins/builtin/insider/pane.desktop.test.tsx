@@ -1,4 +1,5 @@
 /** @jsxImportSource react */
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -162,7 +163,7 @@ async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & obj
   const container = await dom.render(<RankingPane />);
   await until(() => !!container.textContent?.includes("Contoso Energy Corp"));
   expect(container.textContent).toContain("2nd");
-  expect(container.textContent).toContain("as of Oct 14, 2026");
+  expect(container.textContent).toContain("as of 14 Oct 2026");
 
   // The stack's title, ticker and company, shows only while a company is open.
   const opened = () => !!container.textContent?.includes(" \u00b7 ");
@@ -411,7 +412,7 @@ async function checkColumns() {
   const column = (label: string) => headers().findIndex((header) => header.textContent?.toUpperCase().includes(label));
   const text = (ticker: string, label: string) => cells(ticker)[column(label)]!.textContent;
   expect(["ROLE", "NTH", "VS USUAL", "STAKE"].map((label) => text("NWBI", label))).toEqual(["Director +2", "2nd", "3.1x", "+58%"]);
-  expect(["ROLE", "NTH", "VS USUAL", "STAKE"].map((label) => text("CTSO", label))).toEqual(["Director", "1st", "--", "NEW"]);
+  expect(["ROLE", "NTH", "VS USUAL", "STAKE"].map((label) => text("CTSO", label))).toEqual(["Director", "1st", MISSING_VALUE, "NEW"]);
   // The figure and its mark are two runs: the mark in the muted tone, never the figure's.
   const both = cells("WWIM")[column("STAKE")]!;
   const runs = [...both.querySelectorAll("span")].filter((span) => span.children.length === 0 && span.textContent?.trim());

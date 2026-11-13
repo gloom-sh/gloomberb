@@ -208,7 +208,7 @@ test("fn CN says how many routine notices a folded row stands for, and exports k
   const loadArgs = args("0005:HKEX", { sentiment: "any", minImportance: 0, limit: 50 });
   const result = await definition.load(loadArgs, context);
   const text = renderHeadlessPaneText(definition, result, loadArgs, "CN");
-  expect(text).toContain("Transaction in own shares (8 notices since Oct 30)");
+  expect(text).toContain("Transaction in own shares (8 notices since 30 Oct)");
   expect(text.match(/notices since/g)).toHaveLength(1);
   const json = serializeHeadlessPaneResult(definition, result) as { items: Array<Record<string, unknown>> };
   // The export's headline is the story's; the count is in fields of its own.

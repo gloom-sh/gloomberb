@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   DataTableStackView,
@@ -57,7 +58,7 @@ const NO_BONDS: CorporateBond[] = [];
 const SEARCH_DEBOUNCE_MS = 350;
 
 function dash(value: string | null): string {
-  return value ?? "—";
+  return value ?? MISSING_VALUE;
 }
 
 /** What a bond's detail is called: its issuer, coupon and maturity, as a bond is named. */
@@ -175,7 +176,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
     switch (column.id) {
       case "issuer":
         return {
-          text: row.issuerName || "—",
+          text: row.issuerName || MISSING_VALUE,
           color: colors.textBright,
           attributes: TextAttributes.BOLD,
         };

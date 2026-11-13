@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../utils/format";
 import { apiClient } from "../api-client";
 import type { FundBondFacts } from "../api-client/fund-facts";
 import type { HeadlessPaneEntry, HeadlessPaneOptionDef } from "../types/headless";
@@ -368,7 +369,7 @@ export function taxEquivalentLines(analysis: TaxEquivalentAnalysis): TaxEquivale
     { key: "taxRate", label: "Tax rate", text: `${formatRate(combined)} (${stateText})`, value: combined, unit: "%", export: exportPercent(formatRate(combined), null) },
   ];
   if (analysis.notApplicable || !analysis.basis || analysis.taxEquivalentYield == null) {
-    const reason = analysis.notApplicable ?? "—";
+    const reason = analysis.notApplicable ?? MISSING_VALUE;
     lines.push({ key: "taxEquivalentYield", label: "Tax-equivalent yield", text: reason, value: null, export: { formatted: reason, asOf: null } });
     return lines;
   }
@@ -394,7 +395,7 @@ export function taxEquivalentLines(analysis: TaxEquivalentAnalysis): TaxEquivale
       value: Math.round(ratio.value * 10_000) / 10_000,
       export: exportPercent(ratioText, ratioAsOf),
     }
-    : { key: "muniTreasuryRatio", label: "Muni/Treasury ratio", text: analysis.ratioNote ?? "—", value: null, export: { formatted: analysis.ratioNote ?? "—", asOf: null } });
+    : { key: "muniTreasuryRatio", label: "Muni/Treasury ratio", text: analysis.ratioNote ?? MISSING_VALUE, value: null, export: { formatted: analysis.ratioNote ?? "—", asOf: null } });
   return lines;
 }
 

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { StatItem } from "../../../components";
 import type { HeadlessPaneEntry } from "../../../types/headless";
 import { formatHedgePrice } from "./hedge";
@@ -89,8 +90,8 @@ function distanceText(collar: Collar, price: number): string {
 
 /** Why there is no floor or cap: no shares, or not the shares the contracts cover. */
 function uncoveredText(collar: Collar): string {
-  if (collar.shares === 0) return "-- (no shares held: the options alone)";
-  return `-- (${collar.shares.toLocaleString("en-US")} shares held; the contracts cover ${collar.coveredShares.toLocaleString("en-US")})`;
+  if (collar.shares === 0) return `${MISSING_VALUE} (no shares held: the options alone)`;
+  return `${MISSING_VALUE} (${collar.shares.toLocaleString("en-US")} shares held; the contracts cover ${collar.coveredShares.toLocaleString("en-US")})`;
 }
 
 /** `342.80 per share (345 put - 2.20 debit), 10.4% below spot 382.71`. */
@@ -133,9 +134,9 @@ export function collarStatItems(collar: Collar): StatItem[] {
   return [
     { id: "collar-premium", label: "Net premium", value: formatHedgePrice(Math.abs(collar.netPremium)),
       detail: collar.netPremium === 0 ? "zero cost" : `${premiumWord(collar)} per share` },
-    { id: "collar-floor", label: "Floor", value: collar.floor == null ? "--" : formatHedgePrice(collar.floor),
+    { id: "collar-floor", label: "Floor", value: collar.floor == null ? MISSING_VALUE : formatHedgePrice(collar.floor),
       detail: collar.floor == null ? uncovered : shortDistance(collar, collar.floor) },
-    { id: "collar-cap", label: "Cap", value: collar.cap == null ? "--" : formatHedgePrice(collar.cap),
+    { id: "collar-cap", label: "Cap", value: collar.cap == null ? MISSING_VALUE : formatHedgePrice(collar.cap),
       detail: collar.cap == null ? uncovered : shortDistance(collar, collar.cap) },
     { id: "collar-shares", label: "Shares", value: collar.shares.toLocaleString("en-US"),
       detail: collar.shares === collar.coveredShares ? "covered" : `of ${collar.coveredShares.toLocaleString("en-US")}` },

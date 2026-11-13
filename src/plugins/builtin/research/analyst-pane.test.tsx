@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { act } from "react";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
@@ -117,7 +118,7 @@ test("renders each rating's price target and only dashes the rows without one", 
   const noTargetRow = frame.split("\n").find((line) => line.includes("No Target"));
   expect(noTargetRow).toBeDefined();
   expect(noTargetRow).not.toMatch(/\$\d/);
-  expect(noTargetRow).toContain("-");
+  expect(noTargetRow).toContain(MISSING_VALUE);
 });
 
 /**

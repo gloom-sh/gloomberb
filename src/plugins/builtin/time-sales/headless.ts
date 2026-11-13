@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import { listedAbroad, subMinuteDataMessage } from "../../../cli/known-gaps";
 import type { TapeRange, TapeSnapshot } from "../../../api-client/tape";
@@ -8,8 +9,8 @@ import { inTapeRange, normalizeTapeClock, parseTapeClock, servedWindow, sessionD
 
 type Format = NonNullable<HeadlessPaneColumn["format"]>;
 const fixedPrice = (digits: number): Format => (value) => tapePrice(typeof value === "number" ? value : null, digits);
-const whole: Format = (value) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(0) : "--";
-const bps: Format = (value) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "--";
+const whole: Format = (value) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(0) : MISSING_VALUE;
+const bps: Format = (value) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : MISSING_VALUE;
 
 /** Every row key in order, with the pane's rounding where the report would otherwise print raw floats. */
 function formattedColumns(rows: readonly HeadlessPaneRow[], formats: Record<string, Format>): HeadlessPaneColumn[] {

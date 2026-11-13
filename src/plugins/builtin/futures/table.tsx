@@ -2,7 +2,7 @@ import type { DataTableCell, DataTableColumn } from "../../../components";
 import { colors, shownPriceColor } from "../../../theme/colors";
 import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
-import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { minorUnitSign } from "../../../utils/currency-units";
 import { boardHeadlineQuote, isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
 import { futuresBoardCode, tickDecimals, type FuturesContract } from "../../../market-data/futures-board";
@@ -215,7 +215,7 @@ function currencyMarks(currency: string | undefined): { prefix: string; suffix: 
  * 1.3544 pound contract beside it, and with its own "+0.0002" change.
  */
 function formatContractPrice(quote: Quote, contract: FuturesContract): string {
-  if (!Number.isFinite(quote.price)) return "—";
+  if (!Number.isFinite(quote.price)) return MISSING_VALUE;
   const text = formatNumber(quote.price, priceDecimals(quote.previousClose ?? quote.price, contract));
   const { prefix, suffix } = currencyMarks(quote.currency);
   return `${prefix}${text}${suffix}`;
@@ -231,7 +231,7 @@ function changeDecimals(quote: Quote, contract: FuturesContract): number {
 }
 
 function formatContractChange(quote: Quote, contract: FuturesContract): string {
-  if (!Number.isFinite(quote.change)) return "—";
+  if (!Number.isFinite(quote.change)) return MISSING_VALUE;
   const text = formatNumber(Math.abs(quote.change), changeDecimals(quote, contract));
   const { prefix, suffix } = currencyMarks(quote.currency);
   return `${quote.change >= 0 ? "+" : "-"}${prefix}${text}${suffix}`;
@@ -262,12 +262,12 @@ export function renderFuturesCell(
       const terms = options?.terms?.get(contract.symbol);
       const unit = futuresUnitLabel(contract, terms?.terms);
       if (unit) return { text: unit, color: colors.textDim };
-      return terms?.loading ? { text: "…", color: colors.textDim } : { text: "—", color: colors.textDim };
+      return terms?.loading ? { text: "…", color: colors.textDim } : { text: MISSING_VALUE, color: colors.textDim };
     }
     case "volume":
       if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };
       if (!quote || quote.volume == null || !Number.isFinite(quote.volume)) {
-        return { text: "—", color: colors.textDim };
+        return { text: MISSING_VALUE, color: colors.textDim };
       }
       return { text: formatCompact(quote.volume, { fixedDecimals: true }), value: quote.volume, color: colors.textDim };
     case "return1w":
@@ -279,7 +279,7 @@ export function renderFuturesCell(
       const returns = options?.returns?.get(contract.symbol);
       if (isBoardRowLoading(state) || returns?.loading) return { text: "…", color: colors.textDim };
       const value = returns?.values[FUTURES_RETURN_COLUMNS[column.id]!];
-      if (value == null || !Number.isFinite(value)) return { text: "—", color: colors.textDim };
+      if (value == null || !Number.isFinite(value)) return { text: MISSING_VALUE, color: colors.textDim };
       return { text: formatPercentRaw(value), value, color: shownPriceColor(value, 2) };
     }
     case "return1wFrom":
@@ -289,12 +289,12 @@ export function renderFuturesCell(
     case "return6mFrom":
     case "return1yFrom": {
       const base = options?.returns?.get(contract.symbol)?.bases?.[FUTURES_RETURN_BASE_COLUMNS[column.id]];
-      return { text: base ?? "—", color: colors.textDim };
+      return { text: base ?? MISSING_VALUE, color: colors.textDim };
     }
     case "prevClose":
       if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };
       if (!quote || quote.previousClose == null || !Number.isFinite(quote.previousClose)) {
-        return { text: "—", color: colors.textDim };
+        return { text: MISSING_VALUE, color: colors.textDim };
       }
       return {
         text: formatContractPrice({ ...quote, price: quote.previousClose }, contract),

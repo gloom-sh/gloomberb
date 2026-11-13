@@ -1,4 +1,4 @@
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -76,6 +76,6 @@ export function sigmaVsTrend(fit: TrendFit, value: number, date: string): number
 
 /** A distance from trend in standard deviations: "+1.2σ", "-0.4σ", "--" when there is none. */
 export function formatSigma(sigma: number | null): string {
-  if (sigma == null || !Number.isFinite(sigma)) return "--";
+  if (sigma == null || !Number.isFinite(sigma)) return MISSING_VALUE;
   return `${sigma > 0 ? "+" : ""}${formatNumber(sigma, 1)}σ`;
 }

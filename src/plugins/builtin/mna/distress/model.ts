@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../../utils/format";
 import type { CloudFilingEventPayload } from "../../../../api-client";
 import type {
   DesignationDateBasis,
@@ -26,7 +27,7 @@ export function distressView(value: unknown): DistressViewId {
   return DISTRESS_VIEWS.some((view) => view.value === value) ? value as DistressViewId : DEFAULT_DISTRESS_VIEW;
 }
 
-export const MISSING = "--";
+export const MISSING = MISSING_VALUE;
 
 /** Every C0 and C1 control except the line break: source text is drawn as plain text, never as markup or escapes. */
 const CONTROL_CHARACTERS = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/g;

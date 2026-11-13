@@ -1,5 +1,5 @@
 import type { HeadlessBundleResult, HeadlessPaneColumn } from "../../../types/headless";
-import { formatPercent } from "../../../utils/format";
+import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import type { DividendData } from "./client";
 import { formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
@@ -203,7 +203,7 @@ const ratio = (value: unknown) => formatDividendYield(typeof value === "number" 
 const growth = (key: "growth1Y" | "growth3Y", notMeaningful = NOT_MEANINGFUL_TEXT.toLowerCase()) => (value: unknown, row: Record<string, unknown>) =>
   typeof value !== "number" && row[`${key}NotMeaningful`] === true ? notMeaningful
     : typeof value !== "number" && typeof row[`${key}Payments`] === "string" ? "n/a" : formatPercent(typeof value === "number" ? value : undefined);
-const day = (value: unknown) => typeof value === "string" && value ? value : "—";
+const day = (value: unknown) => typeof value === "string" && value ? value : MISSING_VALUE;
 
 const RANKING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker", shrink: false },
@@ -233,7 +233,7 @@ const SEC_YIELD_COLUMNS: HeadlessPaneColumn[] = [
     description: "The date the sponsor gives its SEC yield as of." },
 ];
 
-const years = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(2)} yrs` : "—";
+const years = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(2)} yrs` : MISSING_VALUE;
 
 /** Shown after the SEC yield with `--tax-rate`: the rest of a bond fund's sponsor figures, then what the tax rate makes of its yield. */
 const TAX_COLUMNS: HeadlessPaneColumn[] = [
@@ -245,7 +245,7 @@ const TAX_COLUMNS: HeadlessPaneColumn[] = [
     description: "A muni fund's tax-equivalent yield at --tax-rate: its SEC yield (else its distribution yield) / (1 - the rate). Blank for a taxable fund." },
   // To one decimal, as single-ticker DVD and DES draw it.
   { key: "muniTreasuryRatio", header: "Muni/Tsy", align: "right",
-    format: (value) => typeof value === "number" && Number.isFinite(value) ? formatMuniTreasuryRatio(value) : "—",
+    format: (value) => typeof value === "number" && Number.isFinite(value) ? formatMuniTreasuryRatio(value) : MISSING_VALUE,
     description: "A muni fund's yield over the Treasury par yield at the tenor nearest its duration (treasuryTenor)." },
   { key: "treasuryTenor", header: "Tenor", format: day, shrink: false, stackPriority: 4,
     description: "The Treasury tenor the muni/Treasury ratio divides by." },

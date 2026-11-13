@@ -6,7 +6,7 @@ import type {
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { fredSourceLabel } from "../../../sources/gloomberb-cloud/fred-series";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import type { StatDef } from "./defs";
 import {
   createStatSeriesLoader,
@@ -38,14 +38,14 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
     {
       label: "Previous",
       value: view.previous?.value ?? null,
-      formatted: view.previous ? `${format(view.previous.value)}${text && view.previousReading ? ` (${view.previousReading})` : ""}` : "-",
+      formatted: view.previous ? `${format(view.previous.value)}${text && view.previousReading ? ` (${view.previousReading})` : ""}` : MISSING_VALUE,
       ...earlierDating(view, view.previous),
     },
     ...!text && view.previous ? [{ label: "Previous period", value: view.previous.date, formatted: view.previousReading ?? view.previous.date, ...earlierDating(view, view.previous) }] : [],
     {
       label: "1Y ago",
       value: view.yearAgo?.value ?? null,
-      formatted: view.yearAgo ? format(view.yearAgo.value) : "-",
+      formatted: view.yearAgo ? format(view.yearAgo.value) : MISSING_VALUE,
       ...earlierDating(view, view.yearAgo),
     },
     { label: "Mean", value: view.mean, formatted: format(view.mean) },
@@ -176,7 +176,7 @@ export function projectStatsHeadlessBundle(
         latest: view.latest.value,
         formattedLatest: reportFormat(view.stat)(view.latest.value),
         previous: view.previous?.value ?? null,
-        formattedPrevious: view.previous ? reportFormat(view.stat)(view.previous.value) : "-",
+        formattedPrevious: view.previous ? reportFormat(view.stat)(view.previous.value) : MISSING_VALUE,
         previousPeriod: view.previous?.date ?? null,
         // A spread's values stay in percentage points; these carry the figures its text shows.
         ...(view.stat.basisPoints ? {

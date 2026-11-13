@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../../../utils/datetime-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../../../api-client";
 import type { PortfolioFuturesTerms } from "../../../../portfolio/futures-positions";
@@ -23,7 +24,7 @@ export interface PanePeriodPnl {
 
 const NO_ROWS: ReadonlyMap<string, PeriodPnlRow> = new Map();
 
-const dayMonth = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const dayMonth = (day: string) => formatShortDate(day, { year: false, utc: true });
 
 /** The day every priced row shares at one end, else the window's own date. */
 function sharedDay(result: LoadedPeriodPnl, end: "start" | "end", fallback: string): string {

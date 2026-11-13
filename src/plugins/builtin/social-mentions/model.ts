@@ -1,6 +1,6 @@
 import type { SocialMentionPost, SocialMentionsPayload } from "../../../api-client/social-mentions";
 import type { DataTableColumn } from "../../../components";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 
 export interface SocialDayRow {
   day: string;
@@ -17,9 +17,9 @@ export interface SocialDayRow {
 }
 
 export const socialCount = (value: number | null | undefined) =>
-  value == null ? "--" : Math.abs(value) >= 10_000 ? formatCompact(value) : Math.round(value).toLocaleString("en-US");
-export const socialRatio = (value: number | null) => value == null ? "--" : `${value >= 10 ? value.toFixed(0) : value.toFixed(1)}x`;
-export const socialStance = (value: number | null) => value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+  value == null ? MISSING_VALUE : Math.abs(value) >= 10_000 ? formatCompact(value) : Math.round(value).toLocaleString("en-US");
+export const socialRatio = (value: number | null) => value == null ? MISSING_VALUE : `${value >= 10 ? value.toFixed(0) : value.toFixed(1)}x`;
+export const socialStance = (value: number | null) => value == null ? MISSING_VALUE : `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
 export const stanceWord = (value: number | null) => value == null ? undefined : value >= .15 ? "bullish" : value <= -.15 ? "bearish" : "mixed";
 
 export function socialDayRows(data: SocialMentionsPayload): SocialDayRow[] {

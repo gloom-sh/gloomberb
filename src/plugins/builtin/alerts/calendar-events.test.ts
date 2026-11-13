@@ -152,10 +152,10 @@ test("CPI's and the FOMC's own calendar rows in the US are the CPI and FOMC aler
 test("the reminder counts to the release time, or in days to an all-day event; the print gives the figures", () => {
   const pmi = calendar.find((event) => event.event === "NBS Manufacturing PMI")!;
   const target = { kind: "release" as const, event: "NBS Manufacturing PMI", country: "CN" };
-  expect(releaseReminderMessage(target, pmi, Date.parse("2026-10-30T04:30:00Z"))).toBe("NBS Manufacturing PMI (CN) in 21 hours, Sat, Oct 31, 01:30 UTC");
+  expect(releaseReminderMessage(target, pmi, Date.parse("2026-10-30T04:30:00Z"))).toBe("NBS Manufacturing PMI (CN) in 21 hours, Sat 31 Oct, 01:30 UTC");
   const plenum = calendar.find((event) => event.event.includes("Plenum"))!;
   expect(releaseReminderMessage({ kind: "release", event: plenum.event, country: "CN" }, plenum, Date.parse("2026-10-25T09:00:00Z")))
-    .toBe("Communist Party Fifth Plenum (CN) tomorrow, Mon, Oct 26, all day");
+    .toBe("Communist Party Fifth Plenum (CN) tomorrow, Mon 26 Oct, all day");
   expect(releasePrintMessage(target, { ...pmi, actual: "50.3", forecast: "50.0" })).toBe("NBS Manufacturing PMI (CN) 50.3 vs 50.0 expected, prior 50.1");
   // CPI and FOMC name the calendar row their figures come from.
   expect(releasePrintMessage({ kind: "macro", event: "cpi" }, row("2026-11-10T13:30:00.000Z", "US", "high", "Inflation Rate YoY", { actual: "3.1%", forecast: "3.0%", prior: "2.9%" })))

@@ -1,36 +1,36 @@
 import type { ShortDateOptions } from "../../../utils/datetime-format";
-import { formatCompact, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatPercentRaw } from "../../../utils/format";
 import type { HoldingAction } from "./types";
 
 export function formatMoneyCompact(value: number | null | undefined): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   return value < 0 ? `-$${formatCompact(-value, { fixedDecimals: true })}` : `$${formatCompact(value, { fixedDecimals: true })}`;
 }
 
 export function formatShares(value: number | null | undefined): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   return formatCompact(value, { fixedDecimals: true });
 }
 
 export function formatPercentMaybe(value: number | null | undefined): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   const sign = value > 0 ? "+" : "";
   return `${sign}${(value * 100).toFixed(Math.abs(value) >= 0.1 ? 1 : 2)}%`;
 }
 
 /** Portfolio weights are shares of a whole, so they carry no sign. */
 export function formatWeightMaybe(value: number | null | undefined): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   return `${(value * 100).toFixed(Math.abs(value) >= 0.1 ? 1 : 2)}%`;
 }
 
 export function formatRawPercentMaybe(value: number | null | undefined): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   return formatPercentRaw(value);
 }
 
 /** Filing dates are "YYYY-MM-DD" calendar days, shown as "Jan 5". */
-export const FILING_DAY_FORMAT: ShortDateOptions = { year: false, utc: true, fallback: "--" };
+export const FILING_DAY_FORMAT: ShortDateOptions = { year: false, utc: true, fallback: MISSING_VALUE };
 
 export function actionLabel(action: HoldingAction): string {
   switch (action) {
@@ -45,7 +45,7 @@ export function actionLabel(action: HoldingAction): string {
     case "held":
       return "Held";
     case "unknown":
-      return "--";
+      return MISSING_VALUE;
   }
 }
 
@@ -55,7 +55,7 @@ export function holdingActionLabel(row: { action: HoldingAction; cusipChange?: {
 }
 
 export function formatChangeShares(value: number | null | undefined): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   if (value === 0) return "0";
   return `${value > 0 ? "+" : ""}${formatCompact(value)}`;
 }

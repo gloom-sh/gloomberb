@@ -28,7 +28,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useDialog, useDialogState } from "../../../ui/dialog";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { formatCompact, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatPercentRaw } from "../../../utils/format";
 import { logFailure } from "../../../utils/log-failure";
 import { usePluginAppActions, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { usePluginRenderContext } from "../../runtime/context";
@@ -138,7 +138,7 @@ function noteText(note: LiveScanRowNote | null): string {
 }
 
 function numberCell(value: number | null, format: (value: number) => string, color?: string): DataTableCell {
-  return value == null ? { text: "--", color: colors.textDim } : { text: format(value), value, ...(color ? { color } : {}) };
+  return value == null ? { text: MISSING_VALUE, color: colors.textDim } : { text: format(value), value, ...(color ? { color } : {}) };
 }
 
 const signColor = (value: number | null) => (value == null ? undefined : priceColor(Math.abs(value) < 0.005 ? 0 : value, colors));
@@ -436,7 +436,7 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
         ? `${payload.matched.toLocaleString("en-US")} symbols match; the ${payload.matches.length} strongest are listed. Add a condition or raise a floor to narrow the scan.`
         : null,
       wire.skipped.length
-        ? `${wire.skipped.length} watchlist ${wire.skipped.length === 1 ? "row is" : "rows are"} not a US stock and ${wire.skipped.length === 1 ? "is" : "are"} left out: ${wire.skipped.slice(0, 8).join(", ")}${wire.skipped.length > 8 ? ", ..." : ""}`
+        ? `${wire.skipped.length} watchlist ${wire.skipped.length === 1 ? "row is" : "rows are"} not a US stock and ${wire.skipped.length === 1 ? "is" : "are"} left out: ${wire.skipped.slice(0, 8).join(", ")}${wire.skipped.length > 8 ? ", \u2026" : ""}`
         : null,
       runnable ? wire.problem : null,
       feed.error && payload ? feed.error : null,
@@ -465,13 +465,13 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
       const tone = condition.kind === "new_high" ? colors.positive
         : condition.kind === "new_low" ? colors.negative
           : signColor(match.vwapPercent);
-      return value == null ? { text: "--", color: colors.textDim } : { text: formatScanTime(value), value: new Date(value).toISOString(), ...(tone ? { color: tone } : {}) };
+      return value == null ? { text: MISSING_VALUE, color: colors.textDim } : { text: formatScanTime(value), value: new Date(value).toISOString(), ...(tone ? { color: tone } : {}) };
     }
     switch (column.id) {
       case "symbol":
         return { text: match.symbol, attributes: TextAttributes.BOLD };
       case "name":
-        return withCompanyLogo({ text: match.name ?? "--" }, { symbol: match.symbol, name: match.name ?? undefined }, logos);
+        return withCompanyLogo({ text: match.name ?? MISSING_VALUE }, { symbol: match.symbol, name: match.name ?? undefined }, logos);
       case "price":
         return { text: formatHiloPrice(match.price), value: match.price };
       case "change":

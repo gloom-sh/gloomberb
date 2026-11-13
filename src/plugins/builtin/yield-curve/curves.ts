@@ -7,7 +7,7 @@ import { yieldSpreads, type YieldLookbackCurves } from "./chart";
 import { completeYieldCurve, loadHistoricalYieldCurve, yieldCurveDate } from "./history";
 import { DATE_OPTION_FORMATS, dateOptionHint, readCalendarDate } from "../../../utils/calendar-date";
 import { formatBasisPoints } from "../../../utils/basis-points";
-import { formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { isYieldObservationDate, loadYieldCurve, type YieldPoint } from "./treasury-data";
 
 export type CurveId = CloudCurveId;
@@ -181,8 +181,8 @@ export function curveSpreadFigures(data: CurveData | null, lookbacks: YieldLookb
  */
 export function curveSpreadText(figure: CurveSpreadFigure): { value: string; detail: string } {
   return {
-    value: figure.value == null ? "--" : formatBasisPoints(figure.value),
-    detail: [`${figure.change1d == null ? "--" : formatBasisPoints(figure.change1d)} 1D`,
+    value: figure.value == null ? MISSING_VALUE : formatBasisPoints(figure.value),
+    detail: [`${figure.change1d == null ? MISSING_VALUE : formatBasisPoints(figure.change1d)} 1D`,
       ...(figure.percentile1y == null ? [] : [formatPercentileRank(figure.percentile1y, "1Y")])].join(" · "),
   };
 }

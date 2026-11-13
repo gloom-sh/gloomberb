@@ -11,7 +11,7 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { ClippedText } from "../../../components/ui/display";
-import { truncateToDisplayWidth } from "../../../utils/format";
+import { MISSING_VALUE, truncateToDisplayWidth } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useConnectionHealth, usePluginPaneState } from "../../runtime";
@@ -55,7 +55,7 @@ function statusColor(status: ConnectionHealthStatus): string {
 }
 
 function formatLatency(latencyMs: number | null): string {
-  if (latencyMs == null) return "-";
+  if (latencyMs == null) return MISSING_VALUE;
   return latencyMs < 1000 ? `${Math.round(latencyMs)}ms` : `${(latencyMs / 1000).toFixed(1)}s`;
 }
 
@@ -86,7 +86,7 @@ function ConnectionDetail({ source, width, now }: { source: ConnectionHealthStat
           <KeyValueRow labelWidth={16} emphasis={false} label="Transition" value={formatRelativeAge(source.lastTransitionAt, now)} color={colors.textMuted} />
         ) : null}
         <KeyValueRow labelWidth={16} emphasis={false} label="Last request" value={source.lastRequestAt ? formatRelativeAge(source.lastRequestAt, now) : "never"} color={colors.textMuted} />
-        <KeyValueRow labelWidth={16} emphasis={false} label="Operation" value={source.lastOperation ?? "-"} color={colors.textDim} />
+        <KeyValueRow labelWidth={16} emphasis={false} label="Operation" value={source.lastOperation ?? MISSING_VALUE} color={colors.textDim} />
         <KeyValueRow labelWidth={16} emphasis={false} label="Latency" value={formatLatency(source.lastLatencyMs)} color={colors.textMuted} />
         {source.currentDetail ? (
           <KeyValueRow labelWidth={16} emphasis={false} label="Detail" value={desktop ? source.currentDetail : truncateToDisplayWidth(source.currentDetail, Math.max(8, lineWidth - 16))} color={source.status === "error" ? colors.negative : colors.textDim} />
@@ -202,9 +202,9 @@ export function ConnectionsPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((source: ConnectionHealthState, column: ConnectionColumn): DataTableCell => {
     if (column.id === "service") return { text: source.name, color: colors.text };
     if (column.id === "status") return { text: statusLabel(source.status), color: statusColor(source.status) };
-    if (column.id === "request") return { text: source.lastOperation ?? "-", color: colors.textDim };
+    if (column.id === "request") return { text: source.lastOperation ?? MISSING_VALUE, color: colors.textDim };
     if (column.id === "latency") return { text: formatLatency(source.lastLatencyMs), color: source.status === "error" ? colors.negative : colors.textMuted };
-    return { text: source.lastRequestAt ? formatRelativeAge(source.lastRequestAt, now) : "-", color: colors.textMuted };
+    return { text: source.lastRequestAt ? formatRelativeAge(source.lastRequestAt, now) : MISSING_VALUE, color: colors.textMuted };
   }, [now]);
 
   return (

@@ -1,5 +1,5 @@
 import type { DataTableColumn } from "../../../components";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 
 export const TREASURY_DAILY_PANE_ID = "treasury-daily";
 
@@ -100,7 +100,7 @@ export const DEBT_COLUMNS: DebtColumn[] = [
 
 /** Two decimals with thousands separators, as every money table writes a large figure: `2,594.63`. */
 function scaled(value: unknown, divisor: number): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "--";
+  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
   const rounded = Number((value / divisor).toFixed(2));
   return formatNumber(rounded === 0 ? 0 : rounded, 2);
 }

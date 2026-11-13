@@ -1,3 +1,4 @@
+import { formatShortDate } from "../utils/datetime-format";
 import { normalizeSearchText } from "./search/ranking";
 
 /**
@@ -47,7 +48,7 @@ const RENAMED_LISTINGS: readonly RenamedListing[] = [
 
 /** "5 Jun 2026". */
 function conversionDay(date: string): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return formatShortDate(date, { utc: true });
 }
 
 /** `AXIA3.SA`: the new listing as `quote` takes it. */

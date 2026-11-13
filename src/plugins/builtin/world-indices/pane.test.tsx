@@ -125,7 +125,7 @@ test.each([80, 120])("saved index selection prunes unavailable counts and source
   }
   await act(async () => { await tui.render(<SelectionHarness />, { width, height: 24 }); });
   await settle();
-  const formatTime = (value: number) => new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const formatTime = (value: number) => new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   expect(tui.frame()).toContain("1 unavailable");
   expect(tui.frame()).toContain(formatTime(times["^GSPC"]));
   await act(async () => selectSymbols(["^FTSE"]));

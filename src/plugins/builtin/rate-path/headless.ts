@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { RateMeeting, RatePathPayload } from "../../../api-client/rates";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRatePath } from "./client";
@@ -5,10 +6,10 @@ import { meetingMoves, moveOddsText, movesPriced, movesText, rateText } from "./
 import { finiteOrNull } from "../../../utils/guards";
 
 const rate = (value: unknown) => rateText(finiteOrNull(value));
-const pctl = (value: unknown) => finiteOrNull(value)?.toFixed(0) ?? "--";
+const pctl = (value: unknown) => finiteOrNull(value)?.toFixed(0) ?? MISSING_VALUE;
 const bps = (value: unknown) => {
   const bp = finiteOrNull(value);
-  return bp == null ? "--" : `${bp > 0 ? "+" : ""}${bp.toFixed(1)}bp`;
+  return bp == null ? MISSING_VALUE : `${bp > 0 ? "+" : ""}${bp.toFixed(1)}bp`;
 };
 /** What a text report calls each current policy rate; JSON keeps the keys. */
 const POLICY_LABELS: Record<string, string> = {
@@ -17,11 +18,11 @@ const POLICY_LABELS: Record<string, string> = {
   targetUpper: "Target range upper",
 };
 const policyLabel = (value: unknown) => POLICY_LABELS[String(value)] ?? String(value);
-const yesNo = (value: unknown) => value === true ? "yes" : value === false ? "no" : "--";
-const timestamp = (value: unknown) => typeof value === "string" ? value.replace("T", " ").slice(0, 16) : "--";
+const yesNo = (value: unknown) => value === true ? "yes" : value === false ? "no" : MISSING_VALUE;
+const timestamp = (value: unknown) => typeof value === "string" ? value.replace("T", " ").slice(0, 16) : MISSING_VALUE;
 const probabilities = (value: unknown) => {
   const outcomes = Array.isArray(value) ? value as RateMeeting["probabilities"] : [];
-  return outcomes.length === 0 ? "--"
+  return outcomes.length === 0 ? MISSING_VALUE
     : outcomes.map((outcome) => `${outcome.targetMidpoint.toFixed(3)}% ${(outcome.probability * 100).toFixed(0)}%`).join(" / ");
 };
 
@@ -30,7 +31,7 @@ const STALE_COLUMN: HeadlessPaneColumn = { key: "stale", header: "Data stale", s
 // then moves the month under each row.
 const contractColumns: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Symbol", shrink: false }, { key: "month", header: "Month", shrink: false, stackPriority: 1 },
-  { key: "price", header: "Price", align: "right", format: (value) => finiteOrNull(value)?.toFixed(3) ?? "--" },
+  { key: "price", header: "Price", align: "right", format: (value) => finiteOrNull(value)?.toFixed(3) ?? MISSING_VALUE },
   { key: "impliedRate", header: "Implied rate", align: "right", format: rate },
   { key: "percentile", header: "Pctl 1Y", align: "right", stackPriority: 4, stackRows: 0, format: pctl },
   { key: "samples", header: "Samples", align: "right", stackPriority: 6, stackRows: 0 },
@@ -88,7 +89,7 @@ export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "moves", header: "Moves", align: "right", format: (value) => movesText(finiteOrNull(value)) },
           { key: "moveOdds", header: "P(move)", align: "right", format: (value) => moveOddsText(finiteOrNull(value)) },
           { key: "impliedRate", header: "Implied rate", align: "right", stackPriority: 3, stackRows: 0, format: rate },
-          { key: "targetMidpoint", header: "Target midpoint", align: "right", stackPriority: 6, stackRows: 0, format: (value) => finiteOrNull(value)?.toFixed(3) ?? "--" },
+          { key: "targetMidpoint", header: "Target midpoint", align: "right", stackPriority: 6, stackRows: 0, format: (value) => finiteOrNull(value)?.toFixed(3) ?? MISSING_VALUE },
           { key: "changeBps", header: "Change", align: "right", format: bps },
           { key: "percentile", header: "Pctl 1Y", align: "right", stackPriority: 7, stackRows: 0, format: pctl },
           { key: "samples", header: "Samples", align: "right", stackPriority: 8, stackRows: 0 },

@@ -89,7 +89,7 @@ function buildColumns(width: number, dated: boolean, ticker: boolean): DataTable
   // Prints from earlier days carry their date ("09/22 15:04"), so the time
   // column widens for them; an expiry past this year carries its year
   // ("06/16/27"). One name's pane names it in its title, not a column.
-  const fixed = { time: dated ? 11 : 8, ticker: ticker ? 7 : 0, type: 8, strike: 8, exp: 8, side: 5, size: 7, prem: 7, volOi: 6 };
+  const fixed = { time: dated ? 11 : 8, ticker: ticker ? 7 : 0, type: 8, strike: 8, exp: 10, side: 5, size: 7, prem: 7, volOi: 6 };
   const total = Object.values(fixed).reduce((sum, value) => sum + value, 0);
   // Table chrome is one gap per column, the table's extra gutter where
   // right-aligned EXP meets left-aligned SIDE, two cells of padding, and the scrollbar.

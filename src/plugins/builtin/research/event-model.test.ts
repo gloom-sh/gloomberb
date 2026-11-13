@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import type { AnalystResearchData } from "../../../types/financials";
 import { buildEventRows, eventSourceNotice, formatEventMetric, sourceErrorText, type EventFinancials } from "./event-model";
@@ -18,7 +19,7 @@ test("pending RIVN earnings show consensus without borrowing prior-quarter actua
   const [row] = buildEventRows({ symbol: "RIVN", currency: "USD", dividends: [], splits: [],
     earnings: [{ date: "2026-11-03", dateType: "announcement", epsEstimate: -0.73, currency: "USD", time: "AMC" }],
   }, null, { quarterlyStatements: [{ date: "2026-06-30", currency: "USD", eps: -0.63, totalRevenue: 1_658_000_000 }] }, "USD");
-  expect(row).toMatchObject({ date: "2026-11-03", period: "-", reportTime: "AMC", detail: "Pending, AMC", qEps: -0.73, epsCurrency: "USD" });
+  expect(row).toMatchObject({ date: "2026-11-03", period: MISSING_VALUE, reportTime: "AMC", detail: "Pending, AMC", qEps: -0.73, epsCurrency: "USD" });
   expect(row?.qRevenue).toBeUndefined();
   expect(row?.revenueCurrency).toBeUndefined();
 });
@@ -203,7 +204,7 @@ test("an earnings row's period is its fiscal quarter, never the time of day; a r
   expect(rows.find((row) => row.date === "2027-01-14"))
     .toMatchObject({ period: "Dec 2026", reportTime: "Pre Market", detail: "confirmed, Pre Market, 17 analysts" });
   expect(rows.find((row) => row.date === "2026-10-13")).toMatchObject({ period: "Sep 2026", reportTime: "Pre Market" });
-  expect(rows.find((row) => row.date === "2017-07-14")).toMatchObject({ period: "-", reportTime: "After Hours" });
+  expect(rows.find((row) => row.date === "2017-07-14")).toMatchObject({ period: MISSING_VALUE, reportTime: "After Hours" });
   expect(rows.find((row) => row.date === "2017-07-14")?.detail).not.toContain("After Hours");
 });
 
