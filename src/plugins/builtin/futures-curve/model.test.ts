@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } from "../../../api-client/futures-curve";
@@ -216,7 +217,7 @@ test("each contract's move since the look-back curves, with missing legs left em
   expect(curveChangeText(5, "CL")).toBe("+5.00");
   expect(curveChangeText(-2.5, "CL")).toBe("-2.50");
   expect(curveChangeText(0.001, "CL")).toBe("0.00");
-  expect(curveChangeText(null, "CL")).toBe("--");
+  expect(curveChangeText(null, "CL")).toBe(MISSING_VALUE);
   // The change columns sort like any other, with gaps last.
   const rows = [first, { ...first, symbol: "CLZ26.NYM", price: null }, { ...first, symbol: "CLF27.NYM" }];
   const moves = new Map([["CLX26.NYM", { "1W": 5, "1M": null }], ["CLZ26.NYM", { "1W": null, "1M": null }], ["CLF27.NYM", { "1W": -1, "1M": null }]]);
@@ -312,7 +313,7 @@ describe("basis against spot", () => {
     expect(curveBasisPercent(0.4213, 2)).toBe("+0.42%");
     expect(curveBasisPercent(-0.4213, 2)).toBe("-0.42%");
     expect(curveBasisPercent(-0.001, 2)).toBe("0.00%");
-    expect(curveBasisPercent(null, 1)).toBe("--");
+    expect(curveBasisPercent(null, 1)).toBe(MISSING_VALUE);
     const spot = curveSpot("BTC-USD", btc, SPOT_AT);
     expect(curveSpotLabel(spot, "BTC", SPOT_AT)).toBe("spot BTC-USD 67,250.10 · 07:25 UTC");
     // A quote from an earlier UTC day carries its date.

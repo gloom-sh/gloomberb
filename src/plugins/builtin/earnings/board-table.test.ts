@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import type { EarningsCalendarReport, EarningsHistoryPayload } from "../../../api-client/earnings";
 import { colors } from "../../../theme/colors";
@@ -39,13 +40,13 @@ describe("EVTS rows", () => {
   });
 
   test("EPS ACT, EPS SURP and BASIS show -- with nothing to show, as ERN does", () => {
-    for (const id of ["epsActual", "epsSurprise", "basis"] as const) expect(cell(LADR, id)).toEqual({ text: "--", color: colors.textDim });
+    for (const id of ["epsActual", "epsSurprise", "basis"] as const) expect(cell(LADR, id)).toEqual({ text: MISSING_VALUE, color: colors.textDim });
   });
 
   test("MOVE is the move on a report out today, beside the implied move", () => {
     expect(cell(TRV, "move", { move: () => 0.0123 })).toEqual({ text: "+1.2%", color: colors.positive });
     expect(cell(TRV, "move", { move: () => "loading" })).toEqual({ text: "…", color: colors.textDim });
-    expect(cell(LADR, "move")).toEqual({ text: "--", color: colors.textDim });
+    expect(cell(LADR, "move")).toEqual({ text: MISSING_VALUE, color: colors.textDim });
     const ids = boardColumns(2000).map((entry) => entry.id);
     expect(ids.slice(ids.indexOf("implied"), ids.indexOf("implied") + 3)).toEqual(["implied", "move", "average"]);
   });
@@ -56,11 +57,11 @@ describe("EVTS rows", () => {
     // The move on the report stays beside the implied move and its average.
     expect(narrow).toEqual(expect.arrayContaining(["implied", "move", "average"]));
     expect(cell(TRV, "when", { statusShown: false })).toEqual({ text: "BMO ✓", color: colors.textDim });
-    expect(cell(HDB, "when", { statusShown: false })).toEqual({ text: "--", color: colors.textMuted });
+    expect(cell(HDB, "when", { statusShown: false })).toEqual({ text: MISSING_VALUE, color: colors.textMuted });
     expect(cell(LADR, "when", { statusShown: false })).toEqual({ text: "BMO", color: colors.textDim });
     // With STATUS on screen WHEN is the time alone.
     expect(cell(TRV, "when")).toEqual({ text: "BMO", color: colors.textDim });
-    expect(cell(HDB, "when")).toEqual({ text: "--", color: colors.textDim });
+    expect(cell(HDB, "when")).toEqual({ text: MISSING_VALUE, color: colors.textDim });
   });
 });
 
@@ -118,7 +119,7 @@ describe("EVTS with listings abroad", () => {
     expect(renderBoardCell(row(TENCENT), ccy, context)).toEqual({ text: "CNY", color: colors.textDim });
     expect(renderBoardCell(row(LADR), ccy, context)).toEqual({ text: "USD", color: colors.textDim });
     expect(cell(TENCENT, "cap")).toEqual({ text: "459.65B", color: colors.textDim });
-    expect(cell(TENCENT, "when")).toEqual({ text: "--", color: colors.textDim });
+    expect(cell(TENCENT, "when")).toEqual({ text: MISSING_VALUE, color: colors.textDim });
   });
 
   test("TICKER fits the longest listing abroad's key on the board, a US board's stays as it was", () => {
@@ -208,7 +209,7 @@ describe("ERN rows", () => {
     expect(renderHistoryCell(rows[0]!, move, () => 0.017)).toEqual({ text: "+1.7%", color: colors.positive });
     expect(renderHistoryCell(rows[0]!, move, () => "loading")).toEqual({ text: "…", color: colors.textDim });
     // The ratio waits for the settled move.
-    expect(renderHistoryCell(rows[0]!, ratio, () => 0.017)).toEqual({ text: "--", color: colors.textDim });
+    expect(renderHistoryCell(rows[0]!, ratio, () => 0.017)).toEqual({ text: MISSING_VALUE, color: colors.textDim });
     // A settled move is the row's own, whatever the quote says.
     const settled = { ...rows[0]!, move: -0.021 };
     expect(renderHistoryCell(settled, move, () => 0.017)).toEqual({ text: "-2.1%", color: colors.negative });

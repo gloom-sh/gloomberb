@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import type { CdxBoardIndex, CreditIndexQuote } from "../../../api-client/credit-boards";
 import { boardPublisher, CDX_MAX_DAYS, fetchCdxBoard, fetchSovrBoard, loadCurrencyMoves } from "./client";
@@ -17,7 +18,7 @@ import {
   sovrRows,
 } from "./model";
 
-const percentile = (value: unknown) => value == null ? "--" : Number(value).toFixed(0);
+const percentile = (value: unknown) => value == null ? MISSING_VALUE : Number(value).toFixed(0);
 /** A 1Y rank as the board draws it, a whole number, so exports do not carry 8.23293172691. */
 const rank = (value: number | null) => value == null ? null : Math.round(value);
 /** The series a row is of, as `history` and the data catalog name it: `cdx:hy`, `sovereign-cds:br`. */

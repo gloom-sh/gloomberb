@@ -335,8 +335,9 @@ function HeaderCommandPrompt({
         </Box>
       ) : (
         <>
-          <Text fg={mutedColor}>{placeholder}</Text>
-          {shortcut ? <Text fg={mutedColor}>{`  ${shortcut}`}</Text> : null}
+          {/* The terminal's placeholder role: faint, as every field's (the OpenTUI host's input). */}
+          <Text fg={mutedColor} attributes={TextAttributes.DIM}>{placeholder}</Text>
+          {shortcut ? <Text fg={mutedColor} attributes={TextAttributes.DIM}>{`  ${shortcut}`}</Text> : null}
           <Box flexGrow={1} minWidth={0} />
         </>
       )}

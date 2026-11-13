@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { aprFootnote, baseOfLabel, BOARD_COLUMNS, collectedVenueCount, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpBaseCandidates, perpCellText, perpDescription, readingTime,
   separatedPairBase, underlyingTicker, venueAprSummary } from "./model";
@@ -29,7 +30,7 @@ test("history CSV names real units and exports unrounded values with percentage-
   expect(historyCell(row, "value", "funding").value).toBe(0.0125);
   expect(historyCell(row, "change", "funding").value).toBeCloseTo(0.000123456);
   expect(historyCell(row, "change", "funding").text).toBe("+0.0001pp");
-  expect(historyChange(null, "funding")).toBe("--");
+  expect(historyChange(null, "funding")).toBe(MISSING_VALUE);
   expect(historyColumns("oi", "USDC")[1]!.label).toBe("OI USD");
   expect(historyColumns("price", "USDC", false)[1]!.label).toBe("Mark USDC");
 });
@@ -66,8 +67,8 @@ test("a 100-column board and comparison keep the long share beside when each ven
   expect(ids(compareColumns(200)).slice(-3)).toEqual(["longShare", "fundingApr", "observedAt"]);
   expect(perpCellText(venueRow("binance", { longShortRatio: longShort() }), "longShare")).toBe("61.8%");
   // A venue that publishes none, and a server older than the series, show a dash, never a number.
-  expect(perpCellText(perpRow({ longShortRatio: null, longShortRatioReason: "unsupported" }), "longShare")).toBe("--");
-  expect(perpCellText(perpRow(), "longShare")).toBe("--");
+  expect(perpCellText(perpRow({ longShortRatio: null, longShortRatioReason: "unsupported" }), "longShare")).toBe(MISSING_VALUE);
+  expect(perpCellText(perpRow(), "longShare")).toBe(MISSING_VALUE);
 
   const day = "2026-10-08T11:00:00.000Z";
   const data = perpHistory({ longShortRatio: [longShortPoint(day, 0.6, { derived: true }), longShortPoint("2026-10-09T10:00:00.000Z", 0.631, { derived: true }),
@@ -76,7 +77,7 @@ test("a 100-column board and comparison keep the long share beside when each ven
   expect(rows.map((row) => row.value)).toEqual([0.6, 0.631, 0.6183]);
   expect(historyColumns("long-short", "USDT").map((column) => column.label)).toEqual(["Time (UTC)", "Long %", "Change pp", "Short %", "Ratio", "Observation basis"]);
   expect([historyCell(rows[2]!, "value", "long-short").text, historyCell(rows[2]!, "change", "long-short").text, historyCell(rows[2]!, "ratio", "long-short").text])
-    .toEqual(["61.83%", "-1.27pp", "--"]);
+    .toEqual(["61.83%", "-1.27pp", MISSING_VALUE]);
   expect(historyCell(rows[2]!, "change", "long-short").value).toBeCloseTo(-1.27);
   expect(historyCaption(data, "long-short")).toBe("All accounts net long, from ratio");
   // The day's move needs a point a day back; the first day of collection has none.

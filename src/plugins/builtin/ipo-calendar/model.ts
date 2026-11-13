@@ -2,11 +2,11 @@ import type { IpoDeal, IpoRegion, IpoSourceHealth, IpoStatus } from "../../../ap
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { displayWidth, formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
 
 export const IPO_CALENDAR_PANE_ID = "ipo-calendar";
-export const MISSING = "—";
+export const MISSING = MISSING_VALUE;
 
 export type IpoTab = "all" | Exclude<IpoRegion, "other">;
 
@@ -425,7 +425,7 @@ export function formatIpoReturn(returnPct: number | null | undefined): string {
 const MS_PER_DAY = 86_400_000;
 
 /**
- * "Oct 23" for dates near today, which is nearly every row on a calendar;
+ * "23 Oct" for dates near today, which is nearly every row on a calendar;
  * "Dec 2024" for anything more than half a year off, where the year matters.
  */
 export function formatIpoDate(value: string | null, now = new Date()): string {
@@ -434,7 +434,7 @@ export function formatIpoDate(value: string | null, now = new Date()): string {
   if (!Number.isFinite(date.getTime())) return MISSING;
   const month = date.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
   return Math.abs(date.getTime() - now.getTime()) <= 183 * MS_PER_DAY
-    ? `${month} ${date.getUTCDate()}`
+    ? `${date.getUTCDate()} ${month}`
     : `${month} ${date.getUTCFullYear()}`;
 }
 

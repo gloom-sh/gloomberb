@@ -331,7 +331,7 @@ test("the footer dates the session and the snapshot apart from the last check th
 
   await tui.emitKeypress({ name: "r", sequence: "r" });
   await settleFrame(tui.setup(), 6);
-  const caption = "top 2 · Oct 9 session · snapshot 18:15 ET · checked just now";
+  const caption = "top 2 · 9 Oct session · snapshot 18:15 ET · checked just now";
   expect(pane.footer()).toContain(caption);
   expect(pane.footer()).not.toContain("updated");
 

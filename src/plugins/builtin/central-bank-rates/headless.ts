@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { CENTRAL_BANKS, centralBankNames } from "../../../utils/central-banks";
 import { fetchCentralBankRates } from "./client";
@@ -19,7 +20,7 @@ const CITATION_FIELDS = [
 const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "label", header: "Jurisdiction", shrink: false }, { key: "valueText", header: "Rate", align: "right" },
   { key: "changeText", header: "Last change", align: "right" }, { key: "changeDate", header: "Changed", shrink: false },
-  { key: "percentileValue", header: "Pctl 1Y", align: "right", stackPriority: 1, format: (value) => value == null ? "--" : Number(value).toFixed(0) },
+  { key: "percentileValue", header: "Pctl 1Y", align: "right", stackPriority: 1, format: (value) => value == null ? MISSING_VALUE : Number(value).toFixed(0) },
   // A narrow terminal moves the instrument, status and percentile under each row first.
   { key: "asOf", header: "As of", shrink: false }, { key: "status", header: "Status", stackPriority: 2 }, { key: "instrument", header: "Instrument", stackPriority: 3 },
 ];

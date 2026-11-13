@@ -33,7 +33,7 @@ import {
   quoteSessionStateLabel,
   type ExtendedSession,
 } from "../../market-data/market/status";
-import { formatCompact, formatCurrency, formatDistributionAmount, formatNumber, formatPercent } from "../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCurrency, formatDistributionAmount, formatNumber, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, requireOneArg, takeFlag, takeOption, typedCompanyName } from "./command-utils";
 import type { BuiltinCliCommandDef } from "../command-options";
@@ -1062,16 +1062,16 @@ function analystSummary(data: AnalystResearchData, quote: Quote | null): string 
   const mix = formatRecommendationMix(data);
   const entries: Array<[string, string]> = [
     ["Average Target", formatAnalystPrice(target?.average, currency)],
-    ["Upside", upside == null ? "-" : formatPercent(upside)],
-    ["Upside vs", upside == null ? "-" : formatAnalystReference(reference, currency)],
+    ["Upside", upside == null ? MISSING_VALUE : formatPercent(upside)],
+    ["Upside vs", upside == null ? MISSING_VALUE : formatAnalystReference(reference, currency)],
     ["Low / Median / High", target && [target.low, target.median, target.high].some((value) => value != null)
       ? [target.low, target.median, target.high].map((value) => formatAnalystPrice(value, currency)).join(" / ")
-      : "-"],
+      : MISSING_VALUE],
     ["Rating", formatRatingLabel(data.recommendationRating)],
-    ["Analysts", analysts == null ? "-" : String(analysts)],
+    ["Analysts", analysts == null ? MISSING_VALUE : String(analysts)],
     ["Mix", mix],
   ];
-  const populated = entries.filter(([, value]) => value !== "-");
+  const populated = entries.filter(([, value]) => value !== MISSING_VALUE);
   return populated.length > 0 ? renderStats(populated) : "";
 }
 
@@ -1106,7 +1106,7 @@ function corporateActionRows(data: CorporateActionsData) {
   const earningsCurrency = reportedCurrencies.size === 1 ? [...reportedCurrencies][0] : undefined;
   // To the cent, as ERN and EE show it; a consensus average carries more digits.
   const eps = (value: number | undefined, unit: string | undefined) => (
-    value == null || !Number.isFinite(value) ? "-"
+    value == null || !Number.isFinite(value) ? MISSING_VALUE
       : !unit ? formatNumber(value, 2)
         : /^[A-Z]{3}$/.test(unit) ? formatCurrency(value, unit, 2) : `${formatNumber(value, 2)} ${unit}`
   );
@@ -1116,7 +1116,7 @@ function corporateActionRows(data: CorporateActionsData) {
       const quarter = quarterLabel(event.fiscalPeriod);
       const basis = earningsEpsBasis(event.epsBasis);
       // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
-      const note = [event.dateType === "fiscal-period-end" ? "period end" : null, quarter === "-" ? null : quarter].filter(Boolean).join(", ");
+      const note = [event.dateType === "fiscal-period-end" ? "period end" : null, quarter === MISSING_VALUE ? null : quarter].filter(Boolean).join(", ");
       return {
         type: "earnings",
         date: event.date,
@@ -3051,7 +3051,7 @@ const NEWS_COLUMNS = [
     format: (value: unknown) => typeof value === "string" ? formatUtcTime(value) : "",
   },
   { key: "source", header: "Source" },
-  // "Transaction in own shares (8 notices since Oct 30)" for a folded row; exports keep the title and the count apart.
+  // "Transaction in own shares (8 notices since 30 Oct)" for a folded row; exports keep the title and the count apart.
   { key: "title", header: "Title", format: listedRowHeadline },
   { key: "tickers", header: "Tickers" },
   // The short id `fn news-story-pane` opens the story by; exports keep the whole id.

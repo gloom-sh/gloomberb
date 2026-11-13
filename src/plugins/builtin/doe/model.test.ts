@@ -119,7 +119,7 @@ describe("DOE report dates", () => {
     setSystemTime(new Date("2026-10-23T12:00:00Z"));
     const gas = await load("gas").finally(() => setSystemTime());
     expect(gas.freshness?.basis).toBe("weekly release; year-ago and 5-year average as EIA published");
-    expect(gas.sections[0]!.title).toBe("Gas Storage: Week ending Oct 16 · released Thu Oct 22 10:30 ET · next Thu Oct 29 10:30 ET, consensus +80 Bcf, prior +77 Bcf");
+    expect(gas.sections[0]!.title).toBe("Gas Storage: Week ending 16 Oct · released Thu 22 Oct 10:30 ET · next Thu 29 Oct 10:30 ET, consensus +80 Bcf, prior +77 Bcf");
     expect(gas.sections[0]!.rows?.[0]).toMatchObject({ vsYearAgo: "-8.9%", vsFiveYear: "+4.5%" });
     expect((await load("crude")).freshness?.basis).toBe("weekly release; year-ago and 5-year average from EIA weekly history");
     expect((await load("all")).freshness?.basis)
@@ -186,27 +186,27 @@ describe("DOE figures", () => {
   test("the header names the week, the release and the next one on the EIA's clock, holidays included", () => {
     const report = board().reports[0]!;
     expect(doeHeaderLine(report, Date.parse("2026-10-03T08:00:00Z")))
-      .toBe("Week ending Sep 25 · released Wed Sep 30 10:30 ET · next Wed Oct 7 10:30 ET");
+      .toBe("Week ending 25 Sep · released Wed 30 Sep 10:30 ET · next Wed 7 Oct 10:30 ET");
     // Past its time and not in yet: due, not next. Standard time from November.
     expect(doeHeaderLine({ ...report, nextReleaseAt: "2026-12-29T22:00:00.000Z", nextReleaseHoliday: "Christmas" }, Date.parse("2026-12-30T00:00:00Z")))
-      .toBe("Week ending Sep 25 · released Wed Sep 30 10:30 ET · due Tue Dec 29 17:00 ET (Christmas)");
+      .toBe("Week ending 25 Sep · released Wed 30 Sep 10:30 ET · due Tue 29 Dec 17:00 ET (Christmas)");
     expect(doeHeaderLine({ ...report, weekEnding: null })).toBeUndefined();
   });
 
   test("the next storage release carries the calendar's consensus and prior as the 1W change reads them, each only when known", () => {
     const now = Date.parse("2026-10-23T08:00:00Z");
     const line = (nextConsensus: number | null, nextPrior: number | null) => doeHeaderLine({ ...gasReport, nextConsensus, nextPrior }, now);
-    expect(line(80, 77)).toBe("Week ending Oct 16 · released Thu Oct 22 10:30 ET · next Thu Oct 29 10:30 ET, consensus +80 Bcf, prior +77 Bcf");
-    expect(line(-12, null)).toBe("Week ending Oct 16 · released Thu Oct 22 10:30 ET · next Thu Oct 29 10:30 ET, consensus -12 Bcf");
-    expect(line(null, null)).toBe("Week ending Oct 16 · released Thu Oct 22 10:30 ET · next Thu Oct 29 10:30 ET");
+    expect(line(80, 77)).toBe("Week ending 16 Oct · released Thu 22 Oct 10:30 ET · next Thu 29 Oct 10:30 ET, consensus +80 Bcf, prior +77 Bcf");
+    expect(line(-12, null)).toBe("Week ending 16 Oct · released Thu 22 Oct 10:30 ET · next Thu 29 Oct 10:30 ET, consensus -12 Bcf");
+    expect(line(null, null)).toBe("Week ending 16 Oct · released Thu 22 Oct 10:30 ET · next Thu 29 Oct 10:30 ET");
     // Petroleum has no storage consensus, and an older server sends none.
     expect(doeHeaderLine({ ...board().reports[0]!, nextConsensus: 80 }, now)).not.toContain("consensus");
-    expect(doeHeaderLine(gasReport, now)).toBe("Week ending Oct 16 · released Thu Oct 22 10:30 ET · next Thu Oct 29 10:30 ET");
+    expect(doeHeaderLine(gasReport, now)).toBe("Week ending 16 Oct · released Thu 22 Oct 10:30 ET · next Thu 29 Oct 10:30 ET");
     // A narrow pane drops when the week came out before the next release or its consensus.
     const full = line(80, 77)!;
     expect(doeHeaderLine({ ...gasReport, nextConsensus: 80, nextPrior: 77 }, now, full.length)).toBe(full);
     expect(doeHeaderLine({ ...gasReport, nextConsensus: 80, nextPrior: 77 }, now, full.length - 1))
-      .toBe("Week ending Oct 16 · next Thu Oct 29 10:30 ET, consensus +80 Bcf, prior +77 Bcf");
+      .toBe("Week ending 16 Oct · next Thu 29 Oct 10:30 ET, consensus +80 Bcf, prior +77 Bcf");
   });
 
   test("the comparison basis is named only when the server says it, and per tab where the rows mix", () => {

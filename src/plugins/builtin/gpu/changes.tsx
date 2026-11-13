@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo } from "react";
 import type { GpuEvent } from "../../../api-client/gpu";
 import {
@@ -14,7 +15,7 @@ import { gpuBasisLabel, gpuChange, gpuEventDate, gpuEventSections, gpuPrice, gpu
 
 type ChangeRow = SectionedRow<GpuEvent>;
 const rowKey = (row: ChangeRow) => row.key;
-const availabilityMove = (event: GpuEvent) => `${event.oldAvailability ?? "-"} → ${event.newAvailability ?? "-"}`;
+const availabilityMove = (event: GpuEvent) => `${event.oldAvailability ?? MISSING_VALUE} → ${event.newAvailability ?? MISSING_VALUE}`;
 
 function changeColumns(width: number, allModels: boolean, availabilityWidth: number): DataTableColumn[] {
   const wide = width >= 140, medium = width >= 100;

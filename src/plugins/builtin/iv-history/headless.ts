@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
@@ -20,8 +21,8 @@ import { fxVolatilityRefusal } from "../../../market-data/options-alternatives";
 import { logFailure } from "../../../utils/log-failure";
 
 const METHODOLOGY = "docs/research-data.md#implied-volatility-history";
-const percent = (value: unknown) => typeof value === "number" ? formatVol(value) : "--";
-const points = (value: unknown) => typeof value === "number" ? formatPoints(value) : "--";
+const percent = (value: unknown) => typeof value === "number" ? formatVol(value) : MISSING_VALUE;
+const points = (value: unknown) => typeof value === "number" ? formatPoints(value) : MISSING_VALUE;
 
 export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "US option underlying" },
@@ -139,10 +140,10 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
       { key: "samples", header: "Sessions" },
     ];
     const statTextColumns = statColumns.map((column) => column.key === "date"
-      ? { ...column, textFormat: (value: unknown, row: unknown) => typeof value !== "string" ? "-" : (row as IvStatRow).stale ? `${value} stale` : value }
+      ? { ...column, textFormat: (value: unknown, row: unknown) => typeof value !== "string" ? MISSING_VALUE : (row as IvStatRow).stale ? `${value} stale` : value }
       : column.key === "method"
         // The wording the pane's source column uses; exports keep the raw method and carry the basis.
-        ? { ...column, textFormat: (value: unknown, row: unknown) => typeof value !== "string" ? "-" : statSource(row as IvStatRow) }
+        ? { ...column, textFormat: (value: unknown, row: unknown) => typeof value !== "string" ? MISSING_VALUE : statSource(row as IvStatRow) }
         : column);
     return {
       sections: [
@@ -203,15 +204,15 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
     const hasSkew = rows.some((row) => row.riskReversal != null);
     const hasSkewRank = rows.some((row) => row.riskReversalPercentile != null);
     const hasIv1y = rows.some((row) => row.iv1y != null), hasIv1yRank = rows.some((row) => row.iv1yPercentile != null);
-    const dated = (value: unknown) => typeof value === "string" ? value : "--";
+    const dated = (value: unknown) => typeof value === "string" ? value : MISSING_VALUE;
     return {
       sections: [{ title: ["Rich/cheap", universe.label, ...sharedDates(dates)].join(" · "), columns: [
         { key: "symbol", header: "Symbol" }, { key: "iv30", header: "IV30", format: percent },
         ...(dates.reading ? [] : [{ key: "date", header: "As of", format: (value: unknown, row?: unknown) =>
           typeof value === "string" ? readingLabel(value, (row as RichCheapRow).method, false,
-            { basis: (row as RichCheapRow).basis, stale: (row as RichCheapRow).stale }) : "--" }]),
+            { basis: (row as RichCheapRow).basis, stale: (row as RichCheapRow).stale }) : MISSING_VALUE }]),
         // The underlying's price on the row's own date, the title's or the As of column's; blank when no capture of it is that day's.
-        { key: "spot", header: "Spot", format: (value: unknown) => typeof value === "number" ? formatSpot(value) : "--" },
+        { key: "spot", header: "Spot", format: (value: unknown) => typeof value === "number" ? formatSpot(value) : MISSING_VALUE },
         { key: "rank", header: "IVR", format: (value: unknown) => formatRank(value as number | null) },
         { key: "percentile", header: "IVP", format: (value: unknown) => formatRank(value as number | null) },
         { key: "verdict", header: "Rich/Cheap", format: (value: unknown) => verdictLabel(value as never) },
@@ -225,7 +226,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
         { key: "hv", header: "HV20", format: percent },
         // Said only where an HV is not the one of its IV's date: a stale reading's, or one a few sessions off.
         ...(dates.hvApart ? [{ key: "hvDate", header: "HV as of", format: dated }] : []),
-        { key: "ivHv", header: "IV/HV", format: (value: unknown) => typeof value === "number" ? value.toFixed(2) : "--" },
+        { key: "ivHv", header: "IV/HV", format: (value: unknown) => typeof value === "number" ? value.toFixed(2) : MISSING_VALUE },
         ...(noted.size > 0 ? [{ key: "note", header: "Note", underRow: true }] : []),
       ], rows: rows.map((row) => ({ ...row, ...noted.has(row.symbol) ? { note: noted.get(row.symbol)!.note } : {} })) }],
       // A symbol with no options history is final; only history still to come leaves the screen incomplete.

@@ -9,7 +9,7 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { SeriesListDetail, useSeriesList } from "../shared/series-list-detail";
@@ -82,11 +82,11 @@ function cellsFor(row: IndicatorRow): Record<ColumnId, DataTableCell> {
   if (!view || view.current.ratio == null || !view.zone) {
     return {
       name: { text: row.indicator.shortLabel, color: colors.textBright },
-      value: { text: "--", color: colors.textDim },
+      value: { text: MISSING_VALUE, color: colors.textDim },
       zone: { text: "Unavailable", color: colors.warning },
-      percentile: { text: "--", color: colors.textDim },
-      since: { text: view?.historyStart?.slice(0, 4) ?? "--", color: colors.textDim },
-      sigma: { text: "--", color: colors.textDim },
+      percentile: { text: MISSING_VALUE, color: colors.textDim },
+      since: { text: view?.historyStart?.slice(0, 4) ?? MISSING_VALUE, color: colors.textDim },
+      sigma: { text: MISSING_VALUE, color: colors.textDim },
     };
   }
   return {
@@ -95,8 +95,8 @@ function cellsFor(row: IndicatorRow): Record<ColumnId, DataTableCell> {
     zone: { text: shortZoneLabel(view.zone.id), color: view.zone.color },
     // Restated so a high number always means expensive, whichever way the
     // underlying measure runs, otherwise the column cannot be read down.
-    percentile: { text: view.richPercentile == null ? "--" : formatNumber(view.richPercentile, 0), color: colors.text },
-    since: { text: view.historyStart?.slice(0, 4) ?? "--", color: colors.textMuted },
+    percentile: { text: view.richPercentile == null ? MISSING_VALUE : formatNumber(view.richPercentile, 0), color: colors.text },
+    since: { text: view.historyStart?.slice(0, 4) ?? MISSING_VALUE, color: colors.textMuted },
     sigma: { text: formatSigma(view.richSigma), color: colors.textMuted },
   };
 }

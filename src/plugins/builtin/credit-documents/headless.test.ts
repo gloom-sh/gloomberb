@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import type { CreditDocumentsPayload, CreditFact, CreditInstrument, CreditScreenPayload } from "../../../api-client/credit-documents";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneContext } from "../../../types/plugin";
@@ -36,7 +37,7 @@ describe("credit-document margin", () => {
     // No base is named and the instrument is not in dollars: the margin is not guessed to be over SOFR.
     expect(creditCoupon(loan([["margin", 1.5, "percent"]], "EUR"))).toBe("+150");
     expect(creditCoupon(loan([["coupon", 5.25, "percent"]]))).toBe("5.25%");
-    expect(creditCoupon(loan([]))).toBe("--");
+    expect(creditCoupon(loan([]))).toBe(MISSING_VALUE);
   });
 });
 

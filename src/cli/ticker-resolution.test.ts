@@ -385,7 +385,7 @@ test("a bare symbol whose line stopped trading as its company moved needs a choi
   const rows = await addSymbols({ symbols: ["RAD", "OLDCO"], store: tickerStore(), dataProvider: source(0), add: (ticker) => ({ ticker, changed: true }) });
   expect(rows.map((row) => [row.status, row.message ?? null, row.tradesAs ?? null])).toEqual([
     ["needs_choice", "RAD stopped trading 2023-10-17, now RADCQ", "RADCQ"],
-    ["needs_choice", "OLDCO:NYSE (Oldco Inc.): Last traded Oct 13, 2023 (last price $0.65)", null],
+    ["needs_choice", "OLDCO:NYSE (Oldco Inc.): Last traded 13 Oct 2023 (last price $0.65)", null],
   ]);
   // Saved already, as an add before this check left it, its old line is no listing under the symbol now.
   const saved = tickerStore();
@@ -401,7 +401,7 @@ test("a bare symbol whose line stopped trading as its company moved needs a choi
     return { retries, ended: entry?.ended ?? null, error: entry?.error?.message ?? null };
   };
   // Refused through the first look (its own quote, then the match's): looked at again, and checked as a first look checks it.
-  expect(await lookUp(2)).toEqual({ retries: [1], ended: "OLDCO:NYSE (Oldco Inc.): Last traded Oct 13, 2023 (last price $0.65)", error: null });
+  expect(await lookUp(2)).toEqual({ retries: [1], ended: "OLDCO:NYSE (Oldco Inc.): Last traded 13 Oct 2023 (last price $0.65)", error: null });
   // Refused throughout: not looked up, never taken as trading.
   expect(await lookUp(10)).toEqual({ retries: [1, 1], ended: null, error: "Could not look up OLDCO: Gloom Cloud did not answer. Try again in a minute." });
   // A quote the service fails for the listing itself, on every look, while other requests are refused: no wait, and the

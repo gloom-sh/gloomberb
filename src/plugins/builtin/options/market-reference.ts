@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { OptionContract } from "../../../types/financials";
 import { formatMarketPrice, stablePriceFractionDigits } from "../../../market-data/market/format";
 import { formatExpDate } from "../../../utils/options";
@@ -45,7 +46,7 @@ export function formatOptionPrice(value: number, maxWidth?: number): string {
   return formatMarketPrice(value, { assetCategory: "OPT", fixedFractionDigits: OPTION_PRICE_DIGITS, maxWidth });
 }
 
-const price = (value: number) => Number.isFinite(value) && value > 0 ? formatOptionPrice(value) : "—";
+const price = (value: number) => Number.isFinite(value) && value > 0 ? formatOptionPrice(value) : MISSING_VALUE;
 
 /**
  * The spread is the one quote fact the chain table cannot show: its columns

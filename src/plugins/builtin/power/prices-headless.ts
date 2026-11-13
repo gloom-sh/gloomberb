@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { apiClient } from "../../../api-client";
 import type { CarbonBoard, EuropePowerBoard, GasStorageBoard, GasStorageRow, PowerPriceRow } from "../../../api-client/europe-energy";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
@@ -11,21 +12,21 @@ import {
 type PricesClient = Pick<typeof apiClient, "getCloudEuropePower" | "getCloudEuropePowerHistory" | "getCloudEuropeCarbon"
   | "getCloudEuropeGas" | "getCloudEuropeGasHistory">;
 
-const price = (value: unknown) => typeof value === "number" ? formatPowerPrice(value) : "--";
-const text = (value: unknown) => typeof value === "string" && value ? value : "--";
+const price = (value: unknown) => typeof value === "number" ? formatPowerPrice(value) : MISSING_VALUE;
+const text = (value: unknown) => typeof value === "string" && value ? value : MISSING_VALUE;
 
 /** A board's columns, in its words: prices to the cent in the board's unit, each row dated by its own day. */
 const boardColumns = (unit: string, label = "Market"): HeadlessPaneColumn[] => [
   { key: "market", header: label },
   { key: "date", header: "As of", format: text, shrink: false },
   { key: "price", header: unit, align: "right", format: price },
-  { key: "change", header: "1D", align: "right", format: (value) => typeof value === "number" ? formatPowerChange(value) : "--" },
+  { key: "change", header: "1D", align: "right", format: (value) => typeof value === "number" ? formatPowerChange(value) : MISSING_VALUE },
   { key: "average7", header: "7D avg", align: "right", format: price },
   { key: "average30", header: "30D avg", align: "right", format: price },
   { key: "yearAgo", header: "1Y ago", align: "right", format: price },
   { key: "low52w", header: "52W low", align: "right", format: price },
   { key: "high52w", header: "52W high", align: "right", format: price },
-  { key: "range", header: "In 1Y range", align: "right", format: (value) => typeof value === "number" ? `${value}%` : "--" },
+  { key: "range", header: "In 1Y range", align: "right", format: (value) => typeof value === "number" ? `${value}%` : MISSING_VALUE },
 ];
 const COLUMNS = boardColumns(POWER_PRICE_UNIT);
 const AUCTION_COLUMNS: HeadlessPaneColumn[] = [
@@ -33,9 +34,9 @@ const AUCTION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "zone", header: "Zone", format: text },
   { key: "status", header: "Status" },
   { key: "price", header: CARBON_PRICE_UNIT, align: "right", format: price },
-  { key: "volume", header: "Volume tCO2", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : "--" },
-  { key: "coverRatio", header: "Cover", align: "right", format: (value) => typeof value === "number" ? `${value.toFixed(2)}x` : "--" },
-  { key: "bidders", header: "Bidders", align: "right", format: (value) => typeof value === "number" ? String(value) : "--" },
+  { key: "volume", header: "Volume tCO2", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE },
+  { key: "coverRatio", header: "Cover", align: "right", format: (value) => typeof value === "number" ? `${value.toFixed(2)}x` : MISSING_VALUE },
+  { key: "bidders", header: "Bidders", align: "right", format: (value) => typeof value === "number" ? String(value) : MISSING_VALUE },
 ];
 
 function reportRow(row: Omit<PowerPriceRow, "code"> & { code: string }) {
@@ -82,7 +83,7 @@ function freshness(board: EuropePowerBoard | null, carbon: CarbonBoard | null, m
 
 const failure = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-const number = (format: (value: number | null) => string) => (value: unknown) => typeof value === "number" ? format(value) : "--";
+const number = (format: (value: number | null) => string) => (value: unknown) => typeof value === "number" ? format(value) : MISSING_VALUE;
 const GAS_COLUMNS: HeadlessPaneColumn[] = [
   { key: "area", header: "Area" },
   { key: "gasDay", header: "Gas day", format: text, shrink: false },
@@ -96,7 +97,7 @@ const GAS_COLUMNS: HeadlessPaneColumn[] = [
   { key: "fiveYearLow", header: "5Y low", align: "right", format: number(formatGasFull) },
   { key: "fiveYearAverage", header: "5Y avg", align: "right", format: number(formatGasFull) },
   { key: "fiveYearHigh", header: "5Y high", align: "right", format: number(formatGasFull) },
-  { key: "fiveYearYears", header: "5Y years", align: "right", format: (value) => typeof value === "number" ? String(value) : "--" },
+  { key: "fiveYearYears", header: "5Y years", align: "right", format: (value) => typeof value === "number" ? String(value) : MISSING_VALUE },
   { key: "range", header: "In 5Y range", align: "right", format: text },
 ];
 

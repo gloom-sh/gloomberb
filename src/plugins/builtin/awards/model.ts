@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { AwardAggregate, AwardFilter, AwardHistoryPoint, AwardRow, AwardsPayload, AwardType } from "../../../api-client/awards";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { ResolvedSeries } from "../../../time-series/types";
@@ -9,15 +10,15 @@ export type AwardTab = typeof AWARD_TABS[number]["value"];
 export const awardTab = (value: unknown): AwardTab => AWARD_TABS.find((tab) => tab.value === value)?.value ?? "feed";
 export const awardTypeLabel = (value: AwardType) => ({ prime: "Prime", subaward: "Subaward", modification: "Modification", notice: "Notice" })[value];
 export function money(value: string | number | null | undefined): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   const amount = Number(value), absolute = Math.abs(amount);
   for (const [scale, suffix] of [[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "K"]] as const) {
     if (absolute >= scale) return `${(amount / scale).toFixed(2)}${suffix}`;
   }
   return amount.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
-export const awardPeriod = (row: AwardRow) => row.periodStart || row.periodEnd ? `${row.periodStart ?? "--"} / ${row.periodEnd ?? "--"}` : "--";
-export const awardPercent = (row: AwardRow) => row.revenueComparison ? `${row.revenueComparison.percent.toFixed(2)}%` : "--";
+export const awardPeriod = (row: AwardRow) => row.periodStart || row.periodEnd ? `${row.periodStart ?? MISSING_VALUE} / ${row.periodEnd ?? MISSING_VALUE}` : MISSING_VALUE;
+export const awardPercent = (row: AwardRow) => row.revenueComparison ? `${row.revenueComparison.percent.toFixed(2)}%` : MISSING_VALUE;
 export const aggregateId = (row: AwardAggregate) => JSON.stringify([row.key, row.source, row.currency, row.awardType]);
 const historyDate = (row: AwardHistoryPoint) => new Date(`${row.month.slice(0, 7)}-01T00:00:00Z`);
 export const awardScope = (source: string) => ({ usaspending: "US federal contracts", "usaspending-subawards": "US federal subcontracts", "usaspending-transactions": "US contract actions", "uk-contracts-finder": "UK contract notices",

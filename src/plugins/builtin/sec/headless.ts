@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type {
   HeadlessBundleResult,
   HeadlessPaneColumn,
@@ -31,7 +32,7 @@ const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
     key: "filedAt",
     header: "Filed",
-    format: (value) => typeof value === "string" ? value.slice(0, 10) : "-",
+    format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE,
   },
   { key: "acceptanceReported", header: "SEC-reported acceptance" },
   { key: "form", header: "Form" },

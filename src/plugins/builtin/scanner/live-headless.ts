@@ -4,7 +4,7 @@ import type {
   HeadlessPaneFreshness,
   HeadlessSnapshotResult,
 } from "../../../types/plugin";
-import { formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
 import {
   conditionColumnLabel,
   conditionText,
@@ -136,7 +136,7 @@ export const liveScanHeadless: HeadlessPaneDefinition<"snapshot"> = {
     { key: "symbol", header: "Symbol" },
     { key: "name", header: "Name" },
     // At the pane's precision: cents, or four decimals under a dollar; the JSON keeps the feed's digits.
-    { key: "price", header: "Price", align: "right", format: (value) => typeof value === "number" ? formatHiloPrice(value) : "--" },
+    { key: "price", header: "Price", align: "right", format: (value) => typeof value === "number" ? formatHiloPrice(value) : MISSING_VALUE },
     { key: "changePercent", header: "Chg %", align: "right", format: (value) => formatPercentRaw(number(value)) },
     { key: "relativeVolume", header: "RVol", align: "right", format: (value) => formatMultiple(number(value)) },
     { key: "volume", header: "Volume", align: "right" },

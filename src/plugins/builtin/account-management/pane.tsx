@@ -483,7 +483,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     return unsubscribe;
   }, []);
 
-  const loadProfile = useCallback(async () => {
+  // A load nobody waits on: a failure shows in the pane's message line.
+  const loadProfile = useCallback(() => {
     if (!apiClient.isSignedIn()) {
       setProfile(null);
       setDraft(profileToDraft(null));
@@ -491,21 +492,20 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     }
 
     setMessage({ tone: "info", text: t("Loading account profile...") });
-    try {
-      const nextProfile = await apiClient.getAccountProfile();
+    apiClient.getAccountProfile().then((nextProfile) => {
       setProfile(nextProfile);
       setDraft(profileToDraft(nextProfile));
       setMessage(null);
-    } catch (error) {
+    }).catch((error: unknown) => {
       setMessage({
         tone: "error",
         text: error instanceof Error ? error.message : t("Failed to load account profile."),
       });
-    }
+    });
   }, []);
 
   useEffect(() => {
-    void loadProfile();
+    loadProfile();
   }, [loadProfile, sessionMarker]);
 
   // Pricing is decoration (the table falls back to list prices), but whether
@@ -514,11 +514,12 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     // Signed out, the pane is the sign-in wall.
     if (!apiClient.isSignedIn()) return;
     let cancelled = false;
-    void loadUpgradeOffer().then((offer) => {
+    // A failed request answers an offer without prices; anything else is logged.
+    loadUpgradeOffer().then((offer) => {
       if (cancelled) return;
       if (offer.pricing) setPricing(offer.pricing);
       setTrialAvailable(offer.trialAvailable);
-    });
+    }, logFailure("account-management.pane", "Load upgrade offer failed"));
     return () => {
       cancelled = true;
     };

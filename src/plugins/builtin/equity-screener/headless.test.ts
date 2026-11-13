@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { KPI_FIELDS } from "../../../api-client/equity-screener";
 import { isProLock } from "../../../cli/pane-functions/access-gate";
@@ -118,7 +119,7 @@ test("a KPI the server holds back from Free says why once, in KPIS's words; a Pr
   const locked = await load(free);
   expect(locked.errors).toEqual(["The free screener shows no KPI values; Gloom Pro shows each company's Backlog."]);
   expect(isProLock(locked.errors![0]!)).toBe(true);
-  expect(locked.sections![0]!.rows![0]).toMatchObject({ value: "--", state: "locked" });
+  expect(locked.sections![0]!.rows![0]).toMatchObject({ value: MISSING_VALUE, state: "locked" });
   expect(locked.notes).toBeUndefined();
 
   const pro = await load(screenFixture());

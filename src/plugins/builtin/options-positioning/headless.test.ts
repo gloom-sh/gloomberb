@@ -69,18 +69,18 @@ test("the GEX export adds up, names its unit, and opens with spot, gamma and quo
     expect(Number(row[column("Call GEX $")]) + Number(row[column("Put GEX $")])).toBeCloseTo(Number(row[column("Net GEX $")]), 4);
   }
   expect(dealer!.rows[0]![column("Put GEX $")]).toBe(-1_139_604.2187);
-  const gexLines = csv.split("# section: Dealer gamma · Oct 30 '26\n")[1]!.split("\n\n")[0]!.split("\n").slice(1);
+  const gexLines = csv.split("# section: Dealer gamma · 30 Oct '26\n")[1]!.split("\n\n")[0]!.split("\n").slice(1);
   expect(gexLines.length).toBe(3);
   expect(gexLines.every((line) => line.includes(",USD per 1% move,"))).toBe(true);
 
   // One summary block first, in the text and the CSV, dating spot, gamma and the quotes apart from open interest.
   expect(text.split("\n").slice(2, 6)).toEqual([
-    "Summary · Oct 30 '26",
+    "Summary · 30 Oct '26",
     expect.stringMatching(/^Spot +764\.20 pre-market Fri 16 Oct 10:55 UTC/),
     expect.stringMatching(/^Gamma at +Fri 16 Oct 10:55 UTC, vols from Thu 15 Oct 20:14 UTC$/),
     expect.stringMatching(/^Open interest as of +2026-10-14$/),
   ]);
-  expect(csv.split("\n")[0]).toBe("# section: Summary · Oct 30 '26");
+  expect(csv.split("\n")[0]).toBe("# section: Summary · 30 Oct '26");
   const value = (label: string) => summary!.rows.find((row) => row[0] === label)?.[1];
   expect(value("Spot as of")).toBe("2026-10-16T10:55:00Z");
   expect(value("Gamma at")).toBe("2026-10-16T10:55:00Z");

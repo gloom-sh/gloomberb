@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { SocialMentionPost, SocialMentionsPayload } from "../../../api-client/social-mentions";
@@ -41,7 +42,7 @@ test("rows join the median, stance and the most viewed post of each day", () => 
   expect(summary.wiki).toEqual({ day: "2026-09-26", views: 6_000, ratio: 1.2 });
   expect(summary.reddit).toEqual({ day: "2026-09-26", mentions: 5, ratio: .5 });
   expect(rows.map((row) => row.redditMentions)).toEqual([null, 30, 5, null]);
-  expect([socialRatio(4), socialRatio(12.4), socialStance(.5), socialStance(null), stanceWord(-.2)]).toEqual(["4.0x", "12x", "+0.50", "--", "bearish"]);
+  expect([socialRatio(4), socialRatio(12.4), socialStance(.5), socialStance(null), stanceWord(-.2)]).toEqual(["4.0x", "12x", "+0.50", MISSING_VALUE, "bearish"]);
 });
 
 test("the Cloud boundary rejects unordered days, bad stances and non-X links", () => {

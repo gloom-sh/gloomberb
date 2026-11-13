@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { StatItem } from "../../../components";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessPaneEntry } from "../../../types/headless";
@@ -195,7 +196,7 @@ const strikeText = (value: number) => formatHedgePrice(value).replace(/\.00$/, "
 
 /** `5.5% below spot 89.98 (implied by option quotes)`, or above it for a put in the money. */
 function otmText(csp: CashSecuredPut): string {
-  if (csp.outOfTheMoney == null) return "--";
+  if (csp.outOfTheMoney == null) return MISSING_VALUE;
   const side = csp.outOfTheMoney >= 0 ? "below" : "above";
   return `${percent(Math.abs(csp.outOfTheMoney), 1)} ${side} spot ${money(csp.spot)} (${csp.spotBasis})`;
 }
@@ -226,7 +227,7 @@ export function cspReportEntries(csp: CashSecuredPut): HeadlessPaneEntry[] {
     { key: "yieldOnCash", label: "Yield on cash", value: exportPercent(csp.yieldOnCash), unit: "%",
       formatted: `${percent(csp.yieldOnCash)} (${money(csp.premium)} / ${money(csp.cashSecured)})` },
     { key: "annualizedYield", label: "Annualised yield", value: exportPercent(csp.annualizedYield), unit: "%",
-      formatted: csp.annualizedYield == null ? "-- (expires today)" : `${percent(csp.annualizedYield)} (yield on cash x 365 / ${csp.daysToExpiry})` },
+      formatted: csp.annualizedYield == null ? `${MISSING_VALUE} (expires today)` : `${percent(csp.annualizedYield)} (yield on cash x 365 / ${csp.daysToExpiry})` },
     ...(quote ? [
       { key: "bid", label: "Bid", value: quote.bid, unit: perShare, formatted: `${formatHedgePrice(quote.bid)} per share` },
       { key: "ask", label: "Ask", value: quote.ask, unit: perShare, formatted: `${formatHedgePrice(quote.ask)} per share` },
@@ -235,7 +236,7 @@ export function cspReportEntries(csp: CashSecuredPut): HeadlessPaneEntry[] {
       { key: "bidPremium", label: "Premium at the bid", value: quote.bidPremium, ...amount,
         formatted: `${money(quote.bidPremium)}${unit} (${formatHedgePrice(quote.bid)} x ${csp.multiplier} x ${csp.contracts})` },
       { key: "bidAnnualizedYield", label: "Annualised yield at the bid", value: exportPercent(quote.bidAnnualizedYield), unit: "%",
-        formatted: quote.bidAnnualizedYield == null ? "-- (expires today)"
+        formatted: quote.bidAnnualizedYield == null ? `${MISSING_VALUE} (expires today)`
           : `${percent(quote.bidAnnualizedYield)} (${percent(quote.bidYieldOnCash)} on cash x 365 / ${csp.daysToExpiry})` },
     ] : []),
     { key: "outOfTheMoney", label: "Out of the money", value: exportPercent(csp.outOfTheMoney), unit: "%", formatted: otmText(csp) },
@@ -259,10 +260,10 @@ export function cspStatItems(csp: CashSecuredPut): StatItem[] {
     ...(quote ? [
       { id: "csp-bid", label: "Bid / ask", value: `${formatHedgePrice(quote.bid)} / ${formatHedgePrice(quote.ask)}`,
         detail: `spread ${percent(quote.spreadOfMid, 1)} of mid` },
-      { id: "csp-bid-yield", label: "At the bid", value: quote.bidAnnualizedYield == null ? "--" : percent(quote.bidAnnualizedYield),
+      { id: "csp-bid-yield", label: "At the bid", value: quote.bidAnnualizedYield == null ? MISSING_VALUE : percent(quote.bidAnnualizedYield),
         detail: quote.bidAnnualizedYield == null ? "expires today" : "a year" },
     ] : []),
-    { id: "csp-otm", label: "OTM", value: csp.outOfTheMoney == null ? "--" : percent(csp.outOfTheMoney, 1),
+    { id: "csp-otm", label: "OTM", value: csp.outOfTheMoney == null ? MISSING_VALUE : percent(csp.outOfTheMoney, 1),
       detail: `vs ${money(csp.spot)} ${csp.spotBasis === "implied by option quotes" ? "implied" : csp.spotBasis}` },
     { id: "csp-break-even", label: "Break-even", value: formatHedgePrice(csp.breakEven), detail: "per share" },
     { id: "csp-days", label: "DTE", value: String(csp.daysToExpiry), detail: csp.expiry },

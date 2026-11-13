@@ -47,8 +47,8 @@ test("axes read round strikes and thin expiry labels, naming a year once it chan
   expect(axis.ratio(743)).toBe(0);
   expect(axis.at(1)).toBe(789);
   const expiries = expiryAxis(["2026-10-16", "2026-11-20", "2026-12-18", "2027-01-15"]);
-  expect(expiries.ticks(80).map((tick) => tick.label)).toEqual(["Oct 16", "Nov 20", "Dec 18", "Jan 15 '27"]);
-  expect(expiries.ticks(20).map((tick) => tick.label)).toEqual(["Oct 16", "Jan 15 '27"]);
+  expect(expiries.ticks(80).map((tick) => tick.label)).toEqual(["16 Oct", "20 Nov", "18 Dec", "15 Jan '27"]);
+  expect(expiries.ticks(20).map((tick) => tick.label)).toEqual(["16 Oct", "15 Jan '27"]);
   expect(expiries.at(0.7)).toBe("2026-12-18");
   expect(formatDistance(765, 765.54)).toBe("-0.1%");
   expect(formatDistance(765.4, 765.54)).toBe("0.0%");

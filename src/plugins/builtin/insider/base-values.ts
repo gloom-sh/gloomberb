@@ -1,7 +1,7 @@
 import type { HeadlessPaneColumn, HeadlessPaneRow } from "../../../types/headless";
 import { fxCloseOnOrBefore, loadDailyFxCloses, type FxCloses, type FxHistoryClient } from "../../../market-data/fx-closes";
 import { logFailure } from "../../../utils/log-failure";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 import { quotedFxPair } from "../../../utils/currency-pair";
 
 /** A Form 4 states its prices and values in US dollars. */
@@ -15,7 +15,7 @@ export interface InsiderBaseValues {
   note: string | null;
 }
 
-const dash = (value: unknown, format: (value: number) => string) => (typeof value === "number" && Number.isFinite(value) ? format(value) : "-");
+const dash = (value: unknown, format: (value: number) => string) => (typeof value === "number" && Number.isFinite(value) ? format(value) : MISSING_VALUE);
 
 /**
  * Every row carries the currency its price and value are in (USD, as a Form 4

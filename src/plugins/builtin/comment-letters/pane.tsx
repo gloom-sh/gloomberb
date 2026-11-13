@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   DataTableStackView,
@@ -76,7 +77,7 @@ function letterColumns(width: number, issuerView: boolean): LetterColumn[] {
 }
 
 const formatDate = (date: Date): string =>
-  Number.isNaN(date.getTime()) ? "-" : date.toISOString().slice(0, 10);
+  Number.isNaN(date.getTime()) ? MISSING_VALUE : date.toISOString().slice(0, 10);
 
 const companyLabel = (letter: CommentLetter): string =>
   letter.companyName || `CIK ${Number(letter.cik)}`;

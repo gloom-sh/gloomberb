@@ -1,5 +1,5 @@
 import type { StablecoinSupplyCoin, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
-import { formatCompact, formatCompactAmount } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCompactAmount } from "../../../utils/format";
 import { formatCryptoPercent, utcCloseAsOfText, type CryptoRowSupply } from "./model";
 
 /**
@@ -128,7 +128,7 @@ export function supplySummaryLine(payload: StablecoinSupplyPayload): string | nu
   const total = payload.total;
   if (!total) return null;
   const change = (amount: number | null, percent: number | null) => (
-    amount == null ? "—" : `${formatCompactAmount(amount, { signed: true })} (${formatCryptoPercent(percent)})`
+    amount == null ? MISSING_VALUE : `${formatCompactAmount(amount, { signed: true })} (${formatCryptoPercent(percent)})`
   );
   const since = supplyHistoryStart(payload);
   return [

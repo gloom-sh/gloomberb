@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -67,17 +68,17 @@ function Evidence({ row, data, width, height }: { row: DetailRow; data: Attentio
     <KeyValueRow label="Hour" value={period} labelWidth={20} />
     <KeyValueRow label="Published" value={date(row.evidence.asOf)} detail={`after ${data.privacy.lagHours}h minimum`} labelWidth={20} />
     <KeyValueRow label="Privacy threshold" value={`${data.privacy.minimumContributors} contributors per hour`} detail={`passed · methodology ${row.evidence.methodologyVersion}`} labelWidth={20} />
-    <KeyValueRow label="Baseline" value={row.baselinePeriods === null ? "--" : `${row.baselinePeriods} qualified periods`} detail={row.zScore === null ? "Z-score unavailable" : `Z ${signed(row.zScore)}`} labelWidth={20} />
+    <KeyValueRow label="Baseline" value={row.baselinePeriods === null ? MISSING_VALUE : `${row.baselinePeriods} qualified periods`} detail={row.zScore === null ? "Z-score unavailable" : `Z ${signed(row.zScore)}`} labelWidth={20} />
     {row.marketAsOf || row.relativeVolumeAsOf ? <>
       <SectionHeading title="Market Context" />
       {row.marketAsOf ? <KeyValueRow label="Price move" value={signed(row.priceChangePct, "%")} detail={date(row.marketAsOf)} labelWidth={20} /> : null}
-      {row.relativeVolumeAsOf ? <KeyValueRow label="Relative volume" value={row.relativeVolume === null ? "--" : `${number(row.relativeVolume, 2)}x`} detail={date(row.relativeVolumeAsOf)} labelWidth={20} /> : null}
+      {row.relativeVolumeAsOf ? <KeyValueRow label="Relative volume" value={row.relativeVolume === null ? MISSING_VALUE : `${number(row.relativeVolume, 2)}x`} detail={date(row.relativeVolumeAsOf)} labelWidth={20} /> : null}
     </> : null}
     {point?.publishedAt && !latest ? <>
       <SectionHeading title="Selected Hour" />
       <KeyValueRow label="Hour" value={date(point.bucketStart)} labelWidth={20} />
-      <KeyValueRow label="Research hours" value={number(point.researchUnits)} detail={`rounded to ${point.rounding ?? "--"}`} labelWidth={20} />
-      <KeyValueRow label="Published" value={date(point.publishedAt)} detail={`${point.minimumContributors ?? "--"} contributors · ${point.lagHours ?? "--"}h lag · version ${point.methodologyVersion ?? "--"}`} labelWidth={20} />
+      <KeyValueRow label="Research hours" value={number(point.researchUnits)} detail={`rounded to ${point.rounding ?? MISSING_VALUE}`} labelWidth={20} />
+      <KeyValueRow label="Published" value={date(point.publishedAt)} detail={`${point.minimumContributors ?? MISSING_VALUE} contributors · ${point.lagHours ?? MISSING_VALUE}h lag · version ${point.methodologyVersion ?? MISSING_VALUE}`} labelWidth={20} />
     </> : null}
     <SectionHeading title="Related News" />
     {row.news.length ? row.news.map((article) => <ActionRow key={article.url} label={`${hour(article.publishedAt)}  ${article.title}`} onPress={() => void host.openExternal(article.url)} />)

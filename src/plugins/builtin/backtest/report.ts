@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { cleanFloat32Price, historyUnit } from "../../../cli/history-rows";
 import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import { ROLLS_BACK_ADJUSTED } from "../../../market-data/futures-roll-returns";
@@ -37,9 +38,9 @@ export function backtestPriceUnit(symbol: string, quote: { currency?: string; in
   return unit.currency ?? unit.unit;
 }
 
-const fixed = (digits: number) => (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "--";
+const fixed = (digits: number) => (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : MISSING_VALUE;
 /** Prices as the trades table drew them, with the digits a sub-unit price needs. */
-const price = (value: unknown) => typeof value !== "number" || !Number.isFinite(value) ? "--"
+const price = (value: unknown) => typeof value !== "number" || !Number.isFinite(value) ? MISSING_VALUE
   : Math.abs(value) >= 1 ? value.toFixed(2) : value.toPrecision(4);
 
 /**

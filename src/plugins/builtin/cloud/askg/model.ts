@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../../utils/format";
 import type {
   ASKGClientErrorCode,
   ASKGConversationDetail,
@@ -834,7 +835,7 @@ export function rowSymbol(row: Record<string, JsonValue>): string | null {
 }
 
 export function formatCellValue(value: JsonValue | undefined): string {
-  if (value == null) return "-";
+  if (value == null) return MISSING_VALUE;
   if (typeof value === "number") {
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
   }

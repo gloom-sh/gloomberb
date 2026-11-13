@@ -9,7 +9,7 @@ import { useAppSelector, usePaneInstance, usePaneStateValue } from "../../../sta
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text } from "../../../ui";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { OPTIONS_CALCULATOR_PANE_ID, describeDraftProblem, draftFromParams, reconcileOptionCalcDraft, updateOptionCalcDraft, type OptionCalcDraft } from "./model";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
@@ -42,7 +42,7 @@ const IV_SOURCE_OPTIONS = [
 ];
 
 function formatSigned(value: number | undefined, decimals: number): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   return `${value > 0 ? "+" : ""}${formatNumber(value, decimals)}`;
 }
 
@@ -172,7 +172,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       suffix: "d",
       onValue: (value) => updateDraft({ daysToExpiry: Math.max(0, value) }),
     },
-    { id: "volatility", label: surfaceSource ? "Fit IV" : "Vol", value: effectiveDraft.volatility, valueText: surfaceSource && surface?.volatility == null ? "--" : undefined, percent: true, onValue: (value) => updateDraft({ volatility: Math.max(0, value), volSource: "input" }) },
+    { id: "volatility", label: surfaceSource ? "Fit IV" : "Vol", value: effectiveDraft.volatility, valueText: surfaceSource && surface?.volatility == null ? MISSING_VALUE : undefined, percent: true, onValue: (value) => updateDraft({ volatility: Math.max(0, value), volSource: "input" }) },
     { id: "rate", label: "Rate", value: draft.rate, percent: true, allowNegative: true, onValue: (value) => updateDraft({ rate: value }) },
     { id: "dividendYield", label: "Div yld", value: draft.dividendYield, percent: true, onValue: (value) => updateDraft({ dividendYield: value }) },
     {
@@ -355,14 +355,14 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
         <Box flexDirection={pairMetrics ? "row" : "column"} paddingX={1}>
           <KeyValueRow
             label="Model"
-            value={valuation ? formatNumber(valuation.price, 4) : "--"}
+            value={valuation ? formatNumber(valuation.price, 4) : MISSING_VALUE}
             detail="per unit"
             color={colors.textBright}
             width={metricWidth}
           />
           <KeyValueRow
             label="Implied IV"
-            value={implied.volatility != null ? `${formatNumber(implied.volatility * 100, 2)}%` : "--"}
+            value={implied.volatility != null ? `${formatNumber(implied.volatility * 100, 2)}%` : MISSING_VALUE}
             detail={implied.volatility != null ? draft.marketPriceSource === "mid" ? "from mid"
               : draft.marketPriceSource === "last" ? "from last" : "from input" : undefined}
             color={implied.volatility != null ? colors.positive : colors.textDim}
@@ -373,11 +373,11 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
         <Box flexDirection="column" paddingX={1}>
           <Box flexDirection={pairMetrics ? "row" : "column"}>
             <KeyValueRow label="Delta" value={formatSigned(valuation?.delta, 4)} width={metricWidth} />
-            <KeyValueRow label="Gamma" value={valuation ? formatNumber(valuation.gamma, 4) : "--"} width={trailingMetricWidth} />
+            <KeyValueRow label="Gamma" value={valuation ? formatNumber(valuation.gamma, 4) : MISSING_VALUE} width={trailingMetricWidth} />
           </Box>
           <Box flexDirection={pairMetrics ? "row" : "column"}>
             <KeyValueRow label="Theta" value={formatSigned(valuation?.thetaPerDay, 4)} detail="per day" width={metricWidth} />
-            <KeyValueRow label="Vega" value={valuation ? formatNumber(valuation.vegaPerPoint, 4) : "--"} detail="per vol pt" width={trailingMetricWidth} />
+            <KeyValueRow label="Vega" value={valuation ? formatNumber(valuation.vegaPerPoint, 4) : MISSING_VALUE} detail="per vol pt" width={trailingMetricWidth} />
           </Box>
           <KeyValueRow label="Rho" value={formatSigned(valuation?.rhoPerPoint, 4)} detail="per rate pt" width={metricWidth} />
         </Box>

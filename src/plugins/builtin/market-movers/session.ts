@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import type {
   CloudSessionMoverItem,
   CloudSessionMoversCategory,
@@ -224,7 +225,7 @@ export function sortSessionRows(rows: SessionMoverRow[], preference: SessionMove
 function shortDay(date: string): string | null {
   const day = new Date(`${date}T12:00:00Z`);
   return Number.isFinite(day.getTime())
-    ? day.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+    ? formatShortDate(day, { year: false, utc: true })
     : null;
 }
 

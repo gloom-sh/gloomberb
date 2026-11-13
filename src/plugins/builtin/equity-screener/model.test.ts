@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { screenFixture as payload } from "./test-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
@@ -119,21 +120,21 @@ test("values keep sign, scale and missing distinct from zero", () => {
   expect(formatScreenValue("revenueGrowthPercent", 65.47)).toBe("+65.5");
   expect(formatScreenValue("revenueGrowthPercent", 0)).toBe("0.0");
   expect(formatScreenValue("insiderSales90d", 20)).toBe("20");
-  expect(formatScreenValue("trailingPE", null)).toBe("--");
+  expect(formatScreenValue("trailingPE", null)).toBe(MISSING_VALUE);
   // Thousands separators; a six-figure price still fits its column.
   expect(formatScreenValue("price", 757_398)).toBe("757,398.00");
   expect(formatScreenValue("price", 757_398).length).toBeLessThanOrEqual(columnWidth("price"));
   expect(formatScreenValue("trailingPE", -1_234.56)).toBe("-1,234.6");
   // A multiple the server marks not meaningful reads N/M, as RV and valuation print it; one merely missing stays --.
   expect(formatScreenMetric("enterpriseToRevenue", { value: null, notMeaningful: true })).toBe("N/M");
-  expect(formatScreenMetric("enterpriseToRevenue", { value: null })).toBe("--");
+  expect(formatScreenMetric("enterpriseToRevenue", { value: null })).toBe(MISSING_VALUE);
 });
 
 test("undated provider values show their collection date, never an invented source date", () => {
   const base = payload().rows[0]!.metrics.trailingPE;
   expect(metricDate({ ...base, asOf: "2026-08-31", observedAt: "2026-09-22T12:00:00Z" })).toEqual({ text: "2026-08-31", collected: false });
   expect(metricDate({ ...base, value: 10, asOf: null, observedAt: "2026-09-22T12:00:00Z" })).toEqual({ text: "2026-09-22", collected: true });
-  expect(metricDate({ ...base, value: null, asOf: null, observedAt: null })).toEqual({ text: "--", collected: false });
+  expect(metricDate({ ...base, value: null, asOf: null, observedAt: null })).toEqual({ text: MISSING_VALUE, collected: false });
 });
 
 test("a dividend yield names its own row's basis, and none the server did not state", () => {
@@ -180,7 +181,7 @@ test("social and research fields format by kind, and an older server's rows stil
 });
 
 test("ATR% is a one-decimal percent with no sign or sign colour, and works as a criterion, sort and column", () => {
-  expect([3.456, 12, 0.04, null].map((value) => formatScreenValue("atrPercent", value))).toEqual(["3.5", "12.0", "0.0", "--"]);
+  expect([3.456, 12, 0.04, null].map((value) => formatScreenValue("atrPercent", value))).toEqual(["3.5", "12.0", "0.0", MISSING_VALUE]);
   expect(SIGN_COLORED.has("atrPercent")).toBe(false);
   expect([SHORT_LABELS.atrPercent, screenLabel("atrPercent")]).toEqual(["ATR%", "ATR%"]);
   expect(columnWidth("atrPercent")).toBe(8);
@@ -266,7 +267,7 @@ test("quality fields: leverage as multiples, growth signed like the growth field
     .toEqual(["0.1x", "-0.1x", "0.8x", "71.3", "3.3", "-2.0", "+8.7", "0.0", "+95.2", "+8.7"]);
   // A value FA calls not meaningful, kept apart from a missing one.
   expect(formatScreenMetric("netDebtToEbitda", { value: null, notMeaningful: true })).toBe("N/M");
-  expect(formatScreenMetric("netDebtToEbitda", { value: null })).toBe("--");
+  expect(formatScreenMetric("netDebtToEbitda", { value: null })).toBe(MISSING_VALUE);
   // Growth, not a move: no sign colour, like FY REV GR%.
   for (const field of QUALITY_FIELDS) {
     expect(SIGN_COLORED.has(field)).toBe(false);
@@ -293,15 +294,15 @@ test("score fields: whole scores and ranks, Z and fair values to the cent, upsid
 test("grades print as letters and the composite with its label, in one sign colour scale, and work as criteria", () => {
   expect([1, 4, 5, 7, 8, 10, 13].map((value) => formatScreenValue("valueGrade", value))).toEqual(["F", "D+", "C-", "C+", "B-", "B+", "A+"]);
   // A value off the scale is not a grade.
-  expect([formatScreenValue("growthGrade", 0), formatScreenValue("growthGrade", 7.5), formatScreenValue("momentumGrade", null)]).toEqual(["--", "--", "--"]);
+  expect([formatScreenValue("growthGrade", 0), formatScreenValue("growthGrade", 7.5), formatScreenValue("momentumGrade", null)]).toEqual([MISSING_VALUE, MISSING_VALUE, MISSING_VALUE]);
   expect([4.72, 4.5, 3.5, 3.49, 2.5, 1.5, 1.49, 1].map((value) => formatScreenValue("gradeComposite", value)))
     .toEqual(["4.72 Top", "4.50 Top", "3.50 Strong", "3.49 Neutral", "2.50 Neutral", "1.50 Weak", "1.49 Bottom", "1.00 Bottom"]);
   expect(screenDetailValue("profitabilityGrade", { value: 12, unit: "1-13" })).toBe("A");
   expect(screenDetailValue("gradeComposite", { value: 2.79, unit: "1-5" })).toBe("2.79 Neutral");
   expect(screenDetailValue("revenueRevision30dPercent", { value: 1.24, unit: "%" })).toBe("+1.2 %");
   // A missing value is just "--"; N/M says so; a count of one is singular.
-  expect(screenDetailValue("returnOnCapitalPercent", { value: null, unit: "%" })).toBe("--");
-  expect(screenDetailValue("magicFormulaRank", { value: null, unit: "rank" })).toBe("--");
+  expect(screenDetailValue("returnOnCapitalPercent", { value: null, unit: "%" })).toBe(MISSING_VALUE);
+  expect(screenDetailValue("magicFormulaRank", { value: null, unit: "rank" })).toBe(MISSING_VALUE);
   expect(screenDetailValue("altmanZScore", { value: null, unit: "", notMeaningful: true })).toBe("N/M");
   expect([1, 2].map((value) => screenDetailValue("dividendGrowthYears", { value, unit: "years" }))).toEqual(["1 year", "2 years"]);
   // The note on another line of the company is split from what is the grade's own.

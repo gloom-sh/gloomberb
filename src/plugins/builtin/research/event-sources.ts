@@ -6,7 +6,7 @@ import type {
 } from "../../../types/financials";
 import { formatEventMetric } from "./event-model";
 import { loadAnalystResearch } from "./client";
-import { formatPercent, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { loadEarningsCalendar } from "../earnings/data/cache";
 import { calendarEventOf, listingDay, withResolvedEarnings } from "../shared/earnings-calendar";
@@ -44,20 +44,20 @@ export const EARNINGS_ESTIMATE_COLUMNS = [
     // `surpriseNotMeaningful`, CSV an empty cell with `n/m` in its status column.
     key: "surprisePercent", header: "EPS surp", align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => typeof value !== "number" && row.surpriseNotMeaningful === true
-      ? NOT_MEANINGFUL_TEXT.toLowerCase() : value == null ? "-" : formatPercentRaw(Number(value)),
+      ? NOT_MEANINGFUL_TEXT.toLowerCase() : value == null ? MISSING_VALUE : formatPercentRaw(Number(value)),
     textFormat: (value: unknown, row: Record<string, unknown>) => typeof value !== "number" && row.surpriseNotMeaningful === true
-      ? NOT_MEANINGFUL_TEXT : value == null ? "-" : formatPercentRaw(Number(value)),
+      ? NOT_MEANINGFUL_TEXT : value == null ? MISSING_VALUE : formatPercentRaw(Number(value)),
   },
   {
     // Off a year-ago figure at or below zero the growth is N/M (`estimateGrowthNotMeaningful`), as the pane says.
     key: "estimateGrowth", header: "YoY growth", align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => typeof value !== "number" && row.estimateGrowthNotMeaningful === true
-      ? NOT_MEANINGFUL_TEXT.toLowerCase() : value == null ? "-" : formatPercent(Number(value)),
+      ? NOT_MEANINGFUL_TEXT.toLowerCase() : value == null ? MISSING_VALUE : formatPercent(Number(value)),
     // The text says which figure grew, as the pane does; exports keep the percent a number.
     textFormat: (value: unknown, row: Record<string, unknown>) => {
       const metric = row.estimateGrowthMetric === "revenue" ? "rev" : "EPS";
       if (typeof value !== "number" && row.estimateGrowthNotMeaningful === true) return `${NOT_MEANINGFUL_TEXT} ${metric}`;
-      return value == null ? "-" : `${formatPercent(Number(value))} ${metric}`;
+      return value == null ? MISSING_VALUE : `${formatPercent(Number(value))} ${metric}`;
     },
   },
   { key: "detail", header: "Detail" },

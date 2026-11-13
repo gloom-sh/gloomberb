@@ -114,18 +114,18 @@ describe("adaptive composite time axis", () => {
       40,
     );
 
-    expect(month.text).toContain("Jun 29");
-    expect(month.text).toContain("Jul 29");
+    expect(month.text).toContain("29 Jun");
+    expect(month.text).toContain("29 Jul");
     expect(month.text).not.toContain("2026-06-29");
     expect(month.ticks.length).toBeGreaterThan(3);
-    expect(year.text).toContain("Jul 29 2025");
+    expect(year.text).toContain("29 Jul 2025");
     expect(year.text).toContain("Jan 2026");
-    expect(year.text).toContain("Jul 29 2026");
+    expect(year.text).toContain("29 Jul 2026");
     expect(year.ticks.length).toBeGreaterThan(3);
     // A start in July 2021 has its first year tick, 2022, beside it: the tick
     // stays and the bare start year gives way, so no year reads as missing.
     expect(multiyear.text).toMatch(/^\s*2022\s+2023\s+2024\s+2025\s+2026\s*$/);
-    expect(multiyear.text).not.toContain("Jul 29");
+    expect(multiyear.text).not.toContain("29 Jul");
     expectValidLayout(month, 80);
     expectValidLayout(year, 80);
     expectValidLayout(multiyear, 40);
@@ -154,10 +154,10 @@ describe("adaptive composite time axis", () => {
     expect(narrow.ticks.length).toBeGreaterThanOrEqual(2);
     expect(wide.ticks.length).toBeGreaterThanOrEqual(8);
     expect(wide.ticks.length).toBeGreaterThan(narrow.ticks.length);
-    expect(wide.text).toContain("Oct 21 2024");
+    expect(wide.text).toContain("21 Oct 2024");
     expect(wide.text).toContain("Mar 2025");
     expect(wide.text).toContain("Jan 2026");
-    expect(wide.text).toContain("Jul 29 2026");
+    expect(wide.text).toContain("29 Jul 2026");
     expectValidLayout(narrow, 40);
     expectValidLayout(wide, 165);
   });
@@ -208,7 +208,7 @@ describe("adaptive composite time axis", () => {
     expect(endpoint).toMatchObject({
       timestamp: Date.parse("2026-07-29T00:00:00.000Z"),
       ratio: 1,
-      label: "Jul 29 2026",
+      label: "29 Jul 2026",
     });
     expectValidLayout(layout, 217);
   });
@@ -271,8 +271,8 @@ describe("adaptive composite time axis", () => {
     const fiveYears = layoutOf("2021-10-26", "2026-10-26");
 
     // "Oct" and "Jul" were four and two cells from the end label.
-    expect(year.ticks.map((tick) => tick.label).slice(-3)).toEqual(["Aug", "Sep", "Oct 29 2026"]);
-    expect(fiveYears.ticks.map((tick) => tick.label).slice(-3)).toEqual(["Jul", "Jan 2026", "Oct 26 2026"]);
+    expect(year.ticks.map((tick) => tick.label).slice(-3)).toEqual(["Aug", "Sep", "29 Oct 2026"]);
+    expect(fiveYears.ticks.map((tick) => tick.label).slice(-3)).toEqual(["Jul", "Jan 2026", "26 Oct 2026"]);
     for (const layout of [year, fiveYears]) {
       const { ticks } = layout;
       expect(ticks[1]!.start - ticks[0]!.end - 1).toBeGreaterThanOrEqual(5);
@@ -288,8 +288,8 @@ describe("adaptive composite time axis", () => {
       30,
     );
 
-    expect(layout.text).toContain("Dec 31 23:30");
-    expect(layout.text).toContain("Jan 1 00:30");
+    expect(layout.text).toContain("31 Dec 23:30");
+    expect(layout.text).toContain("1 Jan 00:30");
     expect(layout.ticks).toHaveLength(2);
     expectValidLayout(layout, 30);
   });
@@ -326,11 +326,11 @@ describe("adaptive composite time axis", () => {
     expect(newYork.ticks.slice(1, -1).map((tick) => tick.label)).toContain("12:00");
     expectValidLayout(newYork, 80);
     // Half-hour offsets still step on the local hour, and the date turns at local midnight:
-    // 04:00 on Oct 2 in Mumbai is still Oct 1 in UTC.
+    // 04:00 on 2 Oct in Mumbai is still 1 Oct in UTC.
     const mumbai = buildCompositeTimeAxisLayout(venueScene("2026-10-01T18:00:00Z", "2026-10-02T10:00:00Z", "Asia/Kolkata"), 120);
-    expect(mumbai.ticks[0]?.label).toBe("Oct 1 23:30 IST");
+    expect(mumbai.ticks[0]?.label).toBe("1 Oct 23:30 IST");
     for (const tick of mumbai.ticks.slice(1, -1)) expect(tick.label).toMatch(/(^|\s)\d{2}:00$/);
-    expect(mumbai.ticks[1]?.label).toBe("Oct 2 04:00");
+    expect(mumbai.ticks[1]?.label).toBe("2 Oct 04:00");
     expectValidLayout(mumbai, 120);
   });
 });

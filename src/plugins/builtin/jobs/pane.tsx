@@ -33,7 +33,7 @@ import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
@@ -114,19 +114,19 @@ function companyFigures(summary: CloudJobsSummaryPayload, width: number): StatIt
         ? { id: "posted", label: "Posted 30d", value: formatNumber(summary.posted30d, 0) }
         : { id: "closed", label: "Closed 30d", value: formatNumber(summary.closed30d, 0) },
     { id: "new", label: "New 7d", value: formatNumber(summary.new7d, 0), detail: roomy && summary.coverage.daysObserved <= 1 ? "first read" : undefined },
-    { id: "remote", label: "Remote", value: summary.remoteShare != null ? formatShare(summary.remoteShare) : "-" },
-    { id: "age", label: "Median age", value: summary.medianAgeDays != null ? `${summary.medianAgeDays}d` : "-" },
+    { id: "remote", label: "Remote", value: summary.remoteShare != null ? formatShare(summary.remoteShare) : MISSING_VALUE },
+    { id: "age", label: "Median age", value: summary.medianAgeDays != null ? `${summary.medianAgeDays}d` : MISSING_VALUE },
     // Standing roles the company hires for continuously; the rest are the
     // openings that say something about its plans.
     {
       id: "evergreen",
       label: "Evergreen",
-      value: summary.evergreenShare != null ? formatShare(summary.evergreenShare) : "-",
+      value: summary.evergreenShare != null ? formatShare(summary.evergreenShare) : MISSING_VALUE,
       detail: roomy && summary.evergreenCount != null && summary.evergreenShare != null
         ? `${formatNumber(Math.max(0, summary.openCount - summary.evergreenCount), 0)} specific`
         : undefined,
     },
-    { id: "contract", label: "Contract", value: summary.contractShare != null ? formatShare(summary.contractShare) : "-" },
+    { id: "contract", label: "Contract", value: summary.contractShare != null ? formatShare(summary.contractShare) : MISSING_VALUE },
   ];
 }
 

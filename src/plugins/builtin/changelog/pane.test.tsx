@@ -116,9 +116,9 @@ test("lists one row per minor version, highest first: its newest update's date, 
   const frame = await render();
 
   expect(lines(frame).find((line) => /DATE/.test(line))).toMatch(/DATE\s+VERSION ▼\s+TITLE\s+UPDATES/);
-  expect(lineWith(frame, "v0.20")).toMatch(/Nov 4, 2026\s+v0\.20\s+A faster desktop app, and a responsive one on Windows\s+2/);
+  expect(lineWith(frame, "v0.20")).toMatch(/4 Nov 2026\s+v0\.20\s+A faster desktop app, and a responsive one on Windows\s+2/);
   // No summary for 0.19: its first update's title.
-  expect(lineWith(frame, "v0.19")).toMatch(/Oct 29, 2026\s+v0\.19\s+Options strategy screens\s+2/);
+  expect(lineWith(frame, "v0.19")).toMatch(/29 Oct 2026\s+v0\.19\s+Options strategy screens\s+2/);
   expect(frame.indexOf("v0.20")).toBeLessThan(frame.indexOf("v0.19"));
   expect(frame).not.toContain("nightly");
   expect(frame).not.toContain("example");
@@ -132,8 +132,8 @@ test("Enter opens a version's highlights over its updates, Enter an update's not
   expect(version).toContain("v0.20 A faster desktop app, and a responsive one on Windows");
   expect(version).toContain("A faster, lighter desktop app. It starts about a third faster. (0.20.0)");
   expect(version).toContain("The Windows app stays responsive. Menus no longer freeze it. (0.20.1)");
-  expect(lineWith(version, "v0.20.1")).toMatch(/Nov 4, 2026\s+v0\.20\.1\s+Responsive Windows app/);
-  expect(lineWith(version, "v0.20.0")).toMatch(/Nov 3, 2026\s+v0\.20\.0\s+Faster desktop app/);
+  expect(lineWith(version, "v0.20.1")).toMatch(/4 Nov 2026\s+v0\.20\.1\s+Responsive Windows app/);
+  expect(lineWith(version, "v0.20.0")).toMatch(/3 Nov 2026\s+v0\.20\.0\s+Faster desktop app/);
 
   const notes = await press("enter");
   expect(notes).toContain("v0.20.1 Responsive Windows app");
@@ -211,5 +211,5 @@ test("what's new after an update opens that release's notes inside its version",
 
   const version = await press("escape");
   expect(version).toContain("v0.19 Options strategy screens");
-  expect(lineWith(version, "v0.19.0")).toMatch(/Oct 28, 2026\s+v0\.19\.0/);
+  expect(lineWith(version, "v0.19.0")).toMatch(/28 Oct 2026\s+v0\.19\.0/);
 });

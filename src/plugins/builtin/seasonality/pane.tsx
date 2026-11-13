@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { CompositeChart, DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter,
   usePaneNoticeFooter, usePaneTabs, usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
@@ -23,7 +24,7 @@ export const LOOKBACK_OPTIONS = [{ value: "5", label: "5Y" }, { value: "10", lab
 /** The move that tints a cell at full strength: a month of ±10%, a year of ±30%, an average session of ±0.5%. */
 const MONTH_SCALE = 0.1, YEAR_SCALE = 0.3, SESSION_SCALE = 0.005;
 function pct(value: number | null | undefined, digits = 1): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   const fixed = (value * 100).toFixed(digits);
   // A return that rounds to zero reads 0.0%, never -0.0%.
   return /[1-9]/.test(fixed) ? `${value > 0 ? "+" : ""}${fixed}%` : `${(0).toFixed(digits)}%`;
@@ -49,7 +50,7 @@ function tableRows(model: SeasonalityModel): Row[] {
 
 function hitCell(value: number | null, quiet = false): DataTableCell {
   const heat = resolveHeatCellColors(value == null ? null : (value - 0.5) * 2, { quiet });
-  return { text: value == null ? "--" : `${Math.round(value * 100)}%`, value: value == null ? null : value * 100,
+  return { text: value == null ? MISSING_VALUE : `${Math.round(value * 100)}%`, value: value == null ? null : value * 100,
     backgroundColor: heat.background, color: heat.foreground };
 }
 
@@ -131,7 +132,7 @@ function monthStats(model: SeasonalityModel): StatItem[] {
   const current = model.years[0]!;
   return [
     { id: "month-avg", label: `${MONTH_LABELS[month]} avg`, value: pct(stat.mean), tone: tone(stat.mean) },
-    { id: "month-hit", label: `${MONTH_LABELS[month]} up`, value: stat.count ? `${Math.round(stat.hitRate! * 100)}%` : "--",
+    { id: "month-hit", label: `${MONTH_LABELS[month]} up`, value: stat.count ? `${Math.round(stat.hitRate! * 100)}%` : MISSING_VALUE,
       detail: stat.count ? `${Math.round(stat.hitRate! * stat.count)} of ${stat.count} yrs` : undefined },
     ...(current.partial ? [{ id: "ytd", label: `${current.year} YTD`, value: pct(current.total), tone: tone(current.total) }] : []),
   ];

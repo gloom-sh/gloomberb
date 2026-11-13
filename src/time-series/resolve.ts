@@ -929,8 +929,9 @@ async function resolveChartSpecPass(
       const needsFinancials = !isPriceOnlyMarketFieldId(source.fieldId)
         || !source.instrument.exchange?.trim();
       const financialsPromise = needsFinancials ? loadFinancials(source) : Promise.resolve(null);
-      // A continuous future (HO=F) is known by its symbol: its terms load beside its history.
-      void loadPriceUnit(source, undefined);
+      // A continuous future (HO=F) is known by its symbol: its terms load beside its
+      // history and are read below. A failed read already answers null.
+      loadPriceUnit(source, undefined).catch(logFailure("time-series-resolve", "Starting a futures price unit read failed"));
       let resolvedSource = source;
       let financials: TickerFinancials | null;
       let history: LoadedPriceHistory | null;

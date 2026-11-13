@@ -70,7 +70,7 @@ test("a delisted listing's chart ends on its last session, says so, and adds no 
   expect(days.at(-1)).toBe("2022-10-27");
   expect(year.viewport?.end.toISOString().slice(0, 10)).toBe("2022-10-27");
   expect(year.viewport?.start.toISOString().slice(0, 10)).toBe("2021-10-27");
-  expect(year.warnings).toContain("TWTR: Delisted Oct 27, 2022");
+  expect(year.warnings).toContain("TWTR: Delisted 27 Oct 2022");
   // The window ending today came back empty; the one asked again ends the day after the last session.
   expect(calls.map((params) => params.endDate)).toEqual([expect.not.stringMatching(/^2022/), "2022-10-28"]);
   // Known from then on: the next window is asked up to the last session at once (its 15-minute
@@ -79,7 +79,7 @@ test("a delisted listing's chart ends on its last session, says so, and adds no 
   const month = await resolveChartSpecData(spec("1M"), sources(router));
   expect(month.series[0]!.points.at(-1)?.date.toISOString().slice(0, 10)).toBe("2022-10-27");
   expect(calls.every((params) => !params.endDate || params.endDate <= "2022-10-28")).toBe(true);
-  expect(month.warnings).toContain("TWTR: Delisted Oct 27, 2022");
+  expect(month.warnings).toContain("TWTR: Delisted 27 Oct 2022");
 });
 
 test("AAPL against TWTR over 2019 to 2022: each line ends on its own last session, the delisted one named", async () => {
@@ -91,6 +91,6 @@ test("AAPL against TWTR over 2019 to 2022: each line ends on its own last sessio
     .filter((point) => point.value != null).at(-1)?.date.toISOString().slice(0, 10);
   expect([last("AAPL"), last("TWTR")]).toEqual(["2022-12-30", "2022-10-27"]);
   expect(compared.series.find((series) => series.id === "TWTR")!.points[0]?.date.toISOString().slice(0, 10)).toBe("2019-01-02");
-  expect(compared.warnings).toEqual(["TWTR: Delisted Oct 27, 2022"]);
-  expect(compared.delistings).toEqual([{ symbol: "TWTR", label: "Delisted Oct 27, 2022", notice: "TWTR: Delisted Oct 27, 2022" }]);
+  expect(compared.warnings).toEqual(["TWTR: Delisted 27 Oct 2022"]);
+  expect(compared.delistings).toEqual([{ symbol: "TWTR", label: "Delisted 27 Oct 2022", notice: "TWTR: Delisted 27 Oct 2022" }]);
 });

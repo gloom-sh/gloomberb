@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
@@ -42,7 +43,7 @@ test("narrow panes give up a band's bid and ask together and always keep the ven
 test("liquidations read by side, and windows that start before collection say when it started", () => {
   const data = liquidations();
   expect(liquidationCellText(data.markets[0]!, "long24h")).toBe("3.1k");
-  expect(liquidationCellText(data.markets[2]!, "lastEventAt")).toBe("--");
+  expect(liquidationCellText(data.markets[2]!, "lastEventAt")).toBe(MISSING_VALUE);
   expect(["eventAt", "side", "priceKind", "notionalUsd", "receivedAt"].map((id) => printCellText(data.largest[0]!, id as never)))
     .toEqual(["10-26 07:00:49", "Short", "Fill", "32.0k", "07:00:50"]);
   const figures = liquidationFigures(data, colors);

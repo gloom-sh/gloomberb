@@ -1,3 +1,4 @@
+import { formatWeekdayDay } from "../../../utils/datetime-format";
 import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { deriveHeadlessFreshness, paneSourceLineVariants, type ReportFreshness } from "../../../cli/pane-functions/freshness";
 import { quotesFreshness } from "../../../cli/freshness";
@@ -37,7 +38,7 @@ function compactTime(time: number, now: number): string {
   const at = new Date(time);
   const clock = `${at.toISOString().slice(11, 16)} UTC`;
   if (at.toISOString().slice(0, 10) === new Date(now).toISOString().slice(0, 10)) return clock;
-  return `${at.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", "")} ${clock}`;
+  return `${formatWeekdayDay(at, { timeZone: "UTC" })} ${clock}`;
 }
 
 /** {@link sourceFooterSegment} for a pane's data read as its report reads it: the definition's freshness over `result`. */

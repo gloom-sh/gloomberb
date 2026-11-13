@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
 import { analystReferenceMetadata, analystReferencePrice, analystTargetCurrency, analystUpside, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, buildMeanTargetHistory, buildRatingColumns, formatAnalystPrice, formatAnalystReference, formatRatingTarget, formatRecommendationMix, latestRecommendation, ratingReason, ratingReasonSource, ratingSplit, ratingTargetDelta, recommendationMix, recommendationTotal, sortRatingRows, targetUpside, type RatingSortPreference } from "./analyst-model";
@@ -8,7 +9,7 @@ test("unknown and explicit minor units format without a currency or scale guess"
   expect(formatAnalystPrice(0, undefined)).toBe("0.00 (ccy?)");
   expect(formatAnalystPrice(125, "GBp")).toBe("£1.25");
   expect(formatAnalystPrice(1.25, "GBP")).toBe("£1.25");
-  expect(formatAnalystPrice(Infinity, "USD")).toBe("-");
+  expect(formatAnalystPrice(Infinity, "USD")).toBe(MISSING_VALUE);
   expect(analystTargetCurrency({ ...data, currency: " GBP ", priceTarget: { currency: " " } })).toBe("GBP");
   expect(analystTargetCurrency({ ...data, currency: "USD", priceTarget: { currency: " EUR " } })).toBe("EUR");
   expect(targetUpside({ average: 0, current: 2 })).toBe(-1);
@@ -21,7 +22,7 @@ test("consensus total requires every finite nonnegative integer bucket", () => {
     const incomplete = { ...data, recommendations: [{ ...complete, strongSell }] };
     expect(recommendationTotal(incomplete)).toBeNull();
     expect(recommendationMix(incomplete)?.strongSell).toBeNull();
-    expect(formatRecommendationMix(incomplete)).toBe("2 Strong Buy · 3 Buy · 4 Hold · - Sell");
+    expect(formatRecommendationMix(incomplete)).toBe(`2 Strong Buy · 3 Buy · 4 Hold · ${MISSING_VALUE} Sell`);
   }
   expect(recommendationTotal({ ...data, recommendations: [{ ...complete, strongBuy: 0, buy: 0, hold: 0 }] })).toBe(0);
 });

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../../utils/format";
 import type { DepositaryPair, Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
@@ -82,12 +83,12 @@ export function adrPairFigures(comparison: DepositaryPairComparison): AdrPairFig
       detail: currency === "ARS" ? "CCL" : `home × ${ratioCount(comparison.ratio)} / ADR`,
     },
     {
-      id: "spot", label: `Spot ${pairLabel}`, value: comparison.spot ? formatPairRate(comparison.spot.rate) : "—",
+      id: "spot", label: `Spot ${pairLabel}`, value: comparison.spot ? formatPairRate(comparison.spot.rate) : MISSING_VALUE,
       ...(kind ? { detail: kind } : {}),
     },
     {
       id: "premium", label: "ADR vs home",
-      value: comparison.premiumPercent == null ? "—" : premiumText(comparison.premiumPercent),
+      value: comparison.premiumPercent == null ? MISSING_VALUE : premiumText(comparison.premiumPercent),
       ...(comparison.premiumPercent == null ? {} : { detail: "at spot" }),
     },
     { id: "ratio", label: "Ratio", value: adrRatioText(comparison.ratio, comparison.home.symbol) ?? `1:${ratioCount(comparison.ratio)}` },
@@ -131,7 +132,7 @@ export function adrPairInputRows(
   now = Date.now(),
 ): AdrPairInputRow[] {
   const { home, receipt, spot, ratio } = comparison;
-  const time = (value: number | null) => value == null ? "—" : pairTimeText(value, now).replace(/ UTC$/, "");
+  const time = (value: number | null) => value == null ? MISSING_VALUE : pairTimeText(value, now).replace(/ UTC$/, "");
   const kind = spotRateKind(home.currency);
   return [
     {

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { DataTableColumn } from "../../../components";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import { withoutQuietColumns } from "../shared/research-cells";
@@ -18,8 +19,8 @@ const isGasQuery = (input: string | undefined) => /^(?:gas|storage)\b/i.test(inp
 const GRAPHIC_COLUMNS = new Set(["outcome", "pipeline"]);
 /** Columns that only repeat a default on every row, as the pane leaves them out. */
 const QUIET_COLUMNS: Record<string, readonly string[]> = { scope: ["Project"], unknownCapacity: ["0"], unknown: ["0"], fuel: ["Load"], role: ["Direct"], kind: ["Queue"] };
-const text = (value: unknown) => value == null || value === "" ? "-" : String(value);
-const coded = (value: unknown) => typeof value === "string" && value ? titleCase(value) : "-";
+const text = (value: unknown) => value == null || value === "" ? MISSING_VALUE : String(value);
+const coded = (value: unknown) => typeof value === "string" && value ? titleCase(value) : MISSING_VALUE;
 
 /** The tabs that list records, a page at a time. */
 const RECORD_TABS: readonly PowerTab[] = ["queue", "loads", "capacity"];
@@ -47,16 +48,16 @@ function reportColumns(tab: PowerTab, context: unknown): HeadlessPaneColumn[] {
   const columns: DataTableColumn[] = tab === "capacity" && context === "generation" ? GENERATION_COLUMNS : tab === "capacity" && context === "utility" ? UTILITY_COLUMNS
     : ["queue", "loads", "capacity"].includes(tab) ? PROJECT_COLUMNS : tab === "history" ? HISTORY_COLUMNS : tab === "outcomes" ? RATE_COLUMNS : tab === "utilities" ? EXPOSURE_COLUMNS : COVERAGE_COLUMNS;
   // The coverage list names its register by its own id; everything else by the record's source.
-  const region = (value: unknown, row: HeadlessPaneRow) => typeof value !== "string" ? "-"
+  const region = (value: unknown, row: HeadlessPaneRow) => typeof value !== "string" ? MISSING_VALUE
     : tab === "utilities" ? value : powerRegion(value, String((tab === "coverage" ? row.id : row.sourceId) ?? ""));
   const format = (column: DataTableColumn): HeadlessPaneColumn["format"] => {
     if (column.id === "region") return region;
     if (["fuel", "status", "kind", "role"].includes(column.id)) return coded;
     if (column.id === "ticker") return (value) => typeof value === "string" && value ? value : UNMAPPED;
     if (column.id === "developer") return (value, row) => text(value ?? row.utility);
-    if (column.id === "observedAt") return (value) => typeof value === "string" ? value.slice(0, 16).replace("T", " ") : "-";
-    if (/Rate$/.test(column.id)) return (value) => typeof value === "number" ? powerPercent(value) : "-";
-    if (column.align === "right") return (value) => typeof value === "number" ? `${column.id === "changeMw" && value > 0 ? "+" : ""}${powerNumber(value)}` : "-";
+    if (column.id === "observedAt") return (value) => typeof value === "string" ? value.slice(0, 16).replace("T", " ") : MISSING_VALUE;
+    if (/Rate$/.test(column.id)) return (value) => typeof value === "number" ? powerPercent(value) : MISSING_VALUE;
+    if (column.align === "right") return (value) => typeof value === "number" ? `${column.id === "changeMw" && value > 0 ? "+" : ""}${powerNumber(value)}` : MISSING_VALUE;
     return text;
   };
   // The pane groups outcomes under region headings; the report names the region on each row.

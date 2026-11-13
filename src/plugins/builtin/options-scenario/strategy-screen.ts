@@ -250,7 +250,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 /** `Dec 18`: a later leg's expiry, the row's own being its DTE. */
 const monthDay = (expiration: number) => {
   const date = new Date(expiration * 1000);
-  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
 };
 
 /**

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo } from "react";
 import {
   DataTableView,
@@ -92,7 +93,7 @@ export function JodiPane({ focused, width, height }: PaneProps) {
       case "country":
         return withCountryFlag({ text: row.country, color: colors.textBright, attributes: TextAttributes.BOLD }, row.country, flagged);
       case "month":
-        return { text: row.month ? formatBalanceMonth(row.month) : "—", value: row.month, color: colors.textMuted };
+        return { text: row.month ? formatBalanceMonth(row.month) : MISSING_VALUE, value: row.month, color: colors.textMuted };
       case "production":
         return number(row.production);
       case "demand":

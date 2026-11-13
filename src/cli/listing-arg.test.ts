@@ -480,6 +480,23 @@ test("companies are told apart by the service's ids, never by how a venue names 
     { exchange: "HANOVER", name: "Deutsche Post AG" },
   ];
   expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL Group AG" }, dhl)).toBeNull();
+  // Live 13 Nov: the service identifies DHL's Xetra line alone, so its Vienna, Hanover and Toronto lines, named as the company
+  // was (Deutsche Post AG), read as another company: "DHL -> XETRA (DHL); also DHL:VIE, Deutsche Post". It sends the names
+  // the company is known by on the identified row, which tell those lines apart from another company's DHL.
+  const live = [
+    { exchange: "XETRA", name: "DHL Group AG", companyId: "isin:DE0005552004", home: true as const, aliases: ["DHL", "Deutsche Post AG"] },
+    { exchange: "FWB2", name: "DHL Group AG" },
+    { exchange: "VIE", name: "Deutsche Post AG" },
+    { exchange: "HANOVER", name: "Deutsche Post AG" },
+    { exchange: "NEO", name: "Deutsche Post AG" },
+  ];
+  expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL AG" }, live)).toBeNull();
+  // Only a name the company is known by: another company's DHL (a logistics firm in India) is another company, as is a
+  // line named as the former company when the service sent no names (an older one).
+  expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL AG" }, [...live, { exchange: "BSE", name: "DHL Express India Ltd." }]))
+    .toBe("DHL -> XETRA (DHL); also DHL:BSE, DHL Express India");
+  expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL AG" }, live.map(({ aliases: _aliases, ...venue }) => venue)))
+    .toBe("DHL -> XETRA (DHL); also DHL:VIE, Deutsche Post");
   // Another id is another company, whatever the names say; a line with none is the company's it is named like (CXA).
   const mbg = [
     { exchange: "XETRA", name: "Mercedes-Benz Group AG", companyId: "isin:DE0007100000", home: true as const },
@@ -627,10 +644,10 @@ test("a code its exchange withdrew is that company, gone on its day for its reas
   });
   const deps = { store, dataProvider };
   expect(await notTradedMessage(await resolveCliListing("0011", "HKEX", deps), deps))
-    .toBe("0011:HKEX (Hang Seng Bank Limited): Delisted Jan 27, 2026 (Privatised by The Hongkong and Shanghai Banking Corporation Limited).");
+    .toBe("0011:HKEX (Hang Seng Bank Limited): Delisted 27 Jan 2026 (Privatised by The Hongkong and Shanghai Banking Corporation Limited).");
   // Named among the code's listings with the day it went; Brite-Tech's line trades.
   expect((await listingVenues("0011", deps)).map((venue) => venue.name))
-    .toEqual(["Brite-Tech Berhad", "Hang Seng Bank Limited · Delisted Jan 27, 2026"]);
+    .toEqual(["Brite-Tech Berhad", "Hang Seng Bank Limited · Delisted 27 Jan 2026"]);
   expect(await notTradedMessage(await resolveCliListing("0011", "BURSAMY", deps), deps)).toBeNull();
 });
 

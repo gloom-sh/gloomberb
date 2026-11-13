@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataTableView,
@@ -161,7 +162,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
       case "company":
         return { text: row.company, color: selectedColor ?? colors.text };
       case "code":
-        return { text: row.reasonCode || "—", color: selectedColor ?? colors.textDim };
+        return { text: row.reasonCode || MISSING_VALUE, color: selectedColor ?? colors.textDim };
       case "reason":
         return { text: row.reason, color: selectedColor ?? colors.text };
       case "date":

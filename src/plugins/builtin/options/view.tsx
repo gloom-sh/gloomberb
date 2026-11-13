@@ -3,7 +3,8 @@ import { Box, Text, useUiCapabilities } from "../../../ui";
 import { usePaneAppConfig, usePaneSettingValue, usePaneTicker, useUpdatePaneSettings } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
-import { formatCompact, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatPercentRaw } from "../../../utils/format";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
 import { chainOptionContract, formatExpDate, formatStrikeLabel, optionContractName, resolveOptionsTarget } from "../../../utils/options";
@@ -116,7 +117,7 @@ function sentenceCase(text: string): string {
 }
 
 function formatRatio(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
+  return value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toFixed(2);
 }
 
 /** The minimal record the chain needs for a symbol that is bound but not saved in any list. */
@@ -137,7 +138,7 @@ function spotItem(
   modelSpot: OptionModelSpot | null,
 ): StatItem {
   const quote = underlying?.quote;
-  if (!quote || !Number.isFinite(quote.price)) return { id: "spot", label: "Spot", value: "--" };
+  if (!quote || !Number.isFinite(quote.price)) return { id: "spot", label: "Spot", value: MISSING_VALUE };
   const options = liveQuoteFormatOptions(quote, quote.currency, assetCategory, underlying?.quoteMetadata?.instrumentType);
   const stamp = modelSpot ? modelSpotStamp(modelSpot) : null;
   if (modelSpot && stamp) {
@@ -174,11 +175,11 @@ function optionsSummaryItems({ spot, summary, enrichment, currency, ivRank }: {
   ivRank?: { stats: IvStats | null } | null;
 }): StatItem[] {
   // The chain columns draw an empty IV as a dash; a summary figure reads "--" like its neighbours.
-  const iv = (value: number | null | undefined) => value == null || !(value > 0) ? "--" : formatIv(value);
-  const whole = (value: number | null | undefined) => value == null ? "--" : String(Math.round(value));
+  const iv = (value: number | null | undefined) => value == null || !(value > 0) ? MISSING_VALUE : formatIv(value);
+  const whole = (value: number | null | undefined) => value == null ? MISSING_VALUE : String(Math.round(value));
   const rank = ivRank?.stats ?? null;
   const move = (amount: number | null | undefined, percent: number | null | undefined): Pick<StatItem, "value" | "detail"> =>
-    amount == null || percent == null ? { value: "--" } : { value: `${amount.toFixed(2)} ${currency}`.trim(), detail: `${percent.toFixed(2)}%` };
+    amount == null || percent == null ? { value: MISSING_VALUE } : { value: `${amount.toFixed(2)} ${currency}`.trim(), detail: `${percent.toFixed(2)}%` };
   const points = (value: number | null | undefined) => value == null ? null : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}`;
   const skew = points(enrichment?.skew25);
   const slope = points(enrichment?.termSlope);
@@ -192,13 +193,13 @@ function optionsSummaryItems({ spot, summary, enrichment, currency, ivRank }: {
     { id: "iv-hv", label: "IV/HV", value: formatRatio(summary?.impliedHistoricalRatio) },
     ...(ivRank ? [{
       id: "ivr", label: "IVR", value: whole(rank?.rank),
-      detail: rank ? `pctl ${whole(rank.percentile)} · ${rank.date.slice(5)}` : undefined,
+      detail: rank ? `pctl ${whole(rank.percentile)} · ${formatShortDate(rank.date, { year: false, utc: true })}` : undefined,
     }] : []),
     { id: "straddle", label: "Straddle", ...move(enrichment?.expectedMove.straddle, enrichment?.expectedMove.straddlePercent) },
     { id: "sigma", label: "1σ fit", ...move(enrichment?.expectedMove.sigma, enrichment?.expectedMove.sigmaPercent) },
-    { id: "skew", label: "Skew", value: skew == null ? "--" : `${skew} pp`, detail: "25d P-C" },
-    { id: "slope", label: "Slope", value: slope == null ? "--" : `${slope} ${slopeAnnualized ? "pp/y" : "pp"}`, detail: slopeTo },
-    { id: "volume", label: "Volume", value: summary?.expirationVolume == null ? "--" : formatCompact(summary.expirationVolume, { fixedDecimals: true }) },
+    { id: "skew", label: "Skew", value: skew == null ? MISSING_VALUE : `${skew} pp`, detail: "25d P-C" },
+    { id: "slope", label: "Slope", value: slope == null ? MISSING_VALUE : `${slope} ${slopeAnnualized ? "pp/y" : "pp"}`, detail: slopeTo },
+    { id: "volume", label: "Volume", value: summary?.expirationVolume == null ? MISSING_VALUE : formatCompact(summary.expirationVolume, { fixedDecimals: true }) },
     { id: "pc-volume", label: "P/C vol", value: formatRatio(summary?.putCallVolumeRatio) },
     { id: "pc-oi", label: "P/C OI", value: formatRatio(summary?.putCallOpenInterestRatio) },
   ];
@@ -1010,10 +1011,12 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // cell wide enough for all of it, and otherwise takes a row of its own so no
   // figure is squeezed. Sized for four-digit days, so the band does not
   // reflow as the chain's as-of arrives or the expiry steps.
-  const expiryItem: StatItem = { id: "expiry", label: "Expiry", value: expiryDate, detail: `(${expiryDays})` };
+  // Dated as the expiry strip dates it ("13 Nov '26"), never the ISO day a report carries.
+  const expiryLabel = selectedExpiration == null ? "" : formatExpDate(selectedExpiration);
+  const expiryItem: StatItem = { id: "expiry", label: "Expiry", value: expiryLabel, detail: `(${expiryDays})` };
   const cellColumns = Math.max(figureColumns, Math.ceil((figures.length + 1) / statRowBudget));
   const expiryCells = Math.max(...figures.map((item) => item.label.length), expiryItem.label.length) + 1
-    + expiryDate.length + 2 + "(9999d)".length;
+    + expiryLabel.length + 2 + "(9999d)".length;
   const expiryInline = Math.floor((statWidth - 2 * (cellColumns - 1)) / cellColumns) >= expiryCells;
   const statColumns = expiryInline ? cellColumns : figureColumns;
   const statItems = [expiryInline ? expiryItem : { ...expiryItem, wide: true }, ...figures];

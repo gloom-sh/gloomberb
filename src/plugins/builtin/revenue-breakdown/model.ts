@@ -1,5 +1,5 @@
 import type { DataTableColumn } from "../../../components";
-import { pickUnit } from "../../../utils/format";
+import { MISSING_VALUE, pickUnit } from "../../../utils/format";
 import type {
   RevenueBreakdownPayload,
   RevenueBreakdownPeriod,
@@ -76,7 +76,7 @@ export function sharedMaximum(rows: RevenueBreakdownRow[]): number {
 
 /** Three significant figures: 54.3B, 246B, 7.88B, 380M. */
 export function revenueAmount(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return "--";
+  if (value === null || !Number.isFinite(value)) return MISSING_VALUE;
   const abs = Math.abs(value);
   const [divisor, suffix] = abs >= 1e12 ? [1e12, "T"] : abs >= 1e9 ? [1e9, "B"] : abs >= 1e6 ? [1e6, "M"] : abs >= 1e3 ? [1e3, "K"] : [1, ""];
   const scaled = abs / divisor;
@@ -107,10 +107,10 @@ export function revenueScale(values: ReadonlyArray<number | null>, currency: str
 }
 
 export const sharePercent = (value: number | null) =>
-  value === null ? "--" : `${(value * 100).toFixed(1)}%`;
+  value === null ? MISSING_VALUE : `${(value * 100).toFixed(1)}%`;
 
 export const growthPercent = (value: number | null) =>
-  value === null ? "--" : `${value > 0 ? "+" : ""}${(value * 100).toFixed(1)}%`;
+  value === null ? MISSING_VALUE : `${value > 0 ? "+" : ""}${(value * 100).toFixed(1)}%`;
 
 function sortValue(row: RevenueBreakdownRow, column: RevenueSortColumn): number | string | null {
   if (column === "label") return row.label.toLowerCase();

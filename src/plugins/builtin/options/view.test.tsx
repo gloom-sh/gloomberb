@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { act, useReducer, useState } from "react";
 import { Box } from "../../../ui";
@@ -234,7 +235,7 @@ test("Enter opens the cursor's contract on its broker, and with trading t opens 
   await act(async () => { await tui.emitKeypress({ name: "return" }); });
   const contract = { brokerId: "demo", brokerInstanceId: "sim", symbol: "AAPL", localSymbol: "AAPL260619C00100000", secType: "OPT", currency: "USD",
     lastTradeDateOrContractMonth: "20260619", right: "C" as const, strike: 100, multiplier: "100" };
-  expect(pinned[0]).toEqual({ symbol: "AAPL260619C00100000", options: { instrument: contract, listing: { name: "AAPL Jun 19 '26 $100 Call", exchange: "", currency: "USD", type: "OPT" } } });
+  expect(pinned[0]).toEqual({ symbol: "AAPL260619C00100000", options: { instrument: contract, listing: { name: "AAPL 19 Jun '26 $100 Call", exchange: "", currency: "USD", type: "OPT" } } });
   await act(async () => { await tui.emitKeypress({ name: "t" }); });
   expect(pinned[1]).toMatchObject({ symbol: "AAPL260619C00100000", options: { instrument: contract, tabId: "broker-trade" } });
   // The ticket opens on Buy and chooses the side itself.
@@ -345,7 +346,7 @@ test("a typed expiry date opens that expiry, and its report names it with the ch
     </RemoteUiRegistryProvider>, { width: 124, height: 16 });
   });
   await renderSettled();
-  expect(tui.frame()).toMatch(/Expiry\s+2026-06-25\s+\(24d\)/);
+  expect(tui.frame()).toMatch(/Expiry\s+25 Jun '26\s+\(24d\)/);
   expect(tui.frame()).not.toContain("NaN");
   const report = renderedReportNotices(registry.snapshot());
   expect(report.notices[0]).toBe("Expiry 2026-06-25 (24d)");
@@ -409,7 +410,7 @@ test("shows the spot, volatility statistics and the mirrored default fields", as
   const frame = tui.frame();
   expect(frame).toMatch(/Spot\s+101\.00/);
   expect(frame).toMatch(/ATM IV\s+90\.1%/);
-  expect(frame).toMatch(/HV30\s+--/);
+  expect(frame).toMatch(new RegExp(String.raw`HV30\s+${MISSING_VALUE}`));
   expect(frame).toMatch(/Volume\s+4\.0k/);
   for (const header of ["C IV", "C Δ", "C VOL", "C OI", "P OI", "P VOL", "P Δ", "P IV"]) expect(frame).toContain(header);
 });
@@ -764,7 +765,7 @@ test("stale underlying preserves contract observations but cannot seed current G
   });
   await renderSettled();
   const frame = tui.frame();
-  expect(frame).toMatch(/ATM IV\s+--/);
+  expect(frame).toMatch(new RegExp(String.raw`ATM IV\s+${MISSING_VALUE}`));
   expect(frame).toContain("Underlying quote stale");
   expect(frame).not.toContain("[c]alc");
   await exportPaneTable(TEST_PANE_ID, "stale-options.csv");
@@ -803,8 +804,8 @@ test("rejected history disables HV and IV/HV without discarding healthy chain an
   await renderSettled();
   const frame = tui.frame();
   expect(frame).toMatch(/ATM IV\s+90\.1%/);
-  expect(frame).toMatch(/HV30\s+--/);
-  expect(frame).toMatch(/IV\/HV\s+--/);
+  expect(frame).toMatch(new RegExp(String.raw`HV30\s+${MISSING_VALUE}`));
+  expect(frame).toMatch(new RegExp(String.raw`IV\/HV\s+${MISSING_VALUE}`));
   expect(historyRequests).toContainEqual({ range: "1Y", resolution: "1d" });
   expect(frame).toContain("HV30 unavailable: inconsistent OHLC");
   expect(frame).toContain("[c]alc");

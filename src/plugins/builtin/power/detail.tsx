@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { isAccessDenied } from "../../../api-client/errors";
 import { useCallback, useEffect } from "react";
 import type { PowerProject } from "../../../api-client/power";
@@ -20,12 +21,12 @@ function ProjectFacts({ row }: { row: PowerProject }) {
     ["Observed UTC", row.observedAt], ["Revision", row.revision], ["Confidence", powerPercent(row.confidence)],
   ];
   return <>
-    {facts.map(([label, value]) => <KeyValueRow key={label} label={label} value={typeof value === "number" ? powerNumber(value) : value ?? "--"} detail={typeof value === "string" && ["Requested", "Proposed service", "Completed", "Withdrawn", "Published as of"].includes(label) ? /^\d{4}$/.test(value) ? "year precision" : /^\d{4}-Q[1-4]$/.test(value) ? "quarter precision" : /^\d{4}-\d{2}$/.test(value) ? "month precision" : /^\d{4}-\d{2}-\d{2}$/.test(value) ? "day precision" : undefined : undefined} labelWidth={20} />)}
+    {facts.map(([label, value]) => <KeyValueRow key={label} label={label} value={typeof value === "number" ? powerNumber(value) : value ?? MISSING_VALUE} detail={typeof value === "string" && ["Requested", "Proposed service", "Completed", "Withdrawn", "Published as of"].includes(label) ? /^\d{4}$/.test(value) ? "year precision" : /^\d{4}-Q[1-4]$/.test(value) ? "quarter precision" : /^\d{4}-\d{2}$/.test(value) ? "month precision" : /^\d{4}-\d{2}-\d{2}$/.test(value) ? "day precision" : undefined : undefined} labelWidth={20} />)}
     {row.entities.length ? <SectionHeading title="Mapped companies" /> : null}
     {row.entities.map((entity) => <KeyValueRow key={`${entity.entityId}:${entity.role}`} label={titleCase(entity.role)} value={entity.name}
       detail={`${entity.tickers.map((t) => t.exchange ? `${t.ticker}:${t.exchange}` : t.ticker).join(", ")} · ${powerPercent(entity.confidence)} confidence`} labelWidth={20} />)}
     {Object.keys(row.metrics).length ? <SectionHeading title="Reported context" /> : null}
-    {Object.entries(row.metrics).map(([label, value]) => <KeyValueRow key={label} label={label === "revenueUsd" ? "Retail revenue (USD)" : titleCase(label.replace(/([a-z])([A-Z])/g, "$1 $2"))} value={value === null ? "--" : String(value)} labelWidth={24} />)}
+    {Object.entries(row.metrics).map(([label, value]) => <KeyValueRow key={label} label={label === "revenueUsd" ? "Retail revenue (USD)" : titleCase(label.replace(/([a-z])([A-Z])/g, "$1 $2"))} value={value === null ? MISSING_VALUE : String(value)} labelWidth={24} />)}
     <SectionHeading title="Primary evidence" />
     <KeyValueRow label="Location in source" value={row.sourceLocator} labelWidth={20} />
     <PaneLinkMenu><ExternalLinkText url={row.sourceUrl} label="Open primary document" /></PaneLinkMenu>
@@ -57,16 +58,16 @@ export function PowerDetailView({ row, scope, scrollRef, snapshot, focused, widt
     {hasGeneration && view === "generation" ? <PowerGeneration project={project!} width={width} height={Math.max(3, height - 1)} focused={focused} /> : <DetailScrollBody ref={scrollRef} resetScrollKey={row.id}>
     {denied ? <Text>Project evidence is unavailable for this account.</Text> : project ? <ProjectFacts row={project} /> : <>
       {Object.entries(row.cells).filter(([, value]) => ["string", "number"].includes(typeof value) || value === null).map(([key, value]) =>
-        <KeyValueRow key={key} label={titleCase(key.replace(/([a-z])([A-Z])/g, "$1 $2"))} value={value == null ? "--" : /Rate$/.test(key) ? powerPercent(Number(value)) : String(value)} labelWidth={22} />)}
+        <KeyValueRow key={key} label={titleCase(key.replace(/([a-z])([A-Z])/g, "$1 $2"))} value={value == null ? MISSING_VALUE : /Rate$/.test(key) ? powerPercent(Number(value)) : String(value)} labelWidth={22} />)}
       {row.history ? <>
         <KeyValueRow label="History basis" value={row.history.basis === "published" ? "Published period" : "Observed snapshot"} labelWidth={22} />
-        <KeyValueRow label="Published as of" value={row.history.asOf ?? "--"} labelWidth={22} />
+        <KeyValueRow label="Published as of" value={row.history.asOf ?? MISSING_VALUE} labelWidth={22} />
         <KeyValueRow label="Observed UTC" value={row.history.observedAt} labelWidth={22} />
         <SectionHeading title="Primary evidence" />
         <PaneLinkMenu>{row.history.sourceUrls.map((url, index) => <Box key={url} paddingBottom={1}><ExternalLinkText url={url} label={`Open primary document ${index + 1}`} /></Box>)}</PaneLinkMenu>
       </> : null}
       {row.exposure ? <>
-        <KeyValueRow label="Published as of" value={row.exposure.asOf ?? "--"} labelWidth={22} />
+        <KeyValueRow label="Published as of" value={row.exposure.asOf ?? MISSING_VALUE} labelWidth={22} />
         <KeyValueRow label="Observed UTC" value={row.exposure.observedAt} labelWidth={22} />
         <SectionHeading title="Primary evidence" />
         <PaneLinkMenu>{row.exposure.sourceUrls.map((url, index) => <Box key={url} paddingBottom={1}><ExternalLinkText url={url} label={`Open primary document ${index + 1}`} /></Box>)}</PaneLinkMenu>

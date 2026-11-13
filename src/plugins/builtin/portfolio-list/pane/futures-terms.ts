@@ -3,6 +3,7 @@ import { useAssetData } from "../../../runtime";
 import { isFuturesTicker, type PortfolioFuturesTerms } from "../../../../portfolio/futures-positions";
 import { dailyFuturesHistory, loadPortfolioFuturesTerms } from "../../../../portfolio/futures-terms";
 import type { TickerRecord } from "../../../../types/ticker";
+import { logFailure } from "../../../../utils/log-failure";
 
 /** Settlements land once a day and the terms change with a roll; the terms cache answers sooner reads. */
 const REFRESH_MS = 30 * 60_000;
@@ -45,12 +46,13 @@ export function usePortfolioFuturesTerms(
     if (!key) return;
     let cancelled = false;
     const requestKey = `${key}|${settlement}`;
-    void loadPortfolioFuturesTerms(futuresRef.current, {
+    // A future whose terms cannot be read maps to none; anything else is logged.
+    loadPortfolioFuturesTerms(futuresRef.current, {
       settlement,
       sources: dataProvider ? { history: dailyFuturesHistory(dataProvider) } : {},
     }).then((terms) => {
       if (!cancelled) setState((previous) => ({ key: requestKey, terms, version: previous.version + 1 }));
-    });
+    }, logFailure("portfolio-list.futures-terms", "Reading futures terms failed"));
     return () => { cancelled = true; };
   }, [dataProvider, key, refresh, settlement]);
 

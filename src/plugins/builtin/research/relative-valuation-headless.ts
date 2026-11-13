@@ -3,7 +3,7 @@ import { formatPriceEarnings, NOT_MEANINGFUL, PRICE_EARNINGS_NOTICE } from "../.
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
-import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { loadHeadlessFinancials, loadHeadlessSymbols } from "../shared/headless-market-data";
 import { quoteFreshnessFields } from "../shared/report-freshness";
 import {
@@ -19,14 +19,14 @@ import { fundamentalsBasisParts, revenueGrowthHalfTag, revenueGrowthHeader } fro
 import { conversionNote, convertMarketCaps, convertTargets, loadFxLegs, relativeCapCurrency, type CapConversion } from "./relative-valuation-currency";
 
 const price = (value: unknown, row: Record<string, unknown>) => (
-  value == null || !row.currency ? "-" : formatCurrency(Number(value), String(row.currency))
+  value == null || !row.currency ? MISSING_VALUE : formatCurrency(Number(value), String(row.currency))
 );
-const percent = (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value));
+const percent = (value: unknown) => value == null ? MISSING_VALUE : formatPercentRaw(Number(value));
 
 /** The reason a row lacks the figure under `key` ("no TTM FCF"), which exports move to their status column. */
 function gapText(row: Record<string, unknown>, key: RelativeValuationGapKey): string {
   const gaps = row.gaps as Partial<Record<RelativeValuationGapKey, string>> | undefined;
-  return gaps?.[key] ?? "-";
+  return gaps?.[key] ?? MISSING_VALUE;
 }
 
 /**
@@ -40,7 +40,7 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
     align: "right",
     format: (value, row) => row.extendedSession === session && typeof value === "number"
       ? `${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`
-      : "-",
+      : MISSING_VALUE,
   };
 }
 
@@ -52,9 +52,9 @@ function extendedExportColumns(session: ExtendedSession): HeadlessPaneColumn[] {
   const label = EXTENDED_SESSION_LABELS[session];
   return [
     { key: "extendedPrice", header: label, align: "right", unitKey: "currency",
-      format: (value, row) => row.extendedSession === session && typeof value === "number" ? price(value, row) : "-" },
+      format: (value, row) => row.extendedSession === session && typeof value === "number" ? price(value, row) : MISSING_VALUE },
     { key: "extendedChangePercent", header: `${label} Chg%`, align: "right",
-      format: (value, row) => row.extendedSession === session && typeof value === "number" ? percent(value) : "-" },
+      format: (value, row) => row.extendedSession === session && typeof value === "number" ? percent(value) : MISSING_VALUE },
   ];
 }
 
@@ -67,7 +67,7 @@ const EXTENDED_EXPORT_COLUMNS = EXTENDED_SESSIONS.flatMap(extendedExportColumns)
 const QUOTE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" },
   // The company each ticker was read as: MTN is Vail Resorts in New York, MTN Group only as MTN:JSE.
-  { key: "name", header: "Name", format: (value) => typeof value === "string" && value ? value : "-" },
+  { key: "name", header: "Name", format: (value) => typeof value === "string" && value ? value : MISSING_VALUE },
   { key: "price", header: "Last", align: "right", unitKey: "currency",
     format: (value, row) => value == null ? gapText(row, "price") : price(value, row) },
   { key: "changePercent", header: "Chg%", align: "right", format: (value, row) => value == null ? gapText(row, "changePercent") : percent(value) },

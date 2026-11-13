@@ -22,7 +22,8 @@ import type {
   CorporateActionsData,
 } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
-import { formatPercent } from "../../../utils/format";
+import { MISSING_VALUE, formatPercent } from "../../../utils/format";
+import { formatFilingDate } from "../../../utils/datetime-format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
@@ -158,7 +159,7 @@ function sharedMetricCurrency(rows: readonly EventRow[]): string | undefined {
 export function buildEventColumns(width: number, unit?: string, variant: "corporate-actions" | "earnings-estimates" = "corporate-actions"): EventColumn[] {
   if (variant === "earnings-estimates") {
     return fitChartTableColumns<EventColumn>([
-      { id: "date", label: "DATE", width: 10, align: "left" },
+      { id: "date", label: "DATE", width: 11, align: "left" },
       { id: "status", label: "EVENT", width: 8, align: "left" },
       { id: "period", label: "PERIOD", width: 9, align: "left" },
       { id: "eps", label: "EPS", width: unit ? 7 : 11, align: "right" },
@@ -169,7 +170,7 @@ export function buildEventColumns(width: number, unit?: string, variant: "corpor
     ], width, ["detail", "growth", "revenue"]);
   }
   const columns: EventColumn[] = [
-    { id: "date", label: "DATE", width: 10, align: "left" },
+    { id: "date", label: "DATE", width: 11, align: "left" },
     { id: "status", label: "EVENT", width: 8, align: "left" },
     { id: "period", label: "PERIOD", width: 12, align: "left" },
     { id: "qEps", label: "Q EPS", width: 12, align: "right" },
@@ -196,18 +197,18 @@ function eventDetailTitle(row: EventRow): string {
 /** The row's figures in one line; the date is left to the detail title. */
 function eventSummaryLine(row: EventRow): string {
   return [
-    row.period !== "-" ? row.period : null,
+    row.period !== MISSING_VALUE ? row.period : null,
     row.qEps != null ? `EPS ${formatEventMetric(row.qEps, row.epsCurrency, "eps")}` : null,
     row.qRevenue != null ? `Rev ${formatEventMetric(row.qRevenue, row.revenueCurrency, "revenue")}` : null,
     row.annualEps != null ? `Ann EPS ${formatEventMetric(row.annualEps, row.epsCurrency, "eps")}` : null,
     row.annualRevenue != null ? `Ann Rev ${formatEventMetric(row.annualRevenue, row.revenueCurrency, "revenue")}` : null,
-    row.value !== "-" ? row.value : null,
+    row.value !== MISSING_VALUE ? row.value : null,
     row.detail || null,
   ].filter((line): line is string => !!line).join(" | ");
 }
 
 function earningsInput(value: number | undefined, currency?: string): string {
-  if (value == null || !Number.isFinite(value)) return "-";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const amount = new Intl.NumberFormat("en-US", { maximumFractionDigits: 8 }).format(value);
   return currency ? `${amount} ${currency}` : amount;
 }
@@ -264,9 +265,9 @@ export function buildEventDetail({
           detailRow("Low", amount(estimate.low)),
           detailRow("High", amount(estimate.high)),
           detailRow("Prior year", amount(estimate.yearAgo)),
-          detailRow("Growth", estimate.growth == null ? "-" : formatPercent(estimate.growth), undefined,
+          detailRow("Growth", estimate.growth == null ? MISSING_VALUE : formatPercent(estimate.growth), undefined,
             estimate.growth == null || estimate.growth === 0 ? undefined : estimate.growth > 0 ? "positive" : "negative"),
-          detailRow("Analysts", estimate.analysts == null ? "-" : String(estimate.analysts)),
+          detailRow("Analysts", estimate.analysts == null ? MISSING_VALUE : String(estimate.analysts)),
           ...(estimate.currency ? [] : [detailNote("Currency unavailable.")]),
         ],
       });
@@ -638,7 +639,8 @@ export function CorporateActionsView({
     };
     switch (column.id) {
       case "date":
-        return { text: row.date, color: colors.textDim };
+        // Day-first as the Filings tab beside it dates its rows; the ISO day still sorts the column.
+        return { text: formatFilingDate(row.date, row.date), value: row.date, color: colors.textDim };
       case "status":
         return { text: row.status, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "period":
@@ -648,9 +650,9 @@ export function CorporateActionsView({
       case "revenue":
         return metric(row.qRevenue ?? row.annualRevenue, row.revenueCurrency, "revenue");
       case "surprise":
-        return { text: row.status === "Earnings" ? row.value : "-", value: row.surprisePercent, color: row.status === "Earnings" ? toneColor(row.tone) : colors.textDim };
+        return { text: row.status === "Earnings" ? row.value : MISSING_VALUE, value: row.surprisePercent, color: row.status === "Earnings" ? toneColor(row.tone) : colors.textDim };
       case "growth":
-        return { text: row.estimateGrowthMetric && row.value !== "-" ? `${row.value} ${row.estimateGrowthMetric === "eps" ? "EPS" : "rev"}` : "-", color: row.estimateGrowthMetric ? toneColor(row.tone) : colors.textDim };
+        return { text: row.estimateGrowthMetric && row.value !== MISSING_VALUE ? `${row.value} ${row.estimateGrowthMetric === "eps" ? "EPS" : "rev"}` : MISSING_VALUE, color: row.estimateGrowthMetric ? toneColor(row.tone) : colors.textDim };
       case "qEps":
         return metric(row.qEps, row.epsCurrency, "eps");
       case "qRevenue":

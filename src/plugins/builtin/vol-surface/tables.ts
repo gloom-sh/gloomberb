@@ -1,9 +1,10 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { findListedExpiry, settlementStampTime } from "../../../utils/option-expiry";
 import { buildSurfaceGrid, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
 import { modelSpotStamp } from "../options/model-spot";
 
-export const formatIv = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(2)}%`;
-export const formatPrice = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
+export const formatIv = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? MISSING_VALUE : `${(value * 100).toFixed(2)}%`;
+export const formatPrice = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toFixed(2);
 /**
  * `2027-01-15` for an expiry dated by its day; `2026-10-30 08:00 UTC` for one
  * stamped with the time it settles (Deribit's, at 08:00 UTC).
@@ -62,7 +63,7 @@ export const HIDDEN_SLOPE_TEXT = `under ${TERM_SLOPE_MIN_DAYS}d`;
 export const HIDDEN_YIELD_TEXT = `under ${DIVIDEND_YIELD_MIN_DAYS}d`;
 /** A decimal IV difference in vol points, as the Skew view prints it. */
 export const formatVolPoints = (value: number | null | undefined) =>
-  value == null || !Number.isFinite(value) ? "--" : (value * 100).toFixed(2);
+  value == null || !Number.isFinite(value) ? MISSING_VALUE : (value * 100).toFixed(2);
 
 /** Calendar days to the expiry's close, as the model prices it. */
 const expiryDays = (expiry: Pick<SurfaceExpiry, "years">) => expiry.years * 365;

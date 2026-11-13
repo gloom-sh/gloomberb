@@ -80,6 +80,19 @@ export function sameCompany(left: string | null | undefined, right: string | nul
   return [...fewer].every((word) => more.has(word));
 }
 
+/**
+ * Whether two names are one company's name however each venue writes the legal
+ * form and the share wording: "Deutsche Post AG" and "Deutsche Post" are, "DHL
+ * Express" and "DHL" are not (`sameCompany` would read them as one, since one
+ * name's words are all in the other's). For a name the data service gives a
+ * company besides its own (a former name, a trade name), which a line is told
+ * by only when it is exactly that name. An empty name matches none.
+ */
+export function sameCompanyName(left: string | null | undefined, right: string | null | undefined): boolean {
+  const a = companyKey(left ?? "");
+  return a !== "" && a === companyKey(right ?? "");
+}
+
 // Words that tell one class of a company's shares from another ("Berkshire Hathaway Inc. Class B"), never its business.
 const SHARE_CLASS_WORD = /^(?:class|series|[a-z]|\d+)$/;
 

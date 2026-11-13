@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useCallback, useState } from "react";
 import { apiClient } from "../../../api-client";
@@ -102,7 +103,7 @@ test("a slope with no figure is left out of the header rather than shown as dash
   spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue({ ...payload(), slope: { valueBps: null, percentile: null, samples: 0, asOf: null } });
   const frame = (await render(140, 45)).join("\n");
   expect(frame).not.toContain("Oct '26 to Sep '27");
-  expect(frame).not.toContain("pctl --");
+  expect(frame).not.toContain(`pctl ${MISSING_VALUE}`);
 });
 
 test("the selected meeting is the path's point", async () => {

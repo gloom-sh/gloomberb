@@ -1,5 +1,5 @@
 import type { DividendPayment, GrowthPayments } from "./types";
-import { formatCurrency } from "../../../utils/format";
+import { MISSING_VALUE, formatCurrency } from "../../../utils/format";
 import { currencyMinorDigits } from "../../../market-data/market/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
@@ -17,7 +17,7 @@ const DAY = 24 * 60 * 60 * 1000;
  * `ZAR 0.866087`), as the conversion gives it no more.
  */
 export function formatConvertedAmount(value: number | null | undefined, currency: string, subUnit?: string): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const unit = subUnit ? resolveCurrencyUnit(subUnit) : null;
   return unit && unit.divisor !== 1 && unit.currency === currency
     ? formatCurrency(value * unit.divisor, subUnit!, 2)
@@ -28,7 +28,7 @@ export function formatConvertedAmount(value: number | null | undefined, currency
 export const convertedFromText = (currency: string) => `converted from ${currency}`;
 
 export function formatDividendYield(value: number | null): string {
-  return value != null && Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : "—";
+  return value != null && Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE;
 }
 
 /** A payout over zero or negative earnings, written as a P/E over a loss is. */

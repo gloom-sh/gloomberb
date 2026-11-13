@@ -1,5 +1,6 @@
+import { MISSING_VALUE } from "../../../utils/format";
 export function formatWeight(weight: number | null): string {
-  if (weight == null || !Number.isFinite(weight)) return "—";
+  if (weight == null || !Number.isFinite(weight)) return MISSING_VALUE;
   return `${(weight * 100).toFixed(1)}%`;
 }
 

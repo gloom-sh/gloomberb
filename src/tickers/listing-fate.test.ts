@@ -18,8 +18,8 @@ test("what became of a symbol is one line from quote's sources: a listing that s
   const delisted = describeListingFate({ symbol: "TWTR" }, { ...twitter,
     delisting: { status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04" } }, null, now);
   expect(delisted.endedOn).toBe("2022-10-27");
-  expect(listingFateNotes(delisted, { served: true })).toEqual(["TWTR: Delisted Oct 27, 2022"]);
-  expect(listingFateNotes(delisted, { served: false })).toEqual(["TWTR: Delisted Oct 27, 2022"]);
+  expect(listingFateNotes(delisted, { served: true })).toEqual(["TWTR: Delisted 27 Oct 2022"]);
+  expect(listingFateNotes(delisted, { served: false })).toEqual(["TWTR: Delisted 27 Oct 2022"]);
 
   const hop = { from: "FB", to: "META", date: "2022-06-09" };
   const fb: TickerChanges = { symbol: "FB", moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [hop] }, formerly: null, listedName: null, changes: [hop] };

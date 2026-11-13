@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { compareSortValues } from "../../../utils/sort-values";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import type {
@@ -1121,7 +1122,7 @@ export function positionType(row: {
   const title = row.titleOfClass.trim().toUpperCase();
   if (title) return title;
   const shareType = row.shareType.trim().toUpperCase();
-  return shareType || "--";
+  return shareType || MISSING_VALUE;
 }
 
 export function isCikQuery(query: string): boolean {

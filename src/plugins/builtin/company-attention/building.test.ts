@@ -57,7 +57,7 @@ test("a shift's detail gives every number behind its sentence: both windows, eac
     { label: "Now", value: "38% of new roles with a role family, 45 of 117 over the last 2 weeks" },
     { label: "Before", value: "15%, 17 of 115 over the 2 weeks before" },
     { label: "Change", value: "+24 pts, 2.6x its share, z +4.1" },
-    { label: "Recent weeks", value: "Oct 5: 14 of 53, Oct 12: 31 of 64" },
+    { label: "Recent weeks", value: "5 Oct: 14 of 53, 12 Oct: 31 of 64" },
   ]));
   // A theme's share is of all new roles.
   expect(shiftFacts(board().shifts.at(-1)!).find((fact) => fact.label === "Now")!.value).toBe("7.9% of new roles, 29 of 365 over the last 2 weeks");

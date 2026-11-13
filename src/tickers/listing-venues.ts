@@ -2,7 +2,7 @@ import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import { quoteTradingExchange } from "../market-data/quotes/metadata";
 import type { TickerRecord } from "../types/ticker";
-import { AmbiguousContractError, AmbiguousTickerError, LISTING_SEARCH_LIMIT, listingChoiceQuery, listingExchange, resolveTickerSearch } from "./search";
+import { AmbiguousContractError, AmbiguousTickerError, LISTING_SEARCH_LIMIT, listingChoiceQuery, listingExchange, otherNamesOf, resolveTickerSearch } from "./search";
 import {
   canonicalExchange,
   exchangeCodeVenues,
@@ -46,11 +46,21 @@ export interface ListingVenue {
   companyId?: string;
   /** The data service marks the line as its company's home line: its main listing. */
   home?: true;
+  /**
+   * The other names the line's company answers to, as the data service sends
+   * them (a former name, a trade name): DHL Group's rows carry "Deutsche Post
+   * AG", the name it had, which a venue that never renamed its line still shows.
+   */
+  aliases?: string[];
 }
 
 /** A search row's company id and home mark, as a venue carries them. */
-function identityOf(companyId: unknown, home: boolean): Pick<ListingVenue, "companyId" | "home"> {
-  return { ...typeof companyId === "string" && companyId ? { companyId } : {}, ...home ? { home: true as const } : {} };
+function identityOf(companyId: unknown, home: boolean, aliases: readonly string[] = []): Pick<ListingVenue, "companyId" | "home" | "aliases"> {
+  return {
+    ...typeof companyId === "string" && companyId ? { companyId } : {},
+    ...home ? { home: true as const } : {},
+    ...aliases.length > 0 ? { aliases: [...aliases] } : {},
+  };
 }
 
 /** A search row's name, and its withdrawal with the day it went beside the name, as a choice between listings names it. */
@@ -96,7 +106,7 @@ export async function listingVenues(
         exchange: resolved.result.exchange === "SMART" ? resolved.result.primaryExchange ?? "" : resolved.result.exchange || resolved.result.primaryExchange || "",
         ...withdrawnOf(resolved.result.name, resolved.result.withdrawal),
         ...ownSymbol(parsePublicTickerKey(resolved.result.symbol).symbol, symbol),
-        ...identityOf(resolved.result.companyId, resolved.result.homeListing === true),
+        ...identityOf(resolved.result.companyId, resolved.result.homeListing === true, otherNamesOf(resolved.result)),
       };
     venues = only?.exchange ? [{ ...only, exchange: canonicalExchange(only.exchange) }] : [];
   } catch (error) {
@@ -108,7 +118,7 @@ export async function listingVenues(
       return key.exchange ? [{
         exchange: key.exchange, name: error.listingNames[listing] ?? "", ...ownSymbol(key.symbol, symbol),
         ...(error.listingWithdrawals[listing] ? { withdrawal: error.listingWithdrawals[listing] } : {}),
-        ...identityOf(error.listingCompanies[listing], error.listingHomes.includes(listing)),
+        ...identityOf(error.listingCompanies[listing], error.listingHomes.includes(listing), error.listingAliases[listing]),
       }] : [];
     });
   }

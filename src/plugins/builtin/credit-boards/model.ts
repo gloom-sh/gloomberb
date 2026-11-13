@@ -10,7 +10,7 @@ import { historyStatistics } from "../../../components/chart/curve/model";
 import type { MarketBoardRow } from "../../../components/market-board";
 import type { PricePoint } from "../../../types/financials";
 import type { HeadlessPaneColumn } from "../../../types/plugin";
-import { formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 
 const YEAR_DAYS = 365;
 /** A level older than this is not the current market. */
@@ -135,13 +135,13 @@ export function partialDayText(prints: number | null, lastPrintAt: string | null
 
 /** Spreads in bp with a decimal; prices as quoted, to the cent. */
 export function formatLevel(quote: CreditIndexQuote, value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return quote === "spread" ? `${value.toFixed(1)}bp` : value.toFixed(2);
 }
 
 /** A move in the quote's unit: `+1.2bp`, or `-0.13` points of price. */
 export function formatMove(quote: CreditIndexQuote, value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const digits = quote === "spread" ? 1 : 2;
   const rounded = Number(value.toFixed(digits));
   const sign = rounded > 0 ? "+" : "";
@@ -235,7 +235,7 @@ function stale(date: string | null, asOf: string | null): boolean {
 
 /** `2031-12-20` as `Dec 2031`, how the contract is named on a desk. */
 export function formatContract(maturity: string | null): string {
-  if (!maturity) return "--";
+  if (!maturity) return MISSING_VALUE;
   const date = new Date(`${maturity}T00:00:00Z`);
   return Number.isNaN(date.getTime())
     ? maturity
@@ -336,7 +336,7 @@ export function sovrRows(
 
 /** `BRL -1.2%`; a dollar or dollar-pegged currency still shows its code. */
 export function formatCurrencyMove(currency: string, movePercent: number | null): string {
-  if (movePercent == null || !Number.isFinite(movePercent)) return `${currency} --`;
+  if (movePercent == null || !Number.isFinite(movePercent)) return `${currency} ${MISSING_VALUE}`;
   const rounded = Number(movePercent.toFixed(1));
   const sign = rounded > 0 ? "+" : "";
   return `${currency} ${sign}${rounded === 0 ? "0.0" : rounded.toFixed(1)}%`;

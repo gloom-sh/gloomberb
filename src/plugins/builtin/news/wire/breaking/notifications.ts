@@ -94,22 +94,24 @@ export function setupBreakingNewsNotifications(ctx: GloomPluginContext): () => v
   const isSnoozed = () => breakingNewsSnoozed(ctx);
   const snooze = () => snoozeBreakingNews(ctx);
 
-  const refreshWatchedSymbols = async () => {
-    try {
-      const tickers = await ctx.tickerRepository.loadAllTickers();
-      const next = new Set<string>();
-      for (const ticker of tickers) {
-        const metadata = ticker.metadata;
-        const tracked =
-          (metadata.watchlists?.length ?? 0) > 0 ||
-          (metadata.portfolios?.length ?? 0) > 0 ||
-          (metadata.positions?.length ?? 0) > 0;
-        if (tracked) next.add(metadata.ticker.toUpperCase());
-      }
-      watchedSymbols = next;
-    } catch (error) {
-      ctx.log.warn(`breaking notifications could not load watched tickers: ${error}`);
+  const loadWatchedSymbols = async () => {
+    const tickers = await ctx.tickerRepository.loadAllTickers();
+    const next = new Set<string>();
+    for (const ticker of tickers) {
+      const metadata = ticker.metadata;
+      const tracked =
+        (metadata.watchlists?.length ?? 0) > 0 ||
+        (metadata.portfolios?.length ?? 0) > 0 ||
+        (metadata.positions?.length ?? 0) > 0;
+      if (tracked) next.add(metadata.ticker.toUpperCase());
     }
+    watchedSymbols = next;
+  };
+  // Nothing waits on it: a failed read keeps the last set, and says so.
+  const refreshWatchedSymbols = () => {
+    loadWatchedSymbols().catch((error: unknown) => {
+      ctx.log.warn(`breaking notifications could not load watched tickers: ${error}`);
+    });
   };
 
   const notifyNewBreakingArticles = (articles: MarketNewsItem[]): void => {
@@ -176,7 +178,7 @@ export function setupBreakingNewsNotifications(ctx: GloomPluginContext): () => v
       ctx.log.warn("breaking notifications unavailable: news query watcher missing");
       return;
     }
-    void refreshWatchedSymbols();
+    refreshWatchedSymbols();
     disposeWatch = ctx.watchNewsQuery(NEWS_QUERY_PRESETS.breaking, handleState);
   };
 
@@ -186,11 +188,11 @@ export function setupBreakingNewsNotifications(ctx: GloomPluginContext): () => v
   };
 
   const disposeConfigListener = ctx.on("config:changed", () => {
-    void refreshWatchedSymbols();
+    refreshWatchedSymbols();
     sync();
   });
-  const disposeTickerAdded = ctx.on("ticker:added", () => void refreshWatchedSymbols());
-  const disposeTickerRemoved = ctx.on("ticker:removed", () => void refreshWatchedSymbols());
+  const disposeTickerAdded = ctx.on("ticker:added", () => refreshWatchedSymbols());
+  const disposeTickerRemoved = ctx.on("ticker:removed", () => refreshWatchedSymbols());
   sync();
 
   return () => {

@@ -13,7 +13,8 @@ import { useQuoteStreaming } from "../../../state/hooks/quote-streaming";
 import { colors, priceColor } from "../../../theme/colors";
 import type { MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { MarketState, Quote } from "../../../types/financials";
-import { formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
+import { formatClockTime } from "../../../utils/datetime-format";
 import { useAssetData } from "../../runtime";
 
 export interface BoardQuoteState {
@@ -653,7 +654,7 @@ export function quoteBoardFooterInfo(status: QuoteBoardStatus): PaneFooterSegmen
       id: "fresh",
       quoteStatus: true,
       parts: [{
-        text: new Date(status.latestTs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        text: formatClockTime(status.latestTs),
         tone: "muted",
       }],
     });
@@ -714,12 +715,12 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
  * closed market's last print is not read as a time today.
  */
 function formatQuoteTime(lastUpdated: number | undefined, now = Date.now()): string {
-  if (!lastUpdated) return "—";
+  if (!lastUpdated) return MISSING_VALUE;
   const date = new Date(lastUpdated);
   const today = new Date(now);
   if (date.getUTCFullYear() !== today.getUTCFullYear() || date.getUTCMonth() !== today.getUTCMonth()
     || date.getUTCDate() !== today.getUTCDate()) {
-    return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+    return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
   }
   return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
 }
@@ -781,22 +782,22 @@ export function renderQuoteBoardCell(
   switch (kind) {
     case "status": {
       if (format.sessionText) {
-        return { text: quoteSessionLabel(quote, format.now) ?? "—", color: quoteSessionColor(quote, colors, format.now) };
+        return { text: quoteSessionLabel(quote, format.now) ?? MISSING_VALUE, color: quoteSessionColor(quote, colors, format.now) };
       }
       const dot = marketStatusDot(quoteDotMarketState(quote, format.now));
       // The dot is a picture; the export says which session it means.
       return { text: dot.char, value: quoteSessionLabel(quote, format.now), color: dot.color };
     }
     case "price":
-      if (!quote || !Number.isFinite(quote.price)) return { text: "—", color: colors.textDim };
+      if (!quote || !Number.isFinite(quote.price)) return { text: MISSING_VALUE, color: colors.textDim };
       // A retained quote still beats a dash; dim it so stale is visible.
       return { text: format.formatPrice(quote), value: quote.price, color: state?.stale ? colors.textDim : undefined };
     case "change":
-      if (!quote || !Number.isFinite(quote.change)) return { text: "—", color: colors.textDim };
+      if (!quote || !Number.isFinite(quote.change)) return { text: MISSING_VALUE, color: colors.textDim };
       // No raw value: a change is a difference of two prices, so its float noise would outlive the text.
       return { text: format.formatChange(quote), color: priceColor(quote.change) };
     case "changePercent":
-      if (!quote || !Number.isFinite(quote.changePercent)) return { text: "—", color: colors.textDim };
+      if (!quote || !Number.isFinite(quote.changePercent)) return { text: MISSING_VALUE, color: colors.textDim };
       return {
         text: formatPercentRaw(quote.changePercent),
         value: quote.changePercent,

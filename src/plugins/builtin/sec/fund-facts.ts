@@ -6,7 +6,7 @@ import { t, tf } from "../../../i18n";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneEntry } from "../../../types/plugin";
 import { errorMessage } from "../../../utils/errors";
-import { formatCompact, formatCurrency } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCurrency } from "../../../utils/format";
 import { bondClassText, bondFigures, DV01_FROM_DURATION, durationDv01PerShare, formatDv01PerShare } from "../../../market-data/bond-funds";
 import { readFundFacts, validateFundFacts } from "../../../market-data/fund-facts";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -431,7 +431,7 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
       metal.tonnes == null ? null : `${metalFigure(metal.tonnes)} tonnes`, metal.stale ? `${metal.asOf} stale` : metal.asOf, metal.source.publisher), "troy oz");
     add("metalChangeOunces", "Day change", metal.change?.ounces ?? null, metal.change
       ? provenance(`${metalFigure(metal.change.ounces, true)} troy oz`, metal.change.tonnes == null ? null : `${metalFigure(metal.change.tonnes, true)} tonnes`, `since ${metal.change.since}`)
-      : `-- · ${metal.asOf} is the first day stored`, "troy oz");
+      : `${MISSING_VALUE} · ${metal.asOf} is the first day stored`, "troy oz");
   }
   if (facts.bond) {
     add("bondClass", "Bond fund", facts.bond.kind, bondClassText(facts.bond));

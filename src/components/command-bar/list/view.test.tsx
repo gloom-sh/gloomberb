@@ -126,7 +126,7 @@ test("draws an instrument's name in a column after the symbols and drops it befo
   const wide = await render(40);
   expect(wide).toContain("SAP    Saputo Inc.");
   expect(columnOf(wide, "Saputo")).toBe(columnOf(wide, "Berkshire"));
-  expect(wide).toContain("BRK.B  Berkshire Hathaway Inc... NYSE");
+  expect(wide).toContain("BRK.B  Berkshire Hathaway Inc.…  NYSE");
   expect(columnOf(wide, "TSX")).toBe(columnOf(wide, "XETRA"));
 
   const narrow = await render(18);

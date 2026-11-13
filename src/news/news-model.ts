@@ -290,7 +290,7 @@ export function summaryRestatesHeadline(title: string, summary: string): boolean
 }
 
 /**
- * What a company feed's row of routine notices stands for, after its headline: "8 notices since Oct 30"
+ * What a company feed's row of routine notices stands for, after its headline: "8 notices since 30 Oct"
  * (a buy-back's daily "Transaction in own shares", folded into its latest). Null for any other row.
  */
 function routineNoticesText(article: Pick<NewsArticle, "routine" | "publishedAt">): string | null {
@@ -305,7 +305,7 @@ function routineNoticesText(article: Pick<NewsArticle, "routine" | "publishedAt"
   return `${routine.notices} notices since ${formatShortDate(since, { year: sameYear ? false : "numeric", utc: true })}`;
 }
 
-/** The headline a list shows: with the notices a folded row stands for ("Transaction in own shares (8 notices since Oct 30)"). */
+/** The headline a list shows: with the notices a folded row stands for ("Transaction in own shares (8 notices since 30 Oct)"). */
 export function listedHeadline(article: Pick<NewsArticle, "title" | "routine" | "publishedAt">): string {
   const notices = routineNoticesText(article);
   return notices ? `${article.title} (${notices})` : article.title;

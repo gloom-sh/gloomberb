@@ -37,7 +37,7 @@ describe("hitDocumentKey", () => {
 
 describe("presentSearchHit", () => {
   test("dates a filing by the day EDGAR gave it, in every time zone, and names it by its filer", () => {
-    // NXT's 10-Q, accepted Friday Oct 30 at 19:40 ET and filed Monday Nov 2.
+    // NXT's 10-Q, accepted Friday 30 Oct at 19:40 ET and filed Monday 2 Nov.
     const filing = hit({
       publishedAt: "2026-10-30T23:40:13.000Z",
       title: "Nextpower Inc. 10-Q 2026-11-02",
@@ -49,7 +49,7 @@ describe("presentSearchHit", () => {
         const hit = presentSearchHit(${JSON.stringify(filing)});
         console.log(JSON.stringify([hit.title, formatHitDate(hit.publishedAt), formatHitDateShort(hit.publishedAt, Date.parse("2026-11-05T08:00:00Z"))]));
       `], { env: { ...process.env, TZ: timezone } });
-      expect(JSON.parse(result.stdout.toString())).toEqual(["Nextpower Inc.", "Nov 02, 2026", "Nov 2"]);
+      expect(JSON.parse(result.stdout.toString())).toEqual(["Nextpower Inc.", "02 Nov 2026", "2 Nov"]);
     }
   });
 

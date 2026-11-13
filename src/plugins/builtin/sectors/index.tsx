@@ -6,7 +6,7 @@ import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { useAppSelector, usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
-import { formatCurrency, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { useAssetData, useDebouncedPluginPaneState, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
@@ -310,12 +310,12 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
           return { text: "…", color: colors.textDim };
         }
         return {
-          text: row.price !== null ? formatCurrency(row.price, row.currency) : "—",
+          text: row.price !== null ? formatCurrency(row.price, row.currency) : MISSING_VALUE,
           color: row.price !== null ? colors.text : colors.textDim,
         };
       case "changePercent":
         return {
-          text: row.changePercent !== null ? formatPercentRaw(shownPercent(row.changePercent)) : "—",
+          text: row.changePercent !== null ? formatPercentRaw(shownPercent(row.changePercent)) : MISSING_VALUE,
           color: row.changePercent !== null ? priceColor(shownPercent(row.changePercent)) : colors.textDim,
         };
       case "preMarket":
@@ -323,23 +323,23 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
         // The extended print's move from the close in LAST.
         const move = row.extendedSession === (column.id === "preMarket" ? "PRE" : "POST") ? row.extendedChangePercent ?? null : null;
         return {
-          text: move !== null ? formatPercentRaw(shownPercent(move)) : "—",
+          text: move !== null ? formatPercentRaw(shownPercent(move)) : MISSING_VALUE,
           value: move,
           color: move !== null ? priceColor(shownPercent(move)) : colors.textDim,
         };
       }
       case "return1M":
         return {
-          text: row.loading && row.return1M === null ? "…" : row.return1M !== null ? formatPercentRaw(shownPercent(row.return1M)) : "—",
+          text: row.loading && row.return1M === null ? "…" : row.return1M !== null ? formatPercentRaw(shownPercent(row.return1M)) : MISSING_VALUE,
           color: row.return1M !== null ? priceColor(shownPercent(row.return1M)) : colors.textDim,
         };
       case "return1Y":
         return {
-          text: row.loading && row.return1Y === null ? "…" : row.return1Y !== null ? formatPercentRaw(shownPercent(row.return1Y)) : "—",
+          text: row.loading && row.return1Y === null ? "…" : row.return1Y !== null ? formatPercentRaw(shownPercent(row.return1Y)) : MISSING_VALUE,
           color: row.return1Y !== null ? priceColor(shownPercent(row.return1Y)) : colors.textDim,
         };
       case "bar": {
-        const signed = row.changePercent !== null ? formatPercentRaw(shownPercent(row.changePercent)) : "—";
+        const signed = row.changePercent !== null ? formatPercentRaw(shownPercent(row.changePercent)) : MISSING_VALUE;
         return {
           text: signed,
           content: <Box flexDirection="row" width={column.width} overflow="hidden" aria-label={signed}>

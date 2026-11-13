@@ -168,7 +168,8 @@ function useTeamDetails(team: TeamSummary | null) {
   const allowMemberInvites = team?.allowMemberInvites ?? false;
   const generation = useRef(0);
 
-  const reload = useCallback(async () => {
+  // A reload nobody waits on: a failure lands in `details.error`.
+  const reload = useCallback(() => {
     if (!teamId || !role) {
       setDetails(EMPTY_DETAILS);
       return;
@@ -177,13 +178,12 @@ function useTeamDetails(team: TeamSummary | null) {
     setDetails((previous) => ({ ...previous, loading: true, error: null }));
     const manage = canManageTeam(role);
     const canLink = manage || allowMemberInvites;
-    try {
-      const none = { rows: [], error: null };
-      const [membersResult, invitations, links] = await Promise.all([
-        apiClient.getTeamMembers(teamId),
-        manage ? settleList(apiClient.listTeamInvitations(teamId), unavailableText("Pending invitations")) : none,
-        canLink ? settleList(apiClient.listTeamInviteLinks(teamId), unavailableText("Invite links")) : none,
-      ]);
+    const none = { rows: [], error: null };
+    Promise.all([
+      apiClient.getTeamMembers(teamId),
+      manage ? settleList(apiClient.listTeamInvitations(teamId), unavailableText("Pending invitations")) : none,
+      canLink ? settleList(apiClient.listTeamInviteLinks(teamId), unavailableText("Invite links")) : none,
+    ]).then(([membersResult, invitations, links]) => {
       if (generation.current !== current) return;
       setDetails({
         members: membersResult.members,
@@ -194,20 +194,20 @@ function useTeamDetails(team: TeamSummary | null) {
         loading: false,
         error: null,
       });
-    } catch (error) {
+    }).catch((error: unknown) => {
       if (generation.current !== current) return;
       setDetails((previous) => ({ ...previous, loading: false, error: errorText(error, "Could not load the team.") }));
-    }
+    });
   }, [allowMemberInvites, role, teamId]);
 
   useEffect(() => {
-    void reload();
+    reload();
   }, [reload]);
 
   useEffect(() => {
     if (!teamId) return;
     return teamStore.onTeamUpdated((event) => {
-      if (event.teamId === teamId && event.change !== "deleted") void reload();
+      if (event.teamId === teamId && event.change !== "deleted") reload();
     });
   }, [reload, teamId]);
 

@@ -222,6 +222,25 @@ test("a bare symbol read on the largest company's listing names the others; a co
   expect(asked.failure?.details).toContain("2222:JPX Kotobuki Spirits Co., Ltd. (try: gloom quote 2222:JPX)");
 });
 
+// `quote DHL` live, 13 Nov: "DHL -> XETRA (DHL); also DHL:VIE, Deutsche Post", naming DHL Group's own former name as another company.
+test("a bare symbol read on its company's home listing names no other company for its own lines still named as it was", async () => {
+  const row = (exchange: string, name: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol: "DHL", name, exchange, type: "Common Stock", currency: "EUR", ...extra });
+  const rows = [
+    row("XETRA", "DHL Group AG", { homeListing: true, companyId: "isin:DE0005552004", searchAliases: ["DHL", "Deutsche Post AG"] }),
+    row("FWB2", "DHL Group AG"), row("SWX", "DHL Group AG"), row("VIE", "Deutsche Post AG"), row("HANOVER", "Deutsche Post AG"),
+    row("NEO", "Deutsche Post AG", { type: "Depositary Receipt" }),
+  ];
+  const dhl = createTestQuote({ symbol: "DHL", name: "DHL AG", currency: "EUR", listingExchangeName: "XETRA", exchangeName: "XETRA" });
+  const dataProvider = createTestDataProvider({
+    search: async () => rows as never,
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => ({ target, quote: dhl })),
+  });
+  const read = await runQuote(["DHL"], { dataProvider, batches: [], searches: () => 0 });
+  expect(read.rows.map((item) => [item.target.symbol, item.quote?.listingExchangeName])).toEqual([["DHL", "XETRA"]]);
+  expect(read.warnings).toEqual(["DHL -> XETRA"]);
+});
+
 test("ticker asks for an exchange for a code several companies list, as quote does, rather than calling it no ticker", async () => {
   // 3988 is Bank of China in Hong Kong and Sys Holdings in Tokyo; the data service serves neither under the bare code.
   const source = venueSource("3988", ["HKEX", "JPX"], {}, { HKEX: "Bank of China Ltd.", JPX: "Sys Holdings Co., Ltd." });
@@ -514,12 +533,12 @@ test("a bare symbol whose listing stopped asks after the live company search nam
   const live = createTestQuote({ symbol: "D05", name: "DBS Group Holdings Ltd.", currency: "SGD", exchangeName: "SGX" });
   const asked = await runQuote(["DBS"], { dataProvider: answering(live), batches: [], searches: () => 0 });
   expect(asked.warnings).toContain(
-    "DBS (Invesco DB Silver Fund): Delisted Mar 3, 2023 (last price $28.68). Did you mean D05:SGX (DBS Group Holdings Ltd.)?");
+    "DBS (Invesco DB Silver Fund): Delisted 3 Mar 2023 (last price $28.68). Did you mean D05:SGX (DBS Group Holdings Ltd.)?");
   // A company whose line stopped too is no answer, and a listing named by its venue is the one meant.
   const stopped = { ...live, lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true };
   for (const [args, bank] of [[["DBS"], stopped], [["DBS:ARCA"], live]] as const) {
     const answer = await runQuote([...args], { dataProvider: answering(bank), batches: [], searches: () => 0 });
-    expect(answer.warnings.some((warning) => warning.includes("Delisted Mar 3, 2023"))).toBe(true);
+    expect(answer.warnings.some((warning) => warning.includes("Delisted 3 Mar 2023"))).toBe(true);
     expect(answer.warnings.join("\n")).not.toContain("Did you mean");
   }
 });

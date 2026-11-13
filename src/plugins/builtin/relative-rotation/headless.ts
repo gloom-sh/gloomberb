@@ -1,10 +1,11 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRotation } from "./client";
 import { DEFAULT_ROTATION_BENCHMARK, rotationInstruments, sectorRotationInstruments } from "./model";
 
 /** Same rounding as the pane: ratios to 2 decimals, percentiles whole. */
 const fixed = (value: unknown, digits: number) =>
-  typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "--";
+  typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : MISSING_VALUE;
 
 export const rotationHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",

@@ -1,3 +1,4 @@
+import { truncateWithEllipsis } from "../../../utils/text-wrap";
 export type { QuickNoteEntry } from "./files";
 
 let nextNoteId = 1;
@@ -32,5 +33,5 @@ export function formatLastEdited(updatedAt: number | undefined): string {
 }
 
 export function formatDeleteNoteTitle(title: string): string {
-  return title.length > 28 ? `${title.slice(0, 25)}...` : title;
+  return truncateWithEllipsis(title, 28);
 }

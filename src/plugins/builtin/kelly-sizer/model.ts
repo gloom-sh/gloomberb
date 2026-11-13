@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import {
   DEFAULT_KELLY_COMMON_ASSUMPTIONS,
@@ -380,7 +381,7 @@ export function calculateKellySizing({
 }
 
 function formatPercentCell(value: number | null): string {
-  if (value == null || !finite(value)) return "—";
+  if (value == null || !finite(value)) return MISSING_VALUE;
   return `${(value * 100).toFixed(Math.abs(value) >= 0.1 ? 1 : 2)}%`;
 }
 

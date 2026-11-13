@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CloudWorldVenuePayload } from "../../../api-client";
 import type {
@@ -127,7 +128,7 @@ function layerFreshness(state: GeoLayerState, now: number): { text: string; tone
   if (state.layer.cadence === "daily" && asOf) {
     const date = new Date(Date.parse(asOf));
     if (!Number.isFinite(date.getTime())) return null;
-    return { text: `as of ${date.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}`, tone: "muted" };
+    return { text: `as of ${formatShortDate(date, { year: false, utc: true })}`, tone: "muted" };
   }
   return null;
 }

@@ -70,7 +70,7 @@ const cases: [Pane, number, string, string][] = [
   ["earnings-estimates", 80, "12.34", "15.67"],
   ["earnings-estimates", 48, "12.34", "15.67"],
   ["earnings-estimates", 120, "12.34", "15.67"],
-  ["corporate-actions", 80, "2026-03-31", "2026-06-30"],
+  ["corporate-actions", 80, "31 Mar 2026", "30 Jun 2026"],
   ["historical-prices", 80, "2026-09-01", "2026-09-02"],
 ];
 

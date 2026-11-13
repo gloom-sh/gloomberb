@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { DataTableStackView, DataTableView, EmptyState, QueryBar, usePagedRows, usePaneNoticeFooter, useTableLoadMore, type DataTableColumn, type PageRequest, type DataTableKeyEvent, type DataTableRootKeyContext, type PaneHint, StatGrid, type StatItem } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -89,7 +90,7 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
     onActivate={row => setFund({ cik: row.cik, name: row.fund })}
     sortColumnId={sort.id} sortDirection={sort.desc ? "desc" : "asc"}
     onHeaderClick={id => setSort(current => ({ id, desc: current.id === id ? !current.desc : id !== "fund" }))}
-    renderCell={(row, column, _index, state) => ({ text: column.id === "value" ? formatMoneyCompact(row.value) : column.id === "shares" ? formatShares(row.shares) : column.id === "weight" ? formatWeightMaybe(row.weight) : column.id === "action" ? actionLabel(row.action) : String(row[column.id as keyof TickerHolderRow] ?? "--"), color: state.selected ? colors.selectedText : colors.text })}
+    renderCell={(row, column, _index, state) => ({ text: column.id === "value" ? formatMoneyCompact(row.value) : column.id === "shares" ? formatShares(row.shares) : column.id === "weight" ? formatWeightMaybe(row.weight) : column.id === "action" ? actionLabel(row.action) : String(row[column.id as keyof TickerHolderRow] ?? MISSING_VALUE), color: state.selected ? colors.selectedText : colors.text })}
     emptyStateTitle={loading ? "Loading 13F holders..." : error ? "13F holders unavailable." : "No reported holders."}
   />;
 }
@@ -146,7 +147,7 @@ export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps
       selection={{ kind: "id", selectedId, getId: row => row.id, onChange: setSelectedId }}
       onActivate={row => { if (row.ticker && row.ticker !== row.cusip) pinTicker(row.ticker, { floating: true }); }}
       onHeaderClick={rankByHeader} isColumnSortable={column => column.id === "newCount" || column.id === "exitCount" || column.id === "weightChange"} sortColumnId={ranking === "decreases" ? "weightChange" : ranking} sortDirection={ranking === "decreases" ? "asc" : "desc"}
-      renderCell={(row, column, _index, state) => ({ text: column.id === "mine" ? mine.has(row.ticker) ? "yes" : "" : column.id === "totalValue" ? formatMoneyCompact(row.totalValue) : column.id === "weightChange" ? row.weightChange == null ? "--" : `${row.weightChange > 0 ? "+" : ""}${(row.weightChange * 100).toFixed(2)}` : String(row[column.id as keyof CrowdingRow] ?? "--"), color: state.selected ? colors.selectedText : colors.text })}
+      renderCell={(row, column, _index, state) => ({ text: column.id === "mine" ? mine.has(row.ticker) ? "yes" : "" : column.id === "totalValue" ? formatMoneyCompact(row.totalValue) : column.id === "weightChange" ? row.weightChange == null ? MISSING_VALUE : `${row.weightChange > 0 ? "+" : ""}${(row.weightChange * 100).toFixed(2)}` : String(row[column.id as keyof CrowdingRow] ?? MISSING_VALUE), color: state.selected ? colors.selectedText : colors.text })}
       emptyStateTitle={loading ? "Loading 13F crowding..." : error ? "13F crowding unavailable." : "No comparable positions."}
     />
   </Box>;

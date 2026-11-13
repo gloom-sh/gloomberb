@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { ApiRequestError } from "../../../api-client/errors";
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
 import { inClearingOrder } from "./client";
@@ -83,7 +84,7 @@ export function normalizeDirectAuction(raw: unknown): TreasuryAuction | null {
     id: `${cusip}|${auctionDate}`,
     cusip,
     secType: text(record.inflationProtected) === "Yes" ? "TIPS" : text(record.floatingRate) === "Yes" ? "FRN" : securityType,
-    securityTerm: text(record.securityTerm) || "—",
+    securityTerm: text(record.securityTerm) || MISSING_VALUE,
     auctionDate,
     highInvestmentRate: toNumber(record.investmentRate),
     // A bill's `highRate` is its discount rate; a note or bond states its coupon elsewhere.

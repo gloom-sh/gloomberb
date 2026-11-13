@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../../utils/format";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   Button,
@@ -114,7 +115,7 @@ function siteCell(site: BuildoutCompanySite, column: SiteColumn, dim: string, br
     case "site": return { text: site.name, color: bright };
     case "type": return { text: text(site.type), color: dim };
     case "role": return { text: site.role === "owner" ? "Owner" : "Partner", color: dim };
-    case "mw": return { text: site.mw == null ? "-" : site.mw.toLocaleString("en-US"), ...(site.mw == null ? {} : { value: site.mw }), color: dim };
+    case "mw": return { text: site.mw == null ? MISSING_VALUE : site.mw.toLocaleString("en-US"), ...(site.mw == null ? {} : { value: site.mw }), color: dim };
     case "place": return { text: text(site.place), color: dim };
   }
 }
@@ -122,8 +123,8 @@ function siteCell(site: BuildoutCompanySite, column: SiteColumn, dim: string, br
 function hiringCell(segment: BuildoutHiringSegment, column: HiringColumn, dim: string, bright: string): DataTableCell {
   switch (column.id) {
     case "place": return { text: segment.place, color: bright };
-    case "roles": return { text: segment.roles == null ? "-" : String(segment.roles), color: bright };
-    case "change": return { text: segment.change == null ? "-" : `${segment.change > 0 ? "+" : ""}${segment.change}`, color: segment.change ? priceColor(segment.change) : dim };
+    case "roles": return { text: segment.roles == null ? MISSING_VALUE : String(segment.roles), color: bright };
+    case "change": return { text: segment.change == null ? MISSING_VALUE : `${segment.change > 0 ? "+" : ""}${segment.change}`, color: segment.change ? priceColor(segment.change) : dim };
     case "family": return { text: text(segment.roleFamily), color: dim };
     case "site": return { text: text(segment.site), color: dim };
   }

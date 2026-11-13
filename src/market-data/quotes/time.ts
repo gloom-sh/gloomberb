@@ -1,7 +1,9 @@
+import { MISSING_VALUE } from "../../utils/format";
 import type { Quote } from "../../types/financials";
 import { getLanguage, tf } from "../../i18n";
 import { isPerpetualExchange } from "../../tickers/perpetual-listing";
 import { formatUtcDayTime, formatUtcWeekdayTime } from "../../utils/utc-time";
+import { formatShortDate } from "../../utils/datetime-format";
 import { delayedFeedLagMs } from "../market/freshness";
 import { quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
 import { dailyNavDate, isQuoteStaleForCurrentSession } from "./freshness";
@@ -11,12 +13,17 @@ export function formatQuoteNavAsOf(quote: Quote | null | undefined, now = Date.n
   const date = quote && dailyNavDate(quote, now);
   if (!date) return null;
   const sourceDate = new Date(`${date}T00:00:00Z`);
-  const dateText = new Intl.DateTimeFormat(getLanguage(), {
-    timeZone: "UTC",
-    month: "short",
-    day: "numeric",
-    ...(sourceDate.getUTCFullYear() !== new Date(now).getUTCFullYear() ? { year: "numeric" as const } : {}),
-  }).format(sourceDate);
+  const otherYear = sourceDate.getUTCFullYear() !== new Date(now).getUTCFullYear();
+  // English reads the day first, as every other date does; another language writes the day its own way.
+  const language = getLanguage();
+  const dateText = language === "en"
+    ? formatShortDate(sourceDate, { utc: true, year: otherYear ? "numeric" : false })
+    : new Intl.DateTimeFormat(language, {
+      timeZone: "UTC",
+      month: "short",
+      day: "numeric",
+      ...(otherYear ? { year: "numeric" as const } : {}),
+    }).format(sourceDate);
   return tf("NAV · as of {date}", { date: dateText });
 }
 
@@ -72,7 +79,7 @@ export interface QuoteAgeFormatOptions {
 
 export function formatQuoteAge(lastUpdated: number | undefined, now = Date.now(), options: QuoteAgeFormatOptions = {}): string {
   const clamped = clampQuoteTimestamp(lastUpdated, now);
-  if (clamped == null) return "—";
+  if (clamped == null) return MISSING_VALUE;
 
   // A receipt or source time ahead of the clock is fresh, never negative.
   const ageMs = Math.max(0, now - clamped);
@@ -99,11 +106,11 @@ export function formatQuoteAgeWithSource(
   now = Date.now(),
   options: QuoteAgeFormatOptions = {},
 ): string {
-  if (!quote) return "—";
+  if (!quote) return MISSING_VALUE;
 
   const timestamp = resolveQuoteAgeTimestamp(quote, now);
-  const age = timestamp == null ? "—" : formatQuoteAge(timestamp, now, options);
-  if (age === "—") return age;
+  const age = timestamp == null ? MISSING_VALUE : formatQuoteAge(timestamp, now, options);
+  if (age === MISSING_VALUE) return age;
 
   const prefix = quote.dataSource === "delayed" ? "◷" : "";
   return prefix ? `${prefix}${age}` : age;

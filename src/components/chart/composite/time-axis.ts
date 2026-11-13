@@ -72,10 +72,11 @@ export interface CompositeTimeAxisLayout {
 interface AxisClock {
   wall(timestamp: number): number;
   instant(wall: number): number;
-  label: string;
+  /** The zone's short name at an instant ("CET" in winter, "CEST" in summer). */
+  label(instant: number): string;
 }
 
-const UTC_CLOCK: AxisClock = { wall: (timestamp) => timestamp, instant: (wall) => wall, label: "UTC" };
+const UTC_CLOCK: AxisClock = { wall: (timestamp) => timestamp, instant: (wall) => wall, label: () => "UTC" };
 const axisClocks = new Map<string, AxisClock>();
 
 function axisClock(timeZone: string | undefined): AxisClock {
@@ -94,7 +95,7 @@ function axisClock(timeZone: string | undefined): AxisClock {
         return zonedWallClockToUtcMs(timeZone, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(),
           date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds());
       },
-      label: timeZoneLabel(timeZone),
+      label: (instant) => timeZoneLabel(timeZone, instant),
     };
     axisClocks.set(timeZone, clock);
   }
@@ -400,7 +401,8 @@ function clockLabel(timestamp: number, unit: CompositeTimeAxisUnit): string {
 
 function calendarLabel(timestamp: number, includeYear: boolean): string {
   const date = new Date(timestamp);
-  const base = `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  // Day-first, as every date outside the chart is written: "9 Nov 2026".
+  const base = `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
   return includeYear ? `${base} ${date.getUTCFullYear()}` : base;
 }
 
@@ -421,7 +423,7 @@ function formatBoundaryLabel(
     case "minute":
     case "hour": {
       const clock = clockLabel(timestamp, interval.unit);
-      const suffix = includeTimeZone ? ` ${axis.label}` : "";
+      const suffix = includeTimeZone ? ` ${axis.label(instant)}` : "";
       if (sameWallDay(timestamp, counterpart)) return `${clock}${suffix}`;
       const includeYear = includeBoundaryYear
         && date.getUTCFullYear() !== new Date(counterpart).getUTCFullYear();

@@ -2,7 +2,7 @@ import { memo, useEffect, useRef } from "react";
 import { Box, ScrollBox, Span, Text, useShortcutLabel, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
-import { displayWidth, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatPercentRaw } from "../../../utils/format";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import {
@@ -33,7 +33,7 @@ function formatLegendSeriesValue(
   formatValue: CompositeChartProps["formatValue"],
   scene: CompositeChartScene | null,
 ): string {
-  if (value === null) return "—";
+  if (value === null) return MISSING_VALUE;
   return formatValue ? formatValue(value, series) : formatCompositeSeriesValue(value, series, axisPriceReference(scene, series));
 }
 
@@ -106,25 +106,45 @@ function nameWords(label: string): string[] {
   return label.split(" ").filter(Boolean);
 }
 
-/** The shortest a legend name reads on one line: its first word whole, with `...` for the rest ("Bab..."). */
+/** The shortest a legend name reads on one line: its first word whole, with one `…` for the rest ("Bab…"). */
 export function shortestLegendName(label: string): string {
   const words = nameWords(label);
-  return words.length > 1 ? `${words[0]}...` : label;
+  return words.length > 1 ? `${words[0]}…` : label;
 }
 
 /**
- * A legend name cut to whole words within `width` cells, `...` standing for
+ * A legend name cut to whole words within `width` cells, one `…` standing for
  * the words left out, never a word cut through ("Malacc"): its first words,
  * or its first and last ones where those tell it from the other names
- * (`US...corporate OAS` beside `US high yield OAS`). At the least its first
+ * (`US…corporate OAS` beside `US high yield OAS`). At the least its first
  * word, whatever `width` is. A name that fits is whole.
  */
 export function wholeWordsCut(label: string, width: number, others: readonly string[] = []): string {
   if (displayWidth(label) <= width) return label;
+  const { cuts, shown, tellsApart } = nameCuts(label, others);
+  const fitting = cuts.filter((cut) => displayWidth(shown(cut)) <= width);
+  const cut = fitting.find(tellsApart) ?? fitting[0];
+  return cut ? shown(cut) : shortestLegendName(label);
+}
+
+/**
+ * The shortest a legend name reads and is still told from the other names:
+ * beside "IV 90d", "IV 30d" cut to "IV…" would read as either, so it stays
+ * whole, and "IV 30d quote" reads "IV…quote". A name no other one shares its
+ * first word with reads as `shortestLegendName` has it.
+ */
+export function shortestLegendNameAmong(label: string, others: readonly string[]): string {
+  const { cuts, shown, tellsApart } = nameCuts(label, others);
+  const apart = cuts.filter(tellsApart).map(shown);
+  return apart.length ? apart.reduce((shortest, text) => displayWidth(text) < displayWidth(shortest) ? text : shortest) : label;
+}
+
+/** Every whole-word cut of a name, longest first, and whether a cut still tells it from `others`. */
+function nameCuts(label: string, others: readonly string[]) {
   const words = nameWords(label);
   const rivals = others.filter((other) => other !== label).map(nameWords);
-  const shown = ([head, tail]: readonly [number, number]) => `${words.slice(0, head).join(" ")}...${words.slice(words.length - tail).join(" ")}`;
-  // Another name with the same first and last words would read the same: "US high..." beside "US high yield OAS - ...".
+  const shown = ([head, tail]: readonly [number, number]) => `${words.slice(0, head).join(" ")}…${words.slice(words.length - tail).join(" ")}`;
+  // Another name with the same first and last words would read the same: "US high…" beside "US high yield OAS - …".
   const tellsApart = ([head, tail]: readonly [number, number]) => !rivals.some((other) => other.length >= head + tail
     && words.slice(0, head).every((word, index) => other[index] === word)
     && words.slice(words.length - tail).every((word, index) => other[other.length - tail + index] === word));
@@ -132,9 +152,7 @@ export function wholeWordsCut(label: string, width: number, others: readonly str
   for (let kept = words.length - 1; kept >= 1; kept -= 1) {
     for (let tail = 0; tail < kept; tail += 1) cuts.push([kept - tail, tail]);
   }
-  const fitting = cuts.filter((cut) => displayWidth(shown(cut)) <= width);
-  const cut = fitting.find(tellsApart) ?? fitting[0];
-  return cut ? shown(cut) : shortestLegendName(label);
+  return { cuts, shown, tellsApart };
 }
 
 /**
@@ -379,13 +397,29 @@ export function CompositeLegend({
   // Names get the room the row has. When it overflows, every name drops its
   // listing exchange (and a company's field, compactLabel) together, so the
   // row reads in one form; then the widest name loses its last words first,
-  // never a word cut through: one word stays whole, and "Bab el-Mandeb" reads "Bab...".
-  // The value (including its sign/unit) always stays intact. If the row cannot
-  // fit even with every name at its first word, it wraps where the chart gives
-  // it rows, else keeps the old 30-cell entries and scrolls.
-  const minimumWidthOf = (list: LegendEntry[]) => list.reduce((total, entry, index) => {
-    const text = [shortestLegendName(entry.compactLabel), entry.valueText]
-      .filter(Boolean).join(" ");
+  // never a word cut through: one word stays whole, and "Bab el-Mandeb" reads "Bab…".
+  // The value (including its sign/unit) always stays intact. A name is cut no
+  // shorter than tells it from the others ("IV…" beside "IV 90d" would not)
+  // while the row fits so; if it does not, the row wraps where the chart gives
+  // it rows. With one row, names go to their first word before a value goes,
+  // and past that the row keeps the old 30-cell entries and scrolls.
+  // Worked out once per entry and name: the shrink loops below ask on every
+  // step, and the legend lays out again on every cursor move.
+  const shortestNames = new WeakMap<LegendEntry, Map<string, string>>();
+  const shortestName = (entry: LegendEntry, apart: boolean, label = entry.label) => {
+    let known = shortestNames.get(entry);
+    if (!known) shortestNames.set(entry, known = new Map());
+    const key = `${apart ? "apart" : "first"}:${label}`;
+    let name = known.get(key);
+    if (name === undefined) {
+      name = apart ? shortestLegendNameAmong(label, otherNames(entry)) : shortestLegendName(label);
+      known.set(key, name);
+    }
+    return name;
+  };
+  const minimumWidthOf = (list: LegendEntry[], apart = false) => list.reduce((total, entry, index) => {
+    const name = shortestName(entry, apart, entry.compactLabel);
+    const text = [name, entry.valueText].filter(Boolean).join(" ");
     return total + Math.max(1, displayWidth(text)) + entry.markerWidth + (index > 0 ? 1 : 0);
   }, 0);
   // A fiscal period is context beside a value. Where it would push the row past
@@ -399,8 +433,7 @@ export function CompositeLegend({
   if (entries.some(({ axisNote }) => axisNote) && minimumWidthOf(entries) > widthBeforeAccessory) {
     entries = buildEntries(entries.some(({ fiscalPeriod }) => fiscalPeriod), false);
   }
-  const minimumSeriesWidth = minimumWidthOf(entries);
-  const fitsOneLine = minimumSeriesWidth <= widthBeforeAccessory;
+  const fitsOneLine = minimumWidthOf(entries, true) <= widthBeforeAccessory;
   // Entries that cannot share a line even with names cut to fragments wrap onto
   // more lines when the chart gives them room, each whole, its name only cut
   // past a line's width; with one line they keep the old 30-cell entries and scroll.
@@ -436,10 +469,12 @@ export function CompositeLegend({
         }
       }
       for (const line of lines) {
-        if (minimumWidthOf(line.map((index) => entries[index]!)) > widthBeforeAccessory) continue;
+        const lineEntries = line.map((index) => entries[index]!);
+        if (minimumWidthOf(lineEntries) > widthBeforeAccessory) continue;
+        const apart = minimumWidthOf(lineEntries, true) <= widthBeforeAccessory;
         while (line.reduce((total, index, position) => total + entries[index]!.width + (position > 0 ? 1 : 0), 0) > widthBeforeAccessory) {
-          const shrinkable = line.map((index) => entries[index]!)
-            .filter((entry) => entry.labelWidth > displayWidth(shortestLegendName(entry.label)))
+          const shrinkable = lineEntries
+            .filter((entry) => entry.labelWidth > displayWidth(shortestName(entry, apart)))
             .sort((left, right) => right.labelWidth - left.labelWidth)[0];
           if (!shrinkable) break;
           setEntryLabel(shrinkable, shrinkable.label, shrinkable.labelWidth - 1);
@@ -451,10 +486,10 @@ export function CompositeLegend({
   useEffect(() => {
     if (idle) onWantedRowsChange?.(wantedRows);
   }, [idle, onWantedRowsChange, wantedRows]);
-  if (fitsOneLine) {
+  if (fitsOneLine || (!lines && minimumWidthOf(entries) <= widthBeforeAccessory)) {
     while (measureSeriesWidth() > widthBeforeAccessory) {
       const shrinkable = entries
-        .filter((entry) => entry.label !== entry.compactLabel || entry.labelWidth > displayWidth(shortestLegendName(entry.label)))
+        .filter((entry) => entry.label !== entry.compactLabel || entry.labelWidth > displayWidth(shortestName(entry, fitsOneLine)))
         .sort((left, right) => right.labelWidth - left.labelWidth)[0];
       if (!shrinkable) break;
       if (shrinkable.label !== shrinkable.compactLabel) {

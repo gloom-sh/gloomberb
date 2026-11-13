@@ -1,11 +1,12 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CentralBankRatesPayload, CentralBankRow } from "../../../api-client/central-bank-rates";
 import type { MarketBoardRow } from "../../../components/market-board";
 
 // Two decimals like published policy rates, a third only for eighths such as a 3.875% midpoint.
 const percentText = (value: number) => Math.abs(Number(value.toFixed(2)) - value) < 1e-9 ? value.toFixed(2) : `${Number(value.toFixed(3))}`;
-export const policyRate = (value: number | null) => value == null ? "--" : `${percentText(value)}%`;
+export const policyRate = (value: number | null) => value == null ? MISSING_VALUE : `${percentText(value)}%`;
 export const policyLevel = (row: CentralBankRow) => row.range ? `${percentText(row.range.lower)}-${percentText(row.range.upper)}%` : policyRate(row.value);
-export const policyChange = (row: CentralBankRow) => row.changeBps == null ? "--"
+export const policyChange = (row: CentralBankRow) => row.changeBps == null ? MISSING_VALUE
   : `${row.changeBps > 0 ? "+" : ""}${Number(row.changeBps.toFixed(1))}bp ${row.direction === "hike" ? "↑" : row.direction === "cut" ? "↓" : ""}`.trim();
 /**
  * The one date of the last change: the decision it came from, when the server

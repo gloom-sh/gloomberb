@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useMemo } from "react";
 import {
   DELAYED_SEGMENT,
@@ -75,7 +76,7 @@ function IndexDetail({ row, width, height, focused }: { row: CdxRow; width: numb
     ...(index.recovery != null ? [`${Math.round(index.recovery * 100)}% recovery`] : [])].join(" · ");
   const items: StatItem[] = [
     { id: "level", label: index.quote === "spread" ? "5Y spread" : "5Y price", value: formatLevel(index.quote, index.level),
-      detail: [...(rankOnSpreadEq ? [] : [formatSpreadRank(rank)]), index.date ?? "--", ...(index.kind === "settlement" ? [SETTLEMENT_TEXT] : [])].join(" · ") },
+      detail: [...(rankOnSpreadEq ? [] : [formatSpreadRank(rank)]), index.date ?? MISSING_VALUE, ...(index.kind === "settlement" ? [SETTLEMENT_TEXT] : [])].join(" · ") },
     ...(index.quote === "price" && index.spreadBp !== undefined ? [{ id: "spread", label: "Spread eq", value: formatLevel("spread", index.spreadBp ?? null),
       ...(spreadDetail ? { detail: spreadDetail } : {}) }] : []),
     { id: "1d", label: "1D", value: formatMove(index.quote, day.change1D), ...(through ? { detail: through } : {}) },
@@ -83,7 +84,7 @@ function IndexDetail({ row, width, height, focused }: { row: CdxRow; width: numb
     { id: "1m", label: "1M", value: formatMove(index.quote, day.change1M) },
     { id: "range", label: "1Y range", value: `${formatLevel(index.quote, year.low)} to ${formatLevel(index.quote, year.high)}` },
     { id: "contract", label: "Contract", value: formatContract(index.maturity), detail: `${index.couponBp}bp coupon` },
-    { id: "prints", label: "Prints", value: index.prints == null ? "--" : String(index.prints),
+    { id: "prints", label: "Prints", value: index.prints == null ? MISSING_VALUE : String(index.prints),
       // The value is the count already: the detail says only that the day is still trading, and its last print.
       ...(day.partial ? { detail: partialDayText(null, day.lastPrintAt) } : {}) },
   ];
@@ -160,7 +161,7 @@ export function CdxPane({ focused, width, height }: PaneProps) {
       column: { id: "spread", label: "SPREAD EQ", width: 9, align: "right" as const },
       sortValue: (row: CdxRow) => row.index.quote === "price" ? row.index.spreadBp ?? null : null,
       renderCell: (row: CdxRow) => ({
-        text: row.index.quote === "price" ? formatLevel("spread", row.index.spreadBp ?? null) : "--",
+        text: row.index.quote === "price" ? formatLevel("spread", row.index.spreadBp ?? null) : MISSING_VALUE,
         color: theme.textMuted,
       }),
     }] : []),
@@ -168,7 +169,7 @@ export function CdxPane({ focused, width, height }: PaneProps) {
       column: { id: "prints", label: "PRINTS", width: 7, align: "right" as const },
       sortValue: (row: CdxRow) => row.index.prints,
       renderCell: (row: CdxRow) => ({
-        text: row.index.prints == null ? "--" : String(row.index.prints),
+        text: row.index.prints == null ? MISSING_VALUE : String(row.index.prints),
         color: theme.textMuted,
       }),
     },

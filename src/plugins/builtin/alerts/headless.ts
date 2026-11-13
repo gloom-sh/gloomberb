@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { closeBasis, metricReadingText } from "./metric-model";
 import { moveBasisText, movePercentText } from "./move";
 /**
@@ -63,7 +64,7 @@ const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "quoteAt", header: "Quote", textFormat: (_value, row) => formatQuoteChecked(asAlert(row)) },
   { key: "quoteSource", header: "Quote source" },
   { key: "lastCheckedAt", header: "Checked", format: instant },
-  { key: "triggeredAt", header: "Alerted", format: instant, textFormat: (value) => (typeof value === "number" ? relativeTime(value) : "-") },
+  { key: "triggeredAt", header: "Alerted", format: instant, textFormat: (value) => (typeof value === "number" ? relativeTime(value) : MISSING_VALUE) },
   // After the columns exports have always had: when the rule was made, and the currency of its listing.
   // To the second, as `alerts list` and the pane's detail write it: exports draw a stored millisecond time to the millisecond.
   { key: "created", header: "Created" },
@@ -84,7 +85,7 @@ const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "following", header: "Following" },
   { key: "eventDate", header: "Event date", textFormat: (value, row) => text(value) || (row.leadDays == null ? "" : "not known yet") },
   // A results alert waits for the report instead of a lead time.
-  { key: "leadDays", header: "Days before", align: "right", textFormat: (value, row) => (row.when === "results" ? "results" : value == null ? "-" : String(value)) },
+  { key: "leadDays", header: "Days before", align: "right", textFormat: (value, row) => (row.when === "results" ? "results" : value == null ? MISSING_VALUE : String(value)) },
   { key: "state", header: "State" },
   { key: "since", header: "Since" },
 ];

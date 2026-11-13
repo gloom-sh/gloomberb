@@ -12,6 +12,7 @@ import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/
 import type { BrokerInstanceConfig } from "../../../../types/config";
 import type { BrokerAccount } from "../../../../types/trading";
 import {
+  MISSING_VALUE,
   formatCompact,
   formatCompactCurrency,
   formatCurrency,
@@ -66,7 +67,7 @@ function daysUntil(date: string, today: string): number {
   return Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
 }
 
-/** "Sep 10", or "Dec 12, 25" in another year. */
+/** "10 Sep", or "12 Dec '25" in another year. */
 function calendarDate(date: string, today: string): string {
   return formatShortDate(`${date}T00:00:00Z`, { year: date.slice(0, 4) === today.slice(0, 4) ? false : "2-digit", utc: true });
 }
@@ -348,7 +349,7 @@ export function buildOverviewStats({
     stats.push({ label: "EV", value: formatPriceEarnings(NOT_MEANINGFUL),
       detail: financial ? financial.replace(/^n\/m /, "") : ["cash > cap + debt", "cash > cap"] });
   } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
-    stats.push({ label: "EV", value: "—" });
+    stats.push({ label: "EV", value: MISSING_VALUE });
   } else if (enterpriseValue != null) {
     // Market cap + debt - cash (+ minority interest) where the provider's is more than 5% from it, as every view
     // shows it; the notice under the pane gives its inputs where the provider's is far off (enterpriseValueGapIsLarge).
@@ -454,7 +455,7 @@ export function buildPositionRows({
       currentPrice != null ? toBase(currentPrice, quoteCurrency) : null);
     const pnlValue = selectedPnl.value;
     const percent = portfolioPnlPercent(pnlValue, costBasisBase != null ? Math.abs(costBasisBase) : Number.NaN);
-    const returnPercent = percent === null ? "—" : formatPercentRaw(percent);
+    const returnPercent = percent === null ? MISSING_VALUE : formatPercentRaw(percent);
     const unit = metrics.priceBasis === "percent-of-par" ? "" : ticker.metadata.assetCategory === "BOND" ? " units" : metrics.multiplierHint > 1 ? " ct" : " sh";
 
     return {
@@ -475,10 +476,10 @@ export function buildPositionRows({
             priceBasis: currentPrice != null ? quote?.priceBasis : metrics.priceBasis,
             maxWidth: 9,
           }, fallbackMarkCurrency))
-        : "—",
-      cost: costBasisBase != null ? formatCurrency(costBasisBase, baseCurrency) : "—",
-      value: marketValueBase != null ? formatCurrency(marketValueBase, baseCurrency) : "—",
-      pnl: pnlValue != null ? `${pnlValue >= 0 ? "+" : ""}${formatCurrency(pnlValue, baseCurrency)}` : "—",
+        : MISSING_VALUE,
+      cost: costBasisBase != null ? formatCurrency(costBasisBase, baseCurrency) : MISSING_VALUE,
+      value: marketValueBase != null ? formatCurrency(marketValueBase, baseCurrency) : MISSING_VALUE,
+      pnl: pnlValue != null ? `${pnlValue >= 0 ? "+" : ""}${formatCurrency(pnlValue, baseCurrency)}` : MISSING_VALUE,
       ret: returnPercent,
       pnlValue,
       pnlBasis: selectedPnl.basis,

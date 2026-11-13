@@ -7,6 +7,7 @@ import {
   type OrganizationTicker,
 } from "../../../api-client/organization-tickers";
 import { createTtlCache, type TtlCache } from "../../../data/ttl-cache";
+import { logFailure } from "../../../utils/log-failure";
 import { findSponsorListings, type ListingFinder } from "./sponsor-listing";
 
 /**
@@ -214,9 +215,10 @@ export function useSponsorTickers(names: readonly string[], sessionKey: string, 
   const companiesKey = (companies ?? []).join("\n");
   useEffect(() => {
     if (!signal || signal.aborted || !namesKey) return;
-    void store.load(namesKey.split("\n"), signal).then(() => {
+    // A failed lookup lands in the store as a failure the pane can retry; anything else is logged.
+    store.load(namesKey.split("\n"), signal).then(() => {
       if (companiesKey) return store.searchListings(companiesKey.split("\n"), findSponsorListings, signal);
-    });
+    }).catch(logFailure("clinical-trials.sponsor-tickers", "Looking up sponsor tickers failed"));
   }, [companiesKey, epoch, namesKey, sessionKey, signal, store, version]);
   const retry = useCallback(() => {
     store.retryFailed();

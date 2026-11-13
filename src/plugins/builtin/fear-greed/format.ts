@@ -1,6 +1,6 @@
 import type { SpeedometerSegment } from "../../../components";
 import { colors } from "../../../theme/colors";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import type {
   FearGreedRating,
   FearGreedValueFormat,
@@ -46,12 +46,12 @@ export function ratingTrend(rating: FearGreedRating): "positive" | "negative" | 
 }
 
 export function formatScore(score: number | null | undefined): string {
-  if (score == null || Number.isNaN(score)) return "--";
+  if (score == null || Number.isNaN(score)) return MISSING_VALUE;
   return String(Math.round(score));
 }
 
 export function formatIndicatorValue(value: number | null | undefined, format: FearGreedValueFormat): string {
-  if (value == null || Number.isNaN(value)) return "--";
+  if (value == null || Number.isNaN(value)) return MISSING_VALUE;
   switch (format) {
     case "score":
       return formatScore(value);
@@ -73,15 +73,15 @@ export function formatAxisValue(format: FearGreedValueFormat): (value: number) =
 }
 
 export function formatUpdatedAt(date: Date | null): string {
-  if (!date) return "Last updated --";
+  if (!date) return `Last updated ${MISSING_VALUE}`;
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     month: "short",
     day: "numeric",
-    hour: "numeric",
+    hour: "2-digit",
     minute: "2-digit",
-    hour12: true,
+    hourCycle: "h23",
   }).formatToParts(date);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === type)?.value ?? "";
-  return `Last updated ${part("month")} ${part("day")} at ${part("hour")}:${part("minute")} ${part("dayPeriod")} ET`;
+  return `Last updated ${part("day")} ${part("month")} at ${part("hour")}:${part("minute")} ET`;
 }

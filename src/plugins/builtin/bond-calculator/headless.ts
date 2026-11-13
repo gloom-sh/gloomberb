@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { loadBondBenchmark } from "./client";
@@ -50,7 +51,7 @@ export const bondCalculatorHeadless: HeadlessPaneDefinition<"bundle"> = {
           { label: "Treasury spread", value: result.spread?.spreadBps ?? null, formatted: result.spread ? `${result.spread.spreadBps.toFixed(1)} bp as of ${result.spread.asOf}` : "Unavailable" },
         ] },
         { title: "Cash flows per 100 face", columns: [{ key: "date", header: "Payment" }, { key: "amount", header: "Cash", format: (n) => Number(n).toFixed(4) }, { key: "presentValue", header: "Present value", format: (n) => Number(n).toFixed(4) }], rows: a.cashFlows.map((flow) => ({ ...flow })) },
-        { title: "Yield sensitivity", columns: [{ key: "shiftBps", header: "Shift bp" }, { key: "yieldPercent", header: "Yield %" }, { key: "cleanPrice", header: "Clean price", format: (n) => n == null ? "-" : Number(n).toFixed(4) }, { key: "priceChange", header: "Change", format: (n) => n == null ? "-" : Number(n).toFixed(4) }], rows: result.sensitivity },
+        { title: "Yield sensitivity", columns: [{ key: "shiftBps", header: "Shift bp" }, { key: "yieldPercent", header: "Yield %" }, { key: "cleanPrice", header: "Clean price", format: (n) => n == null ? MISSING_VALUE : Number(n).toFixed(4) }, { key: "priceChange", header: "Change", format: (n) => n == null ? MISSING_VALUE : Number(n).toFixed(4) }], rows: result.sensitivity },
       ],
     };
   },

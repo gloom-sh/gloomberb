@@ -20,7 +20,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { useTickerFinancials } from "../../../market-data/hooks";
 import { useLiveTickerFinancials } from "../../../state/hooks/live-ticker-financials";
 import { blendHex, colors } from "../../../theme/colors";
-import { formatPercent } from "../../../utils/format";
+import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData } from "../../runtime";
 import { handleRefreshKey, useClampSelectedIndex } from "../../../components/data-table/table-pane";
@@ -114,7 +114,7 @@ function AnalystHeader({ data, history, series, currency, width, height, tableRo
     {
       id: "upside",
       label: "Upside",
-      value: upside != null ? formatPercent(upside) : "-",
+      value: upside != null ? formatPercent(upside) : MISSING_VALUE,
       tone: upside == null || upside === 0 ? "muted" : upside > 0 ? "positive" : "negative",
     },
     ...(split ? [{
@@ -249,9 +249,9 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
       case "firm":
         return { text: row.firm, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "action":
-        return { text: row.action ?? "-", color: ratingActionColor(row.action) };
+        return { text: row.action ?? MISSING_VALUE, color: ratingActionColor(row.action) };
       case "current":
-        return { text: row.current ?? "-", color: colors.text };
+        return { text: row.current ?? MISSING_VALUE, color: colors.text };
       case "target": {
         const delta = ratingTargetDelta(row);
         const hasTarget = row.currentPriceTarget != null || row.priorPriceTarget != null;
@@ -263,7 +263,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
         };
       }
       case "prior":
-        return { text: row.prior ?? "-", color: colors.textDim };
+        return { text: row.prior ?? MISSING_VALUE, color: colors.textDim };
       case "reason":
         // Blank, not a dash: no coverage gave a reason.
         return { text: ratingReason(row)?.text ?? "", color: colors.textDim };

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DocsFeed, DocsLesson } from "../../../docs/content";
 import { loadDocsFeed, loadDocsLesson, savedDocsFeed, savedDocsLesson } from "../../../docs/load";
+import { logFailure } from "../../../utils/log-failure";
 
 export interface DocsFeedState {
   /** Null only until the shipped copy has loaded, a moment on first open. */
@@ -15,9 +16,10 @@ export function useDocsFeed(): DocsFeedState {
   const [request, setRequest] = useState({ force: false, token: 0 });
   useEffect(() => {
     let live = true;
-    void loadDocsFeed({ force: request.force }).then((result) => {
+    // Only a shipped copy that cannot be read rejects; the site's failures answer offline.
+    loadDocsFeed({ force: request.force }).then((result) => {
       if (live) setState(result);
-    });
+    }, logFailure("docs.feed", "Loading the docs index failed"));
     return () => {
       live = false;
     };
