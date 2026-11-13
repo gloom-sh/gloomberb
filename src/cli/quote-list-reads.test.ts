@@ -23,7 +23,8 @@ function payload(symbol: string): CloudQuotePayload {
 test("a long list is quoted in batches the service takes, and a row refused for the moment is asked for again", async () => {
   const store = new AppPersistence(":memory:");
   const batches: number[] = [];
-  let limited = true;
+  // Each symbol here meets the request limit the first time it is asked for alone.
+  const limited = new Set(["Z1"]);
   apiClient.getCloudQuotesBatch = async (requests) => {
     batches.push(requests.length);
     if (requests.length > 100) throw new ApiRequestError("Anonymous market batch limit exceeded", 413);
@@ -32,7 +33,7 @@ test("a long list is quoted in batches the service takes, and a row refused for 
   };
   // The listing asked for alone meets the request limit once.
   apiClient.getCloudQuote = async (symbol) => {
-    if (symbol === "Z1" && limited) { limited = false; throw new ApiRequestError("Anonymous market rate limit exceeded", 429, 1_000); }
+    if (limited.delete(symbol)) throw new ApiRequestError("Anonymous market rate limit exceeded", 429, 1_000);
     return { status: "success", data: payload(symbol) };
   };
   try {
@@ -53,9 +54,23 @@ test("a long list is quoted in batches the service takes, and a row refused for 
     expect(asked).toEqual([["Z1", "Z2"], ["Z1"]]);
     expect(told).toEqual([[1, 0]]);
     expect(results.map((result) => result.quote?.symbol)).toEqual(["Z1", "Z2"]);
-    limited = true;
-    const [refused] = await router.getQuotesBatch([{ symbol: "Z1", exchange: "NASDAQ" }], { forceRefresh: true });
-    expect(refused!.error).toBe("Gloom's data service is at its request limit for Z1. Try again in 1 s.");
+    // A listing with no saved copy to answer for it (Z1's now has one).
+    limited.add("Z9");
+    const [refused] = await router.getQuotesBatch([{ symbol: "Z9", exchange: "NASDAQ" }], { forceRefresh: true });
+    expect(refused!.error).toBe("Gloom's data service is at its request limit for Z9. Try again in 1 s.");
+
+    // Asked a chunk at a time, each row told once it is final, so a long list's progress moves as each ask returns.
+    const chunks: string[][] = [];
+    const settled: string[][] = [];
+    let busy = true;
+    await quotesWithRetries(["C1", "C2", "C3"].map((symbol) => ({ symbol })), async (again) => {
+      chunks.push(again.map((target) => target.symbol));
+      return again.map((target) => target.symbol === "C1" && busy
+        ? (busy = false, { target, quote: null, error: "Gloom's data service is at its request limit for C1. Try again in 1 s." })
+        : { target, quote: { symbol: target.symbol } as never });
+    }, { waitsMs: [0, 0], chunkSize: 2, onSettled: (rows) => settled.push(rows.map(({ result, index }) => `${index}:${result.target.symbol}`)) });
+    expect(chunks).toEqual([["C1", "C2"], ["C3"], ["C1"]]);
+    expect(settled).toEqual([["1:C2"], ["2:C3"], ["0:C1"]]);
 
     // A source's own answer is kept: never asked again.
     const misses = await quotesWithRetries([{ symbol: "NOPE" }], async (again) => {

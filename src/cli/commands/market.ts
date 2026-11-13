@@ -335,7 +335,7 @@ import {
 import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
-import { answerQuote, errorMessage, notUsTickerSentence, withJoinedCompanyNames } from "../quote-answer";
+import { answerQuote, errorMessage, notUsTickerSentence, withJoinedCompanyNames, type QuoteAnswer } from "../quote-answer";
 import { QUOTE_PROGRESS_MIN_SYMBOLS, quotesWithRetries } from "../quote-list-reads";
 import { listProgressNotice } from "../list-progress";
 import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, fxSideCode, fxSubUnit, fxUnitRate, parseFxArgs, type FxQuotedFigure, type FxRequest } from "../fx-pair";
@@ -1265,17 +1265,28 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // A row of a list that failed for a reason that says nothing of its symbol (a busy moment, the request limit) is
     // asked for again before it is given a status.
     const ask = (asked: QuoteSubscriptionTarget[]) => market.dataProvider.getQuotesBatch(asked, { forceRefresh: ctx.cliOptions.refresh, revalidate: true, datesChangeBasis: true });
-    const results = targets.length > 1 ? await quotesWithRetries(targets, ask, { onRetry: quoteRetryNotice(ctx) }) : await ask(targets);
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
     const request = { command: commandName, noun: "quote" };
-    // Entries no listing was read for are settled already.
-    let settled = symbols.length - results.length;
-    const quoted = await Promise.all(results.map(async (result, index) => {
+    // Entries no listing was read for are settled already; each row is read as soon as its ask comes back final, and
+    // counts once it has been, so a long list's progress moves as each batch is answered.
+    let settled = symbols.length - targets.length;
+    const answering = new Map<QuoteBatchResult, Promise<QuoteAnswer>>();
+    const answer = (result: QuoteBatchResult, index: number) => {
       const listing = listingOf(result, index);
-      const answer = await answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null, { datesChangeBasis: true });
-      progress?.(++settled, symbols.length);
-      return answer;
-    }));
+      const answered = answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null, { datesChangeBasis: true })
+        .then((done) => { progress?.(++settled, symbols.length); return done; });
+      answered.catch(() => {
+        // Intentional ignore: awaited with the others below, where its failure fails the command.
+      });
+      return answered;
+    };
+    const results = targets.length > 1
+      ? await quotesWithRetries(targets, ask, {
+        onRetry: quoteRetryNotice(ctx),
+        onSettled: (final) => { for (const { result, index } of final) answering.set(result, answer(result, index)); },
+      })
+      : await ask(targets);
+    const quoted = await Promise.all(results.map((result, index) => answering.get(result) ?? answer(result, index)));
     progress?.(symbols.length, symbols.length);
     // "MTN Group" typed apart is MTN Group, one row, where "Group" alone would read as UnitedHealth Group.
     const { answers, asked } = listed ? { answers: quoted, asked: results.map(listingOf) }
