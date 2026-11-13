@@ -5,7 +5,7 @@ import { isCryptoPairSymbol, TOP_COIN_NAMES } from "../../utils/crypto-pair";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { groupByCompany } from "../../tickers/company-name";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
-import { serviceDidNotAnswerMessage } from "../../sources/provider-errors";
+import { rateLimitedMessage, serviceDidNotAnswerMessage } from "../../sources/provider-errors";
 import type { TickerRecord } from "../../types/ticker";
 
 /** Where a crypto pair that will not load can still be read. `fn CRYP` takes no argument. */
@@ -104,7 +104,8 @@ function failureReason(message: string, symbol: string): string {
 
 /** A reason that says the data service gave no answer at all, not what it found: the symbol was never checked. */
 function unanswered(reason: string): boolean {
-  return reason === DATA_SERVICE_UNREACHABLE_MESSAGE || reason.startsWith(serviceDidNotAnswerMessage().split(".")[0]!);
+  return reason === DATA_SERVICE_UNREACHABLE_MESSAGE || reason.startsWith(serviceDidNotAnswerMessage().split(".")[0]!)
+    || reason.startsWith(rateLimitedMessage().split(".")[0]!);
 }
 
 /**

@@ -102,12 +102,18 @@ test("a listing read the data service failed to answer twice says so and to try 
   }
   // A failure of a read that is not asked again, a 5xx and a timeout among them, keeps the router's words.
   const unretried = [sourceDidNotAnswer("UPSTREAM_ERROR"), new ApiRequestError("Bad gateway", 502), new ApiRequestError("Forbidden", 403),
-    new ApiRequestError("Too many requests", 429), new OperationTimeoutError("Cloud market request timed out after 10000ms: /market/quotes/batch")];
+    new OperationTimeoutError("Cloud market request timed out after 10000ms: /market/quotes/batch")];
   for (const failure of unretried) {
     const note: ProviderMissNote = {};
     noteProviderMiss(note, failure);
     expect(noProviderError("No quote provider available for YAR:OSL", note, "YAR:OSL").message).toBe("No quote provider available for YAR:OSL");
   }
+  // The request limit says so, and when to ask again, rather than that no source covers the listing.
+  const note: ProviderMissNote = {};
+  noteProviderMiss(note, new ApiRequestError("Anonymous market rate limit exceeded", 429, 41_500));
+  const limited = noProviderError("No quote provider available for YAR:OSL", note, "YAR:OSL");
+  expect(limited.message).toBe("Gloom's data service is at its request limit for YAR:OSL. Try again in 42 s.");
+  expect(isSourceFailure(limited)).toBe(true);
 });
 
 /**

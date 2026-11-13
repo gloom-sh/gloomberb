@@ -10,6 +10,7 @@ import { createTestCliContext, type PrintedCliResult } from "../../test-support/
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { captureConsole } from "../../test-support/console";
 import { createTestTicker } from "../../test-support/ticker";
+import { ProviderBusyError } from "../../sources/provider-errors";
 import { resetBoardCoins } from "../board-coins";
 import { withSearchHints } from "../not-a-ticker";
 import { buildSearchReport, search, searchCandidatesForCli } from "./search";
@@ -169,6 +170,26 @@ test("a code several companies list is never quoted on one of them: it asks for 
 
   // A named listing is its own answer.
   expect((await runQuote(["2222:TADAWUL"], source)).rows.map((row) => [row.target.symbol, row.quote == null])).toEqual([["2222:TADAWUL", false]]);
+});
+
+// A pasted list's 8306 read "Not a ticker" when search turned it away for the moment, where alone it asks which exchange.
+test("a bare code whose search is busy is asked again, and still busy its row says so, never that it is no ticker", async () => {
+  const source = venueSource("2222", ["JPX", "TADAWUL"], { CSPX: createTestQuote({ symbol: "CSPX" }) },
+    { JPX: "Kotobuki Spirits Co., Ltd.", TADAWUL: "Saudi Arabian Oil Co." });
+  const search = source.dataProvider.search!.bind(source.dataProvider);
+  let busy = 0;
+  source.dataProvider.search = async (...args) => {
+    if (busy > 0) { busy -= 1; throw new ProviderBusyError("Cloud search is busy"); }
+    return search(...args);
+  };
+  busy = 1;
+  const once = await runQuote(["2222", "CSPX"], source);
+  expect((once.rows[0] as { error?: string }).error).toBe("Choose an exchange for 2222. Listings: 2222:JPX, 2222:TADAWUL.");
+  busy = Infinity;
+  const still = await runQuote(["2222", "CSPX"], source);
+  expect(String((still.rows[0] as { error?: unknown }).error)).toContain("busy");
+  expect(still.warnings.join("\n")).not.toContain("Not a ticker");
+  expect(still.rows[1]!.quote).not.toBeNull();
 });
 
 test("ticker asks for an exchange for a code several companies list, as quote does, rather than calling it no ticker", async () => {
@@ -729,6 +750,30 @@ test("a company's name typed as one word no listing trades as is quoted as its l
   expect(read).toBe('Read "Apple" as AAPL:NASDAQ (Apple Inc.).');
   expect(withSearchHints(read, ["Apple", "GOLD", "grp"])).toBe('Read "Apple" as AAPL:NASDAQ (Apple Inc.).');
   expect(result.warnings).toContain("Not a ticker: GRP.");
+});
+
+// `quote 中電` read the start of Chudenko's name on the Tokyo list (1941:JPX), where 中電 is CLP's short name in Hong Kong.
+test("a name in kanji alone is the company the service names for it; only one it names none for is a Tokyo company's whole name", async () => {
+  // As /market/search answers on 2026-11-13: the service marks each with the short name it goes by in Hong Kong.
+  const listed = (symbol: string, name: string, alias: string) => ({
+    providerId: "test", symbol, name, exchange: "HKEX", type: "Common Stock", currency: "HKD", homeListing: true, searchAliases: [alias],
+  });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => ({
+      中電: [listed("0002", "CLP Holdings Limited", "中電")],
+      東亞: [listed("0023", "The Bank of East Asia, Limited", "東亞")],
+      中国: [listed("0941", "China Mobile Limited", "中国")],
+    } as Record<string, ReturnType<typeof listed>[]>)[query] ?? [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => /:/.test(target.symbol)
+      ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+      : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) }),
+  });
+  const cli = createTestCliContext({ dataProvider });
+  await quoteCommand.execute(["中電", "東亞", "中国", "中電工"], cli.context);
+  const { result } = cli.printed[0] as PrintedCliResult;
+  expect((result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol))
+    .toEqual(["0002:HKEX", "0023:HKEX", "0941:HKEX", "1941:JPX"]);
+  expect(result.warnings).toContain('Read "中電工" as 1941:JPX.');
 });
 
 test("a word many names share is a name only as search's top result or an exact name; a coin's or a subject's name keeps its hint", async () => {

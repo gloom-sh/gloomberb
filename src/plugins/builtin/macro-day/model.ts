@@ -213,7 +213,7 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   const last = sessions.at(-1) ?? null;
   const empty = (): MacroDayStats => stats([], null);
   const kinds = MACRO_EVENT_KINDS.filter((kind) => US_KINDS.has(kind) || options.releases.some((release) => release.kind === kind));
-  if (!last) return { symbol: options.symbol, basis, events: [], kinds, byKind: { cpi: empty(), jobs: empty(), fomc: empty(), ipca: empty(), ecb: empty() },
+  if (!last) return { symbol: options.symbol, basis, events: [], kinds, byKind: { cpi: empty(), jobs: empty(), fomc: empty(), ipca: empty(), ecb: empty(), boj: empty() },
     allEvents: empty(), earnings: empty(), normal: empty(), start: null, asOf: null };
 
   // Sessions after the published lists end may be unlisted release days, so they are left out of both sides.

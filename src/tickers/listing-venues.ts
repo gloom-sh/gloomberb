@@ -15,6 +15,7 @@ import { currencyPairSpelling } from "../utils/currency-pair";
 import { savedAbroadForBareSymbol } from "./search/bare-symbol";
 import { parseListingWithdrawal, withdrawalLabel } from "../market-data/quotes/delisting";
 import type { ListingWithdrawal } from "../types/financials";
+import { isRateLimited, isTransientServiceFailure } from "../sources/provider-errors";
 
 export interface ListingStore {
   loadTicker(symbol: string): Promise<TickerRecord | null>;
@@ -59,7 +60,15 @@ function ownSymbol(listed: string | undefined, asked: string): { symbol: string 
  * every command names; whether a venue it leaves out trades the symbol is the
  * listing's own quote's to say (`quotedOnVenue`).
  */
-export async function listingVenues(symbol: string, { store, dataProvider }: ListingDeps): Promise<ListingVenue[]> {
+export async function listingVenues(
+  symbol: string,
+  { store, dataProvider }: ListingDeps,
+  /**
+   * Throw a search failure that says nothing of the symbol (a busy moment, the
+   * request limit, no connection) rather than answer that no venue lists it.
+   */
+  { failTransient = false }: { failTransient?: boolean } = {},
+): Promise<ListingVenue[]> {
   const query = `${symbol}:`;
   if (!listingChoiceQuery(query)) return [];
   const tickers = new Map((await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const));
@@ -77,6 +86,7 @@ export async function listingVenues(symbol: string, { store, dataProvider }: Lis
       };
     venues = only?.exchange ? [{ ...only, exchange: canonicalExchange(only.exchange) }] : [];
   } catch (error) {
+    if (failTransient && (isTransientServiceFailure(error) || isRateLimited(error))) throw error;
     // One listing settles the picker; several are its choices.
     if (!(error instanceof AmbiguousTickerError) || error instanceof AmbiguousContractError) return [];
     venues = error.listings.flatMap((listing) => {

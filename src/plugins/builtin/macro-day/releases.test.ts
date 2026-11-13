@@ -89,10 +89,13 @@ describe("macro release list", () => {
       figuresMissing: "the economic calendar has no Non Farm Payrolls row that day" });
   });
 
-  test("the ECB's decision days come from the server with the deposit rate, its next decision, and a CPI actual computed from the index", () => {
+  test("the ECB's and BoJ's decision days come from the server with the rate, their next decisions, and a CPI actual computed from the index", () => {
     const merged = mergeMacroReleases(floor, {
-      ...served("2026-11-11", { cpi: ["2026-11-10"], ecb: ["2026-09-10", "2026-10-29"] }), scheduled: { ecb: "2026-12-17" },
+      ...served("2026-11-11", { cpi: ["2026-11-10"], ecb: ["2026-09-10", "2026-10-29"], boj: ["2026-09-18", "2026-10-30"] }),
+      scheduled: { ecb: "2026-12-17", boj: "2026-12-18" },
       figures: {
+        boj: { "2026-09-18": { event: "Policy rate", actual: "1.25%", forecast: "1.25%", prior: "1.00%", surprise: "in-line",
+          decision: "raised 25bp" } },
         ecb: { "2026-09-10": { event: "ECB Interest Rate Decision", actual: "2.50%", forecast: null, prior: "2.25%", surprise: null,
           decision: "raised 25bp" } },
         cpi: { "2026-11-10": { event: "Inflation Rate YoY", actual: null, forecast: "3.9%", prior: "3.7%", surprise: null,
@@ -102,7 +105,10 @@ describe("macro release list", () => {
     expect(merged.releases.filter((release) => release.kind === "ecb").map((release) => release.date)).toEqual(["2026-09-10", "2026-10-29"]);
     expect(merged.releases.find((release) => release.date === "2026-09-10")?.figures).toMatchObject({ actual: "2.50%", prior: "2.25%",
       decision: "raised 25bp" });
-    expect(merged.scheduled).toEqual({ ecb: "2026-12-17" });
+    // The BoJ's days are its Tokyo days, kept as served beside the ECB's.
+    expect(merged.releases.filter((release) => release.kind === "boj").map((release) => release.date)).toEqual(["2026-09-18", "2026-10-30"]);
+    expect(merged.releases.find((release) => release.kind === "boj" && release.date === "2026-09-18")?.figures?.decision).toBe("raised 25bp");
+    expect(merged.scheduled).toEqual({ ecb: "2026-12-17", boj: "2026-12-18" });
     expect(merged.releases.find((release) => release.date === "2026-11-10")?.figures?.actualMissing)
       .toBe("the CPI index has no October 2025 level to compare against");
   });

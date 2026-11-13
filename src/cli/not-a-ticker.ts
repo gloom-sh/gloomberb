@@ -4,7 +4,7 @@ import { renamedListingFor, renamedListingHint } from "../tickers/renamed-listin
 import { boardCoinFor } from "./board-coins";
 import { currencyNameHint } from "./currency-name-hint";
 import { splitSymbolArgs, splitSymbolWords } from "./symbol-args";
-import { treasuryYieldHint, treasuryYieldTenor } from "./treasury-yields";
+import { isTreasuryFredSeries, treasuryYieldHint, treasuryYieldTenor } from "./treasury-yields";
 
 // "Not a ticker: APPLE." as the router words it; the symbol ends at the sentence's own period.
 // One that already names what to try (a search, a FRED series, a yield, a currency's rate, the pair search offered) is left alone.
@@ -52,7 +52,7 @@ export function withSearchHints(text: string, args: readonly string[], isFredSer
     ? named.replace(NOT_A_TICKER_SENTENCE, (sentence, symbol: string) => {
       const typed = typedSymbol(symbol, args);
       const id = typed.toUpperCase();
-      if (/^[A-Z0-9]+$/.test(id) && isFredSeries(id)) return `${sentence} Try \`gloom fred ${id}\`.`;
+      if (/^[A-Z0-9]+$/.test(id) && (isFredSeries(id) || isTreasuryFredSeries(id))) return `${sentence} Try \`gloom fred ${id}\`.`;
       // A listing that moved to a new symbol (ELET3 is AXIA3) points to it, never to a search for the dead one.
       const renamed = renamedListingFor(typed);
       if (renamed) return `${sentence} ${renamedListingHint(renamed)}`;
