@@ -340,6 +340,10 @@ Calls, Risks, 8-K and Hiring need Gloom Cloud Pro. A pane left on one of them re
 - Options also stays for indices, futures and option contracts. Explicitly classified mutual funds and money-market funds hide Options and 13F.
 - Tabs sourced from SEC, FINRA and congressional filings are hidden for listings outside the US.
 
+#### Overview price chart scale
+
+The Overview's price chart covers the whole history. When its highest close is at least three times its lowest (NVDA from 1999, AAPL from 1980), it draws on a log scale, the Chart tab's own, so the early years do not lie flat along the floor; a narrower range stays linear, and so do a history with a close at zero or below and a Treasury yield index (`^TNX`). **Log Scale** in the pane menu switches it, and the pane keeps that choice for every ticker it shows until you switch back to what the range calls for. Pane settings (`Ctrl+,`) have it as **Overview chart scale**: Auto, Linear or Log.
+
 #### Extended hours on the headline
 
 The Overview headline is the regular session, with one extra line for the extended-hours price. After the close the headline stays at the official close and the After-Hours line under it gives the latest extended-hours price and its move from that close. In pre-market the headline is the last session's close, and only the Pre-Market line changes.
