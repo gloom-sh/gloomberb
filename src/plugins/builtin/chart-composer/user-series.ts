@@ -4,6 +4,7 @@ import { listSeriesFiles, seriesFromFile } from "../../../series/files";
 import type { SeriesDefinition } from "../../../series/types";
 import type { GloomPluginContext } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
+import { logFailure } from "../../../utils/log-failure";
 
 interface RegisteredFile {
   mtimeMs: number;
@@ -54,7 +55,8 @@ function watchUserSeriesFolder(ctx: GloomPluginContext): () => void {
     return running;
   };
 
-  void refresh();
+  // The catalog's own refreshes wait on it; this first read is logged if it fails.
+  refresh().catch(logFailure("chart-composer.user-series", "Reading the series folder failed"));
   const removeRefresher = getSharedRegistry()?.series.addRefresher(refresh);
   return () => {
     removeRefresher?.();

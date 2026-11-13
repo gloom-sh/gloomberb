@@ -34,9 +34,9 @@ export function useBuildoutDataRuntime({
   selectedList: openedList,
   themeSlug,
 }: UseBuildoutDataRuntimeOptions): {
-  loadCompanies: (list: BuildoutList, offset: number, append: boolean) => Promise<void>;
-  loadIntel: (offset: number, append: boolean) => Promise<void>;
-  loadSites: (offset: number, append: boolean) => Promise<void>;
+  loadCompanies: (list: BuildoutList, offset: number, append: boolean) => void;
+  loadIntel: (offset: number, append: boolean) => void;
+  loadSites: (offset: number, append: boolean) => void;
   refresh: () => void;
   resetCompanies: () => void;
   setState: Dispatch<SetStateAction<BuildoutLoadState>>;
@@ -86,7 +86,8 @@ export function useBuildoutDataRuntime({
     };
   }, [onBeforeLoad, refreshVersion]);
 
-  const loadCompanies = useCallback(async (list: BuildoutList, offset: number, append: boolean) => {
+  // A page load nobody waits on: its failure lands in the page's `error`.
+  const loadCompanies = useCallback((list: BuildoutList, offset: number, append: boolean) => {
     const pageKey = `companies:${list.slug}:${offset}`;
     if (loadingPageKeysRef.current.has(pageKey)) return;
     loadingPageKeysRef.current.add(pageKey);
@@ -103,8 +104,7 @@ export function useBuildoutDataRuntime({
       };
     });
 
-    try {
-      const page = await fetchCompaniesPage(token, list.slug, offset);
+    fetchCompaniesPage(token, list.slug, offset).then((page) => {
       setState((current) => {
         // A list closed or replaced since keeps the answer out.
         if (current.status !== "ready" || current.companies.listSlug !== list.slug) return current;
@@ -125,7 +125,7 @@ export function useBuildoutDataRuntime({
           },
         };
       });
-    } catch (error) {
+    }).catch((error: unknown) => {
       setState((current) => {
         if (current.status !== "ready" || current.companies.listSlug !== list.slug) return current;
         return {
@@ -137,12 +137,12 @@ export function useBuildoutDataRuntime({
           },
         };
       });
-    } finally {
+    }).finally(() => {
       loadingPageKeysRef.current.delete(pageKey);
-    }
+    });
   }, [state]);
 
-  const loadSites = useCallback(async (offset: number, append: boolean) => {
+  const loadSites = useCallback((offset: number, append: boolean) => {
     const pageKey = `sites:${offset}`;
     if (loadingPageKeysRef.current.has(pageKey)) return;
     loadingPageKeysRef.current.add(pageKey);
@@ -151,8 +151,7 @@ export function useBuildoutDataRuntime({
       ? { ...current, sites: { ...current.sites, loadingMore: true, error: null } }
       : current);
 
-    try {
-      const page = await fetchSitesPage(token, offset);
+    fetchSitesPage(token, offset).then((page) => {
       setState((current) => {
         if (current.status !== "ready") return current;
         const previousItems = append ? current.sites.items : [];
@@ -168,7 +167,7 @@ export function useBuildoutDataRuntime({
           },
         };
       });
-    } catch (error) {
+    }).catch((error: unknown) => {
       setState((current) => current.status === "ready"
         ? {
           ...current,
@@ -179,12 +178,12 @@ export function useBuildoutDataRuntime({
           },
         }
         : current);
-    } finally {
+    }).finally(() => {
       loadingPageKeysRef.current.delete(pageKey);
-    }
+    });
   }, [state]);
 
-  const loadIntel = useCallback(async (offset: number, append: boolean) => {
+  const loadIntel = useCallback((offset: number, append: boolean) => {
     const pageKey = `intel:${offset}`;
     if (loadingPageKeysRef.current.has(pageKey)) return;
     loadingPageKeysRef.current.add(pageKey);
@@ -193,8 +192,7 @@ export function useBuildoutDataRuntime({
       ? { ...current, intel: { ...current.intel, loadingMore: true, error: null } }
       : current);
 
-    try {
-      const page = await fetchIntelPage(token, offset);
+    fetchIntelPage(token, offset).then((page) => {
       setState((current) => {
         if (current.status !== "ready") return current;
         const previousItems = append ? current.intel.items : [];
@@ -210,7 +208,7 @@ export function useBuildoutDataRuntime({
           },
         };
       });
-    } catch (error) {
+    }).catch((error: unknown) => {
       setState((current) => current.status === "ready"
         ? {
           ...current,
@@ -221,9 +219,9 @@ export function useBuildoutDataRuntime({
           },
         }
         : current);
-    } finally {
+    }).finally(() => {
       loadingPageKeysRef.current.delete(pageKey);
-    }
+    });
   }, [state]);
 
   // The open list's companies, once; the Themes board waits for the pointer or the keys to settle on a theme.
@@ -236,10 +234,10 @@ export function useBuildoutDataRuntime({
     const loaded = companies.listSlug === selectedList.slug;
     if (loaded && (companies.items.length > 0 || companies.loadingMore || companies.error || !companies.hasMore)) return;
     if (activeTab === "companies") {
-      void loadCompanies(selectedList, 0, false);
+      loadCompanies(selectedList, 0, false);
       return;
     }
-    const timer = setTimeout(() => { void loadCompanies(selectedList, 0, false); }, THEME_SETTLE_MS);
+    const timer = setTimeout(() => loadCompanies(selectedList, 0, false), THEME_SETTLE_MS);
     return () => clearTimeout(timer);
   }, [activeTab, loadCompanies, openedList, state, themeSlug]);
 
