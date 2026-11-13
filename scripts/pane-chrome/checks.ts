@@ -360,13 +360,13 @@ const day = (time: number) => new Date(time).toISOString().slice(0, 16);
 
 const AXIS_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** The ISO day a chart's time-axis tag names, as `2026-11-03` (with a time of day, intraday) or `Nov 3 2026`. */
+/** The ISO day a chart's time-axis tag names, as `2026-11-03` (with a time of day, intraday) or `3 Nov 2026`. */
 function tagDay(label: string | null): string | undefined {
   const iso = label?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
   if (iso) return iso;
-  const words = label?.match(/([A-Z][a-z]{2}) (\d{1,2}) (\d{4})/);
-  const month = words ? AXIS_MONTHS.indexOf(words[1]!) + 1 : 0;
-  return words && month > 0 ? `${words[3]}-${String(month).padStart(2, "0")}-${words[2]!.padStart(2, "0")}` : undefined;
+  const words = label?.match(/(\d{1,2}) ([A-Z][a-z]{2}) (\d{4})/);
+  const month = words ? AXIS_MONTHS.indexOf(words[2]!) + 1 : 0;
+  return words && month > 0 ? `${words[3]}-${String(month).padStart(2, "0")}-${words[1]!.padStart(2, "0")}` : undefined;
 }
 
 /** Waits for the chart composer to draw its bars (they arrive after a short delay) and returns its plot. */
