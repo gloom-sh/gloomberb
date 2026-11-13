@@ -42,7 +42,7 @@ function shareText(share: ShareParts, cells: number): string {
  * not only in its tooltip, then the disclosed figure. A card too narrow for
  * both whole says "related ·" so the figure keeps its digits.
  */
-export function nodeMetric(node: PositionedNode, focusId: string | undefined, cells: number): string {
+function nodeMetric(node: PositionedNode, focusId: string | undefined, cells: number): string {
   const row = node.row!;
   if (!isRelatedParty(row)) return nodeFigure(node, focusId, cells);
   const lines = [`${counterpartyKindLabel(row, true)} · `, "related · "].map((label) => `${label}${nodeFigure(node, focusId, cells - displayWidth(label))}`);
