@@ -802,7 +802,18 @@ export function financialStatementPeriods(
   subTab: Pick<FinancialSubTab, "rows">,
 ): Array<{ date: string; lead: boolean }> {
   const lead = subTab.rows[0];
-  return statements.map((statement) => ({ date: statement.date, lead: !!lead && hasFinancialRowValue(lead, [statement]) }));
+  return statements.map((statement) => ({ date: statement.date, lead: !!lead && hasLeadLine(lead, statement) }));
+}
+
+/**
+ * Whether a column has its lead line, or Gloom Cloud left it blank on purpose: the company's announcements
+ * count it otherwise than the statements source (HSBC's revenue, `filledFrom.omitted`), so the period is in.
+ */
+function hasLeadLine(lead: FinancialRowDef, statement: FinancialStatement): boolean {
+  if (hasFinancialRowValue(lead, [statement])) return true;
+  const key = isFinancialGroup(lead) ? lead.summaryKey : lead.key;
+  const fill = statement.filledFrom;
+  return !!key && fill?.source === "results" && (fill.omitted ?? []).some((field) => field === key);
 }
 
 /**
@@ -811,7 +822,8 @@ export function financialStatementPeriods(
  * cash flow), which hold only some figures (an EPS alone, as Pop Mart's
  * FY2025 did before its statements were filled). The pane leaves them out of
  * its columns and says so in `notInYetNote`, so the first column is never
- * an all-dash one. A trailing-twelve-month column is kept: it is summed.
+ * an all-dash one. A trailing-twelve-month column is kept: it is summed, and
+ * so is a period whose lead line was left blank on purpose (`hasLeadLine`).
  */
 export function splitPeriodsNotInYet<T extends FinancialTableStatement>(
   statements: readonly T[],
@@ -821,7 +833,7 @@ export function splitPeriodsNotInYet<T extends FinancialTableStatement>(
   const notInYet: T[] = [];
   for (const statement of statements) {
     if (statement.date === "TTM") continue;
-    if (!lead || hasFinancialRowValue(lead, [statement])) break;
+    if (!lead || hasLeadLine(lead, statement)) break;
     notInYet.push(statement);
   }
   // A table where no period has the lead line keeps what it has.

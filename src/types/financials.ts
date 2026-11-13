@@ -853,6 +853,11 @@ export interface ResultsStatementFill {
    * earlier: the document restates that period's figure as the source has it.
    */
   comparable?: ResultsFillField[];
+  /**
+   * A quarter's lines left blank because the announcements count them otherwise than the statements
+   * source (HSBC's revenue): set beside the source's quarters around it, the change would measure that.
+   */
+  omitted?: ResultsFillField[];
 }
 
 export type StatementFill = ExchangeStatisticsFill | ResultsStatementFill;

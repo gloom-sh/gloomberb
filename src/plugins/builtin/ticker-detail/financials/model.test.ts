@@ -10,6 +10,7 @@ import {
   formatFinancialCell,
   financialStatementCurrency,
   FINANCIAL_SUB_TABS,
+  financialStatementPeriods,
   notInYetNote,
   resolveFinancialPeriodOption,
   resolveFinancialSubTabKey,
@@ -316,6 +317,22 @@ test("a newest year with only some figures (an EPS alone) is left out of the pan
   expect(notInYetNote(notInYet, income, "annual", 12)).toBe("FY2025 is not in yet: only some of its figures are on file, not its revenue.");
   // A table where no year has the lead line keeps them all: there is nothing newer to lead with.
   expect(splitPeriodsNotInYet([{ date: "2025-12-31", eps: 1 }], income).shown).toHaveLength(1);
+});
+
+test("a quarter whose revenue Gloom Cloud left blank because the announcements count it otherwise is in", () => {
+  // HSBC's 3Q26: net income and EPS from its earnings release, its revenue left out (the source counts it otherwise).
+  const omitted = {
+    date: "2026-09-30", netIncome: 7.55e9, eps: 0.41,
+    filledFrom: { source: "results" as const, fields: ["netIncome" as const, "eps" as const], documents: [], lines: {}, omitted: ["totalRevenue" as const] },
+  };
+  const quarters = [omitted, { date: "2026-06-30", eps: 0.45 }, { date: "2026-03-31", totalRevenue: 19.13e9, netIncome: 7.34e9, eps: 0.4 }];
+  const income = FINANCIAL_SUB_TABS.find((tab) => tab.key === "income")!;
+  const { shown, notInYet } = splitPeriodsNotInYet(quarters, income);
+  expect(shown.map((statement) => statement.date)).toEqual(["2026-09-30", "2026-06-30", "2026-03-31"]);
+  expect(notInYet).toEqual([]);
+  expect(financialStatementPeriods(quarters, income).map(({ lead }) => lead)).toEqual([true, false, true]);
+  // Without the reason the newest quarter is not in yet, as before.
+  expect(splitPeriodsNotInYet([{ ...omitted, filledFrom: { ...omitted.filledFrom, omitted: [] } }, quarters[2]!], income).notInYet).toHaveLength(1);
 });
 
 test("a half-yearly reporter's TTM is Gloom Cloud's year plus the half, when it is newer than the year", () => {
