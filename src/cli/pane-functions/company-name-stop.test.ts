@@ -13,6 +13,7 @@ import { resetBoardCoins } from "../board-coins";
 import { marketDataCliCommands } from "../commands/market";
 import * as paneShot from "../desktop-pane-shot";
 import { printCliError } from "../errors";
+import { MAX_CHOICE_LOOKUPS } from "../listing-arg";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { runPaneFunction, runPaneScreenshot } from ".";
 
@@ -161,7 +162,7 @@ test("a long list is tickers: its lowercase symbols cost no quote each to be rea
     expect((await run(["RV", arg], dataProvider)).error).toBeNull();
     return asked;
   };
-  const many = Array.from({ length: 11 }, (_, index) => `t${String.fromCharCode(97 + index)}x`);
+  const many = Array.from({ length: MAX_CHOICE_LOOKUPS + 1 }, (_, index) => `t${String.fromCharCode(97 + index)}x`);
   expect(await quotes(many.join(","))).toBe(0);
   expect(await quotes("aapl,msft")).toBe(2);
 });
