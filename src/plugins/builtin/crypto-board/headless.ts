@@ -36,6 +36,8 @@ const COIN_COLUMNS: HeadlessPaneColumn[] = [
   { key: "name", header: "Name" },
   // Every coin is priced, traded and valued in US dollars: the text headers say so; an export keeps its headers.
   { key: "price", header: "Price", textHeader: "Price USD", align: "right", format: (_value, row) => String(row.priceText ?? "—") },
+  // Whose the price is: an exchange's own trade, the composite of several, or a composite held back.
+  { key: "priceVenue", header: "Venue", literalHeader: true },
   // Since 00:00 UTC, the day `quote` gives a coin (CRYPTO_CHANGE_BASIS_LABEL): the text says so, as the pane's
   // CHG% UTC does, and an export keeps the header it has always had.
   { key: "changePercent", header: "Chg %", textHeader: "Chg % UTC", align: "right", format: percent },
@@ -52,14 +54,17 @@ const COIN_COLUMNS: HeadlessPaneColumn[] = [
  * volume leave the table first.
  */
 const STABLECOIN_COLUMNS: HeadlessPaneColumn[] = [
-  ...COIN_COLUMNS.slice(0, 4),
+  ...COIN_COLUMNS.slice(0, 5),
   { key: "peg", header: "Peg", literalHeader: true, format: text("pegText") },
   { key: "offPegBp", header: "Off peg", literalHeader: true, align: "right", format: (value) => formatOffPeg(number(value)) },
   { key: "low24h", header: "24h low", literalHeader: true, align: "right", format: text("low24hText") },
   { key: "low24hAt", header: "Low UTC", literalHeader: true, shrink: false, format: isoMinute, textFormat: dayTime },
+  // The one exchange that alone reached the low or high, or how many did: one exchange's wick is not the market's.
+  { key: "low24hVenue", header: "Low venue", literalHeader: true },
   { key: "high24h", header: "24h high", literalHeader: true, align: "right", format: text("high24hText") },
   { key: "high24hAt", header: "High UTC", literalHeader: true, shrink: false, format: isoMinute, textFormat: dayTime },
-  ...COIN_COLUMNS.slice(4).map((column, index) => column.key === "marketCap"
+  { key: "high24hVenue", header: "High venue", literalHeader: true },
+  ...COIN_COLUMNS.slice(5).map((column, index) => column.key === "marketCap"
     ? column
     : { ...column, stackPriority: 4 - index, stackRows: 0 }),
 ];
@@ -400,6 +405,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
       circulatingSupply: row.asset.circulatingSupply,
       maxSupply: row.asset.maxSupply,
       quoteTime: row.asset.quoteTime,
+      priceVenue: row.priceVenueText,
       ...(kind === "stablecoin" ? {
         peg: row.peg,
         pegText: row.pegText || "—",
@@ -410,6 +416,8 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
         high24h: row.high24h,
         high24hText: row.high24hText,
         high24hAt: row.high24hAt == null ? null : new Date(row.high24hAt).toISOString(),
+        low24hVenue: row.low24hVenueText,
+        high24hVenue: row.high24hVenueText,
         supply: row.supply,
         supply7d: row.supply7d,
         supply7dPercent: row.supply7dPercent,

@@ -151,6 +151,13 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, logos: boolean):
       return { text: row.low24hText, value: row.low24h };
     case "high24h":
       return { text: row.high24hText, value: row.high24h };
+    case "priceVenueText":
+      // A price held back is said on its own row, in the warning color; an exchange's own or the composite is dim.
+      return { text: row.priceVenueText, color: row.delayed ? colors.warning : colors.textDim };
+    case "low24hVenueText":
+      return { text: row.low24hVenueText, color: colors.textDim };
+    case "high24hVenueText":
+      return { text: row.high24hVenueText, color: colors.textDim };
     case "low24hAt":
       return { text: formatDayRangeTime(row.low24hAt), value: row.low24hAt == null ? null : new Date(row.low24hAt), color: colors.textDim };
     case "high24hAt":
@@ -282,8 +289,10 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     label: "Price freshness",
     getMetadata: () => ({ ...CRYPTO_BOARD_FRESHNESS, observations }),
   } : null);
+  // A row held back says so in its own VENUE cell; the footer dates the board and claims no delay for all of it.
   const statusLine = useMemo(() => observations.length
-    ? paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, { rows: observations, freshness: CRYPTO_BOARD_FRESHNESS }, now))
+    ? paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, {
+      rows: observations.map((row) => row.dataSource === "delayed" ? { quoteTime: row.quoteTime } : row), freshness: CRYPTO_BOARD_FRESHNESS }, now))
     : null, [now, observations]);
   // Supply columns join only once there is supply to show; an outage leaves the price columns as they are.
   const hasSupply = !!supplyRows && supplyRows.size > 0;

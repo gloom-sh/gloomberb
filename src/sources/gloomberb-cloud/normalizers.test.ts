@@ -10,6 +10,7 @@ import type { Quote } from "../../types/financials";
 import { statedYearRange } from "../../market-data/quotes/live-valuation";
 import { quoteMarketStateLabel } from "../../market-data/market/status";
 import { dailyCloseText } from "../../market-data/quotes/freshness";
+import { quoteSourceName } from "../../market-data/quotes/export-identity";
 
 test("daily fund NAV mapping separates its observation kind from monetary price units", () => {
   const raw: CloudQuotePayload = {
@@ -313,4 +314,18 @@ test("the overnight price rides only on the frame that says so, through the merg
     .toEqual(["PRE", undefined, undefined, undefined]);
   // A source that says PRE drops a carried overnight price however it arrived.
   expect(normalizeQuoteContribution({ ...night, marketState: "PRE" })?.overnightPrice).toBeUndefined();
+});
+
+test("a coin priced by one exchange's own trade is named by the exchange, as its source, until a quote without one replaces it", () => {
+  const raw: CloudQuotePayload = {
+    symbol: "USDT-USD", currency: "USD", instrumentType: "CRYPTOCURRENCY", price: 0.99893, previousClose: 0.9986,
+    change: 0.00033, changePercent: 0.033, lastUpdated: Date.parse("2026-11-13T15:08:44Z"), listingExchangeName: "CCC",
+    providerId: "gloomberb-cloud", dataSource: "live", priceVenue: "Coinbase",
+  };
+  const quote = mapQuote(raw);
+  expect(quote.priceVenue).toBe("Coinbase");
+  expect(quoteSourceName(quote)).toBe("Coinbase");
+  // The composite, and a name that is no exchange's, stay Gloom Cloud's.
+  expect(quoteSourceName(mapQuote({ ...raw, priceVenue: undefined }))).toBe("Gloom Cloud");
+  expect(mapQuote({ ...raw, priceVenue: "<script>" }).priceVenue).toBeUndefined();
 });

@@ -43,8 +43,10 @@ export type BrokerNameOf = (providerId: string) => string | null | undefined;
  * the broker whose feed it is, by its name. Blank for a source with no name
  * to give, never its internal id.
  */
-export function quoteSourceName(quote: Pick<Quote, "providerId"> | null | undefined, brokerName?: BrokerNameOf): string {
+export function quoteSourceName(quote: Pick<Quote, "providerId" | "priceVenue"> | null | undefined, brokerName?: BrokerNameOf): string {
   if (!quote) return "";
+  // A coin priced by one exchange's own trade is that exchange's price, not the composite's.
+  if (quote.priceVenue && (!quote.providerId || quote.providerId === CLOUD_PROVIDER_ID)) return quote.priceVenue;
   if (!quote.providerId || quote.providerId === CLOUD_PROVIDER_ID) return CLOUD_SOURCE;
   return brokerName?.(quote.providerId)?.trim() || "";
 }

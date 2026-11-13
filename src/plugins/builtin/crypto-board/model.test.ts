@@ -51,6 +51,22 @@ test("a newer live quote moves price, day change, returns and market cap", () =>
   expect(kept).toMatchObject({ price: 100, live: false });
 });
 
+test("each stablecoin row says whose its price is, and an extreme one exchange alone reached is that exchange's, kept as served", () => {
+  const data = cryptoFixture();
+  const usdt = data.assets.find((asset) => asset.code === "USDT")!;
+  const checked = ["Coinbase", "Kraken", "Bitstamp"];
+  usdt.range24h = { ...usdt.range24h!, low: 0.9901, lowVenues: ["Coinbase"], highVenues: ["Kraken", "Bitstamp"], venuesChecked: checked };
+  const rows = (quote?: Partial<Quote>) => buildCryptoRows(data.assets, "stablecoin",
+    quote ? new Map([[cryptoQuoteKey(usdt), entry({ lastUpdated: CRYPTO_FIXTURE_NOW, price: 0.9989, ...quote })]]) : new Map(), CRYPTO_FIXTURE_NOW);
+  const [board] = rows();
+  expect(board).toMatchObject({ low24h: 0.9901, low24hText: "0.9901", low24hVenueText: "Coinbase", high24hVenueText: "2 venues", priceVenueText: "composite" });
+  expect(rows({ price: 0.9989, priceVenue: "Coinbase", dataSource: "live" })[0]).toMatchObject({ price: 0.9989, priceVenueText: "Coinbase" });
+  // A composite held back says so on its own row.
+  expect(rows({ price: 0.9989, dataSource: "delayed" })[0]).toMatchObject({ delayed: true, priceVenueText: "15m delayed" });
+  usdt.range24h = { ...usdt.range24h!, lowVenues: [], venuesChecked: checked };
+  expect(rows()[0]!.low24hVenueText).toBe("none of 3");
+});
+
 test("a live quote without a change percent is restated from the previous close", () => {
   const data = cryptoFixture();
   const btc = data.assets[0]!;
@@ -107,26 +123,30 @@ test("numeric columns sort largest first, then smallest, then back to rank", () 
 test("narrow panes drop 1Y, the sparkline, 30D, volume and name in that order", () => {
   const ids = (width: number) => buildCryptoColumns(width).map((column) => column.id);
   expect(ids(140)).toEqual([
-    "rank", "code", "name", "price", "changePercent", "return7d", "return30d", "return1y", "trend", "volume24h", "marketCap",
+    "rank", "code", "name", "price", "priceVenueText", "changePercent", "return7d", "return30d", "return1y", "trend", "volume24h", "marketCap",
   ]);
   expect(ids(100)).not.toContain("return1y");
   expect(ids(90)).not.toContain("trend");
   expect(ids(60)).toEqual(["rank", "code", "price", "changePercent", "return7d", "marketCap"]);
   const wide = buildCryptoColumns(200).find((column) => column.id === "name")!;
   expect(wide.width).toBe(24);
-  // Stablecoins keep the peg and the low. Supply adds its columns after the
+  // Stablecoins keep the price's venue, the peg, the low and whose it is. Supply adds its columns after the
   // market cap, and they all leave before the name, which drops where it does without them.
   const stable = (width: number, withSupply: boolean) => buildCryptoColumns(width, "stablecoin", withSupply).map((column) => column.id);
-  expect(stable(177, true)).toEqual([
-    "rank", "code", "name", "price", "pegText", "offPegBp", "low24h", "low24hAt", "high24h", "high24hAt",
-    "volume24h", "marketCap", "supply", "supply7dPercent", "supply7d", "supply30dPercent", "supply30d", "supplyShare",
+  expect(stable(207, true)).toEqual([
+    "rank", "code", "name", "price", "priceVenueText", "pegText", "offPegBp", "low24h", "low24hAt", "low24hVenueText",
+    "high24h", "high24hAt", "high24hVenueText", "volume24h", "marketCap", "supply", "supply7dPercent", "supply7d", "supply30dPercent", "supplyShare",
   ]);
-  expect(stable(119, true)).toEqual([
-    "rank", "code", "name", "price", "pegText", "offPegBp", "low24h", "low24hAt", "high24h", "high24hAt", "marketCap", "supply",
+  expect(stable(149, true)).toEqual([
+    "rank", "code", "name", "price", "priceVenueText", "pegText", "offPegBp", "low24h", "low24hAt", "low24hVenueText",
+    "high24h", "high24hAt", "high24hVenueText", "marketCap",
   ]);
-  for (const width of [109, 110]) expect(stable(width, true)).toEqual(stable(width, false));
-  expect(stable(110, false)).toContain("name");
-  expect(stable(109, false)).not.toContain("name");
+  expect(stable(109, true)).toEqual([
+    "rank", "code", "price", "priceVenueText", "pegText", "offPegBp", "low24h", "low24hAt", "low24hVenueText", "marketCap",
+  ]);
+  for (const width of [146, 147]) expect(stable(width, true)).toEqual(stable(width, false));
+  expect(stable(147, false)).toContain("name");
+  expect(stable(146, false)).not.toContain("name");
 });
 
 test("a move that rounds to zero is unsigned", () => {

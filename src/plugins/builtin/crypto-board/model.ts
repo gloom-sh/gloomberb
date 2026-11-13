@@ -87,6 +87,11 @@ export interface CryptoRow extends CryptoRowSupply {
   live: boolean;
   /** The price is a quote from a delayed feed, held back from the market. A price read from the board is not. */
   delayed: boolean;
+  /**
+   * Where the price is from, as the row says it: the exchange whose own trade it is (`Coinbase`), `composite` for
+   * the board's price blended from several exchanges, or `15m delayed` for a composite held back.
+   */
+  priceVenueText: string;
   /** A stablecoin's peg; null for a coin, or a server that does not send it. */
   peg: CryptoPeg | null;
   /** `USD`, `EUR 1.1242` (the target in dollars), `USD yield`, `USD bond`; empty without a peg. */
@@ -101,6 +106,32 @@ export interface CryptoRow extends CryptoRowSupply {
   /** The low and high at the price's decimals. */
   low24hText: string;
   high24hText: string;
+  /**
+   * Whose the low and high are: the one exchange that alone reached it (`Coinbase`), how many did (`3 venues`),
+   * `none of 3` when none of the exchanges read did, or a dash when none was read.
+   */
+  low24hVenueText: string;
+  high24hVenueText: string;
+}
+
+/** The board's price that is no one exchange's: several blended by the source. */
+export const COMPOSITE_PRICE_VENUE = "composite";
+
+/**
+ * Who an extreme is: the exchange that alone reached it among several read, a count when more did, and when none
+ * of those read did, says so. A price newer than the range that widened it is the row's own price venue's.
+ */
+function extremeVenueText(reached: readonly string[] | undefined, checked: readonly string[] | undefined): string {
+  if (!checked?.length || !reached) return MISSING_VALUE;
+  if (reached.length === 0) return `none of ${checked.length}`;
+  if (reached.length === 1) return checked.length > 1 ? reached[0]! : `${reached[0]} only`;
+  return `${reached.length} venues`;
+}
+
+/** What a row says its price is: an exchange's own, the board's composite, or a composite held back. */
+function priceVenueText(quote: Quote | null, delayed: boolean): string {
+  if (quote?.priceVenue) return quote.priceVenue;
+  return delayed ? `${delayedFeedLagMs(CRYPTO_EXCHANGE) / 60_000}m delayed` : COMPOSITE_PRICE_VENUE;
 }
 
 export const cryptoQuoteKey = (asset: Pick<CryptoMarketAsset, "symbol">) =>
@@ -195,8 +226,9 @@ function buildCryptoRow(
   const updated = isFiniteNumber(updatedAt) ? updatedAt : null;
   const minimumDecimals = asset.kind === "stablecoin" ? 4 : 2;
   const range = asset.kind === "stablecoin"
-    ? dayRange(asset, price, updated)
-    : { low24h: null, low24hAt: null, high24h: null, high24hAt: null };
+    ? dayRange(asset, price, updated, quote?.priceVenue)
+    : { low24h: null, low24hAt: null, high24h: null, high24hAt: null, low24hVenueText: MISSING_VALUE, high24hVenueText: MISSING_VALUE };
+  const delayed = quote?.dataSource === "delayed";
   return {
     asset,
     id: asset.symbol,
@@ -214,7 +246,8 @@ function buildCryptoRow(
     history,
     updatedAt: updated,
     live: !!quote && quote.delivery === "stream" && quote.stale !== true,
-    delayed: quote?.dataSource === "delayed",
+    delayed,
+    priceVenueText: priceVenueText(quote, delayed),
     peg,
     pegText: formatPegTarget(peg),
     offPegBp: offPegBasisPoints(price, peg),
@@ -264,21 +297,27 @@ export function offPegSeverity(bp: number | null): "none" | "watch" | "broken" {
  * The 24-hour low and high the board reported, widened by a newer price than
  * it had seen, so a live tick below the low is the low, at its time.
  */
-function dayRange(asset: CryptoMarketAsset, price: number, updatedAt: number | null) {
+function dayRange(asset: CryptoMarketAsset, price: number, updatedAt: number | null, priceVenue: string | undefined) {
   const range = asset.range24h;
-  if (!range) return { low24h: null, low24hAt: null, high24h: null, high24hAt: null };
+  if (!range) return { low24h: null, low24hAt: null, high24h: null, high24hAt: null, low24hVenueText: MISSING_VALUE, high24hVenueText: MISSING_VALUE };
   let low24h = range.low;
   let low24hAt: number | null = Date.parse(range.lowAt);
   let high24h = range.high;
   let high24hAt: number | null = Date.parse(range.highAt);
+  // The raw extremes stay; each says whose it is.
+  let low24hVenueText = extremeVenueText(range.lowVenues, range.venuesChecked);
+  let high24hVenueText = extremeVenueText(range.highVenues, range.venuesChecked);
   const newer = updatedAt != null && updatedAt > Date.parse(range.end);
-  if (newer && price < low24h) [low24h, low24hAt] = [price, updatedAt];
-  if (newer && price > high24h) [high24h, high24hAt] = [price, updatedAt];
+  const ownVenue = priceVenue ?? COMPOSITE_PRICE_VENUE;
+  if (newer && price < low24h) [low24h, low24hAt, low24hVenueText] = [price, updatedAt, ownVenue];
+  if (newer && price > high24h) [high24h, high24hAt, high24hVenueText] = [price, updatedAt, ownVenue];
   return {
     low24h,
     low24hAt: isFiniteNumber(low24hAt) ? low24hAt : null,
     high24h,
     high24hAt: isFiniteNumber(high24hAt) ? high24hAt : null,
+    low24hVenueText,
+    high24hVenueText,
   };
 }
 
@@ -393,6 +432,7 @@ type CryptoColumnId =
   | "code"
   | "name"
   | "price"
+  | "priceVenueText"
   | "changePercent"
   | "return7d"
   | "return30d"
@@ -404,8 +444,10 @@ type CryptoColumnId =
   | "offPegBp"
   | "low24h"
   | "low24hAt"
+  | "low24hVenueText"
   | "high24h"
   | "high24hAt"
+  | "high24hVenueText"
   | "supply"
   | "supply7dPercent"
   | "supply7d"
@@ -441,7 +483,7 @@ export function readCryptoSort(value: unknown): CryptoSortPreference {
     : DEFAULT_CRYPTO_SORT;
 }
 
-const TEXT_COLUMNS = new Set<CryptoColumnId>(["rank", "code", "name", "pegText"]);
+const TEXT_COLUMNS = new Set<CryptoColumnId>(["rank", "code", "name", "pegText", "priceVenueText", "low24hVenueText", "high24hVenueText"]);
 
 /** Numbers open largest-first (top gainers, biggest caps); names open A-Z. */
 export function nextCryptoSort(current: CryptoSortPreference, columnId: string): CryptoSortPreference {
@@ -473,6 +515,7 @@ const COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "code", label: "COIN", width: 7, align: "left" },
   { id: "name", label: "NAME", width: 10, align: "left", optional: 1 },
   { id: "price", label: "PRICE", width: 13, align: "right" },
+  { id: "priceVenueText", label: "VENUE", title: "The exchange whose own trade the price is, or the composite of several", width: 11, align: "left", optional: 1.5 },
   { id: "changePercent", label: "CHG% UTC", title: "Change since 00:00 UTC", width: 8, align: "right" },
   { id: "return7d", label: "7D%", width: 8, align: "right" },
   { id: "return30d", label: "30D%", width: 8, align: "right", optional: 3 },
@@ -493,12 +536,15 @@ const STABLECOIN_COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "code", label: "COIN", width: 7, align: "left" },
   { id: "name", label: "NAME", width: 10, align: "left", optional: 3 },
   { id: "price", label: "PRICE", width: 8, align: "right" },
+  { id: "priceVenueText", label: "VENUE", title: "The exchange whose own trade the price is, or the composite of several", width: 11, align: "left" },
   { id: "pegText", label: "PEG", width: 10, align: "left" },
   { id: "offPegBp", label: "OFF PEG", width: 8, align: "right" },
   { id: "low24h", label: "24H LOW", width: 8, align: "right" },
   { id: "low24hAt", label: "LOW UTC", width: 9, align: "left" },
+  { id: "low24hVenueText", label: "LOW VENUE", title: "The exchange that alone reached the low, or how many did", width: 9, align: "left" },
   { id: "high24h", label: "24H HIGH", width: 8, align: "right", optional: 1 },
   { id: "high24hAt", label: "HIGH UTC", width: 9, align: "left", optional: 2 },
+  { id: "high24hVenueText", label: "HIGH VENUE", title: "The exchange that alone reached the high, or how many did", width: 10, align: "left", optional: 2.5 },
   { id: "changePercent", label: "CHG% UTC", title: "Change since 00:00 UTC", width: 8, align: "right", optional: 5 },
   { id: "return7d", label: "7D%", width: 8, align: "right", optional: 6 },
   { id: "return30d", label: "30D%", width: 8, align: "right", optional: 8 },

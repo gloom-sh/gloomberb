@@ -124,6 +124,8 @@ export function mapQuote(
     delisting: parseListingDelisting(quote.delisting),
     intradayBar: readIntradayBar(quote.intradayBar),
     staleReason: readStaleReason(quote.staleReason),
+    // An exchange's name, shown as the quote's source: nothing longer or stranger is.
+    priceVenue: typeof quote.priceVenue === "string" && /^[A-Za-z][A-Za-z0-9 .-]{0,23}$/.test(quote.priceVenue) ? quote.priceVenue : undefined,
     priceBasis,
     priceObservation,
     currency: currency || quote.currency,

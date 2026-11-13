@@ -301,6 +301,11 @@ export interface Quote extends DepositaryReceiptFacts {
   /** Freshness class for the quote data. Provider identity lives in providerId/provenance. */
   dataSource?: QuoteDataSource;
   /**
+   * The spot exchange whose own last trade the price is (Coinbase, Kraken), on a coin's quote; absent on the
+   * composite price, which blends several exchanges. Sources name the quote by it (`quoteSourceName`).
+   */
+  priceVenue?: string;
+  /**
    * A perpetual contract's whole market row as of this quote (funding, open
    * interest, premium), so every view of the contract reads the figures that
    * came with its price, streamed or fetched.

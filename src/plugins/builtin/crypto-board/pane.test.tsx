@@ -121,7 +121,7 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
     query.mockRestore();
     supply.mockRestore();
   };
-  await mountPane();
+  await mountPane(150);
   const frame = tui.frame();
   expect(frame).toContain("Coins");
   expect(frame).toContain("Bitcoin");
@@ -159,7 +159,7 @@ function mockBoard(supply: () => Promise<ReturnType<typeof stablecoinSupplyFixtu
   return supplyQuery;
 }
 
-async function openStablecoins(width = 130) {
+async function openStablecoins(width = 150) {
   await mountPane(width, 24);
   await tui.emitKeypress({ name: "l" });
   await settleFrame(tui.setup(), 10);
@@ -168,7 +168,7 @@ async function openStablecoins(width = 130) {
 
 test("the stablecoin tab charts supply above its rows, the legend and the table reading one figure", async () => {
   const supply = mockBoard(async () => stablecoinSupplyFixture());
-  await mountPane(180, 24);
+  await mountPane(214, 24);
   // The coin tab never asks for supply.
   expect(supply).not.toHaveBeenCalled();
   await tui.emitKeypress({ name: "l" });

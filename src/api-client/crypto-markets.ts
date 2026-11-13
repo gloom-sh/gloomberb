@@ -28,6 +28,14 @@ interface CryptoDayRange {
   highAt: string;
   start: string;
   end: string;
+  /**
+   * The spot exchanges whose own 24-hour low reached `low`; one of several checked makes the low that exchange's,
+   * not the market's. Absent from a server that does not check, or when no exchange could be read.
+   */
+  lowVenues?: string[];
+  highVenues?: string[];
+  /** The exchanges whose own 24-hour range was read beside the composite's. */
+  venuesChecked?: string[];
 }
 
 export interface CryptoMarketAsset {
