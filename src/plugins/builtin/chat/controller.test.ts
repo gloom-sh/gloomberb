@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from "bun:test";
 import {
   apiClient,
   type ChatAttachment,
@@ -175,6 +175,7 @@ afterEach(() => {
   apiClient.editMessage = originalEditMessage;
   apiClient.sendMessage = originalSendMessage;
   globalThis.WebSocket = originalWebSocket;
+  jest.restoreAllMocks();
 });
 
 describe("ChatController", () => {
@@ -1178,6 +1179,8 @@ describe("ChatController", () => {
     });
 
     test("after the socket comes back, a channel read live reads its latest page in full, after a catch-up already out", async () => {
+      // The full read waits a random part of CHAT_RESYNC_SPREAD_MS; here none of it.
+      spyOn(Math, "random").mockReturnValue(0);
       const persistence = new MemoryPersistence();
       const controller = createController();
       const catchUp = Promise.withResolvers<ChatMessage[]>();
