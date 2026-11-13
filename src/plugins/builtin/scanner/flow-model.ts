@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatExpDate } from "../../../utils/options";
 import type { ScannerFlowEvent, ScannerFlowHistoryQuery, ScannerStatus } from "../../../api-client";
 
 export type FlowMinPremium = "50000" | "250000" | "1000000";
@@ -186,11 +187,12 @@ export function formatFlowVolOi(volOi: number | null | undefined): string {
   return volOi >= 10 ? `${Math.round(volOi)}x` : `${volOi.toFixed(1)}x`;
 }
 
-/** An expiry as the tape prints it, `06/16`, with its year when it is not this one: `06/16/27`. */
+/** An expiry as OMON's strip names it, `16 Jun`, with its year when it is not this one: `17 Jun '27`. */
 export function formatFlowExpiry(expiry: string, now = Date.now()): string {
   const [year, month, day] = expiry.split("-");
   if (!year || !month || !day) return expiry;
-  return year === String(new Date(now).getUTCFullYear()) ? `${month}/${day}` : `${month}/${day}/${year.slice(2)}`;
+  const label = formatExpDate(Date.UTC(Number(year), Number(month) - 1, Number(day)) / 1000);
+  return year === String(new Date(now).getUTCFullYear()) ? label.replace(/ '\d{2}$/, "") : label;
 }
 
 /**

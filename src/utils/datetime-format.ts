@@ -53,9 +53,6 @@ export function formatCountdown(ms: number): string {
 
 // Reuse the locale formatter when a feed contains older items. Constructing
 // one for every row dominates opening a long transcript, even without edits.
-const olderRelativeDateFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "numeric", day: "numeric", year: "2-digit",
-});
 
 /**
  * Relative time that turns into a date ("1/5/26") after a week, for feeds read
@@ -68,7 +65,9 @@ export function formatTimeAgo(date: Date | string, { short = false }: { short?: 
   const elapsed = elapsedUnits(Date.now() - ts);
   if (!elapsed) return short ? "<1m" : "just now";
   if (elapsed.unit === "d" && elapsed.count >= 7) {
-    return olderRelativeDateFormatter.format(ts);
+    // As a feed writes a day past the week: "5 Nov", "5 Nov 25" in another year, never "11/5/26".
+    const date = new Date(ts);
+    return formatShortDate(date, { year: date.getFullYear() === new Date().getFullYear() ? false : "2-digit" });
   }
   return `${elapsed.count}${elapsed.unit}${short ? "" : " ago"}`;
 }

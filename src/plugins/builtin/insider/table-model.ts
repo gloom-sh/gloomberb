@@ -1,5 +1,6 @@
 import type { DataTableColumn } from "../../../components";
 import { MISSING_VALUE, displayWidth, formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
+import { formatFilingDate } from "../../../utils/datetime-format";
 import { isAmendedInsiderFiling } from "./amendments";
 import { insiderSecurityTag, insiderTypeLabel, insiderTypeTone, isOpenMarketTrade, type InsiderTypeTone } from "./display";
 import {
@@ -98,10 +99,9 @@ export function buildInsiderTableRows(parsed: readonly ParsedInsiderFiling[]): I
   });
 }
 
-/** A transaction date as m/d/yy, read in UTC because it names a calendar day. */
+/** The day a row was filed, as every filing column writes it: `05 Nov 2026`, read in UTC because it names a calendar day. */
 export function formatInsiderDate(date: Date | null): string {
-  if (!date) return MISSING_VALUE;
-  return `${date.getUTCMonth() + 1}/${date.getUTCDate()}/${String(date.getUTCFullYear()).slice(-2)}`;
+  return date ? formatFilingDate(date, MISSING_VALUE) : MISSING_VALUE;
 }
 
 export function formatInsiderShares(value: number | null): string {
@@ -150,7 +150,7 @@ function fitWidth(texts: readonly string[], label: string, max: number): number 
  * in the same cells). Every column takes the width its widest value needs.
  * When the pane runs short, the role goes first, then the price, the
  * 10b5-1 marker, the security and the share count, and only then does the name
- * column shrink below 16 cells, so a narrow pane still reads date, name,
+ * column shrink below 16 cells (to 5 at the least), so a narrow pane still reads date, name,
  * type and value. With `currency` (Form 4 amounts read by someone whose base
  * currency is not the dollar), CCY follows Value and is kept with it, as PF
  * shows CCY once a row is in another currency than the totals.
@@ -194,7 +194,7 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
     show[drop] = false;
     shrinkInsider(16);
   }
-  shrinkInsider(6);
+  shrinkInsider(5);
   // A dropped column can leave room for more of the names.
   insider = Math.min(widths.insider, insider + Math.max(0, available - total()));
 

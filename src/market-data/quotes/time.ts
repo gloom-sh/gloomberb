@@ -3,6 +3,7 @@ import type { Quote } from "../../types/financials";
 import { getLanguage, tf } from "../../i18n";
 import { isPerpetualExchange } from "../../tickers/perpetual-listing";
 import { formatUtcDayTime, formatUtcWeekdayTime } from "../../utils/utc-time";
+import { formatShortDate } from "../../utils/datetime-format";
 import { delayedFeedLagMs } from "../market/freshness";
 import { quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
 import { dailyNavDate, isQuoteStaleForCurrentSession } from "./freshness";
@@ -12,12 +13,17 @@ export function formatQuoteNavAsOf(quote: Quote | null | undefined, now = Date.n
   const date = quote && dailyNavDate(quote, now);
   if (!date) return null;
   const sourceDate = new Date(`${date}T00:00:00Z`);
-  const dateText = new Intl.DateTimeFormat(getLanguage(), {
-    timeZone: "UTC",
-    month: "short",
-    day: "numeric",
-    ...(sourceDate.getUTCFullYear() !== new Date(now).getUTCFullYear() ? { year: "numeric" as const } : {}),
-  }).format(sourceDate);
+  const otherYear = sourceDate.getUTCFullYear() !== new Date(now).getUTCFullYear();
+  // English reads the day first, as every other date does; another language writes the day its own way.
+  const language = getLanguage();
+  const dateText = language === "en"
+    ? formatShortDate(sourceDate, { utc: true, year: otherYear ? "numeric" : false })
+    : new Intl.DateTimeFormat(language, {
+      timeZone: "UTC",
+      month: "short",
+      day: "numeric",
+      ...(otherYear ? { year: "numeric" as const } : {}),
+    }).format(sourceDate);
   return tf("NAV · as of {date}", { date: dateText });
 }
 

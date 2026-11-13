@@ -31,21 +31,22 @@ describe("relative time", () => {
     const weekAgo = now - 7 * 86_400_000;
     expect(formatRelativeAge(weekAgo, now)).toBe("7d ago");
     expect(formatRelativeTime(weekAgo, now)).toBe("7d");
-    expect(formatTimeAgo(new Date(weekAgo))).toMatch(/^9\/1[67]\/26$/);
-    expect(formatTimeAgo(new Date(weekAgo), { short: true })).toMatch(/^9\/1[67]\/26$/);
+    expect(formatTimeAgo(new Date(weekAgo))).toMatch(/^1[67] Sep$/);
+    expect(formatTimeAgo(new Date(weekAgo), { short: true })).toMatch(/^1[67] Sep$/);
 
     expect(formatRelativeAge(undefined, now)).toBe("never");
     expect(formatRelativeTime("not a date", now)).toBe(MISSING_VALUE);
     expect(formatTimeAgo("not a date")).toBe("unknown");
   });
 
-  test("cached older dates are byte-identical to local date formatting across calendar boundaries", () => {
+  test("a date past the week is the local calendar day, day first, with the year when it is another one", () => {
     setSystemTime(new Date("2027-01-10T12:00:00Z"));
     for (const value of ["2024-02-29T23:59:59Z", "2025-12-31T23:30:00Z", "2026-01-01T00:00:00Z", "2026-10-25T01:30:00Z"]) {
       const date = new Date(value);
-      const previous = date.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "2-digit" });
-      expect(formatTimeAgo(value)).toBe(previous);
-      expect(formatTimeAgo(date, { short: true })).toBe(previous);
+      const month = date.toLocaleDateString("en-US", { month: "short" });
+      const local = `${date.getDate()} ${month} ${String(date.getFullYear()).slice(-2)}`;
+      expect(formatTimeAgo(value)).toBe(local);
+      expect(formatTimeAgo(date, { short: true })).toBe(local);
     }
   });
 

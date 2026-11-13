@@ -133,7 +133,7 @@ function driverScopeText(driver: ExposureExtensionObservation): string {
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 /**
  * A disclosure's fiscal period as KPIS prints it, FY2024 or Q3 FY2026, with
- * the date it ended (FY2024 · Sep 28, 2024) as the fuller form. The source
+ * the date it ended (FY2024 · 28 Sep 2024) as the fuller form. The source
  * words it freely; wording that is not a fiscal year or quarter prints as is.
  */
 function driverPeriod(driver: ExposureExtensionObservation): { short: string; long: string } {
@@ -144,7 +144,7 @@ function driverPeriod(driver: ExposureExtensionObservation): { short: string; lo
   const short = fiscalLabel({ period: { start: null, end: null, kind: quarter ? "quarter" : "year", fiscalYear: Number(match[2]), fiscalQuarter: quarter, label: text } });
   const ended = /^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(match[3]?.trim() ?? "");
   const month = ended && MONTHS.includes(ended[1]!.toLowerCase()) ? `${ended[1]!.charAt(0).toUpperCase()}${ended[1]!.slice(1).toLowerCase()}` : null;
-  return { short, long: month ? `${short} · ${month} ${ended![2]}, ${ended![3]}` : short };
+  return { short, long: month ? `${short} · ${ended![2]} ${month} ${ended![3]}` : short };
 }
 const DRIVER_COLUMNS = [holding("Holding"), column("label", "Company driver", row => row.driver ? driverLabel(row.driver) : row.label, { min: NAME }),
   column("value", "Value", row => row.driver ? driverAmount(row.driver) : MISSING_VALUE, { right: true }),

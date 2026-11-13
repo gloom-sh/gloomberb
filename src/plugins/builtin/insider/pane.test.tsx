@@ -276,8 +276,8 @@ test("INS on several tickers opens on their trades in one table with a Ticker co
   let frame = tui.frame();
   expect(frame).toMatch(/Type\s+All \(2\)\s+Buys and sells \(2\)\s+Other \(0\).*Trades\s+Insiders/);
   expect(frame).toMatch(/TICKER\s+DATE\s+INSIDER/);
-  expect(frame).toMatch(/AAA\s+\S+\s+Anna B\. Smith\s+.*BUY/);
-  expect(frame).toMatch(/BBB\s+\S+\s+Bob Jones\s+.*BUY/);
+  expect(frame).toMatch(/AAA\s+\d{2} \w{3} \d{4}\s+Anna B\. Smith\s+.*BUY/);
+  expect(frame).toMatch(/BBB\s+\d{2} \w{3} \d{4}\s+Bob Jones\s+.*BUY/);
   // Each company's lines together in the order given; one with no Form 4 is named, not left out.
   expect(frame.indexOf("Anna B. Smith")).toBeLessThan(frame.indexOf("Bob Jones"));
   expect(asked).toEqual([]);

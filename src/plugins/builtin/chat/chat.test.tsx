@@ -15,6 +15,8 @@ import { SLOW_SEND_THRESHOLD_MS } from "./message/pending-send";
 import { chatAnnouncementBg, chatHighlightBg } from "./message/render-state";
 import { chatBotNameColor } from "./people";
 import { ICON_GLYPHS } from "../../../components/ui/icon";
+import { formatTimeAgo } from "../../../utils/datetime-format";
+import { displayWidth } from "../../../utils/format";
 import { ChatStatusWidget } from "./status-widget";
 import { estimateMessageHeight } from "./layout";
 import {
@@ -1595,8 +1597,8 @@ describe("ChatContent", () => {
       ],
     });
 
-    // One cell short of both icons once Reply is counted.
-    await mountChat(controller, { width: 41, height: 12 });
+    // One cell short of both icons once Reply is counted (the message's date is "28 Mar", or "28 Mar 26" in a later year).
+    await mountChat(controller, { width: 34 + displayWidth(formatTimeAgo("2026-03-28T00:00:00.000Z")), height: 12 });
     await emitKeypress({ name: "up", sequence: "\u001b[A" });
     await flushFrame();
 

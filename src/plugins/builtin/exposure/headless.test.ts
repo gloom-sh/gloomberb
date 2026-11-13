@@ -127,7 +127,7 @@ test("a one-holding preview prints the period's end date when it fits and leaves
   payload.portfolio.concentrations.find(row => row.label === "News Corp")!.label = "Undisclosed supplier (Vendor two)";
   const text = (await report(payload, "AAPL")).text();
 
-  expect(text).toMatch(/^AAPL +Revenue +167\.04B USD +FY2024 · Sep 28, 2024 +Americas · geographic segment$/m);
+  expect(text).toMatch(/^AAPL +Revenue +167\.04B USD +FY2024 · 28 Sep 2024 +Americas · geographic segment$/m);
   expect(text).toContain("Portfolio operating stress\nNo data.");
   expect(text).toMatch(/^Kind +Target +Basis +Gross exp\. % +Bound +Period$/m);
   expect(text).toMatch(/^Country +United States +Revenue +9\.1% +Partial +2025-09-27$/m);

@@ -45,8 +45,8 @@ test("NAV freshness labels keep the source session date after receipt and when l
   const language = getLanguage();
   try {
     setLanguage("en");
-    expect(formatQuoteNavAsOf(quote, now)).toBe("NAV · as of Oct 6");
-    expect(formatQuoteNavAsOf({ ...quote, stale: true }, now)).toBe("NAV · as of Oct 6");
+    expect(formatQuoteNavAsOf(quote, now)).toBe("NAV · as of 6 Oct");
+    expect(formatQuoteNavAsOf({ ...quote, stale: true }, now)).toBe("NAV · as of 6 Oct");
     setLanguage("ja");
     expect(formatQuoteNavAsOf(quote, now)).toBe("NAV · 10月6日時点");
   } finally {
