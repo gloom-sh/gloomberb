@@ -25,6 +25,14 @@ export { SOCKET_CONNECT_TIMEOUT_MS, SOCKET_FIRST_RECONNECT_MAX_MS, SOCKET_PING_A
 
 const cloudApiLog = debugLog.createLogger("cloud-api");
 
+/**
+ * A hello after this long without any frame (a laptop asleep, an outage)
+ * says what changed meanwhile was missed, and the account's listeners load
+ * their data again. A deploy's reconnect, a few seconds without frames, does
+ * not: every client reconnects then, and each reloading would come at once.
+ */
+export const SOCKET_RESYNC_AFTER_SILENCE_MS = 60_000;
+
 type ChatNotificationListener = (notification: ChatNotification) => void;
 type ChatChannelStateListener = (state: ChatChannelState) => void;
 type ChatPresenceListener = (onlineCount: number) => void;
@@ -41,7 +49,8 @@ type CloudApiSocketDelegate = {
   isUsingWebSocketToken: () => boolean;
   clearWebSocketTokenForFallback: () => boolean;
   markCurrentUserUnverified: () => void;
-  updateCurrentUserFromSocket: (user: Partial<AuthUser>) => void;
+  /** `resync`: the socket was silent long enough that changes were missed (`SOCKET_RESYNC_AFTER_SILENCE_MS`). */
+  updateCurrentUserFromSocket: (user: Partial<AuthUser>, options: { resync: boolean }) => void;
   /** The service answered on this connection (it opened, or sent a frame); see `CloudApiRequestTransport.noteServiceAnswered`. */
   onServiceAnswered?: () => void;
 };
@@ -71,6 +80,10 @@ export class CloudApiSocket {
   private readonly quotes: QuoteStreamSubscriptions;
   private readonly features: SocketFeatures;
   private readonly frameRoutes: SocketFrameRoutes;
+  /** When the last frame arrived, on this connection or the one before. */
+  private lastFrameAt: number | null = null;
+  /** How long nothing arrived before the frame being handled. */
+  private silenceBeforeFrameMs = 0;
 
   constructor(
     private readonly delegate: CloudApiSocketDelegate,
@@ -297,6 +310,9 @@ export class CloudApiSocket {
   }
 
   async handleSocketMessage(raw: string): Promise<void> {
+    const now = Date.now();
+    this.silenceBeforeFrameMs = this.lastFrameAt == null ? 0 : now - this.lastFrameAt;
+    this.lastFrameAt = now;
     dispatchSocketFrame(raw, this.frameRoutes);
   }
 
@@ -306,7 +322,9 @@ export class CloudApiSocket {
       cloudApiLog.info("websocket ready", {
         emailVerified: frame.user.emailVerified === true,
       });
-      this.delegate.updateCurrentUserFromSocket(frame.user);
+      this.delegate.updateCurrentUserFromSocket(frame.user, {
+        resync: this.silenceBeforeFrameMs >= SOCKET_RESYNC_AFTER_SILENCE_MS,
+      });
     }
     this.listeners.connection.emit("ready");
   }

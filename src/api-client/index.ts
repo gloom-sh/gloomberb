@@ -153,12 +153,13 @@ class GloomApiClient {
         this.emitCurrentUserChange();
       }
     },
-    updateCurrentUserFromSocket: (user) => {
+    updateCurrentUserFromSocket: (user, { resync }) => {
       // Every connection's hello repeats the account. A reconnect that changes
       // nothing must not tell every listener the user changed: each would load
       // its data again (teams, theses, sync), and after a server restart every
-      // client reconnects at once.
-      if (!this.currentUser || !changesUser(this.currentUser, user)) return;
+      // client reconnects at once. After a long silence they do load again, for
+      // what changed while nothing arrived.
+      if (!this.currentUser || (!resync && !changesUser(this.currentUser, user))) return;
       this.updateCurrentUser((currentUser) => ({
         ...currentUser,
         ...user,

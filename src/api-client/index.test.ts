@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, jest, test } from "bun:test";
+import { afterEach, describe, expect, jest, spyOn, test } from "bun:test";
 import { apiClient, ASSIST_ARG_OPTION_LIMIT, setCloudApiFetchTransport } from "./index";
-import { SOCKET_FIRST_RECONNECT_MAX_MS } from "./socket";
+import { SOCKET_FIRST_RECONNECT_MAX_MS, SOCKET_RESYNC_AFTER_SILENCE_MS } from "./socket";
 import { publishableMarketplaceLayout } from "../shares/portable-layout";
 import { createDefaultConfig } from "../types/config";
 import type { PaneDef } from "../types/plugin";
@@ -29,6 +29,7 @@ function flushQuoteSubscriptionUpdates(): void {
 }
 
 afterEach(() => {
+  jest.restoreAllMocks();
   apiClient.dispose();
   globalThis.fetch = originalFetch;
   globalThis.WebSocket = originalWebSocket;
@@ -978,7 +979,7 @@ describe("apiClient scanner subscriptions", () => {
   // A server restart reconnects every client at once. If each reconnect's
   // hello told every listener the user changed, each client would load its
   // teams, theses and messages again in the same second.
-  test("a reconnect whose hello repeats the account does not report a user change, and one that changes it does", () => {
+  test("a reconnect whose hello repeats the account does not report a user change, one that changes it does, and so does one after a long silence", () => {
     const sockets = installTestWebSocket();
     apiClient.setSessionToken("reconnect-session");
     apiClient.restoreCachedUser(verifiedUser);
@@ -1008,6 +1009,16 @@ describe("apiClient scanner subscriptions", () => {
       sockets[1]!.receive({ ...hello, user: { ...hello.user, plan: "pro", effectivePlan: "pro" } });
       expect(changes).toBe(2);
       expect(apiClient.getCurrentUser()).toMatchObject({ plan: "pro", effectivePlan: "pro" });
+
+      // A laptop that slept: its clock is a minute on when it finds the
+      // socket dead, and what changed meanwhile was missed.
+      const timerClock = Date.now.bind(Date);
+      spyOn(Date, "now").mockImplementation(() => timerClock() + SOCKET_RESYNC_AFTER_SILENCE_MS);
+      sockets[1]!.closeWith({ code: 1006, reason: "" });
+      jest.advanceTimersByTime(SOCKET_FIRST_RECONNECT_MAX_MS);
+      sockets[2]!.open();
+      sockets[2]!.receive({ ...hello, user: { ...hello.user, plan: "pro", effectivePlan: "pro" } });
+      expect(changes).toBe(3);
     } finally {
       unsubscribe();
       stopListening();
