@@ -21,8 +21,9 @@ import { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { formatCloudPrice, monthsFreeYearly } from "../../account/billing";
 import { proStepCopy } from "../../account/upgrade-dialog";
-import { Button, SegmentedControl, terminalButtonColumns } from "../ui";
+import { Button, Prose, SegmentedControl, terminalButtonColumns } from "../ui";
 import { AccountStep, PortfolioStep } from "./onboarding-steps";
+import { tuiPositionsPanelRows } from "./portfolio-step/positions-panel";
 import {
   ONBOARDING_DESKTOP,
   OnboardingActions,
@@ -51,7 +52,7 @@ import {
   BROWSER_SIGN_IN_KEY,
   SKIP_DESKS_KEY,
   SKIP_PORTFOLIO_KEY,
-  SKIP_IN_FIELD_KEY,
+  SKIP_KEY,
   CONTINUE_KEY,
   BACK_KEY,
   type PositionsButton,
@@ -457,13 +458,21 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     </OnboardingCoach>;
   }
 
+  // A save error under a card, wrapped in the terminal at the words its height counted, so the card holds it.
+  const savedError = (columns: number) => !persistenceError ? null : desktop ? (
+    <Text fg={colors.negative} wrapText style={{ marginTop: 10 }}>{persistenceError}</Text>
+  ) : <Prose text={persistenceError} width={columns} figures={false} color={colors.negative} />;
+
   if (stage === "portfolio") {
     const selectedBroker = selectedBrokerId
       ? brokerOptions.find((option) => option.id === selectedBrokerId)
       : null;
     const selectedBrokerName = selectedBroker?.name;
+    // What do you hold? is as tall as what it holds: the fields, the rows listed so far and an error, never rows kept empty for later ones.
+    const positionsColumns = terminalCardSize({ width: viewportWidth, height: viewportHeight }, 76, 22).width - TERMINAL_CARD_INSET.columns;
     const portfolioModalHeight = portfolioSub === "positions"
-      ? 22
+      ? TERMINAL_CARD_INSET.rows + 4 + tuiPositionsPanelRows(positions, editingField, positionsColumns)
+        + (persistenceError ? wrapTextLines(persistenceError, Math.max(8, positionsColumns)).length : 0)
       : portfolioSub === "choose"
         ? 16
         : portfolioSub === "broker-setup"
@@ -511,6 +520,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
             positionsEditing={editingField}
             selectedPositionSymbol={selectedPositionSymbol}
             commandBarShortcut={commandBarShortcut}
+            positionsColumns={positionsColumns}
             choices={brokerChoices}
             optionIdx={portfolioOptionIdx}
             onOptionSelect={setPortfolioOptionIdx}
@@ -528,11 +538,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
             brokerSyncError={brokerSyncError}
           />
         </Box>
-        {persistenceError ? (
-          <Text fg={colors.negative} wrapText style={desktop ? { marginTop: 10 } : undefined}>
-            {persistenceError}
-          </Text>
-        ) : null}
+        {savedError(positionsColumns)}
         <OnboardingActions hint={portfolioSub === "positions" && desktop
           // The step needs one ticker; once it has one, more can be added later.
           ? positionCount === 0 ? t("Add one ticker to continue.") : tf("Later: {shortcut}, then AP.", { shortcut: commandBarShortcut })
@@ -553,9 +559,10 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
                 <OnboardingButton
                   label="Skip"
                   variant="ghost"
-                  // In the Ticker field s is typed: on the first run F10 presses Skip there, and from Settings F10
-                  // leaves setup, so Skip shows no key (Tab reaches it).
-                  shortcut={editingField ? (rerun ? undefined : SKIP_IN_FIELD_KEY) : SKIP_PORTFOLIO_KEY}
+                  // The terminal's first run: Skip is F10 on every step, in the Ticker field or not (s still skips
+                  // outside it). From Settings F10 leaves setup, so in the field Skip shows no key (Tab reaches it).
+                  // On a Mac's keyboard F10 is a media key: the desktop's Skip is pressed by its letter or a click.
+                  shortcut={rerun || desktop ? (editingField ? (rerun ? undefined : SKIP_KEY) : SKIP_PORTFOLIO_KEY) : SKIP_KEY}
                   active={positionsButton === "skip"}
                   disabled={positions.submitting}
                   onPress={skipPositions}
@@ -593,7 +600,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
   if (stage === "desks") {
     const desksColumns = terminalCardSize({ width: viewportWidth, height: viewportHeight }, DESKS_CARD_WIDTH, 18).width - TERMINAL_CARD_INSET.columns;
     // A save error names the file, so it usually takes two rows; the card grows by what it wraps to.
-    const errorRows = persistenceError ? wrapTextLines(persistenceError, Math.max(1, desksColumns)).length : 0;
+    const errorRows = persistenceError ? wrapTextLines(persistenceError, Math.max(8, desksColumns)).length : 0;
     return (
       <OnboardingModal width={DESKS_CARD_WIDTH} height={18 + errorRows}>
         <OnboardingHeader
@@ -619,16 +626,12 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           onToggle={(key) => setChosenDesks((current) => toggleDeskChoice(current, key))}
           width={desksColumns}
         />
-        {persistenceError ? (
-          <Text fg={colors.negative} wrapText style={desktop ? { marginTop: 10 } : undefined}>
-            {persistenceError}
-          </Text>
-        ) : null}
+        {savedError(desksColumns)}
         <OnboardingActions>
           <OnboardingButton
             label="Skip"
             variant="ghost"
-            shortcut={SKIP_DESKS_KEY}
+            shortcut={rerun || desktop ? SKIP_DESKS_KEY : SKIP_KEY}
             disabled={buildingDesks}
             onPress={() => finishDesks([])}
           />

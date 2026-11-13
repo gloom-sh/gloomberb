@@ -63,7 +63,6 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `h` / `l` | Switch tabs |
 | `<` / `>` | Narrow or widen a pane's sidebar, such as the list beside the map (the divider also drags) |
 | `Ctrl+Left` / `Ctrl+Right` | Scroll a focused table horizontally |
-| `m` | Cycle chart mode |
 | `Alt+Enter` | Run the newest notification's action, such as Revert or Review |
 | `Alt+Backspace` | Dismiss the newest notification |
 | `q` | Quit (terminal) |
@@ -1240,7 +1239,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 - Rows are listed by their UTC day and time, with the weekday in `Day`; a release its publisher times also shows its own clock (`09:00 Sao Paulo`).
 - An event that takes the whole day (a plenum, an election) reads `All day` in the time column, as does the ECO pane.
 - `--tz <zone>` adds a column on another clock, named by its city, and `Day` moves beside it to give the weekday on that clock: `econ --country BR --tz America/New_York` shows the IPCA at `08:00` under `New York`, and a release at 01:30 UTC on a Wednesday as `Tue` `21:30`. An all-day event keeps its own day. `--json` has `day`, `viewerDate`, `viewerTime` and `metadata.timeZone`; an unknown zone fails with `Unknown time zone`.
-- With `config set timezone`, the ECO pane shows the same column for your zone beside `TIME (UTC)` when it is wide enough.
+- With `config set timezone`, the ECO pane shows the same column for your zone beside its `UTC` one when it is wide enough.
 
 **Countries**
 

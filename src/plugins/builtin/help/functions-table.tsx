@@ -19,8 +19,9 @@ import {
 } from "../../../components";
 import { t } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
+import { useUiCapabilities } from "../../../ui";
 import { groupShortcutEntries, type HelpShortcutEntry } from "./shortcut-model";
-import { badgeCell, badgeColumnWidth } from "./table-cells";
+import { badgeCell, badgeColumnWidth, helpRowLines, helpTextWidth, type HelpRowLine } from "./table-cells";
 
 type FunctionsColumnId = "prefix" | "argument" | "description";
 type FunctionsColumn = DataTableColumn & { id: FunctionsColumnId };
@@ -30,9 +31,16 @@ interface FunctionEntry {
   prefix: string[];
   argument: string;
   description: string;
+  /** The terminal's line of the row this row draws (helpRowLines). */
+  line?: HelpRowLine;
 }
 
 type FunctionsRow = SectionedRow<FunctionEntry>;
+
+/** A row's first line, the one the cursor stops on. */
+function isFunctionRow(row: FunctionsRow): row is { kind: "item"; key: string; item: FunctionEntry } {
+  return isSectionedItemRow(row) && !row.item.line?.continued;
+}
 
 /** Below this the argument folds away and the description takes the room. */
 const ARGUMENT_COLUMN_MIN_TABLE_WIDTH = 64;
@@ -123,6 +131,20 @@ export function FunctionsTable({
       : []),
     { id: "description", label: "OPENS", width: 20, align: "left", flexGrow: 1 },
   ], [argumentWidth, prefixWidth, showArgument]);
+  const { nativePaneChrome } = useUiCapabilities();
+  // The terminal goes on under a row rather than cutting its argument or what it opens; the desktop lays it out in CSS.
+  const displayRows = useMemo<FunctionsRow[]>(() => {
+    if (nativePaneChrome) return rows;
+    const descriptionWidth = helpTextWidth(width, prefixWidth + (showArgument ? argumentWidth + 1 : 0), 1);
+    return rows.flatMap((row): FunctionsRow[] => (isSectionedItemRow(row)
+      ? helpRowLines(row.item.prefix, t(row.item.description), prefixWidth, descriptionWidth,
+        showArgument ? { text: row.item.argument, width: argumentWidth } : undefined).map((line, index) => ({
+        kind: "item",
+        key: index === 0 ? row.key : `${row.key}~${index}`,
+        item: { ...row.item, line },
+      }))
+      : [row]));
+  }, [argumentWidth, nativePaneChrome, prefixWidth, rows, showArgument, width]);
 
   const renderCell = useCallback((
     row: FunctionsRow,
@@ -131,17 +153,23 @@ export function FunctionsTable({
     rowState: { selected: boolean },
   ): DataTableCell => {
     if (!isSectionedItemRow(row)) return EMPTY_TABLE_CELL;
-    if (column.id === "prefix") return badgeCell(row.item.prefix, column.width);
+    const { line } = row.item;
+    const selected = rowState.selected || (line?.continued === true && row.item.id === effectiveSelectedId);
+    if (column.id === "prefix") {
+      const badges = line ? line.badges : row.item.prefix;
+      return badges.length > 0 ? badgeCell(badges, column.width) : EMPTY_TABLE_CELL;
+    }
     if (column.id === "argument") {
-      return row.item.argument
-        ? { text: row.item.argument, color: colors.textMuted }
+      const argument = line ? line.middle ?? "" : row.item.argument;
+      return argument
+        ? { text: argument, color: colors.textMuted }
         : EMPTY_TABLE_CELL;
     }
     return {
-      text: t(row.item.description),
-      color: rowState.selected ? colors.selectedText : colors.text,
+      text: line ? line.text : t(row.item.description),
+      color: selected ? colors.selectedText : colors.text,
     };
-  }, [colors]);
+  }, [colors, effectiveSelectedId]);
 
   return (
     <DataTableView<FunctionsRow, FunctionsColumn>
@@ -162,7 +190,7 @@ export function FunctionsTable({
         />
       )}
       columns={columns}
-      items={rows}
+      items={displayRows}
       selection={{
         kind: "id",
         selectedId: effectiveSelectedId,
@@ -171,7 +199,11 @@ export function FunctionsTable({
           if (isSectionedItemRow(row)) setSelectedId(row.item.id);
         },
       }}
-      isNavigable={isSectionedItemRow}
+      isNavigable={isFunctionRow}
+      // Pressing a row's later line selects the row, as pressing its first does.
+      continuesRowAbove={(row) => isSectionedItemRow(row) && row.item.line?.continued === true}
+      // A row's lines under its first read as one row with it.
+      getRowBackgroundColor={(row) => (isSectionedItemRow(row) && row.item.line?.continued && row.item.id === effectiveSelectedId ? colors.selected : undefined)}
       onActivate={(row) => {
         if (!isSectionedItemRow(row)) return;
         const prefix = row.item.prefix.join(" ");

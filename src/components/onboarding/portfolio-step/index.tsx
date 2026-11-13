@@ -16,6 +16,7 @@ export function PortfolioStep(props: PortfolioStepProps) {
         editing={props.positionsEditing}
         selectedSymbol={props.selectedPositionSymbol}
         shortcut={props.commandBarShortcut}
+        columns={props.positionsColumns}
       />
     );
   }

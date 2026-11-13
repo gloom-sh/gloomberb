@@ -15,7 +15,7 @@ import {
 } from "react";
 import { colors } from "../../../theme/colors";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
-import { isPlainKeyboardEvent } from "../../../utils/keyboard";
+import { isPlainKeyboardEvent, isTextKey } from "../../../utils/keyboard";
 import { ToggleList } from "../../toggle-list";
 import { Button } from "../button";
 import { TextField } from "../fields";
@@ -131,12 +131,6 @@ const DESKTOP_ROW_HEIGHT = 1.35;
 const TERMINAL_DIALOG_CHROME_ROWS = 10;
 /** Cells a searchable list shows on the desktop and web; the rest scrolls. */
 const DESKTOP_SEARCHABLE_LIST_CELLS = 16;
-
-/** A key that types a character: the filter box takes it. */
-function isTextKey(event: { sequence?: string; ctrl?: boolean; meta?: boolean; alt?: boolean }): boolean {
-  return event.sequence?.length === 1 && event.sequence >= " " && event.sequence !== "\u007f"
-    && !event.ctrl && !event.meta && !event.alt;
-}
 
 function matchesFilter(option: MultiSelectOption, needle: string): boolean {
   return `${option.label} ${option.description ?? ""}`.toLowerCase().includes(needle);

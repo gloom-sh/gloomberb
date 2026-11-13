@@ -51,13 +51,13 @@ import { saveConfigImmediately } from "../../../state/config-save-scheduler";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { KeybindingsConfig } from "../../../types/config";
 import type { KeyboardShortcut } from "../../../types/plugin";
-import { useUiHost } from "../../../ui";
+import { useUiCapabilities, useUiHost } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { logFailure } from "../../../utils/log-failure";
 import { detectShortcutPlatform, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
 import { usePluginAppActions } from "../../runtime";
-import { badgeCell, badgeColumnWidth, mutedCell } from "./table-cells";
+import { badgeCell, badgeColumnWidth, helpRowLines, helpTextWidth, mutedCell, type HelpRowLine } from "./table-cells";
 
 const CAPTURE_SCOPE = "help-keybinding-capture";
 const FOOTER_ID = "help-keybindings";
@@ -89,9 +89,16 @@ interface BindableRow {
   noteTone: "muted" | "warning";
   action?: ResolvedKeybindingAction;
   command?: KeybindingCommand;
+  /** The terminal's line of the row this row draws (helpRowLines). */
+  line?: HelpRowLine;
 }
 
 type EditorRow = SectionedRow<BindableRow>;
+
+/** A row's first line, the one the cursor stops on. */
+function isBindingRow(row: EditorRow): row is { kind: "item"; key: string; item: BindableRow } {
+  return isSectionedItemRow(row) && !row.item.line?.continued;
+}
 
 type CaptureTarget =
   | { kind: "row"; row: BindableRow }
@@ -389,6 +396,19 @@ export function KeybindingsEditor({
   // Decided from every row, not the rows on screen, so ACTION's width holds while the table scrolls.
   const anyNote = useMemo(() => bindableRows.some((row) => !!row.note), [bindableRows]);
   const showNotes = showsKeybindingNotes(width, keyColumnWidth, anyNote);
+  const { nativePaneChrome } = useUiCapabilities();
+  // The terminal goes on under a row rather than cutting its keys or what they do; the desktop lays it out in CSS.
+  const displayRows = useMemo<EditorRow[]>(() => {
+    if (nativePaneChrome) return rows;
+    const actionWidth = helpTextWidth(width, keyColumnWidth + (showNotes ? NOTE_COLUMN_WIDTH + 1 : 0), 1);
+    return rows.flatMap((row): EditorRow[] => (isSectionedItemRow(row) && row.item.chords.length > 0
+      ? helpRowLines(row.item.chords, row.item.label, keyColumnWidth, actionWidth).map((line, index) => ({
+        kind: "item",
+        key: index === 0 ? row.key : `${row.key}~${index}`,
+        item: { ...row.item, line },
+      }))
+      : [row]));
+  }, [keyColumnWidth, nativePaneChrome, rows, showNotes, width]);
   const columns = useMemo<KeybindingColumn[]>(() => [
     { id: "key", label: "KEY", width: keyColumnWidth, align: "left" },
     { id: "action", label: "ACTION", width: 20, align: "left", flexGrow: 1 },
@@ -407,21 +427,25 @@ export function KeybindingsEditor({
     if (row.kind === "empty") {
       return column.id === "action" ? { text: t(row.label), color: colors.textDim } : EMPTY_TABLE_CELL;
     }
+    const { line } = row.item;
     const capturing = capture?.kind === "row" && capture.row.id === row.item.id;
+    const selected = rowState.selected || (line?.continued === true && row.item.id === effectiveSelectedId);
     if (column.id === "key") {
-      if (capturing) return badgeCell([t("Press a key")], column.width, { tone: "accent" });
+      if (capturing) return line?.continued ? EMPTY_TABLE_CELL : badgeCell([t("Press a key")], column.width, { tone: "accent" });
+      if (line) return line.badges.length > 0 ? badgeCell(line.badges, column.width) : EMPTY_TABLE_CELL;
       return row.item.chords.length > 0
         ? badgeCell(row.item.chords, column.width)
         : mutedCell("unbound", colors.textMuted);
     }
     if (column.id === "action") {
-      return { text: row.item.label, color: rowState.selected ? colors.selectedText : colors.text };
+      return { text: line ? line.text : row.item.label, color: selected ? colors.selectedText : colors.text };
     }
+    if (line?.continued) return EMPTY_TABLE_CELL;
     return {
       text: row.item.note,
       color: row.item.noteTone === "warning" ? colors.warning : colors.textMuted,
     };
-  }, [capture, colors]);
+  }, [capture, colors, effectiveSelectedId]);
 
   return (
     <DataTableView<EditorRow, KeybindingColumn>
@@ -430,7 +454,7 @@ export function KeybindingsEditor({
       rootWidth={width}
       rootHeight={height}
       columns={columns}
-      items={rows}
+      items={displayRows}
       selection={{
         kind: "id",
         selectedId: effectiveSelectedId,
@@ -439,7 +463,11 @@ export function KeybindingsEditor({
           if (isSectionedItemRow(row)) setSelectedId(row.item.id);
         },
       }}
-      isNavigable={isSectionedItemRow}
+      isNavigable={isBindingRow}
+      // Pressing a row's later line selects the row, as pressing its first does.
+      continuesRowAbove={(row) => isSectionedItemRow(row) && row.item.line?.continued === true}
+      // A row's lines under its first read as one row with it.
+      getRowBackgroundColor={(row) => (isSectionedItemRow(row) && row.item.line?.continued && row.item.id === effectiveSelectedId ? colors.selected : undefined)}
       onActivate={(row) => {
         if (isSectionedItemRow(row)) startCapture({ kind: "row", row: row.item });
       }}

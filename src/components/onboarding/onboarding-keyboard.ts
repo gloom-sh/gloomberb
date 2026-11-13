@@ -23,8 +23,9 @@ import { DESKS, type DeskKey } from "../../layout/desks";
  * is being typed in (Esc leaves the field first), and Tab from a field reaches
  * the buttons too. F10, the old skip key, leaves setup wherever it can be left
  * (a run from Settings, the later steps). On the first run's portfolio step,
- * holding nothing, it presses Skip instead, the key that button shows while a
- * field has the keyboard.
+ * holding nothing, and on its Desks step it presses Skip instead, the one key
+ * that button shows on both (review, 12 Nov 2026: F10 on one step and s on
+ * the next).
  */
 export const SKIP_SETUP_KEY = "s";
 export const KEEP_FREE_KEY = "f";
@@ -32,8 +33,8 @@ export const CONNECT_BROKER_KEY = "b";
 export const BROWSER_SIGN_IN_KEY = "b";
 export const SKIP_DESKS_KEY = "s";
 export const SKIP_PORTFOLIO_KEY = "s";
-/** What presses the first run's portfolio Skip while a field is being typed in, where its letter is typed. */
-export const SKIP_IN_FIELD_KEY = "F10";
+/** What presses the first run's Skip on its portfolio and Desks steps, in a field or not. */
+export const SKIP_KEY = "F10";
 /** The portfolio step's buttons Tab reaches from its fields, in the order they are drawn. */
 export type PositionsButton = "broker" | "skip" | "continue";
 /** Each step's primary button (Continue, Start exploring) and its Back. */
@@ -156,6 +157,10 @@ export function useOnboardingKeyboard({
         // The first run, holding nothing: F10 presses the portfolio step's Skip, the key it shows while the Ticker field has the keyboard.
         if (stage === "portfolio" && portfolioSub === "positions" && positionCount === 0 && !isBrokerCommitting && !progress.rerun) {
           skipPositions();
+          return true;
+        }
+        if (stage === "desks" && !progress.rerun) {
+          finishDesks([]);
           return true;
         }
         // The first run needs a holding; a run from Settings can be left as it was.

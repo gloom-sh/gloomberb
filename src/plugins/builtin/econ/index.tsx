@@ -277,9 +277,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // A reader who set a time zone (`config set timezone`) gets their clock in a column beside UTC.
   const readerZone = readerTimeZone(useAppConfig().timezone);
   const columns = useMemo<EconCalendarColumn[]>(() => {
-    // The header names the zone, so the column is as wide as the header needs.
-    const timeLabelText = `TIME (${CALENDAR_TIME_ZONE_LABEL})`;
-    const timeWidth = tableColumnWidth({ width: 6, label: timeLabelText });
+    // Named by its zone, as the reader's column is by its city: "TIME (UTC)" took 13
+    // cells over "07:00" while EVENT read "GDP Growth Ra…" (review, 12 Nov 2026).
+    const timeLabelText = CALENDAR_TIME_ZONE_LABEL;
+    const timeWidth = tableColumnWidth({ width: filtered.some(isAllDayEvent) ? "All day".length : 5, label: timeLabelText });
     const actualWidth = valueColumnWidth(filtered, "actual", 9);
     const forecastWidth = valueColumnWidth(filtered, "forecast", 10);
     const priorWidth = valueColumnWidth(filtered, "prior", 9);

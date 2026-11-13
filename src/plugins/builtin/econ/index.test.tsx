@@ -222,7 +222,7 @@ describe("EconCalendarPane", () => {
     attachEconCalendarPersistence(persistence);
     const frame = await renderPane(110);
 
-    expect(frame).toContain("TIME (UTC)");
+    expect(frame).toMatch(/\bUTC\s+IMPACT|\bUTC\s+IMP\b/);
     expect(frame).toContain("23:30");
     if (localClock !== "23:30") expect(frame).not.toContain(localClock);
     expect(frame).toContain(separator);
@@ -239,7 +239,7 @@ describe("EconCalendarPane", () => {
     ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
     attachEconCalendarPersistence(persistence);
     const frame = await renderPane(110, "all", true, undefined, "America/New_York");
-    expect(frame).toMatch(/TIME \(UTC\)\s+NEW YORK/);
+    expect(frame).toMatch(/\bUTC\s+NEW YORK/);
     expect(frame).toMatch(/12:00\s+08:00\s+.*IPCA-15 Mid-Month CPI m\/m\s+0\.32%\s+0\.43%\s+0\.70%/);
     expect(frame).toMatch(/01:30\s+Fri 21:30\s+/);
 

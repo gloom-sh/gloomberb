@@ -34,6 +34,7 @@ import {
   type QueryBarFilter,
   type DataTableVisibleRange,
 } from "../../../components";
+import { createDataTableCsv } from "../../../components/data-table/export";
 import { statGridWithin } from "../../../components/ui/stat-grid";
 import { useShortcut } from "../../../react/input";
 import { useOptionalDialog, type AlertContext } from "../../../ui/dialog";
@@ -50,8 +51,10 @@ import { useOptionsCatalogue } from "./expiry-catalogue";
 import { calculateOptionGreeks, calculateOptionsSummary, IV_FILLED_DETAIL, IV_FILLED_NOTE, IV_FILLED_SHORT, solveChainVolatilities, type OptionsSummary } from "./analytics";
 import {
   DEFAULT_OPTION_FIELD_IDS,
+  OPTION_FIELD_DEFS,
   buildStrikeList,
   createOptionColumns,
+  fitOptionFieldIds,
   findNearestStrikeIndex,
   formatIv,
   optionColumnColor,
@@ -268,8 +271,14 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const dailyHistoryEntry = dailyHistoryRequest ? historyEntries.get(buildChartKey(dailyHistoryRequest)) ?? null : null;
   const dailyHistory = useResolvedEntryValue(dailyHistoryEntry);
   const [chainRefreshMinutes] = usePaneSettingValue<string>("chainRefreshMinutes", "");
+  const { nativePaneChrome } = useUiCapabilities();
   const [storedOptionFieldIds] = usePaneSettingValue<OptionFieldId[]>("optionColumnIds", DEFAULT_OPTION_FIELD_IDS);
   const optionFieldIds = useMemo(() => resolveOptionFieldIds(storedOptionFieldIds), [storedOptionFieldIds]);
+  // The terminal chain keeps both sides on screen, giving up fields to fit (the
+  // table's width less its scrollbar); the desktop's table scrolls as it did.
+  const chainWidth = Math.max(1, width - 3);
+  const shownFieldIds = useMemo(() => nativePaneChrome ? optionFieldIds : fitOptionFieldIds(optionFieldIds, chainWidth),
+    [chainWidth, nativePaneChrome, optionFieldIds]);
   const [storedStrikeWindow] = usePaneSettingValue<unknown>(STRIKE_WINDOW_SETTING, ALL_STRIKES);
   const strikeWindow = useMemo(() => resolveStrikeWindow(storedStrikeWindow), [storedStrikeWindow]);
   const strikeWindowText = strikeWindowValue(strikeWindow);
@@ -337,7 +346,6 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // tab list asks the web host to reveal the active tab and can move the date
   // being clicked before mouse-up, cancelling selection of an offscreen expiry.
   const expirationPickRef = useRef<(value: string) => void>(() => {});
-  const { nativePaneChrome } = useUiCapabilities();
   const selectedExpirationIndex = selectedExpiration == null ? -1 : expirationDates.indexOf(selectedExpiration);
   const strikeWindowOptions = useMemo(() => {
     const presets = STRIKE_WINDOW_PRESETS.map(({ value, label, short, description }) => ({ value, label, short, description }));
@@ -639,7 +647,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     .filter(Boolean).join(" · ");
   // How IV was solved is said while the chain shows a figure that was not: a strike with no two-sided
   // out-of-the-money quote has its IV read off the neighbouring strikes, and its cell leads with "~".
-  const ivFilledShown = optionFieldIds.includes("iv") && rows.some((row) => row.impliedVolatilityFilled && row.impliedVolatility != null);
+  const ivFilledShown = shownFieldIds.includes("iv") && rows.some((row) => row.impliedVolatilityFilled && row.impliedVolatility != null);
   // A report of the pane (`gloom fn OMON`) says it too.
   useRemoteUiNode(ivFilledShown ? {
     role: "report-notice",
@@ -652,6 +660,21 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     ...(ivFilledShown ? [{ id: "iv-filled", parts: [{ text: IV_FILLED_NOTE, tone: "muted" as const }],
       title: IV_FILLED_DETAIL, variants: [[{ text: IV_FILLED_SHORT, tone: "muted" as const }]] }] : []),
   ] }), [basisText, shortBasisText, ivFilledShown]);
+  // Fields the terminal chain gave up for width, counted so a narrow chain does
+  // not read as all there is; hover names them. It leads the footer, so a
+  // crowded row gives up the contract under the cursor before it.
+  const hiddenFields = OPTION_FIELD_DEFS.filter((field) => optionFieldIds.includes(field.id) && !shownFieldIds.includes(field.id))
+    .map((field) => field.label).join(", ");
+  usePaneFooter("options-fit", () => {
+    const count = hiddenFields ? hiddenFields.split(", ").length : 0;
+    return { order: -1, info: count ? [{
+      id: "options-hidden-fields",
+      capture: true,
+      parts: [{ text: `${count} ${count === 1 ? "field" : "fields"} hidden`, tone: "muted" as const }],
+      title: `Too narrow for ${hiddenFields}: a wider pane shows them, and Export CSV keeps them.`,
+      variants: [[{ text: `${count} hidden`, tone: "muted" as const }]],
+    }] : [] };
+  }, [hiddenFields]);
   // Figures that summarise the whole expiry move at most once a second, so a
   // busy stream reads as a steady strip rather than flicker.
   // A new expiry, a refreshed snapshot or the underlying price arriving or
@@ -704,10 +727,10 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     ),
     [optionQuoteEntries, optionQuoteFreshness, optionQuoteTargets],
   );
-  const optionColumns = useMemo<OptionColumn[]>(() => createOptionColumns(optionFieldIds).map((column) => ({
+  const optionColumns = useMemo<OptionColumn[]>(() => createOptionColumns(shownFieldIds).map((column) => ({
     ...column,
     headerColor: optionColumnColor(column, colors.panel),
-  })), [optionFieldIds]);
+  })), [shownFieldIds]);
 
   const selectedRow = rows[selectedStrikeIdx] ?? null;
   const selectedContractAvailable = !selectedContract || (selectedContract.side === "call"
@@ -872,7 +895,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     quoteCoverage: optionQuoteCoverage,
     reference: selectedReference,
     savedAt: chainSavedAt,
-    spreadColumnVisible: optionFieldIds.includes("spread"),
+    spreadColumnVisible: shownFieldIds.includes("spread"),
   });
 
   useEffect(() => {
@@ -1044,6 +1067,10 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         headerScrollId="options-table-header-scroll"
         bodyScrollId="options-table-body-scroll"
         columns={optionColumns}
+        // A field the terminal gave up for width is still in the export.
+        exportCsv={shownFieldIds.length < optionFieldIds.length
+          ? () => createDataTableCsv({ columns: createOptionColumns(optionFieldIds), items: rows, renderCell })
+          : undefined}
         // Calls and puts mirror each other around the strike; Settings orders their fields.
         columnReorder={false}
         items={rows}

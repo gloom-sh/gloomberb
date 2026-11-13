@@ -64,14 +64,6 @@ const SEC_EVENT_MATCH_WINDOW_DAYS = 7;
 
 const eventRowKey = (row: EventRow) => row.id;
 
-function todayDateKey(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function dateKeyToEpochDay(dateKey: string): number | null {
   const timestamp = new Date(`${dateKey}T00:00:00Z`).getTime();
   if (!Number.isFinite(timestamp)) return null;
@@ -503,11 +495,15 @@ export function CorporateActionsView({
   const allRows = useMemo(() => (
     buildEventRows(actionsData, analystData, financialsData, displayCurrency)
   ), [actionsData, analystData, displayCurrency, financialsData]);
+  // In the order they happen, as a calendar reads, from the oldest to the
+  // furthest estimate; the pane opens on the present (selectedIdx). The
+  // model's newest-first order is the report's, cut by a limit; a day's
+  // events keep its order among themselves.
   const rows = useMemo(() => (
     variant === "earnings-estimates"
       ? allRows.filter((row) => EARNINGS_STATUSES.has(row.status))
-      : allRows
-  ), [allRows, variant]);
+      : [...allRows]
+  ).sort((left, right) => left.date.localeCompare(right.date)), [allRows, variant]);
   const unit = useMemo(() => sharedMetricCurrency(rows), [rows]);
   const hasUnstatedCurrency = rows.some((row) =>
     ((row.qEps != null || row.annualEps != null) && !row.epsCurrency)
@@ -529,15 +525,23 @@ export function CorporateActionsView({
   // Keyed by row id, not by position, so a reload or a shared layout comes
   // back to the same event.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
-  const selectedIdx = Math.max(0, rows.findIndex((row) => eventRowKey(row) === selectedKey));
+  // Until one is picked, the next event: the rows run oldest to the furthest estimate, and the present is what is read first.
+  const selectedIdx = useMemo(() => {
+    const picked = rows.findIndex((row) => eventRowKey(row) === selectedKey);
+    if (picked >= 0) return picked;
+    const next = rows.findIndex((row) => row.date >= today);
+    return next >= 0 ? next : Math.max(0, rows.length - 1);
+  }, [rows, selectedKey, today]);
   const [openRowId, setOpenRowId] = usePluginPaneState<string | null>("openRowId", null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
-  const todayKey = todayDateKey();
   const futureRowBackground = blendHex(colors.bg, colors.positive, 0.16);
-  // Memoized so the table's row memo holds while the selection moves.
+  // Tinted after the day the pane opens on, New York's, as the calendar dates
+  // a report: on the local day, a reader east of New York saw today's row
+  // opened untinted beside the next day's. Memoized so the table's row memo
+  // holds while the selection moves.
   const rowBackground = useCallback((row: EventRow) => (
-    row.date > todayKey ? futureRowBackground : undefined
-  ), [futureRowBackground, todayKey]);
+    row.date > today ? futureRowBackground : undefined
+  ), [futureRowBackground, today]);
   const loading = actionsLoading || analystLoading;
   const authWall = !loading && !actionsData && !analystData && (isCloudSessionRequired(actionsError) || isCloudSessionRequired(analystError));
   // Parallel requests fail with the same message ("No ticker selected"), so the
@@ -710,7 +714,7 @@ export function CorporateActionsView({
       columns={columns}
       items={rows}
       sortColumnId={null}
-      sortDirection="desc"
+      sortDirection="asc"
       getItemKey={eventRowKey}
       renderCell={renderCell}
       getExportMetadata={() => [

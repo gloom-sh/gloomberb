@@ -461,3 +461,47 @@ test("an external selection and scroll request cannot be reversed by the previou
   expect(body.scrollTop).toBe(500 - Math.floor(body.viewport.height / 2));
   expect(tui.frame()).toContain("Row 500");
 });
+
+// Help's wrapped rows: pressing a row's second line did nothing, since that line is not a row the cursor stops on.
+test("pressing a line that goes on from the row above selects that row", async () => {
+  type Line = { id: string; owner: string; text: string; continued: boolean };
+  const lines: Line[] = [
+    { id: "a", owner: "Alpha", text: "Alpha says", continued: false },
+    { id: "a~1", owner: "Alpha", text: "more of alpha", continued: true },
+    { id: "b", owner: "Beta", text: "Beta says", continued: false },
+    { id: "b~1", owner: "Beta", text: "more of beta", continued: true },
+  ];
+  function WrappedHarness() {
+    const [selected, setSelected] = useState("a");
+    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-data-table-view-wrapped-test"));
+    return (
+      <AppContext value={createStaticAppStore(state)}>
+        <PaneInstanceProvider paneId="data-table-view-wrapped-test">
+          <DataTableView<Line, Column>
+            focused
+            isNavigable={(line) => !line.continued}
+            continuesRowAbove={(line) => line.continued}
+            selection={{ kind: "id", selectedId: selected, getId: (line) => line.id, onChange: (id) => setSelected(String(id)) }}
+            columns={columns}
+            items={lines}
+            sortColumnId={null}
+            sortDirection="asc"
+            getItemKey={(line) => line.id}
+            renderCell={(line): DataTableCell => ({ text: line.text })}
+            emptyStateTitle="No rows"
+            rootAfter={<Box height={1}><Text>{`selected=${selected}`}</Text></Box>}
+          />
+        </PaneInstanceProvider>
+      </AppContext>
+    );
+  }
+  await act(async () => {
+    await tui.render(<WrappedHarness />, { width: 40, height: 10 });
+  });
+  await renderSettled();
+  expect(tui.frame()).toContain("selected=a");
+  await tui.clickFrameText("more of beta");
+  await renderSettled();
+  expect(tui.frame()).toContain("selected=b");
+  expect(tui.frame()).not.toContain("selected=b~1");
+});

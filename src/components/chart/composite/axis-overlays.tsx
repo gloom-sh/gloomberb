@@ -74,7 +74,7 @@ function keepApart<T extends LabelPlacement>(sorted: readonly T[], gap: number):
 
 /**
  * The cursor and anchor badges print over the flow text, so every label they
- * touch, with a blank cell either side, is blanked whole rather than leaving
+ * touch, with blank cells either side, is blanked whole rather than leaving
  * its ends around the badge. A single fixed-width axis text is split by its
  * tick spans; evenly spread labels each count as one.
  */
@@ -235,8 +235,11 @@ export function StaticXAxisLabels({
     const left = fractionalViewport ? ratio * width - label.length / 2 : extraMarkerLeft(label, ratio);
     badgeSpans.push([left, left + label.length]);
   }
+  // Two blank cells in the terminal: with one, a tick read as part of the
+  // crosshair's date (`2021 2023-12-25`, review, 12 Nov 2026).
+  const badgeClearance = isDesktop ? 1 : 2;
   const clearOfBadges = (start: number, end: number) => badgeSpans.every(([badgeStart, badgeEnd]) => (
-    end + 1 <= badgeStart || start >= badgeEnd + 1
+    end + badgeClearance <= badgeStart || start >= badgeEnd + badgeClearance
   ));
   const placedPositionedLabels = visiblePositionedLabels.flatMap((entry, index) => {
     const ratio = clampRatio(entry.ratio);

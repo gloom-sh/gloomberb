@@ -1109,6 +1109,7 @@ function ThemedCompositeChart({
           drawColor={drawColor}
           showColors={isDrawingTool(armedTool) || !!selectedDrawingId}
           levelTool={levelsEditable}
+          maxWidth={plotWidth}
           pinned={chartLayout.toolbarPinned === true}
           onTogglePinned={() => {
             pressFromPointer();

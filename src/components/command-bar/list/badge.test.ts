@@ -22,15 +22,13 @@ describe("command bar row badges", () => {
   });
 
   /**
-   * An unclassified instrument has no class tag, so its exchange code is
-   * lifted from the right column instead; a long venue name stays there and
-   * the row goes badge-less.
+   * The column is the class's: a saved AAPL with no class read "NASDAQ AAPL"
+   * above search's "EQ AAPL ... NASDAQ" (review, 12 Nov 2026).
    */
-  test("tags instruments by class, or by a short exchange code when the class is unknown", () => {
+  test("tags instruments by class only, an unclassified one keeping its venue on the right", () => {
     expect(resolveRowBadge({ kind: "search", badge: "EQ", right: "NASDAQ" })).toEqual({ text: "EQ", tone: "instrument" });
-    expect(resolveRowBadge({ kind: "ticker", right: "CCC" })).toEqual({ text: "CCC", tone: "instrument" });
-    expect(badgeConsumesRight({ kind: "ticker", right: "CCC" })).toBe(true);
-    expect(resolveRowBadge({ kind: "search", right: "Cboe Global" })).toBeNull();
+    expect(resolveRowBadge({ kind: "ticker", right: "NASDAQ" })).toBeNull();
+    expect(badgeConsumesRight({ kind: "ticker", right: "CCC" })).toBe(false);
   });
 
   test("tags AI answers with their prefix in the assist tone, upper-cased", () => {

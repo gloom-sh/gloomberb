@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PaneTemplateDef } from "../../../../types/plugin";
 import type { Command } from "../../commands/registry";
+import { resolveRowBadge } from "../../list/badge";
 import { orderListResults, type ResultItem } from "../../list/model";
 import { PLUGIN_INSTALL_CATEGORY } from "../../view-model";
 import { mergePlainRootTickerResults } from "../ticker-search/results";
@@ -421,7 +422,7 @@ describe("Start Here in the empty bar", () => {
     category: "Search",
   } as Command;
 
-  test("follows Suggested in plain words with the code on the right, each row running its code's own row", () => {
+  test("follows Suggested in plain words with the code in the badge column, each row running its code's own row", () => {
     const ran: string[] = [];
     const templateRow = (entry: PaneTemplateDef): ResultItem => ({
       id: `pane-template:${entry.id}:`,
@@ -458,14 +459,55 @@ describe("Start Here in the empty bar", () => {
       ["Compare stocks", "RV"],
       ["Check the economy", "ECO"],
     ]);
-    expect(startHere.every((item) => item.shortcutOnRight)).toBe(true);
+    expect(startHere.map((item) => resolveRowBadge(item)?.text)).toEqual(["DES", "GP", "RV", "ECO"]);
 
     startHere[0]?.action();
     startHere[1]?.action();
     expect(ran).toEqual(["ticker-search", "graph-price"]);
-    // Everything the bar listed before is still listed after the group.
-    for (const entry of templates) expect(ordered.some((item) => item.id === `pane-template:${entry.id}:`)).toBe(true);
-    expect(ordered.some((item) => item.id === "security-description")).toBe(true);
+  });
+
+  /**
+   * Review, 12 Nov 2026: a recent CHAT and PF were listed in Suggested and
+   * again in Panes, and Start Here's PF again below it.
+   */
+  test("lists a function once, in the first group that runs it as its code does", () => {
+    const chart = { ...template("graph-price", "GP"), shortcut: { prefix: "GP", argKind: "ticker" } } as PaneTemplateDef;
+    const all = [chart, ...templates.slice(1), template("new-chat-pane", "CHAT"), template("new-collection-pane", "PF")];
+    const templateRow = (entry: PaneTemplateDef): ResultItem => ({
+      id: `pane-template:${entry.id}:`,
+      label: entry.label,
+      detail: "",
+      category: "Panes",
+      kind: "action",
+      right: entry.shortcut?.prefix,
+      shortcutQuery: entry.shortcut?.prefix,
+      action: () => {},
+    });
+    const { items } = buildRootResultModel(rootOptions({
+      availableCommands: [describeCommand],
+      state: {
+        config: {
+          watchlists: [],
+          portfolios: [],
+          commandBarOpens: 1,
+          recentCommands: [{ id: "pane-template:new-chat-pane" }, { id: "pane-template:graph-price", arg: "NVDA" }],
+        },
+        recentTickers: [],
+        focusedPaneId: null,
+      } as unknown as RootResultModelOptions["state"],
+      getRecentPaneTemplate: (id) => all.find((entry) => entry.id === id),
+      getAvailablePaneShortcutTemplates: (query) => all.filter((entry) => entry.shortcut?.prefix === query),
+      createPaneTemplateItem: templateRow,
+      paneShortcutItems: () => all.map(templateRow),
+      openModeRoute: () => {},
+    }));
+    const codes = orderListResults(items).map((item) => `${item.category} ${item.shortcutQuery ?? item.id}`);
+
+    expect(codes.filter((row) => row.endsWith(" CHAT"))).toEqual(["Suggested CHAT"]);
+    expect(codes.filter((row) => row.endsWith(" PF"))).toEqual(["Start Here PF"]);
+    expect(codes.filter((row) => row.endsWith(" DES"))).toEqual(["Start Here DES"]);
+    // GP NVDA is a chart of NVDA, not what GP alone opens, so GP keeps its rows.
+    expect(codes.filter((row) => row.endsWith(" GP"))).toEqual(["Suggested GP", "Start Here GP"]);
   });
 });
 

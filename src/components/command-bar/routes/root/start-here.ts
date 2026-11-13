@@ -64,7 +64,7 @@ function resolveCodeItem(code: string, sources: StartHereSources): ResultItem | 
 
 /**
  * One row per entry whose function is available here, labelled with what it
- * does and its code on the right. A row runs exactly what its code's row in
+ * does, its code in the badge column as every other function's row has it. A row runs exactly what its code's row in
  * the list runs; an entry none of whose codes is available is left out.
  */
 export function buildStartHereItems(sources: StartHereSources): ResultItem[] {
@@ -81,7 +81,6 @@ export function buildStartHereItems(sources: StartHereSources): ResultItem[] {
         right: code,
         shortcutQuery: code,
         badge: undefined,
-        shortcutOnRight: true,
       });
       break;
     }

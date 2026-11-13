@@ -128,8 +128,9 @@ function expectBadgesClear(
     expect(frame.slice(badge.start, badge.start + badge.label.length)).toBe(badge.label);
     for (let cell = badge.start; cell < badge.start + badge.label.length; cell += 1) badgeCells.add(cell);
   }
+  // Two blank cells either side, so no tick reads as part of a badge's date.
   for (const badge of badges) {
-    for (const edge of [badge.start - 1, badge.start + badge.label.length]) {
+    for (const edge of [badge.start - 2, badge.start - 1, badge.start + badge.label.length, badge.start + badge.label.length + 1]) {
       if (edge >= 0 && edge < frame.length && !badgeCells.has(edge)) expect(frame[edge]).toBe(" ");
     }
   }
@@ -137,7 +138,7 @@ function expectBadgesClear(
     const start = bare.indexOf(label);
     if (start < 0) continue;
     const end = start + label.length - 1;
-    const touched = badges.some((badge) => start <= badge.start + badge.label.length && end >= badge.start - 1);
+    const touched = badges.some((badge) => start <= badge.start + badge.label.length + 1 && end >= badge.start - 2);
     if (!touched) {
       expect(frame.slice(start, end + 1)).toBe(label);
       continue;

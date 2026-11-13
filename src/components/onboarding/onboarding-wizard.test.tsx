@@ -690,7 +690,7 @@ describe("OnboardingWizard", () => {
     ]);
   });
 
-  test("cannot be continued before the first position, and F10 in the Ticker field skips the step without leaving setup", async () => {
+  test("cannot be continued before the first position, and F10 skips the step and then the Desks step", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-required-portfolio-"));
     const pluginRegistry = createPluginRegistry();
     let completionCount = 0;
@@ -714,7 +714,11 @@ describe("OnboardingWizard", () => {
     // Enter put the Ticker field back in focus, where s is typed: the Skip button shows F10, which presses it.
     expect(tui.frame()).toMatch(/Skip\s+F10/);
     await emitKeypress({ name: "f10" });
-    await waitForFrame("What do you trade most?");
+    // Review, 12 Nov 2026: skipping setup took F10 here and s on the next step; Skip is F10 on both.
+    expect(await waitForFrame("What do you trade most?")).toMatch(/Skip\s+F10/);
+    await emitKeypress({ name: "f10" });
+    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ desks: [] });
     expect(completionCount).toBe(0);
   });
 
@@ -728,7 +732,7 @@ describe("OnboardingWizard", () => {
     // Holding nothing: past the last field Tab reaches Skip, and Continue, which needs a ticker, is passed over.
     for (let field = 0; field < 4; field += 1) await tab();
     await act(async () => { await tui.setup().renderOnce(); });
-    expect(tui.frame()).toMatch(/Skip\s+s/);
+    expect(tui.frame()).toMatch(/Skip\s+F10/);
     await tab();
     await act(async () => { await tui.setup().renderOnce(); });
     expect(tui.frame()).toMatch(/Skip\s+F10/);
@@ -812,11 +816,11 @@ describe("OnboardingWizard", () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-skip-portfolio-"));
     await tui.render(<WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry()} />, { width: 80, height: 24 });
     await tui.setup().renderOnce();
-    // The ticker field has the keyboard, so s types there: Skip shows F10 until Esc lets the field go.
+    // Skip shows F10, in the Ticker field or out of it; out of it s presses Skip too.
     expect(tui.frame()).toMatch(/Skip\s+F10/);
     await pressEscape();
     await act(async () => { await tui.setup().renderOnce(); });
-    expect(tui.frame()).toMatch(/Skip\s+s/);
+    expect(tui.frame()).toMatch(/Skip\s+F10/);
     await emitKeypress({ name: "s", sequence: "s" });
     await skipDesks();
     await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");

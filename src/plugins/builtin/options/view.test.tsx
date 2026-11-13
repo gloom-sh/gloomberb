@@ -556,7 +556,30 @@ test("lets the expiration tab row use the full available width", async () => {
   expect(frame).toContain(formatExpDate(expirationDates.at(-1)!));
 });
 
-test("keeps expiration tabs independently scrollable from a narrow strike table", async () => {
+// The fit counted each field's own width, not the 8 cells "C LAST" takes with its header: from 100 to 105
+// columns the default fields were counted as fitting and the last put column, P BID, was cut.
+test("a chain that gives up fields fits as drawn, its last put column whole, and the footer counts what went", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getOptionsChain: async () => makeChain([100, 101], 101),
+  })));
+  for (const width of [100, 103, 105, 106]) {
+    await act(async () => {
+      await tui.render(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} showFooter width={width} height={16} />,
+        { width, height: 16 });
+    });
+    await renderSettled();
+    const lines = tui.frame().split("\n");
+    const header = lines.find((line) => line.includes("STRIKE"))!;
+    expect(header.trimEnd()).toMatch(/P ASK\s+P BID$/);
+    const bodyScroll = tui.setup().renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable | undefined;
+    expect(bodyScroll?.horizontalScrollBar.visible).toBe(false);
+    // Below 106 columns the last trade gives way on both sides, and the footer says one field is hidden.
+    expect(header.includes("C LAST")).toBe(width >= 106);
+    expect(/1 (field )?hidden/.test(lines.join("\n"))).toBe(width < 106);
+  }
+});
+
+test("keeps both sides of a narrow strike table on screen and its expiration tabs independently scrollable", async () => {
   const expirationDates = Array.from({ length: 12 }, (_, index) => (
     Math.floor(Date.UTC(2026, index, 20) / 1000)
   ));
@@ -584,8 +607,10 @@ test("keeps expiration tabs independently scrollable from a narrow strike table"
   });
 
   await renderSettled();
+  // The chain gives up fields on both sides rather than scroll the puts out of view.
   const bodyScroll = tui.setup().renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable | undefined;
-  expect(bodyScroll?.horizontalScrollBar.visible).toBe(true);
+  expect(bodyScroll?.horizontalScrollBar.visible).toBe(false);
+  expect(tui.frame()).toMatch(/C BID\s+C ASK.*STRIKE.*P ASK\s+P BID/);
   expect(tui.frame()).not.toContain(formatExpDate(expirationDates.at(-1)!));
 
   for (let index = 1; index < expirationDates.length; index += 1) {
@@ -596,7 +621,6 @@ test("keeps expiration tabs independently scrollable from a narrow strike table"
     await renderSettled();
   }
 
-  expect(bodyScroll?.horizontalScrollBar.visible).toBe(true);
   expect(bodyScroll?.scrollLeft ?? 0).toBe(0);
   expect(requestedExpirations).toContain(expirationDates.at(-1));
   expect(tui.frame()).toContain(formatExpDate(expirationDates.at(-1)!));

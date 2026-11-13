@@ -498,7 +498,7 @@ describe("CommandBar portfolio commands", () => {
       { width: 100, height: 20 },
     );
 
-    await waitForFrameToContain("Collection");
+    await waitForFrameToContain("PF Portfolio");
     await act(async () => {
       tui.setup().mockInput.pressEnter();
       await Bun.sleep(0);

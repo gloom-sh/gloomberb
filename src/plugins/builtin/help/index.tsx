@@ -4,7 +4,7 @@ import { Notice, usePaneFooter, usePaneMenuItems, usePaneTabs, type PaneHint, ty
 import { t, tf } from "../../../i18n";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, useRendererHost, useShortcutLabel, useUiHost } from "../../../ui";
+import { Box, ScrollBox, Text, useRendererHost, useShortcutLabel, useUiCapabilities, useUiHost } from "../../../ui";
 import { detectShortcutPlatform, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
 import { apiClient, type CloudPricing } from "../../../api-client";
@@ -67,6 +67,8 @@ const TRY_THESE = [
 
 /** The most of a table its key column takes, however many chips a row carries. */
 const KEY_COLUMN_MAX_SHARE = 0.4;
+/** The widest the key column grows for a row's chips side by side; past it the terminal sets them on the lines under it. */
+const KEY_COLUMN_MAX = 24;
 
 function HelpPane({ focused, width, height }: PaneProps) {
   const registry = getSharedRegistry();
@@ -395,10 +397,11 @@ function HelpPane({ focused, width, height }: PaneProps) {
 
   // One key column for every key table in Help, wide enough for the longest group of chips, so the descriptions
   // line up from table to table. A narrow pane caps it, and a row past the cap shows the chips that fit whole.
+  const terminal = useUiCapabilities().nativePaneChrome !== true;
   const keyColumnWidth = useMemo(() => badgeColumnWidth(
     [...trySections, ...startSections, ...referenceSections].flatMap((section) => section.items.map((item) => item.badges)),
-    { min: 8, max: Math.max(8, Math.floor(width * KEY_COLUMN_MAX_SHARE)) },
-  ), [referenceSections, startSections, trySections, width]);
+    { min: 8, max: Math.max(8, Math.min(terminal ? KEY_COLUMN_MAX : Infinity, Math.floor(width * KEY_COLUMN_MAX_SHARE))) },
+  ), [referenceSections, startSections, terminal, trySections, width]);
 
   const renderContent = () => {
     switch (activeTabId) {

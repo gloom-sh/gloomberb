@@ -122,8 +122,9 @@ describe("adaptive composite time axis", () => {
     expect(year.text).toContain("Jan 2026");
     expect(year.text).toContain("29 Jul 2026");
     expect(year.ticks.length).toBeGreaterThan(3);
-    expect(multiyear.text).toContain("2021");
-    expect(multiyear.text).toContain("2026");
+    // A start in July 2021 has its first year tick, 2022, beside it: the tick
+    // stays and the bare start year gives way, so no year reads as missing.
+    expect(multiyear.text).toMatch(/^\s*2022\s+2023\s+2024\s+2025\s+2026\s*$/);
     expect(multiyear.text).not.toContain("29 Jul");
     expectValidLayout(month, 80);
     expectValidLayout(year, 80);
