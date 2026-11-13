@@ -1,7 +1,7 @@
 import { type ComponentType } from "react";
 import { Box, Text, useUiHost } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
-import { useRemoteUiNode } from "../../remote/semantic-tree";
+import { useRemoteUiNode, useRemoteUiScope } from "../../remote/semantic-tree";
 import { t } from "../../i18n";
 
 export type IconName =
@@ -160,12 +160,14 @@ export function IconButton({
 }: IconButtonProps) {
   const colors = useThemeColors();
   const label = t(rawLabel);
+  // Of the surface it is drawn in, as a kit Button is: a prompt's dialog's close is that prompt's.
+  const remoteScope = useRemoteUiScope();
   useRemoteUiNode({
     role: "button",
     label,
     disabled,
     actions: { press: () => { if (!disabled) onPress?.(); } },
-    metadata: { icon, pressed },
+    metadata: { icon, pressed, ...(remoteScope ? { scope: remoteScope } : {}) },
   });
   const HostIconButton = useUiHost().IconButton as ComponentType<IconButtonProps> | undefined;
   if (HostIconButton) {
