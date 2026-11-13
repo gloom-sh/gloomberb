@@ -243,6 +243,7 @@ import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarR
 import { withBalanceSheetRate } from "../../market-data/quotes/balance-sheet-rate";
 import { regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { atLivePriceEarnings } from "../../market-data/quotes/live-valuation";
+import { quoteSourceName } from "../../market-data/quotes/export-identity";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
 import {
   barHistoryFreshness,
@@ -768,7 +769,9 @@ const FEED_COLUMNS = [
     header: "Feed",
     shrink: false,
     stackPriority: 4,
-    format: (value: unknown) => value === "stale" || value === "nominal" ? cliStyles.warning(value) : String(value ?? ""),
+    // A coin priced by one exchange's own trade names it on its row: `live · Coinbase`.
+    format: (value: unknown, row: QuoteRow) => value === "stale" || value === "nominal" ? cliStyles.warning(value)
+      : `${String(value ?? "")}${row.priceVenue ? ` · ${row.priceVenue}` : ""}`,
   },
   // A nominal price names the session it is from ("6 Nov close"), not the last print; JSON keeps both.
   { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5,
@@ -983,6 +986,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       providerId: quote?.providerId ?? "",
       source: quote?.dataSource ?? quote?.providerId ?? "",
       feed: quoteFeedState(quote, now),
+      ...quote?.priceVenue ? { priceVenue: quote.priceVenue } : {},
       // When the price Last shows was observed: in a pre-market nothing has traded in, the close it stands at.
       updatedAt: quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "",
       input: result.input ?? "",
@@ -1458,6 +1462,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     if (ctx.cliOptions.format !== "json") useKnownCoins();
     // Only yield indices: their change is in bp, so the text header drops the percent sign (CSV keeps the percent it holds).
     const yieldsOnly = data.length > 0 && data.every((row) => isYieldIndexSymbol(row.target.symbol));
+    const venued = data.some((row) => row.quote?.priceVenue);
     ctx.printResult({
       data: rows,
       warnings: warnings.length > 0 ? warnings : undefined,
@@ -1479,6 +1484,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
           || row.currency || (row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : isIndexLevel(row.instrumentType) ? INDEX_POINTS_EXPORT_UNIT : null),
         // Each row as of its own price (^TNX's 19:59 beside ^VIX's 21:15), as Updated says; a row with none is blank.
         asOf: row.updatedAt || null,
+        // Beside a coin priced by one exchange's own trade, which is cited to that exchange, each row names its own.
+        ...venued ? { source: quoteSourceName(row) } : {},
       }),
       // A row with no price or move says why in its status column, as the warnings do.
       exportStatus: quoteExportStatus,

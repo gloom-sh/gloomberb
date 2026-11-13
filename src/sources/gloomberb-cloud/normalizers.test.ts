@@ -328,4 +328,7 @@ test("a coin priced by one exchange's own trade is named by the exchange, as its
   // The composite, and a name that is no exchange's, stay Gloom Cloud's.
   expect(quoteSourceName(mapQuote({ ...raw, priceVenue: undefined }))).toBe("Gloom Cloud");
   expect(mapQuote({ ...raw, priceVenue: "<script>" }).priceVenue).toBeUndefined();
+  // The venue is said of each observation: the composite read after an exchange's price does not keep its name.
+  const after = mergeQuoteContribution(normalizeQuoteContribution(quote)!, mapQuote({ ...raw, priceVenue: undefined, dataSource: "delayed", lastUpdated: raw.lastUpdated! + 60_000 }));
+  expect(after.priceVenue).toBeUndefined();
 });

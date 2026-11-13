@@ -3,6 +3,7 @@ import type { HeadlessPaneFreshness, HeadlessPaneRow } from "../types/headless";
 import { deriveHeadlessFreshness, type ReportFreshness } from "./pane-functions/freshness";
 import { quoteObservation, REPORTED_DATA } from "../plugins/builtin/shared/report-freshness";
 import { latestReportedPeriod } from "../utils/latest-financial-period";
+import { quoteSourceName } from "../market-data/quotes/export-identity";
 
 /**
  * The source, as-of and status line of a plain CLI command, derived exactly as
@@ -33,8 +34,12 @@ export function quotesFreshness(
   declared?: HeadlessPaneFreshness,
   now = Date.now(),
 ): ReportFreshness | undefined {
-  const rows = [...quotes].filter((quote): quote is Quote => quote != null).map((quote) => quoteObservation(quote, now));
-  return rows.length > 0 ? rowsFreshness(rows, declared, undefined, now) : undefined;
+  const shown = [...quotes].filter((quote): quote is Quote => quote != null);
+  const rows = shown.map((quote) => quoteObservation(quote, now));
+  // A coin priced by an exchange's own trade names the exchange, as its pane footer does: `Coinbase and Kraken`.
+  const names = shown.some((quote) => quote.priceVenue) ? [...new Set(shown.map((quote) => quoteSourceName(quote)))] : [];
+  const source = !declared?.source && names.length > 0 && names.every(Boolean) ? names.join(" and ") : undefined;
+  return rows.length > 0 ? rowsFreshness(rows, source ? { ...declared, source } : declared, undefined, now) : undefined;
 }
 
 /**

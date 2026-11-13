@@ -263,6 +263,8 @@ export function mergeQuoteContribution(
   }
   // So is a close its daily closes could not date: the next reading says it again.
   if (next.previousCloseUndated === undefined) delete merged.previousCloseUndated;
+  // And the exchange whose own trade the price is: a composite or streamed tick after it names none.
+  if (next.priceVenue === undefined) delete merged.priceVenue;
 
   if (isOtherTradingDay(current, next)) {
     const record = merged as unknown as Record<string, unknown>;
