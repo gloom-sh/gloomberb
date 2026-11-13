@@ -150,9 +150,24 @@ function indexPrintSession(quote: Quote): string | null {
   const zone = sessionCalendarTimeZone(venue) ?? quote.indexSession?.timeZone;
   if (!zone) return null;
   const date = zonedDateKey(quote.lastUpdated, zone);
-  if (!date || !hasPublishedSessionCalendar(venue, date) || !isVenueTradingDay(venue, date)) return null;
+  if (!date) return null;
+  if (!hasPublishedSessionCalendar(venue, date)) return ownIndexSession(quote, date);
+  if (!isVenueTradingDay(venue, date)) return null;
   const open = latestRegularSessionOpen(venue, quote.lastUpdated);
   return open != null && zonedDateKey(open, zone) === date ? date : null;
+}
+
+/**
+ * For an index whose venue publishes no calendar (the Euro Stoxx 50 and the
+ * FTSE 100, quoted under their publishers' ZURICH and FTSE INDEX), the
+ * session of the index's own calendar (indexSession) its print sits in: one
+ * that opened on `date`, at or before the print. Null when none did.
+ */
+function ownIndexSession(quote: Quote, date: string): string | null {
+  const session = quote.indexSession;
+  if (!session?.timeZone) return null;
+  const windows = [...session.regular, ...(session.current ? [session.current] : [])];
+  return windows.some((window) => window.start <= quote.lastUpdated && zonedDateKey(window.start, session.timeZone) === date) ? date : null;
 }
 
 /** A coin on the spot crypto venue: its day is the UTC day. */
