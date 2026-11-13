@@ -15,7 +15,8 @@ import { askgConversationListStore } from "./conversation-store";
 import { resetASKGClientManifestCache } from "./host";
 import type { ASKGToolRow } from "./model";
 import { ASKGPane } from "./pane";
-import { requestASKGPaneAttachment } from "./pending-question";
+import { askGloomQuestion, requestASKGPaneAttachment } from "./pending-question";
+import * as paneCatalog from "../../../../cli/pane-functions/catalog";
 import type { AskGloomPaneAttachment } from "../../../../ask-gloom/pane-request";
 import { describeToolRow } from "./tool-display";
 import { ToolTimelineRow } from "./tool-timeline";
@@ -240,6 +241,35 @@ async function ask(question: string): Promise<string> {
   await flush();
   return tui.frame();
 }
+
+// "what did the DAX do yesterday" asked signed out met only the wall, with nothing to try without an account.
+describe("ASKGPane signed out", () => {
+  test("a question asked behind the wall is offered the functions the catalog finds for it, and nothing is asked of Gloom", async () => {
+    apiClient.setSessionToken(null);
+    apiClient.restoreCachedUser(null);
+    const asked: string[] = [];
+    const found = spyOn(paneCatalog, "functionsForQuestion").mockImplementation(async (_registry, question) => {
+      asked.push(question);
+      return [
+        { code: "WEI", label: "World Equity Indices", command: "gloom fn WEI" },
+        { code: "CMP", label: "Comparison Chart", command: "gloom fn CMP <tickers>" },
+      ];
+    });
+    try {
+      expect(await renderPane(WIDE_PANE_WIDTH)).not.toContain("these functions answer it");
+      await act(async () => {
+        askGloomQuestion("what did the DAX do yesterday");
+      });
+      await flush();
+      const frame = tui.frame().replace(/\s+/g, " ");
+      expect(asked).toEqual(["what did the DAX do yesterday"]);
+      expect(frame).toContain("Without one, these functions answer it: WEI World Equity Indices, CMP Comparison Chart.");
+      expect(requests.filter((request) => request.includes("/askg/"))).toEqual([]);
+    } finally {
+      found.mockRestore();
+    }
+  });
+});
 
 describe("ASKGPane failures", () => {
   test("a failure too long for the pane keeps its tail instead of running off the edge", async () => {

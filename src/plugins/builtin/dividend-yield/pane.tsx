@@ -21,6 +21,7 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { colors, priceColor } from "../../../theme/colors";
 import { TextAttributes, useUiCapabilities } from "../../../ui";
 import { MISSING_VALUE, displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { forwardDividendNote, lapseValue, lastPaidNote, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
@@ -61,8 +62,9 @@ function formatGrowth(value: number | null): string {
   return formatPercentRaw(value * 100);
 }
 
-/** A growth figure, or "n/a" with how many payments its short year holds. */
-function growthItem(id: string, label: string, growth: number | null, payments: GrowthPayments | null | undefined): StatItem {
+/** A growth figure, "N/M" off a year that paid nothing, or "n/a" with how many payments its short year holds. */
+function growthItem(id: string, label: string, growth: number | null, payments: GrowthPayments | null | undefined, notMeaningful?: boolean): StatItem {
+  if (growth == null && notMeaningful) return { id, label, value: NOT_MEANINGFUL_TEXT };
   if (growth == null && payments) {
     return { id, label, value: "n/a", detail: growthPaymentsDetail(payments) };
   }
@@ -126,8 +128,8 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
       ...metrics.trailingRate != null ? converted : {} },
     { id: "forward-rate", label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency, !!convertedFrom, convertedSubUnit),
       ...metrics.forwardRate != null ? converted : {} },
-    growthItem("growth-1y", short ? "1Y chg" : "1Y growth", metrics.growth1Y, metrics.growth1YPayments),
-    growthItem("cagr-3y", "3Y CAGR", metrics.growth3Y, metrics.growth3YPayments),
+    growthItem("growth-1y", short ? "1Y chg" : "1Y growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful),
+    growthItem("cagr-3y", "3Y CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),
     { id: "payout", label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : MISSING_VALUE },
     { id: "cadence", label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
     ...exDate,

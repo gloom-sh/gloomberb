@@ -5,6 +5,8 @@ import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./mod
 import { cashRunway } from "../../../../utils/cash-runway";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { createTestTicker } from "../../../../test-support/ticker";
+import { servedRatesNotMeaningful } from "../../../../utils/served-rates";
+import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
 
 function overview(fundamentals: Fundamentals, financialCurrency?: string) {
   return Object.fromEntries(overviewFields(fundamentals, financialCurrency).map(({ label, value }) => [label, value]));
@@ -253,4 +255,21 @@ test("DES shows runway only for a burning TTM, never a seasonal outflow or short
   expect(stats(burning).find((row) => row.label === "Runway")).toMatchObject({
     value: "> 120 mo", detail: expect.arrayContaining(["qtr to 06-30 · TTM > 120 mo"]),
   });
+});
+
+test("DES reads a margin over revenue at or below zero, and growth off it, N/M in N/M's colour, as RV and ticker do", () => {
+  const fundamentals: Fundamentals = { marketCap: 1e9, revenue: -2e6, operatingMargin: 41.5, profitMargin: 38.2, revenueGrowth: 4 };
+  const quarterlyStatements = [{ date: "2025-06-30", totalRevenue: -4e6 }, { date: "2026-06-30", totalRevenue: 12e6 }];
+  const notMeaningful = servedRatesNotMeaningful(fundamentals, { quarterlyStatements });
+  expect(Object.keys(notMeaningful).sort()).toEqual(["lastQuarterGrowth", "operatingMargin", "profitMargin", "revenueGrowth"]);
+  const stats = buildOverviewStats({ quote: undefined, fundamentals, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value, notMeaningful });
+  for (const label of ["Op Margin", "Profit Marg", "Rev Growth"]) {
+    expect(stats.find((stat) => stat.label === label)).toEqual({ label, value: "N/M", valueColor: notMeaningfulColor() });
+  }
+  // Revenue above zero, now and a year earlier: the figures stand.
+  const healthy = { ...fundamentals, revenue: 40e6, operatingMargin: 0.12, profitMargin: 0.08, revenueGrowth: 0.5 };
+  expect(servedRatesNotMeaningful(healthy, { quarterlyStatements: [{ date: "2025-06-30", totalRevenue: 8e6 }, ...quarterlyStatements.slice(1)] })).toEqual({});
+  const shown = buildOverviewStats({ quote: undefined, fundamentals: healthy, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value });
+  expect(shown.find((stat) => stat.label === "Op Margin")?.value).toBe("12.00%");
+  expect(shown.find((stat) => stat.label === "Rev Growth")?.value).toBe("+50.00%");
 });

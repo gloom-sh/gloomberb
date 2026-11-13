@@ -202,6 +202,17 @@ test("a listing abroad gets the same columns: gross margin over the trailing twe
   expect(row("ASML:AMS")).toMatchObject({ grossMarginPercent: 50, grossMarginAsOf: "2026-09-30" });
   expect(row("SEMI:XETRA")).toMatchObject({ grossMarginPercent: 35, grossMarginPeriod: "FY25", grossMarginAsOf: "2025-12-31" });
   expect(report.notes ?? []).toEqual([]);
+  // Over revenue at or below zero the margin reads N/M, not a gap.
+  const negative = mapCloudFinancials({
+    annualStatements: [{ date: "2025-12-31", currency: "EUR", totalRevenue: -20, grossProfit: -30 }],
+    quarterlyStatements: [], priceHistory: [], financialCurrency: "EUR",
+    quote: { symbol: "LOSS", price: 10, change: 0, changePercent: 0, currency: "EUR", lastUpdated: Date.parse("2026-11-06T21:00:00Z") },
+  } as unknown as CloudFinancialsPayload);
+  const nm = await relativeValuationHeadless.load({ symbols: ["LOSS:XETRA"], argument: ["LOSS:XETRA"], rawArgument: "LOSS:XETRA", options: { columns: "grossMargin" } },
+    { signal: new AbortController().signal, marketData: createTestDataProvider({ async getTickerFinancials() { return negative; } }) } as HeadlessPaneContext);
+  expect(nm.rows[0]).toMatchObject({ grossMarginNotMeaningful: "revenue is at or below zero", grossMarginAsOf: "2025-12-31" });
+  const grossColumn = nm.columns!.find((column) => column.key === "grossMarginPercent")!;
+  expect(grossColumn.format!(nm.rows[0]!.grossMarginPercent, nm.rows[0]!)).toBe("N/M");
   // EV/S over the market cap + total debt - cash the withdrawn 37.25T was checked against, EUR revenue at the check's rate, and the note says so.
   expect(row("ASML")).toMatchObject({ evSales: 535.04e9 / (39.47e9 * 1.133), evSalesBasis: "computed",
     evSalesNote: "EV 535.04B USD computed from market cap + total debt - cash (balance sheet 2026-09-30, EUR/USD 1.1330 at its date's close);"

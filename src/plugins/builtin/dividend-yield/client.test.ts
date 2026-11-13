@@ -46,6 +46,17 @@ describe("cash distribution calculations", () => {
     expect(buildDividendMetrics([payment("2023-08-01")], null, 100, { now: afterSuspension }).growth1Y).toBeNull();
   });
 
+  test("cash paid again after a year of none is growth off zero: N/M, never a number", () => {
+    const history = [payment("2020-08-01", 1), payment("2021-08-01", 1), payment("2024-08-01", 1)];
+    const resumed = buildDividendMetrics(history, null, 100, { now: new Date("2024-09-10T12:00:00Z") });
+    expect(resumed).toMatchObject({ growth1Y: null, growth1YNotMeaningful: true, growth3Y: 0 });
+    expect(resumed.growth3YNotMeaningful).toBeUndefined();
+    // No cash in either year stays without growth, and is not called N/M.
+    const stopped = buildDividendMetrics(history.slice(0, 2), null, 100, { now: new Date("2024-09-10T12:00:00Z") });
+    expect(stopped.growth1Y).toBeNull();
+    expect(stopped.growth1YNotMeaningful).toBeUndefined();
+  });
+
   test("a monthly fund whose history ends early says so, and its forward rate, trailing yield and last ex-date all stop there", () => {
     // IEF on 2026-11-06: the history ends at 2026-09-01 while the summary states a rate as of 2026-11-02.
     const months = ["2025-11-03", "2025-12-01", "2026-01-02", "2026-02-02", "2026-03-02", "2026-04-01", "2026-05-01", "2026-06-01", "2026-07-01", "2026-08-03", "2026-09-01"];

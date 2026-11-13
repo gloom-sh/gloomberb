@@ -191,3 +191,33 @@ test("fn CN prints a summary on one line under its row and none that repeats the
   const json = serializeHeadlessPaneResult(definition, result) as { items: Array<{ summary: string | null }> };
   expect(json.items.map((item) => item.summary)).toEqual([losses.summary, echo.summary]);
 });
+
+test("fn CN says how many routine notices a folded row stands for, and exports keep the count", async () => {
+  const notice: CloudNewsPayload = {
+    ...story("buyback", "positive", 18, "2026-11-10T18:19:26.000Z"),
+    headline: "Transaction in own shares",
+    summary: "HSBC bought 510,000 ordinary shares for cancellation on 10 November under its buyback announced on 28 October.",
+    routine: { kind: "buyback", notices: 8, since: "2026-10-30T18:32:16.000Z", programme: "buy-back announced on 2026-10-28", storyIds: [] },
+  };
+  // A server that lists each notice sends no `routine`; one notice is no fold.
+  const single: CloudNewsPayload = { ...story("single", "neutral", 18, "2026-11-09T18:26:49.000Z"), headline: "Transaction in own shares", routine: { kind: "buyback", notices: 1, since: "2026-11-09T18:26:49.000Z" } };
+  const definition = createTickerNewsHeadless({
+    loadNews: async () => ({ items: [notice, single], nextCursor: null }),
+    now: () => new Date("2026-11-12T19:00:00.000Z"),
+  });
+  const loadArgs = args("0005:HKEX", { sentiment: "any", minImportance: 0, limit: 50 });
+  const result = await definition.load(loadArgs, context);
+  const text = renderHeadlessPaneText(definition, result, loadArgs, "CN");
+  expect(text).toContain("Transaction in own shares (8 notices since 30 Oct)");
+  expect(text.match(/notices since/g)).toHaveLength(1);
+  const json = serializeHeadlessPaneResult(definition, result) as { items: Array<Record<string, unknown>> };
+  // The export's headline is the story's; the count is in fields of its own.
+  expect(json.items[0]).toMatchObject({
+    headline: "Transaction in own shares",
+    routineKind: "buyback",
+    routineNotices: 8,
+    routineSince: "2026-10-30T18:32:16.000Z",
+    routineProgramme: "buy-back announced on 2026-10-28",
+  });
+  expect(json.items[1]).not.toHaveProperty("routineNotices");
+});

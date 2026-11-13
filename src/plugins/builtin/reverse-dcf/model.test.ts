@@ -64,6 +64,20 @@ describe("reverse DCF", () => {
   });
 });
 
+test("an insurer's or a bank's EV is n/m for it, with no growth rate priced; a capital markets firm's EV is priced", () => {
+  const fundamentals = { enterpriseValue: 2000, freeCashFlow: 100, financialCurrency: "USD", marketCapCurrency: "USD", marketCap: 1800 };
+  const of = (industry: string) => projectReverseDcf({ ...financials(fundamentals), profile: { industry } }, { symbol: "X", discountRate: 0.09 });
+  for (const [industry, reason] of [["Insurance - Life", "n/m for insurers"], ["Banks - Diversified", "n/m for banks"]] as const) {
+    const model = of(industry);
+    expect(model).toMatchObject({ enterpriseValue: null, implied: null, error: `EV ${reason}.` });
+  }
+  // Evercore, Tradeweb, Houlihan Lokey: an EV that measures the business.
+  const adviser = of("Capital Markets");
+  expect(adviser.error).toBeNull();
+  expect(adviser.enterpriseValue).toBe(2000);
+  expect(adviser.implied).not.toBeNull();
+});
+
 describe("an EV the source withdrew", () => {
   const withdrawn = { enterpriseValue: undefined, unavailableFields: ["enterpriseValue" as const], marketCap: 195_000, freeCashFlow: 5_000,
     financialCurrency: "HKD", marketCapCurrency: "HKD" };

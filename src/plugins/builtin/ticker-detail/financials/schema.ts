@@ -1,12 +1,8 @@
+import { revenueMargin } from "../../../../utils/growth";
 import type { FinancialSubTab } from "./model";
 
-function financialRatio(
-  numerator: number | undefined,
-  denominator: number | undefined,
-): number | undefined {
-  if (numerator == null || denominator == null || denominator === 0) return undefined;
-  return numerator / denominator;
-}
+/** A line over revenue: N/M where revenue is zero or negative. */
+const financialRatio = revenueMargin;
 
 const LOWER_IS_BETTER = "lower" as const;
 const NEUTRAL_GROWTH = "neutral" as const;
@@ -136,7 +132,7 @@ export const FINANCIAL_SUB_TABS: FinancialSubTab[] = [
         defaultExpanded: true,
         children: [
           { label: "Operating CF", key: "operatingCashFlow", format: "compact" },
-          { label: "CapEx", key: "capitalExpenditure", format: "compact" },
+          { label: "CapEx", key: "capitalExpenditure", format: "compact", outflow: true },
         ],
       },
       {
@@ -183,13 +179,13 @@ export const FINANCIAL_SUB_TABS: FinancialSubTab[] = [
         summaryKey: "investingCashFlow",
         defaultExpanded: true,
         children: [
-          { label: "Purchase PPE", key: "purchaseOfPPE", format: "compact" },
+          { label: "Purchase PPE", key: "purchaseOfPPE", format: "compact", outflow: true },
           { label: "Sale PPE", key: "saleOfPPE", format: "compact" },
           { label: "Net PPE", key: "netPPEPurchaseAndSale", format: "compact" },
-          { label: "Acquisitions", key: "purchaseOfBusiness", format: "compact" },
+          { label: "Acquisitions", key: "purchaseOfBusiness", format: "compact", outflow: true },
           { label: "Business Sales", key: "saleOfBusiness", format: "compact" },
           { label: "Net Business", key: "netBusinessPurchaseAndSale", format: "compact" },
-          { label: "Buy Investments", key: "purchaseOfInvestment", format: "compact" },
+          { label: "Buy Investments", key: "purchaseOfInvestment", format: "compact", outflow: true },
           { label: "Sell Investments", key: "saleOfInvestment", format: "compact" },
           { label: "Net Investments", key: "netInvestmentPurchaseAndSale", format: "compact" },
           { label: "Other Investing", key: "netOtherInvestingChanges", format: "compact" },
@@ -204,20 +200,20 @@ export const FINANCIAL_SUB_TABS: FinancialSubTab[] = [
         defaultExpanded: true,
         children: [
           { label: "Debt Issuance", key: "issuanceOfDebt", format: "compact" },
-          { label: "Debt Repayment", key: "repaymentOfDebt", format: "compact" },
+          { label: "Debt Repayment", key: "repaymentOfDebt", format: "compact", outflow: true },
           { label: "Net Debt", key: "netIssuancePaymentsOfDebt", format: "compact" },
           { label: "LT Debt Issuance", key: "longTermDebtIssuance", format: "compact" },
-          { label: "LT Debt Payments", key: "longTermDebtPayments", format: "compact" },
+          { label: "LT Debt Payments", key: "longTermDebtPayments", format: "compact", outflow: true },
           { label: "Net LT Debt", key: "netLongTermDebtIssuance", format: "compact" },
           { label: "ST Debt Issuance", key: "shortTermDebtIssuance", format: "compact" },
-          { label: "ST Debt Payments", key: "shortTermDebtPayments", format: "compact" },
+          { label: "ST Debt Payments", key: "shortTermDebtPayments", format: "compact", outflow: true },
           { label: "Net ST Debt", key: "netShortTermDebtIssuance", format: "compact" },
-          { label: "Buybacks", key: "repurchaseOfCapitalStock", format: "compact" },
+          { label: "Buybacks", key: "repurchaseOfCapitalStock", format: "compact", outflow: true },
           { label: "Stock Issuance", key: "commonStockIssuance", format: "compact" },
-          { label: "Stock Payments", key: "commonStockPayments", format: "compact" },
+          { label: "Stock Payments", key: "commonStockPayments", format: "compact", outflow: true },
           { label: "Net Stock", key: "netCommonStockIssuance", format: "compact" },
-          { label: "Dividends Paid", key: "cashDividendsPaid", format: "compact" },
-          { label: "Common Dividends", key: "commonStockDividendPaid", format: "compact" },
+          { label: "Dividends Paid", key: "cashDividendsPaid", format: "compact", outflow: true },
+          { label: "Common Dividends", key: "commonStockDividendPaid", format: "compact", outflow: true },
           { label: "Other Financing", key: "netOtherFinancingCharges", format: "compact" },
           { label: "Continuing Fin CF", key: "cashFlowFromContinuingFinancingActivities", format: "compact" },
         ],

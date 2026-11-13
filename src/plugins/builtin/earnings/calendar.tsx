@@ -288,7 +288,8 @@ function ReportTile({ report, selected, onPress, tileRef }: {
   const colors = useThemeColors();
   const selectionFill = useSelectionFill();
   const surprise = report.epsSurprise;
-  const tone = surprise == null || surprise === 0 ? colors.text : surprise > 0 ? colors.positive : colors.negative;
+  // An N/M surprise (against a loss or zero estimate) is no number to colour by.
+  const tone = typeof surprise !== "number" || surprise === 0 ? colors.text : surprise > 0 ? colors.positive : colors.negative;
   const ink = !selected ? tone : selectionFill.lit ? colors.selectedText : selectionFill.ink(tone);
   return (
     <Box

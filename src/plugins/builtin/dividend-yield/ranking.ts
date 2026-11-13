@@ -1,5 +1,6 @@
 import type { HeadlessBundleResult, HeadlessPaneColumn } from "../../../types/headless";
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import type { DividendData } from "./client";
 import { formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
@@ -172,6 +173,9 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
         // Set when a year the figure compares is short of the cadence's payments: the figure is then n/a.
         ...metrics.growth1YPayments ? { growth1YPayments: growthPaymentsDetail(metrics.growth1YPayments) } : {},
         ...metrics.growth3YPayments ? { growth3YPayments: growthPaymentsDetail(metrics.growth3YPayments) } : {},
+        // Set when the earlier year paid nothing and the later one paid: the figure is then N/M.
+        ...metrics.growth1YNotMeaningful ? { growth1YNotMeaningful: true } : {},
+        ...metrics.growth3YNotMeaningful ? { growth3YNotMeaningful: true } : {},
         lastExDate: isoDay(metrics.lastExDividendDate),
         payDate: declaredPayDate(data, now),
         frequency: metrics.paymentFrequency,
@@ -192,9 +196,13 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
 }
 
 const ratio = (value: unknown) => formatDividendYield(typeof value === "number" ? value : null);
-/** A growth figure, or n/a when one of its years is short (the row's `<key>Payments`). */
-const growth = (key: "growth1Y" | "growth3Y") => (value: unknown, row: Record<string, unknown>) =>
-  typeof value !== "number" && typeof row[`${key}Payments`] === "string" ? "n/a" : formatPercent(typeof value === "number" ? value : undefined);
+/**
+ * A growth figure; n/m off a year that paid nothing (the row's `<key>NotMeaningful`; the text report draws N/M);
+ * or n/a when one of its years is short (the row's `<key>Payments`).
+ */
+const growth = (key: "growth1Y" | "growth3Y", notMeaningful = NOT_MEANINGFUL_TEXT.toLowerCase()) => (value: unknown, row: Record<string, unknown>) =>
+  typeof value !== "number" && row[`${key}NotMeaningful`] === true ? notMeaningful
+    : typeof value !== "number" && typeof row[`${key}Payments`] === "string" ? "n/a" : formatPercent(typeof value === "number" ? value : undefined);
 const day = (value: unknown) => typeof value === "string" && value ? value : MISSING_VALUE;
 
 const RANKING_COLUMNS: HeadlessPaneColumn[] = [
@@ -208,10 +216,10 @@ const RANKING_COLUMNS: HeadlessPaneColumn[] = [
     format: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL.toLowerCase() : ratio(value),
     textFormat: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL : ratio(value),
     description: "Trailing twelve-month dividends over trailing twelve-month diluted EPS; N/M when that EPS is zero or negative." },
-  { key: "growth1Y", header: "1Y growth", align: "right", format: growth("growth1Y"),
-    description: "Trailing twelve-month cash per share against a year earlier; n/a when either year holds fewer payments than the cadence pays." },
-  { key: "growth3Y", header: "3Y CAGR", align: "right", format: growth("growth3Y"),
-    description: "Compound annual growth of trailing twelve-month cash per share over three years; n/a when either year holds fewer payments than the cadence pays." },
+  { key: "growth1Y", header: "1Y growth", align: "right", format: growth("growth1Y"), textFormat: growth("growth1Y", NOT_MEANINGFUL_TEXT),
+    description: "Trailing twelve-month cash per share against a year earlier; N/M when the year earlier paid nothing; n/a when either year holds fewer payments than the cadence pays." },
+  { key: "growth3Y", header: "3Y CAGR", align: "right", format: growth("growth3Y"), textFormat: growth("growth3Y", NOT_MEANINGFUL_TEXT),
+    description: "Compound annual growth of trailing twelve-month cash per share over three years; N/M when the year three years earlier paid nothing; n/a when either year holds fewer payments than the cadence pays." },
   { key: "lastExDate", header: "Last ex", format: day, shrink: false },
   { key: "payDate", header: "Next pay", format: day, shrink: false, stackPriority: 2,
     description: "Pay date of the next declared distribution; past distributions carry ex-dates only." },

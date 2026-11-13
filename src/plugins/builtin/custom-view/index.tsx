@@ -1,6 +1,6 @@
 import type { GloomPlugin, PaneTemplateCreateOptions } from "../../../types/plugin";
 import { CUSTOM_VIEW_PANE_ID, CUSTOM_VIEW_SPEC_SETTING, CustomViewPane } from "./pane";
-import { parseViewSpec, serializeViewSpec, type ViewSpec } from "./view-spec";
+import { EXAMPLE_VIEW_SPEC, parseViewSpec, serializeViewSpec, type ViewSpec } from "./view-spec";
 
 export { CUSTOM_VIEW_PANE_ID } from "./pane";
 export { setViewRefResolver, trialLoadViewSource, UnknownViewKeysError } from "./loader";
@@ -39,6 +39,8 @@ export const customViewPlugin: GloomPlugin = {
     defaultMode: "floating",
     defaultFloatingSize: { width: 100, height: 28 },
     tableExport: true,
+    // The catalog's example is a spec that runs as typed (`catalog VIEW` showed only `<spec JSON or empty>`).
+    reportArgument: { kind: "free-text", placeholder: "spec JSON or empty", optional: true, examples: [`'${EXAMPLE_VIEW_SPEC}'`] },
     settings: {
       fields: [{
         key: CUSTOM_VIEW_SPEC_SETTING,

@@ -3,10 +3,12 @@ import type { DataTableCell, DataTableColumn } from "../../../components";
 import { withCompanyLogo } from "../../../components/company-logo";
 import { TABLE_COLUMN_GAP, tableColumnLeadGap, tableColumnWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
+import { notMeaningfulCell } from "../../../components/ui/not-meaningful";
+import { isNotMeaningful } from "../../../utils/growth";
 import { TextAttributes } from "../../../ui";
 import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
 import type { BoardReport, BoardRow, BoardSort } from "./board-model";
-import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL, weekday } from "./format";
+import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL, weekday, type Surprise } from "./format";
 
 type BoardColumnId =
   | "owned" | "symbol" | "name" | "when" | "status" | "cap" | "ccy" | "epsEstimate" | "analysts" | "epsActual" | "basis"
@@ -127,8 +129,10 @@ export interface BoardCellContext {
 const NO_CONTEXT: BoardCellContext = { statusShown: true, move: () => null };
 
 /** A signed move or surprise, as ERN draws one. */
-function signed(value: number | null): DataTableCell {
-  return { text: signedPercent(value), color: value == null || value === 0 ? colors.textDim : value > 0 ? colors.positive : colors.negative };
+function signed(value: Surprise): DataTableCell {
+  // N/M (a surprise against a loss or zero estimate) as every pane draws it; a missing figure dim.
+  if (isNotMeaningful(value)) return notMeaningfulCell();
+  return { text: signedPercent(value), color: typeof value !== "number" || value === 0 ? colors.textDim : value > 0 ? colors.positive : colors.negative };
 }
 
 export function renderBoardCell(row: BoardRow, column: BoardColumn, context: BoardCellContext = NO_CONTEXT): DataTableCell {

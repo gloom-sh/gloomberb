@@ -33,7 +33,9 @@ const NAME_NOISE = new Set([
 // Turkish legal forms short enough to open another company's name (AO Smith, AO World): a legal form only as its last word.
 const LAST_WORD_NOISE = new Set(["ao", "tas"]);
 // Words a venue adds to the share it lists ("Microsoft Corporation Common Stock"), never part of whose it is.
-const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares"]);
+const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares", "share"]);
+// A venue's short form of a share class word, read as the word: "Volkswagen AG Pref. Share" in Zurich is its "Preferred Stock".
+const SHARE_WORD_FORMS: Readonly<Record<string, string>> = { pref: "preferred", pfd: "preferred" };
 
 /** A company's name for comparing its listings: "Kotobuki Spirits Co., Ltd." is "kotobuki spirits". */
 function companyKey(name: string): string {
@@ -42,6 +44,7 @@ function companyKey(name: string): string {
     .replace(/\b(?:(?:american|global) )?depositary (?:shares?|receipts?)\b/g, " ")
     .replace(/\./g, "")
     .split(/[^\p{L}\p{N}]+/u)
+    .map((word) => SHARE_WORD_FORMS[word] ?? word)
     .filter((word) => word && !NAME_NOISE.has(word));
   // The last word before any share wording, never a name's only one.
   let last = words.length - 1;

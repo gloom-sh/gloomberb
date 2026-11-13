@@ -370,3 +370,33 @@ describe("a bond fund's yields", () => {
     expect(JSON.stringify(plain.result)).not.toMatch(/secYield/);
   });
 });
+
+test("cash growth after a year that paid nothing is N/M in the text, null with its flag in JSON, and in CSV's status column, never a figure", async () => {
+  // Paid again after a year of none: the earlier year's zero is no base for a percentage.
+  const resumed: DividendData = { ...fixture, metrics: { ...fixture.metrics, growth1Y: null, growth1YNotMeaningful: true } };
+  const single = createDividendYieldHeadless({ loadData: async () => resumed });
+  const request = args({ type: "all", limit: 40 });
+  const result = await single.load(request, context);
+  const growth = result.sections[0]!.entries!.find((entry) => entry.label === "1Y Cash Growth");
+  expect(growth).toMatchObject({ value: null, formatted: "N/M" });
+  expect(renderHeadlessPaneText(single, result, request, "DVD")).toMatch(/1Y Cash Growth\s+N\/M/);
+
+  const ranking = { rawArgument: "AAPL, KO", argument: "AAPL, KO", symbols: ["AAPL", "KO"], options: {} } satisfies HeadlessPaneLoadArgs;
+  const ranked = createDividendYieldHeadless({ loadData: async (symbol) => symbol === "AAPL" ? resumed : fixture });
+  const rankedResult = await ranked.load(ranking, context);
+  const rows = rankedResult.sections[0]!.rows!;
+  expect(rows.find((row) => row.symbol === "AAPL")).toMatchObject({ growth1Y: null, growth1YNotMeaningful: true });
+  expect(rows.find((row) => row.symbol === "KO")).not.toHaveProperty("growth1YNotMeaningful");
+  expect(renderHeadlessPaneText(ranked, rankedResult, ranking, "DVD")).toMatch(/\nAAPL .* N\/M /);
+  const csv = renderReportCsv(headlessReportTables(ranked, rankedResult, ranking, "DVD", deriveHeadlessFreshness(ranked, rankedResult), { complete: true, unavailableSymbols: [] }));
+  const [header, ...lines] = csv.split("\n");
+  const columns = header!.split(",");
+  const growthColumn = columns.findIndex((column) => column.startsWith("1Y growth"));
+  const status = columns.indexOf("status");
+  expect(growthColumn).toBeGreaterThan(-1);
+  expect(status).toBeGreaterThan(-1);
+  const aapl = lines.find((line) => line.startsWith("AAPL,"))!.split(",");
+  expect(aapl[growthColumn]).toBe("");
+  expect(aapl[status]).toContain("1Y growth: n/m");
+  expect(lines.find((line) => line.startsWith("KO,"))!.split(",")[growthColumn]).toBe("4");
+});

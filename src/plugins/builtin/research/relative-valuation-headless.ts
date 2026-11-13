@@ -1,5 +1,6 @@
 import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
 import { formatPriceEarnings, NOT_MEANINGFUL, PRICE_EARNINGS_NOTICE } from "../../../utils/price-earnings";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import { MISSING_VALUE, formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
@@ -15,7 +16,7 @@ import {
 } from "./relative-valuation-peers";
 import { extraColumns, extraColumnsBasis, loadExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
 import { fundamentalsBasisParts, revenueGrowthHalfTag, revenueGrowthHeader } from "./relative-valuation-basis";
-import { conversionNote, convertMarketCaps, convertTargets, loadFxLegs, type CapConversion } from "./relative-valuation-currency";
+import { conversionNote, convertMarketCaps, convertTargets, loadFxLegs, relativeCapCurrency, type CapConversion } from "./relative-valuation-currency";
 
 const price = (value: unknown, row: Record<string, unknown>) => (
   value == null || !row.currency ? MISSING_VALUE : formatCurrency(Number(value), String(row.currency))
@@ -77,6 +78,11 @@ const REVENUE_GROWTH_HEADER = "Quarter Revenue YoY";
 /** The column's name once a peer reports half-yearly: its figure is a half's (`H1`), named in the footer. */
 const PERIOD_REVENUE_GROWTH_HEADER = "Revenue YoY";
 
+/** A missing growth or margin: N/M where it is not meaningful, else why it is missing. */
+const rateGapText = (row: Record<string, unknown>, key: "fcfYield" | "revenueGrowth" | "operatingMargin") =>
+  key !== "fcfYield" && (row as Partial<ReturnType<typeof relativeValuationValues>>).notMeaningful?.[key]
+    ? NOT_MEANINGFUL_TEXT : gapText(row, key);
+
 const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   // In the currency each peer's cap is in, which exports write in the header or beside the figure.
   { key: "marketCap", header: "Mkt Cap", align: "right", unitKey: "marketCapCurrency", unitColumn: true,
@@ -111,9 +117,10 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   ...([["fcfYield", "FCF Yield"], ["revenueGrowth", REVENUE_GROWTH_HEADER], ["operatingMargin", "TTM Op Margin"]] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
     // A figure alone, so an export's column holds only numbers; the period is in its own column (VALUATION_PERIOD_COLUMNS).
-    format: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
+    // Growth off revenue at or below zero, or a margin over it, reads N/M; notMeaningful says why.
+    format: (value: unknown, row: Record<string, unknown>) => value == null ? rateGapText(row, key)
       : key === "revenueGrowth" ? formatPercent(Number(value)) : formatLevelPercent(Number(value)),
-    textFormat: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
+    textFormat: (value: unknown, row: Record<string, unknown>) => value == null ? rateGapText(row, key)
       : key === "revenueGrowth" ? [formatPercent(Number(value)), revenueGrowthHalfTag(row.revenueGrowthHalf as string | null)].filter(Boolean).join(" ")
         // A margin of the latest fiscal year, where no trailing quarters were served, says which year.
         : key === "operatingMargin" && typeof row.operatingMarginPeriod === "string"
@@ -190,10 +197,13 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     const staleSymbols = baseRows.filter((row) => row.quoteStale).map((row) => row.symbol);
     const staleFundamentalsSymbols = baseRows.filter((row) => row.fundamentalsProvenance?.stale).map((row) => row.symbol);
 
-    // --currency: every cap in one currency, at the rates the app converts with.
-    const capCurrency = typeof args.options.currency === "string" ? args.options.currency : null;
-    const fx = capCurrency ? await loadFxLegs([capCurrency, ...baseRows.flatMap((row) => row.marketCapCurrency ?? [])], ctx) : null;
-    const converted = capCurrency && fx ? convertMarketCaps(baseRows, capCurrency, fx.legs) : null;
+    // Every cap in one currency, at the rates the app converts with, as the pane compares them: the one --currency asks
+    // for, else the peers' own when they share one, else the app's base currency.
+    const askedCurrency = typeof args.options.currency === "string" ? args.options.currency : null;
+    const capCurrency = relativeCapCurrency(askedCurrency, baseRows.map((row) => row.marketCapCurrency), ctx.config?.baseCurrency);
+    const converts = askedCurrency != null || baseRows.some((row) => row.marketCapCurrency && row.marketCapCurrency !== capCurrency);
+    const fx = converts ? await loadFxLegs([capCurrency, ...baseRows.flatMap((row) => row.marketCapCurrency ?? [])], ctx) : null;
+    const converted = fx ? convertMarketCaps(baseRows, capCurrency, fx.legs) : null;
     const capRows = converted?.rows ?? baseRows;
 
     // --columns: each added column read from the path its own function uses.
@@ -202,12 +212,12 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     const extra = await loadExtraColumns(extraIds, capRows.map((row) => row.symbol), financials, ctx);
     const extraRows = capRows.map((row) => ({ ...row, ...extra.fields.get(row.symbol) }));
     // Analyst targets go into the asked currency with the caps, at the same rates.
-    const targetCurrencies = capCurrency && fx ? extraRows.flatMap((row): string[] => {
+    const targetCurrencies = askedCurrency && fx ? extraRows.flatMap((row): string[] => {
       const currency = (row as Record<string, unknown>).targetCurrency;
       return typeof currency === "string" && currency ? [currency] : [];
     }) : [];
     const targetFx = targetCurrencies.length > 0 ? await loadFxLegs(targetCurrencies.filter((currency) => !fx!.legs.has(resolveCurrencyUnit(currency).currency)), ctx) : null;
-    const targets = capCurrency && fx && targetCurrencies.length > 0
+    const targets = askedCurrency && fx && targetCurrencies.length > 0
       ? convertTargets(extraRows, capCurrency, new Map([...fx.legs, ...targetFx?.legs ?? []])) : null;
     const rows = targets?.rows ?? extraRows;
     const conversions = [...converted?.conversions ?? [], ...targets?.conversions ?? []]
@@ -232,7 +242,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     // The footer: the rates the caps were converted at, the statement period the figures run through, and the
     // basis of each column that is not trailing twelve months.
     const footnote = [
-      ...capCurrency && converted ? [conversionNote(capCurrency, conversions,
+      ...converted ? [conversionNote(capCurrency, conversions,
         targets?.conversions.length ? `market caps and analyst targets in ${capCurrency}` : undefined)] : [],
       ...fundamentalsBasisParts(rows, growthHeader),
       ...extraColumnsBasis(extraIds, rows),
@@ -262,8 +272,8 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
         staleSymbols,
         staleFundamentalsSymbols,
         ...(selection ? { peerSelection: selection } : {}),
-        ...(converted && capCurrency ? { marketCapConversion: { currency: capCurrency, rates: converted.conversions,
-          basis: "marketCap is converted into the asked currency at each currency's US dollar rate, the rate the app's converted totals use; marketCapNative and marketCapNativeCurrency keep the cap as served." } } : {}),
+        ...(converted ? { marketCapConversion: { currency: capCurrency, rates: converted.conversions,
+          basis: "marketCap is converted into one currency (the asked one, else the peers' own when they share one, else the base currency) at each currency's US dollar rate, the rate the app's converted totals use; marketCapNative and marketCapNativeCurrency keep the cap as served." } } : {}),
         ...(extraIds.length > 0 ? { addedColumnsBasis: "Each added column keeps its own source and as-of beside it: short interest at its FINRA settlement date, analyst targets at retrieval (converted with the caps under --currency, targetMeanNative keeping the served one), the next earnings date at the calendar's retrieval, gross margin and EV/EBITDA at the end of the latest quarter they sum. EV/EBITDA is the listing's enterprise value over the trailing four quarters of operating income plus D&A, as GE's EV/EBITDA ends." } : {}),
         quoteBasis: "Stale quote fields are excluded from comparison; reportedQuote retains the rejected observation and quoteAsOf retains its source timestamp.",
         priceBasis: "price, change and changePercent are the regular session: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice, extendedChange and extendedChangePercent, measured from that close (extendedMark when it is a bid and ask midpoint). marketCap, the P/E multiples, evSales (through the equity part of the enterprise value) and fcfYield are measured at that regular session price.",
@@ -275,8 +285,10 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
           ...rows.flatMap((row) => row.evSalesNote ? [`${row.symbol}: ${row.evSalesNote}`] : []),
           ...rows.flatMap((row) => row.marketCapNote ? [`${row.symbol}: ${row.marketCapNote}`] : []),
           ...rows.flatMap((row) => row.marketCapWithheld ? [`${row.symbol}: ${row.marketCapWithheld}`] : []),
+          ...rows.flatMap((row) => (["revenueGrowth", "operatingMargin"] as const).flatMap((key) => row.notMeaningful[key]
+            ? [`${row.symbol}: ${key === "revenueGrowth" ? "revenue growth" : "operating margin"} N/M, ${row.notMeaningful[key]}.`] : [])),
         ],
-        multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS, and evSales an enterprise value above zero; notMeaningful says why one is null, and reportedMultiples preserves the finite provider P/E values.",
+        multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS, and evSales an enterprise value above zero; revenueGrowth needs revenue above zero a year earlier and operatingMargin revenue above zero. notMeaningful says why one is null, and reportedMultiples preserves the finite provider P/E values.",
         marketCapBasis: "Market caps retain their own currency and source. Fundamentals retrieval time is not a valuation date; quote timestamps do not date fallback caps.",
       },
     };

@@ -1,6 +1,9 @@
 import { forwardFiscalYear, forwardPEAsked, formatPriceEarnings, NOT_MEANINGFUL } from "../../../../utils/price-earnings";
 import { convertMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
+import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
+import { NOT_MEANINGFUL_TEXT } from "../../../../utils/growth";
+import type { ServedRate } from "../../../../utils/served-rates";
 import type { CedearRatio, CompanyProfile, DepositaryPair, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
 import { adrRatioText } from "../../../../utils/depositary-receipt";
 import { cedearRatioText, ratioCount } from "../../../../market-data/depositary-pair";
@@ -32,7 +35,7 @@ import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolio
 import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../../../utils/reported-money";
-import { enterpriseValueCheck, enterpriseValueComputed, enterpriseValueNotMeaningful, fundamentalsCurrency, isBankEnterpriseValue, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
+import { enterpriseValueCheck, enterpriseValueComputed, enterpriseValueNotMeaningful, fundamentalsCurrency, financialEnterpriseValue, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
@@ -159,6 +162,7 @@ export function buildOverviewStats({
   bond = null,
   runway = null,
   trailingEpsYear,
+  notMeaningful = {},
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
@@ -188,6 +192,8 @@ export function buildOverviewStats({
   runway?: CashRunway | null;
   /** The fiscal year the trailing EPS is ("FY Mar-26"), when it is a year's a quarter or more old (trailingEpsFiscalYear). */
   trailingEpsYear?: string;
+  /** Why a served margin or revenue growth is N/M (servedRatesNotMeaningful): read N/M, as RV and `ticker` read it. */
+  notMeaningful?: Partial<Record<ServedRate, string>>;
 }): StatField[] {
   const stats: StatField[] = [];
   // Amounts no source names the currency of are bare; the first says so after it, once for all of them.
@@ -317,14 +323,16 @@ export function buildOverviewStats({
   }
   const runwayField = runwayStat(runway);
   if (runwayField) stats.push(runwayField);
+  // A margin over revenue at or below zero, and growth off it, read N/M in N/M's own colour, never a sign's.
+  const notMeaningfulStat = (label: string): StatField => ({ label, value: NOT_MEANINGFUL_TEXT, valueColor: notMeaningfulColor() });
   if (fundamentals?.operatingMargin != null) {
-    stats.push({ label: "Op Margin", value: formatLevelPercent(fundamentals.operatingMargin) });
+    stats.push(notMeaningful.operatingMargin ? notMeaningfulStat("Op Margin") : { label: "Op Margin", value: formatLevelPercent(fundamentals.operatingMargin) });
   }
   if (fundamentals?.profitMargin != null) {
-    stats.push({ label: "Profit Marg", value: formatLevelPercent(fundamentals.profitMargin) });
+    stats.push(notMeaningful.profitMargin ? notMeaningfulStat("Profit Marg") : { label: "Profit Marg", value: formatLevelPercent(fundamentals.profitMargin) });
   }
   if (fundamentals?.revenueGrowth != null) {
-    stats.push({
+    stats.push(notMeaningful.revenueGrowth ? notMeaningfulStat("Rev Growth") : {
       label: "Rev Growth",
       value: formatPercent(fundamentals.revenueGrowth),
       valueColor: priceColor(fundamentals.revenueGrowth),
@@ -335,9 +343,11 @@ export function buildOverviewStats({
   const enterpriseValue = reportedEnterpriseValue(priced);
   // At or below zero, N/M as a P/E over a loss reads, with why in the space a stat has; valuation gives the full reason.
   if (enterpriseValueNotMeaningful(priced)) {
-    // A bank's deposits are funding, not debt (withBankEnterpriseValue); any other's cash exceeds the rest.
+    // A bank's deposits and an insurer's float are funding, not debt (withFinancialEnterpriseValue);
+    // any other's cash exceeds the rest.
+    const financial = financialEnterpriseValue(priced);
     stats.push({ label: "EV", value: formatPriceEarnings(NOT_MEANINGFUL),
-      detail: isBankEnterpriseValue(priced) ? "for banks" : ["cash > cap + debt", "cash > cap"] });
+      detail: financial ? financial.replace(/^n\/m /, "") : ["cash > cap + debt", "cash > cap"] });
   } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: MISSING_VALUE });
   } else if (enterpriseValue != null) {

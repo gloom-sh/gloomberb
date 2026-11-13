@@ -2,8 +2,8 @@ import { MISSING_VALUE, formatCompact, formatCurrency } from "../../../utils/for
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { marketCapBasisNote, viewMarketCapitalization, withheldMarketCap } from "../../../utils/market-capitalization";
 import {
-  BANK_ENTERPRISE_VALUE, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote, enterpriseValueWithdrawn, fundamentalsCurrency,
-  isBankEnterpriseValue, reportedEnterpriseToRevenue, reportedEnterpriseValue, withBankEnterpriseValue,
+  enterpriseValueNotMeaningful, enterpriseValueReconciliationNote, enterpriseValueWithdrawn, fundamentalsCurrency,
+  financialEnterpriseValue, reportedEnterpriseToRevenue, reportedEnterpriseValue, withFinancialEnterpriseValue,
 } from "../../../utils/fundamentals";
 import { sourceStatements } from "../../../time-series/fundamentals/source-statements";
 import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
@@ -11,6 +11,8 @@ import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuation
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
 import { halfYearGrowthPeriod } from "../../../utils/financial-statements";
+import { servedRatesNotMeaningful } from "../../../utils/served-rates";
+import { isNotMeaningful, rateValue, revenueMargin } from "../../../utils/growth";
 import { trailingEpsFiscalYear } from "../../../utils/fundamentals";
 import { enterpriseValueBridgeBasis, listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
 import type { Quote, TickerFinancials } from "../../../types/financials";
@@ -86,10 +88,12 @@ export const RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE = "Fundamentals stale:
  */
 function fiscalYearOperatingMargin(annualStatements: TickerFinancials["annualStatements"] | undefined) {
   const latest = latestFinancialPeriod(annualStatements, (row) => row.date);
-  if (!latest || !finiteNumber(latest.operatingIncome) || !finiteNumber(latest.totalRevenue) || latest.totalRevenue <= 0) return null;
+  const margin = latest ? revenueMargin(latest.operatingIncome, latest.totalRevenue) : undefined;
+  if (!latest || margin === undefined) return null;
   const year = /^FY\d{2}(\d{2})$/.exec(fiscalPeriodLabel(latest.date, "annual", fiscalYearEndMonth(annualStatements ?? [])))?.[1];
   return {
-    value: latest.operatingIncome / latest.totalRevenue,
+    // N/M over revenue at or below zero.
+    value: margin,
     // The fiscal year's own name; the calendar year of its end where the year cannot be named.
     label: `FY${year ?? latest.date.slice(2, 4)}`,
     periodEnd: latest.date.slice(0, 10),
@@ -107,7 +111,7 @@ function fiscalYearOperatingMargin(annualStatements: TickerFinancials["annualSta
 export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const reported = snapshot?.quote;
   // A bank's EV, and so its EV/S, reads n/m: its deposits are funding, not debt.
-  const financials = snapshot ? atRegularSessionPrice({ ...snapshot, fundamentals: withBankEnterpriseValue(snapshot.fundamentals, snapshot.profile) }) : null;
+  const financials = snapshot ? atRegularSessionPrice({ ...snapshot, fundamentals: withFinancialEnterpriseValue(snapshot.fundamentals, snapshot.profile) }) : null;
   const quote = financials?.quote;
   const fundamentals = financials?.fundamentals;
   const quoteStale = quote?.stale === true;
@@ -131,7 +135,7 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const { trailingPE: trailingNotMeaningful, forwardPE: forwardNotMeaningful } = notMeaningfulMultiples(fundamentals);
   // An EV at or below zero makes EV/S N/M, whatever the source divided it by, as `valuation` reads the EV.
   const evSalesNotMeaningful = enterpriseValueNotMeaningful(fundamentals);
-  const notMeaningful: Partial<Record<"trailingPE" | "forwardPE" | "evSales", string>> = {
+  const notMeaningful: Partial<Record<"trailingPE" | "forwardPE" | "evSales" | "revenueGrowth" | "operatingMargin", string>> = {
     ...(trailingNotMeaningful ? { trailingPE: trailingNotMeaningful } : {}),
     ...(forwardNotMeaningful ? { forwardPE: forwardNotMeaningful } : {}),
     ...(evSalesNotMeaningful ? { evSales: evSalesNotMeaningful } : {}),
@@ -150,10 +154,17 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const freeCashFlow = finiteNumber(fundamentals?.freeCashFlow) ? { value: fundamentals.freeCashFlow, currency } : filedFreeCashFlow;
   const fcfYield = capitalization && freeCashFlow && freeCashFlow.currency === capitalization.currency && capitalization.value > 0
     ? freeCashFlow.value / capitalization.value : null;
-  const revenueGrowth = fundamentals?.revenueGrowth ?? fundamentals?.lastQuarterGrowth ?? null;
-  const trailingOperatingMargin = fundamentals?.operatingMargin ?? null;
-  const fiscalYearMargin = trailingOperatingMargin == null ? fiscalYearOperatingMargin(financials?.annualStatements) : null;
-  const operatingMargin = trailingOperatingMargin ?? fiscalYearMargin?.value ?? null;
+  // Growth off revenue at or below zero a year earlier, and a margin over revenue at or below zero, are N/M, as DES
+  // and `ticker` read them (servedRatesNotMeaningful).
+  const served = servedRatesNotMeaningful(fundamentals, snapshot ?? financials);
+  if (served.revenueGrowth) notMeaningful.revenueGrowth = served.revenueGrowth;
+  const revenueGrowth = served.revenueGrowth ? null : fundamentals?.revenueGrowth ?? fundamentals?.lastQuarterGrowth ?? null;
+  const trailingRevenueNotPositive = served.operatingMargin != null;
+  const trailingOperatingMargin = trailingRevenueNotPositive ? null : fundamentals?.operatingMargin ?? null;
+  const fiscalYearMargin = trailingOperatingMargin == null && !trailingRevenueNotPositive ? fiscalYearOperatingMargin(financials?.annualStatements) : null;
+  if (served.operatingMargin) notMeaningful.operatingMargin = served.operatingMargin;
+  else if (isNotMeaningful(fiscalYearMargin?.value)) notMeaningful.operatingMargin = `${fiscalYearMargin.label} revenue is at or below zero`;
+  const operatingMargin = trailingOperatingMargin ?? rateValue(fiscalYearMargin?.value);
   const trailingPE = trailingNotMeaningful ? null : comparablePriceEarnings(reportedMultiples.trailingPE);
   // A P/E on a fiscal year's EPS names the year as valuation and the overview do ("FY Mar-26").
   const trailingPEPeriod = reportedMultiples.trailingPE != null && !trailingNotMeaningful && financials
@@ -169,8 +180,8 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   if (forwardPE == null && !forwardNotMeaningful && reportedMultiples.forwardPE == null) gaps.forwardPE = NOT_REPORTED;
   if (evSales == null && !evSalesNotMeaningful) gaps.evSales = evSalesGap(fundamentals, currency, quote?.currency, evSalesWithdrawn, enterpriseValueGap);
   if (fcfYield == null) gaps.fcfYield = fcfYieldGap(freeCashFlow, capitalization?.currency ?? null);
-  if (revenueGrowth == null) gaps.revenueGrowth = NOT_REPORTED;
-  if (operatingMargin == null) gaps.operatingMargin = NOT_REPORTED;
+  if (revenueGrowth == null && !notMeaningful.revenueGrowth) gaps.revenueGrowth = NOT_REPORTED;
+  if (operatingMargin == null && !notMeaningful.operatingMargin) gaps.operatingMargin = NOT_REPORTED;
   return {
     ...session,
     extendedMark,
@@ -208,7 +219,10 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     trailingPEPeriod,
     forwardPE,
     reportedMultiples,
-    /** Why a multiple is N/M: its earnings base is zero or a loss, or for EV/S the enterprise value is at or below zero. */
+    /**
+     * Why a figure is N/M: a P/E's earnings base is zero or a loss, EV/S's enterprise value is at or below zero,
+     * revenue growth's base a year earlier or an operating margin's revenue is at or below zero.
+     */
     notMeaningful,
     // Vendor ADR ratios can mix unverified valuation and reporting units too.
     evSales,
@@ -217,7 +231,7 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
       ? enterpriseValueReconciliationNote(fundamentals) ?? "EV unavailable." : null,
     /** Why EV/S is N/M, as `valuation` says it: "EV N/M: cash and short-term investments exceed ..."; or, for EV/S over a computed EV, what it was computed from; null otherwise. */
     evSalesNote: fallback ? fallback.note : evSalesNotMeaningful
-      ? enterpriseValueReconciliationNote(fundamentals) ?? (isBankEnterpriseValue(fundamentals) ? `EV ${BANK_ENTERPRISE_VALUE}.` : null) : null,
+      ? enterpriseValueReconciliationNote(fundamentals) ?? (financialEnterpriseValue(fundamentals) ? `EV ${financialEnterpriseValue(fundamentals)}.` : null) : null,
     /** `computed` where EV/S divides market cap + total debt - cash in place of a withdrawn provider EV; `served` otherwise. */
     evSalesBasis: fallback ? "computed" as const : evSales != null ? "served" as const : null,
     fcfYield,
@@ -226,7 +240,7 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     revenueGrowth,
     operatingMargin,
     /** The fiscal year the operating margin is of ("FY25") when no trailing figure was served; null when it is trailing twelve months. */
-    operatingMarginPeriod: fiscalYearMargin?.label ?? null,
+    operatingMarginPeriod: operatingMargin != null ? fiscalYearMargin?.label ?? null : null,
     operatingMarginPeriodEnd: fiscalYearMargin?.periodEnd ?? null,
     /** Why each missing figure is missing, in a few words the row draws in its place. */
     gaps,

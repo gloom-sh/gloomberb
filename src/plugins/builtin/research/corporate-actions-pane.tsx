@@ -24,6 +24,7 @@ import type {
 import { blendHex, colors } from "../../../theme/colors";
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { formatFilingDate } from "../../../utils/datetime-format";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
@@ -35,7 +36,7 @@ import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
 import { loadEarningsCalendar } from "../earnings/data/cache";
-import { calendarEventOf, newYorkDay, withResolvedEarnings } from "../shared/earnings-calendar";
+import { calendarEventOf, listingDay, withResolvedEarnings } from "../shared/earnings-calendar";
 import {
   documentContentKey,
   formatCompactDocumentLabel,
@@ -315,7 +316,9 @@ export function buildEventDetail({
         row.epsActual == null && row.epsBasis === "adjusted" ? "adjusted" : null].filter(Boolean).join(", ") || undefined),
   ];
   if (row.epsDifference != null) comparison.push(detailRow("Difference", earningsInput(row.epsDifference, row.epsCurrency)));
-  if (row.surprisePercent != null) {
+  if (row.surpriseNotMeaningful) {
+    comparison.push(detailRow("Surprise", NOT_MEANINGFUL_TEXT, "against a loss or zero estimate"));
+  } else if (row.surprisePercent != null) {
     comparison.push(detailRow("Surprise", `${earningsInput(row.surprisePercent)}%`, undefined,
       row.surprisePercent === 0 ? undefined : row.surprisePercent > 0 ? "positive" : "negative"));
   }
@@ -484,7 +487,8 @@ export function CorporateActionsView({
     reload: reloadActions,
   } = useTickerRequest<CorporateActionsData>(actionsLoader, symbol, exchange);
   const { data: calendarEvent, reload: reloadCalendar } = useTickerRequest(calendarLoader, symbol, exchange);
-  const today = newYorkDay();
+  // The listing's own day, as `earnings` reads a report date: SIE:XETRA's has passed once Berlin's day has.
+  const today = listingDay(exchange);
   const actionsData = useMemo(
     () => (recordedActions ? withResolvedEarnings(recordedActions, calendarEvent, today) : recordedActions),
     [calendarEvent, recordedActions, today],

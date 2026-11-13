@@ -84,6 +84,17 @@ export interface ViewSpecValidationResult {
   warnings: ViewSpecIssue[];
 }
 
+/**
+ * A spec that works as typed, signed out too: Europe's indices from WEI's
+ * board, their names, last and move. The catalog's example and the empty
+ * view's both show it.
+ */
+export const EXAMPLE_VIEW_SPEC = JSON.stringify({
+  version: VIEW_SPEC_VERSION,
+  source: { kind: "inline", pane: "WEI" },
+  projection: { columns: ["name", "price", "changePercent"], filters: [{ key: "region", op: "eq", value: "europe" }] },
+});
+
 const TRANSFORMS = new Set<ViewTransform>(["raw", "percent", "compact", "abs", "index100"]);
 const FILTER_OPS = new Set<ViewFilterOp>(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in", "exists"]);
 const KEY_PATTERN = /^[A-Za-z0-9_.\-:]{1,80}$/;

@@ -9,7 +9,7 @@ import type {
 import type { AnalystResearchData, Quote } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
-import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "./client";
+import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText, noAnalystActionsText } from "./client";
 import {
   analystReferenceMetadata,
   analystTargetCurrency,
@@ -212,7 +212,7 @@ export function createAnalystResearchHeadless(
       const columns = ratings.some((rating) => ratingReason(rating)) ? [...RATING_COLUMNS, ...REASON_COLUMNS] : RATING_COLUMNS;
       const sections: HeadlessBundleSection[] = [
         { title: "Summary", entries: overviewEntries(data, quote) },
-        { title: "Recent analyst actions", columns, rows: ratings },
+        { title: "Recent analyst actions", columns, rows: ratings, empty: noAnalystActionsText(symbol) },
       ];
       return {
         sections,

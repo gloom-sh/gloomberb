@@ -1,5 +1,5 @@
 import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
-import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
+import { formatPriceEarnings } from "../../../utils/price-earnings";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
@@ -21,9 +21,10 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { TickerFinancials } from "../../../types/financials";
 import { canonicalTickerKey, normalizeSymbol } from "../../../utils/exchanges";
 import { colors, priceColor, shownPriceColor } from "../../../theme/colors";
+import { notMeaningfulCell } from "../../../components/ui/not-meaningful";
 import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
-import { MISSING_VALUE, formatCompact, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw, displayWidth } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
@@ -37,7 +38,7 @@ import { useFxRatesMap } from "../../../market-data/hooks";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { quoteFreshnessFields } from "../shared/report-freshness";
 import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, formatRelativePrice, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
-import { conversionNote, conversionPairText, convertMarketCaps, usdRateFromEntry } from "./relative-valuation-currency";
+import { conversionNote, conversionPairText, convertMarketCaps, relativeCapCurrency, usdRateFromEntry } from "./relative-valuation-currency";
 import { fundamentalsBasisParts, fundamentalsThroughText, revenueGrowthHalfTag, revenueGrowthHeader } from "./relative-valuation-basis";
 import {
   AUTO_PEERS_SETTING, findPeers, PEER_SELECTION_SETTING, PeerPickError, peerSelectionOf, relativeValuationTitle,
@@ -99,15 +100,19 @@ function extendedMove(row: RelativeRow, columnId: ExtendedColumnId): number | nu
  * AFTER-HRS or OVERNIGHT column, named as BI and MOST name it, follows CHG%
  * for each session in `extendedSessions`.
  */
+const SYMBOL_WIDTH = 8;
+const MAX_SYMBOL_WIDTH = 22;
+
 function buildRelativeColumns(
   baseCurrency: string,
   extendedSessions: readonly ExtendedSession[],
   marginNamesYear: boolean,
   peNamesYear = false,
   growthLabel = REVENUE_GROWTH_LABEL,
+  symbolWidth = SYMBOL_WIDTH,
 ): RelativeColumn[] {
-  const symbolWidth = 8;
-  const nameWidth = 16;
+  // The name gives back what a wide ticker takes, so the figures keep their place.
+  const nameWidth = Math.max(10, 16 - (symbolWidth - SYMBOL_WIDTH));
   const priceWidth = 10;
   const pctWidth = 8;
   const capWidth = 12;
@@ -250,7 +255,6 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const appBaseCurrency = useAppSelector((state) => state.config.baseCurrency);
   // `--currency` on a capture asks for another currency than the app's.
   const capCurrency = typeof pane?.settings?.capCurrency === "string" ? pane.settings.capCurrency : null;
-  const baseCurrency = capCurrency ?? appBaseCurrency;
   const quoteTargets = useMemo<QuoteSubscriptionTarget[]>(() => symbols.map((peer) => ({
     symbol: peer,
     exchange: "",
@@ -269,6 +273,12 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     ...relativeValuationValues(financials),
     error: peer.error,
   })), [snapshots]);
+  // The peers' own currency when they share one, as `fn RV` compares them; else the app's.
+  const capCurrenciesKey = rows.map((row) => row.marketCapCurrency ?? "").join(",");
+  const baseCurrency = useMemo(() => relativeCapCurrency(capCurrency, capCurrenciesKey.split(","), appBaseCurrency),
+    [appBaseCurrency, capCurrenciesKey, capCurrency]);
+  // TICKER grows to the longest key, so VOW3:XETRA shows whole; the name gives way.
+  const symbolWidth = Math.min(MAX_SYMBOL_WIDTH, Math.max(SYMBOL_WIDTH, ...rows.map((row) => displayWidth(row.symbol))));
   const fxRates = useFxRatesMap([baseCurrency, ...rows.map((row) => row.marketCapCurrency)]);
   // A pre-market or after-hours print gets its own column when a peer has one.
   const extendedSessionsKey = extendedSessionsOf(rows).join(",");
@@ -277,8 +287,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const growthLabel = revenueGrowthHeader(rows, REVENUE_GROWTH_LABEL, PERIOD_REVENUE_GROWTH_LABEL);
   const columns = useMemo(
     () => buildRelativeColumns(baseCurrency, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], marginNamesYear, peNamesYear,
-      growthLabel),
-    [baseCurrency, extendedSessionsKey, marginNamesYear, peNamesYear, growthLabel],
+      growthLabel, symbolWidth),
+    [baseCurrency, extendedSessionsKey, marginNamesYear, peNamesYear, growthLabel, symbolWidth],
   );
 
   const comparableRows = useMemo(() => rows.map((row) => ({
@@ -367,12 +377,15 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "marketCap":
         return { text: formatCompact(row.marketCap ?? undefined, { fixedDecimals: true }), color: colors.textDim };
       case "trailingPE":
-        return { text: `${formatPriceEarnings(row.notMeaningful.trailingPE ? NOT_MEANINGFUL : row.reportedMultiples.trailingPE)}${row.trailingPEPeriod ? ` ${row.trailingPEPeriod}` : ""}`, color: colors.text };
+        // A P/E over a loss: N/M in the colour every pane draws N/M in (notMeaningfulColor).
+        if (row.notMeaningful.trailingPE) return notMeaningfulCell();
+        return { text: `${formatPriceEarnings(row.reportedMultiples.trailingPE)}${row.trailingPEPeriod ? ` ${row.trailingPEPeriod}` : ""}`, color: colors.text };
       case "forwardPE":
-        return { text: formatPriceEarnings(row.notMeaningful.forwardPE ? NOT_MEANINGFUL : row.reportedMultiples.forwardPE), color: colors.text };
+        if (row.notMeaningful.forwardPE) return notMeaningfulCell();
+        return { text: formatPriceEarnings(row.reportedMultiples.forwardPE), color: colors.text };
       case "evSales":
         // A withdrawn EV says so, one at or below zero reads N/M as a P/E over a loss does; the footer says why.
-        if (row.evSales == null && row.notMeaningful.evSales) return { text: formatPriceEarnings(NOT_MEANINGFUL), color: colors.text };
+        if (row.evSales == null && row.notMeaningful.evSales) return notMeaningfulCell();
         return row.evSales == null && row.evSalesUnavailable
           ? { text: "EV n/a", color: colors.textDim }
           : { text: formatNumber(row.evSales ?? undefined, 1), color: colors.text };
@@ -380,10 +393,12 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
         return { text: formatLevelPercent(row.fcfYield ?? undefined), color: priceColor(row.fcfYield ?? 0) };
       case "revenueGrowth": {
         // A half-year reporter's growth is its half's, which the cell says beside the figure.
+        if (row.revenueGrowth == null && row.notMeaningful.revenueGrowth) return notMeaningfulCell();
         const half = row.revenueGrowth != null ? revenueGrowthHalfTag(row.revenueGrowthHalf) : null;
         return { text: `${formatPercent(row.revenueGrowth ?? undefined)}${half ? ` ${half}` : ""}`, color: shownPriceColor((row.revenueGrowth ?? 0) * 100, 2) };
       }
       case "operatingMargin":
+        if (row.operatingMargin == null && row.notMeaningful.operatingMargin) return notMeaningfulCell();
         return { text: `${formatLevelPercent(row.operatingMargin ?? undefined)}${row.operatingMargin != null && row.operatingMarginPeriod ? ` ${row.operatingMarginPeriod}` : ""}`, color: colors.text };
     }
   }, []);

@@ -9,6 +9,7 @@ import { cloudNewsReadArticles, mapCloudNewsArticle, readCloudNews } from "../..
 import { apiClient } from "../../api-client";
 import { commonWordCandidate, newsSearchText, wordMeansMore } from "./news-search";
 import { setCliWidthOverride } from "../../utils/cli-output";
+import { createTestArticle } from "../../test-support/news";
 
 const news = marketDataCliCommands.find((command) => command.name === "news")!;
 
@@ -515,4 +516,28 @@ test("a story's tags keep the venue of a listing outside the US, so PIK on the J
   expect(tags(link("ASML", "XAMS", 614_099_124_224), link("ASML", "XNAS"))).toEqual(["ASML:AMS"]);
   // With no market cap on either, the venue tagged first.
   expect(tags(link("SHOP", "XTSE"), link("SHOP", "XNYS"))).toEqual(["SHOP:TSX"]);
+});
+
+test("a company's folded routine notices say how many in the table; exports keep the title and the count apart", async () => {
+  // `news 0005.HK` lists HSBC's daily "Transaction in own shares" as one row standing for the run.
+  const notice = createTestArticle("buyback", {
+    title: "Transaction in own shares", source: "HKEXnews", publishedAt: new Date("2026-11-10T18:19:26.000Z"), tickers: ["0005.HK"],
+    routine: { kind: "buyback", notices: 8, since: new Date("2026-10-30T18:32:16.000Z"), programme: "buy-back announced on 2026-10-28" },
+  });
+  const other = createTestArticle("results", { title: "HSBC third quarter results", source: "HKEXnews", publishedAt: new Date("2026-10-28T04:00:00.000Z"), tickers: ["0005.HK"] });
+  const cli = createTestCliContext({
+    dataProvider: { getNews: async () => [notice, other], getQuote: async () => ({ symbol: "0005.HK", name: "HSBC Holdings", exchangeName: "HKEX" }) },
+  });
+  await news.execute(["0005.HK"], cli.context);
+  const text = render(cli.printed[0]!);
+  expect(text).toContain("Transaction in own shares (8 notices since 30 Oct)");
+  expect(text.match(/notices since/g)).toHaveLength(1);
+  const csv = serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "csv", color: false }, cli.printed[0]!.options);
+  const [header, first, second] = csv.trim().split("\n");
+  expect(header).toContain("Routine notices,Routine since");
+  expect(first).toContain("Transaction in own shares,");
+  expect(first).not.toContain("notices since");
+  expect(first).toContain(",8,2026-10-30T18:32:16.000Z");
+  expect(second).toContain("HSBC third quarter results");
+  expect(second).toContain("https://example.com/results,,,");
 });

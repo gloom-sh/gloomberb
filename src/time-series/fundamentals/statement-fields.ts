@@ -3,12 +3,19 @@ import type { FinancialStatement } from "../../types/financials";
 import { completeAvailability, statementFieldAvailability } from "../../utils/financial-statements";
 import { hasStatementGap } from "../../utils/statement-gaps";
 import { isFiniteNumber } from "../../utils/guards";
+import { rateValue, revenueMargin } from "../../utils/growth";
 import { type InternalStatement, type NumericStatementField, statementNumber } from "./statement";
 
 export function ratio(numerator: unknown, denominator: unknown): number | null {
   return isFiniteNumber(numerator) && isFiniteNumber(denominator) && denominator !== 0
     ? numerator / denominator
     : null;
+}
+
+/** A margin in percent: none over zero or negative revenue, where it is not meaningful. */
+function revenuePercent(numerator: unknown, revenue: unknown): { value: number | null; derived: true } {
+  const margin = isFiniteNumber(numerator) && isFiniteNumber(revenue) ? rateValue(revenueMargin(numerator, revenue)) : null;
+  return { value: margin === null ? null : margin * 100, derived: true };
 }
 
 export function freeCashFlow(statement: FinancialStatement): { value: number | null; derived: boolean } {
@@ -129,23 +136,13 @@ export function fundamentalValue(
   statement: InternalStatement,
   metric: string,
 ): { value: number | null; derived: boolean } {
-  if (metric === "grossMargin") {
-    const value = ratio(statement.grossProfit, statement.totalRevenue);
-    return { value: value === null ? null : value * 100, derived: true };
-  }
-  if (metric === "operatingMargin") {
-    const value = ratio(statement.operatingIncome, statement.totalRevenue);
-    return { value: value === null ? null : value * 100, derived: true };
-  }
-  if (metric === "netMargin") {
-    const value = ratio(statement.netIncome, statement.totalRevenue);
-    return { value: value === null ? null : value * 100, derived: true };
-  }
+  if (metric === "grossMargin") return revenuePercent(statement.grossProfit, statement.totalRevenue);
+  if (metric === "operatingMargin") return revenuePercent(statement.operatingIncome, statement.totalRevenue);
+  if (metric === "netMargin") return revenuePercent(statement.netIncome, statement.totalRevenue);
   if (metric === "freeCashFlow" || metric === "freeCashFlowMargin") {
     const fcf = freeCashFlow(statement);
     if (metric === "freeCashFlow") return fcf;
-    const value = ratio(fcf.value, statement.totalRevenue);
-    return { value: value === null ? null : value * 100, derived: true };
+    return revenuePercent(fcf.value, statement.totalRevenue);
   }
   const value = statementNumber(statement, metric as NumericStatementField);
   const derived = statement.__timeSeriesTtm === true

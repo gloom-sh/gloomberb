@@ -10,6 +10,7 @@ import {
   formatFinancialCell,
   financialStatementCurrency,
   FINANCIAL_SUB_TABS,
+  financialStatementPeriods,
   notInYetNote,
   resolveFinancialPeriodOption,
   resolveFinancialSubTabKey,
@@ -51,10 +52,10 @@ describe("financial statement table model", () => {
   });
 
   test("large growth fits beside precise EPS without truncating its sign or percent unit", () => {
-    const growth = computeGrowth(0.004125, -0.00000254)!;
+    const growth = computeGrowth(0.004125, 0.00000254)!;
     const cell = formatFinancialCell("0.004125", growth);
     expect(cell.valueText.trim()).toBe("0.004125");
-    expect(cell.growthText.trim()).toBe("+163k%");
+    expect(cell.growthText.trim()).toBe("+162k%");
     expect(cell.valueText.length + cell.growthText.length).toBe(18);
     for (const rate of [-999.995, -100, 99.995, 9999.995, 1e12, -1e100, 1e100, -1e307, 1e307]) {
       const formatted = formatFinancialCell("0.004125", rate).growthText.trim();
@@ -63,8 +64,16 @@ describe("financial statement table model", () => {
       expect(formatted).toContain(rate < 0 ? "-" : formatted.startsWith(">") ? ">" : "+");
     }
     expect(computeGrowth(Number.MAX_VALUE, Number.MIN_VALUE)).toBeUndefined();
-    expect(computeGrowth(Number.MAX_VALUE, -Number.MAX_VALUE)).toBe(2);
     expect(computeGrowth(-Number.MAX_VALUE, Number.MAX_VALUE)).toBe(-2);
+    // Off a zero or negative base: not meaningful, and the cell says so.
+    expect(computeGrowth(Number.MAX_VALUE, -Number.MAX_VALUE)).toBe("not-meaningful");
+    expect(computeGrowth(5, -10)).toBe("not-meaningful");
+    expect(computeGrowth(-5, -10)).toBe("not-meaningful");
+    expect(computeGrowth(5, 0)).toBe("not-meaningful");
+    expect(formatFinancialCell("5", computeGrowth(5, -10)).growthText.trim()).toBe("N/M");
+    // An outflow grows as the money that went out: capex from -10 to -12 is a fifth more spent.
+    expect(computeGrowth(-12, -10, true)).toBeCloseTo(0.2, 10);
+    expect(computeGrowth(3, -10, true)).toBe("not-meaningful");
     expect(formatFinancialCell("1", Number.POSITIVE_INFINITY).growthText.trim()).toBe("");
   });
 
@@ -310,6 +319,22 @@ test("a newest year with only some figures (an EPS alone) is left out of the pan
   expect(splitPeriodsNotInYet([{ date: "2025-12-31", eps: 1 }], income).shown).toHaveLength(1);
 });
 
+test("a quarter whose revenue Gloom Cloud left blank because the announcements count it otherwise is in", () => {
+  // HSBC's 3Q26: net income and EPS from its earnings release, its revenue left out (the source counts it otherwise).
+  const omitted = {
+    date: "2026-09-30", netIncome: 7.55e9, eps: 0.41,
+    filledFrom: { source: "results" as const, fields: ["netIncome" as const, "eps" as const], documents: [], lines: {}, omitted: ["totalRevenue" as const] },
+  };
+  const quarters = [omitted, { date: "2026-06-30", eps: 0.45 }, { date: "2026-03-31", totalRevenue: 19.13e9, netIncome: 7.34e9, eps: 0.4 }];
+  const income = FINANCIAL_SUB_TABS.find((tab) => tab.key === "income")!;
+  const { shown, notInYet } = splitPeriodsNotInYet(quarters, income);
+  expect(shown.map((statement) => statement.date)).toEqual(["2026-09-30", "2026-06-30", "2026-03-31"]);
+  expect(notInYet).toEqual([]);
+  expect(financialStatementPeriods(quarters, income).map(({ lead }) => lead)).toEqual([true, false, true]);
+  // Without the reason the newest quarter is not in yet, as before.
+  expect(splitPeriodsNotInYet([{ ...omitted, filledFrom: { ...omitted.filledFrom, omitted: [] } }, quarters[2]!], income).notInYet).toHaveLength(1);
+});
+
 test("a half-yearly reporter's TTM is Gloom Cloud's year plus the half, when it is newer than the year", () => {
   const trailing = {
     date: "2026-06-30", currency: "CNY", totalRevenue: 40.42e9, netIncome: 13.24e9,
@@ -419,6 +444,58 @@ test("the year plus the half: headed TTM H1, its growth only against twelve mont
   const withPrior = buildFinancialTableModel(quarterly, { period: "annual", statement: "income" })!;
   expect(withPrior.statements[0]!.aggregation?.kind).toBe("annual-plus-interim");
   expect(revenue(withPrior).cells[0]!.growth).toBeCloseTo(40.42 / 20 - 1, 6);
+});
+
+test("four quarters that would mix two definitions of revenue give way to the served year plus nine months", () => {
+  // A bank's latest quarters as it announces them (revenue before credit losses), its earlier ones as a source counts them.
+  const quarterlyStatements = [
+    { date: "2025-12-31", currency: "USD", totalRevenue: 17.72e9, netIncome: 4.94e9 },
+    { date: "2026-03-31", currency: "USD", totalRevenue: 19.13e9, netIncome: 7.34e9 },
+    { date: "2026-06-30", currency: "USD", totalRevenue: 19.12e9, netIncome: 7.91e9 },
+    { date: "2026-09-30", currency: "USD", totalRevenue: 18.62e9, netIncome: 7.55e9 },
+  ];
+  const trailing = {
+    date: "2026-09-30", currency: "USD", totalRevenue: 72.73e9, netIncome: 27.75e9,
+    trailing: {
+      method: "annual-plus-interim" as const, annual: "2025-12-31",
+      interim: { end: "2026-09-30", months: 9 }, priorInterim: { end: "2025-09-30", months: 9 },
+      basis: "FY to 2025-12-31 + 9 months to 2026-09-30 − 9 months to 2025-09-30",
+    },
+  };
+  const annualStatements = [{ date: "2025-12-31", currency: "USD", totalRevenue: 68.27e9, netIncome: 22.92e9 }];
+  const ttmRevenue = (served: typeof trailing & { trailing: { overQuarters?: string } }) => {
+    const table = buildFinancialTableModel(createTestFinancials({ annualStatements, quarterlyStatements, trailingStatement: served }), { period: "annual", statement: "income" })!;
+    return table.statements[0]!.totalRevenue;
+  };
+  // Summable quarters stand.
+  expect(ttmRevenue(trailing)).toBeCloseTo(74.59e9, -6);
+  // Told they are not, the served year plus nine months does.
+  expect(ttmRevenue({ ...trailing, trailing: { ...trailing.trailing, overQuarters: "the quarters count revenue otherwise" } })).toBe(72.73e9);
+});
+
+test("a margin over negative revenue reads N/M; a loss's growth reads N/M; capex grows as spending does", () => {
+  const financials = createTestFinancials({
+    annualStatements: [
+      { date: "2024-12-31", currency: "USD", totalRevenue: 50, grossProfit: 10, operatingIncome: -20, netIncome: -15, capitalExpenditure: -10, operatingCashFlow: 5, freeCashFlow: -5 },
+      // Revenue turned negative (a reversal of fair value gains, say): no margin over it means anything.
+      { date: "2025-12-31", currency: "USD", totalRevenue: -4, grossProfit: -9, operatingIncome: -30, netIncome: 6, capitalExpenditure: -12, operatingCashFlow: 8, freeCashFlow: -4 },
+    ],
+    quarterlyStatements: [],
+  });
+  const income = buildFinancialTableModel(financials, { period: "annual", statement: "income", expandAll: true })!;
+  const cell = (model: typeof income, id: string) => model.rows.find((row) => (row.key ?? row.summaryKey ?? row.id.split(":")[0]) === id)!.cells[0]!;
+  expect(cell(income, "gross-margin").valueText.trim()).toBe("N/M");
+  expect(cell(income, "net-margin").valueText.trim()).toBe("N/M");
+  // A year earlier, over positive revenue, the margins are numbers.
+  expect(income.rows.find((row) => row.id.startsWith("gross-margin"))!.cells[1]!.valueText.trim()).toBe("20.0%");
+  // Net income from a loss of 15 to a profit of 6: no percentage of the loss.
+  expect(cell(income, "netIncome").growthText.trim()).toBe("N/M");
+  expect(cell(income, "netIncome").growth).toBeUndefined();
+  // Revenue from 50 to -4 falls 108%: a positive base, so a number.
+  expect(cell(income, "totalRevenue").growth).toBeCloseTo(-54 / 50, 10);
+  const cashflow = buildFinancialTableModel(financials, { period: "annual", statement: "cashflow", expandAll: true })!;
+  expect(cell(cashflow, "capitalExpenditure").growth).toBeCloseTo(0.2, 10);
+  expect(cell(cashflow, "freeCashFlow").growthText.trim()).toBe("N/M");
 });
 
 test("a filled half's growth is against the same half a year earlier, never a quarter's", () => {

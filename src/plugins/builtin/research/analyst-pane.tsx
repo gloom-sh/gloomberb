@@ -27,7 +27,7 @@ import { handleRefreshKey, useClampSelectedIndex } from "../../../components/dat
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
-import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "./client";
+import { hasAnalystCoverage, loadAnalystResearch, noAnalystActionsText, noAnalystCoverageText } from "./client";
 import {
   DEFAULT_RATING_SORT,
   analystReferencePrice,
@@ -338,7 +338,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
         selectedTextOverridesCellColor
         status={noCoverage ? { empty: true, emptyTitle: noAnalystCoverageText(symbol ?? data?.symbol ?? "") }
           : failedEmpty && error ? { error, subject: "Analyst research" } : undefined}
-        emptyStateTitle={loading ? "Loading analyst data..." : error ?? "No analyst data"}
+        emptyStateTitle={loading ? "Loading analyst data..." : error ?? (data && symbol ? noAnalystActionsText(symbol, exchange) : "No analyst data")}
       />
     </>
   );

@@ -853,6 +853,11 @@ export interface ResultsStatementFill {
    * earlier: the document restates that period's figure as the source has it.
    */
   comparable?: ResultsFillField[];
+  /**
+   * A quarter's lines left blank because the announcements count them otherwise than the statements
+   * source (HSBC's revenue): set beside the source's quarters around it, the change would measure that.
+   */
+  omitted?: ResultsFillField[];
 }
 
 export type StatementFill = ExchangeStatisticsFill | ResultsStatementFill;
@@ -865,6 +870,12 @@ export interface StatementTrailing {
   priorInterim: { end: string; months: number };
   /** "FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30" */
   basis: string;
+  /**
+   * Why the four quarters to the same end must not stand in for this: the latest quarters come from the
+   * company's announcements and the earlier ones from a source that defines a line otherwise. Absent where
+   * the quarters may be summed.
+   */
+  overQuarters?: string;
 }
 
 /** Per-share earnings lines that can be declared unavailable. */
@@ -1186,6 +1197,10 @@ export interface PricePoint {
   filled?: boolean;
   /** A future's session that has closed but whose settlement is not confirmed yet: its close is the last trade. */
   unsettled?: boolean;
+  /** An index session's closing print as its last intraday bar, from its daily bar: the source keeps only the latest session's. */
+  sessionClose?: boolean;
+  /** An index session's last intraday bar, which ends before its close: its closing print was not at hand. */
+  beforeClose?: boolean;
   /**
    * The source served the bar in the wrong unit (a tenth or a hundredth of its price, ten or a hundred times its
    * volume): the factor its prices were multiplied by to match the bars around it; its volume was divided by it.

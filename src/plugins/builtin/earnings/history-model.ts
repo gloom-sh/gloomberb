@@ -8,7 +8,7 @@ import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../sh
 import { resolveReportRows, type ReportRowAdapter } from "../shared/earnings-calendar";
 import { addDays, MIN_AVERAGE_REPORTS } from "./board-model";
 import { fiscalQuarterOf, fiscalQuarterText, placedPeriod, type FiscalQuarter } from "./fiscal-quarter";
-import { datedYear, fiscalMonth, impliedText, moveSize, shortDate, surprise, TIMING_LABEL } from "./format";
+import { datedYear, fiscalMonth, impliedText, moveSize, shortDate, surprise, TIMING_LABEL, type Surprise } from "./format";
 
 export interface HistoryRow {
   key: string;
@@ -41,12 +41,13 @@ export interface HistoryRow {
   epsBasis: EarningsEpsBasis | null;
   /** A listing abroad's filed EPS that is basic: not the statements' diluted figure, so it has no basis and says so. */
   epsDilution: "diluted" | "basic" | null;
-  epsSurprise: number | null;
+  /** N/M against a loss or zero estimate. */
+  epsSurprise: Surprise;
   revenueEstimate: number | null;
   revenueActual: number | null;
   /** The revenue is the press release's, until the statements have the quarter. */
   revenueProvisional: boolean;
-  revenueSurprise: number | null;
+  revenueSurprise: Surprise;
   implied: number | null;
   impliedMethod: "quote-mid" | "trade-close" | null;
   impliedExpiry: string | null;
@@ -174,9 +175,11 @@ export function historyRows(
   const abroad = options.abroad === true;
   const recorded: HistoryRow[] = (payload?.reports ?? []).flatMap((report) => {
     const period = reportPeriod(report);
-    // A listing abroad's amount with no currency could be any: it is not shown.
+    // A listing abroad's amount with no currency could be any: it is not shown. A row with no amount (a report's
+    // day and announcement, its next date from the exchange) needs none.
     const currency = abroad ? isoCurrency(report.currency) : null;
-    if (!period || (abroad && !currency)) return [];
+    const amounts = [report.epsEstimate, report.epsActual, report.revenueEstimate, report.revenueActual].some((value) => value != null);
+    if (!period || (abroad && !currency && amounts)) return [];
     const move = report.realized?.move ?? null;
     const implied = report.implied?.move ?? null;
     const dateStatus = earningsDateStatus(report.dateStatus);
@@ -256,7 +259,7 @@ export function historyFigures(rows: readonly HistoryRow[], today: string): Stat
   const past = rows.filter((row) => !row.upcoming).slice(0, AVERAGE_OVER);
   const moves = past.flatMap((row) => (row.move == null ? [] : [Math.abs(row.move)]));
   const implied = past.flatMap((row) => (row.implied == null ? [] : [row.implied]));
-  const beats = past.filter((row) => row.epsSurprise != null);
+  const beats = past.filter((row) => row.epsSurprise != null && row.epsActual != null && row.epsEstimate != null);
   const figures: StatItem[] = [];
   if (next) {
     figures.push({
@@ -284,7 +287,8 @@ export function historyFigures(rows: readonly HistoryRow[], today: string): Stat
     figures.push({
       id: "beats",
       label: "EPS beats",
-      value: `${beats.filter((row) => row.epsSurprise! > 0).length} of ${beats.length}`,
+      // A beat is an actual above the estimate, a loss narrower than expected too (its surprise N/M).
+      value: `${beats.filter((row) => row.epsActual! > row.epsEstimate!).length} of ${beats.length}`,
     });
   }
   return figures;

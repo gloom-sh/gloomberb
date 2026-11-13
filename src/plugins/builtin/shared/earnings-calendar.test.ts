@@ -3,7 +3,7 @@ import type { EarningsHistoryPayload } from "../../../api-client/earnings";
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsAction } from "../../../types/financials";
 import { historyRows } from "../earnings/history-model";
-import { resolveCalendarEvent, resolveEarningsActions, resolveListingEvents, upcomingReportDate, withResolvedEarnings } from "./earnings-calendar";
+import { listingDay, resolveCalendarEvent, resolveEarningsActions, resolveListingEvents, upcomingReportDate, withResolvedEarnings } from "./earnings-calendar";
 
 // The four companies as Gloom Cloud served them on 2026-10-21 and 22.
 const TODAY = "2026-10-22";
@@ -89,6 +89,19 @@ test("a date gone by is reported, with the actual and the estimate it was measur
   expect(withResolvedEarnings(actions, null, TODAY).earnings[0]!.dateStatus).toBe("reported");
 });
 
+test("a surprise against a loss estimate is N/M: no percentage, the record's either, and the difference kept", () => {
+  // CRWV's June quarter: a loss of 1.14 against 1.47 expected.
+  const record: EarningsAction[] = [{ date: "2026-08-11", epsEstimate: -1.47, surprisePercent: -22.45, dateStatus: "confirmed" }];
+  const out = event("CRWV", "2026-08-11T20:05:00Z", { timing: "AMC", epsEstimate: -1.47, epsActual: -1.14 });
+  const [row] = resolveEarningsActions(record, out, "2026-08-12");
+  expect(row).toMatchObject({ date: "2026-08-11", dateStatus: "reported", epsActual: -1.14, epsEstimate: -1.47, difference: 0.33 });
+  expect(row!.surprisePercent).toBeUndefined();
+  // Against a profit expected, the percentage stands.
+  const [profit] = resolveEarningsActions([{ date: "2026-08-11", epsEstimate: 0.5, dateStatus: "confirmed" }],
+    event("X", "2026-08-11T20:05:00Z", { timing: "AMC", epsEstimate: 0.5, epsActual: 0.55 }), "2026-08-12");
+  expect(profit).toMatchObject({ epsActual: 0.55, difference: 0.05, surprisePercent: 10 });
+});
+
 test("a reported calendar event keeps the revenue, range and basis it carries for its report", () => {
   const out = event("AAA", "2026-10-15T12:30:00Z", {
     epsEstimate: 1, epsActual: 1.1, epsLow: 0.9, epsHigh: 1.2, revenueEstimate: 500, revenueActual: 520, surprise: 10,
@@ -114,4 +127,16 @@ test("a report out today is reported in every source once Gloom Cloud has it out
     .toMatchObject({ date: TODAY, dateStatus: "reported", upcoming: true });
   // Before it is out, today's report is still confirmed.
   expect(resolveCalendarEvent({ ...meta, dateStatus: undefined }, null, TODAY).dateStatus).toBe("confirmed");
+});
+
+// `earnings SIE:XETRA` at 02:45 UTC on Fri 13 Nov 2026 read Siemens' 12 Nov report "confirmed": New York was still on
+// Thursday, Berlin on Friday.
+test("a listing's report date is read on its own venue's day, so a date gone by there is reported", async () => {
+  const now = Date.parse("2026-11-13T02:45:00Z");
+  expect(listingDay("XETRA", now)).toBe("2026-11-13");
+  expect(listingDay("NYSE", now)).toBe("2026-11-12");
+  const siemens = event("SIE:XETRA", "2026-11-12T00:00:00Z", { timing: "", epsEstimate: 3.14 });
+  const read = (today: string) => resolveListingEvents({}, [{ key: "SIE:XETRA", symbol: "SIE", exchange: "XETRA", today }], [siemens], "2026-11-12");
+  expect((await read(listingDay("XETRA", now))).get("SIE:XETRA")?.dateStatus).toBe("reported");
+  expect((await read(listingDay("NYSE", now))).get("SIE:XETRA")?.dateStatus).toBe("confirmed");
 });

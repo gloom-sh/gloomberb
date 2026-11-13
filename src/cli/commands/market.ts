@@ -9,7 +9,7 @@ import { barCloseSession } from "../../market-data/market/bar-period";
 import type { EarningsEvent, MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
-import { newsSummaryLine } from "../../news/news-model";
+import { listedRowHeadline, newsSummaryLine, routineNoticeFields } from "../../news/news-model";
 import { shortStoryId } from "../../news/story-id";
 import type {
   AnalystResearchData,
@@ -234,7 +234,7 @@ import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../tim
 import { requestedBarSize } from "../../time-series/bar-spacing";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
-import { withBankEnterpriseValue } from "../../utils/fundamentals";
+import { withFinancialEnterpriseValue } from "../../utils/fundamentals";
 import { fundamentalsFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
 import { fxPairListing, fxQuoteRateMove, fxQuoteRateObservation, METAL_NAMES, readFxQuoteRate } from "../fx-quote-rate";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
@@ -265,6 +265,7 @@ import {
 import {
   calendarEventOf,
   calendarStatus,
+  listingDay,
   newYorkDay,
   resolveListingEvents,
   withResolvedEarnings,
@@ -308,7 +309,7 @@ import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, noBondFigures, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
 } from "../../market-data/tax-equivalent";
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
-import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, lastReportedDay, noListingCalendarNote, undatedListingsNote } from "../earnings-calendar";
+import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, undatedListingNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { isUnservedWithoutReason, notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
@@ -1022,6 +1023,8 @@ function newsRows(articles: NewsArticle[]) {
     url: article.url,
     importance: article.importance,
     breaking: article.isBreaking,
+    // A row standing for a company's routine notices (a buy-back's daily ones): how many, since when.
+    ...routineNoticeFields(article),
   }));
 }
 
@@ -1313,7 +1316,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // quote can fail where its history still says when it stopped (FRC), and an unreachable service fails it at once.
     // The service's "not a ticker" for a bare symbol says no listing anywhere carries it, so no bars or search row
     // would say it stopped: a symbol it knows from before answers its last quote or no data, never that.
-    const lastTraded = await Promise.all(answers.map(async ({ result, listing }) => !result.quote && answers.length <= MAX_CHOICE_LOOKUPS
+    // A symbol several companies list asks which, whatever line of it once stopped (MBG: Mercedes-Benz on Xetra, MB Gold on ASX).
+    const lastTraded = await Promise.all(answers.map(async ({ result, listing, failure }) => !result.quote && !failure?.choose
+      && answers.length <= MAX_CHOICE_LOOKUPS
       && (listing.exchange || !isNotATickerMessage(errorMessage(result.error)))
       ? await loadNoQuoteLastTraded(listing.request, market.dataProvider, now) ?? await searchedDelisting(listing, market)
       : null));
@@ -2297,6 +2302,8 @@ const HISTORY_FLAG_TEXT_COLUMN: CliResultColumn = {
     row.partial ? cliStyles.muted("partial") : "",
     row.filled ? cliStyles.muted("filled") : "",
     row.unsettled ? cliStyles.muted("unsettled") : "",
+    row.sessionClose ? cliStyles.muted("close") : "",
+    row.beforeClose ? cliStyles.muted("before close") : "",
     row.roll && typeof row.contract === "string" ? cliStyles.muted(`roll to ${row.contract}`) : "",
     row.thin ? cliStyles.muted("thin") : "",
     row.settleOnly ? cliStyles.muted("settle only") : "",
@@ -2974,7 +2981,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
           } : {},
           // A bank's EV and EV/revenue are null with why: n/m for banks.
           fundamentals: priced.fundamentals && exportedDividendFundamentals(
-            exportedFundamentals(withBankEnterpriseValue(priced.fundamentals, priced.profile))!, report.distributions),
+            exportedFundamentals(withFinancialEnterpriseValue(priced.fundamentals, priced.profile))!, report.distributions),
           // A bond fund's sponsor figures; fundamentals.dividendYield is then its distribution yield, not its SEC yield.
           ...bond ? { bondFund: bond } : {},
           ...view === "fundamentals" ? { statementFilings, bank: bank.bank, ...bank.note ? { bankNote: bank.note } : {} } : {},
@@ -3044,11 +3051,19 @@ const NEWS_COLUMNS = [
     format: (value: unknown) => typeof value === "string" ? formatUtcTime(value) : "",
   },
   { key: "source", header: "Source" },
-  { key: "title", header: "Title" },
+  // "Transaction in own shares (8 notices since 30 Oct)" for a folded row; exports keep the title and the count apart.
+  { key: "title", header: "Title", format: listedRowHeadline },
   { key: "tickers", header: "Tickers" },
   // The short id `fn news-story-pane` opens the story by; exports keep the whole id.
   { key: "id", header: "ID", format: (value: unknown) => typeof value === "string" ? shortStoryId(value) : "" },
   { key: "url", header: "URL", optional: true },
+];
+
+/** CSV's columns: the text table's, and how many routine notices a folded row stands for and since when. */
+const NEWS_EXPORT_COLUMNS = [
+  ...NEWS_COLUMNS,
+  { key: "routineNotices", header: "Routine notices" },
+  { key: "routineSince", header: "Routine since" },
 ];
 
 /**
@@ -3096,7 +3111,8 @@ async function printNewsSearch(
   }, {
     heading: newsSearchHeading(text, [reason, closestReason].filter(Boolean).join("  ·  ") || undefined),
     rows: newsRows,
-    columns: NEWS_COLUMNS,
+    columns: NEWS_EXPORT_COLUMNS,
+    textColumns: NEWS_COLUMNS,
     rowNote: newsRowNote,
     empty: named ? noStoriesMessage(text, route) : empty ?? (searched ? noStoriesMessage(text, null) : "No stories to show."),
     ...(listing ? { footnote: listing.note } : {}),
@@ -3141,7 +3157,8 @@ async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Paramet
   }, {
     heading: metalNewsHeading(route),
     rows: newsRows,
-    columns: NEWS_COLUMNS,
+    columns: NEWS_EXPORT_COLUMNS,
+    textColumns: NEWS_COLUMNS,
     rowNote: newsRowNote,
     empty: failure === undefined ? noMetalStoriesMessage(route) : "No stories to show.",
     ...(ticker ? { footnote: `${word} ${cliArrow("→")} ${route.metal}'s market news. For ${ticker.name ?? ticker.symbol} (ticker ${ticker.symbol}), try: ${companyNews}` } : {}),
@@ -3289,7 +3306,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     }, {
       ...(identity ? { heading: listingHeading(identity) } : {}),
       rows: newsRows,
-      columns: NEWS_COLUMNS,
+      columns: NEWS_EXPORT_COLUMNS,
+    textColumns: NEWS_COLUMNS,
       rowNote: newsRowNote,
       ...(empty ? { empty } : {}),
       ...(wordHint ? { footnote: wordHint } : {}),
@@ -4628,35 +4646,36 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
     }
     // Each date is resolved as events, EE, ERN and OSA resolve it: one that has come is read against the
     // company's quarters on record, for its actual and the next report on record (shared/earnings-calendar).
-    const today = newYorkDay();
+    // A date is read on its listing's own day: SIE:XETRA's 12 Nov report has passed on Berlin's Friday.
+    const now = Date.now();
+    const today = newYorkDay(now);
+    const dayOf = (listing: CliListing) => listingDay(listing.request.exchange || listing.exchange, now);
     const resolved = await resolveListingEvents(services.dataProvider, listings.map((listing) => ({
-      key: listing.key, symbol: listing.request.symbol, exchange: listing.request.exchange,
+      key: listing.key, symbol: listing.request.symbol, exchange: listing.request.exchange, today: dayOf(listing),
     })), calendar, today);
     const events: ResolvedEarningsEvent[] = calendar
-      .map((event) => resolved.get(event.symbol.toUpperCase()) ?? { ...event, dateStatus: calendarStatus(event, today) })
+      .map((event) => {
+        const listing = listings.find((entry) => entry.key.toUpperCase() === event.symbol.toUpperCase());
+        return resolved.get(event.symbol.toUpperCase()) ?? { ...event, dateStatus: calendarStatus(event, listing ? dayOf(listing) : today) };
+      })
       .sort((left, right) => left.earningsDate.getTime() - right.earningsDate.getTime());
     const eventOf = (listing: CliListing) => events.find((event) => event.symbol.toUpperCase() === listing.key.toUpperCase());
-    const [abroadNotes, choiceNotes] = await Promise.all([
-      // A listing abroad with no date of its own says so, with its US line's date when that line is the same company.
-      Promise.all(listings.filter((listing) => isListingAbroad(listing) && !eventOf(listing))
-        .map((listing) => noListingCalendarNote(listing, services))),
+    // A listing the calendar has no date for is named, with when it last reported and where its headlines are: a
+    // list never drops a symbol unsaid. Each costs reads, so a long list names the rest without them.
+    const undatedListings = listings.filter((listing) => !eventOf(listing));
+    const [undatedNotes, choiceNotes] = await Promise.all([
+      Promise.all(undatedListings.map((listing, index) => undatedListingNote(listing, services, { now, lookup: index < MAX_CHOICE_LOOKUPS }))),
       Promise.all(listings.map(async (listing) => {
         const listed = venues.get(listing);
         return listed ? earningsChoiceNote(listing, eventOf(listing), await listed) : null;
       })),
     ]);
-    // A listing at home the calendar has no date for is named as well, with when it last reported: a list never
-    // drops a symbol unsaid.
-    const homeUndated = listings.filter((listing) => !isListingAbroad(listing) && !eventOf(listing));
-    const lastReported = new Map(await Promise.all(homeUndated.slice(0, MAX_CHOICE_LOOKUPS)
-      .map(async (listing) => [listing.key, await lastReportedDay(services.dataProvider, listing, today)] as const)));
-    const undated = undatedListingsNote(homeUndated, lastReported);
-    const noCalendar = [...abroadNotes, ...undated ? [undated] : []].join("\n");
+    const noCalendar = undatedNotes.join("\n");
     // Text prints the listings without a calendar under the table; other formats carry them as warnings.
     const warnings = [
       ...listings.flatMap(listingReadNotes),
       ...choiceNotes.filter((note): note is string => !!note),
-      ...ctx.cliOptions.format === "text" ? [] : [...abroadNotes, ...undated ? undated.split("\n") : []],
+      ...ctx.cliOptions.format === "text" ? [] : undatedNotes,
     ];
     ctx.printResult({
       data: events,

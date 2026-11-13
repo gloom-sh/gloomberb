@@ -39,6 +39,7 @@ import {
 import { loadViewSource, type LoadedView } from "./loader";
 import {
   applyViewProjection,
+  EXAMPLE_VIEW_SPEC,
   formatViewValue,
   growViewColumnDecimals,
   parseViewSpecOr,
@@ -90,6 +91,9 @@ function columnsFor(spec: ViewSpec, loaded: LoadedView | null): Column[] {
     };
   });
 }
+
+/** What an empty view says: ask for one, or open one from a spec that works as typed. */
+const EMPTY_VIEW_MESSAGE = `Ask Gloom: "make a view of the top S&P movers", or open one from a spec: VIEW ${EXAMPLE_VIEW_SPEC}`;
 
 export function CustomViewPane({ focused, width, height }: PaneProps) {
   const instance = usePaneInstance();
@@ -360,7 +364,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
   if (!spec) {
     return specError
       ? <PaneStatusBody error={specError} errorTitle="This view's spec is invalid." />
-      : <PaneStatusBody empty emptyTitle="This view is empty." emptyMessage={'Ask Gloom: "make a view of the top S&P movers"'} />;
+      : <PaneStatusBody empty emptyTitle="This view is empty." emptyMessage={EMPTY_VIEW_MESSAGE} />;
   }
 
   if (loading && !data) {
