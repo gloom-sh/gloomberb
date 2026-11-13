@@ -200,6 +200,8 @@ export function FunctionsTable({
         },
       }}
       isNavigable={isFunctionRow}
+      // Pressing a row's later line selects the row, as pressing its first does.
+      continuesRowAbove={(row) => isSectionedItemRow(row) && row.item.line?.continued === true}
       // A row's lines under its first read as one row with it.
       getRowBackgroundColor={(row) => (isSectionedItemRow(row) && row.item.line?.continued && row.item.id === effectiveSelectedId ? colors.selected : undefined)}
       onActivate={(row) => {
