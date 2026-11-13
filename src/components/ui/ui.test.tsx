@@ -214,9 +214,11 @@ function SearchableMultiSelectHarness() {
 function ChoiceDialogHarness({
   selectedChoiceId,
   choices,
+  footer,
 }: {
   selectedChoiceId?: string;
   choices?: ChoiceDialogChoice[];
+  footer?: string;
 } = {}) {
   return (
     <ChoiceDialog
@@ -231,6 +233,7 @@ function ChoiceDialogHarness({
         { id: "gamma", label: "Gamma", description: "Gamma account" },
       ]}
       selectedChoiceId={selectedChoiceId}
+      footer={footer}
     />
   );
 }
@@ -454,6 +457,24 @@ describe("shared UI kit", () => {
     expect(tui.frame()).not.toContain("Model 8");
     await emitKeypress({ name: "enter", sequence: "\r" });
     expect(resolvedChoice).toBe("model-7");
+  });
+
+  // Enter typed straight after the filter, before a frame, took the row the cursor had been on.
+  test("Enter straight after typing takes the first match, and a filter that matches nothing keeps the dialog's height", async () => {
+    const choices = Array.from({ length: 25 }, (_, index) => ({ id: `model-${index + 1}`, label: `Model ${index + 1}`,
+      description: `Catalog model ${index + 1}` }));
+    await tui.render(<ChoiceDialogHarness choices={choices} selectedChoiceId="model-20" footer="Esc closes" />, { width: 44, height: 24 });
+    await tui.waitForFrameToContain("Filter");
+    const height = () => tui.frame().split("\n").findIndex((line) => line.includes("Esc closes"));
+    const before = height();
+    expect(before).toBeGreaterThan(0);
+    await tui.emitKeypress([..."zzz"].map((character) => ({ name: character, sequence: character })), { frames: 2, afterCommit: true });
+    await tui.waitForFrameToContain("No matches");
+    expect(height()).toBe(before);
+    await tui.emitKeypress([0, 1, 2].map(() => ({ name: "backspace", sequence: "\x7f" })), { frames: 2, afterCommit: true });
+    await tui.emitKeypress([...[..."model 3"].map((character) => ({ name: character === " " ? "space" : character, sequence: character })),
+      { name: "enter", sequence: "\r" }], { frames: 0 });
+    expect(resolvedChoice).toBe("model-3");
   });
 
   test("keeps shared multi-select values in option order when toggling", () => {
