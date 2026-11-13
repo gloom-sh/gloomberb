@@ -16,6 +16,9 @@ test("an HTML error page from the proxy or a schema refusal becomes words, not r
   // A schema refusal echoes the query it was sent, never a message.
   expect(parseApiErrorMessage(JSON.stringify({ type: "validation", on: "query", found: { from: "14/10/2026", limit: "100" } })))
     .toBe("Gloom Cloud did not accept an option or filter value.");
+  // Or sends it written out as its message (a symbol a route's path refuses, ES=F).
+  expect(parseApiErrorMessage(JSON.stringify({ message: JSON.stringify({ type: "validation", on: "params", found: { symbol: "ES=F" } }) })))
+    .toBe("Gloom Cloud did not accept the request.");
 });
 
 // A saved copy answers only for these: a refusal or a validation failure hidden behind it reads as current data.
