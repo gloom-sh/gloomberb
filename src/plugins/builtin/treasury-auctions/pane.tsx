@@ -158,7 +158,7 @@ function renderAuctionCell(
       // Announced auctions have no results yet: Rate reads Pending, the other
       // metric cells "—", and the date is bright.
       return {
-        text: showYear ? auction.auctionDate : formatShortDate(auction.auctionDate, { year: false, utc: true, fallback: MISSING_VALUE }),
+        text: formatShortDate(auction.auctionDate, { year: showYear ? "numeric" : false, utc: true, fallback: MISSING_VALUE }),
         color: rowState.selected ? colors.selectedText : isPendingAuction(auction) ? colors.textBright : colors.textDim,
       };
     case "type":

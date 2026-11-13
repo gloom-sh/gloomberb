@@ -293,7 +293,7 @@ export function buildHkColumns(options: { showYear?: boolean; rows?: readonly Hk
   const { showYear = false, rows = [], width } = options;
   const widest = (least: number, text: (tender: HkTender) => string) => Math.max(least, ...rows.map((tender) => displayWidth(text(tender))));
   const columns: HkColumn[] = [
-    { id: "date", label: "DATE", width: showYear ? 10 : 6, align: "left", title: "Issue day (a Government Bond's issue month): the business day after the tender" },
+    { id: "date", label: "DATE", width: showYear ? 11 : 6, align: "left", title: "Issue day (a Government Bond's issue month): the business day after the tender" },
     { id: "type", label: "TYPE", width: 6, align: "left" },
     { id: "term", label: "TERM", width: widest(7, hkTenderTerm), align: "left",
       title: "Term sold: a re-opening's is what its issue had left" },

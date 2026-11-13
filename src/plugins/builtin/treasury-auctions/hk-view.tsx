@@ -106,9 +106,9 @@ function renderTenderCell(tender: HkTender, column: HkColumn, rowState: { select
   }
 }
 
-/** A column of days, short ("Oct 28") or with the year; a bond's issue month as "May" or "2026-05". */
+/** A column of days, short ("28 Oct") or with the year ("28 Oct 2026"); a bond's issue month as "May" or "May 2026". */
 function hkTableDate(date: string, showYear: boolean): string {
-  if (showYear) return date;
+  if (showYear) return hkDateText(date);
   if (date.length === 7) return hkDateText(date).replace(/ \d{4}$/, "");
   return formatShortDate(date, { year: false, utc: true, fallback: MISSING_VALUE });
 }

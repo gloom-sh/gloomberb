@@ -257,7 +257,7 @@ describe("TreasuryAuctionsPane after view", () => {
     attachTreasuryAuctionsPersistence({ getResource: () => record, setResource: () => record } as unknown as PluginPersistence);
   };
   // A row's date, after the cursor bar the focused table draws beside the selected row; with its year when the rows span two.
-  const ROW_DATE = /^[\s▌▀]*(\d+ [A-Z][a-z]{2}|\d{4}-\d{2}-\d{2})\s/;
+  const ROW_DATE = /^[\s▌▀]*(\d+ [A-Z][a-z]{2}(?: \d{4})?)\s/;
   const rowDates = () => tui.frame().split("\n").filter((line) => line.includes("7-Year")).flatMap((line) => line.match(ROW_DATE)?.[1] ?? []);
   /** Waits, up to about two seconds, for the frame to pass `done`: the yield moves arrive after the board. */
   const until = async (done: () => boolean) => {
@@ -318,7 +318,7 @@ describe("TreasuryAuctionsPane after view", () => {
     await tui.clickFrameText("Results");
     await until(() => !tui.frame().includes("B/C PCTL"));
     // (The stub answers every window with the whole board, which Results lists: two years of it, so the dates carry theirs.)
-    expect(rowDates().slice(0, 4)).toEqual(["2026-10-28", "2026-09-28", "2026-08-28", "2026-07-28"]);
+    expect(rowDates().slice(0, 4)).toEqual(["28 Oct 2026", "28 Sep 2026", "28 Aug 2026", "28 Jul 2026"]);
   });
 
   // The footer read "[/]search [f]ilter [{}]view": `v` did nothing and `}` left for Cash & Debt; only a click reached After.
@@ -380,8 +380,8 @@ describe("TreasuryAuctionsPane after view", () => {
     await renderSettled();
     await until(() => !tui.frame().includes("B/C PCTL"));
     const rows = tui.frame().split("\n").filter((line) => ROW_DATE.test(line));
-    expect(rows[0]).toMatch(/2026-11-02\s+Bill\s+13-Week\s+3\.900%/);
-    expect(rows.slice(1, 4).map((line) => line.match(ROW_DATE)?.[1])).toEqual(["2026-10-28", "2026-09-28", "2026-08-28"]);
+    expect(rows[0]).toMatch(/2 Nov 2026\s+Bill\s+13-Week\s+3\.900%/);
+    expect(rows.slice(1, 4).map((line) => line.match(ROW_DATE)?.[1])).toEqual(["28 Oct 2026", "28 Sep 2026", "28 Aug 2026"]);
   });
 });
 
