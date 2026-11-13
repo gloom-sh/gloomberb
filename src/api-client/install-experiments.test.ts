@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { InstallExperimentAnswer, InstallExperimentReport } from "./index";
 import { assignFirstRunTickers, confirmFirstRunTickers, recordFirstRunTickersFinished, resetInstallExperimentsForTests } from "./install-experiments";
 import { installUsageCounter, resetUsageCountsForTests } from "../telemetry/usage-counts";
@@ -31,7 +31,11 @@ function api(answer: InstallExperimentAnswer | Error) {
   return { reports, ask };
 }
 
+// The arm is asked once a session, and the session is the test process.
+beforeEach(() => resetInstallExperimentsForTests());
+
 afterEach(() => {
+  resetInstallExperimentsForTests();
   resetUsageCountsForTests();
   if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
 });

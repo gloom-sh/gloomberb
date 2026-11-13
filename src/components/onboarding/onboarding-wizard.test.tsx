@@ -387,6 +387,8 @@ const originalGetChannels = apiClient.getChannels;
 const originalGetSession = apiClient.getSession;
 beforeEach(() => {
   expectedPositionCount = 0;
+  // first_run_tickers is asked once a session, and the session is the test process.
+  resetInstallExperimentsForTests();
   apiClient.recordResearchActivity = (async () => {}) as typeof apiClient.recordResearchActivity;
   apiClient.getCloudPricing = (async () => { throw new Error("offline"); }) as typeof apiClient.getCloudPricing;
   apiClient.getCloudAccountPlan = (async () => ({ trialAvailable: true })) as typeof apiClient.getCloudAccountPlan;
@@ -402,6 +404,7 @@ afterEach(async () => {
   chatController.dispose();
   apiClient.recordResearchActivity = originalRecordResearchActivity;
   apiClient.reportInstallExperiment = originalReportInstallExperiment;
+  resetInstallExperimentsForTests();
   resetUsageCountsForTests();
   if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
   apiClient.getCloudPricing = originalGetCloudPricing;
@@ -935,7 +938,7 @@ describe("OnboardingWizard", () => {
 
   test("a picked search result the app has never saved is saved as its listing, on the watchlist, with the workspace built around it", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-tickers-new-"));
-    enrollInstall("tickers");
+    const reports = enrollInstall("tickers");
     const tickerRepository = new JsonTickerRepository();
     await tui.render(<WizardHarness config={heldNothing(tempDataDir)} pluginRegistry={createPluginRegistry({ tickerRepository })} />, { width: 100, height: 32 });
     await skipDesks();
@@ -954,6 +957,7 @@ describe("OnboardingWizard", () => {
       ticker: "TTALO", name: "Terveystalo Oyj", exchange: "HEL", currency: "EUR", watchlists: ["watchlist"],
     });
     expect(await watchlist(tickerRepository)).toContain("TTALO");
+    await waitUntil(() => reports.length === 3, "the step's end");
   });
 
   test("on the tickers step, Esc clears a typed search first; Skip adds nothing: the first run is the control's, counted as skipped", async () => {
@@ -983,6 +987,7 @@ describe("OnboardingWizard", () => {
   test("the control arm is counted where the step would show and goes on as today; no answer in time is the control, never counted", async () => {
     for (const answer of [undefined, new Error("Install experiment request timed out.")]) {
       tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-tickers-control-"));
+      // A new session for each answer.
       resetInstallExperimentsForTests();
       // A late answer is the tickers arm's: the app has already gone on as the control.
       const reports = enrollInstall(answer ? "tickers" : "control", answer);
