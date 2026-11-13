@@ -37,6 +37,8 @@ export interface AuctionAfter {
   btcPercentile: number | null;
   indirectPercentile: number | null;
   dealerPercentile: number | null;
+  /** The moves left blank because their later close falls after the day a backtest is as of (`--like`'s asked date). */
+  afterAskedDate?: Array<"after1d" | "after5d" | "after20d">;
   /** The CMT yield's change, bp, 1, 5 and 20 sessions after the auction day's close. */
   after1d: number | null;
   after5d: number | null;
@@ -188,6 +190,11 @@ export type CurveCloses = ReadonlyArray<{ date: string; value: number }>;
 
 /** The change from the auction day's close to the close `sessions` later, in bp; null when either is missing. */
 export function yieldChangeAfter(closes: CurveCloses, date: string, sessions: number): number | null {
+  return yieldMoveAfter(closes, date, sessions)?.change ?? null;
+}
+
+/** The change from the auction day's close to the close `sessions` later, in bp, and that later close's day. */
+function yieldMoveAfter(closes: CurveCloses, date: string, sessions: number): { change: number; end: string } | null {
   let low = 0, high = closes.length;
   while (low < high) {
     const middle = (low + high) >> 1;
@@ -197,26 +204,36 @@ export function yieldChangeAfter(closes: CurveCloses, date: string, sessions: nu
   const base = closes[low];
   const later = closes[low + sessions];
   if (!base || base.date !== date || !later) return null;
-  return toBasisPoints(later.value - base.value, 1);
+  return { change: toBasisPoints(later.value - base.value, 1), end: later.date };
 }
 
-/** The after view's figures for each auction shown, by id. */
+export type AfterMove = "after1d" | "after5d" | "after20d";
+const MOVE_SESSIONS: ReadonlyArray<[AfterMove, number]> = [["after1d", 1], ["after5d", 5], ["after20d", 20]];
+
+/**
+ * The after view's figures for each auction shown, by id. With `knownBy` (a
+ * backtest as of that day) an earlier auction's move whose later close falls
+ * after it is blank, and named in `afterAskedDate`: it was not known on that
+ * day. The auction held on the day keeps its own.
+ */
 export function projectAuctionAfter(
   shown: readonly TreasuryAuction[],
   history: readonly TreasuryAuction[],
   curves: ReadonlyMap<string, CurveCloses>,
+  knownBy?: string,
 ): Map<string, AuctionAfter> {
   const percentiles = auctionPercentiles(history);
   return new Map(shown.map((auction) => {
     const cmt = cmtFor(auction);
     const closes = cmt ? curves.get(curveKey(cmt)) : undefined;
-    const change = (sessions: number) => closes && !isPendingAuction(auction) ? yieldChangeAfter(closes, auction.auctionDate, sessions) : null;
-    return [auction.id, {
-      ...NO_AFTER,
-      ...percentiles.get(auction.id),
-      after1d: change(1), after5d: change(5), after20d: change(20),
-      cmt: cmt ? cmtLabel(cmt) : null,
-    }];
+    const figures: AuctionAfter = { ...NO_AFTER, ...percentiles.get(auction.id), cmt: cmt ? cmtLabel(cmt) : null };
+    const late: AfterMove[] = [];
+    for (const [key, sessions] of MOVE_SESSIONS) {
+      const move = closes && !isPendingAuction(auction) ? yieldMoveAfter(closes, auction.auctionDate, sessions) : null;
+      if (move && knownBy && auction.auctionDate < knownBy && move.end > knownBy) late.push(key);
+      else figures[key] = move?.change ?? null;
+    }
+    return [auction.id, late.length ? { ...figures, afterAskedDate: late } : figures];
   }));
 }
 

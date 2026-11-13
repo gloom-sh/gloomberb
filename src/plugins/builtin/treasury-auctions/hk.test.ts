@@ -83,6 +83,12 @@ test("a re-opening reads the term its issue had left, as a US reopening does, an
   expect((await report("HK", { historyDays: "all", sort: "term" }, result)).rows).toEqual(["2023-10-26 10GB2601", "2016-01-21 10GB2601"]);
 });
 
+// `fn AUCT "HK 10Y" --like 2023-10-26` printed the plain list and exited 0.
+test("--like refuses Hong Kong's tenders, which have no percentiles to rank by", async () => {
+  await expect(report("HK 10Y", { historyDays: "all", like: "2023-10-26" }))
+    .rejects.toThrow("--like ranks US Treasury auctions by their percentiles against their tenor; Hong Kong's tenders have no percentiles.");
+});
+
 test("the window counts back from today in Hong Kong, and a bond's month stays in a window that starts within it", async () => {
   // 20:00 UTC on 7 Nov is 8 Nov in Hong Kong.
   expect(hkWindowStart(30, Date.parse("2026-11-07T20:00:00Z"))).toBe("2026-10-09");

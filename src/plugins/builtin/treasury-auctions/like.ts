@@ -1,9 +1,9 @@
-import { auctionTenorKey, type AuctionAfter, type AuctionPercentiles } from "./after";
-import { isPendingAuction } from "./model";
+import { auctionTenorKey, type AfterMove, type AuctionAfter, type AuctionPercentiles } from "./after";
+import { auctionBenchmark, isPendingAuction } from "./model";
 import type { TreasuryAuction } from "./types";
 
 /**
- * `fn AUCT 10Y --like 2026-11-10`: the earlier auctions of the same tenor
+ * `fn AUCT 3Y --like 2026-11-09`: the earlier auctions of the same tenor
  * that ranked most like one, and what the Treasury yield did after them.
  *
  * Likeness is read on the percentiles the after view shows (after.ts), which
@@ -35,9 +35,21 @@ export interface AuctionAnalogs {
 }
 
 /**
+ * The search that names an auction's tenor (`3Y`, `13W`, `10Y TIPS`), as
+ * `fn AUCT` takes it; null for a term with no benchmark.
+ */
+function tenorSearch(auction: TreasuryAuction): string | null {
+  const benchmark = auctionBenchmark(auction.securityTerm);
+  if (!benchmark) return null;
+  const kind = auction.secType === "TIPS" || auction.secType === "FRN" ? ` ${auction.secType}` : "";
+  return `${benchmark.count}${benchmark.unit[0]!.toUpperCase()}${kind}`;
+}
+
+/**
  * The completed auctions on `date` among `listed` (already narrowed by the
  * search and group): one is the auction to compare with, several ask for a
- * search that tells them apart, none says so.
+ * search that tells them apart, naming a tenor held that day (a note or bond's
+ * before a bill's), none says so.
  */
 export function likeTarget(listed: readonly TreasuryAuction[], date: string): { target: TreasuryAuction } | { error: string } {
   const held = listed.filter((auction) => auction.auctionDate === date);
@@ -45,10 +57,12 @@ export function likeTarget(listed: readonly TreasuryAuction[], date: string): { 
   if (completed.length === 1) return { target: completed[0]! };
   if (completed.length > 1) {
     const named = completed.map((auction) => `${auction.securityTerm} ${auction.secType}`).join(", ");
-    return { error: `${date} held ${completed.length} auctions (${named}): search for one, as in fn AUCT 10Y --like ${date}.` };
+    const example = [...completed.filter((auction) => auction.secType !== "Bill" && auction.secType !== "CMB"), ...completed]
+      .map(tenorSearch).find((search) => search != null);
+    return { error: `${date} held ${completed.length} auctions (${named}): search for one${example ? `, as in fn AUCT ${example} --like ${date}` : " by its term"}.` };
   }
   if (held.length > 0) return { error: `The ${held[0]!.securityTerm} ${held[0]!.secType.toLowerCase()} auction of ${date} has no results yet.` };
-  return { error: `No auction on ${date} matches the search: --like takes the date an auction was held, as in fn AUCT 10Y --like 2026-11-10.` };
+  return { error: `No auction on ${date} matches the search: --like takes the date an auction was held, as in fn AUCT 3Y --like 2026-11-09.` };
 }
 
 /**
@@ -79,7 +93,6 @@ export function rankAuctionAnalogs(
   return { dimensions, analogs: analogs.slice(0, limit) };
 }
 
-type AfterMove = "after1d" | "after5d" | "after20d";
 const AFTER_MOVES: ReadonlyArray<{ key: AfterMove; label: string }> = [
   { key: "after1d", label: "+1d" }, { key: "after5d", label: "+5d" }, { key: "after20d", label: "+20d" },
 ];
@@ -102,7 +115,11 @@ const median = (values: readonly number[]) => {
   return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
 };
 
-/** The median of each move after the analogs, and the share of them whose yield rose. */
+/**
+ * The median of each move after the analogs, and the share of them whose
+ * yield rose. A move left blank (not in yet, or after the asked date) is not
+ * counted.
+ */
 export function summarizeAnalogMoves(analogs: readonly AuctionAnalog[], after: ReadonlyMap<string, Pick<AuctionAfter, AfterMove>>): AnalogMoveSummary[] {
   return AFTER_MOVES.map(({ key, label }) => {
     const moves = analogs.flatMap(({ auction }) => {

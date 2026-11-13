@@ -5,7 +5,7 @@ import type {
 import type { HeadlessPaneColumn } from "../../../types/headless";
 import {
   afterLoadWindow, afterWindowStart, AUCTION_VIEWS, auctionPercentiles, loadAuctionCurves, projectAuctionAfter, widerAfterWindow,
-  type AuctionAfter, type AuctionCurveRead, type AuctionView,
+  type AfterMove, type AuctionAfter, type AuctionCurveRead, type AuctionView,
 } from "./after";
 import { isoDateOption } from "../../../utils/calendar-date";
 import { LIKE_LIMIT, likeTarget, rankAuctionAnalogs, summarizeAnalogMoves, type AuctionAnalog } from "./like";
@@ -152,6 +152,9 @@ const AFTER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "cusip", header: "CUSIP" },
 ];
 
+/** A move a backtest leaves blank: its later close falls after the date `--like` asked about. */
+const AFTER_ASKED_DATE = "after the asked date";
+
 /** `--like`: the after view's figures less the dealer's, and how far each auction ranked from the one asked about. */
 const LIKE_COLUMNS: HeadlessPaneColumn[] = [
   ...AFTER_COLUMNS.filter((column) => column.key !== "dealerPercentile" && column.key !== "cmt" && !column.key.startsWith("after") && column.key !== "cusip"),
@@ -159,7 +162,12 @@ const LIKE_COLUMNS: HeadlessPaneColumn[] = [
     key: "distance", header: "Distance", align: "right" as const, format: (value: unknown) => value == null ? "" : Number(value).toFixed(1),
     description: "Root mean square of the gaps between this auction's percentiles and the one asked about, 0 to 100: 0 ranked the same.",
   },
-  ...MOVE_COLUMNS,
+  ...MOVE_COLUMNS.map((column) => column.key === "cmt" ? column : {
+    ...column,
+    // The export leaves the cell blank and says why in the row's status.
+    format: (value: unknown, row: Record<string, unknown>) => value == null && Array.isArray(row.afterAskedDate) && row.afterAskedDate.includes(column.key)
+      ? AFTER_ASKED_DATE : bpMove(value),
+  }),
   { key: "cusip", header: "CUSIP" },
 ];
 
@@ -179,7 +187,12 @@ const AFTER_NOTE = "Percentiles rank each auction against its tenor's previous 2
 
 const LIKE_NOTE = `--like lists the ${LIKE_LIMIT} earlier auctions of the tenor, from every one since ${AUCTION_HISTORY_START}, `
   + "whose stop-out vs median, B/C and indirect percentiles are closest to the one asked about: Distance is the root mean square of the gaps, "
-  + "and an auction missing a percentile the other has is left out. The summary is the median move of the Treasury par yield after them and the share that rose.";
+  + "and an auction missing a percentile the other has is left out. The summary is the median move of the Treasury par yield after them and the share that rose; "
+  + `a move whose later close falls after the asked date is blank (${AFTER_ASKED_DATE}) and not counted, so a past date reads only what was known then.`;
+
+/** `--like` with Hong Kong's tenders: they have no percentiles to rank by. */
+const HK_LIKE_REFUSAL = "--like ranks US Treasury auctions by their percentiles against their tenor; Hong Kong's tenders have no percentiles. "
+  + "Leave out --like to list them, or ask about a US auction: fn AUCT 3Y --like 2026-11-09.";
 
 interface TreasuryAuctionsHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, window: AuctionHistoryWindow): Promise<TreasuryAuctionsResult>;
@@ -279,7 +292,7 @@ export function createTreasuryAuctionsHeadless(
         description: `An auction's day (YYYY-MM-DD): the ${LIKE_LIMIT} earlier auctions of its tenor, from every one since ${AUCTION_HISTORY_START}, `
           + "whose stop-out vs median, B/C and indirect percentiles are closest to it, with the Treasury yield's moves after each, "
           + "their median and the share that rose. The search picks the auction when the day held several.",
-        example: "--like 2026-11-10",
+        example: "--like 2026-11-09",
         normalize: (value) => isoDateOption(value, "like"),
         shot: { reportOnly: "ranks the auctions most like one in the text report, which the pane does not list" },
       },
@@ -298,6 +311,7 @@ export function createTreasuryAuctionsHeadless(
       const historyDays = auctionHistoryWindow({ historyDays: args.options.historyDays });
       const filter = args.options.filter as AuctionFilter;
       if (marketOf(args) === "hk") {
+        if (typeof args.options.like === "string" && args.options.like) throw new Error(HK_LIKE_REFUSAL);
         return {
           ...hkTendersReport(await (dependencies.hk ?? defaultDependencies.hk!)(historyDays), {
             search: typeof args.argument === "string" ? args.argument : "",
@@ -434,7 +448,8 @@ async function likeReport(
   }
   const shown = [target, ...analogs.map((analog) => analog.auction)];
   const curves = await dependencies.curves(shown, null);
-  const after = projectAuctionAfter(shown, result.auctions, curves.curves);
+  // No look-ahead: an earlier auction's move whose later close falls after the asked date is blank.
+  const after = projectAuctionAfter(shown, result.auctions, curves.curves, target.auctionDate);
   const distance = new Map(analogs.map((analog) => [analog.auction.id, analog.distance]));
   const order: AuctionAnalog[] = options.sort
     ? visibleAuctions(analogs.map((analog) => analog.auction), { filter: "all", query: "", sort: options.sort, after })
@@ -454,7 +469,12 @@ async function likeReport(
       ...(auctions.some(lacksMetrics) ? [MISSING_METRICS_NOTE] : []),
     ],
     columns: columnsFor("like", auctions),
-    rows: order.map((analog) => auctionRow(analog.auction, after.get(analog.auction.id), { distance: analog.distance })),
+    rows: order.map((analog) => {
+      const figures = after.get(analog.auction.id);
+      // JSON says why a move is blank as the export's status column does: "+20d (bp): after the asked date".
+      const late = MOVE_COLUMNS.filter((column) => figures?.afterAskedDate?.includes(column.key as AfterMove)).map((column) => column.header);
+      return auctionRow(analog.auction, figures, { distance: analog.distance, ...late.length ? { status: `${late.join(", ")}: ${AFTER_ASKED_DATE}` } : {} });
+    }),
     ...(analogs.length ? {
       textSections: [{ title: summaryTitle, columns: SUMMARY_COLUMNS, rows: summaryRows }],
       exportTables: [{ title: summaryTitle, columns: SUMMARY_COLUMNS, rows: summaryRows, unit: "bp" }],
