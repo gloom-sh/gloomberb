@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { apiClient } from "../api-client";
 import { ApiRequestError } from "../api-client/errors";
 import type { CloudQuotePayload } from "../api-client/types/quotes";
@@ -9,7 +9,13 @@ import { DataServiceUnreachableError } from "../utils/network-failure";
 import { quotesWithRetries } from "./quote-list-reads";
 
 const originals = { getCloudQuote: apiClient.getCloudQuote, getCloudQuotesBatch: apiClient.getCloudQuotesBatch };
-afterEach(() => Object.assign(apiClient, originals));
+// The quotes below read REGULAR, which is current only while NASDAQ's regular session is: in its pre-market or after
+// hours they lack the session's price, and every row is asked for again alone. Tue 10 Nov 2026, 10:00 in New York.
+beforeEach(() => setSystemTime(new Date("2026-11-10T15:00:00Z")));
+afterEach(() => {
+  setSystemTime();
+  Object.assign(apiClient, originals);
+});
 
 function payload(symbol: string): CloudQuotePayload {
   return {
