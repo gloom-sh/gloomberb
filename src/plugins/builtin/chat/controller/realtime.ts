@@ -34,7 +34,7 @@ interface ChatControllerRealtimeOptions {
  * trickle. Only reactions, edits and removals made during the drop wait for
  * it: the catch-up reads new messages as soon as the socket is back.
  */
-export const CHAT_RESYNC_SPREAD_MS = 3_000;
+const CHAT_RESYNC_SPREAD_MS = 3_000;
 
 export class ChatControllerRealtime {
   private resyncTimer: ReturnType<typeof setTimeout> | null = null;
