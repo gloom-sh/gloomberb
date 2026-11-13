@@ -42,8 +42,8 @@ test("financial statements keep raw values, dated growth cells, and formatted co
   expect(revenue["2025-12-31"]).toBe(150);
   expect(cells[0]).toMatchObject({ date: "2025-12-31", value: 150, growth: 0.5 });
   const column = result.columns!.find((column) => column.key === "2025-12-31")!;
-  expect(column.format!(150, revenue)).toContain(cells[0]!.formatted);
-  expect(column.format!(150, revenue)).toContain("50");
+  expect(column.format!(150, revenue)).toBe(cells[0]!.formatted);
+  expect(column.textFormat!(150, revenue)).toContain("50");
   // Exports have no expansion controls: nested dilution data must remain accessible.
   const shares = result.rows.find((row) => String(row.id) === "dilutedShares:1")!;
   expect(shares["2025-12-31"]).toBe(12);
@@ -202,6 +202,36 @@ test("FA: a filled half is headed as one with its growth on the half before; a f
   } finally {
     setSystemTime();
   }
+});
+
+// `fn FA "VOD LN" --csv` wrote "2.84 N/M" for an operating income that had been a loss: the growth note reached the amount.
+test("FA CSV writes every amount as a bare number, every digit, whatever growth the text draws beside it", async () => {
+  const year = (date: string, operatingIncome: number, netIncome: number) => ({
+    date, currency: "EUR", totalRevenue: 40_461_000_000, operatingIncome, netIncome,
+  });
+  const ctx = { marketData: createTestDataProvider({ async getTickerFinancials() {
+    return { annualStatements: [
+      year("2024-03-31", 3_665_000_000, 1_140_000_000),
+      year("2025-03-31", -411_000_000, 1_000_000),
+      year("2026-03-31", 2_844_000_000, 99_000_000),
+    ], quarterlyStatements: [], priceHistory: [] };
+  } }) } as HeadlessPaneContext;
+  const input = args(["VOD:LSE"], { period: "annual", statement: "income" });
+  const result = await financialStatementsHeadless.load(input, ctx);
+  const freshness = deriveHeadlessFreshness(financialStatementsHeadless, result);
+  const lines = renderReportCsv(headlessReportTables(financialStatementsHeadless, result, input, "FA", freshness, { complete: true, unavailableSymbols: [] }), freshness)
+    .split("\n\n")[0]!.split("\n");
+  const header = lines[0]!.split(",");
+  const periods = header.flatMap((column, index) => /^\d{4}-\d{2}-\d{2} /.test(column) ? [index] : []);
+  expect(periods).toHaveLength(3);
+  const amounts = lines.slice(1).flatMap((line) => periods.map((index) => line.split(",")[index]!)).filter(Boolean);
+  expect(amounts.length).toBeGreaterThan(0);
+  expect(amounts.filter((cell) => !Number.isFinite(Number(cell)))).toEqual([]);
+  // Off a loss the text draws N/M beside the figure, and a 9800% change beside another; the CSV has the figures alone.
+  expect(lines.find((line) => line.startsWith("Operating Inc"))).toStartWith("Operating Inc,2.844,-0.411,3.665,");
+  expect(lines.find((line) => line.startsWith("Net Income"))).toStartWith("Net Income,0.099,0.001,1.14,");
+  const text = renderHeadlessPaneText(financialStatementsHeadless, result, input, "Financial Statements");
+  expect(text).toMatch(/2\.84 N\/M/);
 });
 
 test("financial exports distinguish provider dates from SEC period evidence and derived TTM", async () => {
