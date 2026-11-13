@@ -143,7 +143,7 @@ const BLOOMBERG_INDICES: Readonly<Record<string, string>> = {
   UKX: "^FTSE", DAX: "^GDAXI", CAC: "^FCHI", SX5E: "^STOXX50E", SMI: "^SSMI", AEX: "^AEX", IBEX: "^IBEX",
   NKY: "^N225", HSI: "^HSI", KOSPI: "^KS11", TWSE: "^TWII", SENSEX: "^BSESN", NIFTY: "^NSEI", FSSTI: "^STI",
   AS51: "^AXJO", SPTSX: "^GSPTSE", MEXBOL: "^MXX", IBOV: "^BVSP", XU100: "XU100.IS", DXY: "DX-Y.NYB",
-  USGG5YR: "^FVX", USGG10YR: "^TNX", USGG30YR: "^TYX",
+  USGG3M: "^IRX", USGG5YR: "^FVX", USGG10YR: "^TNX", USGG30YR: "^TYX", MOVE: "^MOVE",
 };
 
 /** Index and volatility futures Bloomberg writes with the Index key (ES1 Index, DM1 Index, UX1 Index), by the root quoted here. */
@@ -159,8 +159,13 @@ const BLOOMBERG_FUTURES_ALIASES: ReadonlySet<string> = new Set([
 /** "EUR Curncy" is the dollar rate in market convention: these as XXXUSD, every other currency as USDXXX. */
 const DOLLAR_BASE_CURRENCIES: ReadonlySet<string> = new Set(["EUR", "GBP", "AUD", "NZD"]);
 
-/** Bloomberg writes bitcoin as XBT. */
-const BLOOMBERG_CRYPTO: Readonly<Record<string, string>> = { XBT: "BTC-USD", XBTUSD: "BTC-USD" };
+/** Bloomberg writes bitcoin as XBT, and keys the dollar index as a currency too (DXY Curncy). */
+const BLOOMBERG_CURRENCY_CODES: Readonly<Record<string, string>> = { XBT: "BTC-USD", XBTUSD: "BTC-USD", DXY: "DX-Y.NYB" };
+
+/** Currency futures Bloomberg keys as currencies (JY1 Curncy is the yen future), by the root quoted here. */
+const BLOOMBERG_CURRENCY_FUTURE_ROOTS: Readonly<Record<string, string>> = {
+  JY: "6J", EC: "6E", BP: "6B", AD: "6A", CD: "6C", SF: "6S", NV: "6N", PE: "6M",
+};
 
 const REUTERS_VENUES: Record<string, string> = { N: "NYSE", O: "NASDAQ", OQ: "NASDAQ" };
 
@@ -252,10 +257,13 @@ function readBloombergIndex(typed: string, code: string): TerminalListingCode | 
   return root ? genericFuture(typed, root, future![2]!, "Index") : null;
 }
 
-/** `EURUSD Curncy`, `JPY Curncy` (the dollar rate in market convention: USDJPY), `XBT Curncy`. */
+/** `EURUSD Curncy`, `JPY Curncy` (the dollar rate in market convention: USDJPY), `XBT Curncy`, `DXY Curncy`, `JY1 Curncy`. */
 function readBloombergCurrency(typed: string, code: string): TerminalListingCode | null {
-  const crypto = BLOOMBERG_CRYPTO[code];
-  if (crypto) return { typed, ...keyOf(crypto, ""), terminal: "bloomberg", yellowKey: "Curncy" };
+  const named = BLOOMBERG_CURRENCY_CODES[code];
+  if (named) return { typed, ...keyOf(named, ""), terminal: "bloomberg", yellowKey: "Curncy" };
+  const future = /^([A-Z]{2})(\d{1,2})$/.exec(code);
+  const root = future ? BLOOMBERG_CURRENCY_FUTURE_ROOTS[future[1]!] : undefined;
+  if (root) return genericFuture(typed, root, future![2]!, "Curncy");
   const [base, quote] = /^[A-Z]{6}$/.test(code) ? [code.slice(0, 3), code.slice(3)]
     : /^[A-Z]{3}$/.test(code) && code !== "USD" ? DOLLAR_BASE_CURRENCIES.has(code) ? [code, "USD"] : ["USD", code]
       : [null, null];
@@ -361,6 +369,47 @@ export function unknownBloombergMarket(raw: string): UnknownBloombergMarket | nu
     typed, symbol: rootWord.toUpperCase(), market: marketWord.toUpperCase(), keyed: !!code.yellowKey,
     ...market?.name ? { unquoted: market.name } : {},
   };
+}
+
+/** The yellow keys that make a line one code whatever it names: an index, a currency, a commodity, a government bond. */
+const CODE_YELLOW_KEYS: Readonly<Record<string, UnreadBloombergCode["yellowKey"]>> = {
+  index: "Index", curncy: "Curncy", comdty: "Comdty", govt: "Govt",
+};
+
+/** A word of a code: capitals and digits (MOVE, GTJPY10Y, 1M, 25D), never a word of a name (Hang, Seng). */
+const CODE_WORD = /^[A-Z0-9][A-Z0-9&./-]{0,15}$/;
+
+/** A line written as a Bloomberg code that names nothing quoted here (`GTJPY10Y Govt`, `VXJ Index`, `USDJPY BGN Curncy`). */
+export interface UnreadBloombergCode {
+  typed: string;
+  /** The words before the yellow key, in capitals: `GTJPY10Y`, `USDJPY BGN`. */
+  code: string;
+  yellowKey: "Index" | "Curncy" | "Comdty" | "Govt";
+}
+
+/**
+ * A line written as a Bloomberg code with an index, currency, commodity or
+ * government bond key that no symbol here is read from: one entry, refused
+ * with a hint, never split into words or searched for as a company's name
+ * (`MOVE Index` found a Stuttgart product named after the index, and
+ * `GTJPY10Y Govt` split into GTJPY10Y and the GOVT fund). An index, a
+ * commodity or a bond is one word before its key (`FTSE 100 Index` is a
+ * name); a currency's code may carry its pricing source or tenor
+ * (`USDJPY BGN Curncy`, `USDJPY 1M 25D RR Curncy`). The first word is in
+ * capitals or has a digit, so `Gold Comdty` and `Nasdaq Index` stay names.
+ * Null for anything else, and for a code `readTerminalListingCode` reads.
+ */
+export function unreadBloombergCode(raw: string): UnreadBloombergCode | null {
+  const typed = normalizeTyped(raw);
+  const words = typed.split(" ");
+  const yellowKey = words.length >= 2 ? CODE_YELLOW_KEYS[words.at(-1)!.toLowerCase()] : undefined;
+  if (!yellowKey) return null;
+  const parts = words.slice(0, -1);
+  if (parts.length > (yellowKey === "Curncy" ? 4 : 1)) return null;
+  if (!parts.every((part) => CODE_WORD.test(part.toUpperCase()))) return null;
+  if (/\p{Ll}/u.test(parts[0]!) && !/\d/.test(parts[0]!)) return null;
+  if (readTerminalListingCode(typed)) return null;
+  return { typed, code: parts.join(" ").toUpperCase(), yellowKey };
 }
 
 /** What to type instead where Bloomberg's ticker is not the venue's own code (MK, SP); null elsewhere. */

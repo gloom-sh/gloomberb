@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, jest, test } from "bun:test";
+import { afterEach, describe, expect, jest, spyOn, test } from "bun:test";
 import {
   ConnectionHealthRegistry,
   registerGloomCloudConnectionSources,
@@ -384,6 +384,97 @@ describe("CloudApiRequestTransport market deadlines", () => {
       }),
     ).rejects.toThrow("cancelled by caller");
     expect(fetchCalls).toBe(0);
+  });
+});
+
+// A deploy moves traffic to new servers and stops the old ones. The
+// requests caught on an old one lost their connection, or got its "going
+// away" answer, and the panes that sent them showed an error.
+describe("CloudApiRequestTransport reads cut off by a server restart", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  /** Bun's error for a connection that closed under the request. */
+  const dropped = () =>
+    Object.assign(new Error("The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()"), { code: "ECONNRESET" });
+  const answer = (status: number, body: string, headers: Record<string, string> = {}) =>
+    ({ ok: status < 400, status, headers: new Headers(headers), text: async () => body }) as Response;
+
+  function transportAnswering(...answers: Array<() => Response>) {
+    const asked: string[] = [];
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const transport = new CloudApiRequestTransport({
+      connectionHealth: health,
+      fetchTransport: async (url, init) => {
+        asked.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
+        const next = answers.shift();
+        if (!next) throw new Error("asked once too often");
+        return next();
+      },
+    });
+    return { asked, health, transport };
+  }
+
+  test("a read whose connection drops is asked again once, and its answer is not an outage", async () => {
+    spyOn(Math, "random").mockReturnValue(0);
+    const { asked, health, transport } = transportAnswering(
+      () => { throw dropped(); },
+      () => answer(200, JSON.stringify({ teams: [] })),
+    );
+    await expect(transport.request("/teams")).resolves.toEqual({ teams: [] });
+    expect(asked).toEqual(["GET /teams", "GET /teams"]);
+    expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
+    transport.dispose();
+  });
+
+  test("a batch quote read is asked again, and a write is never sent twice", async () => {
+    spyOn(Math, "random").mockReturnValue(0);
+    const quotes = transportAnswering(
+      () => { throw dropped(); },
+      () => answer(200, JSON.stringify({ items: [] })),
+    );
+    await expect(quotes.transport.request("/market/quotes/batch", { method: "POST", body: "{}" })).resolves.toEqual({ items: [] });
+    expect(quotes.asked).toEqual(["POST /market/quotes/batch", "POST /market/quotes/batch"]);
+
+    // The first may have reached the server before its connection dropped.
+    const write = transportAnswering(() => { throw dropped(); });
+    await expect(write.transport.request("/chat/channels/everyone/messages", { method: "POST", body: "{}" })).rejects.toThrow();
+    expect(write.asked).toEqual(["POST /chat/channels/everyone/messages"]);
+  });
+
+  test("a server going away is asked again, and a 503 that is the service's answer is not", async () => {
+    spyOn(Math, "random").mockReturnValue(0);
+    const restarting = transportAnswering(
+      () => answer(503, "Server shutting down", { "Retry-After": "0", Connection: "close" }),
+      () => answer(502, "<html>502 Bad Gateway</html>", { "Content-Type": "text/html" }),
+    );
+    // Once only: a second failure is the service's state.
+    await expect(restarting.transport.request("/theses")).rejects.toMatchObject({ status: 502 });
+    expect(restarting.asked).toEqual(["GET /theses", "GET /theses"]);
+
+    const notReady = transportAnswering(() => answer(503, JSON.stringify({ message: "Fund holdings have not been collected yet" })));
+    await expect(notReady.transport.request("/cloud/members/ARKK")).rejects.toMatchObject({ status: 503 });
+    expect(notReady.asked).toEqual(["GET /cloud/members/ARKK"]);
+
+    // The API's own 502: an upstream it reads failed, which asking again at once does not mend.
+    const upstream = transportAnswering(() => answer(502, JSON.stringify({ message: "The feed did not answer" }), { "Content-Type": "application/json" }));
+    await expect(upstream.transport.request("/news/rss")).rejects.toMatchObject({ status: 502 });
+    expect(upstream.asked).toEqual(["GET /news/rss"]);
+  });
+
+  test("a timeout is not asked again, and a caller who gives up during the pause stops it", async () => {
+    const timedOut = transportAnswering(() => { throw new DOMException("The operation timed out.", "TimeoutError"); });
+    await expect(timedOut.transport.request("/teams")).rejects.toThrow();
+    expect(timedOut.asked).toEqual(["GET /teams"]);
+
+    const controller = new AbortController();
+    const giveUp = transportAnswering(() => {
+      // Inside the pause before asking again, which is at least 100 ms.
+      setTimeout(() => controller.abort(new Error("cancelled by caller")), 10);
+      throw dropped();
+    });
+    await expect(giveUp.transport.request("/teams", { signal: controller.signal })).rejects.toThrow("cancelled by caller");
+    expect(giveUp.asked).toEqual(["GET /teams"]);
   });
 });
 

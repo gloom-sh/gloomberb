@@ -197,6 +197,7 @@ import {
   symbolListNotes,
   type HistoryListRow,
 } from "../history-export";
+import { catalogSeriesId, loadCatalogSeriesHistory, type CatalogSeriesHistory } from "../history-catalog-series";
 import { fail, failWithError, isCliFailure, NO_DATA_CODE } from "../errors";
 import { createConcurrencyLimiter, mapWithConcurrency } from "../../utils/concurrency";
 import { CLOSE_COPIED_FLAG, MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
@@ -315,10 +316,10 @@ import { withSavedCopy, type ReportFreshness } from "../pane-functions/freshness
 import { isNotATickerMessage } from "../not-a-ticker";
 import { useKnownCoins } from "../board-coins";
 import { suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
-import { quotedPhrase, splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
+import { quotedPhrase, splitSymbolArgs, symbolInputKey, uniqueSecuritySymbols } from "../symbol-args";
 import { isCompanyNameInput } from "../../tickers/company-name-listing";
 import { readNameEntries, readPhraseArgument } from "../name-entries";
-import { readSymbolList, SymbolListError } from "../symbol-list";
+import { readSymbolList, SymbolListError, type TypedForm } from "../symbol-list";
 import { notASymbolError } from "../symbol-cells";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
 import { isSubMinuteInterval, knownGapMessage, subMinuteDataMessage } from "../known-gaps";
@@ -334,7 +335,9 @@ import {
 import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
-import { answerQuote, errorMessage, indexFormRead, notUsTickerSentence, withJoinedCompanyNames } from "../quote-answer";
+import { answerQuote, errorMessage, indexFormRead, notUsTickerSentence, withJoinedCompanyNames, type QuoteAnswer } from "../quote-answer";
+import { QUOTE_PROGRESS_MIN_SYMBOLS, quotesWithRetries } from "../quote-list-reads";
+import { listProgressNotice } from "../list-progress";
 import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, fxSideCode, fxSubUnit, fxUnitRate, parseFxArgs, type FxQuotedFigure, type FxRequest } from "../fx-pair";
 import {
   describeCarrySides,
@@ -432,6 +435,10 @@ type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   formerIssuer?: FormerIssuer;
   /** A bare symbol read on a listing abroad that is one slip from a US ticker: the US ticker it was most likely typed for. */
   usSuggestion?: ListingSuggestion;
+  /** A list's entry the row is for, as typed (`USDJPY Curncy`, `ＵＳＤＪＰＹ`). */
+  input?: string;
+  /** The entry of an earlier row of the list that is the same listing, which this row repeats. */
+  duplicateOf?: string;
 };
 type FinancialsCliData = TickerFinancials & {
   symbol: string;
@@ -468,8 +475,24 @@ function rangeTypedAsSymbol(entry: string): HistoryRange | null {
 
 function parseRange(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): HistoryRange {
   const range = readHistoryRange(value ?? "1Y");
+  // A date (2026/08/01, 2026-08-01, 2026) is where bars start, which --from takes; --range is a span back from now.
+  const from = range ? null : rangeTypedAsDate(value ?? "");
+  if (from) {
+    ctx.fail(`--range takes a span back from now, such as 3M or 1Y; ${value} is a date.`,
+      `For the bars from ${from}: --from ${from}${from.length > 4 ? "" : " (a year alone is from its first day)"}, with --to for an end.`);
+  }
   if (!range) ctx.fail(`Unknown range "${value}".`, `Use one of ${HISTORY_RANGES.join(", ")}, or ${HISTORY_RANGE_ALIASES}.`);
   return range!;
+}
+
+/** A date typed for --range, as --from takes it (2026-08-01 for 2026/08/01 or 2026.08.01, a year as is); null for anything else. */
+function rangeTypedAsDate(value: string): string | null {
+  const typed = value.trim();
+  if (/^(?:19|20)\d{2}$/.test(typed)) return typed;
+  const date = /^((?:19|20)\d{2})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(typed);
+  if (!date) return null;
+  const iso = `${date[1]}-${date[2]!.padStart(2, "0")}-${date[3]!.padStart(2, "0")}`;
+  return Number.isNaN(Date.parse(`${iso}T00:00:00Z`)) ? null : iso;
 }
 
 function parseNewsFeed(value: string | undefined): NewsQuery["feed"] | undefined {
@@ -491,7 +514,9 @@ function normalizeSymbols(args: string[]): string[] {
  * (`Aeon`) too: it may be a company's name as much as a ticker (`titleCaseCompanyName`).
  */
 function uniqueEntries(entries: readonly string[]): string[] {
-  return uniqueSecuritySymbols(entries.map((entry) => isCompanyNameInput(entry) || isTitleCaseWord(entry) ? entry : entry.toUpperCase()));
+  // A catalog series' id keeps the case its source names it in (CAP:bond-yield:jp-10y).
+  return uniqueSecuritySymbols(entries.map((entry) => catalogSeriesId(entry)
+    ?? (isCompanyNameInput(entry) || isTitleCaseWord(entry) ? entry : entry.toUpperCase())));
 }
 
 /**
@@ -516,17 +541,18 @@ async function readListedSymbols(
   market: MarketContext,
   ctx: Parameters<CliCommandDef["execute"]>[1],
   usage: string,
-): Promise<{ symbols: string[]; notes: string[] }> {
+): Promise<{ symbols: string[]; notes: string[]; typedForms: TypedForm[] }> {
   try {
+    const typedForms: TypedForm[] = [];
     const list = await readSymbolList({
-      args, file, stdinPiped: false, readEntries: (entries) => readNameEntries(entries, market.dataProvider),
+      args, file, stdinPiped: false, readEntries: (entries) => readNameEntries(entries, market.dataProvider), typedForms,
     });
     // Only numbers, or nothing: the message says what was left out (`Ignored 1.899, a number, not a symbol.`).
     if (list.symbols.length === 0) {
       const where = file && file !== "-" ? file : args.includes("-") ? "standard input" : "what was given";
       ctx.fail([`No symbols in ${where}.`, ...list.notes].join(" "), usage);
     }
-    return { symbols: uniqueEntries(list.symbols), notes: list.notes };
+    return { symbols: uniqueEntries(list.symbols), notes: list.notes, typedForms };
   } catch (error) {
     if (error instanceof SymbolListError) ctx.fail(error.message, usage);
     throw error;
@@ -539,6 +565,7 @@ const QUOTE_CSV_SECTION = {
   lines: [
     "Last, Chg%, Prev Close and each extended print are plain numbers. Cur is the currency; currency_or_unit is the unit: the currency, a pair's quote currency per base (JPY per USD for USDJPY=X), index points or pct for a yield. A pre-market, after-hours or overnight print's move is in Pre-Market Chg%, After Hours Chg% or Overnight Chg%, and compare's day range in Day Low and Day High, after the columns the export already had.",
     "A row with no figure says why in its status column, never NaN; a symbol with no quote is also named on standard error.",
+    "A list from --file or standard input has a row for every line, in its order, one that names no listing with its reason in status; its export adds input, the line as typed, and duplicate_of, the input of an earlier row that is the same listing.",
   ],
 };
 
@@ -616,8 +643,8 @@ const CHANGE_BASIS_EXPORT_COLUMNS = [
  * low and high) are already in the table's own cells.
  */
 function quoteTextColumns<Column extends { key: string }>(columns: Column[]): Array<Column | typeof CHANGE_BASIS_COLUMN> {
-  const exported = new Set([...CHANGE_BASIS_EXPORT_COLUMNS, ...EXTENDED_CHANGE_EXPORT_COLUMNS, ...DAY_RANGE_EXPORT_COLUMNS, CHANGE_BP_EXPORT_COLUMN]
-    .map((column) => column.key));
+  const exported = new Set([...CHANGE_BASIS_EXPORT_COLUMNS, ...EXTENDED_CHANGE_EXPORT_COLUMNS, ...DAY_RANGE_EXPORT_COLUMNS, CHANGE_BP_EXPORT_COLUMN,
+    ...LIST_INPUT_EXPORT_COLUMNS].map((column) => column.key));
   const kept = columns.filter((column) => !exported.has(column.key));
   const at = kept.findIndex((column) => column.key === "changePercent") + 1;
   return [...kept.slice(0, at), CHANGE_BASIS_COLUMN, ...kept.slice(at)];
@@ -750,6 +777,16 @@ const FEED_COLUMNS = [
 const CHANGE_BP_EXPORT_COLUMN = {
   key: "changeBasisPoints", header: "Chg bp", value: (row: QuoteRow) => row.yieldIndex ? row.changeBasisPoints : null,
 };
+
+/**
+ * A list's export names each row's entry as typed, so a row finds its line of the sheet again when several lines
+ * read as one listing (`USDJPY Curncy`, `ＵＳＤＪＰＹ`, `usdjpy`, `USD/JPY` are all USDJPY=X), and marks a row
+ * that repeats an earlier row's listing with that row's entry. After the columns an export already had.
+ */
+const LIST_INPUT_EXPORT_COLUMNS = [
+  { key: "input", header: "input", value: (row: QuoteRow) => row.input || null },
+  { key: "duplicateOf", header: "duplicate_of", value: (row: QuoteRow) => row.duplicateOf || null },
+];
 
 /** The day's low and high as numbers, after the columns an export already had. */
 const DAY_RANGE_EXPORT_COLUMNS = [
@@ -943,6 +980,8 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       feed: quoteFeedState(quote, now),
       // When the price Last shows was observed: in a pre-market nothing has traded in, the close it stands at.
       updatedAt: quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "",
+      input: result.input ?? "",
+      duplicateOf: result.duplicateOf ?? "",
       error: result.error ?? "",
       // Last, so a row read by position keeps every field where it was.
       changeBasis: predates ? "" : basisLabel(result, now),
@@ -1184,6 +1223,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const symbols = read?.kind === "name" ? [read.name]
       : read?.kind === "symbols" ? uniqueEntries(read.symbols)
       : list!.symbols;
+    // A long paste says how far it has got on stderr ("Quoted 120/307 symbols."), so it never looks stuck.
+    const progress = symbols.length > QUOTE_PROGRESS_MIN_SYMBOLS
+      ? listProgressNotice(ctx, (settled, total, told) => told || settled > 0 ? `Quoted ${settled}/${total} symbols.` : `Quoting ${total} symbols.`)
+      : null;
+    progress?.(0, symbols.length);
     // What cannot be a symbol (N/A, $$$, a price alone) is never looked up; one line names it.
     const refused = symbols.flatMap((symbol) => notASymbolError(symbol) ?? []);
     if (refused.length === symbols.length) {
@@ -1221,13 +1265,32 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // The service's quote of the moment, not each form's local copy from whenever it was last asked for:
     // BRK.B saved on NYSE, BRK-B and BRK.B:NYSE print one quote. A local copy answers only offline.
     // Each row prints what its move is from (Chg Basis).
-    const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh, revalidate: true, datesChangeBasis: true });
+    // A row of a list that failed for a reason that says nothing of its symbol (a busy moment, the request limit) is
+    // asked for again before it is given a status.
+    const ask = (asked: QuoteSubscriptionTarget[]) => market.dataProvider.getQuotesBatch(asked, { forceRefresh: ctx.cliOptions.refresh, revalidate: true, datesChangeBasis: true });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
     const request = { command: commandName, noun: "quote" };
-    const quoted = await Promise.all(results.map((result, index) => {
+    // Entries no listing was read for are settled already; each row is read as soon as its ask comes back final, and
+    // counts once it has been, so a long list's progress moves as each batch is answered.
+    let settled = symbols.length - targets.length;
+    const answering = new Map<QuoteBatchResult, Promise<QuoteAnswer>>();
+    const answer = (result: QuoteBatchResult, index: number) => {
       const listing = listingOf(result, index);
-      return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null, { datesChangeBasis: true, indexForm: indexForms.get(listing) ?? null });
-    }));
+      const answered = answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null, { datesChangeBasis: true, indexForm: indexForms.get(listing) ?? null })
+        .then((done) => { progress?.(++settled, symbols.length); return done; });
+      answered.catch(() => {
+        // Intentional ignore: awaited with the others below, where its failure fails the command.
+      });
+      return answered;
+    };
+    const results = targets.length > 1
+      ? await quotesWithRetries(targets, ask, {
+        onRetry: quoteRetryNotice(ctx),
+        onSettled: (final) => { for (const { result, index } of final) answering.set(result, answer(result, index)); },
+      })
+      : await ask(targets);
+    const quoted = await Promise.all(results.map((result, index) => answering.get(result) ?? answer(result, index)));
+    progress?.(symbols.length, symbols.length);
     // "MTN Group" typed apart is MTN Group, one row, where "Group" alone would read as UnitedHealth Group.
     const { answers, asked } = listed ? { answers: quoted, asked: results.map(listingOf) }
       : await withJoinedCompanyNames(quoted, results.map(listingOf), market, request, ctx.cliOptions.refresh, true);
@@ -1241,6 +1304,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       return { change: describeTickerChange(listing.symbol, payload, current), formerIssuer: describeFormerIssuer(listing.symbol, payload, current) };
     }));
     const tickerChanges = symbolChanges.map(({ change }) => change);
+    // A list's rows name the entry each is for, and mark one that is the same listing as an earlier row.
+    const listInputs = listed && symbols.length > 1 ? quoteListInputs(asked, resolvedListings) : null;
     const formerIssuers = symbolChanges.map(({ formerIssuer }) => formerIssuer);
     // A symbol with no quote whose bars stopped over a month ago says when it last traded, in place of why no quote
     // came: no longer listed on the service's record (FLAT, a retired ETN), else no trades since. Each costs a history
@@ -1313,6 +1378,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...formerIssuers[index] ? { formerIssuer: formerIssuers[index] } : {},
       // The day it last traded, and whether the service's record says it no longer trades (else only old bars say it).
       ...lastTraded[index] ? { lastTraded: lastTraded[index]!.date, noLongerListed: lastTraded[index]!.recorded } : {},
+      ...listInputs ? listInputs[index]! : {},
     }));
     const notes = [
       ...list?.notes ?? [],
@@ -1363,7 +1429,13 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...ctx.cliOptions.format !== "json" ? quoteNotes(data.filter((_row, index) => !endedNotes[index])) : [],
     ];
     const holdsYield = data.some((row) => isYieldIndexSymbol(row.target.symbol));
-    const columns = [...commandName === "compare" ? compareColumns() : quoteColumns(), ...holdsYield ? [CHANGE_BP_EXPORT_COLUMN] : []];
+    const columns = [...commandName === "compare" ? compareColumns() : quoteColumns(), ...holdsYield ? [CHANGE_BP_EXPORT_COLUMN] : [],
+      ...listInputs ? LIST_INPUT_EXPORT_COLUMNS : []];
+    // An export of a list read from a file or standard input has a row for every line, in its order: one no listing was
+    // read for says why in its status, as its line on stderr does. The table keeps a row per listing.
+    const rows = listInputs && ctx.cliOptions.format !== "text"
+      ? listRows([...data, ...unread.map(unreadRow)], symbols, list?.typedForms ?? [])
+      : data;
     const basisNotes = changeBasisNotes(data, now);
     const midNotes = extendedMidNotes(data);
     // Another listing a row's code names (00700 on TWSE is 700.HK on HKEX) is said under the table, not as a warning on the row.
@@ -1377,7 +1449,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // Only yield indices: their change is in bp, so the text header drops the percent sign (CSV keeps the percent it holds).
     const yieldsOnly = data.length > 0 && data.every((row) => isYieldIndexSymbol(row.target.symbol));
     ctx.printResult({
-      data,
+      data: rows,
       warnings: warnings.length > 0 ? warnings : undefined,
       // A Cboe yield index stops at its 15:00 ET close, before the Treasury's curve is taken: the line says so, so its
       // close does not read as a contradiction of DGS10 or GC for the same day.
@@ -1414,6 +1486,59 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
   });
 }
 
+/** Each row's entry of the list, as the list was read. */
+function quoteListInputs(
+  asked: readonly CliListing[],
+  resolved: ReadonlyArray<{ symbol: string; listing?: CliListing }>,
+): Array<{ input: string }> {
+  const entryOf = new Map(resolved.flatMap((entry) => entry.listing ? [[entry.listing, entry.symbol] as const] : []));
+  return asked.map((listing) => ({ input: entryOf.get(listing) ?? listing.typed ?? listing.symbol }));
+}
+
+/** The row of a list's entry no listing was read for (`GTJPY10Y Govt`), its reason in the status column. */
+function unreadRow({ symbol, error }: { symbol: string; error: ListingArgError }): QuoteCliRecord & { listing: ReturnType<typeof listingMetadata> } {
+  return { target: { symbol }, listing: { symbol, exchange: null, name: null }, quote: null, error: error.message, input: symbol };
+}
+
+type ListRow = Pick<QuoteCliRecord, "input" | "duplicateOf" | "quote"> & { listing: { symbol: string; exchange: string | null } };
+
+/**
+ * A list's rows, one for each line of its text as typed where several were read as one entry (`ＵＳＤＪＰＹ` and
+ * `usdjpy` are both USDJPY), in the order of the lines, else of the entries; a row that is the same listing as an
+ * earlier row names that row's entry in `duplicateOf`.
+ */
+function listRows<Row extends ListRow>(rows: readonly Row[], entries: readonly string[], forms: readonly TypedForm[]): Row[] {
+  // An entry read from no line of its own (a name read as its words) goes after the line before it.
+  let last = -1;
+  const entryAt = new Map(entries.map((entry, index) => {
+    const at = forms.findIndex((form) => form.key === symbolInputKey(entry));
+    if (at >= 0) last = at;
+    return [entry, { at: at >= 0 ? at : last + 0.5, index }] as const;
+  }));
+  const placed = rows.flatMap((row, index) => {
+    const typed = forms.flatMap((form, at) => form.key === symbolInputKey(row.input ?? "") ? [{ form, at }] : []);
+    const place = entryAt.get(row.input ?? "") ?? { at: forms.length, index: entries.length + index };
+    return typed.length > 1 || (typed.length === 1 && typed[0]!.form.typed !== row.input)
+      ? typed.map(({ form, at }) => ({ row: { ...row, input: form.typed }, at, index: place.index }))
+      : [{ row, ...place }];
+  }).sort((a, b) => a.at - b.at || a.index - b.index);
+  const first = new Map<string, string>();
+  return placed.map(({ row }) => {
+    const key = `${(row.quote?.symbol || row.listing.symbol).toUpperCase()}:${row.listing.exchange ?? ""}`;
+    const earlier = first.get(key);
+    if (earlier === undefined) first.set(key, row.input ?? "");
+    return earlier === undefined ? row : { ...row, duplicateOf: earlier };
+  });
+}
+
+/** The line a list's quote prints before asking again for the rows that failed for the moment. */
+function quoteRetryNotice(ctx: Parameters<CliCommandDef["execute"]>[1]): (count: number, waitMs: number) => void {
+  return (count, waitMs) => {
+    if (ctx.cliOptions.quiet) return;
+    console.error(cliStyles.muted(`Gloom Cloud did not answer for ${count} symbol${count === 1 ? "" : "s"}; asking again in ${Math.round(waitMs / 1000)} s.`));
+  };
+}
+
 /** The entries refused before any lookup, named as written: `$$$, N/A`, split by semicolons when one has a comma. */
 function refusedList(refused: ReadonlyArray<{ input: string }>): string {
   const inputs = refused.map((error) => error.input.trim());
@@ -1430,6 +1555,8 @@ function refusedLine(refused: ReadonlyArray<{ input: string }>): string {
  * after it a reason of several sentences: `Not quoted: iron ore. Iron ore: no live price (...). ...`.
  */
 function unreadLine({ symbol, error }: { symbol: string; error: ListingArgError }): string {
+  // A reason that names the line itself ("GTJPY10Y Govt is Bloomberg's code for a government bond...") says it once.
+  if (error.message.startsWith(`${symbol} `) || error.message.startsWith(`${symbol}:`)) return error.message;
   const reason = error.message.replace(/\.$/, "");
   return reason.includes(". ") ? `Not quoted: ${symbol}. ${reason}.` : `Not quoted: ${symbol} (${reason}).`;
 }
@@ -1693,6 +1820,27 @@ interface ListingHistory {
   mostTraded: boolean;
   /** `--currency`: what the prices were converted from and into, and the daily FX series read. */
   fx?: HistoryConversion;
+  /** A catalog series (`CAP:bond-yield:jp-10y`) read beside listings: its values are in `close`, and are no price. */
+  catalogSeries?: true;
+}
+
+/**
+ * A catalog series' values as a list's history, each date's value its close:
+ * dated, in the unit the catalog names (`%` as pct), with its name.
+ */
+function catalogListingHistory(series: CatalogSeriesHistory): ListingHistory {
+  const unit = series.unit === "%" ? "pct" : series.unit;
+  const decimals = Math.min(6, Math.max(2, ...series.points.map(({ value }) => (String(value).split(".")[1] ?? "").length)));
+  return {
+    listing: { symbol: series.id, exchange: "", key: series.id, saved: null, request: { symbol: series.id, exchange: "" } },
+    identity: { symbol: series.id, exchange: "", name: series.label },
+    unit: { kind: "unknown", currency: null, unit },
+    data: series.points.map(({ date, value }) => ({
+      date, open: null, high: null, low: null, close: value, volume: null, currency: null, unit, interval: "1d", flag: null,
+    })),
+    resolution: "1d", interval: "1d", decimals, intraday: false, volume: null, freshness: undefined,
+    notes: series.notes, mostTraded: false, catalogSeries: true,
+  };
 }
 
 /** A history's prices converted into another currency at each bar's daily FX close (`convertListingHistory`). */
@@ -2210,7 +2358,9 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const words = args.filter((arg, index) => !arg.startsWith("-") && !(index > 0 && args[index - 1]!.startsWith("--") && !args[index - 1]!.includes("=")));
   const barSize = file == null ? words.find((arg) => !/\s/.test(arg.trim()) && barSizeTypedAsSymbol(arg)) : undefined;
   if (barSize) failHistoryBarSize(barSize, words, ctx);
-  if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
+  // A catalog series (CAP:bond-yield:jp-10y) is read as a list's is, alone too.
+  if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))
+    || args.some((arg) => catalogSeriesId(arg) != null)) {
     // `history CC=F 1mo` asks for a month of cocoa, not for cocoa and 1MO: it says which option reads it.
     const typedRange = rangeOption == null && !window ? args.find((arg) => rangeTypedAsSymbol(arg)) : undefined;
     if (typedRange) {
@@ -2463,9 +2613,10 @@ function listedKeys(keys: readonly string[]): string {
  * where a symbol has several in one row, the row's close is the last one's,
  * the slot's close. `notes` names the symbols whose bars moved and those
  * whose bars were merged. `interval` is the bars' size when every symbol came
- * in one, else null.
+ * in one, else null. Columns go in `order`, the keys as the list asked for
+ * them, a column that served nothing (`failed`) in its place, empty.
  */
-function wideHistoryTable(served: readonly ListingHistory[]): {
+function wideHistoryTable(served: readonly ListingHistory[], failed: readonly string[] = [], order: readonly string[] = []): {
   rows: Array<Record<string, string | number | null>>;
   columns: CliResultColumn[];
   interval: string | null;
@@ -2496,18 +2647,25 @@ function wideHistoryTable(served: readonly ListingHistory[]): {
     });
     if (moved.length) notes.unshift(`${listedKeys(moved)} bars are listed ${under}.`);
   }
+  const columns = new Map<string, CliResultColumn>(histories.map((history) => {
+    const unit = historyExportUnit(history.unit);
+    const price = historyPrice(history.decimals);
+    // A catalog series' value is no close: its column is the series, in its unit.
+    return [history.listing.key, {
+      key: key(history), header: `${history.listing.key}${history.catalogSeries ? "" : " close"}${unit ? ` (${unit})` : ""}`, align: "right",
+      format: (value) => value == null ? "" : price(value),
+    }];
+  }));
+  // A column asked for that served nothing stays, empty: its reason is in the notes.
+  for (const symbol of failed) {
+    if (!columns.has(symbol)) columns.set(symbol, { key: `close:${symbol}`, header: catalogSeriesId(symbol) ? symbol : `${symbol} close`, align: "right", format: () => "" });
+  }
+  const ordered = [...new Set([...order.filter((symbol) => columns.has(symbol)), ...columns.keys()])];
   return {
     rows,
     columns: [
       { key: "date", header: histories.some((history) => history.intraday) ? "Time" : "Date" },
-      ...histories.map((history): CliResultColumn => {
-        const unit = historyExportUnit(history.unit);
-        const price = historyPrice(history.decimals);
-        return {
-          key: key(history), header: `${history.listing.key} close${unit ? ` (${unit})` : ""}`, align: "right",
-          format: (value) => value == null ? "" : price(value),
-        };
-      }),
+      ...ordered.map((symbol) => columns.get(symbol)!),
     ],
     interval: intervals.size === 1 ? [...intervals][0] ?? null : null,
     notes,
@@ -2540,6 +2698,8 @@ async function runHistoryList(
     // from a file or standard input, or past the lookups, is tickers: no word in it costs a quote to read as a name.
     const typedList = file === undefined && !args.includes("-") && !exchange;
     const read = await mapWithConcurrency(symbols, HISTORY_LIST_CONCURRENCY, async (symbol) => {
+      // A catalog series is no listing: it is read as a series below.
+      if (catalogSeriesId(symbol)) return { typed: symbol, listing: null, error: null };
       try {
         const listing = await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: lookups && typedList });
         return { typed: symbol, listing };
@@ -2551,6 +2711,9 @@ async function runHistoryList(
     const listed = await mapWithConcurrency(entries, HISTORY_LIST_CONCURRENCY, async (entry): Promise<ListedHistory> => {
       const symbol = entry.typed;
       try {
+        // A catalog series (CAP:bond-yield:jp-10y, FRED:DGS10) is read as `fn G` charts it, dated and in its unit.
+        const seriesId = catalogSeriesId(symbol);
+        if (seriesId) return { symbol: seriesId, history: catalogListingHistory(await loadCatalogSeriesHistory(seriesId, market, ctx.plugins, ask)) };
         if (!("joined" in entry) && !entry.listing) throw entry.error;
         const listing = "joined" in entry ? await resolveNamedListing(entry.joined, market) : entry.listing!;
         const loaded = await loadListingHistory(listing, market, ctx, ask, { lookups });
@@ -2607,7 +2770,10 @@ async function runHistoryList(
       asOf: entry.history.freshness?.asOf ?? null,
     } : { symbol: entry.symbol, error: entry.error });
     if (wide) {
-      const table = wideHistoryTable(served);
+      // A column that served nothing keeps its place, empty, its reason said in the notes.
+      const failed = listed.flatMap((entry) => "error" in entry ? [entry.symbol]
+        : entry.history.data.length === 0 ? [entry.history.listing.key] : []);
+      const table = wideHistoryTable(served, failed, listed.map((entry) => "history" in entry ? entry.history.listing.key : entry.symbol));
       notes.push(...table.notes);
       ctx.printResult({
         data: table.rows,

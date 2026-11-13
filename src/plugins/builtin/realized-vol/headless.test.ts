@@ -31,7 +31,7 @@ async function report(options: Record<string, unknown>, bars = closes) {
 
 test("HVT prints the windows asked for and no IV block when it is off, and every window by default", async () => {
   const asked = await report({ windows: "20,60", showIv: false });
-  expect({ windows: asked.windows, titles: asked.titles }).toEqual({ windows: [20, 60], titles: ["Volatility cone"] });
+  expect({ windows: asked.windows, titles: asked.titles }).toEqual({ windows: [20, 60], titles: ["Volatility cone", "History"] });
   expect((await report({ showIv: false })).windows).toEqual([10, 20, 30, 60, 90, 180, 260]);
 });
 
@@ -45,4 +45,18 @@ test("HVT is complete for the windows asked for, whatever the windows left out l
   const every = (await report({ showIv: false }, short)).result;
   expect((every.metadata!.model as { shortWindows: number[] }).shortWindows).toEqual([180, 260]);
   expect(every.notes!.join(" ")).toContain("the 180- and 260-bar windows need more");
+});
+
+test("HVG's export has the daily series it draws, a column per window in percent, newest first", async () => {
+  // The series was in JSON only, as fractions: a spreadsheet had the cone and nothing to chart.
+  const { result } = await report({ windows: "20", showIv: false });
+  const history = (result.sections as HeadlessBundleSection[]).find((section) => section.title === "History")!;
+  expect(history.columns!.map((column) => column.header)).toEqual(["Date", "HV20"]);
+  const model = result.metadata!.model as { series: Array<{ date: Date; values: Record<number, number | null> }> };
+  expect(history.rows).toHaveLength(model.series.length);
+  const newest = model.series.at(-1)!;
+  expect(history.rows![0]).toEqual({ date: newest.date.toISOString().slice(0, 10), hv20: newest.values[20] });
+  expect(history.columns![1]!.format!(newest.values[20], {})).toBe(`${(newest.values[20]! * 100).toFixed(2)}%`);
+  // The text report prints the latest sessions.
+  expect(history.textRows).toHaveLength(10);
 });

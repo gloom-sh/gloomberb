@@ -49,7 +49,7 @@ import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { exchangeLineCoinListing, isRoundTheClockCoin, withExchangeLinesAsCoinListings } from "../../utils/crypto-pair";
 import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
-import { createProviderMiss, ProviderBusyError, providerMissReason, StaleHistoryError } from "../provider-errors";
+import { createProviderMiss, isRateLimited, ProviderBusyError, providerMissReason, StaleHistoryError } from "../provider-errors";
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
 import { isRetryableApiError, markAskedTwice, sourceDidNotAnswer, wasAskedTwice } from "../../api-client/errors";
 import { assertSecRegistrantMatches } from "../sec-registrant";
@@ -94,8 +94,13 @@ import { cleanListingName } from "../../tickers/company-name";
 import { settleWithin } from "../../utils/async-deadline";
 import { cloudSearchBatch, cloudTickerChangesBatch } from "./batched-lookups";
 import { cappedAnswerStart, firstBarDate, reachesWindowStart, withOlderBars } from "./dated-chunks";
+import { chunked, mapWithConcurrency } from "../../utils/concurrency";
 
 const providerId = GLOOMBERB_CLOUD_PROVIDER_ID;
+/** Listings in one quote batch request: the most the service reads in a signed-out batch. */
+const QUOTE_BATCH_SIZE = 100;
+/** Quote batch requests of one long list in flight at once. */
+const QUOTE_BATCHES_IN_FLIGHT = 3;
 /** How long a search that is not typed waits for perpetual markets. */
 const PERPETUAL_SEARCH_WAIT_MS = 2_000;
 /** How long a batched search waits for the board it answers every query's perpetual markets from. */
@@ -655,6 +660,25 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const { valid, invalid } = cloudBatchTargets(targets);
     const rejected = invalid.map((entry) => ({ ...entry, quote: null }));
     if (!valid.length) return rejected;
+    // A request per hundred listings, a few in flight: the service reads a signed-out batch of a hundred at most and
+    // refuses a longer one whole, which left a pasted list of 300 to be asked one listing at a time.
+    // A request refused for the service's request limit leaves its listings, and those of the requests not sent yet,
+    // with that refusal: the others keep their answers.
+    if (valid.length > QUOTE_BATCH_SIZE) {
+      let refusal: unknown = null;
+      const chunks = await mapWithConcurrency(chunked(valid.map((entry) => entry.target), QUOTE_BATCH_SIZE), QUOTE_BATCHES_IN_FLIGHT,
+        async (chunk): Promise<QuoteBatchResult[]> => {
+          if (refusal) return chunk.map((target) => ({ target, quote: null, error: refusal }));
+          try {
+            return await this.getQuotesBatch(chunk, options);
+          } catch (error) {
+            if (!isRateLimited(error)) throw error;
+            refusal = error;
+            return chunk.map((target) => ({ target, quote: null, error }));
+          }
+        });
+      return [...rejected, ...chunks.flat()];
+    }
     const submitted = valid.map((entry) => entry.target);
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudQuotesBatch(

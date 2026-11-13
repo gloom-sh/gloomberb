@@ -25,6 +25,7 @@ import {
   withFocusedPane,
 } from "./layout";
 import { reduceLayoutAction } from "./layout-reducer";
+import { paneStateChoiceKeys, pluginChoiceKey, withPaneChoices } from "./pane-choices";
 import type { AppAction, AppState, CollectionSortPreference, PaneRuntimeState } from "./types";
 import type { AppSessionSnapshot } from "../session-persistence";
 
@@ -287,9 +288,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return hydrateDesktopSnapshot(state, action.snapshot);
 
     case "UPDATE_PANE_STATE": {
+      // Written in this session, even with the value it holds: see pane-choices.ts.
+      const chosen = withPaneChoices(state, action.paneId, Object.keys(action.patch));
       const current = state.paneState[action.paneId] ?? {};
       if (Object.keys(action.patch).every((key) => Object.is(current[key], action.patch[key]))) {
-        return state;
+        return chosen;
       }
       const nextState = { ...current, ...action.patch };
       const recentTickers = Object.prototype.hasOwnProperty.call(action.patch, "cursorSymbol")
@@ -300,7 +303,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         [action.paneId]: nextState,
       };
       return {
-        ...state,
+        ...chosen,
         config: syncConfigActiveLayoutState(state.config, paneState, state.focusedPaneId),
         paneState,
         recentTickers,
@@ -308,9 +311,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case "REPLACE_PANE_STATE": {
+      const chosen = withPaneChoices(state, action.paneId, paneStateChoiceKeys(action.state));
       const current = state.paneState[action.paneId] ?? {};
       const nextState = action.state;
-      if (Object.is(current, nextState)) return state;
+      if (Object.is(current, nextState)) return chosen;
       const paneState = {
         ...state.paneState,
         [action.paneId]: nextState,
@@ -319,7 +323,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ? nextRecentTickers(state.recentTickers, typeof nextState.cursorSymbol === "string" ? nextState.cursorSymbol : null)
         : state.recentTickers;
       return {
-        ...state,
+        ...chosen,
         config: syncConfigActiveLayoutState(state.config, paneState, state.focusedPaneId),
         paneState,
         recentTickers,
@@ -327,11 +331,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case "UPDATE_PLUGIN_PANE_STATE": {
+      const chosen = withPaneChoices(state, action.paneId, [pluginChoiceKey(action.pluginId, action.key)]);
       const current = state.paneState[action.paneId] ?? {};
       const currentPluginState = current.pluginState ?? {};
       const currentPluginValues = currentPluginState[action.pluginId] ?? {};
       if (Object.is(currentPluginValues[action.key], action.value)) {
-        return state;
+        return chosen;
       }
       const paneState = {
         ...state.paneState,
@@ -347,11 +352,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         },
       };
       return {
-        ...state,
+        ...chosen,
         config: syncConfigActiveLayoutState(state.config, paneState, state.focusedPaneId),
         paneState,
       };
     }
+
+    case "CHOOSE_PANE_STATE":
+      return withPaneChoices(state, action.paneId, [action.key]);
 
     default:
       return state;

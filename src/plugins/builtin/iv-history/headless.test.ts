@@ -377,7 +377,7 @@ describe("HIVG exports for scripts", () => {
     // Every release before the history (July's, and those since 2021) is counted under the rows, with where the history starts.
     expect(result.notes).toContainEqual(expect.stringMatching(/^\d+ earlier FOMC releases predate the IV history, which starts 2026-09-01\.$/));
     await expect(Promise.resolve(ivHistoryHeadless.load(createTestHeadlessArgs({ symbols: ["SPY"], options: { lookback: "1Y", hvWindow: "20", offset: -6 } }),
-      createTestHeadlessContext()))).rejects.toThrow("--offset counts sessions from a release day: add --event fomc, cpi, jobs or ecb.");
+      createTestHeadlessContext()))).rejects.toThrow("--offset counts sessions from a release day: add --event fomc, cpi, jobs, ecb or boj.");
   });
 
   test("--event ecb reads the ECB's decision days Gloom Cloud lists, and its next decision once its session has a reading", async () => {

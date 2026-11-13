@@ -16,7 +16,7 @@ import {
   type ConnectionHealthRegistry,
 } from "../core/connection-health";
 import { SESSION_COOKIE_NAMES } from "./session-cookie";
-import { asDataServiceFailure, DataServiceUnreachableError } from "../utils/network-failure";
+import { asDataServiceFailure, DataServiceUnreachableError, isDroppedConnection } from "../utils/network-failure";
 
 /** The public Gloom Cloud API, which the web app's same-origin `/api` path forwards to. */
 export const DEFAULT_API_URL = "https://api.gloom.sh";
@@ -70,6 +70,43 @@ const RESEARCH_MARKET_PATHS = new Set([
   "/market/dividends", "/market/short-interest", "/market/movers", "/market/trending",
   "/market/heatmap", "/market/earnings-calendar", "/market/search/batch",
 ]);
+
+/**
+ * A read cut off by a server restart is sent once more after a pause in this
+ * range (`sendAgainIfCutOff`): the next connection reaches a server that
+ * answers. Spread so the requests a restart dropped together are not all sent
+ * again in the same instant.
+ */
+const DROPPED_RETRY_MIN_MS = 100;
+const DROPPED_RETRY_SPREAD_MS = 400;
+
+/**
+ * Whether asking twice is harmless: a GET or HEAD, or a POST under the market
+ * paths, which are batch reads. Writes are never sent twice: the first may
+ * have reached the server before its connection dropped.
+ */
+function isRepeatableRead(method: string, path: string): boolean {
+  return method === "GET" || method === "HEAD" || (method === "POST" && path.startsWith("/market/"));
+}
+
+/** Waits `ms`, or rejects with the signal's reason once it aborts. */
+function pause(ms: number, signal: AbortSignal | null | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 /** When a request gives up: without any answer from the service, and in all. */
 interface RequestDeadline {
@@ -286,6 +323,45 @@ function throwIfRequestAborted(signal: AbortSignal | null | undefined): void {
     signal.reason ??
     new DOMException("The operation was aborted.", "AbortError")
   );
+}
+
+/**
+ * Whether an answer says the server that took the request is going away: the
+ * proxy in front could not get an answer from it (a 502 that is not the
+ * API's own JSON), or the server refused new work while it stops (503 with a
+ * Retry-After of at most a second). The API's other 502s and 503s say what an
+ * upstream or the service does not have, and stand.
+ */
+function isRestartAnswer(response: CloudApiResponse): boolean {
+  if (response.status === 502) return !(response.headers.get("Content-Type") ?? "").includes("json");
+  if (response.status !== 503) return false;
+  const retryAfter = response.headers.get("Retry-After");
+  return retryAfter != null && retryAfter.trim() !== "" && Number(retryAfter) <= 1;
+}
+
+/**
+ * Sends a read, and once more after a short pause when its connection
+ * dropped before the answer began (`isDroppedConnection`), or the answer
+ * says its server is going away (`isRestartAnswer`). Only once: a second
+ * failure is the service's state, and is reported as before.
+ */
+async function sendAgainIfCutOff(
+  sendOnce: () => Promise<CloudApiResponse>,
+  signal: AbortSignal | null | undefined,
+): Promise<CloudApiResponse> {
+  let first: CloudApiResponse;
+  try {
+    first = await sendOnce();
+  } catch (error) {
+    if (signal?.aborted || !isDroppedConnection(error)) throw error;
+    await pause(DROPPED_RETRY_MIN_MS + Math.random() * DROPPED_RETRY_SPREAD_MS, signal);
+    return sendOnce();
+  }
+  if (!isRestartAnswer(first)) return first;
+  // Read and drop the replaced answer's body, so its connection is released.
+  first.text().catch(() => { /* Intentional ignore: this answer is replaced by the next. */ });
+  await pause(DROPPED_RETRY_MIN_MS + Math.random() * DROPPED_RETRY_SPREAD_MS, signal);
+  return sendOnce();
 }
 
 export class CloudApiRequestTransport {
@@ -774,13 +850,20 @@ export class CloudApiRequestTransport {
 
     const operation = `${options?.method ?? "GET"} ${path.split("?")[0]}`;
     const url = `${this.baseUrl}${path}`;
+    const repeatable = !send && isRepeatableRead(method, path);
     const read = async (signal: AbortSignal | null | undefined): Promise<CloudApiAnswer> => {
-      const response = await this.reachService(() => (send ?? this.fetchTransport ?? cloudApiFetchTransport)(url, {
+      const sendOnce = () => (send ?? this.fetchTransport ?? cloudApiFetchTransport)(url, {
         ...options,
         headers,
         credentials: "include",
         signal,
-      }), signal, isBackgroundRequest(path));
+      });
+      // Inside the reach check: a read that gets through on its second try was answered, not an outage.
+      const response = await this.reachService(
+        () => (repeatable ? sendAgainIfCutOff(sendOnce, signal) : sendOnce()),
+        signal,
+        isBackgroundRequest(path),
+      );
       throwIfRequestAborted(signal);
       const text = response.text();
       text.catch(() => { /* Intentional ignore: every caller awaits this body after reading the headers. */ });

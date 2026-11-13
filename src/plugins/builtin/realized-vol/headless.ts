@@ -4,7 +4,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { createSurfaceDependencies } from "../vol-surface/client";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadCurrentAtmIv, loadRealizedVolatilityHistory } from "./client";
-import { atmIvObservedLabel, projectRealizedVolatility, type CurrentAtmIvSnapshot } from "./model";
+import { atmIvObservedLabel, projectRealizedVolatility, type CurrentAtmIvSnapshot, type RealizedVolatilityModel } from "./model";
 import { ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
 import { DAILY_CLOSES } from "../shared/report-freshness";
 import { listingAbroadVenue } from "../../../utils/sec";
@@ -31,8 +31,33 @@ function fxProxySection(proxy: FxVolProxy, reading: FxProxyReading): HeadlessBun
       formatted: proxy.iv30 ? `${proxy.iv30.date}${proxy.iv30.method === "quote-mid" ? " (quote mid)" : ""}${stale ? ", stale" : ""}` : MISSING_VALUE },
     { label: fxProxyChainLabel(proxy), value: proxy.expiries?.usable ?? null, formatted: fxProxyChainText(proxy, Date.now()) },
     { label: "Pair HV20", value: hv20, formatted: percent(hv20) },
-    { label: "IV30 - HV20", value: spread, formatted: spread == null ? MISSING_VALUE : `${spread >= 0 ? "+" : ""}${(spread * 100).toFixed(2)} pts` },
+    // In points of volatility, which the label names, so an export writes the bare number.
+    { label: "IV30 - HV20 (pts)", value: spread, formatted: spread == null ? MISSING_VALUE : `${spread >= 0 ? "+" : ""}${(spread * 100).toFixed(2)}` },
   ] };
+}
+
+/** Sessions of the history the text report prints; exports write every session of the lookback. */
+const HISTORY_TEXT_SESSIONS = 10;
+
+/**
+ * Each session's estimate for the windows shown, newest first, as HIVG's daily
+ * history is: the series the graph draws, which exports write as numbers in
+ * percent under one column per window (HV20 (%)). The text report prints the
+ * latest sessions.
+ */
+function historySection(model: RealizedVolatilityModel): HeadlessBundleSection {
+  const rows = model.series.map((point) => ({
+    date: point.date.toISOString().slice(0, 10),
+    ...Object.fromEntries(model.windows.map((window) => [`hv${window}`, point.values[window] ?? null])),
+  })).reverse();
+  return {
+    title: "History",
+    textTitle: `History, latest ${Math.min(HISTORY_TEXT_SESSIONS, rows.length)} sessions`,
+    columns: [{ key: "date", header: "Date" }, ...model.windows.map((window) => ({ key: `hv${window}`, header: `HV${window}`,
+      format: (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE }))],
+    rows,
+    textRows: rows.slice(0, HISTORY_TEXT_SESSIONS),
+  };
 }
 
 export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPaneDefinition<"bundle"> {
@@ -103,6 +128,7 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
             { key: "percentile", header: "Percentile", format: (value) => typeof value === "number" ? `${value.toFixed(1)}%` : MISSING_VALUE },
             { key: "sampleSize", header: "Samples" },
           ], rows: model.cone.map((row) => ({ ...row })) },
+          ...model.series.length > 0 ? [historySection(model)] : [],
           ...proxy && proxyReading ? [fxProxySection(proxy, proxyReading)] : fx || !args.options.showIv ? [] : [{ title: "Current IV", entries: [
             { label: "ATM IV", value: iv?.reference?.value ?? null, formatted: iv?.reference ? `${(iv.reference.value * 100).toFixed(2)}%` : MISSING_VALUE },
             { label: "Expiry", value: iv?.reference?.expiration ?? null,

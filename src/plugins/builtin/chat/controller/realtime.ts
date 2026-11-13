@@ -27,7 +27,17 @@ interface ChatControllerRealtimeOptions {
   invalidateMentionCandidates: () => void;
 }
 
+/**
+ * After a drop, the full-page reads wait a random moment up to this long. A
+ * server restart reconnects every client within about two seconds and each
+ * reads a page per channel it shows; spread out, they reach the server as a
+ * trickle. Only reactions, edits and removals made during the drop wait for
+ * it: the catch-up reads new messages as soon as the socket is back.
+ */
+const CHAT_RESYNC_SPREAD_MS = 3_000;
+
 export class ChatControllerRealtime {
+  private resyncTimer: ReturnType<typeof setTimeout> | null = null;
   private verificationPollTimer: ReturnType<typeof setInterval> | null = null;
   private sessionRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private safetyRefreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -114,12 +124,18 @@ export class ChatControllerRealtime {
         }
         if (!dropped) return;
         dropped = false;
-        this.options.resyncChannels();
+        if (this.resyncTimer) return;
+        this.resyncTimer = setTimeout(() => {
+          this.resyncTimer = null;
+          this.options.resyncChannels();
+        }, Math.random() * CHAT_RESYNC_SPREAD_MS);
       });
     }
   }
 
   stopRealtimeSubscriptions(): void {
+    if (this.resyncTimer) clearTimeout(this.resyncTimer);
+    this.resyncTimer = null;
     this.mentionCandidatesUnsubscribe?.();
     this.mentionCandidatesUnsubscribe = null;
     this.socketConnectionUnsubscribe?.();

@@ -26,6 +26,7 @@ import { setPaneSetting, setPaneSettings, updatePaneInstance } from "../../../pa
 import { useTickerFinancials } from "../../../market-data/hooks";
 import { hasAmbiguousTickerContracts, resolveInstrumentForPane, resolveListingForPane, tickerForInstrument } from "../../../core/state/app/instrument";
 import { materializeDetachedLayouts } from "../../../core/state/app/layout";
+import { isPaneChoice, withAllPaneChoices } from "../../../core/state/app/pane-choices";
 import {
   APP_SESSION_ID,
   APP_SESSION_SCHEMA_VERSION,
@@ -339,6 +340,21 @@ export function usePaneStateValue<T>(key: string, fallback: T, paneId?: string):
   return [value, setValue];
 }
 
+/**
+ * Whether this pane's `key` was chosen in this session rather than restored
+ * with the workspace, and the call for a pick that may leave the value as it
+ * is (see `pane-choices.ts`). Any write of the key already counts.
+ */
+export function usePaneChoice(key: string, paneId?: string): [chosen: boolean, choose: () => void] {
+  const dispatch = useAppDispatch();
+  const scopedPaneId = useScopedPaneId(paneId);
+  const chosen = useAppSelector((state) => isPaneChoice(state, scopedPaneId, key));
+  const choose = useCallback(() => {
+    dispatch({ type: "CHOOSE_PANE_STATE", paneId: scopedPaneId, key });
+  }, [dispatch, key, scopedPaneId]);
+  return [chosen, choose];
+}
+
 export function usePaneSettingValue<T>(
   key: string,
   fallback: T,
@@ -445,6 +461,7 @@ export function AppProvider({
   desktopBridge,
   desktopSnapshot = null,
   initialThemePreview = null,
+  paneStateChosen = false,
 }: {
   config: AppConfig;
   children: ReactNode;
@@ -453,6 +470,11 @@ export function AppProvider({
   desktopBridge?: DesktopWindowBridge;
   desktopSnapshot?: DesktopSharedStateSnapshot | null;
   initialThemePreview?: DesktopThemePreviewState | null;
+  /**
+   * The pane state it starts with was asked for now (a pane function's
+   * capture), not restored with a workspace: see `pane-choices.ts`.
+   */
+  paneStateChosen?: boolean;
 }) {
   const [state, rawDispatch] = useReducer(
     appReducer,
@@ -470,9 +492,10 @@ export function AppProvider({
         initialThemePreview: initialDesktopThemePreview,
       } = initialState;
       const baseState = createInitialState(initialConfig, initialSessionSnapshot);
-      const nextState = initialDesktopSnapshot
+      const hydratedState = initialDesktopSnapshot
         ? appReducer(baseState, { type: "HYDRATE_DESKTOP_SNAPSHOT", snapshot: initialDesktopSnapshot })
         : baseState;
+      const nextState = paneStateChosen ? withAllPaneChoices(hydratedState) : hydratedState;
       return initialDesktopThemePreview
         ? appReducer(nextState, { type: "PREVIEW_THEME", theme: initialDesktopThemePreview.theme })
         : nextState;

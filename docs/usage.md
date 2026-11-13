@@ -329,6 +329,8 @@ A company's page has eleven tabs, and a tab with several views shows them as cho
 
 Ticker Research shows the views that can have data for the instrument. A tab with none of them is left out, and a tab with one opens it directly.
 
+Calls, Risks, 8-K and Hiring need Gloom Cloud Pro. A pane left on one of them reopens there with Pro. Without Pro (signed out, unverified or on the free plan), a pane that comes back on one of them (at launch, on a desk switch, after a reload on the web) opens on Overview instead and keeps the view saved. Its sign-in or upgrade screen shows once you pick the view again; a link, a command or `--tab` that names the view counts as picking it. Market Movers does the same with Gaps.
+
 | Instrument | Tabs |
 |------------|------|
 | Stocks | The company tabs: analyst coverage, diagnostic, earnings calls, executives, filings, risk factors, hiring, holders, insider and short interest |

@@ -44,6 +44,7 @@ import { createPaneCatalog } from "../pane-functions/discovery";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, selectPaneCatalogMatches } from "../pane-functions/catalog";
 import { normalizeSearchText } from "../../tickers/search/ranking";
 import { hasNonLatinLetters } from "../../utils/typed-text";
+import { isKanjiOnlyName, japaneseNameReadAs, readExactJapaneseName, readJapaneseName, type JapaneseNameListing } from "../../tickers/search/japanese-names";
 
 interface SearchCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
@@ -147,6 +148,22 @@ export async function searchCandidatesForCli({
     logFailure("cli.commands-search", "Search ticker candidates failed")(error);
     return [];
   }
+}
+
+/** Each listing a name in Japanese was read as, searched for by its key, in that order and once each. */
+async function japaneseNameCandidates(
+  listings: readonly JapaneseNameListing[],
+  tickers: TickerRecord[],
+  dataProvider: DataProvider,
+): Promise<TickerSearchCandidate[]> {
+  const found = await Promise.all(listings.map(({ key }) => searchCandidatesForCli({ query: key, tickers, dataProvider, totalLimit: 1, localLimit: 1 })));
+  const seen = new Set<string>();
+  return found.flat().filter((candidate) => {
+    const key = `${candidate.symbol}:${candidate.result?.exchange ?? candidate.ticker?.metadata.exchange ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** A symbol search does not list whose quote stopped long ago: TWTR, last traded 2022-10-27. */
@@ -763,12 +780,24 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     const changes = bare ? startTickerChangeLookup(dataProvider, symbol) : null;
     // With no quote, its US line's last bars, to list a retired symbol (STPP) with its last day.
     const ending = quote?.then((quoted) => quoted ? null : loadNoQuoteEnding({ symbol }, dataProvider));
-    const candidates = await searchCandidatesForCli({
-      query: index?.symbol ?? trimmedQuery,
-      tickers,
-      dataProvider,
-      ...quote ? { quote } : {},
-    }).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult));
+    // A name typed in Japanese (トヨタ, ドル円) searches for the listings it names, which are named in Latin letters.
+    const japanese = index ? null : await readJapaneseName(trimmedQuery);
+    const searched = japanese
+      ? await japaneseNameCandidates(japanese.listings, tickers, dataProvider).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult))
+      : await searchCandidatesForCli({
+        query: index?.symbol ?? trimmedQuery,
+        tickers,
+        dataProvider,
+        ...quote ? { quote } : {},
+      }).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult));
+    // A name in kanji alone is the service's to read first (中電 is CLP in Hong Kong); a Tokyo company's whole name it
+    // finds nothing for (中電工) is read from the Tokyo list.
+    const exact = searched.length === 0 && !japanese && !index && isKanjiOnlyName(trimmedQuery) ? await readExactJapaneseName(trimmedQuery) : null;
+    const candidates = exact
+      ? await japaneseNameCandidates(exact.listings, tickers, dataProvider).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult))
+      : searched;
+    const reading = japanese ?? exact;
+    const readAs = index?.readAs ?? (reading ? japaneseNameReadAs(trimmedQuery, reading) : undefined);
     const fate = quote && changes ? await searchFate(symbol, candidates, await quote, dataProvider, changes, ending) : NO_SEARCH_FATE;
 
     const series = findCatalogSeries(dependencies.plugins ?? [], trimmedQuery, "names");
@@ -781,7 +810,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
         data: [...fate.stopped ? [stoppedListingRow(fate.stopped)] : [], ...searchCandidateRows(candidates)],
         metadata: { query: trimmedQuery, ...(index ? { searched: index.symbol } : {}), ...(series.length ? { series } : {}), ...(functions.length ? { functions } : {}),
           ...(bank ? { centralBank: { id: bank.id, name: bank.name, place: bank.place, function: "CBR" } } : {}) },
-        warnings: index?.readAs || warnings.length ? [...index?.readAs ? [index.readAs] : [], ...warnings] : undefined,
+        warnings: readAs || warnings.length ? [...readAs ? [readAs] : [], ...warnings] : undefined,
       }, {
         columns: [
           { key: "category", header: "Category" },
@@ -802,7 +831,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
       series,
       functions,
       fate,
-      readAs: index?.readAs,
+      readAs,
     }));
   });
 }

@@ -15,6 +15,7 @@ import {
   usePaneStateValue,
   usePaneTicker,
   usePaneAppConfig,
+  usePaneChoice,
   type AppState,
 } from "../../../state/app/context";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
@@ -34,7 +35,8 @@ import { findTickerResearchGroup, groupTickerResearchTabs, tickerResearchGroupVi
 import { isRecord } from "../../../utils/guards";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
-import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
+import { CLOUD_QUOTE_DELAY_MINUTES, usePlanAccess } from "../../../api-client/plan-access";
+import { shownPaneChoice } from "../../../core/state/app/pane-choices";
 import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { captureAttentionAction } from "../../../telemetry/attention-counts";
 import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
@@ -193,25 +195,9 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     TICKER_RESEARCH_TAB_COMMIT_DELAY_MS,
     { commitPendingOnUnmount: true },
   );
-  useEffect(() => {
-    if (!focused || !ticker || getCurrentPluginTarget() !== "web") return;
-    const url = new URL(window.location.href);
-    if (ticker.metadata.broker_contracts?.length) {
-      for (const key of ["ticker", "exchange", "tab"]) url.searchParams.delete(key);
-      window.history.replaceState(window.history.state, "", url.href);
-      return;
-    }
-    url.searchParams.set("ticker", ticker.metadata.ticker);
-    // A bare ticker can name different issuers on different venues. Keep the
-    // selected listing on reload, and replace any previous pane's venue.
-    if (ticker.metadata.exchange && !parsePublicTickerKey(ticker.metadata.ticker).exchange && !tickerHasListingSuffix(ticker.metadata.ticker)) {
-      url.searchParams.set("exchange", ticker.metadata.exchange);
-    } else {
-      url.searchParams.delete("exchange");
-    }
-    url.searchParams.set("tab", activeTabId);
-    window.history.replaceState(window.history.state, "", url.href);
-  }, [focused, ticker?.metadata.ticker, ticker?.metadata.exchange, activeTabId, ticker?.metadata.broker_contracts]);
+  // A tab picked in this session, by any route, as opposed to restored with the workspace.
+  const [tabChosen, chooseTab] = usePaneChoice("activeTabId");
+  const access = usePlanAccess();
   const [pluginCaptured, setPluginCaptured] = useState(false);
   useEffect(() => {
     if (focused && Number.isFinite(financials?.quote?.price) && (financials?.quote?.price ?? 0) > 0) {
@@ -241,9 +227,41 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     config,
     hasOptionsChain,
   });
+  const savedTabId = allTabs.some((tab) => tab.id === activeTabId) ? activeTabId : (allTabs[0]?.id ?? "overview");
+  const proOnlyTabIds = useMemo(
+    () => new Set(tickerResearchTabs.filter((tab) => tab.proOnly).map((tab) => tab.id)),
+    [tickerResearchTabs],
+  );
+  // A Pro-only tab restored for an account without Pro opens on the first
+  // free tab (Overview); its wall shows once the tab is picked.
   const resolvedTabId = paneSettings.hideTabs
     ? resolveLockedTabId(paneSettings, allTabs)
-    : (allTabs.some((tab) => tab.id === activeTabId) ? activeTabId : (allTabs[0]?.id ?? "overview"));
+    : shownPaneChoice(savedTabId, {
+      chosen: tabChosen || activeTabId !== committedActiveTabId,
+      hasProAccess: access.hasProAccess,
+      proOnly: (tabId) => proOnlyTabIds.has(tabId),
+      fallback: allTabs.find((tab) => !proOnlyTabIds.has(tab.id))?.id ?? savedTabId,
+    });
+  // The address names the tab on screen, so a copied link opens what was seen.
+  useEffect(() => {
+    if (!focused || !ticker || getCurrentPluginTarget() !== "web") return;
+    const url = new URL(window.location.href);
+    if (ticker.metadata.broker_contracts?.length) {
+      for (const key of ["ticker", "exchange", "tab"]) url.searchParams.delete(key);
+      window.history.replaceState(window.history.state, "", url.href);
+      return;
+    }
+    url.searchParams.set("ticker", ticker.metadata.ticker);
+    // A bare ticker can name different issuers on different venues. Keep the
+    // selected listing on reload, and replace any previous pane's venue.
+    if (ticker.metadata.exchange && !parsePublicTickerKey(ticker.metadata.ticker).exchange && !tickerHasListingSuffix(ticker.metadata.ticker)) {
+      url.searchParams.set("exchange", ticker.metadata.exchange);
+    } else {
+      url.searchParams.delete("exchange");
+    }
+    url.searchParams.set("tab", resolvedTabId);
+    window.history.replaceState(window.history.state, "", url.href);
+  }, [focused, ticker?.metadata.ticker, ticker?.metadata.exchange, resolvedTabId, ticker?.metadata.broker_contracts]);
   // Only quote/chart views use the parent quote status. Other research tabs
   // own their data status (the options chain may have a different delay/feed).
   const quoteFooterActive = resolvedTabId === "overview" || resolvedTabId === "chart";
@@ -279,8 +297,9 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     if (!requestedTabId || !requestedTabAt || requestedTabAt === consumedTabAt) return;
     if (!allTabs.some((tab) => tab.id === requestedTabId)) return;
     setConsumedTabAt(requestedTabAt);
+    chooseTab();
     setActiveTabId(requestedTabId);
-  }, [consumedTabAt, requestedTabAt, requestedTabId, setActiveTabId, setConsumedTabAt, visibleTabIdKey]);
+  }, [chooseTab, consumedTabAt, requestedTabAt, requestedTabId, setActiveTabId, setConsumedTabAt, visibleTabIdKey]);
   // A quote tick re-renders this pane; the strips only have to re-render
   // when a tab appears, disappears, or is renamed.
   const tabItemsKey = allTabs.map((tab) => `${tab.id}:${tab.name}:${tab.order}`).join("\0");
@@ -312,8 +331,10 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       const action = tabId === "chart" ? "chart" : tabId === "options" ? "option_chain" : null;
       if (action) captureAttentionAction()(publicTickerKey(ticker.metadata.ticker, ticker.metadata.exchange), action);
     }
+    // Picking the tab the pane has saved changes no value, so say it was picked.
+    if (!tabChosen) chooseTab();
     setActiveTabId(tabId);
-  }, [resolvedTabId, setActiveTabId, ticker]);
+  }, [chooseTab, resolvedTabId, setActiveTabId, tabChosen, ticker]);
   // A group opens on the view last chosen in it, as Fixed Income's sections do.
   const selectResearchGroup = useCallback((groupId: string) => {
     const group = groups.find((entry) => entry.id === groupId);

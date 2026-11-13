@@ -218,7 +218,7 @@ test("rows a bank or a statistics office times itself show its clock; a bank tha
   expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Local");
 });
 
-test("plain output, which keeps every column a query has, leaves out the Local and Viewer columns when nothing fills them", async () => {
+test("plain output leaves out the Local and Viewer columns when nothing fills them, and the CSV the Local column", async () => {
   const timed = { ...event("2026-10-22T12:00:00.000Z", "MX", "high", "Mid-Month CPI"), localTime: "06:00", timeZone: "America/Mexico_City" };
   setCliPlainOverride(true);
   try {
@@ -234,9 +234,15 @@ test("plain output, which keeps every column a query has, leaves out the Local a
     expect(mixed).toMatch(/12:30 UTC\s+—\s+US\s+high\s+Housing Starts/);
     // --tz gives the viewer's clock its column, named for the zone.
     expect(await econText(twoWeeks, ["--country", "US", "--tz", "America/New_York"])).toMatch(/Time\s+Day\s+New York\s+Country/);
-    // A script's CSV header keeps both columns whatever the rows hold.
-    const { result, options } = await econPrinted(twoWeeks, ["--country", "US"]);
-    expect(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n")[0]).toContain("Viewer,Local");
+    // A script's CSV header has Local only when a row has a publisher's clock: `econ --tz Asia/Tokyo --csv` carried it
+    // empty on every row.
+    const header = async (calendar: typeof twoWeeks, args: string[]) => {
+      const { result, options } = await econPrinted(calendar, args);
+      return serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n")[0]!;
+    };
+    expect(await header(twoWeeks, ["--country", "US"])).toContain("Viewer,Country");
+    expect(await header(twoWeeks, ["--country", "US", "--tz", "Asia/Tokyo"])).toStartWith("Date,Time,Day,Tokyo date,Tokyo day,Tokyo time,Country");
+    expect(await header([...twoWeeks, timed], ["--country", "US,MX"])).toContain("Viewer,Local,Country");
   } finally {
     setCliPlainOverride(null);
   }
@@ -283,6 +289,11 @@ test("--tz adds the viewer's clock, with the weekday there in Day", async () => 
   const printed = await econPrinted(brazil, ["--country", "BR", "--tz", "America/New_York"]);
   expect(printed.result.metadata).toMatchObject({ timeZone: "America/New_York" });
   expect((printed.result.data as Record<string, unknown>[]).at(-1)).toMatchObject({ viewerDate: "2026-10-23", viewerTime: "08:00" });
+  // The CSV keeps the UTC timestamp, its time and its weekday, and the viewer's date, weekday and time in columns of
+  // their own, filled: the viewer's Tue was beside the UTC Wed's date, and its clock had no date.
+  const csv = serializeCliResult(printed.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, printed.options).split("\n");
+  expect(csv[0]).toStartWith("Date,Time,Day,New York date,New York day,New York time,Local,Country");
+  expect(csv.find((line) => line.includes("Night release"))).toStartWith("2026-10-14T01:30:00.000Z,01:30,Wed,2026-10-13,Tue,21:30,,BR,medium,Night release");
   // Without --tz the rows carry no viewer clock, and Day is the UTC date's.
   const plain = await econText(brazil, ["--country", "BR"]);
   expect(plain).not.toContain("New York");
@@ -396,7 +407,7 @@ test("the CSV, NDJSON and JSON of the same calendar say the same, and the CSV ad
     ...json.columns.map((column) => column.header),
     "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "period", "released", "retrieved",
   ]);
-  expect(csv.header.slice(0, json.columns.length)).toEqual(["Date", "Day", "Time", "Viewer", "Local", "Country", "Impact", "Event", "Actual", "Forecast", "Prior", "Unit", "Scale", "Publisher", "Link", "actual_text", "forecast_text", "prior_text", "consensus_feed", "consensus_read_at", "actual_status"]);
+  expect(csv.header.slice(0, json.columns.length)).toEqual(["Date", "Day", "Time", "Viewer", "Country", "Impact", "Event", "Actual", "Forecast", "Prior", "Unit", "Scale", "Publisher", "Link", "actual_text", "forecast_text", "prior_text", "consensus_feed", "consensus_read_at", "actual_status"]);
   expect(csv.rows).toHaveLength(json.data.length);
   expect(ndjson).toHaveLength(json.data.length);
   const cell = (value: unknown) => value == null ? "" : String(value);
@@ -439,7 +450,7 @@ test("the CSV, NDJSON and JSON of the same calendar say the same, and the CSV ad
   expect(csv.rows[json.data.findIndex((row) => row.event === "Housing Starts")]!.slice(csv.header.indexOf("consensus_feed"), csv.header.indexOf("consensus_read_at") + 1)).toEqual(["", ""]);
   // A figure is a number in every format, and a missing one is empty in CSV and null in JSON.
   const crude = json.data.findIndex((row) => row.event === "EIA Crude Oil Stocks Change");
-  expect(csv.rows[crude]!.slice(8, 13)).toEqual(["-4100000", "-987000", "500000", "bbl", "1000000"]);
+  expect(csv.rows[crude]!.slice(csv.header.indexOf("Actual"), csv.header.indexOf("Scale") + 1)).toEqual(["-4100000", "-987000", "500000", "bbl", "1000000"]);
   const housing = json.data.findIndex((row) => row.event === "Housing Starts");
   expect(csv.rows[housing]!.slice(8, 13)).toEqual(["", "", "", "", ""]);
   expect(json.data[housing]).toMatchObject({ actual: null, released: null });

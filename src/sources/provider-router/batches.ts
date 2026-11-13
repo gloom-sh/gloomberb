@@ -27,6 +27,8 @@ import {
   type CachedFinancialsSelection,
 } from "./financials";
 import type { ProviderRouterCoreDeps } from "./route-types";
+import { isRateLimited, rateLimitedError } from "../provider-errors";
+import { quoteServedFromSavedCopy } from "../../data/saved-copies";
 import { isNetworkFailure } from "../../utils/network-failure";
 import { withRetrievedAt } from "./retrieved-at";
 
@@ -62,6 +64,8 @@ export class ProviderRouterBatchRoutes {
     const results = new Array<QuoteBatchResult | null>(targets.length).fill(null);
     // A dated price the batch answered that is not current: shown, flagged stale, when asking alone brings none.
     const lastKnown = new Array<Quote | null>(targets.length).fill(null);
+    // The data service's copy each listing has saved here, which answers for it when the service refuses the batch.
+    const saved = new Array<{ value: Quote; fetchedAt: number } | null>(targets.length).fill(null);
     const misses: Array<{ index: number; target: QuoteSubscriptionTarget }> = [];
 
     targets.forEach((target, index) => {
@@ -88,6 +92,7 @@ export class ProviderRouterBatchRoutes {
         return;
       }
       // Revalidated, a fresh copy is still what the quote route answers when no source does.
+      if (cached && !brokerSourceKeys.includes(cached.sourceKey)) saved[index] = cached;
       misses.push({ index, target });
     });
 
@@ -95,6 +100,8 @@ export class ProviderRouterBatchRoutes {
     const providerMisses = misses.filter(({ target }) => !this.deps.hasBrokerContext(target.context));
     const providerIndexes = new Map<string, Array<{ index: number; target: QuoteSubscriptionTarget }>>();
     let batchFailure: unknown = null;
+    // Listings the service refused for its request limit, by batch key, with the refusal.
+    const limited = new Map<string, unknown>();
     if (batchProvider && providerMisses.length > 0) {
       for (const entry of providerMisses) {
         const key = this.quoteBatchKey(entry.target);
@@ -111,6 +118,7 @@ export class ProviderRouterBatchRoutes {
       for (const answered of batchResults) {
         const item = { ...answered, quote: withRetrievedAt(answered.quote, answeredAt) };
         const key = this.quoteBatchKey(item.target);
+        if (!item.quote && isRateLimited(item.error)) limited.set(key, item.error);
         if (!isProviderQuoteUsableForCurrentSession(item.quote, item.target.exchange, item.target.symbol, { recentAnswer: true })) {
           const fallback = lastKnownProviderQuote(item.quote, item.target.exchange, item.target.symbol);
           if (fallback) for (const entry of providerIndexes.get(key) ?? []) lastKnown[entry.index] = fallback;
@@ -124,6 +132,17 @@ export class ProviderRouterBatchRoutes {
           results[entry.index] = { target: entry.target, quote: item.quote };
         }
       }
+    }
+
+    // Refused for the request limit, a listing is never asked again alone: that is a request each, more of what was
+    // refused. Its saved copy answers, as a single read's would, else the row says when to try again.
+    for (const { index, target } of providerMisses) {
+      const refusal = isRateLimited(batchFailure) ? batchFailure : limited.get(this.quoteBatchKey(target));
+      if (results[index] || refusal === undefined) continue;
+      const copy = saved[index];
+      results[index] = copy ? { target, quote: quoteServedFromSavedCopy(withRetrievedAt(copy.value, copy.fetchedAt), copy.fetchedAt) }
+        : lastKnown[index] ? { target, quote: lastKnown[index] }
+        : { target, quote: null, error: rateLimitedError(refusal, target.symbol) };
     }
 
     // The batch never reached the data service: a copy saved a moment ago is still a saved copy, not the

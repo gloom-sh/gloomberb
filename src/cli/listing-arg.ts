@@ -43,7 +43,7 @@ import {
 import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
 import { stripStrayEdges, tickerShapedWord } from "./symbol-args";
-import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy, notATickerSymbol } from "../sources/provider-errors";
+import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy, isRateLimited, isTransientServiceFailure, notATickerSymbol } from "../sources/provider-errors";
 import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES, TOP_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
 import { knownGapMessage, unquotedGapMessage } from "./known-gaps";
@@ -68,9 +68,12 @@ import {
   readTerminalListingCode,
   terminalCodeReadAs,
   unknownBloombergMarket,
+  unreadBloombergCode,
   type NearMissListing,
   type TerminalListingCode,
 } from "../tickers/terminal-codes";
+import { unreadBloombergCodeMessage } from "./terminal-code-hints";
+import { isKanjiOnlyName, japaneseNameChoice, japaneseNameReadAs, readExactJapaneseName, readJapaneseName, type JapaneseNameReading } from "../tickers/search/japanese-names";
 import { listingAbroadVenue } from "../utils/sec";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "../tickers/search/bare-symbol";
 import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
@@ -713,9 +716,32 @@ export async function usListingsOnlyMessage(
  * Aramco in Riyadh): then it asks, and none of the venues is the answer. Null
  * when it named its exchange.
  */
-async function bareListingVenues(listing: BareListing, deps: ListingDeps): Promise<BareListingVenues | null> {
+/** How long a bare symbol's venue search that failed for a moment waits before it is asked once more. */
+const VENUE_RETRY_WAIT_MS = 1_000;
+
+async function bareListingVenues(
+  listing: BareListing,
+  deps: ListingDeps,
+  /**
+   * A search that failed for a reason that says nothing of the symbol is
+   * thrown: a list's 8306 read "Not a ticker" when its search was turned
+   * away, where alone it asks which exchange. A busy moment is asked once
+   * more first; the request limit never is.
+   */
+  { failTransient = false }: { failTransient?: boolean } = {},
+): Promise<BareListingVenues | null> {
   if (listing.exchange) return null;
-  const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
+  const read = () => listingVenues(listing.symbol, deps, { failTransient });
+  const venues = await (failTransient
+    ? read().catch(async (error: unknown) => {
+      if (!isTransientServiceFailure(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, VENUE_RETRY_WAIT_MS));
+      return read();
+    })
+    : read()).catch((error: unknown) => {
+    if (failTransient && (isTransientServiceFailure(error) || isRateLimited(error))) throw error;
+    return logFailure("cli.listing-arg", "Read listing venues failed", [] as ListingVenue[])(error);
+  });
   const savedExchange = canonicalExchange(listing.saved?.metadata.exchange);
   if (!savedExchange && listsSeveralCompanies(listing.symbol, venues)) return { exchange: "", resolved: null, others: venues, choose: true };
   const resolved = venues.find((venue) => venue.exchange === savedExchange) ?? (savedExchange ? null : homeVenue(listing.symbol, venues));
@@ -888,7 +914,9 @@ export type BareListingQuote =
  * A code several companies list (2222) is never answered from one of them: it is
  * that failure, asking which. Null when the symbol named its exchange (a named
  * venue never switches) or search knows no listing of it. It searches, so ask
- * only after a request failed.
+ * only after a request failed. A search that fails twice for a reason that
+ * says nothing of the symbol (a busy moment, the request limit) is thrown,
+ * never read as a symbol no venue lists.
  */
 export async function quoteBareListing(
   listing: CliListing,
@@ -896,7 +924,7 @@ export async function quoteBareListing(
   request: ListingDataRequest,
   { refresh = false, datesChangeBasis = false }: { refresh?: boolean; datesChangeBasis?: boolean } = {},
 ): Promise<BareListingQuote | null> {
-  const venues = await bareListingVenues(listing, deps);
+  const venues = await bareListingVenues(listing, deps, { failTransient: true });
   if (!venues) return null;
   if (venues.choose) {
     const other = describeOtherListings(listing, venues, request);
@@ -1439,6 +1467,14 @@ export async function resolveCliListing(
   // "iron ore" has no live price: it says so and where the monthly one is, never Kumba Iron Ore's stock.
   const unquoted = exchangeOption?.trim() ? null : unquotedGapMessage(typed);
   if (unquoted) throw new ListingArgError(unquoted);
+  // "GTJPY10Y Govt" and "VXJ Index" are Bloomberg codes no symbol here is read from: refused with what has them,
+  // never searched for as a name (MOVE Index found another venue's product named after the index).
+  const unreadCode = exchangeOption?.trim() ? null : unreadBloombergCode(typed);
+  if (unreadCode) throw new ListingArgError(unreadBloombergCodeMessage(unreadCode));
+  // A name typed in Japanese (ドル円, トヨタ自動車) is the listing it names, which is named in Latin letters; one several
+  // companies' names start with (トヨタ) asks which. A name in kanji alone is the service's to read first, below.
+  const japanese = exchangeOption?.trim() ? null : await readJapaneseName(typed);
+  if (japanese) return await japaneseNameListing(typed, japanese, deps, options);
   // A listing that moved to a new symbol (ELET3, "eletrobras") is the one it trades as now, saying so.
   const renamed = exchangeOption?.trim() ? null : renamedListingFor(typed);
   if (renamed) {
@@ -1481,9 +1517,13 @@ export async function resolveCliListing(
   const hongKong = pair || named || index ? null : await readHongKongShortCode(parsed, deps);
   if (hongKong) parsed = hongKong;
   // A word no source quotes that names a company (`Naspers`) is its listing, for every command, as `quote` reads it.
-  const company = options.companyWord === false || pair || named || index || rooted || hongKong || terminal || dotted
-    ? null : await readBareCompanyName(parsed, typed, deps);
+  const askCompany = !(options.companyWord === false || pair || named || index || rooted || hongKong || terminal || dotted);
+  const company = askCompany ? await readBareCompanyName(parsed, typed, deps) : null;
   if (company) parsed = company;
+  // A name in kanji alone the service names no company for (中電工; 中電 is CLP in Hong Kong) is a Tokyo company's
+  // whole name, when it is one.
+  const tokyo = askCompany && !company && !exchangeOption?.trim() && isKanjiOnlyName(typed) ? await readExactJapaneseName(typed) : null;
+  if (tokyo) return await japaneseNameListing(typed, tokyo, deps, options);
   // A one-letter suffix (7203.T) is read as its venue only when a row saved there says so; the listing's quote may later.
   const venueRow = options.listingSuffix && !pair && !named ? await savedSuffixVenue(parsed, deps.store) : null;
   if (venueRow) parsed = venueRow;
@@ -1813,6 +1853,18 @@ function readDollarIndexCode(raw: string, deps: Pick<ListingDeps, "dataProvider"
   return brokerIndexCode(stripStrayEdges(raw).text || raw)?.bare ? readBrokerIndexCode(raw, deps) : Promise.resolve(null);
 }
 
+/** The listing a name typed in Japanese reads as, saying so; one that names several companies asks which, with how many. */
+async function japaneseNameListing(
+  typed: string,
+  reading: JapaneseNameReading,
+  deps: ListingDeps,
+  options: Parameters<typeof resolveCliListing>[3],
+): Promise<CliListing> {
+  if (reading.total > 1) throw new ListingArgError(japaneseNameChoice(typed, reading));
+  const listing = await resolveCliListing(reading.listings[0]!.key, null, deps, options);
+  return { ...listing, readAs: japaneseNameReadAs(typed, reading), readFromName: true, typed: typed.trim() };
+}
+
 /**
  * The listing a company's name typed where a symbol goes stands for
  * (`findListingOfCompanyName`), saying which one it was read as; null for a
@@ -1846,6 +1898,18 @@ const ONE_WORD_NAME = /^\p{L}[\p{L}\p{N}&'’.-]*$/u;
  * hint, the coin's pair (BTC-USD) or the search that says where it is. Null
  * for anything else, and when search names no company or is too busy to say.
  */
+/**
+ * The Tokyo listing a name in kanji alone is the whole name of (中電工 is
+ * 1941:JPX), for `quote` once the service has named no company for it
+ * (`oneWordCompanyName`): never a name it only starts. Null for any other word.
+ */
+export async function tokyoCompanyNameArg(typed: string): Promise<ListingArg | null> {
+  const reading = isKanjiOnlyName(typed) ? await readExactJapaneseName(typed) : null;
+  if (!reading) return null;
+  if (reading.total > 1) throw new ListingArgError(japaneseNameChoice(typed, reading));
+  return { ...parseListingArg(reading.listings[0]!.key), readAs: japaneseNameReadAs(typed, reading), readFromName: true };
+}
+
 export async function oneWordCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
   const found = await findOneWordCompany(typed, deps);
   return found ? companyListingArg(typed, found) : null;

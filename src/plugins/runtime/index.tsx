@@ -15,6 +15,7 @@ export {
   setPluginPaneStateValue,
   useDebouncedPluginPaneState,
   usePluginConfigState,
+  usePluginPaneChoice,
   usePluginPaneState,
   usePluginState,
   usePrunePluginPaneState,
