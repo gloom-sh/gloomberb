@@ -91,6 +91,17 @@ function capAssistArgOptions(command: AssistCommandDescriptor): AssistCommandDes
   return { ...command, arg: fits ? { ...arg, options: capped } : arg };
 }
 
+/** Whether a socket's account fields differ from the user held now; a field it leaves out changes nothing. */
+function changesUser(current: AuthUser, update: Partial<AuthUser>): boolean {
+  const held = current as unknown as Record<string, unknown>;
+  return Object.entries(update).some(([key, value]) => {
+    const before = held[key];
+    if (Object.is(before, value)) return false;
+    if (!before || !value || typeof before !== "object" || typeof value !== "object") return true;
+    return JSON.stringify(before) !== JSON.stringify(value);
+  });
+}
+
 interface PendingSessionRequest {
   promise: Promise<AuthUser | null>;
   consumers: Array<() => boolean>;
@@ -143,6 +154,11 @@ class GloomApiClient {
       }
     },
     updateCurrentUserFromSocket: (user) => {
+      // Every connection's hello repeats the account. A reconnect that changes
+      // nothing must not tell every listener the user changed: each would load
+      // its data again (teams, theses, sync), and after a server restart every
+      // client reconnects at once.
+      if (!this.currentUser || !changesUser(this.currentUser, user)) return;
       this.updateCurrentUser((currentUser) => ({
         ...currentUser,
         ...user,

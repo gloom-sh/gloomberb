@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import { apiClient, ASSIST_ARG_OPTION_LIMIT, setCloudApiFetchTransport } from "./index";
+import { SOCKET_FIRST_RECONNECT_MAX_MS } from "./socket";
 import { publishableMarketplaceLayout } from "../shares/portable-layout";
 import { createDefaultConfig } from "../types/config";
 import type { PaneDef } from "../types/plugin";
@@ -962,8 +963,8 @@ describe("apiClient scanner subscriptions", () => {
 
     jest.useFakeTimers();
     socket.closeWith({ code: 1006, reason: "network" });
-    // The reconnect waits up to one and a half seconds (one, jittered).
-    jest.advanceTimersByTime(1_500);
+    // The reconnect waits up to SOCKET_FIRST_RECONNECT_MAX_MS (one second, jittered).
+    jest.advanceTimersByTime(SOCKET_FIRST_RECONNECT_MAX_MS);
     const reconnected = sockets[1]!;
     reconnected.open();
     expect(reconnected.sent).toContainEqual({
@@ -972,6 +973,45 @@ describe("apiClient scanner subscriptions", () => {
     });
 
     unsubscribe();
+  });
+
+  // A server restart reconnects every client at once. If each reconnect's
+  // hello told every listener the user changed, each client would load its
+  // teams, theses and messages again in the same second.
+  test("a reconnect whose hello repeats the account does not report a user change, and one that changes it does", () => {
+    const sockets = installTestWebSocket();
+    apiClient.setSessionToken("reconnect-session");
+    apiClient.restoreCachedUser(verifiedUser);
+    let changes = 0;
+    const stopListening = apiClient.subscribeCurrentUser(() => {
+      changes += 1;
+    });
+    const unsubscribe = apiClient.subscribeScanner("flow", () => {});
+    const hello = {
+      type: "ready",
+      user: { id: verifiedUser.id, username: verifiedUser.username, displayName: "Test User", emailVerified: true, plan: "free", trialEndsAt: null, effectivePlan: "free" },
+      features: [],
+    };
+    try {
+      sockets[0]!.open();
+      sockets[0]!.receive(hello);
+      // The first hello adds what the session load did not have.
+      expect(changes).toBe(1);
+
+      jest.useFakeTimers();
+      sockets[0]!.closeWith({ code: 1012, reason: "Server restarting" });
+      jest.advanceTimersByTime(SOCKET_FIRST_RECONNECT_MAX_MS);
+      sockets[1]!.open();
+      sockets[1]!.receive(hello);
+      expect(changes).toBe(1);
+
+      sockets[1]!.receive({ ...hello, user: { ...hello.user, plan: "pro", effectivePlan: "pro" } });
+      expect(changes).toBe(2);
+      expect(apiClient.getCurrentUser()).toMatchObject({ plan: "pro", effectivePlan: "pro" });
+    } finally {
+      unsubscribe();
+      stopListening();
+    }
   });
 });
 

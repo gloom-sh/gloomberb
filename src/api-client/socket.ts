@@ -21,7 +21,7 @@ import { SocketListeners } from "./socket-listeners";
 import { QuoteStreamSubscriptions } from "./socket-quotes";
 
 export { CHAT_ATTACHMENTS_FEATURE, TERMINAL_RELAY_FEATURE } from "./socket-features";
-export { SOCKET_CONNECT_TIMEOUT_MS, SOCKET_PING_ANSWER_MS, SOCKET_QUIET_PING_MS } from "./socket-connection";
+export { SOCKET_CONNECT_TIMEOUT_MS, SOCKET_FIRST_RECONNECT_MAX_MS, SOCKET_PING_ANSWER_MS, SOCKET_QUIET_PING_MS } from "./socket-connection";
 
 const cloudApiLog = debugLog.createLogger("cloud-api");
 

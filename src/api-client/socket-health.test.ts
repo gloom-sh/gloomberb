@@ -4,7 +4,7 @@ import {
   GLOOM_CLOUD_SOCKET_CONNECTION_ID,
   type ConnectionHealthStatus,
 } from "../core/connection-health";
-import { CloudApiSocket, SOCKET_CONNECT_TIMEOUT_MS, SOCKET_PING_ANSWER_MS, SOCKET_QUIET_PING_MS } from "./socket";
+import { CloudApiSocket, SOCKET_CONNECT_TIMEOUT_MS, SOCKET_FIRST_RECONNECT_MAX_MS, SOCKET_PING_ANSWER_MS, SOCKET_QUIET_PING_MS } from "./socket";
 import { followDataServiceHealth, QUOTE_STREAM_DOWN_GRACE_MS } from "../market-data/connection-follow";
 import { createTestSocketDeps, TestWebSocket } from "../test-support/cloud-api";
 
@@ -176,7 +176,7 @@ describe("CloudApiSocket on a link that stops answering", () => {
       jest.advanceTimersByTime(1);
       expect(sockets[0]!.closeCalls).toBe(1);
       expect(health.getSnapshot().sources[0]).toMatchObject({ socketState: "error", currentDetail: "Connecting timed out" });
-      jest.advanceTimersByTime(1_500);
+      jest.advanceTimersByTime(SOCKET_FIRST_RECONNECT_MAX_MS);
       expect(sockets).toHaveLength(2);
     } finally {
       socket.dispose();
@@ -210,7 +210,7 @@ describe("CloudApiSocket on a link that stops answering", () => {
 
       // The next ping goes unanswered: the link is half open, and is dropped and opened again.
       expect(first.sent.filter((frame) => (frame as { type?: string }).type === "ping")).toHaveLength(2);
-      jest.advanceTimersByTime(SOCKET_PING_ANSWER_MS + 2_500 + 1_500);
+      jest.advanceTimersByTime(SOCKET_PING_ANSWER_MS + 2_500 + SOCKET_FIRST_RECONNECT_MAX_MS);
       expect(first.closeCalls).toBe(1);
       expect(details).toEqual(["No answer from the stream"]);
       expect(sockets).toHaveLength(2);
@@ -297,8 +297,8 @@ describe("CloudApiSocket quote stream going stale", () => {
 
       calls.length = 0;
       cut(sockets[1]!);
-      // The reconnect backoff is at most 1.5 s here, well inside the grace.
-      jest.advanceTimersByTime(1_500);
+      // The first reconnect waits at most 2.25 s, inside the grace.
+      jest.advanceTimersByTime(SOCKET_FIRST_RECONNECT_MAX_MS);
       expect(sockets).toHaveLength(3);
       sockets[2]!.open();
       jest.advanceTimersByTime(QUOTE_STREAM_DOWN_GRACE_MS * 2);
@@ -312,7 +312,7 @@ describe("CloudApiSocket quote stream going stale", () => {
     const { calls, first, health, sockets, stop } = followedSocket();
     try {
       cut(first);
-      jest.advanceTimersByTime(1_500);
+      jest.advanceTimersByTime(SOCKET_FIRST_RECONNECT_MAX_MS);
       expect(calls).toEqual([]);
       // The new socket never opens: the server is still down.
       sockets[1]!.onerror?.({});
