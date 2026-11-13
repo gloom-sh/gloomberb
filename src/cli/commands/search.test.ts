@@ -169,6 +169,83 @@ test("Other Listings keep the primary listing's company's lines, its nameless on
 });
 
 /**
+ * `search DTG`, 12 Nov 2026: DTE Energy's 4.375% debentures led as the primary listing, the line the bare symbol's quote
+ * read, over Daimler Truck's home line on Xetra, and a long list of Daimler's venues must not cut DTE's line.
+ */
+test("a debt line the bare symbol's quote reads gives way to another company's home common share, and still lists", async () => {
+  const row = (exchange: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol: "DTG", name: "Daimler Truck Holding AG", exchange, type: "Common Stock", primaryExchange: exchange, ...extra });
+  const debenture = { ...row("NYSE"), name: "DTE Energy Company 2021 Series E 4.375% Junior Subordinated Debentures", type: "Preferred Stock" };
+  const answer = [debenture, { ...debenture, exchange: "IEX", primaryExchange: "IEX", type: "Bond" }, row("XETRA", { homeListing: true }),
+    ...["VIE", "SWX", "XSTU", "FWB2", "MUNICH", "XDUS", "HANOVER", "BER"].map((exchange) => row(exchange))];
+  const quote = { symbol: "DTG", name: debenture.name, price: 18, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1, listingExchangeName: "NYSE" };
+  const dataProvider = createTestDataProvider({ search: async () => answer as never, getQuote: async () => quote as never });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("DTG", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; symbol: string; exchange: string }>;
+  expect(rows[0]).toMatchObject({ exchange: "XETRA", category: "Primary Listing" });
+  expect(rows.length).toBe(10);
+  expect(rows.filter((item) => item.category === "Other Matches").map((item) => item.exchange)[0]).toBe("NYSE");
+});
+
+/**
+ * `search DHL`, 13 Nov 2026: DHL Group's Vienna, Hanover and Toronto lines still carry the name it had, Deutsche Post
+ * AG. Read by name they were another company, an Other Match, and the cut dropped DHL Group's own venues for them.
+ */
+test("search groups a symbol's lines by company id where both carry one, else by name, and never cuts the company's venues for its own lines", async () => {
+  const dhl = "isin:DE0005552004";
+  const row = (exchange: string, name: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol: "DHL", name, exchange, type: "Common Stock", primaryExchange: exchange, ...extra });
+  const answer = [
+    row("VIE", "Deutsche Post AG", { companyId: dhl }), row("XETRA", "DHL Group AG", { homeListing: true, companyId: dhl }),
+    ...["FWB2", "SWX", "XSTU", "MUNICH", "XDUS", "BER", "HAMBURG"].map((exchange) => row(exchange, "DHL Group AG")),
+    row("HANOVER", "Deutsche Post AG"), row("NEO", "Deutsche Post AG", { type: "Depositary Receipt" }),
+    // A company the service identifies otherwise, whatever its name, is another company.
+    row("BSE", "DHL Group AG", { companyId: "isin:INE000000000" }),
+  ];
+  const quote = { symbol: "DHL", name: "DHL Group AG", price: 60.84, change: 0, changePercent: 0, currency: "EUR", lastUpdated: 1, listingExchangeName: "XETRA" };
+  const dataProvider = createTestDataProvider({ search: async () => answer as never, getQuote: async () => quote as never });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("DHL", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; exchange: string }>;
+  // Every Deutsche Post AG line is DHL Group's; the other company's line takes the last venue's place, and only it.
+  expect(rows.map((item) => `${item.exchange}:${item.category}`)).toEqual([
+    "XETRA:Primary Listing",
+    ...["FWB2", "SWX", "XSTU", "MUNICH", "XDUS", "BER", "HAMBURG", "VIE"].map((exchange) => `${exchange}:Other Listings`),
+    "BSE:Other Matches",
+  ]);
+});
+
+/**
+ * `search DHL --json`, live 13 Nov: no row carried a companyId, though the service identifies DHL's Xetra line, and the
+ * Vienna, Hanover and Toronto lines, named Deutsche Post AG, were Other Matches: another company's.
+ */
+test("search passes the service's company id through, and keeps a company's lines named as it was with it by the names the service sends", async () => {
+  const row = (exchange: string, name: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol: "DHL", name, exchange, type: "Common Stock", primaryExchange: exchange, ...extra });
+  const answer = [
+    row("XETRA", "DHL Group AG", { homeListing: true, companyId: "isin:DE0005552004", searchAliases: ["DHL", "Deutsche Post AG"] }),
+    row("FWB2", "DHL Group AG"), row("VIE", "Deutsche Post AG"), row("HANOVER", "Deutsche Post AG"),
+    row("NEO", "Deutsche Post AG", { type: "Depositary Receipt" }),
+    // Another company's DHL, which the service identifies otherwise, is another company, whatever it is named like.
+    row("BSE", "DHL Express India Ltd.", { companyId: "isin:INE000000000" }),
+  ];
+  const quote = { symbol: "DHL", name: "DHL AG", price: 60.4, change: 0, changePercent: 0, currency: "EUR", lastUpdated: 1, listingExchangeName: "XETRA" };
+  const dataProvider = createTestDataProvider({ search: async () => answer as never, getQuote: async () => quote as never });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("DHL", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; exchange: string; companyId?: string }>;
+  expect(rows.map((item) => `${item.exchange}:${item.category}`)).toEqual([
+    "XETRA:Primary Listing", "FWB2:Other Listings", "VIE:Other Listings", "HANOVER:Other Listings", "NEO:Other Listings", "BSE:Other Matches",
+  ]);
+  // The ids the service sent are passed through; a line it did not identify carries none rather than a guess.
+  expect(rows.map((item) => item.companyId ?? null)).toEqual(["isin:DE0005552004", null, null, null, null, "isin:INE000000000"]);
+});
+
+/**
  * `search mitsubishi` once Mitsubishi Corporation's Tokyo line is named in English, 9 Nov 2026: Mitsubishi UFJ and
  * Mitsubishi Heavy Industries, whose names hold every word of "Mitsubishi Corporation", were listed as its lines.
  */

@@ -6,12 +6,13 @@ import { createDefaultConfig } from "../../types/config";
 import type { MarketContext } from "../types";
 import type { PaneTemplateDef } from "../../types/plugin";
 import {
-  buildPaneCatalogEntries, buildTemplateContext, correctCatalogQuery, filterPaneCatalogEntries, findFunctionCode, limitationSentence,
+  buildPaneCatalogEntries, buildTemplateContext, correctCatalogQuery, filterPaneCatalogEntries, findFunctionCode, functionsForQuestion, limitationSentence,
   paneFunctionCode, renderPaneCatalogReport, type PaneFunctionCatalog,
 } from "./catalog";
 import { lookupGlossary } from "../glossary";
 import { createPaneCatalog } from "./discovery";
 import { parsePaneCatalogArgs } from "./options";
+import { parseViewSpec } from "../../plugins/builtin/custom-view/view-spec";
 import { findPaneFunction } from "./resolver";
 
 test("limitations read as sentences, so one does not run into the next", () => {
@@ -82,6 +83,33 @@ test("built-in catalog discovery stays offline while opening chat and chokepoint
     channels.mockRestore();
     geo.mockRestore();
     fetch.mockRestore();
+  }
+});
+
+// `catalog dax` found nothing, and signed out ASKG pointed at `gloom catalog <topic>` without running it.
+test("the morning's European words lead to the index board, a question asked signed out to the functions its topic names, and VIEW to a spec that runs", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    const codes = (query: string) => filterPaneCatalogEntries(entries, query).map((entry) => entry.token);
+    for (const query of ["dax", "xetra", "stoxx", "germany", "european indices"]) expect(codes(query), query).toContain("WEI");
+    expect(codes("germany")).toContain("GC");
+    expect(codes("dax")).toContain("CMP");
+    // The question's asking words ("what", "did", "do") name nothing: "do" found DOE and DOCS.
+    const found = await functionsForQuestion(registry, "what did the DAX do yesterday?");
+    expect(found.map((entry) => entry.code).sort()).toEqual(["CMP", "WEI"]);
+    expect(found.find((entry) => entry.code === "CMP")?.command).toBe("gloom fn CMP <tickers>");
+    expect(await functionsForQuestion(registry, "what did it do?")).toEqual([]);
+    // VIEW's example is a spec that runs as typed, not only `<spec JSON or empty>`.
+    const [example] = entries.find((entry) => entry.token === "VIEW")?.argExamples ?? [];
+    expect(parseViewSpec(example!.replace(/^'|'$/g, ""))?.source).toEqual({ kind: "inline", pane: "WEI" });
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
   }
 });
 

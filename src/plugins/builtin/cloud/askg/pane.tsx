@@ -139,6 +139,8 @@ import {
 import { ClippedText } from "../../../../components/ui/display";
 import { TurnProgress, TurnQuestion } from "./turn-parts";
 import { logFailure } from "../../../../utils/log-failure";
+import { functionsForQuestion, type FunctionForQuestion } from "../../../../cli/pane-functions/catalog";
+import { ASKG_QUESTION_FUNCTIONS } from "./lock-note";
 
 export const ASKG_PANE_ID = "askg";
 
@@ -149,6 +151,36 @@ const MAX_COMPOSER_LINES = 6;
 const LOW_QUOTA = 20;
 /** What unlocks Ask Gloom: a free account with a verified email; a paid plan only changes the model. */
 const ASKG_WALL_HINT = "Free with a verified Gloom account.";
+
+/**
+ * The wall's hint, with the functions the catalog finds for a question asked
+ * behind it: "Without one, these functions answer it: WEI World Equity
+ * Indices, CMP Comparison Chart." Each is typed by its code in the command bar.
+ */
+function askgWallHint(found: readonly FunctionForQuestion[]): string {
+  if (found.length === 0) return ASKG_WALL_HINT;
+  return `${ASKG_WALL_HINT} Without one, these functions answer it: ${found.map((entry) => `${entry.code} ${entry.label}`).join(", ")}.`;
+}
+
+/** The functions the catalog finds for a question asked behind the sign-in wall (`functionsForQuestion`); none without one. */
+function useWallQuestionFunctions(question: string | null): FunctionForQuestion[] {
+  const [found, setFound] = useState<FunctionForQuestion[]>([]);
+  useEffect(() => {
+    const registry = getSharedRegistry();
+    if (!question || !registry) {
+      setFound([]);
+      return;
+    }
+    let live = true;
+    functionsForQuestion(registry, question, ASKG_QUESTION_FUNCTIONS).then((entries) => {
+      if (live) setFound(entries);
+    }, logFailure("askg.pane", "Find the functions for a question failed"));
+    return () => {
+      live = false;
+    };
+  }, [question]);
+  return found;
+}
 
 function tierLabel(row: ASKGToolRow): string | null {
   if (row.writeTier === "read") return null;
@@ -655,6 +687,8 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
   const queuedQuestionRef = useRef<string | null>(null);
+  // A question asked behind the sign-in wall is offered the functions that answer it without an account.
+  const wallFunctions = useWallQuestionFunctions(planAccess.emailVerified ? null : queuedQuestion);
   // The conversation list is a drawer: open only while it has the keyboard or
   // the pointer, so it never takes the left of the pane unasked.
   const [sidebarFocused, setSidebarFocused] = useState(false);
@@ -1864,7 +1898,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         placement="gp-signin"
         action="ask questions about anything on screen"
         needsVerification={planAccess.signedIn}
-        hint={ASKG_WALL_HINT}
+        hint={askgWallHint(wallFunctions)}
       />
     );
   }

@@ -456,8 +456,10 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     aliases: ["COMP", "TRA"],
     label: "Comparison Chart",
     description: "Compare price returns over shared observation dates for two or more tickers, or total returns with distributions reinvested. A leveraged or inverse fund gets its daily objective drawn from its index fund (3× daily QQQ beside TQQQ) and its decay against it.",
-    // Leveraged and inverse funds: the daily line and the decay come with the comparison.
-    keywords: ["leveraged", "inverse", "decay", "daily-reset", "daily reset", "volatility decay"],
+    // Leveraged and inverse funds: the daily line and the decay come with the comparison. An index against its members
+    // (the DAX beside SIE and VOW3) is the morning's other comparison.
+    keywords: ["leveraged", "inverse", "decay", "daily-reset", "daily reset", "volatility decay", "dax", "xetra", "stoxx", "germany",
+      "european indices"],
     argKind: "ticker-list",
     minimumSymbols: 2,
     build: buildComparisonChartPreset,

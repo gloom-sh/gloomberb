@@ -3,8 +3,8 @@ import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import {
-  joinCompanyNameWords, listCoinNotes, ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg,
-  readShareClassCode, resolveCliListing, usListingsOnlyMessage,
+  joinCompanyNameWords, listCoinNotes, ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, otherCompanyHomeNote,
+  parseListingArg, readShareClassCode, resolveCliListing, usListingsOnlyMessage,
 } from "./listing-arg";
 import { LISTING_SEARCH_LIMIT } from "../tickers/search";
 import { FUTURES_CONTRACTS } from "../market-data/futures-board";
@@ -469,6 +469,63 @@ test("the line naming a bare symbol's listing names only other companies' venues
   expect(listingChoiceNote("EWG", { exchange: "ARCA" }, [{ exchange: "ARCA", name: "" }, ...ewg.slice(2)])).toBeNull();
   expect(listingChoiceNote("EWG", { exchange: "ARCA", name: "iShares MSCI Germany Index Fund" }, [...ewg.slice(0, 2), { exchange: "CSE", name: "" }]))
     .toBeNull();
+});
+
+// As search listed them on 2026-11-13, with the company ids and home lines the data service marks.
+test("companies are told apart by the service's ids, never by how a venue names one; a US read names another company's main listing", () => {
+  // DHL's Vienna and Hanover lines still carry the name it had (Deutsche Post AG): one company by id, so no note.
+  const dhl = [
+    { exchange: "XETRA", name: "DHL Group AG", companyId: "isin:DE0005552004", home: true as const },
+    { exchange: "VIE", name: "Deutsche Post AG", companyId: "isin:DE0005552004" },
+    { exchange: "HANOVER", name: "Deutsche Post AG" },
+  ];
+  expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL Group AG" }, dhl)).toBeNull();
+  // Live 13 Nov: the service identifies DHL's Xetra line alone, so its Vienna, Hanover and Toronto lines, named as the company
+  // was (Deutsche Post AG), read as another company: "DHL -> XETRA (DHL); also DHL:VIE, Deutsche Post". It sends the names
+  // the company is known by on the identified row, which tell those lines apart from another company's DHL.
+  const live = [
+    { exchange: "XETRA", name: "DHL Group AG", companyId: "isin:DE0005552004", home: true as const, aliases: ["DHL", "Deutsche Post AG"] },
+    { exchange: "FWB2", name: "DHL Group AG" },
+    { exchange: "VIE", name: "Deutsche Post AG" },
+    { exchange: "HANOVER", name: "Deutsche Post AG" },
+    { exchange: "NEO", name: "Deutsche Post AG" },
+  ];
+  expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL AG" }, live)).toBeNull();
+  // Only a name the company is known by: another company's DHL (a logistics firm in India) is another company, as is a
+  // line named as the former company when the service sent no names (an older one).
+  expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL AG" }, [...live, { exchange: "BSE", name: "DHL Express India Ltd." }]))
+    .toBe("DHL -> XETRA (DHL); also DHL:BSE, DHL Express India");
+  expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL AG" }, live.map(({ aliases: _aliases, ...venue }) => venue)))
+    .toBe("DHL -> XETRA (DHL); also DHL:VIE, Deutsche Post");
+  // Another id is another company, whatever the names say; a line with none is the company's it is named like (CXA).
+  const mbg = [
+    { exchange: "XETRA", name: "Mercedes-Benz Group AG", companyId: "isin:DE0007100000", home: true as const },
+    { exchange: "ASX", name: "MB Gold Ltd", companyId: "isin:AU0000452344" },
+    { exchange: "CXA", name: "MB Gold Ltd" },
+  ];
+  expect(listingChoiceNote("MBG", { exchange: "XETRA", name: "Mercedes-Benz Group AG" }, mbg))
+    .toBe("MBG -> XETRA (Mercedes-Benz Group); also MBG:ASX, MB Gold");
+  // A line with no id named like none of a company's identified lines is another company: BMW Industries, listed first.
+  const bmw = [
+    { exchange: "BSE", name: "Bmw Industries Ltd." },
+    { exchange: "XETRA", name: "Bayerische Motoren Werke AG", companyId: "isin:DE0005190003", home: true as const },
+    { exchange: "VIE", name: "Bayerische Motoren Werke AG" },
+  ];
+  expect(listingChoiceNote("BMW", { exchange: "XETRA", name: "Bayerische Motoren Werke AG" }, bmw))
+    .toBe("BMW -> XETRA (Bayerische Motoren Werke); also BMW:BSE, Bmw Industries");
+
+  const con = [
+    { exchange: "XETRA", name: "Continental AG", home: true as const },
+    { exchange: "VIE", name: "Continental AG" },
+    { exchange: "NYSE", name: "Concentra Group Holdings Parent, Inc." },
+    { exchange: "SWX", name: "Conzzeta AG" },
+  ];
+  expect(otherCompanyHomeNote("CON", { exchange: "NYSE", name: "Concentra Group Holdings Parent, Inc." }, con))
+    .toBe("CON = Concentra Group Holdings Parent (NYSE); Continental AG is CON:XETRA");
+  // The same company's home line abroad (TD on TSX for its NYSE line) is no other company; nor is a line no one marks home.
+  expect(otherCompanyHomeNote("TD", { exchange: "NYSE", name: "Toronto-Dominion Bank" },
+    [{ exchange: "TSX", name: "The Toronto-Dominion Bank", home: true }])).toBeNull();
+  expect(otherCompanyHomeNote("CON", { exchange: "NYSE", name: "Concentra Group Holdings Parent, Inc." }, con.slice(1))).toBeNull();
 });
 
 // CAR as search listed it on 2026-10-11 in its first rows: Avis and Carrefour, but not CAR Group's ASX line.

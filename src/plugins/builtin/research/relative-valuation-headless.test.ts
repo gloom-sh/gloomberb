@@ -5,6 +5,7 @@ import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { relativeValuationValues } from "./relative-valuation-model";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
+import { relativeCapCurrency } from "./relative-valuation-currency";
 import { exportRowsTable, renderReportCsv } from "../../../cli/report-tables";
 import { headlessReportTables } from "../../../cli/pane-functions/headless";
 import { renderFundamentalsReport } from "../../../cli/commands/ticker";
@@ -393,7 +394,8 @@ test("RV's export writes each peer's Last as a number in its own currency, named
   try {
     const both = await csvOf(["NESN:SWX", "AAPL"]);
     expect(both.header.slice(0, 4)).toEqual(["Ticker", "Name", "Last", "Chg%"]);
-    expect(both.row("NESN:SWX")).toMatchObject({ Last: "84.37", symbol_or_series: "NESN:SWX", currency_or_unit: "CHF", "Mkt Cap unit": "CHF" });
+    // Last stays in francs; the cap is compared in dollars beside AAPL's.
+    expect(both.row("NESN:SWX")).toMatchObject({ Last: "84.37", symbol_or_series: "NESN:SWX", currency_or_unit: "CHF", "Mkt Cap unit": "USD" });
     expect(both.row("AAPL")).toMatchObject({ Last: "336.64", "After Hours": "337.2", symbol_or_series: "AAPL", currency_or_unit: "USD" });
     expect(Number(both.row("AAPL")["After Hours Chg%"])).toBeCloseTo(0.1663, 4);
     // A figure a peer does not have is empty, its reason in status, never words in a column of numbers.
@@ -404,4 +406,34 @@ test("RV's export writes each peer's Last as a number in its own currency, named
   } finally {
     setSystemTime();
   }
+});
+
+// The pane and `fn RV` compare caps in one currency: four Xetra names in euros, a set with a dollar listing in dollars.
+test("RV compares caps in the peers' own currency when they share one, else in the base currency, in the report and the pane", async () => {
+  const peer = (symbol: string, currency: string, cap: number) => ({
+    annualStatements: [], quarterlyStatements: [], priceHistory: [], financialCurrency: currency,
+    quote: { symbol, price: 10, change: 0, changePercent: 0, currency, lastUpdated: 1, marketCap: cap },
+    fundamentals: { marketCap: cap, marketCapCurrency: currency },
+  });
+  const peers: Record<string, ReturnType<typeof peer>> = {
+    SIE: peer("SIE", "EUR", 200e9), VOW3: peer("VOW3", "EUR", 30e9), AAPL: peer("AAPL", "USD", 4e12),
+  };
+  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
+    async getTickerFinancials(symbol) { return peers[symbol]!; },
+    async getExchangeRate(currency) { return currency === "EUR" ? 1.1 : 1; },
+  }) } as HeadlessPaneContext;
+  const load = (symbols: string[]) => relativeValuationHeadless.load({ symbols, argument: symbols, rawArgument: symbols.join(","), options: {} }, ctx);
+  const caps = (rows: Array<Record<string, unknown>>) => rows.map((row) => [row.symbol, Number(row.marketCap), row.marketCapCurrency]);
+
+  const euros = await load(["SIE:XETRA", "VOW3:XETRA"]);
+  expect(caps(euros.rows)).toEqual([["SIE:XETRA", 200e9, "EUR"], ["VOW3:XETRA", 30e9, "EUR"]]);
+  expect(euros.freshness?.note ?? "").not.toContain("market caps in");
+  const mixed = await load(["SIE:XETRA", "AAPL"]);
+  expect(caps(mixed.rows).map(([symbol, cap, currency]) => [symbol, Math.round(cap as number / 1e9), currency]))
+    .toEqual([["SIE:XETRA", 220, "USD"], ["AAPL", 4000, "USD"]]);
+  expect(mixed.freshness?.note).toContain("market caps in USD at EUR/USD 1.1");
+  // The pane reads the same default, and the app's base currency stands in for dollars when it is set.
+  expect(relativeCapCurrency(null, ["EUR", "EUR", null], "USD")).toBe("EUR");
+  expect(relativeCapCurrency(null, ["EUR", "USD"], "GBP")).toBe("GBP");
+  expect(relativeCapCurrency("CHF", ["EUR", "EUR"], "USD")).toBe("CHF");
 });

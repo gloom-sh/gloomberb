@@ -14,6 +14,7 @@ import { filingEventsModule } from "../../plugins/builtin/filing-events";
 import { renderReportCsv } from "../report-tables";
 import { formatFreshnessLine } from "./freshness";
 import { reportFailure } from ".";
+import * as paneCatalog from "./catalog";
 
 // The status line names the year only when it is not the current one.
 beforeAll(() => setSystemTime(new Date("2026-10-10T12:00:00Z")));
@@ -437,6 +438,33 @@ test("a pane the sign-in wall covers whole reports the wall at once without a se
       .toEndWith("Rendered view: the pane is locked, so no values were read.");
     expect(reportFailure(report.data, "fn ASKG")?.code).toBe("no_data");
   } finally {
+    if (previous === undefined) delete process.env.GLOOMBERB_SESSION_TOKEN;
+    else process.env.GLOOMBERB_SESSION_TOKEN = previous;
+  }
+});
+
+// `fn ASKG "what did the DAX do yesterday"` signed out pointed at `gloom catalog <topic>` without running it.
+test("a question asked behind the sign-in wall lists the functions the catalog finds for it, each with its command", async () => {
+  const { resolved, context } = askgFunction();
+  const previous = process.env.GLOOMBERB_SESSION_TOKEN;
+  delete process.env.GLOOMBERB_SESSION_TOKEN;
+  const found = spyOn(paneCatalog, "functionsForQuestion").mockImplementation(async (_catalog, question, limit) => question.includes("DAX")
+    ? [{ code: "WEI", label: "World Equity Indices", command: "gloom fn WEI" }, { code: "CMP", label: "Comparison Chart", command: "gloom fn CMP <tickers>" }].slice(0, limit)
+    : []);
+  const catalog = {} as paneCatalog.PaneFunctionCatalog;
+  try {
+    const report = await buildDomFunctionReport(resolved, context, "what did the DAX do yesterday", catalog);
+    expect(report.data).toMatchObject({ locked: "sign-in" });
+    expect(report.text).toContain([
+      "Without AI, the catalog finds these functions for the question:",
+      "gloom fn WEI  World Equity Indices",
+      "gloom fn CMP <tickers>  Comparison Chart",
+    ].join("\n"));
+    expect(report.text).not.toContain("gloom catalog <topic>");
+    // A question it finds nothing for keeps the command that searches.
+    expect((await buildDomFunctionReport(resolved, context, "how are you", catalog)).text).toContain("`gloom catalog <topic>` finds the function");
+  } finally {
+    found.mockRestore();
     if (previous === undefined) delete process.env.GLOOMBERB_SESSION_TOKEN;
     else process.env.GLOOMBERB_SESSION_TOKEN = previous;
   }

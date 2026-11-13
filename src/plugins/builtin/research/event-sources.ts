@@ -9,7 +9,8 @@ import { loadAnalystResearch } from "./client";
 import { formatPercent, formatPercentRaw } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { loadEarningsCalendar } from "../earnings/data/cache";
-import { calendarEventOf, newYorkDay, withResolvedEarnings } from "../shared/earnings-calendar";
+import { calendarEventOf, listingDay, withResolvedEarnings } from "../shared/earnings-calendar";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 
 function metricFormat(currencyKey: "epsCurrency" | "revenueCurrency", kind: "eps" | "revenue") {
   return (value: unknown, row: Record<string, unknown>) => {
@@ -81,9 +82,15 @@ function settledError(result: PromiseSettledResult<unknown>): string | null {
 /**
  * Corporate actions, analyst research and financials together; one failing
  * leaves the others. The earnings rows are resolved against the earnings
- * calendar, so the next report reads as `earnings` and ERN give it.
+ * calendar on the listing's own day (`listingDay`: SIE:XETRA's report has
+ * passed once Berlin's day has), so the next report reads as `earnings` and
+ * ERN give it.
  */
-export async function loadEventSources(provider: DataProvider, symbol: string, today = newYorkDay()): Promise<EventSources> {
+export async function loadEventSources(
+  provider: DataProvider,
+  symbol: string,
+  today = listingDay(parsePublicTickerKey(symbol).exchange),
+): Promise<EventSources> {
   const [actions, estimates, financials, calendar] = await Promise.allSettled([
     provider.getCorporateActions?.(symbol, "") ?? null,
     // A listing no analyst covers answers with no estimates, not a failure.

@@ -19,6 +19,8 @@ import { historyRows, periodText } from "./history-model";
 import { fiscalQuarterText } from "./fiscal-quarter";
 import { loadNoEarningsText } from "./no-earnings";
 import { EPS_BASIS_NOTE, epsBasisName, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
+import { lastReportOnRecord, listingDay, noNextReportText } from "../shared/earnings-calendar";
+import { commandWord } from "../../../utils/shell-word";
 import { listingAbroadVenue } from "../../../utils/sec";
 import { findUsListingOfCompany } from "../../../tickers/us-listing";
 import { shortCompanyName } from "../../../tickers/company-name";
@@ -264,12 +266,25 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
  * What ERN says for a listing abroad, whose next report is its own but whose
  * past reports, surprises and implied moves only the US board and Hong Kong's
  * results announcements have: that, and the company's US listing to read
- * them on (Sanofi's SNY for SAN:EPA).
+ * them on (Sanofi's SNY for SAN:EPA). It promises the next report only when
+ * the calendar has one.
  */
-async function abroadHistoryNotice(symbol: string, company: string | null, context: HeadlessPaneContext): Promise<string> {
-  const lead = `Past reports, surprises and implied moves cover US, Hong Kong, Singapore and China A listings only, so ${symbol} shows its next report.`;
+async function abroadHistoryNotice(symbol: string, company: string | null, hasNext: boolean, context: HeadlessPaneContext): Promise<string> {
+  const covers = "Past reports, surprises and implied moves cover US, Hong Kong, Singapore and China A listings only";
+  const lead = hasNext ? `${covers}, so ${symbol} shows its next report.` : `${covers}.`;
   const us = await findUsListingOfCompany(context.marketData, company);
   return us ? `${lead} ${shortCompanyName(company!)}'s US listing is ${us.symbol}: ERN ${us.symbol} has them.` : lead;
+}
+
+/**
+ * A listing abroad with no next report on the calendar: "VOW3:XETRA: no next
+ * report date on record; last reported 2026-10-29 (quarter ended 2026-09-30).
+ * Headlines: gloom news VOW3:XETRA".
+ */
+async function noNextReportAbroad(symbol: string, context: HeadlessPaneContext): Promise<string> {
+  const [bare = symbol, exchange = ""] = symbol.split(":");
+  const last = await lastReportOnRecord(context.marketData, { symbol: bare, exchange }, listingDay(exchange));
+  return `${symbol}: ${noNextReportText(last)}. Headlines: gloom news ${commandWord(symbol)}`;
 }
 
 async function historyReport(symbol: string, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies): Promise<HeadlessRowsResult> {
@@ -284,7 +299,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   const payload = history.status === "fulfilled" ? history.value : null;
   const next = upcoming.status === "fulfilled" ? upcoming.value[0] ?? null : null;
   const notice = abroad
-    ? await abroadHistoryNotice(symbol, next?.name ?? await context.marketData.getQuote(symbol, "").then((quote) => quote.name ?? null, logFailure("earnings.headless", "Load earnings company name failed", null)), context)
+    ? await abroadHistoryNotice(symbol, next?.name ?? await context.marketData.getQuote(symbol, "").then((quote) => quote.name ?? null, logFailure("earnings.headless", "Load earnings company name failed", null)), !!next, context)
     : null;
   const rows = historyRows(payload, newYorkToday(), next, { abroad: ownAbroad }).map((row) => ({
     date: row.date,
@@ -320,9 +335,10 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   const noEarnings = rows.length === 0 && !abroad ? await loadNoEarningsText(context.marketData, symbol, "cli") : null;
   // A company ERN covers whose history answered with nothing (AIA's, 1299:HKEX) has no reports on record yet: no
   // complete answer, and not one ERN does not cover.
-  // A listing abroad shows only its next report: none on the calendar is what it has, not a listing ERN does not cover.
-  const empty = noEarnings ?? (rows.length === 0 && payload ? `No earnings reports on record for ${symbol}.`
-    : rows.length === 0 && abroad && upcoming.status === "fulfilled" ? `${symbol} has no report on the calendar yet.` : null);
+  // A listing abroad shows only its next report: none on the calendar is what it has, not a listing ERN does not cover,
+  // and it says when it last reported. A calendar that failed to answer says nothing of it.
+  const empty = noEarnings ?? (rows.length === 0 && payload ? `No earnings reports on record for ${symbol}.` : null)
+    ?? (rows.length === 0 && abroad && upcoming.status === "fulfilled" && !next ? await noNextReportAbroad(symbol, context) : null);
   return {
     columns: ownAbroad ? LISTING_HISTORY_COLUMNS : HISTORY_COLUMNS,
     rows,
