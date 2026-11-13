@@ -232,7 +232,7 @@ export function shouldLogProviderError(error: unknown): boolean {
  * quote provider available", or as the cause of a busy search. Null for any
  * other failure.
  */
-export function rateLimitRefusal(error: unknown, depth = 0): ApiRequestError | null {
+function rateLimitRefusal(error: unknown, depth = 0): ApiRequestError | null {
   if (!error || typeof error !== "object" || depth > 4) return null;
   if (error instanceof ApiRequestError) return error.status === 429 ? error : null;
   if (error instanceof NoProviderError) return rateLimitRefusal(error.failure, depth + 1);
