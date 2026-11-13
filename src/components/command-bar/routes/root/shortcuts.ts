@@ -20,6 +20,8 @@ interface ShortcutIntentBase {
   completionQuery: string | null;
   /** The ticker in focus the argument was filled with, when none was typed. */
   inferredArg?: string;
+  /** Typed in Bloomberg's order, the ticker before the code (`MC FP Equity DES`). */
+  tickerFirst?: true;
 }
 
 interface CommandShortcutIntent extends ShortcutIntentBase {
@@ -42,6 +44,18 @@ export type ShortcutIntent =
   | CommandShortcutIntent
   | PaneTemplateShortcutIntent
   | PluginCommandShortcutIntent;
+
+/**
+ * The query a command runs as: one typed ticker first (`MC FP Equity DES`) in
+ * the code's own order (`DES MC:EPA`), so it lists, searches and opens on
+ * Enter as the code typed first does, as a pane's code typed after its ticker
+ * does (`MC FP Equity GP`). Any other query as typed.
+ */
+export function commandShortcutQuery(query: string, intent: ShortcutIntent): string {
+  return intent.kind !== "none" && intent.source === "command" && intent.tickerFirst && intent.argText
+    ? `${intent.prefix} ${intent.argText}`
+    : query;
+}
 
 interface ShortcutParseCandidate {
   prefix: string;
@@ -239,6 +253,7 @@ export function parseRootShortcutIntent({
     argText,
     completionQuery,
     ...(kind === "inferred-complete" && inferredArg && issuer ? { inferredArg } : {}),
+    ...(trimmed !== typed ? { tickerFirst: true as const } : {}),
   };
 
   if (match.source === "command" && match.command) {

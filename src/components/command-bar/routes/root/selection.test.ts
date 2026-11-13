@@ -17,6 +17,7 @@ describe("root command selection", () => {
   function selectLanguage(query: string, onRun: (arg: string) => void, options: {
     availableCommands?: Command[];
     openModeRoute?: (screen: string, query?: string, payload?: Record<string, unknown>) => void;
+    runSecurityDescriptionShortcut?: (query?: string) => void;
   } = {}) {
     return buildImmediateRootSelection({
       query,
@@ -31,7 +32,7 @@ describe("root command selection", () => {
       openPaneTemplateWorkflow: () => {},
       pluginCommandResultItems: () => [],
       runDirectCommand: (_command, arg) => onRun(arg),
-      runSecurityDescriptionShortcut: () => {},
+      runSecurityDescriptionShortcut: options.runSecurityDescriptionShortcut ?? (() => {}),
       setRootQuery: () => {},
       startThemePicker: () => {},
     });
@@ -55,6 +56,17 @@ describe("root command selection", () => {
     });
     selection?.action();
     expect(opened).toEqual([["ticker-search", "", SECURITY_DESCRIPTION_SEARCH]]);
+  });
+
+  // `MC FP Equity DES` showed "Shortcut: DES MC:EPA" and Enter did nothing, where `MC FP Equity GP` opens GP.
+  test("DES typed after its ticker in Bloomberg's order opens DES on the listing the code names, as typed first does", () => {
+    const described: Array<string | undefined> = [];
+    const select = (query: string) => selectLanguage(query, () => {}, {
+      availableCommands: commands.filter((command) => command.id === "security-description"),
+      runSecurityDescriptionShortcut: (arg) => { described.push(arg); },
+    });
+    for (const query of ["MC FP Equity DES", "VOD LN DES", "AAPL DES", "DES MC FP Equity"]) void select(query)?.action();
+    expect(described).toEqual(["MC:EPA", "VOD:LSE", "AAPL", "MC FP Equity"]);
   });
 
   test("keeps bare LANG available for cycling", () => {
