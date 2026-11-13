@@ -42,7 +42,7 @@ export function createCapabilityInvoker(options: {
       ? withDeadline(
         request,
         options.timeoutMs,
-        `Asset data request timed out after ${options.timeoutMs}ms: ${operationId}`,
+        `Asset data request timed out after ${options.timeoutMs}ms`,
       )
       : request;
     if (!invokeOptions.signal) {

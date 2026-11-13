@@ -360,9 +360,10 @@ describe("CloudApiRequestTransport market deadlines", () => {
       },
     });
 
-    await expect(
-      transport.request("/market/history?symbol=AAPL"),
-    ).rejects.toThrow("Cloud market request timed out after 10ms");
+    const error = await transport.request("/market/history?symbol=AAPL").catch((caught: unknown) => caught as Error);
+    // Reports print the message: it says what timed out, never the service's endpoint, which logs keep apart.
+    expect(error.message).toBe("Cloud market request timed out after 10ms");
+    expect((error as Error & { path?: string }).path).toBe("/market/history");
     expect(signal?.aborted).toBe(true);
   });
 

@@ -577,11 +577,13 @@ export class CloudApiRequestTransport {
     const answered = () => this.answers > answersAtStart;
     const generation = cloudApiTransportGeneration;
     const what = path.startsWith("/market/") ? "Cloud market request" : "Cloud request";
-    const timedOut = (ms: number) => new OperationTimeoutError(`${what} timed out after ${ms}ms: ${path.split("?")[0]}`);
+    // The endpoint stays out of the message, which reports and panes print; logs read it from `path`.
+    const endpoint = path.split("?")[0]!;
+    const timedOut = (ms: number) => Object.assign(new OperationTimeoutError(`${what} timed out after ${ms}ms`), { path: endpoint });
     const timers: Array<ReturnType<typeof setTimeout>> = [];
     if (this.hungAt != null && Date.now() - this.hungAt < HUNG_FAIL_FAST_MS && !controller.signal.aborted) {
       callerSignal?.removeEventListener("abort", abortFromCaller);
-      throw new DataServiceUnreachableError(new OperationTimeoutError(`${what} not sent: the last one got no answer: ${path.split("?")[0]}`));
+      throw new DataServiceUnreachableError(Object.assign(new OperationTimeoutError(`${what} not sent: the last one got no answer`), { path: endpoint }));
     }
     this.pending += 1;
     try {
