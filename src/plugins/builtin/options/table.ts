@@ -3,6 +3,7 @@ import type { DataTableCell } from "../../../components";
 import type { OptionContract, OptionsChain } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, blendForSeparation, contrastRatio } from "../../../theme/color-utils";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { formatCompact } from "../../../utils/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
@@ -126,12 +127,13 @@ const OPTION_FIELD_DROP_ORDER: readonly OptionFieldId[] = [
   "last", "volume", "delta", "openInterest", "iv", "ask",
 ];
 
-/** Cells a chain with these fields takes: each field on both sides (a put-only one once), and the strike. */
+/**
+ * Cells the terminal chain draws with these fields: each column as the table
+ * draws it, widened to its header and sort mark ("C LAST" takes 8 cells, not
+ * its field's 7), with no gap or padding between them, as the pane lays it out.
+ */
 function optionChainWidth(fields: readonly OptionFieldId[]): number {
-  return fields.reduce((sum, field) => {
-    const definition = OPTION_FIELDS_BY_ID.get(field)!;
-    return sum + definition.width * (definition.putOnly ? 1 : 2);
-  }, STRIKE_COLUMN_WIDTH);
+  return getTableWidth(createOptionColumns(fields), 0, 0);
 }
 
 /**

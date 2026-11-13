@@ -50,6 +50,7 @@ import { useOptionsCatalogue } from "./expiry-catalogue";
 import { calculateOptionGreeks, calculateOptionsSummary, IV_FILLED_DETAIL, IV_FILLED_NOTE, IV_FILLED_SHORT, solveChainVolatilities, type OptionsSummary } from "./analytics";
 import {
   DEFAULT_OPTION_FIELD_IDS,
+  OPTION_FIELD_DEFS,
   buildStrikeList,
   createOptionColumns,
   fitOptionFieldIds,
@@ -658,6 +659,21 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     ...(ivFilledShown ? [{ id: "iv-filled", parts: [{ text: IV_FILLED_NOTE, tone: "muted" as const }],
       title: IV_FILLED_DETAIL, variants: [[{ text: IV_FILLED_SHORT, tone: "muted" as const }]] }] : []),
   ] }), [basisText, shortBasisText, ivFilledShown]);
+  // Fields the terminal chain gave up for width, counted so a narrow chain does
+  // not read as all there is; hover names them. It leads the footer, so a
+  // crowded row gives up the contract under the cursor before it.
+  const hiddenFields = OPTION_FIELD_DEFS.filter((field) => optionFieldIds.includes(field.id) && !shownFieldIds.includes(field.id))
+    .map((field) => field.label).join(", ");
+  usePaneFooter("options-fit", () => {
+    const count = hiddenFields ? hiddenFields.split(", ").length : 0;
+    return { order: -1, info: count ? [{
+      id: "options-hidden-fields",
+      capture: true,
+      parts: [{ text: `${count} ${count === 1 ? "field" : "fields"} hidden`, tone: "muted" as const }],
+      title: `Too narrow for ${hiddenFields}: a wider pane shows them, and Export CSV keeps them.`,
+      variants: [[{ text: `${count} hidden`, tone: "muted" as const }]],
+    }] : [] };
+  }, [hiddenFields]);
   // Figures that summarise the whole expiry move at most once a second, so a
   // busy stream reads as a steady strip rather than flicker.
   // A new expiry, a refreshed snapshot or the underlying price arriving or
