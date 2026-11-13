@@ -1,6 +1,6 @@
 import type { DataTableColumn } from "../../../components";
 import { MISSING_VALUE, displayWidth, formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
-import { formatFilingDate } from "../../../utils/datetime-format";
+import { formatFilingDate, formatShortDate } from "../../../utils/datetime-format";
 import { isAmendedInsiderFiling } from "./amendments";
 import { insiderSecurityTag, insiderTypeLabel, insiderTypeTone, isOpenMarketTrade, type InsiderTypeTone } from "./display";
 import {
@@ -23,6 +23,8 @@ export interface InsiderColumn extends DataTableColumn {
    * keep their $.
    */
   currency?: string;
+  /** The date column is at its narrowest and writes the year in two digits: `03 Nov 26`. */
+  compact?: boolean;
 }
 
 /** One table row: a Form 4 line, or a filing without one (loading, unread, a disclosure). */
@@ -99,9 +101,14 @@ export function buildInsiderTableRows(parsed: readonly ParsedInsiderFiling[]): I
   });
 }
 
-/** The day a row was filed, as every filing column writes it: `05 Nov 2026`, read in UTC because it names a calendar day. */
-export function formatInsiderDate(date: Date | null): string {
-  return date ? formatFilingDate(date, MISSING_VALUE) : MISSING_VALUE;
+/**
+ * A row's day (its trade's, else its filing's) as a filing column writes a
+ * day: `05 Nov 2026`, read in UTC because it names a calendar day. `compact`,
+ * where nothing else can give way, writes the year in two digits: `05 Nov 26`.
+ */
+export function formatInsiderDate(date: Date | null, compact = false): string {
+  if (!date) return MISSING_VALUE;
+  return compact ? formatShortDate(date, { day: "2-digit", year: "2-digit", utc: true }) : formatFilingDate(date, MISSING_VALUE);
 }
 
 export function formatInsiderShares(value: number | null): string {
@@ -150,7 +157,7 @@ function fitWidth(texts: readonly string[], label: string, max: number): number 
  * in the same cells). Every column takes the width its widest value needs.
  * When the pane runs short, the role goes first, then the price, the
  * 10b5-1 marker, the security and the share count, and only then does the name
- * column shrink below 16 cells (to 5 at the least), so a narrow pane still reads date, name,
+ * column shrink below 16 cells (to 6, and 4 with a two-digit year), so a narrow pane still reads date, name,
  * type and value. With `currency` (Form 4 amounts read by someone whose base
  * currency is not the dollar), CCY follows Value and is kept with it, as PF
  * shows CCY once a row is in another currency than the totals.
@@ -160,7 +167,7 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
   const anySecurity = rows.some((row) => row.security);
   const names = rows.map((row) => row.name);
   const widths = {
-    date: fitWidth(rows.map((row) => formatInsiderDate(row.date)), "Date", 8),
+    date: fitWidth(rows.map((row) => formatInsiderDate(row.date)), "Date", 11),
     insider: fitWidth(names, "Insider", 28),
     role: fitWidth(rows.map((row) => row.role), "Role", 12),
     typeBase: fitWidth(rows.map((row) => insiderTypeText(row, false)), "Type", 12),
@@ -194,13 +201,20 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
     show[drop] = false;
     shrinkInsider(16);
   }
-  shrinkInsider(5);
+  shrinkInsider(6);
+  // Where even that runs over (a CCY column on a narrow pane), the date gives
+  // its century and the name its last cells, before any column is cut.
+  const compact = total() > available;
+  if (compact) {
+    widths.date = fitWidth(rows.map((row) => formatInsiderDate(row.date, true)), "Date", 9);
+    shrinkInsider(4);
+  }
   // A dropped column can leave room for more of the names.
   insider = Math.min(widths.insider, insider + Math.max(0, available - total()));
 
   const typeWidth = show.plan ? widths.typePlan : widths.typeBase;
   const columns: InsiderColumn[] = [
-    { id: "date", label: "Date", width: widths.date, align: "left" },
+    { id: "date", label: "Date", width: widths.date, align: "left", ...(compact ? { compact } : {}) },
     { id: "insider", label: "Insider", width: insider, align: "left" },
     ...(show.role ? [{ id: "role" as const, label: "Role", width: widths.role, align: "left" as const }] : []),
     { id: "type", label: "Type", width: typeWidth, align: "left", plan: show.plan },

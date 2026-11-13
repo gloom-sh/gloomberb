@@ -87,11 +87,11 @@ describe("insider columns", () => {
   });
 
   test("narrower panes drop the role, then the price, the 10b5-1 marker, the security and the shares", () => {
-    expect(ids(76)).toEqual(["date", "insider", "type", "security", "shares", "price", "value"]);
-    expect(ids(66)).toEqual(["date", "insider", "type", "security", "shares", "value"]);
-    expect(buildInsiderColumns(56, rows).find((column) => column.id === "type")?.plan).toBe(false);
-    expect(ids(48)).toEqual(["date", "insider", "type", "value"]);
-    for (const width of [120, 90, 76, 66, 56, 48, 40]) expect(total(width)).toBeLessThanOrEqual(width);
+    expect(ids(79)).toEqual(["date", "insider", "type", "security", "shares", "price", "value"]);
+    expect(ids(69)).toEqual(["date", "insider", "type", "security", "shares", "value"]);
+    expect(buildInsiderColumns(59, rows).find((column) => column.id === "type")?.plan).toBe(false);
+    expect(ids(51)).toEqual(["date", "insider", "type", "value"]);
+    for (const width of [120, 90, 79, 69, 59, 51, 40]) expect(total(width)).toBeLessThanOrEqual(width);
   });
   // Review: with a CAD base the pane still wrote $48.56 and $199.1k, which a Canadian reads as their own dollars.
   test("for a base currency other than USD, CCY follows Value and stays with it, and the amounts drop their $", () => {
@@ -107,6 +107,10 @@ describe("insider columns", () => {
     for (const width of [120, 76, 56, 48, 40]) {
       expect(buildInsiderColumns(width, rows, "USD").reduce((sum, column) => sum + column.width + 1, 2)).toBeLessThanOrEqual(width);
     }
+    // A date is whole ("15 Sep 2026"); where a CCY column leaves no room, it gives its century, never cut ("15 Sep 2…").
+    expect(cell("date")).toBe("15 Sep 2026");
+    const narrowest = buildInsiderColumns(40, rows, "USD");
+    expect(renderInsiderCell(rows[0]!, narrowest.find((column) => column.id === "date")!, 0, { selected: false }).text).toBe("15 Sep 26");
     // A USD base keeps the $ and has no CCY.
     expect(renderInsiderCell(rows[0]!, buildInsiderColumns(120, rows).find((column) => column.id === "value")!, 0, { selected: false }).text).toBe("$199.1k");
   });
