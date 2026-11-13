@@ -5,6 +5,7 @@ import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery, useTi
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
+import { logFailure } from "../../../utils/log-failure";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -440,9 +441,12 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const refresh = useCallback(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !instrument || !eligibleTicker) return;
-    void coordinator.loadSecFilings({ instrument, count: SEC_FILING_FETCH_LIMIT }, { forceRefresh: true });
+    // A failed request shows as the list's or the filing's error; anything else is logged.
+    coordinator.loadSecFilings({ instrument, count: SEC_FILING_FETCH_LIMIT }, { forceRefresh: true })
+      .catch(logFailure("sec.pane", "Refreshing filings failed"));
     if (openFiling && (documentsError || openDocuments.length === 0)) {
-      void coordinator.loadSecFilingDocuments(openFiling, { forceRefresh: true });
+      coordinator.loadSecFilingDocuments(openFiling, { forceRefresh: true })
+        .catch(logFailure("sec.pane", "Refreshing filing documents failed"));
     }
     void retryContent();
   }, [instrument, eligibleTicker, openFiling, documentsError, openDocuments.length, retryContent]);

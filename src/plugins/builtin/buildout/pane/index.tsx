@@ -384,11 +384,11 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     () => {
       if (!activePage) return;
       if (companyTab && currentList) {
-        void loadCompanies(currentList, activePage.offset, true);
+        loadCompanies(currentList, activePage.offset, true);
       } else if (activeTab === "sites") {
-        void loadSites(activePage.offset, true);
+        loadSites(activePage.offset, true);
       } else if (activeTab === "intel") {
-        void loadIntel(activePage.offset, true);
+        loadIntel(activePage.offset, true);
       }
     },
     LOAD_MORE_THRESHOLD,

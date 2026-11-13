@@ -13,6 +13,7 @@ import { useShortcut } from "../../../react/input";
 import { buildChartKey } from "../../../market-data/selectors";
 import { formatTickerListInput } from "../../../tickers/list";
 import { isPlainKey } from "../../../utils/keyboard";
+import { logFailure } from "../../../utils/log-failure";
 import { useAsyncResource } from "../../../react/async-resource";
 import { cloudGeoRequest } from "../world-venue-map/client";
 import { geoSeriesToken, loadGeoCorrelationHistory } from "./geo";
@@ -188,7 +189,9 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
 
   const refresh = useCallback(() => {
     const coordinator = getSharedMarketDataCoordinator();
-    for (const request of chartRequests) void coordinator?.loadChart(request, { forceRefresh: true });
+    for (const request of chartRequests) {
+      coordinator?.loadChart(request, { forceRefresh: true }).catch(logFailure("correlation", "Refreshing chart data failed"));
+    }
     if (geoKey) geoHistory.reload();
   }, [chartRequests, geoKey, geoHistory.reload]);
 
