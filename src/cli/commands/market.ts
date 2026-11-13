@@ -2300,6 +2300,8 @@ const HISTORY_FLAG_TEXT_COLUMN: CliResultColumn = {
     row.partial ? cliStyles.muted("partial") : "",
     row.filled ? cliStyles.muted("filled") : "",
     row.unsettled ? cliStyles.muted("unsettled") : "",
+    row.sessionClose ? cliStyles.muted("close") : "",
+    row.beforeClose ? cliStyles.muted("before close") : "",
     row.roll && typeof row.contract === "string" ? cliStyles.muted(`roll to ${row.contract}`) : "",
     row.thin ? cliStyles.muted("thin") : "",
     row.settleOnly ? cliStyles.muted("settle only") : "",
