@@ -72,10 +72,11 @@ export interface CompositeTimeAxisLayout {
 interface AxisClock {
   wall(timestamp: number): number;
   instant(wall: number): number;
-  label: string;
+  /** The zone's short name at an instant ("CET" in winter, "CEST" in summer). */
+  label(instant: number): string;
 }
 
-const UTC_CLOCK: AxisClock = { wall: (timestamp) => timestamp, instant: (wall) => wall, label: "UTC" };
+const UTC_CLOCK: AxisClock = { wall: (timestamp) => timestamp, instant: (wall) => wall, label: () => "UTC" };
 const axisClocks = new Map<string, AxisClock>();
 
 function axisClock(timeZone: string | undefined): AxisClock {
@@ -94,7 +95,7 @@ function axisClock(timeZone: string | undefined): AxisClock {
         return zonedWallClockToUtcMs(timeZone, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(),
           date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds());
       },
-      label: timeZoneLabel(timeZone),
+      label: (instant) => timeZoneLabel(timeZone, instant),
     };
     axisClocks.set(timeZone, clock);
   }
@@ -422,7 +423,7 @@ function formatBoundaryLabel(
     case "minute":
     case "hour": {
       const clock = clockLabel(timestamp, interval.unit);
-      const suffix = includeTimeZone ? ` ${axis.label}` : "";
+      const suffix = includeTimeZone ? ` ${axis.label(instant)}` : "";
       if (sameWallDay(timestamp, counterpart)) return `${clock}${suffix}`;
       const includeYear = includeBoundaryYear
         && date.getUTCFullYear() !== new Date(counterpart).getUTCFullYear();

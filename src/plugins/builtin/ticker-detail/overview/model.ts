@@ -64,7 +64,7 @@ function daysUntil(date: string, today: string): number {
   return Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
 }
 
-/** "Sep 10", or "Dec 12, 25" in another year. */
+/** "10 Sep", or "12 Dec '25" in another year. */
 function calendarDate(date: string, today: string): string {
   return formatShortDate(`${date}T00:00:00Z`, { year: date.slice(0, 4) === today.slice(0, 4) ? false : "2-digit", utc: true });
 }

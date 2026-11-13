@@ -214,7 +214,7 @@ export function expectedCloseDate(value: string | null): Date | null {
   return null;
 }
 
-/** "15 Oct", "Q1 27", "2027". */
+/** "15 Oct", "Oct '27" (a month in another year), "Q1 27", "2027". */
 export function formatExpectedClose(value: string | null, now = new Date()): string {
   if (!value) return MISSING;
   const text = value.trim();
@@ -222,7 +222,7 @@ export function formatExpectedClose(value: string | null, now = new Date()): str
   if (day) {
     const date = new Date(`${text}T00:00:00Z`);
     const month = date.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
-    return date.getUTCFullYear() === now.getUTCFullYear() ? `${Number(day[3])} ${month}` : `${month} ${day[1]!.slice(2)}`;
+    return date.getUTCFullYear() === now.getUTCFullYear() ? `${Number(day[3])} ${month}` : `${month} '${day[1]!.slice(2)}`;
   }
   const period = /^([QH][1-4])\s+(\d{4})$/i.exec(text);
   if (period) return `${period[1]!.toUpperCase()} ${period[2]!.slice(2)}`;

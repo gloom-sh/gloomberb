@@ -104,7 +104,7 @@ export function buildInsiderTableRows(parsed: readonly ParsedInsiderFiling[]): I
 /**
  * A row's day (its trade's, else its filing's) as a filing column writes a
  * day: `05 Nov 2026`, read in UTC because it names a calendar day. `compact`,
- * where nothing else can give way, writes the year in two digits: `05 Nov 26`.
+ * where nothing else can give way, writes the year in two digits: `05 Nov '26`.
  */
 export function formatInsiderDate(date: Date | null, compact = false): string {
   if (!date) return MISSING_VALUE;
@@ -206,8 +206,8 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
   // its century and the name its last cells, before any column is cut.
   const compact = total() > available;
   if (compact) {
-    widths.date = fitWidth(rows.map((row) => formatInsiderDate(row.date, true)), "Date", 9);
-    shrinkInsider(4);
+    widths.date = fitWidth(rows.map((row) => formatInsiderDate(row.date, true)), "Date", 10);
+    shrinkInsider(3);
   }
   // A dropped column can leave room for more of the names.
   insider = Math.min(widths.insider, insider + Math.max(0, available - total()));

@@ -103,32 +103,40 @@ export function zonedWallClockMs(utcMs: number, timeZone: string): number {
   return utcMs + offset;
 }
 
-// Zones whose usual short name reads the same in summer and winter, the way
-// the tape writes "ET". Any other zone is named by its city.
-const TIME_ZONE_LABELS: Readonly<Record<string, string>> = {
+/** A zone's winter and summer names, for a zone that names the two apart. */
+type SeasonNames = readonly [winter: string, summer: string];
+const CENTRAL_EUROPE: SeasonNames = ["CET", "CEST"];
+
+// The short names zones go by. The Americas and Australasia have one for the
+// whole year, the way the tape writes "ET"; Europe names its summer time apart
+// ("CET", "CEST"). Any other zone is named by its city.
+const TIME_ZONE_LABELS: Readonly<Record<string, string | SeasonNames>> = {
   UTC: "UTC",
   "Etc/UTC": "UTC",
   "America/New_York": "ET",
   "America/Toronto": "ET",
   "America/Chicago": "CT",
+  "America/Denver": "MT",
+  "America/Los_Angeles": "PT",
+  "America/Vancouver": "PT",
   "America/Sao_Paulo": "BRT",
   "America/Argentina/Buenos_Aires": "ART",
-  "Europe/London": "UK",
-  "Europe/Lisbon": "WET",
-  "Europe/Berlin": "CET",
-  "Europe/Paris": "CET",
-  "Europe/Amsterdam": "CET",
-  "Europe/Brussels": "CET",
-  "Europe/Madrid": "CET",
-  "Europe/Rome": "CET",
-  "Europe/Zurich": "CET",
-  "Europe/Vienna": "CET",
-  "Europe/Stockholm": "CET",
-  "Europe/Copenhagen": "CET",
-  "Europe/Oslo": "CET",
-  "Europe/Warsaw": "CET",
-  "Europe/Prague": "CET",
-  "Europe/Helsinki": "EET",
+  "Europe/London": ["GMT", "BST"],
+  "Europe/Lisbon": ["WET", "WEST"],
+  "Europe/Berlin": CENTRAL_EUROPE,
+  "Europe/Paris": CENTRAL_EUROPE,
+  "Europe/Amsterdam": CENTRAL_EUROPE,
+  "Europe/Brussels": CENTRAL_EUROPE,
+  "Europe/Madrid": CENTRAL_EUROPE,
+  "Europe/Rome": CENTRAL_EUROPE,
+  "Europe/Zurich": CENTRAL_EUROPE,
+  "Europe/Vienna": CENTRAL_EUROPE,
+  "Europe/Stockholm": CENTRAL_EUROPE,
+  "Europe/Copenhagen": CENTRAL_EUROPE,
+  "Europe/Oslo": CENTRAL_EUROPE,
+  "Europe/Warsaw": CENTRAL_EUROPE,
+  "Europe/Prague": CENTRAL_EUROPE,
+  "Europe/Helsinki": ["EET", "EEST"],
   "Atlantic/Reykjavik": "GMT",
   "Africa/Johannesburg": "SAST",
   "Asia/Kolkata": "IST",
@@ -140,12 +148,24 @@ const TIME_ZONE_LABELS: Readonly<Record<string, string>> = {
   "Pacific/Auckland": "NZT",
 };
 
-/** The short name a zone has all year ("ET" for New York, "JST" for Tokyo), when it has one. */
-export function knownTimeZoneLabel(timeZone: string): string | undefined {
-  return TIME_ZONE_LABELS[timeZone];
+/** Whether `at` falls in the zone's summer time: its offset then is past its winter one. */
+function onSummerTime(timeZone: string, at: number): boolean {
+  const year = new Date(at).getUTCFullYear();
+  const offsetAt = (utcMs: number) => zonedWallClockMs(utcMs, timeZone) - utcMs;
+  return offsetAt(at) > Math.min(offsetAt(Date.UTC(year, 0, 1)), offsetAt(Date.UTC(year, 6, 1)));
 }
 
-/** A short name for a zone that holds all year: "ET" for New York, "JST" for Tokyo, else the city. */
-export function timeZoneLabel(timeZone: string): string {
-  return knownTimeZoneLabel(timeZone) ?? timeZone.split("/").at(-1)!.replaceAll("_", " ");
+/**
+ * The short name a zone goes by at `at` ("ET" for New York, "JST" for Tokyo,
+ * "CET" or "CEST" for Paris, "GMT" or "BST" for London), when it has one.
+ */
+function knownTimeZoneLabel(timeZone: string, at: number = Date.now()): string | undefined {
+  const names = TIME_ZONE_LABELS[timeZone];
+  if (names === undefined || typeof names === "string") return names;
+  return names[Number.isFinite(at) && onSummerTime(timeZone, at) ? 1 : 0];
+}
+
+/** A zone's short name at `at` (`knownTimeZoneLabel`), else its city: every chart, session line and time column names a zone so. */
+export function timeZoneLabel(timeZone: string, at: number = Date.now()): string {
+  return knownTimeZoneLabel(timeZone, at) ?? timeZone.split("/").at(-1)!.replaceAll("_", " ");
 }

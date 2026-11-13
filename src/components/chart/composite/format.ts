@@ -647,7 +647,7 @@ function utcTime(date: Date): string {
 function onClock(date: Date, timeZone: string | undefined): { wall: Date; zone: string } {
   if (!timeZone || timeZone === "UTC") return { wall: date, zone: "UTC" };
   try {
-    return { wall: new Date(zonedWallClockMs(date.getTime(), timeZone)), zone: timeZoneLabel(timeZone) };
+    return { wall: new Date(zonedWallClockMs(date.getTime(), timeZone)), zone: timeZoneLabel(timeZone, date.getTime()) };
   } catch {
     return { wall: date, zone: "UTC" };
   }

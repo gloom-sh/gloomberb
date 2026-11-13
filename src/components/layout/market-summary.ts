@@ -165,7 +165,7 @@ function venueOpenText(at: number, now: number, timeZone: string): string {
   const { year, month, day, hour, minute } = zonedDateTimeParts(at, timeZone);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
   const date = days < 2 ? "" : days < 7 ? `${WEEKDAYS[weekday]} ` : `${day} ${MONTHS[month - 1]} `;
-  return `${date}${hour}:${String(minute).padStart(2, "0")} ${timeZoneLabel(timeZone)}`;
+  return `${date}${hour}:${String(minute).padStart(2, "0")} ${timeZoneLabel(timeZone, at)}`;
 }
 
 /** Each phase in each form of the state: the full one names the session, the short one shortens it, the bare one drops the venue. */

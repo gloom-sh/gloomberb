@@ -110,7 +110,7 @@ describe("insider columns", () => {
     // A date is whole ("15 Sep 2026"); where a CCY column leaves no room, it gives its century, never cut ("15 Sep 2…").
     expect(cell("date")).toBe("15 Sep 2026");
     const narrowest = buildInsiderColumns(40, rows, "USD");
-    expect(renderInsiderCell(rows[0]!, narrowest.find((column) => column.id === "date")!, 0, { selected: false }).text).toBe("15 Sep 26");
+    expect(renderInsiderCell(rows[0]!, narrowest.find((column) => column.id === "date")!, 0, { selected: false }).text).toBe("15 Sep '26");
     // A USD base keeps the $ and has no CCY.
     expect(renderInsiderCell(rows[0]!, buildInsiderColumns(120, rows).find((column) => column.id === "value")!, 0, { selected: false }).text).toBe("$199.1k");
   });

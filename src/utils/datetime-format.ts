@@ -1,6 +1,6 @@
 import { MISSING_VALUE } from "./format";
 import { toTimestampMillis } from "./timestamp";
-import { knownTimeZoneLabel } from "./zoned-date-time";
+import { timeZoneLabel } from "./zoned-date-time";
 
 export type DisplayDateValue = Date | string | number | null | undefined;
 
@@ -65,7 +65,7 @@ export function formatTimeAgo(date: Date | string, { short = false }: { short?: 
   const elapsed = elapsedUnits(Date.now() - ts);
   if (!elapsed) return short ? "<1m" : "just now";
   if (elapsed.unit === "d" && elapsed.count >= 7) {
-    // As a feed writes a day past the week: "5 Nov", "5 Nov 25" in another year, never "11/5/26".
+    // As a feed writes a day past the week: "5 Nov", "5 Nov '25" in another year, never "11/5/26".
     const date = new Date(ts);
     return formatShortDate(date, { year: date.getFullYear() === new Date().getFullYear() ? false : "2-digit" });
   }
@@ -73,7 +73,7 @@ export function formatTimeAgo(date: Date | string, { short = false }: { short?: 
 }
 
 export interface ShortDateOptions {
-  /** "5 Jan 2026" (the default), "5 Jan 26", or no year at all ("5 Jan"). */
+  /** "5 Jan 2026" (the default), "5 Jan '26" as option expiries write it, or no year at all ("5 Jan"). */
   year?: "numeric" | "2-digit" | false;
   /** "2-digit" pads the day so dates line up in a column ("05 Jan"). */
   day?: "numeric" | "2-digit";
@@ -85,9 +85,14 @@ export interface ShortDateOptions {
 
 const shortDateFormatters = new Map<string, Intl.DateTimeFormat>();
 
-function dayFirstParts(formatter: Intl.DateTimeFormat, date: Date): string {
+/**
+ * A formatter's date written day first ("Fri 5 Jan 2026"). A two-digit year
+ * takes an apostrophe ("5 Jan '26"), so it never reads as another day.
+ */
+export function dayFirstParts(formatter: Intl.DateTimeFormat, date: Date): string {
   const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
-  return `${parts.weekday ? `${parts.weekday} ` : ""}${parts.day} ${parts.month}${parts.year ? ` ${parts.year}` : ""}`;
+  const year = parts.year ? ` ${parts.year.length === 2 ? `'${parts.year}` : parts.year}` : "";
+  return `${parts.weekday ? `${parts.weekday} ` : ""}${parts.day} ${parts.month}${year}`;
 }
 
 /** A day-first month-name date such as "5 Jan 2026", in local time unless `utc` is set. */
@@ -172,7 +177,7 @@ function utcMidnight(date: Date): number {
 /**
  * When a feed item was published, in local time, as a newswire prints it:
  * the time today ("14:32"), the weekday and time over the six days before
- * ("Mon 09:10"), and the date for anything older ("18 Sep", or "18 Sep 25"
+ * ("Mon 09:10"), and the date for anything older ("18 Sep", or "18 Sep '25"
  * in another year). A weekday never names a day a week or more back. With
  * `utc`, the same in UTC, for a column whose header names the zone.
  */
@@ -218,17 +223,19 @@ export function formatDetailDate(value: DisplayDateValue, fallback = MISSING_VAL
 
 /**
  * The host's zone as a time beside it names it, for a column header over times
- * in that zone ("TIME CET"), as `formatDetailTime` names it after one time. A
- * zone the charts and session lines name ("UTC", "ET", "CET", "JST") reads the
- * same here; another takes its offset ("GMT+8"). News read "TIME GMT+1" over a
+ * in that zone ("TIME CET"), as `formatDetailTime` names it after one time:
+ * the name the charts and session lines give it at that time ("UTC", "ET",
+ * "CET" or "CEST", "JST", else the city). News read "TIME GMT+1" over a
  * chart's "CET" (review, 12 Nov 2026).
  */
 export function localTimeZoneShortName(now: DisplayDateValue = Date.now(), timeZone?: string): string {
-  const known = knownTimeZoneLabel(timeZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone);
-  if (known) return known;
-  const date = parseDisplayDate(now) ?? new Date();
-  return new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone }).formatToParts(date)
-    .find((part) => part.type === "timeZoneName")?.value ?? "UTC";
+  const zone = timeZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const at = (parseDisplayDate(now) ?? new Date()).getTime();
+  try {
+    return timeZoneLabel(zone, at);
+  } catch {
+    return "UTC";
+  }
 }
 
 const zonedClockFormatters = new Map<string, Intl.DateTimeFormat>();
