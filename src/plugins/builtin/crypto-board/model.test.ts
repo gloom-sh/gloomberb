@@ -61,6 +61,8 @@ test("each stablecoin row says whose its price is, and an extreme one exchange a
   const [board] = rows();
   expect(board).toMatchObject({ low24h: 0.9901, low24hText: "0.9901", low24hVenueText: "Coinbase", high24hVenueText: "2 venues", priceVenueText: "composite" });
   expect(rows({ price: 0.9989, priceVenue: "Coinbase", dataSource: "live" })[0]).toMatchObject({ price: 0.9989, priceVenueText: "Coinbase" });
+  // A live quote that names no exchange is its source's, not the board's composite.
+  expect(rows({ price: 0.9988, dataSource: "live", providerId: "gloomberb-cloud" })[0]).toMatchObject({ price: 0.9988, priceVenueText: "Gloom Cloud" });
   // A composite held back says so on its own row.
   expect(rows({ price: 0.9989, dataSource: "delayed" })[0]).toMatchObject({ delayed: true, priceVenueText: "15m delayed" });
   // A row is reused for its asset object: each case below is a fresh board.

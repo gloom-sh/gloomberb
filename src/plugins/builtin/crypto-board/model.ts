@@ -4,6 +4,7 @@ import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { delayedFeedLagMs } from "../../../market-data/market/freshness";
+import { quoteSourceName } from "../../../market-data/quotes/export-identity";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { PricePoint, Quote } from "../../../types/financials";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
@@ -128,10 +129,14 @@ function extremeVenueText(reached: readonly string[] | undefined, checked: reado
   return `${reached.length} venues`;
 }
 
-/** What a row says its price is: an exchange's own, the board's composite, or a composite held back. */
+/**
+ * What a row says its price is: an exchange's own, a quote held back, the source of a live quote that names no
+ * exchange (Gloom Cloud), or the board's own composite.
+ */
 function priceVenueText(quote: Quote | null, delayed: boolean): string {
   if (quote?.priceVenue) return quote.priceVenue;
-  return delayed ? `${delayedFeedLagMs(CRYPTO_EXCHANGE) / 60_000}m delayed` : COMPOSITE_PRICE_VENUE;
+  if (delayed) return `${delayedFeedLagMs(CRYPTO_EXCHANGE) / 60_000}m delayed`;
+  return quote ? quoteSourceName(quote) || MISSING_VALUE : COMPOSITE_PRICE_VENUE;
 }
 
 export const cryptoQuoteKey = (asset: Pick<CryptoMarketAsset, "symbol">) =>
