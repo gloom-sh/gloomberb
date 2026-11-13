@@ -78,7 +78,7 @@ function emptyPortfolioHint(name: string, listed: readonly string[]): string {
  * book entered by hand has none of; its P&L over a period is `portfolio show
  * --from`.
  */
-export function riskSectionEmpty(
+function riskSectionEmpty(
   view: RiskView,
   { name, brokerLinked, unvaluedOptions }: { name: string; brokerLinked: boolean; unvaluedOptions: boolean },
 ): string {
