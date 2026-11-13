@@ -215,7 +215,7 @@ function computeAxisTickValues(domain: CompositeAxisDomain): number[] {
     const round = logAxisTickValues(domain, maxTicks);
     if (round) return round;
     // Narrower than its ladder (a log panel over one price range): round
-    // linear steps, where the log axis puts them.
+    // linear steps, where the log axis puts them, about a row apart.
   }
   const grid = axisTickGrid(domain);
   if (grid) return gridAxisTickValues(domain, grid, span, maxTicks);
@@ -227,7 +227,7 @@ function computeAxisTickValues(domain: CompositeAxisDomain): number[] {
     const values = stepMultiples(domain.min, domain.max, step);
     if (values.length >= 2 && values.length <= maxTicks + 1
       && (best.length === 0 || Math.abs(values.length - maxTicks) < Math.abs(best.length - maxTicks))
-      && ticksFitRows(domain, values)) {
+      && ticksFitRows(domain, values) && ticksClearOnLogAxis(domain, values, maxTicks)) {
       best = values;
     }
     step = adjacentNiceStep(step, 1);
@@ -235,6 +235,19 @@ function computeAxisTickValues(domain: CompositeAxisDomain): number[] {
   // Round labels win only where they are at least as many as the exact ones.
   const edges = edgeTickValues(domain);
   return best.length >= Math.max(2, edges.length) ? best : edges;
+}
+
+/**
+ * Whether even steps placed at exact heights on a log axis stay about a row
+ * apart: a log axis crowds them towards its top, and a short panel ran $80 to
+ * $30 down consecutive rows. `maxTicks` gives a label two rows, so half its
+ * even spacing is about a row. A terminal axis has `ticksFitRows` instead.
+ */
+function ticksClearOnLogAxis(domain: CompositeAxisDomain, values: readonly number[], maxTicks: number): boolean {
+  if (domain.scale !== "log" || domain.tickRows !== undefined) return true;
+  const row = 1 / (2 * (maxTicks - 1));
+  const ratios = values.map((value) => axisTickRatio(domain, value)).sort((left, right) => left - right);
+  return ratios.every((ratio, index) => index === 0 || ratio - ratios[index - 1]! >= row * (1 - 1e-9));
 }
 
 /** What a log axis labels in each decade: its power of ten, then the 2 and 5 steps where there is room. */

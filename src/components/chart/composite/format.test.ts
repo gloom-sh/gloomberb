@@ -407,6 +407,29 @@ test("a log axis labels powers of ten, and their 2 and 5 steps where the panel h
   expect(rows.every((row, index) => index === 0 || row - rows[index - 1]! >= 2)).toBe(true);
 });
 
+// A log axis with no 1, 2, 5 ladder to label takes even steps, which it crowds
+// towards its top: 26 to 89 on a ten-row desktop panel read $80 to $30 a row
+// or less apart.
+test("a short desktop log axis keeps its even steps about a row apart, or labels its top, middle and bottom", () => {
+  const ticks = (min: number, max: number, rows: number) => compositeAxisTicks({
+    side: "right", seriesIds: ["price"], min, max, scale: "log", unit: "USD", unitGroup: "price:USD", maxTicks: compositeAxisMaxTicks(rows),
+  });
+  const labels = (min: number, max: number, rows: number) => ticks(min, max, rows).map((tick) => tick.label);
+  expect(labels(26, 89, 10)).toEqual(["$80", "$60", "$40"]);
+  expect(labels(26, 89, 7)).toEqual(["$80", "$60", "$40"]);
+  // No even step fits five rows.
+  expect(labels(26, 89, 5)).toEqual(["$89.0", "$48.1", "$26.0"]);
+  for (let rows = 5; rows <= 10; rows += 1) {
+    for (let min = 10; min < 100; min += 3) {
+      for (let span = 1.2; span <= 3.4; span += 0.2) {
+        const ratios = ticks(min, min * span, rows).map((tick) => tick.ratio).sort((left, right) => left - right);
+        const closest = Math.min(...ratios.slice(1).map((ratio, index) => ratio - ratios[index]!)) * (rows - 1);
+        if (closest < 1 - 1e-6) throw new Error(`${min} to ${min * span} on ${rows} rows: labels ${closest.toFixed(2)} rows apart`);
+      }
+    }
+  }
+});
+
 // A chart builds its axes again on every tick. What was worked out for an
 // equal axis is kept, and only for one: another range or formatter reads its own.
 describe("an axis built again", () => {
