@@ -109,8 +109,8 @@ export interface CryptoRow extends CryptoRowSupply {
   high24hText: string;
   /**
    * Whose the low and high are, in plain words: `Coinbase only` when it alone of the exchanges read reached it,
-   * `Coinbase` when it was the only one read, `2 of 3` or `all 3` when more did, `none of 3` when none did, or a dash
-   * when no exchange was read.
+   * `Coinbase` when it was the only one read, `2 of 3` or `all 3` when more did, `other exchange` when none did (the
+   * composite's wick was an exchange not read), or a dash when no exchange was read.
    */
   low24hVenueText: string;
   high24hVenueText: string;
@@ -118,15 +118,18 @@ export interface CryptoRow extends CryptoRowSupply {
 
 /** The board's price that is no one exchange's: several blended by the source. */
 const COMPOSITE_PRICE_VENUE = "composite";
+/** An extreme none of the exchanges read reached. */
+const OTHER_EXCHANGE = "other exchange";
 
 /**
  * Whose an extreme is: the exchange that alone reached it among several read (`Coinbase only`), the one read when
- * only one was, how many of those read did, and when none did, says so. An exchange that could not be read is not
- * among those counted. A price newer than the range that widened it is the row's own price venue's.
+ * only one was, how many of those read did, and when none did, another exchange's. An exchange that could not be
+ * read is not among those counted. A price newer than the range that widened it is the row's own price venue's.
  */
 function extremeVenueText(reached: readonly string[] | undefined, checked: readonly string[] | undefined): string {
   if (!checked?.length || !reached) return MISSING_VALUE;
-  if (reached.length === 0) return `none of ${checked.length}`;
+  // The composite blends exchanges not read here: an extreme none of those read reached was one of theirs.
+  if (reached.length === 0) return OTHER_EXCHANGE;
   if (reached.length === 1) return checked.length > 1 ? `${reached[0]} only` : reached[0]!;
   return reached.length === checked.length ? `all ${checked.length}` : `${reached.length} of ${checked.length}`;
 }
@@ -549,10 +552,10 @@ const STABLECOIN_COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "offPegBp", label: "OFF PEG", width: 8, align: "right" },
   { id: "low24h", label: "24H LOW", width: 8, align: "right" },
   { id: "low24hAt", label: "LOW UTC", width: 9, align: "left" },
-  { id: "low24hVenueText", label: "LOW VENUE", title: "The exchange that alone reached the low, or how many of those read did", width: 13, align: "left", optional: 0.6 },
+  { id: "low24hVenueText", label: "LOW VENUE", title: "The exchange that alone reached the low, how many of those read did, or another exchange", width: 14, align: "left", optional: 0.6 },
   { id: "high24h", label: "24H HIGH", width: 8, align: "right", optional: 1 },
   { id: "high24hAt", label: "HIGH UTC", width: 9, align: "left", optional: 2 },
-  { id: "high24hVenueText", label: "HIGH VENUE", title: "The exchange that alone reached the high, or how many of those read did", width: 13, align: "left", optional: 2.5 },
+  { id: "high24hVenueText", label: "HIGH VENUE", title: "The exchange that alone reached the high, how many of those read did, or another exchange", width: 14, align: "left", optional: 2.5 },
   { id: "changePercent", label: "CHG% UTC", title: "Change since 00:00 UTC", width: 8, align: "right", optional: 5 },
   { id: "return7d", label: "7D%", width: 8, align: "right", optional: 6 },
   { id: "return30d", label: "30D%", width: 8, align: "right", optional: 8 },

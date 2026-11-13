@@ -875,7 +875,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "A coin's dollar price blended from trading on many crypto exchanges, Binance, Coinbase, Kraken and Bitstamp among them, "
       + "quoted around the clock under the code CCC. "
       + "Its 5-minute low or high can be one exchange's brief wick: CRYP reads Coinbase's, Kraken's and Bitstamp's own candles "
-      + "around it and says Coinbase only when one alone reached it. "
+      + "around it and says Coinbase only when one alone reached it, other exchange when none of them did. "
       + "A price named after an exchange (Coinbase · 15:55 UTC) is that exchange's own price at that time, not the composite. "
       + "An intraday bar's volume counts the spot venues the bar names (1 spot venue), not every exchange. "
       + "CTM reads CME crypto futures against the composite, while the futures settle to CME's own reference rate, so a small gap at expiry is expected.",

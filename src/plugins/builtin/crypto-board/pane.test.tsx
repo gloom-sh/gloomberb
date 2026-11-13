@@ -160,7 +160,7 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
     query.mockRestore();
     supply.mockRestore();
   };
-  await mountPane(150);
+  await mountPane(152);
   const frame = tui.frame();
   expect(frame).toContain("Coins");
   expect(frame).toContain("Bitcoin");
@@ -198,7 +198,7 @@ function mockBoard(supply: () => Promise<ReturnType<typeof stablecoinSupplyFixtu
   return supplyQuery;
 }
 
-async function openStablecoins(width = 150) {
+async function openStablecoins(width = 152) {
   await mountPane(width, 24);
   await tui.emitKeypress({ name: "l" });
   await settleFrame(tui.setup(), 10);

@@ -73,9 +73,10 @@ test("each stablecoin row says whose its price is, and an extreme one exchange a
     asset.range24h = { ...asset.range24h!, lowVenues, venuesChecked };
     return buildCryptoRows(board.assets, "stablecoin", new Map(), CRYPTO_FIXTURE_NOW)[0]!.low24hVenueText;
   };
-  expect(lowVenue([], checked)).toBe("none of 3");
-  // One exchange read and not reaching it says only that; one read and reaching it is not claimed as its alone.
-  expect(lowVenue([], ["Kraken"])).toBe("none of 1");
+  // None of those read reached it: the composite's wick was another exchange's.
+  expect(lowVenue([], checked)).toBe("other exchange");
+  // One read and not reaching it says the same; one read and reaching it is not claimed as its alone.
+  expect(lowVenue([], ["Kraken"])).toBe("other exchange");
   expect(lowVenue(["Kraken"], ["Kraken"])).toBe("Kraken");
   expect(lowVenue(checked, checked)).toBe("all 3");
 });
@@ -146,23 +147,23 @@ test("narrow panes drop 1Y, the sparkline, 30D, volume and name in that order", 
   // Stablecoins keep the price's venue, the peg, the low and whose it is. Supply adds its columns after the
   // market cap, and they all leave before the name, which drops where it does without them.
   const stable = (width: number, withSupply: boolean) => buildCryptoColumns(width, "stablecoin", withSupply).map((column) => column.id);
-  expect(stable(207, true)).toEqual([
+  expect(stable(209, true)).toEqual([
     "rank", "code", "name", "price", "priceVenueText", "pegText", "offPegBp", "low24h", "low24hAt", "low24hVenueText",
     "high24h", "high24hAt", "high24hVenueText", "volume24h", "marketCap", "supply", "supply7dPercent", "supply7d", "supply30dPercent", "supplyShare",
   ]);
-  expect(stable(150, true)).toEqual([
+  expect(stable(152, true)).toEqual([
     "rank", "code", "name", "price", "priceVenueText", "pegText", "offPegBp", "low24h", "low24hAt", "low24hVenueText",
     "high24h", "high24hAt", "high24hVenueText", "marketCap",
   ]);
-  expect(stable(109, true)).toEqual([
+  expect(stable(111, true)).toEqual([
     "rank", "code", "price", "priceVenueText", "pegText", "offPegBp", "low24h", "low24hAt", "low24hVenueText", "marketCap",
   ]);
-  for (const width of [149, 150]) expect(stable(width, true)).toEqual(stable(width, false));
-  expect(stable(150, false)).toContain("name");
-  expect(stable(149, false)).not.toContain("name");
+  for (const width of [151, 152]) expect(stable(width, true)).toEqual(stable(width, false));
+  expect(stable(152, false)).toContain("name");
+  expect(stable(151, false)).not.toContain("name");
   // Whose the low is leaves after the high, whose the price is last: each label keeps its full width while shown.
-  expect(stable(101, false)).not.toContain("low24hVenueText");
-  expect(stable(101, false)).toContain("priceVenueText");
+  expect(stable(102, false)).not.toContain("low24hVenueText");
+  expect(stable(102, false)).toContain("priceVenueText");
   expect(stable(87, false)).not.toContain("priceVenueText");
 });
 
