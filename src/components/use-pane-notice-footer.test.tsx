@@ -146,3 +146,15 @@ test("the warning icon is muted once its warnings were opened, in any pane, and 
   expect(tone()).toBe("muted");
   expect(tui.frame()).toContain("⚠");
 });
+
+test("a coin's warning names its pair without the crypto venue's internal code; a credit rating's CCC stays", async () => {
+  await act(async () => {
+    await tui.render(<Harness notices={["Volume unit unknown: USDT-USD:CCC Price.", "CCC and lower high yield OAS: no observations."]} />, { width: 80, height: 28 });
+  });
+  await controls.renderFrames(3);
+  await key("!");
+  const frame = await controls.waitForFrameToContain("Volume unit unknown");
+  expect(frame).toContain("Volume unit unknown: USDT-USD Price.");
+  expect(frame).toContain("CCC and lower high yield OAS");
+  expect(frame).not.toContain(":CCC");
+});
