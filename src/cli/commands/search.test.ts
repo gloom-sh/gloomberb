@@ -169,6 +169,27 @@ test("Other Listings keep the primary listing's company's lines, its nameless on
 });
 
 /**
+ * `search DTG`, 12 Nov 2026: DTE Energy's 4.375% debentures led as the primary listing, the line the bare symbol's quote
+ * read, over Daimler Truck's home line on Xetra, and a long list of Daimler's venues must not cut DTE's line.
+ */
+test("a debt line the bare symbol's quote reads gives way to another company's home common share, and still lists", async () => {
+  const row = (exchange: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol: "DTG", name: "Daimler Truck Holding AG", exchange, type: "Common Stock", primaryExchange: exchange, ...extra });
+  const debenture = { ...row("NYSE"), name: "DTE Energy Company 2021 Series E 4.375% Junior Subordinated Debentures", type: "Preferred Stock" };
+  const answer = [debenture, { ...debenture, exchange: "IEX", primaryExchange: "IEX", type: "Bond" }, row("XETRA", { homeListing: true }),
+    ...["VIE", "SWX", "XSTU", "FWB2", "MUNICH", "XDUS", "HANOVER", "BER"].map((exchange) => row(exchange))];
+  const quote = { symbol: "DTG", name: debenture.name, price: 18, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1, listingExchangeName: "NYSE" };
+  const dataProvider = createTestDataProvider({ search: async () => answer as never, getQuote: async () => quote as never });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("DTG", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; symbol: string; exchange: string }>;
+  expect(rows[0]).toMatchObject({ exchange: "XETRA", category: "Primary Listing" });
+  expect(rows.length).toBe(10);
+  expect(rows.filter((item) => item.category === "Other Matches").map((item) => item.exchange)[0]).toBe("NYSE");
+});
+
+/**
  * `search mitsubishi` once Mitsubishi Corporation's Tokyo line is named in English, 9 Nov 2026: Mitsubishi UFJ and
  * Mitsubishi Heavy Industries, whose names hold every word of "Mitsubishi Corporation", were listed as its lines.
  */

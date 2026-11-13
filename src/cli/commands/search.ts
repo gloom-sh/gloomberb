@@ -37,6 +37,7 @@ import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import { addedCompanyWords, companyLines, companyNameExtraWords, groupByCompany, namedByService, sameCompany } from "../../tickers/company-name";
+import { isDebtLine } from "../../tickers/company-name-listing";
 import { isLowQualityTickerName } from "../../tickers/search/result";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
@@ -139,7 +140,7 @@ export async function searchCandidatesForCli({
     // A word written as a name (`Aeon`) whose company search leads with keeps it first, as `quote Aeon` reads it.
     const named = leadsWithNamedCompany(trimmedQuery, candidates, quote);
     const ordered = withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, named ? null : quote))), quote);
-    return withOtherCompaniesApart(ordered, named ? trimmedQuery : null).slice(0, totalLimit);
+    return cutKeepingCompanies(withOtherCompaniesApart(ordered, named ? trimmedQuery : null), totalLimit, symbol);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);
@@ -290,9 +291,13 @@ function withPrimaryListingFirst(
   if (exact.some((candidate) => candidate.kind === "ticker" || candidate.saved)) return candidates;
   const listed = exact.filter((candidate) => candidate.kind === "search" && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"));
   const companies = groupByCompany(listed, resolveSearchName);
-  if (companies.length < 2) return candidates;
-  const quoted = quotedCandidate(listed, quote);
-  if (!quoted) return candidates;
+  if (companies.length < 2) return withHomeLineFirst(candidates, listed);
+  const read = quotedCandidate(listed, quote);
+  if (!read) return candidates;
+  // A debt or preferred line never leads where another company's common share has its home line under the symbol, as
+  // the bare symbol reads: DTG is Daimler Truck on Xetra, not DTE Energy's debentures in New York.
+  const debt = (candidate: TickerSearchCandidate) => isDebtLine(candidate.result?.type ?? "", candidate.result?.name);
+  const quoted = debt(read) ? listed.find((candidate) => candidate.result?.homeListing === true && !debt(candidate)) ?? read : read;
   // That company leads with its home line where it lists one under the symbol too (TD on TSX before NYSE).
   const primary = companies.find((group) => group.includes(quoted))?.find((candidate) => candidate.result?.homeListing === true) ?? quoted;
   const firsts = companies.filter((group) => !group.includes(primary)).map((group) => group[0]!);
@@ -304,6 +309,20 @@ function withPrimaryListingFirst(
       : listed.includes(candidate) || candidate.category === "Primary Listing" ? { ...candidate, category: "Other Listings" as const }
       : candidate
   ));
+}
+
+/**
+ * One company's lines of a symbol lead with the one the service marks as its
+ * home, never a thin secondary line search ranked first: DHL is DHL Group's
+ * Xetra line, not the Vienna one.
+ */
+function withHomeLineFirst(candidates: TickerSearchCandidate[], listed: readonly TickerSearchCandidate[]): TickerSearchCandidate[] {
+  const home = listed.find((candidate) => candidate.result?.homeListing === true);
+  const lead = candidates.find((candidate) => candidate.category === "Primary Listing");
+  if (!home || !lead || home === lead || !listed.includes(lead)) return candidates;
+  const rest = candidates.filter((candidate) => candidate !== home);
+  const at = rest.indexOf(lead);
+  return [...rest.slice(0, at), { ...home, category: "Primary Listing" as const }, { ...lead, category: "Other Listings" as const }, ...rest.slice(at + 1)];
 }
 
 /**
@@ -455,6 +474,30 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord:
   const at = kept.findLastIndex((candidate) => candidate === primary || candidate.category === "Other Listings") + 1;
   const apart = others.map((candidate) => ({ ...candidate, category: "Other Matches" as const }));
   return [...kept.slice(0, at), ...apart, ...kept.slice(at)];
+}
+
+/**
+ * The first `limit` rows, with each other company's first line of the symbol
+ * kept in place of the primary company's last venues: `search DTG` lists
+ * Daimler Truck's lines and still DTE Energy's debenture.
+ */
+function cutKeepingCompanies(candidates: TickerSearchCandidate[], limit: number, symbol: string): TickerSearchCandidate[] {
+  const head = candidates.slice(0, limit);
+  if (candidates.length <= limit || !BARE_SYMBOL.test(symbol)) return head;
+  const shown = head.filter((candidate) => candidate.category === "Other Matches");
+  const missing = groupByCompany(candidates.slice(limit).filter((candidate) => candidate.category === "Other Matches"
+    && candidate.symbol.toUpperCase() === symbol), resolveSearchName)
+    .map((group) => group[0]!)
+    .filter((first) => !shown.some((candidate) => sameCompany(resolveSearchName(candidate), resolveSearchName(first))));
+  const venues = head.filter((candidate) => candidate.category === "Other Listings");
+  // The primary company keeps at least one other venue.
+  const room = Math.min(missing.length, Math.max(0, venues.length - 1));
+  if (room === 0) return head;
+  const dropped = new Set(venues.slice(-room));
+  const kept = head.filter((candidate) => !dropped.has(candidate));
+  const at = kept.findLastIndex((candidate) => candidate.category === "Other Listings" || candidate.category === "Other Matches"
+    || candidate.category === "Primary Listing") + 1;
+  return [...kept.slice(0, at), ...missing.slice(0, room), ...kept.slice(at)];
 }
 
 /** "Saved", or the broker a row came from; never the data service's internal id. */
