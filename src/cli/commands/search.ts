@@ -36,7 +36,7 @@ import { isTitleCaseWord, readBrokerIndexCode } from "../listing-arg";
 import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
-import { addedCompanyWords, companyLines, companyNameExtraWords, groupByCompany, namedByService, sameCompany } from "../../tickers/company-name";
+import { addedCompanyWords, companyLines, companyNameExtraWords, groupByCompany, namedByService, sameCompany, sameCompanyName } from "../../tickers/company-name";
 import { isDebtLine } from "../../tickers/company-name-listing";
 import { isLowQualityTickerName } from "../../tickers/search/result";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
@@ -276,11 +276,16 @@ const BARE_SYMBOL = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/;
 /**
  * Whether two lines are one company's: by the data service's company ids when
  * both carry one (DHL Group AG on Xetra and Deutsche Post AG in Vienna), else
- * by their names.
+ * by their names, or by a name one's company is known by besides its own.
  */
 function sameSearchCompany(left: TickerSearchCandidate, right: TickerSearchCandidate): boolean {
   const ids = [left.result?.companyId, right.result?.companyId];
-  return ids[0] && ids[1] ? ids[0] === ids[1] : sameCompany(resolveSearchName(left), resolveSearchName(right));
+  if (ids[0] && ids[1]) return ids[0] === ids[1];
+  if (sameCompany(resolveSearchName(left), resolveSearchName(right))) return true;
+  // A line with no id named as the other's company is known besides (a former name the service sends on its rows).
+  const knownAs = (known: TickerSearchCandidate, line: TickerSearchCandidate) => !!known.result?.companyId
+    && [...known.nameAliases ?? [], known.result.formerName].some((name) => sameCompanyName(name, resolveSearchName(line)));
+  return knownAs(left, right) || knownAs(right, left);
 }
 
 /**
@@ -608,6 +613,9 @@ function searchCandidateRows(candidates: TickerSearchCandidate[]) {
     source: searchSourceLabel(candidate),
     providerId: candidate.result?.providerId ?? "",
     saved: isSavedCandidate(candidate),
+    // The company the data service identifies the line as one of: lines with one id are one company, whatever each venue names it.
+    ...typeof candidate.result?.companyId === "string" && candidate.result.companyId
+      ? { companyId: candidate.result.companyId } : {},
     // The company that merged into this one, whose old name the query is.
     ...candidate.result?.formerIssuer ? { formerIssuer: candidate.result.formerIssuer } : {},
     // The name a renamed company had, which the query is.
