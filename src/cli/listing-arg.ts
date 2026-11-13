@@ -437,19 +437,28 @@ function namedByCode(symbol: string, venue: ListingVenue): boolean {
 }
 
 /**
- * Whether the venues' companies differ by name. A venue with no name is no other company, nor is one
- * that names its line by the code alone.
+ * Whether the venues are several companies' lines. The data service's company
+ * ids decide where it sends them: venues are another company only when their
+ * ids differ, never because each names the company its own way (DHL Group AG
+ * on Xetra, Deutsche Post AG in Vienna), and a venue it does not identify
+ * makes no other company. Without ids, the names decide: a venue with no name
+ * is no other company, nor is one that names its line by the code alone.
  */
 function listsSeveralCompanies(symbol: string, venues: readonly ListingVenue[]): boolean {
+  const ids = new Set(venues.flatMap((venue) => venue.companyId ? [venue.companyId] : []));
+  if (ids.size > 0) return ids.size > 1;
   return groupByCompany(venues, (venue) => namedByCode(symbol, venue) ? "" : venue.name).length > 1;
 }
 
 /**
- * The venue a bare code goes to: the first search lists with a real name, never one that names its
- * line by the code alone when another names it, and NSE, India's main venue, before BSE whichever
- * search listed first.
+ * The venue a bare code goes to: the line the data service marks as its
+ * company's home, else the first search lists with a real name, never one
+ * that names its line by the code alone when another names it, and NSE,
+ * India's main venue, before BSE whichever search listed first.
  */
 function homeVenue(symbol: string, venues: readonly ListingVenue[]): ListingVenue | null {
+  const home = venues.find((venue) => venue.home && !venue.withdrawal);
+  if (home) return home;
   const named = venues.filter((venue) => !namedByCode(symbol, venue));
   const candidates = named.length ? named : venues;
   const first = candidates[0] ?? null;
@@ -463,7 +472,13 @@ function homeVenue(symbol: string, venues: readonly ListingVenue[]): ListingVenu
  * form of its fund's name), is left out rather than guessed at, and one
  * fund's venues are one fund however each words it (`sameListedName`).
  */
-function otherCompanies(venues: readonly ListingVenue[], company: string): ListingVenue[] {
+function otherCompanies(venues: readonly ListingVenue[], company: string, chosen?: ListingVenue): ListingVenue[] {
+  // A line the data service identifies is told apart by its id alone: never by a name difference.
+  const id = chosen?.companyId;
+  if (id) {
+    const seen = new Set<string>([id]);
+    return venues.filter((venue) => !!venue.companyId && !seen.has(venue.companyId) && !!seen.add(venue.companyId));
+  }
   if (!company.trim()) return [];
   const known = venues.filter((venue) => !namesDepositaryReceipt(venue.name) || sameListedName(venue.name, company));
   return groupByCompany(known, (venue) => venue.name, sameListedName)
@@ -485,13 +500,34 @@ export function listingChoiceNote(
   if (!chosen.exchange) return null;
   const chosenVenue = venues.find((venue) => venue.exchange === chosen.exchange);
   const name = chosen.name?.trim() || chosenVenue?.name || "";
-  const others = otherCompanies(venues, chosenVenue?.name || name).map((venue) => venue.exchange)
+  const others = otherCompanies(venues, chosenVenue?.name || name, chosenVenue).map((venue) => venue.exchange)
     .filter((exchange) => exchange !== chosen.exchange);
   if (others.length === 0) return null;
   const more = others.length - MAX_OTHER_LISTINGS;
   const named = `${others.slice(0, MAX_OTHER_LISTINGS).map(venueInProse).join(", ")}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`;
   const which = others.length === 1 ? "a different company" : "different companies";
   return `${symbol} = ${name ? `${shortCompanyName(name)}, ` : ""}${exchangeName(chosen.exchange)} (${which} on ${named})`;
+}
+
+/**
+ * "CON = Concentra Group (NYSE); Continental AG is CON:XETRA": a bare symbol
+ * read on a US company while another company's main listing abroad (the line
+ * the data service marks as its home) carries the symbol too. Companies are
+ * told apart by the service's ids where both lines carry one, else by name.
+ * Null when no other company's main listing carries it.
+ */
+export function otherCompanyHomeNote(
+  symbol: string,
+  chosen: { exchange: string; name?: string | null },
+  venues: readonly ListingVenue[],
+): string | null {
+  const chosenVenue = venues.find((venue) => venue.exchange === chosen.exchange);
+  const name = chosen.name?.trim() || chosenVenue?.name || "";
+  const id = chosenVenue?.companyId;
+  const home = venues.find((venue) => venue.home && !venue.withdrawal && !isUsListingExchange(venue.exchange)
+    && (id && venue.companyId ? venue.companyId !== id : !!name && !sameListedName(venue.name, name)));
+  if (!home) return null;
+  return `${symbol} = ${name ? `${shortCompanyName(name)} ` : ""}(${chosen.exchange}); ${home.name} is ${venueKey(symbol, home)}`;
 }
 
 /** A venue as a sentence names it, in full: "the Warsaw Stock Exchange", "Xetra", "NASDAQ" (a name that is its code). */
@@ -570,9 +606,15 @@ export async function listingChoiceNotes(
   if (listing.readFromName) return [...listingReadNotes(listing), ...coin];
   if (!quote || UNLISTED_TYPES.has(quote.instrumentType?.trim().toUpperCase() ?? "")) return coin;
   const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  if (!exchange) return coin;
   // A bare symbol read on a company's own US line (JPM on NYSE) is what it means: companies abroad sharing the
-  // letters are not named. A US receipt (SAN, Banco Santander's) may still be meant for another (Sanofi's SAN:EPA).
-  if (!exchange || (isUsListingExchange(exchange) && quote.isDepositaryReceipt !== true)) return coin;
+  // letters are named only when one has its main listing under them (CON, Continental AG's on Xetra), from the
+  // venues already asked for. A US receipt (SAN, Banco Santander's) may still be meant for another (Sanofi's SAN:EPA).
+  if (isUsListingExchange(exchange) && quote.isDepositaryReceipt !== true) {
+    const listed = venues ? await venues : [];
+    const other = otherCompanyHomeNote(listing.symbol, { exchange, name: quote.name }, listed);
+    return [...other ? [other] : [], ...coin];
+  }
   const [listed, marked] = await Promise.all([
     venues ?? loadBareVenues(listing, deps) ?? [],
     // A primary listing the service names by the word, off the venue picked: NTT is NTT, Inc. (9432 on JPX), not Warsaw's NTT.
@@ -1751,9 +1793,11 @@ const NAME_WRITTEN_WORD = /^(?=.*\p{Ll})\p{L}[\p{L}&'’-]*$/u;
 /**
  * Symbols at most whose venues a command looks up to name the company each
  * bare one went to, and whose words it checks as companies' names
- * (`companyWord`, a quote each). A longer list is a batch of tickers.
+ * (`companyWord`, a quote each): a desk's morning list of a dozen names (the
+ * DAX names it covers) still says which company each one read. A longer
+ * list is a batch of tickers.
  */
-export const MAX_CHOICE_LOOKUPS = 10;
+export const MAX_CHOICE_LOOKUPS = 12;
 
 /** At most this many words typed apart are tried as one company's name (`joinCompanyNameWords`). */
 const MAX_JOINED_NAME_WORDS = 4;

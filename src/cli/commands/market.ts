@@ -1314,7 +1314,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // quote can fail where its history still says when it stopped (FRC), and an unreachable service fails it at once.
     // The service's "not a ticker" for a bare symbol says no listing anywhere carries it, so no bars or search row
     // would say it stopped: a symbol it knows from before answers its last quote or no data, never that.
-    const lastTraded = await Promise.all(answers.map(async ({ result, listing }) => !result.quote && answers.length <= MAX_CHOICE_LOOKUPS
+    // A symbol several companies list asks which, whatever line of it once stopped (MBG: Mercedes-Benz on Xetra, MB Gold on ASX).
+    const lastTraded = await Promise.all(answers.map(async ({ result, listing, failure }) => !result.quote && !failure?.choose
+      && answers.length <= MAX_CHOICE_LOOKUPS
       && (listing.exchange || !isNotATickerMessage(errorMessage(result.error)))
       ? await loadNoQuoteLastTraded(listing.request, market.dataProvider, now) ?? await searchedDelisting(listing, market)
       : null));

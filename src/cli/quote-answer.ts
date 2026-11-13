@@ -67,7 +67,11 @@ export interface QuoteAnswer {
   /** The listing the row is: the one asked for, or the venue a bare symbol was quoted on. */
   listing: CliListing;
   /** Why there is no quote, when there is more to say than the source's own error. */
-  failure?: { message: string; details?: string; oneLine: string };
+  failure?: {
+    message: string; details?: string; oneLine: string;
+    /** Several companies list the symbol and it went to none: a choice between live listings, not a dead symbol. */
+    choose?: boolean;
+  };
   notes: string[];
   /**
    * Lines about another listing than the row's, printed under the table
@@ -194,7 +198,7 @@ export async function answerQuote(
     other ? `${other.heading}: ${other.listings.join(", ")}.` : "",
     ...tryLines,
   ].filter(Boolean).join(" ");
-  return { result, listing, failure: { message, details, oneLine }, notes: [] };
+  return { result, listing, failure: { message, details, oneLine, ...other?.choose ? { choose: true } : {} }, notes: [] };
 }
 
 /**
