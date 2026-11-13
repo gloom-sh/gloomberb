@@ -84,10 +84,10 @@ describe("analyst research headless model", () => {
     const headless = createAnalystResearchHeadless({ loadData: async () => ({ ...data, symbol: "VOW3.DE", ratings: [] }) });
     const listed = async (symbol: string) => (await headless.load({ ...args(), symbols: [symbol] }, createTestHeadlessContext())).sections[1]!;
     const abroad = await listed("VOW3:XETRA");
-    expect(abroad.rows).toEqual([]);
-    expect(abroad.empty).toBe("No upgrades, downgrades or target changes for VOW3:XETRA: the source lists them mainly for North American listings."
+    expect(abroad).toMatchObject({ rows: [] });
+    expect("empty" in abroad && abroad.empty).toBe("No upgrades, downgrades or target changes for VOW3:XETRA: the source lists them mainly for North American listings."
       + " The targets and rating mix above are current.");
-    expect((await listed("AMD")).empty).toBe("No upgrades, downgrades or target changes on record for AMD.");
+    expect(await listed("AMD")).toMatchObject({ empty: "No upgrades, downgrades or target changes on record for AMD." });
   });
   test("measures the upside from Last, as `analyst` does, and dates the price it is from", async () => {
     // 150 when the research was fetched; Last is the 160 close.
