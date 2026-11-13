@@ -347,7 +347,7 @@ const WITHHELD_LINES: Record<string, string> = {
  * the source as a difference of years to date it counts otherwise). `shown` keeps the lines the table has a
  * row for. Null when none is.
  */
-export function withheldLinesNote(statements: readonly Pick<FinancialStatement, "date">[], shown?: ReadonlySet<string>): string | null {
+function withheldLinesNote(statements: readonly Pick<FinancialStatement, "date">[], shown?: ReadonlySet<string>): string | null {
   const ends = new Map<string, string[]>();
   for (const row of statements) {
     const withheld = (row as { withheld?: Record<string, { reason?: string } | undefined> }).withheld;
