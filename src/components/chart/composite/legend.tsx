@@ -403,11 +403,22 @@ export function CompositeLegend({
   // while the row fits so; if it does not, the row wraps where the chart gives
   // it rows. With one row, names go to their first word before a value goes,
   // and past that the row keeps the old 30-cell entries and scrolls.
-  const shortestName = (entry: LegendEntry, apart: boolean) => apart
-    ? shortestLegendNameAmong(entry.label, otherNames(entry))
-    : shortestLegendName(entry.label);
+  // Worked out once per entry and name: the shrink loops below ask on every
+  // step, and the legend lays out again on every cursor move.
+  const shortestNames = new WeakMap<LegendEntry, Map<string, string>>();
+  const shortestName = (entry: LegendEntry, apart: boolean, label = entry.label) => {
+    let known = shortestNames.get(entry);
+    if (!known) shortestNames.set(entry, known = new Map());
+    const key = `${apart ? "apart" : "first"}:${label}`;
+    let name = known.get(key);
+    if (name === undefined) {
+      name = apart ? shortestLegendNameAmong(label, otherNames(entry)) : shortestLegendName(label);
+      known.set(key, name);
+    }
+    return name;
+  };
   const minimumWidthOf = (list: LegendEntry[], apart = false) => list.reduce((total, entry, index) => {
-    const name = apart ? shortestLegendNameAmong(entry.compactLabel, otherNames(entry)) : shortestLegendName(entry.compactLabel);
+    const name = shortestName(entry, apart, entry.compactLabel);
     const text = [name, entry.valueText].filter(Boolean).join(" ");
     return total + Math.max(1, displayWidth(text)) + entry.markerWidth + (index > 0 ? 1 : 0);
   }, 0);
