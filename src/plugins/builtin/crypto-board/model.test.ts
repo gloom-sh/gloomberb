@@ -79,6 +79,30 @@ test("each stablecoin row says whose its price is, and an extreme one exchange a
   expect(lowVenue([], ["Kraken"])).toBe("other exchange");
   expect(lowVenue(["Kraken"], ["Kraken"])).toBe("Kraken");
   expect(lowVenue(checked, checked)).toBe("all 3");
+  // Two read and both reached it.
+  expect(lowVenue(["Coinbase", "Kraken"], ["Coinbase", "Kraken"])).toBe("both");
+});
+
+test("an exchange's price outside the 24h range widens it, however old the trade, and the extreme says whose", () => {
+  // The board's prices are from 09:30 and its range runs to 11:59. Kraken's last trade, at 09:40, is newer than the
+  // board's price but inside the range's window, and above the composite's high of 1.0004.
+  const traded = Date.parse("2026-09-23T09:40:00Z");
+  const row = (quote: Partial<Quote> & Pick<Quote, "price">) => {
+    const board = cryptoFixture();
+    const usdt = board.assets.find((asset) => asset.code === "USDT")!;
+    usdt.quoteTime = "2026-09-23T09:30:00.000Z";
+    return buildCryptoRows(board.assets, "stablecoin", new Map([[cryptoQuoteKey(usdt), entry({ lastUpdated: traded, ...quote })]]), CRYPTO_FIXTURE_NOW)[0]!;
+  };
+  expect(row({ price: 1.0011, priceVenue: "Kraken", dataSource: "live" })).toMatchObject({
+    price: 1.0011, high24h: 1.0011, high24hAt: traded, high24hVenueText: "+ Kraken", high24hWidened: true,
+    low24h: 0.9983, low24hWidened: false,
+  });
+  expect(row({ price: 0.9971, priceVenue: "Coinbase", dataSource: "live" })).toMatchObject({
+    low24h: 0.9971, low24hVenueText: "+ Coinbase", low24hWidened: true, high24h: 1.0004, high24hWidened: false,
+  });
+  // Inside the range, nothing moves; nor for a composite price no newer than the range, which took it in already.
+  expect(row({ price: 1.0001, priceVenue: "Kraken", dataSource: "live" })).toMatchObject({ high24h: 1.0004, high24hWidened: false });
+  expect(row({ price: 1.0011, dataSource: "live" })).toMatchObject({ high24h: 1.0004, high24hWidened: false });
 });
 
 test("a live quote without a change percent is restated from the previous close", () => {

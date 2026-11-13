@@ -109,11 +109,15 @@ export interface CryptoRow extends CryptoRowSupply {
   high24hText: string;
   /**
    * Whose the low and high are, in plain words: `Coinbase only` when it alone of the exchanges read reached it,
-   * `Coinbase` when it was the only one read, `2 of 3` or `all 3` when more did, `other exchange` when none did (the
-   * composite's wick was an exchange not read), or a dash when no exchange was read.
+   * `Coinbase` when it was the only one read, `2 of 3`, `both` or `all 3` when more did, `other exchange` when none
+   * did (the composite's wick was an exchange not read), or a dash when no exchange was read. `+ Kraken` when the
+   * row's own price from that exchange lay outside the range and widened it.
    */
   low24hVenueText: string;
   high24hVenueText: string;
+  /** The row's own exchange price lay outside the composite's range and is the low or the high, as `+ Kraken` says. */
+  low24hWidened: boolean;
+  high24hWidened: boolean;
 }
 
 /** The board's price that is no one exchange's: several blended by the source. */
@@ -123,15 +127,17 @@ const OTHER_EXCHANGE = "other exchange";
 
 /**
  * Whose an extreme is: the exchange that alone reached it among several read (`Coinbase only`), the one read when
- * only one was, how many of those read did, and when none did, another exchange's. An exchange that could not be
- * read is not among those counted. A price newer than the range that widened it is the row's own price venue's.
+ * only one was, how many of those read did (`2 of 3`, `both`, `all 3`), and when none did, another exchange's. An
+ * exchange that could not be read is not among those counted. A price newer than the range that widened it is the
+ * row's own price venue's.
  */
 function extremeVenueText(reached: readonly string[] | undefined, checked: readonly string[] | undefined): string {
   if (!checked?.length || !reached) return MISSING_VALUE;
   // The composite blends exchanges not read here: an extreme none of those read reached was one of theirs.
   if (reached.length === 0) return OTHER_EXCHANGE;
   if (reached.length === 1) return checked.length > 1 ? `${reached[0]} only` : reached[0]!;
-  return reached.length === checked.length ? `all ${checked.length}` : `${reached.length} of ${checked.length}`;
+  if (reached.length < checked.length) return `${reached.length} of ${checked.length}`;
+  return checked.length === 2 ? "both" : `all ${checked.length}`;
 }
 
 /**
@@ -237,7 +243,7 @@ function buildCryptoRow(
   const minimumDecimals = asset.kind === "stablecoin" ? 4 : 2;
   const range = asset.kind === "stablecoin"
     ? dayRange(asset, price, updated, quote?.priceVenue)
-    : { low24h: null, low24hAt: null, high24h: null, high24hAt: null, low24hVenueText: MISSING_VALUE, high24hVenueText: MISSING_VALUE };
+    : NO_DAY_RANGE;
   const delayed = quote?.dataSource === "delayed";
   return {
     asset,
@@ -303,13 +309,21 @@ export function offPegSeverity(bp: number | null): "none" | "watch" | "broken" {
   return size >= OFF_PEG_BROKEN_BP ? "broken" : size >= OFF_PEG_WATCH_BP ? "watch" : "none";
 }
 
+const NO_DAY_RANGE = {
+  low24h: null, low24hAt: null, high24h: null, high24hAt: null,
+  low24hVenueText: MISSING_VALUE, high24hVenueText: MISSING_VALUE, low24hWidened: false, high24hWidened: false,
+};
+
 /**
  * The 24-hour low and high the board reported, widened by a newer price than
- * it had seen, so a live tick below the low is the low, at its time.
+ * it had seen, so a live tick below the low is the low, at its time. An
+ * exchange's own price outside the range widens it whenever it traded, as the
+ * quote service's range does (`rangeWidened`): the composite's range never
+ * took that exchange's trade in. The extreme then says whose (`+ Kraken`).
  */
 function dayRange(asset: CryptoMarketAsset, price: number, updatedAt: number | null, priceVenue: string | undefined) {
   const range = asset.range24h;
-  if (!range) return { low24h: null, low24hAt: null, high24h: null, high24hAt: null, low24hVenueText: MISSING_VALUE, high24hVenueText: MISSING_VALUE };
+  if (!range) return NO_DAY_RANGE;
   let low24h = range.low;
   let low24hAt: number | null = Date.parse(range.lowAt);
   let high24h = range.high;
@@ -317,10 +331,12 @@ function dayRange(asset: CryptoMarketAsset, price: number, updatedAt: number | n
   // The raw extremes stay; each says whose it is.
   let low24hVenueText = extremeVenueText(range.lowVenues, range.venuesChecked);
   let high24hVenueText = extremeVenueText(range.highVenues, range.venuesChecked);
-  const newer = updatedAt != null && updatedAt > Date.parse(range.end);
-  const ownVenue = priceVenue ?? COMPOSITE_PRICE_VENUE;
-  if (newer && price < low24h) [low24h, low24hAt, low24hVenueText] = [price, updatedAt, ownVenue];
-  if (newer && price > high24h) [high24h, high24hAt, high24hVenueText] = [price, updatedAt, ownVenue];
+  const widens = !!priceVenue || (updatedAt != null && updatedAt > Date.parse(range.end));
+  const ownVenue = priceVenue ? `+ ${priceVenue}` : COMPOSITE_PRICE_VENUE;
+  const low24hWidened = widens && price < low24h;
+  const high24hWidened = widens && price > high24h;
+  if (low24hWidened) [low24h, low24hAt, low24hVenueText] = [price, updatedAt, ownVenue];
+  if (high24hWidened) [high24h, high24hAt, high24hVenueText] = [price, updatedAt, ownVenue];
   return {
     low24h,
     low24hAt: isFiniteNumber(low24hAt) ? low24hAt : null,
@@ -328,6 +344,8 @@ function dayRange(asset: CryptoMarketAsset, price: number, updatedAt: number | n
     high24hAt: isFiniteNumber(high24hAt) ? high24hAt : null,
     low24hVenueText,
     high24hVenueText,
+    low24hWidened: low24hWidened && !!priceVenue,
+    high24hWidened: high24hWidened && !!priceVenue,
   };
 }
 
@@ -552,10 +570,10 @@ const STABLECOIN_COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "offPegBp", label: "OFF PEG", width: 8, align: "right" },
   { id: "low24h", label: "24H LOW", width: 8, align: "right" },
   { id: "low24hAt", label: "LOW UTC", width: 9, align: "left" },
-  { id: "low24hVenueText", label: "LOW VENUE", title: "The exchange that alone reached the low, how many of those read did, or another exchange", width: 14, align: "left", optional: 0.6 },
+  { id: "low24hVenueText", label: "LOW VENUE", title: "The exchange that alone reached the low, how many of those read did, or another exchange; + an exchange whose price outside the range widened it", width: 14, align: "left", optional: 0.6 },
   { id: "high24h", label: "24H HIGH", width: 8, align: "right", optional: 1 },
   { id: "high24hAt", label: "HIGH UTC", width: 9, align: "left", optional: 2 },
-  { id: "high24hVenueText", label: "HIGH VENUE", title: "The exchange that alone reached the high, how many of those read did, or another exchange", width: 14, align: "left", optional: 2.5 },
+  { id: "high24hVenueText", label: "HIGH VENUE", title: "The exchange that alone reached the high, how many of those read did, or another exchange; + an exchange whose price outside the range widened it", width: 14, align: "left", optional: 2.5 },
   { id: "changePercent", label: "CHG% UTC", title: "Change since 00:00 UTC", width: 8, align: "right", optional: 5 },
   { id: "return7d", label: "7D%", width: 8, align: "right", optional: 6 },
   { id: "return30d", label: "30D%", width: 8, align: "right", optional: 8 },

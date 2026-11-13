@@ -110,6 +110,7 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, logos: boolean):
     text: formatCryptoPercent(value),
     color: value == null ? colors.textDim : priceColor(value),
   });
+  const widenedTone = (widened: boolean) => (widened ? { color: colors.warning, keepColorWhenSelected: true } : {});
   switch (column.id) {
     case "rank":
       return { text: String(row.rank), color: colors.textDim };
@@ -147,17 +148,18 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, logos: boolean):
         keepColorWhenSelected: severity !== "none",
       };
     }
+    // An extreme the row's own exchange price set, outside the composite's range, is flagged in the warning color.
     case "low24h":
-      return { text: row.low24hText, value: row.low24h };
+      return { text: row.low24hText, value: row.low24h, ...widenedTone(row.low24hWidened) };
     case "high24h":
-      return { text: row.high24hText, value: row.high24h };
+      return { text: row.high24hText, value: row.high24h, ...widenedTone(row.high24hWidened) };
     case "priceVenueText":
       // A price held back is said on its own row, in the warning color; an exchange's own or the composite is dim.
       return { text: row.priceVenueText, color: row.delayed ? colors.warning : colors.textDim };
     case "low24hVenueText":
-      return { text: row.low24hVenueText, color: colors.textDim };
+      return { text: row.low24hVenueText, color: row.low24hWidened ? colors.warning : colors.textDim };
     case "high24hVenueText":
-      return { text: row.high24hVenueText, color: colors.textDim };
+      return { text: row.high24hVenueText, color: row.high24hWidened ? colors.warning : colors.textDim };
     case "low24hAt":
       return { text: formatDayRangeTime(row.low24hAt), value: row.low24hAt == null ? null : new Date(row.low24hAt), color: colors.textDim };
     case "high24hAt":
