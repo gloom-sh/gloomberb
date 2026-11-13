@@ -1,6 +1,7 @@
 import type { MarketContext } from "../types";
 import type { NormalizedPaneFunctionOptions } from "./capabilities";
 import type { ResolvedPaneFunction } from "./resolver";
+import type { PaneFunctionCatalog } from "./catalog";
 import { buildHeadlessFunctionReport } from "./headless";
 import { appendDomReportFooter, buildDomFunctionReport, domReportNote, domReportView } from "./dom";
 import type { ReportFreshness } from "./freshness";
@@ -68,6 +69,8 @@ export async function buildFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
   rawArg: string,
+  /** The functions the report was resolved among, for a note that offers others (ASKG behind its wall). */
+  catalog?: PaneFunctionCatalog,
 ): Promise<PaneFunctionReport> {
   const startedAt = performance.now();
   const source = resolvePaneFunctionReportSource(resolved);
@@ -93,7 +96,7 @@ export async function buildFunctionReport(
 
   const report = source === "headless"
     ? await buildHeadlessFunctionReport(resolved, context, rawArg)
-    : await buildDomFunctionReport(resolved, context, rawArg);
+    : await buildDomFunctionReport(resolved, context, rawArg, catalog);
   const elapsedMs = Math.max(0, Math.round(performance.now() - startedAt));
   report.data = { ...report.data, source, elapsedMs };
   // A report about one symbol names it on every exported row; a chart's series name their own.

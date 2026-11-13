@@ -84,6 +84,10 @@ export interface HistoryRow {
   filled?: true;
   /** A future's session has closed but its settlement is not confirmed yet: the close is the last trade. */
   unsettled?: true;
+  /** An index session's closing print, its daily close, as its last intraday bar. */
+  sessionClose?: true;
+  /** An index session's last intraday bar, ending before its close, whose print was not at hand. */
+  beforeClose?: true;
   /** What the volume counts, when the history says: a coin's is traded value in its quote currency (`USD`). */
   volumeUnit?: string;
   /** Why a coin's bar has no volume: `day in progress`, `rebuilt from hourly bars`, `latest trade` (not a bar), `not reported`. */
@@ -450,6 +454,8 @@ export function historyRows(
       ...(point.partial ? { partial: true as const } : {}),
       ...(point.filled ? { filled: true as const } : {}),
       ...(point.unsettled ? { unsettled: true as const } : {}),
+      ...(point.sessionClose ? { sessionClose: true as const } : {}),
+      ...(point.beforeClose ? { beforeClose: true as const } : {}),
       ...(volume ? { volumeUnit: volume.unit } : {}),
       ...(values.volume == null && point.venueVolume
         ? { venueVolume: point.venueVolume.volume, volumeVenue: point.venueVolume.venue }
@@ -711,7 +717,7 @@ export function venueTradingDay(venue: string | undefined, now: number): string 
  * partial bar is then still forming.
  */
 export function historyBarStatusNote(
-  rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "unsettled" | "volume" | "interval">[],
+  rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "unsettled" | "sessionClose" | "beforeClose" | "volume" | "interval">[],
   options: { tradingDay?: string | null } = {},
 ): string | null {
   // A day's bar the data service still marks partial once its session has closed: its own daily bar is not in yet.
@@ -722,6 +728,8 @@ export function historyBarStatusNote(
   const latest = rows[latestTradeIndex(rows.map((row) => Date.parse(row.date)))];
   const filled = rows.filter((row) => row.filled);
   const unsettled = rows.filter((row) => row.unsettled);
+  const closes = rows.filter((row) => row.sessionClose);
+  const beforeClose = rows.filter((row) => row.beforeClose);
   const notes = [
     partial.length > 0
       ? `${listDates(partial.map((row) => row.date))} ${partial.length === 1 ? "is" : "are"} still forming (partial)`
@@ -738,6 +746,15 @@ export function historyBarStatusNote(
     unsettled.length > 0
       ? `${listDates(unsettled.map((row) => row.date))} ${unsettled.length === 1 ? "closes" : "close"} on the last trade until the`
         + ` settlement is confirmed (unsettled)`
+      : null,
+    // The data service adds a past session's closing print to its intraday bars, as the source sends only the latest one.
+    closes.length > 0
+      ? `${listDates(closes.map((row) => row.date))} ${closes.length === 1 ? "is its session's" : "are their sessions'"} closing print,`
+        + ` the day's close (close)`
+      : null,
+    beforeClose.length > 0
+      ? `${listDates(beforeClose.map((row) => row.date))} ${beforeClose.length === 1 ? "ends" : "end"} before the closing auction:`
+        + ` the day's close is on its daily bar (before close)`
       : null,
     // Its blank volume beside bars that have one, said once rather than counted as a bar without volume.
     latest && latest.volume == null && historyReportsVolume(rows)
