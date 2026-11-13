@@ -465,7 +465,8 @@ export function formatChartLegendValue(
       ...(referencePrice === undefined ? {} : stablePriceOptions("USD", assetCategory, referencePrice)) });
   }
   if (group.startsWith("derived-unit:")) return `${compact} ${trimmed}`;
-  if (group.split(":")[0] === "currency-total") {
+  // A total in a currency reads at its scale ($223.4B), as a coin's volume, the value it traded, does too.
+  if (group.split(":")[0] === "currency-total" || (group === "volume" && unitCurrencyCode(trimmed))) {
     const scale = ([[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "K"]] as const)
       .find(([divisor]) => Math.abs(value) >= divisor);
     if (scale) {

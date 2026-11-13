@@ -240,6 +240,8 @@ describe("composite chart unit formatting", () => {
     expect(formatChartLegendValue(90_007_000_000, "USD", "currency-total:USD")).toBe("$90.01B");
     expect(formatChartLegendValue(-12_345_600_000, "EUR", "currency-total")).toBe("-€12.35B");
     expect(formatChartLegendValue(123_456_000, "CAD", "currency-total:CAD")).toBe("123.46M CAD");
+    // A coin's volume is the value it traded, read at its scale like any total.
+    expect(formatChartLegendValue(223_397_618_905, "USD", "volume")).toBe("$223.4B");
     expect(formatCompositeCursorValue(90_007_000_000, { ...domain, unitGroup: "currency-total:USD" })).toBe("$90.01B");
     expect(formatCompositeCursorValue(-12_345_600_000, { ...domain, unit: "EUR", unitGroup: "currency-total" })).toBe("-€12.35B");
     expect(formatCompositeCursorValue(123_456_000, { ...domain, unit: "CAD", unitGroup: "currency-total:CAD" })).toBe("123.46M CAD");
