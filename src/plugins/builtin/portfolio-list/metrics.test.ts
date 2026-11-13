@@ -476,7 +476,11 @@ describe("portfolio-metrics", () => {
 
     expect(getColumnValue({ id: "weight", label: "WEIGHT", width: 8, align: "right" }, ticker, financials, context).text).toBe("50.0%");
     expect(getSortValue({ id: "weight", label: "WEIGHT", width: 8, align: "right" }, ticker, financials, context)).toBe(50);
-    expect(getColumnValue({ id: "range_52w", label: "52W%", width: 7, align: "right" }, ticker, financials, context).text).toBe("+50.00%");
+    expect(getColumnValue({ id: "range_52w", label: "52W%", width: 7, align: "right" }, ticker, financials, context)).toEqual({ text: "+50.00%" });
+    // A range the service read from the stored daily bars says so, dim, as the ticker pane's 52W row does.
+    const rebuilt = createFinancials({ quote: { ...financials.quote!, yearRangeBasis: "daily-bars" } });
+    expect(getColumnValue({ id: "range_52w", label: "52W%", width: 7, align: "right" }, ticker, rebuilt, context))
+      .toEqual({ text: "+50.00%", note: "bars" });
     expect(getColumnValue({ id: "dollar_volume", label: "$VOL", width: 9, align: "right" }, ticker, financials, context).text).toBe("1.50B");
     expect(getColumnValue({ id: "spread_pct", label: "SPR%", width: 7, align: "right" }, ticker, financials, context).text).toBe("+0.83%");
     expect(getColumnValue({ id: "bid_ask_size", label: "B/A SZ", width: 9, align: "right" }, ticker, financials, context).text).toBe("100/150");

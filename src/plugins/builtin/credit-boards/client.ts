@@ -63,6 +63,11 @@ type BoardClient = Pick<typeof apiClient, "getCloudCdxBoard" | "getCloudSovrBoar
 /** Days of history the server serves at most, for a history export. */
 export const CDX_MAX_DAYS = 1100;
 
+/** The publisher a board's payload names, spelled out: `DTCC PPD` is DTCC's public price dissemination. */
+export function boardPublisher(source: string | null | undefined): string | undefined {
+  return source?.trim().replace(/\bPPD\b/, "Public Price Dissemination") || undefined;
+}
+
 export async function fetchCdxBoard(client: BoardClient = apiClient, days = BOARD_DAYS): Promise<CdxBoardPayload> {
   try { return validateCdxBoard(await client.getCloudCdxBoard({ days })); }
   catch (error) { throw unavailableOnServer(error, "Index CDS levels are not available yet."); }

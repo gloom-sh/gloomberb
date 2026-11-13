@@ -381,14 +381,6 @@ export function debtNewestAsOf(data: DebtMaturitiesPayload): string | null {
 export function debtNewestForm(data: DebtMaturitiesPayload): string | null {
   return newestDebtFiling(data)?.form ?? null;
 }
-/**
- * Which filing the pane's date is, as its footer says it, longest first:
- * `10-Q 2026-09-30, filed 2026-10-27`, then `10-Q 2026-09-30`.
- */
-export function debtNewestFilingText(data: DebtMaturitiesPayload): string[] {
-  const filing = newestDebtFiling(data);
-  return filing ? [`${filing.form} ${filing.asOf}, filed ${filing.filed}`, `${filing.form} ${filing.asOf}`] : [];
-}
 /** The 10-Q's debt in one line, `Current 212.00M · Non-current 6.84B USD`. */
 export function quarterDebtText(quarter: DebtQuarter): string {
   return `Current ${debtAmount(quarter.current?.value ?? null)} · Non-current ${debtAmount(quarter.noncurrent?.value ?? null)} ${quarter.currency}`;

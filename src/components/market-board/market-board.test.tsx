@@ -42,3 +42,24 @@ describe("MarketBoardStack", () => {
     expect(fresh).not.toContain("stale");
   });
 });
+
+// A narrow pane in a 100-column terminal showed a board of names alone (SOVR without its 5Y) or without AS OF (CBR):
+// the value and its date are the last columns a board gives up.
+test("a narrow board keeps the value and its date, giving up the change and the pane's own columns first", async () => {
+  const extra = [{ column: { id: "ccy", label: "CCY 1M", width: 11, align: "right" as const }, sortValue: () => 0, renderCell: () => ({ text: "BRL -1.0%" }) }];
+  for (const width of [44, 34]) {
+    await tui.render(
+      <AppContext value={store}>
+        <MarketBoardStack rows={[row("DGS10", "available"), { ...row("Brazil long name", "available"), valueText: "1276.6bp" }]}
+          width={width} height={8} focused selectedId={null} onSelectedIdChange={() => {}} labelWidth={18} valueLabel="5Y"
+          extraColumns={extra} openId={null} onOpenIdChange={() => {}} renderDetail={() => null} />
+      </AppContext>,
+      { width, height: 8 },
+    );
+    const frame = await tui.waitForFrameToContain("DGS");
+    expect(frame).toContain("5Y");
+    expect(frame).toContain("1276.6bp");
+    expect(frame).toContain("AS OF");
+    expect(frame).toMatch(/(2026-)?10-09/);
+  }
+});

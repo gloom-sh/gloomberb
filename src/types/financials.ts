@@ -205,6 +205,17 @@ export interface Quote extends DepositaryReceiptFacts {
   changeSessionDate?: string;
   high52w?: number;
   low52w?: number;
+  /**
+   * The 52-week range is the high and low of the stored daily bars over 52
+   * weeks, the source's own having been unusable (an index's that only
+   * repeated the day's range, or reached zero): said beside it.
+   */
+  yearRangeBasis?: "daily-bars";
+  /**
+   * No live quote: the price is the close of the latest stored daily bar of
+   * `session` (an exchange-local date), said beside the price.
+   */
+  dailyClose?: { session: string };
   marketCap?: number;
   volume?: number;
   name?: string;

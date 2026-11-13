@@ -90,6 +90,25 @@ export function getDockedInstanceIds(node: DockLayoutNode | null): string[] {
   return collectDockLeafRefs(node).map((entry) => entry.instanceId);
 }
 
+/** The docked panes behind the tab their stack shows. */
+export function hiddenDockTabIds(layout: LayoutConfig): Set<string> {
+  const hidden = new Set<string>();
+  for (const leaf of collectDockLeafRefs(layout.dockRoot)) {
+    if (!leaf.stackPath) continue;
+    const stack = getNodeAtPath(layout.dockRoot, leaf.stackPath);
+    if (stack && dockStackShown(stack) !== leaf.instanceId) hidden.add(leaf.instanceId);
+  }
+  return hidden;
+}
+
+/** The tabs of the dock stack `instanceId` is in, in tab order; empty when it is not in one. */
+export function dockStackTabIds(layout: LayoutConfig, instanceId: string): string[] {
+  const leaf = findDockLeaf(layout, instanceId);
+  if (!leaf?.stackPath) return [];
+  const stack = getNodeAtPath(layout.dockRoot, leaf.stackPath);
+  return stack && isDockStack(stack) ? getDockedInstanceIds(stack) : [];
+}
+
 export function getRepresentativeLeafId(node: DockLayoutNode, preferStart: boolean): string {
   if (node.kind === "pane") return node.instanceId;
   if (isDockStack(node)) return dockStackShown(node);

@@ -1,10 +1,11 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer, type BoxRenderable } from "../../../../ui";
 import { capturePointerDrag, releasePointerDrag } from "../../../../ui/pointer-drag";
-import { hoverBg } from "../../../../theme/colors";
+import { hoverBg, inactiveSelectedText } from "../../../../theme/colors";
 import { selectedRowCellColor } from "../../../../theme/tone-contrast";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { usePaneInstance } from "../../../../state/app/context";
+import { useSelectionFill } from "../../selection-fill";
 import { useShortcut, useViewport } from "../../../../react/input";
 import { measurePerf } from "../../../../utils/perf-marks";
 import { displayWidth } from "../../../../utils/format";
@@ -120,6 +121,8 @@ function OpenTuiDataTableRowInner<
   rowContextMenuSurface,
   sectionWidth,
   selected,
+  selectionBg,
+  selectionLit: paneSelectionLit,
   selectedTextOverridesCellColor,
   columnClips,
   cellWidths,
@@ -162,15 +165,23 @@ function OpenTuiDataTableRowInner<
   renderSectionHeader?: DataTableProps<T, C>["renderSectionHeader"];
   rowContextMenuSurface: boolean;
   selected: boolean;
+  /** The selected row's fill (`useSelectionFill`): quieter, in the row's own text colours, when the pane is not focused. */
+  selectionBg: string;
+  selectionLit: boolean;
   selectedTextOverridesCellColor: boolean;
   /** How the viewport cuts each column, null when every column shows whole (resolveDataTableColumnClips). */
   columnClips: readonly (DataTableColumnClip | null)[] | null;
 }) {
   const sectionHeader = renderSectionHeader?.(item, index) ?? null;
+  const selectionLit = selected && paneSelectionLit;
+  // On the quieter fill a row keeps its own colours, each lifted only where it would not read there.
+  const ink = (color: string) => (selected && !selectionLit ? inactiveSelectedText(color, colors) : color);
 
   if (sectionHeader) {
     // A header the cursor can land on (a collapsible group) shows it like a row.
-    const headerColor = sectionHeader.color ?? (selected ? colors.selectedText : colors.textBright);
+    const headerColor = selectionLit
+      ? sectionHeader.color ?? colors.selectedText
+      : ink(sectionHeader.color ?? colors.textBright);
     const action = sectionHeader.action;
     return (
       <Box
@@ -180,7 +191,7 @@ function OpenTuiDataTableRowInner<
         // Beside a pinned first column the heading stays in view too, not cut to its last letters.
         paddingLeft={horizontalPadding + (frozenColumnOffset ?? 0)}
         paddingRight={horizontalPadding}
-        backgroundColor={selected ? colors.selected : sectionHeader.backgroundColor ?? colors.bg}
+        backgroundColor={selected ? selectionBg : sectionHeader.backgroundColor ?? colors.bg}
         onMouseDown={(event: any) => {
           focusPane();
           onTableMouseDown?.(event);
@@ -211,7 +222,7 @@ function OpenTuiDataTableRowInner<
                 action.onPress();
               }}
             >
-              <Text fg={selected ? colors.selectedText : colors.text}>{action.label}</Text>
+              <Text fg={selectionLit ? colors.selectedText : ink(colors.text)}>{action.label}</Text>
             </Box>
           </Box>
         ) : (
@@ -226,11 +237,11 @@ function OpenTuiDataTableRowInner<
     );
   }
 
-  const rowState = { selected };
+  const rowState = { selected, inactive: selected && !selectionLit };
   const widths: (number | null)[] = [];
   cellWidths.set(itemKey, { columnsKey, widths });
   const rowBackgroundColor = getRowBackgroundColor?.(item, index, rowState);
-  const rowBg = selected ? colors.selected : rowBackgroundColor ?? colors.bg;
+  const rowBg = selected ? selectionBg : rowBackgroundColor ?? colors.bg;
   const rowHoverBg = selected ? undefined : hoverBg(colors);
 
   return (
@@ -306,13 +317,14 @@ function OpenTuiDataTableRowInner<
             )) : (
               <Text
                 attributes={cell.attributes ?? TextAttributes.NONE}
-                fg={selected
+                fg={selectionLit
                   ? selectedRowCellColor(cell.color, !!selectedTextOverridesCellColor, cell.keepColorWhenSelected, colors) ?? colors.selectedText
-                  : cell.color ?? colors.text}
+                  // A cell on a fill of its own keeps the colour it chose for it.
+                  : cell.backgroundColor && cell.backgroundColor !== selectionBg ? cell.color ?? colors.text : ink(cell.color ?? colors.text)}
               >
                 {fitted.note ? <>
                   {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${fitted.text}`}
-                  <Span fg={colors.textDim} attributes={TextAttributes.NONE}>{fitted.note}</Span>
+                  <Span fg={ink(colors.textDim)} attributes={TextAttributes.NONE}>{fitted.note}</Span>
                   {`${fitted.padding ?? ""}${frozen ? " ".repeat(columnGap) : ""}`}
                 </> : `${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${fitted.text}${frozen ? " ".repeat(columnGap) : ""}`}
               </Text>
@@ -376,6 +388,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   const colors = useThemeColors();
   const focusPane = useFocusOwningPane();
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
+  const selectionFill = useSelectionFill();
   const appViewport = useViewport();
   const nativeRenderer = useNativeRenderer();
   const [scrollVersion, setScrollVersion] = useState(0);
@@ -1028,6 +1041,8 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     rowVersion={getRowVersion?.(item, index)}
                     sectionWidth={sectionWidth}
                     selected={isSelected(item, index)}
+                    selectionBg={selectionFill.bg}
+                    selectionLit={selectionFill.lit}
                     selectedTextOverridesCellColor={selectedTextOverridesCellColor}
                     columnClips={columnClips}
                     cellWidths={rowCellWidths}

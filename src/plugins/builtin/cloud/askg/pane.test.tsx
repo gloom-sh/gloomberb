@@ -7,6 +7,7 @@ import { createOpenTuiTestHarness, TestDialogProvider } from "../../../../render
 import { appReducer, createInitialState } from "../../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../../test-support/pane";
 import { resetPaneSessionsForTests } from "../../../../state/pane-session";
+import { paneHoldsUnsentWork } from "../../../../state/pane-unsent-work";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../../registry";
 import { Box, Text } from "../../../../ui";
@@ -365,6 +366,51 @@ describe("ASKGPane while Gloom answers", () => {
       // One blank row between the answer and the question to ask next, as between every block.
       expect(lines[answer + 1]?.trim()).toBe("");
       expect(lines[answer + 2]).toContain("What moved AMD today?");
+    } finally {
+      stream.mockRestore();
+    }
+  });
+});
+
+describe("ASKGPane unsent work", () => {
+  // The shell never closes a pane on Esc while it holds work: the draft goes
+  // with the pane, and an answer coming in would be cut off.
+  test("a draft, kept after Esc leaves the composer, and an answer coming in hold the pane open", async () => {
+    let finish: () => void = () => {};
+    const finished = new Promise<void>((resolve) => { finish = resolve; });
+    spyOn(apiClient.askg, "isStreamingSupported").mockReturnValue(true);
+    const stream = spyOn(apiClient.askg, "streamTurn").mockImplementation(async (_session, request, options) => {
+      const turnId = request.turnId;
+      options.onEvent({ seq: 1, type: "session", sessionId: "s1", turnId, model: "gloom-1", promptVersion: "v1" });
+      await finished;
+      options.onEvent({ seq: 2, type: "text-delta", turnId, delta: "NVDA is up 2%." });
+      options.onEvent({ seq: 3, type: "done", turnId, reason: "complete" });
+      return "complete";
+    });
+    try {
+      await renderPane(PANE_WIDTH);
+      expect(paneHoldsUnsentWork(PANE_ID)).toBe(false);
+
+      await type("how is nvda doing");
+      await flush();
+      expect(paneHoldsUnsentWork(PANE_ID)).toBe(true);
+      await tui.emitKeypress({ name: "escape" });
+      await flush();
+      expect(paneHoldsUnsentWork(PANE_ID)).toBe(true);
+
+      // Back in the composer and asked, the draft is gone and the answer holds
+      // the pane until it is done.
+      await pressEnter();
+      await flush();
+      await pressEnter();
+      await flush();
+      expect(tui.frame()).toContain("Gloom is thinking…");
+      expect(paneHoldsUnsentWork(PANE_ID)).toBe(true);
+
+      finish();
+      await flush();
+      expect(tui.frame()).toContain("NVDA is up 2%.");
+      expect(paneHoldsUnsentWork(PANE_ID)).toBe(false);
     } finally {
       stream.mockRestore();
     }

@@ -6,6 +6,7 @@ import { formatQuoteNavAsOf } from "../../../market-data/quotes/time";
 import { delistingLabel } from "../../../market-data/quotes/delisting";
 import type { Quote } from "../../../types/financials";
 import { displayWidth } from "../../../utils/format";
+import { quoteSourceFooterSegment } from "../shared/source-footer";
 
 export function tickerQuoteFooterInfo(
   quote: Quote | undefined,
@@ -42,6 +43,10 @@ export function tickerQuoteFooterInfo(
     info.push(status);
   } else if (navAsOf) {
     info.push({ id: "ticker-research-nav", parts: [{ text: navAsOf, tone: "muted" }] });
+  } else if (quote) {
+    // Where the quote is from and when, as `quote` ends; the access clock beside it says how late the feed is.
+    const source = quoteSourceFooterSegment([quote], { id: "ticker-research-source" });
+    if (source) info.push(source);
   }
   if (access) info.push(access);
   return info;

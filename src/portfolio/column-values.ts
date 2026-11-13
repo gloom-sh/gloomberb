@@ -398,6 +398,9 @@ function headlineChangePercent(
   return quote ? (getCompletedRegularSessionDisplay(quote) ?? quote).changePercent : undefined;
 }
 
+/** The 52W% cell's muted mark for a range read from the stored daily bars (Quote.yearRangeBasis). */
+export const RANGE_FROM_BARS_NOTE = "bars";
+
 function fiftyTwoWeekPosition(displayQuote: ActiveQuoteDisplay | null, quote: TickerFinancials["quote"]): number | null {
   const range = displayQuote ? liveFiftyTwoWeekRange(quote, displayQuote.price) : null;
   return displayQuote && range ? ((displayQuote.price - range.low) / (range.high - range.low)) * 100 : null;
@@ -560,7 +563,7 @@ export function getColumnValue(
   ticker: TickerRecord,
   financials: TickerFinancials | undefined,
   ctx: ColumnContext,
-): { text: string; color?: string; value?: number | string | null; valueUnit?: string; pnlBasis?: PortfolioPositionPnl["basis"] } {
+): { text: string; note?: string; color?: string; value?: number | string | null; valueUnit?: string; pnlBasis?: PortfolioPositionPnl["basis"] } {
   const sent = financials?.quote;
 
   const fundamentals = financials?.fundamentals;
@@ -679,7 +682,10 @@ export function getColumnValue(
     }
     case "range_52w": {
       const position = fiftyTwoWeekPosition(displayQuote, quote);
-      return { text: position == null ? "—" : formatPercentRaw(Math.max(0, Math.min(100, position))) };
+      if (position == null) return { text: "—" };
+      // A range the service read from the stored daily bars, the source's being no year's, says so as the ticker pane does.
+      return { text: formatPercentRaw(Math.max(0, Math.min(100, position))),
+        ...(quote?.yearRangeBasis === "daily-bars" ? { note: RANGE_FROM_BARS_NOTE } : {}) };
     }
     case "market_cap": {
       const cap = liveMarketCapitalization(quote, fundamentals);

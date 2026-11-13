@@ -1313,6 +1313,7 @@ function ChartComposerSurface({
           ...totalReturnFilters,
         ]}
         view={resolutionOptions.length > 1 ? {
+          label: "Interval",
           value: spec.viewport.resolution,
           options: resolutionOptions,
           onChange: (value: string) => setResolution(value as ChartResolution),

@@ -21,7 +21,9 @@ import type { PaneProps } from "../../../types/plugin";
 import { usePluginPaneState } from "../../runtime";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import { useCommandValue } from "../shared/command-tab";
+import { reportFooterSegment } from "../shared/source-footer";
 import { getCachedCdxBoard, loadCdxBoard } from "./client";
+import { cdxHeadless } from "./headless";
 import {
   axisFormatter,
   cdxRows,
@@ -30,7 +32,6 @@ import {
   formatLevel,
   formatMove,
   formatSpreadRank,
-  newestRowDate,
   partialDayText,
   SETTLEMENT_TEXT,
   type CdxRow,
@@ -110,13 +111,16 @@ export function CdxPane({ focused, width, height }: PaneProps) {
   useAutoRefresh(resource.updatedAt, refresh);
   usePaneRefreshKey(reload, { focused, enabled: !loading });
 
-  // Dated by the newest day the rows carry, not when the response was put together.
-  const asOf = newestRowDate(payload?.indexes.map((index) => index.date) ?? []);
+  // Its source and the newest day the rows carry, not when the response was put together, as `fn CDX` ends.
+  // The clock says the prints are delayed, so the line does not again.
+  const sourceLine = useMemo(() => payload
+    ? reportFooterSegment(cdxHeadless, { sections: [{ title: "", columns: [], rows: payload.indexes.map((index) => ({ date: index.date })) }] }, { feed: false })
+    : null, [payload]);
   // PCTL 1Y ranks spreads; the rows quoted in price (HY, EM) rank their spread equivalent, which a picture keeps.
   const spreadEqRanked = useMemo(() => rows.filter((row) => row.rank.basis === "spread-eq")
     .map((row) => row.index.name.replace(/^CDX\s+/i, "")).join(", "), [rows]);
   const info = useMemo<PaneFooterSegment[]>(() => [
-    ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
+    ...(sourceLine ? [sourceLine] : []),
     ...(payload ? [DELAYED_SEGMENT] : []),
     ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...(spreadEqRanked ? [{
@@ -124,7 +128,7 @@ export function CdxPane({ focused, width, height }: PaneProps) {
       parts: [{ text: `${spreadEqRanked} pctl on spread eq`, tone: "muted" as const }],
       variants: [[{ text: "pctl on spread eq", tone: "muted" as const }]],
     }] : []),
-  ], [asOf, payload, resource.data?.stale, spreadEqRanked]);
+  ], [payload, sourceLine, resource.data?.stale, spreadEqRanked]);
   usePaneStatusFooter({
     registrationId: "cdx",
     loading,

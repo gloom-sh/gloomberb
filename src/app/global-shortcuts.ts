@@ -9,7 +9,7 @@ import type { TickerRecord } from "../types/ticker";
 import { findPaneInstance } from "../types/config";
 import type { ReleaseInfo } from "../updater";
 import { canRestartToApply, canRetryUpdate } from "../updater";
-import { getVisiblePaneCycleOrder } from "../components/layout/pane/cycle-order";
+import { coveredDockedPaneIds, getVisiblePaneCycleOrder } from "../components/layout/pane/cycle-order";
 import { requestFunctionHelp, useFunctionHelpHost } from "../plugins/builtin/help/function-card";
 import { buildRegistryHelpIndex, helpFunctionForPane } from "../plugins/builtin/help/function-index";
 import { recordFunctionOpen } from "../telemetry/usage-counts";
@@ -239,6 +239,7 @@ export function useAppGlobalShortcuts({
         state.config.layout,
         pluginRegistry,
         state.config.disabledPlugins,
+        { covered: coveredDockedPaneIds(), focusedPaneId: state.focusedPaneId },
       );
       if (paneOrder.length === 0) return;
 

@@ -300,7 +300,7 @@ function FieldsFamily() {
             view={{ value: "1y", options: [{ value: "1m", label: "1M" }, { value: "1y", label: "1Y" }, { value: "5y", label: "5Y" }], onChange: noop }}
           />
         </Box>
-        {/* Short of room, the inline filter becomes its menu and the as-of stays whole; the context gives way. */}
+        {/* Short of room, the inline filter drops its label, then the view and the filter fold into menus; the as-of stays whole and the context gives way. */}
         <Row>
           {[{ label: "inline filter, as of and context", width: 720 }, { label: "short of room", width: 480 }].map((sample) => (
             <Sample key={sample.label} label={sample.label} width={sample.width}>

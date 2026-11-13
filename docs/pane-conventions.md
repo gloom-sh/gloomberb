@@ -762,11 +762,19 @@ header, with the detail's height.
   A `select` filter takes a `defaultValue` when it narrows (the chip shows a
   reset while it differs); omit it when it picks what is shown. `inline` for
   four or fewer short exclusive options, `multi`, `toggle`, `text` for a second
-  field. One terminal row; on the desktop it scrolls sideways when narrow.
-  Status never goes in the bar. The date the data is as of goes in `asOf`,
-  its own segment that never shrinks; other context (units, a growth basis)
-  goes in `meta`, which gives way first. When the controls no longer fit,
-  inline filters become their menu chip, so the as-of keeps its place.
+  field. One terminal row. Status never goes in the bar. The date the data is
+  as of goes in `asOf`, its own segment that never shrinks; other context
+  (units, a growth basis) goes in `meta`, which gives way first. On the
+  desktop, when the controls no longer fit, the bar gives way in one order
+  and no control is ever drawn over another: inline filters drop their label
+  ("Range"), toggles take their `short` label, the `view` folds into its menu
+  chip, then inline filters fold into theirs (bringing the view back while it
+  fits). Only a bar too narrow even for that scrolls sideways. A long list
+  that is meant to run past the edge (an option chain's expiries) sets
+  `scrolls` and is a strip that scrolls by itself instead of folding; it keeps
+  its label and its chosen choice whole, and the rest of the bar gives way
+  before it narrows past that. Name the `view` with `label` ("Interval"), the
+  name a screen reader and its folded menu give it.
   The inline filter or view that picks a chart's range sets `chartRange`:
   choosing the selected range again sends the pane's charts back to it, as `0`
   does, so every chart's range strip behaves the same. Bind the range's number
@@ -781,7 +789,7 @@ header, with the detail's height.
 - Calculators and sizers: mode switches in the `QueryBar` (inline filters),
   inputs in a `FieldGrid`. Icon-only actions are `IconButton`s from the shared
   icon set. A long strip of choices above content (expiries, chart ranges) is
-  an inline filter in the bar, not a raw `Tabs` row; `Tabs` stays for a
+  an inline filter in the bar (`scrolls` for expiries), not a raw `Tabs` row; `Tabs` stays for a
   pane's primary strip and for section switches inside content.
 - On the desktop, pane headers, query bars, detail bars and table header rows
   share one chrome height (`chromeRowPx()`, `--chrome-h`). Tables and details
@@ -869,7 +877,7 @@ header, with the detail's height.
   `preventDefault()` when it acts). Reserved: `j`/`k`/arrows move, Enter
   opens, Esc/Backspace back, `r` refresh, `Shift+R` refresh all, `!`
   warnings, `o` open source, `/` search, `.` pane menu, Tab/Shift+Tab next
-  pane or field, `h`/`l` tabs, `{`/`}` a nested strip's views, `<`/`>` the width of a resizable sidebar, `?` help, F1 the pane's help card, `` ` `` ticker search (changes the focused pane's ticker), `q` quit (terminal),
+  pane or field, Ctrl+PageDown/Ctrl+PageUp a stack's tabs, `h`/`l` tabs, `{`/`}` a nested strip's views, `<`/`>` the width of a resizable sidebar, `?` help, F1 the pane's help card, `` ` `` ticker search (changes the focused pane's ticker), `q` quit (terminal),
   `u` restart into a downloaded update or retry a failed one, `$` Pro upgrade, Ctrl+P command bar. `q`, `u`, `r`,
   `Shift+R`, `?` and `` ` `` reach the app before any pane. Table keys go
   through `onRootKeyDown` and `onDetailKeyDown` (return `true` when handled);
@@ -901,6 +909,24 @@ header, with the detail's height.
   unscoped `before` handler can run ahead of it too (a pane restored at
   launch), so one that goes back calls `countEscapeTowardClose(event)`
   itself.
+- One Esc closes a focused floating window, as it does a dialog, when
+  nothing took it: no handler called `preventDefault()` or
+  `stopPropagation()`, and no `keepEscapeFromClosing(event)`. Focus goes to
+  the next floating window, or back where it was. A locked window stays, and
+  the Esc that follows at a double press's pace closes nothing more, so Esc
+  Esc still closes one window. A pane keeps its Esc by handling it: backing
+  out of a detail, closing its own menu (then also
+  `keepEscapeFromClosing(event)`, so it does not count toward Esc Esc),
+  leaving a field.
+- No Esc, one or two, closes a pane that holds work Esc would throw away: a
+  draft that lives only as long as the pane, an answer still coming in. The
+  pane says so with `usePaneUnsentWork(holds)` (Ask Gloom passes its draft
+  and its running answer); Ctrl+W, the close button and the pane menu still
+  close it. A draft saved elsewhere (the chat composer's, saved with its
+  channel), a note saved when editing ends and a form that takes Esc as
+  Cancel have nothing to report. `countEscapeTowardClose`,
+  `keepEscapeFromClosing` and `usePaneUnsentWork` come from
+  `gloomberb/react`.
 - The pane menu (`.`, Shift+F10, the `...` button) is where the keyboard
   finds everything: it lists the footer hints with their keys, what kit
   controls add (table sort, query-bar filters, tab add/close/move, empty-state

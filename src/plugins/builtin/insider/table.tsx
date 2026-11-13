@@ -1,6 +1,6 @@
 import { Box, Text } from "../../../ui";
 import type { DataTableCell } from "../../../components";
-import { colors } from "../../../theme/colors";
+import { colors, inactiveSelectedText } from "../../../theme/colors";
 import { blendForContrast } from "../../../theme/color-utils";
 import { clipToDisplayWidth, displayWidth } from "../../../utils/format";
 import type { InsiderTypeTone } from "./display";
@@ -24,10 +24,12 @@ export function insiderToneColor(tone: InsiderTypeTone): string {
   return tone === "buy" ? colors.positive : tone === "sell" ? colors.negative : colors.textDim;
 }
 
-function typeColor(tone: InsiderTypeTone, selected: boolean): string {
-  if (tone === "neutral") return selected ? colors.selectedText : colors.textDim;
+function typeColor(tone: InsiderTypeTone, selected: boolean, inactive: boolean): string {
+  // On the quieter fill of a pane without the keys, the row keeps its own colours, lifted to read there.
+  if (tone === "neutral") return !selected ? colors.textDim : inactive ? inactiveSelectedText(colors.textDim) : colors.selectedText;
   const color = insiderToneColor(tone);
-  return selected ? blendForContrast(color, colors.selected, colors.selectedText, SELECTED_TONE_MIN_CONTRAST) : color;
+  if (!selected) return color;
+  return inactive ? inactiveSelectedText(color) : blendForContrast(color, colors.selected, colors.selectedText, SELECTED_TONE_MIN_CONTRAST);
 }
 
 function isoDay(date: Date | null): string | null {
@@ -38,7 +40,7 @@ export function renderInsiderCell(
   row: InsiderTableRow,
   column: InsiderColumn,
   _index: number,
-  rowState: { selected: boolean },
+  rowState: { selected: boolean; inactive?: boolean },
 ): DataTableCell {
   // Awards, exercises and tax lines are context; buys and sales carry the figures.
   const figureColor = row.tone === "neutral" ? colors.textDim : colors.text;
@@ -50,12 +52,13 @@ export function renderInsiderCell(
     case "role":
       return { text: row.role, color: colors.textMuted };
     case "type": {
-      const color = typeColor(row.tone, rowState.selected);
+      const inactive = rowState.inactive === true;
+      const color = typeColor(row.tone, rowState.selected, inactive);
       const text = insiderTypeText(row, column.plan === true);
       const markers = insiderTypeMarkers(row, column.plan === true);
       if (markers.length === 0) return { text, color, keepColorWhenSelected: true };
       // The markers read after the type in a quieter colour.
-      const markerColor = rowState.selected ? colors.selectedText : colors.textMuted;
+      const markerColor = !rowState.selected ? colors.textMuted : inactive ? inactiveSelectedText(colors.textMuted) : colors.selectedText;
       const label = clipToDisplayWidth(row.type, column.width);
       const room = Math.max(0, column.width - displayWidth(label) - (label ? 1 : 0));
       return {

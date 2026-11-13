@@ -26,6 +26,9 @@ import {
 import { useThemeColors } from "../../../theme/theme-context";
 import { SPACE } from "../../../theme/ui-tokens";
 import { getPaneDisplayTitle } from "../pane/title";
+import { adjacentStackTabId, registerCoveredPaneSource } from "../pane/cycle-order";
+import { resolveTitleCoveredPaneIds } from "./pane-occlusion";
+import { paneHeaderRows } from "../pane/sizing";
 import type { PaneHeaderQuickSetting } from "../pane/header";
 import { getPaneFooter } from "../pane/footer";
 import { getShortcutDisplayMode } from "../../../utils/shortcut-labels";
@@ -312,7 +315,9 @@ export function Shell({
   const {
     canExportPaneCsv,
     closeAllFloatingPanes,
+    closeFocusedFloatingPane,
     closeFocusedPane,
+    closeFocusedPaneOnEscape,
     copyFocusedPaneScreenshot,
     copyPaneScreenshot,
     exportFocusedPaneCsv,
@@ -322,6 +327,7 @@ export function Shell({
     openFocusedPaneSettings,
     openPaneSettings,
     popOutFocusedPane,
+    showAdjacentStackTab,
     toggleFocusedPaneFloating,
   } = useShellPaneActions({
     closePaneMenu,
@@ -498,6 +504,16 @@ export function Shell({
       ? visibleFloatingPanes.filter(({ pane }) => pane.instance.instanceId === transientFocusPaneId).map((entry) => ({ ...entry, rect: fullscreenRect }))
       : visibleFloatingPanes
   ), [fullscreenRect, transientFocusActive, transientFocusPaneId, visibleFloatingPanes]);
+  // Docked panes whose title bar a floating window hides: Tab passes them by,
+  // so focus never lands where it cannot be seen.
+  const titleCoveredPaneIds = useMemo(() => resolveTitleCoveredPaneIds(
+    screenDockLeafLayouts.map((leaf) => ({ paneId: leaf.instanceId, rect: leaf.rect })),
+    screenFloatingPanes.map((entry) => entry.rect),
+    { headerRows: paneHeaderRows(nativePaneChrome) },
+  ), [nativePaneChrome, screenDockLeafLayouts, screenFloatingPanes]);
+  const titleCoveredRef = useRef(titleCoveredPaneIds);
+  titleCoveredRef.current = titleCoveredPaneIds;
+  useEffect(() => registerCoveredPaneSource(() => titleCoveredRef.current), []);
   const screenDockedPanes = useMemo(() => (
     transientFocusActive
       ? dockedPanes.filter((pane) => pane.instance.instanceId === transientFocusPaneId)
@@ -610,7 +626,9 @@ export function Shell({
     askAboutFocusedPane,
     cancelActiveDrag,
     closeAllFloatingPanes,
+    closeFocusedFloatingPane: transientFocusActive ? () => false : closeFocusedFloatingPane,
     closeFocusedPane,
+    closeFocusedPaneOnEscape,
     copyFocusedPaneScreenshot,
     exportFocusedPaneCsv,
     focusedPaneId,
@@ -623,6 +641,7 @@ export function Shell({
     overlayOpen,
     popOutFocusedPane,
     shareFocusedPane,
+    showAdjacentStackTab,
     startWindowMode,
     toggleFocusedPaneFullscreen,
     toggleFocusedPaneFloating,
@@ -657,6 +676,8 @@ export function Shell({
       title: getPaneTitle(pane),
       floating: !!pane.floating,
     };
+    const nextStackTab = adjacentStackTabId(visibleLayout, paneId, 1);
+    const previousStackTab = adjacentStackTabId(visibleLayout, paneId, -1);
     const items = menuForPane(
       pane,
       visibleLayout,
@@ -699,6 +720,9 @@ export function Shell({
       canAsk ? () => { askAboutPane(paneId, { cover: kitMenuRectRef.current }); } : undefined,
       canReportPaneBug(nativePaneChrome || !!nativeRenderer.capturePaneImage)
         ? () => { pluginRegistry.reportPaneBug(paneId); }
+        : undefined,
+      nextStackTab && previousStackTab
+        ? { next: () => focusPane(nextStackTab), previous: () => focusPane(previousStackTab) }
         : undefined,
     );
     const showKitMenu = () => {
@@ -820,6 +844,7 @@ export function Shell({
     openPaneMenu,
     openPaneDocs,
     getPaneTitle,
+    getPaneQuickSettings,
     paneMap,
     persistLayout,
     precisePointer,
