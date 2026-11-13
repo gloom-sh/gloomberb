@@ -6,6 +6,12 @@ export interface CloudEarningsCallPayload {
   companyName: string | null;
   fiscalYear: number | null;
   fiscalQuarter: number | null;
+  /**
+   * 1 for a half year's results ("H1 2026", a Hong Kong interim results
+   * briefing), stored with no quarter as a year's results are. Absent for any
+   * other call, and from a server that predates it.
+   */
+  fiscalHalf?: number;
   callAt: string | null;
   status: string;
   durationSeconds: number | null;
@@ -253,6 +259,8 @@ export interface CloudEarningsTranscriptPayload {
   companyName: string | null;
   fiscalYear: number | null;
   fiscalQuarter: number | null;
+  /** 1 for a half year's results (CloudEarningsCallPayload.fiscalHalf). */
+  fiscalHalf?: number;
   /**
    * "other" for an event that is not an earnings call (a deal call, a
    * conference, an investor day), named by eventLabel and with no fiscal

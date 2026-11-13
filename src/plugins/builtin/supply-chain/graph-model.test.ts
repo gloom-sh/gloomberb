@@ -7,6 +7,10 @@ test("unlisted recenter retains stable identity and exposure keeps its denominat
   const data = graphPayload();
   expect(entityKey(data.nodes[1]!)).toBe("id:2");
   expect(exposureLabel(data.upstream[1]!.bestPath, data)).toBe("20% est. of 1 revenue");
+  // One hop's share is the one its report files (Sungrow's 4.5% of revenue to a customer): read, never refused or called an estimate.
+  const oneHop = graphPayload();
+  oneHop.upstream[0]!.bestPath.exposure = { pct: 20, basis: "revenue", period: "2026", denominatorEntityId: "1", estimated: false };
+  expect(exposureLabel(validateGraph(oneHop).upstream[0]!.bestPath, oneHop)).toBe("20% of 1 revenue");
 });
 test("collapse removes descendants while retaining the branch, including a selected path", () => {
   const data = graphPayload(), path = data.upstream[1]!.bestPath;
@@ -22,7 +26,10 @@ test("graph boundary rejects disconnected hops, unsupported source URLs and unla
   expect(validateGraph(graphPayload()).links).toHaveLength(2);
   for (const corrupt of [(data: ReturnType<typeof graphPayload>) => { data.links[1]!.from = "1"; },
     (data: ReturnType<typeof graphPayload>) => { data.links[0]!.evidence[0]!.filingUrl = "javascript:alert(1)"; },
-    (data: ReturnType<typeof graphPayload>) => { data.upstream[1]!.bestPath.exposure!.denominatorEntityId = "unrelated"; }]) {
+    (data: ReturnType<typeof graphPayload>) => { data.upstream[1]!.bestPath.exposure!.denominatorEntityId = "unrelated"; },
+    // A chained share is an estimate and a filed one is not: a route that claims otherwise is refused, never shown as filed.
+    (data: ReturnType<typeof graphPayload>) => { data.upstream[1]!.bestPath.exposure!.estimated = false; },
+    (data: ReturnType<typeof graphPayload>) => { data.upstream[0]!.bestPath.exposure = { pct: 20, basis: "revenue", period: "2026", denominatorEntityId: "1", estimated: true }; }]) {
     const data = graphPayload(); corrupt(data); expect(() => validateGraph(data)).toThrow("unreadable");
   }
 });

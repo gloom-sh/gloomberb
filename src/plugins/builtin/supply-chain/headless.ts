@@ -7,7 +7,8 @@ import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, suppl
 import { fetchSupplyGraph, graphOptions } from "./graph-client";
 import { entityTicker, exposureLabel, pathLabel } from "./graph-model";
 import { graphEvidenceRow } from "./graph-evidence";
-import { counterpartyName, disclosedValue, disclosureText, earlierRows, isTaggedFact, lockedDisclosures, nativeValue, periodText, roleLabel, shareParts, supplyEmptyText, supplyPreviewNote, supplyRoleCounts } from "./model";
+import { counterpartyKind, counterpartyName, disclosedValue, disclosureText, earlierRows, isRelatedParty, isTaggedFact, lockedDisclosures, nativeValue, periodText, relationshipLabel, shareParts, supplyEmptyText, supplyPreviewNote,
+  supplyRoleCounts } from "./model";
 
 /**
  * The Table tab's columns, printed as the pane prints them: the share with
@@ -24,10 +25,14 @@ function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPane
   const valued = rows.some((row) => { const source = sources.get(row); return !!source && (nativeValue(source) !== null || source.usd !== null); });
   const lengths = rows.some((row) => sources.get(row)?.periodMonths != null);
   return [
-    { key: "counterparty", header: "Counterparty", format: cell(counterpartyName) },
+    // The text names a company with its subsidiaries (X及其子公司) as the group, as the pane's label beside the name does
+    // (the Role says whether it is a related party); a cohort or an undisclosed name already says what it is.
+    { key: "counterparty", header: "Counterparty", format: cell(counterpartyName),
+      textFormat: cell((row) => counterpartyKind(row) === "company" && row.entityScope === "group" ? `${counterpartyName(row)} (group)` : counterpartyName(row)) },
     { key: "evidenceTier", header: "Evidence" },
     { key: "ticker", header: "Ticker" },
-    { key: "role", header: "Role", format: cell((row) => roleLabel(row.role)) },
+    // A related-party trade reads as one, never as a plain supplier or customer.
+    { key: "role", header: "Role", format: cell(relationshipLabel) },
     // Exports keep the share a number, what it is a share of beside it in the Table's words ("% of total revenue (gold sales)").
     { key: "pct", header: "Share", unitKey: "shareUnit", unitColumn: true, format: cell((row) => shareParts(row, focusId)?.value ?? null),
       textFormat: cell((row) => { const share = shareParts(row, focusId); return share ? `${share.value} ${share.basis}` : null; }) },
@@ -43,7 +48,7 @@ function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPane
 const pathColumns = [
   { key: "route", header: "Route" }, { key: "hops", header: "Hops" },
   { key: "score", header: "Rank score", description: "Product of normalized edge weights; not a probability." },
-  { key: "confidence", header: "Confidence" }, { key: "exposureLabel", header: "Estimated exposure" },
+  { key: "confidence", header: "Confidence" }, { key: "exposureLabel", header: "Exposure" },
 ];
 /**
  * What a graph disclosure says in words: the text itself, or for a tagged
@@ -82,14 +87,15 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
   sections.push({ title: "Disclosure evidence", columns: [
     { key: "reporter", header: "Reporting company" }, { key: "from", header: "Supplier / from" }, { key: "to", header: "Customer / to" },
     // The share in the Table's words, its reporter named ("27% of NEM total revenue (gold sales)"); exports keep pct and denominator apart.
-    { key: "role", header: "Role" }, { key: "pct", header: "Share", textFormat: (_value, row) => String(row.share ?? "-") },
+    { key: "role", header: "Role", textFormat: (value, row) => row.relatedParty ? `related-party ${String(value)}` : String(value) },
+    { key: "pct", header: "Share", textFormat: (_value, row) => String(row.share ?? "-") },
     { key: "period", header: "Period", textFormat: (value, row) => periodText({ period: String(value), periodMonths: row.periodMonths as number | null }) },
     { key: "filed", header: "Filed" }, { key: "confidence", header: "Confidence" },
     // A tagged XBRL fact prints the link's filing sentence when one names the same pair, otherwise the fact in words; exports keep the stored text.
     { key: "quote", header: "Quote", textFormat: (value, row) => row.statement == null ? String(value ?? "") : String(row.statement) }, { key: "filingUrl", header: "Filing" },
   ], rows: data.links.flatMap(link => link.evidence.map(item => ({ id: item.id, linkId: link.id, primary: item.id === link.primaryEvidenceId,
     statement: graphStatement(item, link.evidence), share: graphShare(item),
-    reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, pct: item.pctOfRevenue ?? null,
+    reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, relatedParty: isRelatedParty(item), pct: item.pctOfRevenue ?? null,
     denominator: item.pctBasis && !(item.sourceKind === "xbrl" && item.pctScope) ? `${item.reporter.name} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
     pctBasis: item.pctBasis, pctScope: item.pctScope, period: item.period, periodMonths: item.periodMonths ?? null, filed: item.filedDate, asOf: item.asOf,
     confidence: item.confidence, quote: item.quote, quoteLanguage: item.quoteLanguage, quoteGloss: item.quoteGloss ?? null,
@@ -155,7 +161,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     const record = (row: SupplyRow) => sourced(row, { counterparty: row.counterparty.name, ticker: entityTicker(row.counterparty), aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
       pct: row.pctOfRevenue, shareUnit: shareOf(row), pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, periodMonths: row.periodMonths ?? null, fiscalYear: row.fiscalYear,
       nativeAmount: row.nativeAmount ?? null, nativeCurrency: row.nativeCurrency ?? null, nativeScale: row.nativeScale ?? null,
-      jurisdiction: row.jurisdiction ?? null, entityScope: row.entityScope ?? null,
+      jurisdiction: row.jurisdiction ?? null, entityScope: row.entityScope ?? null, relatedParty: isRelatedParty(row),
       evidenceTier: evidenceLabel(row), tier: trustTier(row), claimType: row.claimType, corroboration: row.corroboration ?? 1,
       leadStatus: row.leadStatus ?? "none", whyUnconfirmed: row.whyUnconfirmed ?? null,
       firstSeenAt: row.firstSeenAt, lastSeenAt: row.lastSeenAt, lastConfirmedAt: row.lastConfirmedAt,

@@ -70,7 +70,7 @@ test("chart with too little comparable history reports collection state and keep
 test("a company with no guidance says so plainly and names one that has some, in the shared empty state", async () => {
   setCloudApiFetchTransport(async () => Response.json(guidancePayload({ guidance: [], history: [], totalRows: 0 })));
   await mount({ guidance: true });
-  const frame = await tui.waitForFrameToContain("No guidance on file for EXAMPLE:LSE.");
+  const frame = await tui.waitForFrameToContain("Guidance for EXAMPLE:LSE is not yet available.");
   expect(frame).toContain("Try GUIDE WMT.");
   expect(frame).not.toContain("No disclosed observations");
 });
