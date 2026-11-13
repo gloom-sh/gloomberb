@@ -58,6 +58,30 @@ export interface PeriodPnlRow {
   contribution: number | null;
 }
 
+/**
+ * One currency's part of the book over the period: its holdings' price P&L
+ * (local), its move on their start value (FX), the two together, and the
+ * total's share of the book. Over the holdings that have both closes, as the
+ * book's total is; `unpriced` names the ones it leaves out.
+ */
+export interface PeriodCurrencyPnl {
+  /** The major currency its holdings are priced in: GBP for a price in pence. */
+  currency: string;
+  /** The book's own currency, which has no FX line. */
+  own: boolean;
+  /** The holdings' price P&L, in the book's currency at the end's rate. */
+  local: number;
+  /** The currency's move on the holdings' start value; 0 in the book's currency. */
+  fx: number;
+  total: number;
+  /** Each over the book's contribution base, in percent. */
+  localContribution: number | null;
+  fxContribution: number | null;
+  contribution: number | null;
+  /** Its holdings without a close at one end of the window or a rate: left out of the figures. */
+  unpriced: string[];
+}
+
 export interface PeriodPnl {
   rows: PeriodPnlRow[];
   /** The FX line: every holding's currency move, together. */
@@ -75,6 +99,8 @@ export interface PeriodPnl {
   contributionBasis: "net" | "gross";
   /** Holdings without a close at one end of the window, or without a rate for their currency. */
   unpriced: string[];
+  /** The book by the currency its holdings are priced in: the book's own first, then the others by code. */
+  currencies: PeriodCurrencyPnl[];
 }
 
 const finite = (value: number | null | undefined): value is number => value != null && Number.isFinite(value);
@@ -117,5 +143,23 @@ export function periodPnl(holdings: readonly PeriodPnlHolding[], bookCurrency: s
   const fx = rows.reduce((sum, row) => sum + (finite(row.fx) ? row.fx : 0), 0);
   const total = rows.reduce((sum, row) => sum + (finite(row.pnl) && finite(row.fx) ? row.pnl + row.fx : 0), 0);
   const share = (value: number) => contributionBase ? (value / contributionBase) * 100 : null;
-  return { rows, fx, fxContribution: share(fx), total, totalContribution: share(total), contributionBase, contributionBasis: shorts ? "gross" : "net", unpriced };
+  // Each holding counts under the major currency it converts through, priced or not, so a part that leaves one out says so.
+  const groups = new Map<string, PeriodCurrencyPnl>();
+  for (const row of rows) {
+    const { currency, own } = periodCurrency(row.currency, bookCurrency);
+    const key = own ? heldCurrencyUnit(bookCurrency).currency || bookCurrency : currency;
+    const group = groups.get(key) ?? { currency: key, own, local: 0, fx: 0, total: 0, localContribution: null, fxContribution: null, contribution: null, unpriced: [] };
+    groups.set(key, group);
+    if (finite(row.pnl) && finite(row.fx)) {
+      group.local += row.pnl;
+      group.fx += row.fx;
+      group.total += row.pnl + row.fx;
+    } else {
+      group.unpriced.push(row.symbol);
+    }
+  }
+  const currencies = [...groups.values()]
+    .map((group) => ({ ...group, localContribution: share(group.local), fxContribution: share(group.fx), contribution: share(group.total) }))
+    .sort((a, b) => Number(b.own) - Number(a.own) || a.currency.localeCompare(b.currency));
+  return { rows, fx, fxContribution: share(fx), total, totalContribution: share(total), contributionBase, contributionBasis: shorts ? "gross" : "net", unpriced, currencies };
 }

@@ -19,32 +19,38 @@ const DAILY: Record<string, PricePoint[]> = {
   AAPL: [day("2026-07-31", 300), day("2026-10-23", 347.73), day("2026-10-30", 344.63)],
   GDX: [day("2026-07-31", 70), day("2026-10-23", 80.2), day("2026-10-30", 77.09)],
   "2382": [day("2026-07-31", 60), day("2026-10-23", 63.15), day("2026-10-30", 63.3)],
+  D05: [day("2026-07-31", 40), day("2026-10-23", 42), day("2026-10-30", 43)],
 };
+const CURRENCY: Record<string, string> = { "2382": "HKD", D05: "SGD", ES3: "SGD" };
 const held = (symbol: string, exchange: string, currency: string, shares: number, dateAcquired = "2026-10-01") => createTestTicker(symbol, symbol, {
   exchange, currency, portfolios: ["model"], positions: [{ portfolio: "model", shares, broker: "manual", dateAcquired }],
 });
 const fx: CostFxHistoryClient = {
   getCloudHistory: async (symbol, _exchange, params) => {
-    const closes: Record<string, number> = symbol === "HKD=X" ? { "2026-07-31": 7.85, "2026-10-23": 7.8, "2026-10-30": 7.75 } : {};
+    const closes: Record<string, number> = symbol === "HKD=X" ? { "2026-07-31": 7.85, "2026-10-23": 7.8, "2026-10-30": 7.75 }
+      : symbol === "SGD=X" ? { "2026-07-31": 1.3, "2026-10-23": 1.3, "2026-10-30": 1.28 } : {};
     const data: CloudPricePointPayload[] = Object.entries(closes).filter(([date]) => date >= params.startDate! && date <= params.endDate!)
       .map(([date, close]) => ({ date: `${date}T00:00:00.000Z`, close }));
     return { status: "success", data } as Awaited<ReturnType<CostFxHistoryClient["getCloudHistory"]>>;
   },
 };
 
-async function show(format: "text" | "json" | "csv", options: Partial<Parameters<typeof showCollection>[2]> = {}) {
+// GDX was sold short; 2382 was bought on the 28th, inside the window.
+const MODEL = () => [held("AAPL", "NASDAQ", "USD", 50), held("GDX", "ARCA", "USD", -200), held("2382", "HKEX", "HKD", 1000, "2026-10-28")];
+
+async function show(format: "text" | "json" | "csv", options: Partial<Parameters<typeof showCollection>[2]> = {}, tickers = MODEL()) {
   setSystemTime(new Date("2026-11-05T13:00:00Z"));
   setCliColorEnabledOverride(false);
   const config = createDefaultConfig("/unused-period-report");
   config.portfolios = [{ id: "model", name: "model", currency: "USD" }];
-  // GDX was sold short; 2382 was bought on the 28th, inside the window.
-  const tickers = [held("AAPL", "NASDAQ", "USD", 50), held("GDX", "ARCA", "USD", -200), held("2382", "HKEX", "HKD", 1000, "2026-10-28")];
   const cli = createTestCliContext({ config, store: { loadAllTickers: async () => tickers },
     dataProvider: createTestDataProvider({
-      getQuote: async (symbol) => ({ symbol, price: DAILY[symbol]!.at(-1)!.close, currency: symbol === "2382" ? "HKD" : "USD", change: 0, changePercent: 0, lastUpdated: Date.now() }),
-      getDetailedPriceHistoryWithMetadata: async (symbol, _exchange, start, end, interval) => ({
-        points: (DAILY[symbol] ?? []).filter((point) => point.date >= start && point.date <= end), resolution: interval as ManualChartResolution,
-      }),
+      getQuote: async (symbol) => ({ symbol, price: DAILY[symbol]?.at(-1)?.close ?? 5, currency: CURRENCY[symbol] ?? "USD", change: 0, changePercent: 0, lastUpdated: Date.now() }),
+      // A history that does not load (ES3 here) leaves its holding without P&L.
+      getDetailedPriceHistoryWithMetadata: async (symbol, _exchange, start, end, interval) => {
+        if (!DAILY[symbol]) throw new Error("Daily history did not load");
+        return { points: DAILY[symbol].filter((point) => point.date >= start && point.date <= end), resolution: interval as ManualChartResolution };
+      },
     }),
   }, format === "text" ? {} : { format });
   const lines: string[] = [];
@@ -68,7 +74,7 @@ test("portfolio show --from prints each position's P&L, the FX line and a total 
   expect(text).toMatch(/GDX:ARCA\s+-200\s+\$80\.20\s+\$77\.09\s+-3\.88%\s+\+\$622\.00/);
   // 1,000 x HK$0.15 at 7.75 is $19.35; HK$63,150 from 7.80 to 7.75 is the FX line's $52.23; the total adds the four.
   expect(text).toMatch(/2382:HKEX\s+1,000\s+HK\$63\.15\s+HK\$63\.30\s+\+0\.24%\s+\+\$19\.35/);
-  expect(text).toMatch(/FX \(HKD\)\s+\+\$52\.23\s+\+0\.13%/);
+  expect(text).toMatch(/FX HKD\s+\+\$52\.23\s+\+0\.13%/);
   expect(text).toMatch(/TOTAL\s+\+\$538\.59\s+\+1\.30%/);
   expect(text).toContain("Bought inside the window: 2382:HKEX. Its P&L runs from the start close, as if held all along.");
   expect(text).toContain("FX: USD/HKD 7.8 on Fri 23 Oct, 7.75 on Fri 30 Oct.");
@@ -86,6 +92,48 @@ test("portfolio show --from prints each position's P&L, the FX line and a total 
   const csv = (await show("csv")).out.trim().split("\n");
   expect(csv[0]).toContain("symbol");
   expect(csv.map((line) => line.split(",")[0])).toEqual(expect.arrayContaining(["AAPL", "GDX", "2382", "FX", "TOTAL"]));
+});
+
+test("a book in several currencies gets an FX line per currency and each currency's local, FX and total, the book's total unchanged", async () => {
+  const book = [...MODEL(), held("D05", "SGX", "SGD", 1000)];
+  const { text } = await show("text", {}, book);
+  // 1,000 x S$1 at 1.28 is $781.25; S$42,000 from 1.30 to 1.28 is $504.81.
+  expect(text).toMatch(/FX HKD\s+\+\$52\.23\s+\+0\.07%/);
+  expect(text).toMatch(/FX SGD\s+\+\$504\.81\s+\+0\.68%/);
+  expect(text).toMatch(/TOTAL\s+\+\$1,824\.65\s+\+2\.47%/);
+  expect(text).toMatch(/USD\s+\+\$467\.00\s+—\s+\+\$467\.00\s+\+0\.63%/);
+  expect(text).toMatch(/HKD\s+\+\$19\.35\s+\+\$52\.23\s+\+\$71\.59\s+\+0\.10%/);
+  expect(text).toMatch(/SGD\s+\+\$781\.25\s+\+\$504\.81\s+\+\$1,286\.06\s+\+1\.74%/);
+
+  // CSV writes them as rows of their own, JSON under metadata; the subtotals add up to the book's total, which is what it was.
+  const lines = (await show("csv", {}, book)).out.trim().split("\n");
+  const header = lines[0]!.split(",");
+  const extra = lines.slice(1).map((line) => line.split(",")).filter((cells) => ["FX", "SUBTOTAL", "TOTAL"].includes(cells[0]!))
+    .map((cells) => [cells[0], cells[header.indexOf("currency")] || null, Number(Number(cells[header.indexOf("total")]).toFixed(2))]);
+  expect(extra).toEqual([["FX", "HKD", 52.23], ["FX", "SGD", 504.81], ["SUBTOTAL", "USD", 467], ["SUBTOTAL", "HKD", 71.59], ["SUBTOTAL", "SGD", 1286.06], ["TOTAL", null, 1824.65]]);
+  const json = JSON.parse((await show("json", {}, book)).out);
+  expect(json.metadata.currencies.map((part: { currency: string }) => part.currency)).toEqual(["USD", "HKD", "SGD"]);
+  expect(json.metadata.currencies.reduce((sum: number, part: { total: number }) => sum + part.total, 0)).toBeCloseTo(json.metadata.total, 9);
+});
+
+test("a holding without P&L is marked on its row, in the totals that leave it out and in the export's notes", async () => {
+  const book = [...MODEL(), held("D05", "SGX", "SGD", 1000), held("ES3", "SGX", "SGD", 10000)];
+  const csv = (await show("csv", {}, book)).out;
+  const lines = csv.trim().split("\n");
+  const header = lines[0]!.split(",");
+  const cell = (symbol: string, column: string, currency?: string) => {
+    const line = lines.find((entry) => entry.split(",")[0] === symbol && (!currency || entry.split(",")[header.indexOf("currency")] === currency))!;
+    return line.split(",")[header.indexOf(column)];
+  };
+  expect(cell("ES3", "status")).toBe("left out");
+  expect(cell("ES3", "reason")).toContain("did not load");
+  expect(cell("AAPL", "status")).toBe("counted");
+  expect(cell("TOTAL", "status")).toBe("partial");
+  expect(cell("SUBTOTAL", "status", "SGD")).toBe("partial");
+  expect(cell("SUBTOTAL", "status", "HKD")).toBe("complete");
+  expect(csv).toMatch(/note: No P&L for ES3:SGX \(.*\)\. The total leaves it out\./);
+  const json = JSON.parse((await show("json", {}, book)).out);
+  expect(json.metadata).toMatchObject({ complete: false, totalStatus: "partial", unpricedSymbols: ["ES3"] });
 });
 
 test("portfolio show --from --real deflates the total by the CPI from the month before the start to the month before the end", async () => {

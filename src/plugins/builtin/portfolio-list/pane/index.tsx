@@ -115,7 +115,7 @@ import { withPurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 import { usePortfolioFuturesTerms } from "./futures-terms";
 import { useFuturesFrontNotes } from "./futures-front";
 import { usePurchaseDateCostFx } from "./purchase-date-fx";
-import { periodFxLine, periodPnlLabel, periodPnlNotices, usePanePeriodPnl } from "./period-pnl";
+import { periodPnlLabel, periodPnlNotices, periodSummaryLines, usePanePeriodPnl } from "./period-pnl";
 import type { LoadedPeriodPnl } from "../period-pnl";
 import {
   allocationFigures,
@@ -373,7 +373,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     perpetualsVersion: perpetuals.version,
     futuresTerms: futuresTerms.terms,
     futuresTermsVersion: futuresTerms.version,
-    ...(periodColumns ? { periodPnl: { rows: periodColumns.rows, pending: periodColumns.pending, fx: periodFxLine(periodColumns.result) }, periodPnlVersion: periodColumns.version } : {}),
+    ...(periodColumns ? { periodPnl: { rows: periodColumns.rows, pending: periodColumns.pending, lines: periodSummaryLines(periodColumns.result) }, periodPnlVersion: periodColumns.version } : {}),
   }), [
     activeCollectionId,
     exchangeRates,
@@ -506,12 +506,14 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     brokerPortfolio,
     valuationBasis,
     cashInTable: cashRowShown,
+    otherCurrencies,
     period: periodColumns ? {
       label: periodPnlLabel(periodColumns),
       total: periodColumns.result?.total ?? null,
       contribution: periodColumns.result?.totalContribution ?? null,
     } : null,
-  }), [brokerPortfolio, cashRowShown, config.baseCurrency, convertAccountValue, isPortfolioTab, manualCash, periodColumns, portfolioSummaryTotals, summaryAccountState, totalsCurrency, valuationBasis]);
+  }), [brokerPortfolio, cashRowShown, config.baseCurrency, convertAccountValue, isPortfolioTab, manualCash, otherCurrencies, periodColumns, portfolioSummaryTotals,
+    summaryAccountState, totalsCurrency, valuationBasis]);
   // The header row sits in the pane's one-cell side padding, like the table.
   const summaryWidth = Math.max(0, width - 2);
   const summaryLayout = useMemo(() => layoutPortfolioSummaryHeader(summarySegments, summaryWidth, {

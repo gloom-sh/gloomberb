@@ -8,7 +8,8 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { errorMessage } from "../../../../utils/errors";
 import { readPriceWindow, type PriceWindow } from "../../../../utils/price-window";
 import { useAssetData } from "../../../runtime";
-import { loadPeriodPnl, periodBoughtText, periodUnpricedText, type LoadedPeriodPnl } from "../period-pnl";
+import { loadPeriodPnl, periodBoughtText, periodCurrencyParts, periodFxLabel, periodUnpricedText, type LoadedPeriodPnl } from "../period-pnl";
+import type { PeriodSummaryLine } from "../../../../portfolio/column-values";
 
 export interface PanePeriodPnl {
   window: PriceWindow | null;
@@ -40,10 +41,22 @@ export function periodPnlLabel(period: PanePeriodPnl): string {
   return `P&L ${dayMonth(start)}–${dayMonth(end)}`;
 }
 
-/** The FX line under the rows (`FX (HKD)`), so they add up to the header's total; null when every holding is in the book's currency. */
-export function periodFxLine(result: LoadedPeriodPnl | null): { currencies: string; pnl: number; contribution: number | null } | null {
-  const currencies = [...new Set((result?.rows ?? []).flatMap((row) => row.rates ? [row.rates.currency] : []))];
-  return result && currencies.length ? { currencies: currencies.join(", "), pnl: result.fx, contribution: result.fxContribution } : null;
+/**
+ * The lines under the rows of a book in more than one currency, a block per
+ * currency, the book's own first: its holdings' price P&L (`HKD local`), its
+ * FX line (`FX HKD`) and the two together (`HKD total`). The book's own
+ * currency has no FX, so its one line is its total. The rows and the FX lines
+ * add up to the header's total. Empty when every holding is in the book's
+ * currency, whose total the header gives.
+ */
+export function periodSummaryLines(result: LoadedPeriodPnl | null): PeriodSummaryLine[] {
+  return periodCurrencyParts(result ?? { currencies: [] }).flatMap((part): PeriodSummaryLine[] => part.own
+    ? [{ id: `period-total-${part.currency}`, label: `${part.currency} total`, pnl: part.total, contribution: part.contribution }]
+    : [
+      { id: `period-local-${part.currency}`, label: `${part.currency} local`, pnl: part.local, contribution: part.localContribution },
+      { id: `period-fx-${part.currency}`, label: periodFxLabel(part.currency), pnl: part.fx, contribution: part.fxContribution },
+      { id: `period-total-${part.currency}`, label: `${part.currency} total`, pnl: part.total, contribution: part.contribution },
+    ]);
 }
 
 /** What the period's P&L leaves out or could not read, and the holdings bought inside it, for the pane's notices. */

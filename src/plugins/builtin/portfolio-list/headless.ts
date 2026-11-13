@@ -9,6 +9,7 @@ import type {
 import type { TickerRecord } from "../../../types/ticker";
 import type { Quote } from "../../../types/financials";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
+import { displayTickerKey } from "../../../utils/exchanges";
 import {
   collectionQuoteHeadline,
   dayMoveLine,
@@ -53,7 +54,7 @@ import { describeCollections } from "../../../portfolio/collection-name";
 import { currentListingName } from "../../../tickers/listing-name";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { readPriceWindow, type PriceWindow } from "../../../utils/price-window";
-import { loadPeriodPnl, periodBasisText, periodBoughtText, periodUnpricedText } from "./period-pnl";
+import { loadPeriodPnl, periodBasisText, periodBoughtText, periodCurrencyParts, periodFxLabel, periodUnpricedText } from "./period-pnl";
 
 /** An extended print without a known regular close cannot supply a regular-session change. */
 function regularChangeFields(quote: Quote | undefined, change: unknown) {
@@ -493,6 +494,16 @@ const PERIOD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "contribution", header: "Contribution", align: "right", format: percent, description: "P&L over the book's value at the start, gross when it holds a short, in percent." },
 ];
 
+/** `fn PF --from` on a book in more than one currency: each currency's price P&L, FX and total, and the book's. */
+const PERIOD_CURRENCY_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "currency", header: "Currency" },
+  { key: "local", header: "Local", align: "right", format: amount, description: "Its holdings' price P&L, in the portfolio's currency at the end's rate." },
+  { key: "fx", header: "FX", align: "right", format: amount, description: "The currency's move on its holdings' start value." },
+  { key: "total", header: "Total", align: "right", format: amount },
+  { key: "contribution", header: "Contribution", align: "right", format: percent, description: "The total over the book's value at the start, in percent." },
+  { key: "leftOut", header: "Left out", description: "Its holdings with no P&L over the window, which the figures leave out." },
+];
+
 /**
  * PF over a period (`--from`, `--to`): P&L and contribution by position
  * between two closes, as `portfolio show --from` reads them, on the
@@ -541,9 +552,19 @@ async function portfolioPeriodHoldings(
       contribution: row.contribution,
     };
   });
-  const fxCurrencies = [...new Set(result.rows.flatMap((row) => row.rates ? [row.rates.currency] : []))];
-  if (fxCurrencies.length) rows.push({ symbol: `FX (${fxCurrencies.join(", ")})`, pnl: result.fx, contribution: result.fxContribution });
+  // An FX line per currency, then the total; the book by currency under them, as portfolio show --from prints it.
+  const parts = periodCurrencyParts(result);
+  for (const part of parts) if (!part.own) rows.push({ symbol: periodFxLabel(part.currency), pnl: part.fx, contribution: part.fxContribution });
   rows.push({ symbol: "TOTAL", pnl: result.total, contribution: result.totalContribution });
+  const byCurrency = parts.length ? [
+    ...parts.map((part) => ({ currency: part.currency, local: part.local, fx: part.own ? null : part.fx, total: part.total, contribution: part.contribution,
+      ...(part.unpriced.length ? { leftOut: part.unpriced.join(", ") } : {}) })),
+    { currency: "TOTAL", local: result.total - result.fx, fx: result.fx, total: result.total, contribution: result.totalContribution,
+      ...(result.unpriced.length ? { leftOut: result.unpriced.join(", ") } : {}) },
+  ] : [];
+  // The Left out column only when a holding is: each currency's figures name the ones they leave out.
+  const byCurrencyColumns = PERIOD_CURRENCY_COLUMNS.filter((column) => column.key !== "leftOut" || result.unpriced.length > 0)
+    .map((column) => column.align === "right" && column.key !== "contribution" ? { ...column, header: `${column.header} (${currency})` } : column);
   const futuresHeldNow = result.rows.some((row) => { const ticker = bySymbolTicker.get(row.symbol); return !!ticker && isFuturesTicker(ticker); });
   const bought = periodBoughtText(result);
   const notices = [
@@ -563,8 +584,12 @@ async function portfolioPeriodHoldings(
     },
     columns: withListingLabels(withBookCurrency(PERIOD_COLUMNS, currency), tickers),
     rows,
+    ...(byCurrency.length ? {
+      textSections: [{ title: "By currency", columns: byCurrencyColumns, rows: byCurrency }],
+      exportTables: [{ title: "By currency", columns: byCurrencyColumns, rows: byCurrency, unit: currency }],
+    } : {}),
     complete: errors.length === 0,
-    ...(errors.length ? { errors } : {}),
+    ...(errors.length ? { errors, incompleteDetail: `the total leaves out ${result.unpriced.map(displayTickerKey).join(", ")}` } : {}),
     metadata: {
       collection: { kind: "portfolio", id: target.id, name: target.name },
       currency,

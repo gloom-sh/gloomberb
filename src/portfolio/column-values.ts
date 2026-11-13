@@ -157,13 +157,22 @@ export interface ColumnContext {
   /**
    * P&L over a period instead of since cost (the pane's P&L From): P&L shows
    * each row's P&L between the two closes and P&L% its contribution to the
-   * book. Rows are missing while the closes load (`pending`). `fx` is the
-   * currencies' move on the start values, the line under the rows that makes
-   * them add up to the header's total.
+   * book. Rows are missing while the closes load (`pending`). `lines` are
+   * the lines under the rows: a book in more than one currency's part in each
+   * (its price P&L, its FX line, its total), so the rows and FX lines add up
+   * to the header's total.
    */
-  periodPnl?: { rows: ReadonlyMap<string, PeriodPnlRow>; pending: boolean; fx?: { currencies: string; pnl: number; contribution: number | null } | null };
+  periodPnl?: { rows: ReadonlyMap<string, PeriodPnlRow>; pending: boolean; lines?: readonly PeriodSummaryLine[] | null };
   /** Moves whenever `periodPnl` does. */
   periodPnlVersion?: number;
+}
+
+/** A line under a period's rows (`FX HKD`, `HKD total`): its label, P&L and contribution. */
+export interface PeriodSummaryLine {
+  id: string;
+  label: string;
+  pnl: number;
+  contribution: number | null;
 }
 
 /** A row's P&L or contribution over the pane's period: `…` while the closes load, `—` without both. */

@@ -74,6 +74,12 @@ const COMPANY_COLUMN_IDS: ReadonlySet<string> = new Set([
  * still gives.
  */
 const NARROW_BOOK_DROP_ORDER = ["forward_pe", "pe", "dividend_yield", "market_cap", "cost_basis", PRICE_SPARKLINE_COLUMN_ID, "as_of"];
+/**
+ * What a narrow book over a period gives up next, so the period's P&L and
+ * CONTRIB stay on screen: today's columns (the day's P&L, its change, the
+ * latest price) and the cost a period's P&L does not read.
+ */
+const NARROW_PERIOD_DROP_ORDER = [...NARROW_BOOK_DROP_ORDER, "day_pnl", "change_pct", "avg_cost", "price"];
 /** Columns of a held position: a list that shows one is a book, whose value outranks its valuation. */
 const POSITION_COLUMN_IDS: ReadonlySet<string> = new Set(["shares", "avg_cost", "cost_basis", "mkt_value", "weight", "day_pnl", "pnl", "pnl_pct"]);
 
@@ -109,13 +115,15 @@ export function fitPortfolioColumns(
   rows: readonly { cell: (column: ColumnConfig) => string; settled: boolean }[],
   width: number | undefined,
   hidden: ReadonlySet<string> = new Set(),
+  /** The book shows P&L over a period: today's columns go before its P&L and CONTRIB. */
+  period = false,
 ): ColumnConfig[] {
   const settled = rows.length > 0 && rows.every((row) => row.settled);
   const figured = (column: ColumnConfig) => rows.some((row) => row.settled && !isEmptyCell(row.cell(column)));
   const shown = columns.filter((column) => !COMPANY_COLUMN_IDS.has(column.id)
     || (settled ? figured(column) : !hidden.has(column.id) || figured(column)));
   if (width == null || !shown.some((column) => POSITION_COLUMN_IDS.has(column.id))) return shown;
-  return dropColumnsToFit(shown, width - 1, NARROW_BOOK_DROP_ORDER);
+  return dropColumnsToFit(shown, width - 1, period ? NARROW_PERIOD_DROP_ORDER : NARROW_BOOK_DROP_ORDER);
 }
 
 /** A cell recomputes only when its row's records or a context input it reads change. */
@@ -304,11 +312,13 @@ export function PortfolioTickerTable({
     tableFinancialsMap.get(ticker.metadata.ticker)?.quote?.yearRangeBasis === "daily-bars")
     ? rangeColumn.width + displayWidth(RANGE_FROM_BARS_NOTE) + 1
     : 0, [rangeColumn, sortedTickers, tableFinancialsMap]);
-  // The Ticker column grows to its longest symbol, so ETH-USD and BA:LSE show whole beside their market-state dot.
+  // The Ticker column grows to its longest symbol, so ETH-USD and BA:LSE show whole beside their market-state dot,
+  // and to a period's lines under the rows (HKD total).
+  const summaryLabels = columnContext.periodPnl?.lines?.map((line) => line.label).join("\n") ?? "";
   const tickerWidth = useMemo(() => Math.min(MAX_TICKER_COLUMN_WIDTH, sortedTickers.reduce(
     (widest, ticker) => Math.max(widest, TICKER_DOT_WIDTH + displayWidth(listedSymbol(ticker, tickerDisplayName(ticker), columnContext.homeMarket))),
-    0,
-  )), [columnContext.homeMarket, sortedTickers]);
+    summaryLabels ? Math.max(...summaryLabels.split("\n").map((label) => TICKER_DOT_WIDTH + displayWidth(label))) : 0,
+  )), [columnContext.homeMarket, sortedTickers, summaryLabels]);
   // A book that holds a short weighs its positions against gross exposure, and the header says so.
   const grossWeights = columnContext.portfolioWeightBasis === "gross";
   // Market caps, values and P&L read in the book's currency, which their headers name (MKT VAL (CAD)), as the CLI's do.
@@ -338,34 +348,34 @@ export function PortfolioTickerTable({
         cell: (column: ColumnConfig) => resolveCell(column, ticker, financials).text,
         settled: companyDataSettled(financials, !!answeredSnapshots?.has(ticker.metadata.ticker)),
       };
-    }), width, hiddenCompanyRef.current.ids).map((column) => column.id));
+    }), width, hiddenCompanyRef.current.ids, period).map((column) => column.id));
     return sizedColumns.filter((column) => !shown.has(column.id)).map((column) => column.id).join(",");
-  }, [answeredSnapshots, resolveCell, sizedColumns, sortedTickers, tableFinancialsMap, width]);
+  }, [answeredSnapshots, period, resolveCell, sizedColumns, sortedTickers, tableFinancialsMap, width]);
   hiddenCompanyRef.current.ids = new Set(hiddenColumnIds.split(",").filter((id) => COMPANY_COLUMN_IDS.has(id)));
   const displayColumns = useMemo(() => {
     const hidden = new Set(hiddenColumnIds.split(","));
     return hiddenColumnIds ? sizedColumns.filter((column) => !hidden.has(column.id)) : sizedColumns;
   }, [hiddenColumnIds, sizedColumns]);
-  // Over a period, the FX line under the rows, so P&L adds up to the header's total as portfolio show --from prints it.
-  const periodFx = columnContext.periodPnl?.fx ?? null;
+  // Over a period, each currency's part under the rows, so P&L adds up to the header's total as portfolio show --from prints it.
+  const periodLines = columnContext.periodPnl?.lines ?? null;
   const summaryRows = useMemo<TickerTableSummaryRow[] | undefined>(() => {
     // A row's label goes in TICKER, or the first column when the pane shows none.
     const labelColumn = displayColumns.some((column) => column.id === "ticker") ? "ticker" : displayColumns[0]?.id ?? "ticker";
     const labelled = (row: TickerTableSummaryRow): TickerTableSummaryRow => labelColumn === "ticker" || !row.cells.ticker ? row
       : { ...row, cells: { ...row.cells, [labelColumn]: row.cells.ticker } };
     const rows = [
-      ...(periodFx ? [{
-        id: "period-fx",
+      ...(periodLines ?? []).map((line) => ({
+        id: line.id,
         cells: {
-          ticker: { text: `FX (${periodFx.currencies})` },
-          pnl: periodPnlFigure(periodFx.pnl, "pnl"),
-          pnl_pct: periodPnlFigure(periodFx.contribution, "contribution"),
+          ticker: { text: line.label },
+          pnl: periodPnlFigure(line.pnl, "pnl"),
+          pnl_pct: periodPnlFigure(line.contribution, "contribution"),
         },
-      }] : []),
+      })),
       ...(allocationRows ?? []),
     ].map(labelled);
     return rows.length > 0 ? rows : undefined;
-  }, [allocationRows, displayColumns, periodFx]);
+  }, [allocationRows, displayColumns, periodLines]);
   // The table offers "Sort by…" while it has a sort column. A watchlist starts
   // unsorted and a third header click turns sorting off, so the unsorted state
   // needs its own entry until TickerListTableView takes `sortable`.

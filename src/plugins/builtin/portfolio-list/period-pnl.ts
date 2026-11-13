@@ -1,7 +1,7 @@
 import type { Quote } from "../../../types/financials";
 import { loadCostFxRate, type CostFxHistoryClient } from "../../../portfolio/cost-fx";
 import { withFuturesContractSize, isFuturesTicker, type PortfolioFuturesTerms } from "../../../portfolio/futures-positions";
-import { periodCurrency, periodPnl, type PeriodClose, type PeriodPnl, type PeriodPnlHolding, type PeriodPnlRow } from "../../../portfolio/period-pnl";
+import { periodCurrency, periodPnl, type PeriodClose, type PeriodCurrencyPnl, type PeriodPnl, type PeriodPnlHolding, type PeriodPnlRow } from "../../../portfolio/period-pnl";
 import { getPortfolioPositionMetrics } from "../../../portfolio/position-metrics";
 import { barSessionDay, periodDayText } from "../../../market-data/market/period-return";
 import { quoteHeadlineTime } from "../../../market-data/market/status";
@@ -201,6 +201,21 @@ export function periodBasisText(result: LoadedPeriodPnl, { futuresHeld, now = Da
   // A future runs from its settlement; to a settlement too unless the window ends on its latest price.
   const futures = !futuresHeld ? "" : partial ? ", futures from their settlements" : ", futures at their settlements";
   return `P&L from ${start} to ${end}${futures}, on the holdings held now`;
+}
+
+/**
+ * The book by currency, as a report of the period lists it: each currency's
+ * price P&L, FX and total once the book holds a currency other than its own,
+ * the book's own first. Empty for a book in one currency, whose total says it.
+ */
+export function periodCurrencyParts(result: Pick<PeriodPnl, "currencies">): PeriodCurrencyPnl[] {
+  const parts = result.currencies ?? [];
+  return parts.some((part) => !part.own) ? parts : [];
+}
+
+/** An FX line's label, as every report of a period writes it: `FX HKD`. */
+export function periodFxLabel(currency: string): string {
+  return `FX ${currency}`;
 }
 
 /** `No P&L for GC=F (contract size unknown), 2382 (no close before 2020-03-18). The total leaves them out.` Null when every holding has one. */

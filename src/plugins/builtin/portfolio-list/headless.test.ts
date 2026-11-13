@@ -294,7 +294,7 @@ test("fn PF --from lists the period's P&L largest first within --limit, with the
   const result = await collectionHoldingsHeadless.load(period({ limit: 2 }), ctx);
   // The two largest at the start, in USD (AAPL's $17,387, 2382's HK$63,150 at 7.80, $8,096, over TSLA's $8,000 short),
   // then the FX line and the total, which count TSLA too.
-  expect(result.rows.map((row) => row.symbol)).toEqual(["AAPL", "2382", "FX (HKD)", "TOTAL"]);
+  expect(result.rows.map((row) => row.symbol)).toEqual(["AAPL", "2382", "FX HKD", "TOTAL"]);
   const fx = 63_150 * (1 / 7.75 - 1 / 7.8);
   expect(result.rows.at(-1)!.pnl as number).toBeCloseTo(150 / 7.75 + 50 * (344.63 - 347.73) + -20 * (380 - 400) + fx, 6);
   expect(result.metadata?.notices).toContain("1 more position not shown; the FX line and the total include every position.");
