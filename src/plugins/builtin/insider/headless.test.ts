@@ -539,8 +539,8 @@ test("fn INS <ticker> --view insiders lists each insider as the ranking counts t
     setCliWidthOverride(120);
     const text = renderHeadlessPaneText(headless, result, args({}), "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
     expect(text).toContain("Insider     Role      Nth  Vs Usual   Stake  Bought  Plan Buys   Sold  Last");
-    expect(text).toContain("Ana Rivera  CEO       4th      2.8x     +3%    $12k       $12k     --  2026-10-14");
-    expect(text).toContain(`Ben Okafor  Director  2nd         ${MISSING_VALUE}  EXITED      --         --  $1.3M  2026-10-09`);
+    expect(text).toContain(`Ana Rivera  CEO       4th      2.8x     +3%    $12k       $12k      ${MISSING_VALUE}  2026-10-14`);
+    expect(text).toContain(`Ben Okafor  Director  2nd         ${MISSING_VALUE}  EXITED       ${MISSING_VALUE}          ${MISSING_VALUE}  $1.3M  2026-10-09`);
     expect(result.rows.map((row) => [row.insider, row.side, row.bought, row.planBought, row.sold]))
       .toEqual([["Ana Rivera", "buy", 12_000, 12_000, null], ["Ben Okafor", "sell", null, null, 1_300_000]]);
     // A CAD base gets each insider's dollars in CAD at their last trade day's close, as the trades and the ranking do.

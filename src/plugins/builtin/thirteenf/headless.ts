@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type {
   HeadlessPaneColumn,
   HeadlessPaneContext,
@@ -98,7 +99,7 @@ const weight = (value: unknown) => formatWeightMaybe(finiteOrNull(value));
 const shares = (value: unknown) => formatShares(finiteOrNull(value));
 const weightPoints = (value: unknown) => {
   const change = finiteOrNull(value);
-  return change == null ? "--" : `${change > 0 ? "+" : ""}${(change * 100).toFixed(2)}pp`;
+  return change == null ? MISSING_VALUE : `${change > 0 ? "+" : ""}${(change * 100).toFixed(2)}pp`;
 };
 
 const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
@@ -173,7 +174,7 @@ const HOLDING_COLUMNS: HeadlessPaneColumn[] = [
 const FILING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "periodOfReport", header: "Period" },
   // The whole day, as the period beside it: the list spans years.
-  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || "--" },
+  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE },
   {
     key: "tableValueTotal",
     header: "Value (USD)",

@@ -1,5 +1,5 @@
 import type { CorporateActionsData, EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
-import { formatNumber } from "../../../utils/format";
+import { formatNumber, MISSING_VALUE } from "../../../utils/format";
 
 /**
  * How every earnings surface (ERN, EE, the corporate-actions events and
@@ -94,7 +94,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 export function quarterLabel(date: string | undefined): string {
   const match = /^(\d{4})-(\d{2})/.exec(date ?? "");
   const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
-  return match && month ? `${month} ${match[1]}` : "-";
+  return match && month ? `${month} ${match[1]}` : MISSING_VALUE;
 }
 
 /** Actual over estimate minus one, against the estimate's size so a negative estimate reads the right way. */

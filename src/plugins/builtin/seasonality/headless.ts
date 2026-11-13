@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadSeasonalityHistory } from "./client";
@@ -5,7 +6,7 @@ import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-pa
 import { MONTH_LABELS, projectSeasonality, projectWeekdays, TURN_OF_MONTH_LABELS } from "./model";
 import { logFailure } from "../../../utils/log-failure";
 
-const percent = (digits: number) => (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(digits)}%` : "--";
+const percent = (digits: number) => (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(digits)}%` : MISSING_VALUE;
 const statColumns = (digits: number, countHeader: string) => [{ key: "mean", header: "Avg", format: percent(digits) },
   { key: "median", header: "Median", format: percent(digits) }, { key: "hitRate", header: "Up", format: percent(1) }, { key: "count", header: countHeader }];
 

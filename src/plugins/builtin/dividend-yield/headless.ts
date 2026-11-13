@@ -10,7 +10,7 @@ import type { DividendPayment, GrowthPayments } from "./types";
 import {
   convertedFromText, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
 } from "./view";
-import { formatDistributionAmount, formatPercent } from "../../../utils/format";
+import { MISSING_VALUE, formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { forwardDividendBasis, historyEndsText, noCurrentDividend, TRAILING_DIVIDEND_BASIS, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
 import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
@@ -39,7 +39,7 @@ function paymentColumns(converted: boolean, subUnit?: string) {
     { key: "exDate", header: "Ex-date" },
     { key: "amount", header: "Amount", align: "right" as const,
       format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.currency === "string" && row.currency
-        ? amount(value, row.currency) : value == null ? "-" : String(value) },
+        ? amount(value, row.currency) : value == null ? MISSING_VALUE : String(value) },
     { key: "currency", header: "CCY" },
     { key: "type", header: "Type" },
   ];
@@ -52,7 +52,7 @@ const SOURCE_COLUMN = { key: "source", header: "Source",
 /** After the amount, for a company declaring in another currency than the listing pays: what it declared. */
 const DECLARED_COLUMN = { key: "declared", header: "Declared", align: "right" as const,
   format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.declaredCurrency === "string"
-    ? formatDistributionAmount(value, row.declaredCurrency) : "-" };
+    ? formatDistributionAmount(value, row.declaredCurrency) : MISSING_VALUE };
 
 /** What a ticker's read needs: the market data, Gloom Cloud, and the listing a typed key stands for. */
 export type DividendReadContext = Pick<HeadlessPaneContext, "marketData" | "apiClient" | "resolveInstrument">;

@@ -147,8 +147,8 @@ describe("CTM report basis", () => {
     const text = plain(renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM"));
     // The text reads each spot beside its premium and the days the rate divides by; the spot's minute is the trade's, in As Of UTC.
     expect(text).toMatch(/Contract +Last Trade +Settle +Last +Change +Spot +Vs Spot +Days +Ann Basis +As Of UTC/);
-    expect(text).toMatch(/BTCV26 +2026-10-30 +-- +80740\.00 +-- +80600\.00 +\+0\.17% +6\.6 +\+9\.6% +2026-10-24 01:33/);
-    expect(text).toMatch(new RegExp(String.raw`BTCH27 .* 83035\.00 +-- +-- +${MISSING_VALUE} +-- +${MISSING_VALUE} +2026-10-24 03:52`));
+    expect(text).toMatch(new RegExp(String.raw`BTCV26 +2026-10-30 +${MISSING_VALUE} +80740\.00 +${MISSING_VALUE} +80600\.00 +\+0\.17% +6\.6 +\+9\.6% +2026-10-24 01:33`));
+    expect(text).toMatch(new RegExp(String.raw`BTCH27 .* 83035\.00 +${MISSING_VALUE} +${MISSING_VALUE} +${MISSING_VALUE} +${MISSING_VALUE} +${MISSING_VALUE} +2026-10-24 03:52`));
     expect(text).not.toContain("Spot Time");
     expect(text).toMatch(/\nNotes:\n {2}Ann Basis = \(Last \/ spot - 1\) × 365 \/ days to expiry.*\n {2}Basis blank for BTCZ26 .*\n {2}Ann Basis is noisy under 7 days/);
     // Other roots have no basis columns to footnote.
@@ -255,7 +255,7 @@ describe("CTM change", () => {
       [-22, null], [null, "2026-10-22"], [6, null], [null, "2026-10-22"], [null, null]]);
     expect(result.notes).toEqual(["Change blank for ESM27, ESZ27 (no trade since 2026-10-22)."]);
     const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
-    expect(text).toMatch(/ESM27 .* 7858\.75 +7857\.25 +-- /);
+    expect(text).toMatch(new RegExp(String.raw`ESM27 .* 7858\.75 +7857\.25 +${MISSING_VALUE} `));
     // A Cboe price is the settlement itself: its move from the settlement before stays.
     const vix = { ...payload, root: "VX", source: "cboe" as const, contracts: [{ ...contract("VX", "X26", 30, 19.379, false, "2026-10-22"), symbol: "VX/X6", settlement: 19.379, change: 1.1408 }] };
     const cboe = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "VX", argument: "VX", symbols: [], options: {} }),
@@ -381,7 +381,7 @@ describe("CTM exports and the session that has just opened", () => {
       expect(result.notes).toContain("Front spread pairs GCZ26 with GCG27 (77,624 open interest), skipping GCF27 (799).");
       const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
       // 22:00 UTC on 11-03 is the 16:00 Chicago close, the settlement's own session: no move since, and dated as the settlement.
-      expect(text).toMatch(/GCU27 .* 4088\.10 +4088\.10 +-- +settle 2026-11-03 /);
+      expect(text).toMatch(new RegExp(String.raw`GCU27 .* 4088\.10 +4088\.10 +${MISSING_VALUE} +settle 2026-11-03 `));
       expect(text).toMatch(/GCZ26 .* 4072\.10 +\+131\.70 +2026-11-04 23:17 /);
       expect(result.sections[0]!.rows!.find((row) => row.symbol === "GCU27.CMX")).toMatchObject({ change: null, noTradeSince: "2026-11-03", settleShown: "2026-11-03" });
       // The CSV has no print to date it by: As Of UTC is empty, settle_date dates the settlement it shows.

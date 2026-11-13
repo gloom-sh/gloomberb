@@ -36,7 +36,7 @@ describe("yield curve headless model", () => {
     expect(result.metadata).toMatchObject({ asOf: "2026-10-20", treasuryDate: "2026-10-20", history: { tenor: "2Y" } });
     const lines = renderHeadlessPaneText(headless, result, swapArgs, "GC").split("\n");
     expect(lines.find((line) => line.startsWith("1Y "))).toMatch(/3\.50%\s+\+1\.2bp\s+-20\.5bp/);
-    expect(lines.find((line) => line.startsWith("5Y "))).toMatch(/-\s+-\s+-\s+2\s*$/);
+    expect(lines.find((line) => line.startsWith("5Y "))).toMatch(new RegExp(String.raw`${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+2\s*$`));
     expect(lines.find((line) => line.startsWith("30Y "))).toMatch(/3 Thin/);
   });
 
@@ -95,7 +95,7 @@ describe("yield curve headless model", () => {
     expect(cells("2Y")).toEqual(["2Y", "2", "4.80%", "+5bp", "2026-10-09"]);
     expect(cells("10Y")[3]).toBe("-1bp");
     expect(cells("30Y")[3]).toBe("0bp");
-    expect(cells("5Y")[3]).toBe("-");
+    expect(cells("5Y")[3]).toBe(MISSING_VALUE);
   });
 
   test("the text prints the pane's spreads under the tenors, ranked when the stored curve ranks them", async () => {
@@ -165,7 +165,7 @@ describe("yield curve headless model", () => {
     const text = renderHeadlessPaneText(createYieldCurveHeadless(), past, args, "GC");
     expect(text).not.toContain("Not issued");
     expect(text).not.toContain("Errors:");
-    expect(text.split("\n").find((line) => line.startsWith("1M "))!.split(/\s+/)).toContain("-");
+    expect(text.split("\n").find((line) => line.startsWith("1M "))!.split(/\s+/)).toContain(MISSING_VALUE);
 
     const latest = await createYieldCurveHeadless(stored(yields, null)).load(args, {} as HeadlessPaneContext);
     expect(latest.notes).toBeUndefined();

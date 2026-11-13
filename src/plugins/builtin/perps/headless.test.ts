@@ -69,7 +69,7 @@ test("history report reads as units and the rows keep every raw field", async ()
   expect(text).toContain("-0.12%");
   expect(text).toContain("2026-10-03 23:20 UTC");
   // A missing figure is "--", never undefined, NaN or a stray hyphen.
-  expect(text).toMatch(new RegExp(String.raw`${MISSING_VALUE}\s+${MISSING_VALUE}\s+--\s+${MISSING_VALUE}\s`));
+  expect(text).toMatch(new RegExp(String.raw`${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s`));
   expect(text).not.toMatch(/undefined|NaN|\d\.\d{9,}/);
   expect(longest(text)).toBeLessThanOrEqual(140);
   const json = serializeHeadlessPaneResult(perpsHeadless, result) as { sections: Array<{ title: string; rows: unknown[] }>; metadata: { rates: string } };

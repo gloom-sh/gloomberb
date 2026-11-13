@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroDaySeriesHistory, loadMacroReleases, macroDayEarningsNotice, type MacroDayEarnings } from "./client";
@@ -8,9 +9,9 @@ import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, MACRO_SUR
   US_MACRO_EVENT_KINDS, type MacroEventKind, type MacroReleaseFigures, type MacroSurprise } from "./releases";
 
 // A mean that rounds to zero reads 0.00%, never -0.00%.
-const percent = (value: unknown) => typeof value !== "number" ? "--" : /[1-9]/.test((value * 100).toFixed(2)) ? `${(value * 100).toFixed(2)}%` : "0.00%";
-const multiple = (value: unknown) => typeof value === "number" ? `${value.toFixed(2)}x` : "--";
-const share = (value: unknown) => typeof value === "number" ? `${Math.round(value * 100)}%` : "--";
+const percent = (value: unknown) => typeof value !== "number" ? MISSING_VALUE : /[1-9]/.test((value * 100).toFixed(2)) ? `${(value * 100).toFixed(2)}%` : "0.00%";
+const multiple = (value: unknown) => typeof value === "number" ? `${value.toFixed(2)}x` : MISSING_VALUE;
+const share = (value: unknown) => typeof value === "number" ? `${Math.round(value * 100)}%` : MISSING_VALUE;
 
 export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Ticker, or a FRED series such as FRED:T10Y2Y", examples: ["TLT", "FRED:T10Y2Y"] },
@@ -56,7 +57,7 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
     const row = (label: string, stats: MacroDayStats) => ({ label, ...stats });
     // A yield index (^TNX) moves by its level: its columns are headed bp and read the change in the yield.
     const yieldMoves = model.basis === "yield";
-    const bp = (signed: boolean) => (value: unknown) => typeof value === "number" ? formatMacroDayMove(value, "yield", { signed, unit: false }) : "--";
+    const bp = (signed: boolean) => (value: unknown) => typeof value === "number" ? formatMacroDayMove(value, "yield", { signed, unit: false }) : MISSING_VALUE;
     const move = yieldMoves ? bp(true) : percent;
     const absMove = yieldMoves ? bp(false) : percent;
     const header = (label: string) => yieldMoves ? `${label} bp` : label;
@@ -98,7 +99,7 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "event", header: "Release", textFormat: (_value, row) => macroDayEventLabel({ kind: row.kind as MacroEventKind,
             earnings: row.earnings === true, figures: typeof row.decision === "string" ? { decision: row.decision } as MacroReleaseFigures : null }) },
           // A computed actual (a CPI's year-on-year change from the index) says so beside it; the export keeps the flag apart.
-          { key: "actual", header: "Actual", textFormat: (value, row) => typeof value !== "string" ? "-"
+          { key: "actual", header: "Actual", textFormat: (value, row) => typeof value !== "string" ? MISSING_VALUE
             : row.actualComputed === true ? `${value} (computed)` : value },
           { key: "forecast", header: "Forecast" }, { key: "prior", header: "Prior" },
           { key: "surprise", header: "Surprise" },

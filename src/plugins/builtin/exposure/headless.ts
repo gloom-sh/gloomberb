@@ -1,7 +1,7 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import type { ExposureExtensionObservation, ExposurePayload, ExposureRequest, ExposureScenario } from "../../../api-client/exposure";
 import { cliTerminalWidth } from "../../../utils/cli-output";
-import { clipToDisplayWidth, displayWidth } from "../../../utils/format";
+import { MISSING_VALUE, clipToDisplayWidth, displayWidth } from "../../../utils/format";
 import { fiscalLabel } from "../company-kpis/model";
 import { humanLabel } from "../shared/research-cells";
 import { freePreviewNote } from "../shared/free-preview";
@@ -128,7 +128,7 @@ function driverLabel(driver: ExposureExtensionObservation): string {
 }
 /** The scope in words, after the basis when the figure is not the reported one: Adjusted · diluted. */
 function driverScopeText(driver: ExposureExtensionObservation): string {
-  return [driver.basis && driver.basis !== "reported" ? humanLabel(driver.basis) : "", driverScope(driver)].filter(Boolean).join(" · ") || "--";
+  return [driver.basis && driver.basis !== "reported" ? humanLabel(driver.basis) : "", driverScope(driver)].filter(Boolean).join(" · ") || MISSING_VALUE;
 }
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 /**
@@ -137,7 +137,7 @@ const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "
  * words it freely; wording that is not a fiscal year or quarter prints as is.
  */
 function driverPeriod(driver: ExposureExtensionObservation): { short: string; long: string } {
-  const text = driver.period?.trim() || "--";
+  const text = driver.period?.trim() || MISSING_VALUE;
   const match = /^(?:full\s+)?(?:Q([1-4])\s+)?(?:fiscal(?:\s+year)?\s+|FY\s?)(\d{4})(?:\s+ended\s+(.+))?$/i.exec(text);
   if (!match) return { short: text, long: text };
   const quarter = match[1] ? Number(match[1]) : null;
@@ -147,9 +147,9 @@ function driverPeriod(driver: ExposureExtensionObservation): { short: string; lo
   return { short, long: month ? `${short} · ${month} ${ended![2]}, ${ended![3]}` : short };
 }
 const DRIVER_COLUMNS = [holding("Holding"), column("label", "Company driver", row => row.driver ? driverLabel(row.driver) : row.label, { min: NAME }),
-  column("value", "Value", row => row.driver ? driverAmount(row.driver) : "--", { right: true }),
-  column("period", "Period", row => row.driver ? driverPeriod(row.driver).short : "--", { min: 10, long: row => row.driver ? driverPeriod(row.driver).long : "--" }),
-  column("scope", "Scope", row => row.driver ? driverScopeText(row.driver) : "--", { min: NAME })];
+  column("value", "Value", row => row.driver ? driverAmount(row.driver) : MISSING_VALUE, { right: true }),
+  column("period", "Period", row => row.driver ? driverPeriod(row.driver).short : MISSING_VALUE, { min: 10, long: row => row.driver ? driverPeriod(row.driver).long : MISSING_VALUE }),
+  column("scope", "Scope", row => row.driver ? driverScopeText(row.driver) : MISSING_VALUE, { min: NAME })];
 
 /**
  * An anonymous counterparty leads with the name its filing gives it, and the

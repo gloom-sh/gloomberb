@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { DoeSeriesRow, DoeTab } from "../../../api-client/doe";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { loadDoeBoard } from "./client";
@@ -18,7 +19,7 @@ import {
 } from "./model";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 
-const text = (value: unknown) => typeof value === "string" ? value : "--";
+const text = (value: unknown) => typeof value === "string" ? value : MISSING_VALUE;
 
 /** One row per series, in the pane's words and units; numbers keep their published precision. */
 function reportRow(row: DoeSeriesRow) {

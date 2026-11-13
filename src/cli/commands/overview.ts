@@ -5,7 +5,7 @@ import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices, withConfigData, withMarketData } from "../context";
 import { CLI_ERROR_CODE, failWithFields } from "../errors";
 import type { CliResultColumn } from "../result";
-import { formatCompact } from "../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../utils/format";
 import { DATE_OPTION_EXAMPLES, DATE_OPTION_FORMATS, dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import {
   fetchPreferredMarketMovers,
@@ -965,12 +965,12 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     ...(closedDay ? { footnote: closedDay, exportNotes: [closedDay] } : {}),
     textColumns: [
       { key: "tenor", header: "Tenor", value: (row) => YIELD_TENORS[String(row.seriesId)] ?? row.seriesId },
-      { key: "value", header: "Yield %", align: "right", format: (value) => typeof value === "number" ? value.toFixed(2) : "-" },
+      { key: "value", header: "Yield %", align: "right", format: (value) => typeof value === "number" ? value.toFixed(2) : MISSING_VALUE },
       {
         key: "changeBasisPoints",
         header: "1D bp",
         align: "right",
-        format: (value) => typeof value === "number" ? formatBasisPoints(value / 100, 1) : "-",
+        format: (value) => typeof value === "number" ? formatBasisPoints(value / 100, 1) : MISSING_VALUE,
       },
       { key: "date", header: "Date" },
       { key: "seriesId", header: "Series" },

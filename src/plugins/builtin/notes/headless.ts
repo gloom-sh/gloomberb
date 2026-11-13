@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 /**
  * `gloom fn NOTE`: the quick notes the Notes pane opens, read where the pane
  * reads them (Gloom Cloud when signed in, the files on this device otherwise),
@@ -68,7 +69,7 @@ export const notesHeadless = {
   options: [],
   columns: [
     { key: "title", header: "Note" },
-    { key: "updated", header: "Updated", textFormat: (value) => (typeof value === "string" ? formatUtcTime(value) : "-") },
+    { key: "updated", header: "Updated", textFormat: (value) => (typeof value === "string" ? formatUtcTime(value) : MISSING_VALUE) },
     { key: "text", header: "Text", textHeader: "First line", shrink: true, textFormat: (value) => firstLine(typeof value === "string" ? value : "") },
   ],
   discovery: { screenshotReadiness: "ready" },

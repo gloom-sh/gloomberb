@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { SupplyRow } from "../../../api-client/supply-chain";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import type { GraphEvidence, GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
@@ -19,7 +20,7 @@ import { counterpartyName, disclosedValue, disclosureText, earlierRows, isTagged
 function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPaneRow, SupplyRow>, focusId: string | undefined): HeadlessPaneColumn[] {
   const cell = (read: (row: SupplyRow) => string | null) => (value: unknown, row: HeadlessPaneRow) => {
     const source = sources.get(row);
-    return (source ? read(source) : value == null ? null : String(value)) ?? "-";
+    return (source ? read(source) : value == null ? null : String(value)) ?? MISSING_VALUE;
   };
   const valued = rows.some((row) => { const source = sources.get(row); return !!source && (nativeValue(source) !== null || source.usd !== null); });
   const lengths = rows.some((row) => sources.get(row)?.periodMonths != null);
@@ -82,7 +83,7 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
   sections.push({ title: "Disclosure evidence", columns: [
     { key: "reporter", header: "Reporting company" }, { key: "from", header: "Supplier / from" }, { key: "to", header: "Customer / to" },
     // The share in the Table's words, its reporter named ("27% of NEM total revenue (gold sales)"); exports keep pct and denominator apart.
-    { key: "role", header: "Role" }, { key: "pct", header: "Share", textFormat: (_value, row) => String(row.share ?? "-") },
+    { key: "role", header: "Role" }, { key: "pct", header: "Share", textFormat: (_value, row) => String(row.share ?? MISSING_VALUE) },
     { key: "period", header: "Period", textFormat: (value, row) => periodText({ period: String(value), periodMonths: row.periodMonths as number | null }) },
     { key: "filed", header: "Filed" }, { key: "confidence", header: "Confidence" },
     // A tagged XBRL fact prints the link's filing sentence when one names the same pair, otherwise the fact in words; exports keep the stored text.

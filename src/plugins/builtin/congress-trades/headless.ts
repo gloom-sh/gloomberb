@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type {
   HeadlessPaneColumn,
   HeadlessPaneContext,
@@ -75,7 +76,7 @@ const MEMBER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "medianReturn", header: "Median return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
   { key: "pricedTradeCount", header: "Priced trades" },
   { key: "medianExcessSinceFiling", header: "Median vs SPY", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
-  { key: "buyHitRate", header: "Buy hit", align: "right", format: value => typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "--" },
+  { key: "buyHitRate", header: "Buy hit", align: "right", format: value => typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : MISSING_VALUE },
   { key: "pricedBuyCount", header: "Priced buys" },
 ];
 

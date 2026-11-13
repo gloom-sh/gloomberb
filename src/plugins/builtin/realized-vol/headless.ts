@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { barsPerYearLabel, currencyPairInstrument } from "../../../market-data/bars-per-year";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { createSurfaceDependencies } from "../vol-surface/client";
@@ -13,7 +14,7 @@ import {
 } from "./fx-proxy";
 import type { HeadlessBundleSection } from "../../../types/headless";
 
-const percent = (value: number | null | undefined) => value == null ? "--" : `${(value * 100).toFixed(2)}%`;
+const percent = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${(value * 100).toFixed(2)}%`;
 
 /**
  * An FX pair's IV section: the fund whose options stand in, its IV30 and the
@@ -27,10 +28,10 @@ function fxProxySection(proxy: FxVolProxy, reading: FxProxyReading): HeadlessBun
     { label: "Proxy", value: proxy.fund, formatted: fxProxyNote(proxy) },
     { label: fxProxyLabel(proxy), value: proxy.iv30?.value ?? null, formatted: percent(proxy.iv30?.value) },
     { label: "Close", value: proxy.iv30?.date ?? null,
-      formatted: proxy.iv30 ? `${proxy.iv30.date}${proxy.iv30.method === "quote-mid" ? " (quote mid)" : ""}${stale ? ", stale" : ""}` : "--" },
+      formatted: proxy.iv30 ? `${proxy.iv30.date}${proxy.iv30.method === "quote-mid" ? " (quote mid)" : ""}${stale ? ", stale" : ""}` : MISSING_VALUE },
     { label: fxProxyChainLabel(proxy), value: proxy.expiries?.usable ?? null, formatted: fxProxyChainText(proxy, Date.now()) },
     { label: "Pair HV20", value: hv20, formatted: percent(hv20) },
-    { label: "IV30 - HV20", value: spread, formatted: spread == null ? "--" : `${spread >= 0 ? "+" : ""}${(spread * 100).toFixed(2)} pts` },
+    { label: "IV30 - HV20", value: spread, formatted: spread == null ? MISSING_VALUE : `${spread >= 0 ? "+" : ""}${(spread * 100).toFixed(2)} pts` },
   ] };
 }
 
@@ -98,19 +99,19 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
           { title: "Volatility cone", columns: [
             { key: "window", header: "Bars" },
             ...["current", "min", "max", "mean", "median"].map((key) => ({ key, header: key,
-              format: (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" })),
-            { key: "percentile", header: "Percentile", format: (value) => typeof value === "number" ? `${value.toFixed(1)}%` : "--" },
+              format: (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE })),
+            { key: "percentile", header: "Percentile", format: (value) => typeof value === "number" ? `${value.toFixed(1)}%` : MISSING_VALUE },
             { key: "sampleSize", header: "Samples" },
           ], rows: model.cone.map((row) => ({ ...row })) },
           ...proxy && proxyReading ? [fxProxySection(proxy, proxyReading)] : fx || !args.options.showIv ? [] : [{ title: "Current IV", entries: [
-            { label: "ATM IV", value: iv?.reference?.value ?? null, formatted: iv?.reference ? `${(iv.reference.value * 100).toFixed(2)}%` : "--" },
+            { label: "ATM IV", value: iv?.reference?.value ?? null, formatted: iv?.reference ? `${(iv.reference.value * 100).toFixed(2)}%` : MISSING_VALUE },
             { label: "Expiry", value: iv?.reference?.expiration ?? null,
-              formatted: iv?.reference ? new Date(iv.reference.expiration * 1000).toISOString().slice(0, 10) : "--" },
+              formatted: iv?.reference ? new Date(iv.reference.expiration * 1000).toISOString().slice(0, 10) : MISSING_VALUE },
             { label: "Days", value: iv?.reference?.daysToExpiry ?? null,
-              formatted: iv?.reference ? String(Math.round(iv.reference.daysToExpiry)) : "--" },
+              formatted: iv?.reference ? String(Math.round(iv.reference.daysToExpiry)) : MISSING_VALUE },
             // To the minute, as the pane reads it; the JSON keeps the chain's read time whole.
             { label: "Observed", value: iv?.reference?.date.toISOString() ?? null,
-              formatted: iv?.reference ? atmIvObservedLabel(iv.reference.date) : "--" },
+              formatted: iv?.reference ? atmIvObservedLabel(iv.reference.date) : MISSING_VALUE },
           ] }],
         ],
         // A short history is whole: the windows it is too short for have no estimate yet, and the note says when it starts.

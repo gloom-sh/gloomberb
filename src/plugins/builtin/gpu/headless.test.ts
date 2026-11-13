@@ -59,6 +59,6 @@ test("the board report leads with Gloom's daily settle of the GPU asked for, a d
   const cells = settle!.rows!.map((row) => settle!.columns!.map((column) => column.format ? column.format(row[column.key], row) : String(row[column.key])));
   expect(cells).toEqual([
     ["H100 80GB SXM", "settled", "2.99", "-1.2%", MISSING_VALUE, MISSING_VALUE, "2026-10-02 20:00 UTC"],
-    ["H100 80GB PCIe", "no settle", "-", "-1.2%", MISSING_VALUE, MISSING_VALUE, "2026-10-02 20:00 UTC"],
+    ["H100 80GB PCIe", "no settle", MISSING_VALUE, "-1.2%", MISSING_VALUE, MISSING_VALUE, "2026-10-02 20:00 UTC"],
   ]);
 });

@@ -1,13 +1,13 @@
 import { getCompletedRegularSessionDisplay } from "../../../market-data/market/status";
 import { regularSessionValuationTime } from "../../../market-data/quotes/regular-session-valuation";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { formatCompactCurrency } from "../../../utils/format";
+import { MISSING_VALUE, formatCompactCurrency } from "../../../utils/format";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadReverseDcfInputs, reverseDcfSources } from "./client";
 import { describeFcfMargin, DISCOUNT_RATES, missingInputsNote, pastGrowthBasis, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS, ttmBaseNote,
   type ImpliedGrowth, type MissingInput } from "./model";
 
-const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "--";
+const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : MISSING_VALUE;
 /** An assumption as it is set: 9%, 2.5%. */
 const rate = (value: number) => `${Number((value * 100).toFixed(2))}%`;
 const implied = (value: ImpliedGrowth | null) => !value ? null : value.kind === "rate" ? value.value : value.kind;
@@ -45,21 +45,21 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
     // A missing input names itself and the statement that would show it: a limit of the data, not an error.
     const notes = [missingInputsNote(model.missing, args.symbols[0]!), model.enterpriseValueNote, model.freeCashFlowBasis?.note, ttmBaseNote(model)]
       .filter((note): note is string => !!note);
-    const evText = model.enterpriseValue == null ? needs(model.missing, "enterpriseValue") ?? "--"
+    const evText = model.enterpriseValue == null ? needs(model.missing, "enterpriseValue") ?? MISSING_VALUE
       : `${formatCompactCurrency(model.enterpriseValue, currency)}${model.enterpriseValueSheet ? ` from the ${model.enterpriseValueSheet} balance sheet`
         : model.enterpriseValueNote ? " (computed)" : ""}`;
     return {
       sections: [
         { title: "Reverse DCF", columns: [{ key: "label", header: "" }, { key: "value", header: "Value" }], rows: [
-          { label: "Implied FCF growth, 10 years", value: growth == null ? model.missing.length ? "not computed" : "--"
+          { label: "Implied FCF growth, 10 years", value: growth == null ? model.missing.length ? "not computed" : MISSING_VALUE
             : `${typeof growth === "number" ? percent(growth) : growth} at ${rate(discountRate)} discount, ${rate(TERMINAL_GROWTH)} terminal` },
-          { label: "Implied revenue, year 10", value: model.impliedRevenue == null ? "--"
+          { label: "Implied revenue, year 10", value: model.impliedRevenue == null ? MISSING_VALUE
             : `${formatCompactCurrency(model.impliedRevenue, currency)} at ${describeFcfMargin(fcfMargin, fcfMarginBasis)}` },
-          { label: "Past FCF growth", value: model.pastGrowth ? `${percent(model.pastGrowth.rate)} ${pastGrowthBasis(model.pastGrowth)}` : "--" },
+          { label: "Past FCF growth", value: model.pastGrowth ? `${percent(model.pastGrowth.rate)} ${pastGrowthBasis(model.pastGrowth)}` : MISSING_VALUE },
           { label: "FCF yield", value: percent(model.fcfYield) },
           { label: "Enterprise value", value: evText },
           // A trailing figure built from the year and the half, or a half-yearly reporter's latest year, by its period.
-          { label: `Free cash flow, ${model.freeCashFlowBasis?.label ?? "TTM"}`, value: model.freeCashFlow == null ? needs(model.missing, "freeCashFlow") ?? "--"
+          { label: `Free cash flow, ${model.freeCashFlowBasis?.label ?? "TTM"}`, value: model.freeCashFlow == null ? needs(model.missing, "freeCashFlow") ?? MISSING_VALUE
             : formatCompactCurrency(model.freeCashFlow, currency) },
         ] },
         // Nothing to vary without the inputs: the rows above say which are missing.

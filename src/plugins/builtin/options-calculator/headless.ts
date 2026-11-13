@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessBundleResult, HeadlessPaneDefinition, HeadlessPaneEntry } from "../../../types/plugin";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { effectiveBinomialSteps, valueBinomialOption, solveBinomialImpliedVolatility } from "./binomial";
@@ -6,14 +7,14 @@ import type { OptionCalcDraft } from "./model";
 import { solveImpliedVolatility, valueOption, type OptionValuation } from "../shared/volatility";
 import { createCalculatorSurfaceDependencies, loadCalculatorSurfaceVol, type CalculatorSurfaceVol } from "./surface";
 
-const number = (value: number) => Number.isFinite(value) ? value.toFixed(6) : "--";
+const number = (value: number) => Number.isFinite(value) ? value.toFixed(6) : MISSING_VALUE;
 const metric = (label: string, value: number, suffix = ""): HeadlessPaneEntry => ({ label, value, formatted: `${number(value)}${suffix}` });
 
 /** What was typed for each input, by option key: the CLI's strings, a pane's settings. */
 type EnteredInputs = Readonly<Record<string, unknown>>;
 const PLAIN_DECIMAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
 /** A computed number without float noise or padding: 73.15, 30, 60. */
-const plain = (value: number) => Number.isFinite(value) ? String(Number(value.toPrecision(12))) : "--";
+const plain = (value: number) => Number.isFinite(value) ? String(Number(value.toPrecision(12))) : MISSING_VALUE;
 
 /**
  * An input echoed as it was entered: the typed text when it was a plain

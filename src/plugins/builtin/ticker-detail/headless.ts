@@ -7,7 +7,7 @@ import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshn
 import { quoteMonitorColumns, quoteMonitorRow, QUOTE_MONITOR_BASE_COLUMNS, QUOTE_MONITOR_ROW_KEYS } from "./quote-monitor/rows";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionValues } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { formatPriceObservation, penceFigure, quoteFormatOptions } from "../../../market-data/market/format";
 import {
   MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointOpenWithheld, pricePointWickFlags, priceHistoryIntegrityNotice,
@@ -397,7 +397,7 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
 const historyPriceColumns = (volumeMissing: boolean, decimals?: number, pence?: (close: number) => string | null): HeadlessPaneColumn[] => ["open", "high", "low", "close", "volume"].map((key) => ({
   key, header: key, align: "right" as const,
   format: (value: unknown) => {
-    if (value == null || !Number.isFinite(Number(value))) return key === "volume" && volumeMissing ? MISSING_VOLUME_TEXT : "-";
+    if (value == null || !Number.isFinite(Number(value))) return key === "volume" && volumeMissing ? MISSING_VOLUME_TEXT : MISSING_VALUE;
     if (key === "volume") return formatNumber(Number(value), 0);
     if (decimals == null) return formatPriceObservation(Number(value), { minimumFractionDigits: 2 });
     // A London line's close also reads in pence, as the pane's close notes it: 6.385 638.5p.
@@ -544,7 +544,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
 
 /** A percent with its sign, two decimals: `+0.63%`; a dash for a gap. */
 function signedPercentCell(value: unknown): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "-";
+  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
@@ -594,7 +594,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     // Today's daily bar is the session still trading, not a close: marked partial (DTD), as `history` marks it.
     const dayToDate = isTodayReturnRow(returns.at(-1), series.resolution, venue, now);
     const rows = forming || dayToDate ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
-    const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
+    const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : MISSING_VALUE;
     // The largest fall from a close to a later one in the window, said under the title; a yield's in bp, with its largest rise.
     // A week's or month's close is dated by its last session, not the 1st its bar is dated by ("peak 35.70 on 2026-03-31").
     const closes = unmarked.map((row) => ({ date: intraday ? row.time : barCloseSession(series.resolution, row.time, venue, now), close: row.close }));

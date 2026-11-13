@@ -12,7 +12,7 @@ import { KPI_COVERAGE_NOTE } from "../company-kpis/model";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import { buildQuoteKey } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
-import { formatCurrency, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { fetchSavedScreens, fetchScreen, fetchScreenCheck } from "./client";
 import { ideaMetricSetting, SCREEN_IDEAS, screenIdea } from "./ideas";
 import { checkRows, screenCheckSummary, screenCheckTicker } from "./screen-check";
@@ -99,8 +99,8 @@ async function loadRowQuotes(rows: readonly ScreenRow[], ctx: HeadlessPaneContex
 }
 
 const price = (value: unknown, row: Record<string, unknown>) =>
-  typeof value === "number" && typeof row.currency === "string" && row.currency ? formatCurrency(value, row.currency) : "-";
-const percent = (value: unknown) => typeof value === "number" ? formatPercentRaw(value) : "-";
+  typeof value === "number" && typeof row.currency === "string" && row.currency ? formatCurrency(value, row.currency) : MISSING_VALUE;
+const percent = (value: unknown) => typeof value === "number" ? formatPercentRaw(value) : MISSING_VALUE;
 
 /** The pre-market, after-hours or overnight print and its move from the close in Last, for the rows that have one. */
 function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
@@ -110,7 +110,7 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
     align: "right",
     format: (value, row) => row.extendedSession === session && typeof value === "number"
       ? `${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`
-      : "-",
+      : MISSING_VALUE,
   };
 }
 
@@ -171,7 +171,7 @@ function extraScreenColumns(metrics: readonly NumericField[], sortField: string)
 
 /** Another metric's cell: its value as the focus column prints it, with the currency of a money value. */
 function extraMetricCell(field: NumericField, metric: ScreenMetric | undefined): string {
-  if (!metric) return "-";
+  if (!metric) return MISSING_VALUE;
   if (metric.access === "pro") return "locked";
   const value = formatScreenMetric(field, metric);
   return metric.value != null && /^[A-Z]{3}$/.test(metric.unit) ? `${value} ${metric.unit}` : value;

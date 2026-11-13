@@ -93,7 +93,7 @@ describe("VCA dates", () => {
     const { keys, cell } = await load([oneYear("NVDA", "2026-10-09"), oneYear("AAPL", "2026-10-08")]);
     expect(keys.slice(keys.indexOf("verdict"), keys.indexOf("verdict") + 3)).toEqual(["verdict", "iv1y", "iv1yPercentile"]);
     // The IV30's own close: the 1Y read that session, ranked; none from another.
-    expect([0, 1].map((index) => [cell("iv1y", index), cell("iv1yPercentile", index)])).toEqual([["30.0%", "22"], ["--", MISSING_VALUE]]);
+    expect([0, 1].map((index) => [cell("iv1y", index), cell("iv1yPercentile", index)])).toEqual([["30.0%", "22"], [MISSING_VALUE, MISSING_VALUE]]);
   });
 
   test("skew from an older capture than the reading is dated", async () => {
@@ -254,7 +254,7 @@ describe("HIVG skew history", () => {
     expect(result.notes).toEqual(["no IV1Y history yet", "skew from 2026-10-07"]);
     const cells = (date: string) => text.split("\n").find((line) => line.startsWith(date))!.trim().split(/\s{2,}/);
     expect(cells("2026-10-08").slice(-2)).toEqual(["+2.5", "-2.5"]);
-    expect(cells("2026-10-05").slice(-2)).toEqual(["--", "--"]);
+    expect(cells("2026-10-05").slice(-2)).toEqual([MISSING_VALUE, MISSING_VALUE]);
   });
 
   test("an older server without the wing fields keeps the CSV columns blank and says skew is unavailable", async () => {

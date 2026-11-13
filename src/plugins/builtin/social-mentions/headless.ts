@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { SocialMentionsRange, SocialOutlierRow } from "../../../api-client/social-mentions";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { explainRefusal } from "../shared/cloud-denied";
@@ -67,7 +68,7 @@ export const socialMentionsHeadless: HeadlessPaneDefinition<"bundle"> = {
       return { complete: true,
         sections: [{ title: today ? "Today's posts on X against their 30-day median" : "Latest day's posts on X against their 30-day median", columns: [
           { key: "symbol", header: "Ticker" },
-          { key: "company", header: "Company", format: (value) => typeof value === "string" ? value : "--" },
+          { key: "company", header: "Company", format: (value) => typeof value === "string" ? value : MISSING_VALUE },
           today
             ? { key: "countedAt", header: "As of", format: (value) => outlierCountedAt({ countedAt: String(value) }) }
             : { key: "day", header: "Date" },

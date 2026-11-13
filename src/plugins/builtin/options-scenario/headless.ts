@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
@@ -19,12 +20,12 @@ import { modelDividendYieldNote } from "../../../market-data/model-dividend-yiel
 import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
 
 // Float noise at a flat origin or a breakeven prints as 0.00, not -0.00.
-const money = (value: unknown) => typeof value === "number" ? (Math.abs(value) < 0.005 ? 0 : value).toFixed(2) : "--";
-const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--";
+const money = (value: unknown) => typeof value === "number" ? (Math.abs(value) < 0.005 ? 0 : value).toFixed(2) : MISSING_VALUE;
+const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE;
 const supplied = (value: unknown) => value != null && value !== "";
 // A seeded entry is a quote midpoint, often to the half cent (5.495), so it keeps up to four decimals.
 const premium = (value: unknown) => typeof value === "number"
-  ? value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4, useGrouping: false }) : "--";
+  ? value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4, useGrouping: false }) : MISSING_VALUE;
 /** Entry prices and spot are quoted per share of the underlying. */
 const PRICE_UNIT = "per share";
 /** The Valuation entries, in model order, with the unit each is in. */
@@ -155,7 +156,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
         { title: "Position", columns: [
           { key: "side", header: "Side" }, { key: "strike", header: "Strike" }, { key: "expiry", header: "Expiry" },
           { key: "quantity", header: "Contracts" }, { key: "price", header: "Entry/share", format: premium },
-          { key: "volatility", header: "IV", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" },
+          { key: "volatility", header: "IV", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE },
           ...(midVolatility ? [{ key: "volatilityFrom", header: "IV from" }] : []),
           { key: "multiplier", header: "Multiplier" },
         ], rows: position!.legs.map((leg) => ({ ...leg, expiry: new Date(leg.expiration * 1000).toISOString().slice(0, 10),
@@ -189,7 +190,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
         ] },
         { title: `Scenario grid (P&L, ${per})`, columns: [
           { key: "spot", header: "Spot/share", format: money },
-          { key: "move", header: "Move", format: (value) => typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "--" },
+          { key: "move", header: "Move", format: (value) => typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : MISSING_VALUE },
           ...scenario.dates.map((date, index) => ({ key: `date${index}`, header: new Date(date).toISOString().slice(0, 10), format: money })),
         ], rows: scenario.grid.map((row) => ({ spot: row.spot, move: row.move,
           ...Object.fromEntries(row.values.map((value, index) => [`date${index}`, value])) })) },

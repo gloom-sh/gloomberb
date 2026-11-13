@@ -46,7 +46,7 @@ import { isRecord } from "../../utils/guards";
 import { displayTickerKey } from "../../utils/exchanges";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
-import { formatCompact } from "../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../utils/format";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
@@ -419,7 +419,7 @@ export function serializeHeadlessPaneResult(
 }
 
 function displayValue(value: unknown): string {
-  if (value == null) return "-";
+  if (value == null) return MISSING_VALUE;
   if (value instanceof Date) return displayTime(value.getTime());
   if (typeof value === "number") return displayNumber(value);
   if (typeof value === "object") return JSON.stringify(value);
@@ -449,7 +449,7 @@ function displayNumber(value: number): string {
 }
 
 function displayTime(time: number): string {
-  if (!Number.isFinite(time)) return "-";
+  if (!Number.isFinite(time)) return MISSING_VALUE;
   return formatUtcTime(new Date(time));
 }
 
@@ -488,7 +488,7 @@ function observesDays(series: HeadlessSeries): boolean {
 
 function seriesPointDate(series: HeadlessSeries, date: SeriesPointDate): string {
   const time = seriesPointTime(date);
-  if (!Number.isFinite(time)) return typeof date === "string" ? date : "-";
+  if (!Number.isFinite(time)) return typeof date === "string" ? date : MISSING_VALUE;
   const calendar = calendarSeries(series);
   return calendar ? observationDate(time, calendar) : formatUtcTime({ time, dateOnly: isDateOnly(date) || observesDays(series) });
 }
@@ -531,7 +531,7 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
  * without float noise.
  */
 function seriesValue(series: HeadlessSeries, value: number | null): string {
-  if (value == null) return "-";
+  if (value == null) return MISSING_VALUE;
   if (!Number.isFinite(value)) return displayNumber(value);
   if (series.textDecimals != null) return value.toFixed(series.textDecimals);
   if (series.textCompact) return formatCompact(value);
@@ -619,12 +619,12 @@ const TRAILING_COLUMNS: HeadlessPaneColumn[] = [
 
 function trailingCells(trailing: HeadlessSeries["trailing"]): Record<string, string> {
   if (!trailing) return {};
-  const mean = (value: number | null) => (value == null ? "-" : value.toFixed(1));
+  const mean = (value: number | null) => (value == null ? MISSING_VALUE : value.toFixed(1));
   const change = trailing.changeVsYearAgoPct;
   return {
     avg7: mean(trailing.avg7),
     avg28: mean(trailing.avg28),
-    vsYearAgo: change == null || !Number.isFinite(change) ? "-" : `${change > 0 ? "+" : ""}${change.toFixed(1)}%`,
+    vsYearAgo: change == null || !Number.isFinite(change) ? MISSING_VALUE : `${change > 0 ? "+" : ""}${change.toFixed(1)}%`,
   };
 }
 
@@ -637,7 +637,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
     return {
       series: series.label,
       name: series.name?.trim() || null,
-      latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestDate(series, latest.date) : "-",
+      latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestDate(series, latest.date) : MISSING_VALUE,
       value: series.notMeaningful ? "N/M" : seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
       ...trailingCells(series.trailing),
