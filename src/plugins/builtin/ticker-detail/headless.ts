@@ -46,7 +46,7 @@ import {
 import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
 import {
   BAR_INTERVAL_LABELS, barPriceDecimals, cleanBarPrice, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyBarFlags,
-  historyBarValues, historyMissingPeriodsNote, historyPriceDecimals, priceTableIntegrityNotice, quotedPriceDivisor,
+  historyBarValues, historyExportUnit, historyMissingPeriodsNote, historyPriceDecimals, historyUnit, priceTableIntegrityNotice, quotedPriceDivisor,
 } from "../../../cli/history-rows";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { closeMoves } from "../../../utils/max-drawdown";
@@ -82,6 +82,22 @@ function reportWindowText(options: HeadlessPaneOptionValues): string | null {
     // Intentional ignore: the load reports a window it cannot read; the title keeps the range.
     return null;
   }
+}
+
+/**
+ * What a listing's bars are priced in, as `history` exports it in `currency_or_unit` (`GBP`, `JPY per USD`, `index
+ * points`): by its quote, else by the listing facts research reads, as `history` falls back to them. Null when neither says.
+ */
+async function barPriceUnit(
+  ctx: Pick<HeadlessContext, "marketData">,
+  key: string,
+  listing: string,
+  exchange: string | undefined,
+  quote: { currency?: string; instrumentType?: string } | null,
+): Promise<string | null> {
+  const listed = quote?.currency ? quote
+    : await ctx.marketData.getQuoteMetadata?.(listing, exchange ?? "").catch(logFailure("ticker-detail.headless", "Read listing facts for a bar unit failed", null));
+  return historyExportUnit(historyUnit(key, listed ?? quote));
 }
 
 /** Bars of a window that closed before today: the history asked for, which no later bar makes stale. */
@@ -528,8 +544,13 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const openNotice = priceHistoryOpenNotice(points.filter(pricePointOpenWithheld).length);
     const reportNotices = [...moveLines, notice, openNotice, wickNotice, priceHistoryRescaleNotice(points)].filter((line): line is string => line != null);
     const flagged = rows.some((row) => row.flag);
+    // Every exported bar names what it is priced in and its size, as `history --csv` does.
+    const unit = await barPriceUnit(ctx, symbol, listing, exchange, quote);
+    const barInterval = size === "intraday" ? isIntradayResolution(requested) ? requested : null : size;
     return {
       rows: shown,
+      ...(unit ? { unit } : {}),
+      ...(barInterval ? { interval: barInterval } : {}),
       columns: historyColumns(size, marked, false, false, decimals, undefined, flagged),
       textColumns: historyColumns(size, marked, true, volumeMissing > 0, decimals,
         (close) => penceFigure(Number(close.toFixed(Math.min(20, decimals))), quote, decimals), flagged),
@@ -627,6 +648,8 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const textFigures = figures.map((column) => column.key === "intervalChange" ? { ...column, optional: true, dropPriority: 2 }
       : column.key === "totalChange" ? { ...column, optional: true, dropPriority: 1 } : column);
     const textColumns: HeadlessPaneColumn[] = [timeColumn(true), ...textFigures];
+    // Every exported row names what its prices are in and the bars' size, as `history --csv` does.
+    const unit = rows.length ? await barPriceUnit(ctx, key, symbol, exchange, null) : null;
     // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
     const notices = [
       ...moveLines,
@@ -641,6 +664,8 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       rows,
       columns,
       textColumns,
+      ...(unit ? { unit } : {}),
+      interval: series.resolution,
       unavailableSymbols: rows.length ? [] : [key],
       ...(rows.length ? {} : { errors: [`${key}: No bars in this window.`] }),
       freshness: pastWindow ? pastWindowFreshness(window, series.resolution, "time") : {

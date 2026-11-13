@@ -572,6 +572,8 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
   rowAsOfKey?: string;
   /** The interval every row is at (`daily`), which each exported row names in `interval`. */
   interval?: string;
+  /** The currency or unit every row's figures are in (`GBP`, `index points`), which each exported row names in `currency_or_unit`. */
+  unit?: string;
   /**
    * Tables `--csv` and `--ndjson` write after the rows, each in its own
    * section, such as the dated history the rows sum up. The text report and

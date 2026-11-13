@@ -67,6 +67,11 @@ export interface ParsedPaneFunctionArgs {
    * pair with no options of its own): an export still has a row for each, its reason in the status column.
    */
   refusedListings?: Array<{ symbol: string; reason: string }>;
+  /**
+   * The argument's words as the shell passed them, when one holds a space: it was quoted (`fn G "VOD LN"`), so
+   * its words are one entry, not several typed apart (`fn G AAPL MSFT`). `arg` joins them either way.
+   */
+  quotedWords?: string[];
 }
 
 export interface ParsedPaneCatalogArgs {
@@ -227,6 +232,7 @@ export function parsePaneFunctionArgs(
 
   const target = positionals[0]?.trim() ?? "";
   const arg = positionals.slice(1).join(" ").trim();
+  const quoted = positionals.slice(1).some((word) => /\s/.test(word.trim()));
   // The outer CLI parser consumes --limit and --tail before fn/shot sees its arguments.
   // Restore them for the pane's own schema and loader, including bounds checks,
   // so a function without a tail option says so instead of ignoring it.
@@ -239,6 +245,7 @@ export function parsePaneFunctionArgs(
     ...(explain ? { explain } : {}),
     ...(strict ? { strict } : {}),
     ...(shotOnly.length > 0 ? { shotOnly } : {}),
+    ...(quoted ? { quotedWords: positionals.slice(1) } : {}),
   };
 }
 

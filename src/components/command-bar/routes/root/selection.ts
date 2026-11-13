@@ -14,7 +14,7 @@ import {
 } from "../../helpers";
 import type { ResultItem } from "../../list/model";
 import { getPaneTemplateArgKind } from "../../pane-templates/items";
-import { parseRootShortcutIntent, shortcutArgument } from "./shortcuts";
+import { commandShortcutQuery, parseRootShortcutIntent, shortcutArgument } from "./shortcuts";
 import { buildHelpArgumentItems } from "./help-items";
 import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
 
@@ -127,7 +127,8 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
     });
   }
 
-  const match = matchPrefix(options.query, options.availableCommands);
+  // `MC FP Equity DES` runs as `DES MC:EPA`, as `MC FP Equity GP` opens GP.
+  const match = matchPrefix(commandShortcutQuery(options.query, intent), options.availableCommands);
   if (!match) {
     return null;
   }

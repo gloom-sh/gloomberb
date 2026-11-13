@@ -1099,6 +1099,31 @@ test("a file's line that is a company's name before its legal form is the compan
   }
 });
 
+// `quote "ZURN SE" "NOVN SE"` read Zurn Elkay on NYSE and Novan's old NOVNQ: SE is SIX's code and a legal form, and the name won.
+test("a SIX code that is also another company's name reads the SIX listing, naming the other; one company's reads its home line", async () => {
+  const row = (symbol: string, name: string, exchange: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: exchange === "SWX" ? "CHF" : "USD", ...extra });
+  const rows = [
+    row("ZURN", "Zurich Insurance Group AG", "SWX"), row("ZWS", "Zurn Elkay Water Solutions Corporation", "NYSE", { searchAliases: ["Zurn"] }),
+    row("NOVN", "Novartis AG Registered Shares", "SWX"), row("NOVN", "Novan, Inc.", "NASDAQ"),
+    row("SAP", "SAP SE", "XETRA", { homeListing: true, companyId: "isin:DE0007164600" }), row("SAP", "SAP SE", "SWX", { companyId: "isin:DE0007164600" }),
+  ];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      const words = query.trim().toUpperCase().replace(/\s+SE$/, "");
+      return rows.filter((entry) => entry.symbol === words || entry.name.toUpperCase().startsWith(words));
+    },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => ({
+      target, quote: createTestQuote({ symbol: target.symbol, name: rows.find((entry) => target.symbol.startsWith(entry.symbol))?.name }),
+    })),
+  });
+  const read = await runQuote(["ZURN SE", "NOVN SE", "SAP SE"], { dataProvider, batches: [], searches: () => 0 });
+  expect(read.failure).toBeNull();
+  expect(read.rows.map((item) => item.target.symbol)).toEqual(["ZURN:SWX", "NOVN:SWX", "SAP:XETRA"]);
+  expect(read.warnings).toContain("Read \"ZURN SE\" as ZURN:SWX (Zurich Insurance Group AG), not ZWS:NYSE (Zurn Elkay Water Solutions Corporation).");
+  expect(read.warnings.some((warning) => warning.includes("Read \"SAP SE\" as SAP:XETRA"))).toBe(true);
+});
+
 test("a word written as a name that is another company's ticker is the company of that name; in capitals, or the ticker's own name, it stays the ticker", async () => {
   // `search Aeon` against the service, 2026-11-06, trimmed: AEON is AEON Biopharma; the service marks Aeon Co., Ltd.'s Tokyo line as its home.
   const row = (symbol: string, name: string, exchange: string, homeListing = false) =>

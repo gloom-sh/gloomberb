@@ -16,7 +16,7 @@ test("a spreadsheet export reads its symbol column, or its first column, past BO
 
 test("a plain list gives every symbol, whether on its own line, split by spaces or by commas", () => {
   // Lines are entries, read as typed entries are: a line with spaces is a name or symbols on one line.
-  expect(parseSymbolText("AAPL\nmsft  nvda\n\n// later\nXOM\n")).toEqual({ symbols: ["AAPL", "msft nvda", "XOM"], ignored: [], entries: true });
+  expect(parseSymbolText("AAPL\nmsft  nvda\n\n// later\nXOM\n")).toEqual({ symbols: ["AAPL", "msft nvda", "XOM"], ignored: [], entries: true, lines: true });
   expect(symbolsOf("AAPL, MSFT\nNVDA, XOM")).toEqual(["AAPL", "MSFT", "NVDA", "XOM"]);
   expect(symbolsOf("Symbol\nAAPL\nMSFT\n")).toEqual(["AAPL", "MSFT"]);
 });

@@ -136,10 +136,12 @@ export function symbolInputKey(symbol: string): string {
 
 /**
  * How a command's symbol list spots one security typed twice: `symbolInputKey`,
- * with a share class written with a dot or a dash as one (BRK.B and BRK-B).
+ * with a share class written with a dot, a dash or, as a broker writes it, a
+ * slash as one (BRK.B, BRK-B and BRK/B). One letter before a slash is no
+ * symbol's (N/A, P/E).
  */
-function securityInputKey(symbol: string): string {
-  return symbolInputKey(symbol).replace(/-/g, ".");
+export function securityInputKey(symbol: string): string {
+  return symbolInputKey(symbol).replace(/-/g, ".").replace(/^([A-Z]{2,5})\/([A-Z])$/, "$1.$2");
 }
 
 /** The securities of a symbol list, each once, in the first spelling typed: `AAPL aapl BRK.B BRK-B` is AAPL and BRK.B. */

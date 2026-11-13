@@ -17,7 +17,7 @@ import { buildRootResultModel, type RootResultModel } from "./results";
 import { useRootProviderSearch } from "./provider-search";
 import { isProviderResultItem } from "./search-providers";
 import { buildRootShortcutFeedback } from "./shortcut-feedback";
-import type { ShortcutIntent } from "./shortcuts";
+import { commandShortcutQuery, type ShortcutIntent } from "./shortcuts";
 import { clampIndex } from "../../../../utils/math";
 
 /** Written the way a symbol is: up to five letters and a share class (AAPL, nvda, BRK.B). */
@@ -184,7 +184,8 @@ export function useCommandBarRootRuntime({
    */
   const pinnedRootRowRef = useRef<{ id: string; answer: string | null } | null>(null);
   const previousAnswerTookTopRef = useRef(0);
-  const activeMatch = matchPrefix(rootQuery, availableCommands);
+  // `MC FP Equity DES` is `DES MC:EPA`, as `MC FP Equity GP` is `GP MC:EPA`.
+  const activeMatch = matchPrefix(commandShortcutQuery(rootQuery, rootShortcutIntent), availableCommands);
 
   const tickerSearchRouteQuery = currentRoute?.kind === "mode" && currentRoute.screen === "ticker-search"
     ? currentRoute.query

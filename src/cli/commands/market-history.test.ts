@@ -614,16 +614,22 @@ test("a currency's name is its pair: history swiss franc and history yen name fx
   expect(cli.printed.at(-1)!.result.data).toHaveLength(1);
 });
 
-test("history of a list exits 1 only when no symbol is served, with every symbol's reason as a row", async () => {
-  // A list read from standard input keeps a row for a line that is no ticker, so one bad line does not lose the rest.
-  const stdin = spyOn(Bun.stdin, "text").mockResolvedValue("ZZZZQQ\nQQQQZZ\n");
+test("history of a list exits 1 only when no symbol is served, with every line's reason as a row", async () => {
+  // A list read from standard input keeps a row for a line that is no ticker, so one bad line does not lose the rest,
+  // and for every other line up to the last, in its order, so the rows line up with the sheet's (13 Nov 2026: a blank
+  // line, N/A and a second spelling of a symbol had none).
+  const stdin = spyOn(Bun.stdin, "text").mockResolvedValue("ZZZZQQ\n\nN/A\nQQQQZZ\nqqqqzz\n\n");
   const { result, csv, retrieved } = await runList(["-"], notATicker).finally(() => stdin.mockRestore());
   expect(process.exitCode).toBe(1);
   expect(result.failure).toMatchObject({ message: "No history for ZZZZQQ, QQQQZZ." });
+  const empty = ",".repeat(15);
   expect(csv).toEqual([
-    `${HISTORY_CSV_HEADER},${IDENTITY}`,
-    `,,,,,,,,,,,,,,,Not a ticker: ZZZZQQ.,ZZZZQQ,,,Gloom Cloud,,${retrieved}`,
-    `,,,,,,,,,,,,,,,Not a ticker: QQQQZZ.,QQQQZZ,,,Gloom Cloud,,${retrieved}`,
+    `${HISTORY_CSV_HEADER.replace(",status", ",input,duplicate_of,status")},${IDENTITY}`,
+    `${empty}ZZZZQQ,,Not a ticker: ZZZZQQ.,ZZZZQQ,,,Gloom Cloud,,${retrieved}`,
+    `${empty},,blank line,,,,Gloom Cloud,,${retrieved}`,
+    `${empty}N/A,,not a symbol,N/A,,,Gloom Cloud,,${retrieved}`,
+    `${empty}QQQQZZ,,Not a ticker: QQQQZZ.,QQQQZZ,,,Gloom Cloud,,${retrieved}`,
+    `${empty}qqqqzz,QQQQZZ,Not a ticker: QQQQZZ.,QQQQZZ,,,Gloom Cloud,,${retrieved}`,
   ]);
   // One served symbol is a result, whatever the others did.
   process.exitCode = 0;

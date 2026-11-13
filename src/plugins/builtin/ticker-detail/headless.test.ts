@@ -776,6 +776,37 @@ test("HP and RETURN read a past window's bars: HP's with no quote and its drawdo
   }
 });
 
+// `fn HP "VOD LN" --range 1M --csv` left currency_or_unit and interval blank, where `history` writes VOD:LSE,GBP,1d.
+test("HP and RETURN exports name what the prices are in and the bars' size, as history does, with or without a quote", async () => {
+  setSystemTime(new Date("2026-11-13T10:00:00Z"));
+  try {
+    const days = ["2026-10-13", "2026-10-14", "2026-10-15"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 1.17, high: 1.19, low: 1.16, close: 1.177 + index / 1000, volume: 100 }));
+    const ctx = createTestHeadlessContext({
+      resolveInstrument: async () => ({ symbol: "VOD", exchange: "LSE" }),
+      marketData: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "VOD", currency: "GBP", listingExchangeName: "LSE", lastUpdated: Date.parse("2026-10-15T16:30:00Z") }),
+        getQuoteMetadata: async () => ({ symbol: "VOD", currency: "GBP", source: {} }),
+        getPriceHistory: async () => days,
+        getDetailedPriceHistoryWithMetadata: async () => ({ points: days, resolution: "1d" }),
+      }),
+    });
+    const identity = async (definition: typeof historicalPricesHeadless, options: HeadlessPaneLoadArgs["options"]) => {
+      const input = args(["VOD:LSE"], options);
+      const result = await definition.load(input, ctx);
+      const freshness = deriveHeadlessFreshness(definition, result);
+      const [header, row] = renderReportCsv(headlessReportTables(definition, result, input, "HP", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+      const cells = row!.split(",");
+      return ["symbol_or_series", "currency_or_unit", "interval"].map((column) => cells[header!.split(",").indexOf(column)]);
+    };
+    expect(await identity(historicalPricesHeadless, { range: "1M" })).toEqual(["VOD:LSE", "GBP", "1d"]);
+    // A past window reads no quote: the listing's facts say the currency.
+    expect(await identity(historicalPricesHeadless, { range: "1M", from: "2026-10-13", to: "2026-10-15" })).toEqual(["VOD:LSE", "GBP", "1d"]);
+    expect(await identity(returnsHeadless, { range: "1M", interval: "1d" })).toEqual(["VOD:LSE", "GBP", "1d"]);
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("historical price exports preserve tiny OHLC values without changing raw data", async () => {
   const point = { date: new Date("2026-09-10"), open: 0.00000531, high: 0.00000542, low: 0.00000501, close: 0.00000532, volume: 123456 };
   const ctx = { marketData: createTestDataProvider({ getPriceHistory: async () => [point] }) } as HeadlessPaneContext;

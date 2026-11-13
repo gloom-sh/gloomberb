@@ -221,6 +221,8 @@ interface SymbolText {
   entries?: true;
   /** A first row read as a header in words no header list knows (`Hisse,Adet,Maliyet`), skipped and named. */
   header?: string[];
+  /** Each symbol is a line of the text, whole: a list of one entry a line, as a sheet's column pastes. */
+  lines?: true;
 }
 
 /** Words a sheet writes where a value is missing, beside the marks isJunkCell knows (`N/A`, `-`, `—`). */
@@ -296,7 +298,7 @@ export function parseSymbolText(text: string): SymbolText {
   const cleaned = records.map((cells) => cells.map((cell) => stripStrayEdges(cell).text));
   const figures = cleaned.some((cells) => cells.some((cell, index) => index > 0 && isFigure(cell)));
   // Lines split by spaces alone are entries, unless figures sit beside the symbols.
-  if (!delimited && !figures) return { symbols: records.map((cells) => cells.join(" ")), ignored: [], entries: true };
+  if (!delimited && !figures) return { symbols: records.map((cells) => cells.join(" ")), ignored: [], entries: true, lines: true };
   // A grid of symbols: a terminal's code is one cell (`CZR US Equity`), and so is a numeric code among tickers (`2007`).
   const codes = symbolColumns(cleaned);
   const grid = numericCodeGrid(cleaned) || cleaned.every((cells) => cells.every((cell, index) => (
@@ -479,13 +481,15 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
       const code = (error as NodeJS.ErrnoException).code;
       throw new SymbolListError(code === "ENOENT" ? `No file at ${source.file}.` : `Could not read ${source.file}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    typedForms.push(...typedLines(text));
-    await addCells(parseSymbolText(foldTypedText(text)));
+    const parsed = parseSymbolText(foldTypedText(text));
+    typedForms.push(...typedLines(text, !!parsed.lines));
+    await addCells(parsed);
   }
   if (wantsStdin || (typed.length === 0 && source.file == null && (source.stdinPiped ?? stdinIsPiped()))) {
     const text = await readStdin();
-    typedForms.push(...typedLines(text));
-    await addCells(parseSymbolText(foldTypedText(text)));
+    const parsed = parseSymbolText(foldTypedText(text));
+    typedForms.push(...typedLines(text, !!parsed.lines));
+    await addCells(parsed);
   }
   // A number where a symbol goes (a line of prices, a typed 1.899) is left out with those typed beside a symbol.
   const numbers = [...figures, ...collected.filter(isNumberCell)];
@@ -498,17 +502,26 @@ export interface TypedForm {
   typed: string;
   /** The entry the line reads as, its repeats' key (`symbolInputKey`): `ＵＳＤＪＰＹ` and `usdjpy` are both `USDJPY`'s. */
   key: string;
+  /**
+   * A line of a list of one entry a line, which has a row whatever it reads as, so the rows line up with the
+   * sheet's: a blank one (`typed` empty), or one no entry was read from (`N/A`, a number).
+   */
+  ownRow?: true;
 }
 
 /**
  * Each line of a list's text that is one entry, as typed and in order, an exact repeat too, with the key of the entry
  * it reads as: so a command can give every line its row and say which line of a sheet each row is, where several
- * were read as one entry.
+ * were read as one entry. In a list of one entry a line (`everyLine`), every line up to the last that holds
+ * anything is one, a blank line too; a comment (`# held since 2019`) is none.
  */
-function typedLines(text: string): TypedForm[] {
-  return text.split(/\r?\n/).flatMap((line) => {
-    const typed = line.trim();
-    const key = symbolInputKey(stripStrayEdges(foldTypedText(typed)).text);
+function typedLines(text: string, everyLine: boolean): TypedForm[] {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).map((line) => line.trim());
+  const last = lines.findLastIndex(Boolean);
+  return lines.slice(0, last + 1).flatMap((typed) => {
+    // The list reads a line's words with one space between them (`MC  FP Equity` is MC FP Equity), so its key does too.
+    const key = symbolInputKey(stripStrayEdges(foldTypedText(typed)).text.replace(/\s+/g, " "));
+    if (everyLine && !isComment(typed)) return [{ typed, key, ownRow: true as const }];
     if (!typed || !key) return [];
     return [{ typed, key }];
   });

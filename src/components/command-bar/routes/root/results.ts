@@ -18,7 +18,7 @@ import { isCollectionCommand, SECURITY_DESCRIPTION_SEARCH } from "../../helpers"
 import { recentPaneTemplateArg } from "../../pane-templates/items";
 import { dedupeById, PASTED_LIST_CATEGORY } from "../../view-model";
 import type { ResultItem } from "../../list/model";
-import { shortcutArgument, type parseRootShortcutIntent } from "./shortcuts";
+import { commandShortcutQuery, shortcutArgument, type parseRootShortcutIntent } from "./shortcuts";
 import type { CommandBarRoute } from "../../workflow/types";
 import { createRootCommandItemBuilder } from "./command-items";
 import { buildRootShortcutItem } from "./shortcut-items";
@@ -301,7 +301,8 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
   });
 
   const items: ResultItem[] = [];
-  const match = matchPrefix(rootQuery, availableCommands);
+  // A command typed after its ticker (`MC FP Equity DES`) lists as typed first (`DES MC:EPA`).
+  const match = matchPrefix(commandShortcutQuery(rootQuery, rootShortcutIntent), availableCommands);
   // A pasted list, which the bar flattens into one line, leads with adding its symbols. The AI is still offered.
   const pastedList = rootShortcutIntent.kind === "none" && !match && rootQuery ? pastedRootList(rootQuery) : null;
   let initialIdx = 0;
