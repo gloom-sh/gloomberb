@@ -67,6 +67,11 @@ export function treasuryYieldTenor(text: string): TreasuryYieldTenor | null {
   return named || (!/\s/.test(typed) && YEAR_UNITS.has(unit)) ? tenor : null;
 }
 
+/** FRED's Treasury yield series typed where a ticker goes (DGS10): no ticker search finds them. */
+export function isTreasuryFredSeries(id: string): boolean {
+  return [...TENORS.values()].some((tenor) => tenor.fred === id);
+}
+
 /** The commands with the yield: its Cboe index when there is one, its FRED series, the curve. */
 function yieldCommands(tenor: TreasuryYieldTenor): Array<readonly [command: string, gives: string]> {
   return [
