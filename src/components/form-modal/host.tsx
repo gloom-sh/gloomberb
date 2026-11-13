@@ -161,7 +161,7 @@ function resolveFormRequest(
   switch (request.kind) {
     case "builtin": {
       const listsBrokers = request.actionId === "new-portfolio";
-      if (listsBrokers && deps.pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) void refreshSignedInBrokers();
+      if (listsBrokers && deps.pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) refreshSignedInBrokers();
       // The host outlives plugins: the brokers installed, updated or removed
       // since it mounted are the ones to list, so the list is built now.
       const brokerDirectory = buildBrokerDirectory({

@@ -160,19 +160,24 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
 
   const ctx = useMemo<flows.FlowContext>(() => ({ dialog, notify, hasProAccess: plan.hasProAccess, openUpgrade }), [dialog, notify, openUpgrade, plan.hasProAccess]);
 
-  const reloadSignals = useCallback(async () => {
+  // A failed load is logged and the signals on screen stay. A flow that
+  // changed the signals waits on the reload before it says it is done.
+  const reloadSignalsAndWait = useCallback(async () => {
     const current = ++generation.current;
     const detail = await thesisStore.loadDetail(thesis.id).catch(logFailure("cloud.thesis.detail", "Load thesis signals failed", null));
     if (generation.current !== current || !detail) return;
     setSignals(detail.signals);
   }, [thesis.id]);
+  const reloadSignals = useCallback(() => {
+    reloadSignalsAndWait().catch(logFailure("cloud.thesis.detail", "Reloading thesis signals failed"));
+  }, [reloadSignalsAndWait]);
 
   useEffect(() => {
-    void reloadSignals();
+    reloadSignals();
   }, [reloadSignals, thesis.revision, thesis.openSignals]);
 
   useEffect(() => thesisStore.onSignals((id) => {
-    if (id === thesis.id) void reloadSignals();
+    if (id === thesis.id) reloadSignals();
   }), [reloadSignals, thesis.id]);
 
   // Two cells of padding plus the list scrollbar column.
@@ -247,9 +252,9 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
     else if (row.kind === "catalyst") await flows.editCatalyst(ctx, current(), row.item);
     else if (row.kind === "signal") {
       await flows.resolveSignal(ctx, current(), row.item);
-      await reloadSignals();
+      await reloadSignalsAndWait();
     }
-  }), [ctx, reloadSignals, run, selectedRow]);
+  }), [ctx, reloadSignalsAndWait, run, selectedRow]);
 
   const cycleStatus = useCallback(() => run(async () => {
     const row = selectedRow;
@@ -273,8 +278,8 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
     const target = row && (row.kind === "pillar" || row.kind === "kill" || row.kind === "catalyst")
       ? ({ kind: row.kind, item: row.item } as flows.DocumentItem)
       : null;
-    if (await flows.challenge(ctx, current(), target)) await reloadSignals();
-  }), [ctx, reloadSignals, run, selectedRow]);
+    if (await flows.challenge(ctx, current(), target)) await reloadSignalsAndWait();
+  }), [ctx, reloadSignalsAndWait, run, selectedRow]);
 
   // The review lands over realtime; onSignals below refetches when it does.
   const review = useCallback(() => run(() => flows.runReview(ctx, current())), [ctx, run]);
@@ -316,7 +321,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
     else if (isPlainKey(event, "c")) void challengeSelected();
     // r refreshes, as everywhere; the paid AI review is its own key.
     else if (isPlainKey(event, "v")) void review();
-    else if (isPlainKey(event, "r")) void reloadSignals();
+    else if (isPlainKey(event, "r")) reloadSignals();
     else if (isPlainKey(event, "e")) void editMenu();
     else if (isPlainKey(event, "o")) openSource();
     else return;

@@ -17,6 +17,7 @@ import {
   type PluginManager,
 } from "../../../../plugins/marketplace/store";
 import type { PluginTarget } from "../../../../types/plugin";
+import { logFailure } from "../../../../utils/log-failure";
 import { requiredGloomberb } from "../../../../utils/semver";
 import { getCommandPrefixes, type Command } from "../../commands/registry";
 import { paneTemplateShortcutPrefixes } from "../../pane-templates/items";
@@ -96,9 +97,10 @@ function useRegistryPlugins(active: boolean): readonly RegistryPlugin[] {
   useEffect(() => {
     if (!load) return;
     let cancelled = false;
-    void loadRegistry().then((result) => {
+    // A failed read answers an empty list; anything else is logged.
+    loadRegistry().then((result) => {
       if (!cancelled) setPlugins(result.plugins);
-    });
+    }, logFailure("command-bar.plugin-install", "Reading the plugin registry failed"));
     return () => {
       cancelled = true;
     };

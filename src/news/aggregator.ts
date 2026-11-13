@@ -170,7 +170,7 @@ export class NewsService {
       if (!recoversDataRequests(sourceId) || !this.polling) return;
       for (const entry of this.queries.values()) {
         // A list missing some of its sources is read again too, keeping what it shows meanwhile.
-        if (entry.refs > 0 && entry.state.error != null) void this.refreshQuery(entry.query, entry.state.phase === "error");
+        if (entry.refs > 0 && entry.state.error != null) this.refreshQuery(entry.query, entry.state.phase === "error");
       }
     }) ?? null;
     this.scheduleNextPoll();
@@ -217,7 +217,7 @@ export class NewsService {
         this.notify();
       }
       for (const entry of this.queries.values()) {
-        void this.refreshQuery(entry.query, true);
+        this.refreshQuery(entry.query, true);
       }
     });
   }
@@ -263,7 +263,7 @@ export class NewsService {
     const unsubscribe = this.subscribe(emit);
     // Show loading before emitting: the fetch below starts immediately, and an
     // idle first frame paints an empty pane instead of a loading one.
-    void this.refreshQuery(normalized, true);
+    this.refreshQuery(normalized, true);
     emit();
 
     let disposed = false;
@@ -300,10 +300,16 @@ export class NewsService {
   }
 
   async load(query: NewsQuery): Promise<NewsQueryState> {
-    return this.refreshQuery(normalizeNewsQuery(query), true);
+    return this.refreshQueryAndWait(normalizeNewsQuery(query), true);
   }
 
-  async loadMore(query: NewsQuery): Promise<void> {
+  /** Asks for the next page. A failed page clears `loadingMore`; anything else is logged. */
+  loadMore(query: NewsQuery): void {
+    this.loadMoreAndWait(query).catch(logFailure("news.aggregator", "Loading more news failed"));
+  }
+
+  /** `loadMore` for a caller that waits until the page or its failure is in state. */
+  async loadMoreAndWait(query: NewsQuery): Promise<void> {
     const normalized = normalizeNewsQuery(query);
     const entry = this.queries.get(buildNewsQueryKey(normalized));
     if (!entry || entry.loadMoreInFlight || !entry.state.nextCursor || entry.state.loadingMore) return;
@@ -398,7 +404,7 @@ export class NewsService {
   }
 
   async poll(query: NewsQuery = DEFAULT_GLOBAL_QUERY): Promise<void> {
-    await this.refreshQuery(normalizeNewsQuery(query), false);
+    await this.refreshQueryAndWait(normalizeNewsQuery(query), false);
   }
 
   private async pollActiveQueries(): Promise<void> {
@@ -407,10 +413,15 @@ export class NewsService {
       .filter((entry) => entry.refs > 0)
       .map((entry) => entry.query);
     if (queries.length === 0) return;
-    await Promise.allSettled(queries.map((query) => this.refreshQuery(query, false)));
+    await Promise.allSettled(queries.map((query) => this.refreshQueryAndWait(query, false)));
   }
 
-  private async refreshQuery(
+  /** A read nobody waits on. A failed read lands in the query's state; anything else is logged. */
+  private refreshQuery(query: NewsQuery, showLoading: boolean): void {
+    this.refreshQueryAndWait(query, showLoading).catch(logFailure("news.aggregator", "Refreshing a news query failed"));
+  }
+
+  private async refreshQueryAndWait(
     query: NewsQuery,
     showLoading: boolean,
   ): Promise<NewsQueryState> {

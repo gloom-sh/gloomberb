@@ -5,6 +5,7 @@ import { appReducer, AppContext, createInitialState, type AppAction, type AppCon
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { createDefaultConfig, type AppConfig } from "../types/config";
 import type { TickerRecord } from "../types/ticker";
+import { debugLog } from "../utils/debug-log";
 import { useTeamCollectionsSync } from "./collections-sync";
 import { blankTickerRecord, localMembership, teamCollectionLocalId } from "./collections";
 import { teamStore } from "./store";
@@ -173,6 +174,62 @@ describe("team collections sync", () => {
     expect(members("org-b", "b2", "portfolio")).toEqual([]);
     expect(teamEntries("org-a")).toEqual(["team:org-a:a1=Alpha renamed"]);
     expect(store.getState().config.watchlists.map((entry) => entry.id)).toContain("mine");
+  });
+
+  test("a refresh whose ticker cannot be saved is logged instead of rejecting unhandled, and the next refresh applies", async () => {
+    const books: TeamCollection[] = [collection("org-a", "a1", "Alpha list")];
+    let refreshFromServer = () => {};
+    spies.push(
+      spyOn(apiClient, "isVerified").mockImplementation(() => true),
+      spyOn(apiClient, "subscribeCurrentUser").mockImplementation((listener) => {
+        refreshFromServer = listener;
+        return () => {};
+      }),
+      spyOn(apiClient, "subscribeCloudEvent").mockImplementation(() => () => {}),
+      spyOn(apiClient, "listTeamCollections").mockImplementation(async (teamId) => (teamId === "org-a" ? books : [])),
+      spyOn(apiClient, "getTeamCollection").mockImplementation(async () => ({ ...books[0]!, items: [item("a1", "AAPL")] })),
+    );
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on("unhandledRejection", onUnhandled);
+    const logged: string[] = [];
+    const stop = debugLog.subscribe((entry) => {
+      if (entry.source === "team.collections-sync") logged.push(`${entry.level} ${entry.message}`);
+    });
+    try {
+      const store = createStore(createDefaultConfig("/tmp/gloomberb-team-collections-save-failure"));
+      const records = new Map<string, TickerRecord>();
+      let saveFails = true;
+      await tui.render(
+        <AppContext value={store}>
+          <Sync
+            persistConfig={() => {}}
+            tickerRepository={{
+              loadAllTickers: async () => [...records.values()],
+              loadTicker: async (symbol) => records.get(symbol) ?? null,
+              saveTicker: async (ticker) => {
+                if (saveFails) throw new Error("database is locked");
+                records.set(ticker.metadata.ticker, ticker);
+              },
+              createTicker: async (metadata) => ({ metadata }),
+              deleteTicker: async () => {},
+            }}
+          />
+        </AppContext>,
+        { width: 10, height: 2 },
+      );
+      await settleAfter(() => refreshFromServer());
+      expect(logged).toEqual(["warn Refreshing team collections failed"]);
+      expect(records.size).toBe(0);
+
+      saveFails = false;
+      await settleAfter(() => refreshFromServer());
+      expect([...records.keys()]).toEqual(["AAPL"]);
+      expect(unhandled).toEqual([]);
+    } finally {
+      stop();
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 
   test("a shared portfolio held in several lots is compared by its total: equal leaves the lots, a change collapses them, nothing echoes back", async () => {

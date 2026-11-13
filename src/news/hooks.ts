@@ -48,7 +48,7 @@ function useNewsLoadMore(query: NewsQuery | null | undefined): () => void {
   const key = query ? buildNewsQueryKey(query) : null;
   return useCallback(() => {
     if (!query) return;
-    void sharedService?.loadMore(query);
+    sharedService?.loadMore(query);
   }, [key]);
 }
 

@@ -30,9 +30,10 @@ export function useOnboardingUpgrade({
   useEffect(() => {
     if (stage !== "upgrade") return;
     let live = true;
-    void loadUpgradeOffer().then((loaded) => {
+    // A failed request answers an offer without prices; anything else is logged.
+    loadUpgradeOffer().then((loaded) => {
       if (live) setOffer(loaded);
-    });
+    }, logFailure("onboarding.upgrade", "Loading the upgrade offer failed"));
     return () => {
       live = false;
     };

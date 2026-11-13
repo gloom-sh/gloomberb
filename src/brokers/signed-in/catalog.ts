@@ -36,7 +36,10 @@ export interface SignedInBrokerCatalog {
   reset(): void;
   get(): SignedInBroker[];
   find(brokerId: string): SignedInBroker | null;
-  refresh(options?: { force?: boolean }): Promise<void>;
+  /** Fetches the list unless it is under five minutes old. A failed fetch keeps the last list. */
+  refresh(options?: { force?: boolean }): void;
+  /** `refresh` for a caller that waits until the list is in or the fetch failed. Never rejects. */
+  refreshAndWait(options?: { force?: boolean }): Promise<void>;
   subscribe(listener: () => void): () => void;
 }
 
@@ -73,7 +76,7 @@ export function createSignedInBrokerCatalog(
     return brokers ?? NONE;
   };
 
-  return {
+  const api: SignedInBrokerCatalog = {
     attach(next) {
       persistence = next;
       if (!brokers) ensureLoaded();
@@ -89,7 +92,10 @@ export function createSignedInBrokerCatalog(
     find(brokerId) {
       return ensureLoaded().find((broker) => broker.id === brokerId) ?? null;
     },
-    refresh(options = {}) {
+    refresh(options) {
+      api.refreshAndWait(options).catch(logFailure("signed-in-brokers", "Refreshing the broker catalog failed"));
+    },
+    refreshAndWait(options = {}) {
       ensureLoaded();
       if (inFlight) return inFlight;
       if (!options.force && brokers && now() - fetchedAt < FRESH_MS) return Promise.resolve();
@@ -116,6 +122,7 @@ export function createSignedInBrokerCatalog(
       };
     },
   };
+  return api;
 }
 
 const catalog = createSignedInBrokerCatalog(listSignedInBrokers);
@@ -125,6 +132,8 @@ export const resetSignedInBrokerCatalog = catalog.reset;
 /** The last known list; empty until the first fetch or a restored copy. */
 export const getSignedInBrokers = catalog.get;
 export const findSignedInBroker = catalog.find;
-/** Fetches the list unless it is under five minutes old. Never rejects. */
+/** Fetches the list unless it is under five minutes old, for a caller that does not wait. */
 export const refreshSignedInBrokers = catalog.refresh;
+/** The same fetch for a caller that waits on it. Never rejects. */
+export const refreshSignedInBrokersAndWait = catalog.refreshAndWait;
 export const subscribeSignedInBrokers = catalog.subscribe;

@@ -138,7 +138,7 @@ export function useBrokerAddFlow({
 
   const start = useCallback(() => {
     endAttemptRef.current?.("cancelled");
-    if (listAdaptersRef.current().some((adapter) => adapter.id === SIGNED_IN_BROKER_TYPE)) void refreshSignedInBrokers();
+    if (listAdaptersRef.current().some((adapter) => adapter.id === SIGNED_IN_BROKER_TYPE)) refreshSignedInBrokers();
     flowSequence += 1;
     setFlow(() => ({ id: flowSequence, directory: buildDirectory(), step: { kind: "broker" }, cursor: 0 }));
     setMessage(null);
