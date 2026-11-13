@@ -28,8 +28,6 @@ import { readTerminalCodeArg } from "../../tickers/company-name-listing";
 import { unknownBloombergMarket, unreadBloombergCode } from "../../tickers/terminal-codes";
 import { notATickerWords } from "../company-name-hint";
 import type { MarketContext } from "../types";
-import { findWatchlist } from "../helpers";
-import { findPortfolio } from "../../portfolio/mutations";
 import { shellWord } from "../../utils/shell-word";
 import { readWatchlistArgument, watchlistMemberSymbol } from "../../portfolio/collection-name";
 import {
@@ -378,12 +376,14 @@ async function withChartTerminalCodes(args: ParsedPaneFunctionArgs, context: Mar
 }
 
 /**
- * The symbols of the watchlist or portfolio a list argument names (case
- * aside), as saved, a portfolio's holdings being what it holds now, at most
- * the function's `maximum` of them, with the note that says the name was read
- * as that list (`readWatchlistArgument`). Null when the argument names
- * neither; a list with nothing in it fails, saying so, rather than be read
- * as a ticker.
+ * The symbols of the watchlist or portfolio a list argument names by its name
+ * (case aside), as saved, a portfolio's holdings being what it holds now, at
+ * most the function's `maximum` of them, with the note that says the name was
+ * read as that list (`readWatchlistArgument`). A list's id is no name: `main`
+ * is the default portfolio's id and a ticker too. Null when the argument names
+ * neither, or names an empty list a ticker could be named as (an empty
+ * watchlist named AI reads AI); an empty list's name of several words fails,
+ * saying so.
  */
 async function watchlistArgument(
   arg: string,
@@ -391,8 +391,10 @@ async function watchlistArgument(
   maximum: number | undefined,
 ): Promise<{ symbols: string[]; notes: string[] } | null> {
   if (/[,;\t\n]/.test(arg)) return null;
-  const watchlist = findWatchlist(context.config, arg);
-  const portfolio = watchlist ? null : findPortfolio(context.config, arg);
+  const wanted = arg.trim().toLowerCase();
+  const named = <T extends { name: string }>(lists: readonly T[]) => lists.find((list) => list.name.trim().toLowerCase() === wanted) ?? null;
+  const watchlist = named(context.config.watchlists);
+  const portfolio = watchlist ? null : named(context.config.portfolios);
   const list = watchlist ?? portfolio;
   if (!list) return null;
   const members = (await context.store.loadAllTickers()).filter((ticker) => watchlist
@@ -402,6 +404,7 @@ async function watchlistArgument(
   const symbols = [...new Set(members.map((ticker) => watchlistMemberSymbol(ticker.metadata)))];
   const kind = watchlist ? "watchlist" : "portfolio";
   if (symbols.length === 0) {
+    if (!/\s/.test(arg.trim())) return null;
     throw new ListingArgError(`${kind === "watchlist" ? "Watchlist" : "Portfolio"} "${list.name}" is empty, so there is nothing to read.`,
       `Add symbols with gloom ${kind} add ${shellWord(list.name)} AAPL, or type tickers.`);
   }

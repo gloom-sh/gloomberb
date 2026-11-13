@@ -60,27 +60,31 @@ test("a watchlist's listings abroad are read with their venue, so they are not t
   expect(read.arg?.split(", ")).toEqual(["NVDA", "ASML:AMS", "2330:TWSE", "005930:KRX", "ES=F"]);
 });
 
-test("a list function reads a portfolio's name as its holdings, and an empty list says so rather than read as a ticker", async () => {
+test("a list function reads a list by its name, a portfolio's as its holdings; an empty list or a list's id reads as a ticker", async () => {
   const { buildPaneCatalogEntries } = await import("./catalog");
   const held = (symbol: string, exchange: string) => createTestTicker(symbol, symbol, {
     exchange, portfolios: ["pension"], positions: [{ portfolio: "pension", shares: 100, broker: "manual" }],
   });
   const saved = [held("SPY", "ARCA"), held("D05", "SGX"), held("0700", "HKEX"), createTestTicker("AAPL", "Apple", { watchlists: [] })];
   const context = {
-    config: { ...createDefaultConfig("/tmp/watchlist-argument-test"), watchlists: [{ id: "watchlist", name: "Watchlist" }],
-      portfolios: [{ id: "pension", name: "Pension Book", currency: "USD" }] },
+    config: { ...createDefaultConfig("/tmp/watchlist-argument-test"),
+      watchlists: [{ id: "watchlist", name: "Watchlist" }, { id: "ai", name: "AI" }, { id: "asia", name: "Asia Book" }],
+      portfolios: [{ id: "main", name: "Main Portfolio", currency: "USD" }, { id: "pension", name: "Pension Book", currency: "USD" }] },
     store: { loadTicker: async () => null, loadAllTickers: async () => saved },
     dataProvider: createTestDataProvider({ search: async () => [], getQuote: async (symbol) => createTestQuote({ symbol }) }),
   } as unknown as MarketContext;
   const anyListing: PaneTemplateDef = { ...template, headless: { ...shortWatchHeadless, usListingsOnly: undefined } };
   const catalog: PaneFunctionCatalog = { ...registry, paneTemplates: new Map([[anyListing.id, anyListing]]) };
+  const read = (arg: string) => applyListingArgument(catalog, context, parsePaneFunctionArgs(["SIW", arg], {}));
   // `fn RIPL "Pension Book"` answered "No company found for "Pension Book"".
-  const book = await applyListingArgument(catalog, context, parsePaneFunctionArgs(["SIW", "Pension Book"], {}));
+  const book = await read("pension book");
   expect(book.arg?.split(", ")).toEqual(["SPY", "D05:SGX", "0700:HKEX"]);
-  expect(book.listingNotes).toEqual(["Read Pension Book as portfolio Pension Book (3 holdings)."]);
-  // `fn RIPL Watchlist` on an empty watchlist answered "Not a ticker: WATCHLIST".
-  await expect(applyListingArgument(catalog, context, parsePaneFunctionArgs(["SIW", "Watchlist"], {})))
-    .rejects.toThrow('Watchlist "Watchlist" is empty, so there is nothing to read.');
+  expect(book.listingNotes).toEqual(["Read pension book as portfolio Pension Book (3 holdings)."]);
+  // main is the default portfolio's id, not its name: `fn SIW MAIN` is the ticker, as is an empty watchlist's AI.
+  expect((await read("MAIN")).arg).toBe("MAIN");
+  expect((await read("AI")).arg).toBe("AI");
+  // An empty list's name no ticker has says so.
+  await expect(read("Asia Book")).rejects.toThrow('Watchlist "Asia Book" is empty, so there is nothing to read.');
   // The catalog's example names the list that holds something, so it runs as printed.
   const [entry] = await buildPaneCatalogEntries(catalog, context);
   expect(entry?.argExamples).toEqual(["'Pension Book'"]);
