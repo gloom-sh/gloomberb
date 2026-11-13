@@ -12,9 +12,10 @@ const config = createDefaultConfig("/tmp/gloom-fn-chart-list-fixture");
 const days = ["2026-10-20", "2026-10-21", "2026-10-22"];
 const closes: Record<string, number[]> = {
   AAPL: [339.5, 343.99, 348.22], MSFT: [520.1, 523.4, 521.9], VOD: [1.15, 1.16, 1.17], MC: [401.2, 403.1, 404.5], LN: [61, 61.2, 61.1],
+  SAN: [93.1, 93.8, 94.2], "SAN.PA": [93.1, 93.8, 94.2],
 };
-/** Where each symbol lists: VOD on the LSE (its NASDAQ receipt aside), MC on Euronext Paris. */
-const venues: Record<string, string> = { AAPL: "NASDAQ", MSFT: "NASDAQ", VOD: "LSE", MC: "EPA", LN: "NYSE" };
+/** Where each symbol lists: VOD on the LSE (its NASDAQ receipt aside), MC on Euronext Paris, SAN (Santander's receipt) on NYSE. */
+const venues: Record<string, string> = { AAPL: "NASDAQ", MSFT: "NASDAQ", VOD: "LSE", MC: "EPA", LN: "NYSE", SAN: "NYSE", "SAN.PA": "EPA" };
 
 async function runG(args: string[]) {
   const persistence = new AppPersistence(":memory:");
@@ -88,4 +89,13 @@ test("fn G reads a quoted terminal code as its listing, as HP and history do, an
   // A qualified symbol is read as written, and tickers typed apart are a comparison.
   expect((await charted(["G", "VOD:LSE"])).labels).toEqual(["VOD:LSE Price"]);
   expect((await charted(["G", "AAPL", "MSFT"])).labels).toEqual(["AAPL:NASDAQ Price", "MSFT:NASDAQ Price"]);
+});
+
+/** Review of the G fix: it must not take GP and the other chart functions off the listing reading every ticker gets. */
+test("fn GP reads its ticker's listing as quote does: SAN --exchange EPA and SAN.PA are Sanofi in Paris", async () => {
+  for (const args of [["GP", "SAN", "--exchange", "EPA"], ["GP", "SAN.PA"]]) {
+    const { error, printed } = await runG(args);
+    expect(error).toBeNull();
+    expect((printed!.result.data as { series: Array<{ label: string }> }).series.map((series) => series.label)).toEqual(["SAN:EPA Price", "Volume"]);
+  }
 });
