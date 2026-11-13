@@ -542,7 +542,7 @@ async function readListedSymbols(
   market: MarketContext,
   ctx: Parameters<CliCommandDef["execute"]>[1],
   usage: string,
-): Promise<{ symbols: string[]; notes: string[]; typedForms: TypedForm[] }> {
+): Promise<{ symbols: string[]; notes: string[]; typedForms: TypedForm[]; byLine: boolean }> {
   try {
     const typedForms: TypedForm[] = [];
     const list = await readSymbolList({
@@ -553,7 +553,11 @@ async function readListedSymbols(
       const where = file && file !== "-" ? file : args.includes("-") ? "standard input" : "what was given";
       ctx.fail([`No symbols in ${where}.`, ...list.notes].join(" "), usage);
     }
-    return { symbols: uniqueEntries(list.symbols), notes: list.notes, typedForms };
+    // A list of one entry a line from a file or standard input has a row for each of its lines (`listRows`), however
+    // many entries they read as: AAPL, a blank line and AAPL again are three rows. Typed arguments, a comma list and a
+    // table with a header keep a row per entry.
+    const byLine = typedForms.filter((form) => form.ownRow).length > 1;
+    return { symbols: uniqueEntries(list.symbols), notes: list.notes, typedForms, byLine };
   } catch (error) {
     if (error instanceof SymbolListError) ctx.fail(error.message, usage);
     throw error;
@@ -1308,7 +1312,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     }));
     const tickerChanges = symbolChanges.map(({ change }) => change);
     // A list's rows name the entry each is for, and mark one that is the same listing as an earlier row.
-    const listInputs = listed && symbols.length > 1 ? quoteListInputs(asked, resolvedListings) : null;
+    const listInputs = listed && (symbols.length > 1 || !!list?.byLine) ? quoteListInputs(asked, resolvedListings) : null;
     const formerIssuers = symbolChanges.map(({ formerIssuer }) => formerIssuer);
     // A symbol with no quote whose bars stopped over a month ago says when it last traded, in place of why no quote
     // came: no longer listed on the service's record (FLAT, a retired ETN), else no trades since. Each costs a history
@@ -1439,7 +1443,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // An export of a list read from a file or standard input has a row for every line, in its order: one no listing was
     // read for says why in its status, as its line on stderr does. The table keeps a row per listing.
     const rows = listInputs && ctx.cliOptions.format !== "text"
-      ? listRows([...data, ...unread.map(unreadRow), ...refused.map((error) => unlistedQuoteRow(error.input))], symbols, list?.typedForms ?? [], unlistedQuoteRow)
+      ? listRows([...data, ...unread.map(unreadRow), ...list?.byLine ? refused.map((error) => unlistedQuoteRow(error.input)) : []],
+        symbols, list?.typedForms ?? [], unlistedQuoteRow)
       : data;
     const basisNotes = changeBasisNotes(data, now);
     const midNotes = extendedMidNotes(data);
@@ -2892,14 +2897,15 @@ function historyListRows(
   listed: readonly ListedHistory[],
   entryRows: (entry: ListedHistory) => HistoryListRow[],
   refused: readonly NotASymbolError[],
-  list: { symbols: string[]; typedForms: TypedForm[] },
+  list: { symbols: string[]; typedForms: TypedForm[]; byLine: boolean },
 ): HistoryListRow[] {
   type EntryRow = ListRow & { bars: HistoryListRow[] };
   const row = (input: string, symbol: string, bars: HistoryListRow[]): EntryRow => ({ input, quote: null, listing: { symbol, exchange: null }, bars });
   const unlisted = (typed: string) => row(typed, typed, [historyFailureRow(typed, unlistedLineStatus(typed))]);
   return listRows([
     ...listed.map((entry) => row(entry.symbol, "history" in entry ? entry.history.listing.key : entry.symbol, entryRows(entry))),
-    ...refused.map((error) => unlisted(error.input)),
+    // A cell that is no symbol (`N/A`) has a row in a list of one entry a line only, as `quote`'s export has.
+    ...list.byLine ? refused.map((error) => unlisted(error.input)) : [],
   ], list.symbols, list.typedForms, unlisted)
     .flatMap(({ bars, input, duplicateOf }) => bars.map((bar) => ({ ...bar, input, ...duplicateOf ? { duplicateOf } : {} })));
 }
@@ -4816,7 +4822,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         lines: [
           `history AAPL MSFT 000660.KS writes every symbol's bars in one long table, ${HISTORY_LIST_CONCURRENCY} symbols at a time; --file list.txt (- for standard input) reads one symbol a line. symbol_or_series, currency_or_unit and as_of name each row's symbol, unit and as-of.`,
           "A symbol with no bars is one row with why in status; the command fails only when none has any. A word typed on the command line that is no ticker fails it, and a bar size in a symbol's place (1s, 30s, 1m) says where the finest bars are. --tail 5 keeps each symbol's newest five bars.",
-          "A list from --file has rows for every line, in its order: a blank line, or one that names no listing, is one row with why in status. Its export adds input, the line as typed, and duplicate_of, the earlier line that is the same listing.",
+          "A --file list of one symbol a line has a row for every line, in its order: a blank line, or one that names no listing, is one row with why in status. A --file list's export adds input, the line as typed, and duplicate_of, the earlier line that is the same listing.",
           "--wide sets the symbols side by side instead: one row per date, one close column per symbol headed with its unit (USDJPY=X close (JPY per USD)), a blank where a symbol has no bar that day. history USDJPY=X USDCHF=X EURCHF=X --csv --wide is a spreadsheet of the three closes; --tail 5 keeps the newest five dates.",
         ],
       }, {

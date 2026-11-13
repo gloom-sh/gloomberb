@@ -519,7 +519,8 @@ function typedLines(text: string, everyLine: boolean): TypedForm[] {
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).map((line) => line.trim());
   const last = lines.findLastIndex(Boolean);
   return lines.slice(0, last + 1).flatMap((typed) => {
-    const key = symbolInputKey(stripStrayEdges(foldTypedText(typed)).text);
+    // The list reads a line's words with one space between them (`MC  FP Equity` is MC FP Equity), so its key does too.
+    const key = symbolInputKey(stripStrayEdges(foldTypedText(typed)).text.replace(/\s+/g, " "));
     if (everyLine && !isComment(typed)) return [{ typed, key, ownRow: true as const }];
     if (!typed || !key) return [];
     return [{ typed, key }];
