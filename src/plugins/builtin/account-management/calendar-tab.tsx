@@ -18,6 +18,7 @@ import { useAppLanguage } from "../../../i18n/react";
 import { Box, useRendererHost } from "../../../ui";
 import { useDialog } from "../../../ui/dialog";
 import { formatTimeAgo } from "../../../utils/datetime-format";
+import { logFailure } from "../../../utils/log-failure";
 
 type Message = { tone: "info" | "success" | "error"; text: string };
 
@@ -44,7 +45,8 @@ export function CalendarAccountTab({ width, sessionMarker }: { width: number; se
   const [shownUrl, setShownUrl] = useState<string | null>(null);
   const busyRef = useRef(false);
 
-  const load = useCallback(async (isCurrent: () => boolean = () => true) => {
+  // A failed load lands in `loadError`. Retry waits on it, to stay busy until the answer is in.
+  const loadAndWait = useCallback(async (isCurrent: () => boolean = () => true) => {
     setLoading(true);
     setLoadError(null);
     try {
@@ -56,6 +58,9 @@ export function CalendarAccountTab({ width, sessionMarker }: { width: number; se
       if (isCurrent()) setLoading(false);
     }
   }, []);
+  const load = useCallback((isCurrent?: () => boolean) => {
+    loadAndWait(isCurrent).catch(logFailure("account-management.calendar-tab", "Loading the calendar link failed"));
+  }, [loadAndWait]);
 
   useEffect(() => {
     let current = true;
@@ -63,7 +68,7 @@ export function CalendarAccountTab({ width, sessionMarker }: { width: number; se
     setFeed(null);
     setShownUrl(null);
     setMessage(null);
-    void load(() => current);
+    load(() => current);
     return () => {
       current = false;
     };
@@ -165,7 +170,7 @@ export function CalendarAccountTab({ width, sessionMarker }: { width: number; se
       <EmptyState
         status="error"
         title={loadError}
-        retry={{ onRetry: () => load(), pending: loading }}
+        retry={{ onRetry: () => loadAndWait(), pending: loading }}
       />
     );
   }

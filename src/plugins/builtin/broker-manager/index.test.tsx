@@ -3,7 +3,7 @@ import { act, useReducer, useRef, type Dispatch } from "react";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { createSignedInBrokerAdapter } from "../../../brokers/signed-in/adapter";
-import { refreshSignedInBrokers, resetSignedInBrokerCatalog } from "../../../brokers/signed-in/catalog";
+import { refreshSignedInBrokersAndWait, resetSignedInBrokerCatalog } from "../../../brokers/signed-in/catalog";
 import type { SignedInBroker } from "../../../brokers/signed-in/client";
 import * as signInDialog from "../../../brokers/signed-in/sign-in-dialog";
 import { FormModalHost } from "../../../components/form-modal";
@@ -238,7 +238,7 @@ async function fakeCloud({ connects }: { connects: boolean }) {
     }
     return { status: connects ? "connected" : "not_connected" };
   }) as typeof apiClient.brokerRequest));
-  await refreshSignedInBrokers({ force: true });
+  await refreshSignedInBrokersAndWait({ force: true });
 }
 
 describe("BrokersPane", () => {
