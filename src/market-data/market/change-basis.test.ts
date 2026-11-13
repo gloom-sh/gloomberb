@@ -277,7 +277,7 @@ test("an index quote naming no session is dated by the session of its home venue
 
 // `quote ^GDAXI ^STOXX50E ^STOXX ^FTSE` on Fri 13 Nov 2026: the DAX read "vs Wed 11 Nov close", the Euro Stoxx 50, the
 // Stoxx Europe 600 and the FTSE 100, quoted under their publishers with no session named, "vs prev close".
-test("an index under a publisher's venue with no calendar is dated by its own sessions", () => {
+test("an index under a publisher's venue with no calendar, or under Cboe's, is dated by its own sessions", () => {
   const now = Date.parse("2026-11-13T02:45:00Z");
   // Xetra's days of that week, 08:00 to 16:30 UTC, as Gloom Cloud sends them with the index.
   const day = (date: string) => ({ start: Date.parse(`${date}T08:00:00Z`), end: Date.parse(`${date}T16:30:00Z`) });
@@ -292,6 +292,14 @@ test("an index under a publisher's venue with no calendar is dated by its own se
   expect(changeBasisLabel(quoteChangeBasis(sx5e)!, now)).toBe("vs Wed 11 Nov close");
   // A print before the day's session opened sits in none of them, and stays undated.
   expect(changeBasisLabel(quoteChangeBasis({ ...sx5e, lastUpdated: Date.parse("2026-11-12T06:00:00Z") })!, now)).toBe("vs prev close");
+  // The Russell 2000, quoted under Cboe's CHICAGO OPTIONS, is dated by its own New York sessions as well.
+  const nyDay = (date: string) => ({ start: Date.parse(`${date}T14:30:00Z`), end: Date.parse(`${date}T21:00:00Z`) });
+  const rut = createTestQuote({
+    symbol: "^RUT", instrumentType: "INDEX", listingExchangeName: "CHICAGO OPTIONS", exchangeName: "CHICAGO OPTIONS", currency: "USD",
+    price: 2_799.06, change: -47.2, changePercent: -1.66, previousClose: 2_846.26, marketState: "CLOSED", lastUpdated: Date.parse("2026-11-12T21:10:04Z"),
+    indexSession: { timeZone: "America/New_York", regular: ["2026-11-10", "2026-11-11", "2026-11-12"].map(nyDay), current: nyDay("2026-11-12") },
+  });
+  expect(changeBasisLabel(quoteChangeBasis(rut)!, now)).toBe("vs Wed 11 Nov close");
 });
 
 test("a Cboe yield index is never dated by its venue's equity calendar: NYSE trades through Veterans Day, the bond market does not", () => {
