@@ -153,7 +153,7 @@ test("a list's export has a row for every line as typed, in its order, each repe
     const csv = serializeCliResult(printed.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, printed.options).split("\n");
     const head = csv[0]!.split(",");
     const cells = (line: string) => line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
-    const rows = csv.slice(1, 7).map((line) => {
+    const rows = csv.slice(1, 9).filter((line) => cells(line).length === head.length).map((line) => {
       const row = cells(line);
       return [row[head.indexOf("Symbol")], row[head.indexOf("input")], row[head.indexOf("duplicate_of")], row[head.indexOf("status")]!.slice(0, 15)];
     });
@@ -164,6 +164,8 @@ test("a list's export has a row for every line as typed, in its order, each repe
       ["USDJPY=X", "usdjpy", "USDJPY Curncy", ""],
       ["USDJPY=X", "USD/JPY", "USDJPY Curncy", ""],
       ["EURUSD=X", "EURUSD=X", "", ""],
+      // The exact repeat keeps its own row, as every line does.
+      ["USDJPY=X", "USDJPY Curncy", "USDJPY Curncy", ""],
     ]);
   } finally {
     rmSync(dir, { recursive: true, force: true });

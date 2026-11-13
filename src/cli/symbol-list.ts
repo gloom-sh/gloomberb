@@ -501,16 +501,15 @@ export interface TypedForm {
 }
 
 /**
- * Each line of a list's text that is one entry, as typed and once in the order first read, with the key of the entry
- * it reads as: so a command can say which line of a sheet each row is, where several were read as one entry.
+ * Each line of a list's text that is one entry, as typed and in order, an exact repeat too, with the key of the entry
+ * it reads as: so a command can give every line its row and say which line of a sheet each row is, where several
+ * were read as one entry.
  */
 function typedLines(text: string): TypedForm[] {
-  const seen = new Set<string>();
   return text.split(/\r?\n/).flatMap((line) => {
     const typed = line.trim();
     const key = symbolInputKey(stripStrayEdges(foldTypedText(typed)).text);
-    if (!typed || !key || seen.has(typed)) return [];
-    seen.add(typed);
+    if (!typed || !key) return [];
     return [{ typed, key }];
   });
 }
