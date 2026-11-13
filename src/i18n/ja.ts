@@ -697,6 +697,7 @@ export const ja: Record<string, string> = {
   "Pro trial · {days}d left": "Pro トライアル · 残り{days}日",
   "{delay} delayed": "{delay}遅延",
   "{delay} delayed · try Pro live": "{delay}遅延 · Pro のリアルタイムを試す",
+  "Stock quotes are {minutes} min delayed without Pro.": "Pro なしでは株価は{minutes}分遅れです。",
   "Pro trial {days}d": "Pro トライアル{days}日",
   "Pro trial — ends {date}": "Pro トライアル — {date} まで",
   "delayed": "遅延",
