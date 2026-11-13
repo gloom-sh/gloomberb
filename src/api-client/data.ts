@@ -618,7 +618,22 @@ export class CloudDataApi {
     mode: "cache-first" | "refresh" = "cache-first",
     options: { signal?: AbortSignal } = {},
   ): Promise<CloudMarketResponse<CloudMarketBatchPayload<CloudQuotePayload>>> {
-    return this.readListing(() => this.postMarketBatch("/market/quotes/batch", targets, mode, options.signal), options.signal);
+    const answer = await this.readListing(() => this.postMarketBatch<CloudQuotePayload>("/market/quotes/batch", targets, mode, options.signal), options.signal);
+    this.rememberBatchNotFound(targets, answer);
+    return answer;
+  }
+
+  /**
+   * A batch's "not found" for a listing is the quote route's too: the router asks each listing a batch missed once
+   * more alone, and that read is answered from the batch instead of a second round trip to say the same.
+   */
+  private rememberBatchNotFound(targets: CloudMarketBatchTarget[], answer: CloudMarketResponse<CloudMarketBatchPayload<CloudQuotePayload>>): void {
+    const items = answer.data?.items;
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!isNotFound(item)) continue;
+      const asked = targets.find((target) => target.symbol === item.symbol && (target.exchange ?? "") === (item.exchange ?? ""));
+      if (asked) this.rememberQuoteNotFound(cloudMarketSymbolPath("/market/quote", asked.symbol, asked.exchange));
+    }
   }
 
   async getCloudWorldVenues(): Promise<

@@ -313,7 +313,7 @@ import { isUnservedWithoutReason, notATickerSymbol, providerMissReason } from ".
 import { isNetworkFailure } from "../../utils/network-failure";
 import { withSavedCopy, type ReportFreshness } from "../pane-functions/freshness";
 import { isNotATickerMessage } from "../not-a-ticker";
-import { primeBoardCoins } from "../board-coins";
+import { useKnownCoins } from "../board-coins";
 import { suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
 import { quotedPhrase, splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
 import { isCompanyNameInput } from "../../tickers/company-name-listing";
@@ -334,7 +334,7 @@ import {
 import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
-import { answerQuote, errorMessage, notUsTickerSentence, withJoinedCompanyNames } from "../quote-answer";
+import { answerQuote, errorMessage, indexFormRead, notUsTickerSentence, withJoinedCompanyNames } from "../quote-answer";
 import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, fxSideCode, fxSubUnit, fxUnitRate, parseFxArgs, type FxQuotedFigure, type FxRequest } from "../fx-pair";
 import {
   describeCarrySides,
@@ -1217,6 +1217,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // So is whether a symbol changed (FB is now META), for the same lists.
     const changes = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
       : listings.map((listing) => [listing, startTickerChangeLookup(market.dataProvider, listing.symbol, listing.exchange)] as const));
+    // And the index form of a symbol no venue lists (GSPC, ^GSPC): its answer, when the symbol is no ticker, is waiting on it.
+    const indexForms = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
+      : listings.map((listing) => [listing, indexFormRead(listing, market, venues.get(listing) ?? null)] as const));
     // The service's quote of the moment, not each form's local copy from whenever it was last asked for:
     // BRK.B saved on NYSE, BRK-B and BRK.B:NYSE print one quote. A local copy answers only offline.
     // Each row prints what its move is from (Chg Basis).
@@ -1225,7 +1228,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const request = { command: commandName, noun: "quote" };
     const quoted = await Promise.all(results.map((result, index) => {
       const listing = listingOf(result, index);
-      return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null, { datesChangeBasis: true });
+      return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null, { datesChangeBasis: true, indexForm: indexForms.get(listing) ?? null });
     }));
     // "MTN Group" typed apart is MTN Group, one row, where "Group" alone would read as UnitedHealth Group.
     const { answers, asked } = listed ? { answers: quoted, asked: results.map(listingOf) }
@@ -1245,7 +1248,10 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // came: no longer listed on the service's record (FLAT, a retired ETN), else no trades since. Each costs a history
     // read, so a long list says only why. A quote the service did not answer is asked after too: a dead listing's
     // quote can fail where its history still says when it stopped (FRC), and an unreachable service fails it at once.
+    // The service's "not a ticker" for a bare symbol says no listing anywhere carries it, so no bars or search row
+    // would say it stopped: a symbol it knows from before answers its last quote or no data, never that.
     const lastTraded = await Promise.all(answers.map(async ({ result, listing }) => !result.quote && answers.length <= MAX_CHOICE_LOOKUPS
+      && (listing.exchange || !isNotATickerMessage(errorMessage(result.error)))
       ? await loadNoQuoteLastTraded(listing.request, market.dataProvider, now) ?? await searchedDelisting(listing, market)
       : null));
     const endedNotes = answers.map(({ listing }, index) => lastTraded[index] ? `${noQuoteLastTradeNote(listing.symbol, lastTraded[index]!)}.` : null);
@@ -1368,7 +1374,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const footnotes = [...basisNotes, ...listingNotes];
     // JSON has no table to put them under: they stay with its warnings.
     const warnings = [...notes, ...ctx.cliOptions.format === "json" ? listingNotes : []];
-    if (ctx.cliOptions.format !== "json") await primeBoardCoins(notes);
+    // The hint for a word that is a coin's name comes from the coins this build knows: the board is a read after the rest.
+    if (ctx.cliOptions.format !== "json") useKnownCoins();
     // Only yield indices: their change is in bp, so the text header drops the percent sign (CSV keeps the percent it holds).
     const yieldsOnly = data.length > 0 && data.every((row) => isYieldIndexSymbol(row.target.symbol));
     ctx.printResult({
