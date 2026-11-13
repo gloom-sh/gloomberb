@@ -156,6 +156,12 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
    * without a reason here, named as `<header>: not available`.
    */
   exportStatus?: (row: Row) => string | null | undefined;
+  /**
+   * Row fields a report gained after its columns were set: CSV writes them
+   * last, after `retrieved_at`, and NDJSON ends each row with them, so no
+   * column an earlier export had moves.
+   */
+  exportAppendedKeys?: readonly string[];
 }
 
 interface CliResultJsonEnvelope<T> extends Omit<CliResult<T>, "freshness" | "exportFreshness" | "failure"> {
@@ -378,11 +384,16 @@ function renderCsv<Row extends Record<string, unknown>>(
   dating?: (row: Row) => string[],
   /** When the data was retrieved, which an undated export's rows end with (`retrieved_at`). */
   retrieved?: string,
+  /** Keys written after every other column (`exportAppendedKeys`), in this order. */
+  appendedKeys: readonly string[] = [],
 ): string {
-  const resolvedColumns = columns && columns.length > 0
+  const allColumns = columns && columns.length > 0
     ? columns
     : inferColumns(rows as Record<string, unknown>[]) as CliResultColumn<Row>[];
+  const resolvedColumns = allColumns.filter((column) => !appendedKeys.includes(column.key));
+  const appended = appendedKeys.flatMap((key) => allColumns.filter((column) => column.key === key));
   const headers = resolvedColumns.map((column) => column.header);
+  const cell = (value: unknown) => isNonFiniteNumber(value) ? "" : typeof value === "number" ? exportNumber(value) : value;
   // A dated export's own `released` column keeps its values; the others close the row.
   const datingAdded = dating
     ? EXPORT_DATING_COLUMNS.flatMap((column, index) => headers.includes(column) ? [] : [index]) : [];
@@ -394,17 +405,19 @@ function renderCsv<Row extends Record<string, unknown>>(
       ...identity ? EXPORT_IDENTITY_COLUMNS : [],
       ...datingAdded.map((index) => EXPORT_DATING_COLUMNS[index]!),
       ...retrieval ? [EXPORT_RETRIEVAL_COLUMN] : [],
+      ...appended.map((column) => column.header),
     ],
     ...rows.map((row) => {
       const values = resolvedColumns.map((column) => (column.value ? column.value(row) : row[column.key]));
       const blanked = resolvedColumns.flatMap((column, index) => isNonFiniteNumber(values[index]) ? [column.header] : []);
       const datingCells = dating?.(row) ?? [];
       return [
-        ...values.map((value) => isNonFiniteNumber(value) ? "" : typeof value === "number" ? exportNumber(value) : value),
+        ...values.map(cell),
         ...status ? [exportStatusText(status(row), blanked)] : [],
         ...identity?.(row) ?? [],
         ...datingAdded.map((index) => datingCells[index] ?? ""),
         ...retrieval ? [retrieved] : [],
+        ...appended.map((column) => cell(column.value ? column.value(row) : row[column.key])),
       ];
     }),
   ]);
@@ -587,13 +600,17 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
       // An undated row says when it was retrieved last, as CSV's `retrieved_at` does.
       const retrieval = !renderOptions.exportDated && !(EXPORT_RETRIEVAL_COLUMN in fields)
         ? { [EXPORT_RETRIEVAL_COLUMN]: exportRetrievalCell(cited) } : {};
-      return JSON.stringify({ ...fields, ...exportIdentityFields(cited, identity), ...dating, ...retrieval }, exportJsonValue);
+      // Fields a report gained later end the row, as they end a CSV row.
+      const appended = Object.fromEntries((renderOptions.exportAppendedKeys ?? []).flatMap((key) => key in fields ? [[key, fields[key]]] : []));
+      const own = Object.fromEntries(Object.entries(fields).filter(([key]) => !(key in appended)));
+      return JSON.stringify({ ...own, ...exportIdentityFields(cited, identity), ...dating, ...retrieval, ...appended }, exportJsonValue);
     }).join("\n");
   }
   if (options.format === "csv") {
     // The rows a window cut say so after them, as text and JSON do: a script has no other way to know.
     const cutNote = window.note ? [`note: ${window.note}`] : [];
-    if (!cited) return withCsvFooter(renderCsv(rows as Row[], renderOptions.columns, undefined, status), cutNote);
+    const appended = renderOptions.exportAppendedKeys ?? [];
+    if (!cited) return withCsvFooter(renderCsv(rows as Row[], renderOptions.columns, undefined, status, undefined, undefined, appended), cutNote);
     const csv = renderCsv(
       rows as Row[],
       renderOptions.columns,
@@ -601,6 +618,7 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
       status,
       renderOptions.exportDated ? (row) => exportDatingCells(cited, rowIdentity(row, renderOptions.exportIdentity)) : undefined,
       exportRetrievalCell(cited),
+      appended,
     );
     return withCsvFooter(csv, [...exportSourceLines(cited), ...cutNote, ...(renderOptions.exportNotes ?? []).map((note) => `note: ${note}`)]);
   }

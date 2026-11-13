@@ -1,5 +1,5 @@
 import type { TickerRecord } from "../types/ticker";
-import { canonicalExchange, canonicalTickerKey, isUsEquityExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { canonicalExchange, canonicalTickerKey, displayTickerKey, isUsEquityExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import { listingSuffixVenue } from "../sources/listing-symbols";
 
@@ -56,8 +56,10 @@ export function listHomeMarket(tickers: Iterable<TickerRecord>): string {
  * reads as Boeing in a US list; else as `display` writes it.
  */
 export function listedSymbol(ticker: TickerRecord, display: string, homeMarket: string | undefined): string {
+  // A key saved under its venue's code reads by the venue's name, as every other row: ES3:XSES is ES3:SGX.
+  if (display.includes(":")) return displayTickerKey(display);
   const market = listingMarket(ticker);
-  if (!market || !homeMarket || market === homeMarket || display.includes(":")) return display;
+  if (!market || !homeMarket || market === homeMarket) return display;
   const listing = venueListing(ticker.metadata.ticker, ticker.metadata.exchange);
   return canonicalTickerKey(listing.symbol, listing.exchange);
 }

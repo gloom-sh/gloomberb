@@ -8,7 +8,8 @@ import type {
 } from "../../../api-client/types";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { loadCloudResource } from "../shared/cloud-resource";
-import { canonicalExchange, normalizeSymbol } from "../../../utils/exchanges";
+import { canonicalExchange, normalizeSymbol, storedKeyListing } from "../../../utils/exchanges";
+import type { TickerRecord } from "../../../types/ticker";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { PricePoint } from "../../../types/financials";
 import { resolveDatedReturns, type DatedReturn } from "../../../portfolio/return-metrics";
@@ -67,6 +68,8 @@ interface RiskMarketHistory {
     fxBridged?: string[];
   } | null;
   error: string | null;
+  /** Set when its daily closes did not load (the service failed or did not answer), which asked again they may. */
+  loadFailed?: true;
 }
 export interface RiskMarketSnapshot {
   histories: RiskMarketHistory[];
@@ -113,6 +116,9 @@ export const RISK_FACTOR_INSTRUMENTS: RiskInstrument[] = [
 ].map(([symbol, exchange]) => ({ symbol: symbol!, exchange: exchange! }));
 /** US equity venues quote only in USD, so the listing venue alone establishes currency. */
 const US_LISTING_VENUES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "CBOE"]);
+/** A held row as the listing its history is read for: `ES3:XSES` is ES3 on SGX, never a symbol the service does not know. */
+export const riskInstrumentOf = (ticker: Pick<TickerRecord, "metadata">): RiskInstrument =>
+  storedKeyListing(ticker.metadata.ticker, ticker.metadata.exchange);
 export const riskInstrumentId = (instrument: RiskInstrument) =>
   `${canonicalExchange(instrument.exchange)}:${normalizeSymbol(instrument.symbol)}`;
 const message = (error: unknown) =>
@@ -650,9 +656,13 @@ export async function fetchPortfolioRiskMarket(
           entry = histories[index]!,
           conversion = conversions.get(instruments[index]![0]),
           { instrument, quote } = entry;
+        // Whether its closes' request failed, which asked again may answer; an answer without them, or a pair's FX, is a reason.
+        let requesting = false;
         try {
           const fxCloses = conversion ? await fxHistory(conversion) : null;
+          requesting = true;
           const response = await historyOf(instrument.symbol, instrument.exchange || quote?.listingExchangeName || "");
+          requesting = false;
           const { latestClose, fxBridged, ...resolved } = validateRiskHistory(
             response,
             instrument,
@@ -687,7 +697,7 @@ export async function fetchPortfolioRiskMarket(
           };
         } catch (error) {
           if (isAccessDenied(error) || signal?.aborted) throw error;
-          histories[index] = { ...entry, error: message(error) };
+          histories[index] = { ...entry, error: message(error), ...(requesting ? { loadFailed: true as const } : {}) };
         }
       }
     }),

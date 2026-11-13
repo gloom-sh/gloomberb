@@ -27,6 +27,18 @@ test("a book of futures hides the company columns once its data is in; a narrow 
   expect(ids(fitPortfolioColumns(watchlist, [row(true)], 40))).toEqual(ids(watchlist));
 });
 
+test("a narrow book over a period gives up today's columns before the period's P&L and CONTRIB", () => {
+  // 90 cells (720 px on the desktop): today's view keeps the day's columns and cuts P&L off the right edge.
+  const today = ids(fitPortfolioColumns(book, [row(true)], 90));
+  const period = ids(fitPortfolioColumns(book, [row(true)], 90, new Set(), true));
+  expect(period).toEqual(expect.arrayContaining(["ticker", "mkt_value", "pnl", "pnl_pct"]));
+  expect(period).not.toContain("day_pnl");
+  expect(book.filter((column) => period.includes(column.id)).reduce((sum, column) => sum + column.width + 1, 2)).toBeLessThanOrEqual(90);
+  // Wide enough, the period keeps today's columns too.
+  expect(ids(fitPortfolioColumns(book, [row(true)], 126, new Set(), true))).toEqual(ids(fitPortfolioColumns(book, [row(true)], 126)));
+  expect(today).toContain("day_pnl");
+});
+
 test("a company column hides only once every row's company data has answered, and a row added after never brings it back for a moment", () => {
   const quoted = (instrumentType?: string) => createTestFinancials({ quote: createTestQuote({ ...(instrumentType ? { instrumentType } : {}) }) });
   // A future or a currency has no company figures to wait for; a stock, a fund or a listing of no stated type waits for its snapshot's answer.

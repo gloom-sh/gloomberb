@@ -4,6 +4,10 @@ import { dollarPairLabel, spotFromUsdValue, spotRateKind } from "../../../../mar
 import { loadHeadlessFinancials, resolveHeadlessInstrument } from "../../shared/headless-market-data";
 import { quoteObservation } from "../../shared/report-freshness";
 import { heldCurrencyUnit } from "../../../../utils/currency-units";
+import { canonicalExchange, displayTickerKey, isUsListingExchange, parsePublicTickerKey } from "../../../../utils/exchanges";
+import { listingSuffixCandidate } from "../../../../sources/listing-symbols";
+import { companyLinesName } from "../../../../tickers/company-name";
+import { logFailure } from "../../../../utils/log-failure";
 import { adrPairComparison, adrPairFigures, adrPairInputRows, adrPairLegs, ADR_PAIR_TEMPLATE_ID } from "./model";
 
 /** Words that ask for this report's figures without being its code: `fn CCL` answers with ADR. */
@@ -30,6 +34,43 @@ async function readSpot(currency: string, ctx: LoadContext) {
 async function readQuote(key: string, ctx: LoadContext, failed: (error: unknown) => null): Promise<Quote | null> {
   const instrument = await resolveHeadlessInstrument(ctx, key);
   return ctx.marketData.getQuote(instrument.symbol, instrument.exchange ?? "").catch(failed);
+}
+
+/** The company's other lines a note names before it counts the rest ("and 2 more"). */
+const OTHER_LINES_NAMED = 3;
+
+/**
+ * The company's lines on venues other than the pair's, as their listings
+ * (Hong Kong's 0005:HKEX for HSBC beside its London home line), with the
+ * issuer's name. Null when the service cannot say.
+ */
+async function otherLines(receiptKey: string, homeKey: string, ctx: LoadContext): Promise<{ issuer: string; lines: string[] } | null> {
+  const { getIssuerListings } = ctx.marketData;
+  if (!getIssuerListings) return null;
+  const [receipt, home] = await Promise.all([resolveHeadlessInstrument(ctx, receiptKey), resolveHeadlessInstrument(ctx, homeKey)]);
+  const homeVenue = canonicalExchange(home.exchange || listingSuffixCandidate(home.symbol)?.exchange || parsePublicTickerKey(homeKey).exchange);
+  const issuer = await Promise.resolve().then(() => getIssuerListings.call(ctx.marketData, receipt.symbol, receipt.exchange || undefined))
+    .catch(logFailure("plugins.adr-pair", "Reading the company's listings failed", null));
+  if (!issuer) return null;
+  // The receipt is the company's US line; another US line or the home venue's is no line abroad to add.
+  const lines = issuer.listings.filter((line) => {
+    const venue = canonicalExchange(line.exchange);
+    return venue && venue !== homeVenue && !isUsListingExchange(venue);
+  }).map((line) => parsePublicTickerKey(line.symbol).exchange ? displayTickerKey(line.symbol) : `${line.symbol}:${canonicalExchange(line.exchange)}`);
+  return { issuer: issuer.name, lines: [...new Set(lines)] };
+}
+
+/**
+ * "HSBC Holdings plc also lists 0005:HKEX.", the company named as the
+ * not-traded message names it (`companyLinesName`, by its home line's name),
+ * the first few lines and how many more. Null when it has no other line.
+ */
+function otherLinesNote(other: { issuer: string; lines: string[] } | null, home: Quote | null): string | null {
+  if (!other || other.lines.length === 0) return null;
+  const named = other.lines.slice(0, OTHER_LINES_NAMED);
+  const more = other.lines.length - named.length;
+  const list = more > 0 ? `${named.join(", ")} and ${more} more` : named.join(", ");
+  return `${companyLinesName(home?.name, other.issuer)} also lists ${list}.`;
 }
 
 export const adrPairHeadless: HeadlessPaneDefinition<"bundle"> = {
@@ -63,12 +104,14 @@ export const adrPairHeadless: HeadlessPaneDefinition<"bundle"> = {
       errors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     };
-    const [receipt, home] = await Promise.all([
+    const [receipt, home, other] = await Promise.all([
       readQuote(legs.receiptKey, ctx, failed(legs.receiptKey)),
       readQuote(legs.homeKey, ctx, failed(legs.homeKey)),
+      otherLines(legs.receiptKey, legs.homeKey, ctx),
     ]);
     ctx.signal.throwIfAborted();
     const quotes = { receipt, home };
+    const otherLinesText = otherLinesNote(other, home);
     // A minor unit (GBp) is read as its currency, as the comparison reads the price.
     const homeCurrency = quotes.home?.currency ? heldCurrencyUnit(quotes.home.currency).currency : "";
     const spot = homeCurrency ? await readSpot(homeCurrency, ctx).catch(failed(dollarPairLabel(homeCurrency))) : null;
@@ -105,7 +148,7 @@ export const adrPairHeadless: HeadlessPaneDefinition<"bundle"> = {
           rows: rows.map(({ opens: _opens, ...row }) => row),
         },
       ],
-      ...(comparison.timingNote ? { notes: [comparison.timingNote] } : {}),
+      ...(comparison.timingNote || otherLinesText ? { notes: [comparison.timingNote, otherLinesText].filter((note): note is string => !!note) } : {}),
       ...(errors.length > 0 ? { errors } : {}),
       freshness: {
         observations: [quotes.receipt, quotes.home].filter((quote): quote is Quote => !!quote).map((quote) => ({ ...quoteObservation(quote) })),

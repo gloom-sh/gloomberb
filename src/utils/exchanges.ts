@@ -260,6 +260,19 @@ export function displayTickerKey(key: string): string {
   return isKnownExchangeCode(parsePublicTickerKey(key).exchange) ? canonicalTickerKey(key) : key;
 }
 
+/**
+ * A stored key as the listing a request names: a row saved under its venue's
+ * code (`ES3:XSES`, as a key is when another listing holds the bare symbol)
+ * is ES3 on SGX, as `D05` on SGX is D05 there. A key whose suffix names no
+ * venue (`FRED:DFII10`) is requested as stored, on the row's exchange.
+ */
+export function storedKeyListing(key: string, exchange?: string): { symbol: string; exchange: string } {
+  const parsed = parsePublicTickerKey(key);
+  return parsed.exchange && isKnownExchangeCode(parsed.exchange)
+    ? { symbol: parsed.symbol, exchange: parsed.exchange }
+    : { symbol: key, exchange: exchange ?? "" };
+}
+
 export function publicTickerKey(symbol: string, exchange?: string): string {
   const parsed = parsePublicTickerKey(symbol);
   const publicValue = publicExchange(parsed.exchange ?? exchange);

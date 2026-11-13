@@ -303,3 +303,39 @@ test("a hedged book's short enters the basket; with a future too large to leave,
     setSystemTime();
   }
 });
+
+test("each view with nothing to show says why in one line, and performance points to the book's P&L over a period", async () => {
+  setSystemTime(now);
+  try {
+    const book = { ...BROKER_PORTFOLIO, name: "Pension Book", brokerId: undefined, brokerInstanceId: undefined };
+    const context = {
+      config: { ...createDefaultConfig("/unused/risk-headless"), portfolios: [book] },
+      signal: new AbortController().signal,
+      apiClient: brokerRiskClient(now),
+      resolvePortfolio: async () => ({ portfolio: book, tickers: brokerFixtureTickers() }),
+    } as unknown as HeadlessPaneContext;
+    const args = { rawArgument: book.id, argument: book.id, symbols: [], options: { view: "performance" } };
+    const performance = await portfolioRiskHeadless.load(args, context);
+    expect(performance.sections[0]).toMatchObject({ title: "performance", rows: [],
+      empty: "No account history (daily values and flows) to measure. For P&L over a period: gloom portfolio show 'Pension Book' --from <date>." });
+    // The text report prints the line where it printed "No data.".
+    const text = renderHeadlessPaneText(portfolioRiskHeadless, performance, args, "PORT", deriveHeadlessFreshness(portfolioRiskHeadless, performance));
+    expect(text).toContain("gloom portfolio show 'Pension Book' --from <date>");
+    expect(text).not.toContain("No data.");
+    const greeks = await portfolioRiskHeadless.load({ ...args, options: { view: "greeks" } }, context);
+    expect(greeks.sections[0]).toMatchObject({ empty: "No option positions in this portfolio." });
+    // Closes that did not load say so, and to try again, rather than "Needs two holdings with 60 daily returns each.":
+    // US02's request times out beside US01's, which is most of the book.
+    const pair = [{ symbol: "US01", exchange: "NASDAQ", currency: "USD", quantity: 1_000, price: 100 }, { symbol: "US02", exchange: "NYSE", currency: "USD", quantity: 10, price: 100 }];
+    const client = brokerRiskClient(now, pair);
+    const failing = { ...client, getCloudHistory: async (symbol: string, exchange: string) => {
+      if (symbol === "US02") throw new Error("Cloud market request timed out after 10000ms");
+      return client.getCloudHistory(symbol, exchange);
+    } };
+    const correlation = await portfolioRiskHeadless.load({ ...args, options: { view: "correlation" } }, { ...context, apiClient: failing,
+      resolvePortfolio: async () => ({ portfolio: book, tickers: brokerFixtureTickers(pair) }) } as unknown as HeadlessPaneContext);
+    expect(correlation.sections[0]).toMatchObject({ title: "correlation", rows: [], empty: "Daily closes did not load for US02; try again in a moment." });
+  } finally {
+    setSystemTime();
+  }
+});

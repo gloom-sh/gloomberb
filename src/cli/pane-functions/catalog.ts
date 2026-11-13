@@ -1,4 +1,6 @@
+import type { TickerRecord } from "../../types/ticker";
 import { logFailure } from "../../utils/log-failure";
+import { shellWord } from "../../utils/shell-word";
 import { commands as builtInCommands, getCommandPrefixes } from "../../components/command-bar/commands/registry";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../types/plugin";
 import type { MarketContext } from "../types";
@@ -297,6 +299,7 @@ async function buildTemplateCatalogEntry(
   pane: PaneDef,
   context: MarketContext | null,
   token: string,
+  listName?: string | null,
 ): Promise<PaneCatalogEntry> {
   const sampleArg = sampleArgForTemplate(template);
   const createOptions: PaneTemplateCreateOptions | undefined = buildCreateOptions(template, sampleArg);
@@ -326,7 +329,7 @@ async function buildTemplateCatalogEntry(
     aliases: [...(template.shortcut?.aliases ?? [])],
     argKind: argument.kind,
     argPlaceholder: argument.placeholder,
-    ...context ? argExamples(headless, context, pane) : null,
+    ...context ? argExamples(headless, context, pane, listName) : null,
     ...(headless?.argument.kind === "tickers" && template.shortcut?.argKind === "ticker"
       ? { shotArgument: argumentHint({ argKind: "ticker", argPlaceholder: template.shortcut.argPlaceholder }) } : {}),
     keywords: template.keywords ?? [],
@@ -337,17 +340,32 @@ async function buildTemplateCatalogEntry(
 
 /**
  * The arguments a function's examples show past its placeholder: its own, and
- * for a list of more than two symbols, a watchlist's name, which stands for
- * its symbols (the reader's first watchlist).
+ * for a list of more than two symbols, a list's name, which stands for its
+ * symbols: the reader's first watchlist or portfolio that holds any
+ * (`listName`), so the example runs as printed.
  */
-function argExamples(headless: HeadlessPaneDefinition | undefined, context: MarketContext, pane?: PaneDef): { argExamples: readonly string[] } | null {
+function argExamples(
+  headless: HeadlessPaneDefinition | undefined,
+  context: MarketContext,
+  pane?: PaneDef,
+  listName: string | null = context.config.watchlists[0]?.name ?? "Watchlist",
+): { argExamples: readonly string[] } | null {
   // A rendered view's own examples (VIEW's spec) stand where a headless model would give them.
   const own = headless?.argument.examples ?? pane?.reportArgument?.examples ?? [];
   const argument = headless?.argument;
   const list = (argument?.kind === "symbol-list" || argument?.kind === "tickers") && (argument.maximum == null || argument.maximum > 2);
-  const name = context.config.watchlists[0]?.name ?? "Watchlist";
-  const examples = list ? [...own, /^[\w.-]+$/.test(name) ? name : `'${name.replace(/'/g, "'\\''")}'`] : own;
+  const examples = list && listName ? [...own, shellWord(listName)] : own;
   return examples.length > 0 ? { argExamples: examples } : null;
+}
+
+/** The first watchlist, else portfolio, that holds a symbol: the list a function's example names. Null when none does. */
+async function exampleListName(context: MarketContext): Promise<string | null> {
+  const tickers = await Promise.resolve().then(() => context.store.loadAllTickers())
+    .catch(logFailure("cli-catalog", "Read the lists for an example failed", [] as TickerRecord[]));
+  const watchlist = context.config.watchlists.find((list) => tickers.some((ticker) => ticker.metadata.watchlists.includes(list.id)));
+  const portfolio = watchlist ? null : context.config.portfolios.find((list) => tickers.some((ticker) => ticker.metadata.portfolios.includes(list.id)
+    || ticker.metadata.positions.some((position) => position.portfolio === list.id && position.shares !== 0)));
+  return (watchlist ?? portfolio)?.name ?? null;
 }
 
 /**
@@ -363,6 +381,8 @@ export async function buildPaneCatalogEntries(
   { unlisted = false, appPanes = false }: { unlisted?: boolean; appPanes?: boolean } = {},
 ): Promise<PaneCatalogEntry[]> {
   const entries: PaneCatalogEntry[] = [];
+  // Read once, when an example first needs it.
+  let listName: Promise<string | null> | undefined;
   const templatedPaneIds = new Set<string>();
   const codedPaneIds = new Set([...registry.paneTemplates.values()]
     .filter((template) => template.shortcut?.prefix && template.listed !== false)
@@ -377,7 +397,8 @@ export async function buildPaneCatalogEntries(
     if (!forUsers && !unlisted && !appPanes) continue;
     // A template only the UI audits list keeps the id an older catalog listed it by, so a base and a head picture it under one name.
     const token = forUsers || unlisted ? paneFunctionCode(template, pane, registry) : template.id;
-    entries.push(await buildTemplateCatalogEntry(template, pane, context, token));
+    listName ??= context ? exampleListName(context) : Promise.resolve(null);
+    entries.push(await buildTemplateCatalogEntry(template, pane, context, token, await listName));
   }
 
   for (const pane of registry.panes.values()) {
@@ -394,7 +415,7 @@ export async function buildPaneCatalogEntries(
       aliases,
       argKind: argument.kind,
       argPlaceholder: argument.placeholder,
-      ...context ? argExamples(pane.headless, context, pane) : null,
+      ...context ? argExamples(pane.headless, context, pane, await (listName ??= exampleListName(context))) : null,
       keywords: [],
       defaultSettings: {},
       capability: getPaneFunctionCapability(undefined, pane),

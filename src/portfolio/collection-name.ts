@@ -82,8 +82,9 @@ export function readWatchlistArgument(
   watchlist: { name: string },
   members: readonly string[],
   maximum: number | undefined,
+  kind: "watchlist" | "portfolio" = "watchlist",
 ): { symbols: string[]; note: string } {
-  const read = `Read ${typed.trim()} as watchlist ${watchlist.name} (${members.length} symbol${members.length === 1 ? "" : "s"})`;
+  const read = `Read ${typed.trim()} as ${kind} ${watchlist.name} (${members.length} ${kind === "portfolio" ? "holding" : "symbol"}${members.length === 1 ? "" : "s"})`;
   if (maximum == null || members.length <= maximum) return { symbols: [...members], note: `${read}.` };
   return { symbols: members.slice(0, maximum), note: `${read}; the first ${maximum} are read.` };
 }

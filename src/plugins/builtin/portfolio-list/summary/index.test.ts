@@ -241,6 +241,18 @@ describe("buildPortfolioSummarySegments", () => {
     buyingPower: 24000,
   };
 
+  // A USD book of HK and Singapore lines read Val 1,179,156 beside HK$ and S$ prices, its currency unsaid.
+  test("a book holding other currencies names its own in the header's amounts, over a period too", () => {
+    const segments = buildPortfolioSummarySegments({
+      totals, accountState: null, otherCurrencies: true, period: { label: "30 Oct–6 Nov", total: -10_033, contribution: -0.85 },
+    });
+    const text = (id: string) => segments.find((segment) => segment.id === id)?.parts.map((part) => part.text).join("");
+    expect(text("val")).toContain("$125,000");
+    expect(segments.map((segment) => segment.parts.map((part) => part.text).join("")).join(" ")).toContain("-$10,033");
+    // A book in USD alone reads bare, as it always has.
+    expect(buildPortfolioSummarySegments({ totals, accountState: null }).find((segment) => segment.id === "val")?.parts.map((part) => part.text).join("")).not.toContain("$");
+  });
+
   // A CAD book of NBIS and cash read TOTAL +4.49% with nothing to say it was on the holdings' cost, cash left out.
   test("beside cash entered by hand, the day and P&L percents say what they are of", () => {
     const segments = buildPortfolioSummarySegments({

@@ -328,6 +328,7 @@ export async function addPastedListToWatchlist(options: {
     ),
     // A saved alias of a holding is the holding's own record, as for the single add.
     add: (ticker) => withCollectionMembership(resolveCollectionTicker(ticker, deps.getState().tickers, "watchlist", targetId), "watchlist", "add", targetId),
+    member: (ticker) => ticker.metadata.watchlists.includes(targetId),
   });
 
   for (const ticker of saved) {

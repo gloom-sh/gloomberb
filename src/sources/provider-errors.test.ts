@@ -102,7 +102,7 @@ test("a listing read the data service failed to answer twice says so and to try 
   }
   // A failure of a read that is not asked again, a 5xx and a timeout among them, keeps the router's words.
   const unretried = [sourceDidNotAnswer("UPSTREAM_ERROR"), new ApiRequestError("Bad gateway", 502), new ApiRequestError("Forbidden", 403),
-    new OperationTimeoutError("Cloud market request timed out after 10000ms: /market/quotes/batch")];
+    new OperationTimeoutError("Cloud market request timed out after 10000ms")];
   for (const failure of unretried) {
     const note: ProviderMissNote = {};
     noteProviderMiss(note, failure);

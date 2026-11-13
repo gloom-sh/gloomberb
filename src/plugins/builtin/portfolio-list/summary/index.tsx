@@ -256,8 +256,11 @@ export function buildPortfolioSummarySegments({
   valuationBasis,
   period = null,
   cashInTable = false,
+  otherCurrencies = false,
 }: {
   totals: PortfolioSummaryTotals;
+  /** The book holds a currency other than its own: its amounts name theirs ($1,179,156), a bare one beside HK$ prices being unclear. */
+  otherCurrencies?: boolean;
   /** The table shows the cash as its own row (with its target and trade), so the header leaves it out. */
   cashInTable?: boolean;
   /**
@@ -281,7 +284,7 @@ export function buildPortfolioSummarySegments({
   /** Cash entered by hand, in the totals currency, with the total it is weighed against. */
   manualCash?: (PortfolioCashLine & { total: number | null }) | null;
 }): PortfolioSummarySegment[] {
-  const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed, baseCurrency });
+  const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed, baseCurrency, named: otherCurrencies });
   if (!isPortfolioTab) {
     return totals.watchlistCount > 0
       ? [createSummarySegment("avg-day", [

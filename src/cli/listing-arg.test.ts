@@ -729,3 +729,29 @@ test("a company's name typed where any command takes a symbol is read as quote r
   for (const run of ["Beta Gamma Naspers Delta", "Gamma Naspers Delta Epsilon", "Naspers Delta Epsilon Zeta"]) expect(searched).not.toContain(run);
   expect(most).toBeGreaterThan(1);
 });
+
+test("a symbol named on a venue it does not trade on names its company's own line there, and only that company's", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const row = { providerId: "test", symbol: "PRU", type: "Common Stock" };
+  const issuers: Record<string, { issuer: string; name: string; country: string; listings: { symbol: string; exchange: string; name: string; primary: boolean }[] }> = {
+    LSE: { issuer: "prudential-plc", name: "PRUDENTIAL PLC", country: "GB", listings: [
+      { symbol: "PRU:LSE", exchange: "LSE", name: "Prudential plc", primary: true }, { symbol: "2378:HKEX", exchange: "HKEX", name: "Prudential plc", primary: false },
+    ] },
+    NYSE: { issuer: "cik:1137774", name: "Prudential Financial, Inc.", country: "US", listings: [{ symbol: "PRU", exchange: "NYSE", name: "Prudential Financial", primary: true }] },
+  };
+  const dataProvider = createTestDataProvider({
+    search: async () => [
+      { ...row, name: "Prudential plc", exchange: "LSE", currency: "GBp", companyId: "prudential-plc" },
+      { ...row, name: "Prudential Financial, Inc.", exchange: "NYSE", currency: "USD", companyId: "cik:1137774" },
+    ],
+    getIssuerListings: async (_symbol, exchange) => issuers[exchange ?? ""] ?? null,
+  });
+  const deps = { store, dataProvider };
+  // PRU on LSE is Prudential plc, whose Hong Kong line is 2378; Prudential Financial on NYSE has none there.
+  expect(await notTradedMessage(await resolveCliListing("PRU:HKEX", undefined, deps), deps))
+    .toBe("PRU does not trade on HKEX. Prudential plc trades on HKEX as 2378:HKEX. PRU trades on: LSE, NYSE.");
+  // No company of PRU's lists in Toronto: the message is as it was.
+  expect(await notTradedMessage(await resolveCliListing("PRU:TSX", undefined, deps), deps)).toBe("PRU does not trade on TSX. PRU trades on: LSE, NYSE.");
+});

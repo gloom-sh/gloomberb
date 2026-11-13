@@ -28,7 +28,7 @@ import { readTerminalCodeArg } from "../../tickers/company-name-listing";
 import { unknownBloombergMarket, unreadBloombergCode } from "../../tickers/terminal-codes";
 import { notATickerWords } from "../company-name-hint";
 import type { MarketContext } from "../types";
-import { findWatchlist } from "../helpers";
+import { shellWord } from "../../utils/shell-word";
 import { readWatchlistArgument, watchlistMemberSymbol } from "../../portfolio/collection-name";
 import {
   buildPaneFunctionLookup,
@@ -236,7 +236,7 @@ export async function applyListingArgument(
   if (!(takesOneTicker || takesList) || getPaneFunctionCapability(found.template, found.pane).options.some((option) => option.key === "exchange")) {
     return args;
   }
-  // A watchlist's name stands for its symbols, as saved (`fn SIW HY3`).
+  // A watchlist's or a portfolio's name stands for its symbols, as saved (`fn SIW HY3`, `fn RIPL "Pension Book"`).
   const watchlist = takesList ? await watchlistArgument(args.arg, context, headless?.argument.maximum) : null;
   if (watchlist) args = { ...args, arg: watchlist.symbols.join(", ") };
   // A function that reads FRED series (MDAY) gets FRED:T10Y2Y as typed; any other is told it is no listing.
@@ -376,10 +376,14 @@ async function withChartTerminalCodes(args: ParsedPaneFunctionArgs, context: Mar
 }
 
 /**
- * The symbols of the watchlist a list argument names (case aside), as saved,
- * at most the function's `maximum` of them, with the note that says the name
- * was read as that watchlist (`readWatchlistArgument`). Null when the
- * argument names no watchlist, or one with nothing in it.
+ * The symbols of the watchlist or portfolio a list argument names by its name
+ * (case aside), as saved, a portfolio's holdings being what it holds now, at
+ * most the function's `maximum` of them, with the note that says the name was
+ * read as that list (`readWatchlistArgument`). A list's id is no name: `main`
+ * is the default portfolio's id and a ticker too. Null when the argument names
+ * neither, or names an empty list a ticker could be named as (an empty
+ * watchlist named AI reads AI); an empty list's name of several words fails,
+ * saying so.
  */
 async function watchlistArgument(
   arg: string,
@@ -387,13 +391,24 @@ async function watchlistArgument(
   maximum: number | undefined,
 ): Promise<{ symbols: string[]; notes: string[] } | null> {
   if (/[,;\t\n]/.test(arg)) return null;
-  const watchlist = findWatchlist(context.config, arg);
-  if (!watchlist) return null;
-  const symbols = (await context.store.loadAllTickers())
-    .filter((ticker) => ticker.metadata.watchlists.includes(watchlist.id))
-    .map((ticker) => watchlistMemberSymbol(ticker.metadata));
-  if (symbols.length === 0) return null;
-  const read = readWatchlistArgument(arg, watchlist, symbols, maximum);
+  const wanted = arg.trim().toLowerCase();
+  const named = <T extends { name: string }>(lists: readonly T[]) => lists.find((list) => list.name.trim().toLowerCase() === wanted) ?? null;
+  const watchlist = named(context.config.watchlists);
+  const portfolio = watchlist ? null : named(context.config.portfolios);
+  const list = watchlist ?? portfolio;
+  if (!list) return null;
+  const members = (await context.store.loadAllTickers()).filter((ticker) => watchlist
+    ? ticker.metadata.watchlists.includes(watchlist.id)
+    : ticker.metadata.portfolios.includes(portfolio!.id)
+      || ticker.metadata.positions.some((position) => position.portfolio === portfolio!.id && position.shares !== 0));
+  const symbols = [...new Set(members.map((ticker) => watchlistMemberSymbol(ticker.metadata)))];
+  const kind = watchlist ? "watchlist" : "portfolio";
+  if (symbols.length === 0) {
+    if (!/\s/.test(arg.trim())) return null;
+    throw new ListingArgError(`${kind === "watchlist" ? "Watchlist" : "Portfolio"} "${list.name}" is empty, so there is nothing to read.`,
+      `Add symbols with gloom ${kind} add ${shellWord(list.name)} AAPL, or type tickers.`);
+  }
+  const read = readWatchlistArgument(arg, list, symbols, maximum, kind);
   return { symbols: read.symbols, notes: [read.note] };
 }
 

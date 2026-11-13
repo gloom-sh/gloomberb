@@ -104,16 +104,18 @@ function bookAmountText(value: number | undefined, currency: string, signed: boo
 /**
  * A total in the portfolio's currency (bookAmountText): never rounded to a
  * hundred, as a compact 1.6k for $1,587.80 was. Bare when both it and the
- * app's base currency are USD, as the pane has always shown it; otherwise it
- * leads with the currency symbol, as prices do: A$108,612, +$600.12.
+ * app's base currency are USD, as the pane has always shown it, unless the
+ * book holds another currency (`named`), beside whose prices a bare total
+ * would not say which it is in; otherwise it leads with the currency symbol,
+ * as prices do: A$108,612, +$600.12.
  */
 export function formatPortfolioAmount(
   value: number | undefined,
   currency: string,
-  { signed = false, baseCurrency = "USD" }: { signed?: boolean; baseCurrency?: string } = {},
+  { signed = false, baseCurrency = "USD", named = false }: { signed?: boolean; baseCurrency?: string; named?: boolean } = {},
 ): string {
   const text = bookAmountText(value, currency, signed);
-  const bare = currency === "USD" && (currencyCode(baseCurrency) ?? "USD") === "USD";
+  const bare = !named && currency === "USD" && (currencyCode(baseCurrency) ?? "USD") === "USD";
   if (bare || value == null || !Number.isFinite(value)) return text;
   const sign = text.startsWith("+") || text.startsWith("-") ? text.charAt(0) : "";
   return `${sign}${getCurrencySymbol(currency)}${text.slice(sign.length)}`;

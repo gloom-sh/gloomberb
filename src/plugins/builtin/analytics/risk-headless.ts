@@ -1,7 +1,7 @@
 import { portfolioSectorReport } from "./risk-sectors";
 import { loadPortfolioOptionBook } from "./risk-options";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { fetchPortfolioRiskMarket, RISK_HISTORY_LIMIT } from "./risk-client";
+import { fetchPortfolioRiskMarket, riskInstrumentOf, RISK_HISTORY_LIMIT } from "./risk-client";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
 import { cloudEpisodeReader, fetchRiskEpisodeHistory, onceEpisodeReader, riskEpisodeTargets } from "./risk-episodes";
 import { describeCollections } from "../../../portfolio/collection-name";
@@ -71,6 +71,51 @@ function emptyPortfolioHint(name: string, listed: readonly string[]): string {
     + `then their shares with gloom portfolio position set ${portfolio} AAPL 10 150.`;
 }
 
+/**
+ * Why a view of PORT has no rows, in one line, as its section says it in
+ * place of a bare "No data.": what it needs, and where the trustee's question
+ * is answered instead. Performance reads the account's own history, which a
+ * book entered by hand has none of; its P&L over a period is `portfolio show
+ * --from`.
+ */
+function riskSectionEmpty(
+  view: RiskView,
+  { name, brokerLinked, unvaluedOptions, failedHistories }: {
+    name: string; brokerLinked: boolean; unvaluedOptions: boolean;
+    /** Holdings whose daily closes did not load: the reason a view of returns is empty, not what the book holds. */
+    failedHistories: readonly string[];
+  },
+): string {
+  if (failedHistories.length > 0 && !RISK_OWN_DATA_VIEWS.has(view)) return failedClosesText(failedHistories);
+  switch (view) {
+    case "performance":
+      return `No account history${brokerLinked ? " from its broker" : ""} (daily values and flows) to measure. `
+        + `For P&L over a period: gloom portfolio show ${shellWord(name)} --from <date>.`;
+    case "attribution":
+      return "No sector weights and returns for this account and its benchmark; import them with --evidence.";
+    case "greeks":
+      return unvaluedOptions ? "No option position in this portfolio could be valued." : "No option positions in this portfolio.";
+    case "correlation":
+      return "Needs two holdings with 60 daily returns each.";
+    default:
+      return "No holding has the daily closes this view needs.";
+  }
+}
+
+/** Views read from the account's own records or option positions, not from its holdings' daily closes. */
+const RISK_OWN_DATA_VIEWS: ReadonlySet<RiskView> = new Set(["performance", "attribution", "greeks"]);
+
+/** The holdings whose daily closes did not load, for an empty view's reason. */
+function failedHistories(coverage: RiskCoverage | undefined): string[] {
+  return (coverage?.leftOut ?? []).filter((line) => line.historyFailed).map((line) => line.symbol);
+}
+
+/** "Daily closes did not load for US02, US03 and 4 more; try again in a moment." */
+function failedClosesText(symbols: readonly string[]): string {
+  const more = symbols.length > 3 ? ` and ${symbols.length - 3} more` : "";
+  return `Daily closes did not load for ${symbols.slice(0, 3).join(", ")}${more}; try again in a moment.`;
+}
+
 /** Rows of one view in the compact result; the pane and reports keep every row. */
 const COMPACT_ROW_LIMIT = 100;
 /** The correlation view is every pair of holdings; the compact result keeps the strongest. */
@@ -127,7 +172,11 @@ function coverageSummary(coverage: RiskCoverage, limit = Infinity) {
 function coverageLine(coverage: RiskCoverage | undefined): { error?: string; note?: string } {
   const shortfall = riskCoverageShortfall(coverage);
   // No estimate at all is a failure; an estimate that leaves holdings out is a caveat.
-  if (shortfall) return { error: `Basket estimates unavailable: ${shortfall.title} ${shortfall.message}`.trim() };
+  if (shortfall) {
+    // Closes that did not load are why, which asked again may not be.
+    const failed = failedHistories(coverage);
+    return { error: [`Basket estimates unavailable: ${shortfall.title} ${shortfall.message}`.trim(), ...failed.length ? [failedClosesText(failed)] : []].join(" ") };
+  }
   const line = coverage?.leftOut.length ? riskCoverageLine(coverage) : null;
   return line ? { note: `${line[0]!.toUpperCase()}${line.slice(1)}; metadata.coverage lists each with its reason.` } : {};
 }
@@ -307,7 +356,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     // go unused. A bigger book waits for the basket, so it reads no closes it does not replay.
     const warming = wantsEpisodes && tickers.length <= EPISODE_WARM_LIMIT
       ? fetchRiskEpisodeHistory(
-          tickers.map((ticker) => ({ instrument: { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange }, currency: null })),
+          // With the currency each is saved in, so the FX closes the replay converts at are read alongside, not after.
+          tickers.map((ticker) => ({ instrument: riskInstrumentOf(ticker), currency: ticker.metadata.currency || null })),
           local.portfolio.currency, episodeReader, ctx.signal,
         ).catch(() => {
           // Intentional ignore: the replayed load below reads the same closes and reports their failures.
@@ -335,7 +385,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
         : loadPortfolioOptionBook(tickers, local.portfolio),
     ]);
     const episodeTargets = wantsEpisodes
-      ? riskEpisodeTargets(prices, tickers.map((ticker) => ({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange })))
+      ? riskEpisodeTargets(prices, tickers.map(riskInstrumentOf))
       : [];
     const episodes = episodeTargets.length
       ? await fetchRiskEpisodeHistory(episodeTargets, local.portfolio.currency, episodeReader, ctx.signal)
@@ -406,7 +456,13 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       complete,
       errors: model.warnings,
       notes: [...riskCoverageNotices(model.coverage), ...model.notes.filter((note) => note !== fallback)],
-      sections: shown.map(({ view, rows }) => ({ title: view, columns: RISK_COLUMNS, rows })),
+      // A view with nothing to show says why in one line.
+      sections: shown.map(({ view, rows }) => ({ title: view, columns: RISK_COLUMNS, rows, ...(rows.length === 0 ? { empty: riskSectionEmpty(view, {
+        name: local.portfolio.name,
+        brokerLinked: !!(local.portfolio.brokerId || local.portfolio.brokerInstanceId),
+        unvaluedOptions: (model.greeks?.warnings.length ?? 0) > 0,
+        failedHistories: failedHistories(model.coverage),
+      }) } : {}) })),
       metadata: { coverage: coverageSummary(model.coverage), model, benchmark: model.benchmark, window: model.window,
         notices: [...(shortfall ? [shortfall] : []), ...notices] },
     };
@@ -426,7 +482,11 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       complete: result.complete,
       ...(errors.length ? { errors } : {}),
       ...(notes.length ? { notes } : {}),
-      sections: [{ title: view, columns: RISK_COLUMNS, rows: rows.map(displayRow) }],
+      sections: [{ title: view, columns: RISK_COLUMNS, rows: rows.map(displayRow), ...(rows.length === 0 ? { empty: riskSectionEmpty(view, {
+        name: model.portfolio.name, brokerLinked: !!(model.portfolio.brokerId || model.portfolio.brokerInstanceId),
+        unvaluedOptions: (model.greeks?.warnings.length ?? 0) > 0,
+        failedHistories: failedHistories(model.coverage),
+      }) } : {}) }],
       metadata: {
         portfolio: {
           id: model.portfolio.id,
