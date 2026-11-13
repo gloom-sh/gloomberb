@@ -74,9 +74,11 @@ test("asset controls survive loading, 503 and empty; r retries, stale rows stay 
 
     mode = "stale";
     await tui.emitKeypress({ name: "r", sequence: "r" });
-    const stale = await tui.waitForFrameToContain("ETHA");
+    // The frames before the retry lands already say "stale" (the footer dates the flows 2026-10-20 against today)
+    // and, while it loads, draw the table's header with ETHA over no rows: the wait is for the day's flow it brings.
+    const stale = await tui.waitForFrameToContain("123.0");
+    expect(stale).toContain("ETHA");
     expect(stale).toContain("stale");
-    expect(stale).toContain("123.0");
     // The footer's source line says it once.
     expect(stale.match(/\bstale\b/g)).toHaveLength(1);
     await tui.clickFrameText("Bitcoin");
