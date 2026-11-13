@@ -164,7 +164,9 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       { key: "metric", header: "Metric" },
       ...dates.map(({ date, label }, index) => ({
         key: date, header: label, align: "right" as const,
-        format: (_value: unknown, row: Record<string, unknown>) => {
+        // Exports write the amount alone, every digit; its growth (or N/M) is in the JSON and on the text table.
+        format: (_value: unknown, row: Record<string, unknown>) => (row.cells as Array<{ formatted: string }>)[index]!.formatted,
+        textFormat: (_value: unknown, row: Record<string, unknown>) => {
           const cell = (row.cells as Array<{ formatted: string; growthFormatted: string }>)[index]!;
           return [cell.formatted, cell.growthFormatted].filter(Boolean).join(" ");
         },
