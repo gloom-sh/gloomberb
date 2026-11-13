@@ -8696,7 +8696,7 @@
    "title": "Futures curves and rolling (CTM)",
    "summary": "A futures curve lines up every contract month of one commodity, rising (contango) when storing costs money and falling (backwardation) when it is scarce now, and CTM shows it with the cost of rolling.",
    "chapter": "Futures, commodities and energy",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/futures-commodities-energy/positioning-cot",
@@ -8729,7 +8729,7 @@
   {
    "url": "/academy/futures-commodities-energy/macro-days",
    "title": "How a stock reacts on macro days (MDAY)",
-   "summary": "MDAY compares how a US listing moves on CPI, jobs and Fed decision days with a normal day, over up to five years, and lists every release day with its move.",
+   "summary": "MDAY compares how a US listing moves on CPI, jobs and central bank decision days with a normal day, over up to five years, and lists every release day with its figures and move.",
    "chapter": "Futures, commodities and energy",
    "minutes": 4
   },
