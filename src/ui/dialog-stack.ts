@@ -9,6 +9,18 @@ import type { DialogApi, DialogOptions, PromptContext } from "./dialog";
 
 export type DialogKind = "alert" | "prompt";
 
+/**
+ * A click outside that closes a dialog only while nothing in it would be lost:
+ * the prompt takes `closeOnClickOutside`, its content reports `setClean`.
+ */
+export function clickOutsideWhileClean(): { closeOnClickOutside: () => boolean; setClean: (clean: boolean) => void } {
+  let clean = true;
+  return {
+    closeOnClickOutside: () => clean,
+    setClean: (next) => { clean = next; },
+  };
+}
+
 /** Whether a click on the backdrop closes the dialog now. */
 export function closesOnClickOutside(option: DialogOptions["closeOnClickOutside"]): boolean {
   return typeof option === "function" ? option() : option === true;

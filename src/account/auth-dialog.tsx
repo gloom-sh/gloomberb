@@ -10,6 +10,7 @@ import type { AuthUser } from "../api-client";
 import { DialogFrame } from "../components/ui/frame";
 import { useAppLanguage } from "../i18n/react";
 import { useDialog, type PromptContext } from "../ui/dialog";
+import { clickOutsideWhileClean } from "../ui/dialog-stack";
 import { AuthForm, authFormTitle } from "./auth-form";
 import type { AccountMode } from "./auth-model";
 import { CloudVerificationPanel } from "./verification-panel";
@@ -91,11 +92,10 @@ export function AuthDialogHost() {
       if (openRef.current) return;
       openRef.current = true;
       openAuthDialogs += 1;
-      let clean = true;
-      const setClean = (next: boolean) => { clean = next; };
+      const { closeOnClickOutside, setClean } = clickOutsideWhileClean();
       void dialog
         .prompt<AuthUser | undefined>({
-          closeOnClickOutside: () => clean,
+          closeOnClickOutside,
           content: (context: unknown) => (
             <AuthDialog
               {...(context as PromptContext<AuthUser | undefined>)}

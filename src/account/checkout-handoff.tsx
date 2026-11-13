@@ -17,7 +17,7 @@ import { t } from "../i18n";
 import { useAppLanguage } from "../i18n/react";
 import { useViewport } from "../react/input";
 import { colors } from "../theme/colors";
-import { Box, Text, TextAttributes, useUiCapabilities } from "../ui";
+import { Box, useUiCapabilities } from "../ui";
 import { type DialogApi, type PromptContext, useDialogKeyboard } from "../ui/dialog";
 import { logFailure } from "../utils/log-failure";
 import { accountSession } from "./session";
@@ -187,21 +187,14 @@ function CheckoutHandoffDialog({
     );
   }
 
+  // The kit's frame, as every other dialog: its close button is a mouse's way out. A click outside never closes
+  // it: from the first moment a checkout is being opened or paid for in the browser.
   return (
-    <Box flexDirection="column" alignItems="center">
-      <Box height={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title}</Text>
+    <DialogFrame title={title} subtitle={subtitle} footer={t("esc to close")} onClose={dismiss}>
+      <Box flexDirection="column" alignItems="center">
+        {panel(termHeight - TERMINAL_DIALOG_ROWS)}
       </Box>
-      <Box height={1}>
-        <Text fg={colors.textDim}>{subtitle}</Text>
-      </Box>
-      <Box height={1} />
-      {panel(termHeight - TERMINAL_DIALOG_ROWS)}
-      <Box height={1} />
-      <Box height={1}>
-        <Text fg={colors.textMuted}>{t("esc to close")}</Text>
-      </Box>
-    </Box>
+    </DialogFrame>
   );
 }
 
