@@ -218,7 +218,7 @@ test("rows a bank or a statistics office times itself show its clock; a bank tha
   expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Local");
 });
 
-test("plain output, which keeps every column a query has, leaves out the Local and Viewer columns when nothing fills them", async () => {
+test("plain output leaves out the Local and Viewer columns when nothing fills them, and the CSV the Local column", async () => {
   const timed = { ...event("2026-10-22T12:00:00.000Z", "MX", "high", "Mid-Month CPI"), localTime: "06:00", timeZone: "America/Mexico_City" };
   setCliPlainOverride(true);
   try {
@@ -234,9 +234,15 @@ test("plain output, which keeps every column a query has, leaves out the Local a
     expect(mixed).toMatch(/12:30 UTC\s+—\s+US\s+high\s+Housing Starts/);
     // --tz gives the viewer's clock its column, named for the zone.
     expect(await econText(twoWeeks, ["--country", "US", "--tz", "America/New_York"])).toMatch(/Time\s+Day\s+New York\s+Country/);
-    // A script's CSV header keeps both columns whatever the rows hold.
-    const { result, options } = await econPrinted(twoWeeks, ["--country", "US"]);
-    expect(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n")[0]).toContain("Viewer,Local");
+    // A script's CSV header has Local only when a row has a publisher's clock: `econ --tz Asia/Tokyo --csv` carried it
+    // empty on every row.
+    const header = async (calendar: typeof twoWeeks, args: string[]) => {
+      const { result, options } = await econPrinted(calendar, args);
+      return serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n")[0]!;
+    };
+    expect(await header(twoWeeks, ["--country", "US"])).toContain("Viewer,Country");
+    expect(await header(twoWeeks, ["--country", "US", "--tz", "Asia/Tokyo"])).toStartWith("Date,Time,Day,Tokyo date,Tokyo day,Tokyo time,Country");
+    expect(await header([...twoWeeks, timed], ["--country", "US,MX"])).toContain("Viewer,Local,Country");
   } finally {
     setCliPlainOverride(null);
   }
@@ -401,7 +407,7 @@ test("the CSV, NDJSON and JSON of the same calendar say the same, and the CSV ad
     ...json.columns.map((column) => column.header),
     "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "period", "released", "retrieved",
   ]);
-  expect(csv.header.slice(0, json.columns.length)).toEqual(["Date", "Day", "Time", "Viewer", "Local", "Country", "Impact", "Event", "Actual", "Forecast", "Prior", "Unit", "Scale", "Publisher", "Link", "actual_text", "forecast_text", "prior_text", "consensus_feed", "consensus_read_at", "actual_status"]);
+  expect(csv.header.slice(0, json.columns.length)).toEqual(["Date", "Day", "Time", "Viewer", "Country", "Impact", "Event", "Actual", "Forecast", "Prior", "Unit", "Scale", "Publisher", "Link", "actual_text", "forecast_text", "prior_text", "consensus_feed", "consensus_read_at", "actual_status"]);
   expect(csv.rows).toHaveLength(json.data.length);
   expect(ndjson).toHaveLength(json.data.length);
   const cell = (value: unknown) => value == null ? "" : String(value);
@@ -444,7 +450,7 @@ test("the CSV, NDJSON and JSON of the same calendar say the same, and the CSV ad
   expect(csv.rows[json.data.findIndex((row) => row.event === "Housing Starts")]!.slice(csv.header.indexOf("consensus_feed"), csv.header.indexOf("consensus_read_at") + 1)).toEqual(["", ""]);
   // A figure is a number in every format, and a missing one is empty in CSV and null in JSON.
   const crude = json.data.findIndex((row) => row.event === "EIA Crude Oil Stocks Change");
-  expect(csv.rows[crude]!.slice(8, 13)).toEqual(["-4100000", "-987000", "500000", "bbl", "1000000"]);
+  expect(csv.rows[crude]!.slice(csv.header.indexOf("Actual"), csv.header.indexOf("Scale") + 1)).toEqual(["-4100000", "-987000", "500000", "bbl", "1000000"]);
   const housing = json.data.findIndex((row) => row.event === "Housing Starts");
   expect(csv.rows[housing]!.slice(8, 13)).toEqual(["", "", "", "", ""]);
   expect(json.data[housing]).toMatchObject({ actual: null, released: null });

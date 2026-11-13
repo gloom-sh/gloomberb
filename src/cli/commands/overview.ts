@@ -410,9 +410,14 @@ function econHeadColumns(viewerZone: string | null): CliResultColumn[] {
  * weekday, and with --tz the viewer's own date, weekday and time, each in a
  * column of its own and filled on every row with a time, so no column mixes
  * the UTC day with the viewer's weekday. The publisher's own clock (`Local`)
- * stays where it was.
+ * stays where it was when a row has one (`publisherTimed`), and is left out
+ * when it would be empty on every row.
  */
-function econExportHeadColumns(viewerZone: string | null): CliResultColumn[] {
+function econExportHeadColumns(viewerZone: string | null, publisherTimed: boolean): CliResultColumn[] {
+  return econExportZoneColumns(viewerZone).filter((column) => column.key !== "localTime" || publisherTimed);
+}
+
+function econExportZoneColumns(viewerZone: string | null): CliResultColumn[] {
   const [date, , , viewerTime, local, ...rest] = viewerZone ? econHeadColumns(viewerZone) : [];
   if (!viewerZone) return econHeadColumns(null);
   const city = timeZoneCity(viewerZone);
@@ -701,6 +706,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // refreshed is the copy an earlier read saved, and says when that was.
     const read = rowsFreshness([], { status: "not-a-feed", basis: "calendar", asOf: fetchedAt }, { stale });
     const calendarFreshness = read && source === "stale-fallback" ? { ...read, savedAt: new Date(fetchedAt).toISOString() } : read;
+    // Only rows a bank or statistics office times itself have its own clock (`Local`).
+    const publisherTimed = rows.some((row) => !!publisherClock(row.localTime, row.timeZone));
     ctx.printResult({
       data: rows,
       ...(unread ? { warnings: [unread] } : {}),
@@ -725,8 +732,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
         period: typeof row.referencePeriod === "string" ? row.referencePeriod : null,
       }),
       // The exports add what a script needs to read a row; the text table keeps the columns it had.
-      columns: [...econExportHeadColumns(viewerZone), ...econFigureColumns(false), ...econExportColumns],
-      textColumns: [...econTextHeadColumns(viewerZone, rows.some((row) => !!publisherClock(row.localTime, row.timeZone))), ...econFigureColumns(true), ECON_PUBLISHER_COLUMN],
+      columns: [...econExportHeadColumns(viewerZone, publisherTimed), ...econFigureColumns(false), ...econExportColumns],
+      textColumns: [...econTextHeadColumns(viewerZone, publisherTimed), ...econFigureColumns(true), ECON_PUBLISHER_COLUMN],
     });
   });
 }
