@@ -2606,9 +2606,10 @@ function listedKeys(keys: readonly string[]): string {
  * where a symbol has several in one row, the row's close is the last one's,
  * the slot's close. `notes` names the symbols whose bars moved and those
  * whose bars were merged. `interval` is the bars' size when every symbol came
- * in one, else null.
+ * in one, else null. Columns go in `order`, the keys as the list asked for
+ * them, a column that served nothing (`failed`) in its place, empty.
  */
-function wideHistoryTable(served: readonly ListingHistory[], failed: readonly string[] = []): {
+function wideHistoryTable(served: readonly ListingHistory[], failed: readonly string[] = [], order: readonly string[] = []): {
   rows: Array<Record<string, string | number | null>>;
   columns: CliResultColumn[];
   interval: string | null;
@@ -2639,22 +2640,25 @@ function wideHistoryTable(served: readonly ListingHistory[], failed: readonly st
     });
     if (moved.length) notes.unshift(`${listedKeys(moved)} bars are listed ${under}.`);
   }
+  const columns = new Map<string, CliResultColumn>(histories.map((history) => {
+    const unit = historyExportUnit(history.unit);
+    const price = historyPrice(history.decimals);
+    // A catalog series' value is no close: its column is the series, in its unit.
+    return [history.listing.key, {
+      key: key(history), header: `${history.listing.key}${history.catalogSeries ? "" : " close"}${unit ? ` (${unit})` : ""}`, align: "right",
+      format: (value) => value == null ? "" : price(value),
+    }];
+  }));
+  // A column asked for that served nothing stays, empty: its reason is in the notes.
+  for (const symbol of failed) {
+    if (!columns.has(symbol)) columns.set(symbol, { key: `close:${symbol}`, header: catalogSeriesId(symbol) ? symbol : `${symbol} close`, align: "right", format: () => "" });
+  }
+  const ordered = [...new Set([...order.filter((symbol) => columns.has(symbol)), ...columns.keys()])];
   return {
     rows,
     columns: [
       { key: "date", header: histories.some((history) => history.intraday) ? "Time" : "Date" },
-      ...histories.map((history): CliResultColumn => {
-        const unit = historyExportUnit(history.unit);
-        const price = historyPrice(history.decimals);
-        // A catalog series' value is no close: its column is the series, in its unit.
-        return {
-          key: key(history), header: `${history.listing.key}${history.catalogSeries ? "" : " close"}${unit ? ` (${unit})` : ""}`, align: "right",
-          format: (value) => value == null ? "" : price(value),
-        };
-      }),
-      // A column asked for that served nothing stays, empty: its reason is in the notes.
-      ...failed.filter((symbol) => !histories.some((history) => history.listing.key === symbol))
-        .map((symbol): CliResultColumn => ({ key: `close:${symbol}`, header: catalogSeriesId(symbol) ? symbol : `${symbol} close`, align: "right", format: () => "" })),
+      ...ordered.map((symbol) => columns.get(symbol)!),
     ],
     interval: intervals.size === 1 ? [...intervals][0] ?? null : null,
     notes,
@@ -2762,7 +2766,7 @@ async function runHistoryList(
       // A column that served nothing keeps its place, empty, its reason said in the notes.
       const failed = listed.flatMap((entry) => "error" in entry ? [entry.symbol]
         : entry.history.data.length === 0 ? [entry.history.listing.key] : []);
-      const table = wideHistoryTable(served, failed);
+      const table = wideHistoryTable(served, failed, listed.map((entry) => "history" in entry ? entry.history.listing.key : entry.symbol));
       notes.push(...table.notes);
       ctx.printResult({
         data: table.rows,

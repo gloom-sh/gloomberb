@@ -5,18 +5,28 @@ import { createPaneCatalog } from "./pane-functions/discovery";
 import { loadResolvedHeadlessPaneModel } from "./pane-functions/headless";
 import { parsePaneFunctionArgsFor, resolvePaneFunction } from "./pane-functions/resolver";
 import type { MarketContext } from "./types";
+import { fredSeriesArgument } from "../series/fred-argument";
 
-/** A catalog series as `history` takes it beside listings: `CAP:bond-yield:jp-10y`, `FRED:DGS10`. */
-const CATALOG_SERIES_ID = /^(?:CAP|FRED):[A-Za-z0-9][A-Za-z0-9._~%:/-]*$/i;
+/**
+ * A capability's series as `history` takes it beside listings: its source
+ * and its series (`CAP:bond-yield:jp-10y`). `CAP:EPA`, with no series, is
+ * Capgemini on Euronext Paris.
+ */
+const CAPABILITY_SERIES_ID = /^CAP:([A-Za-z0-9][A-Za-z0-9._~%/-]*):([A-Za-z0-9][A-Za-z0-9._~%:/-]*)$/i;
 
-/** The id of a catalog series an entry of a list names, its prefix in capitals and the rest as typed; null for a listing. */
+/**
+ * The id of a catalog series an entry of a list names, its prefix in
+ * capitals and the rest as typed; null for a listing. A FRED series is
+ * `FRED:<id>` where the id is no venue's code (`fredSeriesArgument`):
+ * `FRED:TSXV` is a listing.
+ */
 export function catalogSeriesId(entry: string): string | null {
   const typed = entry.trim();
-  if (!CATALOG_SERIES_ID.test(typed)) return null;
-  const at = typed.indexOf(":");
-  const prefix = typed.slice(0, at).toUpperCase();
-  // A FRED id is in capitals, as FRED writes it; a capability's ids are as their source names them.
-  return `${prefix}:${prefix === "FRED" ? typed.slice(at + 1).toUpperCase() : typed.slice(at + 1)}`;
+  const fred = fredSeriesArgument(typed);
+  if (fred) return `FRED:${fred}`;
+  const capability = CAPABILITY_SERIES_ID.exec(typed);
+  // A capability's ids are as their source names them.
+  return capability ? `CAP:${capability[1]}:${capability[2]}` : null;
 }
 
 /** A catalog series' observations as `history --wide` sets them beside listings' closes. */

@@ -528,19 +528,26 @@ test("history --wide takes a catalog series as a column in its unit, and keeps a
     return { id, label: "Japan 10Y JGB yield", unit: "%", notes: [], points: [{ date: "2026-10-29", value: 2.84 }, { date: "2026-10-30", value: 2.851 }] };
   });
   try {
-    const { csv, result, retrieved } = await runList(["USDJPY=X", "CAP:bond-yield:jp-10y", "FRED:XYZ", "--wide"], async () =>
+    // The empty column stays where it was asked for, between the two that served.
+    const { csv, result, retrieved } = await runList(["USDJPY=X", "FRED:XYZ", "CAP:bond-yield:jp-10y", "--wide"], async () =>
       [["2026-10-29", 157.68921], ["2026-10-30", 157.58847]].map(([date, close]) =>
         ({ date: new Date(date as string), open: close as number, high: close as number, low: close as number, close: close as number })));
-    expect(read.mock.calls.map(([id]) => id)).toEqual(["CAP:bond-yield:jp-10y", "FRED:XYZ"]);
+    expect(read.mock.calls.map(([id]) => id).sort()).toEqual(["CAP:bond-yield:jp-10y", "FRED:XYZ"]);
     expect(csv).toEqual([
-      `Date,USDJPY=X close (JPY per USD),CAP:bond-yield:jp-10y (pct),FRED:XYZ,${IDENTITY}`,
-      `2026-10-29,157.68921,2.84,,,,1d,Gloom Cloud,2026-10-30,${retrieved}`,
-      `2026-10-30,157.58847,2.851,,,,1d,Gloom Cloud,2026-10-30,${retrieved}`,
+      `Date,USDJPY=X close (JPY per USD),FRED:XYZ,CAP:bond-yield:jp-10y (pct),${IDENTITY}`,
+      `2026-10-29,157.68921,,2.84,,,1d,Gloom Cloud,2026-10-30,${retrieved}`,
+      `2026-10-30,157.58847,,2.851,,,1d,Gloom Cloud,2026-10-30,${retrieved}`,
     ]);
     expect(result.warnings).toContain("FRED:XYZ is not covered: no chart series is called \"XYZ\".");
   } finally {
     read.mockRestore();
   }
+  // A capability's series names its source and its series: CAP:EPA is Capgemini on Euronext Paris, and FRED on a
+  // venue the app knows is that listing.
+  expect(catalogSeries.catalogSeriesId("CAP:EPA")).toBeNull();
+  expect(catalogSeries.catalogSeriesId("cap:bond-yield:jp-10y")).toBe("CAP:bond-yield:jp-10y");
+  expect(catalogSeries.catalogSeriesId("FRED:dgs10")).toBe("FRED:DGS10");
+  expect(catalogSeries.catalogSeriesId("FRED:TSXV")).toBeNull();
 });
 
 /** Bars from `start`, one every `minutes`, each closing at the next of `closes`. */
