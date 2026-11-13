@@ -59,21 +59,25 @@ test("each stablecoin row says whose its price is, and an extreme one exchange a
   const rows = (quote?: Partial<Quote>) => buildCryptoRows(data.assets, "stablecoin",
     quote ? new Map([[cryptoQuoteKey(usdt), entry({ lastUpdated: CRYPTO_FIXTURE_NOW, price: 0.9989, ...quote })]]) : new Map(), CRYPTO_FIXTURE_NOW);
   const [board] = rows();
-  expect(board).toMatchObject({ low24h: 0.9901, low24hText: "0.9901", low24hVenueText: "Coinbase", high24hVenueText: "2 venues", priceVenueText: "composite" });
+  // In plain words: the low on Coinbase only, the high on two of the three exchanges read.
+  expect(board).toMatchObject({ low24h: 0.9901, low24hText: "0.9901", low24hVenueText: "Coinbase only", high24hVenueText: "2 of 3", priceVenueText: "composite" });
   expect(rows({ price: 0.9989, priceVenue: "Coinbase", dataSource: "live" })[0]).toMatchObject({ price: 0.9989, priceVenueText: "Coinbase" });
   // A live quote that names no exchange is its source's, not the board's composite.
   expect(rows({ price: 0.9988, dataSource: "live", providerId: "gloomberb-cloud" })[0]).toMatchObject({ price: 0.9988, priceVenueText: "Gloom Cloud" });
   // A composite held back says so on its own row.
   expect(rows({ price: 0.9989, dataSource: "delayed" })[0]).toMatchObject({ delayed: true, priceVenueText: "15m delayed" });
   // A row is reused for its asset object: each case below is a fresh board.
-  const unreached = (venuesChecked: string[]) => {
+  const lowVenue = (lowVenues: string[], venuesChecked: string[]) => {
     const board = cryptoFixture();
     const asset = board.assets.find((entry) => entry.code === "USDT")!;
-    asset.range24h = { ...asset.range24h!, lowVenues: [], venuesChecked };
+    asset.range24h = { ...asset.range24h!, lowVenues, venuesChecked };
     return buildCryptoRows(board.assets, "stablecoin", new Map(), CRYPTO_FIXTURE_NOW)[0]!.low24hVenueText;
   };
-  expect(unreached(checked)).toBe("none of 3");
-  expect(unreached(["Kraken"])).toBe("not Kraken");
+  expect(lowVenue([], checked)).toBe("none of 3");
+  // One exchange read and not reaching it says only that; one read and reaching it is not claimed as its alone.
+  expect(lowVenue([], ["Kraken"])).toBe("none of 1");
+  expect(lowVenue(["Kraken"], ["Kraken"])).toBe("Kraken");
+  expect(lowVenue(checked, checked)).toBe("all 3");
 });
 
 test("a live quote without a change percent is restated from the previous close", () => {
@@ -146,16 +150,20 @@ test("narrow panes drop 1Y, the sparkline, 30D, volume and name in that order", 
     "rank", "code", "name", "price", "priceVenueText", "pegText", "offPegBp", "low24h", "low24hAt", "low24hVenueText",
     "high24h", "high24hAt", "high24hVenueText", "volume24h", "marketCap", "supply", "supply7dPercent", "supply7d", "supply30dPercent", "supplyShare",
   ]);
-  expect(stable(149, true)).toEqual([
+  expect(stable(150, true)).toEqual([
     "rank", "code", "name", "price", "priceVenueText", "pegText", "offPegBp", "low24h", "low24hAt", "low24hVenueText",
     "high24h", "high24hAt", "high24hVenueText", "marketCap",
   ]);
   expect(stable(109, true)).toEqual([
     "rank", "code", "price", "priceVenueText", "pegText", "offPegBp", "low24h", "low24hAt", "low24hVenueText", "marketCap",
   ]);
-  for (const width of [146, 147]) expect(stable(width, true)).toEqual(stable(width, false));
-  expect(stable(147, false)).toContain("name");
-  expect(stable(146, false)).not.toContain("name");
+  for (const width of [149, 150]) expect(stable(width, true)).toEqual(stable(width, false));
+  expect(stable(150, false)).toContain("name");
+  expect(stable(149, false)).not.toContain("name");
+  // Whose the low is leaves after the high, whose the price is last: each label keeps its full width while shown.
+  expect(stable(101, false)).not.toContain("low24hVenueText");
+  expect(stable(101, false)).toContain("priceVenueText");
+  expect(stable(87, false)).not.toContain("priceVenueText");
 });
 
 test("a move that rounds to zero is unsigned", () => {

@@ -289,14 +289,18 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     label: "Price freshness",
     getMetadata: () => ({ ...CRYPTO_BOARD_FRESHNESS, observations }),
   } : null);
-  // A row held back says so in its own VENUE cell; the footer dates the board and claims no delay for all of it.
-  const statusLine = useMemo(() => observations.length
-    ? paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, {
-      rows: observations.map((row) => row.dataSource === "delayed" ? { quoteTime: row.quoteTime } : row), freshness: CRYPTO_BOARD_FRESHNESS }, now))
-    : null, [now, observations]);
   // Supply columns join only once there is supply to show; an outage leaves the price columns as they are.
   const hasSupply = !!supplyRows && supplyRows.size > 0;
   const columns = useMemo(() => buildCryptoColumns(width, assetKind, hasSupply), [assetKind, hasSupply, width]);
+  // A row held back says so in its own VENUE cell, and the footer then dates the board without claiming a delay for
+  // all of it. Too narrow for that column, the footer says the delay as it did.
+  const venueShown = columns.some((column) => column.id === "priceVenueText");
+  const statusLine = useMemo(() => observations.length
+    ? paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, {
+      rows: venueShown ? observations.map((row) => row.dataSource === "delayed" ? { quoteTime: row.quoteTime } : row) : observations,
+      freshness: CRYPTO_BOARD_FRESHNESS,
+    }, now))
+    : null, [now, observations, venueShown]);
 
   // Other is muted against the theme it is drawn on; the coins take the shared series palette, which the chart themes.
   const otherColor = useThemeColors().textMuted;

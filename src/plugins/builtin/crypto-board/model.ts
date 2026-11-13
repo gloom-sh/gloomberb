@@ -108,8 +108,9 @@ export interface CryptoRow extends CryptoRowSupply {
   low24hText: string;
   high24hText: string;
   /**
-   * Whose the low and high are: the one exchange that alone reached it (`Coinbase`), how many did (`3 venues`),
-   * `none of 3` when none of the exchanges read did (`not Kraken` when one was read), or a dash when none was read.
+   * Whose the low and high are, in plain words: `Coinbase only` when it alone of the exchanges read reached it,
+   * `Coinbase` when it was the only one read, `2 of 3` or `all 3` when more did, `none of 3` when none did, or a dash
+   * when no exchange was read.
    */
   low24hVenueText: string;
   high24hVenueText: string;
@@ -119,14 +120,15 @@ export interface CryptoRow extends CryptoRowSupply {
 const COMPOSITE_PRICE_VENUE = "composite";
 
 /**
- * Who an extreme is: the exchange that alone reached it among several read, a count when more did, and when none
- * of those read did, says so. A price newer than the range that widened it is the row's own price venue's.
+ * Whose an extreme is: the exchange that alone reached it among several read (`Coinbase only`), the one read when
+ * only one was, how many of those read did, and when none did, says so. An exchange that could not be read is not
+ * among those counted. A price newer than the range that widened it is the row's own price venue's.
  */
 function extremeVenueText(reached: readonly string[] | undefined, checked: readonly string[] | undefined): string {
   if (!checked?.length || !reached) return MISSING_VALUE;
-  if (reached.length === 0) return checked.length === 1 ? `not ${checked[0]}` : `none of ${checked.length}`;
-  if (reached.length === 1) return checked.length > 1 ? reached[0]! : `${reached[0]} only`;
-  return `${reached.length} venues`;
+  if (reached.length === 0) return `none of ${checked.length}`;
+  if (reached.length === 1) return checked.length > 1 ? `${reached[0]} only` : reached[0]!;
+  return reached.length === checked.length ? `all ${checked.length}` : `${reached.length} of ${checked.length}`;
 }
 
 /**
@@ -534,22 +536,23 @@ const COLUMN_SPECS: CryptoColumnSpec[] = [
  * A stablecoin is read by its peg: what it holds to, how far off it is, and
  * the 24-hour low and high with their times, before its returns. Narrowing,
  * the returns, the sparkline and the day change leave first, then volume, the
- * name and the high; the peg, the low and when it traded stay.
+ * name and the high, then whose the low and the price are (the footer then
+ * says a delay); the peg, the low and when it traded stay.
  */
 const STABLECOIN_COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "rank", label: "#", width: 3, align: "right" },
   { id: "code", label: "COIN", width: 7, align: "left" },
   { id: "name", label: "NAME", width: 10, align: "left", optional: 3 },
   { id: "price", label: "PRICE", width: 8, align: "right" },
-  { id: "priceVenueText", label: "VENUE", title: "The exchange whose own trade the price is, or the composite of several", width: 11, align: "left" },
+  { id: "priceVenueText", label: "VENUE", title: "The exchange whose own trade the price is, or the composite of several", width: 11, align: "left", optional: 0.4 },
   { id: "pegText", label: "PEG", width: 10, align: "left" },
   { id: "offPegBp", label: "OFF PEG", width: 8, align: "right" },
   { id: "low24h", label: "24H LOW", width: 8, align: "right" },
   { id: "low24hAt", label: "LOW UTC", width: 9, align: "left" },
-  { id: "low24hVenueText", label: "LOW VENUE", title: "The exchange that alone reached the low, or how many did", width: 9, align: "left" },
+  { id: "low24hVenueText", label: "LOW VENUE", title: "The exchange that alone reached the low, or how many of those read did", width: 13, align: "left", optional: 0.6 },
   { id: "high24h", label: "24H HIGH", width: 8, align: "right", optional: 1 },
   { id: "high24hAt", label: "HIGH UTC", width: 9, align: "left", optional: 2 },
-  { id: "high24hVenueText", label: "HIGH VENUE", title: "The exchange that alone reached the high, or how many did", width: 10, align: "left", optional: 2.5 },
+  { id: "high24hVenueText", label: "HIGH VENUE", title: "The exchange that alone reached the high, or how many of those read did", width: 13, align: "left", optional: 2.5 },
   { id: "changePercent", label: "CHG% UTC", title: "Change since 00:00 UTC", width: 8, align: "right", optional: 5 },
   { id: "return7d", label: "7D%", width: 8, align: "right", optional: 6 },
   { id: "return30d", label: "30D%", width: 8, align: "right", optional: 8 },

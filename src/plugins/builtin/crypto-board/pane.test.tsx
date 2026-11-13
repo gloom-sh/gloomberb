@@ -109,6 +109,45 @@ test("the footer dates a board without a live feed by its time and age, never as
   expect(frame).not.toMatch(/delayed|live|status not reported/i);
 });
 
+async function mountWithDelayedBitcoin(width: number) {
+  const query = spyOn(apiClient, "getCloudCryptoMarkets").mockImplementation(async () => cryptoFixture());
+  restore = () => query.mockRestore();
+  let deliver!: (target: QuoteSubscriptionTarget, quote: Record<string, unknown>) => void;
+  let subscribed: QuoteSubscriptionTarget[] = [];
+  coordinator = new MarketDataCoordinator(new AssetDataRouter(createTestDataProvider({
+    subscribeQuotes: (targets, onQuote) => {
+      subscribed = targets;
+      deliver = (target, quote) => onQuote(target, quote as never);
+      return () => {};
+    },
+  })));
+  setSharedMarketDataCoordinator(coordinator);
+  await mountPane(width, 20, true);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+  await act(async () => {
+    deliver(subscribed.find((target) => target.symbol === "BTC-USD")!, {
+      symbol: "BTC-USD", price: 110, change: 12, changePercent: 12.24, currency: "USD", exchangeName: "CCC",
+      marketState: "REGULAR", lastUpdated: Date.now() - 15 * 60_000, dataSource: "delayed", delivery: "poll", stale: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 520));
+  });
+  await settleFrame(tui.setup(), 6);
+  const lines = tui.frame().split("\n");
+  return { body: lines.slice(0, 20).join("\n"), footer: lines[20] ?? "" };
+}
+
+test("a held-back coin says so on its own row; too narrow for that column, the footer says the delay instead", async () => {
+  const wide = await mountWithDelayedBitcoin(130);
+  expect(wide.body).toContain("15m delayed");
+  expect(wide.footer).not.toMatch(/delayed/i);
+});
+
+test("a held-back coin on a board too narrow for its VENUE column is still said delayed, in the footer", async () => {
+  const narrow = await mountWithDelayedBitcoin(80);
+  expect(narrow.body).not.toContain("VENUE");
+  expect(narrow.footer).toMatch(/delayed/i);
+});
+
 test("crypto board lists coins by market cap, switches to stablecoins and keeps rows through a failed refresh", async () => {
   const data = cryptoFixture();
   let fail = false;
@@ -168,7 +207,7 @@ async function openStablecoins(width = 150) {
 
 test("the stablecoin tab charts supply above its rows, the legend and the table reading one figure", async () => {
   const supply = mockBoard(async () => stablecoinSupplyFixture());
-  await mountPane(214, 24);
+  await mountPane(222, 24);
   // The coin tab never asks for supply.
   expect(supply).not.toHaveBeenCalled();
   await tui.emitKeypress({ name: "l" });
