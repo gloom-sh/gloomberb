@@ -36,8 +36,9 @@ permissions:
   contents: read
 
 jobs:
-  # Before any plugin runs. A release ships what was built when one platform
-  # failed, so this sums whatever is there.
+  # Before any plugin runs. It sums whatever is there, so the platforms that
+  # did build are checked when one failed; Release still publishes nothing
+  # until a rerun has built that one too.
   checksums:
     runs-on: ubuntu-latest
     permissions: {}
