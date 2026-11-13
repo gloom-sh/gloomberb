@@ -4,6 +4,7 @@ import { flushSync, useKeyboard, useRenderer } from "@opentui/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { colors } from "../../theme/colors";
 import {
+  closesOnClickOutside,
   DialogHostProvider,
   type AlertContext,
   type DialogApi,
@@ -26,7 +27,7 @@ interface DialogRecord {
   size?: DialogOptions["size"];
   style?: DialogStyle;
   closeOnEscape?: boolean;
-  closeOnClickOutside?: boolean;
+  closeOnClickOutside?: DialogOptions["closeOnClickOutside"];
 }
 
 function renderDialogContent(content: unknown, context: AlertContext | PromptContext<unknown>): ReactNode {
@@ -82,7 +83,6 @@ function DialogLayer({
     ? Math.max(1, Math.min(style.maxHeight, viewportHeight))
     : viewportHeight;
   const closeOnEscape = dialog.closeOnEscape ?? true;
-  const closeOnClickOutside = dialog.closeOnClickOutside ?? false;
   const zIndex = 9_998 + index * 2;
 
   useKeyboard((event) => {
@@ -124,7 +124,7 @@ function DialogLayer({
         alignItems="center"
         justifyContent="center"
         onMouseDown={() => {
-          if (isTopmost && closeOnClickOutside) close(dialog.id);
+          if (isTopmost && closesOnClickOutside(dialog.closeOnClickOutside)) close(dialog.id);
         }}
       >
         <box

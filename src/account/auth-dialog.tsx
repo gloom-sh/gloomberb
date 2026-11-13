@@ -19,12 +19,21 @@ function AuthDialog({
   reason,
   resolve,
   dismiss,
-}: PromptContext<AuthUser | undefined> & { initialMode: AccountMode; reason?: string }) {
+  onCleanChange,
+}: PromptContext<AuthUser | undefined> & {
+  initialMode: AccountMode;
+  reason?: string;
+  onCleanChange: (clean: boolean) => void;
+}) {
   useAppLanguage();
   const [mode, setMode] = useState<AccountMode>(initialMode);
   const [verifyingUser, setVerifyingUser] = useState<AuthUser | null>(null);
+  const [typed, setTyped] = useState(false);
+  // A click outside closes it only while it is clean: never with something typed, nor once the account
+  // waits on its emailed code.
+  useEffect(() => onCleanChange(!typed && !verifyingUser), [onCleanChange, typed, verifyingUser]);
 
-  // A close button and a click outside close it too, so a mouse is never trapped in it.
+  // The close button always closes it, so a mouse is never trapped in it.
   if (verifyingUser) return <DialogFrame title={`Confirm ${verifyingUser.email}`} onClose={dismiss}>
     <CloudVerificationPanel onVerified={resolve} onContinueFree={() => resolve(verifyingUser)} />
   </DialogFrame>;
@@ -36,6 +45,7 @@ function AuthDialog({
         onModeChange={setMode}
         onSignedIn={(user) => user.emailVerified ? resolve(user) : setVerifyingUser(user)}
         onEscape={dismiss}
+        onTypedChange={setTyped}
       />
     </DialogFrame>
   );
@@ -81,14 +91,17 @@ export function AuthDialogHost() {
       if (openRef.current) return;
       openRef.current = true;
       openAuthDialogs += 1;
+      let clean = true;
+      const setClean = (next: boolean) => { clean = next; };
       void dialog
         .prompt<AuthUser | undefined>({
-          closeOnClickOutside: true,
+          closeOnClickOutside: () => clean,
           content: (context: unknown) => (
             <AuthDialog
               {...(context as PromptContext<AuthUser | undefined>)}
               initialMode={request.mode ?? "login"}
               reason={request.reason}
+              onCleanChange={setClean}
             />
           ),
         })
