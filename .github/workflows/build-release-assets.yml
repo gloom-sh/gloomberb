@@ -32,6 +32,8 @@ jobs:
   build:
     strategy:
       fail-fast: false
+      # A stable release publishes only once every entry here has uploaded its
+      # binary: scripts/release-assets.ts reads the assets from this matrix.
       matrix:
         include:
           - os: macos-latest
