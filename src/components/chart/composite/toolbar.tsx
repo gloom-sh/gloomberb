@@ -4,6 +4,7 @@ import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import { CHART_DRAWING_COLORS, type ChartToolKind } from "./tools";
 import { CHART_TOOLS } from "./tool-catalog";
+import { clipToDisplayWidth } from "../../../utils/format";
 
 /** The bar's tools, a gap, and the handle that opens it. */
 export const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + (CHART_TOOLS.length - 1) + 4;
@@ -273,6 +274,7 @@ export function ChartToolbar({
   onTogglePinned,
   onArmTool,
   onPickColor,
+  maxWidth,
 }: {
   armedTool: ChartToolKind | null;
   isDesktopWeb: boolean;
@@ -288,6 +290,8 @@ export function ChartToolbar({
   onTogglePinned: () => void;
   onArmTool: (tool: ChartToolKind | null) => void;
   onPickColor: (color: string) => void;
+  /** Terminal cells the bar may take (the plot's width): the tool's name is cut to what its buttons leave. */
+  maxWidth?: number;
 }) {
   const barRef = useRef<BoxRenderable | null>(null);
   const { open, onHover, onLeave, onFocus, onBlur, fold } = useToolbarOpening(barRef);
@@ -299,6 +303,12 @@ export function ChartToolbar({
   // `✥ ↔ ⊞ ╱ ∿` read as nothing).
   const [hoveredTool, setHoveredTool] = useState<(typeof CHART_TOOLS)[number] | null>(null);
   const captionTool = hoveredTool ?? tool;
+  const tools = CHART_TOOLS.filter((entry) => levelTool || entry.kind !== "level");
+  // The handle and each tool take 3 cells, a colour 2, with a cell between any two and before the name.
+  const swatches = showColors ? CHART_DRAWING_COLORS.length : 0;
+  const captionRoom = maxWidth === undefined ? Infinity
+    : maxWidth - 3 * (1 + tools.length) - 2 * swatches - (1 + tools.length + swatches);
+  const caption = captionRoom === Infinity ? toolName(captionTool) : clipToDisplayWidth(toolName(captionTool), captionRoom);
   return (
     <Box
       ref={barRef}
@@ -345,7 +355,7 @@ export function ChartToolbar({
           onTogglePinned();
         }}
       />
-      {expanded ? CHART_TOOLS.filter((entry) => levelTool || entry.kind !== "level").map((entry) => (
+      {expanded ? tools.map((entry) => (
         <ChartToolButton
           key={entry.kind ?? "pan"}
           tool={entry}
@@ -365,8 +375,8 @@ export function ChartToolbar({
           onPress={() => onPickColor(color)}
         />
       )) : null}
-      {expanded && !isDesktopWeb ? (
-        <Text fg={themeColors.textDim} data-gloom-role="composite-chart-tool-name">{toolName(captionTool)}</Text>
+      {expanded && !isDesktopWeb && caption ? (
+        <Text fg={themeColors.textDim} data-gloom-role="composite-chart-tool-name">{caption}</Text>
       ) : null}
     </Box>
   );
