@@ -16,19 +16,21 @@ import { CloudVerificationPanel } from "./verification-panel";
 
 function AuthDialog({
   initialMode,
+  reason,
   resolve,
   dismiss,
-}: PromptContext<AuthUser | undefined> & { initialMode: AccountMode }) {
+}: PromptContext<AuthUser | undefined> & { initialMode: AccountMode; reason?: string }) {
   useAppLanguage();
   const [mode, setMode] = useState<AccountMode>(initialMode);
   const [verifyingUser, setVerifyingUser] = useState<AuthUser | null>(null);
 
-  if (verifyingUser) return <DialogFrame title={`Confirm ${verifyingUser.email}`}>
+  // A close button and a click outside close it too, so a mouse is never trapped in it.
+  if (verifyingUser) return <DialogFrame title={`Confirm ${verifyingUser.email}`} onClose={dismiss}>
     <CloudVerificationPanel onVerified={resolve} onContinueFree={() => resolve(verifyingUser)} />
   </DialogFrame>;
 
   return (
-    <DialogFrame title={authFormTitle(mode)}>
+    <DialogFrame title={authFormTitle(mode)} subtitle={reason} onClose={dismiss}>
       <AuthForm
         initialMode={initialMode}
         onModeChange={setMode}
@@ -41,6 +43,8 @@ function AuthDialog({
 
 export interface AuthDialogRequest {
   mode?: AccountMode;
+  /** What asked for it, under the title: the delayed mark says what is delayed and by how much. */
+  reason?: string;
   onSignedIn?: (user: AuthUser) => void;
 }
 
@@ -79,11 +83,12 @@ export function AuthDialogHost() {
       openAuthDialogs += 1;
       void dialog
         .prompt<AuthUser | undefined>({
-          closeOnClickOutside: false,
+          closeOnClickOutside: true,
           content: (context: unknown) => (
             <AuthDialog
               {...(context as PromptContext<AuthUser | undefined>)}
               initialMode={request.mode ?? "login"}
+              reason={request.reason}
             />
           ),
         })

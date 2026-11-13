@@ -86,16 +86,19 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
 
   const mark = <DelayedMark minutes={CLOUD_QUOTE_DELAY_MINUTES} />;
   const detail = tf("{delay} delayed", { delay: `${CLOUD_QUOTE_DELAY_MINUTES}m` });
+  // What is late, and by how much: stock quotes. A crypto exchange's own prices are not held back.
+  const reason = tf("Stock quotes are {minutes} min delayed without Pro.", { minutes: CLOUD_QUOTE_DELAY_MINUTES });
+  const upgrade = () => { void openUpgrade({ reason }); };
   return (
     <Box flexDirection="row" alignItems="center" flexShrink={0} paddingRight={1} data-gloom-role="delayed-status">
       {spelled ? (
         <Button
           label={detail}
-          title={`${detail}. ${tf("Upgrade to Pro ({key}, then {command})", { key: commandBarKey, command: "UPGRADE" })}`}
+          title={`${reason} ${tf("Upgrade to Pro ({key}, then {command})", { key: commandBarKey, command: "UPGRADE" })}`}
           variant="plain"
           compact
           stopPropagation
-          onPress={openUpgrade}
+          onPress={upgrade}
         >
           <Box flexDirection="row" alignItems="center" gap={1}>
             {mark}

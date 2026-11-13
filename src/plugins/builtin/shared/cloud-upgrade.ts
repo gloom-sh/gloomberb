@@ -53,6 +53,8 @@ interface CloudUpgradeOptions {
    * never for a press ignored as a repeat.
    */
   onOpening?: () => void;
+  /** What the press is about, said under the sign-up dialog's title when it opens first (`Stock quotes are 15 min delayed`). */
+  reason?: string;
 }
 
 function recordUpgradeIntent(placement: string | undefined): void {
@@ -178,7 +180,7 @@ export function openCloudUpgradeUrl(placement: string): boolean {
   return true;
 }
 
-const CLOUD_UPGRADE_OPTION_KEYS: ReadonlyArray<keyof CloudUpgradeOptions> = ["placement", "interval", "recordIntent", "sheet", "onOpening"];
+const CLOUD_UPGRADE_OPTION_KEYS: ReadonlyArray<keyof CloudUpgradeOptions> = ["placement", "interval", "recordIntent", "sheet", "onOpening", "reason"];
 
 /** A press event carries none of these keys, so it never reads as options. */
 function isCloudUpgradeOptions(value: unknown): value is CloudUpgradeOptions {
@@ -243,7 +245,7 @@ export function useCloudUpgradeAction(placement: string): (options?: unknown) =>
         if (resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess) return;
         void openUpgradeRef.current({ ...checkout, recordIntent: false });
       };
-      if (requestAuthDialog({ mode: "signup", onSignedIn: continueSignedIn })) {
+      if (requestAuthDialog({ mode: "signup", onSignedIn: continueSignedIn, ...(checkout.reason ? { reason: checkout.reason } : {}) })) {
         if (checkout.recordIntent !== false) recordUpgradeIntent(checkout.placement);
         return;
       }

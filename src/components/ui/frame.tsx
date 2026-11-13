@@ -5,6 +5,7 @@ import { t } from "../../i18n";
 import type { ThemeColors } from "../../theme/colors";
 import { RADIUS, SPACE, controlBorderColour, surfaceRaisedColour } from "../../theme/ui-tokens";
 import { useThemeColors } from "../../theme/theme-context";
+import { IconButton } from "./icon";
 
 export interface ModalSurfaceOptions {
   width?: string;
@@ -106,7 +107,7 @@ export interface DialogFrameProps {
    */
   desktopFooter?: DialogDesktopFooter | null;
   showTitleDivider?: boolean;
-  /** Adds a close button at the right of the title (desktop). Esc still closes every dialog. */
+  /** Adds a close button at the right of the title, so the mouse can close it. Esc still closes every dialog. */
   onClose?: () => void;
   /**
    * Desktop: lets the frame shrink inside a dialog that caps its height, so a
@@ -130,8 +131,11 @@ export function DialogFrame({ title: rawTitle, subtitle, children, footer: rawFo
 
   return (
     <Box flexDirection="column">
-      <Box height={1}>
-        <Text fg={colors.text} attributes={TextAttributes.BOLD}>{title}</Text>
+      <Box height={1} flexDirection="row">
+        <Box flexGrow={1} flexShrink={1} overflow="hidden">
+          <Text fg={colors.text} attributes={TextAttributes.BOLD}>{title}</Text>
+        </Box>
+        {onClose && <IconButton icon="close" label="Close" onPress={() => onClose()} />}
       </Box>
       {subtitle && <Text fg={colors.textMuted} wrapText>{subtitle}</Text>}
       <Box height={1} />
