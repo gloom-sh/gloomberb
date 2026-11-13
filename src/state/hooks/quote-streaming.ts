@@ -250,26 +250,25 @@ export function useQuoteUpdates(
     const schedule = (delayMs: number) => {
       timer = setTimeout(() => {
         timer = null;
-        void refresh();
+        refresh();
       }, Math.max(0, delayMs));
     };
-    const refresh = async () => {
+    // A poll nobody waits on: a failed one is logged and the next comes on schedule.
+    const refresh = () => {
       if (cancelled) return;
       schedule(pollIntervalMs);
       if (inFlight) return;
       inFlight = true;
       lastPollRef.current = { key: instrumentKey, at: Date.now() };
-      try {
-        await coordinator.loadQuotesBatch(instruments, { forceRefresh: true });
-      } catch (error) {
-        logFailure("state.hooks.quote-streaming", "Polling broker quotes failed")(error);
-      } finally {
-        inFlight = false;
-      }
+      coordinator.loadQuotesBatch(instruments, { forceRefresh: true })
+        .catch(logFailure("state.hooks.quote-streaming", "Polling broker quotes failed"))
+        .finally(() => {
+          inFlight = false;
+        });
     };
     const last = lastPollRef.current;
     const dueIn = last?.key === instrumentKey ? last.at + pollIntervalMs - Date.now() : 0;
-    if (dueIn <= 0) void refresh();
+    if (dueIn <= 0) refresh();
     else schedule(dueIn);
     return () => {
       cancelled = true;

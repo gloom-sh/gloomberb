@@ -133,10 +133,11 @@ let pendingQuoteBatch: { requests: Map<string, QuoteRequest>; promise: Promise<v
 function queueQuoteLoad(symbol: string, request: QuoteRequest): Promise<void> {
   if (!pendingQuoteBatch) {
     const requests = new Map<string, QuoteRequest>();
-    const promise = new Promise<void>((resolve) => {
+    // A batch that fails rejects for every badge in it, which records the failure.
+    const promise = new Promise<void>((resolve, reject) => {
       setTimeout(() => {
         pendingQuoteBatch = null;
-        void loadInlineQuotes(requests).finally(resolve);
+        loadInlineQuotes(requests).then(resolve, reject);
       }, 0);
     });
     pendingQuoteBatch = { requests, promise };
