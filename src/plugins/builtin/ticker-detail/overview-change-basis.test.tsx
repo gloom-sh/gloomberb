@@ -136,3 +136,28 @@ test("a coin's header names the exchange and time of its price, or the composite
     setSystemTime();
   }
 });
+
+test("a stablecoin's header keeps six decimals when its previous close was written to eight", async () => {
+  // USDT on 13 Nov 2026: the composite's 00:00 UTC close came as 0.99880666 and padded every figure to eight decimals.
+  const quote = createTestQuote({
+    symbol: "USDT-USD", name: "Tether USDt", currency: "USD", instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC",
+    exchangeName: "CCC", price: 0.998905, change: 0.00009834, changePercent: 0.0098, previousClose: 0.99880666, open: 0.99876,
+    low: 0.99868, high: 0.9995, bid: 0.9989, ask: 0.99891, bidSize: 291_791, askSize: 21_301, marketState: "REGULAR",
+    priceVenue: "Coinbase", dataSource: "live", lastUpdated: Date.parse("2026-11-13T23:15:38Z"),
+  });
+  await act(async () => {
+    await tui.render(
+      <AppContext value={createStaticAppStore(createInitialState(config))}>
+        <OverviewTab ticker={createTestTicker("USDT-USD", "Tether USDt", { exchange: "CCC", currency: "USD", assetCategory: "CRYPTOCURRENCY" })}
+          financials={createTestFinancials({ quote })} width={110} height={10} />
+      </AppContext>,
+      { width: 110, height: 10 },
+    );
+  });
+  await settleFrame(tui.setup(), 10);
+  const frame = tui.frame();
+  expect(frame).toContain("$0.998905  +0.000098");
+  expect(frame).toMatch(/Bid\s+291,791 x \$0\.998900/);
+  expect(frame).toMatch(/Day Range \$0\.998680 .* \$0\.999500/);
+  expect(frame).not.toMatch(/\$0\.\d{8}/);
+});

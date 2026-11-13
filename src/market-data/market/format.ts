@@ -644,9 +644,14 @@ export function stablePriceFractionDigits(context: StablePriceContext): number {
     digits = 2;
   }
   if (kind !== "crypto" && reference !== undefined) digits = Math.max(digits, tinyPriceFractionDigits(reference));
+  // A coin's session prices raise its decimals only to six significant figures: a composite's close is computed,
+  // and one written to eight decimals (0.99880666) would pad every price, bid and range to eight as well.
+  const sessionCeiling = kind === "crypto" && reference !== undefined
+    ? Math.min(ceiling, Math.max(digits, 5 - Math.floor(Math.log10(reference))))
+    : ceiling;
   for (const price of context.sessionPrices ?? []) {
     const magnitude = positiveMagnitude(price);
-    if (magnitude !== undefined) digits = Math.max(digits, writtenFractionDigits(magnitude, ceiling));
+    if (magnitude !== undefined) digits = Math.max(digits, writtenFractionDigits(magnitude, sessionCeiling));
   }
   return digits;
 }
