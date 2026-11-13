@@ -2199,7 +2199,9 @@ async function loadListingHistory(
   const dayToDate = fromQuote && interval === "1d" && data.at(-1)?.partial === true;
   // Signed out or free, the bars of a session in progress run as late as the delayed quote they end on, and say how late.
   const sessionTrading = quote?.marketState === "REGULAR" || quote?.marketState === "PRE" || quote?.marketState === "POST";
-  const delayedTail = quote?.dataSource === "delayed" && !quote.delisting && (dayToDate || (intraday && sessionTrading));
+  // A coin priced by an exchange's own trade is still a reader without real-time access, whose bars stay held back.
+  const barsHeldBack = quote?.dataSource === "delayed" || (quote?.priceVenue != null && intraday && await cloudRealtimeAccess() === false);
+  const delayedTail = barsHeldBack && !quote?.delisting && (dayToDate || (intraday && sessionTrading));
   // The source that served the bars, a broker or another source when Gloom Cloud could not.
   const source = loaded.sourceName ? { source: loaded.sourceName } : {};
   // A coin's volume unit, or what an index's volume counts (a day's total, an intraday count).
