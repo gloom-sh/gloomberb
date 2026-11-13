@@ -1,5 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { MoneyMarketRow } from "../../../api-client/money-markets";
 import { fetchHongKongMoneyMarkets, fetchMoneyMarkets } from "./client";
 import { isHongKongTab, MONEY_MARKET_TABS, moneyMarketChange, moneyMarketNotices, moneyMarketRowNotices, moneyMarketRows, moneyMarketValue } from "./model";
@@ -13,10 +14,11 @@ const TREASURY_BILL_FRESHNESS = { ...FRED_FRESHNESS, source: "U.S. Treasury", ba
 /** The rows a view reports, without their histories, and what the view declares about them beyond the definition. */
 export function moneyMarketReport(rows: readonly MoneyMarketRow[], hongKong: boolean) {
   const treasury = rows.length > 0 && rows.every((row) => row.sourceName === "U.S. Treasury");
+  const freshness: HeadlessPaneFreshness | undefined = hongKong ? HONG_KONG_FRESHNESS : treasury ? TREASURY_BILL_FRESHNESS : undefined;
   return {
-    ...hongKong ? { freshness: HONG_KONG_FRESHNESS } : treasury ? { freshness: TREASURY_BILL_FRESHNESS } : {},
+    ...freshness ? { freshness } : {},
     rows: rows.map(({ history: _history, ...row }) => ({ ...row, percentileValue: row.percentile.value })),
-  };
+  } as { freshness?: HeadlessPaneFreshness; rows: Array<Omit<MoneyMarketRow, "history"> & { percentileValue: number | null }> };
 }
 
 /** A bill's coupon equivalent, the rate a money fund's yield compares with, beside its discount rate; never on other rows. */

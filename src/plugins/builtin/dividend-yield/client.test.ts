@@ -449,7 +449,7 @@ test("a token has no cash yield to show, never 0.00%, and says why", async () =>
         instrumentType: "CRYPTOCURRENCY", exchangeName: "CCC", providerId: "gloomberb-cloud" },
       summary: null,
     },
-  } as unknown as Awaited<NonNullable<Parameters<typeof fetchDividendData>[4]>["history"]>);
+  } as never);
   const data = await fetchDividendData("USDY-USD", 1.1527, "", "USD", { history });
   expect(data.token).toBe(true);
   expect([data.metrics.trailingYield, data.metrics.forwardYield]).toEqual([null, null]);
