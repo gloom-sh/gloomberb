@@ -150,7 +150,7 @@ describe("CloudApiSocket connection health", () => {
       expect(() => socket.subscribeQuotes([{ symbol: "AAPL" }], () => {})).not.toThrow();
       expect(health.getSnapshot().sources[0]).toMatchObject({ status: "error", currentDetail: "blocked by the page" });
       refuse = false;
-      jest.advanceTimersByTime(2_000);
+      jest.advanceTimersByTime(SOCKET_FIRST_RECONNECT_MAX_MS);
       expect(sockets.map((opened) => opened.url)).toEqual(["wss://api.example.test/api/cloud/ws"]);
       sockets[0]!.open();
       expect(health.getSnapshot().sources[0]).toMatchObject({ status: "connected", socketState: "open" });
