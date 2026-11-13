@@ -265,6 +265,7 @@ import {
 import {
   calendarEventOf,
   calendarStatus,
+  listingDay,
   newYorkDay,
   resolveListingEvents,
   withResolvedEarnings,
@@ -308,7 +309,7 @@ import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, noBondFigures, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
 } from "../../market-data/tax-equivalent";
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
-import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, lastReportedDay, noListingCalendarNote, undatedListingsNote } from "../earnings-calendar";
+import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, undatedListingNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { isUnservedWithoutReason, notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
@@ -1315,7 +1316,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // quote can fail where its history still says when it stopped (FRC), and an unreachable service fails it at once.
     // The service's "not a ticker" for a bare symbol says no listing anywhere carries it, so no bars or search row
     // would say it stopped: a symbol it knows from before answers its last quote or no data, never that.
-    const lastTraded = await Promise.all(answers.map(async ({ result, listing }) => !result.quote && answers.length <= MAX_CHOICE_LOOKUPS
+    // A symbol several companies list asks which, whatever line of it once stopped (MBG: Mercedes-Benz on Xetra, MB Gold on ASX).
+    const lastTraded = await Promise.all(answers.map(async ({ result, listing, failure }) => !result.quote && !failure?.choose
+      && answers.length <= MAX_CHOICE_LOOKUPS
       && (listing.exchange || !isNotATickerMessage(errorMessage(result.error)))
       ? await loadNoQuoteLastTraded(listing.request, market.dataProvider, now) ?? await searchedDelisting(listing, market)
       : null));
@@ -2299,6 +2302,8 @@ const HISTORY_FLAG_TEXT_COLUMN: CliResultColumn = {
     row.partial ? cliStyles.muted("partial") : "",
     row.filled ? cliStyles.muted("filled") : "",
     row.unsettled ? cliStyles.muted("unsettled") : "",
+    row.sessionClose ? cliStyles.muted("close") : "",
+    row.beforeClose ? cliStyles.muted("before close") : "",
     row.roll && typeof row.contract === "string" ? cliStyles.muted(`roll to ${row.contract}`) : "",
     row.thin ? cliStyles.muted("thin") : "",
     row.settleOnly ? cliStyles.muted("settle only") : "",
@@ -4641,35 +4646,36 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
     }
     // Each date is resolved as events, EE, ERN and OSA resolve it: one that has come is read against the
     // company's quarters on record, for its actual and the next report on record (shared/earnings-calendar).
-    const today = newYorkDay();
+    // A date is read on its listing's own day: SIE:XETRA's 12 Nov report has passed on Berlin's Friday.
+    const now = Date.now();
+    const today = newYorkDay(now);
+    const dayOf = (listing: CliListing) => listingDay(listing.request.exchange || listing.exchange, now);
     const resolved = await resolveListingEvents(services.dataProvider, listings.map((listing) => ({
-      key: listing.key, symbol: listing.request.symbol, exchange: listing.request.exchange,
+      key: listing.key, symbol: listing.request.symbol, exchange: listing.request.exchange, today: dayOf(listing),
     })), calendar, today);
     const events: ResolvedEarningsEvent[] = calendar
-      .map((event) => resolved.get(event.symbol.toUpperCase()) ?? { ...event, dateStatus: calendarStatus(event, today) })
+      .map((event) => {
+        const listing = listings.find((entry) => entry.key.toUpperCase() === event.symbol.toUpperCase());
+        return resolved.get(event.symbol.toUpperCase()) ?? { ...event, dateStatus: calendarStatus(event, listing ? dayOf(listing) : today) };
+      })
       .sort((left, right) => left.earningsDate.getTime() - right.earningsDate.getTime());
     const eventOf = (listing: CliListing) => events.find((event) => event.symbol.toUpperCase() === listing.key.toUpperCase());
-    const [abroadNotes, choiceNotes] = await Promise.all([
-      // A listing abroad with no date of its own says so, with its US line's date when that line is the same company.
-      Promise.all(listings.filter((listing) => isListingAbroad(listing) && !eventOf(listing))
-        .map((listing) => noListingCalendarNote(listing, services))),
+    // A listing the calendar has no date for is named, with when it last reported and where its headlines are: a
+    // list never drops a symbol unsaid. Each costs reads, so a long list names the rest without them.
+    const undatedListings = listings.filter((listing) => !eventOf(listing));
+    const [undatedNotes, choiceNotes] = await Promise.all([
+      Promise.all(undatedListings.map((listing, index) => undatedListingNote(listing, services, { now, lookup: index < MAX_CHOICE_LOOKUPS }))),
       Promise.all(listings.map(async (listing) => {
         const listed = venues.get(listing);
         return listed ? earningsChoiceNote(listing, eventOf(listing), await listed) : null;
       })),
     ]);
-    // A listing at home the calendar has no date for is named as well, with when it last reported: a list never
-    // drops a symbol unsaid.
-    const homeUndated = listings.filter((listing) => !isListingAbroad(listing) && !eventOf(listing));
-    const lastReported = new Map(await Promise.all(homeUndated.slice(0, MAX_CHOICE_LOOKUPS)
-      .map(async (listing) => [listing.key, await lastReportedDay(services.dataProvider, listing, today)] as const)));
-    const undated = undatedListingsNote(homeUndated, lastReported);
-    const noCalendar = [...abroadNotes, ...undated ? [undated] : []].join("\n");
+    const noCalendar = undatedNotes.join("\n");
     // Text prints the listings without a calendar under the table; other formats carry them as warnings.
     const warnings = [
       ...listings.flatMap(listingReadNotes),
       ...choiceNotes.filter((note): note is string => !!note),
-      ...ctx.cliOptions.format === "text" ? [] : [...abroadNotes, ...undated ? undated.split("\n") : []],
+      ...ctx.cliOptions.format === "text" ? [] : undatedNotes,
     ];
     ctx.printResult({
       data: events,

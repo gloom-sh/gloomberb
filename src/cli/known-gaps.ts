@@ -409,6 +409,15 @@ const COMMAND_POINTERS: ReadonlyArray<{
     line: "DeFi TVL, top protocols and chains with 7D and 30D change: gloom fn CRYP --list defi (by chain: --by chain)",
   },
   {
+    // A morning on the German and European markets: `catalog dax` found no function. The index quotes, beside WEI, GC
+    // and CMP, which the same words find by their keywords. Each symbol is one `quote` answers (2026-11-13).
+    names: ["dax", "xetra", "stoxx", "eurostoxx", "germany", "german", "european"],
+    words: ["index", "indices", "indexes", "euro", "50", "600", "europe", "equity", "equities", "stock", "stocks", "market", "markets",
+      "quote", "quotes", "level", "levels", "close", "today", "yesterday", "morning", "dax", "xetra", "stoxx", "germany", "german"],
+    line: "European index quotes: gloom quote ^GDAXI ^STOXX50E ^STOXX ^FTSE ^FCHI (DAX, EURO STOXX 50, STOXX Europe 600, FTSE 100, CAC 40); "
+      + "the world board: gloom fn WEI; the Bund curve: gloom fn GC bund; the DAX beside its members: gloom fn CMP ^GDAXI SIE:XETRA VOW3:XETRA",
+  },
+  {
     // Ahead of DIST, which "difficulty" finds by its description; the four series are listed after it.
     names: ["hashrate", "hash rate", "hashprice", "hash price", "difficulty", "retarget", "mining", "miner", "miners"],
     words: ["bitcoin", "btc", "network", "crypto", "stock", "stocks", "equities", "listed", "next",

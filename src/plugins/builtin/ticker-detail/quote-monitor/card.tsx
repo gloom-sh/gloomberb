@@ -302,8 +302,8 @@ export function QuoteMonitorCard({
             position: "relative",
             zIndex: 1,
             display: "grid",
-            // The name gives way first; the price keeps its natural width.
-            gridTemplateColumns: "minmax(0, 1fr) auto",
+            // The symbol and the price keep their natural widths; the name gives way first.
+            gridTemplateColumns: "minmax(min-content, 1fr) auto",
             // The symbol and price, what the price is as of, an extended print, the range, a perpetual.
             gridTemplateRows: "auto auto 1fr auto auto",
             columnGap: "var(--gloom-space-md)",
@@ -321,7 +321,7 @@ export function QuoteMonitorCard({
               overflow: "hidden",
             }}
           >
-            <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
+            <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={{ ...desktopSymbolStyle, whiteSpace: "nowrap" }}>
               {label}
             </Text>
             {quoteFailed && !endedRow && (
@@ -330,7 +330,8 @@ export function QuoteMonitorCard({
               </Text>
             )}
             {!quoteFailed && ticker?.metadata.name && (
-              <Text fg={colors.textDim} style={DESKTOP_META_LINE_STYLE}>
+              // No width of its own: the column is the symbol's, and the name is cut to it.
+              <Text fg={colors.textDim} style={{ ...DESKTOP_META_LINE_STYLE, contain: "inline-size" }}>
                 {ticker.metadata.name}
               </Text>
             )}
@@ -413,7 +414,8 @@ export function QuoteMonitorCard({
             <Text
               fg={colors.textDim}
               style={{
-                gridColumn: "2",
+                // Across the card, so a wide range never widens the price's column into the symbol's.
+                gridColumn: "1 / -1",
                 gridRow: "4",
                 justifySelf: "end",
                 alignSelf: "end",
