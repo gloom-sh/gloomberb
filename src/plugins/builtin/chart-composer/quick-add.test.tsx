@@ -113,9 +113,8 @@ describe("chart series inline quick add", () => {
     await waitForFrameToContain("MSFT · Revenue");
     expect(renderedWidth).toBe(36);
 
-    // Anywhere on the row adds it, its frequency at the right edge included, never the chart under it.
     await act(async () => {
-      await tui.setup().mockMouse.click(34, 1);
+      await tui.setup().mockMouse.click(2, 1);
       await tui.setup().renderOnce();
     });
     expect(updatedSpec?.series).toHaveLength(2);
@@ -139,6 +138,36 @@ describe("chart series inline quick add", () => {
     expect(closedFrame).toContain("add series");
     expect(closedFrame).not.toContain("MSFT · Revenue");
     expect(renderedWidth).toBe(14);
+  });
+
+  // Its last column was the drawer's scrollbar, so a press at the right of a row scrolled instead of adding it.
+  test("a press on the last column of a lower row adds that row's series", async () => {
+    const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-chart-quick-add-edge"));
+    let updatedSpec: ChartSpec | undefined;
+    await tui.render(
+      <AppContext.Provider value={createStaticAppStore(initial)}>
+        <ChartSeriesQuickAdd spec={buildPriceChartPreset("AAPL")} setSpec={(next) => { updatedSpec = next; }}
+          focused width={92} height={8} shortcutEnabled shortcutBlocked={false} onActivatePane={() => {}} />
+      </AppContext.Provider>,
+      { width: 92, height: 8 },
+    );
+    await act(async () => { await tui.setup().renderOnce(); });
+    await emitKey("n", "n");
+    await act(async () => {
+      await tui.setup().mockInput.typeText("MSFT");
+      await tui.setup().renderOnce();
+    });
+    const frame = await waitForFrameToContain("MSFT · Revenue");
+    const rows = frame.split("\n");
+    expect(rows[1]).toContain("MSFT · Price (OHLCV)");
+    expect(rows[2]).toContain("MSFT · Revenue");
+    // The drawer is 36 wide: column 35 is the right edge of the second row, past its "Quarterly".
+    await act(async () => {
+      await tui.setup().mockMouse.click(35, 2);
+      await tui.setup().renderOnce();
+    });
+    expect(updatedSpec?.series.map(({ source }) => source.kind === "security" ? source.fieldId : source.kind))
+      .toEqual(["market.ohlcv", "fundamental.totalRevenue"]);
   });
 
   test("finds a catalog crack spread and adds its legs with the formula", async () => {

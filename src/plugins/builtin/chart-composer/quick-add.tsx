@@ -474,6 +474,8 @@ export function ChartSeriesQuickAdd({
               surface="plain"
               bgColor={colors.panel}
               scrollable={items.length > drawerHeight}
+              // A scrollbar would take the rows' last column, where a press must add the row like the rest of it.
+              scrollbar={false}
               rowGap={0}
               selectOnHover
               onSelect={(index) => setSelectedIndex(index - (searchError ? 1 : 0))}
