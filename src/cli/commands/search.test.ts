@@ -219,6 +219,33 @@ test("search groups a symbol's lines by company id where both carry one, else by
 });
 
 /**
+ * `search DHL --json`, live 13 Nov: no row carried a companyId, though the service identifies DHL's Xetra line, and the
+ * Vienna, Hanover and Toronto lines, named Deutsche Post AG, were Other Matches: another company's.
+ */
+test("search passes the service's company id through, and keeps a company's lines named as it was with it by the names the service sends", async () => {
+  const row = (exchange: string, name: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol: "DHL", name, exchange, type: "Common Stock", primaryExchange: exchange, ...extra });
+  const answer = [
+    row("XETRA", "DHL Group AG", { homeListing: true, companyId: "isin:DE0005552004", searchAliases: ["DHL", "Deutsche Post AG"] }),
+    row("FWB2", "DHL Group AG"), row("VIE", "Deutsche Post AG"), row("HANOVER", "Deutsche Post AG"),
+    row("NEO", "Deutsche Post AG", { type: "Depositary Receipt" }),
+    // Another company's DHL, which the service identifies otherwise, is another company, whatever it is named like.
+    row("BSE", "DHL Express India Ltd.", { companyId: "isin:INE000000000" }),
+  ];
+  const quote = { symbol: "DHL", name: "DHL AG", price: 60.4, change: 0, changePercent: 0, currency: "EUR", lastUpdated: 1, listingExchangeName: "XETRA" };
+  const dataProvider = createTestDataProvider({ search: async () => answer as never, getQuote: async () => quote as never });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("DHL", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; exchange: string; companyId?: string }>;
+  expect(rows.map((item) => `${item.exchange}:${item.category}`)).toEqual([
+    "XETRA:Primary Listing", "FWB2:Other Listings", "VIE:Other Listings", "HANOVER:Other Listings", "NEO:Other Listings", "BSE:Other Matches",
+  ]);
+  // The ids the service sent are passed through; a line it did not identify carries none rather than a guess.
+  expect(rows.map((item) => item.companyId ?? null)).toEqual(["isin:DE0005552004", null, null, null, null, "isin:INE000000000"]);
+});
+
+/**
  * `search mitsubishi` once Mitsubishi Corporation's Tokyo line is named in English, 9 Nov 2026: Mitsubishi UFJ and
  * Mitsubishi Heavy Industries, whose names hold every word of "Mitsubishi Corporation", were listed as its lines.
  */
