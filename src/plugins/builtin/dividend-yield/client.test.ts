@@ -438,3 +438,22 @@ describe("cash distribution calculations", () => {
     expect(mature.growth3Y).toBeCloseTo(0.1, 12);
   });
 });
+
+// USDY's yield accrues in its price and it pays nothing: its empty distribution history read as a 0.00% trailing yield.
+test("a token has no cash yield to show, never 0.00%, and says why", async () => {
+  const history = Promise.resolve({
+    status: "success",
+    data: {
+      actions: { dividends: [], currency: "USD", providerId: "gloom", fetchedAt: "2026-11-13T14:00:00Z" },
+      quote: { symbol: "USDY-USD", price: 1.1527, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-11-13T14:00:00Z"),
+        instrumentType: "CRYPTOCURRENCY", exchangeName: "CCC", providerId: "gloomberb-cloud" },
+      summary: null,
+    },
+  } as unknown as Awaited<NonNullable<Parameters<typeof fetchDividendData>[4]>["history"]>);
+  const data = await fetchDividendData("USDY-USD", 1.1527, "", "USD", { history });
+  expect(data.token).toBe(true);
+  expect([data.metrics.trailingYield, data.metrics.forwardYield]).toEqual([null, null]);
+  const entries = projectDividendYieldHeadless(data, { rawArgument: "USDY-USD", argument: "USDY-USD", symbols: ["USDY-USD"], options: {} })
+    .sections[0]!.textEntries!;
+  expect(entries.find((entry) => entry.label === "Trailing yield")?.formatted).toBe("— (token: no payouts, any yield accrues in its price)");
+});

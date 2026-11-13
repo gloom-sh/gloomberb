@@ -13,6 +13,8 @@ import { cashInMajorUnits } from "../../../utils/dividend-cash";
 import { lapsedDividend, monthlyHistoryEnd } from "../../../utils/forward-dividend";
 import type { DeclaredCash, DeclaredDividendAction, TickerFinancials } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
+import { isCryptoInstrumentType } from "../../../tickers/search/ranking";
+import { isCryptoPairSymbol } from "../../../utils/crypto-pair";
 
 export const DIVIDENDS_CONNECTION_ID = "gloom-dividends";
 
@@ -180,6 +182,20 @@ export interface DividendData {
   stale?: boolean;
   priceAsOf?: string;
   priceStale?: boolean;
+  /**
+   * A crypto token: it pays no distributions, and a yield it earns (USDY's) accrues in its price, so it has no cash
+   * yield to show, never 0.00% (TOKEN_YIELD_NOTE).
+   */
+  token?: true;
+}
+
+/** Why a token's yields are blank: said beside them, short. */
+export const TOKEN_YIELD_NOTE = "token: no payouts, any yield accrues in its price";
+
+/** A coin or token: a crypto instrument by its quote's type, else a coin pair (USDY-USD) on the crypto venue or none. */
+function isToken(symbol: string, exchange: string, instrumentType: string | undefined): boolean {
+  if (instrumentType) return isCryptoInstrumentType(instrumentType);
+  return isCryptoPairSymbol(symbol.trim().toUpperCase()) && (!exchange || exchange.toUpperCase() === "CCC");
 }
 
 export async function fetchDividendData(
@@ -236,11 +252,17 @@ export async function fetchDividendData(
   const summaryRatesComparable = !!summaryUnit.currency && summaryUnit.divisor === 1 && summaryUnit.currency === currency;
   const metricFields = actions && historyError && quoteFields ? { ...quoteFields, trailingAnnualDividendRate: null } : quoteFields;
   const declared = actions && cashCurrency ? declaredDividends(actions) : [];
-  const metrics = buildDividendMetrics(payments, metricFields, price, { historyAvailable, summaryRatesComparable, declared });
-  if (!historyAvailable && !historyError && metrics.trailingRate == null && metrics.forwardRate == null) {
+  const token = isToken(symbol, exchange, quote?.instrumentType);
+  const built = buildDividendMetrics(payments, metricFields, price, { historyAvailable, summaryRatesComparable, declared });
+  // A token's empty history is no 0.00% yield: it has none to measure.
+  const metrics = token && payments.length === 0
+    ? { ...built, trailingRate: null, forwardRate: null, trailingYield: null, forwardYield: null, forwardRateAsOf: null }
+    : built;
+  if (!historyAvailable && !historyError && metrics.trailingRate == null && metrics.forwardRate == null && !token) {
     throw new Error(`No dividend data found for ${symbol}`);
   }
   return {
+    ...(token && payments.length === 0 ? { token: true as const } : {}),
     payments, ...(declared.length > 0 ? { declared } : {}), ...(convertedFrom ? { convertedFrom } : {}), ...(convertedSubUnit ? { convertedSubUnit } : {}), metrics, price, currency: currency || undefined, historyAvailable,
     ...(suppliedPrice == null && price != null && quote ? dividendQuotePriceMetadata(quote) : {}),
     ...(historyError ? { historyError } : {}), ...(summaryError ? { summaryError } : {}),
