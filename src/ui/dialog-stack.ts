@@ -9,6 +9,11 @@ import type { DialogApi, DialogOptions, PromptContext } from "./dialog";
 
 export type DialogKind = "alert" | "prompt";
 
+/** Whether a click on the backdrop closes the dialog now. */
+export function closesOnClickOutside(option: DialogOptions["closeOnClickOutside"]): boolean {
+  return typeof option === "function" ? option() : option === true;
+}
+
 interface DialogStackOptions<E extends { id: string }> {
   idPrefix: string;
   /** Builds the host's record. `stackWasEmpty` is true for the first dialog of a stack. */

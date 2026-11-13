@@ -4,7 +4,6 @@ import { flushSync, useKeyboard, useRenderer } from "@opentui/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { colors } from "../../theme/colors";
 import {
-  closesOnClickOutside,
   DialogHostProvider,
   type AlertContext,
   type DialogApi,
@@ -18,7 +17,7 @@ import {
   useDialogBridgeSlot,
   type DialogContentBridge,
 } from "../../ui/dialog-bridge";
-import { useDialogStack, type DialogKind } from "../../ui/dialog-stack";
+import { closesOnClickOutside, useDialogStack, type DialogKind } from "../../ui/dialog-stack";
 
 interface DialogRecord {
   id: string;

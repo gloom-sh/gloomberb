@@ -1,12 +1,12 @@
 /** @jsxImportSource react */
 import { useEffect, useRef, type ReactNode } from "react";
-import { closesOnClickOutside, DialogHostProvider, type DialogOptions } from "../../ui/dialog";
+import { DialogHostProvider, type DialogOptions } from "../../ui/dialog";
 import {
   bridgeDialogContent,
   DialogBridgeRegistrationProvider,
   useDialogBridgeSlot,
 } from "../../ui/dialog-bridge";
-import { useDialogStack } from "../../ui/dialog-stack";
+import { closesOnClickOutside, useDialogStack } from "../../ui/dialog-stack";
 import { blendHex } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { isEditableTarget, isInsideDialogSurface } from "./host/focus-scope";

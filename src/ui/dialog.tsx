@@ -46,11 +46,6 @@ export interface DialogOptions<C = AlertContext> {
   [key: string]: unknown;
 }
 
-/** Whether a click on the backdrop closes the dialog now. */
-export function closesOnClickOutside(option: DialogOptions["closeOnClickOutside"]): boolean {
-  return typeof option === "function" ? option() : option === true;
-}
-
 export interface DialogApi {
   alert(options: DialogOptions<AlertContext>): Promise<void>;
   prompt<T = string>(options: DialogOptions<PromptContext<T>>): Promise<T | undefined>;
