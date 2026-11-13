@@ -5,6 +5,7 @@ import type { InstrumentSearchResult } from "../../../../types/instrument";
 import { orderListResults } from "../../list/model";
 import { exactMatchAfterCommands } from "../../view-model";
 import { DID_YOU_MEAN_CATEGORY, formatInstrumentBadge, mergePlainRootTickerResults, mergeTickerSearchResultItems, readRootTickerQuery, venueDropdownResults, withMajorCoinCandidate, wordNamesCommand } from "./results";
+import searchAnswers from "../../../../tickers/search/fixtures/search-answers-2026-11-13.json";
 
 function resultItem(id: string, label: string, right: string, kind: ResultItem["kind"] = "ticker"): ResultItem {
   return {
@@ -242,6 +243,20 @@ test("a listing the server marks with the name as typed is an exact match beside
   const saved: ResultItem = { ...resultItem("goto:MSFT", "MSFT", "NASDAQ"), searchAliases: ["MSFT", "micro"] };
   expect(mergePlainRootTickerResults("micro", [saved, row("micro", "MICRO", "SET")], []).map((item) => [item.id, item.category]))
     .toEqual([["goto:MSFT", "Exact Match"], ["micro", "Exact Match"]]);
+});
+
+test("each line the server marks with the word is a row of its own, not a further venue of the company's first: ccb's 0939 beside its 601939", () => {
+  const query = "ccb";
+  const items = buildTickerSearchCandidates({
+    query, tickers: new Map(), providerResults: searchAnswers.answers.ccb as InstrumentSearchResult[], totalLimit: 30,
+  }).map((candidate): ResultItem => ({
+    ...resultItem(candidate.id, candidate.label, candidate.exchangeLabel ?? "", "search"),
+    detail: candidate.detail, category: candidate.category, instrumentType: candidate.instrumentType,
+    searchAliases: candidate.searchAliases, badge: formatInstrumentBadge(candidate),
+  }));
+  const merged = mergePlainRootTickerResults(query, mergeTickerSearchResultItems(query, items, []), []);
+  // China Construction Bank's Hong Kong line, in the service's order, ahead of the other CCBs' further companies.
+  expect(merged.map((item) => `${item.label}:${item.right}`)).toEqual(["CCB:NASDAQ", "601939:SSE", "0939:HKEX", "CCB:FWB2", "CCB:BVC"]);
 });
 
 /**

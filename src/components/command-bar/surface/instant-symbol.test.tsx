@@ -6,6 +6,7 @@ import { installListingDirectory } from "../../../tickers/search/listing-index";
 import type { InstrumentSearchResult } from "../../../types/instrument";
 import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
+import searchAnswers from "../../../tickers/search/fixtures/search-answers-2026-11-13.json";
 import { CommandBarHarness } from "./test-harness";
 
 const tui = createOpenTuiTestHarness();
@@ -155,6 +156,23 @@ test("an answer that leads with another listing than the index named takes the h
   await tui.waitForFrameToContain("bar:closed");
   expect(opened).toEqual(["DG"]);
   expect(saved.at(-1)?.metadata).toMatchObject({ exchange: "NYSE", name: "Dollar General Corporation" });
+});
+
+test("an answer that puts the company the word names ahead of the lines the index named takes its order: hsbc's home line and 0005 before the receipt's copies", async () => {
+  // HSBC's own lines, as an earlier search left them in the index: the receipt in New York and its copies.
+  installListingDirectory([
+    ["HSBC", "HSBC Holdings, plc.", "NYSE", "American Depositary Receipt", "USD", "NYSE", 0, 11_277_000],
+    ["HSBC", "HSBC Holdings Plc CEDAR", "BYMA", "Depositary Receipt", "ARS", "BYMA", 0, null],
+    ["HSBC", "HSBC Holdings, plc.", "IEX", "American Depositary Receipt", "USD", "IEX", 0, null],
+  ]);
+  const venues = () => tui.frame().split("\n").filter((line) => line.includes("HSBC Holdings")).map((line) => line.trim().split(/\s+/).at(-1));
+  const { release } = await typeWithSearchHeld("hsbc", searchAnswers.answers.hsbc as InstrumentSearchResult[]);
+  expect(venues()).not.toContain("HKEX");
+  release();
+  await tui.waitForFrameToContain("HKEX");
+  await tui.waitForFrameToExclude("Searching");
+  // The service's order of HSBC's lines, under the ticker as typed: London, Hong Kong, then the copies.
+  expect(venues()).toEqual(["NYSE", "LSE", "HKEX", "BYMA", "IEX"]);
 });
 
 test("a highlight the user moved stays on its row, in its place, whatever the answer leads with", async () => {

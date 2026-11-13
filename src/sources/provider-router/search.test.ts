@@ -5,6 +5,8 @@ import { ProviderRouterSearchRoutes } from "./search";
 import { ProviderBusyError } from "../provider-errors";
 import { DataServiceUnreachableError } from "../../utils/network-failure";
 import { createTestDataProvider } from "../../test-support/data-provider";
+import { searchTickerCandidates } from "../../tickers/search";
+import searchAnswers from "../../tickers/search/fixtures/search-answers-2026-11-13.json";
 
 function result(symbol: string, extra: Partial<InstrumentSearchResult> = {}): InstrumentSearchResult {
   return { symbol, name: symbol, exchange: "NASDAQ", type: "EQUITY", ...extra };
@@ -75,14 +77,49 @@ describe("provider search racing", () => {
     expect(Date.now() - started).toBeLessThan(400);
   });
 
-  test("interactive lookups abandon a stalled source in well under a second", async () => {
-    const routes = makeRoutes({ providers: [provider("slow", [result("AAPL")], 5_000)] });
+  test("interactive lookups abandon a stalled broker in well under a second", async () => {
+    const routes = makeRoutes({
+      brokers: [broker("dead", [result("AAPL")], 5_000)],
+      providers: [provider("cloud", [])],
+    });
 
     const started = Date.now();
-    const results = await routes.search("apple", { interactive: true });
+    const results = await routes.search("apple", { preferBroker: true, interactive: true });
 
     expect(results).toEqual([]);
     expect(Date.now() - started).toBeLessThan(1_500);
+  });
+
+  /**
+   * A keystroke's search gave the data service up after 800 ms. Far from it, or
+   * on a name it had not searched lately, its answer to the word as typed came
+   * later, and the bar showed only the share-class spellings' (HSB-C, HSB.C),
+   * which it reads as a ticker and answers without HSBC's Hong Kong and OTC
+   * lines; a name with no such spelling (icbc) showed nothing at all.
+   */
+  test("a keystroke waits for the data service's answer to the word as typed: hsbc keeps 0005, which the share-class spellings lack", async () => {
+    const answers = searchAnswers.answers as Record<string, InstrumentSearchResult[]>;
+    const routes = makeRoutes({
+      providers: [createTestDataProvider({
+        id: "gloomberb-cloud",
+        search: async (query) => {
+          if (query.toLowerCase() !== "hsbc") return answers[query] ?? [];
+          await new Promise((resolve) => setTimeout(resolve, 1_000));
+          return answers.hsbc!;
+        },
+      })],
+    });
+    const candidates = await searchTickerCandidates({
+      query: "hsbc",
+      tickers: new Map(),
+      dataProvider: createTestDataProvider({ search: (query, context) => routes.search(query, context) }),
+      searchContext: { preferBroker: true, interactive: true, limit: 30 },
+      totalLimit: 30,
+    });
+
+    expect(candidates.slice(0, 5).map((item) => `${item.symbol}:${item.exchangeLabel}`))
+      .toEqual(["HSBC:NYSE", "HSBA:LSE", "0005:HKEX", "HSBC:BYMA", "HSBC:IEX"]);
+    expect(candidates.map((item) => item.symbol)).toContain("HBCYF");
   });
 
   test("a broker that answers after the cloud upgrades the row in place", async () => {

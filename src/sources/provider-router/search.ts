@@ -12,11 +12,16 @@ const SEARCH_CACHE_MAX_ENTRIES = 100;
 
 const SEARCH_PROVIDER_TIMEOUT_MS = 5_000;
 /**
- * A keystroke path cannot wait the batch budget on a source that is failing
+ * A keystroke path cannot wait the batch budget on a broker that is failing
  * slowly. A broker whose gateway is down is the common case, and five seconds
- * of it is indistinguishable from the feature being broken.
+ * of it is indistinguishable from the feature being broken. A data provider
+ * keeps the batch budget: its answer is the search's, and one that takes a
+ * second (a name it has not searched lately, a client far from it) given up
+ * leaves the person with no rows, or with only another spelling's (HSB-C for
+ * "hsbc", which it reads as a ticker and answers without HSBC's Hong Kong
+ * 0005).
  */
-const INTERACTIVE_SEARCH_TIMEOUT_MS = 800;
+const INTERACTIVE_BROKER_SEARCH_TIMEOUT_MS = 800;
 
 interface BrokerSearchCandidate {
   brokerId: string;
@@ -154,8 +159,8 @@ export class ProviderRouterSearchRoutes {
   ): { first: Promise<InstrumentSearchResult[]>; settled: Promise<void> } {
     const results: InstrumentSearchResult[] = [];
     const resultIndexByKey = new Map<string, number>();
-    const timeoutMs = context?.interactive
-      ? INTERACTIVE_SEARCH_TIMEOUT_MS
+    const brokerTimeoutMs = context?.interactive
+      ? INTERACTIVE_BROKER_SEARCH_TIMEOUT_MS
       : SEARCH_PROVIDER_TIMEOUT_MS;
 
     const cacheResults = (ttl = SEARCH_CACHE_TTL_MS) => {
@@ -196,7 +201,7 @@ export class ProviderRouterSearchRoutes {
       try {
         const items = await settleWithin(
           candidate.broker.searchInstruments!(query, candidate.instance),
-          timeoutMs,
+          brokerTimeoutMs,
         );
         record(items && annotateBrokerSearchResults(items, candidate));
       } catch (error) {
@@ -206,15 +211,15 @@ export class ProviderRouterSearchRoutes {
 
     const searchProvider = (provider: DataProvider) => (async () => {
       try {
-        record(await withDeadline(provider.search(query, context), timeoutMs, `${provider.id} search timed out`));
+        record(await withDeadline(provider.search(query, context), SEARCH_PROVIDER_TIMEOUT_MS, `${provider.id} search timed out`));
       } catch (error) {
         const timedOut = error instanceof OperationTimeoutError;
         if (isNetworkFailure(error)) {
           unreachable ??= error;
-        } else if (isProviderBusy(error) || (timedOut && !context?.interactive)) {
-          // A keystroke gives up on a slow source by design and asks again on the next one; only a full wait is busy.
+        } else if (isProviderBusy(error) || timedOut) {
+          // Its full budget waited out: no answer, which is not one that found nothing.
           busy = true;
-        } else if (!timedOut && shouldLogProviderError(error)) {
+        } else if (shouldLogProviderError(error)) {
           this.deps.logProviderError(`${provider.id} failed: ${error}`);
         }
       }
