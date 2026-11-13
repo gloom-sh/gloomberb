@@ -24,8 +24,8 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
   describe: (args) => `MDAY ${args.symbols[0] ?? ""}`,
   discovery: { screenshotReadiness: "live-dom", limitations: [
     "US listings, or a FRED series (FRED:T10Y2Y, whose moves in a rate or spread read in bp); close-to-close on the release day.",
-    "Published CPI, jobs and FOMC days, and from Gloom Cloud Brazil's IPCA days and the ECB's decision days (every Governing Council monetary policy meeting); sessions after the list's last covered day (releasesThrough) are left out.",
-    "Actual, forecast and prior for the days Gloom Cloud has them (the US headlines from its kept economic calendar, under either feed's title; an FOMC day's are the federal funds target range and whether it held or moved, an ECB day's the deposit facility rate; IPCA from the central bank's SGS series); --surprise keeps the days that came in hot, cool or in line with the forecast.",
+    "Published CPI, jobs and FOMC days, and from Gloom Cloud Brazil's IPCA days, the ECB's decision days (every Governing Council monetary policy meeting) and the BoJ's (each monetary policy meeting's Tokyo day, from 2026); sessions after the list's last covered day (releasesThrough) are left out.",
+    "Actual, forecast and prior for the days Gloom Cloud has them (the US headlines from its kept economic calendar, under either feed's title; an FOMC day's are the federal funds target range and whether it held or moved, an ECB day's the deposit facility rate, a BoJ day's its policy rate; IPCA from the central bank's SGS series); --surprise keeps the days that came in hot, cool or in line with the forecast.",
     "A CPI day the calendar lists without its year-on-year actual takes one computed from the CPI index against a year earlier, labelled computed.",
     "A release day without figures says why: before the kept calendar starts, or listed without them.",
     "A release day that is also the reaction session of the company's own earnings report is marked earnings and left out of the release averages and the normal day.",
@@ -77,7 +77,7 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
       const labels = model.kinds.filter((kind) => events.some((event) => event.kind === kind && pick(event))).map((kind) => MACRO_EVENT_LABELS[kind]);
       return `${labels.length > 1 ? `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}` : labels[0]} days`;
     };
-    // A release Gloom Cloud alone lists (IPCA, the ECB) is summed up on its own: "Any release" is then the US ones'.
+    // A release Gloom Cloud alone lists (IPCA, the ECB, the BoJ) is summed up on its own: "Any release" is then the US ones'.
     const usOnly = model.kinds.some((kind) => !US_MACRO_EVENT_KINDS.includes(kind as (typeof US_MACRO_EVENT_KINDS)[number]));
     const missing = (event: MacroDayEvent) => event.figures ? null : event.figuresMissing
       ?? (beforeCalendar(event) ? `before ${figuresFrom}, when Gloom Cloud's economic calendar starts` : null);

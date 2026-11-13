@@ -103,17 +103,20 @@ export interface CloudMacroReleaseDaysPayload {
   /** The last New York day the lists are complete for. */
   coveredThrough: string;
   sources: string[];
-  /** New York dates, oldest first. Brazil's IPCA days when the server can vouch for them, and the ECB's decision days. */
-  releases: Record<"cpi" | "jobs" | "fomc", string[]> & { ipca?: string[]; ecb?: string[] };
+  /**
+   * New York dates, oldest first. Brazil's IPCA days when the server can vouch for them, and the ECB's decision days;
+   * the BoJ's decision days are its own Tokyo days.
+   */
+  releases: Record<"cpi" | "jobs" | "fomc", string[]> & { ipca?: string[]; ecb?: string[]; boj?: string[] };
   /** Each kind's figures by New York release day, for the days they are known. */
-  figures?: Partial<Record<"cpi" | "jobs" | "fomc" | "ipca" | "ecb", Record<string, {
+  figures?: Partial<Record<"cpi" | "jobs" | "fomc" | "ipca" | "ecb" | "boj", Record<string, {
     event: string;
     actual: string | null;
     forecast: string | null;
     prior: string | null;
     /** Above the consensus (hot), below it (cool), at it (in-line); null without both. */
     surprise: "hot" | "cool" | "in-line" | null;
-    /** An FOMC or ECB day's move in the rate: "held", "cut 25bp", "raised 50bp". */
+    /** An FOMC, ECB or BoJ day's move in the rate: "held", "cut 25bp", "raised 50bp". */
     decision?: string;
     /** How the actual was computed where the calendar lists none: a CPI's year-on-year change from the index. */
     computed?: string;
@@ -123,9 +126,9 @@ export interface CloudMacroReleaseDaysPayload {
   /** The first day the kept economic calendar holds, the one `econ` names: days before it have no figures. */
   figuresFrom?: string;
   /** Why a release day from `figuresFrom` on has no figures, by kind and day. */
-  figureGaps?: Partial<Record<"cpi" | "jobs" | "fomc" | "ecb", Record<string, string>>>;
-  /** The next day of a kind its publisher schedules ahead: the ECB's next decision. */
-  scheduled?: { ecb?: string };
+  figureGaps?: Partial<Record<"cpi" | "jobs" | "fomc" | "ecb" | "boj", Record<string, string>>>;
+  /** The next day of a kind its publisher schedules ahead: the ECB's and the BoJ's next decisions. */
+  scheduled?: { ecb?: string; boj?: string };
 }
 
 export interface CloudFredObservationPayload {
