@@ -2,6 +2,9 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { apiClient } from "./index";
 import { getCurrentPluginTarget, setCurrentPluginTarget } from "../plugins/current-target";
 import { adoptDesktopHandoff, exposeWallTeaser, initializeDesktopResearchActivity, recordResearchActivity, recordWallCtaClicked, recordWallViewed } from "./research-activity";
+import { allowTelemetryInTests } from "../test-support/telemetry-guard";
+
+allowTelemetryInTests();
 
 const originalRecord = apiClient.recordResearchActivity;
 const originalExposure = apiClient.recordExperimentExposure;

@@ -15,6 +15,7 @@ import {
   usageFunctionForPane,
   type UsageCounterHost,
 } from "./usage-counts";
+import { allowTelemetryInTests } from "../test-support/telemetry-guard";
 
 function fakeHost(overrides: Partial<UsageCounterHost> = {}) {
   const sent: UsageCountsPayload[] = [];
@@ -59,6 +60,7 @@ describe("usageCountsEnabled", () => {
 });
 
 describe("usageTelemetryAllowed", () => {
+  allowTelemetryInTests();
   // Command-bar searches ride on this: an installed surface's own opt-out
   // (Do Not Track, GPC, the desktop launch environment) must stop them too.
   test("honours the config switch and the installed surface's opt-out", () => {

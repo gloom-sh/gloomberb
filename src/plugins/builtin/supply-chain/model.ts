@@ -1,4 +1,4 @@
-import type { SupplyChainPayload, SupplyOptions, SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
+import type { SupplyChainPayload, SupplyEvidenceItem, SupplyOptions, SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
 import { currentThemeColorSet, SERIES_COLORS } from "../../../theme/series-colors";
 import { companyNameCase, shortCompanyName } from "../../../tickers/company-name";
 import { MISSING_VALUE, clipToDisplayWidth, displayWidth } from "../../../utils/format";
@@ -33,11 +33,29 @@ export function counterpartyLabel(row: SupplyRow): string {
   // Cohort labels arrive in title case from XBRL member names; generic words read lower case, names keep theirs.
   return name.replace(GENERIC_WORDS, (word) => word.toLowerCase()).replace(/^./, (first) => first.toUpperCase());
 }
+/**
+ * A related-party (connected) trade the report prints: the counterparty is
+ * the company's parent, its group or a company under the same control. The
+ * server labels a row one only when every disclosure behind it is one.
+ */
+export const isRelatedParty = (row: Pick<SupplyRow, "relatedParty">) => row.relatedParty === true;
+/** A company and its subsidiaries ("X及其子公司"): the figure is the group's, not X's alone. */
+const namedGroup = (row: SupplyRow) => row.entityScope === "group" && !row.counterparty.aggregate;
+/**
+ * What the counterparty is beside its name, the same in the table, the flow
+ * and the graph: a cohort group, an undisclosed name, a related party (so a
+ * parent's group never reads as a plain supplier or customer), and a company
+ * with its subsidiaries as a group. `short` for a narrow column.
+ */
 export const counterpartyKindLabel = (row: SupplyRow, short = false) => {
   const kind = counterpartyKind(row);
-  if (short) return kind === "group" ? "group" : kind === "undisclosed" ? "undisclosed" : null;
-  return kind === "group" ? `${row.role} group` : kind === "undisclosed" ? `undisclosed ${row.role}` : null;
+  if (kind === "group") return short ? "group" : `${row.role} group`;
+  if (kind === "undisclosed") return short ? "undisclosed" : `undisclosed ${row.role}`;
+  if (isRelatedParty(row)) return namedGroup(row) ? short ? "related group" : "related-party group" : "related party";
+  return namedGroup(row) ? short ? "group" : "corporate group" : null;
 };
+/** The relationship in words: "Related-party supplier" for a related-party trade, else the role. */
+export const relationshipLabel = (row: Pick<SupplyRow, "role" | "relatedParty">) => isRelatedParty(row) ? `Related-party ${row.role}` : roleLabel(row.role);
 
 /** A filer's segment or product scope in plain words: "Compute And Networking Segment" reads "Compute & Networking". */
 export function scopeWords(scope: string): string {
@@ -144,8 +162,8 @@ export function counterpartyName(row: SupplyRow): string {
 }
 export const roleLabel = (role: SupplyRole) => role[0]!.toUpperCase() + role.slice(1);
 
-/** A listing code that reads as no word: 0700:HKEX, 1211.HK, 7203. */
-const numberedListing = (value: string) => /^\d[\dA-Z]*(?:[.:][A-Z]+)?$/i.test(value.trim());
+/** A listing code that reads as no word: 0700:HKEX, 1211.HK, 7203, and on SGX C38U:SGX or D05.SI, whose letters spell none either. */
+const numberedListing = (value: string) => /^\d[\dA-Z]*(?:[.:][A-Z]+)?$/i.test(value.trim()) || /^[A-Z]{1,2}\d[\dA-Z]*[.:](?:SGX|SI)$/i.test(value.trim());
 
 /**
  * The focus company as the direction labels name it ("AAPL says"): its ticker
@@ -236,12 +254,14 @@ export function supplyEmptyText(data: Pick<SupplyChainPayload, "symbol" | "entit
   const country = /^[A-Z]{2}$/.test(code) ? code : null;
   const exchange = data.entity?.exchange?.trim().toUpperCase() ?? "";
   const customerSide = `A customer's filings name its suppliers: try the customer's side, such as ${command("AAPL")}.`;
-  if (country && FILING_COUNTRIES.has(country)) return `No filing, announcement or call read so far names a relationship for ${data.symbol}.`;
+  // Not yet available, never an error: what is read so far names none.
+  const none = `Relationships for ${data.symbol} are not yet available:`;
+  if (country && FILING_COUNTRIES.has(country)) return `${none} no filing, announcement or call read so far names one.`;
   if ((country && REPORT_COUNTRIES.has(country)) || REPORT_EXCHANGES.has(exchange)) {
-    return `No annual report, announcement or call read so far names a relationship for ${data.symbol}. ${customerSide}`;
+    return `${none} no annual report, announcement or call read so far names one. ${customerSide}`;
   }
-  if (!country) return `No filing, announcement or call read so far names a relationship for ${data.symbol}. ${customerSide}`;
-  return `No relationship for ${data.symbol}: SPLC reads company filings from the US and Korea and annual reports from Hong Kong, mainland China `
+  if (!country) return `${none} no filing, announcement or call read so far names one. ${customerSide}`;
+  return `${none} SPLC reads company filings from the US and Korea and annual reports from Hong Kong, mainland China `
     + `and Singapore, plus announcements and calls, and none read so far names one. ${customerSide}`;
 }
 
@@ -253,10 +273,47 @@ export function supplyPreviewNote(data: Pick<SupplyChainPayload, "previewRowsPer
 
 export const percentage = (row: SupplyRow) => row.pctOfRevenue === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row) ? MISSING_VALUE : `${Number(row.pctOfRevenue.toFixed(2))}% ${row.pctScope ? "scoped " : ""}${row.pctBasis ?? ""}`;
 export const dollars = (row: SupplyRow) => row.usd === null ? MISSING_VALUE : `${row.usdBasis === "derived" ? "≈ " : ""}$${revenueAmount(row.usd)} ${row.usdBasis}`;
-const scaleLabel = (scale: number) => scale === 1 ? "" : scale === 1_000 ? " thousand" : scale === 1_000_000 ? " million" : scale === 1_000_000_000 ? " billion" : ` ×${scale.toLocaleString("en-US")}`;
+/** A disclosed scale in words, as the filing prints it: 万元 is ten thousand yuan, 亿元 a hundred million. */
+const SCALE_WORDS: ReadonlyMap<number, string> = new Map([[1, ""], [1_000, " thousand"], [10_000, " ten thousand"], [1_000_000, " million"], [100_000_000, " hundred million"], [1_000_000_000, " billion"]]);
+const scaleLabel = (scale: number) => SCALE_WORDS.get(scale) ?? ` ×${scale.toLocaleString("en-US")}`;
+/** A source value's printed unit as its multiplier: "ten_thousands" (万元) is 10,000. */
+const UNIT_SCALES: Readonly<Record<string, number>> = { units: 1, thousands: 1_000, ten_thousands: 10_000, millions: 1_000_000, hundred_millions: 100_000_000, billions: 1_000_000_000 };
+/** What a source value measures, in words: "related_party_group_purchases" reads "Related-party purchases". */
+export function sourceValueLabel(kind: string | null): string {
+  if (!kind) return "Source value";
+  const related = /^related_party_(?:group_)?(sales|purchases)$/.exec(kind);
+  if (related) return `Related-party ${related[1]}`;
+  const words = kind.replace(/_/g, " ").trim();
+  return words ? words[0]!.toUpperCase() + words.slice(1) : "Source value";
+}
+/**
+ * A source value in its currency and printed unit, as a row's value reads:
+ * "26,909,758,882.26 CNY", "12,345 CNY ten thousand", "4.5%". An amount in a
+ * unit of a currency takes the row's currency when its own line names none,
+ * and is not shown without one: "9,771,378 ten thousand" says nothing.
+ */
+export function sourceValueText(item: Pick<SupplyEvidenceItem, "value" | "valueUnit" | "currency">, rowCurrency?: string | null): string | null {
+  if (item.value === null) return null;
+  const scale = item.valueUnit ? UNIT_SCALES[item.valueUnit] : undefined;
+  const amount = printedAmount(item.value, scale);
+  if (scale !== undefined) {
+    const currency = item.currency || rowCurrency;
+    return currency ? `${amount} ${currency}${scaleLabel(scale)}` : null;
+  }
+  if (item.valueUnit === "percent" || item.valueUnit === "per cent") return `${amount}%`;
+  return [amount, item.currency, item.valueUnit].filter(Boolean).join(" ");
+}
+/**
+ * An amount as printed, in its unit. One in units of the currency with a
+ * fraction is in cents, to two places: a related-party total of
+ * 822,340,444.90 never reads 822,340,444.9.
+ */
+function printedAmount(value: number, scale: number | undefined): string {
+  return value.toLocaleString("en-US", { maximumFractionDigits: 12, minimumFractionDigits: scale === 1 && !Number.isInteger(value) ? 2 : 0 });
+}
 /** Retain the original currency and disclosed scale; never imply an FX conversion. */
 export const nativeValue = (row: SupplyRow) => row.nativeAmount == null || !row.nativeCurrency || !row.nativeScale ? null
-  : `${row.nativeAmount.toLocaleString("en-US", { maximumFractionDigits: 12 })} ${row.nativeCurrency}${scaleLabel(row.nativeScale)}`;
+  : `${printedAmount(row.nativeAmount, row.nativeScale)} ${row.nativeCurrency}${scaleLabel(row.nativeScale)}`;
 export const disclosedValue = (row: SupplyRow) => nativeValue(row) ?? dollars(row);
 const QUOTE_LANGUAGES: Record<string, string> = { ko: "Korean", ja: "Japanese", zh: "Chinese", "zh-TW": "Chinese", "zh-Hant": "Chinese", "zh-Hans": "Chinese", en: "English" };
 export const quoteLanguageLabel = (row: Pick<SupplyRow, "quoteLanguage">) => QUOTE_LANGUAGES[row.quoteLanguage ?? ""] ?? row.quoteLanguage ?? "original language";

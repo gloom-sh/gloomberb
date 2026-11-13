@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
-import { assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, liveDomRowCount, missingActiveTabSelections, shotLoadedNothing, shotShowsText, shotTableRows } from "./screenshot-assessment";
+import {
+  assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, liveDomRowCount, missingActiveTabSelections, shotCutColumnsWarning, shotLoadedNothing,
+  shotShowsText, shotTableRows,
+} from "./screenshot-assessment";
 import { buildDesktopShotPayload } from "./screenshot-payload";
 import { chartSeriesEvidenceWithinRange, chartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
 import { createDesktopShotBridge, resolveDesktopShotApiProxy, stripDesktopShotCredentials } from "./screenshot-bridge";
@@ -711,6 +714,18 @@ describe("a capture of a pane that marks no rows", () => {
     expect(filled).not.toHaveProperty("blankColumns");
     // Two rows are a short list's gaps, not a lost column.
     expect(assess(diag, { rows: [row(1, "—", "—"), row(2, "—", "—")] })).toMatchObject({ usable: true });
+  });
+
+  // AUCT's after view at 720px lost +5D, +20D and the CUSIP past the table's edge unsaid. Nineteen other panes cut one
+  // there too, so it is a named warning for now, not a failed --strict; FA's centred headers read "The       FY2024      ,".
+  test("a column cut at its table's edge is named in a warning and leaves the picture usable; padded headers read clean", () => {
+    const row = { tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnId: "date", columnLabel: "DATE", text: "Nov 10" }] };
+    const cut = assess(diag, { rows: [row, row, row], cutColumns: ["      FY2025      ", "      FY2024      ", "FY2024", " "] });
+    expect(cut).toMatchObject({ usable: true, unusableReason: null, cutColumns: ["FY2025", "FY2024"] });
+    expect(shotCutColumnsWarning(cut.cutColumns)).toBe("The FY2025 and FY2024 columns are cut at this width: a wider --width shows them.");
+    expect(shotCutColumnsWarning(["+20D BP"])).toBe("The +20D BP column is cut at this width: a wider --width shows it.");
+    const whole = assess(diag, { rows: [row, row, row] });
+    expect([whole.cutColumns, shotCutColumnsWarning(whole.cutColumns)]).toEqual([undefined, null]);
   });
 
   test("an error or empty state's Reason keeps its sentence and quotes what the pane said", () => {

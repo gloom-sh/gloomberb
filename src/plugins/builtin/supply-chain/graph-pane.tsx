@@ -15,10 +15,10 @@ import { useOpenDescription } from "../shared/open-description";
 import { UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedGraph, graphOptions, loadGraph, validateGraph } from "./graph-client";
-import { entityKey, entityLabel, entityTicker, exposureLabel, pathLabel } from "./graph-model";
+import { entityKey, entityLabel, entityTicker, exposureLabel, pathLabel, relatedPartyLink } from "./graph-model";
 import { SupplyGraph } from "./graph";
 import { graphEvidenceRow } from "./graph-evidence";
-import { disclosedValue, dollars, nativeValue, periodText, ROLE_COLORS, roleLabel, shareParts } from "./model";
+import { disclosedValue, dollars, nativeValue, periodText, relationshipLabel, ROLE_COLORS, roleLabel, shareParts } from "./model";
 import { SupplySources, SupplyVerification } from "./row-evidence";
 import { evidenceDate, evidenceLabel, isUnconfirmed, trustTier } from "./trust";
 import { scrollByLines } from "../../../state/pane-scroll-registry";
@@ -28,7 +28,7 @@ import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { logFailure } from "../../../utils/log-failure";
 
-const PATH_COLUMNS: DataTableColumn[] = [{ id: "route", label: "Route", width: 40, align: "left" }, { id: "relationships", label: "Relationships", width: 22, align: "left" }, { id: "hops", label: "Hops", width: 6, align: "right" }, { id: "score", label: "Score", width: 9, align: "right" }, { id: "confidence", label: "Confidence", width: 12, align: "right" }, { id: "exposure", label: "Estimated exposure", width: 35, align: "left" }];
+const PATH_COLUMNS: DataTableColumn[] = [{ id: "route", label: "Route", width: 40, align: "left" }, { id: "relationships", label: "Relationships", width: 22, align: "left" }, { id: "hops", label: "Hops", width: 6, align: "right" }, { id: "score", label: "Score", width: 9, align: "right" }, { id: "confidence", label: "Confidence", width: 12, align: "right" }, { id: "exposure", label: "Exposure", width: 35, align: "left" }];
 const SOURCE_LABELS = { xbrl: "Structured filing", filing_text: "Filing text", press_release: "Company release", call: "Earnings call", news: "News", web: "Website", import: "Imported record" };
 const TIER_LABELS = { structured: "Structured", primary: "Primary", secondary: "Secondary", imported: "Imported" };
 
@@ -68,7 +68,7 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
   const figures: StatItem[] = [
     { id: "score", label: "Path score", value: path.score.toFixed(4) },
     { id: "confidence", label: "Confidence", value: `${Math.round(path.confidence * 100)}%` },
-    { id: "exposure", label: "Estimated exposure", value: exposureLabel(path, data), detail: path.exposure ? periodText(path.exposure) : undefined, wide: true },
+    { id: "exposure", label: "Exposure", value: exposureLabel(path, data), detail: path.exposure ? periodText(path.exposure) : undefined, wide: true },
   ];
   const company = (entity: SupplyEntity) => desktop && entity.ticker ? <Badge label={entityTicker(entity)!} tone="accent" />
     : <Text fg={entity.aggregate || entity.anonymous ? colors.textDim : colors.textBright} attributes={TextAttributes.BOLD}>{entityLabel(entity)}</Text>;
@@ -89,7 +89,7 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
           return <Box key={evidence.id} flexDirection="column" paddingBottom={1}>
             <Box flexDirection="row" gap={1}><Badge tone={isUnconfirmed(row) ? "neutral" : "accent"} label={evidenceLabel(row)} />
               {row.leadStatus === "verified" ? <Badge tone="positive" label="Verified" /> : null}</Box>
-            <KeyValueRow label="Disclosure" value={`${evidence.reporter.name} · ${roleLabel(evidence.role)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
+            <KeyValueRow label="Disclosure" value={`${evidence.reporter.name} · ${relationshipLabel(row)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
             <KeyValueRow label="Evidence class" value={`${TIER_LABELS[evidence.tier]} · ${SOURCE_LABELS[evidence.sourceKind]}`} detail={`${Math.round(evidence.confidence * 100)}% confidence`} labelWidth={20} />
             <KeyValueRow label="Period" value={periodText(row)} detail={trustTier(row) === 1 ? `filed ${row.filedDate ?? MISSING_VALUE}` : `published ${evidenceDate(row)}`} labelWidth={20} />
             {row.entityScope === "group" && !row.counterparty.aggregate ? <KeyValueRow label="Metric scope" value="Corporate group" labelWidth={20} /> : null}
@@ -201,11 +201,12 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
                 </Box> : undefined };
               }
               if (column.id === "relationships") {
-                const relationships = [...new Set(path.linkIds.map(id => data.links.find(link => link.id === id)!.relationship))];
-                const label = (relationship: typeof relationships[number]) => relationship === "commerce" ? "Trade" : roleLabel(relationship);
+                // A related-party trade reads as one: its counterparty is the company's parent, group or a sister company.
+                const relationships = [...new Set(path.linkIds.map(id => { const link = data.links.find(entry => entry.id === id)!; return relatedPartyLink(link) ? "related" : link.relationship; }))];
+                const label = (relationship: typeof relationships[number]) => relationship === "commerce" ? "Trade" : relationship === "related" ? "Related-party trade" : roleLabel(relationship);
                 return { text: relationships.map(label).join(" / "), content: <Box flexDirection="row" height={1} gap={1} overflow="hidden">
                   {relationships.map(relationship => {
-                    const color = relationship === "commerce" ? colors.textMuted : ROLE_COLORS[relationship];
+                    const color = relationship === "commerce" || relationship === "related" ? colors.textMuted : ROLE_COLORS[relationship];
                     return <Box key={relationship} flexDirection="row" gap={1} flexShrink={0}>
                       {desktop ? <Box width={1} height={1} alignItems="center" justifyContent="center"><Box style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: color }} /></Box>
                         : <Text fg={color}>●</Text>}

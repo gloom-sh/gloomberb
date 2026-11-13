@@ -35,7 +35,7 @@ import { buildFunctionReport, resolvePaneFunctionReportSource } from "./report";
 import { expandResolvedArgument } from "./headless";
 import { defaultScreenshotPath, shotSizeWarnings } from "./screenshot-payload";
 import { renderDesktopShot } from "./screenshot-render";
-import { shotStatusIssues } from "./screenshot-assessment";
+import { shotCutColumnsWarning, shotStatusIssues } from "./screenshot-assessment";
 import {
   buildPaneCatalogEntries,
 } from "./catalog";
@@ -615,7 +615,9 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
       }
       // Text prints a warning on stderr, out of the way of piped output; JSON carries it in the envelope.
       const read = parsed.listing ? listingReadNotes(parsed.listing) : [];
-      const warnings = [...read, ...parsed.listingNotes ?? [], ...shotSizeWarnings(parsed.clamped, parsed)];
+      // A column cut at the table's edge is named, and does not make the picture unusable (or fail --strict).
+      const cut = shotCutColumnsWarning(result.cutColumns);
+      const warnings = [...read, ...parsed.listingNotes ?? [], ...shotSizeWarnings(parsed.clamped, parsed), ...cut ? [cut] : []];
       ctx.printResult({ data: result, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: (data) => {
           const issues = shotStatusIssues(data);

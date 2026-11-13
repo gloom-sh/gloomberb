@@ -282,8 +282,8 @@ export function fitCompanyColumns(columns: readonly DataTableColumn[], width: nu
 const EXAMPLE_COMPANIES: Record<CompanyMode, readonly string[]> = { guidance: ["WMT", "DAL"], kpis: ["AAPL", "NVDA"] };
 
 /**
- * What an empty table says. A company with nothing on file for the function says so
- * plainly and names one that has some; a selection or tab that narrows what the company
+ * What an empty table says. A company with nothing on file for the function reads as
+ * not yet available, never as an error, and names one that has some; a selection or tab that narrows what the company
  * has says what is missing from it. `cli` types `fn GUIDE WMT`, the app's command bar `GUIDE WMT`.
  */
 export function companyEmptyState(mode: CompanyMode, symbol: string, view: { tab: string; hasRows: boolean }, surface: "cli" | "pane" = "pane"): { title: string; hint?: string } {
@@ -291,7 +291,7 @@ export function companyEmptyState(mode: CompanyMode, symbol: string, view: { tab
   const examples = EXAMPLE_COMPANIES[mode];
   const example = examples.find((candidate) => candidate !== symbol.trim().toUpperCase()) ?? examples[0]!;
   const command = `${mode === "kpis" ? "KPIS" : "GUIDE"} ${example}`;
-  return { title: `No ${mode === "kpis" ? "KPIs" : "guidance"} on file for ${symbol}.`, hint: `Try ${surface === "cli" ? `\`fn ${command}\`` : command}.` };
+  return { title: mode === "kpis" ? `KPIs for ${symbol} are not yet available.` : `Guidance for ${symbol} is not yet available.`, hint: `Try ${surface === "cli" ? `\`fn ${command}\`` : command}.` };
 }
 
 /** What a missing KPI means, as KPIS states it among its limitations and EQS beside a KPI column with gaps. */

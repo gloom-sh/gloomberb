@@ -300,7 +300,9 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   const noEarnings = rows.length === 0 && !abroad ? await loadNoEarningsText(context.marketData, symbol, "cli") : null;
   // A company ERN covers whose history answered with nothing (AIA's, 1299:HKEX) has no reports on record yet: no
   // complete answer, and not one ERN does not cover.
-  const empty = noEarnings ?? (rows.length === 0 && payload ? `No earnings reports on record for ${symbol}.` : null);
+  // A listing abroad shows only its next report: none on the calendar is what it has, not a listing ERN does not cover.
+  const empty = noEarnings ?? (rows.length === 0 && payload ? `No earnings reports on record for ${symbol}.`
+    : rows.length === 0 && abroad && upcoming.status === "fulfilled" ? `${symbol} has no report on the calendar yet.` : null);
   return {
     columns: ownAbroad ? LISTING_HISTORY_COLUMNS : HISTORY_COLUMNS,
     rows,

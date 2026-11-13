@@ -107,15 +107,17 @@ export function maturityRows(latest: DebtLatest): MaturityRow[] {
 }
 /**
  * The wall's scale: the largest dated bucket. Thereafter is open ended and
- * usually dwarfs every dated year, so scaling to it would flatten them.
+ * usually dwarfs every dated year, so scaling to it would flatten them. A
+ * ladder of exactly two bands in its filing's own terms (a balance sheet's
+ * within one year and after it) has no years to flatten: both share the
+ * larger, so 528M within the year never reads as long as 1.76B after it. A
+ * schedule by year keeps its dated scale however few of its years have a
+ * value, and its Thereafter stays capped.
  */
 export function datedBucketScale(latest: DebtLatest): number {
-  return Math.max(
-    0,
-    ...maturityRows(latest).flatMap((row) =>
-      row.dated && row.value !== null ? [row.value] : [],
-    ),
-  );
+  const rows = maturityRows(latest);
+  const scaled = debtBands(latest)?.length === 2 ? rows : rows.filter((row) => row.dated);
+  return Math.max(0, ...scaled.flatMap((row) => row.value === null ? [] : [row.value]));
 }
 export interface BucketBar {
   /** Share of the bar column, 0 to 1. */

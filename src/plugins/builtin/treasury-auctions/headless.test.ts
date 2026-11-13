@@ -108,4 +108,58 @@ test("--sort by an after column shows the after view, and the export carries its
   expect(table.columns).toEqual(expect.arrayContaining(["B/C pctl", "Indirect pctl", "Dealer pctl", "+1d (bp)", "+5d (bp)", "+20d (bp)"]));
   expect(table.rows[0]![table.columns.indexOf("+1d (bp)")]).toBe(6);
   expect(shown[0]).toHaveLength(14);
+
+  // -btc-pctl turns it: the lowest ranked first, the ones with too few before them still last; the options name the view shown.
+  const reversed = await headless.load(createTestHeadlessArgs({ argument: "7Y", options: { historyDays: "3650", filter: "all", sort: "-btc-pctl" } }),
+    createTestHeadlessContext());
+  expect(reversed.rows.slice(0, 2).map((row) => row.btcPercentile)).toEqual([100, 100]);
+  expect(reversed.rows.at(-1)!.btcPercentile).toBeNull();
+  expect([reversed.appliedOptions, reversed.metadata?.sort]).toEqual([{ market: "us", view: "after" }, "-btc-pctl"]);
+});
+
+// The analyst joined the results and after CSVs in Python to find the weak 10Y auctions like this week's and what yields did next.
+test("--like ranks the tenor's earlier auctions by their stop-out, B/C and indirect percentiles' distance, and sums up the yield after them", async () => {
+  // 40 monthly 7-year notes from 2023 to 2026, their figures turning over on different cycles, and a 10-year on the newest's day.
+  const month = (index: number) => `${2023 + Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}-15`;
+  const sevens = Array.from({ length: 40 }, (_, index) => auction({
+    secType: "Note", securityTerm: "7-Year", id: `7y-${index}`, auctionDate: month(index),
+    highYield: 4 + (index * 3 % 7) / 100, avgMedYield: 4, bidToCoverRatio: 2.2 + (index * 5 % 11) / 20,
+    competitiveAccepted: 40e9, indirectAccepted: (20 + index * 7 % 13) * 1e9, primaryDealerAccepted: 5e9,
+  }));
+  const ten = auction({ secType: "Note", securityTerm: "10-Year", auctionDate: month(39), highYield: 4.5, avgMedYield: 4.4, bidToCoverRatio: 2.5 });
+  // A close every day, up and down.
+  const closes = Array.from({ length: 1300 }, (_, day) => ({
+    date: new Date(Date.UTC(2023, 0, 1) + day * 86_400_000).toISOString().slice(0, 10), value: 4 + (day * 37 % 100) / 1000,
+  }));
+  const headless = createTreasuryAuctionsHeadless({
+    load: async (_args, window) => {
+      expect(window).toBe("all");
+      return { auctions: [ten, ...sevens].toReversed(), fetchedAt: Date.parse("2026-07-01T00:00:00Z"), stale: false };
+    },
+    curves: async () => ({ curves: new Map([["us:7Y", closes]]), errors: [] }),
+  });
+  setSystemTime(new Date("2026-07-01T00:00:00Z"));
+  const args = createTestHeadlessArgs({ argument: "7Y", options: { historyDays: "120", filter: "all", like: month(39) } });
+  const result = await headless.load(args, createTestHeadlessContext());
+  const like = result.metadata?.like as Record<string, unknown> & { summary: unknown[] };
+  expect(like).toMatchObject({ id: "7y-39", compared: ["stopOutPercentile", "btcPercentile", "indirectPercentile"] });
+  // The 15 closest of the 27 with a percentile before it, all 7-years and earlier, the closest first.
+  expect(result.rows).toHaveLength(15);
+  expect(result.rows.every((row) => row.securityTerm === "7-Year" && String(row.auctionDate) < month(39))).toBe(true);
+  const distances = result.rows.map((row) => Number(row.distance));
+  expect(distances).toEqual(distances.toSorted((left, right) => left - right));
+  const gap = (row: Record<string, unknown>) => Math.sqrt((["stopOutPercentile", "btcPercentile", "indirectPercentile"] as const)
+    .reduce((sum, key) => sum + (Number(row[key]) - Number(like[key])) ** 2, 0) / 3);
+  expect(gap(result.rows[0]!)).toBeCloseTo(distances[0]!, 0);
+  // The summary is the listed auctions' own moves: the median and the share that rose.
+  const fives = result.rows.map((row) => Number(row.after5d)).toSorted((left, right) => left - right);
+  expect(like.summary[1]).toEqual({ move: "after5d", label: "+5d", medianBp: fives[7]!, rosePct: Math.round(fives.filter((move) => move > 0).length / 15 * 100), count: 15 });
+  // CSV and JSON alike: the ranked table with its distance, then the summary.
+  const tables = headlessReportTables(headless, result, args, "AUCT", deriveHeadlessFreshness(headless, result), { complete: true, unavailableSymbols: [] }).tables;
+  expect(tables[0]!.columns).toEqual(expect.arrayContaining(["Stop-out vs avg (bp)", "Stop-out pctl", "Indirect (%)", "Distance", "+5d (bp)"]));
+  expect([tables[1]!.title, tables[1]!.columns.slice(0, 4)]).toEqual(["7Y yield after them", ["After", "Median (bp)", "Rose (%)", "Auctions"]]);
+  expect(renderHeadlessPaneText(headless, result, args, "AUCT")).toContain(`Treasury Auctions | like ${month(39)} | all`);
+  // A day with two auctions asks for a search that tells them apart.
+  await expect(headless.load(createTestHeadlessArgs({ argument: null, options: { historyDays: "120", filter: "all", like: month(39) } }),
+    createTestHeadlessContext())).rejects.toThrow(/held 2 auctions \(7-Year Note, 10-Year Note\): search for one/);
 });

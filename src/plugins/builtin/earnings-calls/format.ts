@@ -2,15 +2,33 @@ import { MISSING_VALUE } from "../../../utils/format";
 import type { CloudEarningsCallPayload } from "../../../api-client";
 import { formatShortDate } from "../../../utils/datetime-format";
 
-/** "FQ4 26" — fiscal period, compact enough for a table column. */
+/**
+ * "FQ4 26", "H1 26" or "FY 26": the fiscal period, compact enough for a table
+ * column. A half year's results have no quarter, as a year's do, and are told
+ * apart by `fiscalHalf` (SHKP's interim and annual results calls of FY2026).
+ */
 function formatPeriod(
   fiscalYear: number | null,
   fiscalQuarter: number | null,
+  fiscalHalf?: number | null,
 ): string {
   if (!fiscalQuarter && !fiscalYear) return MISSING_VALUE;
-  const quarter = fiscalQuarter ? `FQ${fiscalQuarter}` : "FY";
+  const quarter = fiscalQuarter ? `FQ${fiscalQuarter}` : fiscalHalf ? `H${fiscalHalf}` : "FY";
   const year = fiscalYear ? ` ${String(fiscalYear).slice(-2)}` : "";
   return `${quarter}${year}`;
+}
+
+/** The FQ column of `fn CALLS`: the quarter, or `H1` for a half year's results. */
+export function fiscalQuarterText(call: { fiscalQuarter: number | null; fiscalHalf?: number | null }): string | number | null {
+  return call.fiscalQuarter ?? (call.fiscalHalf ? `H${call.fiscalHalf}` : null);
+}
+
+/**
+ * What a company with no call yet reads, in the pane and `fn CALLS`: not yet
+ * available, never an error or a gap in coverage.
+ */
+export function noCallsText(ticker: string): { title: string; message: string } {
+  return { title: `Earnings calls for ${ticker} are not yet available.`, message: "Calls appear once the company's investor site or filings list a webcast." };
 }
 
 export function formatCallDate(value: string | null): string {
@@ -39,7 +57,7 @@ export function formatTimestamp(seconds: number): string {
 
 type NamedCall = Pick<
   CloudEarningsCallPayload,
-  "ticker" | "fiscalYear" | "fiscalQuarter" | "eventKind" | "eventLabel"
+  "ticker" | "fiscalYear" | "fiscalQuarter" | "fiscalHalf" | "eventKind" | "eventLabel"
 >;
 
 /** An event that is not an earnings call (a deal call, an investor day), shown by its label and never as a quarter. */
@@ -61,13 +79,13 @@ const SHORT_EVENT_LABELS: Record<string, string> = {
 export function callPeriod(call: Omit<NamedCall, "ticker">): string {
   const label = eventLabelOf(call);
   if (label) return SHORT_EVENT_LABELS[label] ?? label;
-  return formatPeriod(call.fiscalYear, call.fiscalQuarter);
+  return formatPeriod(call.fiscalYear, call.fiscalQuarter, call.fiscalHalf);
 }
 
 /** Title for the detail stack: names the call so the body need not repeat it. */
 export function callTitle(call: NamedCall): string {
   const label = eventLabelOf(call);
   if (label) return `${call.ticker} ${label}`;
-  const period = formatPeriod(call.fiscalYear, call.fiscalQuarter);
+  const period = formatPeriod(call.fiscalYear, call.fiscalQuarter, call.fiscalHalf);
   return period === MISSING_VALUE ? call.ticker : `${call.ticker} ${period}`;
 }

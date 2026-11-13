@@ -7,7 +7,7 @@ import { cachedSupplyChain, fetchSupplyChain, loadSupplyChain, supplyChainCache,
 import { getThemeIds, getTheme, isDarkTheme, SUBTLE_TEXT_MIN, themeKeysDirection } from "../../../theme/themes";
 import { contrastRatio } from "../../../theme/color-utils";
 import { themedColorSet } from "../../../theme/series-colors";
-import { counterpartyLabel, counterpartyName, disclosedValue, disclosureText, fitShareBasis, flowBands, focusCompanyLabel, focusCompanyName, percentage, periodText, receivablesConcentration, ROLE_SLOTS, shareParts, sortRows, supplyEmptyText, supplyRoleCounts } from "./model";
+import { counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, disclosureText, fitShareBasis, flowBands, focusCompanyLabel, focusCompanyName, percentage, periodText, receivablesConcentration, relationshipLabel, ROLE_SLOTS, shareParts, sortRows, sourceValueLabel, sourceValueText, supplyEmptyText, supplyRoleCounts } from "./model";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 import { supplyOptions } from "./trust";
 
@@ -53,6 +53,35 @@ test("native amounts retain their disclosed currency and scale without cross-cur
     expect(() => validateSupplyChain(supplyPayload({ says: [{ ...yen, ...fields } as typeof yen] }))).toThrow("unreadable");
   }
   expect(disclosedValue(validateSupplyChain(supplyPayload()).says[0]!)).toBe(MISSING_VALUE);
+  // 万元 and 亿元 read in words, never as a bare multiplier.
+  expect(disclosedValue(supplyRow("wan", { nativeAmount: 12_345.67, nativeCurrency: "CNY", nativeScale: 10_000 }))).toBe("12,345.67 CNY ten thousand");
+  expect(disclosedValue(supplyRow("yi", { nativeAmount: 51.45, nativeCurrency: "CNY", nativeScale: 100_000_000 }))).toBe("51.45 CNY hundred million");
+});
+
+test("a related-party trade never reads as a plain supplier, and its source amounts keep their printed unit", () => {
+  // CSSC buys from its controlling shareholder's materials arm and its subsidiaries (X及其子公司).
+  const group = supplyRow("materials", { role: "supplier", direction: "in", pctOfRevenue: null, pctBasis: null, relatedParty: true, entityScope: "group" });
+  const sister = supplyRow("sister", { role: "customer", pctOfRevenue: null, pctBasis: null, relatedParty: true, entityScope: "entity" });
+  const validated = validateSupplyChain(supplyPayload({ says: [group, sister], counts: { says: { customer: 1, supplier: 1, partner: 0, competitor: 0, investee: 0 }, names: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 } }, totalRows: 2 }));
+  expect(validated.says.map((row) => [relationshipLabel(row), counterpartyKindLabel(row), counterpartyKindLabel(row, true)])).toEqual([
+    ["Related-party supplier", "related-party group", "related group"],
+    ["Related-party customer", "related party", "related party"],
+  ]);
+  // A company with its subsidiaries that is no related party still reads as the group; a plain company has no label.
+  expect(counterpartyKindLabel(supplyRow("plain-group", { entityScope: "group" }), true)).toBe("group");
+  expect([relationshipLabel(supplyRow()), counterpartyKindLabel(supplyRow())]).toEqual(["Customer", null]);
+  expect(() => validateSupplyChain(supplyPayload({ says: [{ ...group, relatedParty: "yes" } as unknown as typeof group] }))).toThrow("unreadable");
+  const item = { valueKind: "related_party_group_purchases", value: 26_909_758_882.26, valueUnit: "units", currency: "CNY" };
+  expect([sourceValueLabel(item.valueKind), sourceValueText(item)]).toEqual(["Related-party purchases", "26,909,758,882.26 CNY"]);
+  expect(sourceValueText({ ...item, value: 9_771_378, valueUnit: "ten_thousands" })).toBe("9,771,378 CNY ten thousand");
+  // A line that names no currency takes its row's, or shows nothing: never "9,771,378 ten thousand".
+  expect(sourceValueText({ ...item, value: 9_771_378, valueUnit: "ten_thousands", currency: null }, "CNY")).toBe("9,771,378 CNY ten thousand");
+  expect(sourceValueText({ ...item, value: 9_771_378, valueUnit: "ten_thousands", currency: null })).toBeNull();
+  expect(sourceValueText({ ...item, value: 1_250, valueUnit: "units", currency: null }, null)).toBeNull();
+  // A total in units keeps its cents to two places, as the report prints each line.
+  expect(disclosedValue({ ...group, nativeAmount: 822_340_444.9, nativeCurrency: "CNY", nativeScale: 1 })).toBe("822,340,444.90 CNY");
+  expect(sourceValueText({ ...item, value: 203_664_060.2 })).toBe("203,664,060.20 CNY");
+  expect([sourceValueLabel("share_of_sales"), sourceValueText({ value: 4.5, valueUnit: "percent", currency: null })]).toEqual(["Share of sales", "4.5%"]);
 });
 
 test("missing route has an unavailable state, other request errors stay actionable", async () => {
@@ -225,7 +254,7 @@ test("an empty supply chain says SPLC does not read a company's filings only whe
     expect(empty(unknown)).not.toContain("SPLC reads");
     expect(empty(unknown)).toContain("try the customer's side, such as SPLC AAPL.");
   }
-  expect(empty("us")).toBe("No filing, announcement or call read so far names a relationship for X.");
+  expect(empty("us")).toBe("Relationships for X are not yet available: no filing, announcement or call read so far names one.");
 });
 
 test("a Hong Kong, mainland or Singapore company with no relationship is in the markets whose annual reports SPLC reads", () => {
@@ -234,10 +263,10 @@ test("a Hong Kong, mainland or Singapore company with no relationship is in the 
   // By its country, or by its listing when the company is incorporated elsewhere (Bermuda, the Cayman Islands).
   for (const [country, exchange] of [["HK", "HKEX"], ["CN", "SSE"], ["SG", "SGX"], ["BM", "HKEX"], ["KY", "SZSE"], [null, "SGX"]] as const) {
     const text = empty(country, exchange);
-    expect(text).toStartWith("No annual report, announcement or call read so far names a relationship for 1299:HKEX.");
+    expect(text).toStartWith("Relationships for 1299:HKEX are not yet available: no annual report, announcement or call read so far names one.");
     expect(text).toContain("try the customer's side, such as SPLC AAPL.");
   }
-  expect(empty("JP", "JPX")).toStartWith("No relationship for 1299:HKEX: SPLC reads");
+  expect(empty("JP", "JPX")).toStartWith("Relationships for 1299:HKEX are not yet available: SPLC reads");
 });
 
 test("NVDA geographic XBRL facts do not invent a denominator or quarterly duration", () => {
@@ -297,4 +326,6 @@ test("a numbered listing reads by its company's name, a ticker that is a word by
   expect(focusCompanyLabel("1211:HKEX", null)).toBe("1211:HKEX");
   expect(focusCompanyName("Apple Inc.", "AAPL", "Apple Inc")).toBe("Apple Inc.");
   expect(focusCompanyLabel("AAPL", "Apple Inc.")).toBe("AAPL");
+  // SGX files CapitaLand Integrated Commercial Trust as "CapLand IntCom T": its code is no word, so its listing's name reads.
+  expect(focusCompanyName("CapLand IntCom T", "C38U:SGX", "CapitaLand Integrated Commercial Trust")).toBe("CapitaLand Integrated Commercial Trust");
 });

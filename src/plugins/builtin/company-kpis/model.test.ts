@@ -177,9 +177,9 @@ test("a guidance table fits its pane: the columns narrow, the metric keeps the r
 });
 
 test("an empty table says a company has nothing on file and names one that has, else what the selection lacks", () => {
-  expect(companyEmptyState("guidance", "AAPL", { tab: "table", hasRows: false })).toEqual({ title: "No guidance on file for AAPL.", hint: "Try GUIDE WMT." });
+  expect(companyEmptyState("guidance", "AAPL", { tab: "table", hasRows: false })).toEqual({ title: "Guidance for AAPL is not yet available.", hint: "Try GUIDE WMT." });
   expect(companyEmptyState("guidance", "AAPL", { tab: "table", hasRows: false }, "cli").hint).toBe("Try `fn GUIDE WMT`.");
-  expect(companyEmptyState("kpis", "NFLX", { tab: "table", hasRows: false })).toEqual({ title: "No KPIs on file for NFLX.", hint: "Try KPIS AAPL." });
+  expect(companyEmptyState("kpis", "NFLX", { tab: "table", hasRows: false })).toEqual({ title: "KPIs for NFLX are not yet available.", hint: "Try KPIS AAPL." });
   // It never sends a company to itself.
   expect(companyEmptyState("guidance", "wmt", { tab: "table", hasRows: false }).hint).toBe("Try GUIDE DAL.");
   expect(companyEmptyState("guidance", "WMT", { tab: "history", hasRows: true })).toEqual({ title: "Actuals have not been matched to these guidance periods yet." });

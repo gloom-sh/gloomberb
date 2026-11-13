@@ -92,9 +92,43 @@ export function awardsCoverageNotes(data: Pick<AwardsPayload, "gaps">): string[]
  * award's detail and `fn AWARDS` print them under the awards they cover.
  */
 export function awardsAttributions(data: Pick<AwardsPayload, "sources"> | undefined, shown: Iterable<string>): string[] {
+  return sourceStatements(data, shown, "attribution");
+}
+
+/**
+ * How the amounts of the sources shown read, each once: GeBIZ's says it
+ * withholds an amount under S$6,000 or one that several suppliers of a tender
+ * print alike. The award's detail and `fn AWARDS` print them beside a
+ * withheld value.
+ */
+export function awardsAmountNotices(data: Pick<AwardsPayload, "sources"> | undefined, shown: Iterable<string>): string[] {
+  return sourceStatements(data, shown, "amountNotice");
+}
+
+function sourceStatements(data: Pick<AwardsPayload, "sources"> | undefined, shown: Iterable<string>, key: "attribution" | "amountNotice"): string[] {
   const sources = new Set(shown);
-  return [...new Set((data?.sources ?? []).flatMap((source) =>
-    sources.has(source.source) && typeof source.attribution === "string" && source.attribution.trim() ? [source.attribution.trim()] : []))];
+  return [...new Set((data?.sources ?? []).flatMap((source) => {
+    const statement = source[key];
+    return sources.has(source.source) && typeof statement === "string" && statement.trim() ? [statement.trim()] : [];
+  }))];
+}
+
+/** What an award's value reads when its source withholds it, never 0 and never the unreported mark. */
+export const WITHHELD_AMOUNT = "withheld";
+
+/**
+ * Why an award's value is withheld by its source rather than unreported, or
+ * null: the award's own reason (GeBIZ's "under S$6,000"), never its source's,
+ * so an amount the source never printed still reads unreported.
+ */
+export function amountWithheld(row: Pick<AwardRow, "awardAmount" | "amountWithheld">): string | null {
+  const why = row.amountWithheld;
+  return row.awardAmount == null && typeof why === "string" && why.trim() ? why.trim() : null;
+}
+
+/** A source's statement as served, or nothing: an older or malformed answer's non-string is never read as one. */
+export function statementText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 /** Award dates after the response's own date are the source's, not a mapping slip; they say so instead of passing as past awards. */

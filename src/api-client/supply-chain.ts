@@ -25,6 +25,8 @@ export interface SupplyEvidenceItem {
   value: number | null;
   valueUnit: string | null;
   currency: string | null;
+  /** A related-party (connected) trade the report prints, with its actual amount. Absent from older servers. */
+  relatedParty?: boolean;
 }
 export interface SupplyEntity {
   id: string;
@@ -54,6 +56,12 @@ export interface SupplyRow {
   nativeScale?: number | null;
   jurisdiction?: string | null;
   entityScope?: "entity" | "group" | "anonymous" | "aggregate" | null;
+  /**
+   * Every disclosure behind the row is a related-party (connected) trade: the
+   * counterparty is the company's parent, its group or a company under the
+   * same control, never a plain supplier or customer. Absent from older servers.
+   */
+  relatedParty?: boolean;
   period: string;
   /** Months every figure on the row covers: 0 a balance at the period end, 3 a quarter, 12 a year. Null or absent when the source does not say or the figures differ in length. */
   periodMonths?: number | null;

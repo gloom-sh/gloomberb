@@ -14,7 +14,7 @@ import { ClippedText } from "../../../components/ui/display";
 import { cardSurfaceStyle } from "../../../components/ui/card";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
-import { entityLabel, entityTicker, graphNodes } from "./graph-model";
+import { entityLabel, entityTicker, graphNodes, relatedPartyLink } from "./graph-model";
 import { ROLE_COLORS } from "./model";
 import { blendHex } from "../../../theme/colors";
 
@@ -146,7 +146,9 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
         const prefix = collapsed.includes(node.entity.id) ? "+ " : "";
         const name = prefix + (showTicker ? node.entity.name : entityLabel(node.entity));
         const nameWidth = inner - (showTicker ? tickerWidth : 0);
-        const relation = kind ?? (node.related ? `${node.hops > 1 ? "via " : ""}${role}` : role);
+        // A related-party trade with the company before it on the path reads as one, never as a plain supplier or customer.
+        const link = node.path ? data.links.find(entry => entry.id === node.path!.linkIds.at(-1)) : undefined;
+        const relation = kind ?? (node.related ? `${node.hops > 1 ? "via " : ""}${role}` : link && relatedPartyLink(link) ? `related-party ${role}` : role);
         const confidence = `${Math.round((node.path?.confidence ?? 0) * 100)}%`;
         const detail = node.hops ? `${node.hops}H · ${relation}${inner >= displayWidth(relation ?? "") + 12 ? ` · ${confidence}` : ""}` : showTicker ? "Focus company" : node.entity.name;
         return <Box key={node.entity.id} position="absolute" left={node.x} top={node.y} width={cellWidth - 3} height={2} zIndex={10} flexDirection="column" overflow="hidden"

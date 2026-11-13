@@ -68,7 +68,7 @@ function routeData({ guided = [] as string[], eightKs = [] as string[], guidance
 }
 
 /**
- * GUID offered `fn GUIDE AAPL`, which answers "No guidance on file for AAPL".
+ * GUID offered `fn GUIDE AAPL`, which answers "Guidance for AAPL is not yet available".
  * A route is named only when it has data for the
  * symbol; otherwise the next one that does, or none.
  */

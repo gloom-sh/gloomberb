@@ -13,7 +13,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useSelectionFill } from "../../../components/ui/selection-fill";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { fillOpaque, fillRect, parseHex } from "../../../components/chart/native/raster/primitives";
-import { counterpartyKind, counterpartyLabel, disclosedValue, dollars, nativeValue, periodText, roleLabel, ROLE_COLORS, scopeWords, shareParts, fitShareBasis, type FlowBand, type ShareParts } from "./model";
+import { counterpartyKind, counterpartyKindLabel, counterpartyLabel, disclosedValue, dollars, isRelatedParty, nativeValue, periodText, relationshipLabel, roleLabel, ROLE_COLORS, scopeWords, shareParts, fitShareBasis, type FlowBand, type ShareParts } from "./model";
 import { entityTicker } from "./graph-model";
 import { flowChipLabel, flowGeometry, RELATED_LABEL_CELLS, ribbonY, type FlowRibbon, type PositionedNode } from "./flow-layout";
 import { evidenceDate, evidenceLabel, trustTier } from "./trust";
@@ -36,8 +36,21 @@ function shareText(share: ShareParts, cells: number): string {
   return `${share.value} ${fitShareBasis(share, cells - displayWidth(share.value) - 1)}`;
 }
 
-/** The disclosed figure a card shows under the name, in the reporting company's own terms, in `cells` cells. */
+/**
+ * The line a card shows under the name, in `cells` cells: a related party
+ * says so first ("related group · 9,515,093.66 CNY"), on the card itself and
+ * not only in its tooltip, then the disclosed figure. A card too narrow for
+ * both whole says "related ·" so the figure keeps its digits.
+ */
 function nodeMetric(node: PositionedNode, focusId: string | undefined, cells: number): string {
+  const row = node.row!;
+  if (!isRelatedParty(row)) return nodeFigure(node, focusId, cells);
+  const lines = [`${counterpartyKindLabel(row, true)} · `, "related · "].map((label) => `${label}${nodeFigure(node, focusId, cells - displayWidth(label))}`);
+  return lines.find((line) => displayWidth(line) <= cells) ?? lines.at(-1)!;
+}
+
+/** The disclosed figure a card shows under the name, in the reporting company's own terms, in `cells` cells. */
+function nodeFigure(node: PositionedNode, focusId: string | undefined, cells: number): string {
   const row = node.row!;
   if (trustTier(row) !== 1) return `${evidenceLabel(row)} · ${evidenceDate(row)}`;
   if (node.weight !== null && node.weightBasis === "usd") return dollars(row);
@@ -249,7 +262,7 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
 function flowNodeName(node: PositionedNode): string {
   if (node.more) return `Show ${node.more} more ${node.role ? ROLE_PLURAL[node.role].toLowerCase() : node.band}`;
   const name = node.row ? counterpartyLabel(node.row) : node.label;
-  const role = node.role ? roleLabel(node.role) : node.band;
+  const role = node.row ? relationshipLabel(node.row) : node.role ? roleLabel(node.role) : node.band;
   return `Open ${name}, ${role}`;
 }
 
@@ -354,7 +367,7 @@ function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: Position
   const share = shareParts(row, focusId);
   const lines = [
     share ? `${share.value} ${share.basis}` : nativeValue(row) !== null || row.usd !== null ? disclosedValue(row) : "No figure disclosed",
-    `${roleLabel(row.role)} · ${periodText(row)}`,
+    `${relationshipLabel(row)} · ${periodText(row)}`,
     trustTier(row) === 1
       ? `${evidenceLabel(row)} · ${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`
       : `${evidenceLabel(row)} · ${evidenceDate(row)}`,

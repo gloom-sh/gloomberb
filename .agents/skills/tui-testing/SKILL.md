@@ -26,6 +26,8 @@ printf '{ "dataDir": "%s", "onboardingComplete": true }\n' "$SMOKE_HOME" > "$SMO
 grep '"dataDir"' "$SMOKE_HOME/config.json"   # must name $SMOKE_HOME, never ~/.gloomberb
 ```
 
+A throwaway profile is a brand-new install to the usage and crash-report service, so every launch also sets `GLOOMBERB_NO_TELEMETRY=1` (the commands below do): a smoke run must not show up as an install. `bun test` sets it itself.
+
 Keep the profile on disk, not under `/tmp`: on many Linux machines `/tmp` is RAM-backed with a fixed inode limit, and one profile is about 29,000 files once the first launch has installed the plugins, so a handful of leftover profiles can fill it and make every shell command fail.
 
 An empty `GLOOMBERB_HOME` falls back to the real profile: `~/.gloomberb`, or the XDG folders (`~/.config/gloomberb`, `~/.local/share/gloomberb`) on a Linux machine without one. Shell variables do not carry over between separate shells, so set `SMOKE_HOME` again in every shell that launches the app, and write it as `${SMOKE_HOME:?}` in launch commands so an unset value aborts instead of opening the real profile.
@@ -228,7 +230,7 @@ Create the throwaway `$SMOKE_HOME` profile from Critical Rules first.
 tmux kill-session -t test 2>/dev/null
 
 # Start the app with a fixed terminal size for consistent captures
-tmux new-session -d -s test -x 120 -y 40 "GLOOMBERB_HOME=${SMOKE_HOME:?} bun start 2>&1"
+tmux new-session -d -s test -x 120 -y 40 "GLOOMBERB_NO_TELEMETRY=1 GLOOMBERB_HOME=${SMOKE_HOME:?} bun start 2>&1"
 
 # Wait for the app to render (2-3 seconds for initial load)
 sleep 3
@@ -243,7 +245,7 @@ tmux pipe-pane -o -t test 'cat > /tmp/gloomberb-test.log'
 If you need to run the app without `tmux`, keep the process handle so you can shut it down:
 
 ```bash
-GLOOMBERB_HOME="${SMOKE_HOME:?}" bun start > /tmp/gloomberb-test.log 2>&1 &
+GLOOMBERB_NO_TELEMETRY=1 GLOOMBERB_HOME="${SMOKE_HOME:?}" bun start > /tmp/gloomberb-test.log 2>&1 &
 app_pid=$!
 
 # ... test whatever you need ...
@@ -286,7 +288,7 @@ Always add `sleep 0.5` to `sleep 1` after sending input to let the UI re-render.
 ```bash
 # 1. Start the app on the throwaway profile
 tmux kill-session -t test 2>/dev/null
-tmux new-session -d -s test -x 120 -y 40 "GLOOMBERB_HOME=${SMOKE_HOME:?} bun start 2>&1"
+tmux new-session -d -s test -x 120 -y 40 "GLOOMBERB_NO_TELEMETRY=1 GLOOMBERB_HOME=${SMOKE_HOME:?} bun start 2>&1"
 sleep 3
 
 # 2. Capture initial state

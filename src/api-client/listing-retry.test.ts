@@ -77,3 +77,20 @@ test("a listing the service has no quote for is asked once a minute, so an unkno
   await many.api.getCloudQuote("ZZQ0");
   expect(many.paths).toHaveLength(258);
 });
+
+// `quote QWZXQ` sent the batch, then the same listing alone, to hear "not found" twice.
+test("a listing a batch says is not found is not asked for alone, and only that listing", async () => {
+  const batch = { status: "success", data: { items: [
+    { symbol: "QWZXQ", exchange: "", status: "empty", data: null, reasonCode: "NOT_FOUND" },
+    { symbol: "FLAT", exchange: "", status: "empty", data: null, reasonCode: "NO_DATA" },
+    { symbol: "YAR", exchange: "OSL", status: "success", data: quote.data },
+  ] } };
+  const asked = service(batch, quote);
+  await asked.api.getCloudQuotesBatch([{ symbol: "QWZXQ" }, { symbol: "FLAT" }, { symbol: "YAR", exchange: "OSL" }]);
+  expect(await asked.api.getCloudQuote("QWZXQ")).toEqual({ status: "empty", reasonCode: "NOT_FOUND", data: null } as never);
+  expect(asked.paths).toEqual(["/market/quotes/batch"]);
+  // A listing the batch had no data for, or quoted, is still asked about: only "not found" is the whole answer.
+  await asked.api.getCloudQuote("FLAT");
+  await asked.api.getCloudQuote("YAR", "OSL");
+  expect(asked.paths).toEqual(["/market/quotes/batch", "/market/quote?symbol=FLAT", "/market/quote?symbol=YAR&exchange=OSL"]);
+});

@@ -24,8 +24,10 @@ Electrobun 2 keeps its SDK out of `node_modules`: `bun run desktop:sync` downloa
 Both use your real profile (`~/.gloomberb`, or the XDG folders on a Linux install that never had one). To develop against a throwaway profile, point `GLOOMBERB_HOME` somewhere else:
 
 ```bash
-GLOOMBERB_HOME=/tmp/gloomberb-dev bun dev
+GLOOMBERB_NO_TELEMETRY=1 GLOOMBERB_HOME=/tmp/gloomberb-dev bun dev
 ```
+
+A throwaway profile counts as a new install in usage counts and crash reports; `GLOOMBERB_NO_TELEMETRY=1` (see [Crash reports and usage counts](docs/telemetry.md)) keeps it out of them.
 
 ## Agent skills
 
@@ -99,6 +101,7 @@ Tests run on `bun test` and sit next to the code they cover as `*.test.ts` or `*
 
 - `src/test-support/` is the home for shared fixtures and fakes: a data provider with quote and financials factories, ticker records, news articles, resolved chart series and points, a stand-in broker, a doubled plugin runtime, plugin persistence, market sessions, a static app store (`createStaticAppStore`), pane providers and the `TestPaneFrame` footer shell, headless and CLI contexts, a Cloud API WebSocket fake and temporary databases. Put a new shared fixture there instead of declaring it inline in another test. A fixture only one feature's tests share can sit next to them in a `test-fixture.ts` (or `test-harness.tsx` for render helpers), which the published package leaves out.
 - Every test file runs in one process, so module state one file leaves behind reaches the next. `bunfig.toml` preloads `src/test-support/preload.ts`, which resets that state before every test (today the crash reporter's queue); add a reset there for new module-level state a test can leave behind.
+- Tests never send crash reports or usage counts. `bunfig.toml` preloads `src/test-support/test-env.ts`, which sets `GLOOMBERB_NO_TELEMETRY` and `DO_NOT_TRACK` for the test process and every process a test starts, and `src/test-support/telemetry-guard.ts`, which fails the test that lets a telemetry request reach the real `fetch`. A test that checks telemetry itself calls `allowTelemetryInTests()` from the guard, which clears the two variables for the test, and stubs where the report goes (`setCloudApiFetchTransport`, the reporter host's `send`).
 - For a pending result, use `Promise.withResolvers()` rather than a local `deferred()` helper.
 - `src/renderers/opentui/test-utils.tsx` renders into a test terminal. `createOpenTuiTestHarness` mounts one renderer per test and destroys it after every test, with `frame`, `emitKeypress`, `renderFrames`, `waitForFrameToContain` and `clickFrameText` on the current renderer; `testRender`, `emitKeypress` and `settleFrame` remain for lower-level use.
 - `src/renderers/dom/test-utils.tsx` renders the desktop and web view into happy-dom: `createDomTestHarness`.
