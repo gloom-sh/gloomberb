@@ -306,6 +306,27 @@ describe("resolveChartSpecData", () => {
       expect(unknown.warned).toBe(true);
     }
 
+    // A coin's bars from Gloom Cloud say what their volume counts: the value traded in the price's currency, said as
+    // its unit and never warned about ("Volume unit unknown: USDT-USD:CCC Price." read over the crypto board).
+    {
+      const history = [{ date: new Date("2026-01-14"), close: 1, volume: 5e9, volumeBasis: "aggregate" },
+        { date: new Date("2026-01-15"), close: 1, volume: 6e9, volumeBasis: "aggregate" }];
+      const quote = { symbol: "USDT-USD", currency: "USD", price: 1, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-15"), instrumentType: "CRYPTOCURRENCY" };
+      const provider = createTestDataProvider({
+        getQuote: async () => quote,
+        getTickerFinancials: async () => ({ ...emptyFinancials(), quote, priceHistory: history }),
+        getPriceHistory: async () => history,
+        getPriceHistoryForResolution: async () => history,
+      });
+      const result = await resolveChartSpecData(chartSpec({
+        viewport: { range: "1M", resolution: "1d" },
+        series: [chartSeries({ id: "price", source: { kind: "security", instrument: { symbol: "USDT-USD" }, fieldId: "market.ohlcv" } })],
+        studies: [{ id: "volume", kind: "volume", inputSeriesIds: ["price"], parameters: {}, panelId: "main", axis: "left" }],
+      }), { dataProvider: provider, loadFredSeries: async () => fredLoad(), now: new Date("2026-01-16") });
+      expect(result.series.find((entry) => entry.id === "volume")?.unit).toBe("USD");
+      expect(result.warnings.filter((warning) => warning.includes("Volume unit"))).toEqual([]);
+    }
+
     // A series with no volume to read (spot FX counts none) has no unit to warn about.
     const flat = await volumeOf("EURUSD=X", "CURRENCY", 0);
     expect(flat.direct?.warning).toBeUndefined();

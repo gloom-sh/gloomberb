@@ -164,6 +164,10 @@ export function baseSecuritySeries(
   const volumeUnit = unknownBondBasis ? undefined
     : assetKind === "equity" || instrumentKind === "equity" || instrumentKind === "fund" ? "shares" as const
     : assetKind === "contract" || instrumentKind === "future" || instrumentKind === "option" ? "contracts" as const
+    // A coin's volume from Gloom Cloud, whose bars say what it counts (`aggregate`, `1 spot venue`), is the value
+    // traded in its quote currency, never a count of coins; another source's states no unit.
+    : (assetKind === "crypto" || instrumentKind === "crypto") && currency
+      && (financials.priceHistory ?? []).some((point) => point.volumeBasis != null) ? currency
     : undefined;
   // An index has no volume of its own: sources sum its members' volume.
   const volumeBasis = !volumeUnit && !unknownBondBasis && instrumentKind === "index" ? "index-members" as const : undefined;

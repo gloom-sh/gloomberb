@@ -249,8 +249,11 @@ export interface ResolvedSeries {
    * never on decimal steps that read 104-25.60. Unset for decimal prices.
    */
   tickGrid?: number;
-  /** Volume basis established by the source instrument; omitted when unspecified. */
-  volumeUnit?: "shares" | "contracts";
+  /**
+   * Volume basis established by the source instrument; omitted when unspecified. A coin's is the traded value in the
+   * currency its price is in (`USD`), as Gloom Cloud serves a coin's volume.
+   */
+  volumeUnit?: "shares" | "contracts" | (string & {});
   /**
    * Set where the volume is the combined volume of an index's members. It has
    * no unit of its own to state and nothing unknown to warn about; the volume
