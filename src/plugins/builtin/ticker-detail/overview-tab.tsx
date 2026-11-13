@@ -76,6 +76,7 @@ import { taxEquivalentFields, useOverviewTaxEquivalent } from "./overview/tax-eq
 import { distributionBasis, type TaxRates } from "../../../market-data/tax-equivalent";
 import { currentListingName } from "../../../tickers/listing-name";
 import { isYieldIndexSymbol } from "../../../tickers/index-roots";
+import { quoteStatsBasisText } from "../../../market-data/quotes/export-identity";
 import { hiddenOnLogScale, logScaleHiddenWarning } from "../../../time-series/log-scale";
 import {
   autoOverviewChartScale, resolveOverviewChartScale, toggledOverviewChartScale, type OverviewChartScaleChoice,
@@ -596,6 +597,8 @@ function ResolvedOverviewTab({
                 low={quote.low!}
                 high={quote.high!}
                 label={dayRangeLabel}
+                // A coin's range is the composite's or one exchange's own day: said, so a switch between them shows.
+                note={quoteStatsBasisText(quote) || undefined}
                 shortLabel={delisted ? t("Last") : t("Day")}
                 labelWidth={rangeLabelWidth}
                 endpointWidth={rangeEndpointCells}

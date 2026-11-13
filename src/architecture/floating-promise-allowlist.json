@@ -1,7 +1,6 @@
 {
   "src/account/auth-dialog.tsx": ["void:dialog.prompt().then().finally()"],
   "src/account/checkout-handoff.tsx": ["void:value.opened.then()"],
-  "src/account/device-signin-dialog.tsx": ["void:dialog.prompt().then().finally()"],
   "src/account/device-signin.ts": ["void:this.run()"],
   "src/account/email-auth-attempt.ts": ["void:function()"],
   "src/account/verification-panel.tsx": ["void:check()","void:check()","void:check()","void:check()"],

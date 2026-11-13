@@ -4,7 +4,7 @@
  * own panel. The sign-in attempt it shares with onboarding lives in
  * `email-auth-attempt`, the non-React logic in `auth-model`.
  */
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { apiClient, type AuthUser } from "../api-client";
 import { matchesKeyChord, parseKeyChord } from "../app/keybindings";
 import { Button, Spinner, TextField } from "../components";
@@ -50,6 +50,8 @@ export interface AuthFormProps {
   onModeChange?: (mode: AccountMode) => void;
   /** Extra actions below the buttons, e.g. the gate's QR alternative. */
   footer?: ReactNode;
+  /** Whether anything is typed in it, so a dialog holding it closes on a stray click only while nothing would be lost. */
+  onTypedChange?: (typed: boolean) => void;
 }
 
 export function AuthForm({
@@ -59,6 +61,7 @@ export function AuthForm({
   shortcutScope,
   onModeChange,
   footer,
+  onTypedChange,
 }: AuthFormProps) {
   useAppLanguage();
   // The desktop and the web size the column and let its rows fill it, as the kit's dialogs do.
@@ -70,6 +73,8 @@ export function AuthForm({
   const [activeField, setActiveField] = useState<EmailAuthField>("email");
   const [showPassword, setShowPassword] = useState(false);
   const [resetState, setResetState] = useState<ResetState>("idle");
+  const typed = email !== "" || password !== "";
+  useEffect(() => onTypedChange?.(typed), [onTypedChange, typed]);
   const emailInputRef = useRef<InputRenderable>(null);
   const passwordInputRef = useRef<InputRenderable>(null);
   const {

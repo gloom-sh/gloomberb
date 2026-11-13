@@ -212,6 +212,14 @@ export interface Quote extends DepositaryReceiptFacts {
    */
   yearRangeBasis?: "daily-bars";
   /**
+   * What a coin's day range and volume measure, as the service says: the
+   * composite's across exchanges, or one exchange's own day (a real-time
+   * crypto feed's). Said beside each, so a source switch is never silent.
+   */
+  statsBasis?: "composite" | "exchange";
+  /** The composite's day range was widened to take in `priceVenue`'s price, which fell outside it. */
+  rangeWidened?: boolean;
+  /**
    * No live quote: the price is the close of the latest stored daily bar of
    * `session` (an exchange-local date), said beside the price.
    */
@@ -300,6 +308,11 @@ export interface Quote extends DepositaryReceiptFacts {
   provenance?: QuoteProvenance;
   /** Freshness class for the quote data. Provider identity lives in providerId/provenance. */
   dataSource?: QuoteDataSource;
+  /**
+   * The spot exchange whose own last trade the price is (Coinbase, Kraken), on a coin's quote; absent on the
+   * composite price, which blends several exchanges. Sources name the quote by it (`quoteSourceName`).
+   */
+  priceVenue?: string;
   /**
    * A perpetual contract's whole market row as of this quote (funding, open
    * interest, premium), so every view of the contract reads the figures that

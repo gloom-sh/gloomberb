@@ -1311,6 +1311,7 @@ export const es: Record<string, string> = {
   "Pro trial · {days}d left": "Prueba Pro · quedan {days} d",
   "{delay} delayed": "{delay} de retraso",
   "{delay} delayed · try Pro live": "{delay} de retraso · prueba Pro en directo",
+  "Stock quotes are {minutes} min delayed without Pro.": "Sin Pro, las cotizaciones de acciones llegan con {minutes} min de retraso.",
   "Pro trial {days}d": "Prueba Pro {days} d",
   "Pro trial — ends {date}": "Prueba Pro: termina el {date}",
   "{amount}/mo": "{amount}/mes",

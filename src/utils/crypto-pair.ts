@@ -39,6 +39,15 @@ export function isRoundTheClockCoin(symbol?: string, exchange?: string): boolean
   return !!parsed && (isUsdCoinPair(parsed.symbol) || (!venue && isQuotedCoinPair(parsed.symbol)));
 }
 
+/**
+ * A message as a reader takes it: a coin named by its pair (USDT-USD), never with
+ * the crypto venue's internal code after it (USDT-USD:CCC). A credit rating's CCC,
+ * which no listing precedes, stays.
+ */
+export function withoutCryptoVenueCode(text: string): string {
+  return text.replace(/(\S):CCC\b/g, "$1");
+}
+
 const SLASH_COIN_PAIR = /^([A-Z0-9]{1,15})\/(USD|EUR|GBP|JPY|KRW|CAD|INR|CNY|AUD|USDT|USDC|BTC|ETH)$/;
 
 /**

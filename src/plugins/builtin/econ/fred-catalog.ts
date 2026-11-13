@@ -3,6 +3,9 @@ import type { SeriesDefinition, SeriesFrequency } from "../../../series/types";
 
 type FredRow = readonly [seriesId: string, name: string, unit: string, frequency: SeriesFrequency, tags?: readonly string[]];
 
+/** What people call a Treasury bill: a t-bill, a tbill, cash parked in a money market. */
+const BILL_TAGS = ["bill", "T-bill", "T-bills", "tbill", "tbills", "money markets", "money market"] as const;
+
 /**
  * The FRED series Gloom Cloud serves, by group, except the Treasury constant
  * maturities (UST:2Y and so on, from the yield curve) and the credit spreads
@@ -34,10 +37,10 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
       ["SOFR", "SOFR", "%", "daily", ["secured overnight financing rate", "money markets"]],
       ["SORA", "SORA (Singapore overnight rate average)", "%", "daily", ["SGD", "Singapore", "MAS", "overnight", "money markets"]],
       ["OBFR", "Overnight bank funding rate", "%", "daily", ["OBFR", "money markets"]],
-      ["DTB4WK", "4-week Treasury bill rate", "%", "daily", ["bill", "money markets"]],
-      ["DTB3", "3-month Treasury bill rate", "%", "daily", ["bill", "money markets"]],
-      ["DTB6", "6-month Treasury bill rate", "%", "daily", ["bill", "money markets"]],
-      ["DTB1YR", "1-year Treasury bill rate", "%", "daily", ["bill", "money markets"]],
+      ["DTB4WK", "4-week Treasury bill rate", "%", "daily", BILL_TAGS],
+      ["DTB3", "3-month Treasury bill rate", "%", "daily", BILL_TAGS],
+      ["DTB6", "6-month Treasury bill rate", "%", "daily", BILL_TAGS],
+      ["DTB1YR", "1-year Treasury bill rate", "%", "daily", BILL_TAGS],
       ["DCPF3M", "3-month AA financial commercial paper rate", "%", "daily", ["commercial paper", "money markets"]],
       ["DCPN3M", "3-month AA nonfinancial commercial paper rate", "%", "daily", ["commercial paper", "money markets"]],
       ["RRPONTSYD", "Overnight reverse repo at the Fed", "billion USD", "daily", ["RRP", "liquidity", "money markets"]],
@@ -225,3 +228,29 @@ export const FRED_CATALOG_SERIES: readonly SeriesDefinition[] = GROUPS.flatMap((
     expression: `FRED:${seriesId}`,
   }))
 ));
+
+/** Spellings of a Treasury bill a person types, as the series names say it. */
+const BILL_WORDS: ReadonlyArray<[RegExp, string]> = [
+  [/\bt-?bills?\b|\bt bills?\b|\btreasury bills?\b/g, "treasury bill"],
+  [/\b(\d+|three|six|one|four)[\s-]*(month|mo|m)\b/g, "$1-month"],
+  [/\bthree-month\b/g, "3-month"],
+  [/\bsix-month\b/g, "6-month"],
+  [/\b(\d+|four)[\s-]*(week|wk|w)\b/g, "$1-week"],
+  [/\bfour-week\b/g, "4-week"],
+  [/\b(1|one)[\s-]*(year|yr|y)\b/g, "1-year"],
+];
+
+/**
+ * The served FRED series a name asks for, when one alone fits every word: `3 month t-bill` is DTB3. Null for an id
+ * (DTB3), for words several series fit and for none.
+ */
+export function fredSeriesIdForName(text: string): string | null {
+  const normalized = BILL_WORDS.reduce((value, [pattern, replacement]) => value.replace(pattern, replacement), text.trim().toLowerCase());
+  const words = normalized.split(/\s+/).filter((word) => word && word !== "rate" && word !== "yield");
+  if (words.length < 2) return null;
+  const fits = FRED_CATALOG_SERIES.filter((series) => {
+    const name = `${series.name} ${(series.tags ?? []).join(" ")}`.toLowerCase();
+    return words.every((word) => name.includes(word));
+  });
+  return fits.length === 1 ? fits[0]!.id.replace(/^fred:/, "") : null;
+}

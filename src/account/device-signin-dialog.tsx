@@ -11,13 +11,15 @@ import { t, tf } from "../i18n";
 import { useAppLanguage } from "../i18n/react";
 import { useViewport } from "../react/input";
 import { colors } from "../theme/colors";
-import { Box, Text, TextAttributes, useUiCapabilities } from "../ui";
+import { Box, useUiCapabilities } from "../ui";
 import { Button } from "../components/ui/button";
 import { DialogActions } from "../components/ui/dialog-actions";
 import { FORM_DIALOG_WIDTH, DialogFrame } from "../components/ui/frame";
 import { SignInCodePanel } from "../components/sign-in-code-panel";
-import { useDialog, useDialogKeyboard, type PromptContext } from "../ui/dialog";
+import { useDialog, useDialogKeyboard, type DialogApi, type PromptContext } from "../ui/dialog";
+import { clickOutsideWhileClean } from "../ui/dialog-stack";
 import { isPlainKey, type KeyboardModifierEventLike } from "../utils/keyboard";
+import { logFailure } from "../utils/log-failure";
 import { DeviceSignInController, type DeviceSignInSnapshot } from "./device-signin";
 
 /** How long the approval stays on screen before `onApproved` moves on. */
@@ -110,12 +112,22 @@ export function DeviceSignInPanel({
 const TERMINAL_DIALOG_ROWS = 12;
 const DESKTOP_DIALOG_ROWS = 10;
 
-export function DeviceSignInDialog({ resolve, dismiss }: PromptContext<AuthUser | undefined>) {
+/** Whether the person may be acting on the code now: shown and waiting, or approved and about to close. */
+function isDeviceSignInPending(snapshot: Pick<DeviceSignInSnapshot, "phase">): boolean {
+  return snapshot.phase === "waiting" || snapshot.phase === "approved";
+}
+
+function DeviceSignInDialog({ resolve, dismiss, onCleanChange }: PromptContext<AuthUser | undefined> & {
+  /** A click outside closes it only while no code is out: never while one may be approved in the browser. */
+  onCleanChange?: (clean: boolean) => void;
+}) {
   useAppLanguage();
   const { nativePaneChrome } = useUiCapabilities();
   const { height: termHeight } = useViewport();
   // Closes on approval after a beat so the confirmation is visible; enter skips the wait.
   const { snapshot, retry } = useDeviceSignIn({ onApproved: resolve });
+  const pending = isDeviceSignInPending(snapshot);
+  useEffect(() => onCleanChange?.(!pending), [onCleanChange, pending]);
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
@@ -147,22 +159,26 @@ export function DeviceSignInDialog({ resolve, dismiss }: PromptContext<AuthUser 
     );
   }
 
+  // The kit's frame, as every other dialog: its close button is a mouse's way out.
   return (
-    <Box flexDirection="column" alignItems="center">
-      <Box height={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title}</Text>
+    <DialogFrame title={title} subtitle={subtitle} footer={t("r to refresh the code · esc to cancel")} onClose={dismiss}>
+      <Box flexDirection="column" alignItems="center">
+        <DeviceSignInPanel snapshot={snapshot} height={Math.max(4, termHeight - TERMINAL_DIALOG_ROWS)} />
       </Box>
-      <Box height={1}>
-        <Text fg={colors.textDim}>{subtitle}</Text>
-      </Box>
-      <Box height={1} />
-      <DeviceSignInPanel snapshot={snapshot} height={Math.max(4, termHeight - TERMINAL_DIALOG_ROWS)} />
-      <Box height={1} />
-      <Box height={1}>
-        <Text fg={colors.textMuted}>{t("r to refresh the code · esc to cancel")}</Text>
-      </Box>
-    </Box>
+    </DialogFrame>
   );
+}
+
+/** Gloom's device sign-in as a full dialog, closing on a click outside while no code is out. */
+export function promptDeviceSignIn(dialog: DialogApi): Promise<AuthUser | undefined> {
+  const { closeOnClickOutside, setClean } = clickOutsideWhileClean();
+  return dialog.prompt<AuthUser | undefined>({
+    size: "full",
+    closeOnClickOutside,
+    content: (context: unknown) => (
+      <DeviceSignInDialog {...(context as PromptContext<AuthUser | undefined>)} onCleanChange={setClean} />
+    ),
+  });
 }
 
 export interface DeviceSignInDialogRequest {
@@ -186,19 +202,14 @@ export function DeviceSignInDialogHost() {
     const listener = (request: DeviceSignInDialogRequest) => {
       if (openRef.current) return;
       openRef.current = true;
-      void dialog
-        .prompt<AuthUser | undefined>({
-          size: "full",
-          content: (context: unknown) => (
-            <DeviceSignInDialog {...(context as PromptContext<AuthUser | undefined>)} />
-          ),
-        })
+      void promptDeviceSignIn(dialog)
         .then((signedInUser) => {
           if (signedInUser) request.onSignedIn?.(signedInUser);
         })
         .finally(() => {
           openRef.current = false;
-        });
+        })
+        .catch(logFailure("account.device-signin-dialog", "Device sign-in dialog failed"));
     };
     dialogRequestListeners.add(listener);
     return () => {

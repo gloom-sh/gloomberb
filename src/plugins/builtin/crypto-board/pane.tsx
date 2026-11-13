@@ -151,6 +151,13 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, logos: boolean):
       return { text: row.low24hText, value: row.low24h };
     case "high24h":
       return { text: row.high24hText, value: row.high24h };
+    case "priceVenueText":
+      // A price held back is said on its own row, in the warning color; an exchange's own or the composite is dim.
+      return { text: row.priceVenueText, color: row.delayed ? colors.warning : colors.textDim };
+    case "low24hVenueText":
+      return { text: row.low24hVenueText, color: colors.textDim };
+    case "high24hVenueText":
+      return { text: row.high24hVenueText, color: colors.textDim };
     case "low24hAt":
       return { text: formatDayRangeTime(row.low24hAt), value: row.low24hAt == null ? null : new Date(row.low24hAt), color: colors.textDim };
     case "high24hAt":
@@ -282,12 +289,18 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     label: "Price freshness",
     getMetadata: () => ({ ...CRYPTO_BOARD_FRESHNESS, observations }),
   } : null);
-  const statusLine = useMemo(() => observations.length
-    ? paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, { rows: observations, freshness: CRYPTO_BOARD_FRESHNESS }, now))
-    : null, [now, observations]);
   // Supply columns join only once there is supply to show; an outage leaves the price columns as they are.
   const hasSupply = !!supplyRows && supplyRows.size > 0;
   const columns = useMemo(() => buildCryptoColumns(width, assetKind, hasSupply), [assetKind, hasSupply, width]);
+  // A row held back says so in its own VENUE cell, and the footer then dates the board without claiming a delay for
+  // all of it. Too narrow for that column, the footer says the delay as it did.
+  const venueShown = columns.some((column) => column.id === "priceVenueText");
+  const statusLine = useMemo(() => observations.length
+    ? paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, {
+      rows: venueShown ? observations.map((row) => row.dataSource === "delayed" ? { quoteTime: row.quoteTime } : row) : observations,
+      freshness: CRYPTO_BOARD_FRESHNESS,
+    }, now))
+    : null, [now, observations, venueShown]);
 
   // Other is muted against the theme it is drawn on; the coins take the shared series palette, which the chart themes.
   const otherColor = useThemeColors().textMuted;

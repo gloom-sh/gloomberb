@@ -1,12 +1,12 @@
 /** @jsxImportSource react */
 import { useEffect, useRef, type ReactNode } from "react";
-import { DialogHostProvider } from "../../ui/dialog";
+import { DialogHostProvider, type DialogOptions } from "../../ui/dialog";
 import {
   bridgeDialogContent,
   DialogBridgeRegistrationProvider,
   useDialogBridgeSlot,
 } from "../../ui/dialog-bridge";
-import { useDialogStack } from "../../ui/dialog-stack";
+import { closesOnClickOutside, useDialogStack } from "../../ui/dialog-stack";
 import { blendHex } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { isEditableTarget, isInsideDialogSurface } from "./host/focus-scope";
@@ -14,7 +14,7 @@ import { isEditableTarget, isInsideDialogSurface } from "./host/focus-scope";
 interface DialogState {
   id: string;
   content: ReactNode | ((context: { dialogId: string; dismiss(): void; resolve(value: unknown): void }) => ReactNode);
-  closeOnClickOutside: boolean;
+  closeOnClickOutside: DialogOptions["closeOnClickOutside"];
   returnFocus: HTMLElement | null;
 }
 
@@ -42,7 +42,7 @@ export function WebDialogHostProvider({ children }: { children: ReactNode }) {
       return {
         id,
         content: options.content as DialogState["content"],
-        closeOnClickOutside: options.closeOnClickOutside === true,
+        closeOnClickOutside: options.closeOnClickOutside,
         returnFocus,
       };
     },
@@ -99,7 +99,7 @@ export function WebDialogHostProvider({ children }: { children: ReactNode }) {
             data-topmost={isTopmost ? "true" : "false"}
             onMouseDown={(event) => {
               if (event.target !== event.currentTarget) return;
-              if (isTopmost && dialogState.closeOnClickOutside) {
+              if (isTopmost && closesOnClickOutside(dialogState.closeOnClickOutside)) {
                 close(dialogState.id, undefined);
                 return;
               }

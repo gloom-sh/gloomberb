@@ -1,7 +1,7 @@
 import type { HeadlessBundleResult, HeadlessPaneColumn } from "../../../types/headless";
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
-import type { DividendData } from "./client";
+import { TOKEN_YIELD_NOTE, type DividendData } from "./client";
 import { formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { NOT_SEC_YIELD } from "../../../market-data/bond-funds";
@@ -61,6 +61,7 @@ function incompleteNote(entry: DividendRankingEntry): string | null {
  */
 function yieldBasis(entry: DividendRankingEntry): string | null {
   if (!("data" in entry)) return null;
+  if (entry.data.token) return TOKEN_YIELD_NOTE;
   const lapse = entry.data.metrics.lapse;
   if (lapse?.historyEnds && lapse.lastPaid) return historyEndsText(lapse.lastPaid);
   const counted = trailingPaymentsText(entry.data.metrics.trailingPayments, { cadence: true });

@@ -126,7 +126,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "The nine-character code that identifies a US security. A reopening repeats the original issue's CUSIP.",
   },
   {
-    term: "Bill", aliases: ["t-bill", "treasury bill", "bills"], functions: ["AUCT", "BTMM"], shown: ["Bill", "bill"],
+    term: "Bill", aliases: ["t-bill", "t-bills", "tbill", "tbills", "treasury bill", "bills"], functions: ["AUCT", "BTMM"], shown: ["Bill", "bill"],
     definition: "Treasury debt of a year or less, sold below face value with no coupon; the climb back to face value is the interest.",
   },
   {
@@ -870,11 +870,15 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "(10 bp is about ±5 points at 7 days), so CTM greys it there and Vs Spot is the figure to read.",
   },
   {
-    term: "Crypto composite price", aliases: ["CCC", "crypto composite", "composite price", "composite crypto price"], functions: ["CTM"],
+    term: "Crypto composite price", aliases: ["CCC", "crypto composite", "composite price", "composite crypto price"], functions: ["CTM", "CRYP"],
     shown: ["crypto composite price"],
-    definition: "A coin's dollar price blended from trading on several crypto exchanges rather than taken from one, quoted around the clock; "
-      + "quotes list it under the code CCC. CTM reads CME crypto futures against it, while the futures settle to CME's own reference rate, "
-      + "so a small gap at expiry is expected.",
+    definition: "A coin's dollar price blended from trading on many crypto exchanges, Binance, Coinbase, Kraken and Bitstamp among them, "
+      + "quoted around the clock under the code CCC. "
+      + "Its 5-minute low or high can be one exchange's brief wick: CRYP reads Coinbase's, Kraken's and Bitstamp's own candles "
+      + "around it and says Coinbase only when one alone reached it, other exchange when none of them did. "
+      + "A price named after an exchange (Coinbase · 15:55 UTC) is that exchange's own price at that time, not the composite. "
+      + "An intraday bar's volume counts the spot venues the bar names (1 spot venue), not every exchange. "
+      + "CTM reads CME crypto futures against the composite, while the futures settle to CME's own reference rate, so a small gap at expiry is expected.",
   },
   {
     term: "Contango", aliases: ["contango curve", "upward curve"], functions: ["CTM", "FUT"], shown: ["contango", "Contango"],

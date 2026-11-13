@@ -43,10 +43,23 @@ export type BrokerNameOf = (providerId: string) => string | null | undefined;
  * the broker whose feed it is, by its name. Blank for a source with no name
  * to give, never its internal id.
  */
-export function quoteSourceName(quote: Pick<Quote, "providerId"> | null | undefined, brokerName?: BrokerNameOf): string {
+export function quoteSourceName(quote: Pick<Quote, "providerId" | "priceVenue"> | null | undefined, brokerName?: BrokerNameOf): string {
   if (!quote) return "";
+  // A coin priced by one exchange's own trade is that exchange's price, not the composite's.
+  if (quote.priceVenue && (!quote.providerId || quote.providerId === CLOUD_PROVIDER_ID)) return quote.priceVenue;
   if (!quote.providerId || quote.providerId === CLOUD_PROVIDER_ID) return CLOUD_SOURCE;
   return brokerName?.(quote.providerId)?.trim() || "";
+}
+
+/**
+ * What a coin's day range and volume measure, as said beside them: `composite` (across exchanges), `composite +
+ * Coinbase` when the range was widened to take in the exchange's price, or `1 exchange` (one exchange's own day).
+ * Empty when the service does not say, as for anything but a coin.
+ */
+export function quoteStatsBasisText(quote: Pick<Quote, "statsBasis" | "rangeWidened" | "priceVenue"> | null | undefined, range = true): string {
+  if (quote?.statsBasis === "exchange") return "1 exchange";
+  if (quote?.statsBasis !== "composite") return "";
+  return range && quote.rangeWidened && quote.priceVenue ? `composite + ${quote.priceVenue}` : "composite";
 }
 
 /** Whether a quote's feed is live, delayed or stale, as the Feed cell of `quote` says it. */

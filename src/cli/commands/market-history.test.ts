@@ -207,6 +207,35 @@ test("history shows today's session from the quote in every range, partial, whet
   }
 });
 
+test("a coin's intraday bars stay labelled delayed for a signed-out reader whose quote an exchange prices live", async () => {
+  // USDT-USD on Fri 13 Nov 2026: Coinbase's own last trade at 15:47, the 5-minute bars held back to 15:30.
+  setSystemTime(new Date("2026-11-13T15:47:30Z"));
+  try {
+    const bars = Array.from({ length: 6 }, (_, index) => ({
+      date: new Date(Date.parse("2026-11-13T15:05:00Z") + index * 300_000), open: 0.9989, high: 0.9991, low: 0.9988, close: 0.999, volume: 100_000,
+    }));
+    const run = async (quote: Record<string, unknown>) => {
+      const cli = createTestCliContext({
+        config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+        dataProvider: createTestDataProvider({
+          getQuote: async () => createTestQuote({
+            symbol: "USDT-USD", price: 0.99906, currency: "USD", instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC", marketState: "REGULAR",
+            lastUpdated: Date.parse("2026-11-13T15:47:28Z"), ...quote,
+          }),
+          getPriceHistoryWithMetadata: async () => ({ resolution: "5m", points: bars }),
+        }),
+      });
+      await history.execute(["USDT-USD", "--range", "1D"], cli.context);
+      const [{ result, options }] = cli.printed;
+      return serializeCliResult(result, DEFAULT_CLI_OPTIONS, options).split("\n").find((line) => line.startsWith("Source:"));
+    };
+    expect(await run({ dataSource: "live", priceVenue: "Coinbase" })).toContain("15 min delayed");
+    expect(await run({ dataSource: "delayed" })).toContain("15 min delayed");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("a day the data service still marks partial is exported partial until half an hour after its session closed, then final at the closing quote", async () => {
   // GGAL on BYMA, Fri 23 Oct 2026: closed at 17:00 Buenos Aires (20:00 UTC) at 6,260 on the quote while its daily bar was not final yet.
   const read = async (now: string) => {

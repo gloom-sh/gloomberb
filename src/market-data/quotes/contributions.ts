@@ -240,6 +240,17 @@ export function mergeQuoteContribution(
     else delete merged.yearRangeBasis;
   }
 
+  // What a coin's day range and volume measure goes with the range the merge keeps, as the 52-week range's does:
+  // a tick relaying the same range keeps the word, one with another range says its own or none.
+  if (next.high !== undefined || next.low !== undefined) {
+    const relayed = next.statsBasis === undefined && next.high === current.high && next.low === current.low;
+    const basis = relayed ? current.statsBasis : next.statsBasis;
+    if (basis) merged.statsBasis = basis;
+    else delete merged.statsBasis;
+    if (relayed ? current.rangeWidened : next.rangeWidened) merged.rangeWidened = true;
+    else delete merged.rangeWidened;
+  }
+
   // What this observation's move is from, when not its previous close (a coin's
   // 24 hours), is said with each one: a quote back on its
   // previous close drops an earlier "24h", and one on 24 hours drops the
@@ -263,6 +274,8 @@ export function mergeQuoteContribution(
   }
   // So is a close its daily closes could not date: the next reading says it again.
   if (next.previousCloseUndated === undefined) delete merged.previousCloseUndated;
+  // And the exchange whose own trade the price is: a composite or streamed tick after it names none.
+  if (next.priceVenue === undefined) delete merged.priceVenue;
 
   if (isOtherTradingDay(current, next)) {
     const record = merged as unknown as Record<string, unknown>;

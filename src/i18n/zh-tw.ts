@@ -697,6 +697,7 @@ export const zhTW: Record<string, string> = {
   "Pro trial · {days}d left": "Pro 試用 · 剩餘 {days} 天",
   "{delay} delayed": "延遲 {delay}",
   "{delay} delayed · try Pro live": "延遲 {delay} · 試用 Pro 即時資料",
+  "Stock quotes are {minutes} min delayed without Pro.": "未開通 Pro 時，股票報價延遲 {minutes} 分鐘。",
   "Pro trial {days}d": "Pro 試用 {days} 天",
   "Pro trial — ends {date}": "Pro 試用 — {date} 結束",
   "delayed": "延遲",
