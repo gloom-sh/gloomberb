@@ -480,6 +480,23 @@ test("companies are told apart by the service's ids, never by how a venue names 
     { exchange: "HANOVER", name: "Deutsche Post AG" },
   ];
   expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL Group AG" }, dhl)).toBeNull();
+  // Live 13 Nov: the service identifies DHL's Xetra line alone, so its Vienna, Hanover and Toronto lines, named as the company
+  // was (Deutsche Post AG), read as another company: "DHL -> XETRA (DHL); also DHL:VIE, Deutsche Post". It sends the names
+  // the company is known by on the identified row, which tell those lines apart from another company's DHL.
+  const live = [
+    { exchange: "XETRA", name: "DHL Group AG", companyId: "isin:DE0005552004", home: true as const, aliases: ["DHL", "Deutsche Post AG"] },
+    { exchange: "FWB2", name: "DHL Group AG" },
+    { exchange: "VIE", name: "Deutsche Post AG" },
+    { exchange: "HANOVER", name: "Deutsche Post AG" },
+    { exchange: "NEO", name: "Deutsche Post AG" },
+  ];
+  expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL AG" }, live)).toBeNull();
+  // Only a name the company is known by: another company's DHL (a logistics firm in India) is another company, as is a
+  // line named as the former company when the service sent no names (an older one).
+  expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL AG" }, [...live, { exchange: "BSE", name: "DHL Express India Ltd." }]))
+    .toBe("DHL -> XETRA (DHL); also DHL:BSE, DHL Express India");
+  expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL AG" }, live.map(({ aliases: _aliases, ...venue }) => venue)))
+    .toBe("DHL -> XETRA (DHL); also DHL:VIE, Deutsche Post");
   // Another id is another company, whatever the names say; a line with none is the company's it is named like (CXA).
   const mbg = [
     { exchange: "XETRA", name: "Mercedes-Benz Group AG", companyId: "isin:DE0007100000", home: true as const },
