@@ -29,7 +29,8 @@ const CHART_TOOLBAR_HEIGHT = 1;
 const MINIMUM_CHART_HEIGHT = 4;
 const QUICK_ADD_ROW_HEIGHT = 1;
 const IDLE_QUICK_ADD_WIDTH = 14;
-const ACTIVE_QUICK_ADD_WIDTH = 36;
+/** A pair's price row (`USDC-USD · Price (OHLCV)`) and its `Chart bars` fit whole. */
+const ACTIVE_QUICK_ADD_WIDTH = 40;
 
 interface ClosestElementLike {
   closest(selector: string): {

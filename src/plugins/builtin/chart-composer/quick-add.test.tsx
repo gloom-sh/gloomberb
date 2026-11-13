@@ -111,7 +111,7 @@ describe("chart series inline quick add", () => {
     });
     expect(tui.frame()).toContain("MSFT revenue");
     await waitForFrameToContain("MSFT · Revenue");
-    expect(renderedWidth).toBe(36);
+    expect(renderedWidth).toBe(40);
 
     await act(async () => {
       await tui.setup().mockMouse.click(2, 1);
@@ -161,9 +161,9 @@ describe("chart series inline quick add", () => {
     const rows = frame.split("\n");
     expect(rows[1]).toContain("MSFT · Price (OHLCV)");
     expect(rows[2]).toContain("MSFT · Revenue");
-    // The drawer is 36 wide: column 35 is the right edge of the second row, past its "Quarterly".
+    // The drawer is 40 wide: column 39 is the right edge of the second row, past its "Quarterly".
     await act(async () => {
-      await tui.setup().mockMouse.click(35, 2);
+      await tui.setup().mockMouse.click(39, 2);
       await tui.setup().renderOnce();
     });
     expect(updatedSpec?.series.map(({ source }) => source.kind === "security" ? source.fieldId : source.kind))
