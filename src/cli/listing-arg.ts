@@ -73,7 +73,7 @@ import {
   type TerminalListingCode,
 } from "../tickers/terminal-codes";
 import { unreadBloombergCodeMessage } from "./terminal-code-hints";
-import { japaneseNameReadAs, readJapaneseName } from "../tickers/search/japanese-names";
+import { isKanjiOnlyName, japaneseNameChoice, japaneseNameReadAs, readExactJapaneseName, readJapaneseName, type JapaneseNameReading } from "../tickers/search/japanese-names";
 import { listingAbroadVenue } from "../utils/sec";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "../tickers/search/bare-symbol";
 import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
@@ -1472,15 +1472,9 @@ export async function resolveCliListing(
   const unreadCode = exchangeOption?.trim() ? null : unreadBloombergCode(typed);
   if (unreadCode) throw new ListingArgError(unreadBloombergCodeMessage(unreadCode));
   // A name typed in Japanese (ドル円, トヨタ自動車) is the listing it names, which is named in Latin letters; one several
-  // companies' names start with (トヨタ) asks which.
-  const japanese = exchangeOption?.trim() ? [] : await readJapaneseName(typed);
-  if (japanese.length > 1) {
-    throw new ListingArgError(`${typed.trim()} names ${japanese.length} companies. Listings: ${japanese.map(({ key, name }) => `${key} (${name})`).join(", ")}.`);
-  }
-  if (japanese.length === 1) {
-    const listing = await resolveCliListing(japanese[0]!.key, null, deps, options);
-    return { ...listing, readAs: japaneseNameReadAs(typed, japanese), readFromName: true, typed: typed.trim() };
-  }
+  // companies' names start with (トヨタ) asks which. A name in kanji alone is the service's to read first, below.
+  const japanese = exchangeOption?.trim() ? null : await readJapaneseName(typed);
+  if (japanese) return await japaneseNameListing(typed, japanese, deps, options);
   // A listing that moved to a new symbol (ELET3, "eletrobras") is the one it trades as now, saying so.
   const renamed = exchangeOption?.trim() ? null : renamedListingFor(typed);
   if (renamed) {
@@ -1523,9 +1517,13 @@ export async function resolveCliListing(
   const hongKong = pair || named || index ? null : await readHongKongShortCode(parsed, deps);
   if (hongKong) parsed = hongKong;
   // A word no source quotes that names a company (`Naspers`) is its listing, for every command, as `quote` reads it.
-  const company = options.companyWord === false || pair || named || index || rooted || hongKong || terminal || dotted
-    ? null : await readBareCompanyName(parsed, typed, deps);
+  const askCompany = !(options.companyWord === false || pair || named || index || rooted || hongKong || terminal || dotted);
+  const company = askCompany ? await readBareCompanyName(parsed, typed, deps) : null;
   if (company) parsed = company;
+  // A name in kanji alone the service names no company for (中電工; 中電 is CLP in Hong Kong) is a Tokyo company's
+  // whole name, when it is one.
+  const tokyo = askCompany && !company && !exchangeOption?.trim() && isKanjiOnlyName(typed) ? await readExactJapaneseName(typed) : null;
+  if (tokyo) return await japaneseNameListing(typed, tokyo, deps, options);
   // A one-letter suffix (7203.T) is read as its venue only when a row saved there says so; the listing's quote may later.
   const venueRow = options.listingSuffix && !pair && !named ? await savedSuffixVenue(parsed, deps.store) : null;
   if (venueRow) parsed = venueRow;
@@ -1855,6 +1853,18 @@ function readDollarIndexCode(raw: string, deps: Pick<ListingDeps, "dataProvider"
   return brokerIndexCode(stripStrayEdges(raw).text || raw)?.bare ? readBrokerIndexCode(raw, deps) : Promise.resolve(null);
 }
 
+/** The listing a name typed in Japanese reads as, saying so; one that names several companies asks which, with how many. */
+async function japaneseNameListing(
+  typed: string,
+  reading: JapaneseNameReading,
+  deps: ListingDeps,
+  options: Parameters<typeof resolveCliListing>[3],
+): Promise<CliListing> {
+  if (reading.total > 1) throw new ListingArgError(japaneseNameChoice(typed, reading));
+  const listing = await resolveCliListing(reading.listings[0]!.key, null, deps, options);
+  return { ...listing, readAs: japaneseNameReadAs(typed, reading), readFromName: true, typed: typed.trim() };
+}
+
 /**
  * The listing a company's name typed where a symbol goes stands for
  * (`findListingOfCompanyName`), saying which one it was read as; null for a
@@ -1888,6 +1898,18 @@ const ONE_WORD_NAME = /^\p{L}[\p{L}\p{N}&'’.-]*$/u;
  * hint, the coin's pair (BTC-USD) or the search that says where it is. Null
  * for anything else, and when search names no company or is too busy to say.
  */
+/**
+ * The Tokyo listing a name in kanji alone is the whole name of (中電工 is
+ * 1941:JPX), for `quote` once the service has named no company for it
+ * (`oneWordCompanyName`): never a name it only starts. Null for any other word.
+ */
+export async function tokyoCompanyNameArg(typed: string): Promise<ListingArg | null> {
+  const reading = isKanjiOnlyName(typed) ? await readExactJapaneseName(typed) : null;
+  if (!reading) return null;
+  if (reading.total > 1) throw new ListingArgError(japaneseNameChoice(typed, reading));
+  return { ...parseListingArg(reading.listings[0]!.key), readAs: japaneseNameReadAs(typed, reading), readFromName: true };
+}
+
 export async function oneWordCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
   const found = await findOneWordCompany(typed, deps);
   return found ? companyListingArg(typed, found) : null;

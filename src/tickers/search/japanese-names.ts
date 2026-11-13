@@ -23,15 +23,36 @@ const MARKET_WORDS: Record<string, string> = {
   ビットコイン: "BTC-USD", イーサリアム: "ETH-USD",
 };
 
-/** Company names that start with a word, at most this many of them, for a word that is the start of several names. */
+/** Listings named for a word that names several companies, at most this many of them. */
 const MAX_NAME_MATCHES = 5;
+
+/** Kana: a name written with any is written the Japanese way, which a Chinese short name never is. */
+const KANA = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
 
 /** A name as it is compared: full-width letters folded, spaces and the middle dot gone (ソニー・グループ is ソニーグループ). */
 function nameKey(text: string): string {
   return foldTypedText(text).replace(/[\s・･]+/g, "").toUpperCase();
 }
 
-let names: Promise<ReadonlyArray<readonly [code: string, name: string]>> | null = null;
+/**
+ * What a word typed in Japanese was read as: the listings it names (at most
+ * `MAX_NAME_MATCHES`, the major companies first), how many companies it names
+ * in all, and how: a market's word, a company's whole name, the start of the
+ * names, or a word within them.
+ */
+export interface JapaneseNameReading {
+  listings: JapaneseNameListing[];
+  total: number;
+  match: "market" | "name" | "start" | "within";
+}
+
+interface ListedName {
+  key: string;
+  name: string;
+  folded: string;
+}
+
+let names: Promise<readonly ListedName[]> | null = null;
 let major: Promise<ReadonlySet<string>> | null = null;
 
 /** The Tokyo codes among the major listings that ship with the app: a name several companies start with lists theirs first. */
@@ -41,38 +62,91 @@ function majorTokyoCodes(): Promise<ReadonlySet<string>> {
   return major;
 }
 
-/** The Tokyo listings' Japanese names (`bun run japanese-names:snapshot`), read the first time a name in Japanese is. */
-function japaneseNames(): Promise<ReadonlyArray<readonly [string, string]>> {
-  names ??= import("./japanese-names.json").then((snapshot) => snapshot.default.names as unknown as ReadonlyArray<readonly [string, string]>);
+/**
+ * The Tokyo listings' Japanese names (`bun run japanese-names:snapshot`), each
+ * with the form it is compared in, read and folded once, the first time a name
+ * in Japanese is.
+ */
+function japaneseNames(): Promise<readonly ListedName[]> {
+  names ??= import("./japanese-names.json").then((snapshot) => (snapshot.default.names as unknown as ReadonlyArray<readonly [string, string]>)
+    .map(([code, name]) => ({ key: `${code}:JPX`, name, folded: nameKey(name) })));
   return names;
 }
 
-/**
- * The listings a word typed in Japanese names: a market's word (ドル円 is
- * USDJPY=X, 日経平均 ^N225, 金 GC=F), else the Tokyo listing whose company
- * has that name (トヨタ自動車 is 7203:JPX), else those whose company's name
- * starts with it (トヨタ: Toyota Motor and Toyota Boshoku), then those that
- * hold it, a few at most. Empty for a word in Latin letters or one no name
- * holds.
- */
-export async function readJapaneseName(typed: string): Promise<JapaneseNameListing[]> {
-  const word = nameKey(typed);
-  if (!word || !hasNonLatinLetters(word)) return [];
-  const market = MARKET_WORDS[foldTypedText(typed).replace(/[\s・･]+/g, "")];
-  if (market) return [{ key: market, name: typed.trim() }];
-  const listed = (await japaneseNames()).map(([code, name]) => ({ key: `${code}:JPX`, name, folded: nameKey(name) }));
-  const exact = listed.filter((entry) => entry.folded === word);
-  const found = exact.length > 0 ? exact
-    : [listed.filter((entry) => entry.folded.startsWith(word)), listed.filter((entry) => entry.folded.includes(word))].find((matches) => matches.length > 0) ?? [];
-  // The major companies first (トヨタ is Toyota Motor before Toyota Boshoku), else in code order.
+/** The listings found, the major companies first (トヨタ is Toyota Motor before Toyota Boshoku), else in code order. */
+async function reading(found: readonly ListedName[], match: JapaneseNameReading["match"]): Promise<JapaneseNameReading | null> {
+  if (found.length === 0) return null;
   const majors = found.length > 1 ? await majorTokyoCodes() : new Set<string>();
   const isMajor = (key: string) => majors.has(key.slice(0, -":JPX".length));
-  return [...found].sort((left, right) => Number(isMajor(right.key)) - Number(isMajor(left.key)))
+  const listings = [...found].sort((left, right) => Number(isMajor(right.key)) - Number(isMajor(left.key)))
     .slice(0, MAX_NAME_MATCHES).map(({ key, name }) => ({ key, name }));
+  return { listings, total: found.length, match };
 }
 
-/** "Read "トヨタ" as 7203:JPX (トヨタ自動車)." naming each listing a word in Japanese was read as. */
-export function japaneseNameReadAs(typed: string, listings: readonly JapaneseNameListing[]): string {
+/** A market's word (ドル円, 日経平均, 金), in whatever script: the listing that quotes it. */
+function marketWord(typed: string): JapaneseNameReading | null {
+  const market = MARKET_WORDS[foldTypedText(typed).replace(/[\s・･]+/g, "")];
+  return market ? { listings: [{ key: market, name: typed.trim() }], total: 1, match: "market" } : null;
+}
+
+/**
+ * What a word typed in Japanese names: a market's word (ドル円 is USDJPY=X,
+ * 日経平均 ^N225, 金 GC=F), else, for a word with kana, the Tokyo listing
+ * whose company has that name (トヨタ自動車 is 7203:JPX), else those whose
+ * company's name starts with it (トヨタ: Toyota Motor and Toyota Boshoku),
+ * then those that hold it. Null for a word in Latin letters, one no name
+ * holds, and a word in kanji alone, which is as likely a Chinese short name
+ * (中電 is CLP in Hong Kong, not Chudenko): the service is asked about that
+ * first, and `readExactJapaneseName` only when it finds nothing.
+ */
+export async function readJapaneseName(typed: string): Promise<JapaneseNameReading | null> {
+  const word = nameKey(typed);
+  if (!word || !hasNonLatinLetters(word)) return null;
+  const market = marketWord(typed);
+  if (market) return market;
+  if (!KANA.test(word)) return null;
+  const listed = await japaneseNames();
+  return await reading(listed.filter((entry) => entry.folded === word), "name")
+    ?? await reading(listed.filter((entry) => entry.folded.startsWith(word)), "start")
+    ?? await reading(listed.filter((entry) => entry.folded.includes(word)), "within");
+}
+
+/**
+ * The Tokyo listing a word in kanji alone is the whole name of (中電工 is
+ * 1941:JPX), for when the service finds nothing for it; never the names it
+ * starts or is within. Null for any other word.
+ */
+export async function readExactJapaneseName(typed: string): Promise<JapaneseNameReading | null> {
+  const word = nameKey(typed);
+  if (!word || !hasNonLatinLetters(word) || KANA.test(word)) return null;
+  return await reading((await japaneseNames()).filter((entry) => entry.folded === word), "name");
+}
+
+/** Whether a word is in kanji alone, so the service reads it first (`readJapaneseName`). */
+export function isKanjiOnlyName(typed: string): boolean {
+  const word = nameKey(typed);
+  return !!word && hasNonLatinLetters(word) && !KANA.test(word) && !marketWord(typed);
+}
+
+/** "Read "トヨタ" as 7203:JPX (トヨタ自動車), 3116:JPX (トヨタ紡織)." naming each listing a word in Japanese was read as. */
+export function japaneseNameReadAs(typed: string, { listings, total, match }: JapaneseNameReading): string {
   const named = listings.map(({ key, name }) => name === typed.trim() ? key : `${key} (${name})`);
-  return `Read "${typed.trim()}" as ${named.join(", ")}.`;
+  const shown = total > listings.length ? ` (${listings.length} of ${namesCount(typed, total, match)})` : "";
+  return `Read "${typed.trim()}" as ${named.join(", ")}${shown}.`;
+}
+
+/**
+ * "126 companies start with 日本. Listings: ...": a word that names several
+ * companies, for a command that takes one listing, with the real count.
+ */
+export function japaneseNameChoice(typed: string, { listings, total, match }: JapaneseNameReading): string {
+  const shown = total > listings.length ? `The first ${listings.length}` : "Listings";
+  return `${namesCount(typed, total, match)}. ${shown}: ${listings.map(({ key, name }) => `${key} (${name})`).join(", ")}.`;
+}
+
+function namesCount(typed: string, total: number, match: JapaneseNameReading["match"]): string {
+  const word = typed.trim();
+  return match === "start" ? `${total} companies start with ${word}`
+    : match === "within" ? `${total} companies' names hold ${word}`
+    : `${word} names ${total} companies`;
 }

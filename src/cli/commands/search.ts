@@ -44,7 +44,7 @@ import { createPaneCatalog } from "../pane-functions/discovery";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, selectPaneCatalogMatches } from "../pane-functions/catalog";
 import { normalizeSearchText } from "../../tickers/search/ranking";
 import { hasNonLatinLetters } from "../../utils/typed-text";
-import { japaneseNameReadAs, readJapaneseName, type JapaneseNameListing } from "../../tickers/search/japanese-names";
+import { isKanjiOnlyName, japaneseNameReadAs, readExactJapaneseName, readJapaneseName, type JapaneseNameListing } from "../../tickers/search/japanese-names";
 
 interface SearchCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
@@ -781,16 +781,23 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     // With no quote, its US line's last bars, to list a retired symbol (STPP) with its last day.
     const ending = quote?.then((quoted) => quoted ? null : loadNoQuoteEnding({ symbol }, dataProvider));
     // A name typed in Japanese (トヨタ, ドル円) searches for the listings it names, which are named in Latin letters.
-    const japanese = index ? [] : await readJapaneseName(trimmedQuery);
-    const readAs = index?.readAs ?? (japanese.length > 0 ? japaneseNameReadAs(trimmedQuery, japanese) : undefined);
-    const candidates = japanese.length > 0
-      ? await japaneseNameCandidates(japanese, tickers, dataProvider).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult))
+    const japanese = index ? null : await readJapaneseName(trimmedQuery);
+    const searched = japanese
+      ? await japaneseNameCandidates(japanese.listings, tickers, dataProvider).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult))
       : await searchCandidatesForCli({
         query: index?.symbol ?? trimmedQuery,
         tickers,
         dataProvider,
         ...quote ? { quote } : {},
       }).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult));
+    // A name in kanji alone is the service's to read first (中電 is CLP in Hong Kong); a Tokyo company's whole name it
+    // finds nothing for (中電工) is read from the Tokyo list.
+    const exact = searched.length === 0 && !japanese && !index && isKanjiOnlyName(trimmedQuery) ? await readExactJapaneseName(trimmedQuery) : null;
+    const candidates = exact
+      ? await japaneseNameCandidates(exact.listings, tickers, dataProvider).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult))
+      : searched;
+    const reading = japanese ?? exact;
+    const readAs = index?.readAs ?? (reading ? japaneseNameReadAs(trimmedQuery, reading) : undefined);
     const fate = quote && changes ? await searchFate(symbol, candidates, await quote, dataProvider, changes, ending) : NO_SEARCH_FATE;
 
     const series = findCatalogSeries(dependencies.plugins ?? [], trimmedQuery, "names");

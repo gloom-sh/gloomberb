@@ -23,6 +23,7 @@ import {
   loadBareVenues,
   notTradedMessage,
   oneWordCompanyName,
+  tokyoCompanyNameArg,
   parseListingArg,
   quoteBareListing,
   readShareClassCode,
@@ -228,7 +229,8 @@ async function answerCompanyName(
   const notATicker = !!notATickerSymbol(errorMessage(result.error) ?? "");
   const unsettled = !notATicker && isUnsettledNoProvider(result.error);
   if (!notATicker && !unsettled) return null;
-  const named = await oneWordCompanyName(listing.typed, market);
+  // A name in kanji alone the service names no company for (中電工) may be a Tokyo company's whole name.
+  const named = await oneWordCompanyName(listing.typed, market) ?? (notATicker ? await tokyoCompanyNameArg(listing.typed) : null);
   // A real ticker a source failed to quote is not a company's name, even when the company carries the word.
   if (!named || (unsettled && named.symbol.toUpperCase() === listing.symbol.toUpperCase())) return null;
   const answer = await answerNamedListing(named, market, request, refresh, datesChangeBasis);

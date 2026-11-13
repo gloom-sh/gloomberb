@@ -92,9 +92,11 @@ test("a name typed in kana or kanji is searched as typed, matches no saved ticke
     expect(printed!.data).toEqual([]);
     expect(printed!.warnings).toEqual(["No matches. Try the ticker or the English name."]);
   }
-  // A Tokyo company's name in Japanese is its listing, searched by its code.
+  // A Tokyo company's name in kanji is the service's to read first; one it finds nothing for is its Tokyo listing,
+  // searched by its code.
   const nintendo = await run("任天堂", async () => []);
-  expect(nintendo.asked[0]).toBe("7974:JPX");
+  expect(nintendo.asked.slice(0, 1)).toEqual(["任天堂"]);
+  expect(nintendo.asked).toContain("7974:JPX");
   expect(nintendo.printed!.warnings![0]).toBe('Read "任天堂" as 7974:JPX.');
   // A Latin name the service is too busy for is still busy.
   expect((await run("gamestop", async () => { throw new ProviderBusyError(); })).failure).toMatchObject({ code: "search_busy" });

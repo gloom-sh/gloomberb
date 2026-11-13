@@ -752,6 +752,30 @@ test("a company's name typed as one word no listing trades as is quoted as its l
   expect(result.warnings).toContain("Not a ticker: GRP.");
 });
 
+// `quote 中電` read the start of Chudenko's name on the Tokyo list (1941:JPX), where 中電 is CLP's short name in Hong Kong.
+test("a name in kanji alone is the company the service names for it; only one it names none for is a Tokyo company's whole name", async () => {
+  // As /market/search answers on 2026-11-13: the service marks each with the short name it goes by in Hong Kong.
+  const listed = (symbol: string, name: string, alias: string) => ({
+    providerId: "test", symbol, name, exchange: "HKEX", type: "Common Stock", currency: "HKD", homeListing: true, searchAliases: [alias],
+  });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => ({
+      中電: [listed("0002", "CLP Holdings Limited", "中電")],
+      東亞: [listed("0023", "The Bank of East Asia, Limited", "東亞")],
+      中国: [listed("0941", "China Mobile Limited", "中国")],
+    } as Record<string, ReturnType<typeof listed>[]>)[query] ?? [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => /:/.test(target.symbol)
+      ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+      : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) }),
+  });
+  const cli = createTestCliContext({ dataProvider });
+  await quoteCommand.execute(["中電", "東亞", "中国", "中電工"], cli.context);
+  const { result } = cli.printed[0] as PrintedCliResult;
+  expect((result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol))
+    .toEqual(["0002:HKEX", "0023:HKEX", "0941:HKEX", "1941:JPX"]);
+  expect(result.warnings).toContain('Read "中電工" as 1941:JPX.');
+});
+
 test("a word many names share is a name only as search's top result or an exact name; a coin's or a subject's name keeps its hint", async () => {
   const row = (symbol: string, name: string, exchange: string, type = "Common Stock") => ({ providerId: "test", symbol, name, exchange, type, currency: "USD" });
   const dataProvider = createTestDataProvider({
