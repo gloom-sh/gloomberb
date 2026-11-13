@@ -12,11 +12,14 @@ import {
   colors,
   floatingPaneTitleBg,
   getChartIndicatorColor,
+  inactiveSelectedBg,
+  inactiveSelectedText,
   paneTitleBg,
   paneTitleText,
 } from "./colors";
 import { readsAtBodyContrast, selectedCellColor } from "./tone-contrast";
 import { contrastRatio } from "./color-utils";
+import { INACTIVE_SELECTION_MIN, INACTIVE_SELECTION_TEXT_MIN } from "./ui-tokens";
 import { DEFAULT_THEME, getThemeIds, isDarkTheme, listThemes, resolveThemeId, themes, TONE_TEXT_MIN } from "./themes";
 
 const BODY_TEXT_MIN = 4.5;
@@ -119,6 +122,25 @@ describe("theme contrast", () => {
     // A dark theme draws its tones and hints on the page as it always has.
     applyTheme("amber");
     expect(readsAtBodyContrast(colors)).toBe(false);
+  });
+
+  // The chosen row of a pane without the keyboard read 1.15:1 on the page in
+  // high contrast, blue and midnight, near enough to vanish, and a loss on it
+  // 2.89:1 in nord, a gain 2.99:1 in rosepine and muted text 2.92:1 in solarized.
+  test("keeps the inactive selection apart from the page, a panel and the selection, and every text on it readable", () => {
+    const roles = ["text", "textDim", "textMuted", "textBright", "positive", "negative", "warning", "neutral"] as const;
+    for (const [id, theme] of Object.entries(themes)) {
+      const fill = inactiveSelectedBg(theme);
+      assertMinContrast(id, "inactiveSelected/bg", fill, theme.bg, INACTIVE_SELECTION_MIN);
+      assertMinContrast(id, "inactiveSelected/panel", fill, theme.panel, INACTIVE_SELECTION_MIN);
+      // Still the quieter of the two: the focused pane's selection reads apart from it.
+      assertMinContrast(id, "selected/inactiveSelected", theme.selected, fill, 1.25);
+      for (const role of roles) {
+        assertMinContrast(id, `${role}/inactiveSelected`, inactiveSelectedText(theme[role], theme), fill, INACTIVE_SELECTION_TEXT_MIN);
+      }
+      // A colour that reads already is drawn as it is: a row's body text keeps its colour in every theme.
+      expect(inactiveSelectedText(theme.text, theme)).toBe(theme.text);
+    }
   });
 
   test("keeps unfocused pane chrome readable", () => {

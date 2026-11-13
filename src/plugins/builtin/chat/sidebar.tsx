@@ -11,7 +11,7 @@ import {
 import { usePaneSidebarReveal } from "../../../components/layout/pane/sidebar";
 import { Box, Span, Text, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { TextAttributes } from "../../../ui";
-import { blendHex, colors } from "../../../theme/colors";
+import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import type { ChatChannel } from "../../../api-client";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
@@ -199,9 +199,8 @@ export function ChannelSidebar({
         onResizeEnd: (nextWidth) => chatSidebarStore.commitWidth(nextWidth),
       } : undefined}
     >
-      {({ backgroundColor: sidebarBg, listWidth: sidebarWidth }) => {
-        // The fill a keyboard-focused sidebar gives the row under its cursor.
-        const cursorBackground = blendHex(colors.selected, colors.borderFocused, 0.32);
+      {({ backgroundColor: sidebarBg, listWidth: sidebarWidth, activeBackgroundColor: cursorBackground }) => {
+        // A heading under the cursor takes the fill the sidebar's own rows take there.
         // Every section reads the same: a caret, a label, and an optional
         // trailing action, so their channels can all share one indent.
         const sectionHeader = (listWidth: number, { key, label, fg, unread, expanded, onToggle, action }: {

@@ -9,7 +9,7 @@ name: Pane chrome
 # scrolled content stop against a pane's footer and edge (the detail and
 # article readers, markdown, prose, tables set inline, label and value rows,
 # charts sized in rows, the Trials and Changelog panes), the app's top bar in
-# every update state, and these checks themselves.
+# every update state, the query bar at every width, and these checks themselves.
 # The pane drag frame budget is in the Performance workflow and runs for the
 # same pull_request paths (scripts/pane-chrome/scope.ts reads them from here).
 on:
@@ -40,6 +40,7 @@ on:
       - "src/time-series/parsed-history-cache.ts"
       - "src/components/metric-treemap/**"
       - "src/components/ui/tabs.tsx"
+      - "src/components/ui/query-bar.tsx"
       - "src/components/ui/icon.tsx"
       - "src/components/ui/column-grid.tsx"
       - "src/components/ui/range-track.tsx"

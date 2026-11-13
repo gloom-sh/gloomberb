@@ -47,6 +47,13 @@ export interface PaneDef {
   defaultWidth?: string;
   defaultFloatingSize?: { width: number; height: number };
   defaultMode?: "docked" | "floating";
+  /**
+   * A window for the account or the app rather than data (account, brokers,
+   * orders, connections, team, Ask Gloom): it opens floating even in a layout
+   * being built as a grid, and is not one of the layout's panes when deciding
+   * whether a new one docks.
+   */
+  utilityWindow?: true;
   /** Pane publishes its selected symbol as pane-state `cursorSymbol`, so ticker panes can follow it. */
   tickerSource?: boolean;
   /**

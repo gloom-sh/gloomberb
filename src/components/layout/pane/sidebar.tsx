@@ -4,7 +4,7 @@ import { afterLayout, revealInScrollBox } from "../../ui/reveal-in-scroll-box";
 import { observeScrollBoxContentSize, observeScrollBoxViewportSize } from "../../../renderers/opentui/scrollbox-layout";
 import { beginLiveResize, createCatchUp, type CatchUp } from "../../../ui/live-resize";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
-import { blendHex, colors, hoverBg } from "../../../theme/colors";
+import { blendHex, colors, hoverBg, inactiveSelectedBg } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import { usePaneFooter } from "./footer/registration";
 
@@ -28,10 +28,15 @@ const WIDEN_KEY = ">";
 export interface PaneSidebarRenderState {
   backgroundColor: string;
   listWidth: number;
+  /**
+   * The fill of the row the sidebar shows as chosen, the one its `PaneSidebarRow`s
+   * draw: lit while the sidebar has the keys, the inactive selection otherwise.
+   * A row a sidebar draws itself (a section heading under the cursor) takes it too.
+   */
+  activeBackgroundColor: string;
 }
 
 interface PaneSidebarContextValue extends PaneSidebarRenderState {
-  activeBackgroundColor: string;
   keyboardFocused: boolean;
 }
 
@@ -219,12 +224,15 @@ export function PaneSidebar({
   const backgroundColor = keyboardFocused
     ? blendHex(colors.panel, colors.borderFocused, 0.18)
     : colors.panel;
+  // Without the keys, the terminal's inactive selection, as every list there
+  // has; the desktop keeps the light tint its sidebars always had (its lists
+  // keep the full selection, see useSelectionFill).
   const activeBackgroundColor = keyboardFocused
     ? blendHex(colors.selected, colors.borderFocused, 0.32)
-    : blendHex(colors.panel, colors.selected, 0.35);
+    : nativePaneChrome ? blendHex(colors.panel, colors.selected, 0.35) : inactiveSelectedBg(colors);
   const sidebarLayoutHeight = nativePaneChrome ? "100%" : height;
   const nativeFillStyle = nativePaneChrome ? { minHeight: 0 } : undefined;
-  const renderState = { backgroundColor, listWidth };
+  const renderState = { backgroundColor, listWidth, activeBackgroundColor };
   const dividerActive = resizing || dividerHovered;
   const resizeHandlers = resize && {
     onMouseDown: beginResize,
@@ -235,7 +243,7 @@ export function PaneSidebar({
   };
 
   return (
-    <PaneSidebarContext.Provider value={{ ...renderState, activeBackgroundColor, keyboardFocused }}>
+    <PaneSidebarContext.Provider value={{ ...renderState, keyboardFocused }}>
       <Box
         ref={sidebarRef}
         width={width}

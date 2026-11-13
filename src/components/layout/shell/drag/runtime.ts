@@ -30,6 +30,7 @@ import type { MagnetDistances } from "./magnets";
 import { sameDropZone, type DropZoneMetrics, type DropZoneState } from "./drop-zones";
 import { beginLiveResize, createCatchUp } from "../../../../ui/live-resize";
 import type { WindowEditState } from "../../window-edit/mode";
+import type { PaneHeaderQuickSetting } from "../../pane/header";
 import { useShellActiveDrag } from "../active-drag";
 import { useShellNativePointerRuntime } from "../native/pointer-runtime";
 import { useShellTerminalPointerRuntime } from "../terminal-pointer-runtime";
@@ -255,6 +256,8 @@ interface UseShellPointerRuntimeOptions {
   openPaneDocs: (paneId: string) => void;
   /** A pane's title as its header shows it: the terminal finds a stack's tabs by it. */
   getPaneTitle: (pane: ResolvedPane) => string;
+  /** A pane's quick settings, which take room from a stack's tabs in its terminal header. */
+  getPaneQuickSettings: (paneId: string) => ReadonlyArray<Pick<PaneHeaderQuickSetting, "icon">>;
   paneMap: Map<string, ResolvedPane>;
   persistLayout: (nextLayout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
   precisePointer: boolean | undefined;
@@ -290,6 +293,7 @@ export function useShellPointerRuntime({
   openPaneMenu,
   openPaneDocs,
   getPaneTitle,
+  getPaneQuickSettings,
   paneMap,
   persistLayout,
   precisePointer,
@@ -340,6 +344,7 @@ export function useShellPointerRuntime({
     openPaneMenu,
     openPaneDocs,
     getPaneTitle,
+    getPaneQuickSettings,
     paneMap,
     selectWindowModePane,
     setHoveredMenuItemId,

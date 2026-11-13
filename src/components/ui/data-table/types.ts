@@ -140,6 +140,13 @@ export type DataTableScrollAlign = "nearest" | "center" | "start";
 
 interface DataTableRowState {
   selected: boolean;
+  /**
+   * Terminal: the selected row's pane does not have the keys, so the row sits
+   * on the quieter fill (`inactiveSelectedBg`) in its own colours. A colour a
+   * cell picks for the selection is picked for that fill
+   * (`inactiveSelectedText`).
+   */
+  inactive?: boolean;
 }
 
 export interface DataTableVisibleRange {

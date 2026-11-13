@@ -5,6 +5,7 @@ import type { ChartVectorShape } from "../../../ui/host";
 import type { GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
 import type { SupplyEntity, SupplyRole } from "../../../api-client/supply-chain";
 import { useThemeColors } from "../../../theme/theme-context";
+import { useSelectionFill } from "../../../components/ui/selection-fill";
 import { useShortcut } from "../../../react/input";
 import { useScrollBoxLayout } from "../../../components/use-scrollbox-layout";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -23,6 +24,9 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
 }) {
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const colors = useThemeColors(), desktop = !!useUiCapabilities().nativePaneChrome;
+  // The chosen card is the graph's cursor: quieter while the pane does not have the keys.
+  const selectionFill = useSelectionFill();
+  const chosenText = (own: string) => (selectionFill.lit ? colors.selectedText : selectionFill.ink(own));
   const nodes = useMemo(() => graphNodes(data, collapsed, selectedPath), [data, collapsed, selectedPath]);
   const [pages, setPages] = useState<Record<number, number>>({});
   useEffect(() => setPages({}), [data]);
@@ -148,7 +152,7 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
         const confidence = `${Math.round((node.path?.confidence ?? 0) * 100)}%`;
         const detail = node.hops ? `${node.hops}H · ${relation}${inner >= displayWidth(relation ?? "") + 12 ? ` · ${confidence}` : ""}` : showTicker ? "Focus company" : node.entity.name;
         return <Box key={node.entity.id} position="absolute" left={node.x} top={node.y} width={cellWidth - 3} height={2} zIndex={10} flexDirection="column" overflow="hidden"
-          backgroundColor={desktop ? undefined : active ? colors.selected : node.hops ? blendHex(colors.bg, accent, 0.12) : colors.panel}
+          backgroundColor={desktop ? undefined : active ? selectionFill.bg : node.hops ? blendHex(colors.bg, accent, 0.12) : colors.panel}
           // The flow's card (flow.tsx): in the relationship's colour, the focus company plain.
           style={desktop ? { ...cardSurfaceStyle({ selected: active, accent: role ? accent : undefined, padding: "0 0 0 var(--gloom-space-sm)" }), cursor: "pointer" } : undefined}
           onMouseOver={() => onSelect(node.entity.id)} data-gloom-role="supply-graph-node">
@@ -156,10 +160,10 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
             <Box flexDirection="column" width="100%">
               <Box flexDirection="row" height={1} gap={desktop ? 1 : 0} overflow="hidden">
                 {!desktop ? <Text fg={accent}>▍</Text> : null}
-                <ClippedText fg={active && !desktop ? colors.selectedText : company ? colors.textBright : colors.textDim} attributes={company ? TextAttributes.BOLD : 0} text={name} width={nameWidth} />
-                {showTicker ? desktop ? <Badge label={ticker!} tone="accent" /> : <Text fg={active ? colors.selectedText : colors.textDim}>{` ${ticker}`}</Text> : null}
+                <ClippedText fg={active && !desktop ? chosenText(company ? colors.textBright : colors.textDim) : company ? colors.textBright : colors.textDim} attributes={company ? TextAttributes.BOLD : 0} text={name} width={nameWidth} />
+                {showTicker ? desktop ? <Badge label={ticker!} tone="accent" /> : <Text fg={active ? chosenText(colors.textDim) : colors.textDim}>{` ${ticker}`}</Text> : null}
               </Box>
-              <Box height={1} paddingLeft={desktop ? 0 : 1} overflow="hidden"><ClippedText fg={active && !desktop ? colors.selectedText : colors.textDim} text={detail} width={inner} /></Box>
+              <Box height={1} paddingLeft={desktop ? 0 : 1} overflow="hidden"><ClippedText fg={active && !desktop ? chosenText(colors.textDim) : colors.textDim} text={detail} width={inner} /></Box>
             </Box>
           </Button>
         </Box>;

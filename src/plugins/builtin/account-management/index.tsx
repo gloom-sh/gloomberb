@@ -10,6 +10,7 @@ export const accountManagementModule: PluginModule = {
     reportFreshness: { status: "not-a-feed", basis: "account data", local: true },
     defaultPosition: "right",
     defaultMode: "floating",
+    utilityWindow: true,
     defaultFloatingSize: { width: 72, height: 36 },
     portableShare: {
       private: { title: true, params: true, settings: true, state: true },

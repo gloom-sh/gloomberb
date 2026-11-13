@@ -110,7 +110,7 @@ describe("a board with stale rows", () => {
   test("is partial everywhere: the report's line counts the stale rows and a capture's status says so", async () => {
     const loaded = await load(board());
     expect(formatFreshnessLine(deriveHeadlessFreshness(loaded.definition, loaded.result, NOW)))
-      .toBe("Source: BIS and FRED · Thu 24 Sep 2026 (oldest Thu 23 Jul 2026) · 2 of 3 stale");
+      .toBe("Source: BIS, FRED and central banks · Thu 24 Sep 2026 (oldest Thu 23 Jul 2026) · 2 of 3 stale");
     const coverage = await reportShotCoverage({ headless: centralBankRatesHeadless }, async () => loaded);
     expect(coverage).toEqual({ complete: false, unavailableSymbols: [], gaps: "2 stale" });
     // A capture that read its own view as complete takes the report's word, but stays as usable as it was.
@@ -164,6 +164,22 @@ describe("citable central bank exports", () => {
       .toEqual({ source: "FRED series ECBDFR", publisher: "European Central Bank" });
   });
 
+  test("a bank BIS does not report is cited from its own published decisions, with its page, as-of and next meeting", async () => {
+    // The CBE as Gloom Cloud serves it: no BIS or FRED series, the bank's MPC page its source, read on 12 Nov.
+    const cbeUrl = "https://www.cbe.org.eg/en/monetary-policy/mpc-meetings-schedule";
+    const egypt = row({ id: "EG", label: "Egypt", countryCodes: ["EG"], centralBank: "Central Bank of Egypt", instrument: "Overnight deposit rate",
+      source: null, sourceUrl: cbeUrl, sourceSeriesIds: [], publicationFrequency: null, value: 20, range: null, asOf: "2026-11-12", lagDays: 0,
+      changeBps: 100, lastChangeDate: "2026-10-29", previousValue: 19, previousAsOf: "2026-09-24", direction: "hike",
+      confirmedAt: "2026-11-12T13:20:00.000Z", confirmationSourceUrl: cbeUrl,
+      nextMeeting: { date: "2026-12-17", sourceUrl: cbeUrl, verifiedAt: "2026-11-12" } });
+    const body = { generatedAt: "2026-11-12T13:20:00Z", status: "available" as const, gaps: [], rows: [egypt] };
+    expect(() => validateCentralBankRates(structuredClone(body))).not.toThrow();
+    expect(policyCitation(egypt)).toBe(`Overnight deposit rate 20.00%, Central Bank of Egypt's published decisions (${cbeUrl}), as of 2026-11-12`);
+    expect(policySeriesAttribution(egypt)).toEqual({ source: "Central Bank of Egypt's published decisions", publisher: "Central Bank of Egypt" });
+    const [exported] = (await load(body)).sections[0]!.rows as Array<Record<string, unknown>>;
+    expect(exported).toMatchObject({ source: "Central Bank of Egypt", series_id: null, source_url: cbeUrl, as_of: "2026-11-12", next_meeting: "2026-12-17" });
+  });
+
   test("CSV writes the rate as a number with a range's bounds beside it, then the citation block with the last decision and the row's notes", async () => {
     const result = await load(board());
     const freshness = deriveHeadlessFreshness(centralBankRatesHeadless, result, Date.parse("2026-10-12T10:00:00Z"));
@@ -193,8 +209,8 @@ describe("citable central bank exports", () => {
     const csv = renderReportCsv(report, freshness).split("\n");
     expect(csv[0]!.split(",").filter((column) => column === "source" || column === "as_of")).toEqual(["source", "as_of"]);
     expect(csv.filter((line) => line && !line.startsWith("#"))).toHaveLength(1 + result.sections[0]!.rows!.length);
-    expect(exportSourceLines(freshness).slice(0, 4)).toEqual([expect.stringContaining("Source: BIS and FRED"),
-      "Publisher: each row's central_bank, via BIS and FRED", "Observation date: 2026-10-11", "Oldest observation: 2026-07-23"]);
+    expect(exportSourceLines(freshness).slice(0, 4)).toEqual([expect.stringContaining("Source: BIS, FRED and central banks"),
+      "Publisher: each row's central_bank, via BIS, FRED or its own published decisions", "Observation date: 2026-10-11", "Oldest observation: 2026-07-23"]);
     const [gb] = result.sections[0]!.rows!.filter((entry) => entry.id === "GB");
     // The BIS series definition goes with the history; the caveat every row shares is said once.
     expect(gb!.notes).toEqual([]);

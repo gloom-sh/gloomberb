@@ -2,7 +2,8 @@ import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/
 import { CENTRAL_BANKS, centralBankNames } from "../../../utils/central-banks";
 import { fetchCentralBankRates } from "./client";
 import {
-  hasNoPolicyRate, policyExportRow, policyLastDecisionText, policyNextMeetingText, policyNotices, policyRate, policyUnlistedNote,
+  hasNoPolicyRate, policyExportRow, policyLastDecisionText, policyNextMeetingText, policyNotices, policyObservations, policyRate,
+  policyUnlistedNote,
 } from "./model";
 
 /**
@@ -43,17 +44,16 @@ export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
       "Next meetings come from each bank's published calendar; SAMA publishes none, and China's date is the monthly LPR fixing."] },
   shape: "bundle",
   options: [{ key: "history", shot: { reportOnly: "adds each row's one-year history to the JSON report" }, type: "boolean", defaultValue: false, description: "Add each row's one-year daily history to the JSON metadata." }],
-  argument: { kind: "none" }, describe: "Policy rates of the G20, SNB, Norges Bank, Riksbank and RBNZ",
+  argument: { kind: "none" }, describe: "Policy rates of the G20, SNB, Norges Bank, Riksbank, RBNZ, Egypt and Nigeria",
   // Each row is dated apart (BIS reports weekly, some banks weeks late), so exports cite the oldest as well.
-  freshness: { source: "BIS and FRED", publisher: "each row's central_bank, via BIS and FRED", status: "not-a-feed",
+  freshness: { source: "BIS, FRED and central banks", publisher: "each row's central_bank, via BIS, FRED or its own published decisions", status: "not-a-feed",
     basis: "published policy rates", citeOldest: true },
   async load(args, ctx) {
     const data = await fetchCentralBankRates(ctx.apiClient);
     const errors = policyNotices(data);
     const complete = data.status === "available" && errors.length === 0;
-    // A row says "stale" in its status, not in a `stale` flag: hand the report its rows' staleness so its status line and a capture count them.
-    const observations = data.rows.filter((row) => row.status !== "unavailable")
-      .map((row) => ({ asOf: row.asOf, stale: row.status === "stale" }));
+    // Hand the report its rows' staleness so its status line and a capture count them.
+    const observations = policyObservations(data);
     // Members with no policy rate stay off the board, as the pane keeps them, so every output counts the same rows; a note says why.
     const listed = data.rows.filter((row) => !hasNoPolicyRate(row));
     const exported = listed.map(policyExportRow);

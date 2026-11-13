@@ -587,6 +587,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 high={yearRange.high}
                 label={yearRangeLabel}
                 shortLabel={t("52W")}
+                // A range the service read from the stored daily bars, the source's being no year's, says so.
+                note={quote.yearRangeBasis === "daily-bars" ? t("daily bars") : undefined}
                 labelWidth={rangeLabelWidth}
                 endpointWidth={rangeEndpointCells}
                 width={rangeWidth}

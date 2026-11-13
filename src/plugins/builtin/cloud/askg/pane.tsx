@@ -44,6 +44,7 @@ import {
   usePaneAppConfig,
 } from "../../../../state/app/context";
 import { usePaneSession, usePaneSessionState } from "../../../../state/pane-session";
+import { usePaneUnsentWork } from "../../../../state/pane-unsent-work";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
 import { useRemoteControlHandler } from "../../../../remote/app-host";
 import { RemoteUiScope } from "../../../../remote/semantic-tree";
@@ -694,6 +695,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       : getPaneSidebarWidth(width, !!nativePaneChrome, conversations.width);
 
   const running = isTurnRunning(state);
+  // The draft lives only as long as the pane does, and an answer coming in
+  // would be cut off: Esc never closes the pane over either.
+  usePaneUnsentWork(running || inputValue.trim().length > 0, paneId);
   const confirmation = pendingConfirmation(state);
   // A tool's approval goes first; the pane's question waits behind it.
   const paneConsentPending = attached?.consent === "pending" && !confirmation;

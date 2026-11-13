@@ -153,3 +153,14 @@ test("mortgage, PMMS, NAHB, homebuilder and housing lead to ECST's housing rows 
     for (const spy of restore) spy.mockRestore();
   }
 });
+
+// `catalog nigeria` printed no publisher for the sovereign CDS `fn SOVR` cites as DTCC.
+test("each built-in series a frontier country's name finds names its own publisher", () => {
+  const found = (query: string) => findCatalogSeries(getLoadablePlugins(), query).map((match) => [match.expression, match.publisher]);
+  expect(found("nigeria")).toEqual([["CAP:sovereign-cds:ng", "DTCC"]]);
+  expect(found("egypt")).toEqual([["CAP:sovereign-cds:eg", "DTCC"]]);
+  expect(found("turkey")).toEqual(expect.arrayContaining([["FRED:TURCPIYOY", "TurkStat"], ["CAP:sovereign-cds:tr", "DTCC"]]));
+  for (const query of ["nigeria", "egypt", "turkey", "argentina"]) {
+    expect(found(query).filter(([, publisher]) => !publisher), query).toEqual([]);
+  }
+});

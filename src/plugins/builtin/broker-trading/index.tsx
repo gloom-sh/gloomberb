@@ -19,7 +19,7 @@ const INSTRUMENT_CATEGORY: Record<string, string> = { option: "OPT", future: "FU
 export const brokerTradingModule: PluginModule = {
   panes: [{
     id: "broker-orders", name: "Orders", personalData: "account", icon: "O", component: BrokerOrdersPane,
-    defaultPosition: "right", defaultMode: "floating",
+    defaultPosition: "right", defaultMode: "floating", utilityWindow: true,
     defaultFloatingSize: { width: 100, height: 30 }, headless: brokerOrdersHeadless,
     portableShare: { private: { title: true, params: true, settings: true, state: true } },
   }],

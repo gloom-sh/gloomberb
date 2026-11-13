@@ -161,13 +161,15 @@ export function useCommandBarNavigationState({
     setRouteStack((current) => current.slice(0, -1));
   }, [closeAll, currentRoute, routeStack.length, setRootQuery]);
 
+  // Esc: one screen back, or out of the bar from the root or from a screen
+  // the bar opened on (`launched`).
   const dismissCommandBar = useCallback(() => {
-    if (currentRoute) {
+    if (currentRoute && !(routeStack.length === 1 && currentRoute.launched)) {
       popRoute();
       return;
     }
     closeAll();
-  }, [closeAll, currentRoute, popRoute]);
+  }, [closeAll, currentRoute, popRoute, routeStack.length]);
 
   return {
     closeAll,

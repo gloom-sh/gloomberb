@@ -13,6 +13,8 @@ import type { ShortcutDisplayMode } from "../../../utils/shortcut-labels";
 
 export type PaneManagementShortcut =
   | "menu"
+  | "next-tab"
+  | "prev-tab"
   | "settings"
   | "toggle-fullscreen"
   | "new-layout"
@@ -31,6 +33,8 @@ export type PaneManagementShortcut =
 
 const PANE_ACTION_TO_SHORTCUT: Partial<Record<CoreKeybindingActionId, PaneManagementShortcut>> = {
   "pane-menu": "menu",
+  "pane-next-tab": "next-tab",
+  "pane-prev-tab": "prev-tab",
   "pane-settings": "settings",
   "pane-fullscreen": "toggle-fullscreen",
   "pane-new-layout": "new-layout",
@@ -50,7 +54,8 @@ const PANE_ACTION_TO_SHORTCUT: Partial<Record<CoreKeybindingActionId, PaneManage
 
 export type PaneManagementAccelerators = Record<
   "menu" | "settings" | "fullscreen" | "newLayout" | "toggleFloating" | "popOut" | "copyScreenshot" | "exportCsv" | "share" | "ask" | "close"
-  | "closeAllFloating" | "layoutGallery" | "gridlockAll" | "windowMode" | "windowResizeMode" | "tickerSearch",
+  | "closeAllFloating" | "layoutGallery" | "gridlockAll" | "windowMode" | "windowResizeMode" | "tickerSearch"
+  | "nextTab" | "prevTab",
   string | undefined
 >;
 
@@ -67,6 +72,13 @@ export function paneManagementAccelerators(
   const terminalAsk = mode === "terminal" ? advertisedChord(keybindings, "pane-ask", "terminal") : null;
   // The backtick has no modifier, so it is said as the terminal advertises it.
   const tickerSearch = advertisedChord(keybindings, "ticker-search", mode);
+  // Stack tabs are on Control in every host; a native menu shows no
+  // accelerator it cannot take on the platform modifier.
+  const tabChord = (id: "pane-next-tab" | "pane-prev-tab") => {
+    if (mode !== "terminal") return menuAcceleratorFor(keybindings, id);
+    const chord = advertisedChord(keybindings, id, mode);
+    return chord ? serializeKeyChord(chord) : undefined;
+  };
   return {
     menu: menuAcceleratorFor(keybindings, "pane-menu"),
     settings: menuAcceleratorFor(keybindings, "pane-settings"),
@@ -85,6 +97,8 @@ export function paneManagementAccelerators(
     windowMode: menuAcceleratorFor(keybindings, "window-move-mode"),
     windowResizeMode: menuAcceleratorFor(keybindings, "window-resize-mode"),
     tickerSearch: tickerSearch ? serializeKeyChord(tickerSearch) : undefined,
+    nextTab: tabChord("pane-next-tab"),
+    prevTab: tabChord("pane-prev-tab"),
   };
 }
 
@@ -119,6 +133,8 @@ export function inputCaptureAllowsPaneManagementShortcut(
   // A screenshot does not edit the field that captured input. Keep it available
   // from composers (ASKG, chat, etc.) on both desktop modifier layouts.
   if (shortcut === "copy-screenshot") return event.ctrl || event.meta || event.super === true;
+  // Stepping a stack's tabs edits no field; a chord rebound to a plain key stays the field's.
+  if (shortcut === "next-tab" || shortcut === "prev-tab") return event.ctrl || event.meta || event.super === true;
   // Command chords are never text. Alt+A and Ctrl+Shift+A edit a terminal
   // field (line start), so a field that has the keyboard keeps them there.
   if (shortcut === "toggle-fullscreen" || shortcut === "new-layout" || shortcut === "ask") return event.meta || event.super === true;

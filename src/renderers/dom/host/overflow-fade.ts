@@ -1,7 +1,6 @@
 import { useCallback, useLayoutEffect, useState, type RefObject, type WheelEvent } from "react";
 import { isLiveResizing, onLiveResizeEnd } from "../../../ui/live-resize";
-
-const FADE_PX = 32;
+import { FADE_PX } from "./overflow-fade-px";
 
 export interface HorizontalScrollEdges {
   /** Content is hidden before the left edge. */

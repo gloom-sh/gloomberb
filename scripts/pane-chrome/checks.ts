@@ -8,6 +8,7 @@ import { axisSteps } from "./axis-checks";
 import { desSteps } from "./des-checks";
 import { heatSteps } from "./heat-checks";
 import { headerSteps } from "./header-checks";
+import { queryBarSteps } from "./query-bar-checks";
 import { layoutSteps } from "./layout-checks";
 import { selectionSteps } from "./selection-checks";
 import { tabSweepSteps } from "./tab-sweep-checks";
@@ -1845,6 +1846,7 @@ const steps: Step[] = [
   ...desSteps,
   ...heatSteps,
   ...headerSteps,
+  ...queryBarSteps,
   ...layoutSteps,
   ...selectionSteps,
   ...axisSteps,

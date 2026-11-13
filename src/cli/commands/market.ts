@@ -63,7 +63,10 @@ import {
 } from "../../plugins/builtin/research/analyst-model";
 import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "../../plugins/builtin/research/client";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
-import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText, nominalSessionLabel } from "../../market-data/quotes/freshness";
+import {
+  awaitingFirstDelayedPrint, dailyCloseSessionLabel, dailyCloseText, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText,
+  nominalSessionLabel,
+} from "../../market-data/quotes/freshness";
 import {
   coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
 } from "../../market-data/options-alternatives";
@@ -946,6 +949,8 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       changeBasisNote: changeBasisNote(rowChangeBasis(result), now) ?? "",
       // A price nothing traded at names the venue session it is the nominal close of; the quote keeps its last trade.
       ...quote?.nominalPrice ? { nominalLabel: nominalSessionLabel(quote) ?? undefined } : {},
+      // A price with no live quote behind it, the close of the latest daily bar, names that session.
+      ...quote?.dailyClose ? { nominalLabel: dailyCloseSessionLabel(quote) ?? undefined } : {},
     };
   });
 }
@@ -1322,7 +1327,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const ended = stopped && liveCompanies[index] ? `${stopped}. ${liveCompanies[index]}` : stopped;
         // Open by its venue's calendar, before the delayed feed's first print: Last is the previous close until then.
         const awaiting = ended ? null : awaitingFirstDelayedPrint(row.quote, now);
-        const quiet = ended || awaiting ? null : nominalPriceText(row.quote) ?? noPrintsTodayText(row.quote, now);
+        const quiet = ended || awaiting ? null : nominalPriceText(row.quote) ?? dailyCloseText(row.quote) ?? noPrintsTodayText(row.quote, now);
         const waiting = awaiting && row.quote
           ? `${label}: open since ${utcClock(awaiting.open)} UTC; Last is the previous close until the first delayed print, about ${utcClock(awaiting.expected)} UTC`
           : null;
