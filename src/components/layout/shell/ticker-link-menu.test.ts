@@ -269,3 +269,16 @@ test("a pane title names each ticker key its template wrote by the venue's code,
   expect(titled("FA AAPL")).toBe("FA AAPL");
   expect(titled("Pop Mart 9992:XHKG notes")).toBe("Pop Mart 9992:XHKG notes");
 });
+
+test("a coin's pane title names its pair alone, never the crypto venue's code", () => {
+  const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-title-test"));
+  const research = createPaneInstance(TICKER_RESEARCH_PANE_ID, { instanceId: "ticker-detail:usdt", binding: { kind: "fixed", symbol: "USDT-USD:CCC" } });
+  const notes = createPaneInstance("notes", { instanceId: "notes:usdt", binding: { kind: "fixed", symbol: "USDT-USD:CCC" } });
+  const aapl = createPaneInstance(TICKER_RESEARCH_PANE_ID, { instanceId: "ticker-detail:aapl", binding: { kind: "fixed", symbol: "AAPL:NASDAQ" } });
+  const layout = { ...initial.config.layout, instances: [...initial.config.layout.instances, research, notes, aapl] };
+  const state = { ...initial, config: { ...initial.config, layout } };
+  expect(getPaneDisplayTitle(state, research, panes.get(TICKER_RESEARCH_PANE_ID)!, panes)).toBe("USDT-USD");
+  expect(getPaneDisplayTitle(state, notes, panes.get("notes")!, panes)).toBe("Notes: USDT-USD");
+  // A stock keeps its venue.
+  expect(getPaneDisplayTitle(state, aapl, panes.get(TICKER_RESEARCH_PANE_ID)!, panes)).toBe("AAPL:NASDAQ");
+});

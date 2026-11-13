@@ -76,7 +76,7 @@ import { taxEquivalentFields, useOverviewTaxEquivalent } from "./overview/tax-eq
 import { distributionBasis, type TaxRates } from "../../../market-data/tax-equivalent";
 import { currentListingName } from "../../../tickers/listing-name";
 import { isYieldIndexSymbol } from "../../../tickers/index-roots";
-import { quoteStatsBasisText } from "../../../market-data/quotes/export-identity";
+import { coinPriceVenueText, quoteStatsBasisText } from "../../../market-data/quotes/export-identity";
 import { hiddenOnLogScale, logScaleHiddenWarning } from "../../../time-series/log-scale";
 import {
   autoOverviewChartScale, resolveOverviewChartScale, toggledOverviewChartScale, type OverviewChartScaleChoice,
@@ -329,12 +329,17 @@ function ResolvedOverviewTab({
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
   // The listing's own quote names it first: BA on LSE is BAE Systems, whatever name a search gave the row it was saved from.
   const companyName = currentListingName(ticker, quote) ?? "";
-  const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
+  // A coin's price says where it is from and when, where a listing names its venue: the crypto venue's own code
+  // would tell a reader nothing about whose price it is.
+  const coinVenue = instrumentKind === "crypto" ? coinPriceVenueText(quote) : "";
+  const shownVenue = coinVenue || listingVenue;
+  const venueText = shownVenue ? (companyName ? ` (${shownVenue})` : shownVenue) : "";
   const sessionLabel = quoteSessionLabel(quote);
   const marketStateText = sessionLabel ? t(sessionLabel) : "";
   // Signed out or free, the headline price is the delayed one. The status bar says so for the
   // app; where it is hidden, or in a capture of the pane alone, the mark says so after the session.
-  const delayMinutes = sessionQuote ? quoteDelayMinutes : null;
+  // A coin's venue already says when its price is held back.
+  const delayMinutes = sessionQuote && !coinVenue ? quoteDelayMinutes : null;
   const delayCells = delayMinutes != null ? delayedMarkWidth(delayMinutes, nativePaneChrome === true) + 1 : 0;
   const hasIdentityLine = Boolean(companyName || venueText || marketStateText || delayMinutes != null);
   // The desktop logo is a square from the top of the company name's capitals down to the

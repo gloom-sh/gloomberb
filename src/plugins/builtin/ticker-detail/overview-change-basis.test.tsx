@@ -102,3 +102,37 @@ test("a coin's day range and volume say whose they are, so the switch from the c
     priceVenue: "Coinbase", price: 0.9901, dataSource: "live" }));
   expect(widened).toMatch(/Day Range.*composite \+ Coinbase/);
 });
+
+test("a coin's header names the exchange and time of its price, or the composite held back, where a listing names its venue", async () => {
+  setSystemTime(new Date("2026-11-13T21:54:00Z"));
+  const header = async (fields: Partial<Parameters<typeof createTestQuote>[0]>) => {
+    const quote = createTestQuote({
+      symbol: "USDT-USD", name: "Tether USDt", currency: "USD", instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC",
+      exchangeName: "CCC", price: 0.9988, change: 0.0001, changePercent: 0.01, previousClose: 0.9987, marketState: "REGULAR",
+      lastUpdated: Date.parse("2026-11-13T21:53:40Z"), ...fields,
+    });
+    await act(async () => {
+      await tui.render(
+        <AppContext value={createStaticAppStore(createInitialState(config))}>
+          <OverviewTab ticker={createTestTicker("USDT-USD", "Tether USDt", { exchange: "CCC", currency: "USD", assetCategory: "CRYPTOCURRENCY" })}
+            financials={createTestFinancials({ quote })} width={110} height={8} />
+        </AppContext>,
+        { width: 110, height: 8 },
+      );
+    });
+    await settleFrame(tui.setup(), 10);
+    return tui.frame().split("\n")[0]!.trim();
+  };
+  try {
+    const exchange = await header({ priceVenue: "Coinbase", dataSource: "live" });
+    expect(exchange).toStartWith("Tether USDt (Coinbase · 21:53:40 UTC)");
+    expect(exchange).not.toContain("CCC");
+    // Held back, the composite says so once: no clock mark repeats the delay.
+    const delayed = await header({ dataSource: "delayed", lastUpdated: Date.parse("2026-11-13T21:38:00Z") });
+    expect(delayed).toStartWith("Tether USDt (composite · 15m delayed)");
+    expect(delayed).not.toContain("◷");
+    expect(delayed).not.toContain("CCC");
+  } finally {
+    setSystemTime();
+  }
+});

@@ -3,6 +3,7 @@ import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import { currencyPairCode } from "../../utils/currency-pair";
 import { parsePublicTickerKey } from "../../utils/exchanges";
 import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, YIELD_INDEX_EXPORT_UNIT } from "../market/index-level";
+import { delayedFeedLagMs } from "../market/freshness";
 import { quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
 import { isQuoteStaleForCurrentSession } from "./freshness";
 
@@ -60,6 +61,27 @@ export function quoteStatsBasisText(quote: Pick<Quote, "statsBasis" | "rangeWide
   if (quote?.statsBasis === "exchange") return "1 exchange";
   if (quote?.statsBasis !== "composite") return "";
   return range && quote.rangeWidened && quote.priceVenue ? `composite + ${quote.priceVenue}` : "composite";
+}
+
+const UTC_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * Where a coin's price is from and when, as its header says it: the exchange whose own trade it is and that trade's
+ * time (`Coinbase · 21:53:40 UTC`), the composite of several exchanges and its time, or `composite · 15m delayed`
+ * when it is held back. A time from another UTC day leads with its weekday. Empty for a quote Gloom Cloud does not
+ * price, such as a broker's.
+ */
+export function coinPriceVenueText(
+  quote: Pick<Quote, "providerId" | "priceVenue" | "dataSource" | "lastUpdated"> | null | undefined,
+  now = Date.now(),
+): string {
+  if (!quote || (quote.providerId && quote.providerId !== CLOUD_PROVIDER_ID)) return "";
+  const venue = quote.priceVenue ?? "composite";
+  if (!quote.priceVenue && quote.dataSource === "delayed") return `${venue} · ${delayedFeedLagMs("CCC") / 60_000}m delayed`;
+  if (!Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return venue;
+  const at = new Date(quote.lastUpdated);
+  const day = Math.floor(quote.lastUpdated / 86_400_000) === Math.floor(now / 86_400_000) ? "" : `${UTC_WEEKDAYS[at.getUTCDay()]} `;
+  return `${venue} · ${day}${at.toISOString().slice(11, 19)} UTC`;
 }
 
 /** Whether a quote's feed is live, delayed or stale, as the Feed cell of `quote` says it. */
