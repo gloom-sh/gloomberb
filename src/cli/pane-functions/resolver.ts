@@ -217,6 +217,31 @@ function namesFunction(template: PaneTemplateDef | undefined, pane: PaneDef, wor
  * data covers US listings only (`usListingsOnly`) answers a listing abroad
  * with that and the company's US listing, and leaves it out of a list.
  */
+/**
+ * A chart's series typed in quotes that is a terminal's code for one listing
+ * (`fn G "VOD LN"`, `"MC FP Equity"`) is that listing, as `quote`, `history`,
+ * HP and GP read it, and says so: its words are not two series (VOD on NASDAQ
+ * and LN, a ticker that stopped trading in 2020). So is each such entry of a
+ * quoted list (`"VOD LN, MC FP"`). Words typed apart (`fn G AAPL MSFT`) are a
+ * series each, and a qualified symbol (VOD:LSE) is read as written.
+ */
+async function withChartTerminalCodes(args: ParsedPaneFunctionArgs, context: MarketContext): Promise<ParsedPaneFunctionArgs> {
+  if (!args.quotedWords) return args;
+  const notes: string[] = [];
+  const readEntry = async (entry: string) => {
+    const typed = entry.trim();
+    const code = /\s/.test(typed) ? await readTerminalCodeArg(context.dataProvider, typed) : null;
+    if (!code) return entry;
+    notes.push(`Read "${typed}" as ${code.key}.`);
+    return entry.replace(typed, code.key);
+  };
+  const words = await Promise.all(args.quotedWords.map(async (word) => /\s/.test(word.trim())
+    ? (await Promise.all(word.split(/([;,\n])/).map((part, index) => index % 2 === 1 ? part : readEntry(part)))).join("")
+    : word));
+  if (notes.length === 0) return args;
+  return { ...args, arg: words.join(" ").trim(), listingNotes: [...args.listingNotes ?? [], ...notes] };
+}
+
 export async function applyListingArgument(
   registry: PaneFunctionCatalog,
   context: MarketContext,
@@ -225,6 +250,7 @@ export async function applyListingArgument(
 ): Promise<ParsedPaneFunctionArgs> {
   const found = args.target ? findPaneFunction(registry, args.target) : null;
   if (!found?.pane || !args.arg) return args;
+  if (found.pane.id === CHART_COMPOSER_PANE_ID) return withChartTerminalCodes(args, context);
   const headless = getHeadlessPaneDefinition(found.template, found.pane);
   const kind = headless?.argument.kind ?? found.template?.shortcut?.argKind;
   const takesOneTicker = kind === "ticker";
