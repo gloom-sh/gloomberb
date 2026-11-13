@@ -7,7 +7,7 @@ import { isNetworkFailure } from "../utils/network-failure";
  * says nothing of the symbol. Two: a busy moment passes within them, and a
  * list still refused after them is done within ten seconds, each row saying why.
  */
-export const QUOTE_RETRY_WAITS_MS: readonly number[] = [2_000, 6_000];
+const QUOTE_RETRY_WAITS_MS: readonly number[] = [2_000, 6_000];
 
 /** Lists longer than this say how far they have got while they are slow. */
 export const QUOTE_PROGRESS_MIN_SYMBOLS = 50;
@@ -20,7 +20,7 @@ export const QUOTE_PROGRESS_MIN_SYMBOLS = 50;
  * answer, was busy or at its request limit. A source's own reason (Not a
  * ticker, a delisting) is an answer and is kept.
  */
-export function isTransientQuoteFailure({ error, transient }: Pick<QuoteBatchResult, "error" | "transient">): boolean {
+function isTransientQuoteFailure({ error, transient }: Pick<QuoteBatchResult, "error" | "transient">): boolean {
   if (error == null) return false;
   if (transient || isNetworkFailure(error) || isProviderBusy(error)) return true;
   const message = (error instanceof Error ? error.message : String(error)).trim();

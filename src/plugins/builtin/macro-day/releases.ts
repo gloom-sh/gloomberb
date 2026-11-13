@@ -23,7 +23,7 @@ export const IV_EVENT_KINDS: readonly MacroEventKind[] = [...US_MACRO_EVENT_KIND
 /** The central banks' decisions: each day's row says what the meeting did and the rate after it. */
 export const POLICY_DECISION_KINDS: ReadonlySet<MacroEventKind> = new Set(["fomc", "ecb", "boj"]);
 /** The decisions whose next meeting Gloom Cloud lists ahead with their days. */
-export type ScheduledMacroEventKind = "ecb" | "boj";
+type ScheduledMacroEventKind = "ecb" | "boj";
 
 export const MACRO_EVENT_LABELS: Record<MacroEventKind, string> = { cpi: "CPI", jobs: "Jobs", fomc: "FOMC", ipca: "IPCA", ecb: "ECB", boj: "BoJ" };
 
