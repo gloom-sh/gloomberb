@@ -210,6 +210,12 @@ function perpetualValue(columnId: keyof typeof PERPETUAL_FIELDS, symbol: string,
 /** Position and calendar dates as "Jan 5", read in UTC. */
 const MONTH_DAY: ShortDateOptions = { year: false, utc: true, fallback: MISSING_VALUE };
 
+/** A day column: "5 Jan" on screen, the ISO day in an export (an empty cell without one), as AS OF exports its day. */
+function dayCell(date: Date | null): { text: string; value: string | null } {
+  const text = formatShortDate(date, MONTH_DAY);
+  return { text, value: date && Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : null };
+}
+
 function startOfUtcDay(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
@@ -778,7 +784,7 @@ export function getColumnValue(
         return { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
       }
     case "acq_date": {
-      return { text: formatShortDate(earliestDateAcquired(ticker, ctx.activeTab), MONTH_DAY) };
+      return dayCell(earliestDateAcquired(ticker, ctx.activeTab));
     }
     case "held": {
       return { text: formatHeldDays(daysSince(earliestDateAcquired(ticker, ctx.activeTab), ctx.now)) };
@@ -812,12 +818,12 @@ export function getColumnValue(
     case "ex_div": {
       const result = exDividendDate(ticker.metadata.ticker, ctx);
       if (result.pending) return { text: "…" };
-      return { text: formatShortDate(result.date, MONTH_DAY) };
+      return dayCell(result.date);
     }
     case "next_earn": {
       const result = nextEarningsDate(ticker.metadata.ticker, ctx);
       if (result.pending) return { text: "…" };
-      return { text: formatShortDate(result.date, MONTH_DAY) };
+      return dayCell(result.date);
     }
     case "perp_premium":
     case "perp_funding": {
