@@ -111,6 +111,15 @@ test("events read in the order they happen and open on the next one", async () =
   expect(tui.frame()).not.toContain("2020-02-10");
 });
 
+test("a long history scrolls to the next event, not its first row", async () => {
+  const past = Array.from({ length: 40 }, (_, index) => ({ exDate: `${1980 + index}-03-10`, amount: 0.01 * (index + 1) }));
+  await render({ symbol: "TEST", splits: [], earnings: [], dividends: [...past, { exDate: "2098-02-10", amount: 9.5 }] },
+    "corporate-actions", 100);
+  // Forty past rows do not fit 24 lines: the table opens scrolled to the next one, the oldest out of view.
+  expect(tui.frame()).toContain("2098-02-10");
+  expect(tui.frame()).not.toContain("1980-03-10");
+});
+
 test("opening a fiscal-period row cannot select a same-day pending announcement", async () => {
   await render({ symbol: "TEST", dividends: [], splits: [], earnings: [
     { date: "2026-09-30", dateType: "announcement", epsEstimate: 2.2 },
