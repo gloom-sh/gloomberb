@@ -867,8 +867,11 @@ export function headlessReportTables(
       const columns = displayedColumns(columnsFor(rowsResult.rows, rowsResult.columns, definition.columns));
       const rowIdentities = rowIdentitiesOf(rowsResult.rows, rowsResult);
       const own = exportRowsTable(title, columns, rowsResult.rows, { status: true, ...(rowsResult.rowUnitKey ? { rowUnitKey: rowsResult.rowUnitKey } : {}) });
-      const interval = rowsResult.interval?.trim();
-      tables = [{ ...own, ...(rowIdentities ? { rowIdentities } : {}), ...(interval ? { identity: { interval } } : {}) }, ...(rowsResult.exportTables ?? []).map((extra) => {
+      const ownIdentity = {
+        ...(rowsResult.unit?.trim() ? { currencyOrUnit: rowsResult.unit.trim() } : {}),
+        ...(rowsResult.interval?.trim() ? { interval: rowsResult.interval.trim() } : {}),
+      };
+      tables = [{ ...own, ...(rowIdentities ? { rowIdentities } : {}), ...(Object.keys(ownIdentity).length > 0 ? { identity: ownIdentity } : {}) }, ...(rowsResult.exportTables ?? []).map((extra) => {
         const identity = {
           ...(extra.unit?.trim() ? { currencyOrUnit: extra.unit.trim() } : {}),
           ...(extra.interval?.trim() ? { interval: extra.interval.trim() } : {}),

@@ -1581,13 +1581,18 @@ export async function resolveCliListing(
   const read = await readTerminalCodeArg(deps.dataProvider, typed);
   // A company's name, an entry of a comma list (`WHR, Whirlpool Corporation`), is the listing search names for it.
   // A name before a legal form ("SAP SE", "SIEMENS AG") is looked up first: SE is also SIX Swiss's market code.
-  const named = !read || endsInLegalForm(typed) ? await companyNameListingArg(raw, deps) : null;
+  const legalForm = !!read && endsInLegalForm(typed);
+  const asName = !read || legalForm ? await companyNameListingArg(raw, deps) : null;
+  // Read both ways as two companies ("ZURN SE": Zurich Insurance on SIX, Zurn Elkay by name), the code's listing wins.
+  const codeWins = legalForm && asName ? await codeOverCompanyName(read!, asName.found, deps) : null;
+  const named = codeWins ? null : asName?.listing ?? null;
   const terminal = named ? null : read;
   // "AAPL GP" is written as a code, with a market code no venue answers to and no company's name: one entry, never AAPL and GP.
   if (!terminal && !named) await refuseUnknownMarketCode(typed, deps);
   // `BP.` is London's code for BP: its London line where London lists it, and `GE.` a US ticker with a stray dot.
   const dotted = terminal || named || exchangeOption?.trim() ? null : readLondonDottedSymbol(typed);
   let parsed = named ?? (dotted ? await londonDottedListing(dotted, deps) : parseListingArg(raw, exchangeOption, { ...options, terminalCode: terminal }));
+  if (codeWins) parsed = { ...parsed, readAs: codeWins };
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
   // $VIX is Schwab's code for ^VIX, unless a security trades as VIX: $AAPL is a cashtag.
   const index = named || parsed.exchange ? null : await readDollarIndexCode(raw, deps);
@@ -1643,6 +1648,33 @@ export async function resolveCliListing(
       ? { symbol: listing.key, exchange: listing.exchange }
       : { symbol: listing.symbol, exchange: saved?.metadata.exchange ?? "" },
   };
+}
+
+/**
+ * How a symbol and a market code read when the words are also a company's name
+ * before its legal form, SE being both SIX Swiss's code and a European
+ * company's form: "ZURN SE" is Zurich Insurance on SIX as a code and Zurn
+ * Elkay Water Solutions as a name, "NOVN SE" Novartis and Novan, "SAP SE" SAP
+ * either way. Two companies: the code names one listing on one venue, as a
+ * desk typing a terminal's codes means it, so it wins, and the note names the
+ * company the words would be ("Read "ZURN SE" as ZURN:SWX (Zurich Insurance
+ * Group AG), not ZWS:NYSE (Zurn Elkay ...)"). One company, by the service's
+ * company ids or by name: null, so the name reads the company's home listing
+ * (SAP on Xetra, not its SIX line). Null too when the code's venue lists
+ * nothing under the symbol.
+ */
+async function codeOverCompanyName(code: TerminalListingCode, found: CompanyNameListing, deps: ListingDeps): Promise<string | null> {
+  if (!code.exchange) return null;
+  const venues = await listingVenues(code.symbol, deps).catch(logFailure("cli.listing-arg", "Read a market code's listing failed", [] as ListingVenue[]));
+  const line = venues.find((venue) => venue.exchange === code.exchange && venue.name.trim());
+  if (!line) return null;
+  const company = found.meant ?? found;
+  const companyLine = company.symbol.toUpperCase() === code.symbol.toUpperCase()
+    ? venues.find((venue) => venue.exchange === company.exchange) : undefined;
+  const ids = [line.companyId, companyLine?.companyId];
+  if (ids[0] && ids[1] ? ids[0] === ids[1] : sameCompany(line.name, company.name)) return null;
+  const key = company.exchange ? `${company.symbol}:${company.exchange}` : company.symbol;
+  return `${terminalCodeReadAs(code).replace(/\.$/, "")} (${line.name.trim()}), not ${key} (${company.name.trim()}).`;
 }
 
 /** A US share class typed with a space for its mark: `BRK B`, `brk b`. */
@@ -1958,9 +1990,10 @@ async function japaneseNameListing(
  * symbol, and for a name search finds no listing for, which then fails as a
  * symbol would.
  */
-async function companyNameListingArg(raw: string, deps: ListingDeps): Promise<ListingArg | null> {
+async function companyNameListingArg(raw: string, deps: ListingDeps): Promise<{ listing: ListingArg; found: CompanyNameListing } | null> {
   const typed = stripStrayEdges(raw).text || raw;
-  return isCompanyNameInput(typed) ? readCompanyName(typed, deps) : null;
+  const found = isCompanyNameInput(typed) ? await findCompanyName(typed, deps) : null;
+  return found ? { listing: companyListingArg(typed, found), found } : null;
 }
 
 /** `Read "crude oil" as CL=F (WTI Crude Oil), the benchmark future; Brent is BZ=F.` */
@@ -2102,11 +2135,6 @@ async function movedLineOf(
 function movedWithoutQuote(change: ListingFate["change"], name: string | null): MovedTickerChange | null {
   const moved = movedAwayChange(change);
   return moved && sameCompany(name, moved.issuer) ? moved : null;
-}
-
-async function readCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">, options: { oneWord?: boolean } = {}): Promise<ListingArg | null> {
-  const found = await findCompanyName(typed, deps, options);
-  return found ? companyListingArg(typed, found) : null;
 }
 
 function companyListingArg(typed: string, found: CompanyNameListing): ListingArg {
