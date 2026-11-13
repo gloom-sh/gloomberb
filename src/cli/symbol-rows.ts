@@ -1,6 +1,6 @@
 import type { DataProvider } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
-import { ListingArgError, listingFields, listingVenues, savedListingName, type ListingChoice } from "./listing-arg";
+import { listingFields, listingVenues, savedListingName, type ListingChoice } from "./listing-arg";
 import { StagedTickerRepository, type TickerSource } from "./staged-tickers";
 import { symbolInputKey } from "./symbol-args";
 import { describeSuggestion, isPlainNoMatch, suggestListings, suggestUsTicker } from "./listing-suggestion";
@@ -23,7 +23,8 @@ import { companyNameCase, sameCompany, shortCompanyName } from "../tickers/compa
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
 import { canonicalExchange, exchangeLabel, isUsListingExchange, parsePublicTickerKey, resolveExchangeTimeZone, storedKeyListing } from "../utils/exchanges";
 import { resolveTickerInstrumentKind } from "../tickers/instrument-kind";
-import { futuresGenericListing } from "../utils/futures-generic";
+import { futuresGenericListing, parseFuturesGeneric } from "../utils/futures-generic";
+import { isProviderBusy, isRateLimited, isSourceFailure, isTransientServiceFailure } from "../sources/provider-errors";
 import { isCurrencyPairListing } from "../utils/fx-market-hours";
 import { isCurrencyCode } from "../utils/currency-pair";
 import { logFailure } from "../utils/log-failure";
@@ -416,6 +417,8 @@ export interface BulkSymbolsOptions {
   store: TickerSource;
   /** Whether a saved row is in the list added to: its venues are where a bare symbol that read as a future is looked for first. */
   member?: (ticker: TickerRecord) => boolean;
+  /** How long the list's venues have to answer for such a symbol; `LOOKUP_TIMEOUT_MS` (5 s) unless set. */
+  venueWaitMs?: number;
 }
 
 /** A row that is a futures contract: a generic (ES3 on CME, the E-mini's third) or a dated or continuous one. */
@@ -440,11 +443,32 @@ function listVenues(members: readonly TickerRecord[], added: readonly TickerReco
 }
 
 /**
+ * A bare symbol a security could be listed as (ES3, D05), not a future's own
+ * spelling: never a continuous symbol (ES=F), a dated contract (ESZ6, CLZ26),
+ * a front generic (NQ1, ES1, how a future is typed) or a generic with a roll
+ * or an adjustment (CL2F5, ES3R).
+ */
+function securityShaped(symbol: string): boolean {
+  if (!/^[A-Z0-9]{1,6}$/.test(symbol)) return false;
+  if (/^[A-Z0-9]{1,4}[FGHJKMNQUVXZ]\d{1,2}$/.test(symbol) && !/^\d+$/.test(symbol)) return false;
+  const generic = parseFuturesGeneric(symbol);
+  return !generic || (generic.position > 1 && generic.ticker === `${generic.prefix}${generic.position}`);
+}
+
+/** A lookup that did not answer (busy, timed out, at its request limit), which says nothing of whether the venue lists it. */
+function unansweredLookup(error: unknown): boolean {
+  return isProviderBusy(error) || isTransientServiceFailure(error) || isSourceFailure(error) || isRateLimited(error);
+}
+
+/**
  * A bare symbol that read as a future while the list's listings trade on a
  * venue that lists the symbol as a security is that listing: ES3 in a book
  * of DBS and OCBC on SGX is the Straits Times fund there, not the E-mini's
- * third generic on CME. A lookup there that does not answer asks which is
- * meant (`ListingChoiceError`) rather than guess another asset class.
+ * third generic on CME. The list's venues are asked at once, under one
+ * deadline; one that is busy or does not answer in time makes the add ask
+ * which is meant (`ListingChoiceError`) rather than guess another asset class.
+ * Each venue's lookup is staged on its own and only the one kept is staged
+ * for the commit, so a lookup that finishes late saves nothing.
  */
 async function keepListVenue(
   lookup: CliTickerResolution,
@@ -455,32 +479,33 @@ async function keepListVenue(
 ): Promise<CliTickerResolution> {
   if (lookup.error || exchange || venues.length === 0) return lookup;
   const typed = parsePublicTickerKey(symbolInputKey(lookup.input));
-  if (typed.exchange || !isFutureRow(lookup.ticker)) return lookup;
+  if (typed.exchange || !securityShaped(typed.symbol.toUpperCase()) || !isFutureRow(lookup.ticker)) return lookup;
   const future = savedListingName(lookup.ticker);
   // Dropped first, so the venue's listing is saved under its own symbol (ES3:SGX as ES3, not ES3:XSES); an add of
   // the future after all saves it again.
   staged.discard(lookup.ticker.metadata.ticker);
-  const unanswered: string[] = [];
-  for (const venue of venues) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"late">((resolve) => { timer = setTimeout(() => resolve("late"), waitMs); });
+  type Answer = { venue: string; key: string; layer: StagedTickerRepository; found: CliTicker | null; unanswered: boolean };
+  const answers = await Promise.all(venues.map(async (venue): Promise<Answer> => {
     const key = `${typed.symbol}:${venue}`;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const slow = new Promise<"slow">((resolve) => { timer = setTimeout(() => resolve("slow"), waitMs); });
-    try {
-      const found = await Promise.race([resolveCliTicker(key, staged, dataProvider, undefined, { retry, changes: false }), slow]);
-      if (found === "slow") {
-        unanswered.push(key);
-        continue;
-      }
-      if (isFutureRow(found.ticker)) continue;
-      const note = `${typed.symbol} -> ${venue}, the list's venue (not the ${future.exchange || "futures"} future)`;
-      return { input: lookup.input, ...found, notes: [note, ...found.notes] };
-    } catch (error) {
-      // Not listed there: the future stands. Anything else did not answer.
-      if (!(error instanceof ListingArgError)) unanswered.push(key);
-    } finally {
-      clearTimeout(timer);
-    }
+    const layer = new StagedTickerRepository(staged);
+    const asked = resolveCliTicker(key, layer, dataProvider, undefined, { retry, changes: false }).then(
+      (found) => ({ venue, key, layer, found, unanswered: false }),
+      // Not listed there: the future stands. Busy or failed: the venue did not answer.
+      (error: unknown) => ({ venue, key, layer, found: null, unanswered: unansweredLookup(error) }),
+    );
+    const answer = await Promise.race([asked, deadline]);
+    return answer === "late" ? { venue, key, layer, found: null, unanswered: true } : answer;
+  })).finally(() => clearTimeout(timer));
+  const listed = answers.find((answer) => answer.found && !isFutureRow(answer.found.ticker));
+  if (listed?.found) {
+    // Only the listing kept is staged; the other venues' lookups, late ones included, are dropped.
+    await listed.layer.commit();
+    const note = `${typed.symbol} -> ${listed.venue}, the list's venue (not the ${future.exchange || "futures"} future)`;
+    return { input: lookup.input, ...listed.found, notes: [note, ...listed.found.notes] };
   }
+  const unanswered = answers.filter((answer) => answer.unanswered).map((answer) => answer.key);
   if (unanswered.length === 0) return lookup;
   const choices = [...unanswered.map((key) => ({ key, name: null })), { key: future.key, name: future.name }];
   return {
@@ -575,6 +600,7 @@ export async function addSymbols({
   suggest,
   dryRun = false,
   member,
+  venueWaitMs,
 }: BulkSymbolsOptions & {
   dataProvider: DataProvider;
   /** Told when requests failed and the symbols that failed are about to be looked up again. */
@@ -602,7 +628,7 @@ export async function addSymbols({
   const looked = await resolveTickersForCli(symbols.filter((input) => !rejected.get(input)), staged, dataProvider, exchange, { onRetry, onProgress, retry, askWhenAmbiguous });
   // The list's venues, with those of the symbols added beside: a US, HKEX and SGX add keeps a bare ES3 on SGX.
   const venues = listVenues(members, looked.flatMap((resolution) => resolution.error ? [] : [resolution.ticker]));
-  const resolutions = await Promise.all(looked.map((resolution) => keepListVenue(resolution, venues, { exchange, staged, dataProvider, retry })));
+  const resolutions = await Promise.all(looked.map((resolution) => keepListVenue(resolution, venues, { exchange, staged, dataProvider, retry, waitMs: venueWaitMs })));
   const resolved = new Map(resolutions.map((resolution) => [resolution.input, resolution] as const));
   const rows: SymbolRow[] = [];
   // Listings a symbol of this list was added to, which a later symbol's choice must not drop.
