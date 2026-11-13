@@ -107,7 +107,7 @@ export function useTeamCollectionsSync(host: Omit<TeamCollectionsHost, "dispatch
     }
   };
 
-  const refresh = async () => {
+  const pullCollections = async () => {
     if (!apiClient.isVerified()) return;
     const currentTeams = teamStore.getSnapshot().teams;
     const lists = await Promise.all(currentTeams.map((team) => apiClient.listTeamCollections(team.id).catch(logFailure("team.collections-sync", "Listing team collections failed", null))));
@@ -122,6 +122,11 @@ export function useTeamCollectionsSync(host: Omit<TeamCollectionsHost, "dispatch
       collections.push(...list);
     });
     await applyCollections(teamIds, collections);
+  };
+  // Nothing waits on a refresh: one that fails (a ticker that cannot be saved)
+  // is logged, and the next sign-in or team change pulls again.
+  const refresh = () => {
+    pullCollections().catch(logFailure("team.collections-sync", "Refreshing team collections failed"));
   };
 
   const applyEvent = async (event: TeamCollectionEvent) => {
@@ -206,9 +211,9 @@ export function useTeamCollectionsSync(host: Omit<TeamCollectionsHost, "dispatch
 
   const teamKey = teams.map((team) => team.id).join(",");
   useEffect(() => {
-    void refresh();
+    refresh();
     const unsubscribeUser = apiClient.subscribeCurrentUser(() => {
-      void refresh();
+      refresh();
     });
     const unsubscribeEvents = apiClient.subscribeCloudEvent("collection.updated", (data) => {
       void applyEvent(data as TeamCollectionEvent);

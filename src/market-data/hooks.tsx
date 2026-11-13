@@ -660,7 +660,7 @@ export function useFxRateObservations(currencies: Array<string | null | undefine
     if (!coordinator) return;
     for (const currency of normalizedCurrencies) {
       if (currency === "USD") continue;
-      void coordinator.loadFxRate(currency);
+      void coordinator.loadFxRate(currency).catch(logFailure("market-data.hooks", "Loading an exchange rate failed"));
     }
   }, [normalizedCurrencyKey]);
 
