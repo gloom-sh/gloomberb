@@ -406,7 +406,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const moved = { command: "fn", retry: (key: string) => `gloom fn ${resolved.token} ${key}` };
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
       // A report written to a file is drawn for it as it is built: no colour and no terminal width, as a redirect gets it.
-      const buildReport = () => buildFunctionReport(resolved, context, parsed.arg);
+      const buildReport = () => buildFunctionReport(resolved, context, parsed.arg, registry);
       // A report still loading after a few seconds (a chain the server reads cold) says so, so it never looks stuck.
       const progress = progressNotice(ctx, [resolved.token, parsed.arg].filter(Boolean).join(" "), FN_PROGRESS_AFTER_MS);
       const report = await refuseMovedListing(fate, moved, () => withPersistedCloudSession(

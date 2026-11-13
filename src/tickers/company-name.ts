@@ -33,7 +33,9 @@ const NAME_NOISE = new Set([
 // Turkish legal forms short enough to open another company's name (AO Smith, AO World): a legal form only as its last word.
 const LAST_WORD_NOISE = new Set(["ao", "tas"]);
 // Words a venue adds to the share it lists ("Microsoft Corporation Common Stock"), never part of whose it is.
-const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares"]);
+const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares", "share"]);
+// A venue's short form of a share class word, read as the word: "Volkswagen AG Pref. Share" in Zurich is its "Preferred Stock".
+const SHARE_WORD_FORMS: Readonly<Record<string, string>> = { pref: "preferred", pfd: "preferred" };
 
 /** A company's name for comparing its listings: "Kotobuki Spirits Co., Ltd." is "kotobuki spirits". */
 function companyKey(name: string): string {
@@ -42,6 +44,7 @@ function companyKey(name: string): string {
     .replace(/\b(?:(?:american|global) )?depositary (?:shares?|receipts?)\b/g, " ")
     .replace(/\./g, "")
     .split(/[^\p{L}\p{N}]+/u)
+    .map((word) => SHARE_WORD_FORMS[word] ?? word)
     .filter((word) => word && !NAME_NOISE.has(word));
   // The last word before any share wording, never a name's only one.
   let last = words.length - 1;
@@ -75,6 +78,19 @@ export function sameCompany(left: string | null | undefined, right: string | nul
   if (a.size === 0 || b.size === 0) return false;
   const [fewer, more] = a.size <= b.size ? [a, b] : [b, a];
   return [...fewer].every((word) => more.has(word));
+}
+
+/**
+ * Whether two names are one company's name however each venue writes the legal
+ * form and the share wording: "Deutsche Post AG" and "Deutsche Post" are, "DHL
+ * Express" and "DHL" are not (`sameCompany` would read them as one, since one
+ * name's words are all in the other's). For a name the data service gives a
+ * company besides its own (a former name, a trade name), which a line is told
+ * by only when it is exactly that name. An empty name matches none.
+ */
+export function sameCompanyName(left: string | null | undefined, right: string | null | undefined): boolean {
+  const a = companyKey(left ?? "");
+  return a !== "" && a === companyKey(right ?? "");
 }
 
 // Words that tell one class of a company's shares from another ("Berkshire Hathaway Inc. Class B"), never its business.

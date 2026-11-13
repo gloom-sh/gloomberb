@@ -140,19 +140,41 @@ function isCboeYieldIndex(quote: Quote): boolean {
  * its published calendar has a session that day and the print came after it
  * opened. The S&P 500's closing print at 16:37 New York on Fri 6 Nov 2026 is
  * Friday's, so its move is from Thursday's close. A print before the day's
- * open, on a day the calendar has no session for, or on a venue with no
- * published calendar, names none; nor does a Cboe index's, whose days are
- * Cboe's own (a yield index skips the bond market's holidays).
+ * open, or on a day the calendar has no session for, names none. An index
+ * on a venue with no published calendar, or on Cboe's, whose days are Cboe's
+ * own, is dated by its own sessions (`ownIndexSession`); a Cboe yield index,
+ * which skips the bond market's holidays, by none.
  */
 function indexPrintSession(quote: Quote): string | null {
   const venue = calendarVenue(quote);
-  if (venue === "CBOE") return null;
+  // A Cboe index's days are Cboe's own: one with its own sessions (the Russell 2000, quoted under CHICAGO OPTIONS) is
+  // dated by them; a yield index, which skips the bond market's holidays, is not dated here.
+  if (venue === "CBOE") {
+    const zone = isCboeYieldIndex(quote) ? null : quote.indexSession?.timeZone;
+    const date = zone ? zonedDateKey(quote.lastUpdated, zone) : null;
+    return date ? ownIndexSession(quote, date) : null;
+  }
   const zone = sessionCalendarTimeZone(venue) ?? quote.indexSession?.timeZone;
   if (!zone) return null;
   const date = zonedDateKey(quote.lastUpdated, zone);
-  if (!date || !hasPublishedSessionCalendar(venue, date) || !isVenueTradingDay(venue, date)) return null;
+  if (!date) return null;
+  if (!hasPublishedSessionCalendar(venue, date)) return ownIndexSession(quote, date);
+  if (!isVenueTradingDay(venue, date)) return null;
   const open = latestRegularSessionOpen(venue, quote.lastUpdated);
   return open != null && zonedDateKey(open, zone) === date ? date : null;
+}
+
+/**
+ * For an index whose venue publishes no calendar (the Euro Stoxx 50 and the
+ * FTSE 100, quoted under their publishers' ZURICH and FTSE INDEX), the
+ * session of the index's own calendar (indexSession) its print sits in: one
+ * that opened on `date`, at or before the print. Null when none did.
+ */
+function ownIndexSession(quote: Quote, date: string): string | null {
+  const session = quote.indexSession;
+  if (!session?.timeZone) return null;
+  const windows = [...session.regular, ...(session.current ? [session.current] : [])];
+  return windows.some((window) => window.start <= quote.lastUpdated && zonedDateKey(window.start, session.timeZone) === date) ? date : null;
 }
 
 /** A coin on the spot crypto venue: its day is the UTC day. */

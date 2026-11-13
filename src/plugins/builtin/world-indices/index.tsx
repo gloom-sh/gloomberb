@@ -184,7 +184,9 @@ export const worldIndicesModule: PluginModule = {
       paneId: "world-indices",
       label: "World Equity Indices",
       description: "Monitor global equity indices grouped by region.",
-      keywords: ["world", "indices", "global", "equity", "markets", "international"],
+      // The European indices people search the board by: `catalog dax`, `catalog stoxx`, `catalog european indices`.
+      keywords: ["world", "indices", "global", "equity", "markets", "international", "dax", "xetra", "stoxx", "euro stoxx", "ftse", "cac",
+        "germany", "european indices"],
       shortcut: { prefix: "WEI" },
       headless: worldIndicesHeadless,
       publicShare: createPublicPaneShare("World Equity Indices"),

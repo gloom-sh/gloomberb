@@ -249,6 +249,24 @@ describe("history rows", () => {
     expect(historyVolumeNote(null, "1d", null)).toBeNull();
   });
 
+  // ^GDAXI's hourly bars, 10 and 11 Nov 2026: the source ended past sessions on the 16:00 bar (26,387.94), short of the
+  // 26,347.45 closing auction; the data service adds the close from the daily bar, or marks the last bar when it has none.
+  test("an index session's closing print among its hourly bars is named, and so is a last bar that ends before the close", () => {
+    const bar = (date: string, close: number, flags: Record<string, boolean> = {}) =>
+      mapPricePoint({ date, open: close, high: close, low: close, close, ...flags }, 1, "XETRA");
+    const rows = historyRows([
+      bar("2026-11-10T15:00:00Z", 26413.23), bar("2026-11-10T16:00:00Z", 26387.94), bar("2026-11-10T16:30:00Z", 26347.45, { sessionClose: true }),
+      bar("2026-11-11T15:00:00Z", 26609.52), bar("2026-11-11T16:00:00Z", 26644.39, { beforeClose: true }),
+    ], "1h");
+    expect(rows.map((row) => [row.date.slice(5, 16), row.sessionClose ?? false, row.beforeClose ?? false])).toEqual([
+      ["11-10T15:00", false, false], ["11-10T16:00", false, false], ["11-10T16:30", true, false],
+      ["11-11T15:00", false, false], ["11-11T16:00", false, true],
+    ]);
+    const note = historyBarStatusNote(rows) ?? "";
+    expect(note).toContain("2026-11-10T16:30:00Z is its session's closing print, the day's close (close)");
+    expect(note).toContain("2026-11-11T16:00:00Z ends before the closing auction: the day's close is on its daily bar (before close)");
+  });
+
   test("the latest trade a coin's intraday history ends with is part of the bar before it, never a bar without volume", () => {
     // Hourly bars as Gloom Cloud serves a coin signed in: each bar's volume, then the latest trade at its own time.
     const bar = (date: string, volume?: number) => ({ date, open: 81_000, high: 81_100, low: 80_900, close: 81_050, volume });

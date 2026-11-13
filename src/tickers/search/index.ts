@@ -90,6 +90,12 @@ export class AmbiguousTickerError extends Error {
     readonly listingNames: Readonly<Record<string, string>> = {},
     /** The listings among them their exchange withdrew, by key (`0011:HKEX`). */
     readonly listingWithdrawals: Readonly<Record<string, ListingWithdrawal>> = {},
+    /** Each listing's company as the data service identifies it (`companyId`), by key, where it sent one. */
+    readonly listingCompanies: Readonly<Record<string, string>> = {},
+    /** The listings the data service marks as their company's home line (`homeListing`), by key. */
+    readonly listingHomes: readonly string[] = [],
+    /** The other names each listing's company answers to (a former name, a trade name), by key, where the service sent any. */
+    readonly listingAliases: Readonly<Record<string, readonly string[]>> = {},
   ) {
     // Every listing is a choice: a list cut short could leave out the one meant.
     const more = listings.length - MAX_NAMED_LISTINGS;
@@ -634,6 +640,12 @@ async function resolveTickerSymbol(
   ])), Object.fromEntries(matches.flatMap((item) => {
     const withdrawal = parseListingWithdrawal(item.result!.withdrawal);
     return withdrawal ? [[publicTickerKey(item.symbol, listingExchange(item.result!)), withdrawal]] : [];
+  })), Object.fromEntries(matches.flatMap((item) => typeof item.result!.companyId === "string" && item.result!.companyId
+    ? [[publicTickerKey(item.symbol, listingExchange(item.result!)), item.result!.companyId]] : [])),
+  matches.filter((item) => item.result!.homeListing === true).map((item) => publicTickerKey(item.symbol, listingExchange(item.result!))),
+  Object.fromEntries(matches.flatMap((item) => {
+    const aliases = otherNamesOf(item.result!);
+    return aliases.length > 0 ? [[publicTickerKey(item.symbol, listingExchange(item.result!)), aliases]] : [];
   })));
   if (pickerQuery && listings.size > 1) throw ambiguity(pickerQuery);
   // A code that names several venues (TSE) the symbol trades on more than one of is a choice.
@@ -997,6 +1009,13 @@ function getProviderHintScore(result: InstrumentSearchResult, preferredExchange?
   const matchesPreferredExchange = !!canonicalPreferredExchange
     && resultVenues(result).includes(canonicalPreferredExchange);
   return getProviderHintRichness(result) + (matchesPreferredExchange ? 10_000 : 0);
+}
+
+/** The names the row's company answers to besides its own: those the service sent it for and the name it had before. */
+export function otherNamesOf(result: InstrumentSearchResult): string[] {
+  const names = [...searchResultNames(result) ?? [], ...typeof result.formerName === "string" ? [result.formerName] : []]
+    .map((name) => name.trim()).filter(Boolean);
+  return [...new Set(names)];
 }
 
 /** The names the service sent the row for, without the symbol spellings; older servers send none. */
