@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { apiClient } from "../api-client";
 import { ApiRequestError } from "../api-client/errors";
 import type { CloudQuotePayload } from "../api-client/types/quotes";
@@ -9,12 +9,38 @@ import { DataServiceUnreachableError } from "../utils/network-failure";
 import { quotesWithRetries } from "./quote-list-reads";
 
 const originals = { getCloudQuote: apiClient.getCloudQuote, getCloudQuotesBatch: apiClient.getCloudQuotesBatch };
-afterEach(() => Object.assign(apiClient, originals));
+afterEach(() => {
+  Object.assign(apiClient, originals);
+  setSystemTime();
+});
+
+/**
+ * A NASDAQ quote as the service answers it in a US session: its state and, outside the regular session, the
+ * extended-hours print that session reads. The router keeps an answer only when it is current for the session it is
+ * read in (a REGULAR state read in the pre-market is not, and is asked for again alone), so a fixture that always said
+ * REGULAR passed in the day and failed from 04:00 to 09:30 and from 16:00 to 20:00 New York time.
+ */
+const SESSIONS = [
+  // New York is on EST (UTC-5) on these dates; 14 Nov is a Saturday.
+  { name: "regular session", at: "2026-11-13T15:00:00Z", state: "REGULAR" },
+  { name: "pre-market", at: "2026-11-13T10:00:00Z", state: "PRE", extended: { preMarketPrice: 10.05 } },
+  { name: "after hours", at: "2026-11-13T22:00:00Z", state: "POST", extended: { postMarketPrice: 10.05 } },
+  { name: "weekend", at: "2026-11-14T16:00:00Z", state: "CLOSED" },
+] as const;
+
+let session: (typeof SESSIONS)[number] = SESSIONS[0];
+
+/** Pins the clock inside a session, so what a test reads never depends on the hour it runs. */
+function readIn(next: (typeof SESSIONS)[number]) {
+  session = next;
+  setSystemTime(new Date(next.at));
+}
 
 function payload(symbol: string): CloudQuotePayload {
   return {
     symbol, name: symbol, price: 10, currency: "USD", change: 0.1, changePercent: 1, previousClose: 9.9,
-    lastUpdated: Date.now(), marketState: "REGULAR", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ",
+    lastUpdated: Date.now(), marketState: session.state, ...("extended" in session ? session.extended : {}),
+    listingExchangeName: "NASDAQ", exchangeName: "NASDAQ",
     instrumentType: "Common Stock", providerId: "gloomberb-cloud", dataSource: "delayed",
   };
 }
@@ -22,6 +48,7 @@ function payload(symbol: string): CloudQuotePayload {
 // A pasted list of 289 listings went out as one batch, which the service refuses past a hundred for a signed-out
 // caller (413); every listing was then asked for alone, and the ones a busy moment left read "No quote provider".
 test("a long list is quoted in batches the service takes, and a row the service did not answer is asked for again", async () => {
+  readIn(SESSIONS[0]);
   const store = new AppPersistence(":memory:");
   const batches: number[] = [];
   // Each symbol here fails the first time it is asked for alone.
@@ -83,7 +110,9 @@ test("a long list is quoted in batches the service takes, and a row the service 
 
 // A signed-out list of 1,000 meets the service's 600 quotes a minute: the rows past it were asked for again, and each
 // refused batch was asked for one listing at a time, a request each, more of what the limit refused.
-test("a list over the signed-out allowance quotes what it allows, and every row past it says when to try, asked for once", async () => {
+// The same in every US session: an answer current for its session is kept, whichever session the list is read in.
+for (const read of SESSIONS) test(`a list over the signed-out allowance quotes what it allows, and every row past it says when to try, asked for once (${read.name})`, async () => {
+  readIn(read);
   const store = new AppPersistence(":memory:");
   const ALLOWANCE = 600;
   let used = 0;
