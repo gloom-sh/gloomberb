@@ -10,6 +10,7 @@ import {
   setCloudApiFetchTransport,
 } from "./request";
 import { DataServiceUnreachableError, isNetworkFailure } from "../utils/network-failure";
+import { debugLog } from "../utils/debug-log";
 
 function responseWithBody(body: () => Promise<string>): Response {
   return {
@@ -361,9 +362,9 @@ describe("CloudApiRequestTransport market deadlines", () => {
     });
 
     const error = await transport.request("/market/history?symbol=AAPL").catch((caught: unknown) => caught as Error);
-    // Reports print the message: it says what timed out, never the service's endpoint, which logs keep apart.
+    // Reports print the message: it says what timed out, never the service's endpoint, which the debug log keeps.
     expect(error.message).toBe("Cloud market request timed out after 10ms");
-    expect((error as Error & { path?: string }).path).toBe("/market/history");
+    expect(debugLog.getEntries({ source: "cloud-api" }).at(-1)).toMatchObject({ message: "Cloud market request timed out after 10ms", data: { endpoint: "/market/history" } });
     expect(signal?.aborted).toBe(true);
   });
 

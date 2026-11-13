@@ -1,4 +1,5 @@
 import { logFailure } from "../utils/log-failure";
+import { debugLog } from "../utils/debug-log";
 import { httpFetch, isHttpFetchStreaming } from "../utils/http-transport";
 import { OperationTimeoutError } from "../utils/async-deadline";
 import {
@@ -17,6 +18,9 @@ import {
 } from "../core/connection-health";
 import { SESSION_COOKIE_NAMES } from "./session-cookie";
 import { asDataServiceFailure, DataServiceUnreachableError, isDroppedConnection } from "../utils/network-failure";
+
+/** Request failures with the endpoint they were for, which their messages leave out. */
+const requestLog = debugLog.createLogger("cloud-api");
 
 /** The public Gloom Cloud API, which the web app's same-origin `/api` path forwards to. */
 export const DEFAULT_API_URL = "https://api.gloom.sh";
@@ -577,13 +581,17 @@ export class CloudApiRequestTransport {
     const answered = () => this.answers > answersAtStart;
     const generation = cloudApiTransportGeneration;
     const what = path.startsWith("/market/") ? "Cloud market request" : "Cloud request";
-    // The endpoint stays out of the message, which reports and panes print; logs read it from `path`.
+    // The endpoint stays out of the message, which reports and panes print; the debug log's line names it.
     const endpoint = path.split("?")[0]!;
-    const timedOut = (ms: number) => Object.assign(new OperationTimeoutError(`${what} timed out after ${ms}ms`), { path: endpoint });
+    const failed = (message: string) => {
+      requestLog.warn(message, { endpoint });
+      return new OperationTimeoutError(message);
+    };
+    const timedOut = (ms: number) => failed(`${what} timed out after ${ms}ms`);
     const timers: Array<ReturnType<typeof setTimeout>> = [];
     if (this.hungAt != null && Date.now() - this.hungAt < HUNG_FAIL_FAST_MS && !controller.signal.aborted) {
       callerSignal?.removeEventListener("abort", abortFromCaller);
-      throw new DataServiceUnreachableError(Object.assign(new OperationTimeoutError(`${what} not sent: the last one got no answer`), { path: endpoint }));
+      throw new DataServiceUnreachableError(failed(`${what} not sent: the last one got no answer`));
     }
     this.pending += 1;
     try {
