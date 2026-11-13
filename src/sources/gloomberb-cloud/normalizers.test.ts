@@ -331,4 +331,6 @@ test("a coin priced by one exchange's own trade is named by the exchange, as its
   // The venue is said of each observation: the composite read after an exchange's price does not keep its name.
   const after = mergeQuoteContribution(normalizeQuoteContribution(quote)!, mapQuote({ ...raw, priceVenue: undefined, dataSource: "delayed", lastUpdated: raw.lastUpdated! + 60_000 }));
   expect(after.priceVenue).toBeUndefined();
+  // A view's quote, resolved from what each source said, names the venue of the price it shows.
+  expect(resolveCanonicalQuote({ "gloomberb-cloud": normalizeQuoteContribution(quote)! }, raw.lastUpdated!).quote?.priceVenue).toBe("Coinbase");
 });

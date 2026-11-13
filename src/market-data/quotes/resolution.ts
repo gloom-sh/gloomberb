@@ -547,6 +547,8 @@ export function resolveCanonicalQuote(
     indexSession: priceProvider?.indexSession,
     // A listing that no longer trades: the price is its last trade.
     delisting: priceProvider?.delisting,
+    // The one exchange whose own trade or book the price is, when it is one's.
+    ...(priceProvider?.priceVenue ? { priceVenue: priceProvider.priceVenue } : {}),
     // A perpetual's funding, open interest and premium are of the reading that gave its price.
     ...(priceProvider?.perpetual ? { perpetual: priceProvider.perpetual } : {}),
     bid: resolved.bid as Quote["bid"],
