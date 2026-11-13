@@ -116,7 +116,7 @@ export interface CryptoRow extends CryptoRowSupply {
 }
 
 /** The board's price that is no one exchange's: several blended by the source. */
-export const COMPOSITE_PRICE_VENUE = "composite";
+const COMPOSITE_PRICE_VENUE = "composite";
 
 /**
  * Who an extreme is: the exchange that alone reached it among several read, a count when more did, and when none
