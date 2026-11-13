@@ -104,6 +104,7 @@ async function addTickerToWatchlistCommand(
     notes,
     retry: (key) => `gloom watchlist add ${shellWord(watchlist.name)} ${key}`,
     add: (ticker) => addTickerToWatchlist(ticker, watchlist.id),
+    member: (ticker) => ticker.metadata.watchlists.includes(watchlist.id),
   });
 }
 
@@ -130,6 +131,7 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
       suggest: true,
       dryRun,
       add: (ticker) => addTickerToWatchlist(ticker, watchlist.id),
+      member: (ticker) => ticker.metadata.watchlists.includes(watchlist.id),
     });
     printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, notes: list.notes, retry, dryRun });
   });

@@ -199,11 +199,13 @@ export function printSymbolRows(
 export async function addOneSymbol(
   ctx: CliCommandContext,
   market: MarketContext,
-  { symbol, exchange, collection, notes: inputNotes = [], retry, reject, add }: {
+  { symbol, exchange, collection, notes: inputNotes = [], retry, reject, add, member }: {
     symbol: string;
     exchange: string | undefined;
     notes?: readonly string[];
     collection: CollectionRef;
+    /** Whether a saved row is in the list added to (`addSymbol`). */
+    member?: (ticker: TickerRecord) => boolean;
     /** The add of one listing, for the choices a failure names. */
     retry: (key: string) => string;
     reject?: (input: string) => Error | null;
@@ -212,7 +214,7 @@ export async function addOneSymbol(
 ): Promise<void> {
   const { dataProvider, store } = market;
   const dryRun = ctx.cliOptions.dryRun;
-  const { row, error, lookup } = await addSymbol(symbol, { exchange, store, dataProvider, reject, retry, dryRun, add });
+  const { row, error, lookup } = await addSymbol(symbol, { exchange, store, dataProvider, reject, retry, dryRun, add, member });
   if (row.status === "needs_choice") {
     const message = row.message ?? symbol;
     const { successors, matches } = choiceOffers([row], retry);

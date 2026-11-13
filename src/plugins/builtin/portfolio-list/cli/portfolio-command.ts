@@ -3,7 +3,8 @@ import { withConfigData } from "../../../../cli/scoped-context";
 import { withCollectionConfigData, withCollectionMarketData } from "../../../../cli/suffixed-listing-rows";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import { exitLeavingReadsBehind } from "../../../../cli/result";
-import { resolveCliTicker, resolveTickerForCli } from "../../../../cli/ticker-resolution";
+import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
+import { resolveListTicker } from "../../../../cli/symbol-rows";
 import { takeFlag, takeOption } from "../../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireSavedListing, savedListingCandidates, savedListingName, type ListingArg } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
@@ -244,6 +245,7 @@ async function addTickerToPortfolioCommand(
     retry: (key) => `gloom portfolio add ${shellWord(portfolio.name)} ${key}`,
     reject: cashRefusal(portfolio, exchange),
     add: (ticker) => addTickerToPortfolio(ticker, portfolio.id),
+    member: (ticker) => ticker.metadata.portfolios.includes(portfolio.id),
   });
 }
 
@@ -271,6 +273,7 @@ async function addToPortfolioCommand(args: string[], file: string | undefined, e
       onProgress: progressNotice(ctx),
       retry,
       add: (ticker) => addTickerToPortfolio(ticker, portfolio.id),
+      member: (ticker) => ticker.metadata.portfolios.includes(portfolio.id),
     });
     printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "portfolio", name: portfolio.name }, repeated: list.repeated, notes: list.notes, retry, dryRun });
   });
@@ -368,7 +371,10 @@ async function setPositionCommand(
       const shares = parseAmountArg(sharesValue, positionQuantityLabel({ metadata: { ticker: symbol, assetCategory: undefined } }));
       const avgCost = parseAmountArg(avgCostValue, "Average cost");
       // The notes say which listing a bare symbol went to, and that a bare coin ticker is not the coin, as `portfolio add` does.
-      const { ticker, notes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
+      // A bare symbol that reads as a future in a book of listings on another venue keeps the book's venue, or asks.
+      const { ticker, notes } = await resolveListTicker(symbol, {
+        store, dataProvider, exchange, member: (row) => row.metadata.portfolios.includes(portfolio.id),
+      });
       // `1.250` and `1.000` ask which was meant, as `1,250` did above: a dot before three digits is as often thousands.
       const lots = ambiguousQuantityProblem(sharesValue, ticker, { listing: savedListingName(ticker).key });
       if (lots) throw new PortfolioCliError(lots);
@@ -651,7 +657,9 @@ async function setTargetCommand(rest: string[], exchange: string | undefined, ct
         const coinNote = listing.exchange ? null : savedListingCoinNote(listing.symbol, ticker);
         if (coinNote) notes = [coinNote];
       } else {
-        const { ticker: resolved, notes: resolvedNotes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
+        const { ticker: resolved, notes: resolvedNotes } = await resolveListTicker(symbol, {
+          store, dataProvider, exchange, member: (row) => row.metadata.portfolios.includes(portfolio.id),
+        });
         notes = resolvedNotes;
         if (!resolved.metadata.portfolios.includes(portfolio.id)) {
           if (!isManualPortfolio(portfolio)) {
