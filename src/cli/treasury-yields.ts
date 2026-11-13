@@ -37,7 +37,7 @@ const YEAR_UNITS = new Set(["y", "yr", "yrs", "year", "years", "yt"]);
 const MONTH_UNITS = new Set(["m", "mo", "mos", "month", "months"]);
 /** Words that make a tenor a US Treasury yield: "US", "treasury", "yield". */
 const NAMING_WORDS = new Set(["us", "u", "s", "usa", "ust", "usgg", "treasury", "treasuries", "tsy", "yield", "yields", "rate", "rates",
-  "note", "notes", "bill", "bills", "t"]);
+  "note", "notes", "bill", "bills", "tbill", "tbills", "t"]);
 /** Words that may sit beside it and say nothing more. */
 const FILLER_WORDS = new Set(["the", "on", "of", "par", "cmt", "constant", "maturity", "govt", "government"]);
 
@@ -84,6 +84,20 @@ function yieldCommands(tenor: TreasuryYieldTenor): Array<readonly [command: stri
 /** `US 10-year Treasury yield: gloom quote "^TNX" (Cboe index), ...`, for `search`, `catalog` and a bare root. */
 export function treasuryYieldLine(tenor: TreasuryYieldTenor): string {
   return `US ${tenor.label} Treasury yield: ${yieldCommands(tenor).map(([command, gives]) => `${command} (${gives})`).join(", ")}.`;
+}
+
+/** FRED's daily bill rate of a tenor Treasury sells bills at (the 4-week has no constant-maturity twin here). */
+const BILL_RATES: ReadonlyMap<string, string> = new Map([["3-month", "DTB3"], ["6-month", "DTB6"], ["1-year", "DTB1YR"]]);
+
+/**
+ * `US 3-month Treasury bill: gloom fn BTMM --tab bills ...` for a query that says a bill ("3 month t-bill"): the bill
+ * rates first, then the constant-maturity yield the curve reads, which is a different number. Null when it says no bill.
+ */
+export function treasuryBillLine(text: string, tenor: TreasuryYieldTenor): string | null {
+  const bill = BILL_RATES.get(tenor.label);
+  if (!bill || !/(^|[^a-z])(t-?bills?|bills?)([^a-z]|$)/i.test(text)) return null;
+  return `US ${tenor.label} Treasury bill: gloom fn BTMM --tab bills (bill rates), gloom fred ${bill} (daily). `
+    + `Constant-maturity yield, the curve's basis: gloom fred ${tenor.fred}.`;
 }
 
 /** "Try `gloom quote \"^TNX\"`, ... for the US 10-year Treasury yield.", after "Not a ticker: US10Y." */

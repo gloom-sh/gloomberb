@@ -63,6 +63,7 @@ import {
 } from "../../plugins/builtin/econ/calendar-model";
 import { hasNoReleaseTime, hasNoStatedTime, type EconEvent } from "../../plugins/builtin/econ/types";
 import { econRowFigures, figureWithCurrency } from "../../plugins/builtin/econ/figures";
+import { fredSeriesIdForName } from "../../plugins/builtin/econ/fred-catalog";
 import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
@@ -832,7 +833,9 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   if (changeGiven && !horizon) {
     ctx.fail(change ? `Unknown change "${change}".` : "--change needs 1D or 1W.", "Use 1D (from the previous observation) or 1W (from a week before).");
   }
-  const seriesId = requireOneArg(args, FRED_USAGE, "series", ctx).toUpperCase();
+  const asked = requireOneArg(args, FRED_USAGE, "series", ctx);
+  // A series by its name (`3 month t-bill` is DTB3) when one alone fits it.
+  const seriesId = (/\s/.test(asked.trim()) ? fredSeriesIdForName(asked) : null) ?? asked.toUpperCase();
   await withSavedFredSeries(ctx, () => printFredSeries(ctx, { seriesId, start, startDate, sortOrder, horizon }));
 }
 

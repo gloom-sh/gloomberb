@@ -126,7 +126,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "The nine-character code that identifies a US security. A reopening repeats the original issue's CUSIP.",
   },
   {
-    term: "Bill", aliases: ["t-bill", "treasury bill", "bills"], functions: ["AUCT", "BTMM"], shown: ["Bill", "bill"],
+    term: "Bill", aliases: ["t-bill", "t-bills", "tbill", "tbills", "treasury bill", "bills"], functions: ["AUCT", "BTMM"], shown: ["Bill", "bill"],
     definition: "Treasury debt of a year or less, sold below face value with no coupon; the climb back to face value is the interest.",
   },
   {

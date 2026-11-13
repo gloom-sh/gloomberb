@@ -5,7 +5,7 @@ import { parsePublicTickerKey } from "../utils/exchanges";
 import { commandWord } from "../utils/shell-word";
 import { listingAbroadVenue } from "../utils/sec";
 import { nimCommand } from "./bank-section";
-import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
+import { treasuryBillLine, treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 import { namedCurrencyPair } from "./currency-name-hint";
 import { dollarPairListing } from "../utils/currency-pair";
 import { currencyCodeTyped } from "../utils/currency-names";
@@ -589,7 +589,7 @@ export function knownGapMessage(query: string): string | null {
   const index = uncarriedIndexFor(query);
   if (index) return uncarriedIndexLine(index);
   return KNOWN_GAPS.find((gap) => namesKnownGap(gap, query))?.message
-    ?? (tenor ? treasuryYieldLine(tenor) : null)
+    ?? (tenor ? treasuryBillLine(query, tenor) ?? treasuryYieldLine(tenor) : null)
     ?? topicPointer(query)?.message
     ?? macroReleaseTopic(query)?.line ?? null;
 }
