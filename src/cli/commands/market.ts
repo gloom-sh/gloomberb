@@ -4814,9 +4814,9 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }, {
         title: "Several symbols",
         lines: [
-          `history AAPL MSFT 000660.KS, or --file with one symbol a line (- reads standard input), writes every symbol's bars in one long table, ${HISTORY_LIST_CONCURRENCY} symbols loading at once. Each row names its symbol, its unit and the as-of of that symbol's bars in symbol_or_series, currency_or_unit and as_of.`,
-          "A symbol with no history is one row with its reason in status, and a warning names it; the command fails only when no symbol has any. A word typed on the command line that is no ticker fails the command, and a bar size typed in a symbol's place (1s, 30s, 1m) says where the finest bars are; a list from --file keeps a row for a line that is no ticker. --tail 5 keeps each symbol's newest five bars.",
-          "A list from --file or standard input has rows for every line, in its order, as quote's export has: a blank line or one that names no listing is one row with why in status, and its export adds input, the line as typed, and duplicate_of, the input of an earlier line that is the same listing.",
+          `history AAPL MSFT 000660.KS writes every symbol's bars in one long table, ${HISTORY_LIST_CONCURRENCY} symbols at a time; --file list.txt (- for standard input) reads one symbol a line. symbol_or_series, currency_or_unit and as_of name each row's symbol, unit and as-of.`,
+          "A symbol with no bars is one row with why in status; the command fails only when none has any. A word typed on the command line that is no ticker fails it, and a bar size in a symbol's place (1s, 30s, 1m) says where the finest bars are. --tail 5 keeps each symbol's newest five bars.",
+          "A list from --file has rows for every line, in its order: a blank line, or one that names no listing, is one row with why in status. Its export adds input, the line as typed, and duplicate_of, the earlier line that is the same listing.",
           "--wide sets the symbols side by side instead: one row per date, one close column per symbol headed with its unit (USDJPY=X close (JPY per USD)), a blank where a symbol has no bar that day. history USDJPY=X USDCHF=X EURCHF=X --csv --wide is a spreadsheet of the three closes; --tail 5 keeps the newest five dates.",
         ],
       }, {
