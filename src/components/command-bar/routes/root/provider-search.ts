@@ -13,6 +13,7 @@ import {
   mergeTickerSearchResultItems,
   QUICK_LOOK_TICKER_SEARCH_OPTIONS,
   tickerSearchFailureItems,
+  underAnotherSymbol,
   venueDropdownResults,
   withMajorCoinCandidate,
   wordNamesCommand,
@@ -105,6 +106,25 @@ function answerTopListing(items: readonly ResultItem[], query: string | null): s
   const top = (query ? items.find((item) => isExactTickerResultMatch(item, query)) : undefined)
     ?? items.find((item) => listingRowKey(item) != null);
   return top ? listingRowKey(top) : null;
+}
+
+/**
+ * Whether an answer says the index named the wrong lines for the text: it
+ * leads with another listing, or, of the exact matches it would draw on its
+ * own, it puts one of another symbol ahead of a line the index named. The
+ * index knows a symbol's own lines. The other exact matches are the company
+ * the service marks with the word as typed (HSBC's home line in London and
+ * its 0005 in Hong Kong for "hsbc", AIA Group's 1299 for "aia"), which the
+ * index cannot know: held behind the ticker's lines on other venues, they
+ * would be pushed down, or out of the list. A further line of the symbol
+ * itself still goes below the named ones.
+ */
+function answerOverrulesIndex(items: ResultItem[], query: string, named: readonly string[]): boolean {
+  if (answerTopListing(items, query) !== named[0]) return true;
+  const known = new Set(named);
+  const drawn = mergePlainRootTickerResults(query, items, []).filter((item) => item.category === "Exact Match");
+  const otherSymbol = drawn.findIndex((item) => underAnotherSymbol(item, query));
+  return otherSymbol >= 0 && drawn.slice(otherSymbol + 1).some((item) => known.has(listingRowKey(item) ?? ""));
 }
 
 export function useRootProviderSearch(options: {
@@ -335,12 +355,12 @@ export function useRootProviderSearch(options: {
   const showingInstant = !answered && !!instantAnswer && instantAnswer.query === rootTickerSearchArg;
   // An answer keeps the listing rows on screen where they are, its own following, so the row
   // under the cursor stays put. Not when the index named them, the user has not moved the
-  // highlight, and the answer leads with another listing: then the index was wrong, and the
-  // answer's order and its first row stand.
+  // highlight, and the answer says the index named the wrong lines (`answerOverrulesIndex`):
+  // then the answer's order and its first row stand.
   if (answered && answerLeadRef.current?.answer !== rootProviderResults) {
     const shown = shownListingsRef.current?.query === rootTickerSearchArg ? shownListingsRef.current : null;
     const overruled = !!shown && shown.fromIndex && shown.keys.length > 0 && !rootSelectionNavigatedRef?.current
-      && answerTopListing(rootProviderResults!, rootPlainTickerSearchArg) !== shown.keys[0];
+      && !!rootPlainTickerSearchArg && answerOverrulesIndex(rootProviderResults!, rootPlainTickerSearchArg, shown.keys);
     if (overruled) answerTookTopRef.current += 1;
     answerLeadRef.current = { answer: rootProviderResults!, keys: shown && !overruled ? shown.keys : NONE_SHOWN };
   }

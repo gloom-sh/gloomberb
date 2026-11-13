@@ -226,8 +226,9 @@ export interface SearchRequestContext {
   brokerId?: string;
   brokerInstanceId?: string;
   /**
-   * A person is waiting on this result, so a slow source should be abandoned in
-   * well under a second rather than given the batch budget.
+   * A person is waiting on this result, so a slow broker should be abandoned in
+   * well under a second rather than given the batch budget. The data service is
+   * still waited for: its answer is the search's.
    */
   interactive?: boolean;
   /**

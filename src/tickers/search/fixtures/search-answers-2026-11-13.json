@@ -1,0 +1,61 @@
+{
+  "captured": "2026-11-13",
+  "answers": {
+    "hsbc": [
+      {"providerId": "gloomberb-cloud", "symbol": "HSBA", "name": "HSBC Holdings plc", "exchange": "LSE", "type": "EQUITY", "primaryExchange": "LSE", "popularity": 21300, "homeListing": true, "searchAliases": ["hsbc"]},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC", "name": "HSBC Holdings, plc.", "exchange": "NYSE", "type": "American Depositary Receipt", "currency": "USD", "primaryExchange": "NYSE", "popularity": 11277000, "companyId": "cik:1089113"},
+      {"providerId": "gloomberb-cloud", "symbol": "0005", "name": "HSBC Holdings plc", "exchange": "HKEX", "type": "EQUITY", "primaryExchange": "HKEX", "popularity": 22050, "searchAliases": ["hsbc"]},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC", "name": "HSBC Holdings Plc CEDAR", "exchange": "BYMA", "type": "Depositary Receipt", "currency": "ARS", "primaryExchange": "BYMA"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC", "name": "HSBC Holdings, plc.", "exchange": "IEX", "type": "American Depositary Receipt", "currency": "USD", "primaryExchange": "IEX", "companyId": "cik:1089113"},
+      {"providerId": "gloomberb-cloud", "symbol": "HBCYF", "name": "HSBC Holdings plc", "exchange": "PNK", "type": "EQUITY", "primaryExchange": "PNK", "popularity": 20055},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC11", "name": "HSBC Holdings plc", "exchange": "SET", "type": "Depositary Receipt", "currency": "THB", "primaryExchange": "SET"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBCSBS", "name": "HSBC Global Sukuk UCITS ETF BSGBP", "exchange": "NASDAQ", "type": "Mutual Fund", "currency": "GBP", "primaryExchange": "NASDAQ"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2A", "name": "HSBC-D2 SA de CV F.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFA", "name": "HSBC-D2 SA de CV F.I.I.D. BFA", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFE", "name": "HSBC-D2, S.A. De C.V., S.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFP", "name": "HSBC-D2 SA de CV F.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"}
+    ],
+    "HSB-C": [
+      {"providerId": "gloomberb-cloud", "symbol": "HSBA", "name": "HSBC Holdings plc", "exchange": "LSE", "type": "Common Stock", "currency": "GBp", "primaryExchange": "LSE", "homeListing": true, "searchAliases": ["HSB-C"]},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC", "name": "HSBC Holdings, plc.", "exchange": "NYSE", "type": "American Depositary Receipt", "currency": "USD", "primaryExchange": "NYSE"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC", "name": "HSBC Holdings Plc CEDAR", "exchange": "BYMA", "type": "Depositary Receipt", "currency": "ARS", "primaryExchange": "BYMA"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC", "name": "HSBC Holdings, plc.", "exchange": "IEX", "type": "American Depositary Receipt", "currency": "USD", "primaryExchange": "IEX"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC11", "name": "HSBC Holdings plc", "exchange": "SET", "type": "Depositary Receipt", "currency": "THB", "primaryExchange": "SET"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBCSBS", "name": "HSBC Global Sukuk UCITS ETF BSGBP", "exchange": "NASDAQ", "type": "Mutual Fund", "currency": "GBP", "primaryExchange": "NASDAQ"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2A", "name": "HSBC-D2 SA de CV F.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFA", "name": "HSBC-D2 SA de CV F.I.I.D. BFA", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFE", "name": "HSBC-D2, S.A. De C.V., S.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFP", "name": "HSBC-D2 SA de CV F.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFS", "name": "HSBC-D2 SA de CV F.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFV", "name": "HSBC-D2 SA de CV F.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"}
+    ],
+    "HSB.C": [
+      {"providerId": "gloomberb-cloud", "symbol": "HSBA", "name": "HSBC Holdings plc", "exchange": "LSE", "type": "Common Stock", "currency": "GBp", "primaryExchange": "LSE", "homeListing": true, "searchAliases": ["HSB.C"]},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC", "name": "HSBC Holdings, plc.", "exchange": "NYSE", "type": "American Depositary Receipt", "currency": "USD", "primaryExchange": "NYSE"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC", "name": "HSBC Holdings Plc CEDAR", "exchange": "BYMA", "type": "Depositary Receipt", "currency": "ARS", "primaryExchange": "BYMA"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC", "name": "HSBC Holdings, plc.", "exchange": "IEX", "type": "American Depositary Receipt", "currency": "USD", "primaryExchange": "IEX"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC11", "name": "HSBC Holdings plc", "exchange": "SET", "type": "Depositary Receipt", "currency": "THB", "primaryExchange": "SET"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBCSBS", "name": "HSBC Global Sukuk UCITS ETF BSGBP", "exchange": "NASDAQ", "type": "Mutual Fund", "currency": "GBP", "primaryExchange": "NASDAQ"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2A", "name": "HSBC-D2 SA de CV F.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFA", "name": "HSBC-D2 SA de CV F.I.I.D. BFA", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFE", "name": "HSBC-D2, S.A. De C.V., S.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFP", "name": "HSBC-D2 SA de CV F.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFS", "name": "HSBC-D2 SA de CV F.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"},
+      {"providerId": "gloomberb-cloud", "symbol": "HSBC.D2BFV", "name": "HSBC-D2 SA de CV F.I.I.D.", "exchange": "BMV", "type": "Mutual Fund", "currency": "MXN", "primaryExchange": "BMV"}
+    ],
+    "ccb": [
+      {"providerId": "gloomberb-cloud", "symbol": "CCB", "name": "Coastal Financial Corporation", "exchange": "NASDAQ", "type": "Common Stock", "currency": "USD", "primaryExchange": "NASDAQ", "popularity": 10105000, "companyId": "cik:1437958"},
+      {"providerId": "gloomberb-cloud", "symbol": "601939", "name": "China Construction Bank Corporation", "exchange": "SSE", "type": "Common Stock", "currency": "CNY", "primaryExchange": "SSE", "homeListing": true, "searchAliases": ["ccb"]},
+      {"providerId": "gloomberb-cloud", "symbol": "0939", "name": "China Construction Bank Corporation", "exchange": "HKEX", "type": "Common Stock", "currency": "HKD", "primaryExchange": "HKEX", "searchAliases": ["ccb"]},
+      {"providerId": "gloomberb-cloud", "symbol": "CCB", "name": "Instant Group AG", "exchange": "FWB2", "type": "Common Stock", "currency": "EUR", "primaryExchange": "FWB2"},
+      {"providerId": "gloomberb-cloud", "symbol": "CCB", "name": "Cementos Argos SA", "exchange": "BVC", "type": "Common Stock", "currency": "COP", "primaryExchange": "BVC"},
+      {"providerId": "gloomberb-cloud", "symbol": "CCB", "name": "Canada Carbon Inc.", "exchange": "TSXV", "type": "Common Stock", "currency": "CAD", "primaryExchange": "TSXV", "companyId": "listing:CCB:TSXV"},
+      {"providerId": "gloomberb-cloud", "symbol": "CCB", "name": "Instant Group AG", "exchange": "XSTU", "type": "Common Stock", "currency": "EUR", "primaryExchange": "XSTU"},
+      {"providerId": "gloomberb-cloud", "symbol": "CCB", "name": "Instant Group AG", "exchange": "MUNICH", "type": "Common Stock", "currency": "EUR", "primaryExchange": "MUNICH"},
+      {"providerId": "gloomberb-cloud", "symbol": "CCB", "name": "Instant Group AG", "exchange": "XDUS", "type": "Common Stock", "currency": "EUR", "primaryExchange": "XDUS"},
+      {"providerId": "gloomberb-cloud", "symbol": "CCB", "name": "Coastal Financial Corporation", "exchange": "IEX", "type": "Common Stock", "currency": "USD", "primaryExchange": "IEX", "companyId": "cik:1437958"},
+      {"providerId": "gloomberb-cloud", "symbol": "501098", "name": "CCB Principal Select Technology Innovation Mixed-A", "exchange": "SSE", "type": "Mutual Fund", "currency": "CNY", "primaryExchange": "SSE", "popularity": 20012},
+      {"providerId": "gloomberb-cloud", "symbol": "510800", "name": "CCB SSE 50 Index ETF", "exchange": "SSE", "type": "ETF", "currency": "CNY", "primaryExchange": "SSE", "popularity": 20005}
+    ]
+  }
+}
