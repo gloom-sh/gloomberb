@@ -1,3 +1,4 @@
+import { dayFirstParts } from "../../../utils/datetime-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import { sampleStatistics } from "../../../components/chart/curve/model";
 import type { TapeQuote, TapeSnapshot, TapeTrade } from "../../../api-client/tape";
@@ -76,7 +77,7 @@ export function quoteSpread(row: TapeQuote) {
 const NEW_YORK_CLOCK = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
 });
-const NEW_YORK_DAY = new Intl.DateTimeFormat("en-GB", { timeZone: "America/New_York", month: "short", day: "numeric" });
+const NEW_YORK_DAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
 const toMs = (value: string) => new Date(value.replace(/(\.\d{3})\d+/, "$1"));
 /** Tape rows on New York time, the market's own clock, to the millisecond. */
 export function tapeClockNewYork(value: string): string {
@@ -88,7 +89,7 @@ export function tapeClockNewYork(value: string): string {
 export function tapeStampNewYork(value: string | null): string {
   if (!value) return MISSING_VALUE;
   const date = toMs(value);
-  return Number.isNaN(date.getTime()) ? tapeTimeSeconds(value) : `${NEW_YORK_DAY.format(date)} ${NEW_YORK_CLOCK.format(date)} ET`;
+  return Number.isNaN(date.getTime()) ? tapeTimeSeconds(value) : `${dayFirstParts(NEW_YORK_DAY, date)} ${NEW_YORK_CLOCK.format(date)} ET`;
 }
 
 // SIP participant codes. D is FINRA's facility, where off-exchange trades

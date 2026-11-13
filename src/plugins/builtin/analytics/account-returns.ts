@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import { colors } from "../../../theme/colors";
 import type { BrokerPortfolioPerformance } from "../../../types/trading";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
@@ -65,9 +66,7 @@ export function maxDrawdown(returns: DatedReturn[]): number | null {
 }
 
 function compactDate(value: string): string {
-  return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "2-digit", month: "short", year: "2-digit", timeZone: "UTC",
-  }).replaceAll(" ", "");
+  return formatShortDate(value, { day: "2-digit", year: "2-digit", utc: true }).replaceAll(" ", "");
 }
 
 function sampleWindow(sample: DatedReturn[]): string | undefined {

@@ -429,9 +429,7 @@ export function buildAnalyticsRiskRows({
       : row.id === "beta" && benchmarkTimestamps && !benchmarkTimestamps.supported ? "SPY timestamps unverified"
       : row.id === "sharpe" && sharpeCadence && !sharpeCadence.supported ? sharpeCadence.reason : null);
     const sample = row.id === "beta" && returns && benchmarkReturns ? alignedAssetReturns(returns, benchmarkReturns) : returns;
-    const compactDate = (value: string) => new Date(`${value}T00:00:00Z`).toLocaleDateString("en-GB", {
-      day: "2-digit", month: "short", year: "2-digit", timeZone: "UTC",
-    }).replaceAll(" ", "");
+    const compactDate = (value: string) => formatShortDate(value, { day: "2-digit", year: "2-digit", utc: true }).replaceAll(" ", "");
     const window = sample?.length
       ? `${compactDate(sample[0]!.startDateKey)}–${compactDate(sample.at(-1)!.dateKey)} ·${sample.length}` : undefined;
     return {
