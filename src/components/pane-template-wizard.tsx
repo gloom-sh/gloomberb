@@ -9,6 +9,7 @@ import { t, tf } from "../i18n";
 
 export function PaneTemplateInputStep({
   resolve,
+  dismiss,
   step,
 }: PromptContext<string> & { step: WizardStep }) {
   const inputRef = useRef<InputRenderable>(null);
@@ -21,6 +22,7 @@ export function PaneTemplateInputStep({
   return (
     <DialogFrame
       title={step.label}
+      onClose={dismiss}
       footer={step.defaultValue
         ? `Press Enter to use ${step.defaultValue}`
         : step.required === false

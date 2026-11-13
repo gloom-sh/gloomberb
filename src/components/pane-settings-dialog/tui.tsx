@@ -48,9 +48,9 @@ export function TuiDialogList({ descriptionColor, ...props }: ListViewProps & {
   );
 }
 
-export function TuiUnavailablePaneSettingsDialog() {
+export function TuiUnavailablePaneSettingsDialog({ dismiss }: { dismiss?: () => void }) {
   return (
-    <DialogFrame title={t("Pane Settings")} footer={t("Press esc to cancel")}>
+    <DialogFrame title={t("Pane Settings")} footer={t("Press esc to cancel")} onClose={dismiss}>
       <Text fg={colors.textDim}>{t("This pane is no longer configurable.")}</Text>
     </DialogFrame>
   );
@@ -58,6 +58,7 @@ export function TuiUnavailablePaneSettingsDialog() {
 
 export function TuiPaneSettingsDialogBody({
   title,
+  dismiss,
   fields,
   selectedIndex,
   settings,
@@ -66,6 +67,8 @@ export function TuiPaneSettingsDialogBody({
   onActivate,
 }: {
   title: string;
+  /** The close button in the title, for a mouse; Esc closes too. */
+  dismiss?: () => void;
   fields: PaneSettingField[];
   selectedIndex: number;
   settings: Record<string, unknown>;
@@ -76,7 +79,7 @@ export function TuiPaneSettingsDialogBody({
 }) {
   const notes = fields.map((field) => noteFor?.(field) ?? null);
   return (
-    <DialogFrame title={t(title)}>
+    <DialogFrame title={t(title)} onClose={dismiss}>
       <TuiDialogList
         items={fields.map((field, index) => ({
           id: field.key,

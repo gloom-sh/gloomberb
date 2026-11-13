@@ -172,7 +172,7 @@ export function ChoiceDialog({
   }, searchable ? { allowEditable: true } : undefined);
 
   return (
-    <DialogFrame title={title} footer={footer} showTitleDivider={false}>
+    <DialogFrame title={title} footer={footer} showTitleDivider={false} onClose={() => resolve("")}>
       {/* Never wider than the dialog: a phone is narrower than the cells asked for. The terminal's list spans its box,
           60 columns, so its scrollbar runs down the box's edge rather than through the middle of it. */}
       <Box flexDirection="column" {...(desktop ? { style: { width: fitDialogWidth(width) } } : { width: "100%" })}>

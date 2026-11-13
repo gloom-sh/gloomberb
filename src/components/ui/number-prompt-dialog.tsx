@@ -28,6 +28,7 @@ export interface NumberPromptDialogProps extends PromptContext<number> {
  */
 export function NumberPromptDialog({
   resolve,
+  dismiss,
   title,
   initialValue,
   min,
@@ -44,7 +45,7 @@ export function NumberPromptDialog({
   }, []);
 
   return (
-    <DialogFrame title={title}>
+    <DialogFrame title={title} onClose={dismiss}>
       <Box flexDirection="column" width={32}>
         <TextField
           inputRef={inputRef}

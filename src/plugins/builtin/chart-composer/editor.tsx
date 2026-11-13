@@ -84,6 +84,7 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
   return (
     <DialogFrame
       title="Chart Series"
+      onClose={() => resolve(null)}
       footer={[...navigationKeys, ...seriesKeys].join(" · ")}
       // The desktop's fields take the pointer and arrows like any form.
       desktopFooter={selected
