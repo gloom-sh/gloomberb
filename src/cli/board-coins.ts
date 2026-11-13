@@ -42,7 +42,7 @@ const KNOWN_COINS: readonly BoardEntry[] = [
 
 let board: readonly BoardEntry[] | null = null;
 let loading: Promise<void> | null = null;
-/** The board was asked for and did not come: the known coins answer instead. */
+/** The board was asked for and did not come, or is not to be waited for: the known coins answer instead. */
 let unread = false;
 
 /**
@@ -64,6 +64,15 @@ export async function primeBoardCoins(
     if (!board) unread = true;
   });
   await loading;
+}
+
+/**
+ * Answers a coin hint from the coins this build knows, the largest and the stablecoins, with no read of the board. For
+ * a command whose symbol the data service has already said no listing carries: it answers at once, where reading the
+ * board would add a round trip to the end of it for the name of a rarer coin.
+ */
+export function useKnownCoins(): void {
+  if (!board) unread = true;
 }
 
 /** The board's coins a hint can name: a symbol, a code and a name each. */
