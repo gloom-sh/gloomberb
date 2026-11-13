@@ -117,6 +117,17 @@ describe("chart composer series catalog", () => {
     });
   });
 
+  test("offers a coin, a currency pair or an index its prices at the chart's bars, never a company's revenue or EPS", () => {
+    const coin = buildSeriesCatalogSuggestions("USDC-USD", AAPL);
+    expect(coin.map((entry) => entry.label)).toContain("USDC-USD · Price (OHLCV)");
+    expect(coin.every((entry) => entry.expression?.kind !== "security" || entry.expression.fieldId.startsWith("market."))).toBe(true);
+    expect(coin.find((entry) => entry.label === "USDC-USD · Price (OHLCV)")?.detail).toBe("Chart bars");
+    for (const listing of [{ symbol: "EURUSD=X" }, { symbol: "^GSPC" }, { symbol: "USDT-USD", exchange: "CCC" }]) {
+      expect(buildSeriesCatalogSuggestions("", listing).some((entry) => entry.label.includes("Revenue"))).toBe(false);
+    }
+    expect(buildSeriesCatalogSuggestions("", AAPL).some((entry) => entry.label.includes("Revenue"))).toBe(true);
+  });
+
   test("keeps direct FRED IDs available for advanced sources", () => {
     expect(buildSeriesCatalogSuggestions("FRED:CPIAUCSL", AAPL)[0]).toMatchObject({
       label: "FRED · CPIAUCSL",
