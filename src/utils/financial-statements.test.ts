@@ -429,3 +429,17 @@ describe("periods read from a results announcement", () => {
   });
 });
 
+
+describe("expense lines served blank", () => {
+  test("an expense the statements source gives below zero is named, with the quarters it was left blank in", () => {
+    const row = (date: string, value: number): FinancialStatement => ({
+      date, currency: "CNY", totalRevenue: 147.8e9,
+      withheld: { sellingGeneralAndAdministration: { value, reason: "below-zero" } },
+    } as FinancialStatement);
+    const rows = [row("2026-06-30", -1.33e9), { date: "2026-03-31", currency: "CNY", totalRevenue: 129.1e9 } as FinancialStatement, row("2025-12-31", -5.52e9)];
+    expect(filledPeriodsNote(rows)).toBe("2026-06-30, 2025-12-31 SG&A left blank: the statements source gives it below zero, which no expense can be.");
+    // Not a line the table shows: nothing to say.
+    expect(filledPeriodsNote(rows, new Set(["totalRevenue"]))).toBeNull();
+    expect(filledPeriodsNote(rows, new Set(["sellingGeneralAndAdministration"]))).toContain("SG&A left blank");
+  });
+});

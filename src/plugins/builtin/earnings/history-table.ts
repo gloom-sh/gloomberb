@@ -51,6 +51,12 @@ const MOVE_COLUMNS: Partial<Record<HistoryColumnId, (row: HistoryRow) => number 
   ratio: (row) => row.moveRatio,
 };
 
+/**
+ * Columns a history can hold nothing in: an A share's reports state no time where its exchange gave none, and
+ * no count of estimates is served for it. One blank in every row is left out, as the sales columns are.
+ */
+const OPTIONAL_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["when", "analysts", "epsEstimate", "epsActual", "basis", "epsSurprise"]);
+
 /** Amount columns that carry a listing abroad's currency after each figure ("7.22 CNY"), and the room it takes. */
 const AMOUNT_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["epsEstimate", "epsActual", "revenueEstimate", "revenueActual"]);
 const CURRENCY_WIDTH = 4;
@@ -68,6 +74,8 @@ export function historyColumns(width: number, rows: readonly HistoryRow[], optio
   const labelled = abroad || rows.some((row) => row.currency != null);
   const periods = abroad || rows.some((row) => row.periodKind !== "quarter");
   let columns = ALL_COLUMNS.filter((column) => {
+    if (OPTIONAL_COLUMNS.has(column.id) && rows.length > 0)
+      return rows.some((row) => renderHistoryCell(row, column).text !== MISSING_VALUE);
     const value = SALES_COLUMNS[column.id] ?? (labelled ? MOVE_COLUMNS[column.id] : undefined);
     return !value || rows.some((row) => value(row) != null);
   }).map((column): HistoryColumn => {

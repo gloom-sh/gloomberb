@@ -269,6 +269,19 @@ describe("ERN for a Hong Kong listing", () => {
     expect(label([quarter({ date: "2026-08-12", currency: undefined })], false)).toBe("QTR");
   });
 
+  test("leaves out a column blank in every row: WHEN where the exchange gave no time, ESTS where no count is served", () => {
+    const ids = (reports: Report[]) =>
+      historyColumns(2000, historyRows(payload(reports), TODAY, null, { abroad: true }), { abroad: true }).map((column) => column.id);
+    const untimed = [quarter({ date: "2026-08-12" }), quarter({ date: "2026-05-13", fiscalPeriod: "2026-03", fiscalQuarter: 1 })];
+    expect(ids(untimed)).not.toContain("when");
+    expect(ids(untimed)).not.toContain("analysts");
+    expect(ids(untimed)).toContain("epsEstimate");
+    // One row with a time, or a count of estimates, keeps the column.
+    const timed = [quarter({ date: "2026-08-12", timing: "amc", timingSource: "filing", epsAnalysts: 12 }), untimed[1]!];
+    expect(ids(timed)).toContain("when");
+    expect(ids(timed)).toContain("analysts");
+  });
+
   test("names the calendar's next quarter by its fiscal year from the company's year end, as its past quarters are", () => {
     const rows = historyRows(payload([quarter({ date: "2026-08-12" })]), TODAY, {
       symbol: "0700:HKEX", name: "Tencent", earningsDate: new Date("2026-11-18T08:10:00Z"), isDateEstimate: false, timing: "",

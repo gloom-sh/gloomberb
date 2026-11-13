@@ -34,13 +34,23 @@ const MAX_LATE_GRACE_DAYS = 30;
 export const LATE_GRACE_DAYS = [...new Set(Object.values(REGULAR_CADENCE)
   .map((cadence) => Math.min(cadence.halfPeriodDays, MAX_LATE_GRACE_DAYS)))];
 
+/**
+ * How far past two years the cadence looks when those two years hold a single ex-date: an annual payer whose
+ * ex-date came a few days later than the year before (Moutai's June 25, 2021 and June 30, 2022) has one in
+ * them for those days, and read as no cadence its trailing cash fell to nothing until the late one went ex.
+ */
+export const CADENCE_GRACE_DAYS = MAX_LATE_GRACE_DAYS;
+
 /** Cadence of ex-dates in the two years ending at `asOf`, ignoring later payments. */
 export function inferCadence(payments: readonly Pick<CashDistribution, "exDate">[], asOf: Date): DistributionCadence | null {
-  const cutoff = calendarMonthsBefore(asOf, 24);
-  // Old suspensions or a former schedule must not redefine a fund's recent cadence.
-  const dates = [...new Set(payments.filter((payment) => payment.exDate > cutoff && payment.exDate <= asOf)
+  const within = (cutoff: Date) => [...new Set(payments.filter((payment) => payment.exDate > cutoff && payment.exDate <= asOf)
     .map((payment) => payment.exDate.getTime()))]
     .sort((a, b) => a - b);
+  const cutoff = calendarMonthsBefore(asOf, 24);
+  // Old suspensions or a former schedule must not redefine a fund's recent cadence.
+  let dates = within(cutoff);
+  // A single ex-date in two years: the one before it, if only days past them, says the cadence.
+  if (dates.length === 1) dates = within(new Date(cutoff.getTime() - CADENCE_GRACE_DAYS * DAY));
   if (dates.length < 2) return null;
   const avgGapDays = (dates.at(-1)! - dates[0]!) / (dates.length - 1) / DAY;
   if (Math.abs(avgGapDays - 30) < 8) return "monthly";

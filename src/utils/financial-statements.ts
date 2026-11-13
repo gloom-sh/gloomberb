@@ -312,8 +312,9 @@ export function filledPeriodsNote(
   // A TTM Gloom Cloud built from the year and the half since it says how.
   const basis = statements.find(({ aggregation }) => aggregation?.kind === "annual-plus-interim")?.aggregation?.basis;
   const trailing = basis ? `TTM is ${basis}, from the company's results announcements.` : null;
+  const withheld = withheldLinesNote(statements, shown);
   const filled = filledPeriods(statements, shown);
-  if (filled.length === 0) return trailing;
+  if (filled.length === 0) return [trailing, withheld].filter(Boolean).join(" ") || null;
   const sources = [...new Set(filled.map((period) => period.source))];
   let note: string;
   // Each announcement dates its own periods: "TTM revenue; 2025-12-31 revenue (published 2026-03-25)", and
@@ -327,7 +328,39 @@ export function filledPeriodsNote(
     const read = filled.map(({ stamp }) => stamp.date).sort().at(-1);
     note = `From ${sources.join(" and ")} (read ${read}): ${filled.map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ")}.`;
   }
-  return [note, omittedLinesNote(statements, shown), trailing].filter(Boolean).join(" ");
+  return [note, omittedLinesNote(statements, shown), trailing, withheld].filter(Boolean).join(" ");
+}
+
+/** Expense lines Gloom Cloud serves blank where the statements source gives them below zero (the row's `withheld`). */
+const WITHHELD_LINES: Record<string, string> = {
+  costOfRevenue: "cost of revenue",
+  sellingGeneralAndAdministration: "SG&A",
+  sellingAndMarketingExpense: "selling and marketing",
+  generalAndAdministrativeExpense: "G&A",
+  researchAndDevelopment: "R&D",
+  operatingExpense: "operating expenses",
+};
+
+/**
+ * "2026-06-30, 2025-12-31, 2025-06-30 SG&A left blank: the statements source gives it below zero, which no
+ * expense can be.": lines Gloom Cloud left blank rather than serve an impossible figure (CATL's SG&A, read by
+ * the source as a difference of years to date it counts otherwise). `shown` keeps the lines the table has a
+ * row for. Null when none is.
+ */
+export function withheldLinesNote(statements: readonly Pick<FinancialStatement, "date">[], shown?: ReadonlySet<string>): string | null {
+  const ends = new Map<string, string[]>();
+  for (const row of statements) {
+    const withheld = (row as { withheld?: Record<string, { reason?: string } | undefined> }).withheld;
+    if (!withheld || typeof withheld !== "object" || !/^\d{4}-\d{2}-\d{2}/.test(row.date)) continue;
+    for (const [field, entry] of Object.entries(withheld)) {
+      const line = WITHHELD_LINES[field];
+      if (!line || entry?.reason !== "below-zero" || (shown && !shown.has(field))) continue;
+      ends.set(line, [...ends.get(line) ?? [], row.date.slice(0, 10)]);
+    }
+  }
+  if (ends.size === 0) return null;
+  const lines = [...ends].map(([line, dates]) => `${[...new Set(dates)].sort().reverse().join(", ")} ${line}`).join("; ");
+  return `${lines} left blank: the statements source gives ${ends.size > 1 ? "them" : "it"} below zero, which no expense can be.`;
 }
 
 /** "2026-09-30, 2026-06-30 revenue left blank: the company's results announcements count it otherwise than the statements source." */
@@ -377,7 +410,7 @@ export function quarterRows<T extends Pick<FinancialStatement, "filledFrom">>(ro
 
 export const SEC_EPS_BASIS_NOTICE = "SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable.";
 
-const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "accountingStandard", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability", "epsBasis", "fieldSources", "unavailableFields", "withdrawnObservations", "operatingResult", "operatingResultAggregation", "earningsResult", "unavailableEarnings", "filledFrom"]);
+const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "accountingStandard", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability", "epsBasis", "fieldSources", "unavailableFields", "withdrawnObservations", "operatingResult", "operatingResultAggregation", "earningsResult", "unavailableEarnings", "filledFrom", "withheld"]);
 const NEARBY_PERIOD_END_MS = 7 * 24 * 60 * 60 * 1_000;
 
 /** An explicit field map is authoritative: omitted fields have unknown availability. */
