@@ -21,7 +21,7 @@ import { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { formatCloudPrice, monthsFreeYearly } from "../../account/billing";
 import { proStepCopy } from "../../account/upgrade-dialog";
-import { Button, SegmentedControl, terminalButtonColumns } from "../ui";
+import { Button, Prose, SegmentedControl, terminalButtonColumns } from "../ui";
 import { AccountStep, PortfolioStep } from "./onboarding-steps";
 import { tuiPositionsPanelRows } from "./portfolio-step/positions-panel";
 import {
@@ -458,6 +458,11 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     </OnboardingCoach>;
   }
 
+  // A save error under a card, wrapped in the terminal at the words its height counted, so the card holds it.
+  const savedError = (columns: number) => !persistenceError ? null : desktop ? (
+    <Text fg={colors.negative} wrapText style={{ marginTop: 10 }}>{persistenceError}</Text>
+  ) : <Prose text={persistenceError} width={columns} figures={false} color={colors.negative} />;
+
   if (stage === "portfolio") {
     const selectedBroker = selectedBrokerId
       ? brokerOptions.find((option) => option.id === selectedBrokerId)
@@ -467,7 +472,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     const positionsColumns = terminalCardSize({ width: viewportWidth, height: viewportHeight }, 76, 22).width - TERMINAL_CARD_INSET.columns;
     const portfolioModalHeight = portfolioSub === "positions"
       ? TERMINAL_CARD_INSET.rows + 4 + tuiPositionsPanelRows(positions, editingField, positionsColumns)
-        + (persistenceError ? wrapTextLines(persistenceError, Math.max(1, positionsColumns)).length : 0)
+        + (persistenceError ? wrapTextLines(persistenceError, Math.max(8, positionsColumns)).length : 0)
       : portfolioSub === "choose"
         ? 16
         : portfolioSub === "broker-setup"
@@ -515,6 +520,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
             positionsEditing={editingField}
             selectedPositionSymbol={selectedPositionSymbol}
             commandBarShortcut={commandBarShortcut}
+            positionsColumns={positionsColumns}
             choices={brokerChoices}
             optionIdx={portfolioOptionIdx}
             onOptionSelect={setPortfolioOptionIdx}
@@ -532,11 +538,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
             brokerSyncError={brokerSyncError}
           />
         </Box>
-        {persistenceError ? (
-          <Text fg={colors.negative} wrapText style={desktop ? { marginTop: 10 } : undefined}>
-            {persistenceError}
-          </Text>
-        ) : null}
+        {savedError(positionsColumns)}
         <OnboardingActions hint={portfolioSub === "positions" && desktop
           // The step needs one ticker; once it has one, more can be added later.
           ? positionCount === 0 ? t("Add one ticker to continue.") : tf("Later: {shortcut}, then AP.", { shortcut: commandBarShortcut })
@@ -598,7 +600,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
   if (stage === "desks") {
     const desksColumns = terminalCardSize({ width: viewportWidth, height: viewportHeight }, DESKS_CARD_WIDTH, 18).width - TERMINAL_CARD_INSET.columns;
     // A save error names the file, so it usually takes two rows; the card grows by what it wraps to.
-    const errorRows = persistenceError ? wrapTextLines(persistenceError, Math.max(1, desksColumns)).length : 0;
+    const errorRows = persistenceError ? wrapTextLines(persistenceError, Math.max(8, desksColumns)).length : 0;
     return (
       <OnboardingModal width={DESKS_CARD_WIDTH} height={18 + errorRows}>
         <OnboardingHeader
@@ -624,11 +626,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           onToggle={(key) => setChosenDesks((current) => toggleDeskChoice(current, key))}
           width={desksColumns}
         />
-        {persistenceError ? (
-          <Text fg={colors.negative} wrapText style={desktop ? { marginTop: 10 } : undefined}>
-            {persistenceError}
-          </Text>
-        ) : null}
+        {savedError(desksColumns)}
         <OnboardingActions>
           <OnboardingButton
             label="Skip"

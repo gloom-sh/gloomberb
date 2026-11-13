@@ -6,7 +6,7 @@ import { t, tf } from "../../../i18n";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
 import { formatPercentRaw } from "../../../utils/format";
-import { Button, NumberField, TextField } from "../../ui";
+import { Button, NumberField, Prose, TextField } from "../../ui";
 import { DelayedMark } from "../../ui/delayed-mark";
 import { useFreeQuoteDelay } from "../../../api-client/plan-access";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -317,6 +317,9 @@ function SignedNumberField(props: ComponentProps<typeof NumberField>) {
   return <NumberField {...props} allowNegative />;
 }
 
+/** Cells the note under the terminal's form wraps across in a card `columns` wide: its two cells of indent on each side. */
+const tuiNoteWidth = (columns: number) => Math.max(8, columns - 4);
+
 /** The line under the terminal's form, as TuiPositionsPanel draws it. */
 function tuiPositionsNote(state: OnboardingPositionsState, editing: boolean): string {
   return state.error ?? (state.submitting ? t("adding...") : positionsHint(editing, state.positions.length));
@@ -328,11 +331,11 @@ function tuiPositionsNote(state: OnboardingPositionsState, editing: boolean): st
  * line on adding more later. The card is as tall as what it holds.
  */
 export function tuiPositionsPanelRows(state: OnboardingPositionsState, editing: boolean, width: number): number {
-  const noteRows = wrapTextLines(tuiPositionsNote(state, editing), Math.max(1, width - 4)).length;
+  const noteRows = wrapTextLines(tuiPositionsNote(state, editing), tuiNoteWidth(width)).length;
   return POSITION_FIELDS.length + noteRows + 4 + Math.min(state.positions.length, TUI_VISIBLE_ROWS);
 }
 
-function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut }: PositionsPanelProps) {
+function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut, columns }: PositionsPanelProps) {
   const colors = useThemeColors();
   // The newest rows, until the cursor climbs above them.
   const selectedIndex = state.positions.findIndex((row) => row.symbol === selectedSymbol);
@@ -344,11 +347,21 @@ function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut 
       {POSITION_FIELDS.map((field, index) => (
         <TuiFieldRow key={field} field={field} index={index} state={state} inputRef={inputRef} editing={editing} />
       ))}
-      {/* Wraps in a narrow window (64 columns) rather than cutting how the step goes on. */}
-      <Box flexShrink={0}>
-        <Text fg={state.error ? colors.negative : state.submitting ? colors.textDim : colors.textMuted} wrapText>
-          {tuiPositionsNote(state, editing)}
-        </Text>
+      {/* Wraps in a narrow window (64 columns) rather than cutting how the step goes on, at the words the
+          card's height counted (tuiPositionsPanelRows), so the card holds every line it draws. */}
+      <Box flexShrink={0} flexDirection="column">
+        {columns ? (
+          <Prose
+            text={tuiPositionsNote(state, editing)}
+            width={tuiNoteWidth(columns)}
+            figures={false}
+            color={state.error ? colors.negative : state.submitting ? colors.textDim : colors.textMuted}
+          />
+        ) : (
+          <Text fg={state.error ? colors.negative : state.submitting ? colors.textDim : colors.textMuted} wrapText>
+            {tuiPositionsNote(state, editing)}
+          </Text>
+        )}
       </Box>
       <Box height={1} />
       <Box height={1} flexDirection="row" overflow="hidden">
@@ -405,6 +418,8 @@ export interface PositionsPanelProps {
   selectedSymbol: string | null;
   /** Command bar shortcut in the host's notation, e.g. "Ctrl+K". */
   shortcut: string;
+  /** The terminal card's content columns, the width its height counts the note's lines at. */
+  columns?: number;
 }
 
 /**
