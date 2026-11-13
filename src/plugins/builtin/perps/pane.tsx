@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -69,7 +70,7 @@ function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data:
       ["Mark", `${price(row.markPrice)} ${row.quoteCurrency}`], ["Oracle", `${price(row.oraclePrice)} ${row.quoteCurrency}`], ["Premium vs oracle", percent(row.premium)]]],
     ["Funding", [["Funding", `${percent(row.fundingRate, 5)} / ${fundingInterval(row)}`, row.fundingKind === "last-paid" ? "Last paid" : row.fundingKind === "continuous" ? "Continuous rate" : "Current rate"],
       ["Funding 8h / APR", `${percent(row.fundingRate8h, 4)} / ${percent(row.fundingApr, 2)}`, row.fundingIntervalHours ? `APR = current ${aprFormula(row.fundingIntervalHours)}` : undefined],
-      ...(row.predictedFundingRate != null ? [["Predicted funding", `${percent(row.predictedFundingRate)} / ${row.predictedFundingIntervalHours ?? "--"}h`] as [string, string]] : []),
+      ...(row.predictedFundingRate != null ? [["Predicted funding", `${percent(row.predictedFundingRate)} / ${row.predictedFundingIntervalHours ?? MISSING_VALUE}h`] as [string, string]] : []),
       ...(row.nextFundingAt ? [["Next funding", time(row.nextFundingAt)] as [string, string]] : []),
       ...(acrossVenues ? [["APR across venues", acrossVenues.text] as [string, string]] : [])]],
     ["Open Interest", [["Open interest", `${compact(row.openInterestBase)} ${row.baseAsset} · ${compact(row.openInterestUsd)} USD`],
@@ -77,7 +78,7 @@ function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data:
     ...(positioning ? [["Positioning", positioning.map((field) => [field.label, field.text, field.detail])] as [string, EvidenceField[]]] : []),
     ...(row.underlying ? [["Underlying", [...listed, ["Underlying last", `${price(row.underlying.price)} ${row.underlying.currency}`, time(row.underlying.asOf)], ["Underlying session", row.underlying.marketState ?? "Unknown"],
       ["Premium vs underlying", percent(row.underlyingPremium)], ["Closed-market premium", percent(row.closedMarketPremium)]]] as [string, EvidenceField[]]] : []),
-    ["Contract", [["Contract", `${label(row.contractType)} · ${row.priceMultiplier}× price`], ["Margin", row.marginCurrency], ["Max leverage", row.maxLeverage == null ? "--" : `${row.maxLeverage}×`],
+    ["Contract", [["Contract", `${label(row.contractType)} · ${row.priceMultiplier}× price`], ["Margin", row.marginCurrency], ["Max leverage", row.maxLeverage == null ? MISSING_VALUE : `${row.maxLeverage}×`],
       ["Margin mode", row.isolatedOnly === null ? "Unspecified" : row.isolatedOnly ? "Isolated only" : "Cross / isolated"], ["Listing", row.delisted ? "Delisted" : "Active"], ["Confidence", label(row.confidence)]]],
   ];
   // The ticker's link is not listed in the pane menu again: `d` there opens the same DES.

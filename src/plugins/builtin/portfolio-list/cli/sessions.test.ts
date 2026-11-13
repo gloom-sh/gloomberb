@@ -150,7 +150,7 @@ describe("what a portfolio is priced at and when each row's price is from", () =
     setSystemTime(new Date("2026-10-10T13:00:00Z"));
     try {
       expect(await showText(["show", "Main"])).toContain("Source: Local portfolio and Gloom Cloud · XETRA and US Fri 9 Oct 2026 close · markets closed · "
-        + "XETRA opens Mon 07:00 UTC, 09:00 CET · US Mon 13:30 UTC, 09:30 ET");
+        + "XETRA opens Mon 07:00 UTC, 09:00 CEST · US Mon 13:30 UTC, 09:30 ET");
     } finally {
       setSystemTime();
     }

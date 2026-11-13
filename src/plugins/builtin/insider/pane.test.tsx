@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import type { CloudInsiderSignalsParams, InsiderSignalRow } from "../../../api-client/insider-signals";
@@ -231,8 +232,8 @@ test("Trades and Insiders are a choice in INS's query bar; Insiders lists each i
   expect(frame).toMatch(/Window\s+7D\s+30D\s+90D/);
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
   // Each on the side their trades net to: the buyer's dollars first, the seller's after.
-  expect(frame).toMatch(/Anna B\. Smith\s+Director\s+3rd\s+2\.5x\s+\+12%\s+\$1\.0k\s+--\s+2026-10-14/);
-  expect(frame).toMatch(/Bob Jones\s+CFO\s+2nd\s+--\s+-40%\s+--\s+\$52\.0k\s+2026-10-09/);
+  expect(frame).toMatch(new RegExp(String.raw`Anna B\. Smith\s+Director\s+3rd\s+2\.5x\s+\+12%\s+\$1\.0k\s+${MISSING_VALUE}\s+2026-10-14`));
+  expect(frame).toMatch(new RegExp(String.raw`Bob Jones\s+CFO\s+2nd\s+${MISSING_VALUE}\s+-40%\s+${MISSING_VALUE}\s+\$52\.0k\s+2026-10-09`));
   expect(frame.indexOf("Anna B. Smith")).toBeLessThan(frame.indexOf("Bob Jones"));
   // The sold column sorts the sellers first.
   await tui.clickFrameText("SOLD");
@@ -275,8 +276,8 @@ test("INS on several tickers opens on their trades in one table with a Ticker co
   let frame = tui.frame();
   expect(frame).toMatch(/Type\s+All \(2\)\s+Buys and sells \(2\)\s+Other \(0\).*Trades\s+Insiders/);
   expect(frame).toMatch(/TICKER\s+DATE\s+INSIDER/);
-  expect(frame).toMatch(/AAA\s+\S+\s+Anna B\. Smith\s+.*BUY/);
-  expect(frame).toMatch(/BBB\s+\S+\s+Bob Jones\s+.*BUY/);
+  expect(frame).toMatch(/AAA\s+\d{2} \w{3} \d{4}\s+Anna B\. Smith\s+.*BUY/);
+  expect(frame).toMatch(/BBB\s+\d{2} \w{3} \d{4}\s+Bob Jones\s+.*BUY/);
   // Each company's lines together in the order given; one with no Form 4 is named, not left out.
   expect(frame.indexOf("Anna B. Smith")).toBeLessThan(frame.indexOf("Bob Jones"));
   expect(asked).toEqual([]);

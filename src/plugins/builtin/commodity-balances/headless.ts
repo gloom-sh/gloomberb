@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCommodityBalances } from "./client";
 import { cropEstimateMonth, formatBalanceValue, formatForecast, PSD_CROPS, psdCrop, unknownCropMessage } from "./model";
@@ -8,8 +9,8 @@ import { cropEstimateMonth, formatBalanceValue, formatForecast, PSD_CROPS, psdCr
  */
 const SEMIANNUAL_CROPS = new Set(["Coffee", "Sugar"]);
 
-const amount = (value: unknown) => typeof value === "number" ? formatBalanceValue(value) : "--";
-const forecast = (value: unknown) => typeof value === "number" ? formatForecast(value) : "--";
+const amount = (value: unknown) => typeof value === "number" ? formatBalanceValue(value) : MISSING_VALUE;
+const forecast = (value: unknown) => typeof value === "number" ? formatForecast(value) : MISSING_VALUE;
 
 export const commodityBalancesHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",

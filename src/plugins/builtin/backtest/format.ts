@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { BacktestResult } from "./engine";
 import { currencyPairCode, fxRateDigits } from "../../../utils/currency-pair";
 
@@ -44,7 +45,7 @@ export const SUMMARY_ROWS: SummaryRow[] = [
 ];
 
 export function formatStat(stat: StatValue | null): string {
-  if (!stat || stat.value == null || !Number.isFinite(stat.value)) return "--";
+  if (!stat || stat.value == null || !Number.isFinite(stat.value)) return MISSING_VALUE;
   const { value, kind } = stat;
   if (kind === "count") return String(Math.round(value));
   if (kind === "ratio") return value.toFixed(2);
@@ -59,7 +60,7 @@ export function formatStat(stat: StatValue | null): string {
  * `--` for a trade still open.
  */
 export function formatTradePrice(value: number | null | undefined, symbol: string): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const pair = currencyPairCode(symbol);
   if (pair) return value.toFixed(fxRateDigits(pair.slice(3), value));
   return Math.abs(value) >= 1 ? value.toFixed(2) : value.toPrecision(4);

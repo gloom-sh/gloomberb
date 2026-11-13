@@ -2,7 +2,7 @@ import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneRow } from ".
 import type { FinancialStatement, TickerFinancials } from "../../../types/financials";
 import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { errorMessage } from "../../../utils/errors";
-import { formatLevelPercent, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatLevelPercent, formatNumber } from "../../../utils/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
 import { isNotMeaningful, NOT_MEANINGFUL_TEXT, revenueMargin } from "../../../utils/growth";
 import { BANK_OR_INSURER_EBITDA, ebitdaLacksDepreciation, ebitdaOperatingIncomeBasis, isBankOrInsurerIndustry } from "../../../utils/ebitda";
@@ -67,10 +67,10 @@ export function parseExtraColumns(value: unknown): ExtraColumnId[] {
   return typeof value === "string" && value ? value.split(",").filter((id): id is ExtraColumnId => (EXTRA_COLUMN_IDS as readonly string[]).includes(id)) : [];
 }
 
-const percent = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(2)}%` : "-");
+const percent = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(2)}%` : MISSING_VALUE);
 /** Why a statement column's cell is blank ("no D&A"), in its place; "-" when nothing says. */
-const gap = (row: HeadlessPaneRow, key: string) => (typeof row[key] === "string" && row[key] ? row[key] as string : "-");
-const text = (value: unknown) => (typeof value === "string" && value ? value : "-");
+const gap = (row: HeadlessPaneRow, key: string) => (typeof row[key] === "string" && row[key] ? row[key] as string : MISSING_VALUE);
+const text = (value: unknown) => (typeof value === "string" && value ? value : MISSING_VALUE);
 
 /** Each added column, then (exports only) the source and as-of of its cells. */
 interface ColumnSpec {
@@ -100,7 +100,7 @@ const COLUMN_SPECS: Record<ExtraColumnId, ColumnSpec> = {
       key: "nextEarningsDate", header: "Next Earnings", format: text, shrink: false,
       // The text table says when in the day and whether the date is confirmed; exports keep them as columns.
       textFormat: (value, row) => (typeof value === "string" && value
-        ? [value, row.nextEarningsTiming, row.nextEarningsStatus === "estimated" ? "est" : null].filter(Boolean).join(" ") : "-"),
+        ? [value, row.nextEarningsTiming, row.nextEarningsStatus === "estimated" ? "est" : null].filter(Boolean).join(" ") : MISSING_VALUE),
     }, { key: "nextEarningsTiming", header: "Next Earnings Timing", format: text }, { key: "nextEarningsStatus", header: "Next Earnings Status", format: text }],
     sourceKey: "nextEarningsSource",
     asOfKey: "nextEarningsAsOf",
@@ -109,8 +109,8 @@ const COLUMN_SPECS: Record<ExtraColumnId, ColumnSpec> = {
     label: "Avg Target",
     columns: [
       { key: "targetMean", header: "Avg Target", align: "right", unitKey: "targetCurrency", unitColumn: true,
-        format: (value, row) => (typeof value === "number" ? formatAnalystPrice(value, typeof row.targetCurrency === "string" ? row.targetCurrency : undefined) : "-") },
-      { key: "analystCount", header: "Analysts", align: "right", format: (value) => (typeof value === "number" ? String(value) : "-") },
+        format: (value, row) => (typeof value === "number" ? formatAnalystPrice(value, typeof row.targetCurrency === "string" ? row.targetCurrency : undefined) : MISSING_VALUE) },
+      { key: "analystCount", header: "Analysts", align: "right", format: (value) => (typeof value === "number" ? String(value) : MISSING_VALUE) },
     ],
     sourceKey: "targetSource",
     asOfKey: "targetAsOf",

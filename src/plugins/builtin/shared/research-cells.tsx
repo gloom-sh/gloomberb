@@ -4,7 +4,7 @@ import { SplitBar } from "../../../components/ui/split-bar";
 import { blendHex } from "../../../theme/colors";
 import type { ThemeColors } from "../../../theme/colors";
 import { Box, Text, TextAttributes } from "../../../ui";
-import { displayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 
 /**
  * Cells the research data panes share, so attention, hiring, awards, power and
@@ -14,7 +14,7 @@ import { displayWidth } from "../../../utils/format";
  */
 
 /** The one placeholder for a value the source does not give. */
-export const NO_VALUE = "--";
+export const NO_VALUE = MISSING_VALUE;
 
 export const missingCell = (colors: ThemeColors): DataTableCell => ({ text: NO_VALUE, value: null, color: colors.textMuted });
 

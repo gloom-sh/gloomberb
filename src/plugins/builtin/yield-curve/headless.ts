@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type {
   HeadlessPaneContext,
   HeadlessPaneDefinition,
@@ -19,9 +20,9 @@ import { formatSwapBp, selectedSwapTenor } from "./swaps-model";
 import { logFailure } from "../../../utils/log-failure";
 import { usBondMarketClosedNote } from "../../../market-data/us-bond-market";
 
-const percent = (value: unknown) => value == null ? "-" : `${Number(value).toFixed(2)}%`;
+const percent = (value: unknown) => value == null ? MISSING_VALUE : `${Number(value).toFixed(2)}%`;
 /** A move already in basis points: `+3bp`, `-1bp`, `0bp`. */
-const basisPoints = (value: unknown) => value == null ? "-" : formatBasisPoints(Number(value) / 100);
+const basisPoints = (value: unknown) => value == null ? MISSING_VALUE : formatBasisPoints(Number(value) / 100);
 const MATURITY_COLUMNS = [
   { key: "maturity", header: "Maturity" },
   {
@@ -39,7 +40,7 @@ const COLUMNS = [
   { key: "change1dBasisPoints", header: "1D bp", align: "right" as const, format: basisPoints },
   AS_OF_COLUMN,
 ];
-const percentile = (value: unknown) => value == null ? "-" : Number(value).toFixed(0);
+const percentile = (value: unknown) => value == null ? MISSING_VALUE : Number(value).toFixed(0);
 /**
  * With Gloom Cloud's move ranks: each tenor's 1D and 1W move, how big it was
  * against every move of its kind (a percentile), and the year that history
@@ -51,7 +52,7 @@ const RANKED_COLUMNS = [
   { key: "move1dPercentile", header: "1D pctl", align: "right" as const, format: percentile },
   { key: "change1wBasisPoints", header: "1W bp", align: "right" as const, format: basisPoints },
   { key: "move1wPercentile", header: "1W pctl", align: "right" as const, format: percentile },
-  { key: "movesSince", header: "Since", format: (value: unknown) => typeof value === "string" ? value.slice(0, 4) : "-" },
+  { key: "movesSince", header: "Since", format: (value: unknown) => typeof value === "string" ? value.slice(0, 4) : MISSING_VALUE },
   AS_OF_COLUMN,
 ];
 const RANK_NOTE = "pctl is the share of the tenor's 1D (or 1W) moves since the year in Since that were smaller, ties counted half.";
@@ -74,8 +75,8 @@ const WORLD_COLUMNS = [
 const SWAP_COLUMNS = [
   { key: "tenor", header: "Tenor" },
   { key: "rate", header: "Rate %", align: "right" as const, format: percent },
-  { key: "changeBp", header: "1D bp", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatSwapBp(Number(value)) },
-  { key: "spreadBp", header: "Spread bp", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatSwapBp(Number(value)) },
+  { key: "changeBp", header: "1D bp", align: "right" as const, format: (value: unknown) => value == null ? MISSING_VALUE : formatSwapBp(Number(value)) },
+  { key: "spreadBp", header: "Spread bp", align: "right" as const, format: (value: unknown) => value == null ? MISSING_VALUE : formatSwapBp(Number(value)) },
   { key: "tradeCount", header: "Trades", align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => `${value}${row.quality === "thin" ? " Thin" : ""}` },
 ];

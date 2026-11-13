@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
@@ -122,7 +123,7 @@ test("the curve names IV and its look-backs, and the tenors show how far each mo
   expect(frame).toMatch(/TENOR +IV +1W CHG +1M CHG/);
   expect(frame).toMatch(/30D +14\.87 +\+0\.06 +-0\.58/);
   // One close of the 1Y index: no week or month back to compare with.
-  expect(frame).toMatch(/1Y +21\.60 +-- +--/);
+  expect(frame).toMatch(new RegExp(String.raw`1Y +21\.60 +${MISSING_VALUE} +${MISSING_VALUE}`));
   // The default selection is the VIX itself, so the curve's point is the 30D.
   expect(readout()).toBe("30D 14.87  1W ago +0.06  1M ago -0.58");
   expect(frame).not.toContain("yAxis");
@@ -238,7 +239,7 @@ test("FRED closes a failed refresh left lead the footer with when they were save
   failure = outage();
   await renderPane(108, 32);
   // The fixture's indices with no closes keep their warning, after the saved copy.
-  expect(footer()).toMatch(/^saved copy from Sep 25 \d\d:\d\d \S*\[!\] +close 2026-09-25 /);
+  expect(footer()).toMatch(/^saved copy from 25 Sep \d\d:\d\d \S*\[!\] +close 2026-09-25 /);
 
   // The closes on screen stay, called stale, and the refusal is among the warnings (client.test.ts).
   failure = new ApiRequestError("Series not found", 404);

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { SupplyEntity } from "../../../api-client/supply-chain";
 import type { GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
 import { getListingSymbol } from "../../../sources/listing-symbols";
@@ -35,7 +36,7 @@ export function pathLabel(path: GraphPath, data: GraphPayload) {
  */
 export function exposureLabel(path: GraphPath, data: GraphPayload) {
   const exposure = path.exposure;
-  if (!exposure) return "--";
+  if (!exposure) return MISSING_VALUE;
   const denominator = data.nodes.find(node => node.id === exposure.denominatorEntityId);
   return `${Number(exposure.pct.toPrecision(4))}%${exposure.estimated ? " est." : ""} of ${denominator ? entityLabel(denominator) : exposure.denominatorEntityId} ${exposure.basis}`;
 }

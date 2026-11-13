@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -210,7 +211,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     const unknown = row.classification === "unknown";
     switch (col.id) {
       case "symbol": return row.symbol.includes(",") ? { text: row.symbol, color: colors.textBright } : listingCell(row.symbol, colors, state.selected);
-      case "value": return { text: row.driver ? driverValue(row.driver) : "--", value: row.driver?.value ?? null, color: colors.textBright };
+      case "value": return { text: row.driver ? driverValue(row.driver) : MISSING_VALUE, value: row.driver?.value ?? null, color: colors.textBright };
       case "units": return { text: row.driver ? driverUnits(row.driver) : "", color: colors.textDim };
       case "scope": return { text: row.driver ? driverScope(row.driver) : "", color: colors.textDim };
       case "label": {
@@ -233,15 +234,15 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const items = useMemo(() => [...rows, ...Array.from({ length: lockedRows }, (_, index): ExposureRow => ({ id: `locked:${index}`, symbol: "", shockId: "", label: "", basis: null, period: null,
     exposure: null, impact: null, weight: null, classification: "unknown", incomplete: false, components: [], unknowns: [] }))], [rows, lockedRows]);
   const figures: StatItem[] = data ? tab === "drivers" ? [
-    { label: "Dataset", value: selected?.driver ? selected.driver.kind === "kpi" ? "KPI" : humanLabel(selected.driver.kind) : "--" },
-    { label: "As of", value: selected?.driver?.asOf?.slice(0, 10) ?? "--" },
-    { label: "Basis", value: selected?.driver?.basis ? humanLabel(selected.driver.basis) : "--" },
+    { label: "Dataset", value: selected?.driver ? selected.driver.kind === "kpi" ? "KPI" : humanLabel(selected.driver.kind) : MISSING_VALUE },
+    { label: "As of", value: selected?.driver?.asOf?.slice(0, 10) ?? MISSING_VALUE },
+    { label: "Basis", value: selected?.driver?.basis ? humanLabel(selected.driver.basis) : MISSING_VALUE },
   ] : tab === "portfolio" ? [
     { label: "Gross holdings", value: fraction(data.portfolio.grossWeight) }, { label: "Net holdings", value: fraction(data.portfolio.netWeight) },
     { label: "Unknown gross", value: fraction(data.portfolio.unknownGrossWeight), tone: "warning" },
     { label: "Cash / residual", value: `${data.portfolio.cashWeight === null ? "?" : fraction(data.portfolio.cashWeight)} / ${fraction(data.portfolio.residualWeight)}` },
   ] : [
-    { label: "Holding weight", value: selected?.weight == null ? "--" : fraction(selected.weight) },
+    { label: "Holding weight", value: selected?.weight == null ? MISSING_VALUE : fraction(selected.weight) },
     { label: "Exposure", value: rangeText(selected?.exposure ?? null), detail: selected?.exposure ? selected.classification : undefined, tone: selected?.classification === "disclosed" ? "accent" : "warning" },
     { label: "Operating stress", value: rangeText(selected?.impact ?? null), detail: "estimate" },
     { label: "Bound", value: selected?.incomplete ? "Incomplete" : "Available", tone: selected?.incomplete ? "warning" : "muted" },

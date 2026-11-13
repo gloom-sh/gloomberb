@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { growthRate, NOT_MEANINGFUL, outflowGrowthRate, rateValue, revenueMargin } from "./growth";
 import { epsSurprise } from "../plugins/builtin/shared/earnings-report";
 import { signedPercent } from "../plugins/builtin/earnings/format";
+import { MISSING_VALUE } from "./format";
 
 test("growth off a zero or negative base is N/M, never a percentage of a loss", () => {
   expect(growthRate(12, 10)).toBeCloseTo(0.2, 12);
@@ -41,5 +42,5 @@ test("an earnings surprise against a loss or zero estimate reads N/M", () => {
   expect(epsSurprise(null, 0.5)).toBeNull();
   expect(signedPercent(epsSurprise(-1.14, -1.47))).toBe("N/M");
   expect(signedPercent(epsSurprise(0.55, 0.5))).toBe("+10.0%");
-  expect(signedPercent(null)).toBe("--");
+  expect(signedPercent(null)).toBe(MISSING_VALUE);
 });

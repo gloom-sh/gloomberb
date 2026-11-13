@@ -27,7 +27,7 @@ import type { GloomPlugin, PaneProps, PaneSettingField } from "../../../types/pl
 import type { TickerRecord } from "../../../types/ticker";
 import { t, tf } from "../../../i18n";
 import { priceColor } from "../../../theme/colors";
-import { clipToDisplayWidth, displayWidth, formatCompact, formatCurrency, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, clipToDisplayWidth, displayWidth, formatCompact, formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { useAppSelector, usePaneAppConfig, usePaneSettingValue, usePaneStateValue } from "../../../state/app/context";
 import { usePluginTickerActions } from "../../runtime";
@@ -149,7 +149,7 @@ function loadCollectionSnapshots(
 }
 
 function formatMoneyCompact(value: number | null | undefined, currency: string): string {
-  if (value == null) return "—";
+  if (value == null) return MISSING_VALUE;
   if (currency.toUpperCase() === "USD") return `$${formatCompact(value)}`;
   return `${formatCompact(value)} ${currency}`;
 }
@@ -171,7 +171,7 @@ function sessionMark(asset: HeatmapBoardAsset): string | null {
 
 function formatMove(asset: HeatmapBoardAsset, change: number | null): string {
   const mark = sessionMark(asset);
-  return change == null ? "—" : mark ? `${formatPercentRaw(change)} ${mark}` : formatPercentRaw(change);
+  return change == null ? MISSING_VALUE : mark ? `${formatPercentRaw(change)} ${mark}` : formatPercentRaw(change);
 }
 
 /**
@@ -658,7 +658,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
       parts: [
         { text: selectedAsset.symbol, tone: "label" as const },
         {
-          text: heatmapMove(selectedAsset) == null ? "—" : formatPercentRaw(heatmapMove(selectedAsset)!),
+          text: heatmapMove(selectedAsset) == null ? MISSING_VALUE : formatPercentRaw(heatmapMove(selectedAsset)!),
           tone: "value" as const,
           color: heatmapMove(selectedAsset) == null ? undefined : priceColor(heatmapMove(selectedAsset)!),
           bold: true,

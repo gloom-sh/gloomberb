@@ -35,17 +35,17 @@ test("one fetch at a time, the last list survives a failure and a restart, and a
   const catalog = createSignedInBrokerCatalog(load, () => now);
   catalog.attach(persistence);
 
-  await Promise.all([catalog.refresh(), catalog.refresh()]);
+  await Promise.all([catalog.refreshAndWait(), catalog.refreshAndWait()]);
   expect(calls).toBe(1);
   expect(catalog.get()).toEqual([IBKR]);
 
   now += 60_000;
-  await catalog.refresh();
+  await catalog.refreshAndWait();
   expect(calls).toBe(1);
 
   now += 5 * 60_000;
   fail = true;
-  await catalog.refresh();
+  await catalog.refreshAndWait();
   expect(calls).toBe(2);
   expect(catalog.get()).toEqual([IBKR]);
 
@@ -61,7 +61,7 @@ test("a process that never fetches picks up a newer list another one saved, look
   let served = [IBKR];
   const view = createSignedInBrokerCatalog(async () => ({ connectors: served }), () => now);
   view.attach(persistence);
-  await view.refresh();
+  await view.refreshAndWait();
 
   let bunLoads = 0;
   const bun = createSignedInBrokerCatalog(async () => {
@@ -73,13 +73,13 @@ test("a process that never fetches picks up a newer list another one saved, look
 
   now += 10 * 60_000;
   served = [trading];
-  await view.refresh();
+  await view.refreshAndWait();
   expect(bun.find("ibkr")).toEqual(trading);
 
   // Within the minute the known list is kept without reading the store again.
   served = [IBKR];
   now += 30_000;
-  await view.refresh({ force: true });
+  await view.refreshAndWait({ force: true });
   expect(bun.find("ibkr")).toEqual(trading);
   now += 30_000;
   expect(bun.find("ibkr")).toEqual(IBKR);

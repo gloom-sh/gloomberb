@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CatalystEvent, CatalystFilters, CatalystResponse, CatalystType } from "../../../api-client/catalysts";
 import type { DataTableColumn, TableSection } from "../../../components";
 import { publicTickerKey } from "../../../utils/exchanges";
@@ -63,11 +64,11 @@ function catalystListedField(event: CatalystEvent, read: CatalystDateRead): Date
 export const catalystDate = (event: CatalystEvent, read: CatalystDateRead = "any"): string => {
   const field = catalystListedField(event, read);
   if (field === "observed") return event.observedAt.slice(0, 16).replace("T", " ");
-  if (catalystDateWithheld(event, field)) return "--";
+  if (catalystDateWithheld(event, field)) return MISSING_VALUE;
   const key = field === "announced" || field === "effective" || field === "deadline" ? field
     : event.deadlineDate ? "deadline" : event.effectiveDate ? "effective" : "announced";
   const value = event[`${key}Date`];
-  if (!value) return "--";
+  if (!value) return MISSING_VALUE;
   return value.slice(0, event.datePrecision[key] === "year" ? 4 : event.datePrecision[key] === "month" ? 7 : 10);
 };
 type FitColumn = DataTableColumn & { min?: number };
@@ -138,7 +139,7 @@ export function catalystParties(event: Pick<CatalystEvent, "parties" | "title">)
   const names = [...new Set(parties.map((party) => shortPartyName(party.name)))];
   if (!names.length) {
     const filer = titleFiler(event);
-    return filer ? shortPartyName(filer.name) : "--";
+    return filer ? shortPartyName(filer.name) : MISSING_VALUE;
   }
   return names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0]!;
 }
@@ -176,7 +177,7 @@ const TYPE_TONES: Record<CatalystType, StateTone> = {
 };
 export const catalystTypeTone = (type: CatalystType): StateTone => TYPE_TONES[type] ?? "text";
 function changeValue(value: unknown): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) return value.map(changeValue).join(", ") || "None";
   if (typeof value === "object") return Object.entries(value).map(([key, part]) => `${humanLabel(key)}: ${changeValue(part)}`).join("; ") || "None";
@@ -239,7 +240,7 @@ export function catalystSection(event: CatalystEvent, read: CatalystDateRead, ch
   const field = catalystListedField(event, read);
   if (catalystDateWithheld(event, field)) return CATALYST_DATE_WITHHELD;
   const date = catalystDate(event, field);
-  if (date === "--") return "Undated";
+  if (date === MISSING_VALUE) return "Undated";
   return /^\d{4}-\d{2}/.test(date) ? `${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}` : date;
 }
 /** The first change in words, before and after: `Deadline 2027-03-01 → 2027-04-01`. */

@@ -1,6 +1,6 @@
 import type { DataTableColumn } from "../../../components";
 import { fitChartTableColumns } from "../../../components/chart-table";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 
 export const PRIMARY_DEALERS_PANE_ID = "primary-dealers";
 
@@ -215,14 +215,14 @@ export function pointsInRange(points: readonly SeriesPoint[], range: DealerRange
 }
 
 export function formatLevel(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const decimals = Number.isInteger(value) ? 0 : 2;
   const text = formatNumber(Math.abs(value) === 0 ? 0 : value, decimals);
   return text === "-0" ? "0" : text;
 }
 
 export function formatChange(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const text = formatLevel(Math.abs(value));
   if (text === "0") return "0";
   return value > 0 ? `+${text}` : `-${text}`;

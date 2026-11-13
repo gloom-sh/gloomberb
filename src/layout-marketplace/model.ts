@@ -1,3 +1,4 @@
+import { formatShortDate } from "../utils/datetime-format";
 import {
   findPaneInstance,
   type LayoutConfig,
@@ -169,7 +170,7 @@ function marketplaceAuthorLabel(author: LayoutMarketplaceEntry["author"]): strin
 export function formatPublishedAt(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return formatShortDate(date);
 }
 
 export function buildOwnedEntries(

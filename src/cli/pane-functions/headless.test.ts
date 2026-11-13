@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../utils/format";
 import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
@@ -490,8 +491,8 @@ test("series text distinguishes explicit percent, basis-point, multiple and inde
   // A multiple prints to two decimals, or three significant digits where two would flatten it; the export keeps every digit.
   expect(text.split("\n").find(line => line.includes("Trailing P/E"))).toMatch(/38\.33\s+x/);
   expect(text.split("\n").find(line => line.includes("ETH over BTC"))).toMatch(/0\.0307\s+x/);
-  expect(text.split("\n").find(line => line.includes("Unknown unit"))).toMatch(/0\s+-/);
-  expect(text.split("\n").find(line => line.includes("Missing value"))).toMatch(/-\s+%/);
+  expect(text.split("\n").find(line => line.includes("Unknown unit"))).toMatch(new RegExp(String.raw`0\s+${MISSING_VALUE}`));
+  expect(text.split("\n").find(line => line.includes("Missing value"))).toMatch(new RegExp(String.raw`${MISSING_VALUE}\s+%`));
   expect(jsonData(definition, result)).toMatchObject({ data: { series: result.series } });
   // The unit is each row's currency_or_unit, beside a bare Value.
   const freshness = deriveHeadlessFreshness(definition, result);

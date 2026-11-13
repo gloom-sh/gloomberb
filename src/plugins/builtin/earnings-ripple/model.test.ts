@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import type { EarningsCalendarReport } from "../../../api-client/earnings";
 import type { SupplyChainPayload, SupplyEntity, SupplyRow } from "../../../api-client/supply-chain";
@@ -82,7 +83,7 @@ describe("earnings ripple", () => {
     const rows = projectSecondHop(chains, new Map([["NVDA", graph]]),
       ["TSM", "ASML", "SMCI", "MSFT", "2317", "AMAT"].map((symbol) => report(symbol, "2026-10-20")).concat(report("NVDA", "2026-11-19")));
     expect(rows.map((row) => [row.company, row.link, row.via, row.hops.map(hopLabel).join(" › "), row.exposure, row.holdingDate])).toEqual([
-      ["AMAT", "customer", "MSFT", "19% of NVDA › --", null, "2026-11-19"],
+      ["AMAT", "customer", "MSFT", `19% of NVDA › ${MISSING_VALUE}`, null, "2026-11-19"],
       ["ASML", "supplier", "TSM", "22% of TSM › 29% of ASML", "6.38% est. of TSM revenue", "2026-11-19"],
     ]);
   });

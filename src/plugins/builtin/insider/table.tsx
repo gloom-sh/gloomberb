@@ -46,7 +46,7 @@ export function renderInsiderCell(
   const figureColor = row.tone === "neutral" ? colors.textDim : colors.text;
   switch (column.id) {
     case "date":
-      return { text: formatInsiderDate(row.date), value: isoDay(row.date), color: colors.textDim };
+      return { text: formatInsiderDate(row.date, column.compact), value: isoDay(row.date), color: colors.textDim };
     case "insider":
       return { text: row.name, color: row.entry.isLoading ? colors.textDim : colors.text };
     case "role":

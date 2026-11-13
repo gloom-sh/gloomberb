@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../utils/format";
 import type { FuturesContractSpec, FuturesContractTermsPayload } from "../api-client/futures-curve";
 import type { ActiveQuoteDisplay } from "../market-data/market/status";
 import type { PricePoint } from "../types/financials";
@@ -74,7 +75,7 @@ export function futuresContractSize(spec: Pick<FuturesContractSpec, "unit" | "si
 
 /** A count of contracts and what each one is: "1,000 × 100 oz", or the count alone when the size is unknown. */
 export function futuresQuantityText(quantity: string, size: Pick<FuturesContractSize, "size"> | null | undefined): string {
-  return size?.size && quantity !== "—" ? `${quantity} × ${size.size}` : quantity;
+  return size?.size && quantity !== MISSING_VALUE ? `${quantity} × ${size.size}` : quantity;
 }
 
 function hasMultiplier(position: Pick<TickerPosition, "multiplier">): boolean {

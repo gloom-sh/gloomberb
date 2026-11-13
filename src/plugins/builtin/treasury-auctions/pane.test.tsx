@@ -170,12 +170,12 @@ describe("TreasuryAuctionsPane", () => {
     const lines = tui.frame().split("\n");
     const row = (date: string, term: string) => lines.find((line) => line.includes(date) && line.includes(term));
     // Fiscal Data's 22 Oct 5-year TIPS had no results: it reads its real yield, stop-out and bid-to-cover now, and the bond of the 21st its yield.
-    expect(row("Oct 22", "5-Year")).toMatch(/TIPS\s+5-Year\s+2\.367%\s+6\.7bp\s+2\.41/);
-    expect(row("Oct 21", "19-Year 10-Month")).toMatch(/Bond\s+19-Year 10-Month\s+5\.469%/);
+    expect(row("22 Oct", "5-Year")).toMatch(/TIPS\s+5-Year\s+2\.367%\s+6\.7bp\s+2\.41/);
+    expect(row("21 Oct", "19-Year 10-Month")).toMatch(/Bond\s+19-Year 10-Month\s+5\.469%/);
     // The auctions after it, through 5 Nov, are on the board; the ones announced for the next week read Pending.
-    expect(row("Nov 5", "4-Week")).toMatch(/Bill\s+4-Week\s+3\.9\d\d%/);
-    expect(row("Nov 12", "30-Year")).toMatch(/Bond\s+30-Year\s+Pending/);
-    expect(row("Nov 9", "3-Year")).toMatch(/Note\s+3-Year\s+Pending/);
+    expect(row("5 Nov", "4-Week")).toMatch(/Bill\s+4-Week\s+3\.9\d\d%/);
+    expect(row("12 Nov", "30-Year")).toMatch(/Bond\s+30-Year\s+Pending/);
+    expect(row("9 Nov", "3-Year")).toMatch(/Note\s+3-Year\s+Pending/);
     expect(lines.filter((line) => line.includes("Pending"))).toHaveLength(6);
   });
 
@@ -218,7 +218,7 @@ describe("TreasuryAuctionsPane", () => {
     await tui.render(pane(), { width: 92, height: 20 });
     await settle();
     expect(tui.frame()).toContain("13-Week");
-    expect(footer()).toMatch(/^saved copy from \S+ \d+ \d\d:\d\d +\S/);
+    expect(footer()).toMatch(/^saved copy from \d+ \S+ \d\d:\d\d +\S/);
 
     setHttpFetchTransport(async () => new Response("not found", { status: 404 }));
     await tui.render(pane(), { width: 92, height: 20 });
@@ -257,7 +257,7 @@ describe("TreasuryAuctionsPane after view", () => {
     attachTreasuryAuctionsPersistence({ getResource: () => record, setResource: () => record } as unknown as PluginPersistence);
   };
   // A row's date, after the cursor bar the focused table draws beside the selected row; with its year when the rows span two.
-  const ROW_DATE = /^[\s▌▀]*([A-Z][a-z]{2} \d+|\d{4}-\d{2}-\d{2})\s/;
+  const ROW_DATE = /^[\s▌▀]*(\d+ [A-Z][a-z]{2}(?: \d{4})?)\s/;
   const rowDates = () => tui.frame().split("\n").filter((line) => line.includes("7-Year")).flatMap((line) => line.match(ROW_DATE)?.[1] ?? []);
   /** Waits, up to about two seconds, for the frame to pass `done`: the yield moves arrive after the board. */
   const until = async (done: () => boolean) => {
@@ -273,7 +273,7 @@ describe("TreasuryAuctionsPane after view", () => {
     await until(() => rowDates().join() === dates.join());
     return rowDates();
   };
-  const newestRow = () => tui.frame().split("\n").find((line) => line.includes("Oct 28")) ?? "";
+  const newestRow = () => tui.frame().split("\n").find((line) => line.includes("28 Oct")) ?? "";
 
   test("the View control shows the after columns, [ and ] sort by them, and the detail reads the percentiles and the yield's moves", async () => {
     // Wide enough for every after column but the CUSIP.
@@ -290,7 +290,7 @@ describe("TreasuryAuctionsPane after view", () => {
 
     await tui.clickFrameText("After");
     await until(() => tui.frame().includes("B/C PCTL"));
-    expect(rowDates()).toEqual(["Oct 28", "Sep 28", "Aug 28", "Jul 28"]);
+    expect(rowDates()).toEqual(["28 Oct", "28 Sep", "28 Aug", "28 Jul"]);
     // The last auction stopped out 1.0bp over its median like every one before it, bid best of its 25 and took the most indirect
     // (75.0%) and the least dealer; its yield rose 1bp the next session.
     expect(tui.frame()).toMatch(/RATE\s+VS MED\s+MED PCTL\s+B\/C\s+B\/C PCTL\s+INDIRECT\s+IND PCTL\s+DLR PCTL\s+\+1D BP\s+\+5D BP\s+\+20D BP/);
@@ -301,7 +301,7 @@ describe("TreasuryAuctionsPane after view", () => {
 
     // [ steps back over the after columns too: date ascending, CUSIP both ways, then +20D largest first, the newest blank last.
     for (let press = 0; press < 4; press += 1) await emitKeypress({ name: "[", sequence: "[" });
-    expect(await listedDates(["Sep 28", "Aug 28", "Jul 28", "Oct 28"])).toEqual(["Sep 28", "Aug 28", "Jul 28", "Oct 28"]);
+    expect(await listedDates(["28 Sep", "28 Aug", "28 Jul", "28 Oct"])).toEqual(["28 Sep", "28 Aug", "28 Jul", "28 Oct"]);
 
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderSettled();
@@ -318,7 +318,7 @@ describe("TreasuryAuctionsPane after view", () => {
     await tui.clickFrameText("Results");
     await until(() => !tui.frame().includes("B/C PCTL"));
     // (The stub answers every window with the whole board, which Results lists: two years of it, so the dates carry theirs.)
-    expect(rowDates().slice(0, 4)).toEqual(["2026-10-28", "2026-09-28", "2026-08-28", "2026-07-28"]);
+    expect(rowDates().slice(0, 4)).toEqual(["28 Oct 2026", "28 Sep 2026", "28 Aug 2026", "28 Jul 2026"]);
   });
 
   // The footer read "[/]search [f]ilter [{}]view": `v` did nothing and `}` left for Cash & Debt; only a click reached After.
@@ -373,15 +373,15 @@ describe("TreasuryAuctionsPane after view", () => {
     await tui.render(<Harness height={24} width={150} command="7Y --view after --sort 20d --filter note" />, { width: 150, height: 24 });
     await renderSettled();
     await until(() => tui.frame().includes("B/C PCTL"));
-    expect(await listedDates(["Sep 28", "Aug 28", "Jul 28", "Oct 28"])).toEqual(["Sep 28", "Aug 28", "Jul 28", "Oct 28"]);
+    expect(await listedDates(["28 Sep", "28 Aug", "28 Jul", "28 Oct"])).toEqual(["28 Sep", "28 Aug", "28 Jul", "28 Oct"]);
 
     // A plain `AUCT` was opening on the after view, sorted by +20D, on the Notes tab: no bill, oldest moves first.
     await act(async () => runCommand(""));
     await renderSettled();
     await until(() => !tui.frame().includes("B/C PCTL"));
     const rows = tui.frame().split("\n").filter((line) => ROW_DATE.test(line));
-    expect(rows[0]).toMatch(/2026-11-02\s+Bill\s+13-Week\s+3\.900%/);
-    expect(rows.slice(1, 4).map((line) => line.match(ROW_DATE)?.[1])).toEqual(["2026-10-28", "2026-09-28", "2026-08-28"]);
+    expect(rows[0]).toMatch(/2 Nov 2026\s+Bill\s+13-Week\s+3\.900%/);
+    expect(rows.slice(1, 4).map((line) => line.match(ROW_DATE)?.[1])).toEqual(["28 Oct 2026", "28 Sep 2026", "28 Aug 2026"]);
   });
 });
 
@@ -405,14 +405,14 @@ describe("TreasuryAuctionsPane Hong Kong", () => {
     const row = (text: string) => tui.frame().split("\n").find((line) => line.includes(text)) ?? "";
     await tui.render(<Harness height={24} command="HK" />, { width: 92, height: 24 });
     await settle(() => tui.frame().includes("03GB2807001"));
-    expect(row("Oct 28")).toMatch(/Oct 28\s+EFB\s+3-Month\s+2\.827%\s+2\.46\s+≈HK\$65\.7B/);
+    expect(row("28 Oct")).toMatch(/28 Oct\s+EFB\s+3-Month\s+2\.827%\s+2\.46\s+≈HK\$65\.7B/);
     // A re-opening of a 3-year bond maturing in July 2028: what it had left.
     expect(row("03GB2807001")).toMatch(/Oct\s+HKGB\s+1-Year 9-Month\s+1\.401%\s+9\.93\s+RMB750M\s+03GB2807001/);
     expect(tui.frame()).toMatch(/RATE\s+B\/C\s+SIZE\s+ISSUE/);
     expect(asked).toEqual(["2026-07-11"]);
 
     await tui.clickFrameText("Bonds");
-    await settle(() => !tui.frame().includes("Oct 28"));
+    await settle(() => !tui.frame().includes("28 Oct"));
     expect(tui.frame()).not.toContain("3-Month");
     await emitKeypress({ name: "enter", sequence: "\r" });
     await settle(() => tui.frame().includes("Bid-to-cover"));

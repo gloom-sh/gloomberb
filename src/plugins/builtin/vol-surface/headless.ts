@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { Quote } from "../../../types/financials";
 import type { HeadlessBundleSection, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/plugin";
 import {
@@ -58,9 +59,9 @@ const number = (value: unknown) => typeof value === "number" && Number.isFinite(
 const iv = (value: unknown) => formatIv(number(value));
 const price = (value: unknown) => formatPrice(number(value));
 // Spot and forwards are prices of the underlying, written as OMON writes spot.
-const level = (value: unknown) => { const at = number(value); return at == null ? "--" : formatModelSpotPrice(at); };
+const level = (value: unknown) => { const at = number(value); return at == null ? MISSING_VALUE : formatModelSpotPrice(at); };
 const points = (value: unknown) => formatVolPoints(number(value));
-const days = (value: unknown) => typeof value === "number" ? value.toFixed(value < 10 ? 1 : 0) : "--";
+const days = (value: unknown) => typeof value === "number" ? value.toFixed(value < 10 ? 1 : 0) : MISSING_VALUE;
 
 function surfaceSections(snapshot: SurfaceSnapshot, axis: SurfaceAxis, tenors: "listed" | "fixed"): HeadlessBundleSection[] {
   const grid = buildSurfaceGrid(snapshot, { axis, tenors });
@@ -69,12 +70,12 @@ function surfaceSections(snapshot: SurfaceSnapshot, axis: SurfaceAxis, tenors: "
     { title: "Surface", columns: [
       { key: "tenor", header: "Expiry / tenor" },
       ...(grid.rows[0]?.cells.map((cell, index) => ({ key: String(index), header: surfaceCoordinateLabel(axis, cell.coordinate, index),
-        format: (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "--" })) ?? []),
+        format: (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : MISSING_VALUE })) ?? []),
     ], rows: grid.rows.map((row) => ({ tenor: `${row.label}${row.extrapolated ? " E" : row.interpolated ? " I" : ""}`,
       ...Object.fromEntries(row.cells.map((cell, index) => [String(index), cell.volatility])) })) },
     { title: "Expiries", columns: [
       { key: "expiry", header: "Expiry" }, { key: "state", header: "State" }, { key: "forward", header: "Forward", format: level },
-      { key: "rate", header: "Rate", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" }, { key: "fit", header: "Fit" }, { key: "asOf", header: "As of" },
+      { key: "rate", header: "Rate", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE }, { key: "fit", header: "Fit" }, { key: "asOf", header: "As of" },
     ], rows: snapshot.expiries.map((expiry) => ({ ...expiry, expiry: expiryLabel(expiry.expiration), fit: expiry.fit?.method ?? null })) },
   ];
 }
@@ -100,9 +101,9 @@ function smileSections(snapshot: SurfaceSnapshot, requested: number | null): {
       { key: "fit", label: "Fit", value: expiry.fit.method, formatted: `${expiry.fit.method}, RMSE ${points(expiry.fit.residual)} vol pts` },
     ] },
     { title: "Clean quotes", columns: [
-      { key: "strike", header: "Strike", format: (value) => typeof value === "number" ? formatStrikeLabel(value) : "--" },
+      { key: "strike", header: "Strike", format: (value) => typeof value === "number" ? formatStrikeLabel(value) : MISSING_VALUE },
       { key: "side", header: "Side" },
-      { key: "moneyness", header: "Spot %", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "--" },
+      { key: "moneyness", header: "Spot %", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : MISSING_VALUE },
       { key: "volatility", header: "Quote IV", format: iv }, { key: "fitted", header: "Fitted IV", format: iv },
       { key: "residual", header: "Residual pts", format: points }, { key: "mid", header: "Mid", format: price },
       { key: "openInterest", header: "OI" },
@@ -117,7 +118,7 @@ function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventR
     { key: "expiry", header: "Expiry" }, { key: "days", header: "Days", format: days },
     { key: "atm", header: "ATM IV", format: iv }, { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
     { key: "straddle", header: "Straddle", format: price }, { key: "sigma", header: "1-sigma", format: price },
-    { key: "sigmaPercent", header: "1-sigma %", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : "--" },
+    { key: "sigmaPercent", header: "1-sigma %", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : MISSING_VALUE },
     ...(marks.size ? [{ key: "event", header: "Event" }] : []),
   ], rows: surfaceTermRows(snapshot).map((row) => ({ ...row, expiry: expiryLabel(row.expiration),
     ...(marks.size ? { event: marks.get(row.expiration) ?? "" } : {}) })) };
@@ -150,16 +151,16 @@ const EVENT_NOTES = [
 ];
 
 function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
-  const gap = (value: unknown, row: HeadlessPaneRow) => typeof value === "number" ? points(value) : (row as unknown as SurfaceSkewRow).gap ?? "--";
+  const gap = (value: unknown, row: HeadlessPaneRow) => typeof value === "number" ? points(value) : (row as unknown as SurfaceSkewRow).gap ?? MISSING_VALUE;
   return { title: "Skew", columns: [
     { key: "expiry", header: "Expiry" }, { key: "days", header: "Days", format: days },
     { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
     // Each difference names its sign: the risk reversal is call minus put here and in VCA and HIVG's rr25d.
     { key: "riskReversal", header: skewHeader("RR", "call-put"), format: gap }, { key: "butterfly", header: skewHeader("BF", "wings-ATM"), format: gap },
     { key: "moneynessSkew", header: skewHeader("90/110", "90%-110%"), format: (value, row) => typeof value === "number" ? points(value)
-      : (row as unknown as SurfaceSkewRow).moneynessGap ?? "--" },
+      : (row as unknown as SurfaceSkewRow).moneynessGap ?? MISSING_VALUE },
     { key: "termSlope", header: "Slope pts/yr", format: (value, row) => typeof value === "number" ? points(value)
-      : (row as unknown as SurfaceSkewRow).termSlopeHidden ? HIDDEN_SLOPE_TEXT : "--" },
+      : (row as unknown as SurfaceSkewRow).termSlopeHidden ? HIDDEN_SLOPE_TEXT : MISSING_VALUE },
   ], rows: snapshot.expiries.map((expiry) => ({ ...surfaceSkewRow(expiry), ...expiryFeedFields(expiry), expiry: expiryLabel(expiry.expiration) })) };
 }
 
@@ -178,26 +179,26 @@ export function dvolSection(dvol: DvolPayload, snapshot: SurfaceSnapshot | null)
   const atm = snapshot ? surfaceThirtyDayAtm(snapshot) : null;
   const atmPoints = atm == null ? null : Number((atm * 100).toFixed(2));
   const change = latest && previous != null ? Number((latest.value - previous).toFixed(2)) : null;
-  const signed = (value: number | null) => value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+  const signed = (value: number | null) => value == null ? MISSING_VALUE : `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
   return { title: `DVOL · ${dvol.currency} · ${dvol.venue}`, entries: [
-    { key: "dvol", label: "DVOL", value: latest?.value ?? null, formatted: latest ? `${latest.value.toFixed(2)} at ${formatUtcTime(latest.at)}` : "--" },
-    { key: "dvolChange", label: "Change on the day", value: change, formatted: previous == null ? "--" : `${signed(change)} vol pts from ${previous.toFixed(2)}` },
+    { key: "dvol", label: "DVOL", value: latest?.value ?? null, formatted: latest ? `${latest.value.toFixed(2)} at ${formatUtcTime(latest.at)}` : MISSING_VALUE },
+    { key: "dvolChange", label: "Change on the day", value: change, formatted: previous == null ? MISSING_VALUE : `${signed(change)} vol pts from ${previous.toFixed(2)}` },
     ...(year.length ? [{ key: "dvolRange", label: "1Y range", value: { low: Math.min(...year), high: Math.max(...year) },
       formatted: `${Math.min(...year).toFixed(2)} to ${Math.max(...year).toFixed(2)}` }] : []),
-    { key: "atm30", label: "30D IV at the forward", value: atm, formatted: atmPoints == null ? "--"
+    { key: "atm30", label: "30D IV at the forward", value: atm, formatted: atmPoints == null ? MISSING_VALUE
       : `${atmPoints.toFixed(2)}, ${signed(dvolGap(latest?.value, atmPoints))} vs DVOL` },
     { key: "series", label: "Chart", value: `CAP:${dvolSeriesId(dvol.currency)}`, formatted: `gloomberb fn G CAP:${dvolSeriesId(dvol.currency)}` },
   ] };
 }
 
 function forwardsSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
-  const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--";
+  const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE;
   return { title: "Forwards", columns: [
     { key: "expiry", header: "Expiry" }, { key: "forward", header: "Forward", format: level },
-    { key: "basis", header: "Basis", format: (value) => typeof value === "number" ? `${value > 0 ? "+" : ""}${formatPrice(value)}` : "--" },
+    { key: "basis", header: "Basis", format: (value) => typeof value === "number" ? `${value > 0 ? "+" : ""}${formatPrice(value)}` : MISSING_VALUE },
     { key: "dividendYield", header: "Div yield", format: (value, row) => typeof value === "number" ? percent(value)
-      : (row as unknown as SurfaceForwardRow).dividendYieldHidden ? HIDDEN_YIELD_TEXT : "--" }, { key: "rate", header: "Rate", format: percent },
-    { key: "pairs", header: "Pairs" }, { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : "--" },
+      : (row as unknown as SurfaceForwardRow).dividendYieldHidden ? HIDDEN_YIELD_TEXT : MISSING_VALUE }, { key: "rate", header: "Rate", format: percent },
+    { key: "pairs", header: "Pairs" }, { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE },
   ], rows: snapshot.expiries.map((expiry) => ({ ...surfaceForwardRow(expiry, snapshot), ...expiryFeedFields(expiry), expiry: expiryLabel(expiry.expiration) })) };
 }
 

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import { fundamentalsBasisParts } from "./relative-valuation-basis";
@@ -20,7 +21,7 @@ test("a missing price currency stays blank, and an explicit code still prints", 
   expect(formatRelativePrice(10, undefined)).toBe("10.00");
   expect(formatRelativePrice(10, "USD")).toBe("$10.00");
   expect(formatRelativePrice(10, "EUR")).toBe("€10.00");
-  expect(formatRelativePrice(null, "USD")).toBe("-");
+  expect(formatRelativePrice(null, "USD")).toBe(MISSING_VALUE);
 });
 
 test("a live quote moves price-based values with the price and keeps the fundamentals", () => {

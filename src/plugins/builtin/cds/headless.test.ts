@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import type { CloudCdsHistoryPointPayload, CloudCdsTradePayload } from "../../../api-client";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
@@ -135,8 +136,8 @@ describe("CDS report", () => {
       loadHistory: async () => ({ ...FORD_LINE, change1W: null, change1M: null }),
     });
     expect(result.sections[0]!.entries!.find((entry) => entry.key === "change1mBp")?.value).toBeNull();
-    expect(text).toMatch(/1W change\s+--/);
-    expect(text).toMatch(/1M change\s+--/);
+    expect(text).toMatch(new RegExp(String.raw`1W change\s+${MISSING_VALUE}`));
+    expect(text).toMatch(new RegExp(String.raw`1M change\s+${MISSING_VALUE}`));
   });
 
   test("exports the daily 5Y levels, newest first, over --days", async () => {
@@ -212,7 +213,7 @@ describe("CDS report", () => {
       ["Whirlpool Corporation", null, 15.25],
       ["Whirlpool Corporation", null, null],
     ]);
-    expect(text).toMatch(/Whirlpool Corporation\s+2028-12-20\s+5M\+\s+USD\s+--\s+--\s+6\.5 pts\s+319\.9k USD/);
+    expect(text).toMatch(new RegExp(String.raw`Whirlpool Corporation\s+2028-12-20\s+5M\+\s+USD\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+6\.5 pts\s+319\.9k USD`));
     expect(text).not.toMatch(/Whirlpool Corp\s|WHIRLPOOL/);
     const csv = renderReportCsv(selectReportTables(tables, "trades")).split("\n");
     expect(csv[0]).toMatch(/^Time UTC,Issuer,Maturity,Notional,CCY,Coupon \(bp\),Spread \(bp\),Points,Abs upfront \(USD\),/);
@@ -386,7 +387,7 @@ describe("CDS report", () => {
     // The bp level stays beside the quote, with the coupon the points are on.
     expect(rows[2]).toMatchObject({ quote: "upfront", spread5yBp: 18654.4, couponBp: 500 });
     expect(text).toMatch(/VIRGIN MEDIA FINANCE PLC\s+1\s+2026-10-09 18:00\s+57\.6 pts\s+\+10\.9 pts\s+\+36\.1 pts\s+2026-10-08/);
-    expect(text).toMatch(/American Airlines Group Inc\.\s+1\s+2026-10-09 17:00\s+512bp\s+--\s+--\s+2026-10-01/);
+    expect(text).toMatch(new RegExp(String.raw`American Airlines Group Inc\.\s+1\s+2026-10-09 17:00\s+512bp\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+2026-10-01`));
     expect(text).not.toContain("18654");
     // Exports write the number and its unit, as the index board's do.
     const csv = renderReportCsv(tables).split("\n");

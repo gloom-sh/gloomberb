@@ -18,7 +18,7 @@ import { StatChartDetail } from "../../../components/market-board";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
@@ -34,7 +34,7 @@ const EMPTY_ROWS: CreditConditionRow[] = [];
 const PANELS = [{ id: "main" }];
 
 function formatBp(value: number | null, signed = false): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   const sign = signed && value > 0 ? "+" : "";
   return `${sign}${value.toFixed(1)}bp`;
 }

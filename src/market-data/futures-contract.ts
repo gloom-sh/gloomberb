@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../utils/format";
 import { apiClient } from "../api-client";
 import type { FuturesContractSpec, FuturesContractTermsPayload } from "../api-client/futures-curve";
 import { classifyInstrumentType } from "../tickers/instrument-kind";
@@ -20,7 +21,7 @@ import { deliveryMonthLabel } from "../utils/contract-month";
  */
 
 /** A settlement the exchange has not confirmed reads as CTM writes a missing price. */
-const FUTURES_MISSING = "--";
+const FUTURES_MISSING = MISSING_VALUE;
 
 type FuturesContractLineKey = "contract" | "unit" | "size" | "tick" | "pointValue" | "settlement" | "firstNotice" | "lastTrade"
   | "roll" | "front" | "nearest" | "mostActive";

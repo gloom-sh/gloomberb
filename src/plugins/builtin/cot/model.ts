@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CotClass, CotContractPayload, CotFamily, CotHistoryPoint, CotPositions } from "../../../api-client/cot";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { ResolvedSeries } from "../../../time-series/types";
@@ -304,7 +305,7 @@ export function cotContractUnitText(units: string | null | undefined): string | 
   return text ? `1 contract = ${PLAIN_UNITS.test(text) ? text.toLowerCase() : text}` : null;
 }
 export function cotInteger(value: number | null, signed = false): string {
-  return value == null ? "--" : `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  return value == null ? MISSING_VALUE : `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }
 
 /**

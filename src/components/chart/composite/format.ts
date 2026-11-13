@@ -647,7 +647,7 @@ function utcTime(date: Date): string {
 function onClock(date: Date, timeZone: string | undefined): { wall: Date; zone: string } {
   if (!timeZone || timeZone === "UTC") return { wall: date, zone: "UTC" };
   try {
-    return { wall: new Date(zonedWallClockMs(date.getTime(), timeZone)), zone: timeZoneLabel(timeZone) };
+    return { wall: new Date(zonedWallClockMs(date.getTime(), timeZone)), zone: timeZoneLabel(timeZone, date.getTime()) };
   } catch {
     return { wall: date, zone: "UTC" };
   }
@@ -721,7 +721,7 @@ export function formatCompositeTimeAxisDate(date: Date, startTime: number, endTi
  * day however wide the chart is: a three-month chart of 30-minute bars has
  * thirteen under each date, and the cursor sits on one of them.
  *
- * A day with no time of day reads as the axis's own end labels do (`Nov 3
+ * A day with no time of day reads as the axis's own end labels do (`3 Nov
  * 2026`) when `words` is set, as the desktop and the web set it: their tag is
  * a badge apart from the ticks. In cells the tag has no other mark, so it
  * keeps the ISO date no tick is written in.
@@ -738,24 +738,24 @@ export function formatCompositeCursorAxisDate(
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 /**
- * A day as the time axis words its end labels, `Nov 3 2026`, so the tag the
+ * A day as the time axis words its end labels, `3 Nov 2026`, so the tag the
  * crosshair puts on the axis reads like the ticks beside it. `wall` is
  * already on the chart's clock.
  */
 function formatCompositeAxisDay(wall: Date): string {
-  return `${MONTH_NAMES[wall.getUTCMonth()]} ${wall.getUTCDate()} ${wall.getUTCFullYear()}`;
+  return `${wall.getUTCDate()} ${MONTH_NAMES[wall.getUTCMonth()]} ${wall.getUTCFullYear()}`;
 }
 
-/** A dataset observation's day as the axis words it, `Oct 4`, with the year when the chart ends in another. */
+/** A dataset observation's day as the axis words it, `4 Oct`, with the year when the chart ends in another. */
 export function formatCompositeDatasetDate(date: Date, endTime: number | undefined): string {
-  const text = `${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  const text = `${date.getUTCDate()} ${MONTH_NAMES[date.getUTCMonth()]}`;
   const endYear = endTime === undefined ? null : new Date(endTime).getUTCFullYear();
   return endYear === null || endYear === date.getUTCFullYear() ? text : `${text} ${date.getUTCFullYear()}`;
 }
 
 /**
  * When a value carried under the cursor was observed: its time when it is
- * from the cursor's own day, else its date (`Sep 2`, with the year when that
+ * from the cursor's own day, else its date (`2 Sep`, with the year when that
  * differs), and the time too for an intraday bar.
  */
 export function formatCompositeCarriedStamp(observed: Date, cursor: Date, timeZone?: string): string {
@@ -763,6 +763,6 @@ export function formatCompositeCarriedStamp(observed: Date, cursor: Date, timeZo
   const at = onClock(cursor, timeZone).wall;
   const time = utcTime(seen);
   if (utcDate(seen) === utcDate(at)) return time;
-  const date = `${MONTH_NAMES[seen.getUTCMonth()]} ${seen.getUTCDate()}${seen.getUTCFullYear() === at.getUTCFullYear() ? "" : ` ${seen.getUTCFullYear()}`}`;
+  const date = `${seen.getUTCDate()} ${MONTH_NAMES[seen.getUTCMonth()]}${seen.getUTCFullYear() === at.getUTCFullYear() ? "" : ` ${seen.getUTCFullYear()}`}`;
   return time === "00:00" ? date : `${date} ${time}`;
 }

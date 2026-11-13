@@ -99,7 +99,7 @@ describe("truncateToDisplayWidth", () => {
     expect(displayWidth("📈")).toBe(2);
     expect(displayWidth("e\u0301")).toBe(1);
     expect(displayWidth("👨‍👩‍👧‍👦")).toBe(2);
-    expect(truncateToDisplayWidth("投资组合分析面板", 9)).toBe("投资组...");
+    expect(truncateToDisplayWidth("投资组合分析面板", 9)).toBe("投资组合…");
     expect(displayWidth(truncateToDisplayWidth("👨‍👩‍👧‍👦 family", 7))).toBeLessThanOrEqual(7);
   });
 });

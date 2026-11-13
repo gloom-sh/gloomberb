@@ -86,7 +86,7 @@ test("a listing abroad is exported by the code RV and compare print, whatever it
 
 test("an option contract is named by its terms where its saved name is only its code", async () => {
   const { rows } = await show([option]);
-  expect(rows[0]).toMatchObject({ symbol: "AAPL261218C00300000", name: "AAPL Dec 18 '26 $300 Call" });
+  expect(rows[0]).toMatchObject({ symbol: "AAPL261218C00300000", name: "AAPL 18 Dec '26 $300 Call" });
 });
 
 test("a list holding a perpetual market gains a Fund 8H column; any other list keeps its columns", async () => {

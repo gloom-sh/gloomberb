@@ -240,7 +240,7 @@ export function significantDecimals(value: number, digits = 4): number {
 
 /** A percentile rank with its window: "73 pctl 1Y", "-- pctl 1Y" when unranked, "73 pctl" without a window. */
 export function formatPercentileRank(value: number | null | undefined, window?: string): string {
-  const rank = value == null || !Number.isFinite(value) ? "--" : value.toFixed(0);
+  const rank = value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toFixed(0);
   return window ? `${rank} pctl ${window}` : `${rank} pctl`;
 }
 
@@ -371,17 +371,12 @@ function truncateToWidth(value: string, width: number): string {
   return output;
 }
 
+/** Cuts to a display width behind one `…`, as clipToDisplayWidth does: every cut text ends the same way. */
 export function truncateToDisplayWidth(value: string, width: number): string {
-  if (width <= 0) return "";
-  if (displayWidth(value) <= width) return value;
-  if (width <= 3) return ".".repeat(width);
-  return `${truncateToWidth(value, width - 3)}...`;
+  return clipToDisplayWidth(value, width);
 }
 
-/**
- * Clips to a display width behind a single `…`, which gives a narrow cell back
- * two characters that `...` would spend on the marker.
- */
+/** Clips to a display width behind a single `…`, the one cell every cut text ends with. */
 export function clipToDisplayWidth(value: string, width: number): string {
   if (width <= 0) return "";
   if (displayWidth(value) <= width) return value;

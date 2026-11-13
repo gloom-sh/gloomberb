@@ -16,7 +16,7 @@ test("a longer read wraps at words, every word kept in order", () => {
 test("past the row cap the last row ends in an ellipsis instead of dropping words silently", () => {
   const lines = chartReadLines(READ, 30);
   expect(lines).toHaveLength(CHART_READ_MAX_ROWS);
-  expect(lines).toEqual(["Education and communication", "moved the 0.6% rise by less", "than 0.01 points and is 5..."]);
+  expect(lines).toEqual(["Education and communication", "moved the 0.6% rise by less", "than 0.01 points and is 5.0…"]);
   // Three rows hold the whole sentence at a width a little wider; nothing is cut then.
   expect(chartReadLines(READ, 50).join(" ")).toBe(READ);
 });

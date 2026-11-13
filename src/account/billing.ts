@@ -1,3 +1,4 @@
+import { formatShortDate } from "../utils/datetime-format";
 import type { CloudPricing } from "../api-client";
 import { t, tf } from "../i18n";
 
@@ -36,10 +37,10 @@ export function monthsFreeYearly(pricing: CloudPricing | null | undefined): numb
   return saved > 0 ? Math.round(saved) : 0;
 }
 
-/** Short calendar date for the trial countdown, e.g. "Aug 11". */
+/** Short calendar date for the trial countdown, e.g. "11 Aug". */
 export function formatTrialEnd(endsAt: Date | null | undefined): string | null {
   if (!endsAt || Number.isNaN(endsAt.getTime())) return null;
-  return endsAt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatShortDate(endsAt, { year: false });
 }
 
 /**

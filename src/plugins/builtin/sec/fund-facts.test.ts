@@ -224,7 +224,7 @@ test("a metal trust's ounces and tonnes in trust follow its net assets, with the
     ounces: 497876480.1, tonnes: 15485.69, change: null, stale: true, source: { ...gld.metalHoldings!.source, publisher: "iShares" } } };
   expect(fundFactItems(slv).filter((item) => item.id?.startsWith("metal")).map((item) => [item.label, item.value, item.tone]))
     .toEqual([["Silver in trust", "15,485.69 t", "warning"]]);
-  expect(fundFactEntries(slv).find((entry) => entry.key === "metalChangeOunces")).toMatchObject({ value: null, formatted: "-- · 2026-10-21 is the first day stored" });
+  expect(fundFactEntries(slv).find((entry) => entry.key === "metalChangeOunces")).toMatchObject({ value: null, formatted: "— · 2026-10-21 is the first day stored" });
   expect(fundFactPublishers(slv)).toEqual(["SPDR Gold Shares", "iShares"]);
 });
 

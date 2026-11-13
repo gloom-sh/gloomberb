@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { ApiRequestError } from "../../../api-client/errors";
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
 import type { TreasuryAuction, TreasuryAuctionRaw } from "./types";
@@ -169,7 +170,7 @@ export function normalizeAuction(raw: unknown): TreasuryAuction | null {
     // TIPS and FRNs are auctioned under the Note/Bond security type; their
     // yields are real yields and discount margins, not nominal yields.
     secType: record.inflation_index_security === "Yes" ? "TIPS" : record.floating_rate === "Yes" ? "FRN" : secType,
-    securityTerm: securityTerm || "—",
+    securityTerm: securityTerm || MISSING_VALUE,
     auctionDate,
     highInvestmentRate: toNumber(record.high_investment_rate),
     highDiscountRate: toNumber(record.high_discnt_rate),

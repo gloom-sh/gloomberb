@@ -3,6 +3,7 @@ import { tf } from "../../../i18n";
 import { getSharedRegistry } from "../../../plugins/registry/shared";
 import { reportCrash } from "../../../telemetry/crash-reports";
 import { debugLog } from "../../../utils/debug-log";
+import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { Button } from "../../ui/button";
 import { PaneStatusBody } from "../../ui/status";
 
@@ -14,7 +15,7 @@ function failureMessage(error: unknown): string {
     ? error.message || error.name
     : typeof error === "string" ? error : String(error);
   const line = raw.split("\n").find((part) => part.trim())?.trim() || "Unknown error";
-  return line.length > MAX_MESSAGE_LENGTH ? `${line.slice(0, MAX_MESSAGE_LENGTH - 3)}...` : line;
+  return truncateWithEllipsis(line, MAX_MESSAGE_LENGTH);
 }
 
 function failureKey(error: unknown): string {

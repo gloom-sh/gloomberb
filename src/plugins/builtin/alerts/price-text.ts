@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 // An alert's prices as every surface writes them (ALRT, `fn ALRT`, `alerts
 // list`, `alerts add` and the toast): at the instrument's precision, as
 // `quote` prints it, and a London line in the pence it trades in.
@@ -38,7 +39,7 @@ function priceOptions(alert: AlertPriceSubject, maxWidth?: number): MarketFormat
  * table cell.
  */
 export function alertPriceText(alert: AlertPriceSubject, value: number, maxWidth?: number): string {
-  if (!Number.isFinite(value)) return "-";
+  if (!Number.isFinite(value)) return MISSING_VALUE;
   if (isPenceAlert(alert)) {
     const pence = formatMarketPrice(value * 100, { minimumFractionDigits: 2, ...maxWidth ? { maxWidth: Math.max(1, maxWidth - 1) } : {} });
     return `${pence}p`;

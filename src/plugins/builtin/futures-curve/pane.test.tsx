@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { act, useCallback, useState } from "react";
 import { apiClient } from "../../../api-client";
@@ -231,8 +232,8 @@ describe("crypto basis against spot", () => {
     expect(row(lines, "BTCX26.CME")).toMatch(new RegExp(`79000\\.00\\s+-1\\.25%\\s+${ann(79_000, 49)}`));
     expect(row(lines, "BTCF27.CME")).toMatch(new RegExp(`81000\\.00\\s+\\+1\\.25%\\s+${ann(81_000, 112)}`));
     // A stale print and a missing price would mislead: blank.
-    expect(row(lines, "BTCZ26.CME")).toMatch(/80400\.00\s+--\s+--/);
-    expect(row(lines, "BTCH27.CME")).toMatch(/--\s+--\s+--/);
+    expect(row(lines, "BTCZ26.CME")).toMatch(new RegExp(String.raw`80400\.00\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
+    expect(row(lines, "BTCH27.CME")).toMatch(new RegExp(String.raw`${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
     expect(lines.join("\n")).toMatch(/spot BTC-USD 80,150\.00 · (\d{4}-\d{2}-\d{2} )?\d{2}:\d{2} UTC \(crypto composite price, real-time\)/);
     expect(lines.join("\n")).not.toContain("CCC");
     // Beyond a week of expiry the annualised rate is the figure to read: it takes the text colour and Vs Spot is greyed.
@@ -271,7 +272,7 @@ describe("crypto basis against spot", () => {
     const late = new Date(Math.floor(NOW / MINUTE) * MINUTE + 5_000).toISOString();
     spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload([...BTC_CONTRACTS.slice(0, 2), btc("BTCJ27", 154, 81_500, { asOf: late })]));
     const lines = await render(130, 30, "curve", { root: "BTC", quote: spot(1), bars });
-    expect(row(lines, "BTCJ27.CME")).toMatch(/81500\.00\s+--\s+--/);
+    expect(row(lines, "BTCJ27.CME")).toMatch(new RegExp(String.raw`81500\.00\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
     const newest = new Date(Math.floor(NOW / MINUTE) * MINUTE - MINUTE).toISOString().slice(11, 16);
     expect(await popup()).toContain(`Basis blank for BTCJ27 (spot and print 1 min apart: print ${late.slice(11, 16)}, nearest spot ${newest} UTC).`);
   });
@@ -279,7 +280,7 @@ describe("crypto basis against spot", () => {
   test("without spot bars every cell is blank and the popup says why; a stale quote only warns", async () => {
     spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload());
     let lines = await render(120, 30, "curve", { root: "BTC", quote: spot(1), bars: async () => { throw new Error("no history"); } });
-    expect(row(lines, "BTCV26.CME")).toMatch(/80200\.00\s+--\s+--/);
+    expect(row(lines, "BTCV26.CME")).toMatch(new RegExp(String.raw`80200\.00\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
     expect(await popup()).toContain("BTCV26, BTCX26, BTCF27 (no one-minute spot prices)");
     lines = await render(120, 30, "curve", { root: "BTC", quote: spot(125), bars });
     expect(row(lines, "BTCV26.CME")).toMatch(/\+0\.25%/);

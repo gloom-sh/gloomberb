@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { THEME_PERIODS, type ThemeMember, type ThemeMembersPayload, type ThemeSummary, type ThemesPayload } from "../../../api-client/themes";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
@@ -39,7 +40,7 @@ test("outside the regular session the report is as of the close with the snapsho
   const after = result.columns!.find((column) => column.header === "After Hours")!;
   const [hii, row] = result.rows;
   expect(after.format!(row!.extendedPrice, row!)).toBe("510.19 +0.12%");
-  expect(after.format!(hii!.extendedPrice, hii!)).toBe("--");
+  expect(after.format!(hii!.extendedPrice, hii!)).toBe(MISSING_VALUE);
   expect(hii).toMatchObject({ symbol: "HII", extendedSession: null, extendedPrice: null, extendedChangePercent: null });
   // The board of themes is dated the same way.
   expect((await load(closed, [], "")).line).toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET · snapshot 12m ago");

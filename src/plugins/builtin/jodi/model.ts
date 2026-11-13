@@ -1,6 +1,6 @@
 import type { JodiBalanceBoard, JodiBalanceRow } from "../../../api-client/commodity-balances";
 import type { DataTableColumn } from "../../../components";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 
 export const JODI_PANE_ID = "jodi";
 
@@ -20,7 +20,7 @@ export function formatBalanceMonth(month: string): string {
 
 /** Whole numbers from 100 up; one decimal below that, and an integer stays whole. */
 export function formatBalance(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const decimals = Math.abs(value) >= 100 || Number.isInteger(value) ? 0 : 1;
   return formatNumber(value, decimals);
 }

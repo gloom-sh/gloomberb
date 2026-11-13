@@ -38,7 +38,7 @@ const entry = (symbol: string, date: string, fields: Partial<EarningsCalendarRep
   implied: null, realized: null, averageMove: null, averageReports: 0, ...fields,
 });
 
-// Wed Oct 14 2026: the table reads today to Friday, the calendar Monday to Friday.
+// Wed 14 Oct 2026: the table reads today to Friday, the calendar Monday to Friday.
 const WEEK: EarningsCalendarReport[] = [
   entry("JPM", "2026-10-14", { marketCap: 700e9 }),
   entry("NFLX", "2026-10-15", { timing: "amc", marketCap: 400e9 }),
@@ -191,7 +191,7 @@ test("another week shows no reports of its own until it is read, and its failure
   nextWeek = Promise.resolve([]);
   await setWeek(2);
   await settle();
-  expect(root.textContent).toContain("No reports on the calendar in the week of Oct 26.");
+  expect(root.textContent).toContain("No reports on the calendar in the week of 26 Oct.");
 });
 
 test("the Names filter lists Mine, each portfolio and watchlist and the sector funds, and reads only the chosen one's companies", async () => {

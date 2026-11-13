@@ -1,7 +1,7 @@
 import type { DefiTvlChain, DefiTvlPayload, DefiTvlProtocol } from "../../../api-client/crypto-markets";
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
-import { formatCompact, formatCompactAmount } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCompactAmount } from "../../../utils/format";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { formatCryptoPercent, utcCloseAsOfText } from "./model";
@@ -139,7 +139,7 @@ export function defiHistoryRows(payload: DefiTvlPayload): Array<{ date: string; 
 }
 
 const change = (amount: number | null, percent: number | null) =>
-  amount == null ? "—" : `${formatCompactAmount(amount, { signed: true })} (${formatCryptoPercent(percent)})`;
+  amount == null ? MISSING_VALUE : `${formatCompactAmount(amount, { signed: true })} (${formatCryptoPercent(percent)})`;
 
 /**
  * How the total's days are dated: each by the UTC day it closes, which

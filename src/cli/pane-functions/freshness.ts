@@ -1029,7 +1029,7 @@ function reopenText(market: ReportMarket, now: number, local: boolean, short: bo
   const utc = `${day}${iso.slice(11, 16)} UTC`;
   const reader = local ? localTimeSuffix(at) : "";
   const zone = market.reopensTimeZone;
-  const label = zone ? timeZoneLabel(zone) : null;
+  const label = zone ? timeZoneLabel(zone, at) : null;
   if (short || !zone || label === "UTC") return `${utc}${reader}`;
   const venue = zonedDateTimeParts(at, zone);
   const venueDay = `${venue.year}-${twoDigits(venue.month)}-${twoDigits(venue.day)}`;
@@ -1099,7 +1099,7 @@ function marketsText(markets: readonly VenueMarket[], now: number, short: boolea
   const opensAt = (market: VenueMarket) => market.reopensAt ? Date.parse(market.reopensAt) : Number.POSITIVE_INFINITY;
   const rank = (market: VenueMarket) => market.state === "open" ? 0 : market.state === "closed" ? 2 : 1;
   const ordered = [...markets].sort((left, right) => rank(left) - rank(right) || opensAt(left) - opensAt(right));
-  // `LSE opens 08:00 UTC, 08:00 UK · US 13:30 UTC, 09:30 ET`: a verb is said once for the opens that follow
+  // `LSE opens 08:00 UTC, 08:00 GMT · US 13:30 UTC, 09:30 ET`: a verb is said once for the opens that follow
   // each other with it; a week's first trade after a session's open says its own (`reopens 22:00 UTC`).
   let previousVerb: string | null = null;
   const parts = ordered.map((market) => {

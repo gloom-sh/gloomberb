@@ -3,7 +3,7 @@ import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGrid
   usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { tableColumnWidth } from "../../../components/ui/table-layout";
-import { displayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -25,7 +25,7 @@ export const LOOKBACK_OPTIONS = [{ value: "1", label: "1Y" }, { value: "2", labe
 const RELEASE_OPTIONS = [{ value: "all", label: "All" }, ...MACRO_EVENT_KINDS.map((kind) => ({ value: kind, label: MACRO_EVENT_LABELS[kind] }))];
 const SURPRISE_OPTIONS = [{ value: "all", label: "All" }, ...MACRO_SURPRISES.map((surprise) => ({ value: surprise, label: MACRO_SURPRISE_LABELS[surprise] }))];
 
-const times = (value: number | null | undefined) => value == null ? "--" : `${value.toFixed(1)}x`;
+const times = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${value.toFixed(1)}x`;
 
 const DATE: DataTableColumn = { id: "date", label: "Date", width: 19, align: "left" };
 /** The move and its multiple of a normal day's; a yield's move is in basis points, and its header says so. */
@@ -68,7 +68,7 @@ function surpriseFigures(model: MacroDayModel, rows: readonly MacroDayEvent[]): 
   return [
     { id: "abs", label: "Avg |move|", value: pct(stats.meanAbs, false), detail: stats.count ? `${times(stats.multiple)} normal` : undefined },
     { id: "mean", label: "Avg move", value: pct(stats.mean), tone: moveTone(stats.mean, model.basis) },
-    { id: "up", label: "Up", value: stats.hitRate == null ? "--" : `${Math.round(stats.hitRate * 100)}%`,
+    { id: "up", label: "Up", value: stats.hitRate == null ? MISSING_VALUE : `${Math.round(stats.hitRate * 100)}%`,
       detail: stats.count ? `${Math.round(stats.hitRate! * stats.count)} of ${stats.count}` : undefined },
     { id: "normal", label: "Normal day", value: pct(model.normal.meanAbs, false), detail: "avg |move|" },
   ];
@@ -89,7 +89,7 @@ function figures(model: MacroDayModel, release: string): StatItem[] {
   return [
     { id: "abs", label: "Avg |move|", value: pct(stats.meanAbs, false), detail: stats.count ? `${times(stats.multiple)} normal` : undefined },
     { id: "mean", label: "Avg move", value: pct(stats.mean), tone: moveTone(stats.mean, model.basis) },
-    { id: "up", label: "Up", value: stats.hitRate == null ? "--" : `${Math.round(stats.hitRate * 100)}%`,
+    { id: "up", label: "Up", value: stats.hitRate == null ? MISSING_VALUE : `${Math.round(stats.hitRate * 100)}%`,
       detail: stats.count ? `${Math.round(stats.hitRate! * stats.count)} of ${stats.count}` : undefined },
     normal,
   ];

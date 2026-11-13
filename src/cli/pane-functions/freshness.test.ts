@@ -243,7 +243,7 @@ describe("report freshness", () => {
     const airlines = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-13T15:35:00Z"), quote("EPA", "2026-10-13T15:35:00Z")] };
     // Each market opens at its own time, which the line gives each, the soonest first.
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), airlines, WED)))
-      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed · XETRA opens 07:00 UTC, 09:00 CET · EPA 07:00 UTC, 09:00 CET · US 13:30 UTC, 09:30 ET");
+      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed · XETRA opens 07:00 UTC, 09:00 CEST · EPA 07:00 UTC, 09:00 CEST · US 13:30 UTC, 09:30 ET");
     // A venue whose newest row is a day older says so beside the others.
     const stale = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-12T15:35:00Z")] };
     expect(formatStatusLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), stale, WED)))
@@ -262,7 +262,7 @@ describe("report freshness", () => {
     const TUE = Date.parse("2026-10-27T02:00:00Z");
     const mixed = { rows: [quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("LSE", "2026-10-26T16:48:00Z"), quote("LSE", "2026-10-26T16:35:00Z")] };
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), mixed, TUE)))
-      .toBe("Source: Gloom Cloud · US and LSE Mon 26 Oct 2026 close · 15 min delayed · markets closed · LSE opens 08:00 UTC, 08:00 UK · US 13:30 UTC, 09:30 ET");
+      .toBe("Source: Gloom Cloud · US and LSE Mon 26 Oct 2026 close · 15 min delayed · markets closed · LSE opens 08:00 UTC, 08:00 GMT · US 13:30 UTC, 09:30 ET");
     // London trading, the US yet to open: each says its own.
     const morning = deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [
       quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("LSE", "2026-10-27T10:00:00Z", "REGULAR"),
@@ -290,7 +290,7 @@ describe("report freshness", () => {
     const SAT = Date.parse("2026-10-31T12:00:00Z");
     const weekend = { rows: [quote("NASDAQ", "2026-10-30T23:31:00Z"), quote("LSE", "2026-10-30T16:35:00Z")] };
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), weekend, SAT)))
-      .toMatch(/ · markets closed · LSE opens Mon 08:00 UTC, 08:00 UK · US Mon 14:30 UTC, 09:30 ET$/);
+      .toMatch(/ · markets closed · LSE opens Mon 08:00 UTC, 08:00 GMT · US Mon 14:30 UTC, 09:30 ET$/);
   });
 
   test("a capture of a pane whose quotes trade on several markets dates each, and says its note's shorter forms before leaving it out", () => {

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { enrollmentSeries } from "./history";
 import { describe, expect, test } from "bun:test";
 import { catalystFixture, catalystPayload } from "./test-fixture";
@@ -17,7 +18,7 @@ test("party revision summaries expose changed links and preserve additions, remo
   expect(catalystChangeText({ field: "parties", before: [linked], after: [] })).toContain("removed, AZN:XNYS (95%)");
   expect(catalystChangeText({ field: "parties", before: [], after: [old] })).toContain("added, Unlinked");
   expect(catalystChangeText({ field: "parties", before: [linked], after: [{ ...linked, entityId: "57" }] })).toContain("Link evidence updated");
-  expect(catalystChangeText({ field: "metadata.enrollment", before: null, after: 0 })).toBe("Enrollment: -- → 0");
+  expect(catalystChangeText({ field: "metadata.enrollment", before: null, after: 0 })).toBe(`Enrollment: ${MISSING_VALUE} → 0`);
   expect(catalystChangeText({ field: "metadata.hasResults", before: false, after: true })).toBe("Has results: No → Yes");
   expect(catalystChangeText({ field: "metadata.phases", before: [], after: ["PHASE1", "PHASE2"] })).toBe("Phases: None → PHASE1, PHASE2");
 });
@@ -33,7 +34,7 @@ describe("catalyst parties, tones and columns", () => {
     expect(catalystParties(filer)).toBe("Dominion Energy South Carolina");
     // An agency heading is not a filer, and the title stays whole.
     const heading = { ...event, parties: [], title: "Airworthiness Directives; Airbus Helicopters" };
-    expect(catalystParties(heading)).toBe("--");
+    expect(catalystParties(heading)).toBe(MISSING_VALUE);
     expect(catalystCell(heading, "title", "any", false)).toBe(heading.title);
   });
   test("tones a status by what it means for the company", () => {
@@ -58,7 +59,7 @@ describe("catalyst provenance and dates", () => {
   test("preserves month precision without inventing a day and distinguishes observed time", () => {
     expect(catalystDate(event)).toBe("2027-04");
     expect(catalystDate(event, "announced")).toBe("2026-01-01");
-    expect(catalystDate(event, "effective")).toBe("--");
+    expect(catalystDate(event, "effective")).toBe(MISSING_VALUE);
     expect(catalystDate(event, "observed")).toBe("2026-10-04 12:00");
     expect(catalystQuery({ tab: "changes", upcoming: true, country: "EU" }, "NOVN:SIX")).toEqual({ symbol: "NOVN:SIX", country: "EU", changed: true, dateField: "observed" });
   });
@@ -81,7 +82,7 @@ describe("catalyst provenance and dates", () => {
   test("a withheld date reads as not disclosed, never as the announcement", () => {
     const withheld = { ...event, type: "pdufa" as const, deadlineDate: null, datePrecision: { announced: "day" as const }, announcedDate: "2026-10-19",
       metadata: { dateWithheld: true, deadlineMeaning: "Company-reported FDA PDUFA target date" } };
-    expect(catalystDate(withheld)).toBe("--");
+    expect(catalystDate(withheld)).toBe(MISSING_VALUE);
     expect(catalystDateBasis(withheld)).toBe("Date not disclosed");
     expect(catalystSection(withheld, "any", false)).toBe("Date not disclosed");
     expect(catalystDate(withheld, "announced")).toBe("2026-10-19");

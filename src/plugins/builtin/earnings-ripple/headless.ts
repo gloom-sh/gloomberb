@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchEarningsCalendar } from "../earnings/client";
 import { fetchSupplyChain } from "../supply-chain/client";
@@ -5,7 +6,7 @@ import { fetchSupplyGraph } from "../supply-chain/graph-client";
 import { loadRipple } from "./client";
 import { hopLabel, revenueOwner, rippleEmptyText } from "./model";
 
-const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "--";
+const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : MISSING_VALUE;
 
 export const earningsRippleHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",

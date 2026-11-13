@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
@@ -35,7 +36,7 @@ const COLUMNS = [
     key: "dailyChangeBp",
     header: "1D",
     align: "right" as const,
-    format: (value: unknown) => value == null ? "-" : `${Number(value) > 0 ? "+" : ""}${Number(value).toFixed(1)}bp`,
+    format: (value: unknown) => value == null ? MISSING_VALUE : `${Number(value) > 0 ? "+" : ""}${Number(value).toFixed(1)}bp`,
   },
   { key: "date", header: "As of" },
 ];

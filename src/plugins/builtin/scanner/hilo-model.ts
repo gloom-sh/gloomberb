@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { ScannerHiloExtreme, ScannerHiloPayload, ScannerStatus } from "../../../api-client";
 import { venueMarketLine } from "../../../cli/pane-functions/freshness";
 
@@ -14,7 +15,7 @@ const HILO_WINDOW_ROWS: ReadonlyArray<{ key: HiloWindowKey; label: string }> = [
 
 /** Two decimals, four under a dollar, so a price column lines up. */
 export function formatHiloPrice(price: number): string {
-  if (!Number.isFinite(price)) return "--";
+  if (!Number.isFinite(price)) return MISSING_VALUE;
   return price.toLocaleString("en-US", { minimumFractionDigits: price < 1 ? 4 : 2, maximumFractionDigits: price < 1 ? 4 : 2 });
 }
 

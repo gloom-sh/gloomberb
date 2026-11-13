@@ -1259,7 +1259,7 @@ export const chatSteps: ChatStep[] = [
         fail("the posted picture is drawn twice");
       }
       const wire = await oneChip(cdp, CHIP_ROWS.wire);
-      if (wire.link !== "economic-calendar" || !/Economic Calendar/.test(wire.text) || !/Jan 8/.test(wire.text)) fail("the Wire post's chip does not name its calendar and day", wire);
+      if (wire.link !== "economic-calendar" || !/Economic Calendar/.test(wire.text) || !/8 Jan/.test(wire.text)) fail("the Wire post's chip does not name its calendar and day", wire);
 
       await evaluate(cdp, "window.__chatFake.releaseShares()");
       if (!await waitFor(cdp, `__chat.chips(${JSON.stringify(CHIP_ROWS.bare)})[0]?.text.includes("DES SAMPL Options")`, 3_000)) fail("the chip never showed the share's title", await chips(cdp, CHIP_ROWS.bare));

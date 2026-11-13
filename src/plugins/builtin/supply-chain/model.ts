@@ -1,7 +1,7 @@
 import type { SupplyChainPayload, SupplyEvidenceItem, SupplyOptions, SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
 import { currentThemeColorSet, SERIES_COLORS } from "../../../theme/series-colors";
 import { companyNameCase, shortCompanyName } from "../../../tickers/company-name";
-import { clipToDisplayWidth, displayWidth } from "../../../utils/format";
+import { MISSING_VALUE, clipToDisplayWidth, displayWidth } from "../../../utils/format";
 import { revenueAmount } from "../revenue-breakdown/model";
 import { countOf, freePreviewNote } from "../shared/free-preview";
 import { entityTicker } from "./graph-model";
@@ -271,8 +271,8 @@ export function supplyPreviewNote(data: Pick<SupplyChainPayload, "previewRowsPer
     adds: locked > 0 ? `${locked.toLocaleString("en-US")} more` : null });
 }
 
-export const percentage = (row: SupplyRow) => row.pctOfRevenue === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row) ? "--" : `${Number(row.pctOfRevenue.toFixed(2))}% ${row.pctScope ? "scoped " : ""}${row.pctBasis ?? ""}`;
-export const dollars = (row: SupplyRow) => row.usd === null ? "--" : `${row.usdBasis === "derived" ? "≈ " : ""}$${revenueAmount(row.usd)} ${row.usdBasis}`;
+export const percentage = (row: SupplyRow) => row.pctOfRevenue === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row) ? MISSING_VALUE : `${Number(row.pctOfRevenue.toFixed(2))}% ${row.pctScope ? "scoped " : ""}${row.pctBasis ?? ""}`;
+export const dollars = (row: SupplyRow) => row.usd === null ? MISSING_VALUE : `${row.usdBasis === "derived" ? "≈ " : ""}$${revenueAmount(row.usd)} ${row.usdBasis}`;
 /** A disclosed scale in words, as the filing prints it: 万元 is ten thousand yuan, 亿元 a hundred million. */
 const SCALE_WORDS: ReadonlyMap<number, string> = new Map([[1, ""], [1_000, " thousand"], [10_000, " ten thousand"], [1_000_000, " million"], [100_000_000, " hundred million"], [1_000_000_000, " billion"]]);
 const scaleLabel = (scale: number) => SCALE_WORDS.get(scale) ?? ` ×${scale.toLocaleString("en-US")}`;
@@ -346,7 +346,7 @@ export const periodText = (row: Pick<SupplyRow, "period" | "periodMonths">) => {
 };
 export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL" : row.sourceKind === "filing_text" ? row.form ?? "Filing" : row.sourceKind === "call" ? "Call" : row.sourceKind === "news" ? "News" : row.sourceKind === "press_release" ? "Release" : row.sourceKind === "web" ? "Web" : "Disclosure";
 export function cellText(row: SupplyRow, column: string): string {
-  return column === "name" ? counterpartyName(row) : column === "ticker" ? entityTicker(row.counterparty) ?? "--"
+  return column === "name" ? counterpartyName(row) : column === "ticker" ? entityTicker(row.counterparty) ?? MISSING_VALUE
     : column === "role" ? roleLabel(row.role) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
     : column === "pct" ? percentage(row) : column === "usd" ? disclosedValue(row) : column === "fy" ? periodText(row)
     : column === "publisher" ? row.evidence?.find((item) => item.status === "active")?.publisher ?? row.reportingEntity.name

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { enrollmentBasis, enrollmentSeries, enrollmentValue } from "./history";
 import { useCallback, useMemo, useRef } from "react";
 import type { CatalystDetail, CatalystEvent } from "../../../api-client/catalysts";
@@ -81,7 +82,7 @@ export function CatalystEventDetail({ event, accessKey, snapshot, width, height,
       rootWidth={width} rootHeight={Math.max(3, height - tabRows)} focused={focused} getItemKey={(row) => row.revisionId}
       selection={{ kind: "id", selectedId: revision.revisionId, getId: (row) => row.revisionId, onChange: setRevisionId }}
       onActivate={(row) => { setRevisionId(row.revisionId); setTab("evidence"); }}
-      renderCell={(row, column) => ({ text: column.id === "revision" ? String(row.revision) : column.id === "observed" ? catalystDate(row, "observed") : column.id === "status" ? humanLabel(row.status) : column.id === "enrollment" ? enrollmentValue(row) === null ? "--" : `${enrollmentValue(row)?.toLocaleString("en-US")} ${enrollmentBasis(row)}` : row.changes.map(catalystChangeText).join("; ") || "First observed" })}
+      renderCell={(row, column) => ({ text: column.id === "revision" ? String(row.revision) : column.id === "observed" ? catalystDate(row, "observed") : column.id === "status" ? humanLabel(row.status) : column.id === "enrollment" ? enrollmentValue(row) === null ? MISSING_VALUE : `${enrollmentValue(row)?.toLocaleString("en-US")} ${enrollmentBasis(row)}` : row.changes.map(catalystChangeText).join("; ") || "First observed" })}
       bodyAfter={data?.access && data.access.lockedRows > 0 ? <UpgradeLabel text="Upgrade for complete event history" onPress={openUpgrade} role="catalyst-history-upgrade" /> : undefined}
       emptyStateTitle="History is collecting." /></PaneStatusBody>
       : <Evidence event={revision} width={width} height={Math.max(3, height - tabRows)} />}

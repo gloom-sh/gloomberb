@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type {
   EstimateObservation,
   EstimatePeriod,
@@ -7,10 +8,10 @@ import type { DataTableColumn } from "../../../components";
 import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
 export const estimateNumber = (value: number | null | undefined) =>
   value == null
-    ? "--"
+    ? MISSING_VALUE
     : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 export const estimatePercent = (value: number | null | undefined) =>
-  value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
+  value == null ? MISSING_VALUE : `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 export const estimateCurrent = (period: EstimatePeriod) =>
   period.current ?? period.recorded.at(-1) ?? null;
 export const periodLabel = (period: EstimatePeriod) =>

@@ -106,7 +106,7 @@ test("a long pane title is cut once: the form shows the pane line the message po
   const f = fixture();
   f.capture.title = `AAPL ${"Apple Inc. common stock ".repeat(4)}`.trim();
   const { flow, props } = await f.open();
-  expect(props.context).toBe(`GP ${f.capture.title.slice(0, 54)}... · v${VERSION} · terminal`);
+  expect(props.context).toBe(`GP ${f.capture.title.slice(0, 56)}… · v${VERSION} · terminal`);
   props.resolve(await props.send("Title runs off the header"));
   await flow;
   expect(f.posts[0]!.text).toBe(`Title runs off the header\n\nPane: ${props.context}`);

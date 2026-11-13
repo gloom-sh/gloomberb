@@ -61,7 +61,7 @@ const localDay = (at: number) => {
 /**
  * How far away a call is. With its start: "in 25m" and "in 3h" within a day
  * (the countdown econ events use), then its weekday on this machine's clock
- * within the week ("Thu"), then its date ("Oct 30"); "started" once it has.
+ * within the week ("Thu"), then its date ("30 Oct"); "started" once it has.
  * Known by its day alone: "today", "tomorrow", then the same.
  */
 export function callCountdown(call: CloudEarningsCallPayload, now = Date.now()): string {
@@ -86,7 +86,7 @@ export function callCountdown(call: CloudEarningsCallPayload, now = Date.now()):
 
 /**
  * The countdown when it says more than the call's day does: "in 3h", "today",
- * "tomorrow". Null when it would only name the day ("Thu", "Oct 30").
+ * "tomorrow". Null when it would only name the day ("Thu", "30 Oct").
  */
 export function callAway(call: CloudEarningsCallPayload, now = Date.now()): string | null {
   const countdown = callCountdown(call, now);
@@ -114,7 +114,7 @@ function clockFormatter(timeZone: string | undefined, withDay: boolean): Intl.Da
 function clock(at: number, timeZone: string | undefined, withDay: boolean): string {
   const parts = Object.fromEntries(clockFormatter(timeZone, withDay).formatToParts(new Date(at)).map((part) => [part.type, part.value]));
   const time = `${parts.hour}:${parts.minute}`;
-  return withDay ? `${parts.weekday} ${parts.month} ${parts.day} ${time}` : time;
+  return withDay ? `${parts.weekday} ${parts.day} ${parts.month} ${time}` : time;
 }
 
 const NEW_YORK = "America/New_York";
@@ -137,8 +137,8 @@ export function clockIsNewYork(calls: readonly CloudEarningsCallPayload[], now =
 
 /**
  * When the next call starts, as its own line names it: the day and time here,
- * then New York's ("Thu Oct 22 22:30", "16:30 ET"), New York's alone when the
- * two agree ("Thu Oct 22 16:30 ET"), or the day alone ("Thu Oct 22").
+ * then New York's ("Thu 22 Oct 22:30", "16:30 ET"), New York's alone when the
+ * two agree ("Thu 22 Oct 16:30 ET"), or the day alone ("Thu 22 Oct").
  */
 export function callStartText(call: CloudEarningsCallPayload, now = Date.now()): { start: string; newYork: string | null } {
   const day = callDay(call);

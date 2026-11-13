@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { act } from "react";
 import { marketDataCliCommands } from "../../../cli/commands/market";
@@ -260,8 +261,8 @@ test("preserves missing activity through source, summaries, CSV and CLI", async 
   expect(cli.data.calls[0]!.openInterest).toBeUndefined();
   expect(cli.data.puts[0]!.volume).toBeUndefined();
   expect(result.frame).toMatch(/Volume\s+\S+/);
-  expect(result.frame).toMatch(/P\/C vol\s+--/);
-  expect(result.frame).toMatch(/P\/C OI\s+--/);
+  expect(result.frame).toMatch(new RegExp(String.raw`P\/C vol\s+${MISSING_VALUE}`));
+  expect(result.frame).toMatch(new RegExp(String.raw`P\/C OI\s+${MISSING_VALUE}`));
   expect(result.csv).toContain(",10,,");
   expect(cli.rows[0]!.volume).toBe(10);
   expect(cli.rows[1]!.openInterest).toBe(20);

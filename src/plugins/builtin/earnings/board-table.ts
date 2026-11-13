@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { withCompanyLogo } from "../../../components/company-logo";
 import { TABLE_COLUMN_GAP, tableColumnLeadGap, tableColumnWidth } from "../../../components/ui/table-layout";
@@ -147,7 +148,7 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn, context: Boa
     case "name":
       return withCompanyLogo({ text: report.name, color: colors.text }, report, context.logos === true);
     case "when": {
-      const timing = report.timing ? TIMING_LABEL[report.timing] : "--";
+      const timing = report.timing ? TIMING_LABEL[report.timing] : MISSING_VALUE;
       const text = row.showDay ? `${weekday(report.date)} ${timing}` : timing;
       // An expected time, from the company's last reports, reads quieter than an announced one.
       if (context.statusShown) return { text, color: report.expectedTiming ? colors.textMuted : dim };
@@ -158,21 +159,21 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn, context: Boa
     }
     case "status":
       // A projected date reads quieter than an announced one, as an expected time does.
-      return { text: report.dateStatus ?? "--", color: report.dateStatus === "projected" ? colors.textMuted : dim };
+      return { text: report.dateStatus ?? MISSING_VALUE, color: report.dateStatus === "projected" ? colors.textMuted : dim };
     case "cap":
       return { text: moneyText(report.marketCap), color: dim };
     case "ccy":
-      return { text: report.currency ?? "--", color: dim };
+      return { text: report.currency ?? MISSING_VALUE, color: dim };
     case "epsEstimate":
       return { text: epsText(report.epsEstimate), color: dim };
     case "analysts":
-      return { text: report.epsAnalysts == null ? "--" : String(report.epsAnalysts), color: dim };
+      return { text: report.epsAnalysts == null ? MISSING_VALUE : String(report.epsAnalysts), color: dim };
     case "epsActual":
       // The company's press release's figure reads quieter until the calendar's replaces it.
       return { text: epsText(report.epsActual), color: report.epsActual == null ? dim : report.provisional ? colors.textMuted : colors.text };
     case "basis":
       return !showsEpsBasis(report)
-        ? { text: "--", color: dim }
+        ? { text: MISSING_VALUE, color: dim }
         : { text: epsBasisShort(report.epsBasis), color: report.epsBasis ? colors.textMuted : dim };
     case "epsSurprise":
       return signed(report.epsSurprise);

@@ -1,12 +1,13 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { RateMeeting, RatePathPayload } from "../../../api-client/rates";
 import type { CurveSeries } from "../../../components/chart/curve/model";
 
 export function rateText(value: number | null): string {
-  return value == null || !Number.isFinite(value) ? "--" : `${value.toFixed(2)}%`;
+  return value == null || !Number.isFinite(value) ? MISSING_VALUE : `${value.toFixed(2)}%`;
 }
 
 export function percentileText(value: number | null): string {
-  return value == null || !Number.isFinite(value) ? "pctl --" : `${value.toFixed(0)} pctl 1Y`;
+  return value == null || !Number.isFinite(value) ? `pctl ${MISSING_VALUE}` : `${value.toFixed(0)} pctl 1Y`;
 }
 
 /**
@@ -62,21 +63,21 @@ export function meetingMoves(meetings: readonly RateMeeting[]): Map<string, numb
 
 /** Moves priced, signed to two places: `+0.62`, `-1.20`. */
 export function movesText(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const text = value.toFixed(2);
   return /[1-9]/.test(text) ? `${value > 0 ? "+" : ""}${text}` : "0.00";
 }
 
 /** A meeting's odds of a move, `62% hike`; above 100% more than one move is priced at that meeting. */
 export function moveOddsText(step: number | null): string {
-  if (step == null || !Number.isFinite(step)) return "--";
+  if (step == null || !Number.isFinite(step)) return MISSING_VALUE;
   const percent = Math.round(Math.abs(step) * 100);
   return percent === 0 ? "0%" : `${percent}% ${step > 0 ? "hike" : "cut"}`;
 }
 
 /** A move in the implied rate, in basis points like the VS NOW column. */
 export function rateChangeText(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const text = (value * 100).toFixed(1);
   return /[1-9]/.test(text) ? `${value > 0 ? "+" : ""}${text}bp` : "0.0bp";
 }

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../../utils/format";
 import { useCallback } from "react";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import {
@@ -44,7 +45,7 @@ export function useOverviewTaxEquivalent(input: {
  * cut to fit; DVD and fundamentals give the formulas whole.
  */
 export function taxEquivalentFields(analysis: TaxEquivalentAnalysis | { error: string }): StatField[] {
-  const missing = (label: string, why: string): StatField => ({ label, value: "—", detail: why, clipDetail: true });
+  const missing = (label: string, why: string): StatField => ({ label, value: MISSING_VALUE, detail: why, clipDetail: true });
   if ("error" in analysis) return [missing("Tax-Eq Yld", analysis.error)];
   const lines = taxEquivalentLines(analysis);
   const line = (key: string) => lines.find((entry) => entry.key === key);

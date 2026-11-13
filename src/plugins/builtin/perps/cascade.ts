@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { PerpDepthPayload, PerpDepthRow, PerpDepthSnapshot, PerpLiquidationMarket, PerpLiquidationPrint, PerpLiquidationsPayload } from "../../../api-client/perps";
 import type { DataTableCell, DataTableColumn, StatItem } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
@@ -11,11 +12,11 @@ import { compact, price, venueName } from "./model";
 
 type Colors = Pick<ThemeColors, "positive" | "negative" | "text" | "textBright" | "textMuted" | "textDim">;
 /** Month to second, or to minute: the header names UTC. */
-const stamp = (s: string | null | undefined, seconds = false) => s ? `${s.slice(5, 10)} ${s.slice(11, seconds ? 19 : 16)}` : "--";
+const stamp = (s: string | null | undefined, seconds = false) => s ? `${s.slice(5, 10)} ${s.slice(11, seconds ? 19 : 16)}` : MISSING_VALUE;
 const venueOrder = (venue: string) => { const at = ["binance", "bybit", "okx", "hyperliquid"].indexOf(venue); return at < 0 ? 9 : at; };
 /** The venues behind some rows, in the order the tabs list them. */
 const venuesIn = (rows: readonly { venue: string }[]) => [...new Set(rows.map((row) => row.venue))].sort((a, b) => venueOrder(a) - venueOrder(b));
-const usd = (n: number | null | undefined) => n == null ? "--" : compact(n);
+const usd = (n: number | null | undefined) => n == null ? MISSING_VALUE : compact(n);
 
 /**
  * The columns that fit the pane, the least read going first. A pair (a band's bid and ask, a window's longs and

@@ -32,11 +32,11 @@ test("HIRE has Expansion and Anomalies tabs after Moves, on the board and on a c
 test("the Expansion board lists firsts with how far back never goes, and leaves spike columns out", () => {
   const model = signalsBoardModel(expansion(), "all");
   const board = model.sections.board!;
-  // JBHT's first roles in Mexico: none of its 703 earlier postings, read since Sep 18, was there.
-  expect(board.rows[0]!.values).toMatchObject({ symbol: "JBHT", kind: "New country", label: "Mexico", country: "MX", newRoles: 7, titles: 6, prior: 703, since: "Sep 18" });
+  // JBHT's first roles in Mexico: none of its 703 earlier postings, read since 18 Sep, was there.
+  expect(board.rows[0]!.values).toMatchObject({ symbol: "JBHT", kind: "New country", label: "Mexico", country: "MX", newRoles: 7, titles: 6, prior: 703, since: "18 Sep" });
   expect(board.rows.map((row) => row.values.kind)).toEqual([...Array(8).fill("New country"), ...Array(8).fill("New city")]);
   expect(board.columns.map((column) => column.id)).toEqual(["symbol", "name", "kind", "label", "newRoles", "titles", "prior", "since", "title"]);
-  expect(model.figures.map((figure) => [figure.label, figure.value])).toEqual([["New countries", "8"], ["New cities", "26"], ["Measured", "1,618"], ["First seen since", "Sep 17"], ["Held", "508"]]);
+  expect(model.figures.map((figure) => [figure.label, figure.value])).toEqual([["New countries", "8"], ["New cities", "26"], ["Measured", "1,618"], ["First seen since", "17 Sep"], ["Held", "508"]]);
   expect(signalsBoardModel({ ...expansion(), signals: [], total: 0, filter: "new_city" }, "new_city").sections.board!.empty).toBe("None of this kind this week.");
   expect(signalsBoardModel({ ...expansion(), week: null, signals: [] }, "all").sections.board!.empty).toBe("No week has been computed yet.");
 });
@@ -45,8 +45,8 @@ test("a first's detail says why and gives every number behind it", () => {
   const signal = jbht().signals[0]!;
   expect(signal.why).toContain("the first seen there since Sep 18, 2026: none of the 703 postings");
   expect(signalFacts(signal)).toEqual(expect.arrayContaining([
-    { label: "New roles", value: "7 under 6 titles, week of Oct 12, 2026" },
-    { label: "First seen since", value: "Sep 18, 2026, none of 703 earlier postings (98% placed)" },
+    { label: "New roles", value: "7 under 6 titles, week of 12 Oct 2026" },
+    { label: "First seen since", value: "18 Sep 2026, none of 703 earlier postings (98% placed)" },
     { label: "Cities", value: "Querétaro, MX (7)" },
   ]));
   expect(signalFacts(signal).some((fact) => fact.label === "Average before")).toBe(false);

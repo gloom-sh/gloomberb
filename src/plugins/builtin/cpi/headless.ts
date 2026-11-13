@@ -1,12 +1,13 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CpiRow } from "../../../api-client/cpi";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCpiBoard } from "./client";
 import { cpiHeaderLine, cpiMonth, cpiRowOption, cpiRows } from "./model";
 
 /** Two decimals; a value that rounds to zero reads 0.00, never -0.00. */
-const percent = (value: unknown) => typeof value === "number" ? (Number(value.toFixed(2)) === 0 ? "0.00" : value.toFixed(2)) : "--";
-const weight = (value: unknown) => typeof value === "number" ? value.toFixed(3) : "--";
-const text = (value: unknown) => typeof value === "string" ? value : "--";
+const percent = (value: unknown) => typeof value === "number" ? (Number(value.toFixed(2)) === 0 ? "0.00" : value.toFixed(2)) : MISSING_VALUE;
+const weight = (value: unknown) => typeof value === "number" ? value.toFixed(3) : MISSING_VALUE;
+const text = (value: unknown) => typeof value === "string" ? value : MISSING_VALUE;
 
 /** One row per component in the release's order; numbers stay raw for JSON, rounded for text. */
 function reportRow(row: CpiRow, indent = true) {

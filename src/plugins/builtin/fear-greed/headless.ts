@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type {
   HeadlessBundleResult,
   HeadlessPaneDefinition,
@@ -46,7 +47,7 @@ function projectFearGreedHeadless(data: FearGreedData): HeadlessBundleResult {
           secondaryValue: indicator.latestSecondaryValue,
           secondary: indicator.definition.secondaryLabel && indicator.latestSecondaryValue != null
             ? `${indicator.definition.secondaryLabel}: ${formatIndicatorValue(indicator.latestSecondaryValue, indicator.definition.valueFormat)}`
-            : "-",
+            : MISSING_VALUE,
           updatedAt: indicator.updatedAt?.toISOString() ?? null,
         })),
       },

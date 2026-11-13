@@ -164,14 +164,14 @@ function UpgradeDialog({
 
   useEffect(() => {
     let live = true;
-    void loadOffer()
-      .catch((error): UpgradeOffer => {
-        logFailure("account-upgrade", "Upgrade offer request failed")(error);
-        return { pricing: null, trialAvailable: null, paymentFailed: false };
-      })
-      .then((loaded) => {
-        if (live) setOffer(loaded);
-      });
+    const show = (loaded: UpgradeOffer) => {
+      if (live) setOffer(loaded);
+    };
+    // A failed request still opens the dialog, with list prices.
+    loadOffer().then(show, (error: unknown) => {
+      logFailure("account-upgrade", "Upgrade offer request failed")(error);
+      show({ pricing: null, trialAvailable: null, paymentFailed: false });
+    });
     return () => {
       live = false;
     };

@@ -2,7 +2,7 @@ import type { StatItem } from "../../../components";
 import type { OptionsChain } from "../../../types/financials";
 import type { HeadlessPaneEntry } from "../../../types/headless";
 import { numberErrorMessage } from "../../../utils/decimal-comma";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { amountUnit, exportPercent, UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
 
 /**
@@ -253,7 +253,7 @@ export function hedgeReportEntries(hedge: HedgeBudget): HeadlessPaneEntry[] {
     { key: "nav", label: "NAV", value: hedge.nav, ...amount, formatted: `${money(hedge.nav)}${unit}` },
     { key: "budget", label: "Budget", value: hedge.budget, ...amount, formatted: `${money(hedge.budget)}${unit} (${formatBps(hedge.budgetBps)} of NAV)` },
     { key: "sizingPrice", label: "Sizing price", value: hedge.sizingPrice, unit: `${amount.unit} per share`,
-      formatted: hedge.sizingPrice == null ? "--" : describePrice(hedge.basis, hedge.singleLeg, hedge.sizingPrice) },
+      formatted: hedge.sizingPrice == null ? MISSING_VALUE : describePrice(hedge.basis, hedge.singleLeg, hedge.sizingPrice) },
     { key: "costPerContract", label: "Cost per contract", value: hedge.costPerContract, ...amount,
       formatted: costText(hedge.costPerContract, hedge.sizingPrice, hedge.multiplier, unit) },
     { key: "contracts", label: "Contracts", value: hedge.contracts, unit: "contracts", formatted: hedge.contracts.toLocaleString("en-US") },
@@ -285,7 +285,7 @@ export function hedgeStatItems(hedge: HedgeBudget): StatItem[] {
     { id: "hedge-notional", label: "Notional", value: short(hedge.notional),
       detail: `${percent(hedge.notionalOfNav)} of NAV at ${formatHedgePrice(hedge.spot)}` },
     hedge.coverage == null || hedge.sleeve == null
-      ? { id: "hedge-coverage", label: "Coverage", value: "--", detail: "no sleeve set" }
+      ? { id: "hedge-coverage", label: "Coverage", value: MISSING_VALUE, detail: "no sleeve set" }
       : { id: "hedge-coverage", label: "Coverage", value: percent(hedge.coverage), detail: `of ${short(hedge.sleeve)} sleeve` },
   ];
 }

@@ -123,7 +123,7 @@ test("draws an instrument's name after its symbol and drops it before the symbol
 
   const wide = await render(40);
   expect(wide).toContain("SAP  Saputo Inc.");
-  expect(wide).toContain("BRK.B  Berkshire Hathaway Inc... NYSE");
+  expect(wide).toContain("BRK.B  Berkshire Hathaway Inc.…  NYSE");
   expect(columnOf(wide, "TSX")).toBe(columnOf(wide, "XETRA"));
 
   const narrow = await render(18);

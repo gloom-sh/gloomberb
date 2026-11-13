@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { logFailure } from "../../../utils/log-failure";
 import { isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import type { EarningsCalendarPayload, EarningsHistoryPayload } from "../../../api-client/earnings";
@@ -55,7 +56,7 @@ function surpriseColumn(key: "epsSurprise" | "revenueSurprise", header: string):
 const BASIS_COLUMN: HeadlessPaneColumn = {
   key: "epsBasis",
   header: "Basis",
-  textFormat: (value, row) => (value == null ? "-" : row.epsActualProvisional === true ? `${String(value)}, provisional` : String(value)),
+  textFormat: (value, row) => (value == null ? MISSING_VALUE : row.epsActualProvisional === true ? `${String(value)}, provisional` : String(value)),
 };
 
 const BOARD_COLUMNS: HeadlessPaneColumn[] = [
@@ -95,7 +96,7 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "dateStatus", header: "Status" },
   { key: "timing", header: "When" },
   // The quarter as the company names it; its end month where the company's calls do not say. Exports keep both.
-  { key: "fiscalQuarter", header: "Quarter", format: (value, row) => typeof value === "string" ? value : typeof row.fiscalPeriod === "string" ? row.fiscalPeriod : "-" },
+  { key: "fiscalQuarter", header: "Quarter", format: (value, row) => typeof value === "string" ? value : typeof row.fiscalPeriod === "string" ? row.fiscalPeriod : MISSING_VALUE },
   { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },

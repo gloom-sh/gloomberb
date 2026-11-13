@@ -119,7 +119,7 @@ function detailTitle(version: string, title: string): string {
 function renderVersionCell(version: ChangelogVersion, column: VersionColumn): DataTableCell {
   switch (column.id) {
     case "date":
-      return { text: formatShortDate(version.lastPublishedAt, { fallback: "" }), color: colors.textDim };
+      return { text: formatShortDate(version.lastPublishedAt, { day: "2-digit", fallback: "" }), color: colors.textDim };
     case "version":
       return { text: version.id, color: colors.textBright, attributes: TextAttributes.BOLD };
     case "title":
@@ -132,7 +132,7 @@ function renderVersionCell(version: ChangelogVersion, column: VersionColumn): Da
 function renderReleaseCell(release: ChangelogRelease, column: ReleaseColumn): DataTableCell {
   switch (column.id) {
     case "date":
-      return { text: formatShortDate(release.publishedAt, { fallback: "" }), color: colors.textDim };
+      return { text: formatShortDate(release.publishedAt, { day: "2-digit", fallback: "" }), color: colors.textDim };
     case "version":
       return { text: release.version, color: colors.textBright, attributes: TextAttributes.BOLD };
     case "title":

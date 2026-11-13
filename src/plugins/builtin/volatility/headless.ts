@@ -1,11 +1,12 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createVolatilityDependencies, loadVolatilityData, type VolatilityLoadResult } from "./client";
 import { termStateLabel, type VolatilityData } from "./model";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 
-function formattedValue(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "--"; }
-function formattedPercentile(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(0) : "--"; }
+function formattedValue(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : MISSING_VALUE; }
+function formattedPercentile(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(0) : MISSING_VALUE; }
 /** The full ratio history stays in the JSON metadata. */
 const RECENT_RATIO_SESSIONS = 20;
 function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
@@ -16,7 +17,7 @@ function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
   return { sections: [
     { title: "Cash VIX tenor curve", entries: [
       { label: "As of", value: data.curve.date },
-      { label: "State", value: state, formatted: state ?? "--" }, { label: "3M / 30D", value: data.curve.ratio, formatted: formattedValue(data.curve.ratio) },
+      { label: "State", value: state, formatted: state ?? MISSING_VALUE }, { label: "3M / 30D", value: data.curve.ratio, formatted: formattedValue(data.curve.ratio) },
       { label: "3M / 30D 1Y percentile", value: data.curve.ratioPercentile1y, formatted: formattedPercentile(data.curve.ratioPercentile1y) }, { label: "3M / 30D 1Y sample", value: data.curve.ratioSampleSize },
       { label: "3M spread (points)", value: data.curve.slope, formatted: formattedValue(data.curve.slope) },
     ] },
@@ -26,7 +27,7 @@ function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
       { key: "sourceId", header: "Series" },
     ], rows: data.curve.points.map((point) => ({ ...point, date: data.curve.date })) },
     { title: "3M / 30D history", entries: [
-      { label: "As of", value: data.term.termDate }, { label: "Source", value: data.term.publisher, formatted: data.term.publisher ?? "--" },
+      { label: "As of", value: data.term.termDate }, { label: "Source", value: data.term.publisher, formatted: data.term.publisher ?? MISSING_VALUE },
       { label: "3M / 30D", value: data.term.ratio, formatted: formattedValue(data.term.ratio) },
       { label: "3M spread (points)", value: data.term.slope, formatted: formattedValue(data.term.slope) },
     ] },

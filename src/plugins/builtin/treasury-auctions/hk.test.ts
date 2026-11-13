@@ -123,7 +123,7 @@ test("the text reads the average yield as RATE, an FRN's spread in bp and EF pap
   expect(line("03GB2807001")).toEqual(["2026-10", "HKGB", "1-Year 9-Month", "1.401%", "9.93", "RMB750M", "03GB2807001"]);
   expect(line("01GH2705001")).toEqual(["2026-05", "FRN", "1-Year", "20.0bp spread", "4.44", "HK$1.5B", "01GH2705001"]);
   expect(text).toContain("Hong Kong Tenders | all | all");
-  expect(text).toContain("HKMA publishes its tender figures monthly; they run to Oct 28, 2026 for EF Bills, Aug 24, 2026 for EF Notes, Oct 2026 for Government Bonds.");
+  expect(text).toContain("HKMA publishes its tender figures monthly; they run to 28 Oct 2026 for EF Bills, 24 Aug 2026 for EF Notes, Oct 2026 for Government Bonds.");
   const freshness = deriveHeadlessFreshness(headless, result, Date.parse(NOW));
   expect(freshness).toMatchObject({ asOf: "2026-10-28", source: "HKMA" });
 

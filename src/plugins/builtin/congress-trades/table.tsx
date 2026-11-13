@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { TextAttributes } from "../../../ui";
 import { TickerBadgeList, type DataTableCell } from "../../../components";
 import { colors } from "../../../theme/colors";
@@ -47,7 +48,7 @@ export function renderCongressTradeCell(
     case "filed":
       return { text: column.width >= 10 ? trade.filingDate : formatShortDate(trade.filingDate, FILING_DAY_FORMAT), color: colors.textDim };
     case "tx":
-      return { text: column.width >= 10 ? trade.transactionDate ?? "--" : formatShortDate(trade.transactionDate, FILING_DAY_FORMAT), color: colors.textDim };
+      return { text: column.width >= 10 ? trade.transactionDate ?? MISSING_VALUE : formatShortDate(trade.transactionDate, FILING_DAY_FORMAT), color: colors.textDim };
     case "lag":
       return { text: `${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? "!" : ""}`, color: (trade.lagDays ?? 0) > 45 ? colors.warning : colors.textDim };
     case "member":
@@ -56,7 +57,7 @@ export function renderCongressTradeCell(
       return { text: trade.side, color: sideColor(trade.side), attributes: TextAttributes.BOLD };
     case "ticker":
       return {
-        text: trade.ticker ?? (column.assetFallback && trade.assetName ? trade.assetName : "--"),
+        text: trade.ticker ?? (column.assetFallback && trade.assetName ? trade.assetName : MISSING_VALUE),
         content: trade.ticker ? (
           <TickerBadgeList
             symbols={[trade.ticker]}
@@ -82,7 +83,7 @@ export function renderCongressTradeCell(
 export function renderCongressTickerCell(ticker: CloudCongressTickerPayload, column: TickerColumn): DataTableCell {
   if (column.id === "ticker") return { text: ticker.ticker, color: colors.textBright };
   if (column.id === "range") return { text: formatAmountRange(ticker.estimatedLow, ticker.estimatedHigh), color: colors.text };
-  if (column.id === "lastFilingDate") return { text: ticker.lastFilingDate ?? "--", color: colors.textDim };
+  if (column.id === "lastFilingDate") return { text: ticker.lastFilingDate ?? MISSING_VALUE, color: colors.textDim };
   return { text: String(ticker[column.id]), color: column.id === "buyCount" ? colors.positive : column.id === "sellCount" ? colors.negative : colors.text };
 }
 
@@ -91,13 +92,13 @@ export function renderCongressMemberCell(
   column: MemberColumn,
 ): DataTableCell {
   switch (column.id) {
-    case "party": return { text: member.party ?? "--", color: colors.textDim };
+    case "party": return { text: member.party ?? MISSING_VALUE, color: colors.textDim };
     case "medianReturn": case "medianExcessSinceFiling": return congressReturnCell(member[column.id]);
-    case "buyHitRate": return { text: member.buyHitRate == null ? "--" : `${member.buyHitRate.toFixed(0)}%`, color: colors.text };
+    case "buyHitRate": return { text: member.buyHitRate == null ? MISSING_VALUE : `${member.buyHitRate.toFixed(0)}%`, color: colors.text };
     case "member":
       return { text: member.memberName, color: colors.text };
     case "district":
-      return { text: member.stateDistrict || "--", color: colors.textDim };
+      return { text: member.stateDistrict || MISSING_VALUE, color: colors.textDim };
     case "trades":
       return { text: String(member.tradeCount), color: colors.textBright, attributes: TextAttributes.BOLD };
     case "buys":

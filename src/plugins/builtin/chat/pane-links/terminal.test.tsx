@@ -133,7 +133,7 @@ test("the terminal draws a share link as a card as tall as what it says, the pan
   // A plain message reads as before; the Wire post keeps its text and gains its chip.
   expect(frame).toContain("message 1");
   expect(frame).toContain("Macro calendar for Thu, Oct 8");
-  expect(frame).toContain(" E Economic Calendar · Oct 8");
+  expect(frame).toContain(" E Economic Calendar · 8 Oct");
 
   await tui.clickFrameText(STORY.title);
   await tui.clickFrameText("Economic Calendar");

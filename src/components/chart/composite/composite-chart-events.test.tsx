@@ -44,7 +44,7 @@ describe("CompositeChart events", () => {
   test("a guide is drawn in its own glyph under the marks, clear of the day's high and low; a period is dotted at each end", async () => {
     const frameRows = await frame([DATED, UNDATED]);
     // The plot: under the legend and the toolbar, above the time axis.
-    const rows = frameRows.slice(2, frameRows.findIndex((row) => row.includes("Jul 20 2026")));
+    const rows = frameRows.slice(2, frameRows.findIndex((row) => row.includes("20 Jul 2026")));
     const column = rows.find((row) => row.includes("╎"))!.indexOf("╎");
     const cells = rows.map((row) => row[column]);
     expect(cells.filter((cell) => cell === "╎").length).toBeGreaterThan(2);

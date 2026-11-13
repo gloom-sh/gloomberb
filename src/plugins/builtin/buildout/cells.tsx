@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { TextAttributes } from "../../../ui";
 import type { DataTableCell } from "../../../components";
 import { colors } from "../../../theme/colors";
@@ -61,7 +62,7 @@ export function renderBuildoutCell(
       case "listDescription":
         return { text: text(list.shortDescription ?? list.description), color: colors.textDim };
       case "companyCount":
-        return { text: list.companyCount == null ? "-" : String(list.companyCount), color: colors.textDim };
+        return { text: list.companyCount == null ? MISSING_VALUE : String(list.companyCount), color: colors.textDim };
       case "totalMarketCap":
         return moneyCell(list.totalMarketCap, colors.textDim);
       case "avgSectorGrowth":

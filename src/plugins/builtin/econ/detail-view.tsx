@@ -30,7 +30,7 @@ import {
 } from "../../../sources/gloomberb-cloud/fred-series";
 import { colors } from "../../../theme/colors";
 import { Box, Text } from "../../../ui";
-import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
 import { actualColor, CALENDAR_TIME_ZONE_LABEL, econEventName, figureGap, figureGapText, timeLabel } from "./calendar-model";
@@ -79,7 +79,7 @@ function formatHistoryValue(value: number, units: string): string {
 
 /** A move in a percentage is in points, so it never reads as a relative change. */
 function formatHistoryChange(change: number | null, units: string): string {
-  if (change == null) return "--";
+  if (change == null) return MISSING_VALUE;
   const text = isPercent(units)
     ? `${Math.abs(change).toFixed(2)}pp`
     : Math.abs(change).toLocaleString("en-US", { maximumFractionDigits: 1 });

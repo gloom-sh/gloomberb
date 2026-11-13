@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { THEME_PERIODS, type ThemeMembersPayload, type ThemeSummary, type ThemesPayload } from "../../../api-client/themes";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness } from "../../../types/plugin";
@@ -22,7 +23,7 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
     align: "right",
     format: (value, row) => row.extendedSession === session && typeof value === "number"
       ? `${memberPrice(value)} ${percent(typeof row.extendedChangePercent === "number" ? row.extendedChangePercent : null)}`
-      : "--",
+      : MISSING_VALUE,
   };
 }
 

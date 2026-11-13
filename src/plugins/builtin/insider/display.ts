@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { InsiderReportingOwner, InsiderTransaction } from "./insider-data";
 
 /**
@@ -222,7 +223,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 /** The transaction code as one short word: BUY, SELL, AWARD, TAX, EXERCISE, GIFT... */
 export function insiderTypeLabel(code: string | null | undefined): string {
-  if (!code) return "—";
+  if (!code) return MISSING_VALUE;
   return TYPE_LABELS[code] ?? code;
 }
 

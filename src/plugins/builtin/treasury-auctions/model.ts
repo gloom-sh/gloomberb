@@ -476,9 +476,9 @@ export function firstAuctionSortDirection(columnId: AuctionColumnId): SortDirect
 }
 
 /**
- * "Oct 13" is ambiguous once the rows span two calendar years ("Nov 10" of
- * 2026 above "Nov 12" of 2025), so then every row is dated in full
- * (2026-10-13), the way the search takes a date. A Hong Kong bond's issue
+ * "13 Oct" is ambiguous once the rows span two calendar years ("10 Nov" of
+ * 2026 above "12 Nov" of 2025), so then every row is dated in full
+ * ("13 Oct 2026"), as every other table dates a day. A Hong Kong bond's issue
  * month (2026-05) counts by its year.
  */
 export function auctionDatesShowYear(dates: readonly string[]): boolean {
@@ -524,7 +524,7 @@ export function buildAuctionColumns(options: {
   const { showYear = false, view = "results", rows = [], width } = options;
   const termWidth = (text: (term: string) => string) => Math.max(6, ...rows.map((auction) => displayWidth(text(auction.securityTerm))));
   const lead: AuctionColumn[] = [
-    { id: "date", label: "DATE", width: showYear ? 10 : 6, align: "left" },
+    { id: "date", label: "DATE", width: showYear ? 11 : 6, align: "left" },
     { id: "type", label: "TYPE", width: 6, align: "left" },
     { id: "term", label: "TERM", width: termWidth((term) => term), align: "left" },
     { id: "rate", label: rateColumnLabel(rows, "pane"), width: 7, align: "right" },

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { GasStorageHistory, GasStorageRow, GasStorageSeasonal } from "../../../api-client/europe-energy";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { SeriesDefinition, SeriesLoadResult } from "../../../series/types";
@@ -55,18 +56,18 @@ export const GAS_PUBLISHER = "GIE AGSI+";
 const fixed = (value: number, digits: number) => value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const signed = (value: number, digits: number) => `${value > 0 ? "+" : ""}${fixed(value, digits)}`;
 /** Percent full, to the hundredth AGSI+ publishes. */
-export const formatGasFull = (value: number | null | undefined) => value == null ? "--" : fixed(value, 2);
+export const formatGasFull = (value: number | null | undefined) => value == null ? MISSING_VALUE : fixed(value, 2);
 /** Percentage points. */
-export const formatGasPoints = (value: number | null | undefined) => value == null ? "--" : signed(value, 2);
+export const formatGasPoints = (value: number | null | undefined) => value == null ? MISSING_VALUE : signed(value, 2);
 /** TWh to the tenth. */
-export const formatGasTwh = (value: number | null | undefined) => value == null ? "--" : fixed(value, 1);
+export const formatGasTwh = (value: number | null | undefined) => value == null ? MISSING_VALUE : fixed(value, 1);
 /** GWh/day, whole. */
-export const formatGasFlow = (value: number | null | undefined) => value == null ? "--" : fixed(value, 0);
+export const formatGasFlow = (value: number | null | undefined) => value == null ? MISSING_VALUE : fixed(value, 0);
 
 /** Where the day sits in its five-year range: a percentile-like 0 to 100, or below and above it. */
 export function gasRangePosition(row: GasStorageRow): { value: number | null; text: string } {
   const position = row.fiveYear?.position;
-  if (position == null) return { value: null, text: "--" };
+  if (position == null) return { value: null, text: MISSING_VALUE };
   if (position < 0) return { value: 0, text: "below" };
   if (position > 100) return { value: 100, text: "above" };
   return { value: Math.round(position), text: `${Math.round(position)}%` };
@@ -77,7 +78,7 @@ export const gasRangeLabel = (years: number) => `${years > 0 && years < 5 ? year
 
 /** A gas day and its flag, the way a row is dated: `2026-10-12 est`. */
 export const gasDayText = (row: Pick<GasStorageRow, "gasDay" | "status">) =>
-  row.gasDay ? `${row.gasDay}${row.status === "estimated" ? " est" : ""}` : "--";
+  row.gasDay ? `${row.gasDay}${row.status === "estimated" ? " est" : ""}` : MISSING_VALUE;
 
 /** The benchmark areas a search lists first; the rest follow by name. */
 const LEAD_AREAS = ["EU", "DE", "IT", "FR", "NL", "AT"];
@@ -181,7 +182,7 @@ export function gasYearAxis(year: number) {
       ticks: [0, 3, 6, 9].map((month) => ({ label: MONTHS[month]!, ratio: ratio(Date.UTC(year, month, 1)) })),
       formatCursor: (xRatio: number) => {
         const date = new Date(start + Math.round((xRatio * span) / DAY_MS) * DAY_MS);
-        return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+        return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
       },
     },
   };

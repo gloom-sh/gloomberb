@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listingIdentity } from "../shared/ticker-request";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableColumn } from "../../../components";
@@ -109,12 +110,12 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
       case "label": return { text: row.label, color: colors.textBright };
       case "value": return { text: formatStat(row.value, row.unit), color: row.stale ? colors.textDim : row.id.startsWith("iv30") ? colors.warning : colors.textBright };
       // A stale reading says so in place of how it was taken: it is no current figure either way.
-      case "date": return { text: row.date ? `${row.date} ${row.stale ? "stale" : statSource(row)}` : "--", color: row.stale ? colors.warning : colors.textDim };
+      case "date": return { text: row.date ? `${row.date} ${row.stale ? "stale" : statSource(row)}` : MISSING_VALUE, color: row.stale ? colors.warning : colors.textDim };
       case "low": return { text: formatStat(row.low, row.unit), color: colors.textDim };
       case "high": return { text: formatStat(row.high, row.unit), color: colors.textDim };
       case "rank": return { text: formatRank(row.rank), color: tone };
       case "percentile": return { text: formatRank(row.percentile), color: tone };
-      case "samples": return { text: row.samples ? String(row.samples) : "--", color: colors.textDim };
+      case "samples": return { text: row.samples ? String(row.samples) : MISSING_VALUE, color: colors.textDim };
       default: return { text: "" };
     }
   };

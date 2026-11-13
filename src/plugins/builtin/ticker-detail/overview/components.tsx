@@ -5,7 +5,7 @@ import { formatMarketPrice, formatMarketPriceWithCurrency, liveQuoteFormatOption
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
-import { displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../utils/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import { portfolioPnlLabel } from "../../../../portfolio/position-metrics";
 
@@ -213,11 +213,11 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
   const { nativePaneChrome } = useUiCapabilities();
   // Bid, ask and spread keep the instrument's decimals on every tick ($224.58 / $224.60 / $0.02).
   const priceOptions = liveQuoteFormatOptions(quote, quote.currency, assetCategory);
-  const bidPrice = quote.bid != null ? formatMarketPriceWithCurrency(quote.bid, quote.currency, priceOptions) : "—";
-  const askPrice = quote.ask != null ? formatMarketPriceWithCurrency(quote.ask, quote.currency, priceOptions) : "—";
+  const bidPrice = quote.bid != null ? formatMarketPriceWithCurrency(quote.bid, quote.currency, priceOptions) : MISSING_VALUE;
+  const askPrice = quote.ask != null ? formatMarketPriceWithCurrency(quote.ask, quote.currency, priceOptions) : MISSING_VALUE;
   const bidText = quote.bidSize != null && quote.bidSize > 0 ? `${formatNumber(quote.bidSize, 0)} x ${bidPrice}` : bidPrice;
   const askText = quote.askSize != null && quote.askSize > 0 ? `${formatNumber(quote.askSize, 0)} x ${askPrice}` : askPrice;
-  let spreadText = "—";
+  let spreadText = MISSING_VALUE;
   // A crossed book (a closing auction's last bid above its ask, Tencent's HK$430.80 / HK$430.40) has no spread to show.
   if (quote.bid != null && quote.ask != null && quote.ask >= quote.bid) {
     const spread = quote.ask - quote.bid;

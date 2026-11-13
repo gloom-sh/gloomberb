@@ -61,9 +61,9 @@ describe("composite chart timestamp formatting", () => {
       overnight.endTime,
     )).toBe("01-02 00:15 UTC");
     const axis = buildCompositeTimeAxisLayout(overnight, 80).text;
-    expect(axis).toContain("Jan 1 23:30 UTC");
-    expect(axis).toContain("Jan 2 00:00");
-    expect(axis).toContain("Jan 2 00:30 UTC");
+    expect(axis).toContain("1 Jan 23:30 UTC");
+    expect(axis).toContain("2 Jan 00:00");
+    expect(axis).toContain("2 Jan 00:30 UTC");
   });
 
   test("keeps longer chart spans as concise UTC calendar dates", () => {
@@ -72,8 +72,8 @@ describe("composite chart timestamp formatting", () => {
 
     expect(formatCompositeCursorDate(cursor, weekly.startTime, weekly.endTime)).toBe("2025-01-04");
     expect(formatCompositeTimeAxisDate(cursor, weekly.startTime, weekly.endTime)).toBe("2025-01-04");
-    expect(buildCompositeTimeAxisLayout(weekly, 60).text).toContain("Jan 1");
-    expect(buildCompositeTimeAxisLayout(weekly, 60).text).toContain("Jan 8");
+    expect(buildCompositeTimeAxisLayout(weekly, 60).text).toContain("1 Jan");
+    expect(buildCompositeTimeAxisLayout(weekly, 60).text).toContain("8 Jan");
   });
 
   test("the desktop's cursor tag on a daily axis reads as its end labels do, and keeps a time of day", () => {
@@ -81,7 +81,7 @@ describe("composite chart timestamp formatting", () => {
     const cursor = new Date("2025-11-03T00:00:00Z");
     const tag = (words: boolean, intradayBars = false) => formatCompositeCursorAxisDate(cursor, year.startTime, year.endTime, undefined, intradayBars, words);
 
-    expect(tag(true)).toBe("Nov 3 2025");
+    expect(tag(true)).toBe("3 Nov 2025");
     // Cells keep the ISO date, which no tick is written in.
     expect(tag(false)).toBe("2025-11-03");
     expect(tag(true, true)).toBe("2025-11-03 00:00 UTC");
@@ -93,8 +93,8 @@ describe("composite chart timestamp formatting", () => {
       end: new Date("2025-01-08T00:00:00.000Z"),
     }, 60).text;
 
-    expect(axis).toContain("Jan 1");
-    expect(axis).toContain("Jan 8");
+    expect(axis).toContain("1 Jan");
+    expect(axis).toContain("8 Jan");
   });
 });
 

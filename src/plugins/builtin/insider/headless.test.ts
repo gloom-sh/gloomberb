@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
@@ -490,7 +491,7 @@ test("the ranking's text fits 120 columns with the company wrapped, and on 80 th
     expect(wide).toContain("NWBI    Northwind Biologics             78  10% owner +2  12th     100x+     25x       3  $1.15M  2026-10-14  2026-10-14");
     expect(wide).toContain("        Incorporated");
     // Traded both ways: dashes for the nth trade and size, the stake marked.
-    expect(wide).toContain("TRNT    Tailspin Toys                   40  CFO             --        --  +12% \u00b1       1   $496k  2026-10-04  2026-10-05");
+    expect(wide).toContain(`TRNT    Tailspin Toys                   40  CFO              ${MISSING_VALUE}         ${MISSING_VALUE}  +12% \u00b1       1   $496k  2026-10-04  2026-10-05`);
     // Each row's insiders are the opened company's, as in the pane; the exports keep them.
     expect(wide.join("\n")).not.toContain("Ana Rivera");
     expect(result.rows[0]!.buyers).toBe("Ana Rivera (10% owner) $796k 25x; Ben Okafor (Director) $356.5k NEW");
@@ -538,8 +539,8 @@ test("fn INS <ticker> --view insiders lists each insider as the ranking counts t
     setCliWidthOverride(120);
     const text = renderHeadlessPaneText(headless, result, args({}), "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
     expect(text).toContain("Insider     Role      Nth  Vs Usual   Stake  Bought  Plan Buys   Sold  Last");
-    expect(text).toContain("Ana Rivera  CEO       4th      2.8x     +3%    $12k       $12k     --  2026-10-14");
-    expect(text).toContain("Ben Okafor  Director  2nd        --  EXITED      --         --  $1.3M  2026-10-09");
+    expect(text).toContain(`Ana Rivera  CEO       4th      2.8x     +3%    $12k       $12k      ${MISSING_VALUE}  2026-10-14`);
+    expect(text).toContain(`Ben Okafor  Director  2nd         ${MISSING_VALUE}  EXITED       ${MISSING_VALUE}          ${MISSING_VALUE}  $1.3M  2026-10-09`);
     expect(result.rows.map((row) => [row.insider, row.side, row.bought, row.planBought, row.sold]))
       .toEqual([["Ana Rivera", "buy", 12_000, 12_000, null], ["Ben Okafor", "sell", null, null, 1_300_000]]);
     // A CAD base gets each insider's dollars in CAD at their last trade day's close, as the trades and the ranking do.

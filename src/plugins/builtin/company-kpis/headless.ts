@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { DataTableColumn } from "../../../components";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { optionFlag } from "../../../cli/pane-functions/capabilities";
@@ -32,7 +33,7 @@ function reportColumns(mode: CompanyMode, history: boolean, revisions: boolean, 
     format: (_value, row) => mode === "guidance" && column.id === "value" && typeof row.rangeText === "string" && /plus or minus|±/i.test(row.rangeText)
       ? `${row.rangeText}${row.currency ? ` ${row.currency}` : ""}`
       : companyCellText(row as unknown as CompanyRow, column.id, observations),
-  })), { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : "--" }];
+  })), { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE }];
 }
 
 function datasetRows(data: CompanyDataset): CompanyRow[] {

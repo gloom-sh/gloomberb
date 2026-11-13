@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { apiClient } from "../../../api-client";
 import type { BarsPerYearInstrument } from "../../../market-data/bars-per-year";
 import { fxVolatilityPair, fxVolatilityProxyFund } from "../../../market-data/options-alternatives";
@@ -147,7 +148,7 @@ export function fxProxyChain(proxy: Pick<FxVolProxy, "expiries">, now: number):
 /** The report's line for the chain: `2 of 4 expiries with ATM IV`, or `Options closed until …. The surface fills at the open.` */
 export function fxProxyChainText(proxy: Pick<FxVolProxy, "expiries">, now: number): string {
   const chain = fxProxyChain(proxy, now);
-  if (!chain) return "--";
+  if (!chain) return MISSING_VALUE;
   if (!chain.reopen) return `${chain.count} expiries with ATM IV`;
   const { title, message } = optionsClosedNotice(chain.reopen);
   return `${title} ${message}`;

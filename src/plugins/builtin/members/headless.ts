@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import type { HeadlessRowsResult } from "../../../types/headless";
 import { fetchBreadth, fetchChanges, fetchFunds, fetchMembers, fetchStockFunds, FundNotCoveredError } from "./client";
@@ -6,7 +7,7 @@ import { canonicalFund, changeReason, coverageText, decimal, DEFAULT_SORT, fundN
   noStockFundsMessage, percent, stockFundAsOf, stockFundsNotices, usListingInput } from "./model";
 const columns: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" }, { key: "name", header: "Name" },
-  { key: "weight", header: "Weight %", align: "right", format: (value) => value == null ? "--" : decimal(Number(value) * 100) },
+  { key: "weight", header: "Weight %", align: "right", format: (value) => value == null ? MISSING_VALUE : decimal(Number(value) * 100) },
   { key: "shares", header: "Shares", align: "right", format: (value) => decimal(value as number | null, 0) },
   { key: "price", header: "Price $", align: "right", format: (value) => decimal(value as number | null) },
   ...["changePercent", "return1WPercent", "return1MPercent", "returnYtdPercent"].map((key, i) => ({ key, header: ["1D", "1W", "1M", "YTD"][i]!, align: "right" as const, format: (value: unknown) => percent(value as number | null) })),

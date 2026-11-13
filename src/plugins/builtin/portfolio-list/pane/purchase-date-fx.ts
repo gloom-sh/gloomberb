@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../../../api-client";
 import { loadPurchaseDateCostFx, purchaseDatesToRead, type PurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 import type { TickerRecord } from "../../../../types/ticker";
+import { logFailure } from "../../../../utils/log-failure";
 
 /** A past close does not change; a date that could not be read is tried again this often. */
 const REFRESH_MS = 30 * 60_000;
@@ -36,9 +37,10 @@ export function usePurchaseDateCostFx(
   useEffect(() => {
     if (!key) return;
     let cancelled = false;
-    void loadPurchaseDateCostFx(tickersRef.current, { into, history: apiClient, portfolioId }).then((rates) => {
+    // A date whose closes cannot be read is left out; anything else is logged.
+    loadPurchaseDateCostFx(tickersRef.current, { into, history: apiClient, portfolioId }).then((rates) => {
       if (!cancelled) setState({ scope: `${into}|${portfolioId}`, rates });
-    });
+    }, logFailure("portfolio-list.purchase-date-fx", "Reading purchase date FX closes failed"));
     return () => { cancelled = true; };
   }, [into, key, portfolioId, refresh]);
 

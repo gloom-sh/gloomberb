@@ -2,7 +2,7 @@ import type { PerpBoardRow, PerpHistoryPayload, PerpLongShortRatio, PerpRankings
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { getTableWidth } from "../../../components/ui/table-layout";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { isUsListingExchange, publicTickerKey } from "../../../utils/exchanges";
 import { isRecord } from "../../../utils/guards";
 import type { ThemeColors } from "../../../theme/colors";
@@ -31,12 +31,12 @@ export function uncoveredVenueNote(venue: string): string | null {
 export const BOARD_SORTS = ["oi", "funding", "oi-change", "premium", "long-short"] as const;
 export const sortLabel = (sort: string) => ({ oi: "OI", funding: "Funding", "oi-change": "OI change", premium: "Premium", "long-short": "Long %" })[sort] ?? sort;
 export const label = (s: string) => s === "fx" ? "FX" : s.charAt(0).toUpperCase() + s.slice(1);
-export const percent = (n: number | null | undefined, digits = 3) => n == null ? "--" : `${n > 0 ? "+" : ""}${(n * 100).toFixed(digits)}%`;
-export const price = (n: number | null | undefined) => n == null ? "--" : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 6 : 2 });
-export const compact = (n: number | null | undefined) => n == null ? "--" : formatCompact(n, { fixedDecimals: true });
-export const time = (s: string | null | undefined) => s ? `${s.slice(0, 10)} ${s.slice(11, 16)} UTC` : "--";
+export const percent = (n: number | null | undefined, digits = 3) => n == null ? MISSING_VALUE : `${n > 0 ? "+" : ""}${(n * 100).toFixed(digits)}%`;
+export const price = (n: number | null | undefined) => n == null ? MISSING_VALUE : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 6 : 2 });
+export const compact = (n: number | null | undefined) => n == null ? MISSING_VALUE : formatCompact(n, { fixedDecimals: true });
+export const time = (s: string | null | undefined) => s ? `${s.slice(0, 10)} ${s.slice(11, 16)} UTC` : MISSING_VALUE;
 /** A list row's observation, month to minute: the header names UTC and the footer the full as-of. */
-export const observed = (s: string | null | undefined) => s ? `${s.slice(5, 10)} ${s.slice(11, 16)}` : "--";
+export const observed = (s: string | null | undefined) => s ? `${s.slice(5, 10)} ${s.slice(11, 16)}` : MISSING_VALUE;
 /**
  * The listed security a market tracks, as DES, FA and G take it: a US listing by its symbol, the key a stock is
  * saved and opened under, and a listing abroad with its venue (`NET:XLON`), so they open the security the premium
@@ -137,7 +137,7 @@ export function collectedVenueCount(sources: unknown): number | null {
   }));
   return venues.size || null;
 }
-export const fundingInterval = (row: Pick<PerpBoardRow, "fundingIntervalHours" | "fundingKind">) => row.fundingIntervalHours ? `${row.fundingIntervalHours}h${row.fundingKind === "last-paid" ? " paid" : row.fundingKind === "continuous" ? " continuous" : ""}` : "--";
+export const fundingInterval = (row: Pick<PerpBoardRow, "fundingIntervalHours" | "fundingKind">) => row.fundingIntervalHours ? `${row.fundingIntervalHours}h${row.fundingKind === "last-paid" ? " paid" : row.fundingKind === "continuous" ? " continuous" : ""}` : MISSING_VALUE;
 export const HISTORY_METRICS = ["funding", "oi", "premium", "price", "long-short"] as const;
 export type HistoryMetric = typeof HISTORY_METRICS[number];
 export const metricLabel = (metric: HistoryMetric) => metric === "oi" ? "OI" : metric === "long-short" ? "L/S" : label(metric);
@@ -175,9 +175,9 @@ export const venueLabel = (row: Pick<PerpBoardRow, "venue">) => venueName(row.ve
 export const venuesOf = (rows: readonly Pick<PerpBoardRow, "venue">[]): string[] => [...new Set<string>(rows.map((row) => row.venue))].sort((a, b) => venueName(a).localeCompare(venueName(b)));
 
 /** A share of accounts, unsigned: 0.6183 reads 61.8%. */
-export const share = (n: number | null | undefined, digits = 1) => n == null ? "--" : `${(n * 100).toFixed(digits)}%`;
+export const share = (n: number | null | undefined, digits = 1) => n == null ? MISSING_VALUE : `${(n * 100).toFixed(digits)}%`;
 /** Long accounts per short account, as the venue publishes it. */
-export const ratioText = (n: number | null | undefined, digits = 2) => n == null ? "--" : n.toFixed(digits);
+export const ratioText = (n: number | null | undefined, digits = 2) => n == null ? MISSING_VALUE : n.toFixed(digits);
 /** What a long/short reading counts, short enough for a legend; `definitionText` says it in full. */
 const longShortDefinition = (definition: string | null | undefined) => definition === "accounts_all" || !definition ? "All accounts" : label(definition.replaceAll("_", " "));
 const LONG_SHORT_REASONS: Record<string, string> = { unsupported: "This venue publishes no per-contract account ratio", off: "Not collected yet", collecting: "Collecting" };
@@ -207,8 +207,8 @@ export function positioningFields(row: Pick<PerpBoardRow, "longShortRatio" | "lo
 }
 
 // One text per figure, shared by the pane cells and the text report so the two always agree.
-const markText = (row: Pick<PerpBoardRow, "markPrice" | "quoteCurrency">) => row.markPrice == null ? "--" : `${price(row.markPrice)} ${row.quoteCurrency}`;
-const fundingPerInterval = (row: Pick<PerpBoardRow, "fundingRate" | "fundingIntervalHours" | "fundingKind">) => row.fundingRate == null ? "--" : `${percent(row.fundingRate, 5)} /${fundingInterval(row)}`;
+const markText = (row: Pick<PerpBoardRow, "markPrice" | "quoteCurrency">) => row.markPrice == null ? MISSING_VALUE : `${price(row.markPrice)} ${row.quoteCurrency}`;
+const fundingPerInterval = (row: Pick<PerpBoardRow, "fundingRate" | "fundingIntervalHours" | "fundingKind">) => row.fundingRate == null ? MISSING_VALUE : `${percent(row.fundingRate, 5)} /${fundingInterval(row)}`;
 /**
  * The contract a bare name opens: the one with the largest open interest across venues, among the venues read
  * recently (a stale one only when every one is). When that contract is Hyperliquid's, Hyperliquid's own pick is
@@ -252,7 +252,7 @@ export function venueAprSummary(rows: readonly PerpBoardRow[]) {
     oiWeighted: rated.length >= 2 ? oiWeighted : null, baseline, stale };
 }
 /** Percentage points between two fractions: 0.00003 reads 0.0030pp. */
-const points = (n: number | null | undefined, digits = 4) => n == null ? "--" : `${(n * 100).toFixed(digits)}pp`;
+const points = (n: number | null | undefined, digits = 4) => n == null ? MISSING_VALUE : `${(n * 100).toFixed(digits)}pp`;
 
 export type PerpColumnId = "market" | "venue" | "symbol" | "markPrice" | "fundingRate" | "fundingRate8h" | "fundingApr" | "premium"
   | "openInterestUsd" | "oiChange24h" | "longShare" | "priceChange24h" | "observedAt" | "value";
@@ -315,7 +315,7 @@ export function perpCellText(row: PerpBoardRow, id: PerpColumnId): string {
   if (id === "observedAt") return observed(row.observedAt);
   if (id === "longShare") return share(row.longShortRatio?.longShare);
   const digits = SIGNED[id];
-  return digits === undefined ? "--" : percent(row[id as keyof PerpBoardRow] as number | null, digits);
+  return digits === undefined ? MISSING_VALUE : percent(row[id as keyof PerpBoardRow] as number | null, digits);
 }
 export function perpCell(row: PerpBoardRow, id: PerpColumnId, colors: Pick<ThemeColors, "positive" | "negative" | "text" | "textBright" | "textMuted" | "textDim">): DataTableCell {
   const text = perpCellText(row, id);
@@ -371,7 +371,7 @@ export function historyColumns(metric: HistoryMetric, currency: string, hasCandl
     { id: "basis", label: "Observation basis", width: 25, align: "left" },
   ];
 }
-export const historyChange = (value: number | null | undefined, metric: HistoryMetric) => value == null ? "--"
+export const historyChange = (value: number | null | undefined, metric: HistoryMetric) => value == null ? MISSING_VALUE
   : inPoints(metric) ? `${value > 0 ? "+" : ""}${(value * 100).toFixed(metric === "funding" ? 4 : metric === "long-short" ? 2 : 3)}pp` : historyValue(value, metric);
 export function historyCaption(data: PerpHistoryPayload | null | undefined, metric: HistoryMetric) {
   if (metric === "long-short") {

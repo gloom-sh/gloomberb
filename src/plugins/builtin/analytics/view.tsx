@@ -3,7 +3,7 @@ import { DataTableView, type StatItem } from "../../../components";
 import { statGridColumns } from "../../../components/ui/stat-grid";
 import type { DataTableCell } from "../../../components/ui/data-table/types";
 import { colors, priceColor } from "../../../theme/colors";
-import { formatCompactAmount, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompactAmount, formatPercentRaw } from "../../../utils/format";
 import { formatWeight, renderBar } from "./display";
 import type {
   SectorSortPreference,
@@ -66,7 +66,7 @@ export function analyticsFigures(
   width = 0,
 ): StatItem[] {
   const short = figuresFrom(summaryRows, riskRows, false);
-  if (!riskRows.some((row) => row.value !== "—" && row.detail)) return short;
+  if (!riskRows.some((row) => row.value !== MISSING_VALUE && row.detail)) return short;
   const windowed = figuresFrom(summaryRows, riskRows, true);
   return statGridColumns(windowed, width) >= statGridColumns(short, width) ? windowed : short;
 }
@@ -82,7 +82,7 @@ function figuresFrom(
     .map(({ row }) => {
       const percent = row.id === "day-pnl" || row.id === "pnl" ? row.detail?.replace(/^\((.*)\)$/, "$1") : row.detail;
       const risk = RISK_FIGURE_IDS.has(row.id);
-      const detail = percent === "—" || (risk && (!riskWindows || row.value === "—")) ? undefined : percent;
+      const detail = percent === MISSING_VALUE || (risk && (!riskWindows || row.value === MISSING_VALUE)) ? undefined : percent;
       return {
         id: row.id,
         label: row.label,
@@ -98,7 +98,7 @@ function figuresFrom(
 export function riskFigureNotices(riskRows: readonly AnalyticsMetricRow[]): string[] {
   const byReason = new Map<string, string[]>();
   for (const row of riskRows) {
-    if (row.value !== "—" || !row.detail) continue;
+    if (row.value !== MISSING_VALUE || !row.detail) continue;
     byReason.set(row.detail, [...(byReason.get(row.detail) ?? []), row.label]);
   }
   return [...byReason].map(([reason, labels]) => `${labels.join(", ")}: ${reason}`);
@@ -122,7 +122,7 @@ function renderSectorCell(row: SectorTableRow, column: SectorTableColumn): DataT
       };
     case "return":
       return {
-        text: row.returnPct == null ? "—" : formatPercentRaw(row.returnPct),
+        text: row.returnPct == null ? MISSING_VALUE : formatPercentRaw(row.returnPct),
         color: row.returnPct == null ? colors.textMuted : priceColor(row.returnPct),
       };
     case "bar":

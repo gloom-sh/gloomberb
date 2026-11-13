@@ -16,7 +16,7 @@ import { TIME_RANGES, type TimeRange } from "../../../../time-series/range";
 import type { PaneProps } from "../../../../types/plugin";
 import type { PricePoint } from "../../../../types/financials";
 import { colors, priceColor } from "../../../../theme/colors";
-import { displayWidth, formatCompact, formatPercent } from "../../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCompact, formatPercent } from "../../../../utils/format";
 import { isPlainKeyboardEvent } from "../../../../utils/keyboard";
 import { publicTickerKey } from "../../../../utils/exchanges";
 import { exportedListingSymbol } from "../../../../portfolio/listed-symbol";
@@ -93,7 +93,7 @@ function formatDateTime(date: Date): string {
 
 /** Every price in the table at one decimal count, so the columns line up. */
 function formatMaybePrice(value: number | null | undefined, decimals: number, width: number): string {
-  return value == null || !Number.isFinite(value) ? "-" : formatBarPrice(value, decimals, width);
+  return value == null || !Number.isFinite(value) ? MISSING_VALUE : formatBarPrice(value, decimals, width);
 }
 
 /** The decimals the table's prices need: the one rule `history` and `fn HP` print by (barPriceDecimals). */
@@ -107,7 +107,7 @@ function exportPrice(value: number | null | undefined, decimals: number): number
 }
 
 function formatMaybePercent(value: number | null): string {
-  return value == null ? "-" : formatPercent(value);
+  return value == null ? MISSING_VALUE : formatPercent(value);
 }
 
 /** A change across periods without a bar, marked `*`: its base is the bar before them, which the gap notice names. */
@@ -117,7 +117,7 @@ function spanMark(text: string, row: Pick<HistoricalPriceRow, "changeSpansGap">,
 
 /** Volume as the table shows it; missing reads as missing (`volumeMissing`) in a history that reports volume, never 0. */
 function formatVolume(value: number | null | undefined, volumeMissing: boolean): string {
-  return value == null ? volumeMissing ? MISSING_VOLUME_TEXT : "-" : formatCompact(value);
+  return value == null ? volumeMissing ? MISSING_VOLUME_TEXT : MISSING_VALUE : formatCompact(value);
 }
 
 interface HistoricalPriceTable {

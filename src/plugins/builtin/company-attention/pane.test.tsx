@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { act, useReducer } from "react";
 import { afterEach, expect, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../../api-client";
@@ -38,8 +39,8 @@ test("evidence opens in the stack, keeps original title, and DES preserves the n
   await tui.emitKeypress({ name: "return" });
   const frame = await tui.waitForFrameToContain("Place");
   expect(frame).toContain("Paris");
-  expect(frame).toContain("Oct 3, 2026");
-  for (const field of ["Reporting ticker", "Revision", "Confidence", "Unknown", "--", "2026-10-03T"]) expect(frame).not.toContain(field);
+  expect(frame).toContain("3 Oct 2026");
+  for (const field of ["Reporting ticker", "Revision", "Confidence", "Unknown", MISSING_VALUE, "2026-10-03T"]) expect(frame).not.toContain(field);
   await tui.emitKeypress({ name: "escape" });
   await tui.waitForFrameToContain("SENIORITY");
   await tui.emitKeypress({ name: "d" });
@@ -59,7 +60,7 @@ test("a posting's detail reads its page: date, pay, hours and description", asyn
   await tui.waitForFrameToContain("SENIORITY");
   await tui.emitKeypress({ name: "return" });
   const frame = await tui.waitForFrameToContain("Grow Adyen's merchants");
-  expect(frame).toContain("Sep 29, 2026");
+  expect(frame).toContain("29 Sep 2026");
   expect(frame).toContain("€60k–70k");
   expect(frame).toContain("Full time");
   expect(frame).toContain("Paris, France");
@@ -105,6 +106,6 @@ test("the Expansion board opens a company on its own Expansion tab", async () =>
   await tui.emitKeypress({ name: "return" });
   const frame = await tui.waitForFrameToContain("2026-10-12");
   expect(frame).toContain("New country");
-  expect(frame).toContain("Sep 18");
+  expect(frame).toContain("18 Sep");
   expect(requests.some((url) => url.includes("/cloud/hiring/signals/company/JBHT"))).toBe(true);
 });

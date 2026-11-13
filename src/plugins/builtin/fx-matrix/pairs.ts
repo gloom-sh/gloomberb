@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { fxRateDigits } from "../../../utils/currency-pair";
 import { WORD_CURRENCY_CODES } from "../../../utils/currency-names";
 
@@ -72,7 +73,7 @@ export const CURRENCY_SETS: readonly { id: string; label: string; currencies: re
  * power of ten, such as JPY/AUD near 0.0100, keeps its decimals.
  */
 export function formatRate(rate: number, currency: string, referenceRate = rate): string {
-  if (!Number.isFinite(rate) || rate <= 0) return "—";
+  if (!Number.isFinite(rate) || rate <= 0) return MISSING_VALUE;
   const basis = Number.isFinite(referenceRate) && referenceRate > 0 ? referenceRate : rate;
   return rate.toFixed(fxRateDigits(currency, basis));
 }

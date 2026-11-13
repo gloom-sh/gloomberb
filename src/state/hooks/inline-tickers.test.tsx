@@ -73,6 +73,49 @@ describe("useInlineTickers", () => {
     expect(actions).toEqual([]);
   });
 
+  // The batch used to resolve whatever happened, so a failed one recorded
+  // nothing: the badge asked again at once, in a loop, and each failure was an
+  // unhandled rejection.
+  test("a quote batch that fails keeps the badge, stops asking, and leaves no unhandled rejection", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const state = createInitialState(createDefaultConfig("/tmp/gloomberb-inline-tickers-batch-failure-test"));
+      state.tickers.set("LGD1L", createTestTicker("LGD1L", "Unquoted", { broker_contracts: [] }));
+      let batches = 0;
+      setSharedMarketDataCoordinator({
+        subscribeQuotes: () => () => {},
+        subscribeKeys: () => () => {},
+        getKeysVersion: () => 0,
+        getVersion: () => 0,
+        subscribe: () => () => {},
+        getQuoteEntry: () => createIdleEntry<Quote>(),
+        loadQuotesBatch: async () => {
+          batches += 1;
+          throw new Error("Quote service unavailable");
+        },
+      } as unknown as MarketDataCoordinator);
+      setSharedRegistryForTests({ marketData: createTestDataProvider(), pinTicker: () => {} } as unknown as PluginRegistry);
+
+      await act(async () => {
+        await tui.render(
+          <AppContext value={createStaticAppStore(state)}>
+            <InlineTickerHarness />
+          </AppContext>,
+          { width: 20, height: 1 },
+        );
+      });
+
+      expect(await renderUntil("ready")).toContain("ready");
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+      expect(batches).toBe(1);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   test("can resolve inline ticker badges without live quote lookups", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-inline-tickers-static-test");
     const state = createInitialState(config);

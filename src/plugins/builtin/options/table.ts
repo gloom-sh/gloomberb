@@ -3,7 +3,7 @@ import type { DataTableCell } from "../../../components";
 import type { OptionContract, OptionsChain } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, blendForSeparation, contrastRatio } from "../../../theme/color-utils";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
 import { formatCarryPercent, formatCostOfSpot } from "./carry";
@@ -166,7 +166,7 @@ export function findNearestStrikeIndex(strikes: number[], targetStrike: number):
 export function formatIv(value: number | undefined, filled = false): string {
   // Providers send 0 for contracts with no implied volatility; "0.0%" would read
   // as a real quote of zero vol.
-  if (value == null || !Number.isFinite(value) || value <= 0) return "\u2014";
+  if (value == null || !Number.isFinite(value) || value <= 0) return MISSING_VALUE;
   // A filled figure leads with "~": it was read off the neighbouring strikes, not solved from a quote.
   // Without the decimal it still fits the column at 100% and over.
   if (filled) return value >= 0.9995 ? `~${Math.round(value * 100)}%` : `~${(value * 100).toFixed(1)}%`;
@@ -182,11 +182,11 @@ export function formatIv(value: number | undefined, filled = false): string {
  */
 function formatSpreadPercent(contract: OptionContract): string {
   const spread = optionSpread(contract);
-  return spread.kind === "two-sided" ? `${spread.percentOfMid.toFixed(1)}%` : "—";
+  return spread.kind === "two-sided" ? `${spread.percentOfMid.toFixed(1)}%` : MISSING_VALUE;
 }
 
 function formatGreek(value: number | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "\u2014";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return value.toFixed(3).replace(/^(-?)0\./, "$1.");
 }
 
@@ -291,15 +291,15 @@ function formatOptionContractCell(
   contract: OptionContract | undefined,
   column: OptionColumn,
 ): string {
-  if (!contract) return "—";
+  if (!contract) return MISSING_VALUE;
   const greeks = optionGreeksForColumn(row, column);
   switch (column.field) {
     case "last":
-      return contract.lastPrice > 0 ? formatOptionPrice(contract.lastPrice, column.width) : "—";
+      return contract.lastPrice > 0 ? formatOptionPrice(contract.lastPrice, column.width) : MISSING_VALUE;
     case "bid":
     case "ask": {
       const quote = optionQuoteSide(contract, column.field);
-      return quote == null ? "—" : formatOptionPrice(quote, column.width);
+      return quote == null ? MISSING_VALUE : formatOptionPrice(quote, column.width);
     }
     case "spread":
       return formatSpreadPercent(contract);
@@ -323,7 +323,7 @@ function formatOptionContractCell(
     case "extrinsicPerYear":
       return formatCarryPercent(column.side === "call" ? row.callExtrinsicPerYear : row.putExtrinsicPerYear);
     case "costOfSpot":
-      return column.side === "put" ? formatCostOfSpot(row.putCostOfSpot) : "\u2014";
+      return column.side === "put" ? formatCostOfSpot(row.putCostOfSpot) : MISSING_VALUE;
     case "strike":
       return formatStrikeLabel(contract.strike);
   }

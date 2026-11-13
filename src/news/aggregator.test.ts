@@ -490,7 +490,7 @@ describe("NewsService", () => {
     expect(initial.articles.map((article) => article.url)).toEqual(["https://example.com/a"]);
     expect(initial.nextCursor).toBe("page-2");
 
-    await agg.loadMore({ feed: "latest", limit: 50 });
+    await agg.loadMoreAndWait({ feed: "latest", limit: 50 });
     const state = agg.getQueryState({ feed: "latest", limit: 50 });
     expect(state.articles.map((article) => article.url)).toEqual([
       "https://example.com/a",
@@ -517,7 +517,7 @@ describe("NewsService", () => {
     }));
 
     await agg.load({ feed: "latest", limit: 1 });
-    await agg.loadMore({ feed: "latest", limit: 1 });
+    await agg.loadMoreAndWait({ feed: "latest", limit: 1 });
     const state = agg.getQueryState({ feed: "latest", limit: 1 });
     expect(state.articles.map((article) => article.url)).toEqual([
       "https://example.com/a",
@@ -547,7 +547,7 @@ describe("NewsService", () => {
     }));
 
     await agg.load({ feed: "latest", limit: 1 });
-    await agg.loadMore({ feed: "latest", limit: 1 });
+    await agg.loadMoreAndWait({ feed: "latest", limit: 1 });
     await agg.poll({ feed: "latest", limit: 1 });
     const state = agg.getQueryState({ feed: "latest", limit: 1 });
     expect(state.articles.map((article) => article.url)).toEqual([

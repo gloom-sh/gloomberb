@@ -1,3 +1,4 @@
+import { formatWeekdayDay } from "../../../utils/datetime-format";
 // Alerts on releases in the economic calendar (ECO, `gloom econ`): reading a
 // release typed by name against the calendar's names, finding a followed
 // release's rows as the calendar's feeds name it from week to week, and the
@@ -455,15 +456,13 @@ export function releaseInstant(event: EconEvent): number | null {
   return hasNoReleaseTime(event) ? null : event.date.getTime();
 }
 
-const dayFormat = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-
 /**
- * The reminder: "NBS Manufacturing PMI (CN) in 21 hours, Sat, Oct 31, 01:30
- * UTC", "Communist Party Fifth Plenum (CN) tomorrow, Mon, Oct 26, all day".
+ * The reminder: "NBS Manufacturing PMI (CN) in 21 hours, Sat 31 Oct, 01:30
+ * UTC", "Communist Party Fifth Plenum (CN) tomorrow, Mon 26 Oct, all day".
  * A timed release counts in hours its last two days, an all-day one in days.
  */
 export function releaseReminderMessage(target: CalendarReleaseTarget, event: EconEvent, now: number): string {
-  const day = dayFormat.format(event.date);
+  const day = formatWeekdayDay(event.date, { timeZone: "UTC" });
   const at = releaseInstant(event);
   if (at == null) {
     const days = Math.round((Date.parse(`${dateKey(event.date)}T00:00:00Z`) - Date.parse(`${utcDay(now)}T00:00:00Z`)) / DAY_MS);

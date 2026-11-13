@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { AttentionPayload, AttentionPoint, AttentionRow, AttentionWindow } from "../../../api-client/attention";
 import type { DataTableColumn } from "../../../components";
 import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
@@ -7,9 +8,9 @@ export type AttentionTab = typeof ATTENTION_TABS[number]["value"];
 export const attentionTab = (value: unknown): AttentionTab => ATTENTION_TABS.find((tab) => tab.value === value)?.value ?? "ranking";
 export const attentionWindow = (value: unknown): AttentionWindow => value === "today" || value === "week" ? value : "now";
 export const WINDOWS = [{ value: "now", label: "Now" }, { value: "today", label: "Today" }, { value: "week", label: "Week" }];
-export const number = (value: number | null | undefined, digits = 0) => value == null ? "--" : value.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-export const signed = (value: number | null | undefined, suffix = "") => value == null ? "--" : `${value > 0 ? "+" : ""}${number(value, 2)}${suffix}`;
-export const date = (value: string | null | undefined) => value ? value.slice(0, 16).replace("T", " ") + " UTC" : "--";
+export const number = (value: number | null | undefined, digits = 0) => value == null ? MISSING_VALUE : value.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits });
+export const signed = (value: number | null | undefined, suffix = "") => value == null ? MISSING_VALUE : `${value > 0 ? "+" : ""}${number(value, 2)}${suffix}`;
+export const date = (value: string | null | undefined) => value ? value.slice(0, 16).replace("T", " ") + " UTC" : MISSING_VALUE;
 /** A time in a column whose header already says UTC. */
 export const hour = (value: string) => value.slice(0, 16).replace("T", " ");
 export const COLUMNS: DataTableColumn[] = [
@@ -38,9 +39,9 @@ export function rowCell(row: AttentionRow, column: string) {
   const value = row[column as keyof AttentionRow];
   if (column === "zScore") return signed(row.zScore);
   if (column === "priceChangePct") return signed(row.priceChangePct, "%");
-  if (column === "relativeVolume") return row.relativeVolume === null ? "--" : `${number(row.relativeVolume, 2)}x`;
+  if (column === "relativeVolume") return row.relativeVolume === null ? MISSING_VALUE : `${number(row.relativeVolume, 2)}x`;
   if (column === "sharePct") return number(row.sharePct, 1);
-  return typeof value === "number" ? number(value) : typeof value === "string" ? value : "--";
+  return typeof value === "number" ? number(value) : typeof value === "string" ? value : MISSING_VALUE;
 }
 export const emptyAttention = (data: AttentionPayload | null | undefined) => data?.status === "disabled"
   ? "Research attention collection is not enabled yet." : "Waiting for privacy-qualified research activity.";

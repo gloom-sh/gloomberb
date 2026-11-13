@@ -138,7 +138,7 @@ test("a choice of listings says which one no longer trades, and when", async () 
   }).catch((caught: unknown) => caught);
   expect(error).toBeInstanceOf(AmbiguousTickerError);
   const names = (error as AmbiguousTickerError).listingNames;
-  expect(names.FRC).toBe("Last traded Apr 28, 2023");
+  expect(names.FRC).toBe("Last traded 28 Apr 2023");
   expect(Object.values(names)).toContain("First Republic Bank");
 });
 

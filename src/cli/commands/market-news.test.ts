@@ -530,7 +530,7 @@ test("a company's folded routine notices say how many in the table; exports keep
   });
   await news.execute(["0005.HK"], cli.context);
   const text = render(cli.printed[0]!);
-  expect(text).toContain("Transaction in own shares (8 notices since Oct 30)");
+  expect(text).toContain("Transaction in own shares (8 notices since 30 Oct)");
   expect(text.match(/notices since/g)).toHaveLength(1);
   const csv = serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "csv", color: false }, cli.printed[0]!.options);
   const [header, first, second] = csv.trim().split("\n");
