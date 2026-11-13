@@ -8,6 +8,7 @@ import { historyRetentionNotice, historyStartNotice } from "../sources/history-r
 import type { BrokerContractRef } from "../types/instrument";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../utils/financial-statements";
 import { subtractTimeRange } from "./date-window";
+import { hiddenOnLogScale, logScaleHiddenWarning } from "./log-scale";
 import {
   CHART_RESOLUTION_STEP_MS,
   chartBarSizeSource,
@@ -1245,13 +1246,13 @@ async function resolveChartSpecPass(
   }
   for (const panel of spec.panels) {
     if (panel.scale !== "log") continue;
-    const isHidden = (point: TimeSeriesPoint) => typeof point.value === "number" && Number.isFinite(point.value) && point.value <= 0;
+    const isHidden = (point: TimeSeriesPoint) => hiddenOnLogScale(point.value);
     const affected = resolved.filter((entry) => entry.panelId === panel.id && entry.points.some(isHidden));
     const hiddenCount = affected.reduce((total, entry) => total + entry.points.filter(isHidden).length, 0);
     if (hiddenCount > 0) {
       // A panel without a title is named by the series it holds, never by its id (`main`).
       const name = panel.label ?? [...new Set(affected.map((entry) => entry.label))].join(", ");
-      warnings.push(`${name}: ${hiddenCount} non-positive observation${hiddenCount === 1 ? " is" : "s are"} hidden on the logarithmic scale.`);
+      warnings.push(logScaleHiddenWarning(name, hiddenCount));
     }
   }
 

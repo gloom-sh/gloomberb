@@ -7,10 +7,14 @@ import { getSharedRegistry } from "../../registry";
 import { formatTickerListInput, parseTickerListInput, QUOTE_MONITOR_MAX_TICKERS } from "../../../tickers/list";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { groupTickerResearchTabs, type TickerResearchTabSummary } from "./research-groups";
+import {
+  AUTO_LOG_RANGE, OVERVIEW_CHART_SCALE_SETTING, parseOverviewChartScaleChoice, type OverviewChartScaleChoice,
+} from "./overview/chart-scale";
 
 export interface TickerResearchPaneSettings {
   hideTabs: boolean;
   lockedTabId: string;
+  overviewChartScale: OverviewChartScaleChoice;
 }
 
 export interface QuoteMonitorPaneSettings {
@@ -29,6 +33,7 @@ export function getTickerResearchPaneSettings(
     lockedTabId: settings?.lockedTabId === "fundamental-graphs"
       ? "chart"
       : typeof settings?.lockedTabId === "string" ? settings.lockedTabId : "overview",
+    overviewChartScale: parseOverviewChartScaleChoice(settings?.[OVERVIEW_CHART_SCALE_SETTING]),
   };
 }
 
@@ -60,6 +65,7 @@ export function buildTickerResearchSettingsDef(settings: TickerResearchPaneSetti
 
   return {
     title: "Ticker Research Settings",
+    values: { [OVERVIEW_CHART_SCALE_SETTING]: settings.overviewChartScale },
     fields: [
       {
         key: "hideTabs",
@@ -85,6 +91,17 @@ export function buildTickerResearchSettingsDef(settings: TickerResearchPaneSetti
           { value: "5", label: "Every 5 minutes" },
           { value: "10", label: "Every 10 minutes" },
           { value: "30", label: "Every 30 minutes" },
+        ],
+      },
+      {
+        key: OVERVIEW_CHART_SCALE_SETTING,
+        label: "Overview chart scale",
+        description: `Auto draws a log scale once the history's highest close is ${AUTO_LOG_RANGE}x its lowest.`,
+        type: "select" as const,
+        options: [
+          { value: "auto", label: "Auto" },
+          { value: "linear", label: "Linear" },
+          { value: "log", label: "Log" },
         ],
       },
     ],

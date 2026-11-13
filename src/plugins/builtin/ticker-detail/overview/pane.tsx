@@ -9,6 +9,7 @@ import {
   useAppDispatch,
   useOptionalPaneInstanceId,
   usePaneInstance,
+  usePaneSettingValue,
   usePaneTicker,
 } from "../../../../state/app/context";
 import { usePluginAppActions } from "../../../runtime";
@@ -21,6 +22,7 @@ import { useTickerSnapshotState } from "../../../../market-data/hooks";
 import { taxRatesFromSettings } from "../../../../market-data/tax-equivalent";
 import { PaneLinkMenu } from "../../../../components";
 import { FunctionLinkRow } from "./components";
+import { OVERVIEW_CHART_SCALE_SETTING, parseOverviewChartScaleChoice } from "./chart-scale";
 
 /** Registered by the chart composer, in the same plugin as this tab. */
 const CHART_TAB_ID = "chart";
@@ -38,6 +40,8 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
   const dividend = useOverviewDividend(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange ?? "", financials?.fundamentals);
   // A pane locked to one tab has nowhere to go.
   const lockedToOneTab = getTickerResearchPaneSettings(paneInstance?.settings).hideTabs;
+  // The chart's scale, once set from the pane menu, holds for every ticker the pane shows.
+  const [chartScale, setChartScale] = usePaneSettingValue<unknown>(OVERVIEW_CHART_SCALE_SETTING, "auto");
   const openChart = useCallback(() => {
     if (paneId) dispatch({ type: "UPDATE_PANE_STATE", paneId, patch: { activeTabId: CHART_TAB_ID } });
   }, [dispatch, paneId]);
@@ -61,6 +65,8 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       dividend={dividend}
       snapshot={snapshot}
       tax={taxRatesFromSettings(paneInstance?.settings)}
+      chartScale={parseOverviewChartScaleChoice(chartScale)}
+      onChartScaleChange={paneId ? setChartScale : undefined}
       news={ticker ? (contentWidth: number) => (
         <TickerNewsHeadlines ticker={ticker} width={contentWidth} openNewsView={openNewsView}>
           <PaneLinkMenu><FunctionLinkRow link={NEWS} onOpen={openFunction} /></PaneLinkMenu>

@@ -194,8 +194,9 @@ function ticksFitRows(domain: CompositeAxisDomain, values: number[]): boolean {
 // Every label on an axis reads its ticks again (see `compactAxisNumber`).
 const tickValues = new WeakMap<CompositeAxisDomain, readonly number[]>();
 
-/** Round values inside a linear domain, so every gridline carries a readable
- * value. A log axis, or a short terminal panel no round step fits, keeps its
+/** Round values inside the domain, so every gridline carries a readable
+ * value: steps of 1, 2 or 5 on a linear axis, powers of ten and their 2 and 5
+ * steps on a log one. A short terminal panel no round value fits keeps its
  * top, middle and bottom values. */
 function axisTickValues(domain: CompositeAxisDomain): readonly number[] {
   let values = tickValues.get(domain);
@@ -208,8 +209,14 @@ function axisTickValues(domain: CompositeAxisDomain): readonly number[] {
 
 function computeAxisTickValues(domain: CompositeAxisDomain): number[] {
   const span = domain.max - domain.min;
-  if (domain.scale === "log" || !Number.isFinite(span) || span <= 0) return edgeTickValues(domain);
+  if (!Number.isFinite(span) || span <= 0) return edgeTickValues(domain);
   const maxTicks = Math.max(2, domain.maxTicks ?? DEFAULT_AXIS_MAX_TICKS);
+  if (domain.scale === "log") {
+    const round = logAxisTickValues(domain, maxTicks);
+    if (round) return round;
+    // Narrower than its ladder (a log panel over one price range): round
+    // linear steps, where the log axis puts them, about a row apart.
+  }
   const grid = axisTickGrid(domain);
   if (grid) return gridAxisTickValues(domain, grid, span, maxTicks);
   // Walk the 1-2-5 ladder around the target spacing and keep the step whose
@@ -220,7 +227,7 @@ function computeAxisTickValues(domain: CompositeAxisDomain): number[] {
     const values = stepMultiples(domain.min, domain.max, step);
     if (values.length >= 2 && values.length <= maxTicks + 1
       && (best.length === 0 || Math.abs(values.length - maxTicks) < Math.abs(best.length - maxTicks))
-      && ticksFitRows(domain, values)) {
+      && ticksFitRows(domain, values) && ticksClearOnLogAxis(domain, values, maxTicks)) {
       best = values;
     }
     step = adjacentNiceStep(step, 1);
@@ -228,6 +235,83 @@ function computeAxisTickValues(domain: CompositeAxisDomain): number[] {
   // Round labels win only where they are at least as many as the exact ones.
   const edges = edgeTickValues(domain);
   return best.length >= Math.max(2, edges.length) ? best : edges;
+}
+
+/**
+ * Whether even steps placed at exact heights on a log axis stay about a row
+ * apart: a log axis crowds them towards its top, and a short panel ran $80 to
+ * $30 down consecutive rows. `maxTicks` gives a label two rows, so half its
+ * even spacing is about a row. A terminal axis has `ticksFitRows` instead.
+ */
+function ticksClearOnLogAxis(domain: CompositeAxisDomain, values: readonly number[], maxTicks: number): boolean {
+  if (domain.scale !== "log" || domain.tickRows !== undefined) return true;
+  const row = 1 / (2 * (maxTicks - 1));
+  const ratios = values.map((value) => axisTickRatio(domain, value)).sort((left, right) => left - right);
+  return ratios.every((ratio, index) => index === 0 || ratio - ratios[index - 1]! >= row * (1 - 1e-9));
+}
+
+/** What a log axis labels in each decade: its power of ten, then the 2 and 5 steps where there is room. */
+const LOG_TICK_MANTISSAS: readonly number[] = [1, 2, 5];
+
+/** The 1, 2 or 5 a value is that many powers of ten of, or null for any other value. */
+function logTickMantissa(value: number): number | null {
+  if (!(value > 0) || !Number.isFinite(value)) return null;
+  const mantissa = Number((value / 10 ** Math.floor(Math.log10(value) + 1e-9)).toPrecision(9));
+  return LOG_TICK_MANTISSAS.find((candidate) => candidate === mantissa) ?? null;
+}
+
+/** `mantissas` times each power of ten from `min` to `max`, top first; with a `stride`, every so many powers alone. */
+function logLadderValues(min: number, max: number, mantissas: readonly number[], stride = 1): number[] {
+  const values: number[] = [];
+  for (let power = Math.floor(Math.log10(max) + 1e-9); power >= Math.floor(Math.log10(min)) - 1 && values.length <= 50; power -= 1) {
+    if (power % stride !== 0) continue;
+    for (const mantissa of [...mantissas].reverse()) {
+      const value = Number((mantissa * 10 ** power).toPrecision(12));
+      if (value <= max * (1 + 1e-9) && value >= min * (1 - 1e-9)) values.push(value);
+    }
+  }
+  return values;
+}
+
+/**
+ * Round values on a log axis: powers of ten and their 2 and 5 steps where the
+ * panel has room for them all, else the powers alone, else every second,
+ * third or later power. A terminal panel puts each on the row nearest it, a row clear
+ * of the next, powers first: a row of a log axis spans a factor, and its
+ * labels are uneven anyway, so no row's value comes closer to a round one.
+ * Null when fewer than two are left, as on a range inside one decade.
+ */
+function logAxisTickValues(domain: CompositeAxisDomain, maxTicks: number): number[] | null {
+  if (!(domain.min > 0) || !(domain.max > domain.min)) return null;
+  const powers = logLadderValues(domain.min, domain.max, [1]);
+  const ladders = [logLadderValues(domain.min, domain.max, LOG_TICK_MANTISSAS), powers];
+  for (let stride = 2; stride <= powers.length && stride <= 50; stride += 1) ladders.push(logLadderValues(domain.min, domain.max, [1], stride));
+  for (const values of ladders) {
+    if (values.length > maxTicks) continue;
+    const placed = logTicksOnRows(domain, values);
+    if (placed.length >= 2) return placed;
+  }
+  return null;
+}
+
+function logTicksOnRows(domain: CompositeAxisDomain, values: readonly number[]): number[] {
+  const rows = domain.tickRows;
+  if (rows === undefined) return [...values];
+  const lastRow = rows - 1;
+  if (lastRow < 1) return [];
+  const rank = (value: number) => LOG_TICK_MANTISSAS.indexOf(logTickMantissa(value) ?? 5);
+  const kept: Array<{ value: number; row: number }> = [];
+  for (const value of [...values].sort((left, right) => rank(left) - rank(right))) {
+    const row = Math.round(axisTickRatio(domain, value) * lastRow);
+    if (kept.some((tick) => Math.abs(tick.row - row) < 2)) continue;
+    kept.push({ value, row });
+  }
+  return kept.map(({ value }) => value).sort((left, right) => right - left);
+}
+
+/** Whether a log axis labels its powers of ten and their steps, each of which reads as itself. */
+function labelsLogLadder(domain: CompositeAxisDomain): boolean {
+  return domain.scale === "log" && axisTickValues(domain).every((value) => logTickMantissa(value) !== null);
 }
 
 // Half a 32nd: the finest step a 32nds axis ticks on when its series name no grid of their own.
@@ -419,9 +503,10 @@ function trimmedDecimals(label: string): number {
  * to the digits the finest tick needs, so the column reads $0 / $50 / $100. */
 function compactAxisNumber(value: number, domain: CompositeAxisDomain): string {
   const compact = compactNumber(value);
-  if (domain.scale === "log") return compact;
   const ticks = axisTickValues(domain);
   if (!ticks.some((tick) => Math.abs(tick - value) <= Math.abs(tick) * 1e-9)) return compact;
+  // A log axis's powers of ten and their steps each read as themselves: $0.1, $1, $10.
+  if (labelsLogLadder(domain)) return compact.replace(/(\.\d*?)0+([KMBT]?)$/, "$1$2").replace(/\.([KMBT]?)$/, "$1");
   const decimals = Math.max(...ticks.map((tick) => trimmedDecimals(compactNumber(tick))));
   const match = COMPACT_LABEL.exec(compact);
   if (!match || !Number.isFinite(decimals)) return compact;
@@ -443,7 +528,7 @@ export function formatCompositeAxisValue(value: number, domain: CompositeAxisDom
   // inside a single rounding step and print one repeated price down the gutter.
   // Where that happens the axis spends the digits needed to tell them apart,
   // shared across every tick so the column reads as one scale.
-  const gap = narrowestAxisTickGap(domain);
+  const gap = labelsLogLadder(domain) ? null : narrowestAxisTickGap(domain);
   const prefix = currencyPrefix(domain.unit);
   if (gap !== null && gap < compactResolution(value)) {
     const resolved = formatAxisPriceValue(value, domain, {
@@ -507,7 +592,8 @@ function distinctAxisTicks(domain: CompositeAxisDomain, format: CompositeAxisVal
   const ticks = label(axisTickValues(domain));
   if (ticks.length < 2 || !repeatsLabel(ticks)) return ticks;
   // A grid's ticks are already its coarsest that fit; a coarser decimal step would leave the grid.
-  if (domain.scale !== "log" && !axisTickGrid(domain)) {
+  // A log axis's powers of ten have no coarser step either.
+  if (!labelsLogLadder(domain) && !axisTickGrid(domain)) {
     const gap = Math.abs(ticks[0]!.value - ticks[1]!.value);
     let step = niceCeilStep(gap);
     if (step <= gap * (1 + 1e-9)) step = adjacentNiceStep(step, 1);
