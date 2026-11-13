@@ -20,7 +20,7 @@ import {
   findListingOfCompanyName, isCompanyNameInput, marksAnotherListing, readTerminalCodeArg, serviceMarkedListing, serviceMarkedOtherListing, type CompanyNameListing,
 } from "../tickers/company-name-listing";
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
-import { lineMayHaveMoved, listingChangeLine, loadListingFate, MovedSymbolError, SUCCESSOR_CHANGE_WAIT_MS, type ListingFate } from "../tickers/listing-fate";
+import { isVenueAbroad, lineMayHaveMoved, listingChangeLine, loadListingFate, MovedSymbolError, SUCCESSOR_CHANGE_WAIT_MS, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
 import { withdrawalLabel } from "../market-data/quotes/delisting";
 import { cliStyles } from "../utils/cli-output";
@@ -437,16 +437,46 @@ function namedByCode(symbol: string, venue: ListingVenue): boolean {
 }
 
 /**
- * Whether the venues are several companies' lines. The data service's company
- * ids decide where it sends them: venues are another company only when their
- * ids differ, never because each names the company its own way (DHL Group AG
- * on Xetra, Deutsche Post AG in Vienna), and a venue it does not identify
- * makes no other company. Without ids, the names decide: a venue with no name
- * is no other company, nor is one that names its line by the code alone.
+ * The companies whose lines the venues are, when the data service identifies
+ * any of them, each company's venues in search order. Venues with one id are
+ * one company, never two because each names it its own way (DHL Group AG on
+ * Xetra, Deutsche Post AG in Vienna). A venue with no id is a company's whose
+ * identified venue it is named like (Deutsche Post AG in Hanover), else
+ * another company (BMW Industries on BSE beside Bayerische Motoren Werke on
+ * Xetra). A venue with no name, one that names its line by the code alone, and
+ * a receipt named like no company there are none. Null when no venue has an id.
+ */
+function identifiedCompanies(symbol: string, venues: readonly ListingVenue[]): ListingVenue[][] | null {
+  if (!venues.some((venue) => venue.companyId)) return null;
+  const groups: Array<{ id: string | null; venues: ListingVenue[] }> = [];
+  for (const venue of venues) {
+    if (!venue.companyId) continue;
+    const group = groups.find((entry) => entry.id === venue.companyId);
+    if (group) group.venues.push(venue);
+    else groups.push({ id: venue.companyId, venues: [venue] });
+  }
+  for (const venue of venues) {
+    if (venue.companyId || !venue.name.trim() || namedByCode(symbol, venue)) continue;
+    const named = (other: ListingVenue) => sameListedName(other.name, venue.name);
+    const group = groups.find((entry) => entry.id && entry.venues.some((other) => !!other.companyId && named(other)))
+      ?? groups.find((entry) => !entry.id && entry.venues.some(named));
+    if (group) group.venues.push(venue);
+    else if (!namesDepositaryReceipt(venue.name)) groups.push({ id: null, venues: [venue] });
+  }
+  const order = (venue: ListingVenue) => venues.indexOf(venue);
+  return groups.map((group) => group.venues.sort((left, right) => order(left) - order(right)))
+    .sort((left, right) => order(left[0]!) - order(right[0]!));
+}
+
+/**
+ * Whether the venues are several companies' lines: by the data service's
+ * company ids where it gives any (`identifiedCompanies`). Without ids, the
+ * names decide: a venue with no name is no other company, nor is one that
+ * names its line by the code alone.
  */
 function listsSeveralCompanies(symbol: string, venues: readonly ListingVenue[]): boolean {
-  const ids = new Set(venues.flatMap((venue) => venue.companyId ? [venue.companyId] : []));
-  if (ids.size > 0) return ids.size > 1;
+  const identified = identifiedCompanies(symbol, venues);
+  if (identified) return identified.length > 1;
   return groupByCompany(venues, (venue) => namedByCode(symbol, venue) ? "" : venue.name).length > 1;
 }
 
@@ -472,13 +502,10 @@ function homeVenue(symbol: string, venues: readonly ListingVenue[]): ListingVenu
  * form of its fund's name), is left out rather than guessed at, and one
  * fund's venues are one fund however each words it (`sameListedName`).
  */
-function otherCompanies(venues: readonly ListingVenue[], company: string, chosen?: ListingVenue): ListingVenue[] {
-  // A line the data service identifies is told apart by its id alone: never by a name difference.
-  const id = chosen?.companyId;
-  if (id) {
-    const seen = new Set<string>([id]);
-    return venues.filter((venue) => !!venue.companyId && !seen.has(venue.companyId) && !!seen.add(venue.companyId));
-  }
+function otherCompanies(symbol: string, venues: readonly ListingVenue[], company: string, chosen?: ListingVenue): ListingVenue[] {
+  // A line the data service identifies is told apart by its id, never by a name difference (`identifiedCompanies`).
+  const identified = chosen?.companyId ? identifiedCompanies(symbol, venues) : null;
+  if (identified) return identified.filter((group) => !group.includes(chosen!)).map((group) => group[0]!);
   if (!company.trim()) return [];
   const known = venues.filter((venue) => !namesDepositaryReceipt(venue.name) || sameListedName(venue.name, company));
   return groupByCompany(known, (venue) => venue.name, sameListedName)
@@ -489,8 +516,12 @@ function otherCompanies(venues: readonly ListingVenue[], company: string, chosen
 /**
  * "CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)": the
  * listing a bare symbol several companies list was read on, and where the
- * others list it. Null when no other company is known to list it, so a symbol
- * that means one thing (XLK, and its receipt in Buenos Aires) says nothing.
+ * others list it. A bare symbol the data service read on the largest
+ * company's home listing abroad says so, as "SXR8 -> XETRA" does, with each
+ * other company's line: "BMW -> XETRA (Bayerische Motoren Werke); also
+ * BMW:BSE, Bmw Industries". Null when no other company is known to list it,
+ * so a symbol that means one thing (XLK, and its receipt in Buenos Aires)
+ * says nothing.
  */
 export function listingChoiceNote(
   symbol: string,
@@ -500,10 +531,16 @@ export function listingChoiceNote(
   if (!chosen.exchange) return null;
   const chosenVenue = venues.find((venue) => venue.exchange === chosen.exchange);
   const name = chosen.name?.trim() || chosenVenue?.name || "";
-  const others = otherCompanies(venues, chosenVenue?.name || name, chosenVenue).map((venue) => venue.exchange)
-    .filter((exchange) => exchange !== chosen.exchange);
+  const otherVenues = otherCompanies(symbol, venues, chosenVenue?.name || name, chosenVenue)
+    .filter((venue) => venue.exchange !== chosen.exchange);
+  const others = otherVenues.map((venue) => venue.exchange);
   if (others.length === 0) return null;
   const more = others.length - MAX_OTHER_LISTINGS;
+  if (isVenueAbroad(chosen.exchange)) {
+    const also = otherVenues.slice(0, MAX_OTHER_LISTINGS)
+      .map((venue) => `${venueKey(symbol, venue)}${venue.name ? `, ${shortCompanyName(venue.name)}` : ""}`).join("; ");
+    return `${symbol} -> ${chosen.exchange}${name ? ` (${shortCompanyName(name)})` : ""}; also ${also}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`;
+  }
   const named = `${others.slice(0, MAX_OTHER_LISTINGS).map(venueInProse).join(", ")}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`;
   const which = others.length === 1 ? "a different company" : "different companies";
   return `${symbol} = ${name ? `${shortCompanyName(name)}, ` : ""}${exchangeName(chosen.exchange)} (${which} on ${named})`;
@@ -621,9 +658,12 @@ export async function listingChoiceNotes(
     serviceMarkedOtherListing(deps.dataProvider, listing.symbol, exchange).catch(logFailure("cli.listing-arg", "Read the listing a word names failed", null)),
   ]);
   const note = listingChoiceNote(listing.symbol, { exchange, name: quote.name }, listed);
-  const also = marked ? `also ${marked.symbol}:${marked.exchange} ${marked.name}` : null;
+  const marking = marked ? `${marked.symbol}:${marked.exchange} ${marked.name}` : null;
   const named = quote.name?.trim() ? `${shortCompanyName(quote.name)}, ` : "";
-  const choice = also ? `${note ?? `${listing.symbol} = ${named}${exchangeName(exchange)}`}; ${also}` : note;
+  // A note that already lists others ("; also BMW:BSE, Bmw Industries") takes the marked listing among them.
+  const choice = !marking ? note
+    : note?.includes("; also ") ? `${note}; ${marking}`
+    : `${note ?? `${listing.symbol} = ${named}${exchangeName(exchange)}`}; also ${marking}`;
   return [...choice ? [choice] : [], ...coin];
 }
 

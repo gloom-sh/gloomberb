@@ -274,6 +274,38 @@ function formerIssuerNotes(candidates: readonly TickerSearchCandidate[], fate: S
 const BARE_SYMBOL = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/;
 
 /**
+ * Whether two lines are one company's: by the data service's company ids when
+ * both carry one (DHL Group AG on Xetra and Deutsche Post AG in Vienna), else
+ * by their names.
+ */
+function sameSearchCompany(left: TickerSearchCandidate, right: TickerSearchCandidate): boolean {
+  const ids = [left.result?.companyId, right.result?.companyId];
+  return ids[0] && ids[1] ? ids[0] === ids[1] : sameCompany(resolveSearchName(left), resolveSearchName(right));
+}
+
+/**
+ * The companies whose lines `candidates` are, each in search order: lines
+ * with one company id together, then each line without one with the company
+ * of a line it is named like (Deutsche Post AG in Hanover with DHL Group's
+ * Vienna line of that name), else a company of its own. A line named nothing
+ * is no company's.
+ */
+function searchCompanies(candidates: readonly TickerSearchCandidate[]): TickerSearchCandidate[][] {
+  const groups: TickerSearchCandidate[][] = [];
+  const place = (candidate: TickerSearchCandidate) => {
+    const group = groups.find((members) => members.some((member) => sameSearchCompany(member, candidate)));
+    if (group) group.push(candidate);
+    else groups.push([candidate]);
+  };
+  const identified = candidates.filter((candidate) => candidate.result?.companyId);
+  identified.forEach(place);
+  groupByCompany(candidates.filter((candidate) => !identified.includes(candidate)), resolveSearchName).flat().forEach(place);
+  const order = (candidate: TickerSearchCandidate) => candidates.indexOf(candidate);
+  return groups.map((group) => group.sort((left, right) => order(left) - order(right)))
+    .sort((left, right) => order(left[0]!) - order(right[0]!));
+}
+
+/**
  * For a bare symbol several companies list (CAR: Avis, Carrefour, CAR Group),
  * the company of the listing `quote CAR` reads goes first, under its home
  * line when the service marks one of its listings so, then each
@@ -290,13 +322,15 @@ function withPrimaryListingFirst(
   const exact = candidates.filter((candidate) => candidate.symbol.toUpperCase() === symbol);
   if (exact.some((candidate) => candidate.kind === "ticker" || candidate.saved)) return candidates;
   const listed = exact.filter((candidate) => candidate.kind === "search" && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"));
-  const companies = groupByCompany(listed, resolveSearchName);
+  const companies = searchCompanies(listed);
   if (companies.length < 2) return withHomeLineFirst(candidates, listed);
   const read = quotedCandidate(listed, quote);
   if (!read) return candidates;
   // A debt or preferred line never leads where another company's common share has its home line under the symbol, as
   // the bare symbol reads: DTG is Daimler Truck on Xetra, not DTE Energy's debentures in New York.
-  const debt = (candidate: TickerSearchCandidate) => isDebtLine(candidate.result?.type ?? "", candidate.result?.name);
+  // An equity line alone: a fund, whatever its name, is no debt line (TIP, the iShares TIPS Bond ETF).
+  const debt = (candidate: TickerSearchCandidate) => candidate.instrumentClass === "equity"
+    && isDebtLine(candidate.result?.type ?? "", candidate.result?.name);
   const quoted = debt(read) ? listed.find((candidate) => candidate.result?.homeListing === true && !debt(candidate)) ?? read : read;
   // That company leads with its home line where it lists one under the symbol too (TD on TSX before NYSE).
   const primary = companies.find((group) => group.includes(quoted))?.find((candidate) => candidate.result?.homeListing === true) ?? quoted;
@@ -417,7 +451,7 @@ function withQuotedNames(symbol: string, candidates: TickerSearchCandidate[], qu
   const onVenue = quotedCandidate(exact, quote);
   const name = onVenue ? quotedListingName(candidateExchange(onVenue), quote) : null;
   if (!onVenue || !name) return candidates;
-  const company = groupByCompany(exact, resolveSearchName).find((group) => group.includes(onVenue)) ?? [onVenue];
+  const company = searchCompanies(exact).find((group) => group.includes(onVenue)) ?? [onVenue];
   return candidates.map((candidate) => {
     if (!company.includes(candidate) || resolveSearchName(candidate) === name) return candidate;
     const [, ...rest] = candidate.detail.split(" | ");
@@ -447,7 +481,12 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord:
     ?? (lead?.category === "Saved" && lead.instrumentClass === "equity" ? lead : undefined);
   // A primary line search names no company for gives nothing to tell its company's lines by.
   if (!primary || nameless(primary)) return candidates;
-  const names = [resolveSearchName(primary), primary.result?.formerName, ...primary.nameAliases ?? []];
+  // The company ids decide where the primary and a line both carry one; the names of the primary's identified lines
+  // (Deutsche Post AG, its Vienna line) are its names for a line without one.
+  const id = primary.result?.companyId;
+  const sameId = (candidate: TickerSearchCandidate) => !!id && candidate.result?.companyId === id;
+  const names = [resolveSearchName(primary), primary.result?.formerName, ...primary.nameAliases ?? [],
+    ...candidates.filter(sameId).map(resolveSearchName)];
   // A name with more words that another business goes by is not the primary's (`companyLines`): Mitsubishi UFJ
   // Financial Group, which lists in Tokyo beside Mitsubishi Corporation, is not one of its lines.
   const lines = new Set(companyLines(primary, candidates.filter((candidate) => candidate === primary || (candidate.kind === "search"
@@ -463,7 +502,8 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord:
   const otherLeads = new Set(elsewhere.map((candidate) => addedCompanyWords(resolveSearchName(candidate), primaryName)[0]).filter(Boolean));
   const anotherBusiness = (candidate: TickerSearchCandidate) => elsewhere.includes(candidate)
     || otherLeads.has(addedCompanyWords(resolveSearchName(candidate), primaryName)[0] ?? "");
-  const ownLine = (candidate: TickerSearchCandidate) => nameless(candidate)
+  const ownLine = (candidate: TickerSearchCandidate) => id && candidate.result?.companyId ? sameId(candidate)
+    : nameless(candidate)
     ? baseSymbol(candidate.symbol) === baseSymbol(primary.symbol)
     : names.some((company) => sameCompany(resolveSearchName(candidate), company))
       && !anotherBusiness(candidate)
@@ -479,16 +519,19 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord:
 /**
  * The first `limit` rows, with each other company's first line of the symbol
  * kept in place of the primary company's last venues: `search DTG` lists
- * Daimler Truck's lines and still DTE Energy's debenture.
+ * Daimler Truck's lines and still DTE Energy's debenture. Only a line of
+ * another company (`searchCompanies`, by id where both carry one) takes a
+ * venue's place: never one of the primary company's own lines named as it
+ * was (Deutsche Post AG for DHL Group).
  */
 function cutKeepingCompanies(candidates: TickerSearchCandidate[], limit: number, symbol: string): TickerSearchCandidate[] {
   const head = candidates.slice(0, limit);
   if (candidates.length <= limit || !BARE_SYMBOL.test(symbol)) return head;
-  const shown = head.filter((candidate) => candidate.category === "Other Matches");
-  const missing = groupByCompany(candidates.slice(limit).filter((candidate) => candidate.category === "Other Matches"
-    && candidate.symbol.toUpperCase() === symbol), resolveSearchName)
-    .map((group) => group[0]!)
-    .filter((first) => !shown.some((candidate) => sameCompany(resolveSearchName(candidate), resolveSearchName(first))));
+  // Each company of the symbol shown above the cut, its own lines and its lines named as it was among them.
+  const companies = searchCompanies(candidates.filter((candidate) => candidate.symbol.toUpperCase() === symbol));
+  const shown = new Set(head.flatMap((candidate) => companies.filter((group) => group.includes(candidate))));
+  const missing = companies.filter((group) => !shown.has(group))
+    .flatMap((group) => group.find((candidate) => candidate.category === "Other Matches") ?? []);
   const venues = head.filter((candidate) => candidate.category === "Other Listings");
   // The primary company keeps at least one other venue.
   const room = Math.min(missing.length, Math.max(0, venues.length - 1));

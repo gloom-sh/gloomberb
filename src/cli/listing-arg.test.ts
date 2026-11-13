@@ -480,13 +480,22 @@ test("companies are told apart by the service's ids, never by how a venue names 
     { exchange: "HANOVER", name: "Deutsche Post AG" },
   ];
   expect(listingChoiceNote("DHL", { exchange: "XETRA", name: "DHL Group AG" }, dhl)).toBeNull();
-  // Another id is another company, whatever the names say.
+  // Another id is another company, whatever the names say; a line with none is the company's it is named like (CXA).
   const mbg = [
     { exchange: "XETRA", name: "Mercedes-Benz Group AG", companyId: "isin:DE0007100000", home: true as const },
     { exchange: "ASX", name: "MB Gold Ltd", companyId: "isin:AU0000452344" },
+    { exchange: "CXA", name: "MB Gold Ltd" },
   ];
   expect(listingChoiceNote("MBG", { exchange: "XETRA", name: "Mercedes-Benz Group AG" }, mbg))
-    .toBe("MBG = Mercedes-Benz Group, Xetra (a different company on the Australian Securities Exchange)");
+    .toBe("MBG -> XETRA (Mercedes-Benz Group); also MBG:ASX, MB Gold");
+  // A line with no id named like none of a company's identified lines is another company: BMW Industries, listed first.
+  const bmw = [
+    { exchange: "BSE", name: "Bmw Industries Ltd." },
+    { exchange: "XETRA", name: "Bayerische Motoren Werke AG", companyId: "isin:DE0005190003", home: true as const },
+    { exchange: "VIE", name: "Bayerische Motoren Werke AG" },
+  ];
+  expect(listingChoiceNote("BMW", { exchange: "XETRA", name: "Bayerische Motoren Werke AG" }, bmw))
+    .toBe("BMW -> XETRA (Bayerische Motoren Werke); also BMW:BSE, Bmw Industries");
 
   const con = [
     { exchange: "XETRA", name: "Continental AG", home: true as const },

@@ -192,6 +192,36 @@ test("a bare code whose search is busy is asked again, and still busy its row sa
   expect(still.rows[1]!.quote).not.toBeNull();
 });
 
+/**
+ * `quote BMW MBG 2222` once the data service reads a symbol several companies list on the largest one's home listing
+ * when it is ten times the next: the bare symbol is quoted there and says which others carry it; one it does not read
+ * (2222 with only Aramco's line identified) still asks.
+ */
+test("a bare symbol read on the largest company's listing names the others; a code with one company identified still asks", async () => {
+  const row = (symbol: string, exchange: string, name: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol, name, exchange, type: "Common Stock", currency: "EUR", ...extra });
+  const rows: Record<string, object[]> = {
+    BMW: [row("BMW", "BSE", "Bmw Industries Ltd."), row("BMW", "XETRA", "Bayerische Motoren Werke AG", { homeListing: true, companyId: "isin:DE0005190003" }),
+      row("BMW", "VIE", "Bayerische Motoren Werke AG", { companyId: "isin:DE0005190003" })],
+    2222: [row("2222", "JPX", "Kotobuki Spirits Co., Ltd."), row("2222", "TADAWUL", "Saudi Arabian Oil Co.", { homeListing: true, companyId: "isin:SA14TG012N13" }),
+      row("2222", "HKEX", "NVC International Holdings Limited")],
+  };
+  const bmw = createTestQuote({ symbol: "BMW", name: "Bayerische Motoren Werke AG", currency: "EUR", listingExchangeName: "XETRA", exchangeName: "XETRA" });
+  const dataProvider = createTestDataProvider({
+    search: async (query: string) => (rows[query.trim().toUpperCase()] ?? []) as never,
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.symbol === "BMW"
+      ? { target, quote: bmw }
+      : { target, quote: null, error: `No quote provider available for ${target.symbol}` }),
+  });
+  const read = await runQuote(["BMW"], { dataProvider, batches: [], searches: () => 0 });
+  expect(read.rows.map((row) => [row.target.symbol, row.quote?.listingExchangeName])).toEqual([["BMW", "XETRA"]]);
+  expect(read.warnings).toEqual(["BMW -> XETRA (Bayerische Motoren Werke); also BMW:BSE, Bmw Industries"]);
+
+  const asked = await runQuote(["2222"], { dataProvider, batches: [], searches: () => 0 });
+  expect(asked.failure?.message).toBe("Choose an exchange for 2222.");
+  expect(asked.failure?.details).toContain("2222:JPX Kotobuki Spirits Co., Ltd. (try: gloom quote 2222:JPX)");
+});
+
 test("ticker asks for an exchange for a code several companies list, as quote does, rather than calling it no ticker", async () => {
   // 3988 is Bank of China in Hong Kong and Sys Holdings in Tokyo; the data service serves neither under the bare code.
   const source = venueSource("3988", ["HKEX", "JPX"], {}, { HKEX: "Bank of China Ltd.", JPX: "Sys Holdings Co., Ltd." });
