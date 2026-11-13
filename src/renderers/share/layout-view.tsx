@@ -1,5 +1,5 @@
-import { formatShortDate } from "../../utils/datetime-format";
 /** @jsxImportSource react */
+import { formatShortDate } from "../../utils/datetime-format";
 import type { CSSProperties } from "react";
 import type { DockLayoutNode, PaneInstanceConfig } from "../../types/config";
 import type { LayoutMarketplaceEntry } from "../../shares/portable-layout";
