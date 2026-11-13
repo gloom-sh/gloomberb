@@ -42,7 +42,8 @@ function createCollectionPaneInstance(
   const named = argument?.trim() ? findCollection(context.config, argument, { prefix: true }) : null;
   const collectionId = named && (!kind || named.kind === kind)
     ? named.id
-    : kind ? resolveCollectionIdForKind(context, kind) : resolveCollectionPaneId(context);
+    // PF alone is the portfolio: the one in view, else the first, and a watchlist only where there is no portfolio.
+    : resolveCollectionIdForKind(context, kind ?? "portfolio") ?? (kind ? null : resolveCollectionPaneId(context));
   return collectionId ? { params: { collectionId } } : null;
 }
 
@@ -89,7 +90,7 @@ export const portfolioListModule: PluginModule = {
     {
       id: "new-collection-pane",
       paneId: "portfolio-list",
-      label: "Collection Pane",
+      label: "Portfolio",
       description: "Holdings, weights and P&L of a portfolio or watchlist; set target weights to see drift and the trades that rebalance",
       // Phrases rather than bare words, so `fn rebalance` and `fn target` keep resolving where they did.
       keywords: [

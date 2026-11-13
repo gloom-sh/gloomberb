@@ -3,6 +3,7 @@ import type { DataTableCell } from "../../../components";
 import type { OptionContract, OptionsChain } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, blendForSeparation, contrastRatio } from "../../../theme/color-utils";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
@@ -113,6 +114,44 @@ export function resolveOptionFieldIds(value: unknown): OptionFieldId[] {
   return fields.length > 0 ? fields : [...DEFAULT_OPTION_FIELD_IDS];
 }
 
+/** The strike column between the two sides. */
+const STRIKE_COLUMN_WIDTH = 9;
+
+/**
+ * The order fields give way in when calls and puts do not both fit: the
+ * Greeks past delta and the derived figures first, then the last trade and the
+ * flow, so the quotes and their volatility are what stays. The bid never goes.
+ */
+const OPTION_FIELD_DROP_ORDER: readonly OptionFieldId[] = [
+  "rho", "vega", "theta", "gamma", "extrinsicPerYear", "costOfSpot", "spread",
+  "last", "volume", "delta", "openInterest", "iv", "ask",
+];
+
+/**
+ * Cells the terminal chain draws with these fields: each column as the table
+ * draws it, widened to its header and sort mark ("C LAST" takes 8 cells, not
+ * its field's 7), with no gap or padding between them, as the pane lays it out.
+ */
+function optionChainWidth(fields: readonly OptionFieldId[]): number {
+  return getTableWidth(createOptionColumns(fields), 0, 0);
+}
+
+/**
+ * The fields a terminal chain `width` cells wide draws, so the puts are on
+ * screen beside the calls rather than past a sideways scroll (review, 12 Nov
+ * 2026: a floating OMON showed the calls and two put columns). Fields give
+ * way on both sides together, in OPTION_FIELD_DROP_ORDER, keeping the order
+ * Settings gave the rest.
+ */
+export function fitOptionFieldIds(fieldIds: readonly OptionFieldId[], width: number): OptionFieldId[] {
+  let fields = resolveOptionFieldIds(fieldIds);
+  for (const drop of OPTION_FIELD_DROP_ORDER) {
+    if (optionChainWidth(fields) <= width) break;
+    if (fields.length > 1) fields = fields.filter((field) => field !== drop);
+  }
+  return fields;
+}
+
 function sideColumn(side: OptionSide, field: OptionFieldId): Omit<OptionColumn, "headerColor"> {
   const definition = OPTION_FIELDS_BY_ID.get(field)!;
   return {
@@ -129,7 +168,7 @@ export function createOptionColumns(fieldIds: readonly OptionFieldId[]): Array<O
   const fields = resolveOptionFieldIds(fieldIds);
   return [
     ...fields.filter((field) => !OPTION_FIELDS_BY_ID.get(field)!.putOnly).map((field) => sideColumn("call", field)),
-    { id: "strike", field: "strike", side: null, label: "STRIKE", width: 9, align: "right" },
+    { id: "strike", field: "strike", side: null, label: "STRIKE", width: STRIKE_COLUMN_WIDTH, align: "right" },
     ...[...fields].reverse().map((field) => sideColumn("put", field)),
   ];
 }

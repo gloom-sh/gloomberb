@@ -60,13 +60,12 @@ function cellsToChunks(cells: GaugeCell[]): GaugeChunk[] {
 function labelForSegment(segment: SpeedometerSegment, gaugeWidth: number): string {
   if (gaugeWidth >= 64) return segment.label;
   const compact = compactSegmentLabel(segment);
-  if (gaugeWidth >= 44) {
-    return compact === "NEUTRAL" ? "NEUT" : compact;
-  }
-  if (compact === "EXT FEAR") return "XF";
-  if (compact === "EXT GREED") return "XG";
-  if (compact === "NEUTRAL") return "NEUT";
-  return compact;
+  return compact === "NEUTRAL" ? "NEUT" : compact;
+}
+
+/** A label's last word ("EXT FEAR" is FEAR), for a dial with no room for both ends' whole names. */
+function lastWord(label: string): string {
+  return label.split(" ").at(-1) ?? label;
 }
 
 function renderLabelRow(width: number, min: number, max: number, segments: SpeedometerSegment[]): GaugeChunk[] {
@@ -85,7 +84,13 @@ function renderLabelRow(width: number, min: number, max: number, segments: Speed
     end = start + text.length - 1;
     return clear;
   });
-  const shown = fit || labels.length <= 2 ? labels : [labels[0]!, labels[labels.length - 1]!];
+  const ends = fit || labels.length <= 2 ? labels : [labels[0]!, labels[labels.length - 1]!];
+  // Words, never letters: a narrow dial's ends read FEAR and GREED where
+  // EXT FEAR and EXT GREED would meet, not XF and XG (review, 12 Nov 2026).
+  const [first, last] = [ends[0], ends[ends.length - 1]];
+  const endsMeet = !fit && first && last && first !== last
+    && textSpan(width, first.label, first.center).start + first.label.length + 1 > textSpan(width, last.label, last.center).start;
+  const shown = endsMeet ? ends.map((entry) => ({ ...entry, label: lastWord(entry.label) })) : ends;
   for (const { segment, label, center } of shown) placeText(cells, label, center, segment.color);
   return cellsToChunks(cells);
 }

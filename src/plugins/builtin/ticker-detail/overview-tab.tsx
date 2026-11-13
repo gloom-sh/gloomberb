@@ -6,7 +6,7 @@ import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
 import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useMemo, type ReactNode } from "react";
-import { EmptyState, ExternalLinkText, PaneLinkMenu, PaneStatusBody, SectionHeading, unavailableText, usePaneNoticeFooter } from "../../../components";
+import { EmptyState, ExternalLinkText, PaneLinkMenu, PaneStatusBody, SectionHeading, unavailableText, usePaneMenuItems, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
 import { bodyLineInk, FigureText, figureLineInk, useFigureCells } from "../../../components/ui/figure";
@@ -75,6 +75,11 @@ import { useOfferingNote } from "./financials/offerings";
 import { taxEquivalentFields, useOverviewTaxEquivalent } from "./overview/tax-equivalent";
 import { distributionBasis, type TaxRates } from "../../../market-data/tax-equivalent";
 import { currentListingName } from "../../../tickers/listing-name";
+import { isYieldIndexSymbol } from "../../../tickers/index-roots";
+import { hiddenOnLogScale, logScaleHiddenWarning } from "../../../time-series/log-scale";
+import {
+  autoOverviewChartScale, resolveOverviewChartScale, toggledOverviewChartScale, type OverviewChartScaleChoice,
+} from "./overview/chart-scale";
 
 /** Cells between the Day and 52W ranges when they share a row. */
 const RANGE_PAIR_GAP = 4;
@@ -117,6 +122,10 @@ interface OverviewTabProps {
   snapshot?: TickerSnapshotState;
   /** The rates `fn DES --tax-rate` set (taxRatesFromSettings): a fund's tax-equivalent yield and muni/Treasury ratio follow its facts. */
   tax?: { rates: TaxRates } | { error: string } | null;
+  /** The price chart's value axis as the pane remembers it; auto picks log for a history of a wide range. */
+  chartScale?: OverviewChartScaleChoice;
+  /** Remembers the choice the pane menu's Log Scale switches to; without it the menu has no such item. */
+  onChartScaleChange?: (choice: OverviewChartScaleChoice) => void;
 }
 
 /** Nothing of the ticker is in yet: no quote, profile, figures or history. */
@@ -148,7 +157,10 @@ export function OverviewTab(props: OverviewTabProps) {
 /** Where a fund's facts open: the ETF function, its facts over its filings. */
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
-function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, tax = null }: OverviewTabProps & { ticker: TickerRecord }) {
+function ResolvedOverviewTab({
+  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, tax = null,
+  chartScale: chartScaleChoice = "auto", onChartScaleChange,
+}: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const portfolios = useAppSelector((state) => state.config.portfolios);
@@ -253,6 +265,17 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     panelId: "price",
     timeBasis: chartTimeZone ? { kind: "market", timeZone: chartTimeZone } : undefined,
   });
+  // Years of history from a few dollars to hundreds read on a log axis, the Chart tab's own, so the early ones do not lie flat.
+  const autoChartScale = autoOverviewChartScale(priceSeries.points, { rate: isYieldIndexSymbol(ticker.metadata.ticker) });
+  const chartScale = resolveOverviewChartScale(chartScaleChoice, autoChartScale);
+  const hiddenOnLog = hasHistory && chartScale === "log"
+    ? priceSeries.points.filter((point) => hiddenOnLogScale(point.value)).length : 0;
+  usePaneMenuItems("overview:chart-scale", () => hasHistory && onChartScaleChange ? [{
+    id: "overview-log-scale",
+    label: t("Log Scale"),
+    checked: chartScale === "log",
+    onSelect: () => onChartScaleChange(toggledOverviewChartScale(chartScaleChoice, autoChartScale)),
+  }] : null, [autoChartScale, chartScale, chartScaleChoice, hasHistory, onChartScaleChange]);
   // A provider EV well off market cap + debt - cash, or why a withdrawn one is unavailable, at the
   // regular session price the EV beside it is shown at. A gap of a few percent is the valuation panes' detail.
   const pricedForEnterpriseValue = atRegularSessionPrice({ quote, fundamentals: withFinancialEnterpriseValue(fundamentals, profile) }).fundamentals;
@@ -271,6 +294,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
       ...(runwayOfferingNote ? [runwayOfferingNote] : []),
       ...(runway?.trailingGap === "short-history" ? [`Runway TTM: ${SHORT_RUNWAY_HISTORY}.`] : []),
       ...(priceSeries.warning ? [priceSeries.warning] : []),
+      ...(hiddenOnLog > 0 ? [logScaleHiddenWarning(priceSeries.label, hiddenOnLog)] : []),
       ...(enterpriseValueNote ? [enterpriseValueNote] : []),
       ...(ttmNote ? [ttmNote] : []),
       ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live
@@ -629,7 +653,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
               focused={false}
               interactive={false}
               series={[priceSeries]}
-              panels={[{ id: "price" }]}
+              panels={[{ id: "price", scale: chartScale }]}
               levels={trade && researchTradeMatches(trade, instrumentFromTicker(ticker)) ? { seriesId: priceSeries.id, items: trade.levels } : undefined}
               showLegend={false}
             />

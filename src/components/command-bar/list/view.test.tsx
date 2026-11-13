@@ -107,9 +107,11 @@ test("keeps labels in place when a later section brings wider badges", async () 
 
 /**
  * SAP is SAP SE on four venues and Saputo on TSX; only the name tells the rows
- * apart. It gives way before the symbol and goes once it would be a stub.
+ * apart. The names line up after the section's widest symbol, as a table's
+ * column would; a name gives way before the symbol and goes once it would be
+ * a stub.
  */
-test("draws an instrument's name after its symbol and drops it before the symbol on a narrow row", async () => {
+test("draws an instrument's name in a column after the symbols and drops it before the symbol on a narrow row", async () => {
   const listings = [
     item({ id: "sap", label: "SAP", name: "SAP SE", kind: "search", badge: "EQ", right: "XETRA" }),
     item({ id: "saputo", label: "SAP", name: "Saputo Inc.", kind: "search", badge: "EQ", right: "TSX" }),
@@ -122,7 +124,8 @@ test("draws an instrument's name after its symbol and drops it before the symbol
   };
 
   const wide = await render(40);
-  expect(wide).toContain("SAP  Saputo Inc.");
+  expect(wide).toContain("SAP    Saputo Inc.");
+  expect(columnOf(wide, "Saputo")).toBe(columnOf(wide, "Berkshire"));
   expect(wide).toContain("BRK.B  Berkshire Hathaway Inc.…  NYSE");
   expect(columnOf(wide, "TSX")).toBe(columnOf(wide, "XETRA"));
 

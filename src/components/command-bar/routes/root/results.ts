@@ -209,7 +209,7 @@ function buildRecentResultItems(options: {
   getRecentPaneTemplate?: (id: string, arg?: string) => PaneTemplateDef | undefined;
   recentCommands: AppState["config"]["recentCommands"];
   recentTickers: string[];
-}): ResultItem[] {
+}): { items: ResultItem[]; codes: string[] } {
   const {
     buildRecentTickerItem = () => null,
     createPaneTemplateItem,
@@ -218,6 +218,8 @@ function buildRecentResultItems(options: {
     recentTickers,
   } = options;
   const items: ResultItem[] = [];
+  // The codes of the recent panes that open as their code alone does, which the groups below then leave out.
+  const codes: string[] = [];
   for (const symbol of recentTickers) {
     if (items.length >= MAX_RECENT_TICKER_ROWS) break;
     const item = buildRecentTickerItem(symbol);
@@ -242,9 +244,10 @@ function buildRecentResultItems(options: {
       label: arg ? `${item.label} ${arg}` : item.label,
       category: "Suggested",
     });
+    if (!arg && item.shortcutQuery) codes.push(item.shortcutQuery.toUpperCase());
     paneRows += 1;
   }
-  return items;
+  return { items, codes };
 }
 
 export function buildRootResultModel(options: RootResultModelOptions): RootResultModel {
@@ -380,31 +383,39 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     const item = commandToItem(match.command);
     if (item) items.push(item);
   } else if (!rootQuery) {
+    // One row per function: a code a group above already runs as it is (a
+    // recent CHAT, Start Here's PF) is not listed again in the groups below.
+    const listedCodes = new Set<string>();
+    const unlisted = (item: ResultItem) => !item.shortcutQuery || !listedCodes.has(item.shortcutQuery.toUpperCase());
     if (rootShortcutIntent.kind === "none") {
-      items.push(...buildRecentResultItems({
+      const recent = buildRecentResultItems({
         buildRecentTickerItem,
         createPaneTemplateItem,
         getRecentPaneTemplate,
         recentCommands: state.config.recentCommands ?? [],
         recentTickers: state.recentTickers ?? [],
-      }));
+      });
+      items.push(...recent.items);
+      for (const code of recent.codes) listedCodes.add(code);
     }
     items.push(...providerMatchItems);
     // Plain-word rows for the common first tasks, ahead of the codes, for the
-    // first opens only. Each runs what its code's own row below runs.
+    // first opens only. Each runs what its code's own row runs.
     if (showsCommandBarIntro(state.config)) {
-      items.push(...buildStartHereItems({
+      const startHere = buildStartHereItems({
         templatesForCode: getAvailablePaneShortcutTemplates,
         createTemplateItem: (template) => createPaneTemplateItem(template, { showShortcut: true }),
         lookUpCompany: availableCommands.some((command) => command.id === "security-description")
           ? () => openModeRoute("ticker-search", "", SECURITY_DESCRIPTION_SEARCH)
           : null,
-      }));
+      }).filter(unlisted);
+      items.push(...startHere);
+      for (const item of startHere) if (item.shortcutQuery) listedCodes.add(item.shortcutQuery.toUpperCase());
     }
-    items.push(...paneShortcutItems());
+    items.push(...paneShortcutItems().filter(unlisted));
     for (const command of availableCommands) {
       const item = commandToItem(command);
-      if (item) items.push(item);
+      if (item && unlisted(item)) items.push(item);
     }
     items.push(...tickerActionItems());
     items.push(...pluginCommandItems());

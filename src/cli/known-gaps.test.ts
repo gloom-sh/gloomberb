@@ -154,7 +154,7 @@ test("a search no ticker answers lists the functions that carry every word, so a
   // PF's own words say what it does with targets, so the list explains the match.
   expect(functions[0]!.description).toMatch(/target weights.*drift.*rebalance/);
   const report = buildSearchReport({ query: "target weights rebalance", candidates: [], functions }).replace(/\x1b\[[0-9;]*m/g, "");
-  expect(report).toContain("PF  Collection Pane");
+  expect(report).toContain("PF  Portfolio");
   expect(report).not.toContain("No matches found");
   // Some of the words only: no function carries them all, and the search says so as before.
   expect(await searchFunctionsForCli("rebalance xylophone", getLoadablePlugins(), context)).toEqual([]);

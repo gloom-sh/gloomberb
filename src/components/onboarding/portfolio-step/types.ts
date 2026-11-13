@@ -15,6 +15,8 @@ export interface PortfolioStepProps {
   /** The added position the keyboard acts on; null while a field has the keyboard. */
   selectedPositionSymbol: string | null;
   commandBarShortcut: string;
+  /** The terminal card's content columns, which the positions note wraps across. */
+  positionsColumns?: number;
   choices: ListViewItem[];
   optionIdx: number;
   onOptionSelect: (idx: number) => void;

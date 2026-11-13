@@ -1221,7 +1221,7 @@
         "shortcuts": [
           {
             "code": "PF",
-            "name": "Collection Pane",
+            "name": "Portfolio",
             "description": "Holdings, weights and P&L of a portfolio or watchlist; set target weights to see drift and the trades that rebalance"
           },
           {

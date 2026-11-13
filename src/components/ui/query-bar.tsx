@@ -180,7 +180,7 @@ function collapsibleInline(filter: QueryBarFilter): filter is QueryBarSelectFilt
  */
 function terminalRowCells(width: number, { search, filters = [], view, asOf }: Pick<QueryBarProps, "search" | "filters" | "view" | "asOf">): number {
   const segments = (options: readonly { label: string; short?: string; hint?: string }[]) => options.length > TERMINAL_SEGMENT_LIMIT ? 0
-    : options.reduce((sum, option) => sum + (option.hint ? option.hint.length + 1 : 0) + (option.short ?? option.label).length + 2, 0);
+    : options.reduce((sum, option) => sum + (keyedStrip(options) && option.hint ? option.hint.length + 1 : 0) + (option.short ?? option.label).length + 2, 0);
   const parts = [
     ...search ? [Math.max(16, Math.min(36, Math.floor(width * 0.3)))] : [],
     ...filters.map((filter) => {
@@ -197,13 +197,24 @@ function terminalRowCells(width: number, { search, filters = [], view, asOf }: P
   return 2 + parts.reduce((sum, part) => sum + part, 0) + 2 * Math.max(0, parts.length - 1);
 }
 
+/**
+ * Whether a terminal strip draws its keys: a strip with one for every option
+ * (chart ranges' 1 to 8). Keys on a few options step from the active one (OMON's
+ * `[` and `]` either side of its expiry); they move with it, and as `]:Nov 16`
+ * read as part of the date (review, 12 Nov 2026), so they stay in the pane menu
+ * and the desktop's tooltip.
+ */
+function keyedStrip(options: readonly { hint?: string }[]): boolean {
+  return options.length > 0 && options.every((option) => option.hint);
+}
+
 /** Beyond this many options a terminal strip scrolls instead of segmenting. */
 const TERMINAL_SEGMENT_LIMIT = 6;
 
 /**
  * Terminal rendering of an inline filter or view: segments for a few short
- * options, a scrolling tab strip for many (expiries, chart ranges). Hints
- * prefix the label ("1:1D") because the terminal has no tooltip.
+ * options, a scrolling tab strip for many (expiries, chart ranges). Keys
+ * prefix the label ("1:1D") where every option has one (keyedStrip).
  */
 function TerminalChoiceStrip({
   options,
@@ -218,9 +229,10 @@ function TerminalChoiceStrip({
   focused?: boolean;
   shortcutScope?: string;
 }) {
+  const keyed = keyedStrip(options);
   const labelled = options.map((option) => ({
     value: option.value,
-    label: option.hint ? `${option.hint}:${option.label}` : option.label,
+    label: keyed ? `${option.hint}:${option.label}` : option.label,
     disabled: option.disabled,
   }));
   if (options.length > TERMINAL_SEGMENT_LIMIT) {

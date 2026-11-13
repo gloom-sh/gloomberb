@@ -11,6 +11,7 @@ import type { TickerMetadata, TickerRecord } from "../../types/ticker";
 import { MAX_DESK_PICKS, type DeskKey } from "../../layout/desk-keys";
 import { DESKS, isDeskKey } from "../../layout/desks";
 import { buildDockStack } from "../../layout/pane-manager/dock-stack";
+import { SEEDED_LIST_MIN_STARTERS, STARTER_SYMBOLS } from "../../tickers/starter-symbols";
 
 /**
  * The watchlist a first run lands with: the two index ETFs and the names most
@@ -39,6 +40,16 @@ export const FIRST_RUN_PANE_IDS = {
   trending: "attention-trending:home",
 } as const;
 
+/** What a ticker the app has no record of yet is created with. */
+export type FirstRunTickerSeed = Pick<TickerMetadata, "ticker" | "name" | "exchange" | "currency" | "assetCategory">;
+
+/** A name picked at "Which tickers do you follow?". */
+export interface FirstRunPick {
+  symbol: string;
+  /** A suggestion the app has no ticker for yet: what its ticker is created with. */
+  seed?: FirstRunTickerSeed;
+}
+
 export interface FirstRunWatchlistPlan {
   /** Tickers that do not exist yet and should be created in the watchlist. */
   create: TickerMetadata[];
@@ -47,14 +58,19 @@ export interface FirstRunWatchlistPlan {
 }
 
 /**
- * What the watchlist should contain: the preferred names first, then whatever
- * the startup seed left, minus holdings, capped. Returns the writes needed to
- * get there so the caller persists exactly those.
+ * What the watchlist should contain: the picks from "Which tickers do you
+ * follow?" first, then the preferred names, then whatever the startup seed
+ * left, minus holdings, capped. With a pick on it, the starter names stop
+ * one short of a seeded list, so the list counts as edited by hand: the
+ * daily email, the Monday brief and the company picker read a list with
+ * fewer starters as the user's own. Returns the writes needed to get there
+ * so the caller persists exactly those.
  */
 export function planFirstRunWatchlist(
   tickers: ReadonlyMap<string, TickerRecord>,
   watchlistId: string,
   portfolioId: string,
+  picks: readonly FirstRunPick[] = [],
 ): FirstRunWatchlistPlan {
   const held = (symbol: string) => {
     const ticker = tickers.get(symbol);
@@ -65,26 +81,39 @@ export function planFirstRunWatchlist(
   const seeded = [...tickers.values()]
     .filter((ticker) => ticker.metadata.watchlists.includes(watchlistId))
     .map((ticker) => ticker.metadata.ticker);
+  const starterRoom = picks.length > 0 ? SEEDED_LIST_MIN_STARTERS - 1 : FIRST_RUN_WATCHLIST_SIZE;
   const keep = new Set<string>();
-  for (const symbol of [...preferred, ...seeded]) {
+  let starters = 0;
+  for (const symbol of [...picks.map((pick) => pick.symbol), ...preferred, ...seeded]) {
     if (keep.size >= FIRST_RUN_WATCHLIST_SIZE) break;
-    if (!held(symbol)) keep.add(symbol);
+    if (keep.has(symbol) || held(symbol)) continue;
+    const starter = STARTER_SYMBOLS.has(symbol);
+    if (starter && starters >= starterRoom) continue;
+    keep.add(symbol);
+    if (starter) starters += 1;
   }
 
-  const create = FIRST_RUN_WATCHLIST
-    .filter((seed) => keep.has(seed.ticker) && !tickers.has(seed.ticker))
-    .map((seed) => ({
+  const seeds = new Map<string, FirstRunTickerSeed>(FIRST_RUN_WATCHLIST.map((seed) => [seed.ticker, { ...seed, currency: "USD" }]));
+  for (const pick of picks) {
+    if (pick.seed) seeds.set(pick.symbol, pick.seed);
+  }
+  const create: TickerMetadata[] = [];
+  for (const symbol of keep) {
+    const seed = seeds.get(symbol);
+    if (!seed || tickers.has(symbol)) continue;
+    create.push({
       ticker: seed.ticker,
       name: seed.name,
       exchange: seed.exchange,
-      currency: "USD",
+      currency: seed.currency || "USD",
       assetCategory: seed.assetCategory,
       portfolios: [],
       watchlists: [watchlistId],
       positions: [],
       custom: {},
       tags: [],
-    }));
+    });
+  }
   const update: TickerRecord[] = [];
   for (const ticker of tickers.values()) {
     const symbol = ticker.metadata.ticker;
@@ -104,6 +133,9 @@ export function planFirstRunWatchlist(
  * "Main P...". 120x36 and up keep all five side by side.
  */
 const COMPACT_HOME_BELOW = { width: 100, height: 30 } as const;
+
+/** The left column's share an empty portfolio keeps on a full-size Home: its empty state and footer at 120x36 (dock-tree.ts rounds it to rows). */
+const EMPTY_PORTFOLIO_SHARE = 0.2;
 
 export function isCompactHomeViewport(viewport: { width: number; height: number }): boolean {
   return viewport.width < COMPACT_HOME_BELOW.width || viewport.height < COMPACT_HOME_BELOW.height;
@@ -231,7 +263,10 @@ export function buildFirstRunLayout({
       first: {
         kind: "split",
         axis: "vertical",
-        ratio: 0.5,
+        // Holding nothing, the portfolio is its empty line and the way to add
+        // one, and the watchlist has the column: half of it was a quarter of
+        // the screen with one line in it (review, 12 Nov 2026).
+        ratio: holdings ? 0.5 : EMPTY_PORTFOLIO_SHARE,
         first: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.heatmap },
         second: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.watchlist },
       },

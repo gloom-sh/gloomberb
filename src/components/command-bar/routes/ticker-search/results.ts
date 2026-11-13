@@ -46,7 +46,7 @@ function rawInstrumentType(candidate: Pick<TickerSearchCandidate, "result" | "ti
  * Class tag for the badge column. A query can end with the same code: EQ,
  * CUR, CRYP, OPT, FUT, IDX, ETF, FUND. A fund or derivative whose type string
  * did not classify still badges FUND or DERIV. Anything else gets none, and
- * the row shows its exchange code there when the code is short enough.
+ * its venue stays on the right.
  */
 export function formatInstrumentBadge(
   candidate: Pick<TickerSearchCandidate, "instrumentClass" | "result" | "ticker">
@@ -217,6 +217,10 @@ function isInstrumentItem(item: ResultItem): boolean {
  * When the rows outnumber the cap, each distinct security gets a row before a
  * further exchange of one already shown, so Saputo's SAP on Toronto is not
  * pushed out by SAP SE's fourth German venue; the rows keep their ranked order.
+ * A row search marks with the word as typed under another symbol is the
+ * company the word names, as the service listed it, and gets a row of its own:
+ * China Construction Bank's 0939 in Hong Kong for "ccb" is no further venue of
+ * its 601939 in Shanghai, nor HSBC's 0005 of its HSBA in London.
  * Info rows ("no matches", "search failed") are dropped: the instruments are
  * an extra here, never the answer. With no instruments left, a busy or
  * failed search keeps its row, and one that found nothing leaves the list to
@@ -256,7 +260,8 @@ export function mergePlainRootTickerResults(
     }
     candidates.push(item);
   }
-  const instruments = pickRootInstruments(candidates, isExact, new Set(shown));
+  const namedForWord = (item: ResultItem) => !reading && isExact(item) && underAnotherSymbol(item, query);
+  const instruments = pickRootInstruments(candidates, isExact, new Set(shown), namedForWord);
   const commandNamed = wordNamesCommand(query, rootItems);
   rootItems = leadWithNamedCommands(query, rootItems);
   if (instruments.length === 0) {
@@ -278,6 +283,16 @@ export function mergePlainRootTickerResults(
     ...[...rest.filter((item) => !item.stoppedTrading), ...rest.filter((item) => item.stoppedTrading)]
       .map((item) => ({ ...item, category: ROOT_INSTRUMENTS_CATEGORY })),
   ];
+}
+
+/**
+ * Whether a row stands under another symbol than the text typed: one that is
+ * an exact match only because search marks it with the word as typed (HSBA and
+ * 0005 for "hsbc"), not a line of the symbol on some venue.
+ */
+export function underAnotherSymbol(item: ResultItem, query: string): boolean {
+  const symbol = (text: string) => compactSearchText(parsePublicTickerKey(text.trim().toUpperCase()).symbol);
+  return symbol(item.label) !== symbol(query);
 }
 
 const nameWords = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
@@ -446,18 +461,22 @@ export function venueDropdownResults(symbol: string, items: ResultItem[], suffix
  * Up to the cap, in this order: the rows `shown` before search answered,
  * the first exact row of each security, the exact symbol's other exchanges,
  * then looser hits. The rows keep their
- * ranked order. Exchanges of one security share its issuer name and class.
+ * ranked order. Exchanges of one security share its issuer name and class;
+ * a row `ownRow` names stands for itself.
  */
 function pickRootInstruments(
   candidates: ResultItem[],
   isExact: (item: ResultItem) => boolean,
   shown: ReadonlySet<string> = new Set(),
+  ownRow: (item: ResultItem) => boolean = () => false,
 ): ResultItem[] {
   if (candidates.length <= ROOT_INSTRUMENTS_LIMIT) return candidates;
   const exact = candidates.filter(isExact);
   const picked = new Set<ResultItem>();
   const securities = new Set<string>();
-  const securityOf = (item: ResultItem) => `${getIssuerGroupKey(item.detail) || item.id}|${item.badge ?? item.instrumentType ?? ""}`;
+  const securityOf = (item: ResultItem) => ownRow(item)
+    ? `row:${listingRowKey(item)}`
+    : `${getIssuerGroupKey(item.detail) || item.id}|${item.badge ?? item.instrumentType ?? ""}`;
   // The rows on screen before search answered stay, and lead (`leadWithShownListings`):
   // another security the answer adds does not take one's row.
   for (const item of candidates) {

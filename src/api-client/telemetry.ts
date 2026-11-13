@@ -68,6 +68,33 @@ export interface UsageCountsPayload {
   counts: FunctionUsageCount[];
 }
 
+/**
+ * Body of `POST /telemetry/experiment`: an install experiment, filed under the
+ * install id like the usage counts. `experiment_assign` asks for the arm to
+ * show now, `experiment_exposed` confirms the arm the app went on with and is
+ * counted as the exposure; the other events end the change, with counts only,
+ * never what was picked.
+ */
+export type InstallExperimentReport = {
+  installId: string;
+  surface: UsageCountsSurface;
+  appVersion: string;
+  os?: string;
+  experiment: string;
+} & (
+  /** Which arm to show; the API counts nothing for it. */
+  | { event: "experiment_assign" }
+  /** The arm the install went on with: the exposure. */
+  | { event: "experiment_exposed"; variant: string }
+  | { event: "onboarding_tickers_finished"; picked: number; skipped: boolean }
+);
+
+/** The server's answer: the arm when `accepted`, nothing to show or count when not. */
+export interface InstallExperimentAnswer {
+  accepted: boolean;
+  variant?: string;
+}
+
 /** How one visit to the command bar ended. */
 export type CommandSearchOutcome = "chosen" | "dismissed";
 
@@ -198,6 +225,26 @@ export class CloudTelemetryApi {
       }),
       REPORT_TIMEOUT_MS,
       "Usage counts timed out.",
+      (error) => controller.abort(error),
+    );
+  }
+
+  /**
+   * Asks for an install experiment's arm, or reports how its change ended.
+   * Filed under the install id, never the account; the caller checks the
+   * Usage setting allows it. Gives up after `timeoutMs`.
+   */
+  reportInstallExperiment(payload: InstallExperimentReport, timeoutMs = REPORT_TIMEOUT_MS): Promise<InstallExperimentAnswer> {
+    const controller = new AbortController();
+    return withDeadline(
+      this.request<InstallExperimentAnswer>("/telemetry/experiment", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        keepalive: true,
+        signal: controller.signal,
+      }),
+      timeoutMs,
+      "Install experiment request timed out.",
       (error) => controller.abort(error),
     );
   }

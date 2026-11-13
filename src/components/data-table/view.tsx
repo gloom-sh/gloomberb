@@ -138,6 +138,12 @@ export interface DataTableViewProps<
     reason: DataTableSelectionChangeReason,
   ) => void;
   isNavigable?: (item: T, index: number) => boolean;
+  /**
+   * A row that goes on from the row above it, as a wrapped description's
+   * second line does: pressing it selects (or activates, or opens the menu
+   * of) the row it belongs to, as pressing that row's first line does.
+   */
+  continuesRowAbove?: (item: T, index: number) => boolean;
   rootBefore?: ReactNode;
   rootAfter?: ReactNode;
   /**
@@ -191,6 +197,7 @@ export function DataTableView<
   onActivate,
   onCursorChange,
   isNavigable,
+  continuesRowAbove,
   rootBefore,
   rootAfter,
   status,
@@ -664,40 +671,56 @@ export function DataTableView<
   // identity survives a parent render. Most callers build `selection` inline,
   // which used to give every handler a new identity on each render and made
   // every visible row re-render its cells, even when nothing in it changed.
+  // The row a pressed line belongs to: itself, or for a line that goes on from
+  // the row above, the first line of that row.
+  const ownerIndex = (index: number) => {
+    let owner = index;
+    while (continuesRowAbove && owner > 0 && owner < tableProps.items.length
+      && continuesRowAbove(tableProps.items[owner]!, owner)) owner -= 1;
+    return owner;
+  };
   const rowHandlerStateRef = useRef({
     activateIndex,
     onRowContextMenu: tableProps.onRowContextMenu,
     onRowMouseDown: tableProps.onRowMouseDown,
+    ownerIndex,
+    items: tableProps.items,
     updateCursorIndex,
   });
   rowHandlerStateRef.current = {
     activateIndex,
     onRowContextMenu: tableProps.onRowContextMenu,
     onRowMouseDown: tableProps.onRowMouseDown,
+    ownerIndex,
+    items: tableProps.items,
     updateCursorIndex,
   };
 
   const handleTableSelect = useCallback((_item: T, index: number) => {
-    rowHandlerStateRef.current.updateCursorIndex(index, { commit: "immediate" });
+    const latest = rowHandlerStateRef.current;
+    latest.updateCursorIndex(latest.ownerIndex(index), { commit: "immediate" });
   }, []);
 
   const handleTableActivate = useCallback((_item: T, index: number) => {
-    rowHandlerStateRef.current.activateIndex(index);
+    const latest = rowHandlerStateRef.current;
+    latest.activateIndex(latest.ownerIndex(index));
   }, []);
 
   const handleRowMouseDown = useCallback((item: T, index: number, event: any) => {
     const latest = rowHandlerStateRef.current;
-    const handled = latest.onRowMouseDown?.(item, index, event);
+    const owner = latest.ownerIndex(index);
+    const handled = latest.onRowMouseDown?.(latest.items[owner] ?? item, owner, event);
     if (handled === true) {
-      latest.updateCursorIndex(index, { commit: "immediate" });
+      latest.updateCursorIndex(owner, { commit: "immediate" });
     }
     return handled;
   }, []);
 
   const handleRowContextMenu = useCallback((item: T, index: number, event: any) => {
     const latest = rowHandlerStateRef.current;
-    latest.updateCursorIndex(index, { commit: "immediate" });
-    latest.onRowContextMenu?.(item, index, event);
+    const owner = latest.ownerIndex(index);
+    latest.updateCursorIndex(owner, { commit: "immediate" });
+    latest.onRowContextMenu?.(latest.items[owner] ?? item, owner, event);
   }, []);
 
   // Wide tables scroll their columns on Shift+Left/Right, the way a chart pans,

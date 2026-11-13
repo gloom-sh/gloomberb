@@ -1,3 +1,4 @@
+import { getLanguage } from "../i18n";
 import { logFailure } from "../utils/log-failure";
 import {
   isMarketplaceLayoutId,
@@ -57,6 +58,8 @@ export type {
   CrashReportSurface,
   CrashReportsPayload,
   FunctionUsageCount,
+  InstallExperimentAnswer,
+  InstallExperimentReport,
   UpdateFailureReport,
   UsageCountsPayload,
   UsageCountsSurface,
@@ -572,10 +575,14 @@ class GloomApiClient {
   /**
    * Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser.
    * `link` is a short link to the same checkout, to read or scan on another
-   * device. Older servers send none.
+   * device. Older servers send none. `lang` is the app's language, for the
+   * text the server adds to the checkout page.
    */
   async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string; link?: string }> {
-    return this.request<{ url: string; link?: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo, interval }) });
+    return this.request<{ url: string; link?: string }>("/stripe/checkout", {
+      method: "POST",
+      body: JSON.stringify({ returnTo, interval, lang: getLanguage() }),
+    });
   }
 
   async recordResearchActivity(payload: {
@@ -926,6 +933,7 @@ class GloomApiClient {
   setRoadmapVote = this.roadmap.setRoadmapVote.bind(this.roadmap);
   reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
   reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
+  reportInstallExperiment = this.telemetry.reportInstallExperiment.bind(this.telemetry);
   reportAttentionCounts = this.telemetry.reportAttentionCounts.bind(this.telemetry);
   deleteCloudNote = this.notes.deleteNote.bind(this.notes);
   listTheses = this.theses.listTheses.bind(this.theses);
