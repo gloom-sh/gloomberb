@@ -171,7 +171,8 @@ export interface ColumnContext {
 export interface PeriodSummaryLine {
   id: string;
   label: string;
-  pnl: number;
+  /** Null when every holding it covers is left out. */
+  pnl: number | null;
   contribution: number | null;
 }
 

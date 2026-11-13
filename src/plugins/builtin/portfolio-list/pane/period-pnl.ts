@@ -6,6 +6,7 @@ import type { PeriodPnlRow } from "../../../../portfolio/period-pnl";
 import type { Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { errorMessage } from "../../../../utils/errors";
+import { displayTickerKey } from "../../../../utils/exchanges";
 import { readPriceWindow, type PriceWindow } from "../../../../utils/price-window";
 import { useAssetData } from "../../../runtime";
 import { loadPeriodPnl, periodBoughtText, periodCurrencyParts, periodFxLabel, periodUnpricedText, type LoadedPeriodPnl } from "../period-pnl";
@@ -67,7 +68,8 @@ export function periodPnlNotices(period: PanePeriodPnl | null): string[] {
   if (!period) return [];
   if (period.error) return [`P&L period: ${period.error}`];
   if (!period.result) return [];
-  return [periodUnpricedText(period.result), periodBoughtText(period.result)].filter((notice): notice is string => !!notice);
+  // Each holding by the listing it is (ES3:SGX), not a venue's code it is saved under (ES3:XSES).
+  return [periodUnpricedText(period.result, displayTickerKey), periodBoughtText(period.result, displayTickerKey)].filter((notice): notice is string => !!notice);
 }
 
 /** The pane's P&L From and To as `portfolio show --from --to` reads them, or why they do not read. */

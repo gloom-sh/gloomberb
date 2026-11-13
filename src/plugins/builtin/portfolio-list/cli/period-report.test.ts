@@ -21,7 +21,7 @@ const DAILY: Record<string, PricePoint[]> = {
   "2382": [day("2026-07-31", 60), day("2026-10-23", 63.15), day("2026-10-30", 63.3)],
   D05: [day("2026-07-31", 40), day("2026-10-23", 42), day("2026-10-30", 43)],
 };
-const CURRENCY: Record<string, string> = { "2382": "HKD", D05: "SGD", ES3: "SGD" };
+const CURRENCY: Record<string, string> = { "2382": "HKD", D05: "SGD", ES3: "SGD", "7203": "JPY" };
 const held = (symbol: string, exchange: string, currency: string, shares: number, dateAcquired = "2026-10-01") => createTestTicker(symbol, symbol, {
   exchange, currency, portfolios: ["model"], positions: [{ portfolio: "model", shares, broker: "manual", dateAcquired }],
 });
@@ -74,7 +74,7 @@ test("portfolio show --from prints each position's P&L, the FX line and a total 
   expect(text).toMatch(/GDX:ARCA\s+-200\s+\$80\.20\s+\$77\.09\s+-3\.88%\s+\+\$622\.00/);
   // 1,000 x HK$0.15 at 7.75 is $19.35; HK$63,150 from 7.80 to 7.75 is the FX line's $52.23; the total adds the four.
   expect(text).toMatch(/2382:HKEX\s+1,000\s+HK\$63\.15\s+HK\$63\.30\s+\+0\.24%\s+\+\$19\.35/);
-  expect(text).toMatch(/FX HKD\s+\+\$52\.23\s+\+0\.13%/);
+  expect(text).toMatch(/FX \(HKD\)\s+\+\$52\.23\s+\+0\.13%/);
   expect(text).toMatch(/TOTAL\s+\+\$538\.59\s+\+1\.30%/);
   expect(text).toContain("Bought inside the window: 2382:HKEX. Its P&L runs from the start close, as if held all along.");
   expect(text).toContain("FX: USD/HKD 7.8 on Fri 23 Oct, 7.75 on Fri 30 Oct.");
@@ -98,42 +98,62 @@ test("a book in several currencies gets an FX line per currency and each currenc
   const book = [...MODEL(), held("D05", "SGX", "SGD", 1000)];
   const { text } = await show("text", {}, book);
   // 1,000 x S$1 at 1.28 is $781.25; S$42,000 from 1.30 to 1.28 is $504.81.
-  expect(text).toMatch(/FX HKD\s+\+\$52\.23\s+\+0\.07%/);
-  expect(text).toMatch(/FX SGD\s+\+\$504\.81\s+\+0\.68%/);
+  expect(text).toMatch(/FX \(HKD\)\s+\+\$52\.23\s+\+0\.07%/);
+  expect(text).toMatch(/FX \(SGD\)\s+\+\$504\.81\s+\+0\.68%/);
   expect(text).toMatch(/TOTAL\s+\+\$1,824\.65\s+\+2\.47%/);
   expect(text).toMatch(/USD\s+\+\$467\.00\s+—\s+\+\$467\.00\s+\+0\.63%/);
   expect(text).toMatch(/HKD\s+\+\$19\.35\s+\+\$52\.23\s+\+\$71\.59\s+\+0\.10%/);
   expect(text).toMatch(/SGD\s+\+\$781\.25\s+\+\$504\.81\s+\+\$1,286\.06\s+\+1\.74%/);
 
-  // CSV writes them as rows of their own, JSON under metadata; the subtotals add up to the book's total, which is what it was.
+  // CSV keeps its columns where they were and adds its new ones after retrieved_at; each row says what it is, so the
+  // holdings still sum on their own. The subtotals add up to the book's total, which is what it was.
   const lines = (await show("csv", {}, book)).out.trim().split("\n");
   const header = lines[0]!.split(",");
-  const extra = lines.slice(1).map((line) => line.split(",")).filter((cells) => ["FX", "SUBTOTAL", "TOTAL"].includes(cells[0]!))
-    .map((cells) => [cells[0], cells[header.indexOf("currency")] || null, Number(Number(cells[header.indexOf("total")]).toFixed(2))]);
-  expect(extra).toEqual([["FX", "HKD", 52.23], ["FX", "SGD", 504.81], ["SUBTOTAL", "USD", 467], ["SUBTOTAL", "HKD", 71.59], ["SUBTOTAL", "SGD", 1286.06], ["TOTAL", null, 1824.65]]);
+  expect(header.slice(0, 19).join(",")).toBe("symbol,listing,shares,priceUnits,currency,startDay,startPrice,endDay,endPrice,endPartial,changePercent,startValue,pnl,fx,fxCurrency,fxStart,fxEnd,contribution,baseCurrency");
+  expect(header.slice(-5)).toEqual(["retrieved_at", "rowType", "total", "status", "reason"]);
+  const rows = lines.slice(1).filter((line) => line && !line.startsWith("#")).map((line) => line.split(","));
+  const at = (cells: string[], column: string) => cells[header.indexOf(column)];
+  const holdings = rows.filter((cells) => at(cells, "rowType") === "holding");
+  expect(holdings.map((cells) => cells[0])).toEqual(["2382", "AAPL", "D05", "GDX"]);
+  const extra = rows.filter((cells) => at(cells, "rowType") !== "holding")
+    .map((cells) => [at(cells, "rowType"), at(cells, "currency") || null, Number(Number(at(cells, "fx")).toFixed(2)), Number(Number(at(cells, "total")).toFixed(2))]);
+  expect(extra).toEqual([["fx", "HKD", 52.23, 52.23], ["fx", "SGD", 504.81, 504.81],
+    ["subtotal", "USD", 0, 467], ["subtotal", "HKD", 52.23, 71.59], ["subtotal", "SGD", 504.81, 1286.06], ["total", null, 557.04, 1824.65]]);
   const json = JSON.parse((await show("json", {}, book)).out);
   expect(json.metadata.currencies.map((part: { currency: string }) => part.currency)).toEqual(["USD", "HKD", "SGD"]);
   expect(json.metadata.currencies.reduce((sum: number, part: { total: number }) => sum + part.total, 0)).toBeCloseTo(json.metadata.total, 9);
+  // A book in one other currency has no table of currencies, so no subtotal rows either.
+  const one = (await show("csv", {}, [held("D05", "SGX", "SGD", 1000)])).out.trim().split("\n").map((line) => line.split(","));
+  expect(one.slice(1).map((cells) => cells[header.indexOf("rowType")]).filter(Boolean)).toEqual(["holding", "fx", "total"]);
 });
 
-test("a holding without P&L is marked on its row, in the totals that leave it out and in the export's notes", async () => {
-  const book = [...MODEL(), held("D05", "SGX", "SGD", 1000), held("ES3", "SGX", "SGD", 10000)];
+test("a holding without P&L is marked on its row, in the totals that leave it out and in the export's notes; a currency with none counted reads —", async () => {
+  // ES3's history does not load, beside D05's that does; Toyota's does not either, the book's only yen holding.
+  const book = [...MODEL(), held("D05", "SGX", "SGD", 1000), held("ES3", "SGX", "SGD", 10000), held("7203", "JPX", "JPY", 100)];
+  const { text } = await show("text", {}, book);
+  expect(text).toMatch(/FX \(JPY\)\s+—\s+—/);
+  expect(text).toMatch(/JPY\s+—\s+—\s+—\s+—\s+7203:JPX/);
+  expect(text).toMatch(/SGD\s+\+\$781\.25\s+\+\$504\.81\s+\+\$1,286\.06\s+\+1\.7\d%\s+ES3:SGX/);
   const csv = (await show("csv", {}, book)).out;
   const lines = csv.trim().split("\n");
   const header = lines[0]!.split(",");
-  const cell = (symbol: string, column: string, currency?: string) => {
-    const line = lines.find((entry) => entry.split(",")[0] === symbol && (!currency || entry.split(",")[header.indexOf("currency")] === currency))!;
+  const cell = (rowType: string, symbol: string, column: string, currency?: string) => {
+    const line = lines.find((entry) => { const cells = entry.split(","); return cells[header.indexOf("rowType")] === rowType && cells[0] === symbol
+      && (!currency || cells[header.indexOf("currency")] === currency); })!;
     return line.split(",")[header.indexOf(column)];
   };
-  expect(cell("ES3", "status")).toBe("left out");
-  expect(cell("ES3", "reason")).toContain("did not load");
-  expect(cell("AAPL", "status")).toBe("counted");
-  expect(cell("TOTAL", "status")).toBe("partial");
-  expect(cell("SUBTOTAL", "status", "SGD")).toBe("partial");
-  expect(cell("SUBTOTAL", "status", "HKD")).toBe("complete");
-  expect(csv).toMatch(/note: No P&L for ES3:SGX \(.*\)\. The total leaves it out\./);
+  expect(cell("holding", "ES3", "status")).toBe("left out");
+  expect(cell("holding", "ES3", "reason")).toContain("did not load");
+  expect(cell("holding", "AAPL", "status")).toBe("counted");
+  expect(cell("total", "TOTAL", "status")).toBe("partial");
+  expect(cell("subtotal", "SUBTOTAL", "status", "SGD")).toBe("partial");
+  expect(cell("subtotal", "SUBTOTAL", "status", "HKD")).toBe("complete");
+  // Nothing counted in yen: no figure, never 0.
+  expect([cell("subtotal", "SUBTOTAL", "total", "JPY"), cell("fx", "FX", "pnl", "JPY")]).toEqual(["", ""]);
+  expect(cell("subtotal", "SUBTOTAL", "status", "JPY")).toBe("partial");
+  expect(csv).toMatch(/note: No P&L for 7203:JPX \(.*\), ES3:SGX \(.*\)\. The total leaves them out\./);
   const json = JSON.parse((await show("json", {}, book)).out);
-  expect(json.metadata).toMatchObject({ complete: false, totalStatus: "partial", unpricedSymbols: ["ES3"] });
+  expect(json.metadata).toMatchObject({ complete: false, totalStatus: "partial", unpricedSymbols: ["7203", "ES3"] });
 });
 
 test("portfolio show --from --real deflates the total by the CPI from the month before the start to the month before the end", async () => {

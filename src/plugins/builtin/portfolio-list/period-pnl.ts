@@ -213,9 +213,9 @@ export function periodCurrencyParts(result: Pick<PeriodPnl, "currencies">): Peri
   return parts.some((part) => !part.own) ? parts : [];
 }
 
-/** An FX line's label, as every report of a period writes it: `FX HKD`. */
+/** An FX line's label, as every report of a period writes it: `FX (HKD)`. */
 export function periodFxLabel(currency: string): string {
-  return `FX ${currency}`;
+  return `FX (${currency})`;
 }
 
 /** `No P&L for GC=F (contract size unknown), 2382 (no close before 2020-03-18). The total leaves them out.` Null when every holding has one. */

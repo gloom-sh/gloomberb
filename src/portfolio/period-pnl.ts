@@ -69,11 +69,15 @@ export interface PeriodCurrencyPnl {
   currency: string;
   /** The book's own currency, which has no FX line. */
   own: boolean;
-  /** The holdings' price P&L, in the book's currency at the end's rate. */
-  local: number;
+  /**
+   * The holdings' price P&L, in the book's currency at the end's rate. Each
+   * figure is null when every holding in the currency is left out: there is
+   * nothing to add up, which is not a P&L of 0.
+   */
+  local: number | null;
   /** The currency's move on the holdings' start value; 0 in the book's currency. */
-  fx: number;
-  total: number;
+  fx: number | null;
+  total: number | null;
   /** Each over the book's contribution base, in percent. */
   localContribution: number | null;
   fxContribution: number | null;
@@ -144,22 +148,24 @@ export function periodPnl(holdings: readonly PeriodPnlHolding[], bookCurrency: s
   const total = rows.reduce((sum, row) => sum + (finite(row.pnl) && finite(row.fx) ? row.pnl + row.fx : 0), 0);
   const share = (value: number) => contributionBase ? (value / contributionBase) * 100 : null;
   // Each holding counts under the major currency it converts through, priced or not, so a part that leaves one out says so.
-  const groups = new Map<string, PeriodCurrencyPnl>();
+  const groups = new Map<string, { currency: string; own: boolean; counted: number; local: number; fx: number; unpriced: string[] }>();
   for (const row of rows) {
     const { currency, own } = periodCurrency(row.currency, bookCurrency);
     const key = own ? heldCurrencyUnit(bookCurrency).currency || bookCurrency : currency;
-    const group = groups.get(key) ?? { currency: key, own, local: 0, fx: 0, total: 0, localContribution: null, fxContribution: null, contribution: null, unpriced: [] };
+    const group = groups.get(key) ?? { currency: key, own, counted: 0, local: 0, fx: 0, unpriced: [] };
     groups.set(key, group);
     if (finite(row.pnl) && finite(row.fx)) {
+      group.counted += 1;
       group.local += row.pnl;
       group.fx += row.fx;
-      group.total += row.pnl + row.fx;
     } else {
       group.unpriced.push(row.symbol);
     }
   }
   const currencies = [...groups.values()]
-    .map((group) => ({ ...group, localContribution: share(group.local), fxContribution: share(group.fx), contribution: share(group.total) }))
+    .map(({ currency, own, counted, local, fx, unpriced }): PeriodCurrencyPnl => counted === 0
+      ? { currency, own, local: null, fx: null, total: null, localContribution: null, fxContribution: null, contribution: null, unpriced }
+      : { currency, own, local, fx, total: local + fx, localContribution: share(local), fxContribution: share(fx), contribution: share(local + fx), unpriced })
     .sort((a, b) => Number(b.own) - Number(a.own) || a.currency.localeCompare(b.currency));
   return { rows, fx, fxContribution: share(fx), total, totalContribution: share(total), contributionBase, contributionBasis: shorts ? "gross" : "net", unpriced, currencies };
 }

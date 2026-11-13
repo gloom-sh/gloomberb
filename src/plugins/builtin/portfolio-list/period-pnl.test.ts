@@ -149,9 +149,9 @@ test("the PF pane's lines under a period's rows give each currency's local, FX a
   const lines = (currencies: ReturnType<typeof part>[]) =>
     periodSummaryLines({ currencies } as unknown as Parameters<typeof periodSummaryLines>[0]).map(({ label, pnl }) => `${label} ${pnl}`);
   expect(lines([part("USD", true, -6265, 0), part("HKD", false, 12028, 240), part("SGD", false, -14710, -1327)])).toEqual([
-    "USD total -6265", "HKD local 12028", "FX HKD 240", "HKD total 12268", "SGD local -14710", "FX SGD -1327", "SGD total -16037",
+    "USD total -6265", "HKD local 12028", "FX (HKD) 240", "HKD total 12268", "SGD local -14710", "FX (SGD) -1327", "SGD total -16037",
   ]);
   // A USD book of SGD lines alone: its total is the header's, so only the FX line is new.
-  expect(lines([part("SGD", false, -9565, -780)])).toEqual(["FX SGD -780"]);
+  expect(lines([part("SGD", false, -9565, -780)])).toEqual(["FX (SGD) -780"]);
   expect(lines([])).toEqual([]);
 });

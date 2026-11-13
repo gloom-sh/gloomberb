@@ -556,24 +556,26 @@ async function portfolioPeriodHoldings(
   const parts = periodCurrencyParts(result);
   for (const part of parts) if (!part.own) rows.push({ symbol: periodFxLabel(part.currency), pnl: part.fx, contribution: part.fxContribution });
   rows.push({ symbol: "TOTAL", pnl: result.total, contribution: result.totalContribution });
+  // A holding by the listing it is (ES3:SGX), not the key it is saved under (ES3:XSES).
+  const listing = (symbol: string) => { const ticker = bySymbolTicker.get(symbol); return ticker ? listingLabel(ticker) : displayTickerKey(symbol); };
   const byCurrency = parts.length > 1 ? [
     ...parts.map((part) => ({ currency: part.currency, local: part.local, fx: part.own ? null : part.fx, total: part.total, contribution: part.contribution,
-      ...(part.unpriced.length ? { leftOut: part.unpriced.join(", ") } : {}) })),
+      ...(part.unpriced.length ? { leftOut: part.unpriced.map(listing).join(", ") } : {}) })),
     { currency: "TOTAL", local: result.total - result.fx, fx: result.fx, total: result.total, contribution: result.totalContribution,
-      ...(result.unpriced.length ? { leftOut: result.unpriced.join(", ") } : {}) },
+      ...(result.unpriced.length ? { leftOut: result.unpriced.map(listing).join(", ") } : {}) },
   ] : [];
   // The Left out column only when a holding is: each currency's figures name the ones they leave out.
   const byCurrencyColumns = PERIOD_CURRENCY_COLUMNS.filter((column) => column.key !== "leftOut" || result.unpriced.length > 0)
     .map((column) => column.align === "right" && column.key !== "contribution" ? { ...column, header: `${column.header} (${currency})` } : column);
   const futuresHeldNow = result.rows.some((row) => { const ticker = bySymbolTicker.get(row.symbol); return !!ticker && isFuturesTicker(ticker); });
-  const bought = periodBoughtText(result);
+  const bought = periodBoughtText(result, listing);
   const notices = [
     `${periodBasisText(result, { futuresHeld: futuresHeldNow })}, in ${currency}.`,
     ...(result.contributionBase == null ? [] : [`Contribution is P&L over the book's ${result.contributionBasis === "gross" ? "gross exposure" : "value"} at the start, longs plus shorts at their absolute value when it holds a short; cash excluded.`]),
     ...(bought ? [bought] : []),
     ...(ordered.length > limit ? [`${ordered.length - limit} more position${ordered.length - limit === 1 ? "" : "s"} not shown; the FX line and the total include every position.`] : []),
   ];
-  const unpricedText = periodUnpricedText(result);
+  const unpricedText = periodUnpricedText(result, listing);
   const errors = unpricedText ? [unpricedText] : [];
   return {
     freshness: {
@@ -589,7 +591,7 @@ async function portfolioPeriodHoldings(
       exportTables: [{ title: "By currency", columns: byCurrencyColumns, rows: byCurrency, unit: currency }],
     } : {}),
     complete: errors.length === 0,
-    ...(errors.length ? { errors, incompleteDetail: `the total leaves out ${result.unpriced.map(displayTickerKey).join(", ")}` } : {}),
+    ...(errors.length ? { errors, incompleteDetail: `the total leaves out ${result.unpriced.map(listing).join(", ")}` } : {}),
     metadata: {
       collection: { kind: "portfolio", id: target.id, name: target.name },
       currency,

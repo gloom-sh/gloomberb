@@ -24,6 +24,12 @@ const signedPercent = (value: number | null) => value == null || !Number.isFinit
 
 /** `Fri 23 Oct`, with the year when it is not this one. */
 const dayText = (day: string, year: number) => periodDayText(day, year);
+/**
+ * The columns `--csv` gained after its own were set, written after
+ * `retrieved_at` so none it had moves: what a row is (holding, fx, subtotal,
+ * total), its P&L with FX, and whether it counts every holding and why not.
+ */
+const PERIOD_APPENDED_KEYS = ["rowType", "total", "status", "reason"] as const;
 
 /**
  * `portfolio show <name> --from <date> [--to <date>]`: P&L and contribution
@@ -103,22 +109,26 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
         ...(ticker && isFuturesTicker(ticker) ? { contractSize: futures.get(row.symbol)?.size?.size ?? null } : {}),
         currency: row.currency, startDay: row.start?.day ?? null, startPrice: row.start?.price ?? null,
         endDay: row.end?.day ?? null, endPrice: row.end?.price ?? null, endPartial: row.partialEnd,
-        changePercent: row.changePercent, startValue: row.startValue, pnl: row.pnl, fx: row.fx, total: counted ? row.pnl! + row.fx! : null,
+        changePercent: row.changePercent, startValue: row.startValue, pnl: row.pnl, fx: row.fx,
         fxCurrency: row.rates?.currency ?? null, fxStart: row.rates?.start ?? null, fxEnd: row.rates?.end ?? null,
         ...(row.rates && row.end && result.latestFx.includes(`${row.rates.currency}|${row.end.day}`) ? { fxEndLatest: true } : {}),
         contribution: row.contribution, baseCurrency: currency,
-        // A holding with no P&L says why, and that the totals leave it out.
+        // The columns added since, after the export's own (`PERIOD_APPENDED_KEYS`): what the row is, its P&L with FX, and
+        // for a holding with no P&L why, which the totals leave it out for.
+        rowType: "holding", total: counted ? row.pnl! + row.fx! : null,
         status: counted ? "counted" : "left out", reason: counted ? null : reasons.get(row.symbol) ?? "no P&L",
       };
     });
-    // Each currency's FX line, then its part of the book (its price P&L, FX and total), then the book's total, each
-    // saying when it leaves a holding out. A part's pnl is its price P&L, as a holding's is; total adds its FX.
+    // Each currency's FX line (its pnl the move, as the one FX line's was, and in fx), then each currency's part of the
+    // book when the text prints the table of them, then the book's total, each saying when it leaves a holding out.
+    // A part's pnl is its price P&L, as a holding's is; total adds its FX. Summing the holding rows gives the price P&L.
     const extraRows: Record<string, unknown>[] = [
-      ...parts.filter((part) => !part.own).map((part) => ({ symbol: "FX", currency: part.currency, pnl: part.fx, total: part.fx, fxCurrency: part.currency,
-        contribution: part.fxContribution, baseCurrency: currency, ...leftOut(part.unpriced) })),
-      ...parts.map((part) => ({ symbol: "SUBTOTAL", currency: part.currency, pnl: part.local, fx: part.fx, total: part.total,
-        contribution: part.contribution, baseCurrency: currency, ...leftOut(part.unpriced) })),
-      { symbol: "TOTAL", pnl: result.total, fx: result.fx, total: result.total, contribution: result.totalContribution, baseCurrency: currency, ...leftOut(result.unpriced) },
+      ...parts.filter((part) => !part.own).map((part) => ({ symbol: "FX", currency: part.currency, pnl: part.fx, fx: part.fx, fxCurrency: part.currency,
+        contribution: part.fxContribution, baseCurrency: currency, rowType: "fx", total: part.fx, ...leftOut(part.unpriced) })),
+      ...(parts.length > 1 ? parts : []).map((part) => ({ symbol: "SUBTOTAL", currency: part.currency, pnl: part.local, fx: part.fx,
+        contribution: part.contribution, baseCurrency: currency, rowType: "subtotal", total: part.total, ...leftOut(part.unpriced) })),
+      { symbol: "TOTAL", pnl: result.total, fx: result.fx, contribution: result.totalContribution, baseCurrency: currency,
+        rowType: "total", total: result.total, ...leftOut(result.unpriced) },
     ];
     const notes = [unpricedText, boughtText].filter((note): note is string => !!note);
     ctx.printResult({ data, metadata: {
@@ -139,7 +149,7 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
         readings: inflation.readings,
       } } : {}),
       method: "Each holding's price move times the units held now (contracts times their size for a future), converted at the end's FX rate; the FX line is each holding's start value times its currency's move. Contribution divides by the book's value at the start, gross when it holds a short.",
-    }, freshness }, { rows: (rows) => [...(rows as Record<string, unknown>[]), ...extraRows], exportNotes: notes });
+    }, freshness }, { rows: (rows) => [...(rows as Record<string, unknown>[]), ...extraRows], exportNotes: notes, exportAppendedKeys: PERIOD_APPENDED_KEYS });
     return;
   }
 
@@ -185,6 +195,9 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
   if (parts.length > 1) {
     // What each currency's holdings made from their prices, from the currency, and together, and the book's; one
     // currency's would repeat the total.
+    // A figure that leaves a holding out names it, as fn PF's Left out does; a currency with none counted reads —.
+    const leftOutCell = (symbols: readonly string[]) => symbols.length ? symbols.map(label).join(", ") : "—";
+    const anyLeftOut = result.unpriced.length > 0;
     console.log("");
     console.log(renderTable([
       { header: "Currency" },
@@ -192,9 +205,12 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
       { header: `FX (${currency})`, align: "right" },
       { header: `Total (${currency})`, align: "right" },
       { header: "Contribution", align: "right" },
+      ...anyLeftOut ? [{ header: "Left out" }] : [],
     ], [
-      ...parts.map((part) => [part.currency, money(part.local), part.own ? "—" : money(part.fx), money(part.total), percent(part.contribution)]),
-      [cliStyles.bold("TOTAL"), money(result.total - result.fx), money(result.fx), cliStyles.bold(money(result.total)), percent(result.totalContribution)],
+      ...parts.map((part) => [part.currency, money(part.local), part.own ? "—" : money(part.fx), money(part.total), percent(part.contribution),
+        ...anyLeftOut ? [leftOutCell(part.unpriced)] : []]),
+      [cliStyles.bold("TOTAL"), money(result.total - result.fx), money(result.fx), cliStyles.bold(money(result.total)), percent(result.totalContribution),
+        ...anyLeftOut ? [leftOutCell(result.unpriced)] : []],
     ]));
   }
   console.log("");
