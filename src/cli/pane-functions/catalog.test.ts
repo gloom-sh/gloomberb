@@ -1,6 +1,8 @@
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../api-client";
 import { chatController } from "../../plugins/builtin/chat/controller";
+import { subscribeASKGQuestions } from "../../plugins/builtin/cloud/askg/pending-question";
+import { subscribeRequestedThesis } from "../../plugins/builtin/cloud/thesis/pane-request";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { createDefaultConfig } from "../../types/config";
 import type { MarketContext } from "../types";
@@ -83,6 +85,34 @@ test("built-in catalog discovery stays offline while opening chat and chokepoint
     channels.mockRestore();
     geo.mockRestore();
     fetch.mockRestore();
+  }
+});
+
+// A name that opens no function builds the catalog in the running app too, and discovery must not run ASKG and THESIS on a sample: an open Ask Gloom pane would be asked "sample", and with none open the next one to mount would open on it.
+test("building the catalog sends no request to an open pane and leaves none for the next pane to open on", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  const received: unknown[] = [];
+  const subscribeAll = () => [
+    subscribeASKGQuestions((question) => received.push(question)),
+    subscribeRequestedThesis((request) => received.push(request)),
+  ];
+  let stops = subscribeAll();
+  try {
+    await buildPaneCatalogEntries(registry, context);
+    expect(received).toEqual([]);
+    // No pane open: a request would wait for the next one to subscribe.
+    for (const stop of stops) stop();
+    await buildPaneCatalogEntries(registry, context);
+    stops = subscribeAll();
+    expect(received).toEqual([]);
+  } finally {
+    for (const stop of stops) stop();
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
   }
 });
 

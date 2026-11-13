@@ -31,6 +31,8 @@ export const thesisModule: PluginModule = {
     description: "Every thesis you and your teams hold, sorted by what needs a ruling",
     keywords: ["thesis", "theses", "conviction", "invalidation", "kill", "pillars", "journal"],
     shortcut: { prefix: "THESIS", argPlaceholder: "tickers (optional)", argKind: "text" },
+    // createInstance starts a thesis in the open board, so catalog discovery must not run it with a sample ticker.
+    catalogSettings: {},
     createInstance: (_context, options) => {
       // `THESIS NVDA` opens that thesis or starts one; `THESIS NVDA AMD` starts a pair. The params name the
       // ticker to a board that is drawn without the request (a capture), which shows it without starting one.
