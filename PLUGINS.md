@@ -1786,6 +1786,8 @@ ctx.registerTickerResearchTab({
 
 A tab that would open on an empty state for most tickers should not be visible for them: company filings are `["equity"]`, distributions and 13F ownership `["equity", "fund"]`.
 
+Set `proOnly: true` on a tab that shows its upgrade screen to every account without Gloom Cloud Pro. A Ticker Research pane restored on such a tab for an account without Pro opens on Overview, and the tab (with its upgrade screen) shows once someone picks it; the pane keeps the tab saved for when the account has Pro. Leave it off a tab that shows a free preview without Pro.
+
 ## Example: adding a Ticker Research tab
 
 The simplest plugin type. This adds a new tab to the Ticker Research pane:

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { appReducer, createInitialState, resolveCollectionForPane, resolveTickerForPane, type AppState } from "./state";
 import { cloneLayout, createBlankLayout, createDefaultConfig, createPaneInstance, findPaneInstance } from "../../../types/config";
 import { RECENT_COMMANDS_LIMIT } from "./layout";
+import { isPaneChoice, pluginChoiceKey, shownPaneChoice } from "./pane-choices";
 import type { AppSessionSnapshot } from "../session-persistence";
 import { addPaneFloating, layoutWindowCounts, removePane } from "../../../layout/pane-manager";
 import { normalizeConfigForSave, normalizeLoadedConfig } from "../../../data/config/store/normalize";
@@ -321,20 +322,58 @@ describe("broker account cache", () => {
 });
 
 describe("pane state updates", () => {
-  test("returns the existing state object when a pane patch is a no-op", () => {
+  test("a no-op pane patch leaves pane state and config alone, and once its key is chosen returns the state object", () => {
     const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
     initial.paneState["portfolio-list:main"] = {
       collectionId: "main",
       cursorSymbol: "AAPL",
     };
+    const patch = { type: "UPDATE_PANE_STATE", paneId: "portfolio-list:main", patch: { cursorSymbol: "AAPL" } } as const;
 
-    const next = appReducer(initial, {
-      type: "UPDATE_PANE_STATE",
-      paneId: "portfolio-list:main",
-      patch: { cursorSymbol: "AAPL" },
-    });
+    const marked = appReducer(initial, patch);
+    expect(marked.paneState).toBe(initial.paneState);
+    expect(marked.config).toBe(initial.config);
+    expect(appReducer(marked, patch)).toBe(marked);
+  });
 
-    expect(next).toBe(initial);
+  test("a value written in this session is chosen, by any write and even unchanged; one restored with a desk is not", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-test");
+    const home = config.activeLayoutIndex;
+    const away = home === 0 ? 1 : 0;
+    config.layouts[home] = { ...config.layouts[home]!, paneState: { "ticker-detail:main": { activeTabId: "earnings-calls" } } };
+    config.layouts[away] = { name: "Away", layout: cloneLayout(config.layouts[home]!.layout), paneState: { "ticker-detail:main": { activeTabId: "risk-factors" } } };
+    let state = createInitialState(config);
+    expect(state.paneState["ticker-detail:main"]?.activeTabId).toBe("earnings-calls");
+    expect(isPaneChoice(state, "ticker-detail:main", "activeTabId")).toBe(false);
+
+    // A command or link asking for the tab the pane already saved.
+    state = appReducer(state, { type: "UPDATE_PANE_STATE", paneId: "ticker-detail:main", patch: { activeTabId: "earnings-calls" } });
+    expect(isPaneChoice(state, "ticker-detail:main", "activeTabId")).toBe(true);
+    expect(isPaneChoice(state, "ticker-detail:main", "cursorSymbol")).toBe(false);
+
+    state = appReducer(state, { type: "UPDATE_PLUGIN_PANE_STATE", paneId: "market-movers:main", pluginId: "market-movers", key: "activeTab", value: "gaps" });
+    expect(isPaneChoice(state, "market-movers:main", pluginChoiceKey("market-movers", "activeTab"))).toBe(true);
+    state = appReducer(state, { type: "CHOOSE_PANE_STATE", paneId: "jobs:main", key: "view" });
+    expect(isPaneChoice(state, "jobs:main", "view")).toBe(true);
+
+    // A desk opens as saved, its panes' choices from an earlier session, even
+    // a pane that shares an id with one chosen on the other desk.
+    expect(JSON.stringify(state.config)).not.toContain("paneChoices");
+    state = appReducer(state, { type: "SWITCH_LAYOUT", index: away });
+    expect(state.paneState["ticker-detail:main"]?.activeTabId).toBe("risk-factors");
+    expect(isPaneChoice(state, "ticker-detail:main", "activeTabId")).toBe(false);
+    state = appReducer(state, { type: "SWITCH_LAYOUT", index: home });
+    expect(state.paneState["ticker-detail:main"]?.activeTabId).toBe("earnings-calls");
+    expect(isPaneChoice(state, "ticker-detail:main", "activeTabId")).toBe(false);
+  });
+
+  test("a value only Pro opens shows the free fallback when restored without Pro, and itself once chosen or with Pro", () => {
+    const proOnly = (tab: string) => tab === "earnings-calls";
+    const shown = (value: string, chosen: boolean, hasProAccess: boolean) => shownPaneChoice(value, { chosen, hasProAccess, proOnly, fallback: "overview" });
+    expect(shown("earnings-calls", false, false)).toBe("overview");
+    expect(shown("earnings-calls", true, false)).toBe("earnings-calls");
+    expect(shown("earnings-calls", false, true)).toBe("earnings-calls");
+    expect(shown("chart", false, false)).toBe("chart");
   });
 
   test("keeps pane runtime state scoped to each saved layout", () => {

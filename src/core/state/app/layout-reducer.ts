@@ -100,7 +100,8 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.focusedPaneId,
       );
       const target = currentConfig.layouts[action.index]!;
-      return withFocusedPane(state, {
+      // A desk opens as it was saved: nothing on it was chosen in this session yet (pane-choices.ts).
+      return withFocusedPane({ ...state, paneChoices: undefined }, {
         ...currentConfig,
         layout: cloneLayout(target.layout),
         activeLayoutIndex: action.index,

@@ -40,6 +40,7 @@ import { PaneContent } from "../../../components/layout/pane/content";
 import { LATE_CHANGE_WAIT_MS } from "../../../tickers/listing-fate";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
+import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 
 const TEST_PANE_ID = "ticker-research:test";
 
@@ -272,7 +273,16 @@ function lineBackgroundKeys(line: { spans: Array<{ text: string; bg: { toInts():
   return new Set(keys);
 }
 
+/** A verified account on `plan`, its session answered offline. */
+function signInAs(plan: "free" | "pro") {
+  apiClient.setSessionToken("ticker-research-plan-test");
+  setCloudApiFetchTransport(async () => Response.json({ error: "offline" }, { status: 404 }));
+  apiClient.restoreCachedUser({ id: `${plan}-account`, name: plan, emailVerified: true, plan });
+}
+
 afterEach(() => {
+  apiClient.setSessionToken(null);
+  setCloudApiFetchTransport(null);
   tickerDetailModule.dispose?.();
   harnessDispatch = null;
   financialsHarnessState = null;
@@ -728,6 +738,54 @@ describe("TickerResearchPane", () => {
 
     expect(tui.frame()).toContain("overview body");
     expect(mounted).toEqual(["overview"]);
+  });
+
+  // A free account that left a pane on a tab only Pro opens is not met by
+  // that tab's wall when the workspace comes back: the pane opens on Overview,
+  // keeps the tab saved, and shows it (wall and all) once the tab is picked.
+  test("a tab only Pro opens, restored without Pro, shows Overview until it is picked, and with Pro shows itself", async () => {
+    const mounted: string[] = [];
+    const probe = (id: string): TickerResearchTabDef["component"] => () => {
+      useEffect(() => {
+        mounted.push(id);
+      }, []);
+      return <text>{`${id} body`}</text>;
+    };
+    const registry = {
+      tickerResearchTabs: new Map<string, TickerResearchTabDef>([
+        ["overview", { id: "overview", name: "Overview", order: 10, component: probe("overview") }],
+        ["earnings-calls", { id: "earnings-calls", name: "Calls", order: 34, component: probe("earnings-calls"), proOnly: true }],
+      ]),
+    } as unknown as PluginRegistry;
+    setSharedRegistryForTests(registry);
+    setOptionsProvider(createProvider(false));
+    signInAs("free");
+    const restored = (
+      <DetailHarness config={createDetailConfig("AAPL")} ticker={createTestTicker("AAPL")} financials={null} activeTabId="earnings-calls" />
+    );
+
+    await tui.render(restored, { width: 90, height: 24 });
+    await flushFrame();
+    expect(tui.frame()).toContain("overview body");
+    expect(mounted).toEqual(["overview"]);
+    expect(detailHarnessState?.paneState[TEST_PANE_ID]?.activeTabId).toBe("earnings-calls");
+
+    // The group's one view is the tab the pane saved: picking it changes no value.
+    await act(async () => {
+      tui.setup().mockInput.pressArrow("right");
+      await tui.setup().renderOnce();
+    });
+    await settleTickerTabCommit();
+    expect(tui.frame()).toContain("earnings-calls body");
+    expect(mounted).toEqual(["overview", "earnings-calls"]);
+
+    tui.destroy();
+    mounted.length = 0;
+    signInAs("pro");
+    await tui.render(restored, { width: 90, height: 24 });
+    await flushFrame();
+    expect(tui.frame()).toContain("earnings-calls body");
+    expect(mounted).toEqual(["earnings-calls"]);
   });
 
   test("opens the Chart tab from a click on the overview price chart", async () => {

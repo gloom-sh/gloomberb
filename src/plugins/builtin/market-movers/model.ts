@@ -26,6 +26,11 @@ export type ScreenerTabId = "gainers" | "losers" | "actives" | "trending";
 export type SessionTabId = CloudSessionMoversCategory;
 export type TabId = ScreenerTabId | SessionTabId;
 
+/** Gaps only open with Gloom Cloud Pro; every plan reads the other lists (session-body.tsx). */
+export function isProOnlyTab(tab: string): boolean {
+  return tab === "gaps";
+}
+
 export const TABS: Array<{ id: TabId; label: string }> = [
   { id: "gainers", label: "Gainers" },
   { id: "losers", label: "Losers" },
