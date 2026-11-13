@@ -556,7 +556,7 @@ async function portfolioPeriodHoldings(
   const parts = periodCurrencyParts(result);
   for (const part of parts) if (!part.own) rows.push({ symbol: periodFxLabel(part.currency), pnl: part.fx, contribution: part.fxContribution });
   rows.push({ symbol: "TOTAL", pnl: result.total, contribution: result.totalContribution });
-  const byCurrency = parts.length ? [
+  const byCurrency = parts.length > 1 ? [
     ...parts.map((part) => ({ currency: part.currency, local: part.local, fx: part.own ? null : part.fx, total: part.total, contribution: part.contribution,
       ...(part.unpriced.length ? { leftOut: part.unpriced.join(", ") } : {}) })),
     { currency: "TOTAL", local: result.total - result.fx, fx: result.fx, total: result.total, contribution: result.totalContribution,

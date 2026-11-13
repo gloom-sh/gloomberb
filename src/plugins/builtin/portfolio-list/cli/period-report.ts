@@ -182,8 +182,9 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
     { header: `P&L (${currency})`, align: "right" },
     { header: "Contribution", align: "right" },
   ], rows));
-  if (parts.length) {
-    // What each currency's holdings made from their prices, from the currency, and together, and the book's.
+  if (parts.length > 1) {
+    // What each currency's holdings made from their prices, from the currency, and together, and the book's; one
+    // currency's would repeat the total.
     console.log("");
     console.log(renderTable([
       { header: "Currency" },
@@ -206,7 +207,7 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
     const latest = result.latestFx.includes(`${row.rates!.currency}|${row.end!.day}`);
     return `${start.pair} ${formatFxRate(start.rate)} on ${dayText(row.start!.day, year)}, ${formatFxRate(end.rate)} ${latest ? "latest" : `on ${dayText(row.end!.day, year)}`}`;
   };
-  if (fxRows.length) notes.push(`FX: ${[...new Set(fxRows.map(rateText))].join("; ")}. P&L converts at the end's rate; each FX line is its currency's move on the start value.`);
+  if (fxRows.length) notes.push(`FX: ${[...new Set(fxRows.map(rateText))].join("; ")}. P&L converts at the end's rate; ${parts.filter((part) => !part.own).length > 1 ? "each FX line is its currency's move" : "the FX line is the currency's move"} on the start value.`);
   if (contributionNote) notes.push(contributionNote);
   if (realNote) notes.push(realNote);
   if (unpricedText) notes.push(cliStyles.warning(unpricedText));

@@ -47,10 +47,13 @@ export function periodPnlLabel(period: PanePeriodPnl): string {
  * FX line (`FX HKD`) and the two together (`HKD total`). The book's own
  * currency has no FX, so its one line is its total. The rows and the FX lines
  * add up to the header's total. Empty when every holding is in the book's
- * currency, whose total the header gives.
+ * currency, whose total the header gives; only the FX line when every holding
+ * is in one other currency, whose total is the header's too.
  */
 export function periodSummaryLines(result: LoadedPeriodPnl | null): PeriodSummaryLine[] {
-  return periodCurrencyParts(result ?? { currencies: [] }).flatMap((part): PeriodSummaryLine[] => part.own
+  const parts = periodCurrencyParts(result ?? { currencies: [] });
+  if (parts.length === 1) return parts.map((part) => ({ id: `period-fx-${part.currency}`, label: periodFxLabel(part.currency), pnl: part.fx, contribution: part.fxContribution }));
+  return parts.flatMap((part): PeriodSummaryLine[] => part.own
     ? [{ id: `period-total-${part.currency}`, label: `${part.currency} total`, pnl: part.total, contribution: part.contribution }]
     : [
       { id: `period-local-${part.currency}`, label: `${part.currency} local`, pnl: part.local, contribution: part.localContribution },

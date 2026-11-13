@@ -7,6 +7,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestTicker } from "../../../test-support/ticker";
 import type { PricePoint } from "../../../types/financials";
 import { loadPeriodPnl, periodBasisText, periodUnpricedText } from "./period-pnl";
+import { periodSummaryLines } from "./pane/period-pnl";
 
 const day = (date: string, close: number): PricePoint => ({ date: new Date(`${date}T00:00:00Z`), close });
 
@@ -140,4 +141,17 @@ test("a window ending on the FX trading day in progress converts its end at the 
   const posted = await after({ "2026-11-06": 50.12, "2026-11-09": 50.1776, "2026-11-10": 50.2251 }, Date.parse("2026-11-11T00:30:00Z"));
   expect(posted.latestFx).toEqual([]);
   expect(posted.rows.find((row) => row.symbol === "NTR")!.rates!.end).toBeCloseTo(50.2251, 9);
+});
+
+test("the PF pane's lines under a period's rows give each currency's local, FX and total, and one other currency its FX line alone", () => {
+  const part = (currency: string, own: boolean, local: number, fx: number) =>
+    ({ currency, own, local, fx, total: local + fx, localContribution: null, fxContribution: null, contribution: null, unpriced: [] });
+  const lines = (currencies: ReturnType<typeof part>[]) =>
+    periodSummaryLines({ currencies } as unknown as Parameters<typeof periodSummaryLines>[0]).map(({ label, pnl }) => `${label} ${pnl}`);
+  expect(lines([part("USD", true, -6265, 0), part("HKD", false, 12028, 240), part("SGD", false, -14710, -1327)])).toEqual([
+    "USD total -6265", "HKD local 12028", "FX HKD 240", "HKD total 12268", "SGD local -14710", "FX SGD -1327", "SGD total -16037",
+  ]);
+  // A USD book of SGD lines alone: its total is the header's, so only the FX line is new.
+  expect(lines([part("SGD", false, -9565, -780)])).toEqual(["FX SGD -780"]);
+  expect(lines([])).toEqual([]);
 });
