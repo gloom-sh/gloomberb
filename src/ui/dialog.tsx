@@ -36,8 +36,12 @@ export interface DialogOptions<C = AlertContext> {
   style?: DialogStyle;
   /** Terminal: Esc closes the dialog unless this is false. The desktop always closes on Esc. */
   closeOnEscape?: boolean;
-  /** A click on the backdrop closes the dialog. Off by default. */
-  closeOnClickOutside?: boolean;
+  /**
+   * A click on the backdrop closes the dialog. Off by default. A function is
+   * asked at the click, for a dialog that closes so only while nothing in it
+   * would be lost.
+   */
+  closeOnClickOutside?: boolean | (() => boolean);
   /** Hosts ignore options they do not know. */
   [key: string]: unknown;
 }

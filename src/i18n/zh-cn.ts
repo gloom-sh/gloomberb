@@ -697,6 +697,7 @@ export const zhCN: Record<string, string> = {
   "Pro trial · {days}d left": "Pro 试用 · 剩余 {days} 天",
   "{delay} delayed": "延迟 {delay}",
   "{delay} delayed · try Pro live": "延迟 {delay} · 试用 Pro 实时数据",
+  "Stock quotes are {minutes} min delayed without Pro.": "未开通 Pro 时，股票行情延迟 {minutes} 分钟。",
   "Pro trial {days}d": "Pro 试用 {days} 天",
   "Pro trial — ends {date}": "Pro 试用 — {date} 结束",
   "delayed": "延迟",

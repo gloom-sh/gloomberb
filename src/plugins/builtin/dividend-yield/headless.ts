@@ -4,7 +4,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { fetchDividendData, requestDividendHistory, statedForwardRate, type DividendData } from "./client";
+import { fetchDividendData, requestDividendHistory, statedForwardRate, TOKEN_YIELD_NOTE, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
 import {
@@ -246,7 +246,9 @@ export function projectDividendYieldHeadless(
           ...(data.stale ? [{ label: "History status", value: staleHistoryText(data.fetchedAt) }] : []),
           ...(priceStatusText ? [{ label: "Price status", value: priceStatusText }] : []),
           { label: trailingLabel, value: roundedRatio(metrics.trailingYield),
-            formatted: metrics.trailingYield == null ? formatDividendYield(null) : `${formatDividendYield(metrics.trailingYield)} (${trailingNotes})` },
+            formatted: metrics.trailingYield == null
+              ? data.token ? `${formatDividendYield(null)} (${TOKEN_YIELD_NOTE})` : formatDividendYield(null)
+              : `${formatDividendYield(metrics.trailingYield)} (${trailingNotes})` },
           { label: forwardLabel, value: roundedRatio(metrics.forwardYield),
             formatted: forwardText
             ?? (metrics.forwardYield == null ? formatDividendYield(null)

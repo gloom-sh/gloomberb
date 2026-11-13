@@ -72,10 +72,14 @@ const validPeg = (peg: CryptoMarketAsset["peg"]) =>
   && (peg.price === null || (isFiniteNumber(peg.price) && peg.price > 0))
   && nullableInstant(peg.asOf);
 
+const venueNames = (value: unknown) => value === undefined
+  || Array.isArray(value) && value.every((name) => typeof name === "string" && name.length > 0 && name.length <= 24);
+
 const validRange = (range: CryptoMarketAsset["range24h"]) =>
   !!range
   && [range.low, range.high].every((value) => isFiniteNumber(value) && value > 0)
-  && [range.lowAt, range.highAt, range.start, range.end].every(instant);
+  && [range.lowAt, range.highAt, range.start, range.end].every(instant)
+  && [range.lowVenues, range.highVenues, range.venuesChecked].every(venueNames);
 
 /** A malformed peg or 24h range is dropped from its coin alone; the coin and the rest of the board stay. */
 function withValidStablecoinFields(asset: CryptoMarketAsset): CryptoMarketAsset {

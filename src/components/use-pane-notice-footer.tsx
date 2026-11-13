@@ -11,6 +11,7 @@ import { DialogFrame } from "./ui/frame";
 import { Prose } from "./ui/prose";
 import { logFailure } from "../utils/log-failure";
 import { markPaneNoticesSeen, usePaneNoticesSeen } from "./pane-notice-seen";
+import { withoutCryptoVenueCode } from "../utils/crypto-pair";
 
 export interface UsePaneNoticeFooterOptions {
   registrationId: string;
@@ -82,7 +83,8 @@ export function usePaneNoticeFooter({
   const dialogOpen = useDialogState((state) => state.isOpen);
   const scopeActive = usePaneFooterScopeActive();
   const title = t(rawTitle);
-  const noticeKey = JSON.stringify([...new Set(notices.map((notice) => notice.trim()).filter(Boolean))]);
+  // Said as a reader takes it: a coin's pair without the internal code of the venue it is charted on.
+  const noticeKey = JSON.stringify([...new Set(notices.map((notice) => withoutCryptoVenueCode(notice.trim())).filter(Boolean))]);
   const currentNotices = useMemo<readonly string[]>(() => JSON.parse(noticeKey), [noticeKey]);
   const active = enabled && scopeActive && currentNotices.length > 0;
   const seen = usePaneNoticesSeen(currentNotices);

@@ -29,7 +29,10 @@ function validateRows(rows: readonly MoneyMarketRow[], groups: readonly MoneyMar
       || !finiteOrNull(row.value) || !finiteOrNull(row.change) || !finiteOrNull(row.previousValue)
       || !dateOrNull(row.asOf) || !dateOrNull(row.previousAsOf) || row.value != null && row.asOf == null
       || !Array.isArray(row.history) || row.history.some((point) => point.date == null || !dateOrNull(point.date) || !finiteOrNull(point.value))
-      || !Array.isArray(row.sourceSeriesIds) || row.sourceSeriesIds.some((id) => typeof id !== "string") || !Array.isArray(row.notes)) return invalid();
+      || !Array.isArray(row.sourceSeriesIds) || row.sourceSeriesIds.some((id) => typeof id !== "string") || !Array.isArray(row.notes)
+      || row.couponEquivalent !== undefined && !finiteOrNull(row.couponEquivalent)
+      || row.couponEquivalentAsOf !== undefined && !dateOrNull(row.couponEquivalentAsOf)
+      || row.sourceName !== undefined && typeof row.sourceName !== "string") return invalid();
   }
   for (const stats of rows.map((row) => row.percentile)) validatePercentile(stats);
 }

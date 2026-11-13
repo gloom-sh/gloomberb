@@ -695,6 +695,7 @@ export const ko: Record<string, string> = {
   "Pro trial · {days}d left": "Pro 체험 · {days}일 남음",
   "{delay} delayed": "{delay} 지연",
   "{delay} delayed · try Pro live": "{delay} 지연 · Pro 실시간 사용해 보기",
+  "Stock quotes are {minutes} min delayed without Pro.": "Pro가 없으면 주식 시세는 {minutes}분 지연됩니다.",
   "Pro trial {days}d": "Pro 체험 {days}일",
   "Pro trial — ends {date}": "Pro 체험 — {date} 종료",
   "delayed": "지연",

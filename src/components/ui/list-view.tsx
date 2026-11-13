@@ -69,6 +69,12 @@ export interface ListViewProps {
   height?: number;
   flexGrow?: number;
   scrollable?: boolean;
+  /**
+   * Terminal: false scrolls without a scrollbar, so each row runs to the
+   * list's edge and a press on its last column picks it, as in a short
+   * suggestion drawer. The wheel and the keys still scroll it.
+   */
+  scrollbar?: boolean;
   selectOnHover?: boolean;
   autoScrollToIndex?: boolean;
   /**
@@ -205,6 +211,7 @@ export function ListView({
   height,
   flexGrow,
   scrollable = false,
+  scrollbar = true,
   selectOnHover = false,
   autoScrollToIndex = true,
   checkboxRows,
@@ -386,6 +393,7 @@ export function ListView({
           flexGrow={flexGrow}
           scrollY
           focusable={false}
+          {...(scrollbar ? {} : { verticalScrollbarOptions: { visible: false } })}
           {...(onMouseScroll ? { onMouseScroll } : {})}
         >
           <Box flexDirection="column" gap={terminalRowGap}>{rows}</Box>

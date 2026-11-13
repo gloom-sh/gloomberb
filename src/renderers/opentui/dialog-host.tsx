@@ -17,7 +17,7 @@ import {
   useDialogBridgeSlot,
   type DialogContentBridge,
 } from "../../ui/dialog-bridge";
-import { useDialogStack, type DialogKind } from "../../ui/dialog-stack";
+import { closesOnClickOutside, useDialogStack, type DialogKind } from "../../ui/dialog-stack";
 
 interface DialogRecord {
   id: string;
@@ -26,7 +26,7 @@ interface DialogRecord {
   size?: DialogOptions["size"];
   style?: DialogStyle;
   closeOnEscape?: boolean;
-  closeOnClickOutside?: boolean;
+  closeOnClickOutside?: DialogOptions["closeOnClickOutside"];
 }
 
 function renderDialogContent(content: unknown, context: AlertContext | PromptContext<unknown>): ReactNode {
@@ -82,7 +82,6 @@ function DialogLayer({
     ? Math.max(1, Math.min(style.maxHeight, viewportHeight))
     : viewportHeight;
   const closeOnEscape = dialog.closeOnEscape ?? true;
-  const closeOnClickOutside = dialog.closeOnClickOutside ?? false;
   const zIndex = 9_998 + index * 2;
 
   useKeyboard((event) => {
@@ -124,7 +123,7 @@ function DialogLayer({
         alignItems="center"
         justifyContent="center"
         onMouseDown={() => {
-          if (isTopmost && closeOnClickOutside) close(dialog.id);
+          if (isTopmost && closesOnClickOutside(dialog.closeOnClickOutside)) close(dialog.id);
         }}
       >
         <box

@@ -319,3 +319,33 @@ test("a scroll box's thumb is as long as the share it shows, its rows arriving a
   // Ten of eleven: most of it, where the thumb stopped at half.
   expect(await thumb(11)).toBe("█████████");
 });
+
+// A terminal that reports presses but no motion between them (or a pointer that left the window and came back
+// on a press) never moved the pointer off the last box it was over: a chart's crosshair, and its legend, stayed
+// on the bar it was over. A press on another box, or on text a press may select, takes the pointer there.
+test("a press on another box takes the pointer off the box it was last over, with no motion reported between", async () => {
+  current = await createTestRenderer({ width: 20, height: 4 });
+  const { renderer, mockMouse, renderOnce } = current;
+  const seen: string[] = [];
+  const box = (id: string, left: number) => new BoxRenderable(renderer, {
+    id, position: "absolute", left, top: 0, width: 6, height: 2,
+    onMouseOver: () => seen.push(`over ${id}`),
+    onMouseOut: () => seen.push(`out ${id}`),
+  });
+  renderer.root.add(box("chart", 0));
+  const tab = box("tab", 10);
+  tab.add(new TextRenderable(renderer, { id: "label", content: "Chart" }));
+  renderer.root.add(tab);
+  await renderOnce();
+
+  await mockMouse.moveTo(2, 1);
+  await mockMouse.click(12, 1);
+  expect(seen).toEqual(["over chart", "out chart", "over tab"]);
+  await mockMouse.click(2, 1);
+  // On the label: text a press may start selecting.
+  await mockMouse.click(11, 0);
+  expect(seen).toEqual(["over chart", "out chart", "over tab", "out tab", "over chart", "out chart", "over tab"]);
+  // A press on what the pointer is over is no move.
+  await mockMouse.click(11, 0);
+  expect(seen).toHaveLength(7);
+});

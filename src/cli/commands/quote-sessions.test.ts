@@ -439,3 +439,32 @@ test("compare marks which row is stale in Feed and Updated, and prices a future 
     mock.restore();
   }
 });
+
+test("a coin priced by an exchange's own trade names the exchange in its Feed cell and the closing line; a delayed one says it is delayed", async () => {
+  const coin = (symbol: string, overrides: Partial<Quote>): Quote => ({
+    symbol, currency: "USD", price: 0.999, change: 0, changePercent: 0, marketState: "REGULAR",
+    instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC", providerId: "gloomberb-cloud", lastUpdated: Date.now() - 5_000, ...overrides,
+  });
+  const quote = async (quotes: Quote[]) => {
+    const cli = createTestCliContext({ config, dataProvider: {
+      getQuotesBatch: async () => quotes.map((entry) => ({ target: { symbol: entry.symbol, exchange: "" }, quote: entry })),
+    } });
+    await marketDataCliCommands.find((command) => command.name === "quote")!.execute(quotes.map((entry) => entry.symbol), cli.context);
+    const [{ result, options }] = cli.printed as [PrintedCliResult];
+    return serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options).split("\n");
+  };
+  let format: "text" | "csv" = "csv";
+  const mixed = [coin("USDT-USD", { dataSource: "live", priceVenue: "Coinbase" }), { ...afterHours, providerId: "gloomberb-cloud" }];
+  // An export cites each row to its own source.
+  expect((await quote(mixed)).slice(1, 3).map((line) => line.split(",").at(-3))).toEqual(["Coinbase", "Gloom Cloud"]);
+  format = "text";
+  const venued = await quote([
+    coin("USDT-USD", { dataSource: "live", priceVenue: "Coinbase" }),
+    coin("USDC-USD", { dataSource: "live", priceVenue: "Kraken" }),
+  ]);
+  expect(venued.find((line) => line.startsWith("USDT-USD"))).toContain("live · Coinbase");
+  expect(venued.find((line) => line.startsWith("USDC-USD"))).toContain("live · Kraken");
+  expect(venued.find((line) => line.startsWith("Source:"))).toStartWith("Source: Coinbase and Kraken · ");
+  const delayed = await quote([coin("USDT-USD", { dataSource: "delayed", lastUpdated: Date.now() - 15 * 60_000 })]);
+  expect(delayed.find((line) => line.startsWith("Source:"))).toMatch(/^Source: Gloom Cloud · .*15 min delayed/);
+});

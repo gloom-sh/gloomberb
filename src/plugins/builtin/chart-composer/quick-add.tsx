@@ -29,7 +29,8 @@ const CHART_TOOLBAR_HEIGHT = 1;
 const MINIMUM_CHART_HEIGHT = 4;
 const QUICK_ADD_ROW_HEIGHT = 1;
 const IDLE_QUICK_ADD_WIDTH = 14;
-const ACTIVE_QUICK_ADD_WIDTH = 36;
+/** A pair's price row (`USDC-USD · Price (OHLCV)`) and its `Chart bars` fit whole. */
+const ACTIVE_QUICK_ADD_WIDTH = 40;
 
 interface ClosestElementLike {
   closest(selector: string): {
@@ -474,6 +475,8 @@ export function ChartSeriesQuickAdd({
               surface="plain"
               bgColor={colors.panel}
               scrollable={items.length > drawerHeight}
+              // A scrollbar would take the rows' last column, where a press must add the row like the rest of it.
+              scrollbar={false}
               rowGap={0}
               selectOnHover
               onSelect={(index) => setSelectedIndex(index - (searchError ? 1 : 0))}

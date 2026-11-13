@@ -17,6 +17,8 @@ import {
 import { parseSeriesExpression, type ParsedSeriesExpression } from "./series-expression";
 import { parseFormulaExpression } from "./formula";
 import { currencyCodeLabel } from "../../../utils/currency-units";
+import { classifyInstrumentType, kindFromListingSyntax } from "../../../tickers/instrument-kind";
+import { isCryptoPairSymbol } from "../../../utils/crypto-pair";
 
 export interface SeriesCatalogInstrument {
   symbol: string;
@@ -204,7 +206,9 @@ export function fieldCategory(field: TimeSeriesFieldDefinition): string {
   return "Fundamentals";
 }
 
+/** A market field is drawn at the chart's own bar size (1m on a day's chart), never fixed at its daily default. */
 function fieldFrequency(field: TimeSeriesFieldDefinition): string {
+  if (field.id.startsWith("market.")) return "Chart bars";
   return field.nativeFrequency === "auto"
     ? "Automatic"
     : `${field.nativeFrequency[0]!.toUpperCase()}${field.nativeFrequency.slice(1)}`;
@@ -425,6 +429,17 @@ export function buildCapabilitySeriesSuggestions(
   }));
 }
 
+/**
+ * Whether a listing can have company fields (revenue, EPS, valuation): not a coin, a currency pair, an index or a
+ * future, which have prices alone. A coin's add-series list offered Revenue, Net Income and EPS.
+ */
+export function hasCompanyFields(instrument: SeriesCatalogInstrument): boolean {
+  const kind = classifyInstrumentType(instrument.assetCategory)
+    ?? kindFromListingSyntax(instrument.symbol, instrument.exchange)
+    ?? (isCryptoPairSymbol(instrument.symbol.trim().toUpperCase()) ? "crypto" : null);
+  return kind == null || kind === "equity" || kind === "fund" || kind === "other";
+}
+
 export function buildSeriesCatalogSuggestions(
   query: string,
   defaultInstrument: SeriesCatalogInstrument,
@@ -455,7 +470,8 @@ export function buildSeriesCatalogSuggestions(
   for (const instrument of instruments) {
     const instrumentKey = publicTickerKey(instrument.symbol, instrument.exchange);
     const instrumentLabel = canonicalTickerKey(instrument.symbol, instrument.exchange);
-    for (const { field } of rankedFields.slice(0, fieldLimit)) {
+    const fields = hasCompanyFields(instrument) ? rankedFields : rankedFields.filter(({ field }) => field.id.startsWith("market."));
+    for (const { field } of fields.slice(0, fieldLimit)) {
       const expression: ParsedSeriesExpression = {
         kind: "security",
         symbol: instrument.symbol,

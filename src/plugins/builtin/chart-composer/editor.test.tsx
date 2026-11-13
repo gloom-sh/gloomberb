@@ -228,9 +228,11 @@ describe("chart composer series editor", () => {
     });
 
     const contentWidth = 60 - 8;
+    // The title row spans the box it is drawn in, its close button at the right edge; the fields stay within.
     const overflowRows = tui.frame()
       .split("\n")
       .map((row) => row.trimEnd())
+      .filter((row) => !row.startsWith("Chart Series"))
       .filter((row) => row.length > contentWidth);
     expect(overflowRows).toEqual([]);
   });

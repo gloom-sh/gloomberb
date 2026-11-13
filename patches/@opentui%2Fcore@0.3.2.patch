@@ -539,7 +539,25 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..1f5795ab76800a64fdb0acf4a1ed0186
      this._hasPointer = true;
      this._lastPointerModifiers = mouseEvent.modifiers;
      if (this._console.visible) {
-@@ -24437,6 +24667,8 @@ Captured external output:
+@@ -24327,6 +24557,17 @@ Captured external output:
+     const sameElement = maybeRenderableId === this.lastOverRenderableNum;
+     this.lastOverRenderableNum = maybeRenderableId;
+     const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId);
++    // A press where the pointer was not last over took it there: some terminals report no motion between presses,
++    // so what it was over would keep its hover (a chart its crosshair) until the next move.
++    if (!sameElement && mouseEvent.type === "down" && !this.capturedRenderable && this.lastOverRenderable !== maybeRenderable) {
++      if (this.lastOverRenderable && !this.lastOverRenderable.isDestroyed) {
++        this.lastOverRenderable.processMouseEvent(new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" }));
++      }
++      this.lastOverRenderable = maybeRenderable;
++      if (maybeRenderable) {
++        maybeRenderable.processMouseEvent(new MouseEvent(maybeRenderable, { ...mouseEvent, type: "over" }));
++      }
++    }
+     if (mouseEvent.type === "down" && mouseEvent.button === 0 /* LEFT */ && !this.currentSelection?.isDragging && !mouseEvent.modifiers.ctrl) {
+       const canStartSelection = Boolean(maybeRenderable && maybeRenderable.selectable && !maybeRenderable.isDestroyed && maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y));
+       if (canStartSelection && maybeRenderable) {
+@@ -24437,6 +24678,8 @@ Captured external output:
        return;
      }
      const baseEvent = {
@@ -548,7 +566,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..1f5795ab76800a64fdb0acf4a1ed0186
        type: "move",
        button: 0,
        x: this._latestPointer.x,
-@@ -24527,6 +24759,7 @@ Captured external output:
+@@ -24527,6 +24770,7 @@ Captured external output:
      const pendingSplitFooterTransition = this.pendingSplitFooterTransition;
      const previousGeometry = calculateRenderGeometry(this._screenMode, this._terminalWidth, this._terminalHeight, this._footerHeight);
      const prevWidth = this._terminalWidth;
@@ -556,7 +574,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..1f5795ab76800a64fdb0acf4a1ed0186
      const previousTerminalHeight = this._terminalHeight;
      const visiblePreviousSplitHeight = pendingSplitFooterTransition?.sourceHeight ?? previousGeometry.effectiveFooterHeight;
      this._terminalWidth = width;
-@@ -24832,6 +25065,11 @@ Captured external output:
+@@ -24832,6 +25076,11 @@ Captured external output:
        this.clock.clearTimeout(this.resizeTimeoutId);
        this.resizeTimeoutId = null;
      }
@@ -568,7 +586,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..1f5795ab76800a64fdb0acf4a1ed0186
      if (this.capabilityTimeoutId !== null) {
        this.clock.clearTimeout(this.capabilityTimeoutId);
        this.capabilityTimeoutId = null;
-@@ -24847,6 +25085,7 @@ Captured external output:
+@@ -24847,6 +25096,7 @@ Captured external output:
      }
      this.themeModeState.cancelRefresh();
      this._isRunning = false;

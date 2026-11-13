@@ -40,6 +40,7 @@ import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { bondFigures } from "../../../../market-data/bond-funds";
+import { quoteStatsBasisText } from "../../../../market-data/quotes/export-identity";
 import { formatRunwayMonths, type CashRunway, type RunwayEstimate } from "../../../../utils/cash-runway";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
@@ -210,7 +211,9 @@ export function buildOverviewStats({
   const volume = reportedQuoteVolume(quote);
   if (volume != null) {
     // Live figures keep their decimals (12.30M, not 12.3M) so the digits hold still.
-    stats.push({ label: "Volume", value: formatCompact(volume, { fixedDecimals: true }) });
+    // A coin's volume is the composite's or one exchange's own day, said beside it as its range's is.
+    const basis = quoteStatsBasisText(quote, false);
+    stats.push({ label: "Volume", value: formatCompact(volume, { fixedDecimals: true }), ...(basis ? { detail: basis } : {}) });
   }
   // Price-derived statistics follow the quote; see live-valuation for when a stored figure is kept.
   // Market cap and EV read in the currency they are reported in, as the revenue and income beside them do, with
