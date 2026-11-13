@@ -23,7 +23,7 @@ import { canonicalTickerKey, normalizeSymbol } from "../../../utils/exchanges";
 import { colors, priceColor, shownPriceColor } from "../../../theme/colors";
 import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
-import { formatCompact, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
+import { displayWidth, formatCompact, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
@@ -37,7 +37,7 @@ import { useFxRatesMap } from "../../../market-data/hooks";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { quoteFreshnessFields } from "../shared/report-freshness";
 import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, formatRelativePrice, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
-import { conversionNote, conversionPairText, convertMarketCaps, usdRateFromEntry } from "./relative-valuation-currency";
+import { conversionNote, conversionPairText, convertMarketCaps, relativeCapCurrency, usdRateFromEntry } from "./relative-valuation-currency";
 import { fundamentalsBasisParts, fundamentalsThroughText, revenueGrowthHalfTag, revenueGrowthHeader } from "./relative-valuation-basis";
 import {
   AUTO_PEERS_SETTING, findPeers, PEER_SELECTION_SETTING, PeerPickError, peerSelectionOf, relativeValuationTitle,
@@ -99,15 +99,19 @@ function extendedMove(row: RelativeRow, columnId: ExtendedColumnId): number | nu
  * AFTER-HRS or OVERNIGHT column, named as BI and MOST name it, follows CHG%
  * for each session in `extendedSessions`.
  */
+const SYMBOL_WIDTH = 8;
+const MAX_SYMBOL_WIDTH = 22;
+
 function buildRelativeColumns(
   baseCurrency: string,
   extendedSessions: readonly ExtendedSession[],
   marginNamesYear: boolean,
   peNamesYear = false,
   growthLabel = REVENUE_GROWTH_LABEL,
+  symbolWidth = SYMBOL_WIDTH,
 ): RelativeColumn[] {
-  const symbolWidth = 8;
-  const nameWidth = 16;
+  // The name gives back what a wide ticker takes, so the figures keep their place.
+  const nameWidth = Math.max(10, 16 - (symbolWidth - SYMBOL_WIDTH));
   const priceWidth = 10;
   const pctWidth = 8;
   const capWidth = 12;
@@ -250,7 +254,6 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const appBaseCurrency = useAppSelector((state) => state.config.baseCurrency);
   // `--currency` on a capture asks for another currency than the app's.
   const capCurrency = typeof pane?.settings?.capCurrency === "string" ? pane.settings.capCurrency : null;
-  const baseCurrency = capCurrency ?? appBaseCurrency;
   const quoteTargets = useMemo<QuoteSubscriptionTarget[]>(() => symbols.map((peer) => ({
     symbol: peer,
     exchange: "",
@@ -269,6 +272,12 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     ...relativeValuationValues(financials),
     error: peer.error,
   })), [snapshots]);
+  // The peers' own currency when they share one, as `fn RV` compares them; else the app's.
+  const capCurrenciesKey = rows.map((row) => row.marketCapCurrency ?? "").join(",");
+  const baseCurrency = useMemo(() => relativeCapCurrency(capCurrency, capCurrenciesKey.split(","), appBaseCurrency),
+    [appBaseCurrency, capCurrenciesKey, capCurrency]);
+  // TICKER grows to the longest key, so VOW3:XETRA shows whole; the name gives way.
+  const symbolWidth = Math.min(MAX_SYMBOL_WIDTH, Math.max(SYMBOL_WIDTH, ...rows.map((row) => displayWidth(row.symbol))));
   const fxRates = useFxRatesMap([baseCurrency, ...rows.map((row) => row.marketCapCurrency)]);
   // A pre-market or after-hours print gets its own column when a peer has one.
   const extendedSessionsKey = extendedSessionsOf(rows).join(",");
@@ -277,8 +286,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const growthLabel = revenueGrowthHeader(rows, REVENUE_GROWTH_LABEL, PERIOD_REVENUE_GROWTH_LABEL);
   const columns = useMemo(
     () => buildRelativeColumns(baseCurrency, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], marginNamesYear, peNamesYear,
-      growthLabel),
-    [baseCurrency, extendedSessionsKey, marginNamesYear, peNamesYear, growthLabel],
+      growthLabel, symbolWidth),
+    [baseCurrency, extendedSessionsKey, marginNamesYear, peNamesYear, growthLabel, symbolWidth],
   );
 
   const comparableRows = useMemo(() => rows.map((row) => ({

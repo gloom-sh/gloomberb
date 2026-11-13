@@ -79,6 +79,16 @@ describe("analyst research headless model", () => {
     expect(reasonColumn.textFormat!(withReason!.reason, withReason!)).toBe(`on margin improvements · ${reason.url}`);
     expect(reasonColumn.textFormat!(without!.reason, without!)).toBe("");
   });
+  // VOW3:XETRA has 19 analysts' targets and mix and no actions: the source lists actions mainly for North American listings.
+  test("says why a covered listing lists no analyst actions, abroad and at home", async () => {
+    const headless = createAnalystResearchHeadless({ loadData: async () => ({ ...data, symbol: "VOW3.DE", ratings: [] }) });
+    const listed = async (symbol: string) => (await headless.load({ ...args(), symbols: [symbol] }, createTestHeadlessContext())).sections[1]!;
+    const abroad = await listed("VOW3:XETRA");
+    expect(abroad.rows).toEqual([]);
+    expect(abroad.empty).toBe("No upgrades, downgrades or target changes for VOW3:XETRA: the source lists them mainly for North American listings."
+      + " The targets and rating mix above are current.");
+    expect((await listed("AMD")).empty).toBe("No upgrades, downgrades or target changes on record for AMD.");
+  });
   test("measures the upside from Last, as `analyst` does, and dates the price it is from", async () => {
     // 150 when the research was fetched; Last is the 160 close.
     const quote: Quote = {
