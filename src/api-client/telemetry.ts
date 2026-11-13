@@ -70,9 +70,10 @@ export interface UsageCountsPayload {
 
 /**
  * Body of `POST /telemetry/experiment`: an install experiment, filed under the
- * install id like the usage counts. `experiment_exposed` asks for the arm to
- * show now and is counted as the exposure; the other events end the change,
- * with counts only, never what was picked.
+ * install id like the usage counts. `experiment_assign` asks for the arm to
+ * show now, `experiment_exposed` confirms the arm the app went on with and is
+ * counted as the exposure; the other events end the change, with counts only,
+ * never what was picked.
  */
 export type InstallExperimentReport = {
   installId: string;
@@ -81,7 +82,10 @@ export type InstallExperimentReport = {
   os?: string;
   experiment: string;
 } & (
-  | { event: "experiment_exposed" }
+  /** Which arm to show; the API counts nothing for it. */
+  | { event: "experiment_assign" }
+  /** The arm the install went on with: the exposure. */
+  | { event: "experiment_exposed"; variant: string }
   | { event: "onboarding_tickers_finished"; picked: number; skipped: boolean }
 );
 

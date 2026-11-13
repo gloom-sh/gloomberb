@@ -20,7 +20,7 @@ import {
   setupDeskPicks,
   type FirstRunPick,
 } from "./first-run-workspace";
-import { exposeFirstRunTickers, recordFirstRunTickersFinished } from "../../api-client/install-experiments";
+import { assignFirstRunTickers, confirmFirstRunTickers, recordFirstRunTickersFinished } from "../../api-client/install-experiments";
 import { upsertTickerFromSearchResult } from "../../tickers/search";
 import { asksFirstRunTickers, type TickerPick } from "./tickers-step-model";
 import { buildDesk, getDesk, isDeskKey, isDeskStock, pickDeskCompany, type DeskKey } from "../../layout/desks";
@@ -289,7 +289,10 @@ export function useOnboardingWorkspace({
     setPersistenceError(null);
     void (async () => {
       try {
-        if (asksFirstRunTickers(progress) && await exposeFirstRunTickers() === "tickers") {
+        const arm = asksFirstRunTickers(progress) ? await assignFirstRunTickers() : null;
+        // The arm the first run goes on with is the exposure; no answer in time is never counted.
+        if (arm && !finishingRef.current) confirmFirstRunTickers(arm);
+        if (arm === "tickers") {
           if (finishingRef.current) return;
           await persistProgress({ stage: "tickers", desks: [...desks] }).catch(
             logFailure("onboarding.progress", "Save onboarding progress failed"),

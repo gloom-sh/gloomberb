@@ -4,16 +4,19 @@
  *
  * The registry and the bucketing live with the Gloom Cloud API, as they do for
  * the web terminal's experiments (web-experiments.ts). The app asks for its
- * arm at the moment an experiment's change would show, in every arm, and that
- * request is the exposure: the API answers with the variant and counts the
- * install in it under `install:<id>`, the id its usage counts already go
- * under, so what the install does on later days reads against its arm.
- * Turning an experiment off there takes effect here without a release.
+ * arm at the moment an experiment's change would show, in every arm
+ * (`experiment_assign`, which the API records nothing for), and once it has
+ * gone on with that arm it confirms it (`experiment_exposed`). The
+ * confirmation is the exposure, counted under `install:<id>`, the id its
+ * usage counts already go under, so what the install does on later days
+ * reads against the arm it saw. Turning an experiment off there takes effect
+ * here without a release.
  *
  * It is covered by the Usage setting and sends nothing with it off, under
  * Do Not Track or Global Privacy Control, or in an automated browser: those
- * installs get the control and are not counted. A request that fails or
- * takes too long gets the control too, so the change never holds anything up.
+ * installs get the control and are not counted. An answer that fails or
+ * comes too late gets the control too, so the change never holds anything
+ * up, and confirms nothing: an install never counts in an arm it did not see.
  */
 import { apiClient, type InstallExperimentAnswer, type InstallExperimentReport } from "./index";
 import { VERSION } from "../version";
@@ -32,6 +35,10 @@ type Ask = (report: InstallExperimentReport, timeoutMs?: number) => Promise<Inst
 
 /** Each experiment is asked once per session: an answer, or the control when there was none. */
 const answers = new Map<string, Promise<string | null>>();
+/** The experiments whose arm this session confirmed it showed. */
+const confirmed = new Set<string>();
+
+const askApi: Ask = (body, timeoutMs) => apiClient.reportInstallExperiment(body, timeoutMs);
 
 /** Do Not Track, Global Privacy Control and automated browsers; the Usage setting is the install's (usageInstall). */
 function installExperimentsAllowed(): boolean {
@@ -56,13 +63,13 @@ function report(install: UsageInstall, experiment: string): Pick<InstallExperime
 
 /**
  * The arm of an install experiment to show, asked for when its change would
- * show and counted then; null shows the control and counts nothing. One of
- * `arms`, or null for an answer outside them.
+ * show; nothing is counted until the caller confirms it. Null shows the
+ * control and is never confirmed: no answer in time, or one outside `arms`.
  */
-function exposeInstallExperiment<Arm extends string>(
+function assignInstallExperiment<Arm extends string>(
   experiment: string,
   arms: readonly Arm[],
-  ask: Ask = (body, timeoutMs) => apiClient.reportInstallExperiment(body, timeoutMs),
+  ask: Ask = askApi,
 ): Promise<Arm | null> {
   const asked = answers.get(experiment);
   if (asked) return asked as Promise<Arm | null>;
@@ -71,11 +78,11 @@ function exposeInstallExperiment<Arm extends string>(
     const install = await usageInstall();
     if (!install) return null;
     try {
-      const reply = await ask({ ...report(install, experiment), event: "experiment_exposed" }, EXPOSE_TIMEOUT_MS);
+      const reply = await ask({ ...report(install, experiment), event: "experiment_assign" }, EXPOSE_TIMEOUT_MS);
       const variant = reply.accepted ? reply.variant : undefined;
       return arms.find((arm) => arm === variant) ?? null;
     } catch (error) {
-      logFailure("install-experiments", "Install experiment exposure failed")(error);
+      logFailure("install-experiments", "Install experiment assignment failed")(error);
       return null;
     }
   })();
@@ -83,9 +90,32 @@ function exposeInstallExperiment<Arm extends string>(
   return answer;
 }
 
-/** first_run_tickers' arm for this install, asked once the step would show. */
-export function exposeFirstRunTickers(ask?: Ask): Promise<FirstRunTickersArm | null> {
-  return exposeInstallExperiment(FIRST_RUN_TICKERS_EXPERIMENT, FIRST_RUN_TICKERS_ARMS, ask);
+/**
+ * Counts the install in the arm it went on with: the exposure. Once a
+ * session, and only for an arm the API gave this session. Never throws.
+ */
+function confirmInstallExperiment(experiment: string, arm: string, ask: Ask = askApi): void {
+  if (confirmed.has(experiment)) return;
+  confirmed.add(experiment);
+  void (async () => {
+    if (await answers.get(experiment) !== arm) return;
+    const install = await usageInstall();
+    if (!install) return;
+    await ask({ ...report(install, experiment), event: "experiment_exposed", variant: arm });
+  })().catch(logFailure("install-experiments", "Install experiment exposure failed"));
+}
+
+/**
+ * first_run_tickers' arm for this install, asked once the step would show.
+ * Null is the control without an answer, which is never counted.
+ */
+export function assignFirstRunTickers(ask?: Ask): Promise<FirstRunTickersArm | null> {
+  return assignInstallExperiment(FIRST_RUN_TICKERS_EXPERIMENT, FIRST_RUN_TICKERS_ARMS, ask);
+}
+
+/** The first run went on with `arm` (the step shown, or today's first run): count the exposure. */
+export function confirmFirstRunTickers(arm: FirstRunTickersArm, ask?: Ask): void {
+  confirmInstallExperiment(FIRST_RUN_TICKERS_EXPERIMENT, arm, ask);
 }
 
 /**
@@ -94,7 +124,7 @@ export function exposeFirstRunTickers(ask?: Ask): Promise<FirstRunTickersArm | n
  */
 export function recordFirstRunTickersFinished(
   { picked, skipped }: { picked: number; skipped: boolean },
-  ask: Ask = (body, timeoutMs) => apiClient.reportInstallExperiment(body, timeoutMs),
+  ask: Ask = askApi,
 ): void {
   void (async () => {
     if (!installExperimentsAllowed()) return;
@@ -112,4 +142,5 @@ export function recordFirstRunTickersFinished(
 /** Test seam: forgets the arms asked for in this session. */
 export function resetInstallExperimentsForTests(): void {
   answers.clear();
+  confirmed.clear();
 }

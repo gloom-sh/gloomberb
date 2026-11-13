@@ -35,7 +35,8 @@ export const BROWSER_SIGN_IN_KEY = "b";
 export const SKIP_DESKS_KEY = "s";
 /**
  * "Which tickers do you follow?" opens in its search field, where a letter is
- * typed: Esc skips it, as it closes the command bar's search, and so does F10.
+ * typed: Esc skips it once the search is empty (the first Esc clears a typed
+ * search, as in the app's other search fields), and F10 skips it at once.
  */
 export const SKIP_TICKERS_KEY = "Esc";
 export const SKIP_PORTFOLIO_KEY = "s";
@@ -322,7 +323,9 @@ export function useOnboardingKeyboard({
           if (!typed && tickers.picks.length > 0) finishTickers(tickers.picks, false);
           else tickers.toggleRow(tickers.cursor);
         } else if (!chord && name === "escape") {
-          finishTickers([], true);
+          // A typed search is cleared first; the next Esc skips.
+          if (tickers.query) tickers.setQuery("");
+          else finishTickers([], true);
         } else if (!chord && name === "up") {
           tickers.moveCursor(-1);
         } else if (!chord && name === "down") {
