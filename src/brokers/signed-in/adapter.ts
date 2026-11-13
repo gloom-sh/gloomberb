@@ -20,7 +20,7 @@ import type {
   BrokerPortfolioPerformance,
   BrokerTradingCapabilities,
 } from "../../types/trading";
-import { findSignedInBroker, refreshSignedInBrokers } from "./catalog";
+import { findSignedInBroker, refreshSignedInBrokersAndWait } from "./catalog";
 import type { SignedInBroker, SignedInBrokerConnection } from "./client";
 import { SIGNED_IN_BROKER_TYPE, signedInBrokerId } from "./profile";
 
@@ -196,7 +196,7 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
   const deps: SignedInBrokerAdapterDeps = {
     request: (broker, path, options) => apiClient.brokerRequest(broker, path, options),
     findBroker: findSignedInBroker,
-    refreshBrokers: () => refreshSignedInBrokers(),
+    refreshBrokers: () => refreshSignedInBrokersAndWait(),
     openUrl,
     now: () => Date.now(),
     ...overrides,

@@ -12,6 +12,7 @@ import type {
   DesktopCoreRequest,
 } from "../../shared/protocol";
 import { encodeRpcValue } from "../../shared/rpc-codec";
+import { logFailure } from "../../../../utils/log-failure";
 import { desktopBootFramePath, removeDesktopBootFrame } from "../window/boot-frame";
 import { MAIN_WINDOW_RPC_KEY, paneIdFromDetachedRpcKey } from "../window/focus";
 import type { DesktopBackend, DesktopRpc } from "./backend";
@@ -52,7 +53,12 @@ export async function handleDesktopBackendRequest(
         request.payload.channel === "nightly" ? "nightly" : "stable",
       );
     case "update.start":
-      void desktopUpdater.download(request.payload.release, (progress) => sendUpdateProgress(rpc, progress));
+      // The download reports its failures as progress. One that escapes it ends
+      // the same way, so the window does not wait on a download that stopped.
+      desktopUpdater.download(request.payload.release, (progress) => sendUpdateProgress(rpc, progress)).catch((error: unknown) => {
+        logFailure("desktop-update", "Desktop update download failed")(error);
+        sendUpdateProgress(rpc, { phase: "error", error: "Desktop update failed" });
+      });
       return null;
     case "update.apply":
       // Only the main window offers Restart; a popped-out window never relaunches the app.

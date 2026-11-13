@@ -38,7 +38,7 @@ export function useOnboardingBrokerFields({
   const [brokerSelectIdx, setBrokerSelectIdx] = useState(0);
 
   useEffect(() => {
-    if (pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) void refreshSignedInBrokers();
+    if (pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) refreshSignedInBrokers();
   }, [pluginRegistry.brokers]);
   const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
   const brokerOptions = useMemo(
