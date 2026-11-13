@@ -338,6 +338,20 @@ function nameWord(word: string, opening: boolean, domain: boolean): string {
 }
 
 /**
+ * The name a company is introduced by beside its lines on other venues
+ * ("Prudential plc trades on HKEX as 2378:HKEX", "HSBC Holdings plc also
+ * lists 0005:HKEX"): the name its home line is listed under, which tells
+ * Prudential plc from Prudential Financial, else its issuer's, cased. Without
+ * the comma or the full stop a listing's name can carry beside its legal form:
+ * "HSBC Holdings, plc." is HSBC Holdings plc.
+ */
+export function companyLinesName(listedName: string | null | undefined, issuerName: string): string {
+  return (listedName?.trim() || companyNameCase(issuerName))
+    .replace(/,\s*(?=(?:plc|inc|ltd|limited|corp|sa|ag|nv|se)\b)/i, " ")
+    .replace(/\.$/, "");
+}
+
+/**
  * A company name a source writes in capitals (an ETF's holdings file: "APPLE INC", "MERCK & CO INC") as it is
  * normally written: "Apple Inc", "Merck & Co Inc". Legal forms and short words take their usual case, initials
  * inside a name stay capitals ("GE Aerospace", "AT&T", "L3Harris"). A name with any lower case letter is written

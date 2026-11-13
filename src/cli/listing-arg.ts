@@ -24,7 +24,7 @@ import { isVenueAbroad, lineMayHaveMoved, listingChangeLine, loadListingFate, Mo
 import { quotedListingName } from "../tickers/listing-name";
 import { withdrawalLabel } from "../market-data/quotes/delisting";
 import { cliStyles } from "../utils/cli-output";
-import { companyNameCase, companyNameExtraWords, groupByCompany, namesDepositaryReceipt, sameCompany, sameCompanyName, sameListedName, shortCompanyName } from "../tickers/company-name";
+import { companyLinesName, companyNameExtraWords, groupByCompany, namesDepositaryReceipt, sameCompany, sameCompanyName, sameListedName, shortCompanyName } from "../tickers/company-name";
 import {
   canonicalExchange,
   displayTickerKey,
@@ -286,10 +286,8 @@ async function companyLineOn(symbol: string, exchange: string, venues: readonly 
     const line = issuer?.listings.find((listing) => canonicalExchange(listing.exchange) === exchange);
     if (!issuer || !line) return;
     const key = parsePublicTickerKey(line.symbol).exchange ? displayTickerKey(line.symbol) : `${line.symbol}:${exchange}`;
-    // Its full name as search writes the line asked about (Prudential plc), which tells it from Prudential Financial.
-    // Without the comma or the full stop a listing's name can carry beside its legal form: "HSBC Holdings, plc." is HSBC Holdings plc.
-    const name = (asked[index]!.name || companyNameCase(issuer.name)).replace(/,\s*(?=(?:plc|inc|ltd|limited|corp|sa|ag|nv|se)\b)/i, " ").replace(/\.$/, "");
-    lines.set(key, `${name} trades on ${exchange} as ${key}.`);
+    // The name search writes the line asked about under, its home line first (Prudential plc), as ADR names it.
+    lines.set(key, `${companyLinesName(asked[index]!.name, issuer.name)} trades on ${exchange} as ${key}.`);
   });
   return [...lines.values()].map((line) => ` ${line}`).join("");
 }
