@@ -43,7 +43,7 @@ import {
 import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
 import { stripStrayEdges, tickerShapedWord } from "./symbol-args";
-import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy, isTransientServiceFailure, notATickerSymbol } from "../sources/provider-errors";
+import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy, isRateLimited, isTransientServiceFailure, notATickerSymbol } from "../sources/provider-errors";
 import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES, TOP_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
 import { knownGapMessage, unquotedGapMessage } from "./known-gaps";
@@ -723,10 +723,10 @@ async function bareListingVenues(
   listing: BareListing,
   deps: ListingDeps,
   /**
-   * A search that failed for a reason that says nothing of the symbol (a busy
-   * moment, the request limit) is asked once more, and then thrown: a list's
-   * 8306 read "Not a ticker" when its search was turned away, where alone it
-   * asks which exchange.
+   * A search that failed for a reason that says nothing of the symbol is
+   * thrown: a list's 8306 read "Not a ticker" when its search was turned
+   * away, where alone it asks which exchange. A busy moment is asked once
+   * more first; the request limit never is.
    */
   { failTransient = false }: { failTransient?: boolean } = {},
 ): Promise<BareListingVenues | null> {
@@ -739,7 +739,7 @@ async function bareListingVenues(
       return read();
     })
     : read()).catch((error: unknown) => {
-    if (failTransient && isTransientServiceFailure(error)) throw error;
+    if (failTransient && (isTransientServiceFailure(error) || isRateLimited(error))) throw error;
     return logFailure("cli.listing-arg", "Read listing venues failed", [] as ListingVenue[])(error);
   });
   const savedExchange = canonicalExchange(listing.saved?.metadata.exchange);

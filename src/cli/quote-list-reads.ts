@@ -1,5 +1,5 @@
 import type { QuoteBatchResult, QuoteSubscriptionTarget } from "../types/data-provider";
-import { isTransientServiceFailure } from "../sources/provider-errors";
+import { isRateLimited, isTransientServiceFailure } from "../sources/provider-errors";
 
 /**
  * Waits before each new ask for a list's rows that failed for a reason that
@@ -16,11 +16,12 @@ export const QUOTE_PROGRESS_MIN_SYMBOLS = 50;
  * moment it may be quoted: a source failed rather than answered (`transient`,
  * which the router sets for a timeout or a refusal behind its bare "No quote
  * provider available"), or the data service could not be reached, did not
- * answer, was busy or at its request limit. A source's own reason (Not a
- * ticker, a delisting) is an answer and is kept.
+ * answer or was busy. A source's own reason (Not a ticker, a delisting) is an
+ * answer and is kept, and so is the request limit: asked again is more of
+ * what it refused, so its row says when to try.
  */
 function isTransientQuoteFailure({ error, transient }: Pick<QuoteBatchResult, "error" | "transient">): boolean {
-  return error != null && (transient === true || isTransientServiceFailure(error));
+  return error != null && !isRateLimited(error) && (transient === true || isTransientServiceFailure(error));
 }
 
 /**

@@ -33,7 +33,7 @@ import { assertTimeRange, type TimeRange } from "../../time-series/range";
 import type { ChartResolutionSupport, ManualChartResolution } from "../../time-series/resolution";
 import { debugLog } from "../../utils/debug-log";
 import { errorMessage } from "../../utils/errors";
-import { isProviderBusy, isSourceFailure } from "../provider-errors";
+import { isProviderBusy, isRateLimited, isSourceFailure } from "../provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
 import { isPastPreCloseRefetch } from "../../utils/exchange-rate-snapshot";
 import { ProviderRouterBatchRoutes } from "./batches";
@@ -262,7 +262,9 @@ export class AssetDataRouter implements DataProvider {
     return targets.map((target) => {
       const result = restored.get(target) ?? { target, quote: null };
       if (result.error == null) return result;
-      const transient = isSourceFailure(result.error) || isNetworkFailure(result.error) || isProviderBusy(result.error);
+      // The request limit is no moment's failure: asked again it is more of what was refused (`isRateLimited`).
+      const transient = !isRateLimited(result.error)
+        && (isSourceFailure(result.error) || isNetworkFailure(result.error) || isProviderBusy(result.error));
       return { ...result, error: errorMessage(result.error), ...transient ? { transient } : {} };
     });
   }

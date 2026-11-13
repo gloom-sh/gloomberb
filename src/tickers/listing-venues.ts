@@ -15,7 +15,7 @@ import { currencyPairSpelling } from "../utils/currency-pair";
 import { savedAbroadForBareSymbol } from "./search/bare-symbol";
 import { parseListingWithdrawal, withdrawalLabel } from "../market-data/quotes/delisting";
 import type { ListingWithdrawal } from "../types/financials";
-import { isTransientServiceFailure } from "../sources/provider-errors";
+import { isRateLimited, isTransientServiceFailure } from "../sources/provider-errors";
 
 export interface ListingStore {
   loadTicker(symbol: string): Promise<TickerRecord | null>;
@@ -86,7 +86,7 @@ export async function listingVenues(
       };
     venues = only?.exchange ? [{ ...only, exchange: canonicalExchange(only.exchange) }] : [];
   } catch (error) {
-    if (failTransient && isTransientServiceFailure(error)) throw error;
+    if (failTransient && (isTransientServiceFailure(error) || isRateLimited(error))) throw error;
     // One listing settles the picker; several are its choices.
     if (!(error instanceof AmbiguousTickerError) || error instanceof AmbiguousContractError) return [];
     venues = error.listings.flatMap((listing) => {

@@ -227,14 +227,51 @@ export function shouldLogProviderError(error: unknown): boolean {
 }
 
 /**
+ * The data service's refusal of a read for its request limit (429), however
+ * it reached the caller: as itself, as the failure behind the router's "No
+ * quote provider available", or as the cause of a busy search. Null for any
+ * other failure.
+ */
+export function rateLimitRefusal(error: unknown, depth = 0): ApiRequestError | null {
+  if (!error || typeof error !== "object" || depth > 4) return null;
+  if (error instanceof ApiRequestError) return error.status === 429 ? error : null;
+  if (error instanceof NoProviderError) return rateLimitRefusal(error.failure, depth + 1);
+  return rateLimitRefusal((error as { cause?: unknown }).cause, depth + 1);
+}
+
+/**
+ * Whether a read was refused for the data service's request limit, including
+ * one whose message alone crossed a bridge ("... at its request limit for
+ * AAPL. Try again in 40 s."). Never asked again: asking is more of what it
+ * refused, so the row keeps when to try.
+ */
+export function isRateLimited(error: unknown): boolean {
+  if (error == null) return false;
+  if (rateLimitRefusal(error)) return true;
+  const message = (error instanceof Error ? error.message : String(error)).trim();
+  return message.startsWith(rateLimitedMessage().split(".")[0]!);
+}
+
+/**
+ * A read refused for the request limit, worded as a single read of `symbol`
+ * says it: "Gloom's data service is at its request limit for AAPL. Try again
+ * in 40 s.". The error itself when it says so already.
+ */
+export function rateLimitedError(error: unknown, symbol: string): unknown {
+  const refusal = rateLimitRefusal(error);
+  return refusal ? new NoProviderError(rateLimitedMessage(symbol, refusal.retryAfterMs), refusal) : error;
+}
+
+/**
  * Whether a failure says nothing of what was asked, so asked again in a
  * moment it may be answered: no connection, no answer from the data service,
- * a busy moment or its request limit. A source's own answer (Not a ticker, a
- * delisting) is not one.
+ * or a busy moment. A source's own answer (Not a ticker, a delisting) is not
+ * one, and neither is the request limit (`isRateLimited`), which is never
+ * asked again.
  */
 export function isTransientServiceFailure(error: unknown): boolean {
-  if (error == null) return false;
+  if (error == null || isRateLimited(error)) return false;
   if (isNetworkFailure(error) || isProviderBusy(error)) return true;
   const message = (error instanceof Error ? error.message : String(error)).trim();
-  return message.startsWith(serviceDidNotAnswerMessage().split(".")[0]!) || message.startsWith(rateLimitedMessage().split(".")[0]!);
+  return message.startsWith(serviceDidNotAnswerMessage().split(".")[0]!);
 }
