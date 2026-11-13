@@ -32,7 +32,8 @@ function evidence(value: SupplyEvidenceItem): boolean {
     && finite(value.confidence) && value.confidence >= 0 && value.confidence <= 1
     && ["active", "superseded", "rejected", "stale"].includes(value.status)
     && (value.verificationStatus === undefined || ["verified", "lead"].includes(value.verificationStatus))
-    && nullableText(value.valueKind) && (value.value === null || finite(value.value)) && nullableText(value.valueUnit) && nullableText(value.currency);
+    && nullableText(value.valueKind) && (value.value === null || finite(value.value)) && nullableText(value.valueUnit) && nullableText(value.currency)
+    && (value.relatedParty === undefined || typeof value.relatedParty === "boolean");
 }
 export function validSupplyEntity(value: SupplyEntity): boolean {
   return !!value && text(value.id) && text(value.name) && nullableText(value.ticker) && nullableText(value.exchange)
@@ -53,6 +54,7 @@ export function validSupplyRow(value: SupplyRow): boolean {
     && (value.nativeAmount == null || (value.nativeCurrency != null && value.nativeScale != null && Number.isFinite(value.nativeAmount * value.nativeScale)))
     && (value.jurisdiction == null || (text(value.jurisdiction) && /^[A-Z]{2}$/.test(value.jurisdiction)))
     && [undefined, null, "entity", "group", "anonymous", "aggregate"].includes(value.entityScope)
+    && (value.relatedParty === undefined || typeof value.relatedParty === "boolean")
     && (value.pctOfRevenue === null || value.pctBasis !== null) && (value.usd === null || value.usdBasis !== null)
     && text(value.period) && validPeriodMonths(value.periodMonths) && nullableText(value.fiscalYear) && ["xbrl", "filing_text", "call", "news", "web", "import", "press_release"].includes(value.sourceKind)
     && nullableText(value.form) && (value.filedDate === null || date(value.filedDate)) && date(value.asOf)

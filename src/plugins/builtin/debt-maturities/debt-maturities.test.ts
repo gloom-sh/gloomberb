@@ -35,6 +35,7 @@ import {
   historyBars,
   fiscalYearOf,
   historyChartPoints,
+  maturityRows,
   newerQuarter,
   sortedBuckets,
   sortedDebtHistory,
@@ -517,6 +518,29 @@ test("the wall scales to the dated years and caps an open-ended Thereafter", () 
   expect(bucketBar(latest.buckets[5]!, scale)).toEqual({ ratio: 1, capped: true });
   // Nothing dated to scale to: any principal fills the column, capped.
   expect(bucketBar(latest.buckets[5]!, 0)).toEqual({ ratio: 1, capped: true });
+  // A balance sheet's two bands: the one dated band is no scale, or 528M would read as long as 1.76B.
+  const twoBands = bandFixture().latest!;
+  twoBands.sourceBuckets = [
+    { label: "Within 1 year", fromMonths: 0, toMonths: 12, value: 528.18e6, members: [] },
+    { label: "After 1 year", fromMonths: 12, toMonths: null, value: 1_760e6, members: [] },
+  ];
+  const bandScale = datedBucketScale(twoBands);
+  expect(maturityRows(twoBands).map((row) => bucketBar(row, bandScale))).toEqual([
+    { ratio: 528.18e6 / 1_760e6, capped: false },
+    { ratio: 1, capped: false },
+  ]);
+  // A schedule by year is never read as two bands: with one dated year, or its other years unreported,
+  // its dated year is the scale and Thereafter stays capped, rather than the year flattened under it.
+  for (const unreported of [null, 0] as const) {
+    const byYear = fixture().latest!;
+    byYear.buckets.forEach((bucket, index) => { if (index !== 2 && index !== 5) bucket.value = unreported === null ? null : 0; });
+    byYear.buckets[5]!.value = 400;
+    const yearScale = datedBucketScale(byYear);
+    expect(yearScale).toBe(20);
+    expect([bucketBar(byYear.buckets[2]!, yearScale), bucketBar(byYear.buckets[5]!, yearScale)]).toEqual([
+      { ratio: 1, capped: false }, { ratio: 1, capped: true },
+    ]);
+  }
   // The bar column takes what the numbers leave and goes before they would scroll.
   expect(bucketColumns(94).map((column) => column.id)).toEqual(["label", "value", "share", "wall"]);
   expect(bucketColumns(40).map((column) => column.id)).toEqual(["label", "value", "share"]);

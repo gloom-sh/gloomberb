@@ -171,6 +171,9 @@ export function assessPaneScreenshot(
   const refused = shotShowsRefusal(render);
   // A column with no value in any row is data the pane lost, as Market Movers' VOL and V/AVG did before the open.
   const blankColumns = interactive ? [] : shotBlankColumns(render.rows);
+  // A column past the edge of its table is data the picture left out (AUCT's after view at 720px lost +5D, +20D and the CUSIP).
+  // It is a warning, not a reason the picture is unusable, while nineteen panes still cut one at 720px.
+  const cutColumns = interactive ? [] : cleanColumnLabels(render.cutColumns ?? []);
   const empty = render.loadingStateDetected
     || render.errorStateDetected
     || refused
@@ -222,6 +225,7 @@ export function assessPaneScreenshot(
     unusableReason,
     ...(refused ? { refused: true as const } : {}),
     ...(blankColumns.length > 0 ? { blankColumns } : {}),
+    ...(cutColumns.length > 0 ? { cutColumns: [...cutColumns] } : {}),
     dataEvidence,
     ...(notices.length > 0 ? { notices } : {}),
     ...(tableRows ? { tableRows } : {}),
@@ -335,11 +339,32 @@ function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow, "table
   return blank;
 }
 
+const namedColumns = (columns: readonly string[]) => columns.length === 1 ? columns[0]!
+  : `${columns.slice(0, -1).join(", ")} and ${columns[columns.length - 1]}`;
+
 /** "The VOL and V/AVG columns are blank in every row." */
 function blankColumnsSentence(columns: readonly string[]): string {
-  const named = columns.length === 1 ? columns[0]!
-    : `${columns.slice(0, -1).join(", ")} and ${columns[columns.length - 1]}`;
-  return `The ${named} column${columns.length === 1 ? " is" : "s are"} blank in every row.`;
+  return `The ${namedColumns(columns)} column${columns.length === 1 ? " is" : "s are"} blank in every row.`;
+}
+
+/**
+ * A column's header as the warning names it: a table that centres its
+ * headers pads them with spaces (FA's `      FY2024      `).
+ */
+function cleanColumnLabels(labels: readonly string[]): string[] {
+  return [...new Set(labels.map((label) => label.replace(/\s+/g, " ").trim()).filter(Boolean))];
+}
+
+/**
+ * The warning a picture that cut columns at its table's edge carries, by
+ * their headers: "The +5D BP, +20D BP and CUSIP columns are cut at this width:
+ * a wider --width shows them." Null when it cut none.
+ */
+export function shotCutColumnsWarning(columns: readonly string[] | undefined): string | null {
+  const named = cleanColumnLabels(columns ?? []);
+  if (named.length === 0) return null;
+  const one = named.length === 1;
+  return `The ${namedColumns(named)} column${one ? " is" : "s are"} cut at this width: a wider --width shows ${one ? "it" : "them"}.`;
 }
 
 /**

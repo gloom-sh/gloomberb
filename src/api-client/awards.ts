@@ -40,6 +40,12 @@ export interface AwardInput {
   ceilingAmount?: string | null
   /** Face value for awards; action amount for modification records. */
   awardAmount?: string | null
+  /**
+   * Why the source's printed amount is served as none: GeBIZ's "under
+   * S$6,000" or "printed alike for 4 suppliers of the tender". Absent when
+   * none was printed, and from an older server.
+   */
+  amountWithheld?: string | null
   recipient: AwardRecipient
   agency: { id?: string | null; name: string; parentName?: string | null }
   parentAwardId?: string | null
@@ -156,6 +162,12 @@ interface AwardSourceState {
    * dated by the server's last read; absent for a source that asks for none.
    */
   attribution?: string
+  /**
+   * How to read the source's amounts, where it stores some as none: GeBIZ
+   * withholds an amount under S$6,000 or one that several suppliers of a
+   * tender print alike. Absent for a source whose missing amount is unreported.
+   */
+  amountNotice?: string
 }
 interface AwardCoverage {
   source: string
@@ -217,4 +229,8 @@ export interface AwardDetailPayload {
   edges: AwardEdge[]
   access: "full" | "preview"
   locked: boolean
+  /** The row's source's licence statement, as the board's source states carry it; absent from an older server. */
+  attribution?: string
+  /** How to read the row's source's amounts (AwardSourceState.amountNotice). */
+  amountNotice?: string
 }

@@ -4,7 +4,6 @@ import type { HeadlessPaneColumn, HeadlessPaneFreshness, HeadlessRowsResult } fr
 import { AUCTION_HISTORY_ALL, type AuctionHistoryWindow } from "./client";
 import {
   DEFAULT_HK_SORT,
-  firstHkSortDirection,
   formatHkAmount,
   formatHkRate,
   HK_SEARCH_FIELDS,
@@ -12,10 +11,11 @@ import {
   hkRate,
   hkSize,
   hkSizeWorkedOut,
-  hkSortColumn,
+  hkTenderTerm,
   hkTenderType,
   hkWindowStart,
   isSpread,
+  parseHkSort,
   visibleHkTenders,
   type HkTendersResult,
 } from "./hk";
@@ -29,7 +29,10 @@ const rateText = (value: unknown, row: Record<string, unknown>) => `${rate(value
 const HK_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date", description: "Issue day, the business day after the tender; a Government Bond's issue month, all HKMA's figures give." },
   { key: "type", header: "Type", description: "EFB: Exchange Fund Bills; EFN: Exchange Fund Notes; HKGB: Government Bond; FRN: its HONIA-indexed floating rate note." },
-  { key: "term", header: "Term" },
+  {
+    key: "term", header: "Term",
+    description: "The term sold: a re-opening's is what its issue had left (2-Year 3-Month of a 10-year bond); exports keep the issue's tenor as issueTerm.",
+  },
   {
     key: "rate", header: "Rate", align: "right", format: rate, textFormat: rateText,
     description: "Average accepted yield (an RMB bond's annualised); a floating rate note's spread over HONIA, in bp.",
@@ -83,8 +86,9 @@ export function hkTendersReport(
   options: { search: string; filter: AuctionFilter; window: AuctionHistoryWindow; view: "results" | "after"; sort: string | null },
 ): HeadlessRowsResult {
   const { search, filter, window } = options;
-  const sortColumn = options.sort ? hkSortColumn(options.sort) : null;
-  const sort = sortColumn ? { columnId: sortColumn, direction: firstHkSortDirection(sortColumn) } : DEFAULT_HK_SORT;
+  const sorted = options.sort ? parseHkSort(options.sort) : null;
+  const sortColumn = sorted?.columnId ?? null;
+  const sort = sorted ?? DEFAULT_HK_SORT;
   const from = hkWindowStart(window);
   const tenders = visibleHkTenders(result.tenders, { filter, query: search, sort, from });
   const next = nextAuctionHistoryWindow(window);
@@ -107,6 +111,8 @@ export function hkTendersReport(
     rowUnitKey: "currency",
     rows: tenders.map((entry) => ({
       ...entry,
+      term: hkTenderTerm(entry),
+      issueTerm: entry.term,
       type: hkTenderType(entry),
       rate: hkRate(entry),
       size: hkSize(entry),

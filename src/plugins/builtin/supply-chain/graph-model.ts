@@ -13,6 +13,13 @@ export const entityTicker = (entity: Pick<SupplyEntity, "ticker" | "exchange">) 
   entity.ticker && entity.exchange && !isUsListingExchange(entity.exchange) ? getListingSymbol(entity.ticker, entity.exchange) : entity.ticker;
 export const entityLabel = (entity: SupplyEntity) => entityTicker(entity) ?? entity.name;
 /**
+ * A trade link whose every disclosure is a related-party (connected) trade,
+ * as the server labels a table row: the graph names it one rather than a
+ * plain supplier or customer.
+ */
+export const relatedPartyLink = (link: Pick<GraphPayload["links"][number], "relationship" | "evidence">) =>
+  link.relationship === "commerce" && link.evidence.length > 0 && link.evidence.every(item => item.relatedParty === true);
+/**
  * A route in the direction goods move: a supplier's route ends at the focus
  * company ("WPM → NEM" for a streamer buying from a miner), a customer's
  * starts there, so a relationship reads the same way on both companies' pages.
@@ -22,11 +29,15 @@ export function pathLabel(path: GraphPath, data: GraphPayload) {
   const labels = path.nodeIds.map(id => nodes.get(id) ? entityLabel(nodes.get(id)!) : id);
   return (path.id.startsWith("upstream|") ? labels.reverse() : labels).join(" → ");
 }
+/**
+ * "6% est. of A revenue" for a product of shares along a route; one hop's
+ * share is the one its report files, "4.5% of A revenue", never an estimate.
+ */
 export function exposureLabel(path: GraphPath, data: GraphPayload) {
   const exposure = path.exposure;
   if (!exposure) return "--";
   const denominator = data.nodes.find(node => node.id === exposure.denominatorEntityId);
-  return `${Number(exposure.pct.toPrecision(4))}% est. of ${denominator ? entityLabel(denominator) : exposure.denominatorEntityId} ${exposure.basis}`;
+  return `${Number(exposure.pct.toPrecision(4))}%${exposure.estimated ? " est." : ""} of ${denominator ? entityLabel(denominator) : exposure.denominatorEntityId} ${exposure.basis}`;
 }
 export interface GraphNode { entity: SupplyEntity; column: number; hops: number; path: GraphPath | null; related: boolean; }
 /** A selected path has priority over other positions so every highlighted hop remains connected. */

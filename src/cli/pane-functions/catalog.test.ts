@@ -9,6 +9,7 @@ import {
   buildPaneCatalogEntries, buildTemplateContext, correctCatalogQuery, filterPaneCatalogEntries, findFunctionCode, limitationSentence,
   paneFunctionCode, renderPaneCatalogReport, type PaneFunctionCatalog,
 } from "./catalog";
+import { lookupGlossary } from "../glossary";
 import { createPaneCatalog } from "./discovery";
 import { parsePaneCatalogArgs } from "./options";
 import { findPaneFunction } from "./resolver";
@@ -205,6 +206,24 @@ test("sizing a curve trade finds the bond calculator, a bond fund's DV01 and the
     expect(codes("variance swap").slice(0, 2)).toEqual(["VIX", "CTM"]);
     expect(codes("duration")).toEqual(expect.arrayContaining(["YAS", "ETF"]));
     expect(codes("steepener")).toContain("GC");
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
+  }
+});
+
+// `catalog "when issued"` named PSD Crop Balances the closest match, for the "when" of "when a table is published".
+test("the when-issued yield and the tail it measures find the auctions first, and the glossary's Tail beside When-issued", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    for (const query of ["when issued", "when-issued", "WI", "tail", "auction tail"]) expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("AUCT");
+    expect(lookupGlossary("when issued").exact.map((entry) => entry.term)).toEqual(["When-issued", "Tail"]);
+    expect(lookupGlossary("WI").exact.map((entry) => entry.term)).toEqual(["When-issued", "Tail"]);
   } finally {
     registry.destroy();
     channels.mockRestore();

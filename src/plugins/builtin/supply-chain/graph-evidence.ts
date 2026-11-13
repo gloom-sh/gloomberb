@@ -12,7 +12,7 @@ export function graphEvidenceRow(evidence: GraphEvidence): SupplyRow {
     pctOfRevenue: evidence.pctOfRevenue ?? null, pctBasis: evidence.pctBasis ?? null, pctScope: evidence.pctScope ?? null,
     usd: evidence.usd ?? null, usdBasis: evidence.usdBasis ?? null,
     nativeAmount: evidence.nativeAmount ?? null, nativeCurrency: evidence.nativeCurrency ?? null, nativeScale: evidence.nativeScale ?? null,
-    jurisdiction: evidence.jurisdiction, entityScope: evidence.entityScope,
+    jurisdiction: evidence.jurisdiction, entityScope: evidence.entityScope, ...(evidence.relatedParty ? { relatedParty: true } : {}),
     confidence: evidence.confidence, quote: evidence.quote, quoteLanguage: evidence.quoteLanguage ?? null,
     quoteGloss: evidence.quoteGloss, sectionRef: evidence.sectionRef, sourceAttribution: evidence.sourceAttribution,
     quoteMatchMode: evidence.quoteMatchMode ?? null, filingUrl: evidence.filingUrl, accession: evidence.accession ?? null,
