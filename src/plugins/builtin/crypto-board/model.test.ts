@@ -63,8 +63,15 @@ test("each stablecoin row says whose its price is, and an extreme one exchange a
   expect(rows({ price: 0.9989, priceVenue: "Coinbase", dataSource: "live" })[0]).toMatchObject({ price: 0.9989, priceVenueText: "Coinbase" });
   // A composite held back says so on its own row.
   expect(rows({ price: 0.9989, dataSource: "delayed" })[0]).toMatchObject({ delayed: true, priceVenueText: "15m delayed" });
-  usdt.range24h = { ...usdt.range24h!, lowVenues: [], venuesChecked: checked };
-  expect(rows()[0]!.low24hVenueText).toBe("none of 3");
+  // A row is reused for its asset object: each case below is a fresh board.
+  const unreached = (venuesChecked: string[]) => {
+    const board = cryptoFixture();
+    const asset = board.assets.find((entry) => entry.code === "USDT")!;
+    asset.range24h = { ...asset.range24h!, lowVenues: [], venuesChecked };
+    return buildCryptoRows(board.assets, "stablecoin", new Map(), CRYPTO_FIXTURE_NOW)[0]!.low24hVenueText;
+  };
+  expect(unreached(checked)).toBe("none of 3");
+  expect(unreached(["Kraken"])).toBe("not Kraken");
 });
 
 test("a live quote without a change percent is restated from the previous close", () => {

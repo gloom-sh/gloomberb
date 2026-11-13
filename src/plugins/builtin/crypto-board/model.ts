@@ -108,7 +108,7 @@ export interface CryptoRow extends CryptoRowSupply {
   high24hText: string;
   /**
    * Whose the low and high are: the one exchange that alone reached it (`Coinbase`), how many did (`3 venues`),
-   * `none of 3` when none of the exchanges read did, or a dash when none was read.
+   * `none of 3` when none of the exchanges read did (`not Kraken` when one was read), or a dash when none was read.
    */
   low24hVenueText: string;
   high24hVenueText: string;
@@ -123,7 +123,7 @@ export const COMPOSITE_PRICE_VENUE = "composite";
  */
 function extremeVenueText(reached: readonly string[] | undefined, checked: readonly string[] | undefined): string {
   if (!checked?.length || !reached) return MISSING_VALUE;
-  if (reached.length === 0) return `none of ${checked.length}`;
+  if (reached.length === 0) return checked.length === 1 ? `not ${checked[0]}` : `none of ${checked.length}`;
   if (reached.length === 1) return checked.length > 1 ? reached[0]! : `${reached[0]} only`;
   return `${reached.length} venues`;
 }
