@@ -342,7 +342,7 @@ Calls, Risks, 8-K and Hiring need Gloom Cloud Pro. A pane left on one of them re
 
 #### Overview price chart scale
 
-The Overview's price chart covers the whole history. When its highest close is at least three times its lowest (NVDA from 1999, AAPL from 1980), it draws on a log scale, the Chart tab's own, so the early years do not lie flat along the floor; a narrower range stays linear, and so do a history with a close at zero or below and a Treasury yield index (`^TNX`). **Log Scale** in the pane menu switches it, and the pane keeps that choice for every ticker it shows until you switch back to what the range calls for. Pane settings (`Ctrl+,`) have it as **Overview chart scale**: Auto, Linear or Log.
+The Overview's price chart draws on a log scale when the history's highest close is at least 3x its lowest. **Log Scale** in the pane menu switches it, and the pane remembers the choice. Pane settings (`Ctrl+,`) have it as **Overview chart scale**: Auto, Linear or Log.
 
 #### Extended hours on the headline
 
