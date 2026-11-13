@@ -37,6 +37,7 @@ export const filingEventsModule: PluginModule = {
       component: FilingEventsPane,
       instruments: ["equity"],
       isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
+      proOnly: true,
     });
   },
 

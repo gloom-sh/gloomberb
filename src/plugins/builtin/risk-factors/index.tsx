@@ -24,6 +24,7 @@ export const riskFactorsModule: PluginModule = {
       component: RiskFactorsResearchTab,
       instruments: ["equity"],
       isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
+      proOnly: true,
     });
   },
 
