@@ -1,5 +1,6 @@
 import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
 import { formatPriceEarnings, NOT_MEANINGFUL, PRICE_EARNINGS_NOTICE } from "../../../utils/price-earnings";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
@@ -77,6 +78,11 @@ const REVENUE_GROWTH_HEADER = "Quarter Revenue YoY";
 /** The column's name once a peer reports half-yearly: its figure is a half's (`H1`), named in the footer. */
 const PERIOD_REVENUE_GROWTH_HEADER = "Revenue YoY";
 
+/** A missing growth or margin: N/M where it is not meaningful, else why it is missing. */
+const rateGapText = (row: Record<string, unknown>, key: "fcfYield" | "revenueGrowth" | "operatingMargin") =>
+  key !== "fcfYield" && (row as Partial<ReturnType<typeof relativeValuationValues>>).notMeaningful?.[key]
+    ? NOT_MEANINGFUL_TEXT : gapText(row, key);
+
 const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   // In the currency each peer's cap is in, which exports write in the header or beside the figure.
   { key: "marketCap", header: "Mkt Cap", align: "right", unitKey: "marketCapCurrency", unitColumn: true,
@@ -111,9 +117,10 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   ...([["fcfYield", "FCF Yield"], ["revenueGrowth", REVENUE_GROWTH_HEADER], ["operatingMargin", "TTM Op Margin"]] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
     // A figure alone, so an export's column holds only numbers; the period is in its own column (VALUATION_PERIOD_COLUMNS).
-    format: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
+    // Growth off revenue at or below zero, or a margin over it, reads N/M; notMeaningful says why.
+    format: (value: unknown, row: Record<string, unknown>) => value == null ? rateGapText(row, key)
       : key === "revenueGrowth" ? formatPercent(Number(value)) : formatLevelPercent(Number(value)),
-    textFormat: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
+    textFormat: (value: unknown, row: Record<string, unknown>) => value == null ? rateGapText(row, key)
       : key === "revenueGrowth" ? [formatPercent(Number(value)), revenueGrowthHalfTag(row.revenueGrowthHalf as string | null)].filter(Boolean).join(" ")
         // A margin of the latest fiscal year, where no trailing quarters were served, says which year.
         : key === "operatingMargin" && typeof row.operatingMarginPeriod === "string"
@@ -278,8 +285,10 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
           ...rows.flatMap((row) => row.evSalesNote ? [`${row.symbol}: ${row.evSalesNote}`] : []),
           ...rows.flatMap((row) => row.marketCapNote ? [`${row.symbol}: ${row.marketCapNote}`] : []),
           ...rows.flatMap((row) => row.marketCapWithheld ? [`${row.symbol}: ${row.marketCapWithheld}`] : []),
+          ...rows.flatMap((row) => (["revenueGrowth", "operatingMargin"] as const).flatMap((key) => row.notMeaningful[key]
+            ? [`${row.symbol}: ${key === "revenueGrowth" ? "revenue growth" : "operating margin"} N/M, ${row.notMeaningful[key]}.`] : [])),
         ],
-        multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS, and evSales an enterprise value above zero; notMeaningful says why one is null, and reportedMultiples preserves the finite provider P/E values.",
+        multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS, and evSales an enterprise value above zero; revenueGrowth needs revenue above zero a year earlier and operatingMargin revenue above zero. notMeaningful says why one is null, and reportedMultiples preserves the finite provider P/E values.",
         marketCapBasis: "Market caps retain their own currency and source. Fundamentals retrieval time is not a valuation date; quote timestamps do not date fallback caps.",
       },
     };

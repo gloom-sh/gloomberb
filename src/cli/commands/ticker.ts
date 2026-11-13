@@ -3,13 +3,15 @@ import { ebitdaLacksDepreciation } from "../../utils/ebitda";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils/reported-money";
 import {
-  appTtmRate, BANK_ENTERPRISE_VALUE, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel,
+  appTtmRate, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel,
   enterpriseValueReconciliationNote,
-  epsConversionNote, fundamentalsCurrency, isBankEnterpriseValue, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
-  withBankEnterpriseValue,
+  epsConversionNote, financialEnterpriseValue, fundamentalsCurrency, isFinancialEnterpriseValueReason, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
+  withFinancialEnterpriseValue,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { halfYearGrowthPeriod } from "../../utils/financial-statements";
+import { servedRatesNotMeaningful, type ServedRate } from "../../utils/served-rates";
+import { NOT_MEANINGFUL_TEXT } from "../../utils/growth";
 import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
 import { exportedFundamentals, formatPriceEarnings, forwardFiscalYear, NOT_MEANINGFUL, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, marketCapBasisNote, selectMarketCapitalization, viewMarketCapitalization, withheldMarketCap } from "../../utils/market-capitalization";
@@ -645,8 +647,9 @@ function unsourcedCurrencyNote(metrics: readonly FundamentalsMetric[]): string |
  * a loss is.
  */
 function enterpriseValueFigure(figure: MetricFigure, fundamentals: TickerFinancials["fundamentals"]): MetricFigure {
-  // A bank's: its deposits are funding, not debt.
-  if (isBankEnterpriseValue(fundamentals)) return { text: BANK_ENTERPRISE_VALUE, value: "N/M", unit: figure.unit };
+  // A bank's, an insurer's or a broker's: its deposits, float or repos are funding, not debt.
+  const financial = financialEnterpriseValue(fundamentals);
+  if (financial) return { text: financial, value: "N/M", unit: figure.unit };
   const label = enterpriseValueLabel(fundamentals);
   if (label === "not-meaningful") return { ...multipleFigure(NOT_MEANINGFUL), unit: figure.unit };
   // A withdrawn EV the bridge stands in for shows the bridge (listingEnterpriseView).
@@ -871,13 +874,19 @@ function fundamentalsMetrics(
   epsYear?: string,
   /** A half-year reporter's latest period growth compares halves, not quarters: "H1 2026 vs H1 2025" (halfYearGrowthPeriod). */
   growthPeriod?: string | null,
+  /** Why a served margin or revenue growth is N/M (servedRatesNotMeaningful), as DES and RV read it. */
+  notMeaningful: Partial<Record<ServedRate, string>> = {},
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
+  // N/M where the source's figure is a number that says nothing: a margin over revenue at or below zero, growth off it.
+  // The value is null, as an export's column of figures holds only numbers; the text says N/M.
+  const rate = (key: ServedRate, format: (value: number) => string): MetricFigure => notMeaningful[key] && fundamentals?.[key] != null
+    ? { text: NOT_MEANINGFUL_TEXT, value: null, unit: "%" } : percentFigure(fundamentals?.[key], format);
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
   const withdrawn = fundamentals?.notMeaningful ?? {};
   return [
     { label: "Market Cap", ...marketCap },
-    { label: "Enterprise Value", ...enterpriseValueFigure(enterpriseValue, withBankEnterpriseValue(fundamentals, profile)) },
+    { label: "Enterprise Value", ...enterpriseValueFigure(enterpriseValue, withFinancialEnterpriseValue(fundamentals, profile)) },
     // A multiple over a loss is N/M, even beside a positive one the source served from an older period, and so is one
     // withdrawn as no multiple of the share (a warrant's, an EPS that is not net income over the shares; share-multiples).
     { label: epsYear ? `P/E ${epsYear}` : "P/E (TTM)", ...multipleFigure(withdrawn.trailingPE ? NOT_MEANINGFUL : priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps)) },
@@ -900,10 +909,10 @@ function fundamentalsMetrics(
     { label: "Operating Cash Flow (TTM)", ...reportedMoney(fundamentals?.operatingCashFlow, reportingCurrency) },
     { label: "Free Cash Flow (TTM)", ...reportedMoney(fundamentals?.freeCashFlow, reportingCurrency) },
     // Levels, not changes, so they carry no sign.
-    { label: "Operating Margin", ...percentFigure(fundamentals?.operatingMargin, formatFractionPercentCell) },
-    { label: "Profit Margin", ...percentFigure(fundamentals?.profitMargin, formatFractionPercentCell) },
-    { label: "Revenue Growth", ...percentFigure(fundamentals?.revenueGrowth, signed) },
-    { label: growthPeriod ? `Revenue ${growthPeriod}` : "Last Quarter Growth", ...percentFigure(fundamentals?.lastQuarterGrowth, signed) },
+    { label: "Operating Margin", ...rate("operatingMargin", formatFractionPercentCell) },
+    { label: "Profit Margin", ...rate("profitMargin", formatFractionPercentCell) },
+    { label: "Revenue Growth", ...rate("revenueGrowth", signed) },
+    { label: growthPeriod ? `Revenue ${growthPeriod}` : "Last Quarter Growth", ...rate("lastQuarterGrowth", signed) },
     { label: "1Y Return", ...percentFigure(priceReturns.return1Y, signed) },
     { label: "3Y Return", ...percentFigure(priceReturns.return3Y, signed) },
     {
@@ -1003,7 +1012,7 @@ function fundamentalsNotes(
   // A bank's EV line says why it is n/m.
   const bridged = metrics.some((metric) => metric.label === "Enterprise Value" && typeof metric.value === "number")
     && enterpriseValueLabel(fundamentals) === "unavailable";
-  const enterpriseValue = shown("Enterprise Value") && !metrics.some((metric) => metric.text === BANK_ENTERPRISE_VALUE)
+  const enterpriseValue = shown("Enterprise Value") && !metrics.some((metric) => isFinancialEnterpriseValueReason(metric.text))
     ? bridged ? listingNote : [enterpriseValueReconciliationNote(fundamentals, enterpriseValueCurrency(priced.quote, fundamentals), priced)
       ?? computedEnterpriseValueNote(fundamentals), listingNote].filter(Boolean).join(" ") || undefined
     : undefined;
@@ -1156,7 +1165,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
     : { text: "—" };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials),
     fundamentalsCurrency(financials), listingEnterpriseView(snapshot).figure, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true,
-    trailingEpsFiscalYear(financials), halfYearGrowthPeriod(financials)),
+    trailingEpsFiscalYear(financials), halfYearGrowthPeriod(financials), servedRatesNotMeaningful(fundamentals, financials)),
   resolveTickerInstrumentKind(null, financials) === "fund");
   if (view === "fundamentals") {
     return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
@@ -1517,7 +1526,7 @@ export async function buildTickerReport({
   const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns,
     fundamentalsCurrency(financials, listing), { text: enterpriseValueText, ...listingEv.value != null ? { value: listingEv.value } : {} }, distributions, bondFund, codes, trailingEpsFiscalYear(financials),
-    halfYearGrowthPeriod(financials)), isFund);
+    halfYearGrowthPeriod(financials), servedRatesNotMeaningful(priced.fundamentals, financials)), isFund);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
   const fallbackCurrency = reportedCurrency && statements.every((row) => !row.currency?.trim() || row.currency.trim() === reportedCurrency)

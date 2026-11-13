@@ -21,6 +21,9 @@ import { RelativeValuationPane } from "./relative-valuation-pane";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
 import { buildRelativeValuationSettingsDef } from "./relative-valuation-settings";
 import { researchModule } from "./index";
+import { RGBA } from "@opentui/core";
+import { DEFAULT_THEME } from "../../../theme/themes";
+import { getThemeColors } from "../../../theme/colors";
 
 const tui = createOpenTuiTestHarness();
 const paneId = "relative-valuation:test";
@@ -172,6 +175,35 @@ test("a peer whose trailing quarters are not in yet shows its latest fiscal year
   const frame = tui.frame();
   expect(frame).toContain("16.83% FY25");
   expect(frame).toContain("27.32%");
+});
+
+// An insurer's EV/S, a loss-maker's growth off negative revenue and its margin over it: N/M in each cell, in the colour
+// every pane draws N/M in (the text's, as a P/E over a loss), never a sign's colour or a missing figure's dim.
+test("an insurer's EV/S and growth or a margin off revenue at or below zero read N/M, in N/M's own colour", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getTickerFinancials: async (symbol) => ({
+    annualStatements: [], priceHistory: [],
+    quarterlyStatements: symbol === "LOSS" ? [{ date: "2025-06-30", totalRevenue: -4e6 }, { date: "2026-06-30", totalRevenue: 12e6 }] : [],
+    quote: { symbol, price: 26, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1789167600002,
+      marketCap: symbol === "PLD" ? 90e9 : symbol === "AIA" ? 80e9 : 1e9 },
+    ...symbol === "AIA" ? { profile: { industry: "Insurance - Life" } } : {},
+    fundamentals: symbol === "LOSS"
+      ? { financialCurrency: "USD", revenue: -2e6, operatingMargin: 41.5, revenueGrowth: 4 }
+      : { financialCurrency: "USD", revenue: 20e9, operatingMargin: 0.2, revenueGrowth: 0.05, enterpriseValue: 100e9, enterpriseToRevenue: 5 },
+  }) })));
+  await act(async () => { await tui.render(<Harness width={160} symbols={["PLD", "AIA", "LOSS"]} />, { width: 160, height: 16 }); });
+  await settle();
+  const lines = tui.frame().split("\n");
+  const row = (symbol: string) => lines.find((line) => line.includes(` ${symbol} `)) ?? "";
+  expect(row("AIA")).toContain("N/M");
+  expect(row("LOSS").match(/N\/M/g)?.length).toBeGreaterThanOrEqual(2);
+  expect(row("LOSS")).not.toContain("4150");
+  expect(row("PLD")).toContain("5.0");
+  const text = RGBA.fromHex(getThemeColors(DEFAULT_THEME).text).toInts().join(",");
+  const spans = tui.setup().captureSpans().lines
+    .filter((line) => !line.spans.map((span) => span.text).join("").includes(" PLD "))
+    .flatMap((line) => line.spans).filter((span) => span.text.trim() === "N/M");
+  expect(spans.length).toBeGreaterThanOrEqual(3);
+  expect([...new Set(spans.map((span) => span.fg.toInts().join(",")))]).toEqual([text]);
 });
 
 const LEARNING = "Duolingo, Inc. is a technology company focused on language learning and digital education.";

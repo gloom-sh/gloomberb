@@ -2,7 +2,8 @@ import type { DataProvider, EarningsEvent } from "../../../types/data-provider";
 import type { CorporateActionsData, EarningsAction, EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
-import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis } from "./earnings-report";
+import { isNotMeaningful } from "../../../utils/growth";
+import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis, epsSurprise } from "./earnings-report";
 import { coherentEarningsValue, EARNINGS_ESTIMATE_FIELDS } from "./earnings-estimate-basis";
 import { listingTimeZone } from "../../../market-data/market/trading-sessions";
 
@@ -204,13 +205,23 @@ export function resolveReportRows<T>(rows: readonly T[], event: EarningsEvent | 
 
 const TIME_TEXT = { bmo: "Pre Market", amc: "After Hours" } as const;
 
-/** A row's beat, measured as Gloom Cloud measures it, once the calendar gives it a figure or an estimate it lacked. */
+/**
+ * A row's beat, measured as Gloom Cloud measures it, once the calendar gives it a figure or an estimate it lacked.
+ * Against a loss or zero estimate it has no surprise percentage (N/M), the record's either; the difference stands.
+ */
 function withSurprise(row: EarningsAction, before: EarningsAction | null): EarningsAction {
   const { epsActual: actual, epsEstimate: estimate } = row;
-  if (actual == null || estimate == null || (actual === before?.epsActual && estimate === before.epsEstimate)) return row;
+  if (actual == null || estimate == null) return row;
+  const surprise = epsSurprise(actual, estimate);
+  const unchanged = actual === before?.epsActual && estimate === before.epsEstimate;
+  if (unchanged && !isNotMeaningful(surprise)) return row;
   const cents = (value: number) => Math.round(value * 100) / 100;
   const { difference: _difference, surprisePercent: _surprise, ...rest } = row;
-  return { ...rest, difference: cents(actual - estimate), ...(estimate !== 0 ? { surprisePercent: cents((actual - estimate) / Math.abs(estimate) * 100) } : {}) };
+  return {
+    ...rest,
+    difference: unchanged && row.difference != null ? row.difference : cents(actual - estimate),
+    ...(typeof surprise === "number" ? { surprisePercent: cents(surprise * 100) } : {}),
+  };
 }
 
 function definedFields<T extends object>(row: T): T {

@@ -11,6 +11,7 @@ import {
   convertedFromText, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
 } from "./view";
 import { formatDistributionAmount, formatPercent } from "../../../utils/format";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { forwardDividendBasis, historyEndsText, noCurrentDividend, TRAILING_DIVIDEND_BASIS, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
 import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
@@ -145,8 +146,9 @@ export function dividendRankingReads(
   };
 }
 
-/** A growth figure, or what its short year holds: "n/a: 1 of 2 payments". */
-function growthText(growth: number | null, payments: GrowthPayments | null | undefined): string {
+/** A growth figure, N/M off a year that paid nothing, or what its short year holds: "n/a: 1 of 2 payments". */
+function growthText(growth: number | null, payments: GrowthPayments | null | undefined, notMeaningful?: boolean): string {
+  if (growth == null && notMeaningful) return NOT_MEANINGFUL_TEXT;
   return growth == null && payments ? growthPaymentsText(payments) : formatPercent(growth ?? undefined);
 }
 
@@ -219,8 +221,8 @@ export function projectDividendYieldHeadless(
   const forwardLabel = bond ? `Forward distribution yield (${NOT_SEC_YIELD})` : "Forward yield";
   const forwardText = metrics.lapse ? noCurrentDividend(metrics.lapse) : null;
   const lastEx = isoDay(metrics.lastExDividendDate);
-  const growthEntry = (label: string, value: number | null, payments: GrowthPayments | null | undefined) =>
-    ({ label, value: roundedRatio(value), formatted: growthText(value, payments) });
+  const growthEntry = (label: string, value: number | null, payments: GrowthPayments | null | undefined, notMeaningful?: boolean) =>
+    ({ label, value: roundedRatio(value), formatted: growthText(value, payments, notMeaningful) });
   const datesAndCash = [
     dateEntry("Last ex-dividend", metrics.lastExDividendDate),
     dateEntry("Next ex-dividend", metrics.nextExDividendDate),
@@ -258,8 +260,8 @@ export function projectDividendYieldHeadless(
           { label: "Trailing rate", value: metrics.trailingRate, formatted: cashRate(metrics.trailingRate) },
           { label: "Forward rate", value: metrics.forwardRate, formatted: cashRate(metrics.forwardRate) },
           { label: "Earnings Payout", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio) },
-          growthEntry("1Y Cash Growth", metrics.growth1Y, metrics.growth1YPayments),
-          growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments),
+          growthEntry("1Y Cash Growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful),
+          growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),
           { label: "Frequency", value: metrics.paymentFrequency },
           ...datesAndCash,
         ],
@@ -282,8 +284,8 @@ export function projectDividendYieldHeadless(
             asOf: metrics.forwardRate == null ? null : metrics.forwardRateAsOf },
           { label: "Earnings Payout", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio),
             exportUnit: "pct", asOf: null },
-          { ...growthEntry("1Y Cash Growth", metrics.growth1Y, metrics.growth1YPayments), exportUnit: "pct", asOf: metrics.growth1Y == null ? null : lastEx },
-          { ...growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments), exportUnit: "pct", asOf: metrics.growth3Y == null ? null : lastEx },
+          { ...growthEntry("1Y Cash Growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful), exportUnit: "pct", asOf: metrics.growth1Y == null ? null : lastEx },
+          { ...growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful), exportUnit: "pct", asOf: metrics.growth3Y == null ? null : lastEx },
           { label: "Frequency", value: metrics.paymentFrequency, asOf: null },
           ...datesAndCash.map((entry) => ({ ...entry, asOf: null })),
         ],
@@ -320,6 +322,9 @@ export function projectDividendYieldHeadless(
       // Set when a year a growth figure compares holds fewer payments than the cadence pays: that figure is null.
       growth1YPayments: metrics.growth1YPayments ?? null,
       growth3YPayments: metrics.growth3YPayments ?? null,
+      // Set when the earlier year a growth figure compares paid nothing and the later one paid: that figure is null, N/M.
+      growth1YNotMeaningful: metrics.growth1YNotMeaningful === true,
+      growth3YNotMeaningful: metrics.growth3YNotMeaningful === true,
       forwardRateAsOf: metrics.forwardRateAsOf,
       // Set when a monthly payer's history stops more than 40 days ago: its forward yield is withheld and its trailing yield counts the history to then.
       historyEnds: metrics.lapse?.historyEnds ? metrics.lapse.lastPaid : null,

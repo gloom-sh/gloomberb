@@ -8,9 +8,10 @@ import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime
 import { createDefaultConfig } from "../../../../types/config";
 import type { MarketNewsItem } from "../../../../types/news-source";
 import { Text } from "../../../../ui";
+import { listedHeadline } from "../../../../news/news-model";
 import { usePersistedNewsArticles } from "./persisted-articles";
 
-const tui = createOpenTuiTestHarness({ width: 80, height: 5 });
+const tui = createOpenTuiTestHarness({ width: 100, height: 5 });
 const paneId = "news-feed:test";
 const key = "feed:articles";
 
@@ -62,4 +63,34 @@ test("publisher and original-link corrections survive a restart with unchanged s
   const restarted = harness(scenario.snapshot());
   await tui.render(<restarted.Harness />);
   expect(await tui.waitForFrameToContain("Actual Publisher")).not.toContain("Old credit");
+});
+
+test("a folded row of routine notices restored from the pane's state reads its notices' first day again", async () => {
+  const article = createTestArticle("notice", { title: "Transaction in own shares", source: "HKEXnews", publishedAt: new Date("2026-11-10T18:19:26.000Z"),
+    routine: { kind: "buyback", notices: 8, since: new Date("2026-10-30T18:32:16.000Z"), programme: null } });
+  const first = harness([], [article]);
+  await tui.render(<first.Harness />);
+  await tui.waitForFrameToContain("HKEXnews");
+  await tui.renderFrames(1);
+  // Pane state keeps dates as text, as a saved layout does.
+  const saved = JSON.parse(JSON.stringify(first.snapshot()));
+  expect(saved).toMatchObject([{ routine: { notices: 8, since: "2026-10-30T18:32:16.000Z" } }]);
+  await tui.destroy();
+  let restored: MarketNewsItem[] = [];
+  const initial = createInitialState(createDefaultConfig("/tmp/gloom-news-publisher-test"));
+  initial.paneState[paneId] = { pluginState: { news: { [`${key}:v2`]: saved } } };
+  function Probe() {
+    restored = usePersistedNewsArticles(key, []);
+    return <Text>{restored.map((item) => listedHeadline(item)).join(", ") || "No articles"}</Text>;
+  }
+  function Harness() {
+    const [state, dispatch] = useReducer(appReducer, initial);
+    return <TestPaneProvider state={state} dispatch={dispatch} paneId={paneId} pluginId="news" runtime={createTestPluginRuntime()}>
+      <Probe />
+    </TestPaneProvider>;
+  }
+  await tui.render(<Harness />);
+  await tui.waitForFrameToContain("8 notices since Oct 30");
+  expect(restored[0]?.routine?.since).toBeInstanceOf(Date);
+  expect(restored[0]?.routine?.since.toISOString()).toBe("2026-10-30T18:32:16.000Z");
 });

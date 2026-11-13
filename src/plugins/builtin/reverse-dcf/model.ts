@@ -7,7 +7,7 @@ import { reportsHalfYearly } from "../../../utils/financial-statements";
 import { fiscalPeriodLabel, fiscalYearEndMonth, statementPeriodLabel, ttmPeriodLabel } from "../../../utils/fiscal-period";
 import { displayTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
 import { formatCompactCurrency } from "../../../utils/format";
-import { BANK_ENTERPRISE_VALUE, enterpriseValueComputed, enterpriseValueReconciliationNote, withBankEnterpriseValue } from "../../../utils/fundamentals";
+import { enterpriseValueComputed, enterpriseValueReconciliationNote, isFinancialEnterpriseValueReason, withFinancialEnterpriseValue } from "../../../utils/fundamentals";
 
 /** Years of explicit growth before the terminal value. */
 export const FORECAST_YEARS = 10;
@@ -302,7 +302,7 @@ export function projectReverseDcf(
   // The enterprise value at the regular session price, as `valuation` measures it: after the close, the close's.
   // A bank's reads n/m: its deposits are funding, not debt, so no growth rate prices an EV of it.
   const fundamentals = financials
-    ? atRegularSessionPrice({ ...financials, fundamentals: withBankEnterpriseValue(financials.fundamentals, financials.profile) }).fundamentals
+    ? atRegularSessionPrice({ ...financials, fundamentals: withFinancialEnterpriseValue(financials.fundamentals, financials.profile) }).fundamentals
     : undefined;
   const currency = fundamentals?.financialCurrency ?? financials?.financialCurrency ?? null;
   const fallback = financials && !finite(fundamentals?.freeCashFlow) ? fallbackFreeCashFlow(financials, fundamentals, currency, options.symbol) : null;
@@ -335,8 +335,8 @@ export function projectReverseDcf(
   }
   // An EV at or below zero is N/M here as in `valuation` and RV, with the same reason: no growth rate prices it.
   if (listing.kind === "not-meaningful") {
-    const reason = listing.reason === BANK_ENTERPRISE_VALUE ? null : `EV N/M: ${listing.reason.charAt(0).toLowerCase()}${listing.reason.slice(1)}.`;
-    return { ...empty, enterpriseValue: null, error: enterpriseValueReconciliationNote(fundamentals) ?? reason ?? `EV ${BANK_ENTERPRISE_VALUE}.` };
+    const reason = isFinancialEnterpriseValueReason(listing.reason) ? null : `EV N/M: ${listing.reason.charAt(0).toLowerCase()}${listing.reason.slice(1)}.`;
+    return { ...empty, enterpriseValue: null, error: enterpriseValueReconciliationNote(fundamentals) ?? reason ?? `EV ${listing.reason}.` };
   }
   // What the data does not give is named with where to look, not reported as a failure. An EV that is there is shown beside a missing FCF.
   const missing: MissingInput[] = [

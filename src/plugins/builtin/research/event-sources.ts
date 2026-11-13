@@ -7,6 +7,7 @@ import type {
 import { formatEventMetric } from "./event-model";
 import { loadAnalystResearch } from "./client";
 import { formatPercent, formatPercentRaw } from "../../../utils/format";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { loadEarningsCalendar } from "../earnings/data/cache";
 import { calendarEventOf, listingDay, withResolvedEarnings } from "../shared/earnings-calendar";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
@@ -39,15 +40,25 @@ export const EVENT_COLUMNS = [
 export const EARNINGS_ESTIMATE_COLUMNS = [
   ...EVENT_COLUMNS.filter((column) => column.key !== "value" && column.key !== "detail"),
   {
+    // Against a loss or zero estimate the surprise is N/M, as EVTS and ERN print it: JSON has null and
+    // `surpriseNotMeaningful`, CSV an empty cell with `n/m` in its status column.
     key: "surprisePercent", header: "EPS surp", align: "right" as const,
-    format: (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value)),
+    format: (value: unknown, row: Record<string, unknown>) => typeof value !== "number" && row.surpriseNotMeaningful === true
+      ? NOT_MEANINGFUL_TEXT.toLowerCase() : value == null ? "-" : formatPercentRaw(Number(value)),
+    textFormat: (value: unknown, row: Record<string, unknown>) => typeof value !== "number" && row.surpriseNotMeaningful === true
+      ? NOT_MEANINGFUL_TEXT : value == null ? "-" : formatPercentRaw(Number(value)),
   },
   {
+    // Off a year-ago figure at or below zero the growth is N/M (`estimateGrowthNotMeaningful`), as the pane says.
     key: "estimateGrowth", header: "YoY growth", align: "right" as const,
-    format: (value: unknown) => value == null ? "-" : formatPercent(Number(value)),
+    format: (value: unknown, row: Record<string, unknown>) => typeof value !== "number" && row.estimateGrowthNotMeaningful === true
+      ? NOT_MEANINGFUL_TEXT.toLowerCase() : value == null ? "-" : formatPercent(Number(value)),
     // The text says which figure grew, as the pane does; exports keep the percent a number.
-    textFormat: (value: unknown, row: Record<string, unknown>) => value == null ? "-"
-      : `${formatPercent(Number(value))} ${row.estimateGrowthMetric === "revenue" ? "rev" : "EPS"}`,
+    textFormat: (value: unknown, row: Record<string, unknown>) => {
+      const metric = row.estimateGrowthMetric === "revenue" ? "rev" : "EPS";
+      if (typeof value !== "number" && row.estimateGrowthNotMeaningful === true) return `${NOT_MEANINGFUL_TEXT} ${metric}`;
+      return value == null ? "-" : `${formatPercent(Number(value))} ${metric}`;
+    },
   },
   { key: "detail", header: "Detail" },
 ];

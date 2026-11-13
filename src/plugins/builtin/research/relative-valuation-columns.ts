@@ -4,6 +4,7 @@ import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchan
 import { errorMessage } from "../../../utils/errors";
 import { formatLevelPercent, formatNumber } from "../../../utils/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
+import { isNotMeaningful, NOT_MEANINGFUL_TEXT, revenueMargin } from "../../../utils/growth";
 import { BANK_OR_INSURER_EBITDA, ebitdaLacksDepreciation, ebitdaOperatingIncomeBasis, isBankOrInsurerIndustry } from "../../../utils/ebitda";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod } from "../../../utils/latest-financial-period";
@@ -117,7 +118,8 @@ const COLUMN_SPECS: Record<ExtraColumnId, ColumnSpec> = {
   grossMargin: {
     label: "Gross Margin",
     // Trailing twelve months, as TTM Op Margin; a fiscal year's margin, where the company reports no quarters, names its year.
-    columns: [{ key: "grossMarginPercent", header: "Gross Margin", align: "right", format: (value, row) => (typeof value !== "number" ? gap(row, "grossMarginGap")
+    columns: [{ key: "grossMarginPercent", header: "Gross Margin", align: "right", format: (value, row) => (typeof value !== "number"
+      ? row.grossMarginNotMeaningful ? NOT_MEANINGFUL_TEXT : gap(row, "grossMarginGap")
       : typeof row.grossMarginPeriod === "string" ? `${formatLevelPercent(value / 100)} ${row.grossMarginPeriod}` : formatLevelPercent(value / 100)) }],
     sourceKey: "grossMarginSource",
     asOfKey: "grossMarginAsOf",
@@ -271,6 +273,7 @@ async function loadTargetFields(symbols: readonly string[], ctx: HeadlessPaneCon
 }
 
 const STATEMENTS_SOURCE = "Gloom Cloud financial statements";
+const GROSS_MARGIN_NOT_MEANINGFUL = "revenue is at or below zero";
 
 /** Why a trailing figure is missing: fewer than four quarters, or a line the latest ones lack. */
 function trailingGap(financials: TickerFinancials, line: string): string {
@@ -288,17 +291,22 @@ function grossMarginFields(financials: TickerFinancials): HeadlessPaneRow {
   const trailing = latestTrailingStatement(financials);
   if (trailing) {
     const { grossProfit, totalRevenue } = trailing;
-    if (typeof grossProfit === "number" && typeof totalRevenue === "number" && totalRevenue > 0) {
-      return { grossMarginPercent: 100 * grossProfit / totalRevenue, grossMarginSource: STATEMENTS_SOURCE, grossMarginAsOf: trailing.date.slice(0, 10) };
+    const margin = revenueMargin(grossProfit, totalRevenue);
+    if (typeof margin === "number") {
+      return { grossMarginPercent: 100 * margin, grossMarginSource: STATEMENTS_SOURCE, grossMarginAsOf: trailing.date.slice(0, 10) };
     }
+    // Over revenue at or below zero a margin is N/M.
+    if (isNotMeaningful(margin)) return { grossMarginNotMeaningful: GROSS_MARGIN_NOT_MEANINGFUL, grossMarginAsOf: trailing.date.slice(0, 10) };
     return { grossMarginGap: typeof totalRevenue === "number" && totalRevenue > 0 ? "no gross profit" : "no revenue" };
   }
   if (financials.quarterlyStatements.length > 0) return { grossMarginGap: trailingGap(financials, "gross profit") };
   const year = latestFinancialPeriod(financials.annualStatements, (row) => row.date);
-  if (!year || typeof year.grossProfit !== "number" || typeof year.totalRevenue !== "number" || year.totalRevenue <= 0) return { grossMarginGap: "not reported" };
+  const margin = year ? revenueMargin(year.grossProfit, year.totalRevenue) : undefined;
+  if (!year || margin === undefined) return { grossMarginGap: "not reported" };
   const label = fiscalPeriodLabel(year.date, "annual", fiscalYearEndMonth(financials.annualStatements));
+  if (isNotMeaningful(margin)) return { grossMarginNotMeaningful: GROSS_MARGIN_NOT_MEANINGFUL, grossMarginAsOf: year.date.slice(0, 10) };
   return {
-    grossMarginPercent: 100 * year.grossProfit / year.totalRevenue,
+    grossMarginPercent: 100 * margin,
     grossMarginPeriod: /^FY\d{2}(\d{2})$/.test(label) ? `FY${label.slice(-2)}` : label,
     grossMarginSource: STATEMENTS_SOURCE,
     grossMarginAsOf: year.date.slice(0, 10),

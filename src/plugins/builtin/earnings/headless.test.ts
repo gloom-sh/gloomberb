@@ -5,6 +5,9 @@ import { addDays, newYorkToday } from "./board-model";
 import { calendarWeekDates } from "./calendar-model";
 import { sameHistoryListing } from "./client";
 import { createEarningsBoardHeadless, createEarningsHeadless } from "./headless";
+import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderReportCsv } from "../../../cli/report-tables";
 
 const today = newYorkToday();
 type HistoryReport = EarningsHistoryPayload["reports"][number];
@@ -247,7 +250,7 @@ test("ERN for a listing abroad shows its next report and names the company's US 
   expect(result.errors).toBeUndefined();
   expect(result.rows.map((row) => [row.date, row.epsEstimate])).toEqual([[addDays(today, 19), 2.85]]);
   expect(result.metadata?.notices).toEqual([
-    "Past reports, surprises and implied moves cover US and Hong Kong listings only, so SAN:EPA shows its next report. Sanofi's US listing is SNY: ERN SNY has them.",
+    "Past reports, surprises and implied moves cover US, Hong Kong, Singapore and China A listings only, so SAN:EPA shows its next report. Sanofi's US listing is SNY: ERN SNY has them.",
   ]);
 });
 
@@ -270,7 +273,7 @@ test("ERN for a listing abroad with no next report says so, with its last report
   const result = await definition.load({ rawArgument: "VOW3:XETRA", argument: ["VOW3:XETRA"], symbols: ["VOW3:XETRA"], options: {} },
     { marketData } as HeadlessPaneContext);
   expect(result.rows).toEqual([]);
-  expect(result.metadata?.notices).toEqual(["Past reports, surprises and implied moves cover US and Hong Kong listings only."]);
+  expect(result.metadata?.notices).toEqual(["Past reports, surprises and implied moves cover US, Hong Kong, Singapore and China A listings only."]);
   expect(result.empty).toBe("VOW3:XETRA: no next report date on record; last reported 2026-10-29 (quarter ended 2026-09-30). Headlines: gloom news VOW3:XETRA");
 });
 
@@ -478,3 +481,68 @@ test("an account without Pro gets a Hong Kong listing's street quarters, named b
     ["Q2 FY2026", "CNY", 7.23544, 7.433, null],
   ]);
 })
+
+test("ERN reads a half-yearly reporter's own reports and its projected next date, and a Singapore or China A line's history too", async () => {
+  const aia = (fields: Partial<HistoryReport> & Pick<HistoryReport, "date">) =>
+    report({ symbol: "1299:HKEX", name: "AIA Group Limited", timing: null, timingSource: null, currency: "USD", dateStatus: "reported", ...fields });
+  const asked: string[] = [];
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async (symbol) => {
+      asked.push(symbol);
+      return {
+        asOf: `${today}T12:00:00.000Z`, symbol, name: "AIA Group Limited",
+        fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 }, consensusBasis: null,
+        reports: [
+          // No street quarter and no notified date: the day the same report came out a year before, 52 weeks on.
+          aia({ date: addDays(today, 126), fiscalPeriod: "2026-12", periodKind: "year", periodMonths: 12, fiscalYear: 2026, currency: null, dateStatus: "projected" }),
+          aia({ date: addDays(today, -84), timing: "bmo", timingSource: "filing", fiscalPeriod: "2026-06", periodKind: "half", periodMonths: 6, fiscalYear: 2026, fiscalHalf: 1,
+            epsActual: 0.41, epsActualSource: "filing", epsBasis: "gaap", epsDilution: "diluted",
+            filing: { url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0820/2026082000001.pdf", title: "Interim Results", publishedAt: "2026-08-19T22:01:00.000Z" } }),
+        ],
+      };
+    },
+    upcoming: async () => [],
+  });
+  const load = (symbol: string) => definition.load({ rawArgument: symbol, argument: [symbol], symbols: [symbol], options: {} }, context);
+  const result = await load("1299:HKEX");
+  expect(result.empty).toBeUndefined();
+  expect(result.rows.map((row) => [row.date, row.dateStatus, row.period, row.currency, row.epsActual, row.timing])).toEqual([
+    [addDays(today, 126), "projected", "FY2026", null, null, null],
+    [addDays(today, -84), "reported", "H1 FY2026", "USD", 0.41, "BMO"],
+  ]);
+  expect(result.rows[1]!.filing).toContain("hkexnews.hk");
+  // Singapore's and China A's lines ask for their own history, as Hong Kong's do.
+  await load("D05:SGX");
+  await load("600519:SSE");
+  expect(asked).toEqual(["1299:HKEX", "D05:SGX", "600519:SSE"]);
+});
+
+test("a surprise against a loss estimate exports null with its NotMeaningful flag, never text; the text report draws N/M", async () => {
+  // CoreWeave's quarters: estimates of -1.52 and -1.17 a share. A beat of a loss is no percentage of it.
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => history,
+    upcoming: async () => [],
+  });
+  const result = await definition.load(args, context);
+  const reported = result.rows.filter((row) => row.dateStatus === "reported");
+  expect(reported.map((row) => [row.epsSurprise, row.epsSurpriseNotMeaningful])).toEqual([[null, true], [null, true]]);
+  expect(result.rows[0]).not.toHaveProperty("epsSurpriseNotMeaningful");
+  const json = serializeHeadlessPaneResult(definition, result) as { rows: Array<Record<string, unknown>> };
+  expect(json.rows.filter((row) => row.dateStatus === "reported").map((row) => row.epsSurprise)).toEqual([null, null]);
+  const text = renderHeadlessPaneText(definition, result, args, "ERN");
+  expect(text.match(/N\/M/g)).toHaveLength(2);
+  // CSV's EPS surprise column holds only numbers: the row's status column says why it is empty.
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "ERN", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
+  const lines = csv.split("\n");
+  const header = lines[0]!.split(",");
+  const surprise = header.indexOf("EPS surp (%)");
+  expect(surprise).toBeGreaterThan(-1);
+  const rows = lines.slice(1).filter((line) => line.includes(",reported,")).map((line) => line.split(","));
+  expect(rows).toHaveLength(2);
+  for (const row of rows) {
+    expect(row[surprise]).toBe("");
+    expect(row.at(-1)).toContain("EPS surp: n/m");
+  }
+});

@@ -25,6 +25,7 @@ import { loadSessionMovers, SessionMoversAccessError } from "./client";
 import { ANY_FLOAT, minFloatEmptyTitle, minFloatFilter, minFloatShares, partialFloatFooter } from "./min-float";
 import { summaryFooterSegments } from "./footer";
 import type { MarketSummaryQuote } from "./screener";
+import { isProOnlyTab } from "./model";
 import {
   earlierSessionLabel,
   listAsOfLabel,
@@ -67,7 +68,7 @@ export function SessionMoversBody(props: {
   liveStreaming: boolean;
 }) {
   const access = usePlanAccess();
-  const proOnly = props.view === "gaps";
+  const proOnly = isProOnlyTab(props.view);
   const [denied, setDenied] = useState(false);
   const deny = useCallback(() => setDenied(true), []);
   // A refusal is about the plan the account had then; a new plan asks again.

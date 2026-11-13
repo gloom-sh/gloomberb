@@ -292,7 +292,8 @@ export function scheduledResultsMessage(symbol: string, result: Pick<EarningsRes
   const actual = `${symbol} reported EPS ${formatNumber(result.epsActual ?? undefined, 2)}`;
   if (result.epsEstimate == null) return actual;
   const surprise = epsSurprise(result.epsActual, result.epsEstimate);
-  const shown = surprise == null ? null : Number((surprise * 100).toFixed(1));
+  // Against a loss or zero estimate the surprise is N/M, and left out.
+  const shown = typeof surprise !== "number" ? null : Number((surprise * 100).toFixed(1));
   return `${actual} vs ${formatNumber(result.epsEstimate, 2)} expected${shown == null ? "" : ` (${shown > 0 ? "+" : ""}${shown.toFixed(1)}%)`}`;
 }
 

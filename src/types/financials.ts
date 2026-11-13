@@ -853,6 +853,11 @@ export interface ResultsStatementFill {
    * earlier: the document restates that period's figure as the source has it.
    */
   comparable?: ResultsFillField[];
+  /**
+   * A quarter's lines left blank because the announcements count them otherwise than the statements
+   * source (HSBC's revenue): set beside the source's quarters around it, the change would measure that.
+   */
+  omitted?: ResultsFillField[];
 }
 
 export type StatementFill = ExchangeStatisticsFill | ResultsStatementFill;
@@ -865,6 +870,12 @@ export interface StatementTrailing {
   priorInterim: { end: string; months: number };
   /** "FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30" */
   basis: string;
+  /**
+   * Why the four quarters to the same end must not stand in for this: the latest quarters come from the
+   * company's announcements and the earlier ones from a source that defines a line otherwise. Absent where
+   * the quarters may be summed.
+   */
+  overQuarters?: string;
 }
 
 /** Per-share earnings lines that can be declared unavailable. */

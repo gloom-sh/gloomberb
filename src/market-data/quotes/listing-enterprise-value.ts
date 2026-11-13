@@ -3,7 +3,7 @@ import { cashAndShortTermInvestments } from "../../utils/cash-runway";
 import { formatShortDate } from "../../utils/datetime-format";
 import { formatCompact } from "../../utils/format";
 import {
-  checkCashBasis, enterpriseValueCheck, enterpriseValueNotMeaningful, enterpriseValueWithdrawn, reportedEnterpriseValue, withBankEnterpriseValue,
+  checkCashBasis, enterpriseValueCheck, enterpriseValueNotMeaningful, enterpriseValueWithdrawn, reportedEnterpriseValue, withFinancialEnterpriseValue,
 } from "../../utils/fundamentals";
 import { debtAndLeases, leaseBasis } from "../../utils/lease-liabilities";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
@@ -91,7 +91,7 @@ export const balanceSheetDay = (date: string) => formatShortDate(`${date.slice(0
  * meaningful at or below zero and for a bank.
  */
 export function listingEnterpriseValue(financials: EnterpriseValueInputs, now = Date.now()): ListingEnterpriseValue {
-  const priced = atRegularSessionPrice({ quote: financials.quote, fundamentals: withBankEnterpriseValue(financials.fundamentals, financials.profile) });
+  const priced = atRegularSessionPrice({ quote: financials.quote, fundamentals: withFinancialEnterpriseValue(financials.fundamentals, financials.profile) });
   const fundamentals = priced.fundamentals;
   const notMeaningful = enterpriseValueNotMeaningful(fundamentals);
   if (notMeaningful) return { kind: "not-meaningful", reason: notMeaningful };
@@ -230,7 +230,7 @@ function statementBridge(
 export function balanceSheetRateWanted(financials: EnterpriseValueInputs, now = Date.now()): Omit<BalanceSheetRate, "rate" | "closeDate"> | null {
   const { annualStatements, quarterlyStatements } = financials;
   if (!annualStatements || !quarterlyStatements) return null;
-  const priced = atRegularSessionPrice({ quote: financials.quote, fundamentals: withBankEnterpriseValue(financials.fundamentals, financials.profile) });
+  const priced = atRegularSessionPrice({ quote: financials.quote, fundamentals: withFinancialEnterpriseValue(financials.fundamentals, financials.profile) });
   const fundamentals = priced.fundamentals;
   if (enterpriseValueNotMeaningful(fundamentals) || reportedEnterpriseValue(fundamentals) != null || !enterpriseValueWithdrawn(fundamentals)) return null;
   const check = enterpriseValueCheck(fundamentals);

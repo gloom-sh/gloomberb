@@ -2,6 +2,7 @@ import { TextAttributes } from "../../../../../ui";
 import type { MarketNewsItem } from "../../../../../types/news-source";
 import { colors } from "../../../../../theme/colors";
 import { formatFeedTime } from "../../../../../utils/datetime-format";
+import { listedHeadline } from "../../../../../news/news-model";
 
 /**
  * How a story reads in a row wherever stories are listed (the news tables, a
@@ -42,7 +43,8 @@ export function newsHeadlineCell(
   { read = false, title, ...options }: NewsRowTone & { read?: boolean; title?: string } = {},
 ): NewsRowCell {
   return {
-    text: title ?? article.title,
+    // A row standing for a run of routine notices says how many after its headline.
+    text: title ?? listedHeadline(article),
     color: tone(colors.text, options),
     attributes: options.later || read ? TextAttributes.NONE : TextAttributes.BOLD,
   };

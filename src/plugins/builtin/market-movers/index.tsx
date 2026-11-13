@@ -10,7 +10,9 @@ import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { usePaneSettingValue } from "../../../state/app/context";
-import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { useAssetData, usePluginPaneChoice, usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { usePlanAccess } from "../../../api-client/plan-access";
+import { shownPaneChoice } from "../../../core/state/app/pane-choices";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useQuoteBoard } from "../shared/use-quote-board";
@@ -27,6 +29,7 @@ import {
   INDEX_SHORT,
   TABS,
   createRows,
+  isProOnlyTab,
   moverExtendedSessions,
   overlayMarketMoverQuotes,
   resolveSummarySymbols,
@@ -94,12 +97,19 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   const [requestedTab, setRequestedTab] = usePluginPaneState<TabId | null>("requestedTab", null);
   const session = useUsSession();
   const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
-  const activeTab = resolveActiveTab({
-    tabs: tabIds,
-    saved: savedTab,
-    pickedIn,
-    session,
-    requested: requestedTab,
+  const freeTabIds = useMemo(() => tabIds.filter((tab) => !isProOnlyTab(tab)), [tabIds]);
+  // A list picked or asked for in this session, as opposed to restored with the workspace.
+  const [listChosen, chooseList] = usePluginPaneChoice("activeTab");
+  const [requestChosen] = usePluginPaneChoice("requestedTab");
+  const access = usePlanAccess();
+  const pick = { saved: savedTab, pickedIn, session, requested: requestedTab };
+  // Gaps restored for an account without Pro open on the list the session
+  // would show without them; the wall shows once Gaps is picked.
+  const activeTab = shownPaneChoice(resolveActiveTab({ tabs: tabIds, ...pick }), {
+    chosen: listChosen || requestChosen,
+    hasProAccess: access.hasProAccess,
+    proOnly: isProOnlyTab,
+    fallback: freeTabIds.length > 0 ? resolveActiveTab({ tabs: freeTabIds, ...pick }) : tabIds[0]!,
   });
 
   // The index summary is a quote board like any other, so it runs on the shared
@@ -117,10 +127,12 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   // Kept between quotes, so the tab strip skips the renders a board update gives the pane.
   const tabItems = useMemo(() => tabs.map((tab) => ({ label: tab.label, value: tab.id })), [tabs]);
   const selectTab = useCallback((value: string) => {
+    // Picking the list already saved changes no value, so say it was picked.
+    if (!listChosen) chooseList();
     setSavedTab(value as TabId);
     setPickedIn(session.key);
     if (requestedTab) setRequestedTab(null);
-  }, [requestedTab, session.key, setPickedIn, setRequestedTab, setSavedTab]);
+  }, [chooseList, listChosen, requestedTab, session.key, setPickedIn, setRequestedTab, setSavedTab]);
   const { strip: tabStrip } = usePaneTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused, compact: true, variant: "bare" });
 
   return (

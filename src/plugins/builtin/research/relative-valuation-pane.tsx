@@ -1,5 +1,5 @@
 import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
-import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
+import { formatPriceEarnings } from "../../../utils/price-earnings";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
@@ -21,6 +21,7 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { TickerFinancials } from "../../../types/financials";
 import { canonicalTickerKey, normalizeSymbol } from "../../../utils/exchanges";
 import { colors, priceColor, shownPriceColor } from "../../../theme/colors";
+import { notMeaningfulCell } from "../../../components/ui/not-meaningful";
 import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { displayWidth, formatCompact, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
@@ -376,12 +377,15 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "marketCap":
         return { text: formatCompact(row.marketCap ?? undefined, { fixedDecimals: true }), color: colors.textDim };
       case "trailingPE":
-        return { text: `${formatPriceEarnings(row.notMeaningful.trailingPE ? NOT_MEANINGFUL : row.reportedMultiples.trailingPE)}${row.trailingPEPeriod ? ` ${row.trailingPEPeriod}` : ""}`, color: colors.text };
+        // A P/E over a loss: N/M in the colour every pane draws N/M in (notMeaningfulColor).
+        if (row.notMeaningful.trailingPE) return notMeaningfulCell();
+        return { text: `${formatPriceEarnings(row.reportedMultiples.trailingPE)}${row.trailingPEPeriod ? ` ${row.trailingPEPeriod}` : ""}`, color: colors.text };
       case "forwardPE":
-        return { text: formatPriceEarnings(row.notMeaningful.forwardPE ? NOT_MEANINGFUL : row.reportedMultiples.forwardPE), color: colors.text };
+        if (row.notMeaningful.forwardPE) return notMeaningfulCell();
+        return { text: formatPriceEarnings(row.reportedMultiples.forwardPE), color: colors.text };
       case "evSales":
         // A withdrawn EV says so, one at or below zero reads N/M as a P/E over a loss does; the footer says why.
-        if (row.evSales == null && row.notMeaningful.evSales) return { text: formatPriceEarnings(NOT_MEANINGFUL), color: colors.text };
+        if (row.evSales == null && row.notMeaningful.evSales) return notMeaningfulCell();
         return row.evSales == null && row.evSalesUnavailable
           ? { text: "EV n/a", color: colors.textDim }
           : { text: formatNumber(row.evSales ?? undefined, 1), color: colors.text };
@@ -389,10 +393,12 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
         return { text: formatLevelPercent(row.fcfYield ?? undefined), color: priceColor(row.fcfYield ?? 0) };
       case "revenueGrowth": {
         // A half-year reporter's growth is its half's, which the cell says beside the figure.
+        if (row.revenueGrowth == null && row.notMeaningful.revenueGrowth) return notMeaningfulCell();
         const half = row.revenueGrowth != null ? revenueGrowthHalfTag(row.revenueGrowthHalf) : null;
         return { text: `${formatPercent(row.revenueGrowth ?? undefined)}${half ? ` ${half}` : ""}`, color: shownPriceColor((row.revenueGrowth ?? 0) * 100, 2) };
       }
       case "operatingMargin":
+        if (row.operatingMargin == null && row.notMeaningful.operatingMargin) return notMeaningfulCell();
         return { text: `${formatLevelPercent(row.operatingMargin ?? undefined)}${row.operatingMargin != null && row.operatingMarginPeriod ? ` ${row.operatingMarginPeriod}` : ""}`, color: colors.text };
     }
   }, []);

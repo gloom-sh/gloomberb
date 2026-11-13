@@ -74,6 +74,22 @@ export interface CloudNewsPayload {
   entities: CloudNewsEntityPayload[];
   tickerLinks: CloudNewsTickerLinkPayload[];
   items?: CloudNewsStoryItemPayload[];
+  /**
+   * The routine notices this story stands for in a company's feed, its own first: a buy-back's daily
+   * "Transaction in own shares", the monthly total voting rights. Absent from servers that list each one.
+   */
+  routine?: CloudNewsRoutinePayload;
+}
+
+export interface CloudNewsRoutinePayload {
+  kind: string;
+  /** How many notices the row stands for, its own included. */
+  notices: number;
+  /** The first notice's publication time. */
+  since: string;
+  /** "buy-back announced on 2026-10-28", when the notices name it. */
+  programme?: string | null;
+  storyIds?: string[];
 }
 
 export interface CloudNewsListResponse {
