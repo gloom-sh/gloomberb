@@ -1,7 +1,7 @@
 import type { QuoteBatchResult } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import { bareListingNote } from "../tickers/listing-fate";
-import { notATickerSymbol } from "../sources/provider-errors";
+import { isRateLimited, isTransientServiceFailure, notATickerSymbol, rateLimitedError } from "../sources/provider-errors";
 import { listingSuffixCandidate } from "../sources/listing-symbols";
 import { looksLikeCurrencyPair } from "../utils/currency-pair";
 import { canonicalExchange } from "../utils/exchanges";
@@ -23,6 +23,7 @@ import {
   loadBareVenues,
   notTradedMessage,
   oneWordCompanyName,
+  tokyoCompanyNameArg,
   parseListingArg,
   quoteBareListing,
   readShareClassCode,
@@ -36,7 +37,7 @@ import {
   type ListingDataRequest,
   type ListingVenue,
 } from "./listing-arg";
-import { withListingSuggestion } from "./not-a-ticker";
+import { isNotATickerMessage, withListingSuggestion } from "./not-a-ticker";
 import { notATickerWords } from "./company-name-hint";
 import { isNetworkFailure } from "../utils/network-failure";
 import { logFailure } from "../utils/log-failure";
@@ -96,7 +97,11 @@ export async function answerQuote(
   refresh: boolean,
   venues: Promise<ListingVenue[]> | null,
   /** The row prints what its move is from: a quote asked for again is dated too. */
-  { datesChangeBasis = false }: { datesChangeBasis?: boolean } = {},
+  { datesChangeBasis = false, indexForm = null }: {
+    datesChangeBasis?: boolean;
+    /** The symbol's index form, already on its way (`indexFormRead`); asked for here when none is. */
+    indexForm?: IndexFormRead | null;
+  } = {},
 ): Promise<QuoteAnswer> {
   const root = listing.exchange ? null : indexRootFor(listing.symbol);
   // A bare root that quoted something else, such as MOVE (Corvex), points at the index too.
@@ -128,6 +133,9 @@ export async function answerQuote(
   }
   // No answer from the data service: no venue lookup or other listing would get one either.
   if (isNetworkFailure(result.error)) return { result, listing, notes: [] };
+  // "Not a ticker" is the service's answer that no listing carries the symbol: its ^ form is the last thing to ask, and
+  // it need not wait for the venue search that is still out.
+  if (indexForm && isNotATickerMessage(errorMessage(result.error))) indexForm().catch(logFailure("cli.quote-answer", "Start a symbol's index form failed", null));
   const notTraded = await notTradedMessage(listing, market);
   if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
   if (!isNoProviderError(result.error)) return { result, listing, notes: [] };
@@ -145,7 +153,16 @@ export async function answerQuote(
   const named = !listing.exchange && listing.typed ? await serviceNamedCompany(listing.typed, market) : null;
   const meant = named ? await answerNamedListing(named, market, request, refresh, datesChangeBasis) : null;
   if (meant) return meant;
-  const other = await quoteBareListing(listing, market, request, { refresh, datesChangeBasis });
+  // A search turned away (busy twice, or at the request limit) leaves the row with that reason, never "Not a ticker";
+  // the limit's row says when to try again, and is not asked again.
+  let other: Awaited<ReturnType<typeof quoteBareListing>>;
+  try {
+    other = await quoteBareListing(listing, market, request, { refresh, datesChangeBasis });
+  } catch (error) {
+    if (isRateLimited(error)) return { result: { ...result, error: rateLimitedError(error, listing.symbol) }, listing, notes: [] };
+    if (!isTransientServiceFailure(error)) throw error;
+    return { result: { ...result, error, transient: true }, listing, notes: [] };
+  }
   if (other?.kind === "quoted") {
     return {
       result: { target: other.listing.request, quote: other.quote },
@@ -165,7 +182,7 @@ export async function answerQuote(
   if (!other && tryLines.length === 0) {
     // ^GSPC typed in Windows' cmd.exe arrives as GSPC, the shell taking ^ for its escape character: said once no company
     // of that name and no listing abroad answers for it, so a symbol listed abroad is still quoted. A known root (VIX) has its own line.
-    const caret = root ? null : await caretIndexLine(listing, result, market);
+    const caret = root ? null : await caretIndexLine(listing, result, indexForm ?? indexFormRead(listing, market, null));
     if (caret) return { result, listing, failure: { message: caret, oneLine: caret }, notes: [] };
     return await answerCompanyName(result, listing, market, request, refresh, datesChangeBasis)
       ?? { result: await withCurrencyPairHint(result, market), listing, notes: [] };
@@ -219,7 +236,8 @@ async function answerCompanyName(
   const notATicker = !!notATickerSymbol(errorMessage(result.error) ?? "");
   const unsettled = !notATicker && isUnsettledNoProvider(result.error);
   if (!notATicker && !unsettled) return null;
-  const named = await oneWordCompanyName(listing.typed, market);
+  // A name in kanji alone the service names no company for (中電工) may be a Tokyo company's whole name.
+  const named = await oneWordCompanyName(listing.typed, market) ?? (notATicker ? await tokyoCompanyNameArg(listing.typed) : null);
   // A real ticker a source failed to quote is not a company's name, even when the company carries the word.
   if (!named || (unsettled && named.symbol.toUpperCase() === listing.symbol.toUpperCase())) return null;
   const answer = await answerNamedListing(named, market, request, refresh, datesChangeBasis);
@@ -341,6 +359,28 @@ export async function requireQuotedListing(
 /** A bare symbol that may be an index's without its ^: letters, then letters or digits. */
 const CARETLESS_INDEX = /^[A-Z][A-Z0-9]{1,9}$/;
 
+/** The quote of a bare symbol's ^ form, read once however many ask: the first call starts the read, the rest get its answer. */
+export type IndexFormRead = () => Promise<Quote | null>;
+
+/**
+ * The read of a bare symbol's index form (GSPC for ^GSPC), or null for a listing that has none: a venue named or saved,
+ * a known index root (VIX has its own line), a symbol no index is written as.
+ *
+ * With the symbol's venues (`loadBareVenues`), the read starts as soon as they come back empty: no listing carries
+ * the symbol, so the answer will be that it is not a ticker and the ^ form is the one thing left to ask, which then
+ * goes beside the quote the service has not answered yet instead of after it. A symbol some venue lists asks only
+ * when its answer needs it.
+ */
+export function indexFormRead(listing: CliListing, market: MarketContext, venues: Promise<ListingVenue[]> | null): IndexFormRead | null {
+  if (listing.exchange || listing.saved || !CARETLESS_INDEX.test(listing.symbol) || indexRootFor(listing.symbol)) return null;
+  let read: Promise<Quote | null> | null = null;
+  const start: IndexFormRead = () => read ??= Promise.resolve().then(() => market.dataProvider.getQuote(`^${listing.symbol}`, ""))
+    .catch(logFailure("cli.quote-answer", "Quote a symbol's index form failed", null));
+  const kick = () => { start().catch(logFailure("cli.quote-answer", "Start a symbol's index form failed", null)); };
+  venues?.then((found) => { if (found.length === 0) kick(); }).catch(logFailure("cli.quote-answer", "Read a symbol's venues for its index form failed", null));
+  return start;
+}
+
 /**
  * "Not a ticker: GSPC. Did you mean ^GSPC (S&P 500)? Try "^GSPC"." for a
  * bare symbol that is not a ticker while its ^ form is an index: cmd.exe
@@ -348,11 +388,10 @@ const CARETLESS_INDEX = /^[A-Z][A-Z0-9]{1,9}$/;
  * GSPC, and search would offer Goldman's preferreds for it. Null for any
  * other symbol, a named venue, and when the ^ form quotes no index.
  */
-async function caretIndexLine(listing: CliListing, result: QuoteBatchResult, market: MarketContext): Promise<string | null> {
-  if (listing.exchange || listing.saved || !CARETLESS_INDEX.test(listing.symbol)) return null;
+async function caretIndexLine(listing: CliListing, result: QuoteBatchResult, indexForm: IndexFormRead | null): Promise<string | null> {
+  if (!indexForm) return null;
   const index = `^${listing.symbol}`;
-  const quote = await Promise.resolve().then(() => market.dataProvider.getQuote(index, ""))
-    .catch(logFailure("cli.quote-answer", "Quote a symbol's index form failed", null));
+  const quote = await indexForm();
   if (!quote || quote.instrumentType?.trim().toUpperCase() !== "INDEX") return null;
   const said = notATickerSymbol(errorMessage(result.error) ?? "") ? `Not a ticker: ${listing.symbol}.` : `${listing.symbol} has no quote.`;
   return `${said} Did you mean ${index}${quote.name ? ` (${quote.name})` : ""}? Try "${index}".`;

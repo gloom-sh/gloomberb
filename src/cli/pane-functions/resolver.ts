@@ -24,7 +24,7 @@ import { bankFigurePointer, bankWordPointer } from "../known-gaps";
 import { findCatalogSeries, type SeriesSource } from "../series-search";
 import type { PluginCodeCommands, PluginCodeStop } from "./plugin-code";
 import { readTerminalCodeArg } from "../../tickers/company-name-listing";
-import { unknownBloombergMarket } from "../../tickers/terminal-codes";
+import { unknownBloombergMarket, unreadBloombergCode } from "../../tickers/terminal-codes";
 import { notATickerWords } from "../company-name-hint";
 import type { MarketContext } from "../types";
 import { findWatchlist } from "../helpers";
@@ -247,7 +247,8 @@ export async function applyListingArgument(
   let named: CliListing | null = null;
   if (takesOneTicker && /\s/.test(args.arg) && !await readTerminalCodeArg(context.dataProvider, args.arg)) {
     // A line written as a code with a market no venue answers to ("AAPL GP") is refused as the resolver words it.
-    if (unknownBloombergMarket(args.arg)) await resolveCliListing(args.arg, undefined, context);
+    // So is a code no symbol is read from ("GTJPY10Y Govt"), with what has it instead.
+    if (unknownBloombergMarket(args.arg) || unreadBloombergCode(args.arg)) await resolveCliListing(args.arg, undefined, context);
     named = exchange ? null : await resolveCliListing(args.arg, undefined, context)
       .catch(logFailure("cli.pane-functions-resolver", "Read a company's name typed for a function failed", null));
     if (!named?.readAs || /\s/.test(named.symbol)) throw new ListingArgError(await notATickerWords(args.arg, context));
@@ -279,6 +280,8 @@ export async function applyListingArgument(
     if (listings.length === 0) throw new ListingArgError(`${answer}.`, details);
     notes.push(`${answer}, such as GME,AMC.`);
   }
+  // What a list leaves out, and why, for an export's rows.
+  const refused: Array<{ symbol: string; reason: string }> = [];
   // A function with company data answers an index or an ETF with what it is and where its data is, before
   // any request: its source would only say "Unknown ticker" or come back empty. A list leaves it out.
   const covered = found.pane.instruments;
@@ -297,6 +300,7 @@ export async function applyListingArgument(
         throw new ListingArgError(answers.map((answer) => answer.message).join("\n"), answers.map((answer) => answer.details).join("\n"));
       }
       notes.push(...answers.map((answer) => `${answer.message} ${answer.details}`));
+      refused.push(...outside.map(({ listing }, index) => ({ symbol: listing.key, reason: answers[index]!.message })));
     }
   }
   // A listing the function has nothing for (OPX's SOL-USD) says what exists instead; a list leaves it out.
@@ -311,6 +315,7 @@ export async function applyListingArgument(
       throw new ListingArgError(refusals.map(({ refusal }) => refusal.message).join("\n"), details || undefined);
     }
     notes.push(...refusals.map(({ refusal }) => [refusal.message, refusal.details].filter(Boolean).join(" ")));
+    refused.push(...refusals.map(({ listing, refusal }) => ({ symbol: listing.key, reason: refusal.message })));
   }
   const usOnly = headless?.usListingsOnly;
   const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];
@@ -326,6 +331,7 @@ export async function applyListingArgument(
       throw new ListingArgError(answers.map((answer) => answer.message).join("\n"), answers.map((answer) => answer.details).join("\n"));
     }
     notes.push(...answers.map((answer) => `${answer.message} ${answer.details.replaceAll("\n", " ")}`));
+    refused.push(...abroad.map((listing, index) => ({ symbol: listing.key, reason: answers[index]!.message })));
   }
   notes.unshift(...watchlist?.notes ?? []);
   // One listing's notes come with its choice note; a list's are said here, with a coin's code read as a listing
@@ -337,6 +343,7 @@ export async function applyListingArgument(
     options,
     ...(listings.length === 1 ? { listing: listings[0]! } : {}),
     ...(notes.length > 0 ? { listingNotes: notes } : {}),
+    ...(refused.length > 0 ? { refusedListings: refused } : {}),
   };
 }
 

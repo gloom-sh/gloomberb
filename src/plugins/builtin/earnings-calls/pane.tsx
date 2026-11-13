@@ -51,7 +51,7 @@ import {
 import { isPermanentClientError } from "../../../api-client/errors";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
-import { callPeriod, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment } from "./format";
+import { callPeriod, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment, noCallsText } from "./format";
 import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, originalIsMachineTranscript, translatedFrom, turnParagraphs } from "./model";
 import { READER_TABS, TranscriptView, type ReaderTab, type TranscriptPlayback } from "./transcript-view";
 import { PLAYBACK_RATES, SEEK_STEP_SECONDS, useCallPlayback } from "./use-call-playback";
@@ -1012,10 +1012,7 @@ function CallsListView({
     return listPending ? (
       <PaneStatusBody loading align="center" loadingLabel={`Looking for ${ticker}'s earnings calls...`} />
     ) : (
-      <EmptyState
-        title={`No earnings calls found for ${ticker}.`}
-        message="Calls appear here once the company's investor site or filings list a webcast."
-      />
+      <EmptyState {...noCallsText(ticker)} />
     );
   }
 

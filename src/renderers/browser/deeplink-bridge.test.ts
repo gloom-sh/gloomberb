@@ -20,6 +20,20 @@ describe("browser social share handoff", () => {
     bridge.subscribe(({ url }) => seen.push(url));
     expect(seen).toEqual(["gloomberb://ticker/VOD%3AXLON?tab=earnings-calls"]);
   });
+
+  // The address carries the tab the pane showed. A reload brings back the
+  // saved workspace, so the tab must not count as asked for again: a tab only
+  // Pro opens would greet a free account with its wall.
+  test("a reload or a return through history opens the ticker without asking for its tab again", () => {
+    for (const navigation of ["reload", "back_forward"]) {
+      Object.defineProperty(globalThis, "window", { configurable: true, value: {
+        location: { search: "?ticker=AAPL&tab=earnings-calls" }, addEventListener() {}, removeEventListener() {},
+      } });
+      const seen: string[] = [];
+      createBrowserDeepLinkBridge(() => navigation).subscribe(({ url }) => seen.push(url));
+      expect(seen).toEqual(["gloomberb://ticker/AAPL"]);
+    }
+  });
   test("maps a valid pane share query to the common deep-link runtime and consumes it from the address", () => {
     const id = "0123456789abcdef0123456789abcdef";
     const replaced: string[] = [];

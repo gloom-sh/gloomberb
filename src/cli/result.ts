@@ -676,6 +676,25 @@ export function exitLeavingReadsBehind(): void {
   }, LEFT_BEHIND_EXIT_MS).unref();
 }
 
+/** A result whose rows' "Not a ticker: US10Y." cells carry the hint `hinted` gives the sentence. */
+function withHintedCells<T>(result: CliResult<T>, hinted: (text: string) => string): CliResult<T> {
+  if (!Array.isArray(result.data)) return result;
+  let changed = false;
+  const data = result.data.map((row: unknown) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+    let next = row as Record<string, unknown>;
+    for (const [key, value] of Object.entries(row)) {
+      if (typeof value !== "string" || !value.includes("Not a ticker: ")) continue;
+      const hint = hinted(value);
+      if (hint === value) continue;
+      next = { ...next, [key]: hint };
+      changed = true;
+    }
+    return next;
+  });
+  return changed ? { ...result, data: data as T } : result;
+}
+
 export function printCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(
   result: CliResult<T>,
   options: CliGlobalOptions,
@@ -686,11 +705,14 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   if (options.quiet && options.format === "text") return;
   // JSON keeps the router's own words; everything else is for a person, so a "Not a ticker" gets its hint.
   const hinted = (text: string) => options.format === "json" ? text : withSearchHints(text, args, isFredSeries);
+  // A CSV's status cell is where its row says why, so it gets the hint the warning line has: a cell ends in a comma,
+  // which the text's sentence search does not take for the sentence's end.
+  const cells = options.format === "csv" ? withHintedCells(result, hinted) : result;
   // An export `--output` names is drawn for the file (no colour), and held for the command's end to write.
   const toFile = options.output !== undefined && options.format !== "text";
   const serialized = hinted(toFile
-    ? renderForFile(() => serializeCliResult(result, options, renderOptions))
-    : serializeCliResult(result, options, renderOptions));
+    ? renderForFile(() => serializeCliResult(cells, options, renderOptions))
+    : serializeCliResult(cells, options, renderOptions));
   // A CSV's closing source and note lines go to stderr with the warnings: in the file they are rows of junk to a spreadsheet.
   const { csv, footer } = options.format === "csv" ? splitCsvFooter(serialized) : { csv: serialized, footer: [] };
   const output = csv;

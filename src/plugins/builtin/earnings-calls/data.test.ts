@@ -157,6 +157,22 @@ test("a listing abroad never shares calls with its US namesake, and refuses the 
   ]);
 });
 
+test("a listing keeps the calls filed under its own code whatever short name its exchange gives the company", async () => {
+  attachEarningsCallsPersistence(new MemoryPluginPersistence());
+  // HKEX files Sun Hung Kai Properties' calls as "SHK PPT"; a US namesake's call is still refused.
+  const client = clientWith(async () => ({ calls: [{ ...calls[0]!, id: "results", ticker: "0016:HKEX", companyName: "SHK PPT" }, { ...calls[0]!, id: "namesake", ticker: "16", companyName: "Other Corp" }] }));
+  const read = await loadEarningsCallsWithClient(client, "0016:HKEX", { name: "Sun Hung Kai Properties Limited" });
+  expect(read.calls.map((call) => call.id)).toEqual(["results"]);
+});
+
+test("a listing abroad with no call stored is a company whose calls are not yet available, never an unknown symbol", async () => {
+  attachEarningsCallsPersistence(new MemoryPluginPersistence());
+  // The service answers both as unknownTicker: CapitaLand's trust has no call under C38U:SGX yet, ZZZZQ is no US symbol.
+  const client = clientWith(async () => ({ calls: [], unknownTicker: true }));
+  expect((await loadEarningsCallsWithClient(client, "C38U:SGX", { force: true })).unknownTicker).toBe(false);
+  expect((await loadEarningsCallsWithClient(client, "ZZZZQ", { force: true })).unknownTicker).toBe(true);
+});
+
 test("a foreign line's calls read from its company's home line are kept whatever the line's name, and say whose", async () => {
   attachEarningsCallsPersistence(new MemoryPluginPersistence());
   const companyFrom = { symbol: "000660", exchange: "KRX", name: "SK hynix Inc." };

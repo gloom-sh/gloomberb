@@ -28,6 +28,11 @@ export interface GlossaryEntry {
    * print in other yields.
    */
   shownBy?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Terms a reader looking this one up wants beside it, by their `term`:
+   * looking up when-issued prints the tail it is measured against too.
+   */
+  related?: readonly string[];
   /** One or two plain sentences. */
   definition: string;
 }
@@ -80,7 +85,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     term: "When-issued", short: "WI", aliases: ["when issued", "wi yield", "when-issued yield"], functions: ["AUCT"],
-    shown: ["when-issued", "When-issued"],
+    shown: ["when-issued", "When-issued"], related: ["Tail"],
     definition: "Trading in a Treasury security between its announcement and its issue. The when-issued yield at the auction deadline is what a tail is measured against.",
   },
   {
@@ -96,9 +101,10 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "The auction's high discount rate is the one its investment rate restates.",
   },
   {
-    term: "Auction percentile", aliases: ["b/c percentile", "b/c pctl", "indirect percentile", "dealer percentile"], functions: ["AUCT"],
-    shown: ["B/C pctl", "Indirect pctl", "Dealer pctl"],
-    definition: "Where an auction's bid-to-cover, indirect or dealer share ranks among the previous 24 auctions of the same "
+    term: "Auction percentile", aliases: ["b/c percentile", "b/c pctl", "indirect percentile", "dealer percentile", "stop-out percentile", "stop-out pctl"],
+    functions: ["AUCT"],
+    shown: ["Stop-out pctl", "B/C pctl", "Indirect pctl", "Dealer pctl"],
+    definition: "Where an auction's stop-out vs median, bid-to-cover, indirect or dealer share ranks among the previous 24 auctions of the same "
       + "tenor and type, from 0 (the lowest) to 100 (the highest). Blank with fewer than 12 before it.",
   },
   {
@@ -1068,7 +1074,10 @@ const wholeWord = (have: string, word: string) => have === word || have === `${w
 export function lookupGlossary(query: string): GlossaryLookup {
   const key = lookupKey(query);
   if (!key) return { exact: [], partial: [] };
-  const exact = GLOSSARY.filter((entry) => names(entry).some((name) => lookupKey(name) === key));
+  const named = GLOSSARY.filter((entry) => names(entry).some((name) => lookupKey(name) === key));
+  // A term named comes with the ones it is read beside (when-issued with the tail).
+  const exact = [...new Set([...named, ...named.flatMap((entry) => (entry.related ?? [])
+    .flatMap((term) => GLOSSARY.find((other) => other.term === term) ?? []))])];
   const wanted = words(query).filter((word) => word.length >= MIN_PARTIAL_WORD);
   if (wanted.length === 0) return { exact, partial: [] };
   const others = GLOSSARY.filter((entry) => !exact.includes(entry));

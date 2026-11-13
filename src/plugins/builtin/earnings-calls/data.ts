@@ -53,7 +53,11 @@ export interface EarningsCallsResult {
   errorStatus?: number;
   /** The server has just started looking for this company's calls. */
   pending?: boolean;
-  /** The symbol is not one the SEC knows, so there is nothing to look for. */
+  /**
+   * The symbol is not one the SEC knows, so there is nothing to look for. Never
+   * set for a listing abroad, which the server answers by its stored calls:
+   * C38U:SGX with none yet is a company whose calls are not yet available.
+   */
   unknownTicker?: boolean;
   /** The company's home line the calls are read from, when not the listing asked. */
   companyFrom?: CompanyFrom | null;
@@ -172,16 +176,32 @@ function listKey(ticker: string | null, abroad: ListingAbroad | null, limit: num
   return offset > 0 ? JSON.stringify([identity, limit, offset]) : JSON.stringify([identity, limit]);
 }
 
+/** A listing code without the zeros a venue pads it with: 0016 and 16 are one Hong Kong listing. */
+const listingCode = (symbol: string) => symbol.trim().toUpperCase().replace(/^0+(?=\d)/, "");
+
+/**
+ * A call filed under the listing's own key (0016:HKEX) is the listing's,
+ * whatever short name the exchange gives the company there: "SHK PPT" is Sun
+ * Hung Kai Properties, "HKEX" Hong Kong Exchanges and Clearing.
+ */
+function filedUnderListing(call: CloudEarningsCallPayload, abroad: ListingAbroad): boolean {
+  const separator = call.ticker.lastIndexOf(":");
+  if (separator < 0) return false;
+  return listingCode(call.ticker.slice(0, separator)) === listingCode(abroad.symbol)
+    && call.ticker.slice(separator + 1).trim().toUpperCase() === abroad.exchange.toUpperCase();
+}
+
 /**
  * A server that predates venue-aware lookups ignores the venue and lists the
  * calls of the US company with the same symbol: AI in Paris would show C3.ai.
  * Those calls are another company's, so they are dropped, and without the
- * listing's company they cannot be told apart.
+ * listing's company they cannot be told apart. A call filed under the
+ * listing's own key is never such a call.
  */
 function listingCalls(calls: CloudEarningsCallPayload[], abroad: ListingAbroad | null): CloudEarningsCallPayload[] {
   if (!abroad) return calls;
   const name = abroad.name;
-  return name ? calls.filter((call) => !areDifferentCompanies(name, call.companyName)) : [];
+  return calls.filter((call) => filedUnderListing(call, abroad) || (!!name && !areDifferentCompanies(name, call.companyName)));
 }
 
 type EarningsCallsLoadOptions = IssuerListingParams & { force?: boolean; limit?: number; offset?: number };
@@ -231,7 +251,7 @@ export async function loadEarningsCallsWithClient(
       const value = {
         calls,
         pending: payload.pending === true,
-        unknownTicker: payload.unknownTicker === true,
+        unknownTicker: payload.unknownTicker === true && !abroad,
         ...(companyFrom ? { companyFrom } : {}),
       };
       // A list with calls still being produced changes by the minute, so it

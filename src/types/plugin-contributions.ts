@@ -37,6 +37,13 @@ export interface TickerResearchTabDef {
   instruments?: readonly TickerInstrumentKind[];
   /** Narrower checks than `instruments`: a US listing, an options chain, a connected broker. */
   isVisible?: (context: TickerResearchTabVisibilityContext) => boolean;
+  /**
+   * Opens only with Gloom Cloud Pro: an account without it sees the tab's
+   * wall. A ticker pane restored on this tab for such an account opens on
+   * Overview, and the wall shows once someone picks the tab; the tab stays
+   * saved for when the plan has Pro.
+   */
+  proOnly?: boolean;
 }
 
 export interface TickerAction {

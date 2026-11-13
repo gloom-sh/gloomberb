@@ -39,7 +39,7 @@ export function validateGraph(data: GraphPayload): GraphPayload {
         const link = links.get(key), a = entry.nodeIds[index], b = entry.nodeIds[index + 1];
         if (!link || !(link.from === a && link.to === b || link.to === a && link.from === b)) throw 0;
       });
-      if (entry.exposure && (entry.linkIds.some(id => graphEvidenceRow(links.get(id)!.evidence.find(item => item.id === links.get(id)!.primaryEvidenceId)!).tier !== 1) || entry.exposure.estimated !== true || !Number.isFinite(entry.exposure.pct) || entry.exposure.pct < 0 || entry.exposure.pct > 100
+      if (entry.exposure && (entry.linkIds.some(id => graphEvidenceRow(links.get(id)!.evidence.find(item => item.id === links.get(id)!.primaryEvidenceId)!).tier !== 1) || entry.exposure.estimated !== entry.hops > 1 || !Number.isFinite(entry.exposure.pct) || entry.exposure.pct < 0 || entry.exposure.pct > 100
         || !entry.nodeIds.includes(entry.exposure.denominatorEntityId) || !["revenue", "receivables", "cost", "purchases"].includes(entry.exposure.basis) || !validPeriodMonths(entry.exposure.periodMonths))) throw 0;
     };
     data.paths.forEach(path);

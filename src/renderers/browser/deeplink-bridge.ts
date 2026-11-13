@@ -19,15 +19,34 @@ function consumeHandoffParams(search: string, keys: string[]): void {
   history.replaceState(history.state, "", url);
 }
 
-export function createBrowserDeepLinkBridge(): DesktopDeepLinkBridge {
+/** How this page was opened: "navigate", "reload" or "back_forward". */
+function pageNavigationType(): string | undefined {
+  try {
+    const [entry] = globalThis.performance?.getEntriesByType?.("navigation") ?? [];
+    return (entry as PerformanceNavigationTiming | undefined)?.type;
+  } catch {
+    // Intentional ignore: without the timing API the page counts as opened from its address.
+    return undefined;
+  }
+}
+
+export function createBrowserDeepLinkBridge(navigationType: () => string | undefined = pageNavigationType): DesktopDeepLinkBridge {
   // Restoring a saved pane can update the address before App subscribes.
   // Keep the incoming link intact until it has been delivered once.
   const initialSearch = window.location.search;
+  // A reload, or a return through history, brings back the saved workspace the
+  // address was written from. Its tab asks for nothing: the pane keeps the tab
+  // it saved, and one only Pro opens stays behind a free one (pane-choices.ts).
+  const restoring = (() => {
+    const type = navigationType();
+    return type === "reload" || type === "back_forward";
+  })();
   return {
     subscribe(listener) {
       let initial = true;
       const emit = () => {
-        const search = initial ? initialSearch : window.location.search;
+        const first = initial;
+        const search = first ? initialSearch : window.location.search;
         initial = false;
         const layoutId = marketplaceLayoutIdFromSearch(search);
         if (layoutId) {
@@ -49,7 +68,9 @@ export function createBrowserDeepLinkBridge(): DesktopDeepLinkBridge {
           return;
         }
         const entry = researchEntryFromSearch(search);
-        if (entry) listener({ url: `gloomberb://ticker/${encodeURIComponent(entry.symbol)}?tab=${entry.tab}` });
+        if (!entry) return;
+        const symbolUrl = `gloomberb://ticker/${encodeURIComponent(entry.symbol)}`;
+        listener({ url: restoring && first ? symbolUrl : `${symbolUrl}?tab=${entry.tab}` });
       };
       emit();
       window.addEventListener("popstate", emit);

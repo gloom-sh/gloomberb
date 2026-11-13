@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
-import { assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, liveDomRowCount, missingActiveTabSelections, shotLoadedNothing, shotShowsText, shotTableRows } from "./screenshot-assessment";
+import {
+  assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, liveDomRowCount, missingActiveTabSelections, shotCutColumnsWarning, shotLoadedNothing,
+  shotShowsText, shotTableRows,
+} from "./screenshot-assessment";
 import { buildDesktopShotPayload } from "./screenshot-payload";
 import { chartSeriesEvidenceWithinRange, chartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
 import { createDesktopShotBridge, resolveDesktopShotApiProxy, stripDesktopShotCredentials } from "./screenshot-bridge";
@@ -713,6 +716,18 @@ describe("a capture of a pane that marks no rows", () => {
     expect(assess(diag, { rows: [row(1, "—", "—"), row(2, "—", "—")] })).toMatchObject({ usable: true });
   });
 
+  // AUCT's after view at 720px lost +5D, +20D and the CUSIP past the table's edge unsaid. Nineteen other panes cut one
+  // there too, so it is a named warning for now, not a failed --strict; FA's centred headers read "The       FY2024      ,".
+  test("a column cut at its table's edge is named in a warning and leaves the picture usable; padded headers read clean", () => {
+    const row = { tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnId: "date", columnLabel: "DATE", text: "Nov 10" }] };
+    const cut = assess(diag, { rows: [row, row, row], cutColumns: ["      FY2025      ", "      FY2024      ", "FY2024", " "] });
+    expect(cut).toMatchObject({ usable: true, unusableReason: null, cutColumns: ["FY2025", "FY2024"] });
+    expect(shotCutColumnsWarning(cut.cutColumns)).toBe("The FY2025 and FY2024 columns are cut at this width: a wider --width shows them.");
+    expect(shotCutColumnsWarning(["+20D BP"])).toBe("The +20D BP column is cut at this width: a wider --width shows it.");
+    const whole = assess(diag, { rows: [row, row, row] });
+    expect([whole.cutColumns, shotCutColumnsWarning(whole.cutColumns)]).toEqual([undefined, null]);
+  });
+
   test("an error or empty state's Reason keeps its sentence and quotes what the pane said", () => {
     expect(assess(diag, { errorStateDetected: true, stateText: { error: ["Market movers temporarily unavailable. Try again in a moment."] } }).unusableReason)
       .toBe('The pane rendered an error state. It reads "Market movers temporarily unavailable. Try again in a moment."');
@@ -1418,7 +1433,7 @@ describe("portfolio screenshot members", () => {
     expect(refused.unreadRows).toEqual(["AAA"]);
     expect(unreadRowsNote(refused.unreadRows)).toBe("AAA did not load");
     // With the source's reason, which `shot` prints beside the row it names.
-    expect(refused.unreadReasons).toEqual({ AAA: "No provider available for AAA" });
+    expect(refused.unreadReasons).toEqual({ AAA: "Gloom's data service is at its request limit for AAA. Try again in a minute" });
   });
 
   test("a named portfolio's capture reads that portfolio's rows only, never another list's", async () => {

@@ -28,6 +28,9 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
       ["DFII10", "10Y TIPS real yield", "%", "daily", ["treasury", "real yield"]],
       ["T10Y2Y", "10Y minus 2Y Treasury spread", "%", "daily", ["treasury", "curve", "2s10s"]],
       ["T10Y3M", "10Y minus 3M Treasury spread", "%", "daily", ["treasury", "curve"]],
+      // The Federal Reserve Board's Kim-Wright estimates, a week or so behind.
+      ...Array.from({ length: 10 }, (_, index): FredRow =>
+        [`THREEFYTP${index + 1}`, `${index + 1}Y Treasury term premium (Kim-Wright)`, "%", "daily", ["treasury", "term premium", "Kim-Wright"]]),
       ["SOFR", "SOFR", "%", "daily", ["secured overnight financing rate", "money markets"]],
       ["SORA", "SORA (Singapore overnight rate average)", "%", "daily", ["SGD", "Singapore", "MAS", "overnight", "money markets"]],
       ["OBFR", "Overnight bank funding rate", "%", "daily", ["OBFR", "money markets"]],

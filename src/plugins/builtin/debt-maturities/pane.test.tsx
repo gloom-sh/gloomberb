@@ -89,8 +89,9 @@ test("a short or narrow maturity pane keeps the table's rows, and the chart shri
   expect(lines[2]).toMatch(/^ ● Due next 12 months .*%/);
   expect(lines[3]).toContain("MATURITY");
   expect(lines.filter((line) => /^ In(NextTwelve|Year)/.test(line))).toHaveLength(5);
-  // The footer keeps its source, which filing and its date; how long ago it loaded goes first.
-  expect(lines[9]).toContain("SEC EDGAR · 10-K Mon 30 Jun 2025");
+  // The footer keeps which filing and its date; how long ago it loaded goes first, then the source's name, which the
+  // hint and the column between them leave no room for at 40 columns (a wider pane names it, below).
+  expect(lines[9]).toContain("└10-K Mon 30 Jun 2025");
   expect(lines[9]).not.toContain("just now");
 });
 

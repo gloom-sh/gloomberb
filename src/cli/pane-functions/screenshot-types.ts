@@ -156,6 +156,12 @@ export interface PaneScreenshotResult {
   refused?: true;
   /** Columns blank in every row the capture drew, by their headers: data the pane lost (`shotBlankColumns`). */
   blankColumns?: string[];
+  /**
+   * Columns the capture cut at the edge of their table, by their headers: a
+   * wider --width shows them. A warning (`shotCutColumnsWarning`), which
+   * leaves the picture usable.
+   */
+  cutColumns?: string[];
   dataEvidence: PaneScreenshotDataEvidence | null;
   /** What the pane says its view leaves out, such as OMON's "21 of 145 strikes". */
   notices?: string[];

@@ -154,6 +154,19 @@ describe("earnings transcript headless", () => {
     expect(findCallForQuarter(cost, "FQ4-2025")?.id).toBe("cost-fq4");
     expect(findCallForQuarter(cost, "FY2026")?.id).toBe("cost-fq1");
   });
+  test("a half year's results call is H1, never a second FY call of the same year", () => {
+    // SHKP: interim results in February and annual results in September, both fiscal 2026 with no quarter.
+    const interim = { ...calls[0]!, id: "shkp-h1", ticker: "0016:HKEX", fiscalYear: 2026, fiscalQuarter: null, fiscalHalf: 1, callAt: "2026-02-26T00:00:00Z" };
+    const annual = { ...calls[0]!, id: "shkp-fy", ticker: "0016:HKEX", fiscalYear: 2026, fiscalQuarter: null, callAt: "2026-09-10T00:00:00Z" };
+    expect([interim, annual].map(callPeriod)).toEqual(["H1 26", "FY 26"]);
+    expect(callTitle(interim)).toBe("0016:HKEX H1 26");
+    expect(findCallForQuarter([annual, interim], "H1 2026")?.id).toBe("shkp-h1");
+    expect(findCallForQuarter([annual, interim], "1H26")?.id).toBe("shkp-h1");
+    // A year asks for the year's results call, a newer half aside, and never gets a half: not even when it is all the year has.
+    expect(findCallForQuarter([interim, { ...annual, callAt: "2026-01-10T00:00:00Z" }], "FY2026")?.id).toBe("shkp-fy");
+    expect(findCallForQuarter([interim], "FY2026")).toBeNull();
+    expect(findCallForQuarter([interim], "H1-2026")?.id).toBe("shkp-h1");
+  });
   test("an event that is not an earnings call is listed by its label and is not the latest earnings call", () => {
     const deal: CloudEarningsCallPayload = {
       ...calls[0]!,
@@ -332,6 +345,17 @@ test("pending discovery is not reported as a complete empty export", async () =>
   const result = await createEarningsCallsHeadless(deps).load(callArgs({ view: "transcripts", limit: 200 }), context);
   expect(result.complete).toBe(false);
   expect(result.metadata).toMatchObject({ total: 0, pending: true, totalIsExact: false, sourceLimitReached: false });
+});
+
+test("a listing abroad with no call yet reads not yet available, never an unknown company", async () => {
+  // A listing abroad with no call stored loads as no calls (loadEarningsCalls); a US symbol the SEC does not know as unknown.
+  const deps = dependencies();
+  deps.loadCalls = async (ticker) => ({ calls: [], fetchedAt: 123, stale: false, unknownTicker: !ticker?.includes(":") });
+  const trust = { rawArgument: "C38U:SGX", argument: "C38U:SGX", symbols: ["C38U:SGX"] };
+  const result = await createEarningsCallsHeadless(deps).load({ ...trust, options: {} }, context);
+  expect("empty" in result ? result.empty : null).toBe("Earnings calls for C38U:SGX are not yet available. Calls appear once the company's investor site or filings list a webcast.");
+  await expect(createEarningsCallsHeadless(deps).load({ ...trust, options: { quarter: "latest" } }, context)).rejects.toThrow("Earnings calls for C38U:SGX are not yet available.");
+  await expect(createEarningsCallsHeadless(deps).load({ ...transcriptArgs({}), options: { quarter: "latest" } }, context)).rejects.toThrow("AMD is not a known listed company.");
 });
 
 test("a refused account reads as CALLS's lock note on one line, for the list and for a transcript, with the refusal as its cause", async () => {

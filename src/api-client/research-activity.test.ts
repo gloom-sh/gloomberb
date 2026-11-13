@@ -8,6 +8,9 @@ import {
   recordResearchActivity,
   resolveBrowserAttribution,
 } from "./research-activity";
+import { allowTelemetryInTests } from "../test-support/telemetry-guard";
+
+allowTelemetryInTests();
 
 const NOW = Date.parse("2026-09-10T12:00:00.000Z");
 const DAY = 24 * 60 * 60 * 1000;

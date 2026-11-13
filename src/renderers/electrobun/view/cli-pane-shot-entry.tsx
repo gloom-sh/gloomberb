@@ -573,7 +573,8 @@ async function render() {
         <RemoteUiRegistryProvider>
           <CaptureShotSemanticUi />
           <DomHostProviders ui={webUiHost} renderer={rendererHost}>
-            <AppProvider config={payload.config} desktopSnapshot={{
+            {/* The capture shows what the function asked for, a tab only Pro opens included. */}
+            <AppProvider config={payload.config} paneStateChosen desktopSnapshot={{
               config: payload.config,
               paneState: payload.paneState,
               focusedPaneId: payload.paneId,

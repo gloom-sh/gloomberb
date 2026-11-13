@@ -61,6 +61,7 @@ import { NotASymbolError, notASymbolError } from "./symbol-cells";
 import { kindFromListingSyntax } from "../tickers/instrument-kind";
 import { classifyInstrumentKind, normalizeTickerSymbol } from "../tickers/search/ranking";
 import { companyNameQueries, findFormerIssuerOfName, isCompanyNameInput, settledTerminalCode } from "../tickers/company-name-listing";
+import { unreadBloombergCode } from "../tickers/terminal-codes";
 
 /** The saved ticker for a symbol (`SAN:EPA`, or `SAN` with `--exchange EPA`), saving it from search first if needed. */
 export async function resolveTickerForCli(
@@ -615,7 +616,7 @@ function listLookupPlan(input: string, exchange: string | undefined): ListLookup
   if (notASymbolError(input)) return { searches: [], changes: null };
   // A terminal's code abroad (`VOD LN`) is its listing as written: it asks only for its quote.
   const code = settledTerminalCode(input);
-  if (code) return { searches: [], changes: null };
+  if (code || unreadBloombergCode(input)) return { searches: [], changes: null };
   // A company's name searches what its reading searched (`readNameEntries`), answered by the same batch.
   if (isCompanyNameInput(input)) return { searches: companyNameQueries(input), changes: null };
   try {

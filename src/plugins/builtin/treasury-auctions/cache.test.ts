@@ -338,7 +338,8 @@ describe("loadTreasuryAuctions with TreasuryDirect", () => {
     expect(result.auctions).toHaveLength(new Set([...recordedFiscalData(), ...recordedTreasuryDirect()].map((entry) => entry.id)).size + 1);
   });
 
-  test("a later command answers from the board an earlier one saved within the hour, unless an auction it lists has come due", async () => {
+  // A warm --history-days all took 3.1 s, re-reading both sources on every run while an auction listed was due.
+  test("a later command answers from the board an earlier one saved within the hour; with an auction due, for 5 minutes, 1 in its results hour", async () => {
     const store = new AppPersistence(":memory:");
     try {
       const asked: string[] = [];
@@ -362,18 +363,24 @@ describe("loadTreasuryAuctions with TreasuryDirect", () => {
         return { result, asked: asked.splice(0).sort() };
       };
 
+      // 08:00 in New York: a run after a run reuses the board for 5 minutes, then asks again while the auction is due.
       const cold = await command(0);
       expect(cold.asked).toEqual(["archive", "direct", "fiscal"]);
+      expect((await command(4)).asked).toEqual([]);
       expect((await command(20)).asked).toEqual(["direct", "fiscal"]);
+      // 13:00 to 14:00 in New York, when results come out: 1 minute.
+      expect((await command(300)).asked).toEqual(["direct", "fiscal"]);
+      expect((await command(300.5)).asked).toEqual([]);
+      expect((await command(302)).asked).toEqual(["direct", "fiscal"]);
       today = { ...announced, highInvestmentRate: 3.71, highDiscountRate: 3.62, bidToCoverRatio: 3.1 };
-      expect((await command(30)).asked).toEqual(["direct", "fiscal"]);
-      const warm = await command(40);
+      expect((await command(303.5)).asked).toEqual(["direct", "fiscal"]);
+      const warm = await command(320);
       expect(warm.asked).toEqual([]);
       expect(warm.result.auctions.find((entry) => entry.id === "today")?.bidToCoverRatio).toBe(3.1);
       expect(warm.result.auctions).toHaveLength(cold.result.auctions.length);
       expect(warm.result.stale).toBe(false);
       // An hour after the last read the app refreshes the board, and a command asks again too.
-      expect((await command(91)).asked).toEqual(["direct", "fiscal"]);
+      expect((await command(365)).asked).toEqual(["direct", "fiscal"]);
     } finally {
       store.close();
     }

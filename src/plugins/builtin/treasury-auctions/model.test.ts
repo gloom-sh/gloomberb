@@ -3,9 +3,11 @@ import {
   AUCTION_HISTORY_WINDOWS,
   DEFAULT_AUCTION_SORT,
   auctionCommandRequest,
+  auctionDatesShowYear,
   auctionHistoryLabel,
   auctionHistoryWindow,
   buildAuctionColumns,
+  compactTerm,
   middleRateLabel,
   stopOutColumnLabel,
   stopOutLabel,
@@ -21,6 +23,8 @@ import {
   mergeAuctionSources,
   nextAuctionHistoryWindow,
   nextFilter,
+  normalizeAuctionSortOption,
+  parseAuctionSort,
   rateLabel,
   rateValue,
   stopOutVsAvgBp,
@@ -305,6 +309,20 @@ describe("command bar, notes and columns", () => {
     expect(auctionHistoryLabel(120)).toBe("120 days (default)");
   });
 
+  // `--sort=-indirect-pctl` listed indirect pctl 100 first: the option reader had dropped the "-".
+  test("a leading - sorts a column the other way round, in the command bar and fn AUCT alike", () => {
+    expect(parseAuctionSort("-indirect-pctl")).toEqual({ columnId: "indirectPctl", direction: "asc" });
+    expect(parseAuctionSort("indirect-pctl")).toEqual({ columnId: "indirectPctl", direction: "desc" });
+    // Each column's own way first: newest first, the shortest term first; - turns either.
+    expect([parseAuctionSort("-date"), parseAuctionSort("-term")]).toEqual([
+      { columnId: "date", direction: "asc" }, { columnId: "term", direction: "desc" },
+    ]);
+    expect([normalizeAuctionSortOption("-B/C"), normalizeAuctionSortOption("VS-MED-PCTL")]).toEqual(["-btc", "vs-median-pctl"]);
+    expect(() => normalizeAuctionSortOption("-nope")).toThrow(/a leading - sorts the other way/);
+    expect(auctionCommandRequest("10Y --sort -indirect-pctl").params).toMatchObject({ search: "10Y", auctionSort: "-indirect-pctl" });
+    expect(auctionCommandRequest("10Y --sort=-indirect-pctl").params).toMatchObject({ search: "10Y", auctionSort: "-indirect-pctl" });
+  });
+
   test("names a longer window only when it could list more", () => {
     const now = Date.parse("2026-11-07T12:00:00Z");
     const first = auction({ secType: "Note", securityTerm: "10-Year", cusip: "91282CRF0", auctionDate: "2026-08-12" });
@@ -333,6 +351,24 @@ describe("command bar, notes and columns", () => {
     expect(stopOutColumnLabel([single], "pane")).toBe("VS MED");
     expect(stopOutColumnLabel([multiple], "report")).toBe("Stop-out vs average (bp)");
     expect(stopOutColumnLabel([single, multiple], "pane")).toBe("VS AVG/MED");
+  });
+
+  // `--view after --history-days 365` read "Nov 10" (2026) above "Nov 12" (2025); at 720px the after view lost +5D, +20D
+  // and the CUSIP while "Note" on every row and "9-Year 10-Month" stayed.
+  test("dates carry their year when the rows span two; a tight after view keeps +5D and +20D over TYPE and writes TERM short", () => {
+    expect(auctionDatesShowYear(["2026-11-10", "2026-01-07"])).toBe(false);
+    expect(auctionDatesShowYear(["2026-11-10", "2025-11-12"])).toBe(true);
+    const tens = [auction({ secType: "Note", securityTerm: "10-Year" }), auction({ secType: "Note", securityTerm: "9-Year 10-Month" })];
+    const ids = (width: number, view: "results" | "after" = "after") => buildAuctionColumns({ rows: tens, view, width, showYear: true })
+      .map((column) => `${column.id}${column.compact ? "*" : ""}`);
+    expect(ids(150)).toEqual(["date", "type", "term", "rate", "stopOut", "stopOutPctl", "btc", "btcPctl", "indirect", "indirectPctl",
+      "dealerPctl", "after1d", "after5d", "after20d"]);
+    expect(ids(110)).toEqual(["date", "term*", "rate", "stopOut", "stopOutPctl", "btc", "btcPctl", "indirectPctl", "after1d", "after5d", "after20d"]);
+    expect(ids(72)).toEqual(["date", "term*", "rate", "btcPctl", "indirectPctl", "after5d", "after20d"]);
+    // Results keep the bidder split longest and give up the size and type first.
+    expect(ids(80, "results")).toEqual(["date", "type", "term*", "rate", "stopOut", "btc", "indirect", "direct", "dealer"]);
+    expect(compactTerm("9-Year 10-Month")).toBe("9Y10M");
+    expect(compactTerm("13-Week")).toBe("13W");
   });
 
   test("TERM is as wide as the terms listed, and the CUSIP shows where the pane has room for it", () => {

@@ -23,6 +23,7 @@ export const earningsCallsModule: PluginModule = {
       order: 34,
       component: EarningsCallsPane,
       instruments: ["equity"],
+      proOnly: true,
     });
   },
 

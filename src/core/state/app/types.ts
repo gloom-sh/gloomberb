@@ -118,6 +118,12 @@ export interface AppState {
   updateCheckInProgress: boolean;
   updateNotice: string | null;
   layoutHistory: Record<number, LayoutHistoryEntry>;
+  /**
+   * The pane-state keys set in this session, by pane id, as opposed to
+   * restored with the workspace (see `pane-choices.ts`). Session only: never
+   * saved and never sent to another window.
+   */
+  paneChoices?: Record<string, Readonly<Record<string, true>>>;
 }
 
 export type AppAction =
@@ -226,4 +232,6 @@ export type AppAction =
       value: unknown;
     }
   | { type: "REPLACE_PANE_STATE"; paneId: string; state: PaneRuntimeState }
+  /** The user chose this pane-state value now, even if it already holds what they chose (see `pane-choices.ts`). */
+  | { type: "CHOOSE_PANE_STATE"; paneId: string; key: string }
   | { type: "UPDATE_PANE_STATE"; paneId: string; patch: Partial<PaneRuntimeState> };

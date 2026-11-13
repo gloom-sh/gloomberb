@@ -4,7 +4,8 @@ import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneContext, He
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { fetchAward, fetchAwards } from "./client";
-import { AWARD_TABS, awardsAttributions, awardScope, awardsCoverageNotes, awardsEmptyReason, awardsPreviewNote, awardTypeLabel, futureAwardDatesNote, money } from "./model";
+import { AWARD_TABS, amountWithheld, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsEmptyReason, awardsPreviewNote, awardTypeLabel,
+  futureAwardDatesNote, money, statementText, WITHHELD_AMOUNT } from "./model";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 /**
@@ -23,7 +24,15 @@ async function notATicker(ticker: string, ctx: HeadlessPaneContext): Promise<str
   }
 }
 
+/** Marks a value its source withholds (GeBIZ's "under S$6,000"), with why; never an unreported one. */
+const withheldFields = (row: Pick<AwardRow, "awardAmount" | "amountWithheld">) => {
+  const why = amountWithheld(row);
+  return why ? { valueWithheld: true, amountWithheld: why } : {};
+};
+
+/** An award as a report row; `valueWithheld` marks a value its source withholds (GeBIZ), never an unreported one. */
 const awardRecord = (row: AwardRow) => ({ id: row.id, date: row.awardDate, dateBasis: row.dateBasis ?? "award", dataBasis: row.dataBasis ?? null,
+  ...withheldFields(row),
   fieldAsOf: row.fieldAsOf ?? null, fieldSourceUrls: row.fieldSourceUrls ?? null, recipient: row.recipient.name, ticker: row.entity?.ticker ?? null,
   classifications: row.classifications ?? [],
   agency: row.agency.name, jurisdiction: row.jurisdiction, type: row.awardType, currency: row.currency,
@@ -52,7 +61,7 @@ const dateBasis = (value: unknown) => value === "period-start" ? "Period start" 
 const comparison = (row: HeadlessPaneRow) => row.revenueComparison as { awardAmount?: string; annualRevenue?: string; basis?: string; periodEnd?: string } | null;
 const FEED_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" }, { key: "recipient", header: "Awardee" }, { key: "ticker", header: "Ticker" }, { key: "currency", header: "CCY" },
-  amount("value", "Value"), amount("obligated", "Obligated"), amount("ceiling", "Ceiling"), { key: "agency", header: "Agency" }, { key: "jurisdiction", header: "Country" },
+  { ...amount("value", "Value"), textFormat: (value, row) => value == null && row.valueWithheld ? WITHHELD_AMOUNT : money(value as string | null) }, amount("obligated", "Obligated"), amount("ceiling", "Ceiling"), { key: "agency", header: "Agency" }, { key: "jurisdiction", header: "Country" },
   { key: "performancePeriod", header: "Performance period", format: period }, { key: "title", header: "Contract" }, { key: "dateBasis", header: "Date basis", format: dateBasis },
 ];
 const EVENT_COLUMNS: HeadlessPaneColumn[] = [
@@ -71,7 +80,9 @@ const aggregateColumns = (label: string): HeadlessPaneColumn[] => [{ key: "label
 const LEADER_COLUMNS: HeadlessPaneColumn[] = [{ key: "label", header: "Company" }, { key: "ticker", header: "Ticker" }, { key: "currency", header: "CCY" }, share,
   amount("awardAmount", "Value"), amount("obligatedAmount", "Obligated"), count, { key: "sector", header: "Sector" }, amount("ceilingAmount", "Ceiling"), scope];
 const REVISION_COLUMNS: HeadlessPaneColumn[] = [{ key: "observedAt", header: "Observed" }, { key: "sourceUpdatedAt", header: "Source updated" }, { key: "supersedes", header: "Supersedes" },
-  nested((row) => (row.award as AwardRow | undefined)?.awardAmount, "awardAmount", "Value"), nested((row) => (row.award as AwardRow | undefined)?.obligatedAmount, "obligatedAmount", "Obligated"),
+  { ...nested((row) => (row.award as AwardRow | undefined)?.awardAmount, "awardAmount", "Value"),
+    textFormat: (_value, row) => row.valueWithheld ? WITHHELD_AMOUNT : money((row.award as AwardRow | undefined)?.awardAmount ?? null) },
+  nested((row) => (row.award as AwardRow | undefined)?.obligatedAmount, "obligatedAmount", "Obligated"),
   { key: "award", header: "Contract", format: (value) => text((value as AwardRow | undefined)?.title) }];
 const EDGE_COLUMNS: HeadlessPaneColumn[] = [{ key: "kind", header: "Kind" }, { key: "from", header: "From", format: (value) => text((value as { name?: string } | null)?.name) },
   { key: "to", header: "To", format: (value) => text((value as { name?: string } | null)?.name) }, { key: "currency", header: "CCY" }, amount("amount", "Amount"), { key: "awardId", header: "Award" }];
@@ -101,10 +112,15 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     if (args.options.award) {
       const detail = await fetchAward(String(args.options.award), ctx.apiClient, ctx.signal, args.options.revisionsCursor ? String(args.options.revisionsCursor) : undefined);
+      // The award's source's statements: its licence's, and how its amounts read when one it prints is withheld.
+      const withheld = [detail.row, ...detail.revisions.map((revision) => revision.award), ...detail.subawards, ...detail.modifications]
+        .some((row) => row && amountWithheld(row));
+      const notes = [statementText(detail.attribution), withheld ? statementText(detail.amountNotice) : ""].filter(Boolean);
       return { complete: !detail.locked && !detail.nextRevisionsCursor && !Object.values(detail.truncated ?? {}).some(Boolean), sections: [{ title: "Award", columns: FEED_COLUMNS, rows: detail.row ? [awardRecord(detail.row)] : [] },
-        { title: "Revisions", columns: REVISION_COLUMNS, rows: detail.revisions.map((row) => ({ ...row })) },
+        { title: "Revisions", columns: REVISION_COLUMNS, rows: detail.revisions.map((row) => ({ ...row, ...withheldFields(row.award) })) },
         { title: "Subawards", columns: FEED_COLUMNS, rows: detail.subawards.map(awardRecord) }, { title: "Modifications", columns: FEED_COLUMNS, rows: detail.modifications.map(awardRecord) },
-        { title: "Relationships", columns: EDGE_COLUMNS, rows: detail.edges.map((row) => ({ ...row })) }], metadata: { access: detail.access, locked: detail.locked, nextRevisionsCursor: detail.nextRevisionsCursor, truncated: detail.truncated } };
+        { title: "Relationships", columns: EDGE_COLUMNS, rows: detail.edges.map((row) => ({ ...row })) }], ...(notes.length ? { notes } : {}),
+        metadata: { access: detail.access, locked: detail.locked, nextRevisionsCursor: detail.nextRevisionsCursor, truncated: detail.truncated } };
     }
     const filter: AwardFilter = { ticker: args.rawArgument.trim().toUpperCase() || undefined, awardType: args.options.type as AwardFilter["awardType"], limit: Number(args.options.limit ?? 100) };
     for (const key of [...FILTER_KEYS, "cursor"] as const) if (args.options[key]) filter[key] = String(args.options[key]);
@@ -118,15 +134,20 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const printed = [...(["feed", "company", "all"].includes(tab) ? data.rows : []), ...(["company", "all"].includes(tab) ? data.history : []),
       ...(["agencies", "all"].includes(tab) ? data.agencies : []), ...(["sectors", "all"].includes(tab) ? [...(data.leaders ?? []), ...data.sectors] : []),
       ...(["events", "all"].includes(tab) ? data.alerts : [])];
-    const notes = [...awardsCoverageNotes(data), ...(futureDates ? [futureDates] : []), ...awardsAttributions(data, printed.map((row) => row.source))];
+    const record = awardRecord;
+    // How a withheld value reads, under the awards that print one.
+    const withheld = [...(["feed", "company", "all"].includes(tab) ? data.rows : []), ...(["events", "all"].includes(tab) ? data.alerts : [])]
+      .filter((row) => amountWithheld(row)).map((row) => row.source);
+    const notes = [...awardsCoverageNotes(data), ...(futureDates ? [futureDates] : []), ...awardsAttributions(data, printed.map((row) => row.source)),
+      ...awardsAmountNotices(data, withheld)];
     const empty = awardsEmptyReason(data);
     const sections: HeadlessBundleSection[] = [];
-    if (tab === "feed" || tab === "company" || tab === "all") sections.push({ title: "Awards", columns: FEED_COLUMNS, rows: data.rows.map(awardRecord) });
+    if (tab === "feed" || tab === "company" || tab === "all") sections.push({ title: "Awards", columns: FEED_COLUMNS, rows: data.rows.map(record) });
     if (tab === "company" || tab === "all") sections.push({ title: "Award cohorts by month and currency", columns: COHORT_COLUMNS, rows: data.history.map((row) => ({ ...row })) });
     if (tab === "agencies" || tab === "all") sections.push({ title: "Agency concentration", columns: aggregateColumns("Agency"), rows: data.agencies.map((row) => ({ ...row })) });
     if (tab === "sectors" || tab === "all") sections.push({ title: "Sector company leaders", columns: LEADER_COLUMNS, rows: (data.leaders ?? []).map((row) => ({ ...row })) },
       { title: "Sector totals", columns: aggregateColumns("Sector"), rows: data.sectors.map((row) => ({ ...row })) });
-    if (tab === "events" || tab === "all") sections.push({ title: "Awards relative to annual revenue", columns: EVENT_COLUMNS, rows: data.alerts.map(awardRecord) });
+    if (tab === "events" || tab === "all") sections.push({ title: "Awards relative to annual revenue", columns: EVENT_COLUMNS, rows: data.alerts.map(record) });
     return { complete: !data.locked && !data.nextCursor && data.status === "available" && !Object.values(data.truncated ?? {}).some(Boolean), sections,
       // Collection health is what the awards may be missing, a coverage note; only a failure is an error.
       ...(notes.length ? { notes } : {}),

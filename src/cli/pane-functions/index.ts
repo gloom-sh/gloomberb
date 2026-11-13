@@ -35,7 +35,7 @@ import { buildFunctionReport, resolvePaneFunctionReportSource } from "./report";
 import { expandResolvedArgument } from "./headless";
 import { defaultScreenshotPath, shotSizeWarnings } from "./screenshot-payload";
 import { renderDesktopShot } from "./screenshot-render";
-import { shotStatusIssues } from "./screenshot-assessment";
+import { shotCutColumnsWarning, shotStatusIssues } from "./screenshot-assessment";
 import {
   buildPaneCatalogEntries,
 } from "./catalog";
@@ -49,7 +49,7 @@ import { CLI_ERROR_CODE, failUnreachable, failWithError, isCliFailure, isSourceU
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
-import { selectReportTables, splitCsvFooter, type CliReportTables } from "../report-tables";
+import { selectReportTables, splitCsvFooter, withRefusedRows, type CliReportTables } from "../report-tables";
 import { cliOutputWritten, printCliResult, serializeCliResult, type CliErrorObject } from "../result";
 import { checkOutputPath, resolveOutputPath, writeOutputFile } from "../output-file";
 import type { CatalogCommandHit } from "../unknown-command";
@@ -464,7 +464,8 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const result = { data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}), ...(failure ? { failure } : {}) };
       const render = {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
-        ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
+        // A symbol of the list left out still has its row, with why.
+        ...(tabular ? { tables: selectReportTables(withRefusedRows(report.tables, parsed.refusedListings), resolved.tableSection) } : {}),
       };
       if (outputPath) {
         // A report with no data writes no file: a header alone would read as a screen that matched nothing. It fails
@@ -615,7 +616,9 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
       }
       // Text prints a warning on stderr, out of the way of piped output; JSON carries it in the envelope.
       const read = parsed.listing ? listingReadNotes(parsed.listing) : [];
-      const warnings = [...read, ...parsed.listingNotes ?? [], ...shotSizeWarnings(parsed.clamped, parsed)];
+      // A column cut at the table's edge is named, and does not make the picture unusable (or fail --strict).
+      const cut = shotCutColumnsWarning(result.cutColumns);
+      const warnings = [...read, ...parsed.listingNotes ?? [], ...shotSizeWarnings(parsed.clamped, parsed), ...cut ? [cut] : []];
       ctx.printResult({ data: result, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: (data) => {
           const issues = shotStatusIssues(data);

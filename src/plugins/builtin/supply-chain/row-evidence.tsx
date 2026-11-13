@@ -6,7 +6,7 @@ import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { counterpartyKind, counterpartyKindLabel, disclosedValue, disclosureText, dollars, isTaggedFact, nativeValue, periodText, ROLE_COLORS, roleLabel, shareParts, sourceLabel } from "./model";
+import { counterpartyKind, disclosedValue, disclosureText, dollars, isTaggedFact, nativeValue, periodText, relationshipLabel, ROLE_COLORS, shareParts, sourceLabel, sourceValueLabel, sourceValueText } from "./model";
 import { canShowQuote, corroborationLabel, evidenceDate, evidenceLabel, isUnconfirmed, tierLabel } from "./trust";
 import { DisclosureQuote } from "./disclosure-quote";
 
@@ -42,7 +42,7 @@ export function SupplySources({ row, width, onOpenSource }: { row: SupplyRow; wi
         <KeyValueRow label="Publisher" value={item.publisher} detail={item.publishedAt.slice(0, 10)} labelWidth={20} />
         <KeyValueRow label="Evidence" value={tierLabel(item.tier)} detail={item.status !== "active" ? item.status : item.textOrigin === "asr" ? "Speech transcript" : undefined} labelWidth={20} />
         {item.verificationStatus === "lead" ? <KeyValueRow label="Verification" value="Unconfirmed supporting item" labelWidth={20} /> : null}
-        {item.value !== null ? <KeyValueRow label={item.valueKind ?? "Source value"} value={`${item.value.toLocaleString("en-US")} ${[item.currency, item.valueUnit].filter(Boolean).join(" ")}`} labelWidth={20} /> : null}
+        {sourceValueText(item, row.nativeCurrency) ? <KeyValueRow label={sourceValueLabel(item.valueKind)} value={sourceValueText(item, row.nativeCurrency)!} labelWidth={20} /> : null}
         {canShowQuote(item) && item.quote ? <DisclosureQuote role={row.role} quote={item.quote} quoteLanguage={item.quoteLanguage} width={width} /> : <KeyValueRow label="Quotation" value={item.textOrigin === "snippet" ? "Original text not verified" : "Link only"} labelWidth={20} />}
         {canShowQuote(item) && item.englishGloss ? <SourceGloss text={item.englishGloss} width={width} /> : null}
         {sourceLink(item.url, "Open source")}
@@ -76,7 +76,7 @@ export function RowEvidence({ row, focusId, width, height, focused }: { row: Sup
     { id: "published", label: "Published", value: evidenceDate(row), detail: evidenceLabel(row) },
     { id: "confidence", label: "Confidence", value: `${Math.round(row.confidence * 100)}%` },
   ];
-  const kind = counterpartyKindLabel(row);
+  const kind = counterpartyKind(row);
   return <Box width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} minHeight={0}>
     <DetailScrollBody ref={scrollRef} resetScrollKey={row.id}>
       <StatGrid items={figures} width={width} />
@@ -85,8 +85,8 @@ export function RowEvidence({ row, focusId, width, height, focused }: { row: Sup
         <Box flexDirection="row" gap={1}><Badge tone={isUnconfirmed(row) ? "neutral" : "accent"} label={evidenceLabel(row)} />
           {row.leadStatus === "verified" ? <Badge tone="positive" label="Verified" /> : null}</Box>
         <KeyValueRow label="Reporting company" value={row.reportingEntity.name} labelWidth={20} />
-        <KeyValueRow label="Relationship" value={`${roleLabel(row.role)} · ${row.direction === "in" ? "inbound" : row.direction === "out" ? "outbound" : "mutual"}`} color={ROLE_COLORS[row.role]} labelWidth={20} />
-        {kind ? <KeyValueRow label="Counterparty type" value={counterpartyKind(row) === "group" ? row.entityScope === "group" ? "Named corporate group" : "Aggregate concentration group" : "Undisclosed by the filer"} labelWidth={20} /> : null}
+        <KeyValueRow label="Relationship" value={`${relationshipLabel(row)} · ${row.direction === "in" ? "inbound" : row.direction === "out" ? "outbound" : "mutual"}`} color={ROLE_COLORS[row.role]} labelWidth={20} />
+        {kind !== "company" ? <KeyValueRow label="Counterparty type" value={kind === "group" ? row.entityScope === "group" ? "Named corporate group" : "Aggregate concentration group" : "Undisclosed by the filer"} labelWidth={20} /> : null}
         {row.entityScope === "group" && !row.counterparty.aggregate ? <KeyValueRow label="Metric scope" value="Corporate group" labelWidth={20} /> : null}
         {native && row.usd !== null ? <KeyValueRow label="USD amount" value={dollars(row)} labelWidth={20} /> : null}
         <SupplyVerification row={row} />

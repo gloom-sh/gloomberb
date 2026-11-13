@@ -40,6 +40,8 @@ test("a FRED series the catalog charts points to the fred command, not a search 
   expect(withSearchHints("Not a ticker: DFEDTARU.", ["HP", "dfedtaru"], isFred)).toBe("Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.");
   expect(withSearchHints("Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.", ["DFEDTARU"], isFred))
     .toBe("Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.");
+  // The Treasury's daily yields are FRED series too, whether or not a catalog series reads them.
+  expect(withSearchHints("Not a ticker: DGS2.", ["DGS2"])).toBe("Not a ticker: DGS2. Try `gloom fred DGS2`.");
   // A venue makes it a listing, which a search looks for.
   expect(withSearchHints("Not a ticker: DFEDTARU:NYSE.", ["DFEDTARU:NYSE"], isFred))
     .toBe("Not a ticker: DFEDTARU:NYSE. Try `gloom search DFEDTARU`.");

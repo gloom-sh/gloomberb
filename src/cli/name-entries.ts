@@ -7,7 +7,7 @@ import { isNotATickerMessage } from "./not-a-ticker";
 import { splitSymbolWords } from "./symbol-args";
 import { isNumberCell } from "./symbol-cells";
 import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
-import { unknownBloombergMarket } from "../tickers/terminal-codes";
+import { unknownBloombergMarket, unreadBloombergCode } from "../tickers/terminal-codes";
 import { renamedListingFor } from "../tickers/renamed-listings";
 
 /**
@@ -40,7 +40,9 @@ export async function readNameEntryGroups(
   // A pasted list's names are searched in batches and their quotes asked together, a few entries at a time: a list
   // of hundreds of names is a few requests, never hundreds at once.
   // A terminal's code abroad (`VOD LN`) is its listing as written: nothing searches for it as a name.
-  const names = entries.filter((entry) => isCompanyNameInput(entry) && !unknownBloombergMarket(entry) && !settledTerminalCode(entry));
+  // So is a code no symbol is read from (`GTJPY10Y Govt`): its lookup refuses it, never GTJPY10Y and the GOVT fund.
+  const names = entries.filter((entry) => isCompanyNameInput(entry) && !unknownBloombergMarket(entry) && !unreadBloombergCode(entry)
+    && !settledTerminalCode(entry));
   const full = source as DataProvider;
   const dataProvider = names.length > 1 && full.searchBatch
     ? (await batchedListLookups(full, names.map((name) => ({ searches: companyNameQueries(name), changes: null })))).dataProvider
@@ -48,7 +50,7 @@ export async function readNameEntryGroups(
   const read = await mapWithConcurrency(entries, NAME_LOOKUPS_AT_ONCE, async (entry) => {
     // A terminal's code for a listing ("JPM US Equity", "VOD LN") is one entry, like a company's name, and so is a
     // line written as one whose market code is unknown ("AAPL GP"): its lookup refuses it, never AAPL and GP.
-    if (unknownBloombergMarket(entry) || await readTerminalCodeArg(dataProvider, entry)) return [entry];
+    if (unknownBloombergMarket(entry) || unreadBloombergCode(entry) || await readTerminalCodeArg(dataProvider, entry)) return [entry];
     if (!isCompanyNameInput(entry)) return splitSymbolWords([entry]);
     const named = await findListingOfCompanyName(dataProvider, entry).catch(busyAsAnswer);
     const busy = isProviderBusy(named);
@@ -126,7 +128,9 @@ export async function readPhraseArgument(
   phrase: string,
   dataProvider: Pick<DataProvider, "search" | "getQuotesBatch">,
 ): Promise<PhraseReading> {
-  if (unknownBloombergMarket(phrase) || await readTerminalCodeArg(dataProvider, phrase)) return { kind: "symbols", symbols: [phrase] };
+  if (unknownBloombergMarket(phrase) || unreadBloombergCode(phrase) || await readTerminalCodeArg(dataProvider, phrase)) {
+    return { kind: "symbols", symbols: [phrase] };
+  }
   // A renamed company's former name ("Centrais Elétricas Brasileiras") is the listing it trades as now.
   if (renamedListingFor(phrase)) return { kind: "name", name: phrase };
   const words = splitSymbolWords([phrase]);

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "../../../remote/semantic-tree";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
@@ -19,10 +20,13 @@ import { entity, supplyPayload, supplyRow } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 let commits = 0;
+/** The mounted pane's semantic tree: what a report or an export of its table reads. */
+let registry = createRemoteUiRegistry();
 const countCommit = () => { if (++commits > 100) throw new Error("Supply chain pane did not settle within 100 React commits"); };
 afterEach(() => { setCloudApiFetchTransport(null); supplyChainCache.reset(); graphCache.reset(); });
 async function mount(width: number, height: number, tab = "table", view = "says", onNavigate: (id: string, symbol: string | undefined) => void = () => {}, settings: Record<string, unknown> | string = {}) {
   commits = 0;
+  registry = createRemoteUiRegistry();
   supplyChainCache.attach(new MemoryPluginPersistence());
   const id = "supply-chain:test";
   const state = createInitialState(createTestPaneConfig(join(homedir(), ".cache/gloom-smoke/supply-chain/focused-tests"), {
@@ -40,7 +44,7 @@ async function mount(width: number, height: number, tab = "table", view = "says"
     <PaneKeyboardScrollController paneId={id} focused />
   </TestPaneProvider>;
   }
-  await act(async () => { await tui.render(<Harness />, { width, height }); });
+  await act(async () => { await tui.render(<RemoteUiRegistryProvider registry={registry}><Harness /></RemoteUiRegistryProvider>, { width, height }); });
 }
 
 test("initial tier fallback and changing the evidence filter settle without a cached loader render loop", async () => {
@@ -111,6 +115,29 @@ test("reverse table labels the percentage denominator and diagram pages a crowde
 });
 
 
+
+test("a related party says so on its flow card and in the table's report, not only in a tooltip or a chip", async () => {
+  const group = supplyRow("cssc-group", { counterparty: entity("cssc-group", "China State Shipbuilding Group"), relatedParty: true, entityScope: "group",
+    pctOfRevenue: null, pctBasis: null, nativeAmount: 1_042_897_044.18, nativeCurrency: "CNY", nativeScale: 1, quote: "中国船舶集团有限公司及其子公司 销售商品 1,042,897,044.18" });
+  const data = supplyPayload({ says: [group, supplyRow()], totalRows: 2 });
+  data.counts.says.customer = 2;
+  setCloudApiFetchTransport(async () => Response.json(data));
+  await mount(140, 30, "flow");
+  // A narrow card keeps the figure whole beside a shorter label; a wide one names the group.
+  expect(await tui.waitForFrameToContain("related · 1,042,897,044.18 CNY")).not.toContain("1,042,897,0...");
+  await tui.destroy();
+  await mount(220, 30, "flow");
+  await tui.waitForFrameToContain("related group · 1,042,897,044.18 CNY");
+  await tui.destroy();
+  await mount(140, 24);
+  await tui.waitForFrameToContain("China State");
+  await tui.renderFrames(2);
+  const table = registry.snapshot().find((node) => node.role === "table")!;
+  const rows = registry.detail(table.id)!.metadata!.rows as { key: string; cells: { columnId?: string; text: string }[] }[];
+  const role = (key: string) => rows.find((row) => row.key === key)?.cells.find((cell) => cell.columnId === "role")?.text;
+  // A copy or export of the table keeps the label; a plain customer stays a customer.
+  expect([role("cssc-group"), role("customer")]).toEqual(["Related-party customer", "Customer"]);
+});
 
 test("a share never shows without what it is a share of, at any pane width", async () => {
   // A tagged fact's context and a prose denominator are too long for a narrow column; a reverse share names its reporter.
@@ -206,7 +233,7 @@ test("path evidence preserves every hop and opens the filter form without losing
   await mount(120, 27, "path", "says", () => {}, { to: "3" });
   await tui.waitForFrameToContain("ROUTE");
   await tui.emitKeypress({ name: "return" });
-  const frame = await tui.waitForFrameToContain("Estimated exposure");
+  const frame = await tui.waitForFrameToContain("Exposure");
   expect(frame).toContain("20% est. of 1 revenue");
   expect(frame).toContain("of 1 Compute & Networking revenue");
   expect(frame).toContain("We depend on this supplier.");

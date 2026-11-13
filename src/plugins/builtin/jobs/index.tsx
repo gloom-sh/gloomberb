@@ -24,6 +24,7 @@ export const jobsModule: PluginModule = {
       order: 37,
       component: JobsResearchTab,
       instruments: ["equity"],
+      proOnly: true,
     });
   },
 

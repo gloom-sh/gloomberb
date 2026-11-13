@@ -41,6 +41,8 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "polymarket.us",
   "thebuildout.ai",
   "www.bls.gov",
+  // The Bank of Japan's meeting schedule, credited for MDAY's and HIVG's BoJ decision days; the figures come through Gloom Cloud.
+  "www.boj.or.jp",
   "www.cboe.com",
   "www.cnn.com",
   "www.deribit.com",
@@ -51,6 +53,8 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "www.finra.org",
   "www.ibkrguides.com",
   "www.interactivebrokers.com",
+  // JPX's listed-company file, named as the source of the Japanese names search reads; only the snapshot script fetches it.
+  "www.jpx.co.jp",
   "www.nahb.org",
   "www.nasdaq.com",
   "www.sec.gov",

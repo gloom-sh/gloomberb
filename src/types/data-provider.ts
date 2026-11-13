@@ -265,6 +265,12 @@ export interface QuoteBatchResult {
    * stale, or none.
    */
   followUp?: "default" | "refresh";
+  /**
+   * The error is a source failing (a timeout, the request limit, an
+   * unreachable service), not an answer about the listing: asked again
+   * shortly it may be quoted. Kept where `error` crosses a bridge as text.
+   */
+  transient?: boolean;
 }
 
 export interface QuoteBatchOptions {

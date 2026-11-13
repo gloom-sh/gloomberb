@@ -62,6 +62,11 @@ export interface ParsedPaneFunctionArgs {
    * code was read as, and the ones left out of data that covers US listings only.
    */
   listingNotes?: string[];
+  /**
+   * The listings of a list `applyListingArgument` left out, each with why (data that covers US listings only, a
+   * pair with no options of its own): an export still has a row for each, its reason in the status column.
+   */
+  refusedListings?: Array<{ symbol: string; reason: string }>;
 }
 
 export interface ParsedPaneCatalogArgs {

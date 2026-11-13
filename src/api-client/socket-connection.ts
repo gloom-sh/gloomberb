@@ -26,6 +26,17 @@ const SOCKET_SILENCE_CHECK_MS = 2_500;
 /** The first reconnect waits about this long; each failure doubles it, up to RECONNECT_MAX_DELAY_MS. */
 const RECONNECT_FIRST_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 10_000;
+/**
+ * Each reconnect waits its delay times a random factor in this range: the
+ * first one 0.25 to 2.25 s. A server restart or a proxy reload drops every
+ * client in the same second; spread over two seconds, their reconnects do
+ * not arrive as one burst. The first one still lands inside the quote
+ * stream's grace (QUOTE_STREAM_DOWN_GRACE_MS), so nothing reads as stale.
+ */
+const RECONNECT_JITTER_MIN = 0.25;
+const RECONNECT_JITTER_SPAN = 2;
+/** The longest the first reconnect after a drop waits. */
+export const SOCKET_FIRST_RECONNECT_MAX_MS = RECONNECT_FIRST_DELAY_MS * (RECONNECT_JITTER_MIN + RECONNECT_JITTER_SPAN);
 /** Outgoing frames worth a debug log line: the subscription changes. */
 const LOGGED_FRAME_TYPES = new Set<unknown>([
   "market.subscribe",
@@ -265,7 +276,7 @@ export class SocketConnection {
     if (this.reconnectTimer || !this.owner.wanted()) return;
     // Jittered so clients dropped together by a server restart do not all
     // come back in the same instant.
-    const delay = Math.round(this.reconnectDelayMs * (0.5 + Math.random()));
+    const delay = Math.round(this.reconnectDelayMs * (RECONNECT_JITTER_MIN + RECONNECT_JITTER_SPAN * Math.random()));
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, RECONNECT_MAX_DELAY_MS);

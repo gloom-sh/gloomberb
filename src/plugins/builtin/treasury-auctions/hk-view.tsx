@@ -35,6 +35,7 @@ import {
   buildHkColumns,
   DEFAULT_HK_SORT,
   firstHkSortDirection,
+  hkTenderTerm,
   formatHkAmount,
   formatHkRate,
   HK_SEARCH_FIELDS,
@@ -44,13 +45,13 @@ import {
   hkRate,
   hkSize,
   hkSizeWorkedOut,
-  hkSortColumn,
   hkSortName,
   hkTenderId,
   hkTenderName,
   hkTenderType,
   isSpread,
   loadHkTenders,
+  parseHkSort,
   visibleHkTenders,
   hkWindowStart,
   type HkColumn,
@@ -65,15 +66,16 @@ import {
   type AuctionFilter,
 } from "./model";
 import { TREASURY_AUCTIONS_PANE_ID } from "./types";
+import { auctionViewHints } from "./keys";
 
 const NO_TENDERS: HkTender[] = [];
 
-/** A kept sort's name (`btc:asc`) as Hong Kong's columns read it; a US-only one is the default. */
+/** A kept sort's name (`btc:asc`, `-btc`) as Hong Kong's columns read it; a US-only one is the default. */
 function readHkSort(value: string | null): HkSortPreference {
   const [name, direction] = (value ?? "").split(":");
-  const columnId = name ? hkSortColumn(name) : null;
-  if (!columnId) return DEFAULT_HK_SORT;
-  return { columnId, direction: direction === "asc" || direction === "desc" ? direction : firstHkSortDirection(columnId) };
+  const sort = name ? parseHkSort(name) : null;
+  if (!sort) return DEFAULT_HK_SORT;
+  return direction === "asc" || direction === "desc" ? { columnId: sort.columnId, direction } : sort;
 }
 
 const writeHkSort = (sort: HkSortPreference) => `${hkSortName(sort.columnId)}:${sort.direction}`;
@@ -91,7 +93,7 @@ function renderTenderCell(tender: HkTender, column: HkColumn, rowState: { select
     case "type":
       return { text: hkTenderType(tender), color: typeColor(tender, rowState.selected), attributes: TextAttributes.BOLD };
     case "term":
-      return { text: tender.term, color: selected ?? colors.text };
+      return { text: hkTenderTerm(tender), color: selected ?? colors.text };
     case "rate":
       return { text: formatHkRate(tender, hkRate(tender), "—"), color: selected ?? colors.textBright };
     case "btc":
@@ -123,7 +125,7 @@ function HkTenderDetail({ tender, width }: { tender: HkTender; width: number }) 
         <Box flexDirection="row" height={1} gap={2}>
           <Text fg={colors.textDim}>{`issued ${hkDateText(tender.date)}`}</Text>
           {tender.issue && <Text fg={colors.textDim}>{tender.issue}</Text>}
-          {tender.reopening && <Text fg={colors.textDim}>re-opening</Text>}
+          {tender.reopening && <Text fg={colors.textDim}>{`re-opening of a ${tender.term} issue`}</Text>}
         </Box>
         <Box height={1} />
         {isSpread(tender)
@@ -228,7 +230,7 @@ export function HkTendersView({
     return handlePaneKey(event);
   }, [focusSearch, handlePaneKey]);
 
-  const showYear = auctionDatesShowYear(historyDays);
+  const showYear = useMemo(() => auctionDatesShowYear(rows.map((tender) => tender.date)), [rows]);
   const columns = useMemo(() => buildHkColumns({ showYear, rows, width: width - 1 }), [rows, showYear, width]);
   const renderRow = useCallback((tender: HkTender, column: HkColumn, _index: number, rowState: { selected: boolean }) => (
     renderTenderCell(tender, column, rowState, showYear)
@@ -249,17 +251,18 @@ export function HkTendersView({
     if (fetchedAt && savedAt == null) segments.push(ageFooterSegment(formatRelativeAge(fetchedAt)));
     return segments;
   }, [board, error, fetchedAt, filter, historyDays, loading, savedAt, searchQuery, stale, tenders.length, utcDay]);
+  const toggleMarket = useCallback(() => marketFilter.onChange("us"), [marketFilter]);
   const hints = useMemo(() => detailOpen || tenders.length === 0 ? [] : [
     { id: "search", key: "/", label: "search", onPress: focusSearch },
     { id: "filter", key: "f", label: "ilter", onPress: cycleFilter },
-  ], [cycleFilter, detailOpen, focusSearch, tenders.length]);
+    ...auctionViewHints({ market: "hk", toggleMarket, cycleSort }),
+  ], [cycleFilter, cycleSort, detailOpen, focusSearch, tenders.length, toggleMarket]);
   // `o` opens HKMA's page for the dataset the selected tender came from.
   useExternalLinkFooter({
     registrationId: TREASURY_AUCTIONS_PANE_ID, focused: focused && !searchFocused, url: selected ? hkDatasetPage(selected) : undefined, info, hints,
   });
 
   usePaneMenuItems("treasury-auctions:sort-keys", () => detailOpen || tenders.length === 0 ? null : [
-    { id: "sort-next", label: "Next Sort Column", accelerator: "]", onSelect: () => cycleSort(1) },
     { id: "sort-previous", label: "Previous Sort Column", accelerator: "[", onSelect: () => cycleSort(-1) },
   ], [tenders.length, cycleSort, detailOpen]);
 
@@ -319,7 +322,7 @@ export function HkTendersView({
         detailOpen={detailOpen && !!selected}
         onBack={() => setDetailOpen(false)}
         detailContent={selected ? <HkTenderDetail tender={selected} width={width} /> : null}
-        detailTitle={selected ? `${hkTenderName(selected)} ${selected.term}` : undefined}
+        detailTitle={selected ? `${hkTenderName(selected)} ${hkTenderTerm(selected)}` : undefined}
         rootBefore={queryBar}
         onRootKeyDown={handleRootKeyDown}
         onDetailKeyDown={handlePaneKey}

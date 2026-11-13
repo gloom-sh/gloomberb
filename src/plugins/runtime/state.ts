@@ -17,6 +17,7 @@ import { usePluginRenderContext } from "./context";
 const DEFAULT_PLUGIN_PANE_STATE_COMMIT_DELAY_MS = 300;
 
 import { deletePluginPaneStateValue, getPluginPaneStateValue } from "../../layout/pane-state";
+import { isPaneChoice, pluginChoiceKey } from "../../core/state/app/pane-choices";
 export { deletePluginPaneStateValue, getPluginPaneStateValue, setPluginPaneStateValue } from "../../layout/pane-state";
 
 /**
@@ -82,6 +83,25 @@ export function usePluginPaneState<T>(key: string, fallback: T, paneId?: string)
   }, [dispatch, key, pluginId, scopedPaneId, stateRef]);
 
   return [value, setValue];
+}
+
+/**
+ * Whether this plugin's pane-state `key` was chosen in this session rather
+ * than restored with the workspace, and the call for a pick that may leave the
+ * value as it is (see `pane-choices.ts`). Any write of the key already counts.
+ */
+export function usePluginPaneChoice(key: string, paneId?: string): [chosen: boolean, choose: () => void] {
+  const { pluginId } = usePluginRenderContext();
+  const contextPaneId = useOptionalPaneInstanceId();
+  const scopedPaneId = paneId ?? contextPaneId;
+  if (!scopedPaneId) throw new Error("usePluginPaneChoice requires a pane id or PaneInstanceProvider");
+  const dispatch = useAppDispatch();
+  const choiceKey = pluginChoiceKey(pluginId, key);
+  const chosen = useAppSelector((state) => isPaneChoice(state, scopedPaneId, choiceKey));
+  const choose = useCallback(() => {
+    dispatch({ type: "CHOOSE_PANE_STATE", paneId: scopedPaneId, key: choiceKey });
+  }, [choiceKey, dispatch, scopedPaneId]);
+  return [chosen, choose];
 }
 
 export function useDebouncedPluginPaneState<T>(
