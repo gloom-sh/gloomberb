@@ -4,6 +4,7 @@ import { formatUtcTime, parseReportTime } from "../../utils/utc-time";
 import type { MarketContext } from "../types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
+import { functionsForQuestion, type PaneFunctionCatalog } from "./catalog";
 import { collectShotSymbols } from "./data";
 import { lockNoteLines } from "./lock-note";
 import { createHeadlessPaneContext } from "./headless";
@@ -437,12 +438,17 @@ async function signedOutDomReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
   rawArg: string,
+  catalog?: PaneFunctionCatalog,
 ): Promise<PaneFunctionReport | null> {
   if (!resolved.pane.signInWall || !resolved.pane.reportLockNote || resolvePersistedCloudSessionToken(context)) return null;
   const symbols = collectShotSymbols(resolved, rawArg);
+  const argument = rawArg.trim();
   const note = await resolved.pane.reportLockNote({
     gate: "sign-in", symbol: symbols[0] ?? null, token: resolved.token,
     context: createHeadlessPaneContext(resolved, context, new AbortController().signal),
+    // A question asked behind the wall (ASKG) is offered the functions the catalog finds for it.
+    ...argument ? { argument } : {},
+    ...catalog ? { functionsFor: (question: string, limit: number) => functionsForQuestion(catalog, question, limit) } : {},
   });
   const reason = lockNoteReason(note);
   return {
@@ -473,8 +479,9 @@ export async function buildDomFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
   rawArg: string,
+  catalog?: PaneFunctionCatalog,
 ): Promise<PaneFunctionReport> {
-  const signedOut = await signedOutDomReport(resolved, context, rawArg);
+  const signedOut = await signedOutDomReport(resolved, context, rawArg, catalog);
   if (signedOut) return signedOut;
   let result: PaneScreenshotResult;
   try {
