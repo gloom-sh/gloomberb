@@ -451,8 +451,8 @@ describe("CompositeChart", () => {
     expect(frame).toContain("ACME Price");
     expect(frame).toContain("OTHER Revenue");
     expect(frame).toContain("$103");
-    expect(frame.match(/Jan 1/g)).toHaveLength(1);
-    expect(frame.match(/Jan 3/g)).toHaveLength(1);
+    expect(frame.match(/1 Jan/g)).toHaveLength(1);
+    expect(frame.match(/3 Jan/g)).toHaveLength(1);
   });
 
   test("a futures price reads in the legend as its number and contract unit, while its axis keeps the currency", async () => {
@@ -1568,7 +1568,7 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => tui.setup().renderOnce());
-    expect(tui.frame()).toContain("Jan 1");
+    expect(tui.frame()).toContain("1 Jan");
     expect(viewportChanges).toEqual([]);
 
     const zoomIn = keyEvent("=");
@@ -1578,13 +1578,13 @@ describe("CompositeChart", () => {
     await act(async () => tui.setup().renderOnce());
 
     expect(zoomIn.defaultPrevented).toBe(true);
-    expect(tui.frame()).not.toContain("Jan 1");
+    expect(tui.frame()).not.toContain("1 Jan");
     expect(viewportChanges.at(-1)?.start).not.toBe("2025-01-01T00:00:00.000Z");
     expect(viewportInteractions.at(-1)).toBe("zoom");
 
     await act(async () => chartShortcut?.(keyEvent("0")));
     await act(async () => tui.setup().renderOnce());
-    expect(tui.frame()).toContain("Jan 1");
+    expect(tui.frame()).toContain("1 Jan");
     expect(viewportChanges.at(-1)).toBeNull();
     expect(viewportInteractions.at(-1)).toBe("reset");
   });
@@ -1796,7 +1796,7 @@ describe("CompositeChart", () => {
     expect(viewportChanges.at(-1)).toEqual(pannedViewport);
     expect(viewportInteractions).not.toContain("sync");
     expect(tui.frame()).not.toContain("No chart data");
-    expect(tui.frame()).not.toContain("Jan 9");
+    expect(tui.frame()).not.toContain("9 Jan");
   });
 
   test("keeps the latest pan through delayed adaptive viewport and series echoes", async () => {
@@ -1958,7 +1958,7 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => tui.setup().renderOnce());
-    expect(tui.frame()).toContain("Jan 5");
+    expect(tui.frame()).toContain("5 Jan");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(10, 3));
@@ -1969,7 +1969,7 @@ describe("CompositeChart", () => {
 
     expect(activations).toBe(1);
     expect(cursorChanges.length).toBeGreaterThan(0);
-    expect(tui.frame()).toContain("Jan 3");
+    expect(tui.frame()).toContain("3 Jan");
   });
 
   test("zooms to a shift-drag selection instead of panning", async () => {
@@ -3009,9 +3009,9 @@ describe("CompositeChart", () => {
     );
     await act(async () => tui.setup().renderOnce());
     const frame = tui.frame();
-    expect(frame).toContain("Aug 10");
-    expect(frame).toContain("Sep 10");
-    expect(frame).not.toContain("Jul 31");
+    expect(frame).toContain("10 Aug");
+    expect(frame).toContain("10 Sep");
+    expect(frame).not.toContain("31 Jul");
   });
 
   test("zooms around the mouse pointer with control-wheel", async () => {
@@ -3033,7 +3033,7 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => tui.setup().renderOnce());
-    expect(tui.frame()).toContain("Jan 9");
+    expect(tui.frame()).toContain("9 Jan");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
@@ -3043,7 +3043,7 @@ describe("CompositeChart", () => {
     });
     await act(async () => tui.setup().renderOnce());
 
-    expect(tui.frame()).not.toContain("Jan 9");
+    expect(tui.frame()).not.toContain("9 Jan");
   });
 
   test("uses a supplied market timeline to keep control-wheel zoom under the pointer", async () => {

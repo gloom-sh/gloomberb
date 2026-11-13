@@ -228,7 +228,7 @@ describe("PortfolioAnalyticsPane", () => {
         brokerAccounts={withAccount ? { "ibkr-flex": [{ accountId: "DU12345", name: "Fixture", currency: "USD",
           netLiquidation: 6000, totalCashValue: 6000, grossPositionValue: 0 }] } : {}} />, { width: 100, height: 36 });
     });
-    const frame = await tui.waitForFrameToContain("Sep 1 2026");
+    const frame = await tui.waitForFrameToContain("1 Sep 2026");
     if (withAccount) {
       expect(frame).toMatch(figure("Net Liq", "6,000"));
       expect(frame).toMatch(figure("Cash", "6,000"));
@@ -245,7 +245,7 @@ describe("PortfolioAnalyticsPane", () => {
     const lines = frame.split("\n");
     const legend = lines.findIndex((line) => line.includes("● Value (USD)"));
     expect(legend).toBeGreaterThan(0);
-    expect(lines.slice(legend).some((line) => line.includes("Sep 1 2026"))).toBe(true);
+    expect(lines.slice(legend).some((line) => line.includes("1 Sep 2026"))).toBe(true);
     expect(frame).not.toContain("Est. Sharpe");
     expect(frame).not.toContain("SECTOR");
   });
@@ -571,11 +571,11 @@ for (const scenario of ["unknown currency", "dated correction", "empty observati
       if (scenario === "dated correction") {
         // The correction leaves Sep 10 without a value, so the line ends on Jan 2 and the footer says why.
         expect(frame).toContain("● Value (USD) 11.0k");
-        expect(frame).not.toContain("Sep 10 2026");
+        expect(frame).not.toContain("10 Sep 2026");
       } else {
         expect(frame).toContain("● Value (unknown currency) 21.0k");
-        expect(frame).toContain("Jan 1 2026");
-        expect(frame).toContain("Sep 10 2026");
+        expect(frame).toContain("1 Jan 2026");
+        expect(frame).toContain("10 Sep 2026");
       }
       expect(frame).not.toContain("Value (JPY)");
       if (scenario === "dated correction") {

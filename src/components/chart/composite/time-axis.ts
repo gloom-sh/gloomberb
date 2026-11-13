@@ -400,7 +400,8 @@ function clockLabel(timestamp: number, unit: CompositeTimeAxisUnit): string {
 
 function calendarLabel(timestamp: number, includeYear: boolean): string {
   const date = new Date(timestamp);
-  const base = `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  // Day-first, as every date outside the chart is written: "9 Nov 2026".
+  const base = `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
   return includeYear ? `${base} ${date.getUTCFullYear()}` : base;
 }
 
