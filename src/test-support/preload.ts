@@ -1,4 +1,5 @@
 import { beforeEach } from "bun:test";
+import { resetInstallExperimentsForTests } from "../api-client/install-experiments";
 import { resetSeenPaneNoticesForTest } from "../components/pane-notice-seen";
 import { resetListingIndexForTests } from "../tickers/search/listing-index";
 import { resetOpeningTickerPanesForTests } from "../state/opening-ticker-panes";
@@ -21,13 +22,15 @@ import { setCliAsciiLocaleOverride, setCliColorEnabledOverride, setCliPlainOverr
  * leave a later test's footer icon muted instead of warning yellow. So are the
  * listings search answered, which would name a later test's symbol before its
  * own search does, and so are panes still waiting on a ticker lookup, which
- * would show a later test's pane as loading.
+ * would show a later test's pane as loading. An install experiment's arm is
+ * asked once a session, and would answer a later test from the first.
  */
 beforeEach(() => {
   resetCrashReporterForTests();
   resetSeenPaneNoticesForTest();
   resetListingIndexForTests();
   resetOpeningTickerPanesForTests();
+  resetInstallExperimentsForTests();
   setCliAsciiLocaleOverride(null);
   setCliColorEnabledOverride(null);
   setCliPlainOverride(null);

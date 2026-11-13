@@ -102,6 +102,13 @@ How often:
   - experiment assignments
 - Events do not include the ticker you saved or the contents of your research.
 
+**Install experiments**, such as a new first-run step tried on half of new installs:
+
+- When a first run reaches a step under test, the app asks Gloom's API which version to show, with the install id, surface, app version and operating system. The API picks it from the install id, so it stays the same on that install, and counts it there.
+- When the step closes, the app sends how many tickers it added (0 to 3) and whether it was skipped, never which tickers.
+- These go under the install id, like the usage counts, and are never tied to your account.
+- With usage counts off, the app shows the usual first run and sends nothing.
+
 ## Attention Counts
 
 - Attention Counts are separate and on by default.

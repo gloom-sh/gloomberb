@@ -57,6 +57,8 @@ export type {
   CrashReportSurface,
   CrashReportsPayload,
   FunctionUsageCount,
+  InstallExperimentAnswer,
+  InstallExperimentReport,
   UpdateFailureReport,
   UsageCountsPayload,
   UsageCountsSurface,
@@ -926,6 +928,7 @@ class GloomApiClient {
   setRoadmapVote = this.roadmap.setRoadmapVote.bind(this.roadmap);
   reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
   reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
+  reportInstallExperiment = this.telemetry.reportInstallExperiment.bind(this.telemetry);
   reportAttentionCounts = this.telemetry.reportAttentionCounts.bind(this.telemetry);
   deleteCloudNote = this.notes.deleteNote.bind(this.notes);
   listTheses = this.theses.listTheses.bind(this.theses);

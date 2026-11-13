@@ -241,6 +241,32 @@ export function recordRestoredFunctions(fns: readonly UsageFunction[]): void {
   }
 }
 
+/** The install as its usage counts name it: the random install id, the surface and the OS. */
+export interface UsageInstall {
+  installId: string;
+  surface: UsageCountsSurface;
+  os?: string;
+}
+
+/**
+ * The install as usage counts report it, for what else the Usage setting
+ * covers that is filed under the install id (an install experiment, see
+ * api-client/install-experiments.ts). Null while nothing can be sent: no
+ * host yet, Usage counts off, or no install id. Never throws.
+ */
+export async function usageInstall(): Promise<UsageInstall | null> {
+  try {
+    const current = host;
+    if (!current || !current.isEnabled()) return null;
+    const installId = await current.getInstallId();
+    if (!installId) return null;
+    return { installId, surface: current.surface, ...(current.os ? { os: current.os } : {}) };
+  } catch (error) {
+    logFailure("telemetry-usage-counts", "Could not read the install id")(error);
+    return null;
+  }
+}
+
 /** Installs the surface's host and schedules what was counted before it. */
 export function installUsageCounter(next: UsageCounterHost): () => void {
   host = next;

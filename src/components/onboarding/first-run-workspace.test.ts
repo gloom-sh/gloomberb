@@ -11,6 +11,7 @@ import {
   planFirstRunWatchlist,
   setupDeskPicks,
 } from "./first-run-workspace";
+import { SEEDED_LIST_MIN_STARTERS, STARTER_SYMBOLS } from "../../tickers/starter-symbols";
 
 function ticker(symbol: string, { held = false, watched = false } = {}): [string, TickerRecord] {
   return [symbol, {
@@ -43,6 +44,38 @@ describe("first-run workspace", () => {
     const kept = seeded.filter((symbol) => !left.includes(symbol));
     expect(kept).toEqual(["MSFT", "GOOGL", "AMZN", "TSLA", "META"]);
     expect(kept.length + plan.create.length).toBe(7);
+  });
+
+  // The server, the Monday brief and the company picker take a list with fewer
+  // than seven starters as the user's own; with every pick a starter it would
+  // otherwise still read as the seeded list.
+  test("picks lead the list and leave it a starter short of a seeded one, so it reads as the user's own", () => {
+    const seeded = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "BRK.B", "JPM", "V", "BTC-USD", "ETH-USD"];
+    const tickers = new Map(seeded.map((symbol) => ticker(symbol, { watched: true })));
+    /** The watchlist once the plan's writes are saved. */
+    const listed = (plan: ReturnType<typeof planFirstRunWatchlist>) => {
+      const updated = new Map(plan.update.map((entry) => [entry.metadata.ticker, entry]));
+      const kept = [...tickers.values()]
+        .map((record) => updated.get(record.metadata.ticker) ?? record)
+        .filter((record) => record.metadata.watchlists.includes("watchlist"));
+      return new Set([...plan.create.map((metadata) => metadata.ticker), ...kept.map((record) => record.metadata.ticker)]);
+    };
+    const starters = (symbols: Set<string>) => [...symbols].filter((symbol) => STARTER_SYMBOLS.has(symbol)).length;
+
+    const future = { ticker: "ES=F", name: "E-Mini S&P 500", exchange: "CME", currency: "USD", assetCategory: "FUTURE" };
+    const withFuture = planFirstRunWatchlist(tickers, "watchlist", "main", [{ symbol: "ES=F", seed: future }]);
+    expect(withFuture.create[0]).toMatchObject({ ...future, watchlists: ["watchlist"], portfolios: [] });
+    expect(listed(withFuture).has("ES=F")).toBe(true);
+    expect(listed(withFuture).size).toBe(7);
+    expect(starters(listed(withFuture))).toBe(SEEDED_LIST_MIN_STARTERS - 1);
+
+    const allStarters = planFirstRunWatchlist(tickers, "watchlist", "main", [{ symbol: "TSLA" }, { symbol: "NVDA" }, { symbol: "META" }]);
+    const kept = listed(allStarters);
+    for (const symbol of ["TSLA", "NVDA", "META"]) expect(kept.has(symbol)).toBe(true);
+    expect(starters(kept)).toBeLessThan(SEEDED_LIST_MIN_STARTERS);
+
+    // No picks: the list is the seeded one, as before.
+    expect(starters(listed(planFirstRunWatchlist(tickers, "watchlist", "main")))).toBe(SEEDED_LIST_MIN_STARTERS);
   });
 
   test("lays out heatmap, watchlist, chart and top news, with a market read docked in front of Trending", () => {
