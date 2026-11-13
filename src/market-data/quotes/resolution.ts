@@ -146,6 +146,19 @@ function sessionConfidenceRank(confidence?: SessionConfidence): number {
   }
 }
 
+/**
+ * What a coin's day range measures, said of the range, so it comes with the
+ * provider whose range it is; and whether the service widened it to take in
+ * its exchange's price.
+ */
+function dayRangeBasis(contributions: readonly QuoteContribution[], resolved: Partial<Quote>): Pick<Quote, "statsBasis" | "rangeWidened"> {
+  const source = contributions.find((quote) => quote.high === resolved.high && quote.low === resolved.low);
+  return {
+    ...(source?.statsBasis ? { statsBasis: source.statsBasis } : {}),
+    ...(source?.rangeWidened ? { rangeWidened: true } : {}),
+  };
+}
+
 function toProvenance(quote: QuoteContribution | undefined): QuoteFieldProvenance | undefined {
   if (!quote?.providerId) return undefined;
   return {
@@ -512,6 +525,7 @@ export function resolveCanonicalQuote(
     low52w: resolved.low52w as Quote["low52w"],
     // Said of the range, so it comes with the provider whose range it is.
     yearRangeBasis: contributions.find((quote) => quote.high52w === resolved.high52w && quote.low52w === resolved.low52w)?.yearRangeBasis,
+    ...dayRangeBasis(contributions, resolved),
     // Said of the price, so it comes with it.
     dailyClose: priceProvider?.dailyClose,
     marketCap: resolved.marketCap as Quote["marketCap"],

@@ -69,3 +69,36 @@ test("a compact Treasury overview keeps its chart's 32nds visible beside the quo
   expect(lines.some((line) => /10[345]-\d{2}\.\d{2}\s*$/.test(line))).toBe(false);
   expect(frame).not.toContain("$104");
 });
+
+test("a coin's day range and volume say whose they are, so the switch from the composite to one exchange's day shows", async () => {
+  const coin = (fields: Partial<Parameters<typeof createTestQuote>[0]>) => createTestQuote({
+    symbol: "USDT-USD", name: "Tether USDt", currency: "USD", instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC",
+    exchangeName: "CCC", price: 0.99906, change: 0.0002, changePercent: 0.02, previousClose: 0.99886, marketState: "REGULAR",
+    lastUpdated: Date.parse("2026-11-13T13:56:00Z"), ...fields,
+  });
+  const frame = async (quote: ReturnType<typeof createTestQuote>) => {
+    await act(async () => {
+      await tui.render(
+        <AppContext value={createStaticAppStore(createInitialState(config))}>
+          <OverviewTab ticker={createTestTicker("USDT-USD", "Tether USDt", { exchange: "CCC", currency: "USD", assetCategory: "CRYPTOCURRENCY" })}
+            financials={createTestFinancials({ quote })} width={110} height={16} />
+        </AppContext>,
+        { width: 110, height: 16 },
+      );
+    });
+    await settleFrame(tui.setup(), 10);
+    return tui.frame();
+  };
+  // Served first: the composite's range and its volume.
+  const composite = await frame(coin({ low: 0.99868, high: 0.99906, volume: 47_340_000_000, statsBasis: "composite" }));
+  expect(composite).toMatch(/Day Range.*composite/);
+  expect(composite).toMatch(/Volume\s+47\.34B\s+composite/);
+  // Then one exchange's own day, from a real-time feed: the range and the volume say so.
+  const exchange = await frame(coin({ low: 0.998162, high: 0.999736, volume: 763_300, statsBasis: "exchange" }));
+  expect(exchange).toMatch(/Day Range.*1 exchange/);
+  expect(exchange).toMatch(/Volume\s+763\.3k\s+1 exchange/);
+  // Widened by the exchange's price, which fell outside the composite's range.
+  const widened = await frame(coin({ low: 0.9901, high: 0.99906, volume: 47_340_000_000, statsBasis: "composite", rangeWidened: true,
+    priceVenue: "Coinbase", price: 0.9901, dataSource: "live" }));
+  expect(widened).toMatch(/Day Range.*composite \+ Coinbase/);
+});

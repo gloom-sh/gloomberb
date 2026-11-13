@@ -145,6 +145,9 @@ export function mapQuote(
     low52w: normalizePriceValueByDivisor(quote.low52w, divisor),
     // The service read the 52-week range from its stored daily bars, its source's being unusable.
     yearRangeBasis: quote.yearRangeBasis === "daily-bars" ? "daily-bars" : undefined,
+    // What a coin's day range and volume measure: the composite's, or one exchange's own day.
+    statsBasis: quote.statsBasis === "composite" || quote.statsBasis === "exchange" ? quote.statsBasis : undefined,
+    rangeWidened: quote.rangeWidened === true ? true : undefined,
     // No live quote: the close of the latest daily bar of this session.
     dailyClose: readDailyClose(quote.dailyClose),
     bid: normalizePriceValueByDivisor(quote.bid, divisor),

@@ -212,6 +212,14 @@ export interface Quote extends DepositaryReceiptFacts {
    */
   yearRangeBasis?: "daily-bars";
   /**
+   * What a coin's day range and volume measure, as the service says: the
+   * composite's across exchanges, or one exchange's own day (a real-time
+   * crypto feed's). Said beside each, so a source switch is never silent.
+   */
+  statsBasis?: "composite" | "exchange";
+  /** The composite's day range was widened to take in `priceVenue`'s price, which fell outside it. */
+  rangeWidened?: boolean;
+  /**
    * No live quote: the price is the close of the latest stored daily bar of
    * `session` (an exchange-local date), said beside the price.
    */

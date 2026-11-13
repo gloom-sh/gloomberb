@@ -51,6 +51,17 @@ export function quoteSourceName(quote: Pick<Quote, "providerId" | "priceVenue"> 
   return brokerName?.(quote.providerId)?.trim() || "";
 }
 
+/**
+ * What a coin's day range and volume measure, as said beside them: `composite` (across exchanges), `composite +
+ * Coinbase` when the range was widened to take in the exchange's price, or `1 exchange` (one exchange's own day).
+ * Empty when the service does not say, as for anything but a coin.
+ */
+export function quoteStatsBasisText(quote: Pick<Quote, "statsBasis" | "rangeWidened" | "priceVenue"> | null | undefined, range = true): string {
+  if (quote?.statsBasis === "exchange") return "1 exchange";
+  if (quote?.statsBasis !== "composite") return "";
+  return range && quote.rangeWidened && quote.priceVenue ? `composite + ${quote.priceVenue}` : "composite";
+}
+
 /** Whether a quote's feed is live, delayed or stale, as the Feed cell of `quote` says it. */
 export function quoteExportFeed(quote: Quote | null | undefined, now = Date.now()): string {
   if (!quote) return "";

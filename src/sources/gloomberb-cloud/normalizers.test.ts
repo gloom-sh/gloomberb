@@ -334,3 +334,22 @@ test("a coin priced by one exchange's own trade is named by the exchange, as its
   // A view's quote, resolved from what each source said, names the venue of the price it shows.
   expect(resolveCanonicalQuote({ "gloomberb-cloud": normalizeQuoteContribution(quote)! }, raw.lastUpdated!).quote?.priceVenue).toBe("Coinbase");
 });
+
+test("what a coin's day range measures goes with that range: kept by a tick relaying it, replaced with a range from elsewhere", () => {
+  const raw: CloudQuotePayload = {
+    symbol: "USDT-USD", currency: "USD", instrumentType: "CRYPTOCURRENCY", price: 0.99893, previousClose: 0.9986,
+    change: 0.00033, changePercent: 0.033, lastUpdated: Date.parse("2026-11-13T15:08:44Z"), listingExchangeName: "CCC",
+    providerId: "gloomberb-cloud", dataSource: "delayed", low: 0.99868, high: 0.99906, volume: 47_340_000_000, statsBasis: "composite",
+  };
+  const served = normalizeQuoteContribution(mapQuote(raw))!;
+  expect(served.statsBasis).toBe("composite");
+  expect(mapQuote({ ...raw, statsBasis: "stream" as never }).statsBasis).toBeUndefined();
+  // A stream tick built on the served quote relays its range without saying: the word stays.
+  const tick = mapQuote({ ...raw, statsBasis: undefined, price: 0.9989, dataSource: "live", lastUpdated: raw.lastUpdated! + 5_000 });
+  expect(mergeQuoteContribution(served, tick).statsBasis).toBe("composite");
+  // One exchange's own day replaces the range, and says so; a range from elsewhere without a word drops it.
+  const exchangeDay = mapQuote({ ...raw, low: 0.998162, high: 0.999736, volume: 763_300, statsBasis: "exchange", dataSource: "live" });
+  expect(mergeQuoteContribution(served, exchangeDay).statsBasis).toBe("exchange");
+  expect(mergeQuoteContribution(served, mapQuote({ ...raw, low: 0.998, statsBasis: undefined })).statsBasis).toBeUndefined();
+  expect(resolveCanonicalQuote({ "gloomberb-cloud": mergeQuoteContribution(served, exchangeDay) }, raw.lastUpdated!).quote?.statsBasis).toBe("exchange");
+});
