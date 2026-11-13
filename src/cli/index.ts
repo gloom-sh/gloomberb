@@ -226,7 +226,7 @@ export function createCoreCliCommands(
           { flags: "--scale <n>", description: "Text scale from 0.5 to 4 (default 1)" },
           { flags: "--watermark <label>", description: "Label drawn in the pane title bar" },
           { flags: "--no-status", description: "Leave out the dated status line (as-of, delay, market hours) drawn in the pane footer" },
-          { flags: "--strict", description: `Exit ${CLI_EXIT_CODES.unusableShot} when the pane is empty, shows an error, is still loading, is access-gated or draws a column blank in every row; the PNG and the Reason line, which names what it saw, are still written` },
+          { flags: "--strict", description: `Exit ${CLI_EXIT_CODES.unusableShot} when the pane is empty, shows an error, is still loading, is access-gated, or draws a column blank in every row; the PNG and the Reason line, which names what it saw, are still written. A column cut at the table's edge is a warning` },
           { flags: "--<option> <value>", description: "A function setting; gloom catalog <function> lists them" },
           EXCHANGE_OPTION,
         ],

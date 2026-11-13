@@ -4,10 +4,10 @@ import { GLOSSARY, lookupGlossary, reportGlossary } from "./glossary";
 const terms = (entries: readonly { term: string }[]) => entries.map((entry) => entry.term);
 
 test("a term is found by its name, abbreviation or another name, whatever its case and punctuation", () => {
-  // The stop-out is the high yield; the column that compares it with the median comes with it.
+  // The stop-out is the high yield; the column that compares it with the median comes with it, and the after view's percentile of it.
   expect(lookupGlossary("Stop Out")).toEqual(lookupGlossary("stop-out"));
   expect(terms(lookupGlossary("stop-out").exact)).toEqual(["High yield"]);
-  expect(terms(lookupGlossary("stop-out").partial)).toEqual(["Stop-out vs median"]);
+  expect(terms(lookupGlossary("stop-out").partial)).toEqual(["Stop-out vs median", "Auction percentile"]);
   expect(lookupGlossary("b/c")).toEqual({ exact: [GLOSSARY.find((entry) => entry.short === "B/C")!], partial: [] });
   expect(terms(lookupGlossary("dealers").exact)).toEqual(["Dealer"]);
   expect(terms(lookupGlossary("discount").partial)).toEqual(["Discount rate", "High discount margin", "Premium/discount", "ADR premium"]);
