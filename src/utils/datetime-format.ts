@@ -229,13 +229,8 @@ export function formatDetailDate(value: DisplayDateValue, fallback = MISSING_VAL
  * chart's "CET" (review, 12 Nov 2026).
  */
 export function localTimeZoneShortName(now: DisplayDateValue = Date.now(), timeZone?: string): string {
-  const zone = timeZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const at = (parseDisplayDate(now) ?? new Date()).getTime();
-  try {
-    return timeZoneLabel(zone, at);
-  } catch {
-    return "UTC";
-  }
+  const zone = timeZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+  return timeZoneLabel(zone, (parseDisplayDate(now) ?? new Date()).getTime());
 }
 
 const zonedClockFormatters = new Map<string, Intl.DateTimeFormat>();
