@@ -10,6 +10,7 @@ import { createTestCliContext, type PrintedCliResult } from "../../test-support/
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { captureConsole } from "../../test-support/console";
 import { createTestTicker } from "../../test-support/ticker";
+import { ProviderBusyError } from "../../sources/provider-errors";
 import { resetBoardCoins } from "../board-coins";
 import { withSearchHints } from "../not-a-ticker";
 import { buildSearchReport, search, searchCandidatesForCli } from "./search";
@@ -169,6 +170,26 @@ test("a code several companies list is never quoted on one of them: it asks for 
 
   // A named listing is its own answer.
   expect((await runQuote(["2222:TADAWUL"], source)).rows.map((row) => [row.target.symbol, row.quote == null])).toEqual([["2222:TADAWUL", false]]);
+});
+
+// A pasted list's 8306 read "Not a ticker" when search turned it away for the moment, where alone it asks which exchange.
+test("a bare code whose search is busy is asked again, and still busy its row says so, never that it is no ticker", async () => {
+  const source = venueSource("2222", ["JPX", "TADAWUL"], { CSPX: createTestQuote({ symbol: "CSPX" }) },
+    { JPX: "Kotobuki Spirits Co., Ltd.", TADAWUL: "Saudi Arabian Oil Co." });
+  const search = source.dataProvider.search!.bind(source.dataProvider);
+  let busy = 0;
+  source.dataProvider.search = async (...args) => {
+    if (busy > 0) { busy -= 1; throw new ProviderBusyError("Cloud search is busy"); }
+    return search(...args);
+  };
+  busy = 1;
+  const once = await runQuote(["2222", "CSPX"], source);
+  expect((once.rows[0] as { error?: string }).error).toBe("Choose an exchange for 2222. Listings: 2222:JPX, 2222:TADAWUL.");
+  busy = Infinity;
+  const still = await runQuote(["2222", "CSPX"], source);
+  expect(String((still.rows[0] as { error?: unknown }).error)).toContain("busy");
+  expect(still.warnings.join("\n")).not.toContain("Not a ticker");
+  expect(still.rows[1]!.quote).not.toBeNull();
 });
 
 test("ticker asks for an exchange for a code several companies list, as quote does, rather than calling it no ticker", async () => {

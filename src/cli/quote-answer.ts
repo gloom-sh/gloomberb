@@ -1,7 +1,7 @@
 import type { QuoteBatchResult } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import { bareListingNote } from "../tickers/listing-fate";
-import { notATickerSymbol } from "../sources/provider-errors";
+import { isTransientServiceFailure, notATickerSymbol } from "../sources/provider-errors";
 import { listingSuffixCandidate } from "../sources/listing-symbols";
 import { looksLikeCurrencyPair } from "../utils/currency-pair";
 import { canonicalExchange } from "../utils/exchanges";
@@ -145,7 +145,14 @@ export async function answerQuote(
   const named = !listing.exchange && listing.typed ? await serviceNamedCompany(listing.typed, market) : null;
   const meant = named ? await answerNamedListing(named, market, request, refresh, datesChangeBasis) : null;
   if (meant) return meant;
-  const other = await quoteBareListing(listing, market, request, { refresh, datesChangeBasis });
+  // A search turned away twice (busy, the request limit) leaves the row with that reason, never "Not a ticker".
+  let other: Awaited<ReturnType<typeof quoteBareListing>>;
+  try {
+    other = await quoteBareListing(listing, market, request, { refresh, datesChangeBasis });
+  } catch (error) {
+    if (!isTransientServiceFailure(error)) throw error;
+    return { result: { ...result, error, transient: true }, listing, notes: [] };
+  }
   if (other?.kind === "quoted") {
     return {
       result: { target: other.listing.request, quote: other.quote },

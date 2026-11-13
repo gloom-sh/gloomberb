@@ -225,3 +225,16 @@ export function shouldLogProviderError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return !EXPECTED_PROVIDER_MISS.test(message);
 }
+
+/**
+ * Whether a failure says nothing of what was asked, so asked again in a
+ * moment it may be answered: no connection, no answer from the data service,
+ * a busy moment or its request limit. A source's own answer (Not a ticker, a
+ * delisting) is not one.
+ */
+export function isTransientServiceFailure(error: unknown): boolean {
+  if (error == null) return false;
+  if (isNetworkFailure(error) || isProviderBusy(error)) return true;
+  const message = (error instanceof Error ? error.message : String(error)).trim();
+  return message.startsWith(serviceDidNotAnswerMessage().split(".")[0]!) || message.startsWith(rateLimitedMessage().split(".")[0]!);
+}

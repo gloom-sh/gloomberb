@@ -43,7 +43,7 @@ import {
 import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
 import { stripStrayEdges, tickerShapedWord } from "./symbol-args";
-import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy, notATickerSymbol } from "../sources/provider-errors";
+import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy, isTransientServiceFailure, notATickerSymbol } from "../sources/provider-errors";
 import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES, TOP_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
 import { knownGapMessage, unquotedGapMessage } from "./known-gaps";
@@ -716,9 +716,32 @@ export async function usListingsOnlyMessage(
  * Aramco in Riyadh): then it asks, and none of the venues is the answer. Null
  * when it named its exchange.
  */
-async function bareListingVenues(listing: BareListing, deps: ListingDeps): Promise<BareListingVenues | null> {
+/** How long a bare symbol's venue search that failed for a moment waits before it is asked once more. */
+const VENUE_RETRY_WAIT_MS = 1_000;
+
+async function bareListingVenues(
+  listing: BareListing,
+  deps: ListingDeps,
+  /**
+   * A search that failed for a reason that says nothing of the symbol (a busy
+   * moment, the request limit) is asked once more, and then thrown: a list's
+   * 8306 read "Not a ticker" when its search was turned away, where alone it
+   * asks which exchange.
+   */
+  { failTransient = false }: { failTransient?: boolean } = {},
+): Promise<BareListingVenues | null> {
   if (listing.exchange) return null;
-  const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
+  const read = () => listingVenues(listing.symbol, deps, { failTransient });
+  const venues = await (failTransient
+    ? read().catch(async (error: unknown) => {
+      if (!isTransientServiceFailure(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, VENUE_RETRY_WAIT_MS));
+      return read();
+    })
+    : read()).catch((error: unknown) => {
+    if (failTransient && isTransientServiceFailure(error)) throw error;
+    return logFailure("cli.listing-arg", "Read listing venues failed", [] as ListingVenue[])(error);
+  });
   const savedExchange = canonicalExchange(listing.saved?.metadata.exchange);
   if (!savedExchange && listsSeveralCompanies(listing.symbol, venues)) return { exchange: "", resolved: null, others: venues, choose: true };
   const resolved = venues.find((venue) => venue.exchange === savedExchange) ?? (savedExchange ? null : homeVenue(listing.symbol, venues));
@@ -891,7 +914,9 @@ export type BareListingQuote =
  * A code several companies list (2222) is never answered from one of them: it is
  * that failure, asking which. Null when the symbol named its exchange (a named
  * venue never switches) or search knows no listing of it. It searches, so ask
- * only after a request failed.
+ * only after a request failed. A search that fails twice for a reason that
+ * says nothing of the symbol (a busy moment, the request limit) is thrown,
+ * never read as a symbol no venue lists.
  */
 export async function quoteBareListing(
   listing: CliListing,
@@ -899,7 +924,7 @@ export async function quoteBareListing(
   request: ListingDataRequest,
   { refresh = false, datesChangeBasis = false }: { refresh?: boolean; datesChangeBasis?: boolean } = {},
 ): Promise<BareListingQuote | null> {
-  const venues = await bareListingVenues(listing, deps);
+  const venues = await bareListingVenues(listing, deps, { failTransient: true });
   if (!venues) return null;
   if (venues.choose) {
     const other = describeOtherListings(listing, venues, request);
