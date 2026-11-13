@@ -7,17 +7,24 @@ import { isHongKongTab, MONEY_MARKET_TABS, moneyMarketChange, moneyMarketNotices
 const FRED_FRESHNESS = { source: "FRED", status: "not-a-feed", basis: "published daily and weekly data" } as const;
 const HONG_KONG_FRESHNESS = { ...FRED_FRESHNESS, source: "HKMA", basis: "published Exchange Fund Bill closing yields" } as const;
 
+/** Bills read from Treasury's own daily file, which posts the day that afternoon, where FRED lags a session or two. */
+const TREASURY_BILL_FRESHNESS = { ...FRED_FRESHNESS, source: "U.S. Treasury", basis: "published daily bill rates" } as const;
+
 /** The rows a view reports, without their histories, and what the view declares about them beyond the definition. */
 export function moneyMarketReport(rows: readonly MoneyMarketRow[], hongKong: boolean) {
+  const treasury = rows.length > 0 && rows.every((row) => row.sourceName === "U.S. Treasury");
   return {
-    ...hongKong ? { freshness: HONG_KONG_FRESHNESS } : {},
+    ...hongKong ? { freshness: HONG_KONG_FRESHNESS } : treasury ? { freshness: TREASURY_BILL_FRESHNESS } : {},
     rows: rows.map(({ history: _history, ...row }) => ({ ...row, percentileValue: row.percentile.value })),
   };
 }
 
+/** A bill's coupon equivalent, the rate a money fund's yield compares with, beside its discount rate; never on other rows. */
+const hasCouponEquivalent = (rows: readonly MoneyMarketRow[]) => rows.some((row) => row.couponEquivalent !== undefined);
+
 export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["BTMM"], dataRequirements: ["Gloom Cloud money-markets endpoint"],
-    limitations: ["Published daily and weekly observations.", "Treasury bill discount yields.", "Net liquidity is a same-date proxy.",
+    limitations: ["Published daily and weekly observations.", "Treasury bills: Treasury's daily closing bid as a discount rate with its coupon equivalent, not the yield curve's constant-maturity yield.", "Net liquidity is a same-date proxy.",
       "Hong Kong: HKMA's Exchange Fund Bill closing yields, a week or two after the day; each row is dated by its own day. HIBOR is not licensed for redistribution."] },
   shape: "bundle", argument: { kind: "none" },
   freshness: FRED_FRESHNESS,
@@ -34,7 +41,9 @@ export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
     return { complete, ...report.freshness ? { freshness: report.freshness } : {},
       sections: [{ title: hongKong ? "Exchange Fund Bill yields" : "Observations", columns: [
       { key: "label", header: "Instrument" },
-      { key: "value", header: "Level", align: "right", format: (value, row) => moneyMarketValue(value as number | null, row.unit as "percent" | "usd-billions") },
+      { key: "value", header: hasCouponEquivalent(rows) ? "Discount" : "Level", align: "right", format: (value, row) => moneyMarketValue(value as number | null, row.unit as "percent" | "usd-billions") },
+      ...hasCouponEquivalent(rows) ? [{ key: "couponEquivalent", header: "Coupon eq", align: "right" as const,
+        format: (value: unknown) => moneyMarketValue((value as number | null | undefined) ?? null, "percent") }] : [],
       { key: "change", header: "Change", align: "right", format: (value, row) => moneyMarketChange(value as number | null, row.changeUnit as "basis-points" | "usd-billions") },
       // A narrow terminal moves the status, percentile and earlier date under each row first.
       { key: "previousAsOf", header: "Versus", shrink: false, stackPriority: 1 },

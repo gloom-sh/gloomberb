@@ -54,10 +54,16 @@ function ObservationDetail({ row, width, height, focused = false }: { row: Money
       detail: `${formatPercentileRank(p.value, "1Y")} · ${row.asOf ?? MISSING_VALUE}` },
     { id: "change", label: "Change", value: moneyMarketChange(row.change, row.changeUnit), detail: `since ${row.previousAsOf ?? MISSING_VALUE}` },
     { id: "range", label: "1Y range", value: `${moneyMarketValue(p.min, row.unit)} to ${moneyMarketValue(p.max, row.unit)}` },
-    // A bill yield is HKMA's; the US rows name their FRED series.
+    // A bill yield is HKMA's; a US bill read from Treasury's daily file says so; the other US rows name their FRED series.
     row.group === "efb" ? { id: "series", label: "Source", value: "HKMA", detail: "closing yield, 16:00 HKT" }
+      : row.sourceName === "U.S. Treasury" ? { id: "series", label: "Source", value: "U.S. Treasury", detail: "daily bill rates" }
       : { id: "series", label: "FRED", value: row.sourceSeriesIds.join(", "), detail: row.frequency },
   ];
+  // A bill's discount rate understates what it pays: its coupon equivalent is the rate to set beside a fund's yield.
+  if (row.couponEquivalent != null) {
+    items.splice(1, 0, { id: "coupon", label: "Coupon eq", value: moneyMarketValue(row.couponEquivalent, "percent"),
+      detail: row.couponEquivalentAsOf ?? MISSING_VALUE });
+  }
   return <StatChartDetail items={items} width={width} height={height} empty={row.history.every((point) => point.value == null)}
     emptySubject="history" emptyTitle="No history available."
     renderChart={(chartHeight) => <ObservationChart row={row} width={width} height={chartHeight} focused={focused} />} />;

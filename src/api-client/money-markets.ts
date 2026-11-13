@@ -37,6 +37,13 @@ export interface MoneyMarketRow {
   fetchedAt: string | null;
   unavailableReason: "source-unavailable" | "metadata-unavailable" | "metadata-mismatch" | "no-observations" | "components-unavailable" | null;
   notes: string[];
+  /** A bill's coupon equivalent (investment rate), percent, beside its discount-basis `value`; on bill rows only. */
+  couponEquivalent?: number | null;
+  couponEquivalentAsOf?: string | null;
+  /** Who published the row's latest value (`U.S. Treasury`, `FRED`); older servers send none. */
+  sourceName?: string;
+  /** When the publisher last changed what was read, when it says. */
+  publishedAt?: string | null;
 }
 
 interface BillSnapshot {

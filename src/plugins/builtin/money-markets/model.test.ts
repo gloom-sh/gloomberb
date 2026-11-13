@@ -74,6 +74,25 @@ describe("money-market boundary", () => {
   });
 });
 
+test("fn BTMM --tab bills shows Treasury's posted day with its discount and coupon equivalent, and says Treasury is its source", async () => {
+  const data = payload();
+  data.rows.push(row("bill-3m", { label: "3M bill", group: "bills", seriesId: "DTB3", sourceSeriesIds: ["DTB3"], value: 4.14, asOf: "2026-11-12",
+    couponEquivalent: 4.24, couponEquivalentAsOf: "2026-11-12", sourceName: "U.S. Treasury" }));
+  const bills = await moneyMarketsHeadless.load(createTestHeadlessArgs({ options: { tab: "bills" } }),
+    createTestHeadlessContext({ apiClient: { getCloudMoneyMarkets: async () => data } as never }));
+  expect(bills.freshness).toMatchObject({ source: "U.S. Treasury", status: "not-a-feed" });
+  const section = (bills as { sections: Array<{ columns: Array<{ key: string; header: string; format?: (value: unknown, row: Record<string, unknown>) => string }>; rows: Array<Record<string, unknown>> }> }).sections[0]!;
+  expect(section.columns.slice(0, 3).map((column) => column.header)).toEqual(["Instrument", "Discount", "Coupon eq"]);
+  const coupon = section.columns.find((column) => column.key === "couponEquivalent")!;
+  expect(coupon.format!(section.rows[0]!.couponEquivalent, section.rows[0]!)).toBe("4.24%");
+  expect(section.rows[0]).toMatchObject({ value: 4.14, asOf: "2026-11-12" });
+  // A rate is not a bill: its view keeps its Level column and no coupon equivalent.
+  const rates = await moneyMarketsHeadless.load(createTestHeadlessArgs({ options: { tab: "rates" } }),
+    createTestHeadlessContext({ apiClient: { getCloudMoneyMarkets: async () => data } as never }));
+  expect((rates as typeof bills & { sections: typeof section[] }).sections[0]!.columns.map((column) => column.header)).not.toContain("Coupon eq");
+  expect(() => validateMoneyMarkets({ ...data, rows: [row("bill-3m", { group: "bills", couponEquivalent: Number.NaN })] })).toThrow();
+});
+
 describe("Hong Kong's bill-yield board", () => {
   const bill = (tenor: string, value: number, asOf: string) => row(`efb-${tenor}`, { label: `EF Bill ${tenor}`, group: "efb", seriesId: null,
     sourceSeriesIds: [], value, asOf, previousAsOf: "2026-10-29", history: [{ date: "2026-10-29", value: value - 0.1 }, { date: asOf, value }] });
