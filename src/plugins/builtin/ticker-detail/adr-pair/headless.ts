@@ -4,6 +4,10 @@ import { dollarPairLabel, spotFromUsdValue, spotRateKind } from "../../../../mar
 import { loadHeadlessFinancials, resolveHeadlessInstrument } from "../../shared/headless-market-data";
 import { quoteObservation } from "../../shared/report-freshness";
 import { heldCurrencyUnit } from "../../../../utils/currency-units";
+import { canonicalExchange, displayTickerKey, isUsListingExchange, parsePublicTickerKey } from "../../../../utils/exchanges";
+import { listingSuffixCandidate } from "../../../../sources/listing-symbols";
+import { companyNameCase } from "../../../../tickers/company-name";
+import { logFailure } from "../../../../utils/log-failure";
 import { adrPairComparison, adrPairFigures, adrPairInputRows, adrPairLegs, ADR_PAIR_TEMPLATE_ID } from "./model";
 
 /** Words that ask for this report's figures without being its code: `fn CCL` answers with ADR. */
@@ -30,6 +34,26 @@ async function readSpot(currency: string, ctx: LoadContext) {
 async function readQuote(key: string, ctx: LoadContext, failed: (error: unknown) => null): Promise<Quote | null> {
   const instrument = await resolveHeadlessInstrument(ctx, key);
   return ctx.marketData.getQuote(instrument.symbol, instrument.exchange ?? "").catch(failed);
+}
+
+/**
+ * "HSBC Holdings plc also lists 0005:HKEX." for a receipt's company with
+ * lines on venues other than the pair's: Hong Kong's for HSBC beside its
+ * London home line. Null when it has none, or the service cannot say.
+ */
+async function otherLinesNote(receiptKey: string, homeKey: string, ctx: LoadContext): Promise<string | null> {
+  const { getIssuerListings } = ctx.marketData;
+  if (!getIssuerListings) return null;
+  const [receipt, home] = await Promise.all([resolveHeadlessInstrument(ctx, receiptKey), resolveHeadlessInstrument(ctx, homeKey)]);
+  const homeVenue = canonicalExchange(home.exchange || listingSuffixCandidate(home.symbol)?.exchange || parsePublicTickerKey(homeKey).exchange);
+  const issuer = await Promise.resolve().then(() => getIssuerListings.call(ctx.marketData, receipt.symbol, receipt.exchange || undefined))
+    .catch(logFailure("plugins.adr-pair", "Reading the company's listings failed", null));
+  // The receipt is the company's US line; another US line or the home venue's is no line abroad to add.
+  const others = (issuer?.listings ?? []).filter((line) => {
+    const venue = canonicalExchange(line.exchange);
+    return venue && venue !== homeVenue && !isUsListingExchange(venue);
+  }).map((line) => parsePublicTickerKey(line.symbol).exchange ? displayTickerKey(line.symbol) : `${line.symbol}:${canonicalExchange(line.exchange)}`);
+  return issuer && others.length > 0 ? `${companyNameCase(issuer.name)} also lists ${[...new Set(others)].join(", ")}.` : null;
 }
 
 export const adrPairHeadless: HeadlessPaneDefinition<"bundle"> = {
@@ -63,9 +87,10 @@ export const adrPairHeadless: HeadlessPaneDefinition<"bundle"> = {
       errors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     };
-    const [receipt, home] = await Promise.all([
+    const [receipt, home, otherLines] = await Promise.all([
       readQuote(legs.receiptKey, ctx, failed(legs.receiptKey)),
       readQuote(legs.homeKey, ctx, failed(legs.homeKey)),
+      otherLinesNote(legs.receiptKey, legs.homeKey, ctx),
     ]);
     ctx.signal.throwIfAborted();
     const quotes = { receipt, home };
@@ -105,7 +130,7 @@ export const adrPairHeadless: HeadlessPaneDefinition<"bundle"> = {
           rows: rows.map(({ opens: _opens, ...row }) => row),
         },
       ],
-      ...(comparison.timingNote ? { notes: [comparison.timingNote] } : {}),
+      ...(comparison.timingNote || otherLines ? { notes: [comparison.timingNote, otherLines].filter((note): note is string => !!note) } : {}),
       ...(errors.length > 0 ? { errors } : {}),
       freshness: {
         observations: [quotes.receipt, quotes.home].filter((quote): quote is Quote => !!quote).map((quote) => ({ ...quoteObservation(quote) })),

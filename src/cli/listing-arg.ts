@@ -24,9 +24,10 @@ import { isVenueAbroad, lineMayHaveMoved, listingChangeLine, loadListingFate, Mo
 import { quotedListingName } from "../tickers/listing-name";
 import { withdrawalLabel } from "../market-data/quotes/delisting";
 import { cliStyles } from "../utils/cli-output";
-import { companyNameExtraWords, groupByCompany, namesDepositaryReceipt, sameCompany, sameCompanyName, sameListedName, shortCompanyName } from "../tickers/company-name";
+import { companyNameCase, companyNameExtraWords, groupByCompany, namesDepositaryReceipt, sameCompany, sameCompanyName, sameListedName, shortCompanyName } from "../tickers/company-name";
 import {
   canonicalExchange,
+  displayTickerKey,
   exchangeCodeVenues,
   exchangeLabel,
   exchangeName,
@@ -258,6 +259,47 @@ function tradesOn(symbol: string, venues: readonly ListingVenue[]): string {
   return venues.length > 0 ? ` ${symbol} trades on: ${venues.map((venue) => venue.exchange).join(", ")}.` : "";
 }
 
+/** The companies a symbol's venues are asked about for their line on another venue: the first few, home lines first. */
+const MAX_COMPANIES_ASKED = 4;
+
+/**
+ * " Prudential plc trades on HKEX as 2378:HKEX." when a company that lists
+ * as `symbol` elsewhere has a line of its own on `exchange`: PRU on LSE is
+ * Prudential plc, whose Hong Kong line is 2378, and HSBC on NYSE is HSBC
+ * Holdings, whose is 0005. Each company is asked once, by one of its venues;
+ * empty when none has a line there or the service cannot say.
+ */
+async function companyLineOn(symbol: string, exchange: string, venues: readonly ListingVenue[], deps: ListingDeps): Promise<string> {
+  const { getIssuerListings } = deps.dataProvider;
+  if (!getIssuerListings) return "";
+  const byCompany = new Map<string, ListingVenue>();
+  for (const venue of [...venues].sort((a, b) => Number(!!b.home) - Number(!!a.home))) {
+    const company = venue.companyId ?? venue.name;
+    if (!byCompany.has(company)) byCompany.set(company, venue);
+  }
+  const asked = [...byCompany.values()].slice(0, MAX_COMPANIES_ASKED);
+  const issuers = await Promise.all(asked.map((venue) => Promise.resolve()
+    .then(() => getIssuerListings.call(deps.dataProvider, venue.symbol ?? symbol, venue.exchange))
+    .catch(logFailure("cli.listing-arg", "Read a company's listings failed", null))));
+  const lines = new Map<string, string>();
+  issuers.forEach((issuer, index) => {
+    const line = issuer?.listings.find((listing) => canonicalExchange(listing.exchange) === exchange);
+    if (!issuer || !line) return;
+    const key = parsePublicTickerKey(line.symbol).exchange ? displayTickerKey(line.symbol) : `${line.symbol}:${exchange}`;
+    // Its full name as search writes the line asked about (Prudential plc), which tells it from Prudential Financial.
+    // Without the comma or the full stop a listing's name can carry beside its legal form: "HSBC Holdings, plc." is HSBC Holdings plc.
+    const name = (asked[index]!.name || companyNameCase(issuer.name)).replace(/,\s*(?=(?:plc|inc|ltd|limited|corp|sa|ag|nv|se)\b)/i, " ").replace(/\.$/, "");
+    lines.set(key, `${name} trades on ${exchange} as ${key}.`);
+  });
+  return [...lines.values()].map((line) => ` ${line}`).join("");
+}
+
+/** "PRU does not trade on HKEX. Prudential plc trades on HKEX as 2378:HKEX. PRU trades on: LSE, NYSE." */
+async function notTradedText(listing: Pick<ListingArg, "symbol" | "exchange">, venues: readonly ListingVenue[], deps: ListingDeps): Promise<string> {
+  const companyLine = await companyLineOn(listing.symbol, listing.exchange, venues, deps);
+  return `${listing.symbol} does not trade on ${listing.exchange}.${companyLine}${tradesOn(listing.symbol, venues)}`;
+}
+
 /** "Toronto Stock Exchange (TSX) or Tokyo Stock Exchange (JPX)". */
 function venueChoices(venues: readonly string[]): string {
   const labels = venues.map(exchangeLabel);
@@ -351,7 +393,7 @@ export async function notTradedMessage(
   if (withdrawn) return withdrawnListingMessage(listing, withdrawn);
   if (venues.length === 0 || venues.some((venue) => venue.exchange === listing.exchange)) return null;
   if (await quotedOnVenue(listing, deps)) return null;
-  return `${listing.symbol} does not trade on ${listing.exchange}.${tradesOn(listing.symbol, venues)}`;
+  return notTradedText(listing, venues, deps);
 }
 
 /**
@@ -1789,7 +1831,7 @@ async function checkTerminalCodeVenue(listing: ListingArg, market: string, deps:
   if (!hint && !isSearchOnlyVenue(listing.exchange)) return;
   const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
   if (venues.length === 0 || venues.some((venue) => venue.exchange === listing.exchange)) return;
-  throw new ListingArgError(`${listing.symbol} does not trade on ${listing.exchange}.${tradesOn(listing.symbol, venues)}`, hint ?? undefined);
+  throw new ListingArgError(await notTradedText(listing, venues, deps), hint ?? undefined);
 }
 
 /**
