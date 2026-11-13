@@ -8,6 +8,7 @@ import { typedCoinPairListing } from "../../utils/crypto-pair";
 import { canonicalExchange, exchangeCodeVenues, isUsListingExchange, parsePublicTickerKey, typedExchangeCode } from "../../utils/exchanges";
 import { assetClassKeeps, assetClassMarketSymbol, instrumentClassCode, parseAssetClassQuery } from "./asset-classes";
 import { futuresContractByCode } from "../../market-data/futures-board";
+import { sameCompany } from "../company-name";
 
 const FUND_TYPES = new Set(["ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND"]);
 const DERIVATIVE_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "PERP", "PERPETUAL", "WARRANT", "WARRANTS", "RIGHT", "RIGHTS"]);
@@ -700,13 +701,31 @@ export function answersOnlyByKeyword(
  * wants (an exchange or "ETF" beside the word).
  */
 export function themeQueryWord(
-  items: ReadonlyArray<Pick<TickerSearchRankableItem, "searchKeywords">>,
+  items: ReadonlyArray<ThemeAnswerRow>,
   query: string,
 ): string | null {
   const intent = analyzeSearchQuery(query);
   const word = intent.normalizedQuery;
   if (!word || word.includes(" ") || intent.exchangeHints.length > 0 || intent.assetPreference != null) return null;
-  return items.some((item) => item.searchKeywords?.some((keyword) => normalizeSearchText(keyword) === word)) ? word : null;
+  const tagged = (item: ThemeAnswerRow) => item.searchKeywords?.some((keyword) => normalizeSearchText(keyword) === word) ?? false;
+  if (!items.some(tagged)) return null;
+  return namesOneCompany(items.filter((item) => !tagged(item))) ? null : word;
+}
+
+/** A row of an answer as `themeQueryWord` reads it: a search row (`name`) or a ranked row (`detail`, its name first). */
+type ThemeAnswerRow = Pick<TickerSearchRankableItem, "searchKeywords" | "homeListing"> & { name?: string; detail?: string };
+
+/**
+ * Whether most of the rows the service sent for a word by name are one
+ * company's lines, its home line among them: the word is that company's
+ * name, whatever rows it also tags ("Hermes" is Hermès International,
+ * though the service sends Federated Hermes's funds and holdings with the
+ * word). A sector word's rows are many companies' ("steel", "gaming").
+ */
+function namesOneCompany(rows: readonly ThemeAnswerRow[]): boolean {
+  const name = (row: ThemeAnswerRow) => row.name ?? row.detail?.split(" | ")[0] ?? "";
+  return rows.some((home) => home.homeListing === true
+    && rows.filter((row) => sameCompany(name(row), name(home))).length * 2 > rows.length);
 }
 
 /** How many sector funds lead a sector word's list: the rest of the list is the companies named for it. */

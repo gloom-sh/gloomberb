@@ -304,3 +304,44 @@ test("Saved lists only saved rows, each saying so; a saved company a theme's fun
     "TQQQ:Saved:Saved", "UPRO:Funds & Derivatives:-", "MSFT:Related:Saved", "NVDA:Related:Saved",
   ]);
 });
+
+/**
+ * `search Hermes` on 13 Nov 2026 listed two Federated Hermes ETFs, PAYX, USB and ABBV as "Related", and the OTC
+ * receipt HESAY as the primary listing: the service tags a fund family's funds and holdings with the word, which read
+ * it as a sector, so its funds led and Hermès's home line in Paris was no longer the service's first answer.
+ */
+test("a company's name the service also tags funds with leads with the company's home line, its receipt under Other Listings", async () => {
+  const row = (symbol: string, name: string, exchange: string, type: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol, name, exchange, type, primaryExchange: exchange, ...extra });
+  const hermes = "Hermès International Société en commandite par actions";
+  const tagged = { searchKeywords: ["hermes"] };
+  const funds = [
+    row("FDV", "Federated Hermes U.S. Strategic Dividend ETF", "ARCA", "ETF", tagged),
+    row("MKTN", "Federated Hermes MDT Market Neutral ETF", "ARCA", "ETF", tagged),
+  ];
+  const answer = [
+    row("RMS", hermes, "EPA", "Common Stock", { homeListing: true, popularity: 21282 }),
+    row("HESAY", "Hermes International SCA Unsponsored ADR", "OTC", "American Depositary Receipt", { popularity: 20326 }),
+    row("7856", "Hermes Testing Solutions Inc.", "TWSE", "Common Stock"),
+    row("HMI", hermes, "XETRA", "Common Stock"), row("RMS", hermes, "VIE", "Common Stock"),
+    row("HERMES80", "Hermès International SCA Depositary Receipt", "SET", "Depositary Receipt"),
+    row("HRMS", "Hermès International SCA", "NEO", "Depositary Receipt"),
+    ...funds,
+    row("PAYX", "Paychex, Inc.", "NASDAQ", "EQUITY", tagged), row("USB", "U.S. Bancorp", "NYSE", "EQUITY", tagged),
+  ];
+  const dataProvider = createTestDataProvider({ search: async (query: string) => (/ETF$/.test(query) ? funds : answer) as never });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  for (const query of ["Hermes", "Hermès"]) {
+    const printed: PrintedCliResult["result"][] = [];
+    await search(query, { initMarketData, printResult: (result) => { printed.push(result); } });
+    const rows = printed[0]!.data as Array<{ category: string; symbol: string; exchange: string }>;
+    const listed = rows.map((item) => `${item.symbol}:${item.exchange} ${item.category}`);
+    expect(listed[0]).toBe("RMS:EPA Primary Listing");
+    expect(listed).toContain("HESAY:OTC Other Listings");
+    expect(listed.indexOf("HMI:XETRA Other Listings")).toBeGreaterThan(0);
+    // The fund family's funds and their holdings follow the company's lines.
+    const firstOther = rows.findIndex((item) => item.category !== "Primary Listing" && item.category !== "Other Listings");
+    expect(rows.slice(0, firstOther).every((item) => item.category === "Primary Listing" || item.category === "Other Listings")).toBe(true);
+    expect(rows.slice(firstOther).map((item) => item.category)).not.toContain("Primary Listing");
+  }
+});

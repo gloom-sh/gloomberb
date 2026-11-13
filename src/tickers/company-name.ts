@@ -31,7 +31,10 @@ const NAME_NOISE = new Set([
   "anonim", "sirketi", "ortakligi",
 ]);
 // Turkish legal forms short enough to open another company's name (AO Smith, AO World): a legal form only as its last word.
-const LAST_WORD_NOISE = new Set(["ao", "tas"]);
+// So is a partnership limited by shares (Hermès International SCA), whatever a venue spells out.
+const LAST_WORD_NOISE = new Set(["ao", "tas", "sca"]);
+// A legal form a venue spells out in words that are no legal form alone: Hermès International Société en commandite par actions.
+const SPELLED_SCA = /\bsociete en commandite par actions\b/g;
 // Words a venue adds to the share it lists ("Microsoft Corporation Common Stock"), never part of whose it is.
 const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares", "share"]);
 // A venue's short form of a share class word, read as the word: "Volkswagen AG Pref. Share" in Zurich is its "Preferred Stock".
@@ -43,6 +46,7 @@ function companyKey(name: string): string {
     .replace(/\([^)]*\)/g, " ")
     .replace(/\b(?:(?:american|global) )?depositary (?:shares?|receipts?)\b/g, " ")
     .replace(/\./g, "")
+    .replace(SPELLED_SCA, "sca")
     .split(/[^\p{L}\p{N}]+/u)
     .map((word) => SHARE_WORD_FORMS[word] ?? word)
     .filter((word) => word && !NAME_NOISE.has(word));
