@@ -36,7 +36,7 @@ let major: Promise<ReadonlySet<string>> | null = null;
 
 /** The Tokyo codes among the major listings that ship with the app: a name several companies start with lists theirs first. */
 function majorTokyoCodes(): Promise<ReadonlySet<string>> {
-  major ??= import("./major-listings.chunk").then(({ MAJOR_LISTINGS }) => new Set(MAJOR_LISTINGS
+  major ??= import("./major-listings.chunk.js").then(({ MAJOR_LISTINGS }) => new Set(MAJOR_LISTINGS
     .filter(([, , exchange]) => exchange === "JPX").map(([symbol]) => symbol)));
   return major;
 }
