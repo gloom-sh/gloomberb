@@ -1394,7 +1394,7 @@ function ChartComposerSurface({
               spec={spec}
               setSpec={setSpec}
               focused={focused}
-              width={Math.max(8, Math.min(36, width - 1))}
+              width={Math.max(8, width - 1)}
               height={height}
               shortcutEnabled={surfaceInteractive}
               shortcutBlocked={dialogOpen}
