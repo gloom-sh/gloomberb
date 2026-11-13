@@ -59,3 +59,29 @@ test("a watchlist's listings abroad are read with their venue, so they are not t
   const read = await applyListingArgument(catalog, context, parsePaneFunctionArgs(["SIW", "Semis"], {}));
   expect(read.arg?.split(", ")).toEqual(["NVDA", "ASML:AMS", "2330:TWSE", "005930:KRX", "ES=F"]);
 });
+
+test("a list function reads a portfolio's name as its holdings, and an empty list says so rather than read as a ticker", async () => {
+  const { buildPaneCatalogEntries } = await import("./catalog");
+  const held = (symbol: string, exchange: string) => createTestTicker(symbol, symbol, {
+    exchange, portfolios: ["pension"], positions: [{ portfolio: "pension", shares: 100, broker: "manual" }],
+  });
+  const saved = [held("SPY", "ARCA"), held("D05", "SGX"), held("0700", "HKEX"), createTestTicker("AAPL", "Apple", { watchlists: [] })];
+  const context = {
+    config: { ...createDefaultConfig("/tmp/watchlist-argument-test"), watchlists: [{ id: "watchlist", name: "Watchlist" }],
+      portfolios: [{ id: "pension", name: "Pension Book", currency: "USD" }] },
+    store: { loadTicker: async () => null, loadAllTickers: async () => saved },
+    dataProvider: createTestDataProvider({ search: async () => [], getQuote: async (symbol) => createTestQuote({ symbol }) }),
+  } as unknown as MarketContext;
+  const anyListing: PaneTemplateDef = { ...template, headless: { ...shortWatchHeadless, usListingsOnly: undefined } };
+  const catalog: PaneFunctionCatalog = { ...registry, paneTemplates: new Map([[anyListing.id, anyListing]]) };
+  // `fn RIPL "Pension Book"` answered "No company found for "Pension Book"".
+  const book = await applyListingArgument(catalog, context, parsePaneFunctionArgs(["SIW", "Pension Book"], {}));
+  expect(book.arg?.split(", ")).toEqual(["SPY", "D05:SGX", "0700:HKEX"]);
+  expect(book.listingNotes).toEqual(["Read Pension Book as portfolio Pension Book (3 holdings)."]);
+  // `fn RIPL Watchlist` on an empty watchlist answered "Not a ticker: WATCHLIST".
+  await expect(applyListingArgument(catalog, context, parsePaneFunctionArgs(["SIW", "Watchlist"], {})))
+    .rejects.toThrow('Watchlist "Watchlist" is empty, so there is nothing to read.');
+  // The catalog's example names the list that holds something, so it runs as printed.
+  const [entry] = await buildPaneCatalogEntries(catalog, context);
+  expect(entry?.argExamples).toEqual(["'Pension Book'"]);
+});
