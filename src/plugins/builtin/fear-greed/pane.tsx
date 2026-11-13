@@ -14,7 +14,9 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, useUiHost } from "../../../ui";
-import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
+import { useAutoRefresh, useUpdatedAgo, useUtcDay } from "../../../react/auto-refresh";
+import { reportFooterSegment } from "../shared/source-footer";
+import { fearGreedHeadless, fearGreedReport } from "./headless";
 import { getCachedFearGreedData, loadFearGreed, type FearGreedLoadResult } from "./cache";
 import { IndexHistoryChart, IndicatorChart } from "./charts";
 import type { FearGreedData } from "./data";
@@ -57,6 +59,8 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
 
   usePaneRefreshKey(refresh, { focused });
 
+  const utcDay = useUtcDay();
+  const loaded = resource.data;
   const footerInfo = useMemo(() => [
     ...(data ? [{
       id: "score",
@@ -64,10 +68,14 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
         { text: `${formatScore(data.overall.score)} ${ratingLabel(data.overall.rating)}`, color: ratingColor(data.overall.rating), bold: true },
       ],
     }] : []),
-    ...(savedAt != null ? [savedCopyFooterSegment("saved-copy", savedAt)]
-      : stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
+    // Its source and when CNN published the reading, as `fn FNG` ends, a stale one with its warning beside it;
+    // a saved copy says when it was saved instead.
+    ...(savedAt != null ? [savedCopyFooterSegment("saved-copy", savedAt)] : [
+      ...(loaded?.data ? [reportFooterSegment(fearGreedHeadless, fearGreedReport({ ...loaded, stale: false }))] : []),
+      ...(stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
+    ]),
     ...(updatedAgo ? [ageFooterSegment(updatedAgo, { id: "age", verb: "updated", tone: "value" })] : []),
-  ], [data, savedAt, stale, updatedAgo]);
+  ], [data, loaded, savedAt, stale, updatedAgo, utcDay]);
   usePaneStatusFooter({ registrationId: paneId, loading, error, info: footerInfo });
 
   const previousScores = useMemo(() => (data ? previousScoreItems(data) : []), [data]);

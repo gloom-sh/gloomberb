@@ -7382,8 +7382,9 @@
       "They read brokerage accounts, not team portfolios (use `collections.get`).",
       "An IBKR order instruction is not an order: IBKR returns a link where you review and submit it yourself.",
       "IBKR allows one AI connection per user, and Gloom holds it: connecting IBKR in Gloom disconnects it from other AI apps, so reach it through Gloom.",
-      "The IBKR sign-in ends seven days after you consent, however often it is used; only signing in again brings it back.",
-      "A day before, the Brokers pane shows when it ends, and Gloom emails you once."
+      "The IBKR sign-in ends seven days after you consent, however often it is used; only signing in again brings it back. Signing in before it ends starts a new seven days.",
+      "The Brokers pane shows when it ends. Two days before, Gloom emails you once with a link to renew. IBKR then asks to replace your existing Gloom connection: choose replace.",
+      "Connecting another AI app to the same IBKR account disconnects Gloom. Connect IBKR in Gloom again to get it back."
      ]
     },
     {

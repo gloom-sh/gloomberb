@@ -55,6 +55,12 @@ export interface DataTableCell {
   valueUnit?: string;
   content?: ReactNode;
   /**
+   * The cells `content` takes to show whole in the terminal, where a table
+   * fits its columns to what they hold before it cuts one or pushes one out of
+   * view. Without it a drawn cell's column keeps the width the pane set.
+   */
+  contentWidth?: number;
+  /**
    * Artwork drawn before `text` on the desktop and the web, such as a flag.
    * It is decoration: the terminal does not draw it, and exports, automation
    * and screen readers read only `text`. Unlike `content`, the text itself
@@ -134,6 +140,13 @@ export type DataTableScrollAlign = "nearest" | "center" | "start";
 
 interface DataTableRowState {
   selected: boolean;
+  /**
+   * Terminal: the selected row's pane does not have the keys, so the row sits
+   * on the quieter fill (`inactiveSelectedBg`) in its own colours. A colour a
+   * cell picks for the selection is picked for that fill
+   * (`inactiveSelectedText`).
+   */
+  inactive?: boolean;
 }
 
 export interface DataTableVisibleRange {

@@ -2028,12 +2028,18 @@ class Run {
         if (!await evaluate<boolean>(main.page.cdp, `!!document.querySelector("[data-gloom-role=window-mode-status]")`)) {
           return { status: "fail", detail: "Ctrl+Shift+M did not open window mode on the floating pane" };
         }
-        // 3 puts it in the bottom left quarter; Enter commits, Enter again leaves.
+        // 3 puts it in the bottom left quarter and Enter applies it and leaves
+        // window mode. Builds before that stayed in the mode after Enter: a
+        // second Enter left it there. Sent to a build that already left, the
+        // second would reach the pane instead (open its row, and cover the
+        // research pane), so it goes only while the mode is still open.
         await win.pressKeys("3");
         await sleep(300);
         await win.pressKeys(win.VK.enter);
         await sleep(300);
-        await win.pressKeys(win.VK.enter);
+        if (await evaluate<boolean>(main.page.cdp, `!!document.querySelector("[data-gloom-role=window-mode-status]")`)) {
+          await win.pressKeys(win.VK.enter);
+        }
         await sleep(600);
       }
       const before = await layoutOf(main.page);

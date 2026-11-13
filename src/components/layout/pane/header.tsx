@@ -48,19 +48,86 @@ export interface PaneHeaderStack {
   onTabMouseDown?: (id: string, event: any) => void;
 }
 
+/** Terminal: the least a tab that is not shown keeps when a stack is cut to fit: a letter and the ellipsis. */
+const STACK_TAB_MIN_WIDTH = 4;
+/** Terminal: between the last tab named and the count of those left out. */
+const STACK_TAB_MORE_GAP = " ";
+
+/** Terminal: one tab of a stack as its header lays it out (`stackTabSpans`). */
+export interface StackTabSpan {
+  /** The tab's place in the stack; for the `more` count, the tab a press on it shows. */
+  index: number;
+  /** Cells from where the title starts (after the grip). */
+  start: number;
+  text: string;
+  /** The count of the tabs left out (`+2`), which a press steps through. */
+  more?: true;
+}
+
 /**
- * Terminal: each tab of a stack in its header, as text and where it starts,
- * in cells from where the title starts (after the grip). The pointer runtime
- * finds the tab under a press with it.
+ * Terminal: the tabs of a stack its header shows in `width` cells, as text
+ * and where each starts, in cells from where the title starts (after the
+ * grip); `index` is the tab's place in the stack. Every tab shows when they
+ * fit. When they do not, the tab shown (`activeIndex`) keeps its name, as
+ * many others as keep a letter each share what is left, in tab order, and a
+ * dim `+n` after them counts the rest. A press on the count shows the first
+ * tab left out after the one shown, so pressing it again steps through them.
+ * The header always names what the pane shows; the count goes first when
+ * there is no room for it beside a letter of that name. The pointer runtime
+ * finds the tab under a press with the same spans.
  */
-export function stackTabSpans(titles: readonly string[]): Array<{ start: number; text: string }> {
+export function stackTabSpans(
+  titles: readonly string[],
+  activeIndex = -1,
+  width = Number.POSITIVE_INFINITY,
+): StackTabSpan[] {
+  const labels = titles.map((title) => truncateToDisplayWidth(title, STACK_TAB_MAX_WIDTH));
+  const separator = STACK_TAB_SEPARATOR.length;
+  const natural = labels.reduce((sum, label) => sum + displayWidth(label), 0) + separator * Math.max(0, labels.length - 1);
+  let texts: Array<string | null> = labels;
+  let more: { index: number; text: string } | null = null;
+  if (natural > width && activeIndex >= 0 && activeIndex < labels.length) {
+    const shownLabel = labels[activeIndex]!;
+    const others = labels.map((_, index) => index).filter((index) => index !== activeIndex);
+    const moreWidth = (count: number) => (count > 0 ? STACK_TAB_MORE_GAP.length + `+${count}`.length : 0);
+    let kept: number[] = [];
+    let share = 0;
+    for (let keep = others.length; keep >= 1; keep -= 1) {
+      const room = width - displayWidth(shownLabel) - separator * keep - moreWidth(others.length - keep);
+      if (Math.floor(room / keep) >= STACK_TAB_MIN_WIDTH) {
+        kept = others.slice(0, keep);
+        share = Math.floor(room / keep);
+        break;
+      }
+    }
+    const left = others.filter((index) => !kept.includes(index));
+    const count = left.length > 0 ? `+${left.length}` : null;
+    let shown = shownLabel;
+    if (kept.length === 0) {
+      const room = width - moreWidth(left.length);
+      shown = truncateToDisplayWidth(shownLabel, room >= Math.min(STACK_TAB_MIN_WIDTH, displayWidth(shownLabel)) ? room : width);
+    }
+    texts = labels.map((label, index) => (
+      index === activeIndex ? shown : kept.includes(index) ? truncateToDisplayWidth(label, share) : null
+    ));
+    const used = texts.reduce<number>((sum, text) => sum + (text === null ? 0 : displayWidth(text)), 0)
+      + separator * kept.length;
+    if (count && used + moreWidth(left.length) <= width) {
+      more = { index: left.find((index) => index > activeIndex) ?? left[0]!, text: count };
+    }
+  }
   let start = 0;
-  return titles.map((title) => {
-    const text = truncateToDisplayWidth(title, STACK_TAB_MAX_WIDTH);
-    const span = { start, text };
-    start += displayWidth(text) + STACK_TAB_SEPARATOR.length;
-    return span;
+  const spans: StackTabSpan[] = [];
+  texts.forEach((text, index) => {
+    if (text === null) return;
+    spans.push({ index, start, text });
+    start += displayWidth(text) + separator;
   });
+  if (more) {
+    const last = spans.at(-1);
+    spans.push({ index: more.index, start: last ? last.start + displayWidth(last.text) + STACK_TAB_MORE_GAP.length : 0, text: more.text, more: true });
+  }
+  return spans;
 }
 
 /** Terminal: the cells before a header's title: the grip, after the corner a focused or floating pane draws. */
@@ -68,21 +135,52 @@ export function paneHeaderTitleStart(framed: boolean): number {
   return (framed ? 2 : 0) + PANE_HEADER_GRIP.length;
 }
 
-/** Terminal: how wide a stack's tabs are, all of them. */
-function stackTabsWidth(stack: PaneHeaderStack): number {
-  const last = stackTabSpans(stack.tabs.map((tab) => tab.title)).at(-1);
-  return last ? last.start + displayWidth(last.text) : 0;
+/** Terminal: what a header's quick settings, lock and `?` take after its title. */
+export function terminalHeaderTrailingWidth(
+  quickSettings: ReadonlyArray<Pick<PaneHeaderQuickSetting, "icon">>,
+  locked: boolean,
+  help: boolean,
+): number {
+  return quickSettings.reduce((total, setting) => total + displayWidth(quickSettingText(setting)), 0)
+    + (locked ? displayWidth(PANE_HEADER_LOCK) : 0)
+    + (help ? PANE_HEADER_HELP.length : 0);
 }
 
-/** Terminal: a stack's tabs in at most `width` cells (all of them with `pad`), the shown one in `activeFg`, the rest dim. */
-function TerminalStackTabs({ stack, width, activeFg, pad }: { stack: PaneHeaderStack; width: number; activeFg: string; pad: boolean }) {
-  const spans = stackTabSpans(stack.tabs.map((tab) => tab.title));
-  const parts: Array<{ key: string; text: string; fg: string }> = [];
-  stack.tabs.forEach((tab, index) => {
-    if (index > 0) parts.push({ key: `sep:${tab.id}`, text: STACK_TAB_SEPARATOR, fg: colors.border });
-    parts.push({ key: tab.id, text: spans[index]!.text, fg: tab.id === stack.active ? activeFg : colors.textDim });
-  });
+/**
+ * Terminal: the cells a header leaves its title (or a stack's tabs): its
+ * width less the frame a focused, floating or fullscreen pane draws, the
+ * grip, what follows the title (`trailing`), the menu and the corner mark a
+ * floating or fullscreen pane has.
+ */
+export function terminalHeaderTitleWidth(
+  width: number,
+  { framed, corner, trailing }: { framed: boolean; corner: boolean; trailing: number },
+): number {
+  const frame = framed ? 4 : 0;
+  const cornerWidth = corner ? PANE_HEADER_CLOSE.length : 0;
+  return Math.max(0, width - frame - PANE_HEADER_GRIP.length - trailing - PANE_HEADER_ACTION.length - cornerWidth);
+}
+
+/** Terminal: a stack's tabs as `stackTabSpans` lays them out, the shown one in `activeFg`, the rest dim, padded to `width` with `pad`. */
+function TerminalStackTabs({ stack, spans, width, activeFg, pad }: {
+  stack: PaneHeaderStack;
+  spans: ReturnType<typeof stackTabSpans>;
+  width: number;
+  activeFg: string;
+  pad: boolean;
+}) {
   let left = width;
+  const parts: Array<{ key: string; text: string; fg: string }> = [];
+  spans.forEach((span, position) => {
+    if (span.more) {
+      parts.push({ key: "more-gap", text: STACK_TAB_MORE_GAP, fg: colors.textDim });
+      parts.push({ key: "more", text: span.text, fg: colors.textDim });
+      return;
+    }
+    const tab = stack.tabs[span.index]!;
+    if (position > 0) parts.push({ key: `sep:${tab.id}`, text: STACK_TAB_SEPARATOR, fg: colors.border });
+    parts.push({ key: tab.id, text: span.text, fg: tab.id === stack.active ? activeFg : colors.textDim });
+  });
   return (
     <>
       {parts.map((part) => {
@@ -93,6 +191,17 @@ function TerminalStackTabs({ stack, width, activeFg, pad }: { stack: PaneHeaderS
       {pad && left > 0 && <Text fg={activeFg} selectable={false}>{" ".repeat(left)}</Text>}
     </>
   );
+}
+
+/** The place of the tab a stack shows among its tabs. */
+function stackActiveIndex(stack: PaneHeaderStack): number {
+  return stack.tabs.findIndex((tab) => tab.id === stack.active);
+}
+
+/** Terminal: how wide a stack's tabs are as laid out. */
+function stackSpansWidth(spans: ReturnType<typeof stackTabSpans>): number {
+  const last = spans.at(-1);
+  return last ? last.start + displayWidth(last.text) : 0;
 }
 
 interface PaneHeaderProps {
@@ -296,8 +405,7 @@ export function PaneHeader({
   const closeText = fullscreen ? PANE_HEADER_RESTORE : floating ? PANE_HEADER_CLOSE : "";
   const onCornerMouseDown = fullscreen ? onRestoreMouseDown : onCloseMouseDown;
   const lockText = locked ? PANE_HEADER_LOCK : "";
-  const terminalQuickSettingsWidth = quickSettings.reduce((total, setting) => total + displayWidth(quickSettingText(setting)), 0)
-    + displayWidth(lockText) + helpText.length;
+  const terminalQuickSettingsWidth = terminalHeaderTrailingWidth(quickSettings, locked, !!onHelpMouseDown);
   const textColor = paneTitleText(visuallyFocused, floating);
   const tickerAt = titleTicker ? findTitleTicker(title, titleTicker) : null;
   const topInset = topRule ? 1 : 0;
@@ -551,10 +659,10 @@ export function PaneHeader({
     // Fullscreen draws "-" in that corner. Reserve 2 for the frame.
     const borderColor = visuallyFocused ? colors.borderFocused : colors.border;
     const innerWidth = Math.max(0, width - 4);
-    const contentWidth = PANE_HEADER_GRIP.length + terminalQuickSettingsWidth + closeText.length + actionText.length;
-    const titleWidth = Math.max(0, innerWidth - contentWidth);
+    const titleWidth = terminalHeaderTitleWidth(width, { framed: true, corner: closeText.length > 0, trailing: terminalQuickSettingsWidth });
     const clippedTitle = truncateToDisplayWidth(title, titleWidth);
-    const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - (stack ? Math.min(titleWidth, stackTabsWidth(stack)) : displayWidth(clippedTitle)) - terminalQuickSettingsWidth - actionText.length - closeText.length);
+    const spans = stack ? stackTabSpans(stack.tabs.map((tab) => tab.title), stackActiveIndex(stack), titleWidth) : null;
+    const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - (spans ? Math.min(titleWidth, stackSpansWidth(spans)) : displayWidth(clippedTitle)) - terminalQuickSettingsWidth - actionText.length - closeText.length);
     const fill = "─".repeat(fillLen);
 
     return (
@@ -570,10 +678,10 @@ export function PaneHeader({
         onMouseDragEnd={onHeaderMouseDragEnd}
       >
         <Text fg={borderColor} selectable={false}>{"┌─"}</Text>
-        {stack ? (
+        {stack && spans ? (
           <>
             <Text fg={textColor} selectable={false}>{PANE_HEADER_GRIP}</Text>
-            <TerminalStackTabs stack={stack} width={titleWidth} activeFg={textColor} pad={false} />
+            <TerminalStackTabs stack={stack} spans={spans} width={titleWidth} activeFg={textColor} pad={false} />
           </>
         ) : (
           <Text fg={textColor} selectable={false}>{`${PANE_HEADER_GRIP}${clippedTitle}`}</Text>
@@ -587,7 +695,7 @@ export function PaneHeader({
             onMouseDown={setting.onMouseDown}
           />
         ))}
-        <Text fg={borderColor} selectable={false}>{fill}</Text>
+        {fill && <Text fg={borderColor} selectable={false}>{fill}</Text>}
         {locked && (
           <TerminalPaneButton text={lockText} fg={colors.textMuted} role="pane-lock" />
         )}
@@ -613,8 +721,9 @@ export function PaneHeader({
     );
   }
 
-  const titleWidth = Math.max(0, width - PANE_HEADER_GRIP.length - terminalQuickSettingsWidth - actionText.length - closeText.length);
+  const titleWidth = terminalHeaderTitleWidth(width, { framed: false, corner: closeText.length > 0, trailing: terminalQuickSettingsWidth });
   const clippedTitle = truncateToDisplayWidth(title, titleWidth);
+  const spans = stack ? stackTabSpans(stack.tabs.map((tab) => tab.title), stackActiveIndex(stack), titleWidth) : null;
   const padding = " ".repeat(Math.max(0, titleWidth - displayWidth(clippedTitle)));
 
   return (
@@ -629,10 +738,10 @@ export function PaneHeader({
       onMouseDrag={onHeaderMouseDrag}
       onMouseDragEnd={onHeaderMouseDragEnd}
     >
-      {stack ? (
+      {stack && spans ? (
         <>
           <Text fg={textColor} selectable={false}>{PANE_HEADER_GRIP}</Text>
-          <TerminalStackTabs stack={stack} width={titleWidth} activeFg={textColor} pad />
+          <TerminalStackTabs stack={stack} spans={spans} width={titleWidth} activeFg={textColor} pad />
         </>
       ) : (
         <Text fg={textColor} selectable={false}>

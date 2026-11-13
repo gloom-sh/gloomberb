@@ -9,6 +9,7 @@ import {
   PaneFooterProvider,
   usePaneFooter,
 } from "./index";
+import { delayedFooterSegment } from "./model";
 import { useExternalLinkFooter } from "../../../use-external-link-footer";
 import { setLanguage, t } from "../../../../i18n";
 
@@ -153,6 +154,50 @@ describe("PaneFooterBar", () => {
     expect(frame).toContain("source Reuters");
     expect(frame).toContain("[o]pen");
     expect(frame).not.toContain("https://example.com");
+  });
+
+  test("a framed footer keeps its status apart from its hints, drops hints from the right, and ends a blank short of its corner", async () => {
+    function Screener() {
+      usePaneFooter("screener", () => ({
+        info: [
+          { id: "loading", parts: [{ text: "loading more", tone: "muted" }] },
+          { id: "matches", parts: [{ text: "777 matches" }] },
+          { id: "currency", parts: [{ text: "USD", tone: "muted" }] },
+          delayedFooterSegment({ id: "delay", detail: "15m delayed", delay: "15m", onPress: () => {} }),
+        ],
+        hints: [
+          { id: "metric", key: "m", label: "etric", onPress: () => {} },
+          { id: "save", key: "s", label: "ave screen", onPress: () => {} },
+          { id: "check", key: "t", label: "check ticker", onPress: () => {} },
+        ],
+      }), []);
+      return null;
+    }
+    const row = async (width: number) => {
+      await tui.render(
+        <PaneFooterProvider>
+          {(footer) => (
+            <Box width={width} height={1}>
+              <Screener />
+              <PaneFooterBar footer={footer} focused width={width} />
+            </Box>
+          )}
+        </PaneFooterProvider>,
+        { width, height: 1 },
+      );
+      await act(async () => {
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
+      });
+      return tui.frame().split("\n")[0]!;
+    };
+    // Room for all of it: the whole status, then the hints, then a blank before the frame's last dash.
+    const wide = await row(90);
+    expect(wide).toMatch(/^└loading more · 777 matches · USD ◷15m +\[m\]etric \[s\]ave screen \[t\]check ticker ─┘$/);
+    // Narrower, the last hint goes under More first and the status stays whole, a column from the hints.
+    const narrow = await row(72);
+    expect(narrow).toMatch(/^└loading more · 777 matches · USD ◷15m +\[m\]etric \[s\]ave screen +More +─┘$/);
+    expect(narrow).not.toContain("[t]check");
   });
 
   test("hints that do not fit open from More and run from there", async () => {

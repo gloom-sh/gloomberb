@@ -380,6 +380,43 @@ describe("KittyImageManager", () => {
     expect(secondPlacementIds.slice(0, 2)).toEqual(firstPlacementIds.slice(0, 2));
     expect(secondWrite).toContain(`a=d,d=I,i=${firstImageId!}`);
   });
+
+  test("a chart covered or hidden frame after frame deletes its image once, then writes nothing", () => {
+    const writes: string[] = [];
+    const renderer = {
+      resolution: { width: 1200, height: 800 },
+      terminalWidth: 120,
+      terminalHeight: 40,
+      write(payload: string | Uint8Array) {
+        writes.push(typeof payload === "string" ? payload : Buffer.from(payload).toString("utf8"));
+        return true;
+      },
+    } as unknown as CliRenderer;
+    const manager = new NativeSurfaceManager(renderer);
+    const surface = {
+      id: "chart",
+      paneId: "pane",
+      rect: { x: 2, y: 3, width: 20, height: 8 },
+      visibleRect: { x: 2, y: 3, width: 20, height: 8 },
+      bitmap: { width: 200, height: 80, pixels: new Uint8Array(200 * 80 * 4) },
+      bitmapKey: "frame-1",
+    };
+    manager.setWindowState({ paneLayers: [{ paneId: "pane", zIndex: 1 }, { paneId: "dialog", zIndex: 2 }], occluders: [] });
+    manager.upsertSurface(surface);
+    expect(writes.length).toBe(1);
+
+    // A dialog over all of it, then the chart hidden, then shown again under the dialog.
+    const dialog = (x: number) => ({ id: "dialog", paneId: "dialog", zIndex: 2, rect: { x, y: 0, width: 120, height: 40 } });
+    manager.setWindowState({ paneLayers: [{ paneId: "pane", zIndex: 1 }, { paneId: "dialog", zIndex: 2 }], occluders: [dialog(0)] });
+    expect(writes.length).toBe(2);
+    expect(writes[1]).toContain("a=d");
+    manager.setWindowState({ paneLayers: [{ paneId: "pane", zIndex: 1 }, { paneId: "dialog", zIndex: 2 }], occluders: [dialog(1)] });
+    manager.updateSurfaceGeometry("chart", { paneId: "pane", rect: surface.rect, visibleRect: null });
+    manager.updateSurfaceGeometry("chart", { paneId: "pane", rect: surface.rect, visibleRect: surface.visibleRect });
+    manager.removeSurface("chart");
+    expect(writes.length).toBe(2);
+    manager.destroy();
+  });
 });
 
 describe("NativeSurfaceManager", () => {

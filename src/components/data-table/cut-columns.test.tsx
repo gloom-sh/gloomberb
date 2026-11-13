@@ -1,5 +1,5 @@
 import { expect, mock, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
@@ -37,9 +37,10 @@ function Harness({ frozen }: { frozen: boolean }) {
         sortDirection="asc"
         onHeaderClick={() => {}}
         getItemKey={(row) => row.name}
+        // Each value fills its column, so none has blank to give up and the table stays wider than the pane.
         renderCell={(row, column) => column.id === "chg"
-          ? { text: row.chg, onMouseDown: () => chgPressed(row.name) }
-          : { text: row[column.id as "name" | "last"] }}
+          ? { text: row.chg.padStart(column.width), onMouseDown: () => chgPressed(row.name) }
+          : { text: column.align === "right" ? row.last.padStart(column.width) : row.name.padEnd(column.width) }}
         emptyStateTitle="No rows"
         headerScrollId="cut-header"
         bodyScrollId="cut-body"
@@ -162,4 +163,133 @@ test("beside a frozen first column every sideways step and the far end start a c
   }
   // At the far end, the last columns, run on past by blank cells to start one whole.
   expect(headers().slice(0, 3)).toEqual(["JPY", "CHF", "CAD"]);
+});
+
+// A board set wider than its figures, as a watchlist is: at 30 cells its CHG% sat past the edge behind "⇧→".
+test("a table gives up the blank past its text to show a column whole, and an empty one never says there are more", async () => {
+  const board = [
+    { id: "name", label: "NAME", width: 10 },
+    { id: "last", label: "LAST", width: 10, align: "right" as const },
+    { id: "chg", label: "CHG%", width: 10, align: "right" as const },
+    { id: "note", label: "NOTE", width: 12 },
+  ];
+  const row = { name: "Brent", last: "62.10", chg: "-0.85%", note: "front month" } as Record<string, string>;
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-cut-columns"));
+  const render = (items: Record<string, string>[]) => act(async () => {
+    await tui.render(<AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="fitted-board">
+        <DataTableView
+          focused showHorizontalScrollbar columns={board} items={items}
+          selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
+          sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}} getItemKey={(item) => item.name!}
+          renderCell={(item, column) => ({ text: item[column.id]! })}
+          emptyStateTitle="No rows" headerScrollId="fitted-header" bodyScrollId="fitted-body"
+        />
+      </PaneInstanceProvider>
+    </AppContext>, { width: 30, height: 8 });
+  });
+  await render([row]);
+  await settle();
+  expect(lines()[0]).toMatch(/NAME\s+LAST\s+CHG%\s+⇧→\s*$/);
+  expect(lines()[1]).toContain("-0.85%");
+  // NOTE starts a cell short of the edge: blank, not a stray "…".
+  expect(lines()[1]).not.toContain("…");
+
+  await render([]);
+  await settle();
+  expect(tui.frame()).toContain("No rows");
+  expect(tui.frame()).not.toContain("⇧→");
+});
+
+test("a figure that fits itself to its column keeps the form its set width gives it, after the fit took the blank of a shorter one", async () => {
+  const board = [
+    { id: "name", label: "NAME", width: 8 },
+    { id: "last", label: "LAST", width: 10, align: "right" as const },
+    { id: "chg", label: "CHG%", width: 8, align: "right" as const },
+    { id: "cap", label: "CAP", width: 8, align: "right" as const },
+  ];
+  // As a quote board's price does: whole while it fits its column, rounded when it does not.
+  const fitted = (value: number | null, width: number) => {
+    if (value == null) return "—";
+    const whole = value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return whole.length <= width - 1 ? whole : String(Math.round(value));
+  };
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-cut-columns"));
+  let load: (last: number) => void = () => {};
+  function Board() {
+    const [last, setLast] = useState<number | null>(null);
+    load = setLast;
+    return <AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="self-fitting-board">
+        <DataTableView
+          focused showHorizontalScrollbar columns={board} items={[{ name: "BTC", last, chg: "-1.45%", cap: "1.47T" }]}
+          selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
+          sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}} getItemKey={(item) => item.name}
+          renderCell={(item, column) => ({
+            text: column.id === "last" ? fitted(item.last, column.width) : String(item[column.id as "name" | "chg" | "cap"]),
+          })}
+          emptyStateTitle="No rows" headerScrollId="self-fitting-header" bodyScrollId="self-fitting-body"
+        />
+      </PaneInstanceProvider>
+    </AppContext>;
+  }
+  await act(async () => { await tui.render(<Board />, { width: 30, height: 6 }); });
+  await settle();
+  // The quote has not loaded: LAST gives up its blank so CAP shows.
+  expect(lines()[0]).toMatch(/CAP/);
+  // It loads: the price is drawn as its set width has it, and the table makes room for that.
+  await act(async () => { load(72858.65); });
+  await settle();
+  expect(lines()[1]).toContain("72,858.65");
+});
+
+test("a table's columns over its rows at its width are as drawn fresh, never wider for rows or a width it had before", async () => {
+  const board = [
+    { id: "name", label: "NAME", width: 8, flexGrow: 1 },
+    { id: "last", label: "LAST", width: 10, align: "right" as const },
+    { id: "chg", label: "CHG%", width: 8, align: "right" as const },
+    { id: "cap", label: "CAP", width: 8, align: "right" as const },
+  ];
+  type Row = { name: string; last: string; chg: string; cap: string };
+  const alphabet: Row[] = [{ name: "Alphabet Inc. Class A", last: "171.20", chg: "-0.85%", cap: "2.09T" }];
+  const bp: Row[] = [{ name: "BP", last: "31.08", chg: "+0.12%", cap: "84.1B" }];
+  // As a name column does: whole while it fits, cut with an ellipsis when it does not.
+  const clip = (text: string, width: number) => text.length <= width ? text : `${text.slice(0, width - 1)}…`;
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-cut-columns"));
+  let show: (rows: Row[]) => void = () => {};
+  function Board({ rows }: { rows: Row[] }) {
+    const [items, setItems] = useState(rows);
+    show = setItems;
+    return <AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="refit-board">
+        <DataTableView
+          focused showHorizontalScrollbar columns={board} items={items}
+          selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
+          sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}} getItemKey={(item) => item.name}
+          renderCell={(item, column) => ({ text: column.id === "name" ? clip(item.name, column.width) : item[column.id as keyof Row] })}
+          emptyStateTitle="No rows" headerScrollId="refit-header" bodyScrollId="refit-body"
+        />
+      </PaneInstanceProvider>
+    </AppContext>;
+  }
+  const fresh = async (rows: Row[], width: number) => {
+    await act(async () => { await tui.render(<Board rows={rows} />, { width, height: 6 }); });
+    await settle();
+    return tui.frame();
+  };
+  const bpAt30 = await fresh(bp, 30);
+  const alphabetAt30 = await fresh(alphabet, 30);
+  expect(bpAt30).toContain("CAP");
+
+  // Alphabet's row replaced with BP's: its long name no longer holds the column open.
+  await act(async () => { show(bp); });
+  await settle();
+  expect(tui.frame()).toBe(bpAt30);
+
+  // Drawn wide, the name whole in the room the pane gives it, then narrowed again.
+  await fresh(alphabet, 64);
+  expect(lines()[1]).toContain("Alphabet Inc. Class A");
+  await act(async () => { tui.setup().resize(30, 6); });
+  await settle();
+  expect(tui.frame()).toBe(alphabetAt30);
 });

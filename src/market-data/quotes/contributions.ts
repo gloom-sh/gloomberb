@@ -230,6 +230,16 @@ export function mergeQuoteContribution(
     regularChangePercent: next.regularClose != null ? next.regularChangePercent : undefined,
   };
 
+  // Where a 52-week range comes from is said of that range: it goes with the range the merge keeps. A tick that
+  // relays the same range without saying (a stream's quote built on the served one) keeps the word; one with
+  // another range, or a copy saved before the word existed, says its own, or none.
+  if (next.high52w !== undefined || next.low52w !== undefined) {
+    const relayed = next.yearRangeBasis === undefined && next.high52w === current.high52w && next.low52w === current.low52w;
+    const basis = relayed ? current.yearRangeBasis : next.yearRangeBasis;
+    if (basis) merged.yearRangeBasis = basis;
+    else delete merged.yearRangeBasis;
+  }
+
   // What this observation's move is from, when not its previous close (a coin's
   // 24 hours), is said with each one: a quote back on its
   // previous close drops an earlier "24h", and one on 24 hours drops the

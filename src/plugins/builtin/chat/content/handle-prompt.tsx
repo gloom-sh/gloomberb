@@ -8,6 +8,7 @@ import { useShortcut } from "../../../../react/input";
 import { blendHex, colors } from "../../../../theme/colors";
 import { Box, Text, TextAttributes, type InputRenderable } from "../../../../ui";
 import { countEscapeTowardClose } from "../../../../utils/double-escape-close";
+import { usePaneUnsentWork } from "../../../../state/pane-unsent-work";
 import { displayWidth } from "../../../../utils/format";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import {
@@ -212,6 +213,9 @@ export function ChatHandlePrompt({
     hints: [{ id: "handle", key: "@", label: " handle", title: t("Choose Handle"), onPress: onFocusField }],
     menu: [{ id: "handle-not-now", label: t("Hide Handle Prompt"), onSelect: onDismiss }],
   } : null), [onDismiss, onFocusField, prompt.saving, prompt.visible]);
+
+  // A handle typed and not saved goes with the pane: Esc never closes it over one.
+  usePaneUnsentWork(prompt.visible && !prompt.saving && normalizeHandleInput(prompt.value).length > 0);
 
   useShortcut((event) => {
     if (event.name !== "escape") return;

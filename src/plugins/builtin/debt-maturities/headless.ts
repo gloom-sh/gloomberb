@@ -1,5 +1,5 @@
 import type { DebtMaturitiesPayload } from "../../../api-client/debt-maturities";
-import type { HeadlessBundleSection } from "../../../types/headless";
+import type { HeadlessBundleSection, HeadlessPaneFreshness } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchDebtMaturities } from "./client";
 import {
@@ -79,6 +79,19 @@ function bandSections(data: DebtMaturitiesPayload, latest: DebtLatest): Headless
   ];
 }
 
+/** What dates a DDIS report, as `fn DDIS` ends and the pane's footer says it. */
+export function debtReportFreshness(data: DebtMaturitiesPayload): HeadlessPaneFreshness {
+  const latest = data.latest;
+  if (latest && debtBands(latest)) {
+    // Dated by the report's balance sheet: an SEC filing named by its form, a report outside SEC cited
+    // as the server names it (its form, HKEX or CNINFO, would repeat that name).
+    return data.cik ? { asOf: latest.asOf, asOfLabel: latest.form } : { asOf: latest.asOf, source: data.source.name };
+  }
+  // The latest filing dates the report (a newer 10-Q's balance date), named by its form so the date is
+  // not read as the schedule's; the history rows are past years, not stale data.
+  return { asOf: debtNewestAsOf(data), asOfLabel: debtNewestForm(data) ?? undefined };
+}
+
 export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
   freshness: SEC_FILINGS,
@@ -125,9 +138,7 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(data.notes?.length ? { notes: data.notes } : {}),
         sections: bandSections(data, latest),
         metadata: { ...data },
-        // Dated by the report's balance sheet: an SEC filing named by its form, a report outside SEC cited
-        // as the server names it (its form, HKEX or CNINFO, would repeat that name).
-        freshness: data.cik ? { asOf: latest.asOf, asOfLabel: latest.form } : { asOf: latest.asOf, source: data.source.name },
+        freshness: debtReportFreshness(data),
       };
     }
     const quarter = newerQuarter(data);
@@ -212,9 +223,7 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
       ],
       ...(costNote || data.notes?.length ? { notes: [...(data.notes ?? []), ...(costNote ? [costNote] : [])] } : {}),
       metadata: { ...data },
-      // The latest filing dates the report (a newer 10-Q's balance date), named by its form so the date is
-      // not read as the schedule's; the history rows are past years, not stale data.
-      freshness: { asOf: debtNewestAsOf(data), asOfLabel: debtNewestForm(data) ?? undefined },
+      freshness: debtReportFreshness(data),
     };
   },
 };

@@ -51,7 +51,9 @@ import {
   policyDecisionsNamed,
   matchesImpact,
   NO_CONSENSUS_NOTE,
+  countriesNotInCalendar,
   noScheduledReleasesMessage,
+  notInCalendarMessage,
   parseCountryFilter,
   listingEnd,
   pastListingRows,
@@ -93,8 +95,6 @@ import {
   fredInterval,
   fredObservesDays,
   fredObservationsFromStart,
-  fredProvenance,
-  fredPublicationTime,
   fredUnit,
   fredValueCell,
   fredValueHeader,
@@ -102,6 +102,7 @@ import {
   laggingSeriesNote,
   parseFredChange,
 } from "./fred-series";
+import { fredProvenance, fredPublicationTime, notOnFredSource } from "../../sources/gloomberb-cloud/fred-attribution";
 import { followsUsBondMarket, usBondMarketClosedNote } from "../../market-data/us-bond-market";
 
 // Batch quotes often omit names for indices and ETFs; these baskets are fixed, so name them here.
@@ -598,9 +599,11 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
         ? `The calendar lists back ${Math.round((todayStart - Date.parse(`${past.listedFrom}T00:00:00Z`)) / DAY_MS)} days, to ${past.listedFrom}; nothing earlier is listed`
       : past?.storedFrom ? `The stored calendar starts ${past.storedFrom}; nothing earlier is listed`
       : `No events are stored before ${listedFrom ?? isoDate(new Date(todayStart))}`;
+    // Countries asked for that the calendar does not cover (EG, NG): not in it, which a longer window would not change.
+    const absent = countriesNotInCalendar(country, events);
     // Countries asked for that nothing in the window is for: a quiet week there, not an unknown country.
     const inWindow = events.filter((event) => event.date.getTime() >= fromTime);
-    const unscheduled = countriesWithoutEvents(country, inWindow);
+    const unscheduled = countriesWithoutEvents(country, inWindow).filter((code) => !absent.includes(code));
     const listed = inWindow
       .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact) && (search == null || matchesEventSearch(event, search)))
       .sort((left, right) => left.date.getTime() - right.date.getTime());
@@ -654,13 +657,17 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       });
     // A filter of countries only, none of which has anything in the window, says so as its empty list, with where
     // the listing ends.
-    const allUnscheduled = unscheduled.length > 0 && unscheduled.length === country.split(",").length;
+    const allUnscheduled = unscheduled.length + absent.length > 0 && unscheduled.length + absent.length === country.split(",").length;
+    const coverage = [
+      absent.length > 0 ? notInCalendarMessage(absent) : null,
+      unscheduled.length > 0 ? noScheduledReleasesMessage(unscheduled, allUnscheduled ? listedThrough : null) : null,
+    ].filter((note): note is string => !!note).join(" ");
     // Rows after the listing's end are each bank's next decision and each country's next CPI release, and say so
     // where the end is said.
     const pastRows = pastListingRows(listed);
     const listedPast = pastRows ? `No releases listed after ${listedThrough}; the rows after it are ${pastRows}` : null;
     const notes = [listedBefore, listedPast ?? listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []),
-      rows.length > 0 && unscheduled.length > 0 ? noScheduledReleasesMessage(unscheduled) : null,
+      rows.length > 0 && coverage ? coverage : null,
       // A dash under Forecast on a release still to come is a consensus not in yet, not a missing figure.
       listed.some(awaitsConsensus) ? NO_CONSENSUS_NOTE : null]
       .filter((note): note is string => !!note);
@@ -677,7 +684,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     }, {
       dateKey: "date",
       defaultLimit: 50,
-      empty: allUnscheduled ? noScheduledReleasesMessage(unscheduled, listedThrough)
+      empty: allUnscheduled ? coverage
         : [econEmptyMessage(from, listedThrough, listedAfter != null), search == null ? null : policyDecisionHint(search, country)].filter(Boolean).join(" "),
       ...(footnote ? { footnote } : {}),
       // What the text says under the table, a script reads in the CSV's closing lines.
@@ -905,12 +912,6 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
       }] : []),
     ],
   });
-}
-
-/** Who a series FRED does not carry comes from, for a source line whose rows do not name it: `TurkStat via the CBRT`. */
-function notOnFredSource(seriesId: string): string | null {
-  const elsewhere = seriesNotOnFred(seriesId);
-  return elsewhere ? `${elsewhere.publisher} via ${elsewhere.via}` : null;
 }
 
 const YIELD_TENORS: Record<string, string> = { DGS3MO: "3M", DGS2: "2Y", DGS10: "10Y", DGS30: "30Y" };

@@ -86,6 +86,8 @@ export interface SeriesLoadRequest {
 export interface SeriesAttribution {
   source: string;
   publisher?: string;
+  /** When its newest observation was published, an ISO instant, when the source says. */
+  publishedAt?: string;
 }
 
 export interface SeriesLoadResult {

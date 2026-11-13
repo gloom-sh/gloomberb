@@ -188,7 +188,7 @@ export function atRegularSessionPrice<T extends Pick<TickerFinancials, "quote" |
   if (!fundamentals || fundamentals.stale === true) {
     return { ...financials, quote: { ...quote, marketCap: scaledAmount(quote.marketCap, capMove(quote.marketCap)) } };
   }
-  const trailing = per(fundamentals.trailingPE, priceEarningsEps(fundamentals));
+  const trailing = per(fundamentals.trailingPE, priceEarningsEps(fundamentals, quote.currency));
   const forward = per(fundamentals.forwardPE, fundamentals.forwardEps);
   const dividend = fundamentals.dividendRate != null && positive(fundamentals.dividendYield)
     ? fundamentals.dividendRate / fundamentals.dividendYield : undefined;

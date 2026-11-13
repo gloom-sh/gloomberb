@@ -42,6 +42,7 @@ import { tickerQuoteFooterInfo } from "./quote-footer";
 import { ResearchTabKeysProvider, useResearchTabKeysHost } from "./research-tab-keys";
 import { ResearchTabNavigationProvider } from "./research-tab-navigation";
 import { usePluginAppActions } from "../../../public/react";
+import { useUtcDay } from "../../../react/auto-refresh";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { ResearchTradeWorkspace } from "../broker-trading/dock";
 
@@ -255,6 +256,8 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     segmentId: "ticker-research-access",
     shortcutScope: "ticker-research:upgrade",
   });
+  // The quote's time of today drops its day; the next day the footer names it.
+  const utcDay = useUtcDay();
   usePaneFooter(
     "ticker-research-access",
     () => quoteFooterActive ? {
@@ -263,7 +266,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       hints: cloudAccess.hint ? [cloudAccess.hint] : undefined,
       order: -1,
     } : null,
-    [cloudAccess.hint, cloudAccess.segment, financials?.quote, quoteFooterActive, resolvedTabId, width],
+    [cloudAccess.hint, cloudAccess.segment, financials?.quote, quoteFooterActive, resolvedTabId, utcDay, width],
   );
 
   const visibleTabIdKey = allTabs.map((tab) => tab.id).join("\0");

@@ -37,16 +37,17 @@ const MAGNET_RELEASE_PX = 12;
 const TERMINAL_MAGNETS: MagnetDistances = { catchX: 1, catchY: 1, releaseX: 2, releaseY: 2 };
 
 /**
- * Desktop: past this pointer speed, in catch distances a second (300 px/s),
- * a release lands the pane where the pointer puts it, its magnets left out.
+ * Past this pointer speed, in catch distances a second (300 px/s on the
+ * desktop, 37.5 cells in the terminal), a release lands the pane where the
+ * pointer puts it, its magnets left out.
  */
 const MAGNET_TRAVEL_SPEED = 300 / MAGNET_CATCH_PX;
 /**
- * Desktop: below this pointer speed (60 px/s, about a px a frame) the pointer
- * is placing the pane, and it is drawn where its magnets hold it; faster, it
- * is drawn under the pointer. Drawing the magnets at a hand's usual speed
- * held the pane on each line it crossed, then jumped it up to 18 px, which
- * read as a drag that lags and stutters.
+ * Below this pointer speed (60 px/s, about a px a frame) the pointer is
+ * placing the pane, and it is drawn where its magnets hold it; faster, it is
+ * drawn under the pointer. Drawing the magnets at a hand's usual speed held
+ * the pane on each line it crossed, then jumped it up to 18 px (three cells
+ * in the terminal), which read as a drag that lags and stutters.
  */
 const MAGNET_PLACE_SPEED = 60 / MAGNET_CATCH_PX;
 /**
@@ -59,6 +60,12 @@ const GLIDE_RATE = 35;
 const SPEED_WINDOW_MS = 64;
 /** How long the pointer rests before the magnets catch where it stopped, ms. */
 export const MAGNET_REST_MS = 80;
+/**
+ * The same in the terminal, which hears from the pointer only as it enters
+ * another cell: a hand placing a window there crosses five or so a second, so
+ * a pause shorter than that is still a drag.
+ */
+export const TERMINAL_MAGNET_REST_MS = 200;
 
 /** Where the pointer was during a move, in cells, and when (ms). */
 interface PointerSample {
@@ -75,7 +82,7 @@ function trackPointer(track: PointerSample[], sample: PointerSample): void {
 }
 
 /**
- * Desktop: when a moving pane's magnets act, over one drag. `travelling`
+ * When a moving pane's magnets act, over one drag. `travelling`
  * takes each move and says whether the pointer is on its way somewhere; while
  * it is, a release lands the pane where the pointer puts it, and `rest` (the
  * move run again) is set to run once the pointer has stopped for
@@ -90,6 +97,12 @@ export interface MagnetPace {
   travelling(sample: PointerSample, distances: MagnetDistances, rest?: () => void): boolean;
   /** Whether the pointer, as of `now`, moves slowly enough to be placing the pane: its magnets are drawn. */
   placing(now: number, distances: MagnetDistances): boolean;
+  /**
+   * Runs `onRest` once the pointer has stopped for `ms`, unless another event
+   * of the drag comes first: the terminal, which draws only when an event
+   * comes, draws the magnets that catch where it stopped.
+   */
+  rest(onRest: () => void, ms: number): void;
   /** Drops the rest check: another event of the drag came first. */
   cancel(): void;
   /** Forgets the pointer's path, for a new drag. */
@@ -106,6 +119,17 @@ export function createMagnetPace(): MagnetPace {
     rest = null;
     frame = null;
   };
+  const restThen = (onRest: () => void, ms = MAGNET_REST_MS) => {
+    cancel();
+    rest = setTimeout(() => {
+      rest = null;
+      if (typeof requestAnimationFrame !== "function") return onRest();
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        onRest();
+      });
+    }, ms);
+  };
   return {
     travelling(sample, distances, onRest) {
       cancel();
@@ -113,19 +137,11 @@ export function createMagnetPace(): MagnetPace {
       // The same place again (a rest check, a repeated event) is not a move.
       if (!last || last.x !== sample.x || last.y !== sample.y) trackPointer(track, sample);
       if (pointerSpeed(track, sample.t, distances) <= MAGNET_TRAVEL_SPEED) return false;
-      if (onRest) {
-        rest = setTimeout(() => {
-          rest = null;
-          if (typeof requestAnimationFrame !== "function") return onRest();
-          frame = requestAnimationFrame(() => {
-            frame = null;
-            onRest();
-          });
-        }, MAGNET_REST_MS);
-      }
+      if (onRest) restThen(onRest);
       return true;
     },
     placing: (now, distances) => pointerSpeed(track, now, distances) < MAGNET_PLACE_SPEED,
+    rest: restThen,
     cancel,
     reset() {
       cancel();

@@ -54,6 +54,21 @@ function projectFearGreedHeadless(data: FearGreedData): HeadlessBundleResult {
   };
 }
 
+/** `fn FNG` over a loaded reading, which the pane's footer also reads its source line from. */
+export function fearGreedReport(result: FearGreedLoadResult): HeadlessBundleResult {
+  // A copy kept for a refresh that could not get through (offline, a timeout) ends the report with when it was
+  // saved, as other reports do; any other failure stays an error beside the old reading.
+  const savedCopy = result.source === "stale-fallback" && isTransientFailure(result.error);
+  const metadata = { fetchedAt: result.fetchedAt, stale: result.stale };
+  return {
+    ...projectFearGreedHeadless(result.data),
+    ...(result.refreshError && !savedCopy ? { errors: [result.refreshError] } : {}),
+    // A cached index the refresh could not replace is stale; otherwise CNN's published reading.
+    freshness: { source: "CNN", status: result.stale ? "stale" : "not-a-feed", basis: "published index" },
+    metadata: savedCopy ? servedFromSavedCopy(metadata, result.fetchedAt) : metadata,
+  };
+}
+
 export interface FearGreedHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, signal: AbortSignal): Promise<FearGreedLoadResult>;
 }
@@ -73,19 +88,7 @@ export function createFearGreedHeadless(
     options: [],
     describe: "Fear & Greed",
     async load(args, ctx) {
-      const result = await dependencies.load(args, ctx.signal);
-      const projected = projectFearGreedHeadless(result.data);
-      // A copy kept for a refresh that could not get through (offline, a timeout) ends the report with when it was
-      // saved, as other reports do; any other failure stays an error beside the old reading.
-      const savedCopy = result.source === "stale-fallback" && isTransientFailure(result.error);
-      const metadata = { fetchedAt: result.fetchedAt, stale: result.stale };
-      return {
-        ...projected,
-        ...(result.refreshError && !savedCopy ? { errors: [result.refreshError] } : {}),
-        // A cached index the refresh could not replace is stale; otherwise CNN's published reading.
-        freshness: { source: "CNN", status: result.stale ? "stale" : "not-a-feed", basis: "published index" },
-        metadata: savedCopy ? servedFromSavedCopy(metadata, result.fetchedAt) : metadata,
-      };
+      return fearGreedReport(await dependencies.load(args, ctx.signal));
     },
   };
 }

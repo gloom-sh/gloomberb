@@ -106,7 +106,7 @@ import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
-import { atLivePriceEarnings, historyTrailingDividendYield, measuresTrailingYield } from "../../market-data/quotes/live-valuation";
+import { atLivePriceEarnings, historyTrailingDividendYield, measuresTrailingYield, statedYearRange } from "../../market-data/quotes/live-valuation";
 import { loadOfferingFilings, loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
 import { bankSection } from "../bank-section";
@@ -198,6 +198,18 @@ function yearRangeOptions(quote: Quote, options: MarketFormatOptions): MarketFor
   const written = [quote.low52w, quote.high52w].flatMap((price) => price != null && Number.isFinite(price) ? [decimalPlaces(cleanFloat32Price(price))] : []);
   const digits = Math.max(options.minimumFractionDigits ?? 0, ...written);
   return { ...stable, fixedFractionDigits: Math.min(stable.fixedFractionDigits, digits) };
+}
+
+/**
+ * The 52-week range, "—" when the quote states none that is one (an index's
+ * that repeats its day's range, a bound at 0), and "(daily bars)" after one
+ * the service read from the stored daily bars in place of its source's.
+ */
+function yearRangeText(quote: Quote, options: MarketFormatOptions): string {
+  const range = statedYearRange(quote);
+  if (!range) return "—";
+  const text = formatPriceRange(range.low, range.high, quote.currency, yearRangeOptions(quote, options));
+  return quote.yearRangeBasis === "daily-bars" ? `${text} (daily bars)` : text;
 }
 
 function bidAskText(quote: Quote, options: MarketFormatOptions): string {
@@ -1479,9 +1491,8 @@ export async function buildTickerReport({
         : "—"],
       // The year's high and low come from bars (a continuous future's are float32, 54.97999954): they print at
       // the instrument's own decimals, as the Overview's ranges do, never at every digit the bars carry.
-      ["52W Range", quote.low52w != null || quote.high52w != null
-        ? formatPriceRange(quote.low52w, quote.high52w, quote.currency, yearRangeOptions(quote, quoteOptions))
-        : "—"],
+      // Only a range that is one (statedYearRange); one read from the stored daily bars says so.
+      ["52W Range", yearRangeText(quote, quoteOptions)],
       ["Bid / Ask", bidAskText(quote, quoteOptions)],
       // An index's and a perpetual's 0 means none is counted, not no trades: no Volume row.
       ["Volume", volume != null ? `${formatNumber(volume, 0)}${volumeCurrency}` : "—"],

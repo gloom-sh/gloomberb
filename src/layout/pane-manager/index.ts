@@ -8,17 +8,20 @@ export {
 } from "./floating";
 
 export {
+  dockStackTabIds,
   findDockLeaf,
   getDockDividerLayouts,
   getDockedPaneIds,
   getDockLeafLayouts,
   getDockResizeTargets,
   getDockSplitGeometry,
+  hiddenDockTabIds,
   showDockTab,
   type DockDividerLayout,
   type DockGeometryOptions,
   type DockLeafLayout,
   type DockResizeTarget,
+  type DockTarget,
   type LayoutBounds,
 } from "./dock-tree";
 

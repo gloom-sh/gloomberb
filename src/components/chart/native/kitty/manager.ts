@@ -122,7 +122,9 @@ export class KittyImageManager {
     this.lastPlacementKeys = placements.map(serializePlacement);
   }
 
+  /** Deletes the image on screen, once: a chart hidden or covered every frame writes nothing more. */
   clear() {
+    if (this.activeSlot === null) return;
     writeRendererRaw(
       this.renderer,
       `${encodeKittyDeleteImage(this.imageIds[0])}${encodeKittyDeleteImage(this.imageIds[1])}`,

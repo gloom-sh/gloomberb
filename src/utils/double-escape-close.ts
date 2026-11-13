@@ -31,6 +31,8 @@ export interface DoubleEscapeCloseState {
   streamAt: number;
   /** The last Esc that armed, closed or looked like a repeat. */
   pressAt: number;
+  /** The last Esc that closed a window on its own (`takeSingleEscapeClose`), until the Esc after it. */
+  singleClosedAt: number;
 }
 
 export function createDoubleEscapeCloseState(): DoubleEscapeCloseState {
@@ -39,12 +41,14 @@ export function createDoubleEscapeCloseState(): DoubleEscapeCloseState {
     targetId: null,
     streamAt: Number.NEGATIVE_INFINITY,
     pressAt: Number.NEGATIVE_INFINITY,
+    singleClosedAt: Number.NEGATIVE_INFINITY,
   };
 }
 
 export function resetDoubleEscapeClose(state: DoubleEscapeCloseState) {
   state.lastAt = 0;
   state.targetId = null;
+  state.singleClosedAt = Number.NEGATIVE_INFINITY;
 }
 
 /**
@@ -79,6 +83,44 @@ function isHeldEscape(state: DoubleEscapeCloseState, now: number, repeat: boolea
   return repeat === undefined
     && now - state.pressAt < HELD_ESCAPE_GAP_MS
     && now - state.streamAt < HELD_ESCAPE_STALL_MS;
+}
+
+/**
+ * Whether an Esc is a held key rather than a press: the host's repeat, or one
+ * that comes as fast as a held key's while a stream is live. Read before the
+ * Esc arms anything, since arming moves the last press to it.
+ */
+export function isHeldEscapePress(state: DoubleEscapeCloseState, now: number, repeat?: boolean): boolean {
+  return repeat === true || isHeldEscape(state, now, repeat);
+}
+
+/**
+ * One Esc nothing else took closes a floating window on its own. Call it once
+ * the window closed, for a press that was not held (`isHeldEscapePress`): the
+ * Esc a double press sends after it closes nothing more
+ * (`swallowEscapeAfterSingleClose`), so Esc Esc still closes one window, and
+ * a held key, as after a double close, goes on closing nothing.
+ */
+export function takeSingleEscapeClose(state: DoubleEscapeCloseState, now: number) {
+  resetDoubleEscapeClose(state);
+  state.streamAt = now;
+  state.pressAt = now;
+  state.singleClosedAt = now;
+}
+
+/**
+ * The Esc right after one that closed a window on its own, at a double
+ * press's pace: the second half of a pair whose first half already closed.
+ * It is taken, and reaches nothing. A host's repeat is left to the held-key
+ * rules.
+ */
+export function swallowEscapeAfterSingleClose(state: DoubleEscapeCloseState, now: number, repeat?: boolean): boolean {
+  if (repeat === true || now - state.singleClosedAt > DOUBLE_ESCAPE_CLOSE_MS) return false;
+  state.singleClosedAt = Number.NEGATIVE_INFINITY;
+  resetDoubleEscapeClose(state);
+  state.streamAt = now;
+  state.pressAt = now;
+  return true;
 }
 
 interface EscapeOffer {

@@ -129,7 +129,9 @@ export function ShellWindowModeOverlays({
         />
       ))}
 
-      {highlightedPaneId && !nativePaneChrome && highlightedRect && highlightedRect.height >= 2 && (!overlayOpen || menuOpen) && (() => {
+      {/* Outside window mode a floating pane draws its own sides, in the focus colour when focused (floating-pane.tsx). */}
+      {highlightedPaneId && !nativePaneChrome && highlightedRect && highlightedRect.height >= 2 && (!overlayOpen || menuOpen)
+        && (windowMode || !highlightedFloatingPane) && (() => {
         const selectedInWindowMode = !!windowMode;
         const borderColor = selectedInWindowMode ? colors.borderFocused : colors.border;
         const bodyTop = highlightedRect.y + 1;

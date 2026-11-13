@@ -510,6 +510,10 @@ export function resolveCanonicalQuote(
     changeSessionDate: resolved.changeSessionDate as Quote["changeSessionDate"],
     high52w: resolved.high52w as Quote["high52w"],
     low52w: resolved.low52w as Quote["low52w"],
+    // Said of the range, so it comes with the provider whose range it is.
+    yearRangeBasis: contributions.find((quote) => quote.high52w === resolved.high52w && quote.low52w === resolved.low52w)?.yearRangeBasis,
+    // Said of the price, so it comes with it.
+    dailyClose: priceProvider?.dailyClose,
     marketCap: resolved.marketCap as Quote["marketCap"],
     volume: resolved.volume as Quote["volume"],
     name: resolved.name as Quote["name"],

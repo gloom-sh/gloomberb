@@ -108,17 +108,3 @@ export function formatQuoteAgeWithSource(
   const prefix = quote.dataSource === "delayed" ? "◷" : "";
   return prefix ? `${prefix}${age}` : age;
 }
-
-export function getMostRecentQuoteUpdate(
-  quotes: Iterable<Pick<Quote, "lastUpdated" | "receivedAt"> | null | undefined>,
-  now = Date.now(),
-): number | null {
-  let latest: number | null = null;
-  for (const quote of quotes) {
-    const timestamp = resolveQuoteAgeTimestamp(quote, now);
-    if (timestamp != null && (latest == null || timestamp > latest)) {
-      latest = timestamp;
-    }
-  }
-  return latest;
-}
