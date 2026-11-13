@@ -1,5 +1,6 @@
 import type { EarningsTiming } from "../../../api-client/earnings";
 import { formatCompact, formatNumber } from "../../../utils/format";
+import { isNotMeaningful, NOT_MEANINGFUL_TEXT, type NotMeaningful } from "../../../utils/growth";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -40,8 +41,9 @@ export function moveSize(move: number | null | undefined): string {
   return move == null ? "--" : `${(Math.abs(move) * 100).toFixed(1)}%`;
 }
 
-/** A signed move or surprise: "+3.2%", "-7.4%". */
-export function signedPercent(value: number | null | undefined): string {
+/** A signed move or surprise: "+3.2%", "-7.4%"; N/M for a surprise against a loss or zero estimate. */
+export function signedPercent(value: number | NotMeaningful | null | undefined): string {
+  if (isNotMeaningful(value)) return NOT_MEANINGFUL_TEXT;
   if (value == null) return "--";
   const shown = Number((value * 100).toFixed(1));
   return `${shown > 0 ? "+" : ""}${shown.toFixed(1)}%`;
@@ -55,4 +57,4 @@ export function moneyText(value: number | null | undefined): string {
   return value == null ? "--" : formatCompact(value, { fixedDecimals: true });
 }
 
-export { epsSurprise as surprise } from "../shared/earnings-report";
+export { epsSurprise as surprise, type Surprise } from "../shared/earnings-report";

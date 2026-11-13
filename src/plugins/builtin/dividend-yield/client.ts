@@ -333,6 +333,8 @@ export function buildDividendMetrics(
     growth3Y: growth3Y?.growth ?? null,
     ...(growth1Y?.shortfall ? { growth1YPayments: growth1Y.shortfall } : {}),
     ...(growth3Y?.shortfall ? { growth3YPayments: growth3Y.shortfall } : {}),
+    ...(growth1Y?.notMeaningful ? { growth1YNotMeaningful: true } : {}),
+    ...(growth3Y?.notMeaningful ? { growth3YNotMeaningful: true } : {}),
     paymentFrequency: options.historyAvailable !== false ? inferFrequency(eligible, now) : null,
     lastExDividendDate,
     nextExDividendDate,
@@ -353,9 +355,10 @@ export function repriceDividendMetrics(metrics: DividendMetrics, price: number |
  * when each holds every payment the cadence pays: a year with a hole in its
  * history (AZN's missing August interim) measures the hole, not a cut, so it
  * has no growth and says how many payments it holds. A year with none is a
- * suspension, which still reads as a full decline.
+ * suspension, which still reads as a full decline. Cash paid after a year of
+ * none is growth off zero: not meaningful, never a number.
  */
-function computeGrowth(payments: DividendPayment[], years: number, now: Date): { growth: number | null; shortfall?: GrowthPayments } | null {
+function computeGrowth(payments: DividendPayment[], years: number, now: Date): { growth: number | null; shortfall?: GrowthPayments; notMeaningful?: true } | null {
   const priorEnd = calendarMonthsBefore(now, 12 * years);
   const priorStart = calendarMonthsBefore(priorEnd, 12);
   // A new fund's partial first year is not a full-year growth baseline.
@@ -368,7 +371,8 @@ function computeGrowth(payments: DividendPayment[], years: number, now: Date): {
   }
   const recent = trailingCashAt(payments, now);
   const prior = trailingCashAt(payments, priorEnd);
-  return { growth: prior > 0 ? Math.pow(recent / prior, 1 / years) - 1 : null };
+  if (!(prior > 0)) return recent > 0 ? { growth: null, notMeaningful: true } : { growth: null };
+  return { growth: Math.pow(recent / prior, 1 / years) - 1 };
 }
 
 function inferFrequency(payments: DividendPayment[], now: Date): DividendMetrics["paymentFrequency"] {

@@ -43,8 +43,9 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   registrationId: string;
 }) {
   const dataProvider = useAssetData();
-  // Past reports are a US listing's and a Hong Kong listing's own, read by its key however it was typed (0700.HK is
-  // 0700:HKEX): any other listing abroad shows its next report alone.
+  // Past reports are a US listing's and a Hong Kong, Singapore or China A listing's own (its exchange's results
+  // calendar and announcements, in their currency), read by its key however it was typed (0700.HK is 0700:HKEX): any
+  // other listing abroad shows its next report alone.
   const { listing, abroad, ownAbroad } = historyListing(symbol);
   // A Hong Kong listing's announcement figures come with Pro, as KPIS has them: what Gloom Cloud answers differs by
   // plan, so it is kept per session and plan.
@@ -118,7 +119,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   const utcDay = useUtcDay();
   // Its source and when the history was read, as `fn ERN` ends; how long ago it loaded goes first on a narrow row.
   const footerInfo = useMemo(() => abroad
-    ? [{ id: "us-listings", parts: [{ text: "past reports: US and Hong Kong listings only", tone: "muted" as const }] }]
+    ? [{ id: "us-listings", parts: [{ text: "past reports: US, Hong Kong, Singapore and China A listings only", tone: "muted" as const }] }]
     : payload ? [
       reportFooterSegment(earningsCalendarHeadless, { rows: [], metadata: { asOf: payload.asOf } }),
       ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),

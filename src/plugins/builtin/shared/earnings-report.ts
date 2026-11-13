@@ -1,5 +1,6 @@
 import type { CorporateActionsData, EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
 import { formatNumber } from "../../../utils/format";
+import { growthRate, type NotMeaningful } from "../../../utils/growth";
 
 /**
  * How every earnings surface (ERN, EE, the corporate-actions events and
@@ -97,10 +98,16 @@ export function quarterLabel(date: string | undefined): string {
   return match && month ? `${month} ${match[1]}` : "-";
 }
 
-/** Actual over estimate minus one, against the estimate's size so a negative estimate reads the right way. */
-export function epsSurprise(actual: number | null | undefined, estimate: number | null | undefined): number | null {
-  if (actual == null || estimate == null || estimate === 0) return null;
-  return (actual - estimate) / Math.abs(estimate);
+/** A surprise as a fraction of the estimate, N/M against a loss or zero estimate, null without both figures. */
+export type Surprise = number | NotMeaningful | null;
+
+/**
+ * Actual over estimate minus one. Against an estimate of a loss, or of nothing, it is not
+ * meaningful: a loss of 0.10 against 0.20 expected is no percentage of the loss expected.
+ */
+export function epsSurprise(actual: number | null | undefined, estimate: number | null | undefined): Surprise {
+  if (actual == null || estimate == null) return null;
+  return growthRate(actual, estimate) ?? null;
 }
 
 /** A fiscal quarter end month (YYYY-MM) holds a period end in that month, or a 52/53-week end a few days either side. */

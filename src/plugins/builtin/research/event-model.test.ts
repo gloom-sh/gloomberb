@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AnalystResearchData } from "../../../types/financials";
 import { buildEventRows, eventSourceNotice, formatEventMetric, sourceErrorText, type EventFinancials } from "./event-model";
+import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
 
 test("ADR reported EPS and company revenue keep their distinct currencies", () => {
   const rows = buildEventRows({ symbol: "TSM", currency: "USD", dividends: [], splits: [],
@@ -182,7 +183,7 @@ test("a resolved quarter shows ERN's figure, basis and fiscal quarter, and a pen
   ] }, null, { financialCurrency: "USD", quarterlyStatements: [["2025-09-30", -0.22], ["2025-12-31", -0.89], ["2026-03-31", -1.4], ["2026-06-30", -1.14]]
     .map(([date, eps]) => ({ date: date as string, eps: eps as number, totalRevenue: 2e9 })) }, "USD");
   expect(rows.find((row) => row.date === "2026-08-11")).toMatchObject({ period: "Jun 2026", qEps: -1.32, qRevenue: 2e9, epsBasis: "adjusted",
-    detail: "adj, +0.20 vs est", value: "+13.16%", tone: "positive", fiscalPeriodEnd: "2026-06-30" });
+    detail: "adj, +0.20 vs est", value: "N/M", tone: NOT_MEANINGFUL_TONE, fiscalPeriodEnd: "2026-06-30", surpriseNotMeaningful: true });
   expect(rows.find((row) => row.date === "2026-11-09")).toMatchObject({ earningsState: "pending", qEps: -1.52697, epsAnalysts: 18,
     dateStatus: "projected", detail: "projected, 18 analysts" });
   // With no trailing figure served, the TTM row is the statements' diluted EPS; all four quarters above it
@@ -266,11 +267,47 @@ test("a press release's figure reads provisional until the calendar's replaces i
   expect(settled?.epsProvisional).toBeUndefined();
 });
 
-test("a beat against a negative estimate reads as a beat", () => {
+test("a beat against a negative estimate: its surprise N/M, in N/M's tone, and the difference says it beat", () => {
   const [row] = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
     { date: "2026-08-11", dateType: "announcement", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45 },
   ] }, null, null, "USD");
-  expect(row).toMatchObject({ surprisePercent: 22.45, value: "+22.45%", tone: "positive", detail: "+0.33 vs est" });
+  // A loss narrower than expected is no percentage of the loss expected: the source's -22.45% is not shown either.
+  expect(row).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, detail: "+0.33 vs est", surpriseNotMeaningful: true });
+  expect(row!.surprisePercent).toBeUndefined();
+  const [miss] = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
+    { date: "2026-05-07", dateType: "announcement", epsEstimate: -1.17, epsActual: -1.38, difference: -0.21 },
+  ] }, null, null, "USD");
+  expect(miss).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, detail: "-0.21 vs est" });
+  const [zero] = buildEventRows({ symbol: "X", dividends: [], splits: [], earnings: [
+    { date: "2026-05-07", dateType: "announcement", epsEstimate: 0, epsActual: 0.02 },
+  ] }, null, null, "USD");
+  expect(zero).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE });
+  const [positive] = buildEventRows({ symbol: "X", dividends: [], splits: [], earnings: [
+    { date: "2026-05-07", dateType: "announcement", epsEstimate: 0.5, epsActual: 0.55 },
+  ] }, null, null, "USD");
+  expect(positive).toMatchObject({ surprisePercent: 10, value: "+10.00%", tone: "positive" });
+});
+
+test("an estimate's growth off a year-ago loss or zero is N/M, whatever the source worked out", () => {
+  const rows = buildEventRows(null, {
+    symbol: "CRWV",
+    recommendations: [],
+    ratings: [],
+    earningsEstimates: [
+      // A year-ago loss of 0.40 against an estimated profit of 0.10: the source's +125% is no growth of the loss.
+      { date: "2027-03-31", period: "current_quarter", average: 0.1, yearAgo: -0.4, growth: 1.25, analysts: 12 },
+      { date: "2027-12-31", period: "next_year", average: 1.2, yearAgo: 0, analysts: 14 },
+      { date: "2026-12-31", period: "current_year", average: 0.8, yearAgo: 0.5, growth: 0.6, analysts: 15 },
+    ],
+    revenueEstimates: [],
+  }, null, "USD");
+  const quarter = rows.find((row) => row.status === "Q Est");
+  expect(quarter).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, estimateGrowthMetric: "eps", estimateGrowthNotMeaningful: true });
+  expect(quarter?.estimateGrowth).toBeUndefined();
+  const years = rows.filter((row) => row.status === "FY Est");
+  expect(years.find((row) => row.annualEps === 1.2)).toMatchObject({ value: "N/M", estimateGrowthNotMeaningful: true });
+  expect(years.find((row) => row.annualEps === 0.8)).toMatchObject({ value: "+60.00%", tone: "positive", estimateGrowth: 0.6 });
+  expect(years.find((row) => row.annualEps === 0.8)?.estimateGrowthNotMeaningful).toBeUndefined();
 });
 
 test("missing or ambiguous fiscal periods and announcements cannot borrow a previous quarter's revenue", () => {

@@ -4,6 +4,9 @@ import {
   createEarningsEstimatesHeadless,
   type EarningsEstimateSources,
 } from "./headless";
+import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderReportCsv } from "../../../cli/report-tables";
 
 const sources: EarningsEstimateSources = {
   currency: "USD",
@@ -82,4 +85,35 @@ describe("earnings estimates headless", () => {
     expect(result.metadata).toMatchObject({ kind: "estimates", total: 2, truncated: true });
     expect(result.rows[0]?.epsBasis).toBe("unknown");
   });
+});
+
+test("EE reads a surprise against a loss estimate and growth off a year-ago loss N/M, as EVTS does, and exports no figure for either", async () => {
+  const definition = createEarningsEstimatesHeadless({ loadSources: async () => ({
+    ...sources,
+    actions: { ...sources.actions!, earnings: [{ date: "2026-07-28", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45 }] },
+    estimates: { ...sources.estimates!, revenueEstimates: [],
+      earningsEstimates: [{ date: "2026-09-30", period: "next_quarter", average: 0.1, yearAgo: -0.4, growth: 1.25, analysts: 30 }] },
+  }) });
+  const request = args({ kind: "all" });
+  const result = await definition.load(request, context);
+  expect(result.rows.find((row) => row.status === "Earnings")).toMatchObject({ surpriseNotMeaningful: true, surprisePercent: undefined });
+  expect(result.rows.find((row) => row.status === "Q Est")).toMatchObject({ estimateGrowthNotMeaningful: true, estimateGrowthMetric: "eps" });
+  const text = renderHeadlessPaneText(definition, result, request, "EE");
+  expect(text).toMatch(/\bN\/M\b/);
+  expect(text).toContain("N/M EPS");
+  expect(text).not.toContain("-22.45");
+  expect(text).not.toContain("+125");
+  const csv = renderReportCsv(headlessReportTables(definition, result, request, "EE", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
+  const [header, ...lines] = csv.split("\n");
+  const columns = header!.split(",");
+  const surprise = columns.findIndex((column) => column.startsWith("EPS surp"));
+  const growth = columns.findIndex((column) => column.startsWith("YoY growth"));
+  const status = columns.indexOf("status");
+  expect([surprise, growth, status].every((index) => index > -1)).toBe(true);
+  const earnings = lines.find((line) => line.includes(",Earnings,"))!.split(",");
+  expect(earnings[surprise]).toBe("");
+  expect(earnings[status]).toContain("EPS surp: n/m");
+  const estimate = lines.find((line) => line.includes(",Q Est,"))!.split(",");
+  expect(estimate[growth]).toBe("");
+  expect(estimate[status]).toContain("YoY growth: n/m");
 });

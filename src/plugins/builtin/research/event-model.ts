@@ -18,6 +18,7 @@ import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { declaredDividends } from "../../../utils/declared-dividends";
 import { isReasonCode, readableStatus } from "../../../utils/reason-codes";
 import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fundamentals";
+import { isNotMeaningful, NOT_MEANINGFUL, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE, type Rate } from "../../../utils/growth";
 import {
   earningsDateStatus,
   earningsDetail,
@@ -58,6 +59,8 @@ export interface EventRow {
   epsEstimate?: number;
   epsDifference?: number;
   surprisePercent?: number;
+  /** The surprise is N/M: the estimate was of a loss, or of nothing. */
+  surpriseNotMeaningful?: true;
   /** A reported figure's basis, or an upcoming estimate's when it is adjusted; the same quarter is named the same way in ERN. The TTM row's EPS is GAAP. */
   epsBasis?: EpsBasisName;
   /** The reported figure is the company's press release's, provisional until the calendar's replaces it. */
@@ -72,6 +75,8 @@ export interface EventRow {
   estimateGrowthMetric?: "eps" | "revenue";
   /** An estimate row's growth over the year-ago figure, as a fraction, of `estimateGrowthMetric`. */
   estimateGrowth?: number;
+  /** The estimate's growth is N/M: its year-ago figure was a loss, or nothing. `estimateGrowth` is then absent. */
+  estimateGrowthNotMeaningful?: true;
   fiscalPeriodEnd?: string;
   periodDateSource?: FinancialStatement["dateSource"];
   providerPeriodDate?: string;
@@ -167,15 +172,36 @@ function formatEstimateDetail(pair: EstimatePair): string {
   return "Consensus";
 }
 
-function estimateTone(pair: EstimatePair): EventRow["tone"] {
-  const growth = pair.eps?.growth ?? pair.revenue?.growth;
-  if (growth == null) return "muted";
+/**
+ * An estimate's growth over its year-ago figure: the source's, except off a year-ago figure at or below zero, where
+ * it is N/M whatever the source worked out (a loss of 0.40 to a profit of 0.10 is no +125%). Undefined where there is none.
+ */
+function estimateRate(estimate: AnalystEstimateRecord | undefined): Rate | undefined {
+  if (!estimate) return undefined;
+  const yearAgo = estimate.yearAgo;
+  if (typeof yearAgo === "number" && Number.isFinite(yearAgo) && yearAgo <= 0) {
+    return typeof estimate.growth === "number" || typeof estimate.average === "number" ? NOT_MEANINGFUL : undefined;
+  }
+  return typeof estimate.growth === "number" && Number.isFinite(estimate.growth) ? estimate.growth : undefined;
+}
+
+/** The pair's growth, its EPS's where it has one, else its revenue's, and which. */
+function estimatePairGrowth(pair: EstimatePair): { rate: Rate; metric: "eps" | "revenue" } | null {
+  const eps = estimateRate(pair.eps);
+  if (eps !== undefined) return { rate: eps, metric: "eps" };
+  const revenue = estimateRate(pair.revenue);
+  return revenue !== undefined ? { rate: revenue, metric: "revenue" } : null;
+}
+
+function estimateTone(growth: Rate | undefined): EventRow["tone"] {
+  if (growth === undefined) return "muted";
+  if (isNotMeaningful(growth)) return NOT_MEANINGFUL_TONE;
   return growth >= 0 ? "positive" : "negative";
 }
 
-function estimateValue(pair: EstimatePair): string {
-  const growth = pair.eps?.growth ?? pair.revenue?.growth;
-  return growth == null ? "-" : formatPercent(growth);
+function estimateValue(growth: Rate | undefined): string {
+  if (isNotMeaningful(growth)) return NOT_MEANINGFUL_TEXT;
+  return growth === undefined ? "-" : formatPercent(growth);
 }
 
 /**
@@ -352,8 +378,10 @@ export function buildEventRows(
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
     const surprise = epsSurprise(earning.epsActual, earning.epsEstimate);
-    const surprisePercent = earning.epsActual == null ? undefined
-      : surprise != null ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
+    // Against a loss or zero estimate no percentage is shown, the source's either.
+    const surpriseNotMeaningful = earning.epsActual != null && isNotMeaningful(surprise);
+    const surprisePercent = earning.epsActual == null || surpriseNotMeaningful ? undefined
+      : typeof surprise === "number" ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
     rows.push({
       id: earningsIds[index]!,
       // An announcement keeps its date beside ERN's; a period-end row moves to its statement's.
@@ -373,6 +401,7 @@ export function buildEventRows(
       epsEstimate: earning.epsEstimate,
       epsDifference: earning.epsActual == null ? undefined : earning.difference,
       surprisePercent,
+      ...(surpriseNotMeaningful ? { surpriseNotMeaningful: true as const } : {}),
       epsBasis: showsEpsBasis({ epsActual: earning.epsActual, epsBasis: earningsEpsBasis(earning.epsBasis) })
         ? epsBasisName(earningsEpsBasis(earning.epsBasis)) : undefined,
       ...(isProvisionalActual(earning) ? { epsProvisional: true as const } : {}),
@@ -384,8 +413,10 @@ export function buildEventRows(
       periodDateSource: statement?.dateSource,
       providerPeriodDate: earning.dateType === "fiscal-period-end" ? earning.date : undefined,
       dateEvidence: statement?.dateEvidence,
-      value: surprisePercent != null ? formatPercentRaw(surprisePercent) : "-",
-      tone: surprisePercent == null ? "muted" : surprisePercent >= 0 ? "positive" : "negative",
+      value: surpriseNotMeaningful ? NOT_MEANINGFUL_TEXT : surprisePercent != null ? formatPercentRaw(surprisePercent) : "-",
+      // N/M in the tone every pane draws N/M in: no colour of a beat or a miss for a percentage that says nothing.
+      tone: surpriseNotMeaningful ? NOT_MEANINGFUL_TONE
+        : surprisePercent == null ? "muted" : surprisePercent >= 0 ? "positive" : "negative",
     });
   }
 
@@ -393,7 +424,7 @@ export function buildEventRows(
   for (const pair of buildEstimatePairs(estimates)) {
     const isFiscal = isFiscalEstimatePeriod(pair.period);
     if (!isFiscal && isReportedQuarter(pair.date, reportedPeriodEnds)) continue;
-    const growth = pair.eps?.growth ?? pair.revenue?.growth;
+    const growth = estimatePairGrowth(pair);
     rows.push({
       id: `estimate:${pair.date}:${pair.period}`,
       date: pair.date,
@@ -406,16 +437,17 @@ export function buildEventRows(
         ...(pair.eps ? { eps: { ...pair.eps } } : {}),
         ...(pair.revenue ? { revenue: { ...pair.revenue } } : {}),
       },
-      estimateGrowthMetric: pair.eps?.growth != null ? "eps" : pair.revenue?.growth != null ? "revenue" : undefined,
-      ...growth != null ? { estimateGrowth: growth } : {},
+      estimateGrowthMetric: growth?.metric,
+      ...typeof growth?.rate === "number" ? { estimateGrowth: growth.rate } : {},
+      ...isNotMeaningful(growth?.rate) ? { estimateGrowthNotMeaningful: true as const } : {},
       epsCurrency: pair.eps?.currency,
       revenueCurrency: pair.revenue?.currency,
       qEps: isFiscal ? undefined : pair.eps?.average,
       qRevenue: isFiscal ? undefined : pair.revenue?.average,
       annualEps: isFiscal ? pair.eps?.average : undefined,
       annualRevenue: isFiscal ? pair.revenue?.average : undefined,
-      value: estimateValue(pair),
-      tone: estimateTone(pair),
+      value: estimateValue(growth?.rate),
+      tone: estimateTone(growth?.rate),
     });
   }
 

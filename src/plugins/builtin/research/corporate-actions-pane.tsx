@@ -23,6 +23,7 @@ import type {
 } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { formatPercent } from "../../../utils/format";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
@@ -306,7 +307,9 @@ export function buildEventDetail({
         row.epsActual == null && row.epsBasis === "adjusted" ? "adjusted" : null].filter(Boolean).join(", ") || undefined),
   ];
   if (row.epsDifference != null) comparison.push(detailRow("Difference", earningsInput(row.epsDifference, row.epsCurrency)));
-  if (row.surprisePercent != null) {
+  if (row.surpriseNotMeaningful) {
+    comparison.push(detailRow("Surprise", NOT_MEANINGFUL_TEXT, "against a loss or zero estimate"));
+  } else if (row.surprisePercent != null) {
     comparison.push(detailRow("Surprise", `${earningsInput(row.surprisePercent)}%`, undefined,
       row.surprisePercent === 0 ? undefined : row.surprisePercent > 0 ? "positive" : "negative"));
   }

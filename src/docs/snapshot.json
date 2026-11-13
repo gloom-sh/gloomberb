@@ -1265,7 +1265,7 @@
    "code": "AUCT",
    "name": "Treasury auctions",
    "description": "Auction results",
-   "detail": "Bill, note, bond, and TIPS auction results from the US Treasury: high rate, bid-to-cover, indirect share, and size.",
+   "detail": "US Treasury bill, note, bond, and TIPS auction results since 1979: rate, stop-out versus median, bid-to-cover, bidder takedown, and size. An after view ranks each auction against its tenor's last 24 and shows the Treasury yield's move 1, 5, and 20 sessions later. Hong Kong's Exchange Fund Bills and Notes and Government Bond tenders too.",
    "category": "macro",
    "arg": "10-year",
    "shot": "https://gloom.sh/screenshots/fn/AUCT.png",

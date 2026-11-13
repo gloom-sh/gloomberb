@@ -10,7 +10,7 @@ import { listingSuffixCandidate } from "../../../sources/listing-symbols";
 import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { listingAbroadVenue } from "../../../utils/sec";
 import { sameHistoryListing } from "./client";
-import { shortDate, surprise, weekday } from "./format";
+import { shortDate, surprise, weekday, type Surprise } from "./format";
 
 /** A held name is in a portfolio; a watched one only in watchlists. */
 export type Ownership = "held" | "watched";
@@ -34,8 +34,8 @@ export interface BoardReport {
   provisional: boolean;
   /** Null when the reported figure's basis cannot be determined. */
   epsBasis: EarningsEpsBasis | null;
-  /** Actual over estimate minus one. */
-  epsSurprise: number | null;
+  /** Actual over estimate minus one: N/M against a loss or zero estimate. */
+  epsSurprise: Surprise;
   revenueEstimate: number | null;
   impliedMove: number | null;
   averageMove: number | null;
@@ -183,18 +183,24 @@ export function boardKey(symbol: string): string {
   return `${code}:${venue}`;
 }
 
+/** The venues abroad whose listings' own reports Gloom Cloud reads: their exchange's results calendar and announcements. */
+const HISTORY_VENUES_ABROAD: ReadonlySet<string> = new Set(["HKEX", "SGX", "SSE", "SZSE"]);
+
 /**
  * How ERN reads a symbol's past reports: by its listing's key, however it was
  * typed (`boardKey`: 0700.HK is 0700:HKEX). A US listing's are the US
- * board's, where SAN is not SAN:EPA's company; a Hong Kong listing has its
- * own (`ownAbroad`), which Gloom Cloud reads from its results announcements,
- * in their currency. Any other listing abroad has none (`abroad`) and shows
- * its next report.
+ * board's, where SAN is not SAN:EPA's company; a Hong Kong, Singapore or
+ * China A listing has its own (`ownAbroad`), which Gloom Cloud reads from its
+ * exchange's results calendar and announcements, in their currency. Any other
+ * listing abroad has none (`abroad`) and shows its next report. A server that
+ * reads only Hong Kong's refuses the others (`noHistoryAbroad`), which then
+ * show their next report as before.
  */
 export function historyListing(symbol: string): { listing: string; abroad: boolean; ownAbroad: boolean } {
   const listing = boardKey(symbol);
   const venue = listingAbroadVenue(listing);
-  return { listing, abroad: venue != null && venue !== "HKEX", ownAbroad: venue === "HKEX" };
+  const own = venue != null && HISTORY_VENUES_ABROAD.has(venue);
+  return { listing, abroad: venue != null && !own, ownAbroad: own };
 }
 
 /**

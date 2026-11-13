@@ -54,26 +54,37 @@ describe("series transformations", () => {
     expect(points.map(({ value }) => value)).toEqual([10, 15, 20]);
   });
 
-  test("retains original scalars and units through repeated transforms without changing negative-baseline arithmetic", () => {
+  test("retains original scalars and units through repeated transforms", () => {
     const source = series("price", [
-      point("2024-01-01", -10),
-      point("2024-02-01", -5),
+      point("2024-01-01", 10),
+      point("2024-02-01", 15),
       point("2024-03-01", null),
-      point("2024-04-01", 0),
-      { ...point("2024-05-01", null), close: 2 },
+      point("2024-04-01", 20),
+      { ...point("2024-05-01", null), close: 12 },
     ], "none");
     const original = structuredClone(source);
     const percent = applyResolvedSeriesTransform(source, "percent");
     const indexed = applyResolvedSeriesTransform(percent, "index100");
 
     expect(percent.points.map(({ value }) => value)).toEqual([0, 50, null, 100, null]);
-    expect(percent.points.at(-1)?.close).toBe(120);
+    expect(percent.points.at(-1)?.close).toBe(20);
     expect(indexed.points.map(({ value }) => value)).toEqual([0, 100, null, 200, null]);
-    expect(indexed.points.map(({ rawValue }) => rawValue)).toEqual([-10, -5, null, 0, 2]);
+    expect(indexed.points.map(({ rawValue }) => rawValue)).toEqual([10, 15, null, 20, 12]);
     expect(percent).toMatchObject({ unit: "%", rawUnit: "value" });
     expect(indexed).toMatchObject({ unit: "index", rawUnit: "value" });
     expect(applySeriesTransform([{ ...point("2024-01-01", 10), rawValue: null }], "log")[0]?.rawValue).toBeNull();
     expect(source).toEqual(original);
+  });
+
+  test("percent and index 100 off a baseline at or below zero leave gaps, as growth off one is not meaningful", () => {
+    // A loss of 10 narrowing to 5 is no +50%, and no index of 50.
+    const losses = [point("2024-01-01", -10), point("2024-02-01", -5), point("2024-04-01", 0), point("2024-05-01", 2)];
+    expect(applySeriesTransform(losses, "percent").map(({ value }) => value)).toEqual([null, null, null, null]);
+    expect(applySeriesTransform(losses, "index100").map(({ value }) => value)).toEqual([null, null, null, null]);
+    // A baseline given at or below zero is the same.
+    const positive = [point("2024-01-01", 10), point("2024-02-01", 15)];
+    expect(applySeriesTransform(positive, "percent", { baseline: -10 }).map(({ value }) => value)).toEqual([null, null]);
+    expect(applySeriesTransform(positive, "percent", { baseline: 10 }).map(({ value }) => value)).toEqual([0, 50]);
   });
 
   test("matches QoQ and YoY by observation calendar instead of adjacent array position", () => {
@@ -85,6 +96,19 @@ describe("series transformations", () => {
     ];
     expect(applySeriesTransform(points, "qoq").map(({ value }) => value)).toEqual([null, null, 20, null]);
     expect(applySeriesTransform(points, "yoy").map(({ value }) => value)).toEqual([null, null, 50, 50]);
+  });
+
+  test("YoY and QoQ growth off a zero or negative base leaves a gap, as it is not meaningful", () => {
+    const points = [
+      point("2023-03-31", -80),
+      point("2023-06-30", 0),
+      point("2023-09-30", 40),
+      point("2024-03-31", 20),
+      point("2024-06-30", 30),
+      point("2024-09-30", 60),
+    ];
+    expect(applySeriesTransform(points, "yoy").map(({ value }) => value)).toEqual([null, null, null, null, null, 50]);
+    expect(applySeriesTransform(points, "qoq").map(({ value }) => value)).toEqual([null, null, null, null, 50, 100]);
   });
 
   test("log transform leaves nonpositive values as gaps", () => {
