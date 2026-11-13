@@ -59,6 +59,12 @@ describe("report tables", () => {
       { date: "2026-09-15", spread: -0.000779004930701 },
     ]);
     expect(table.rows).toEqual([["2026-09-17", 0.858637789209], ["2026-09-16", 0.129604323566], ["2026-09-15", -0.0779004930701]]);
+    // Where every value fits several scales, the one closest to what is drawn; a column of one row is read alike.
+    const alone = exportRowsTable("History", [{ key: "spread", header: "IV-HV", align: "right", format: points }], [{ spread: 0.00129604323566 }]);
+    expect(alone.rows).toEqual([[0.129604323566]]);
+    // A figure drawn as zero says nothing of the scale: 0.04 drawn "0" is 0.04, never 0.0004.
+    const zero = exportRowsTable("Change", [{ key: "change", header: "Change", align: "right", format: (value) => Number(value).toFixed(0) }], [{ change: 0.04 }]);
+    expect(zero.rows).toEqual([[0.04]]);
   });
 
   test("a symbol a list left out still has its row, its reason in status and its figures empty", () => {

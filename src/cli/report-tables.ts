@@ -207,21 +207,25 @@ function fitsDrawn(value: number, drawn: DisplayNumber, scale: number): boolean 
 }
 
 /**
- * The one scale a column's values are drawn at, decided from all of them: a
- * value near zero fits several (a spread of 0.0013 drawn "+0.1" is within a
- * step of itself as of 100 times itself), and read alone it would export at
- * another scale than the rows beside it (0.0013 beside 0.8586). The first
- * scale every value fits, else the one most fit; null for a column with no
- * value drawn as a number.
+ * The one scale a column's values are drawn at, decided from all of them,
+ * one row's column too: a value near zero fits several (a spread of 0.0013
+ * drawn "+0.1" is within a step of itself as of 100 times itself), and read
+ * alone it would export at another scale than the rows beside it (0.0013
+ * beside 0.8586). Of the scales most values fit, the one whose values come
+ * closest to the figures drawn, in steps; the earlier in `SIGNED_SCALES` on a
+ * tie. A figure drawn as 0 says nothing of the scale (0.04 drawn "0" is
+ * nearer still at a hundredth of itself), so it is left out of the distance.
+ * Null for a column with no value drawn as a number.
  */
 function columnScale(cells: readonly Cell[]): number | null {
   const drawn = cells.flatMap((cell) => cell.kind === "number" && cell.drawn ? [cell.drawn] : []);
-  if (drawn.length < 2) return null;
-  let best: { scale: number; fits: number } | null = null;
+  let best: { scale: number; fits: number; miss: number } | null = null;
   for (const scale of SIGNED_SCALES) {
-    const fits = drawn.filter((entry) => fitsDrawn(entry.value, entry.display, scale)).length;
-    if (fits === drawn.length) return scale;
-    if (fits > (best?.fits ?? 0)) best = { scale, fits };
+    const fitting = drawn.filter((entry) => fitsDrawn(entry.value, entry.display, scale));
+    if (fitting.length === 0) continue;
+    const scaled = fitting.filter(({ display }) => Number(display.number) !== 0);
+    const miss = scaled.reduce((total, { value, display }) => total + Math.abs(value * scale - Number(display.number)) / display.step, 0) / Math.max(1, scaled.length);
+    if (!best || fitting.length > best.fits || (fitting.length === best.fits && miss < best.miss - 1e-9)) best = { scale, fits: fitting.length, miss };
   }
   return best?.scale ?? null;
 }
