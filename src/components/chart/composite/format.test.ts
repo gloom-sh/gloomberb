@@ -288,13 +288,14 @@ test("zoomed price axes spend the digits their ticks need and stay compact when 
   const crypto = { priceAssetCategories: ["CRYPTOCURRENCY"] };
 
   expect(labels(109_500, 109_620, crypto)).toEqual(["$109,600", "$109,550", "$109,500"]);
-  expect(labels(109_500, 109_620, { ...crypto, scale: "log" })).toEqual(["$109,620", "$109,560", "$109,500"]);
+  // Inside one decade a log axis takes the same round steps.
+  expect(labels(109_500, 109_620, { ...crypto, scale: "log" })).toEqual(["$109,600", "$109,550", "$109,500"]);
   expect(labels(1.1598, 1.1607, { priceAssetCategories: ["CURRENCY"] })).toEqual(["$1.1606", "$1.1604", "$1.1602", "$1.1600", "$1.1598"]);
   expect(labels(0.000005, 0.000006, { ...crypto, maxTicks: 3 })).toEqual(["$0.0000060", "$0.0000055", "$0.0000050"]);
 
   // A wide view is already legible, so it keeps the narrower compact gutter.
   expect(labels(52_000, 133_000, crypto)).toEqual(["$120K", "$100K", "$80K", "$60K"]);
-  expect(labels(52_000, 133_000, { ...crypto, scale: "log" })).toEqual(["$133K", "$83K", "$52K"]);
+  expect(labels(52_000, 133_000, { ...crypto, scale: "log" })).toEqual(["$120K", "$100K", "$80K", "$60K"]);
   expect(labels(250, 262, { priceAssetCategories: ["EQUITY"] })).toEqual(["$260", "$255", "$250"]);
 
   for (const [min, max] of [[109_500, 109_620], [1.1598, 1.1607], [0.000005, 0.000006], [52_000, 133_000]] as const) {
@@ -358,7 +359,6 @@ describe("axis ticks never repeat a label", () => {
   });
 
   test("falls back to the top and bottom, then to one label", () => {
-    // A log axis has no round ladder to climb.
     expect(labels(thousands, 1880, 2030, 14, { scale: "log" })).toEqual(["2k", "1.9k"]);
     expect(labels(percent, 45.2, 45.4, 14)).toEqual(["45%"]);
     expect(labels(() => "n/a", 0, 100, 20)).toEqual(["n/a"]);
@@ -383,6 +383,28 @@ describe("axis ticks never repeat a label", () => {
       }
     }
   });
+});
+
+// A log axis labelled its top, middle and bottom: NVDA's whole history read $415, $2.85 and $0.0195.
+test("a log axis labels powers of ten, and their 2 and 5 steps where the panel has room", () => {
+  const axis = (min: number, max: number, rows: number, extra: Record<string, unknown> = {}) => ({
+    side: "right" as const, seriesIds: ["price"], min, max, scale: "log" as const, unit: "USD", unitGroup: "price:USD",
+    maxTicks: compositeAxisMaxTicks(rows), ...extra,
+  });
+  const labels = (...args: Parameters<typeof axis>) => compositeAxisTicks(axis(...args)).map((tick) => tick.label);
+  // Desktop labels sit at their exact heights; the terminal's on the row nearest each, a row clear of the next.
+  for (const rows of [undefined, 10]) {
+    const snapped = (min: number, max: number, height: number) => labels(min, max, height, rows ? { tickRows: height } : {});
+    expect(snapped(0.0195, 415, 10)).toEqual(["$100", "$10", "$1", "$0.1"]);
+    expect(snapped(3, 7_500, 20)).toEqual(["$1K", "$100", "$10"]);
+    expect(snapped(18, 110, 10)).toEqual(["$100", "$50", "$20"]);
+    expect(snapped(0.5, 15, 10)).toEqual(["$10", "$5", "$2", "$1", "$0.5"]);
+  }
+  // Twenty decades on six rows: powers far enough apart for three labels.
+  expect(labels(2e-9, 5e10, 6)).toEqual(["$1M", "$1", "$0.000001"]);
+  const terminal = axis(0.0195, 415, 10, { tickRows: 10 });
+  const rows = compositeAxisTicks(terminal).map((tick) => Math.round(tick.ratio * 9));
+  expect(rows.every((row, index) => index === 0 || row - rows[index - 1]! >= 2)).toBe(true);
 });
 
 // A chart builds its axes again on every tick. What was worked out for an
