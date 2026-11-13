@@ -7,7 +7,7 @@ import { createPluginCache, savedCopyForTransientFailure } from "../../../data/p
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 import type { PluginPersistence } from "../../../types/plugin";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { displayWidth, formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { AUCTION_HISTORY_ALL, type AuctionHistoryWindow } from "./client";
 import type { AuctionFilter } from "./model";
@@ -184,7 +184,7 @@ export const hkSize = (tender: HkTender) => tender.allotted ?? tender.offered;
 export const hkSizeWorkedOut = (tender: HkTender) => tender.allotted == null && tender.offered != null;
 
 /** The amount in its currency: HK$66.3B, RMB750M; `≈HK$65.7B` for EF paper's worked-out size. */
-export function formatHkAmount(tender: HkTender, value: number | null, empty = "—", about = false): string {
+export function formatHkAmount(tender: HkTender, value: number | null, empty = MISSING_VALUE, about = false): string {
   if (value == null) return empty;
   return `${about ? "≈" : ""}${tender.currency === "CNH" ? "RMB" : "HK$"}${formatCompact(value)}`;
 }
@@ -293,14 +293,14 @@ export function buildHkColumns(options: { showYear?: boolean; rows?: readonly Hk
   const { showYear = false, rows = [], width } = options;
   const widest = (least: number, text: (tender: HkTender) => string) => Math.max(least, ...rows.map((tender) => displayWidth(text(tender))));
   const columns: HkColumn[] = [
-    { id: "date", label: "DATE", width: showYear ? 10 : 6, align: "left", title: "Issue day (a Government Bond's issue month): the business day after the tender" },
+    { id: "date", label: "DATE", width: showYear ? 11 : 6, align: "left", title: "Issue day (a Government Bond's issue month): the business day after the tender" },
     { id: "type", label: "TYPE", width: 6, align: "left" },
     { id: "term", label: "TERM", width: widest(7, hkTenderTerm), align: "left",
       title: "Term sold: a re-opening's is what its issue had left" },
-    { id: "rate", label: "RATE", width: widest(6, (tender) => formatHkRate(tender, hkRate(tender), "—")), align: "right",
+    { id: "rate", label: "RATE", width: widest(6, (tender) => formatHkRate(tender, hkRate(tender), MISSING_VALUE)), align: "right",
       title: "Average accepted yield; a floating rate note's spread over HONIA, bp" },
     { id: "btc", label: "B/C", width: 5, align: "right" },
-    { id: "size", label: "SIZE", width: widest(7, (tender) => formatHkAmount(tender, hkSize(tender), "—", hkSizeWorkedOut(tender))), align: "right",
+    { id: "size", label: "SIZE", width: widest(7, (tender) => formatHkAmount(tender, hkSize(tender), MISSING_VALUE, hkSizeWorkedOut(tender))), align: "right",
       title: "A bond's amount allotted; EF paper's amount offered, worked out from its applications (≈)" },
     { id: "cusip", label: "ISSUE", width: widest(5, (tender) => tender.issue ?? ""), align: "left", flexGrow: 1 },
   ];

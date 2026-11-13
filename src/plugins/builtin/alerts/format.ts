@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { closeBasis, metricName, metricReadingText, rotationQuadrant } from "./metric-model";
 import { moveBasisText, movePercentText, moveTargetText, moveTriggerLabel } from "./move";
 import { formatMarketPrice } from "../../../market-data/market/format";
@@ -31,9 +32,9 @@ export function formatCurrentPrice(alert: AlertRule, maxWidth = 9): string {
     : /US listing|US equities|calendar/.test(alert.lastCheckError) ? "US only"
     : /missing|bars|history|weekly closes/i.test(alert.lastCheckError) ? "Bar gap" : "No data";
   // The quadrant the latest weekly strength and momentum place it in.
-  if (alert.metric?.kind === "rrg") return rotationQuadrant(alert.lastCheckedPrice, alert.lastCheckedTarget) ?? "-";
+  if (alert.metric?.kind === "rrg") return rotationQuadrant(alert.lastCheckedPrice, alert.lastCheckedTarget) ?? MISSING_VALUE;
   if (alert.metric?.kind === "rs_ratio" && alert.lastCheckedPrice != null) return formatRatio(alert.lastCheckedPrice);
-  if (alert.lastCheckedPrice == null) return "-";
+  if (alert.lastCheckedPrice == null) return MISSING_VALUE;
   // A move rule reads the day's move: -0.38%.
   if (alert.move) return movePercentText(alert.lastCheckedPrice);
   // A price at its instrument's precision (1.34032 on GBP/USD, 117.35p on a London line), as `quote` prints it.
@@ -52,12 +53,12 @@ export function formatAlertTargetPrice(alert: AlertRule, maxWidth = 9): string {
 export function formatAlertDistance(alert: AlertRule): string {
   const currentPrice = alert.lastCheckedPrice;
   // A move is not a distance from a price: its reading and target say how far it has to go.
-  if (alert.lastCheckError || alert.metric?.kind === "rrg" || alert.move) return "-";
+  if (alert.lastCheckError || alert.metric?.kind === "rrg" || alert.move) return MISSING_VALUE;
   if (currentPrice == null || !Number.isFinite(currentPrice) || currentPrice === 0) {
-    return "-";
+    return MISSING_VALUE;
   }
   const percent = (((alert.lastCheckedTarget ?? alert.targetPrice) - currentPrice) / currentPrice) * 100;
-  if (!Number.isFinite(percent)) return "-";
+  if (!Number.isFinite(percent)) return MISSING_VALUE;
   // One decimal at any distance, so the column holds still as the price moves;
   // a distance that rounds to zero is unsigned (0.0%, never -0.0%).
   const fixed = Math.abs(percent).toFixed(1);

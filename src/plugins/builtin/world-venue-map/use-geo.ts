@@ -3,6 +3,7 @@ import { peekGeoCatalog, type GeoLayerInfo, type GeoLayersPayload, type GeoReque
 import { cloudGeoRequest, loadMapCatalog } from "./client";
 import { GeoLayerFeed, type GeoFeedOptions, type GeoLayerState } from "./feed";
 import type { GeoView } from "./layers";
+import { logFailure } from "../../../utils/log-failure";
 
 export interface GeoCatalogState {
   catalog: GeoLayersPayload | null;
@@ -22,9 +23,10 @@ export function useGeoCatalog(request: GeoRequest = cloudGeoRequest): GeoCatalog
   });
   useEffect(() => {
     let current = true;
-    void loadMapCatalog(request).then((catalog) => {
+    // A failed request answers null; anything else is logged.
+    loadMapCatalog(request).then((catalog) => {
       if (current) setState({ catalog, settled: true });
-    });
+    }, logFailure("world-venue-map.geo", "Loading the map layer catalog failed"));
     return () => {
       current = false;
     };

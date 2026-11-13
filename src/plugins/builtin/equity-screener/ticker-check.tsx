@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Box } from "../../../ui";
 import {
@@ -135,7 +136,7 @@ export function ScreenTickerCheck({
           emptyTitle: "Enter a ticker to check this screen.",
         }}
         renderCell={(row, column) => ({
-          text: column.id === "reason" ? row.reason ?? "--" : row[column.id as "criterion" | "value" | "result" | "asOf" | "state"],
+          text: column.id === "reason" ? row.reason ?? MISSING_VALUE : row[column.id as "criterion" | "value" | "result" | "asOf" | "state"],
           color: column.id === "result"
             ? row.passes === null ? colors.textMuted : row.passes ? colors.positive : colors.negative
             : column.id === "reason" || column.id === "state" || column.id === "asOf" ? colors.textMuted : colors.text,

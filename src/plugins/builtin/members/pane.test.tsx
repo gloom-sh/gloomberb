@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { act, useCallback, useState } from "react";
 import { setCloudApiFetchTransport } from "../../../api-client";
@@ -129,7 +130,7 @@ test("index alias opens Breadth lazily and keeps missing windows distinct from z
   expect(calls).toContain("/cloud/members/IVV/breadth");
   expect(frame).toContain("50.0%");
   expect(frame).toContain("0.0%");
-  expect(frame).toContain("--");
+  expect(frame).toContain(MISSING_VALUE);
   await tui.clickFrameText("Members");
   await tui.waitForFrameToContain("Company AAA");
 });

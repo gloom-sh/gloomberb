@@ -6,7 +6,7 @@ import type {
   HeadlessPaneRow,
   HeadlessRowsResult,
 } from "../../../types/plugin";
-import { formatCompact, formatCurrency } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCurrency } from "../../../utils/format";
 import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings, type InsiderFilingsLoad } from "./client";
 import { insiderEmptyNotice, loadHomeInsiderReportsNote } from "./issuer";
 import { FORM4_CURRENCY, withDayBaseValues, withInsiderBaseValues } from "./base-values";
@@ -69,17 +69,17 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   {
     key: "filingDate",
     header: "Filed",
-    format: (value) => typeof value === "string" ? value.slice(0, 10) : "-",
+    format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE,
   },
   {
     key: "transactionDate",
     header: "Tx",
-    format: (value) => typeof value === "string" ? value.slice(0, 10) : "-",
+    format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE,
   },
   {
     key: "insider",
     header: "Insider",
-    format: (value) => typeof value === "string" ? formatInsiderName(value) : "-",
+    format: (value) => typeof value === "string" ? formatInsiderName(value) : MISSING_VALUE,
   },
   { key: "title", header: "Title" },
   { key: "security", header: "Security" },
@@ -90,25 +90,25 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
     // trade on a form with the Rule 10b5-1 box checked is marked as the pane marks it: BUY 10b5-1.
     format: (value, row) => typeof value === "string"
       ? `${value}${row.rule10b51 === true && isOpenMarketTrade(typeof row.transactionCode === "string" ? row.transactionCode : null) ? " 10b5-1" : ""}`
-      : row.status === "disclosure" ? "DISCLOSURE" : "-",
+      : row.status === "disclosure" ? "DISCLOSURE" : MISSING_VALUE,
   },
   {
     key: "shares",
     header: "Shares",
     align: "right",
-    format: (value) => value == null ? "-" : formatCompact(Number(value)),
+    format: (value) => value == null ? MISSING_VALUE : formatCompact(Number(value)),
   },
   {
     key: "pricePerShare",
     header: "Price",
     align: "right",
-    format: (value) => value == null ? "-" : formatCurrency(Number(value)),
+    format: (value) => value == null ? MISSING_VALUE : formatCurrency(Number(value)),
   },
   {
     key: "totalValue",
     header: "Value",
     align: "right",
-    format: (value) => value == null ? "-" : `$${formatCompact(Number(value))}`,
+    format: (value) => value == null ? MISSING_VALUE : `$${formatCompact(Number(value))}`,
   },
   // An amendment's original date, remarks and footnotes, under the amendment's own row.
   { key: "note", header: "Note", underRow: true, format: (value) => typeof value === "string" ? value : "" },
@@ -140,7 +140,7 @@ function withMoneyColumns(money: readonly HeadlessPaneColumn[]): HeadlessPaneCol
 
 const figureOrDash = (value: unknown) => (typeof value === "number" ? value : null);
 /** A ranking's dollars beside the side's own; none is a dash. */
-const signalAmount = (value: unknown) => (typeof value === "number" && value > 0 ? formatSignalValue(value) : "-");
+const signalAmount = (value: unknown) => (typeof value === "number" && value > 0 ? formatSignalValue(value) : MISSING_VALUE);
 
 /**
  * The ranking without a ticker: the pane's columns in the side's words, why
@@ -172,14 +172,14 @@ function signalColumns(side: InsiderSignalSide): HeadlessPaneColumn[] {
       ),
     },
     { key: "insiders", header: words.insiders, align: "right" },
-    { key: "value", header: words.traded, align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "-" },
+    { key: "value", header: words.traded, align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : MISSING_VALUE },
     // Buying is read beside what the score leaves out: purchases under a Rule 10b5-1 plan, and the sales of the same days.
     ...side === "buy" ? [
       { key: "planValue", header: "Plan Buys", align: "right" as const, format: signalAmount },
       { key: "soldValue", header: "Sold", align: "right" as const, format: signalAmount },
     ] : [],
-    { key: "lastBuy", header: words.last, format: (value) => typeof value === "string" ? formatSignalDay(value) : "-" },
-    { key: "filingDate", header: "Filed", stackPriority: 1, format: (value) => typeof value === "string" ? value : "-" },
+    { key: "lastBuy", header: words.last, format: (value) => typeof value === "string" ? formatSignalDay(value) : MISSING_VALUE },
+    { key: "filingDate", header: "Filed", stackPriority: 1, format: (value) => typeof value === "string" ? value : MISSING_VALUE },
     { key: "buyers", header: "Insiders", underRow: true, format: (value) => typeof value === "string" ? value : "" },
   ];
 }
@@ -200,11 +200,11 @@ const INSIDERS_COLUMNS: HeadlessPaneColumn[] = [
       row.stakeBothWays === true,
     ),
   },
-  { key: "bought", header: "Bought", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "--" },
+  { key: "bought", header: "Bought", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : MISSING_VALUE },
   // Of Bought, the dollars under a Rule 10b5-1 plan: a company asked for by its ticker counts them, the ranking does not.
-  { key: "planBought", header: "Plan Buys", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "--" },
-  { key: "sold", header: "Sold", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "--" },
-  { key: "last", header: "Last", stackPriority: 1, format: (value) => typeof value === "string" ? formatSignalDay(value) : "--" },
+  { key: "planBought", header: "Plan Buys", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : MISSING_VALUE },
+  { key: "sold", header: "Sold", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : MISSING_VALUE },
+  { key: "last", header: "Last", stackPriority: 1, format: (value) => typeof value === "string" ? formatSignalDay(value) : MISSING_VALUE },
 ];
 
 /**

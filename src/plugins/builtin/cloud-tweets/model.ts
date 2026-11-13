@@ -4,7 +4,7 @@ import type {
   CloudTweetQueryType,
   CloudTweetSearchResponse,
 } from "../../../api-client";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { normalizeTweetText } from "./tweet-text";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { toTimestampMillis } from "../../../utils/timestamp";
@@ -146,7 +146,7 @@ export function normalizeFeeds(value: unknown): TwitterFeed[] {
 }
 
 export function formatMetric(value: number | null | undefined): string {
-  if (value == null) return "-";
+  if (value == null) return MISSING_VALUE;
   if (Math.abs(value) >= 1000) return formatCompact(value);
   return String(value);
 }

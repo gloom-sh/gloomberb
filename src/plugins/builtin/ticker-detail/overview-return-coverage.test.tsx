@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient } from "../../../api-client";
@@ -53,8 +54,8 @@ for (const withSummary of [true, false]) for (const covered of [false, true]) {
     });
     await settleFrame(tui.setup(), 10);
     const frame = tui.frame();
-    expect(frame).toMatch(covered ? /1Y\s+0.00%/ : /1Y\s+-/);
-    expect(frame).toMatch(covered ? /3Y\s+0.00%/ : /3Y\s+-/);
+    expect(frame).toMatch(covered ? /1Y\s+0.00%/ : new RegExp(String.raw`1Y\s+${MISSING_VALUE}`));
+    expect(frame).toMatch(covered ? /3Y\s+0.00%/ : new RegExp(String.raw`3Y\s+${MISSING_VALUE}`));
     if (withSummary) expect(frame).toMatch(/Div Yield\s+0.00%/);
     else expect(frame).not.toContain("Div Yield");
     const report = await buildTickerReport({ symbol: "NEWF", tickerFile: savedTicker, financials, config, toBase: async value => value });

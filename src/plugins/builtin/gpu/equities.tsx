@@ -13,7 +13,7 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
 import { ClippedText } from "../../../components/ui/display";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { displayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 import { boardQuotes, quoteBoardFooterInfo, quoteBoardStatus, renderQuoteBoardCell, useQuoteBoard } from "../shared/use-quote-board";
 import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import { GpuModelQuery } from "./board";
@@ -99,7 +99,7 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
         if (!reference) return gapCell;
         if (gpuChangesLocked(reference)) return lockedCell;
         const value = reference.change7d;
-        return value == null ? { text: "-", value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
+        return value == null ? { text: MISSING_VALUE, value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
       }
       case "five": {
         const value = dataRef.current.historyMap.get(row.symbol)?.value;

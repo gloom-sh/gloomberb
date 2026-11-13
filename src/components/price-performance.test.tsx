@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../utils/format";
 import { expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness, settleFrame } from "../renderers/opentui/test-utils";
@@ -22,7 +23,7 @@ test("a narrow strip wraps whole label and value pairs instead of cutting return
   const lines = tui.frame().split("\n").map((line) => line.trimEnd()).filter(Boolean);
   expect(lines).toEqual([
     "1M +0.49%   3M +18.82%",
-    "6M -30.50%   1Y -",
+    `6M -30.50%   1Y ${MISSING_VALUE}`,
     "3Y +432.18%   5Y +1016.05%",
   ]);
 });

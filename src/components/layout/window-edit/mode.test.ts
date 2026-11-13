@@ -162,6 +162,6 @@ describe("window edit mode", () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]).toStartWith("Enter apply  Esc cancel");
     expect(lines.every((line) => line.length <= 30)).toBe(true);
-    expect(lines[1]).toEndWith("...");
+    expect(lines[1]).toEndWith("…");
   });
 });

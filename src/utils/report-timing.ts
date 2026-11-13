@@ -44,7 +44,7 @@ export function localReportTiming(
   const announced = releaseAt ? Date.parse(releaseAt) : NaN;
   if (Number.isFinite(announced)) {
     const shown = zone ?? "UTC";
-    return `at ${clockText(announced, shown)} ${timeZoneLabel(shown)} ${dayText(announced, shown)}`;
+    return `at ${clockText(announced, shown)} ${timeZoneLabel(shown, announced)} ${dayText(announced, shown)}`;
   }
   if (!timing || !zone || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   const [year, month, day] = date.split("-").map(Number) as [number, number, number];
@@ -53,7 +53,7 @@ export function localReportTiming(
   const times = NEW_YORK_TIMES[timing];
   const at = zonedWallClockToUtcMs("America/New_York", year, month, day, times.at[0], times.at[1], 0);
   if (dayText(at, zone) === dayText(at, "America/New_York") && clockText(at, zone) === clockText(at, "America/New_York")) return null;
-  const label = timeZoneLabel(zone);
+  const label = timeZoneLabel(zone, at);
   if (times.until) {
     const until = zonedWallClockToUtcMs("America/New_York", year, month, day, times.until[0], times.until[1], 0);
     return `${times.words}, ${clockText(at, zone)} to ${clockText(until, zone)} ${label} ${dayText(at, zone)}`;

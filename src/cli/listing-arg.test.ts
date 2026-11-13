@@ -644,10 +644,10 @@ test("a code its exchange withdrew is that company, gone on its day for its reas
   });
   const deps = { store, dataProvider };
   expect(await notTradedMessage(await resolveCliListing("0011", "HKEX", deps), deps))
-    .toBe("0011:HKEX (Hang Seng Bank Limited): Delisted Jan 27, 2026 (Privatised by The Hongkong and Shanghai Banking Corporation Limited).");
+    .toBe("0011:HKEX (Hang Seng Bank Limited): Delisted 27 Jan 2026 (Privatised by The Hongkong and Shanghai Banking Corporation Limited).");
   // Named among the code's listings with the day it went; Brite-Tech's line trades.
   expect((await listingVenues("0011", deps)).map((venue) => venue.name))
-    .toEqual(["Brite-Tech Berhad", "Hang Seng Bank Limited · Delisted Jan 27, 2026"]);
+    .toEqual(["Brite-Tech Berhad", "Hang Seng Bank Limited · Delisted 27 Jan 2026"]);
   expect(await notTradedMessage(await resolveCliListing("0011", "BURSAMY", deps), deps)).toBeNull();
 });
 

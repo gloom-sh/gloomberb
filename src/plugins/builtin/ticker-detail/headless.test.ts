@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { resolveCanonicalQuote } from "../../../market-data/quotes/resolution";
 import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
@@ -816,7 +817,7 @@ test("historical price exports preserve tiny OHLC values without changing raw da
     expect(row[key]).toBe(point[key]);
     expect(Number(column.format!(row[key], row))).toBe(point[key]);
     expect(column.format!(0, row)).toBe("0.00");
-    expect(column.format!(null, row)).toBe("-");
+    expect(column.format!(null, row)).toBe(MISSING_VALUE);
     expect(column.format!(123.45, row)).toBe("123.45");
   }
 });

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ChartTableHeader,
@@ -132,7 +133,7 @@ function renderTradeCell(row: CdsTrade, column: TradeColumn, lineMaturity: strin
     case "notional":
       return { text: formatNotional(row), color: dimmed ?? colors.textBright };
     case "currency":
-      return { text: row.currency ?? "--", color: dimmed ?? colors.textDim };
+      return { text: row.currency ?? MISSING_VALUE, color: dimmed ?? colors.textDim };
     case "coupon":
       return { text: formatBp(row.couponBp), color: dimmed ?? colors.text };
     case "spread":
@@ -267,7 +268,7 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
   const unit: CdsQuoteUnit = line.quote === "upfront" && line.upfrontPts != null ? "pts" : "bp";
   const charted = useMemo(() => unit === "pts" ? quotedPoints(line) : points.map((point) => ({ date: point.date, value: point.spreadBp })), [line, points, unit]);
   const shown = loading && !points.length
-    ? [{ id: "spread", label: "5Y spread", value: "--" }]
+    ? [{ id: "spread", label: "5Y spread", value: MISSING_VALUE }]
     : spreadFigures(line);
   const why = !points.length ? noLevelMessage(line.noLevelReason, null) : null;
   const moves = shown.filter((item) => item.id === "spread" || item.id === "1w" || item.id === "1m");

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo, useState } from "react";
 import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
@@ -50,13 +51,13 @@ const meetingDate = (row: RateMeeting) => new Date(row.date);
 
 const DAY_MS = 86_400_000;
 
-function timestamp(value: string | null): string { return value?.replace("T", " ").slice(0, 16) ?? "--"; }
-function percentile(value: number | null): string { return value == null ? "--" : value.toFixed(0); }
+function timestamp(value: string | null): string { return value?.replace("T", " ").slice(0, 16) ?? MISSING_VALUE; }
+function percentile(value: number | null): string { return value == null ? MISSING_VALUE : value.toFixed(0); }
 /** Hikes up, cuts down, by the sign the text shows, so a move that rounds to zero stays neutral. */
 function signColor(value: number | null, digits: number): string {
   return value == null || !Number.isFinite(value) ? colors.textDim : shownPriceColor(value, digits);
 }
-function bpText(value: number | null): string { return value == null ? "--" : rateChangeText(value / 100); }
+function bpText(value: number | null): string { return value == null ? MISSING_VALUE : rateChangeText(value / 100); }
 /** Days to a meeting, counted in UTC dates like the schedule. */
 function daysUntil(date: string, today = new Date().toISOString().slice(0, 10)): string {
   const days = Math.round((Date.parse(date) - Date.parse(today)) / DAY_MS);
@@ -74,7 +75,7 @@ function meetingCell(row: RateMeeting, column: DataTableColumn, moves: ReadonlyM
 }
 function contractCell(row: RateContract, column: DataTableColumn): DataTableCell {
   if (column.id === "symbol") return { text: row.symbol };
-  if (column.id === "price") return { text: row.price?.toFixed(3) ?? "--" };
+  if (column.id === "price") return { text: row.price?.toFixed(3) ?? MISSING_VALUE };
   if (column.id === "rate") return { text: rateText(row.impliedRate) };
   if (column.id === "percentile") return { text: percentile(row.percentile) };
   return { text: timestamp(row.asOf), color: row.stale ? colors.warning : colors.textDim };
@@ -202,7 +203,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
           renderCell={(row, column) => {
             if (column.id === "date") return { text: row.date };
             const probability = meetingProbability(row, Number(column.id));
-            return { text: probability == null ? "--" : `${(probability * 100).toFixed(1)}%`,
+            return { text: probability == null ? MISSING_VALUE : `${(probability * 100).toFixed(1)}%`,
               backgroundColor: probability == null ? undefined : blendHex(colors.bg, colors.positive, probability * 0.7),
               color: probability != null && probability > 0.65 ? colors.bg : colors.text };
           }} /> : tab === "contracts" ? <DataTableView columns={CONTRACT_COLUMNS} items={contracts}

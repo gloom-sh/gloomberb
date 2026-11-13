@@ -9,7 +9,7 @@ import type { CentralBankRow } from "../../../api-client/central-bank-rates";
 import { staticSeries } from "../../../components/chart/static/series";
 import { StatChartDetail } from "../../../components/market-board";
 import type { PaneProps } from "../../../types/plugin";
-import { formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
@@ -38,15 +38,15 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
       detail: [policyChangeDate(row), computed].filter(Boolean).join(" · ") || undefined },
     // A target range ranks and charts its midpoint, which the band's range would not say.
     { id: "range", label: "1Y range", value: `${policyRate(p.min)} to ${policyRate(p.max)}`, detail: row.range ? "midpoint" : undefined },
-    { id: "asOf", label: "As of", value: row.asOf ?? "--", tone: row.status === "stale" ? "warning" : undefined,
+    { id: "asOf", label: "As of", value: row.asOf ?? MISSING_VALUE, tone: row.status === "stale" ? "warning" : undefined,
       detail: [row.publicationFrequency, row.lagDays == null ? null : `${row.lagDays}d lag`,
         row.confirmedAt ? `confirmed ${row.confirmedAt.slice(0, 10)}` : null, row.status === "stale" ? "stale" : null]
         .filter(Boolean).join(" · ") || undefined },
     // An older server does not say which meeting was the latest: the field is left out rather than read as none.
     ...row.latestDecision === undefined ? [] : [{ id: "decided", label: row.latestDecision?.kind === "fixing" ? "Last fixing" : "Last decision",
-      value: row.latestDecision?.date ?? "--" }],
-    { id: "meeting", label: row.nextMeeting?.kind === "fixing" ? "Next fixing" : "Next meeting", value: row.nextMeeting?.date ?? "--" },
-    { id: "source", label: "Source", value: policySource(row) ?? "--", detail: row.sourceSeriesIds.join(", ") || undefined },
+      value: row.latestDecision?.date ?? MISSING_VALUE }],
+    { id: "meeting", label: row.nextMeeting?.kind === "fixing" ? "Next fixing" : "Next meeting", value: row.nextMeeting?.date ?? MISSING_VALUE },
+    { id: "source", label: "Source", value: policySource(row) ?? MISSING_VALUE, detail: row.sourceSeriesIds.join(", ") || undefined },
     { id: "instrument", label: "Instrument", value: row.instrument, detail: row.centralBank ?? undefined, wide: true },
   ];
   return <StatChartDetail items={items} width={width} height={height} empty={!history.some((point) => point.value != null)}

@@ -10,7 +10,7 @@ import { usePaneInstance, usePaneTitle } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type InputRenderable } from "../../../ui";
-import { formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
@@ -67,8 +67,8 @@ const SHORT_DATED_DROP_ORDER = BASIS_DROP_ORDER.filter((id) => id !== "vsSpot");
 const NO_SYMBOLS: string[] = [];
 /** The spot's age is judged against the clock, so a quote that stops moving still goes stale on screen. */
 const SPOT_CLOCK_MS = 30_000;
-const signedPercent = (value: number | null) => value == null ? "--" : formatPercentRaw(value);
-const integer = (value: number | null) => value == null ? "--" : value.toLocaleString("en-US");
+const signedPercent = (value: number | null) => value == null ? MISSING_VALUE : formatPercentRaw(value);
+const integer = (value: number | null) => value == null ? MISSING_VALUE : value.toLocaleString("en-US");
 const contractKey = (row: FuturesContract) => row.symbol;
 // Left and Right step along the expiries, the way the curve reads.
 const contractDate = (row: FuturesContract) => new Date(row.expiration);
@@ -189,11 +189,11 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
     { id: "roll", label: "Ann. roll yield", value: signedPercent(data.slope.annualizedRollYield),
       ...thin ? { tone: "warning" as const } : { detail: curveRank(data.slope.rollPercentile, data.slope.samples) } },
     // Named by the contracts it subtracts: the front is the first month the market trades, not always the first row.
-    { id: "spread", label: curveSpreadLabel(data.slope), value: data.slope.value == null ? "--" : curvePrice(data.slope.value, root),
+    { id: "spread", label: curveSpreadLabel(data.slope), value: data.slope.value == null ? MISSING_VALUE : curvePrice(data.slope.value, root),
       ...thin ? { tone: "warning" as const } : {},
       detail: [data.slope.state, spreadBasis, spreadRank, slopeDate].filter(Boolean).join(" · ") },
     ...spotPremium ? [
-      { id: "spot", label: spotPremium.label, value: spotPremium.close == null ? "--" : spotPremium.close.toFixed(2),
+      { id: "spot", label: spotPremium.label, value: spotPremium.close == null ? MISSING_VALUE : spotPremium.close.toFixed(2),
         detail: spotPremium.date ? `${spotPremium.date.slice(5)} close` : undefined },
       { id: "premium", label: "Front premium", value: curveChangeText(spotPremium.premium, root),
         ...spotPremium.premium == null ? { tone: "warning" as const, detail: spotPremium.reason ?? undefined }
@@ -298,7 +298,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
     // A contract past first notice can be assigned delivery.
     if (column.id === "symbol") return { text: row.symbol, color: row.inDelivery ? colors.warning : undefined };
     if (column.id === "expiry") return { text: row.lastTrade ?? row.expiration, color: colors.textMuted };
-    if (column.id === "notice") return { text: row.firstNotice ?? "--", color: row.inDelivery ? colors.warning : colors.textMuted };
+    if (column.id === "notice") return { text: row.firstNotice ?? MISSING_VALUE, color: row.inDelivery ? colors.warning : colors.textMuted };
     if (column.id === "settle") return { text: curvePrice(row.settlement ?? null, root) };
     // A past curve's settled row has no separate last trade: its price is the settlement.
     if (column.id === "price") {
@@ -321,9 +321,9 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
       // The figure to read is in the text colour, the other greyed: the annualised rate, until a week before
       // expiry, where spot noise swings it by whole points and Vs Spot leads.
       const lead = column.id === "vsSpot" ? shortDatedBasis(cell) : !shortDatedBasis(cell);
-      return { text, color: lead && text !== "--" ? undefined : colors.textMuted };
+      return { text, color: lead && text !== MISSING_VALUE ? undefined : colors.textMuted };
     }
-    if (column.id === "percentile") return { text: row.samples < 2 || row.percentile == null ? "--" : row.percentile.toFixed(0) };
+    if (column.id === "percentile") return { text: row.samples < 2 || row.percentile == null ? MISSING_VALUE : row.percentile.toFixed(0) };
     if (column.id === "oi") return { text: integer(row.openInterest) };
     if (column.id === "volume") return { text: integer(row.volume) };
     // A month with no trade since the settlement it shows is dated by that settlement, as the curve marks it.

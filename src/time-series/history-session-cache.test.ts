@@ -81,7 +81,7 @@ test("a behind 5-minute session copy is drawn with a notice while refetches fail
   const cache = new ChartResolveCache(), spec = chart();
   spec.viewport = { range: "1D", resolution: "5m" };
   spec.studies = [];
-  const notice = "AAPL:NASDAQ: newer bars are unavailable; showing saved bars as of Sep 21 15:45 ET.";
+  const notice = "AAPL:NASDAQ: newer bars are unavailable; showing saved bars as of 21 Sep 15:45 ET.";
   const resolve = async () => {
     const resolved = await resolveChartSpecData(spec, { dataProvider, now: new Date() }, cache);
     expect(resolved.errors).toEqual([]);
@@ -116,7 +116,7 @@ test("a behind 5-minute session copy is drawn with a notice while refetches fail
 
 test("a saved copy the router calls behind draws one notice, with a session record or without, until a refetch answers a current copy", async () => {
   setSystemTime(NOW);
-  const notice = "AAPL:NASDAQ: newer bars are unavailable; showing saved bars as of Sep 21 15:45 ET.";
+  const notice = "AAPL:NASDAQ: newer bars are unavailable; showing saved bars as of 21 Sep 15:45 ET.";
   const saved = time("2026-09-21T19:50:00Z");
   let calls = 0, behind = true;
   // The Cloud session record covers US 1- and 5-minute bars only: this copy has none.
@@ -171,7 +171,7 @@ test("recent explicit windows revalidate across the opening boundary just like c
   // The source answers the same bars, still behind the session: they are drawn, and the footer says so.
   const behind = await resolveChartSpecData(spec, { dataProvider, now: new Date() }, cache);
   expect(behind.series.find(series => series.id === "close")!.points).toHaveLength(234);
-  expect(behind.warnings).toContain("AAPL:NASDAQ: newer bars are unavailable; showing saved bars as of Sep 21 15:45 ET.");
+  expect(behind.warnings).toContain("AAPL:NASDAQ: newer bars are unavailable; showing saved bars as of 21 Sep 15:45 ET.");
   expect(calls).toBe(2);
 });
 

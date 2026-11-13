@@ -32,7 +32,7 @@ export interface CalendarDay {
   date: string;
   /** "Mon" */
   weekday: string;
-  /** "Oct 20" */
+  /** "20 Oct" */
   label: string;
   today: boolean;
   /** No NYSE session that day. */
@@ -54,7 +54,7 @@ export function calendarWeekDates(today: string, offset: number): string[] {
   return [0, 1, 2, 3, 4].map((index) => addDays(start, index));
 }
 
-/** "Last week", "This week", "Next week", then "Week of Nov 3". */
+/** "Last week", "This week", "Next week", then "Week of 3 Nov". */
 export function calendarWeekLabel(today: string, offset: number): string {
   if (offset === -1) return "Last week";
   if (offset === 0) return "This week";
@@ -104,7 +104,7 @@ export function boardRangeWeek(range: BoardRange, today: string): number {
   return Math.round((Date.parse(mondayOf(range)) - Date.parse(mondayOf(today))) / (7 * 86_400_000));
 }
 
-/** A day of a week or the day asked for: "Today" for today, otherwise "Thu Oct 15". */
+/** A day of a week or the day asked for: "Today" for today, otherwise "Thu 15 Oct". */
 function dayLabel(date: string, today: string): string {
   return date === today ? "Today" : `${weekday(date)} ${shortDate(date)}`;
 }
@@ -120,13 +120,13 @@ export function boardRangeDays(range: BoardRange, today: string): MarketDay[] {
   return calendarWeekDates(today, Number(range)).map((date) => ({ label: dayLabel(date, today), from: date, to: date }));
 }
 
-/** What the range reads as: "Last week", "Week of Nov 2", "Thu Oct 15", or null for the days ahead. */
+/** What the range reads as: "Last week", "Week of 2 Nov", "Thu 15 Oct", or null for the days ahead. */
 export function boardRangeLabel(range: BoardRange, today: string): string | null {
   if (ISO_DAY.test(range)) return dayLabel(range, today);
   return WEEK_OFFSET.test(range) ? calendarWeekLabel(today, Number(range)) : null;
 }
 
-/** The range in a sentence ("No reports … last week"): "today", "on Thu Oct 15", "in the week of Nov 2"; null for the days ahead. */
+/** The range in a sentence ("No reports … last week"): "today", "on Thu 15 Oct", "in the week of 2 Nov"; null for the days ahead. */
 export function boardRangeWords(range: BoardRange, today: string): string | null {
   if (ISO_DAY.test(range)) return range === today ? "today" : `on ${dayLabel(range, today)}`;
   if (!WEEK_OFFSET.test(range)) return null;

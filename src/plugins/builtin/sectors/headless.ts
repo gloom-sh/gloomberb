@@ -4,14 +4,14 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import type { HeadlessPaneColumn } from "../../../types/headless";
-import { formatCurrency, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import { loadSectorRows, type SectorRowOutcome } from "./client";
 import { getSectorCollection, type SectorCollectionId, type SectorDef } from "./sector-data";
 import { DEFAULT_SORT_PREFERENCE, sectorExtendedSessions, sectorRowIssues, sortRows, type SectorRow } from "./sector-model";
 
-const price = (value: unknown, row: Record<string, unknown>) => value == null ? "-" : formatCurrency(Number(value), String(row.currency));
-const percent = (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value));
+const price = (value: unknown, row: Record<string, unknown>) => value == null ? MISSING_VALUE : formatCurrency(Number(value), String(row.currency));
+const percent = (value: unknown) => value == null ? MISSING_VALUE : formatPercentRaw(Number(value));
 
 const LEAD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "name", header: "Sector" },
@@ -33,7 +33,7 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
     align: "right",
     format: (value, row) => row.extendedSession === session && typeof value === "number"
       ? `${price(value, row)} ${percent(row.extendedChangePercent)}`
-      : "-",
+      : MISSING_VALUE,
   };
 }
 

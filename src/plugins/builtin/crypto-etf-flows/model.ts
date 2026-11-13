@@ -1,7 +1,7 @@
 import type { CryptoEtfFlowAsset, CryptoEtfFlowDay, CryptoEtfFlowsPayload } from "../../../api-client/crypto-etf-flows";
 import type { DataTableColumn } from "../../../components";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
-import { formatCompactAmount, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompactAmount, formatNumber } from "../../../utils/format";
 
 export const CRYPTO_ETF_FLOWS_PANE_ID = "crypto-etf-flows";
 
@@ -45,14 +45,14 @@ export const cryptoEtfFlowAssetLabel = (asset: CryptoEtfFlowAsset) => asset === 
 
 /** A day's flow in US$ millions as the table shows it: `+665.2`, `-83.6`, `0.0`, `—` for none. */
 export function formatFlow(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const text = formatNumber(Math.abs(value), 1);
   return value > 0 && text !== "0.0" ? `+${text}` : value < 0 && text !== "0.0" ? `-${text}` : text;
 }
 
 /** A sum of flows in US$ millions as a figure reads it: `+$526.7M`, `-$1.13B`, `$0`. */
 export function formatFlowAmount(millions: number | null | undefined): string {
-  if (millions == null || !Number.isFinite(millions)) return "—";
+  if (millions == null || !Number.isFinite(millions)) return MISSING_VALUE;
   const text = formatCompactAmount(millions * 1_000_000, { signed: true });
   return text.replace(/^([+-]?)/, "$1$");
 }
@@ -119,7 +119,7 @@ export const hasFundPriceChanges = (payload: CryptoEtfFlowsPayload | null | unde
 
 /** A day's price move as the table shows it: `+2.15%`, `-0.40%`, `—` for none. */
 export function formatPriceChange(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 

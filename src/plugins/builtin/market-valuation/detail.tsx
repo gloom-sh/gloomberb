@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { StatItem } from "../../../components/ui";
 import { Box } from "../../../ui";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { historySpanStat, sinceLabel } from "../shared/history-span";
 import { SeriesDetailChart } from "../shared/series-detail-chart";
 import { valuationAxis, zoneSeriesFor } from "./chart-projection";
@@ -47,7 +47,7 @@ export function IndicatorDetail({
         },
       ]
       : []),
-    { id: "year-ago", label: "1Y ago", value: view.ratioOneYearAgo == null ? "--" : indicator.formatValue(view.ratioOneYearAgo) },
+    { id: "year-ago", label: "1Y ago", value: view.ratioOneYearAgo == null ? MISSING_VALUE : indicator.formatValue(view.ratioOneYearAgo) },
     // The whole history's, whatever the range the chart shows.
     { id: "ath", label: sinceLabel("High", view.historyStart), value: indicator.formatValue(view.allTimeHigh.ratio), detail: view.allTimeHigh.date },
     { id: "atl", label: sinceLabel("Low", view.historyStart), value: indicator.formatValue(view.allTimeLow.ratio), detail: view.allTimeLow.date },

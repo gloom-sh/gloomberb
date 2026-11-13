@@ -632,7 +632,9 @@ function ChartComposerSurface({
   useEffect(() => {
     if (!wantsInterventions) return;
     let live = true;
-    void loadFxInterventions().then((payload) => { if (live) setInterventions(payload); });
+    // The loader answers null when the record cannot be read; anything else is logged.
+    loadFxInterventions().then((payload) => { if (live) setInterventions(payload); },
+      logFailure("chart-composer.pane", "Showing yen interventions failed"));
     return () => { live = false; };
   }, [wantsInterventions]);
   const chartSeries = resolution.bufferedSeries ?? resolution.series;
@@ -1487,7 +1489,7 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
     if (!leveragePending) return;
     const mounted = new AbortController();
     // The chart draws meanwhile, so it can wait longer for them than a report does.
-    void loadDailyObjectives(comparedFundTickers(storedRef.current),
+    loadDailyObjectives(comparedFundTickers(storedRef.current),
       async (ticker, signal) => (await loadFundFacts(ticker, false, { signal })).payload,
       { timeoutMs: LEVERAGE_FACTS_PANE_TIMEOUT_MS, signal: mounted.signal })
       .then((objectives) => {
@@ -1496,7 +1498,9 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
           [CHART_SPEC_SETTING_KEY]: withLeverageOverlay(storedRef.current, objectives),
           [CHART_LEVERAGE_PENDING_SETTING_KEY]: undefined,
         });
-      });
+      })
+      // The chart stays without the objectives, and asks again when it is next opened.
+      .catch(logFailure("chart-composer.pane", "Adding leveraged fund objectives failed"));
     return () => mounted.abort();
   }, [leveragePending, updateSettings]);
   if (follows && !target && ownedIds.length > 0) {

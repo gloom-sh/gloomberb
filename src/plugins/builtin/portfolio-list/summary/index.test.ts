@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import { getLanguage, setLanguage } from "../../../../i18n";
 import { useRegularMarketSession } from "../../../../test-support/market-session";
@@ -140,7 +141,7 @@ describe("resolvePortfolioAccountState", () => {
     });
 
     expect(accountState?.account.netLiquidation).toBe(123456);
-    expect(accountState?.sourceLabel).toBe("Flex May 14");
+    expect(accountState?.sourceLabel).toBe("Flex 14 May");
   });
 
   test("uses the account as-of date when choosing the freshest cached Flex account", () => {
@@ -196,7 +197,7 @@ describe("resolvePortfolioAccountState", () => {
     });
 
     expect(accountState?.account.netLiquidation).toBe(200000);
-    expect(accountState?.sourceLabel).toBe("Flex Jun 16");
+    expect(accountState?.sourceLabel).toBe("Flex 16 Jun");
   });
 
 });
@@ -336,7 +337,7 @@ describe("buildPortfolioSummarySegments", () => {
       sortedTickers: [],
     });
 
-    expect(segments.map((segment) => segment.parts[0]?.text)).toEqual(["Acct missing", "-"]);
+    expect(segments.map((segment) => segment.parts[0]?.text)).toEqual(["Acct missing", MISSING_VALUE]);
   });
 });
 

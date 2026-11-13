@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { IvCloseBasis, IvMethod } from "./client";
 import { readingSource, type IvStatRow, type IvStatUnit, type RichCheap, type RichCheapDates } from "./model";
 
@@ -31,19 +32,19 @@ export const IMPLIED_VOL_WORDS = ["IVOL", "IV", "OVOL", "IMPVOL", "IMPLIEDVOL"];
 export const skewHeader = (stem: string, sign: string) => `${stem} ${sign} (pts)`;
 
 /** The underlying price a reading was taken at, to the cent. */
-export const formatSpot = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--"
+export const formatSpot = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? MISSING_VALUE
   : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-export const formatVol = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(1)}%`;
+export const formatVol = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? MISSING_VALUE : `${(value * 100).toFixed(1)}%`;
 export const formatPoints = (value: number | null | undefined) =>
-  value == null || !Number.isFinite(value) ? "--" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}`;
+  value == null || !Number.isFinite(value) ? MISSING_VALUE : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}`;
 export const formatRank = (value: number | null | undefined, suffix = "") =>
-  value == null || !Number.isFinite(value) ? "--" : `${Math.round(value)}${suffix ? ` ${suffix}` : ""}`;
-export const shortDate = (date: string | null | undefined) => date ? date.slice(5) : "--";
-export const verdictLabel = (verdict: RichCheap) => verdict === "rich" ? "Rich" : verdict === "cheap" ? "Cheap" : verdict === "fair" ? "Fair" : "--";
+  value == null || !Number.isFinite(value) ? MISSING_VALUE : `${Math.round(value)}${suffix ? ` ${suffix}` : ""}`;
+export const shortDate = (date: string | null | undefined) => date ? date.slice(5) : MISSING_VALUE;
+export const verdictLabel = (verdict: RichCheap) => verdict === "rich" ? "Rich" : verdict === "cheap" ? "Cheap" : verdict === "fair" ? "Fair" : MISSING_VALUE;
 
 /** A statistic in its own unit: volatility %, volatility points, or a plain ratio. */
 export function formatStat(value: number | null | undefined, unit: IvStatUnit): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return unit === "vol" ? formatVol(value) : unit === "points" ? formatPoints(value) : value.toFixed(2);
 }
 /**

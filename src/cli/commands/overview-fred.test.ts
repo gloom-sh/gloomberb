@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../utils/format";
 import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../api-client/request";
 import { inferCliErrorOptions, printCliError } from "../errors";
@@ -327,7 +328,7 @@ test("yield-curve reads each tenor's move against the previous observation, not 
   expect(result.data.map((row: Record<string, unknown>) => [row.seriesId, row.previousDate, row.changeBasisPoints]))
     .toEqual([["DGS3MO", "2026-10-09", 0], ["DGS2", "2026-10-09", -4], ["DGS10", "2026-10-09", 4.1], ["DGS30", null, null]]);
   const rows = serializeCliResult({ ...result, freshness: undefined }, DEFAULT_CLI_OPTIONS, options).split("\n").slice(2).map((line) => line.split(/\s+/));
-  expect(rows.map(([tenor, yieldText, change]) => [tenor, yieldText, change])).toEqual([["3M", "4.25", "0.0bp"], ["2Y", "4.80", "-4.0bp"], ["10Y", "5.24", "+4.1bp"], ["30Y", "5.60", "-"]]);
+  expect(rows.map(([tenor, yieldText, change]) => [tenor, yieldText, change])).toEqual([["3M", "4.25", "0.0bp"], ["2Y", "4.80", "-4.0bp"], ["10Y", "5.24", "+4.1bp"], ["30Y", "5.60", MISSING_VALUE]]);
 });
 
 test("yield-curve started on a day the bond market was shut shows the session before it and says so", async () => {

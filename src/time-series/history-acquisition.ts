@@ -85,7 +85,7 @@ export function behindHistoryNotice(
   const wall = new Date(zonedWallClockMs(getPricePointTimestamp(latest), zone)).toISOString();
   const sameYear = wall.slice(0, 4) === zonedDateKey(now, zone).slice(0, 4);
   const day = formatShortDate(wall.slice(0, 10), { utc: true, year: sameYear ? false : "numeric" });
-  return `${instrumentLabel(source)}: newer bars are unavailable; showing saved bars as of ${day} ${wall.slice(11, 16)} ${timeZoneLabel(zone)}.`;
+  return `${instrumentLabel(source)}: newer bars are unavailable; showing saved bars as of ${day} ${wall.slice(11, 16)} ${timeZoneLabel(zone, getPricePointTimestamp(latest))}.`;
 }
 
 function isSortedPriceHistory(points: TickerFinancials["priceHistory"]): boolean {

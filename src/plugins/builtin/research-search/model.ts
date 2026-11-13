@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type {
   CloudSavedSearch,
   CloudSavedSearchFilters,
@@ -198,7 +199,7 @@ export function presentSearchHit(hit: CloudSearchHit): CloudSearchHit {
  */
 export function formatHitDate(value: string | null | undefined): string {
   if (value && CALENDAR_DAY.test(value)) return formatFilingDate(value);
-  return formatShortDate(value, { day: "2-digit", fallback: "\u2014" });
+  return formatShortDate(value, { day: "2-digit", fallback: MISSING_VALUE });
 }
 
 const MS_PER_HOUR = 60 * 60 * 1000;

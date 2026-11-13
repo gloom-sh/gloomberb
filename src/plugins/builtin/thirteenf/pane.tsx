@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
@@ -529,8 +530,8 @@ export function FundDetailView({
   const nextFiling = nextDue ? nextFilingText(nextDue) : null;
   const staleFiling = isStaleFiling(quartersBehind);
   const holdingStats: StatItem[] = [
-    { id: "reported", label: "Reported", value: data?.latestForm?.periodOfReport ?? "--",
-      detail: `filed ${data?.latestForm?.filedAsOfDate || "--"}${data?.latestForm && amendmentKind(data.latestForm) === "restatement" ? ", restated" : ""}${staleFiling ? `, ${quartersOldText(quartersBehind)}` : ""}`,
+    { id: "reported", label: "Reported", value: data?.latestForm?.periodOfReport ?? MISSING_VALUE,
+      detail: `filed ${data?.latestForm?.filedAsOfDate || MISSING_VALUE}${data?.latestForm && amendmentKind(data.latestForm) === "restatement" ? ", restated" : ""}${staleFiling ? `, ${quartersOldText(quartersBehind)}` : ""}`,
       ...(staleFiling ? { tone: "warning" as const } : {}) },
     { id: "compared", label: "Compared with", ...comparedWith(data) },
     // When the next quarter's holdings come out: 45 days after it ends, moved past a weekend or holiday.
@@ -752,8 +753,8 @@ function FilingDetailView({
   };
   // The fund names the stack and `o` opens the filing, so neither repeats here.
   const summaryItems: StatItem[] = [
-    { id: "filed", label: "Filed", value: filing.filedAsOfDate || "--" },
-    { id: "form", label: "Form", value: filing.submissionType || "--" },
+    { id: "filed", label: "Filed", value: filing.filedAsOfDate || MISSING_VALUE },
+    { id: "form", label: "Form", value: filing.submissionType || MISSING_VALUE },
     ...(amendmentStat ? [amendmentStat] : []),
     { id: "cik", label: "CIK", value: filing.cik },
     { id: "accession", label: "Accession", value: filing.accessionNumber },

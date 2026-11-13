@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CloudEarningsCallPayload } from "../../../api-client";
 import { formatShortDate } from "../../../utils/datetime-format";
 
@@ -11,7 +12,7 @@ function formatPeriod(
   fiscalQuarter: number | null,
   fiscalHalf?: number | null,
 ): string {
-  if (!fiscalQuarter && !fiscalYear) return "—";
+  if (!fiscalQuarter && !fiscalYear) return MISSING_VALUE;
   const quarter = fiscalQuarter ? `FQ${fiscalQuarter}` : fiscalHalf ? `H${fiscalHalf}` : "FY";
   const year = fiscalYear ? ` ${String(fiscalYear).slice(-2)}` : "";
   return `${quarter}${year}`;
@@ -31,18 +32,18 @@ export function noCallsText(ticker: string): { title: string; message: string } 
 }
 
 export function formatCallDate(value: string | null): string {
-  return formatShortDate(value, { day: "2-digit", year: "2-digit", fallback: "\u2014" });
+  return formatShortDate(value, { day: "2-digit", year: "2-digit", fallback: MISSING_VALUE });
 }
 
 export function formatDuration(seconds: number | null): string {
-  if (!seconds || seconds <= 0) return "—";
+  if (!seconds || seconds <= 0) return MISSING_VALUE;
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
   return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}`;
 }
 
 export function formatSentiment(sentiment: number | null): string {
-  if (sentiment === null || !Number.isFinite(sentiment)) return "—";
+  if (sentiment === null || !Number.isFinite(sentiment)) return MISSING_VALUE;
   const rounded = sentiment.toFixed(2);
   return sentiment > 0 ? `+${rounded}` : rounded;
 }
@@ -86,5 +87,5 @@ export function callTitle(call: NamedCall): string {
   const label = eventLabelOf(call);
   if (label) return `${call.ticker} ${label}`;
   const period = formatPeriod(call.fiscalYear, call.fiscalQuarter, call.fiscalHalf);
-  return period === "—" ? call.ticker : `${call.ticker} ${period}`;
+  return period === MISSING_VALUE ? call.ticker : `${call.ticker} ${period}`;
 }

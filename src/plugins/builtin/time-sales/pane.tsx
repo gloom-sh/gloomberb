@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
@@ -40,7 +41,7 @@ const QUOTES: DataTableColumn[] = [
  * side it is. The scrollbar keeps one cell, and exports keep every column.
  */
 const QUOTE_DROP_ORDER = [["bidExchange", "askExchange"], ["bidSize", "askSize"]];
-const rank = (value: number | null) => value == null ? "pctl --" : `${value.toFixed(0)} pctl`;
+const rank = (value: number | null) => value == null ? `pctl ${MISSING_VALUE}` : `${value.toFixed(0)} pctl`;
 type TapeRow = { id: string; trade?: TapeTrade; quote?: TapeQuote };
 
 export function TimeSalesPane(props: PaneProps) {
@@ -142,7 +143,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
     return { text: column.id === "time" ? tapeClockNewYork(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid, quoteDigits) : column.id === "ask" ? tapePrice(quote.ask, quoteDigits)
       : column.id === "bidSize" ? tapeQuantity(quote.bidSize) : column.id === "askSize" ? tapeQuantity(quote.askSize)
       : column.id === "bidExchange" ? tapeVenue(quote.bidExchange) : column.id === "askExchange" ? tapeVenue(quote.askExchange)
-      : spread.bps == null ? "--" : spread.bps.toFixed(2), color: laterThanPin(row) ? colors.textMuted : spread.state === "normal" ? colors.text : colors.warning };
+      : spread.bps == null ? MISSING_VALUE : spread.bps.toFixed(2), color: laterThanPin(row) ? colors.textMuted : spread.state === "normal" ? colors.text : colors.warning };
   };
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="time-sales-signin" action="view time and sales" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
@@ -157,11 +158,11 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
         detailContent={detail && resource.data ? <TapeDetail row={detail} data={data} width={width} /> : null}
         rootBefore={<StatGrid width={width} items={[
           ...(tab === "quotes" ? [
-            { id: "spread", label: "Spread", value: spreads.median == null ? "--" : `${spreads.median.toFixed(2)} bp`, detail: "median" },
-            { id: "widest", label: "Widest", value: spreads.widest == null ? "--" : `${spreads.widest.toFixed(2)} bp` },
+            { id: "spread", label: "Spread", value: spreads.median == null ? MISSING_VALUE : `${spreads.median.toFixed(2)} bp`, detail: "median" },
+            { id: "widest", label: "Widest", value: spreads.widest == null ? MISSING_VALUE : `${spreads.widest.toFixed(2)} bp` },
             ...(spreads.abnormal ? [{ id: "abnormal", label: "Locked", value: String(spreads.abnormal), tone: "warning" as const, detail: "or crossed" }] : []),
           ] : [
-            { id: "vwap", label: "VWAP", value: tapePrice(stats.vwap, tradeDigits), detail: `${tapeQuantity(stats.volume)} shares since ${stats.from ? tapeClockNewYork(stats.from) : "--"}` },
+            { id: "vwap", label: "VWAP", value: tapePrice(stats.vwap, tradeDigits), detail: `${tapeQuantity(stats.volume)} shares since ${stats.from ? tapeClockNewYork(stats.from) : MISSING_VALUE}` },
             { id: "range", label: "Range", value: `${tapePrice(stats.low, tradeDigits)} to ${tapePrice(stats.high, tradeDigits)}`, detail: `last ${rank(stats.pricePercentile)}` },
           ]),
           ...(data.session.high != null && data.session.low != null ? [{ id: "session", label: "Session", value: `${tapePrice(data.session.low, sessionDigits)} to ${tapePrice(data.session.high, sessionDigits)}` }] : []),
@@ -186,7 +187,7 @@ function TapeDetail({ row, data, width }: { row: TapeRow; data: TapeSnapshot; wi
     </> : null}
     <KeyValueRow label="Conditions" value={trade
       ? `${tapeConditionWords(trade.conditions) || "regular sale"}${trade.conditions.length ? ` (${trade.conditions.join(" ")})` : ""}`
-      : quote!.conditions.join(" ") || "--"} />
+      : quote!.conditions.join(" ") || MISSING_VALUE} />
     <KeyValueRow label="Window UTC" value={tapeTime(data.observedFrom)} detail={`${data.corrections} corrections · ${data.cancels} cancels`} />
   </Box>;
 }

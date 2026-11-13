@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { ApiRequestError } from "../../../api-client/errors";
 import type {
   ScannerFlowEvent,
@@ -191,7 +192,7 @@ export function createHiloHeadless(
         header: "Observed at",
         format: (value: unknown) => {
           const time = Number(value);
-          return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : "-";
+          return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : MISSING_VALUE;
         },
       },
     ],
@@ -248,7 +249,7 @@ export const FLOW_SIDE_RULE = "Net premium counts a print at the ask as bought a
 
 const utcTime = (value: unknown) => {
   const time = Number(value);
-  return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : "-";
+  return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : MISSING_VALUE;
 };
 const signedPremium = (value: unknown) => typeof value === "number" ? formatSignedFlowPremium(value) : "";
 /** A side's premium in the text view: `$2.1M`, blank where none traded. */

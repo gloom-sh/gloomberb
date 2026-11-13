@@ -3,7 +3,7 @@ import type { PerpBoardRow } from "../api-client/perps";
 import type { Quote } from "../types/financials";
 import { loadPerpetualMarket } from "../sources/gloomberb-cloud/perpetuals";
 import { PERPETUAL_TYPE, perpetualListing } from "../tickers/perpetual-listing";
-import { formatCompact } from "../utils/format";
+import { MISSING_VALUE, formatCompact } from "../utils/format";
 
 /** What `quote` adds for a perpetual: the market PERP opens, its funding and open interest. Rates are fractions. */
 export interface PerpetualContractPayload {
@@ -55,8 +55,8 @@ export function perpetualContractStats(contract: PerpetualContractPayload): [str
     .filter(Boolean).join(", ");
   return [
     ["Market", `${contract.marketId} (PERP)`],
-    ["Funding 8h", contract.fundingRate8h == null ? "--" : `${percent(contract.fundingRate8h, 4)}${basis ? ` (${basis})` : ""}`],
-    ["Open interest", contract.openInterestUsd == null ? "--" : `${formatCompact(contract.openInterestUsd, { fixedDecimals: true })} USD`],
-    ["Premium", contract.premium == null ? "--" : `${percent(contract.premium, 2)} vs oracle`],
+    ["Funding 8h", contract.fundingRate8h == null ? MISSING_VALUE : `${percent(contract.fundingRate8h, 4)}${basis ? ` (${basis})` : ""}`],
+    ["Open interest", contract.openInterestUsd == null ? MISSING_VALUE : `${formatCompact(contract.openInterestUsd, { fixedDecimals: true })} USD`],
+    ["Premium", contract.premium == null ? MISSING_VALUE : `${percent(contract.premium, 2)} vs oracle`],
   ];
 }

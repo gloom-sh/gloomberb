@@ -2,7 +2,7 @@ import { ActionRow } from "../../../components/ui/action-row";
 import { Box, ScrollBox, Text } from "../../../ui";
 import { t } from "../../../i18n";
 import { colors } from "../../../theme/colors";
-import { formatCompact, padTo } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, padTo } from "../../../utils/format";
 import { formatMarketQuantity } from "../../../market-data/market/format";
 import {
   renderSummarySegments,
@@ -55,7 +55,7 @@ export function PortfolioCashMarginDrawer({
               <Text fg={colors.textDim}>{" qty "}</Text>
               <Text fg={colors.text}>{padTo(formatMarketQuantity(balance.quantity, { isCashBalance: true, maxWidth: 14 }), 14, "right")}</Text>
               <Text fg={colors.textDim}>{"  value "}</Text>
-              <Text fg={colors.text}>{padTo(balance.baseValue != null ? formatCompact(balance.baseValue, { fixedDecimals: true }) : "—", 10, "right")}</Text>
+              <Text fg={colors.text}>{padTo(balance.baseValue != null ? formatCompact(balance.baseValue, { fixedDecimals: true }) : MISSING_VALUE, 10, "right")}</Text>
             </Box>
           ))
         )}

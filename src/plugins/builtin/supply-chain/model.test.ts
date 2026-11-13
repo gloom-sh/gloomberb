@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -51,7 +52,7 @@ test("native amounts retain their disclosed currency and scale without cross-cur
   for (const fields of [{ nativeCurrency: null }, { nativeCurrency: "yen" }, { nativeScale: 0 }, { nativeScale: Number.POSITIVE_INFINITY }, { nativeAmount: -1 }, { nativeAmount: 1e308, nativeScale: 1e308 }, { jurisdiction: "Japan" }, { quoteGloss: 42 }, { entityScope: "invented" }]) {
     expect(() => validateSupplyChain(supplyPayload({ says: [{ ...yen, ...fields } as typeof yen] }))).toThrow("unreadable");
   }
-  expect(disclosedValue(validateSupplyChain(supplyPayload()).says[0]!)).toBe("--");
+  expect(disclosedValue(validateSupplyChain(supplyPayload()).says[0]!)).toBe(MISSING_VALUE);
   // 万元 and 亿元 read in words, never as a bare multiplier.
   expect(disclosedValue(supplyRow("wan", { nativeAmount: 12_345.67, nativeCurrency: "CNY", nativeScale: 10_000 }))).toBe("12,345.67 CNY ten thousand");
   expect(disclosedValue(supplyRow("yi", { nativeAmount: 51.45, nativeCurrency: "CNY", nativeScale: 100_000_000 }))).toBe("51.45 CNY hundred million");

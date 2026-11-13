@@ -21,6 +21,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import type { HolderData } from "../../../types/financials";
 import { clipToDisplayWidth, displayWidth, formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
+import { logFailure } from "../../../utils/log-failure";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { THIRTEENF_TEMPLATE_ID } from "../thirteenf/model";
@@ -204,11 +205,13 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     const controller = new AbortController();
     fundMatchAbortRef.current = controller;
     setFundMatching(true);
-    void loadHolder13FMatches(rows, controller.signal)
+    loadHolder13FMatches(rows, controller.signal)
       .then((matches) => {
         if (fundMatchAbortRef.current !== controller) return;
         setFundMatches(matches);
       })
+      // A holder that cannot be matched is left unmatched; anything else is logged.
+      .catch(logFailure("holders.pane", "Matching holders to 13F filers failed"))
       .finally(() => {
         if (fundMatchAbortRef.current === controller) setFundMatching(false);
       });

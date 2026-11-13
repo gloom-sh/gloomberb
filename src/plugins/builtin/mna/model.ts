@@ -2,11 +2,11 @@ import type { MnaDeal, MnaStatus, MnaTerms } from "../../../api-client/mna";
 import type { Quote } from "../../../types/financials";
 import { getListingSymbol } from "../../../sources/listing-symbols";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { nonUsSecListingVenue } from "../../../utils/sec";
 
 export const MNA_PANE_ID = "mna";
-export const MISSING = "--";
+export const MISSING = MISSING_VALUE;
 
 const MS_PER_DAY = 86_400_000;
 
@@ -214,7 +214,7 @@ export function expectedCloseDate(value: string | null): Date | null {
   return null;
 }
 
-/** "Oct 15", "Q1 27", "2027". */
+/** "15 Oct", "Oct '27" (a month in another year), "Q1 27", "2027". */
 export function formatExpectedClose(value: string | null, now = new Date()): string {
   if (!value) return MISSING;
   const text = value.trim();
@@ -222,7 +222,7 @@ export function formatExpectedClose(value: string | null, now = new Date()): str
   if (day) {
     const date = new Date(`${text}T00:00:00Z`);
     const month = date.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
-    return date.getUTCFullYear() === now.getUTCFullYear() ? `${month} ${Number(day[3])}` : `${month} ${day[1]!.slice(2)}`;
+    return date.getUTCFullYear() === now.getUTCFullYear() ? `${Number(day[3])} ${month}` : `${month} '${day[1]!.slice(2)}`;
   }
   const period = /^([QH][1-4])\s+(\d{4})$/i.exec(text);
   if (period) return `${period[1]!.toUpperCase()} ${period[2]!.slice(2)}`;
@@ -266,7 +266,7 @@ export function formatListDate(value: string, now = new Date()): string {
   const date = new Date(`${value}T00:00:00Z`);
   if (!Number.isFinite(date.getTime())) return MISSING;
   const month = date.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
-  return date.getUTCFullYear() === now.getUTCFullYear() ? `${month} ${date.getUTCDate()}` : `${month} ${date.getUTCFullYear()}`;
+  return date.getUTCFullYear() === now.getUTCFullYear() ? `${date.getUTCDate()} ${month}` : `${month} ${date.getUTCFullYear()}`;
 }
 
 /** 0.0038 is "0.38%", -0.049 is "-4.9%": tight arb spreads keep two decimals. */

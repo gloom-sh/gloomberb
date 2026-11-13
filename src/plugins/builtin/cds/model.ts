@@ -3,7 +3,7 @@ import type { DataTableColumn, StatItem } from "../../../components";
 import type { TimeSeriesPoint } from "../../../time-series/types";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { TickerRecord } from "../../../types/ticker";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
 import { typoDistance } from "../../../utils/typo-distance";
 import { formatMove, SETTLEMENT_TEXT } from "../credit-boards/model";
@@ -580,19 +580,19 @@ export function resolveIssuerQuery(
 }
 
 export function formatBp(value: number | null): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   return `${Math.abs(value) >= 100 ? Math.round(value) : Math.round(value * 10) / 10}bp`;
 }
 
 /** Points upfront to a tenth: `58.2 pts`. */
 export function formatPoints(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return `${value.toFixed(1)} pts`;
 }
 
 /** A move in points upfront, signed as the bp moves are: `+10.9 pts`. */
 export function formatPointsMove(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const rounded = Number(value.toFixed(1));
   return `${rounded > 0 ? "+" : ""}${(rounded === 0 ? 0 : rounded).toFixed(1)} pts`;
 }
@@ -620,7 +620,7 @@ export function quotedLevel(row: CdsIssuerSummary): {
 }
 
 export function formatNotional(trade: Pick<CdsTrade, "notional" | "notionalCapped">): string {
-  if (trade.notional == null) return "--";
+  if (trade.notional == null) return MISSING_VALUE;
   return `${formatCompact(trade.notional)}${trade.notionalCapped ? "+" : ""}`;
 }
 
@@ -630,7 +630,7 @@ export function formatNotional(trade: Pick<CdsTrade, "notional" | "notionalCappe
  * where it is shown.
  */
 export function formatUpfront(trade: Pick<CdsTrade, "upfront" | "upfrontCurrency">): string {
-  if (trade.upfront == null) return "--";
+  if (trade.upfront == null) return MISSING_VALUE;
   return `${formatCompact(Math.abs(trade.upfront))}${trade.upfrontCurrency ? ` ${trade.upfrontCurrency}` : ""}`;
 }
 
@@ -639,12 +639,12 @@ export function formatUpfront(trade: Pick<CdsTrade, "upfront" | "upfrontCurrency
  * misdates prints, and `10/09` reads as 10 September to most of the world.
  */
 export function formatEventTime(eventAt: number): string {
-  if (!Number.isFinite(eventAt)) return "--";
+  if (!Number.isFinite(eventAt)) return MISSING_VALUE;
   return new Date(eventAt).toISOString().slice(0, 16).replace("T", " ");
 }
 
 export function formatMaturity(maturity: string | null): string {
-  return maturity ?? "--";
+  return maturity ?? MISSING_VALUE;
 }
 
 export type IssuerColumnId = "issuer" | "trades" | "last" | "spread" | "1w" | "1m";

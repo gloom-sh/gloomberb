@@ -1,10 +1,18 @@
 import { displayWidth, truncateToDisplayWidth } from "./format";
 
+/**
+ * A run of text between break points: whitespace breaks a line, a no-break
+ * space (U+00A0, U+2007, U+202F, U+FEFF) does not.
+ */
+const WORD = /(?:[^\s]|[\u00a0\u2007\u202f\ufeff])+/g;
+const BREAK_SPACE = /[^\S\u00a0\u2007\u202f\ufeff]+/g;
+
+/** Cuts to `width` characters behind one `…`, the mark every cut text ends with. */
 export function truncateWithEllipsis(text: string, width: number): string {
   if (width <= 0) return "";
   if (text.length <= width) return text;
-  if (width <= 3) return text.slice(0, width);
-  return `${text.slice(0, width - 3)}...`;
+  if (width === 1) return "\u2026";
+  return `${text.slice(0, width - 1).trimEnd()}\u2026`;
 }
 
 export function splitLongTextSegmentByDisplayWidth(value: string, lineWidth: number): string[] {
@@ -34,7 +42,7 @@ export function wrapTextLines(
 
   const paragraphs = text
     .split(/\r?\n/)
-    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim());
+    .map((paragraph) => paragraph.replace(BREAK_SPACE, " ").replace(/^ +| +$/g, ""));
   const lines: string[] = [];
 
   const pushLine = (line: string) => {
@@ -104,4 +112,77 @@ export function wrapTextLines(
   }
 
   return lines;
+}
+
+/**
+ * Styled runs of text (a markdown line's bold, code and link segments) on
+ * lines no wider than `width`, broken only at whitespace, as `wrapTextLines`
+ * breaks plain text: the terminal's own word wrap also breaks after `.`, `(`,
+ * `-` and `/`, which split a version as `(0.` / `20.0)` (review, 12 Nov 2026).
+ * A word wider than a line is cut by cells. Each line keeps its segments'
+ * fields; the space a line breaks at is dropped, an indent before the first
+ * word is kept.
+ */
+export function wrapSegmentLines<T extends { text: string }>(segments: readonly T[], width: number): T[][] {
+  const kept = segments.filter((segment) => segment.text.length > 0);
+  const full = kept.map((segment) => segment.text).join("");
+  if (width <= 0 || !/\S/.test(full)) return [kept];
+  // Where each line of `full` starts and ends, in UTF-16 offsets.
+  const ranges: Array<[number, number]> = [];
+  let start = -1;
+  let end = 0;
+  let used = 0;
+  const flush = () => {
+    if (start >= 0) ranges.push([start, end]);
+    start = -1;
+    used = 0;
+  };
+  for (const match of full.matchAll(WORD)) {
+    const word = match[0];
+    const at = match.index;
+    const cells = displayWidth(word);
+    // Only the first word can find no line open; the first line keeps the indent before it.
+    const gap = start >= 0 ? displayWidth(full.slice(end, at)) : displayWidth(full.slice(0, at));
+    if (used + gap + cells <= width) {
+      if (start < 0) start = 0;
+      used += gap + cells;
+      end = at + word.length;
+      continue;
+    }
+    if (start >= 0) {
+      flush();
+      if (cells <= width) {
+        start = at;
+        used = cells;
+        end = at + word.length;
+        continue;
+      }
+    }
+    // Wider than the room left: cut by cells, the first piece filling what an
+    // indent leaves of the first line, then whole lines, the rest open.
+    const room = start < 0 && ranges.length === 0 ? width - gap : 0;
+    const head = room > 0 ? splitLongTextSegmentByDisplayWidth(word, room)[0]! : "";
+    const pieces = [...(head ? [head] : []), ...splitLongTextSegmentByDisplayWidth(word.slice(head.length), width)];
+    let offset = at;
+    pieces.forEach((piece, index) => {
+      start = index === 0 && head ? 0 : offset;
+      end = offset + piece.length;
+      used = displayWidth(full.slice(start, end));
+      offset = end;
+      if (index < pieces.length - 1) flush();
+    });
+  }
+  flush();
+  return ranges.map(([from, to]) => {
+    const line: T[] = [];
+    let cursor = 0;
+    for (const segment of kept) {
+      const segmentStart = cursor;
+      cursor += segment.text.length;
+      const sliceFrom = Math.max(from, segmentStart);
+      const sliceTo = Math.min(to, cursor);
+      if (sliceTo > sliceFrom) line.push({ ...segment, text: segment.text.slice(sliceFrom - segmentStart, sliceTo - segmentStart) });
+    }
+    return line;
+  });
 }

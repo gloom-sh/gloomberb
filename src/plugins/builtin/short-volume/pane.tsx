@@ -9,7 +9,7 @@ import type { ShortVolumeObservation } from "../../../api-client/short-volume";
 import { isAccessDenied } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
-import { formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
@@ -35,9 +35,9 @@ function VolumeDetail({ row, width, height }: { row: ShortVolumeObservation; wid
     <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Short shares" value={exactQuantity(row.shortVolume)} />
     <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Exempt shares" value={exactQuantity(row.shortExemptVolume)} detail="included in short shares" />
     <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Total shares" value={exactQuantity(row.totalVolume)} />
-    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Reporting facilities" value={row.markets.join(", ") || "--"} />
+    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Reporting facilities" value={row.markets.join(", ") || MISSING_VALUE} />
     <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Observation" value={volumePointStatus(row)} />
-    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Retrieved" value={row.fetchedAt?.replace("T", " ").replace(/\.\d+Z$/, " UTC") ?? "--"} />
+    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Retrieved" value={row.fetchedAt?.replace("T", " ").replace(/\.\d+Z$/, " UTC") ?? MISSING_VALUE} />
   </ScrollBox>;
 }
 export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "width" | "height" | "focused">) {
@@ -78,7 +78,7 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
       detail: formatPercentileRank(stats?.value, stats?.completeWindow ? "1Y" : "sample") },
     { id: "change", label: "Daily change", value: volumeChange(latest?.changePp ?? null), detail: latest?.previousDate ? `since ${latest.previousDate}` : undefined },
     { id: "range", label: stats?.completeWindow ? "1Y range" : "Sample range", value: `${volumePercent(stats?.min ?? null)} to ${volumePercent(stats?.max ?? null)}`,
-      detail: stats ? `${stats.historyStart ?? "--"} to ${stats.historyEnd ?? "--"}` : undefined },
+      detail: stats ? `${stats.historyStart ?? MISSING_VALUE} to ${stats.historyEnd ?? MISSING_VALUE}` : undefined },
   ];
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });

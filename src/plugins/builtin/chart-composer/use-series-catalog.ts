@@ -107,7 +107,9 @@ export function useRegisteredSeries() {
   const remote = useAsyncResource(remoteLoader);
 
   useEffect(() => {
-    if (registry && series && !registry.usesRemoteCapabilities) void series.refresh();
+    if (registry && series && !registry.usesRemoteCapabilities) {
+      series.refresh().catch(logFailure("chart-composer.use-series-catalog", "Refreshing the chart series catalog failed"));
+    }
   }, [registry, series]);
   const retry = useCallback(async () => {
     if (remoteLoader) await remote.reloadAndWait();

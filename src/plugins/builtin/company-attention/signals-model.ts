@@ -1,6 +1,7 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringCompanySignals, HiringMovePosting, HiringSignalFlag, HiringSignalGroup, HiringSignalHold, HiringSignalKind, HiringSignalSkip, HiringSignalsBoard, HiringSignalsFilter, HiringWeekSignal } from "../../../api-client/hiring";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
 import { humanLabel } from "../shared/research-cells";
 import type { AttentionRow } from "./model";
@@ -49,17 +50,16 @@ export const holdText = (hold: HiringSignalHold) => HOLD_LABELS[hold] ?? humanLa
 const skipText = (skips: readonly HiringSignalSkip[]) => skips.map((skip) => SKIP_LABELS[skip] ?? humanLabel(skip)).join(", ");
 const isFirst = (signal: Pick<HiringWeekSignal, "kind">) => signal.kind === "new_country" || signal.kind === "new_city" || signal.kind === "new_role_type";
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** "Oct 12": a week's Monday or a first read's day. */
+/** "12 Oct": a week's Monday or a first read's day. */
 function dayLabel(value: string | null | undefined, year = false): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
-  return match ? `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}${year ? `, ${match[1]}` : ""}` : "--";
+  return match ? formatShortDate(match[0], { year: year ? "numeric" : false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
 }
-const pace = (value: number | null | undefined) => value == null ? "--" : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
-const count = (value: number | null | undefined) => value == null ? "--" : formatNumber(value, 0);
+const pace = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
+const count = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
 const average = (value: number) => formatNumber(value, value < 10 ? 1 : 0);
 const signed = (value: number, decimals = 0) => `${value > 0 ? "+" : ""}${formatNumber(value, decimals)}`;
-const percent = (value: number | null) => value == null ? "--" : `${Math.round(value * 100)}%`;
+const percent = (value: number | null) => value == null ? MISSING_VALUE : `${Math.round(value * 100)}%`;
 
 const PACE_COLUMNS = new Set(["pace", "companyPace"]);
 export const SIGNALS_SIGNED_COLUMNS = new Set(["z"]);
@@ -71,7 +71,7 @@ export function signalsNumber(columnId: string, value: number): string {
   return count(value);
 }
 
-/** How far back "never" goes for this company: "Sep 17, 2026, none of 703 earlier postings (98% placed)". */
+/** How far back "never" goes for this company: "17 Sep 2026, none of 703 earlier postings (98% placed)". */
 function neverText(signal: HiringWeekSignal): string {
   const what = signal.dimension === "function" ? "with a role family" : signal.dimension === "city" ? "naming a city" : "placed";
   return `${dayLabel(signal.history.watchedSince, true)}, none of ${count(signal.history.priorPostings)} earlier postings (${percent(signal.history.priorShare)} ${what})`;
@@ -175,7 +175,7 @@ const postingRow = (signal: HiringWeekSignal) => (posting: HiringMovePosting): S
   id: `${signal.kind}:${signal.key}:${posting.id}`, url: posting.url, jobPosting: posting, signal,
   values: { title: posting.title.trim(), location: posting.location ?? posting.country, country: posting.country, signal: `${kindText(signal.kind)}: ${signal.label}`,
     function: roleFamily(posting.jobFunction), date: posting.firstSeenAt.slice(0, 10) },
-  details: [{ label: "Posting title", value: posting.title.trim() }, { label: "Location", value: posting.location ?? "--" }, { label: "Country", value: posting.country ?? "Unknown" },
+  details: [{ label: "Posting title", value: posting.title.trim() }, { label: "Location", value: posting.location ?? MISSING_VALUE }, { label: "Country", value: posting.country ?? "Unknown" },
     { label: "Role family", value: roleFamily(posting.jobFunction) ?? "Unclassified" }, { label: "Signal", value: `${kindText(signal.kind)}: ${signal.label}` },
     { label: "First seen", value: posting.firstSeenAt }, { label: "Board", value: posting.sourceTicker }],
 });

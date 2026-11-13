@@ -4,7 +4,7 @@ import type {
   HeadlessPaneDefinition,
 } from "../../../types/plugin";
 import { explainRefusal } from "../shared/cloud-denied";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 import { fetchJobs, fetchJobsMovers, type JobsCloudClient, type JobsCompanyState } from "./client";
 import { jobsLockNote } from "./lock-note";
 import {
@@ -47,8 +47,8 @@ function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: 
           { label: "Closed, 30 days", value: summary.closed30d, formatted: formatNumber(summary.closed30d, 0) },
           { label: "Change, 30 days", value: summary.change30d?.count ?? null, formatted: formatChange(summary.change30d) },
           { label: "Change, 90 days", value: summary.change90d?.count ?? null, formatted: formatChange(summary.change90d) },
-          { label: "Posted, last 30 days", value: summary.posted30d ?? null, formatted: summary.posted30d != null ? formatNumber(summary.posted30d, 0) : "-" },
-          { label: "Remote share", value: summary.remoteShare, formatted: summary.remoteShare != null ? formatShare(summary.remoteShare) : "-" },
+          { label: "Posted, last 30 days", value: summary.posted30d ?? null, formatted: summary.posted30d != null ? formatNumber(summary.posted30d, 0) : MISSING_VALUE },
+          { label: "Remote share", value: summary.remoteShare, formatted: summary.remoteShare != null ? formatShare(summary.remoteShare) : MISSING_VALUE },
           ...(summary.evergreenShare != null && summary.evergreenCount != null
             ? [
                 { label: "Evergreen share", value: summary.evergreenShare, formatted: formatShare(summary.evergreenShare) },
@@ -62,7 +62,7 @@ function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: 
           ...(summary.contractShare != null
             ? [{ label: "Contract share", value: summary.contractShare, formatted: formatShare(summary.contractShare) }]
             : []),
-          { label: "Median posting age", value: summary.medianAgeDays, formatted: summary.medianAgeDays != null ? `${summary.medianAgeDays} days` : "-" },
+          { label: "Median posting age", value: summary.medianAgeDays, formatted: summary.medianAgeDays != null ? `${summary.medianAgeDays} days` : MISSING_VALUE },
           ...(summary.salary
             ? [{
                 label: "Median pay range",
@@ -70,7 +70,7 @@ function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: 
                 formatted: `${formatSalaryRange(summary.salary.medianMin, summary.salary.medianMax, summary.salary.currency, summary.salary.period)} (${summary.salary.count} postings)`,
               }]
             : []),
-          { label: "Source", value: summary.coverage.vendor, formatted: `${summary.coverage.vendor ?? "-"}${summary.coverage.lastCollectedAt ? `, read ${summary.coverage.lastCollectedAt.slice(0, 16).replace("T", " ")}` : ""}` },
+          { label: "Source", value: summary.coverage.vendor, formatted: `${summary.coverage.vendor ?? MISSING_VALUE}${summary.coverage.lastCollectedAt ? `, read ${summary.coverage.lastCollectedAt.slice(0, 16).replace("T", " ")}` : ""}` },
         ],
       },
       {
@@ -79,7 +79,7 @@ function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: 
           { key: "function", header: "Function" },
           { key: "count", header: "Open", align: "right", format: (value) => formatNumber(Number(value), 0) },
           { key: "share", header: "Share", align: "right", format: (value) => formatShare(Number(value)) },
-          { key: "previous", header: "30d ago", align: "right", format: (value) => (value == null ? "-" : formatNumber(Number(value), 0)) },
+          { key: "previous", header: "30d ago", align: "right", format: (value) => (value == null ? MISSING_VALUE : formatNumber(Number(value), 0)) },
         ],
         rows: summary.functions.map((bucket) => ({ function: bucket.label, count: bucket.count, share: bucket.share, previous: bucket.previous })),
       },
@@ -89,7 +89,7 @@ function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: 
           { key: "country", header: "Country" },
           { key: "count", header: "Open", align: "right", format: (value) => formatNumber(Number(value), 0) },
           { key: "share", header: "Share", align: "right", format: (value) => formatShare(Number(value)) },
-          { key: "previous", header: "30d ago", align: "right", format: (value) => (value == null ? "-" : formatNumber(Number(value), 0)) },
+          { key: "previous", header: "30d ago", align: "right", format: (value) => (value == null ? MISSING_VALUE : formatNumber(Number(value), 0)) },
         ],
         rows: summary.countries.slice(0, 12).map((bucket) => ({ country: bucket.label, count: bucket.count, share: bucket.share, previous: bucket.previous })),
       },
@@ -133,7 +133,7 @@ function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: 
           function: row.function,
           location: row.location,
           postedAt: row.posting.postedAt ?? row.posting.firstSeenAt.slice(0, 10),
-          pay: row.salary || "-",
+          pay: row.salary || MISSING_VALUE,
           url: row.posting.url,
         })),
       },
@@ -206,11 +206,11 @@ export const jobsHeadless: HeadlessPaneDefinition<"bundle"> = {
             { key: "ticker", header: "Ticker" },
             { key: "company", header: "Company" },
             { key: "openCount", header: "Open", align: "right", format: (value) => formatCompact(Number(value)) },
-            { key: "change30d", header: "30d", align: "right", format: (value) => (value == null ? "-" : `${Number(value) > 0 ? "+" : ""}${formatNumber(Number(value), 0)}`) },
-            { key: "posted30d", header: "Posted 30d", align: "right", format: (value) => (value == null ? "-" : formatCompact(Number(value))) },
+            { key: "change30d", header: "30d", align: "right", format: (value) => (value == null ? MISSING_VALUE : `${Number(value) > 0 ? "+" : ""}${formatNumber(Number(value), 0)}`) },
+            { key: "posted30d", header: "Posted 30d", align: "right", format: (value) => (value == null ? MISSING_VALUE : formatCompact(Number(value))) },
             { key: "new7d", header: "New 7d", align: "right" },
             { key: "topFunction", header: "Top function" },
-            { key: "topCountry", header: "Top country", format: (value) => (value == null ? "-" : String(value)) },
+            { key: "topCountry", header: "Top country", format: (value) => (value == null ? MISSING_VALUE : String(value)) },
           ],
           rows,
         },

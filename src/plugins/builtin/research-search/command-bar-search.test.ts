@@ -32,11 +32,11 @@ describe("formatHitDateShort", () => {
     expect(at("2026-09-01T11:59:30")).toBe("1m");
     expect(at("2026-09-01T08:45:00")).toBe("3h");
     expect(at("2026-08-31T12:00:01")).toBe("23h");
-    expect(at("2026-08-31T12:00:00")).toBe("Aug 31");
-    expect(at("2026-01-01T00:00:00")).toBe("Jan 1");
+    expect(at("2026-08-31T12:00:00")).toBe("31 Aug");
+    expect(at("2026-01-01T00:00:00")).toBe("1 Jan");
     expect(at("2025-12-31T23:59:59")).toBe("Dec 2025");
     // A clock ahead of ours is not "in -2h".
-    expect(at("2026-09-01T14:00:00")).toBe("Sep 1");
+    expect(at("2026-09-01T14:00:00")).toBe("1 Sep");
     expect(at("not a date")).toBe("");
     expect(at(undefined)).toBe("");
   });
@@ -46,7 +46,7 @@ describe("document hit rows", () => {
   test("put the date on the right and the source and ticker ahead of the snippet", () => {
     const row = hitResultDef(hit({}), () => {}, NOW);
     expect(row.badge).toBe("NEWS");
-    expect(row.right).toBe("Aug 30");
+    expect(row.right).toBe("30 Aug");
     expect(row.lines).toEqual([{
       segments: [
         { text: "Reuters · NVDA · ", emphasis: "muted" },

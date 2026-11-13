@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition, HeadlessPaneEntry } from "../../../types/plugin";
 import { formatStrikeLabel } from "../../../utils/options";
 import { expirationOptionSeconds, expiryIsoDate, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER } from "../../../utils/option-expiry";
@@ -33,17 +34,17 @@ import {
 
 const METHODOLOGY = "https://gloom.sh/docs/options-positioning";
 const UNIT_TEXT = "$ of dealer delta per 1% move";
-const strike = (value: unknown) => typeof value === "number" ? formatStrikeLabel(value) : "--";
+const strike = (value: unknown) => typeof value === "number" ? formatStrikeLabel(value) : MISSING_VALUE;
 const count = (value: unknown) => formatCount(typeof value === "number" ? value : null);
 const coinCount = (value: unknown) => formatContracts(typeof value === "number" ? value : null, true);
 const change = (value: unknown) => formatCountChange(typeof value === "number" ? value : null);
 const gamma = (value: unknown) => formatGamma(typeof value === "number" ? value : null);
 const failure = (error: unknown) => error instanceof Error ? error : new Error(String(error));
-const time = (value: string | null) => value ? formatUtcTime(value) : "--";
-const level = (value: number | null, spot: number | null, none = "--") =>
+const time = (value: string | null) => value ? formatUtcTime(value) : MISSING_VALUE;
+const level = (value: number | null, spot: number | null, none = MISSING_VALUE) =>
   value == null ? none : `${formatLevel(value)}, ${formatDistance(value, spot)} vs spot`;
 const wall = (value: number | null, spot: number | null) =>
-  value == null ? "--" : `${formatStrikeLabel(value)}, ${formatDistance(value, spot)} vs spot`;
+  value == null ? MISSING_VALUE : `${formatStrikeLabel(value)}, ${formatDistance(value, spot)} vs spot`;
 
 /**
  * What the report opens with: spot, the instant gamma is evaluated at and
@@ -81,7 +82,7 @@ function summary(openInterest: OpenInterestPayload, dealer: GammaPayload | null)
     { label: "Spot", value: spot, formatted: formatPositioningSpot(spot, spotAsOf, venue, spotBasis) },
     ...(dealer && gammaTimes ? [{ label: "Gamma at", value: dealer.gammaAsOf ?? null, formatted: gammaTimes }]
       : dealer ? [{ label: "Quotes as of", value: dealer.quotesAsOf, formatted: time(dealer.quotesAsOf) }] : []),
-    { label: "Open interest as of", value: oiAsOf ?? openInterest.oiDate, formatted: oiAsOf ? `${time(oiAsOf)}, live` : openInterest.oiDate ?? "--" },
+    { label: "Open interest as of", value: oiAsOf ?? openInterest.oiDate, formatted: oiAsOf ? `${time(oiAsOf)}, live` : openInterest.oiDate ?? MISSING_VALUE },
     ...(contract ? [{ label: "Contract", value: contract, formatted: `${contract.size} ${contract.unit}; OI counts ${contract.unit}` }] : []),
     ...(settles ? [{ label: "Expiries settle", value: settles, formatted: `${settles}, the day each expiry names` }] : []),
   ];
@@ -182,7 +183,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
     // Each expiry's walls, from the all-expiries gamma; absent from older servers.
     const expiryWalls = allExpiries instanceof Error ? null : wallsByExpiry(allExpiries);
     const settles = openInterest.expiries.some((row) => settlementTime(row.expiresAt));
-    const oiStamp = openInterest.venue && openInterest.oiAsOf ? `${time(openInterest.oiAsOf)}, live` : openInterest.oiDate ?? "--";
+    const oiStamp = openInterest.venue && openInterest.oiAsOf ? `${time(openInterest.oiAsOf)}, live` : openInterest.oiDate ?? MISSING_VALUE;
     const gammaShown = dealer instanceof Error || !dealer.total ? null : dealer;
     const scope = dealer instanceof Error ? null : dealer.expiry ? expiryLabel(dealer.expiry) : "all expiries";
     const walls = gammaShown ? gammaWalls(gammaShown.strikes) : null;
@@ -217,7 +218,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
           ...(gammaColumn ? { netGamma: expiryGamma?.get(row.date) ?? null, netGammaUnit: GAMMA_UNIT } : {}),
         })) },
         { title: `Strikes · ${openInterest.expiry
-          ? expiryWithTimeLabel(openInterest.expiries.find((row) => row.date === openInterest.expiry) ?? { date: openInterest.expiry }) : "--"}`, columns: [
+          ? expiryWithTimeLabel(openInterest.expiries.find((row) => row.date === openInterest.expiry) ?? { date: openInterest.expiry }) : MISSING_VALUE}`, columns: [
           { key: "strike", header: "Strike", format: strike },
           { key: "callOI", header: `Call OI${unit}`, format: contracts },
           ...(changes ? [{ key: "callChange", header: "Call chg", format: change }] : []),

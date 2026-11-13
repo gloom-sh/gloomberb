@@ -204,7 +204,7 @@ test("a list and statement answered from their saved copies say when they were s
   await mount();
   let frame = tui.frame();
   expect(frame).toContain("ALPHA compensation 2026");
-  expect(frame).toContain("filed Apr 01, 2026");
+  expect(frame).toContain("filed 01 Apr 2026");
   // The footer line every pane gives a saved copy, not the failures or a notice of its own.
   expect(frame).toContain("saved copy from");
   expect(frame).not.toContain("⚠");

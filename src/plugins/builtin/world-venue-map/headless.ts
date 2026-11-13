@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 /**
  * `gloom fn MAP`: the venue list, or with a layer (`MAP ships`,
  * `--layer vessels`) that layer's entity table with plain values and the
@@ -86,7 +87,7 @@ function layerColumns(layer: GeoLayerInfo): HeadlessPaneColumn[] {
       ...(column.format === "percent1" ? { textHeader: column.label } : {}),
       ...(column.align === "right" ? { align: "right" as const } : {}),
       ...(FIGURE_FORMATS.has(column.format) ? {
-        textFormat: (value: unknown) => (typeof value === "number" ? formatGeoValue(value, column.format, Date.now(), isChangeColumn(column)) : "-"),
+        textFormat: (value: unknown) => (typeof value === "number" ? formatGeoValue(value, column.format, Date.now(), isChangeColumn(column)) : MISSING_VALUE),
       } : {}),
     })),
     { key: "ticker", header: "Ticker" },

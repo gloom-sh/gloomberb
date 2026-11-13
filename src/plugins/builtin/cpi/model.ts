@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CpiBoardPayload, CpiReleaseStatus, CpiRow } from "../../../api-client/cpi";
 import type { ChartStripSpec } from "../../../components/chart-table/header";
 import { staticSeries } from "../../../components/chart/static/series";
@@ -94,11 +95,11 @@ function signed(value: number, decimals: number): string {
 }
 
 /** Percent changes as the pane shows them: two decimals, signed, no unit (the header names it). */
-export const formatCpiChange = (value: number | null) => value == null ? "--" : signed(value, 2);
+export const formatCpiChange = (value: number | null) => value == null ? MISSING_VALUE : signed(value, 2);
 /** Contributions in percentage points, two decimals, signed. */
-export const formatCpiPoints = (value: number | null) => value == null ? "--" : signed(value, 2);
+export const formatCpiPoints = (value: number | null) => value == null ? MISSING_VALUE : signed(value, 2);
 /** Share of the basket, percent: one decimal. */
-export const formatCpiWeight = (value: number | null) => value == null ? "--" : value.toFixed(1);
+export const formatCpiWeight = (value: number | null) => value == null ? MISSING_VALUE : value.toFixed(1);
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -107,19 +108,19 @@ export function cpiMonth(period: string): string {
   return `${MONTHS[Number(period.slice(5, 7)) - 1]} ${period.slice(0, 4)}`;
 }
 
-/** A release instant on BLS's own clock: "Wed Oct 14 08:30 ET". */
+/** A release instant on BLS's own clock: "Wed 14 Oct 08:30 ET". */
 function releaseTime(iso: string): string {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit", hourCycle: "h23",
   }).formatToParts(new Date(iso)).map((part) => [part.type, part.value]));
-  return `${parts.weekday} ${parts.month} ${parts.day} ${parts.hour}:${parts.minute} ET`;
+  return `${parts.weekday} ${parts.day} ${parts.month} ${parts.hour}:${parts.minute} ET`;
 }
 
 /**
  * The month the data covers, when it came out and when the next release is
- * due, on one line: "Aug 2026 · released Fri Sep 11 08:30 ET · next Wed Oct
- * 14 08:30 ET". A release past its time and not in yet reads "due".
+ * due, on one line: "Aug 2026 · released Fri 11 Sep 08:30 ET · next Wed
+ * 14 Oct 08:30 ET". A release past its time and not in yet reads "due".
  */
 export function cpiHeaderLine(release: CpiReleaseStatus, now = Date.now()): string | undefined {
   if (!release.period) return undefined;

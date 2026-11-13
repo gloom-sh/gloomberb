@@ -1,7 +1,7 @@
 import type { ProjectedChartPoint } from "../../../../components/chart/core/data";
 import type { ScatterChartPoint } from "../../../../components/chart/static";
 import { colors } from "../../../../theme/colors";
-import { formatNumber, formatSignificant } from "../../../../utils/format";
+import { MISSING_VALUE, formatNumber, formatSignificant } from "../../../../utils/format";
 import type { CompositeAxisDomain } from "../../../../components/chart/composite/types";
 import type { StatItem } from "../../../../components/ui";
 import type {
@@ -18,13 +18,13 @@ export interface MultiLineChartSeries {
 }
 
 function formatNullableNumber(value: number | null | undefined, decimals: number): string {
-  return typeof value === "number" && Number.isFinite(value) ? formatNumber(value, decimals) : "-";
+  return typeof value === "number" && Number.isFinite(value) ? formatNumber(value, decimals) : MISSING_VALUE;
 }
 
 /** A figure in percentage points of daily return, as alpha reads: `1.997%`, or a bare dash when there is none. */
 function formatNullablePercent(value: number | null | undefined, decimals: number): string {
   const text = formatNullableNumber(value, decimals);
-  return text === "-" ? text : `${text}%`;
+  return text === MISSING_VALUE ? text : `${text}%`;
 }
 
 /**

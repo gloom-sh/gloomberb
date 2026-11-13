@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { GpuObservation } from "../../../api-client/gpu";
 import type { HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import { formatUtcTime, parseReportTime } from "../../../utils/utc-time";
@@ -16,11 +17,11 @@ const observationRow = (row: GpuObservation) => ({ gpu: gpuLabel(row), source: g
   sourceUrl: row.sourceUrl ?? null, evidenceUrl: row.evidenceUrl ?? null });
 const percent = (value: unknown) => gpuChange(typeof value === "number" ? value : null);
 /** Prices to the cent and times to the minute, as the pane draws them; exports keep the full value. */
-const price = (value: unknown) => typeof value === "number" ? gpuPrice(value) : "-";
+const price = (value: unknown) => typeof value === "number" ? gpuPrice(value) : MISSING_VALUE;
 const DAY_MS = 86_400_000;
 /** A reference index's daily figure is stamped at 00:00 UTC: that is a day, not a time to the minute. */
 const minute = (value: unknown) => {
-  if (typeof value !== "string") return "-";
+  if (typeof value !== "string") return MISSING_VALUE;
   const time = parseReportTime(value);
   return time && !time.dateOnly && time.time % DAY_MS === 0 ? formatUtcTime({ ...time, dateOnly: true }) : formatUtcTime(value);
 };
@@ -114,7 +115,7 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
       return { sections: [{ title: "Related equities", columns: [
         { key: "symbol", header: "Ticker" }, { key: "role", header: "Related through" }, { key: "price", header: "Last $", align: "right" as const, format: price },
         { key: "change1d", header: "1D", align: "right" as const, format: percent }, { key: "change5d", header: "5D", align: "right" as const, format: percent },
-        { key: "gpu", header: "GPU" }, { key: "gpuSource", header: "GPU list series", format: (value: unknown, row: HeadlessPaneRow) => typeof value === "string" ? value : String(row.gpuGap ?? "-") },
+        { key: "gpu", header: "GPU" }, { key: "gpuSource", header: "GPU list series", format: (value: unknown, row: HeadlessPaneRow) => typeof value === "string" ? value : String(row.gpuGap ?? MISSING_VALUE) },
         { key: "gpuPrice", header: "$/GPU-hr", align: "right" as const, format: (value: unknown, row: HeadlessPaneRow) => locked(value, row, price) },
         { key: "gpuChange7d", header: "GPU 7D", align: "right" as const, format: (value: unknown, row: HeadlessPaneRow) => locked(value, row, percent) },
       ], rows: equities }], complete: !board.access?.locked, metadata, errors: [...locks, ...board.gaps, ...histories.flatMap((entry) => entry.error ? [entry.error] : [])],

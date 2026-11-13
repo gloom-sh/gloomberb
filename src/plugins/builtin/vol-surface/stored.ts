@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { OptionContract } from "../../../types/financials";
 import { logForwardMoneyness, type ExpectedMove, type SkewMetrics, type SmileFit } from "../shared/volatility";
 import { ivSymbol, loadStoredSurface, loadSurfaceDates, type ImpliedVolatilityApi, type StoredSurfacePayload } from "../iv-history/client";
@@ -77,7 +78,7 @@ const CAPTURE_TIME = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_Y
 /** A capture's New York clock time, "15:47", as the pane and the report both say it. */
 export function formatCaptureTime(iso: string): string {
   const time = Date.parse(iso);
-  return Number.isFinite(time) ? CAPTURE_TIME.format(time) : "--";
+  return Number.isFinite(time) ? CAPTURE_TIME.format(time) : MISSING_VALUE;
 }
 
 /** A session date as `--date` takes it: YYYY-MM-DD, a day the calendar has. */

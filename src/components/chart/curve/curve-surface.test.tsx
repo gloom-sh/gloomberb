@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -53,7 +54,7 @@ test("short curve panes fall back to the shared table and permit selection of mi
   await tui.emitKeypress({ name: "down" });
   await frame();
   expect(selections.at(-1)).toBe("nov");
-  expect(tui.frame()).toMatch(/Nov\s+--/);
+  expect(tui.frame()).toMatch(new RegExp(String.raw`Nov\s+${MISSING_VALUE}`));
 });
 
 test("chart keyboard cursor uses stable point ids and keeps unavailable values unavailable", async () => {
@@ -69,7 +70,7 @@ test("chart keyboard cursor uses stable point ids and keeps unavailable values u
   await tui.emitKeypress({ name: "j" });
   await frame();
   expect(selections).toEqual(["oct", "nov"]);
-  expect(lines().at(-1)).toContain("Nov --");
+  expect(lines().at(-1)).toContain(`Nov ${MISSING_VALUE}`);
 });
 
 test("a chart-only surface without room draws nothing rather than a second table", async () => {

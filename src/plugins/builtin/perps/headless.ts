@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { PerpBoardPayload, PerpBoardRow, PerpDepthRow, PerpLiquidationMarket, PerpLiquidationPrint, PerpLiquidationsPayload } from "../../../api-client/perps";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
@@ -17,7 +18,7 @@ import { basisSpotSymbol } from "../futures-curve/model";
 const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
 const text = (value: unknown) => typeof value === "string" ? value : null;
 const pct = (digits: number): HeadlessPaneColumn["format"] => (value) => percent(num(value), digits);
-const rateOver = (rate: unknown, interval: string | null, digits = 5) => num(rate) === null ? "--" : `${percent(num(rate), digits)} /${interval ?? "--"}`;
+const rateOver = (rate: unknown, interval: string | null, digits = 5) => num(rate) === null ? MISSING_VALUE : `${percent(num(rate), digits)} /${interval ?? MISSING_VALUE}`;
 const hours = (value: unknown) => num(value) ? `${num(value)}h` : null;
 const timeColumn = (key: string, header: string): HeadlessPaneColumn => ({ key, header, format: (value) => time(text(value)) });
 const right = (key: string, header: string, format: HeadlessPaneColumn["format"]): HeadlessPaneColumn => ({ key, header, align: "right", format });
@@ -41,17 +42,17 @@ const rankingTextColumns = (ranking: typeof RANKINGS[number]): HeadlessPaneColum
   ? right(ranking.field, ranking.header, pct(ranking.digits)) : perpColumn(id));
 const observationColumns = (currency: string): HeadlessPaneColumn[] => [
   timeColumn("time", "Time"),
-  { key: "resolution", header: "Resolution", format: (value) => text(value) ?? "--" },
+  { key: "resolution", header: "Resolution", format: (value) => text(value) ?? MISSING_VALUE },
   priceColumn("markPrice", `Mark ${currency}`),
   right("premium", "Premium %", pct(3)),
   right("fundingRate", "Funding %/int", (value, row) => rateOver(value, hours(row.fundingIntervalHours))),
   oiColumn,
-  right("sampleCount", "Samples", (value) => `${num(value) ?? "--"}`),
+  right("sampleCount", "Samples", (value) => `${num(value) ?? MISSING_VALUE}`),
 ];
 const FUNDING_COLUMNS: HeadlessPaneColumn[] = [
   timeColumn("time", "Time"),
   right("rate", "Paid %/int", (value, row) => rateOver(value, hours(row.intervalHours))),
-  right("rate", "Funding 8h %", (value, row) => num(value) !== null && num(row.intervalHours) ? percent(num(value)! * 8 / num(row.intervalHours)!, 4) : "--"),
+  right("rate", "Funding 8h %", (value, row) => num(value) !== null && num(row.intervalHours) ? percent(num(value)! * 8 / num(row.intervalHours)!, 4) : MISSING_VALUE),
   right("premium", "Premium %", pct(3)),
   timeColumn("observedAt", "Observed"),
 ];
@@ -59,7 +60,7 @@ const candleColumns = (currency: string): HeadlessPaneColumn[] => [
   timeColumn("time", "Time"),
   priceColumn("open", "Open"), priceColumn("high", "High"), priceColumn("low", "Low"), priceColumn("close", `Close ${currency}`),
   right("volumeBase", "Volume (base)", (value) => compact(num(value))),
-  right("trades", "Trades", (value) => num(value)?.toLocaleString("en-US") ?? "--"),
+  right("trades", "Trades", (value) => num(value)?.toLocaleString("en-US") ?? MISSING_VALUE),
 ];
 const LONG_SHORT_COLUMNS: HeadlessPaneColumn[] = [
   timeColumn("time", "Bucket"),
@@ -70,11 +71,11 @@ const LONG_SHORT_COLUMNS: HeadlessPaneColumn[] = [
   timeColumn("observedAt", "Observed"),
 ];
 const REVISION_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "kind", header: "Kind", format: (value) => text(value) ? label(text(value)!) : "--" },
+  { key: "kind", header: "Kind", format: (value) => text(value) ? label(text(value)!) : MISSING_VALUE },
   timeColumn("period_at", "Period"),
   timeColumn("received_at", "Received"),
   { key: "superseded_at", header: "Status", format: (value) => text(value) ? `Superseded ${time(text(value))}` : "Current" },
-  { key: "fingerprint", header: "Fingerprint", format: (value) => text(value)?.slice(0, 8) || "--" },
+  { key: "fingerprint", header: "Fingerprint", format: (value) => text(value)?.slice(0, 8) || MISSING_VALUE },
 ];
 
 // Liquidations and depth print what their tabs' cells show, through the same formatters.
@@ -85,8 +86,8 @@ const LIQUIDATION_TEXT_COLUMNS = LIQUIDATION_COLUMN_IDS.map((id: LiquidationColu
 const printTextColumns = (base: string) => PRINT_COLUMN_IDS.map((id: PrintColumnId) => cascadeColumn(id, printColumnLabel(id, base), (row) => printCellText(row as unknown as PerpLiquidationPrint, id)));
 const DEPTH_TEXT_COLUMNS = DEPTH_COLUMN_IDS.map((id: DepthColumnId) => cascadeColumn(id, depthColumnLabel(id), (row) => depthCellText(row as unknown as PerpDepthRow, id)));
 const HOURLY_COLUMNS: HeadlessPaneColumn[] = [timeColumn("time", "Hour"), right("long", "Longs USD", (value) => compact(num(value))), right("short", "Shorts USD", (value) => compact(num(value))),
-  right("count", "Events", (value) => num(value)?.toLocaleString("en-US") ?? "--")];
-const DEPTH_HISTORY_COLUMNS: HeadlessPaneColumn[] = [{ key: "marketId", header: "Market", format: (value) => text(value) ?? "--" }, timeColumn("bucket", "Hour"),
+  right("count", "Events", (value) => num(value)?.toLocaleString("en-US") ?? MISSING_VALUE)];
+const DEPTH_HISTORY_COLUMNS: HeadlessPaneColumn[] = [{ key: "marketId", header: "Market", format: (value) => text(value) ?? MISSING_VALUE }, timeColumn("bucket", "Hour"),
   ...(["bid05", "ask05", "bid1", "ask1", "bid2", "ask2"] as const).map((id) => right(id, depthColumnLabel(id), (value) => compact(num(value))))];
 
 // With no market the report shows the first; a market nothing matches names ones that work, a builder dex's among them.

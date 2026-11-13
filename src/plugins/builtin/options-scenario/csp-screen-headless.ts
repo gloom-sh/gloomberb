@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { expirationOptionSeconds, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER } from "../../../utils/option-expiry";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
@@ -13,9 +14,9 @@ import {
   strategyRankedBy, strategyScreenCriteriaText, type ScreenFamily, type StrategyScreen, type StrategyScreenCriteria, type StrategyScreenRow,
 } from "./strategy-screen";
 
-const percentCell = (digits: number) => (value: unknown) => typeof value === "number" ? `${value.toFixed(digits)}%` : "--";
-const priceCell = (value: unknown) => typeof value === "number" ? formatHedgePrice(value) : "--";
-const strikeCell = (value: unknown) => typeof value === "number" ? String(value) : "--";
+const percentCell = (digits: number) => (value: unknown) => typeof value === "number" ? `${value.toFixed(digits)}%` : MISSING_VALUE;
+const priceCell = (value: unknown) => typeof value === "number" ? formatHedgePrice(value) : MISSING_VALUE;
+const strikeCell = (value: unknown) => typeof value === "number" ? String(value) : MISSING_VALUE;
 
 /** One name's row, flat, every percent in percent. */
 export type CspScreenReportRow = {
@@ -49,11 +50,11 @@ const COLUMNS: HeadlessPaneColumn[] = [
   // The text view marks a wide spread in its cell; exports keep the number and say so in Wide.
   { key: "spread", header: "Spread", align: "right", format: percentCell(1),
     textFormat: (value, row) => `${percentCell(1)(value)}${row.wide ? " wide" : ""}` },
-  { key: "delta", header: "Delta", align: "right", format: (value) => typeof value === "number" ? value.toFixed(2) : "--" },
+  { key: "delta", header: "Delta", align: "right", format: (value) => typeof value === "number" ? value.toFixed(2) : MISSING_VALUE },
   { key: "otm", header: "OTM", align: "right", format: percentCell(1) },
   { key: "midYield", header: "Mid yield/yr", align: "right", format: percentCell(2) },
   { key: "bidYield", header: "Bid yield/yr", align: "right", format: percentCell(2) },
-  { key: "ivRank", header: "IVR", align: "right", format: (value) => typeof value === "number" ? value.toFixed(0) : "--" },
+  { key: "ivRank", header: "IVR", align: "right", format: (value) => typeof value === "number" ? value.toFixed(0) : MISSING_VALUE },
   { key: "earnings", header: "Earnings" },
 ];
 const NOTE: HeadlessPaneColumn = { key: "note", header: "Note", underRow: true };
@@ -107,7 +108,7 @@ export function strategyScreenReportRow(row: StrategyScreenRow): StrategyScreenR
     // The screen keeps only trades whose mids open the way the family does, so the amount is the column's own credit or debit.
     trade: trade?.text ?? null, net: trade ? Math.abs(trade.netAmount) : null, maxGain: trade?.maxGain ?? null, maxLoss: trade?.maxLoss ?? null,
     unlimited: trade?.unlimited ?? null, breakEven: trade?.breakEvens[0] ?? null, secondBreakEven: trade?.breakEvens[1] ?? null,
-    breakEvens: trade?.breakEvens.length ? trade.breakEvens.map((value) => value.toFixed(2)).join(" / ") : "--",
+    breakEvens: trade?.breakEvens.length ? trade.breakEvens.map((value) => value.toFixed(2)).join(" / ") : MISSING_VALUE,
     pop: exportPercent(trade?.probabilityOfProfit), returnToExpiry: exportPercent(trade?.returnToExpiry),
     returnPerYear: exportPercent(trade?.annualizedReturn), rewardRisk: trade?.rewardToRisk ?? null,
     ivRank: row.ivRank, spread: exportPercent(trade?.quote?.spreadOfMid), wide: trade?.quote ? row.wideSpread : null,
@@ -118,10 +119,10 @@ export function strategyScreenReportRow(row: StrategyScreenRow): StrategyScreenR
 
 /** A gain or loss for one contract a leg, `unlimited` on the side that has no limit. */
 const riskCell = (side: "gain" | "loss") => (value: unknown, row: Record<string, unknown>) =>
-  typeof value === "number" ? money(value) : row.unlimited === side ? "unlimited" : "--";
+  typeof value === "number" ? money(value) : row.unlimited === side ? "unlimited" : MISSING_VALUE;
 /** `2.68x`, or `unlimited` where the gain has no limit. */
 export const rewardRiskText = (value: unknown, unlimited: unknown) =>
-  typeof value === "number" ? `${value.toFixed(2)}x` : unlimited === "gain" ? "unlimited" : "--";
+  typeof value === "number" ? `${value.toFixed(2)}x` : unlimited === "gain" ? "unlimited" : MISSING_VALUE;
 
 /** The unit every money column of a trade is in, said once: OSA's own for position money. */
 export const STRATEGY_MONEY_UNIT = "USD per contract";
@@ -137,8 +138,8 @@ function strategyScreenColumns(strategy: ScreenFamily): { text: HeadlessPaneColu
   const farExpiry: HeadlessPaneColumn[] = strategy === "calendar" ? [{ key: "farExpiry", header: "Bought expiry" }] : [];
   const body: HeadlessPaneColumn[] = [
     COLUMNS[3]!,
-    { key: "trade", header: "Trade", format: (value) => typeof value === "string" ? value : "--" },
-    { key: "net", header: def.net === "credit" ? "Credit" : "Debit", align: "right", format: (value) => typeof value === "number" ? money(value) : "--" },
+    { key: "trade", header: "Trade", format: (value) => typeof value === "string" ? value : MISSING_VALUE },
+    { key: "net", header: def.net === "credit" ? "Credit" : "Debit", align: "right", format: (value) => typeof value === "number" ? money(value) : MISSING_VALUE },
     { key: "maxGain", header: "Max gain", align: "right", format: riskCell("gain") },
     { key: "maxLoss", header: "Max loss", align: "right", format: riskCell("loss") },
   ];

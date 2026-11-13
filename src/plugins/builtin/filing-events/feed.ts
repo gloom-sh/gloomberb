@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CloudFilingEventPayload } from "../../../api-client";
 import { formatFilingDate } from "../../../utils/datetime-format";
 import { wrapTextLines } from "../../../utils/text-wrap";
@@ -70,7 +71,7 @@ type FilingPerson = CloudFilingEventPayload["people"][number];
 /** Actions that end a role: what a move between two roles goes from. */
 const LEAVING_ACTIONS = new Set(["left", "resigned", "resigned as director"]);
 
-const effectiveLabel = (effective: string | null) => `effective ${formatCalendarDate(effective) ?? "—"}`;
+const effectiveLabel = (effective: string | null) => `effective ${formatCalendarDate(effective) ?? MISSING_VALUE}`;
 
 /**
  * What happened to one person, on one line: a move from one role to another

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, Notice, PaneFooterScope,
@@ -338,9 +339,9 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
   const strip = curveStrip(series, formatValue, { caption: differenceView ? "Change" : level ? `${level} %` : "Yield %", selectedPointId: selectedId });
   const renderCell = useCallback((row: YieldTenorRow, column: DataTableColumn) => {
     if (column.id === "tenor") return { text: row.id };
-    if (column.id === "asOf") return { text: row.asOf ?? "--", color: colors.textMuted };
+    if (column.id === "asOf") return { text: row.asOf ?? MISSING_VALUE, color: colors.textMuted };
     const value = row[column.id as "yield" | "compare" | "forward" | "change1d" | "change1w" | "change1m" | "changeCompare"];
-    if (value == null) return { text: "--", color: colors.textMuted };
+    if (value == null) return { text: MISSING_VALUE, color: colors.textMuted };
     if (column.id === "yield" || column.id === "compare" || column.id === "forward") return { text: formatYield(value) };
     // Colour follows the shown basis points, so a move that rounds to 0bp stays neutral.
     return { text: formatYieldChange(value), color: priceColor(Math.round(value * 100), colors) };
@@ -459,7 +460,7 @@ function WorldTab({ onOpen, focused, width, height }: {
     if (column.id === "asOf") return { text: row.asOf, color: colors.textMuted };
     const value = row[column.id as "twoYear" | "tenYear" | "thirtyYear" | "twosTens" | "twoYearChange" | "tenYearChange"
       | "thirtyYearChange" | "twosTensChange"];
-    if (value == null) return { text: "--", color: colors.textMuted };
+    if (value == null) return { text: MISSING_VALUE, color: colors.textMuted };
     if (column.id === "twoYear" || column.id === "tenYear" || column.id === "thirtyYear") return { text: formatYield(value) };
     const text = formatYieldChange(value);
     // The curve spread is a level in basis points; the day moves carry their sign's colour.

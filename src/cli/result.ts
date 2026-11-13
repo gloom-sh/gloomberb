@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../utils/format";
 import type { CliGlobalOptions } from "./options";
 import {
   cliPlainEnabled,
@@ -264,7 +265,7 @@ function formatTextValue(
   depth = 0,
   width: number | null = null,
 ): string {
-  const missing = context === "record" ? cliPlainEnabled() ? "—" : cliStyles.muted("-") : "";
+  const missing = context === "record" ? cliPlainEnabled() ? MISSING_VALUE : cliStyles.muted(MISSING_VALUE) : "";
   if (value == null || value === "") return missing;
   // Times print in UTC with the zone named, never in the host's zone; JSON and CSV keep the raw value.
   if (value instanceof Date) return formatUtcTime(value);

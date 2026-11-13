@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo } from "react";
 import type { SwapPoint } from "../../../api-client/swap-curve";
 import {
@@ -80,7 +81,7 @@ export function SwapsTab({ focused, width, height }: { focused: boolean; width: 
     if (column.id === "tradeCount") return { text: `${row.tradeCount}${row.quality === "thin" ? " Thin" : ""}`, value: row.tradeCount,
       color: row.quality === "ok" ? undefined : colors.warning };
     const value = row[column.id as "rate" | "changeBp" | "spreadBp"];
-    if (value == null) return { text: "--", color: colors.textMuted };
+    if (value == null) return { text: MISSING_VALUE, color: colors.textMuted };
     if (column.id === "rate") return { text: formatYield(value), value };
     return { text: formatSwapBp(value), value,
       color: column.id === "changeBp" ? priceColor(Math.round(value * 10), colors) : undefined };

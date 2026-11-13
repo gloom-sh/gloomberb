@@ -24,7 +24,7 @@ import { colors, priceColor, shownPriceColor } from "../../../theme/colors";
 import { notMeaningfulCell } from "../../../components/ui/not-meaningful";
 import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
-import { displayWidth, formatCompact, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw, displayWidth } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
@@ -363,16 +363,16 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
         // The listing as the CLI names it (ASML:AMS), not the key it is stored under (ASML:XAMS).
         return { text: canonicalTickerKey(row.symbol), color: row.error || row.quoteStale || row.fundamentalsProvenance?.stale ? colors.warning : colors.textBright, attributes: TextAttributes.BOLD };
       case "name":
-        return { text: row.name ?? "-", color: row.name ? colors.text : colors.textDim };
+        return { text: row.name ?? MISSING_VALUE, color: row.name ? colors.text : colors.textDim };
       case "price":
         return { text: formatRelativePrice(row.price, row.currency), color: colors.text };
       case "changePercent":
-        return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : "-", color: shownPriceColor(row.changePercent ?? 0, 2) };
+        return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : MISSING_VALUE, color: shownPriceColor(row.changePercent ?? 0, 2) };
       case "preMarket":
       case "afterHours":
       case "overnight": {
         const move = extendedMove(row, column.id);
-        return { text: move != null ? formatPercentRaw(move) : "-", value: move, color: move == null ? colors.textDim : shownPriceColor(move, 2) };
+        return { text: move != null ? formatPercentRaw(move) : MISSING_VALUE, value: move, color: move == null ? colors.textDim : shownPriceColor(move, 2) };
       }
       case "marketCap":
         return { text: formatCompact(row.marketCap ?? undefined, { fixedDecimals: true }), color: colors.textDim };

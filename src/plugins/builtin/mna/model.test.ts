@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import type { MnaDeal } from "../../../api-client/mna";
 import type { Quote } from "../../../types/financials";
@@ -79,7 +80,7 @@ test("a missing deal currency stays blank, and an explicit code still prints", (
   expect(formatDealValue(1.8e9, "USD")).toBe("$1.8B");
   expect(formatDealValue(1.8e9, "usd")).toBe("$1.8B");
   expect(formatDealValue(1.8e9, "EUR")).toBe("€1.8B");
-  expect(formatDealValue(null, "USD")).toBe("--");
+  expect(formatDealValue(null, "USD")).toBe(MISSING_VALUE);
 });
 
 // Athabasca: each holder takes CAD 12.00 or 0.264 Cenovus, prorated. blueharbor: $12.70 and 1.0534 TowneBank for every share.
@@ -143,7 +144,7 @@ test("terms read as what one share gets", () => {
   expect(termsLabel(blueharbor(false).terms)).toBe("$12.70 + 1.0534 TOWN");
   expect(termsLabel(athabasca(true).terms)).toBe("CAD 12.00 or 0.264 CVE.TO");
   expect(termsLabel(deal({}, { cvr: true, partial: true }).terms)).toBe("$10.50 cash + CVR, partial");
-  expect(termsLabel(deal({}, { cashPerShare: null, currency: null, consideration: "undisclosed" }).terms)).toBe("--");
+  expect(termsLabel(deal({}, { cashPerShare: null, currency: null, consideration: "undisclosed" }).terms)).toBe(MISSING_VALUE);
 });
 
 test("deals are asked for by the symbol they are filed under: the quote symbol abroad, the bare symbol in the US", () => {

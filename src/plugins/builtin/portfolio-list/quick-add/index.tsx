@@ -11,7 +11,7 @@ import { getSharedRegistry } from "../../../registry";
 import { usePluginAppActions } from "../../../runtime";
 import { isDialogOpen } from "../../../../ui/dialog-stack";
 import { colors, priceColor } from "../../../../theme/colors";
-import { formatPercentRaw } from "../../../../utils/format";
+import { MISSING_VALUE, formatPercentRaw } from "../../../../utils/format";
 import { formatMarketPrice, quoteFormatOptions } from "../../../../market-data/market/format";
 import { listingChoiceQuery, upsertTickerFromSearchResult } from "../../../../tickers/search";
 import type { TickerRecord } from "../../../../types/ticker";
@@ -107,7 +107,7 @@ function QuickAddPreview({
     ?? (validation.resolved.kind === "provider" ? validation.resolved.result.type : undefined);
   const priceText = quote?.price != null
     ? formatMarketPrice(quote.price, { ...quoteFormatOptions(quote, assetCategory), maxWidth: 12 })
-    : "-";
+    : MISSING_VALUE;
   const changeValue = quote?.changePercent;
   const name = tickerNameFromValidation(validation);
   const exchange = exchangeLabelFromValidation(validation);

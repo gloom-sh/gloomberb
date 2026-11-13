@@ -1,3 +1,5 @@
+import { MISSING_VALUE } from "../../../utils/format";
+import { formatShortDate, formatWeekdayDay } from "../../../utils/datetime-format";
 import type { GpuBasis, GpuBoardRow, GpuEvent, GpuObservation, GpuSettle } from "../../../api-client/gpu";
 import { staticSeries } from "../../../components/chart/static/series";
 import { SERIES_COLORS } from "../../../theme/series-colors";
@@ -50,9 +52,9 @@ export const gpuNoMatch = (query: string, families: readonly string[]) =>
 export const gpuBasisLabel = (basis: GpuBasis, compact = false): string => compact
   ? ({ list: "List", spot: "Spot", ask: "Ask", reserved: "Rsvd", index: "Locked", reference: "Reference" })[basis]
   : ({ list: "List price", spot: "Provider-declared spot", ask: "Ask", reserved: "Reserved", index: "Index (licensed)", reference: "Reference" })[basis];
-export const gpuPrice = (value: number | null | undefined) => value == null ? "-" : value.toFixed(2);
+export const gpuPrice = (value: number | null | undefined) => value == null ? MISSING_VALUE : value.toFixed(2);
 export function gpuChange(value: number | null | undefined): string {
-  if (value == null) return "-";
+  if (value == null) return MISSING_VALUE;
   const rounded = Math.round(Math.abs(value) * 10) / 10;
   return `${rounded === 0 ? "" : value > 0 ? "+" : "-"}${rounded.toFixed(1)}%`;
 }
@@ -90,11 +92,11 @@ export const gpuShortSource = (row: Pick<GpuObservation, "source" | "provider" |
   gpuSource(row).replace(/ list index$/, " index").replace(/ ask median$/, " median");
 
 export function gpuTime(value: string | null | undefined, compact = false): string {
-  if (!value) return "-";
+  if (!value) return MISSING_VALUE;
   const date = new Date(value);
-  const day = date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const day = formatShortDate(date, { year: false, utc: true });
   const time = date.toISOString().slice(11, 16);
-  return compact ? `${day} ${time}` : `${day}, ${date.getUTCFullYear()} ${time} UTC`;
+  return compact ? `${day} ${time}` : `${day} ${date.getUTCFullYear()} ${time} UTC`;
 }
 
 export function gpuRows<T extends GpuBoardRow>(rows: readonly T[], model = "", basis = "all"): T[] {
@@ -279,8 +281,7 @@ export function gpuEventSections(events: readonly GpuEvent[]): { label: string; 
     const day = gpuEventDate(event).slice(0, 10);
     days.set(day, [...(days.get(day) ?? []), event]);
   }
-  return [...days].map(([day, items]) => ({ label: new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US",
-    { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }), items }));
+  return [...days].map(([day, items]) => ({ label: formatWeekdayDay(`${day}T00:00:00Z`, { timeZone: "UTC", year: true }), items }));
 }
 
 export interface GpuAvailability { label: string; tone: "positive" | "warning" | "muted" }

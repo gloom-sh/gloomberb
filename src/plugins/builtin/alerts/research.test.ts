@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { eventAlertTarget, readEventAlerts } from "./events";
 import { alertKindLabel, ruleStateText, validateAlertHistory } from "./history";
@@ -52,7 +53,7 @@ test("rule state text keeps value, percentile and date, and says why a reading i
     .toBe("1.84 times prior 20-session volume · 97 pctl · 2026-09-21");
   expect(ruleStateText({ ...base, asOf: null, value: null, unit: null, percentile: null, warning: "Completed daily history is missing or stale." }))
     .toBe("Completed daily history is missing or stale.");
-  expect(ruleStateText(undefined)).toBe("--");
+  expect(ruleStateText(undefined)).toBe(MISSING_VALUE);
 });
 
 test("history responses need dated items", () => {

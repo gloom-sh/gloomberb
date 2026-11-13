@@ -8,7 +8,7 @@ import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActi
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { isUsListingExchange } from "../../../utils/exchanges";
-import { displayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { UpgradeLabel } from "../shared/locked-rows";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -95,32 +95,32 @@ function secondHopLayout(width: number, rows: readonly SecondHopRow[]) {
 }
 
 const move = (row: RippleRow | SecondHopRow): DataTableCell =>
-  ({ text: row.averageMove == null ? "--" : `±${(row.averageMove * 100).toFixed(1)}%`, value: row.averageMove });
+  ({ text: row.averageMove == null ? MISSING_VALUE : `±${(row.averageMove * 100).toFixed(1)}%`, value: row.averageMove });
 
 function renderCell(row: RippleRow, column: DataTableColumn): DataTableCell {
   switch (column.id) {
     case "date": return { text: row.date };
-    case "timing": return { text: row.timing?.toUpperCase() ?? "--" };
+    case "timing": return { text: row.timing?.toUpperCase() ?? MISSING_VALUE };
     case "company": return { text: `${row.company} ${row.companyName}` };
     case "link": return { text: row.link === "customer" ? "customer of" : "supplier to" };
     case "holding": return { text: row.holding };
     case "pct": return { text: `${row.pctOfRevenue}%${row.pctScope ? "*" : ""} of ${revenueOwner(row)}`, value: row.pctOfRevenue };
     case "move": return move(row);
-    default: return { text: row.holdingDate ?? "--" };
+    default: return { text: row.holdingDate ?? MISSING_VALUE };
   }
 }
 
 function renderSecondHopCell(row: SecondHopRow, column: DataTableColumn, firstHopWidth: number): DataTableCell {
   switch (column.id) {
     case "date": return { text: row.date };
-    case "timing": return { text: row.timing?.toUpperCase() ?? "--" };
+    case "timing": return { text: row.timing?.toUpperCase() ?? MISSING_VALUE };
     case "company": return { text: `${row.company} ${row.companyName}` };
     case "link": return { text: row.link === "customer" ? "customer's customer" : "supplier's supplier" };
     case "via": return { text: row.via };
     case "holding": return { text: row.holding };
     case "shares": return { text: shareText(row, firstHopWidth, column.width), value: shareText(row, 0) };
     case "move": return move(row);
-    default: return { text: row.holdingDate ?? "--" };
+    default: return { text: row.holdingDate ?? MISSING_VALUE };
   }
 }
 

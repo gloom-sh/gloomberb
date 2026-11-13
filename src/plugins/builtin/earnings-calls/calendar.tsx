@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CloudEarningsCallPayload } from "../../../api-client";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -56,7 +57,7 @@ type CalendarColumn = DataTableColumn & { id: CalendarColumnId };
 type CalendarRow = SectionedRow<CloudEarningsCallPayload>;
 
 const COMPANY_MIN_WIDTH = 12;
-const MISSING = "\u2014";
+const MISSING = MISSING_VALUE;
 
 const ALL_COLUMNS: CalendarColumn[] = [
   { id: "ticker", label: "TICKER", width: 6, align: "left" },

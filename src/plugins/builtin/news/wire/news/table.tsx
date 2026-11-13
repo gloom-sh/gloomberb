@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
 import type { ScrollBoxRenderable } from "../../../../../ui";
 import {
@@ -358,13 +359,13 @@ export function NewsArticleStackView({
       }
       case "categories":
         return {
-          text: formatNewsCategoryForColumn(item.categories[0]) || "-",
+          text: formatNewsCategoryForColumn(item.categories[0]) || MISSING_VALUE,
           color: tone(colors.textDim),
         };
       case "sentiment": {
         const sentiment = item.sentiment;
         return {
-          text: sentiment ? sentiment.slice(0, 3) : "-",
+          text: sentiment ? sentiment.slice(0, 3) : MISSING_VALUE,
           color: tone(
             sentiment === "positive"
               ? colors.positive

@@ -73,21 +73,21 @@ test("read by its regular session, a board taken outside it keeps only the moves
 test("the board's caption dates the session and the snapshot in New York time, through daylight saving, and gives way in a narrow footer", () => {
   const saturday = Date.parse("2026-10-10T10:00:00Z");
   const closed = { topCount: 500, regularSessionDate: "2026-10-09", fetchedAt: Date.parse("2026-10-09T22:15:15Z") };
-  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago" })).toBe("top 500 · Oct 9 session · snapshot 18:15 ET · checked 2m ago");
+  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago" })).toBe("top 500 · 9 Oct session · snapshot 18:15 ET · checked 2m ago");
   // Put together the next morning, the snapshot says which day.
   expect(heatmapBoardCaption({ ...closed, fetchedAt: Date.parse("2026-10-10T09:58:32Z") }, { now: saturday }))
-    .toBe("top 500 · Oct 9 session · snapshot Oct 10 05:58 ET");
+    .toBe("top 500 · 9 Oct session · snapshot 10 Oct 05:58 ET");
   // While the session trades (here in standard time) there is no completed session to name.
   const december = Date.parse("2026-12-04T15:31:00Z");
   expect(heatmapBoardCaption({ topCount: 100, regularSessionDate: null, fetchedAt: december }, { now: december + 60_000 }))
     .toBe("top 100 · snapshot 10:31 ET");
   expect(heatmapBoardCaption({ topCount: 100, fetchedAt: december }, { now: december + 86_400_000 }))
-    .toBe("top 100 · snapshot Dec 4 10:31 ET");
+    .toBe("top 100 · snapshot 4 Dec 10:31 ET");
   // The check goes first, then the snapshot; the count stays while it fits.
-  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago", maxWidth: 45 })).toBe("top 500 · Oct 9 session · snapshot 18:15 ET");
-  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago", maxWidth: 30 })).toBe("top 500 · Oct 9 session");
+  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago", maxWidth: 45 })).toBe("top 500 · 9 Oct session · snapshot 18:15 ET");
+  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago", maxWidth: 30 })).toBe("top 500 · 9 Oct session");
   // After a failed refresh the last good check is what a reader needs, so the snapshot goes first.
-  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago", failed: true, maxWidth: 45 })).toBe("top 500 · Oct 9 session · checked 2m ago");
+  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago", failed: true, maxWidth: 45 })).toBe("top 500 · 9 Oct session · checked 2m ago");
   expect(heatmapBoardCaption(closed, { now: saturday, maxWidth: 4 })).toBeNull();
 });
 
@@ -95,15 +95,15 @@ test("a board of a completed session is as of its close when the server gives it
   const saturday = Date.parse("2026-10-10T10:00:00Z");
   const closed = { topCount: 500, regularSessionDate: "2026-10-09", fetchedAt: Date.parse("2026-10-10T09:58:32Z"),
     regularSessionClosedAt: Date.parse("2026-10-09T20:00:00Z") };
-  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago" })).toBe("top 500 · Oct 9 session · as of 16:00 ET · checked 2m ago");
-  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago", failed: true, maxWidth: 45 })).toBe("top 500 · Oct 9 session · checked 2m ago");
+  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago" })).toBe("top 500 · 9 Oct session · as of 16:00 ET · checked 2m ago");
+  expect(heatmapBoardCaption(closed, { now: saturday, checked: "2m ago", failed: true, maxWidth: 45 })).toBe("top 500 · 9 Oct session · checked 2m ago");
   // The day after Thanksgiving closes at 13:00, in standard time.
   expect(heatmapBoardCaption({ topCount: 100, regularSessionDate: "2026-11-27", fetchedAt: Date.parse("2026-11-28T15:00:00Z"),
     regularSessionClosedAt: Date.parse("2026-11-27T18:00:00Z") }, { now: Date.parse("2026-11-28T15:01:00Z") }))
-    .toBe("top 100 · Nov 27 session · as of 13:00 ET");
+    .toBe("top 100 · 27 Nov session · as of 13:00 ET");
   // An older server, or a snapshot that names no session, keeps the snapshot's time.
   for (const board of [{ ...closed, regularSessionClosedAt: undefined }, { ...closed, regularSessionClosedAt: null }]) {
-    expect(heatmapBoardCaption(board, { now: saturday })).toBe("top 500 · Oct 9 session · snapshot Oct 10 05:58 ET");
+    expect(heatmapBoardCaption(board, { now: saturday })).toBe("top 500 · 9 Oct session · snapshot 10 Oct 05:58 ET");
   }
   expect(heatmapBoardCaption({ ...closed, regularSessionDate: null }, { now: saturday })).toBe("top 500 · snapshot 05:58 ET");
 });
@@ -114,7 +114,7 @@ test("a board is as of when its prices printed, which the snapshot time is alway
   const now = Date.parse("2026-10-20T17:56:30Z");
   expect(heatmapBoardCaption(trading, { now, checked: "now" })).toBe("top 500 · as of 13:20 ET · checked now");
   // A print from another day says which.
-  expect(heatmapBoardCaption(trading, { now: now + 86_400_000 })).toBe("top 500 · as of Oct 20 13:20 ET");
+  expect(heatmapBoardCaption(trading, { now: now + 86_400_000 })).toBe("top 500 · as of 20 Oct 13:20 ET");
   // An older server, or a print it cannot date, keeps the snapshot's time.
   for (const pricesAsOf of [undefined, null]) expect(heatmapBoardCaption({ ...trading, pricesAsOf }, { now })).toBe("top 500 · snapshot 13:55 ET");
 });

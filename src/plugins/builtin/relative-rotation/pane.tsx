@@ -27,7 +27,7 @@ import {
 import { useThemeColors } from "../../../theme/theme-context";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { PaneProps } from "../../../types/plugin";
-import { formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { ScatterTrailSurface } from "../../../components/chart/static/trail-chart-surface";
 import {
   staticSeries,
@@ -73,9 +73,9 @@ const COLUMNS: DataTableColumn[] = [
   { id: "momentumRank", label: "MOM PCTL", width: 8, align: "right" },
 ];
 const number = (value: number | null | undefined) =>
-  value == null ? "--" : value.toFixed(2);
+  value == null ? MISSING_VALUE : value.toFixed(2);
 const rank = (value: number | null) =>
-  value == null ? "--" : value.toFixed(0);
+  value == null ? MISSING_VALUE : value.toFixed(0);
 const PANELS = [{ id: "main" }];
 /** Axis row plus enough plot rows to keep eleven symbols apart. */
 const SCATTER_MIN_ROWS = 9;
@@ -119,7 +119,7 @@ function RotationDetail({
   const stats: StatItem[] = [
     { id: "strength", label: "Strength", value: number(row.strength), detail: rankDetail(row.strengthRank) },
     { id: "momentum", label: "Momentum", value: number(row.momentum), detail: rankDetail(row.momentumRank) },
-    { id: "quadrant", label: "Quadrant", value: row.quadrant ?? "--" },
+    { id: "quadrant", label: "Quadrant", value: row.quadrant ?? MISSING_VALUE },
   ];
   const statRows = statGridRows(stats, width);
   return (
@@ -298,7 +298,7 @@ function RotationView({
             id: "asof",
             parts: [
               {
-                text: `${data.currency ?? "--"} · week ${data.asOf ?? "unavailable"} · ${trail}W trails`,
+                text: `${data.currency ?? MISSING_VALUE} · week ${data.asOf ?? "unavailable"} · ${trail}W trails`,
                 tone: "muted",
               },
             ],
@@ -374,7 +374,7 @@ function RotationView({
                       ? rank(row.momentumRank.percentile)
                       : column.id === "strength" || column.id === "momentum"
                         ? number(row[column.id])
-                        : String(row[column.id as "symbol"] ?? "--"),
+                        : String(row[column.id as "symbol"] ?? MISSING_VALUE),
                 color: column.id === "symbol" ? colorMap.get(row.id) : undefined,
               })}
               emptyStateTitle="No aligned weekly observations."

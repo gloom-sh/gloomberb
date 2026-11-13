@@ -7,7 +7,7 @@ import type {
   CloudJobsPosting,
   CloudJobsSummaryPayload,
 } from "../../../api-client/types";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 import { compareSortValues } from "../../../utils/sort-values";
 import { formatSalaryRange, postingTitle } from "../shared/job-posting";
 
@@ -97,7 +97,7 @@ export function buildAgeBars(summary: Pick<CloudJobsSummaryPayload, "ageBuckets"
 }
 
 export function formatChange(change: CloudJobsChange | null | undefined): string {
-  if (!change) return "-";
+  if (!change) return MISSING_VALUE;
   const sign = change.count > 0 ? "+" : "";
   const percent = change.percent != null ? ` (${sign}${formatNumber(change.percent, 1)}%)` : "";
   return `${sign}${change.count}${percent}`;

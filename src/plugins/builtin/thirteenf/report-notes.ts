@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CrowdingRow, TickerHolderRow } from "./signals";
 import { formatMoneyCompact } from "./format";
 import { formatSplitRatio } from "./model";
@@ -31,7 +32,7 @@ export function isOptionType(type: unknown): boolean {
 
 /** A position type as the text report prints it: `CALL*` for an option, which `OPTION_ROWS_NOTE` explains. */
 export function markedPositionType(type: unknown): string {
-  const text = typeof type === "string" && type ? type : "--";
+  const text = typeof type === "string" && type ? type : MISSING_VALUE;
   return isOptionType(type) ? `${text}${OPTION_MARK}` : text;
 }
 

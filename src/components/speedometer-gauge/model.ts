@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../utils/format";
 import { colors } from "../../theme/colors";
 import { clamp } from "../../utils/math";
 
@@ -38,7 +39,7 @@ export function valueToDegrees(value: number, min: number, max: number): number 
 }
 
 export function formatGaugeValue(value: number): string {
-  if (!Number.isFinite(value)) return "--";
+  if (!Number.isFinite(value)) return MISSING_VALUE;
   return String(Math.round(value));
 }
 

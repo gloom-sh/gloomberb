@@ -1,3 +1,5 @@
+import { MISSING_VALUE } from "../../../utils/format";
+import { formatShortDate } from "../../../utils/datetime-format";
 import type { DataTableColumn } from "../../../components";
 import { fitChartTableColumns } from "../../../components/chart-table";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -124,15 +126,14 @@ function formatEtClock(utcMs: number): string {
   return `${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}`;
 }
 
-/** "MM/DD/YY" in ET, because the feed carries halts that are years apart. */
-export function formatEtDate(utcMs: number): string {
+/** The ET day, `20 Aug` or with its year (`20 Aug '26`), because the feed carries halts that are years apart. */
+export function formatEtDate(utcMs: number, year = true): string {
   const parts = etParts(utcMs);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${pad(parts.month)}/${pad(parts.day)}/${String(parts.year).slice(2)}`;
+  return formatShortDate(Date.UTC(parts.year, parts.month - 1, parts.day), { day: "2-digit", year: year ? "2-digit" : false, utc: true });
 }
 
 export function formatEtTime(utcMs: number | null): string {
-  return utcMs == null ? "—" : formatEtClock(utcMs);
+  return utcMs == null ? MISSING_VALUE : formatEtClock(utcMs);
 }
 
 /**
@@ -141,9 +142,9 @@ export function formatEtTime(utcMs: number | null): string {
  * reopened before it stopped.
  */
 export function formatEtResumption(utcMs: number | null, haltedAt: number): string {
-  if (utcMs == null) return "—";
+  if (utcMs == null) return MISSING_VALUE;
   const sameDay = formatEtDate(utcMs) === formatEtDate(haltedAt);
-  return sameDay ? formatEtClock(utcMs) : `${formatEtDate(utcMs).slice(0, 5)} ${formatEtClock(utcMs).slice(0, 5)}`;
+  return sameDay ? formatEtClock(utcMs) : `${formatEtDate(utcMs, false)} ${formatEtClock(utcMs).slice(0, 5)}`;
 }
 
 export function resolveHaltStatus(record: HaltRecord, now: number): HaltStatus {
@@ -278,12 +279,12 @@ const HALT_COLUMNS: readonly HaltColumn[] = [
   { id: "company", label: "COMPANY", width: COMPANY_MIN_WIDTH, align: "left", flexGrow: 1 },
   { id: "code", label: "CODE", width: 6, align: "left" },
   { id: "reason", label: "REASON", width: REASON_MIN_WIDTH, align: "left", flexGrow: 1 },
-  { id: "date", label: "DATE ET", width: 9, align: "left" },
+  { id: "date", label: "DATE ET", width: 10, align: "left" },
   { id: "age", label: "AGE", width: 6, align: "right" },
   { id: "halted", label: "HALT ET", width: 9, align: "left" },
   // Set when quoting and trading resume: a halt still in force has neither.
-  { id: "quote", label: "QUOTE ET", width: 11, align: "left", mayBeBlank: true },
-  { id: "trade", label: "TRADE ET", width: 11, align: "left", mayBeBlank: true },
+  { id: "quote", label: "QUOTE ET", width: 12, align: "left", mayBeBlank: true },
+  { id: "trade", label: "TRADE ET", width: 12, align: "left", mayBeBlank: true },
   { id: "duration", label: "HALTED FOR", width: 12, align: "right" },
   { id: "status", label: "STATUS", width: 8, align: "left" },
 ];

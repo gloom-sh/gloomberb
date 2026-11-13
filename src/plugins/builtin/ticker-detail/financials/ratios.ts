@@ -1,6 +1,6 @@
 import { createValuationCurrencyContext } from "../../../../time-series/valuation-currency";
 import type { CompanyProfile, FinancialStatement, PricePoint, TickerFinancials } from "../../../../types/financials";
-import { formatNumber, pickUnit } from "../../../../utils/format";
+import { MISSING_VALUE, formatNumber, pickUnit } from "../../../../utils/format";
 import { pricePointIntegrity } from "../../../../utils/price-history-integrity";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
@@ -36,7 +36,7 @@ export const RATIO_GAP_TEXT: Record<RatioGap, string> = {
   "no-burn": "no burn",
   "not-meaningful": "N/M",
   "no-price": "no price",
-  loading: "--",
+  loading: MISSING_VALUE,
 };
 
 export type RatioFormat = "percent" | "multiple" | "days" | "months";

@@ -33,7 +33,7 @@ import { formatPriceObservation, quoteFormatOptions } from "../../../../market-d
 import { usePaneTicker } from "../../../../state/app/context";
 import type { PaneProps } from "../../../../types/plugin";
 import { colors, shownPriceColor } from "../../../../theme/colors";
-import { formatPercent } from "../../../../utils/format";
+import { MISSING_VALUE, formatPercent } from "../../../../utils/format";
 import { publicTickerKey } from "../../../../utils/exchanges";
 import { priceHistoryIntegrityNotice } from "../../../../utils/price-history-integrity";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../../utils/sort-values";
@@ -97,7 +97,7 @@ function returnPriceDecimals(rows: readonly ReturnRow[], assetCategory?: string)
 }
 
 function formatMaybePrice(value: number | null, decimals: number, width: number): string {
-  if (value === null || !Number.isFinite(value)) return "-";
+  if (value === null || !Number.isFinite(value)) return MISSING_VALUE;
   return formatPriceObservation(Number(value.toFixed(Math.min(20, decimals))), { minimumFractionDigits: decimals, maxWidth: width });
 }
 
@@ -106,7 +106,7 @@ function exportPrice(value: number | null, decimals: number): number | null {
 }
 
 function formatMaybePercent(value: number | null): string {
-  return value === null ? "-" : formatPercent(value);
+  return value === null ? MISSING_VALUE : formatPercent(value);
 }
 
 /** A move's tone as it is printed: one that rounds to 0.00% is neutral, never red or green. */

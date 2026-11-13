@@ -9,14 +9,14 @@ import type {
 import type { DataTableColumn } from "../../../components";
 import { scalarPoint } from "../../../components/chart/static/series";
 import type { TimeSeriesPoint } from "../../../time-series/types";
-import { formatCompact, formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatPercentileRank } from "../../../utils/format";
 
 export type DebtLatest = NonNullable<DebtMaturitiesPayload["latest"]>;
 export type DebtBucket = DebtLatest["buckets"][number];
 export const debtAmount = (value: number | null) =>
-  value === null ? "--" : formatCompact(value, { fixedDecimals: true });
+  value === null ? MISSING_VALUE : formatCompact(value, { fixedDecimals: true });
 export const debtPercent = (value: number | null) =>
-  value === null ? "--" : `${value.toFixed(1)}%`;
+  value === null ? MISSING_VALUE : `${value.toFixed(1)}%`;
 export const debtMetricValue = (metric: DebtMetric) =>
   metric.unit === "%"
     ? debtPercent(metric.value)

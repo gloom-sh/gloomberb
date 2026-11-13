@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { PowerPriceRow } from "../../../api-client/europe-energy";
 import type { SeriesDefinition } from "../../../series/types";
 import { fetchCarbonHistory, fetchPowerPriceHistory } from "./prices-client";
@@ -50,9 +51,9 @@ export const isCarbonQuery = (input: string | null | undefined) =>
 export const DEFAULT_PRICE_MARKET = "DE";
 
 export const POWER_PRICE_UNIT = "EUR/MWh";
-export const formatPowerPrice = (value: number | null | undefined) => value == null ? "--" : value.toFixed(2);
+export const formatPowerPrice = (value: number | null | undefined) => value == null ? MISSING_VALUE : value.toFixed(2);
 export const formatPowerChange = (value: number | null | undefined) =>
-  value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+  value == null ? MISSING_VALUE : `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
 /** Where the latest price sits in its 52-week range, 0 at the low and 100 at the high. */
 export function powerRangePosition(row: PowerPriceRow): number | null {
   if (row.price == null || row.low52w == null || row.high52w == null || row.high52w <= row.low52w) return null;

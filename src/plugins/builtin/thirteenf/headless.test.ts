@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -346,8 +347,8 @@ describe("13F headless model", () => {
 
         Fund                                      CIK         Period      Est 13F  Value (USD)  2026Q1   2025Q4  2025Q3
         ────────────────────────────────────────  ──────────  ──────────  ───────  ───────────  ──────  ───────  ──────
-        PERSHING SQUARE CAPITAL MANAGEMENT, L.P.  0001336528  2026-06-30  +12.40%      $15.20B  +3.10%   -2.20%      --
-        SCION ASSET MANAGEMENT, LLC               0001649339  2026-06-30   +9.87%     $263.00M      --  +14.50%  +6.00%
+        PERSHING SQUARE CAPITAL MANAGEMENT, L.P.  0001336528  2026-06-30  +12.40%      $15.20B  +3.10%   -2.20%       ${MISSING_VALUE}
+        SCION ASSET MANAGEMENT, LLC               0001649339  2026-06-30   +9.87%     $263.00M       ${MISSING_VALUE}  +14.50%  +6.00%
         RENAISSANCE TECHNOLOGIES LLC              0001037389  2026-06-30   -1.05%      $75.40B  +0.50%   +1.25%  -0.75%
 
         Source: SEC EDGAR · Fri 14 Aug 2026 · not a live feed (13F filings)"

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { getPaneFunctionCapability, normalizeCapabilityOptions } from "../../../cli/pane-functions/capabilities";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
@@ -95,5 +96,5 @@ test("a trade's prices print at its instrument's precision: a currency pair's fi
     .toEqual(["1.12346", "1.12346", "157.848", "157.848", "1.12"]);
   expect(formatTradePrice(1.18, "EURUSD=X")).toBe("1.18000");
   expect(formatTradePrice(0.123456, "PENNY")).toBe("0.1235");
-  expect(formatTradePrice(null, "EURUSD=X")).toBe("--");
+  expect(formatTradePrice(null, "EURUSD=X")).toBe(MISSING_VALUE);
 });

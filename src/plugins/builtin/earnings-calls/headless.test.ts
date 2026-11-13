@@ -375,7 +375,7 @@ test("a refused account reads as CALLS's lock note on one line, for the list and
 });
 
 describe("upcoming calls", () => {
-  // Wednesday Oct 21 2026, 14:00 in New York.
+  // Wednesday 21 Oct 2026, 14:00 in New York.
   const now = Date.parse("2026-10-21T18:00:00Z");
   const upcoming = (id: string, ticker: string, callAt: string, extra: Partial<CloudEarningsCallPayload> = {}): CloudEarningsCallPayload => ({
     ...calls[1]!, id, ticker, companyName: `${ticker} Inc`, fiscalYear: 2026, fiscalQuarter: 3, callAt, ...extra,
@@ -383,9 +383,9 @@ describe("upcoming calls", () => {
 
   test("fn CALLS TICKER puts the next call first, upcoming with its countdown, and on its own line in the text", async () => {
     const amdAt = "2026-11-04T21:00:00Z";
-    // The call's day on this machine's clock: Wed Nov 4 in New York, Thu Nov 5 in Hong Kong.
+    // The call's day on this machine's clock: Wed 4 Nov in New York, Thu 5 Nov in Hong Kong.
     const start = new Date(amdAt);
-    const day = `${start.toLocaleDateString("en-US", { month: "short" })} ${start.getDate()}`;
+    const day = `${start.getDate()} ${start.toLocaleDateString("en-US", { month: "short" })}`;
     const weekday = start.toLocaleDateString("en-US", { weekday: "short" });
     const deps = dependencies();
     deps.now = () => now;
@@ -457,7 +457,7 @@ describe("upcoming calls", () => {
     expect(cut.complete).toBe(false);
     expect(cut.metadata).toMatchObject({
       sourceLimit: 1500, sourceLimitReached: true, truncated: true,
-      notices: ["The calendar stops at 1,500 calls: later calls from Oct 22 on may be missing."],
+      notices: ["The calendar stops at 1,500 calls: later calls from 22 Oct on may be missing."],
     });
   });
 });

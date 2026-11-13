@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
-import { formatNumber, formatSignificant, significantDecimals } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber, formatSignificant, significantDecimals } from "../../../utils/format";
 import { logFailure } from "../../../utils/log-failure";
 import { mixedSessionCloseNote } from "../../../market-data/market/session-close-note";
 import { resolveHeadlessInstrument, loadHeadlessSymbols } from "../shared/headless-market-data";
@@ -53,7 +53,7 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
   describe: ({ symbols, options }) => `Correlation Matrix | Daily returns | ${options.rangePreset ?? "1Y"} | ${symbols.join(", ")}`,
   columns: [
     { key: "pair", header: "Pair", format: (_value, row) => `${row.left}/${row.right}` },
-    { key: "correlation", header: "Correlation", align: "right", format: (value) => value == null ? "-" : formatNumber(Number(value), 3) },
+    { key: "correlation", header: "Correlation", align: "right", format: (value) => value == null ? MISSING_VALUE : formatNumber(Number(value), 3) },
     { key: "sampleSize", header: "Shared obs", align: "right" },
   ],
   async load({ symbols, options }, ctx) {

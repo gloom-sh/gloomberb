@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { ExposureBasis, ExposureComponent, ExposureExtensionObservation, ExposureHolding, ExposurePayload, ExposureRange, ExposureScenario } from "../../../api-client/exposure";
 import { quarterLabel } from "../shared/earnings-report";
 import { humanLabel } from "../shared/research-cells";
@@ -85,12 +86,12 @@ export interface ExposureRow {
 export function exposureCellText(row: ExposureRow, column: "label" | "basis" | "exposure" | "classification" | "impact" | "period" | "weight"): string {
   switch (column) {
     case "label": return row.label;
-    case "basis": return row.basis ? humanLabel(basisLabel(row.basis)) : "--";
+    case "basis": return row.basis ? humanLabel(basisLabel(row.basis)) : MISSING_VALUE;
     case "exposure": return row.exposure ? rangeText(row.exposure) : "Unknown";
     // What the number rests on, in words: disclosed by the company, estimated by a chain, or not visible.
     case "classification": return `${humanLabel(row.classification)}${row.incomplete && row.classification !== "unknown" ? " · partial" : ""}`;
-    case "impact": return row.impact ? rangeText(row.impact) : "--";
-    case "period": return row.period ? periodText(row.period) : "--";
+    case "impact": return row.impact ? rangeText(row.impact) : MISSING_VALUE;
+    case "period": return row.period ? periodText(row.period) : MISSING_VALUE;
     case "weight": return fraction(row.weight ?? 0);
   }
 }

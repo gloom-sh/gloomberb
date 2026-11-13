@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CryptoAssetKind, CryptoMarketAsset, CryptoPeg } from "../../../api-client/crypto-markets";
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -283,7 +284,7 @@ function dayRange(asset: CryptoMarketAsset, price: number, updatedAt: number | n
 
 /** `Sat 11:30` UTC; a dash when unknown. */
 export function formatDayRangeTime(ms: number | null): string {
-  return ms == null ? "—" : formatUtcWeekdayTime(ms) || "—";
+  return ms == null ? MISSING_VALUE : formatUtcWeekdayTime(ms) || MISSING_VALUE;
 }
 
 const rowsByAsset = new WeakMap<CryptoMarketAsset, { quote: Quote | null; day: number; row: CryptoRow }>();
@@ -363,14 +364,14 @@ export function cryptoRowObservations(rows: readonly CryptoRow[]): CryptoRowObse
  * keeps its decimals.
  */
 export function formatCryptoPrice(value: number | null, minimumDecimals = 2, referencePrice?: number | null): string {
-  if (value == null || !Number.isFinite(value) || value <= 0) return "—";
+  if (value == null || !Number.isFinite(value) || value <= 0) return MISSING_VALUE;
   const magnitude = Math.floor(Math.log10(positive(referencePrice) ? referencePrice : value));
   const decimals = Math.min(12, Math.max(minimumDecimals, 3 - magnitude));
   return value.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
 export function formatCryptoPercent(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const text = value.toFixed(2);
   // A move that rounds to zero carries no sign.
   if (Number(text) === 0) return "0.00%";

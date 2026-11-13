@@ -8,7 +8,7 @@ export function formatExpDate(ts: number): string {
   const d = new Date(ts * 1000);
   const month = MONTH_ABBREV[d.getUTCMonth()] || String(d.getUTCMonth() + 1);
   const yy = String(d.getUTCFullYear()).slice(2);
-  return `${month} ${d.getUTCDate()} '${yy}`;
+  return `${d.getUTCDate()} ${month} '${yy}`;
 }
 
 /**

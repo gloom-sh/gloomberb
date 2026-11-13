@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { FundChange, FundMember, FundMembersPayload, MemberFundsPayload, StockFund, StockFundsPayload } from "../../../api-client/members";
 import type { DataTableColumn } from "../../../components";
 import { buildSectionedRows, type SectionedRow } from "../../../components/data-table/sections";
@@ -138,12 +139,12 @@ export function membersTitle(input: string, stock = false) {
 export const DEFAULT_SORT: SortPreference<string> = { columnId: "weight", direction: "desc" };
 /** A signed figure; one that rounds to zero is unsigned (0.00, never +0.00 or -0.00). */
 export function percent(value: number | null, suffix = "%", digits = 2) {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const fixed = value.toFixed(digits);
   if (!/[1-9]/.test(fixed)) return `${fixed.replace("-", "")}${suffix}`;
   return `${value > 0 ? "+" : ""}${fixed}${suffix}`;
 }
-export const decimal = (value: number | null, digits = 2) => value == null || !Number.isFinite(value) ? "--" : value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+export const decimal = (value: number | null, digits = 2) => value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 export function sortMembers(rows: readonly FundMember[], sort: SortPreference<string>) {
   return [...rows].sort((a, b) => compareSortValues(a[sort.columnId as keyof FundMember] as number | string | null,
     b[sort.columnId as keyof FundMember] as number | string | null, sort.direction) || a.id.localeCompare(b.id));

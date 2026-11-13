@@ -3,6 +3,7 @@
  * caps, the view a request covers, and plain-value formatting shared by the
  * pane, the terminal map and the headless report.
  */
+import { formatShortDate } from "../../../utils/datetime-format";
 import {
   GEO_MAX_LIVE_LAYERS,
   type GeoBbox,
@@ -148,7 +149,7 @@ export const MAP_PRESET_OPTIONS = [
 function shortDate(iso: string): string | null {
   const time = Date.parse(iso);
   if (!Number.isFinite(time)) return null;
-  return new Date(time).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  return formatShortDate(time, { year: false, utc: true });
 }
 
 /**
@@ -177,7 +178,7 @@ export function layerCoverageNote(layer: Pick<GeoLayerInfo, "id" | "name" | "asO
 function asOfDate(iso: string): string | null {
   const time = Date.parse(iso);
   if (!Number.isFinite(time)) return null;
-  return new Date(time).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return formatShortDate(time, { utc: true });
 }
 
 /** Status and cadence in plain words, for the layer picker. */

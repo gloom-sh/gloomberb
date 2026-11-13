@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { aggregateId, awardHistorySeries, money, rankedAggregates } from "./model";
 import { awardHistory, awardsPayload } from "./test-fixture";
@@ -21,6 +22,6 @@ test("aggregate identity and rankings separate currencies and overlapping notice
   expect(aggregateId(row)).not.toBe(aggregateId(overlap));
   expect(aggregateId(row)).not.toBe(aggregateId({ ...row, currency: "GBP" }));
   expect(rankedAggregates([row, { ...row, currency: "GBP" }, overlap, { ...row, awardType: "subaward" }], "USD", "prime")).toHaveLength(2);
-  expect(money(null)).toBe("--");
+  expect(money(null)).toBe(MISSING_VALUE);
   expect(money("-85000000.05")).toBe("-85.00M");
 });

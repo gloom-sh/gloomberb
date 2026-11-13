@@ -6,9 +6,9 @@
 
 ## Open interest timing
 
-Open interest is counted after each session's close, but the counts reach OPX about two sessions late: on a Friday they are Wednesday's. The footer names the session (`OI as of Sep 30`). A contract with no reported count is left out rather than read as zero.
+Open interest is counted after each session's close, but the counts reach OPX about two sessions late: on a Friday they are Wednesday's. The footer names the session (`OI as of 30 Sep`). A contract with no reported count is left out rather than read as zero.
 
-Change columns compare with the previous session OPX stored. One snapshot is stored per session from 2026-10-01 for these underlyings: SPY, SPX (with SPXW), QQQ, IWM, XSP, VIX, and the 50 others that traded the most options contracts over the five sessions to 2026-09-30 (OCC volume, all exchanges): NVDA, TSLA, TLT, AAPL, META, HYG, INTC, MSFT, AMZN, MU, SPCX, AMD, EWZ, GOOGL, IBIT, ORCL, MSTR, SLV, GLD, SOFI, GME, AVGO, SOXL, PLTR, TQQQ, XLU, XLF, CRWV, NFLX, USO, HOOD, SMCI, IREN, LQD, SMH, DRAM, GOOG, BE, ETHA, MARA, NBIS, IEF, NU, SNDK, XLE, PCG, GDX, NKE, KRE, AMC. Other underlyings show their counts without the change columns. The footer names the session changes are measured from (`chg since Sep 29`); it is the one before unless a session was missed. A strike or expiry listed since counts from zero.
+Change columns compare with the previous session OPX stored. One snapshot is stored per session from 2026-10-01 for these underlyings: SPY, SPX (with SPXW), QQQ, IWM, XSP, VIX, and the 50 others that traded the most options contracts over the five sessions to 2026-09-30 (OCC volume, all exchanges): NVDA, TSLA, TLT, AAPL, META, HYG, INTC, MSFT, AMZN, MU, SPCX, AMD, EWZ, GOOGL, IBIT, ORCL, MSTR, SLV, GLD, SOFI, GME, AVGO, SOXL, PLTR, TQQQ, XLU, XLF, CRWV, NFLX, USO, HOOD, SMCI, IREN, LQD, SMH, DRAM, GOOG, BE, ETHA, MARA, NBIS, IEF, NU, SNDK, XLE, PCG, GDX, NKE, KRE, AMC. Other underlyings show their counts without the change columns. The footer names the session changes are measured from (`chg since 29 Sep`); it is the one before unless a session was missed. A strike or expiry listed since counts from zero.
 
 On a date where two roots expire together (SPX and SPXW on a third Friday) their counts are added. SPX settles on the opening print of that day and SPXW on the close.
 
@@ -42,7 +42,7 @@ Against vendors that read the chain's own greeks, gamma without carry runs a few
 `OPX BTC-USD` and `OPX ETH-USD` (and `GEX`, `OVDV`, `options`, OMON) read Deribit's BTC and ETH options from Gloom Cloud. In the CLI only, a bare `BTC` or `ETH` given to `gloomberb fn` or `gloomberb shot` for OPX, GEX or OVDV is read as the coin, with a note; `--exchange` keeps it as typed, and the US funds that trade under those tickers are `BTC:ARCA` and `ETH:ARCA`. The command bar and panes do not alias: `BTC OPX` opens the Grayscale fund, so type `BTC-USD OPX` for the coin. Another coin (SOL-USD) has no listed options: the answer names BTC-USD, ETH-USD and the bitcoin-linked US listings (IBIT) instead.
 
 - Open interest is Deribit's own, read live (once a minute, or 15 minutes behind for delayed access) and counted in coins: one contract is 1 BTC or 1 ETH, to a tenth. The footer says `OI live 22:48 UTC` in place of a session, and there are no change columns.
-- Every expiry settles at 08:00 UTC on the date it names, against Deribit's index averaged over the 30 minutes before, and the expiry labels say so (`Oct 30 '26 08:00 UTC`). Days and time to expiry run to that instant.
+- Every expiry settles at 08:00 UTC on the date it names, against Deribit's index averaged over the 30 minutes before, and the expiry labels say so (`30 Oct '26 08:00 UTC`). Days and time to expiry run to that instant.
 - Max pain and Payout $ are as above with a contract size of one coin: Payout $ is in dollars at each strike.
 - Gamma uses Deribit's mark IVs and the index as spot, Black-76 at the forward to the 08:00 UTC settlement, times one coin.
 - Walls per expiry: the Expiries tab and `fn OPX --csv` give each expiry's call and put wall (its strikes with the most call and put gamma), for US underlyings as well.

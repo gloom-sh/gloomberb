@@ -11,7 +11,7 @@ import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { Box, Text } from "../../../ui";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
@@ -61,8 +61,8 @@ const curveRowKey = (row: VolatilityCurveRow) => row.id;
 const curveRowPosition = (row: VolatilityCurveRow) => new Date(row.days * 86_400_000);
 const formatIv = (value: number) => value.toFixed(2);
 const number = (value: number | null | undefined, signed = false) => value == null || !Number.isFinite(value)
-  ? "--" : `${signed && value > 0 ? "+" : ""}${value.toFixed(2)}`;
-const percentile = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : value.toFixed(0);
+  ? MISSING_VALUE : `${signed && value > 0 ? "+" : ""}${value.toFixed(2)}`;
+const percentile = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toFixed(0);
 
 export function VolatilityPane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
@@ -200,7 +200,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   // curve with fewer than two closes has neither, so the tenors take the band.
   const curveBandStrip = curveStrip(curveSeries, formatIv, { caption: "IV %", selectedPointId: curveSelectedId });
   const curveStats: StatItem[] = curve ? [
-    { id: "structure", label: "Structure", value: termStateLabel(curve.termState) ?? "--",
+    { id: "structure", label: "Structure", value: termStateLabel(curve.termState) ?? MISSING_VALUE,
       tone: curve.termState === "backwardation" ? "warning" : curve.termState === "contango" ? "positive" : "neutral" },
     { id: "ratio", label: "3M/30D", value: number(curve.ratio),
       detail: curve.ratio == null ? undefined : formatPercentileRank(curve.ratioPercentile1y, "1Y") },
@@ -246,13 +246,13 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
             : column.id === "percentile1y" ? percentile(row.percentile1y)
             : ["value", "change1d", "change1dPercent"].includes(column.id)
               ? number(row[column.id as "value" | "change1d" | "change1dPercent"], column.id.startsWith("change"))
-              : String(row.date ?? "--"),
+              : String(row.date ?? MISSING_VALUE),
             // Changes take the sign; vol high for its year is the warning a rise used to carry.
             color: column.id.startsWith("change") && row.change1d != null ? signColor(row.change1d)
               : column.id === "percentile1y" && row.percentile1y != null && Math.round(row.percentile1y) >= 80 ? colors.warning
               : row.value == null ? colors.textMuted : colors.text })} />
         {selected && <>
-          <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${selected.date ?? "--"}`}</Text></Box>
+          <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${selected.date ?? MISSING_VALUE}`}</Text></Box>
           <VolatilityIndexHistoryChart row={selected} width={width} height={Math.max(3, contentHeight - boardHeight - 1)} focused={focused} />
         </>}
       </>}
