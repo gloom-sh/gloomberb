@@ -9,6 +9,7 @@ import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-fact
 import { analyzeTaxEquivalent } from "../../market-data/tax-equivalent";
 import { createTestTicker } from "../../test-support/ticker";
 import { ipoDeal } from "../../plugins/builtin/ipo-calendar/test-fixture";
+import { renderReportCsv } from "../report-tables";
 
 const config = createDefaultConfig("/tmp/gloom-ticker-units-unused");
 const quote = { symbol: "UNITTEST", price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11"),
@@ -740,4 +741,47 @@ test("a range of a line served in cents prints at the decimals its prices have, 
     low: 760.7, high: 782.75, low52w: 650.56, high52w: 1289.52, exchangeName: "JSE", listingExchangeName: "JSE" };
   const text = await report({ quote: rand, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
   expect(text).toMatch(/52W Range +ZAR ?650\.56 - ZAR ?1,289\.52\n/);
+});
+
+test("an insurer's EV reads n/m for insurers in ticker and its valuation; a capital markets firm's EV is its own", async () => {
+  const valuation = (financials: TickerFinancials) => renderFundamentalsReport({ ...financials, symbol: "UNITTEST" }, "valuation")
+    .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  const served = (industry: string): TickerFinancials => ({ quote, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    profile: { industry }, fundamentals: { marketCap: 100e9, marketCapCurrency: "USD", enterpriseValue: 120e9, enterpriseToRevenue: 2.4, revenue: 50e9, financialCurrency: "USD" } });
+  for (const text of [await report(served("Insurance - Life")), valuation(served("Insurance - Life"))]) {
+    expect(text).toMatch(/^Enterprise Value n\/m for insurers$/m);
+    expect(text).not.toContain("EV N/M:");
+  }
+  // Evercore, Houlihan Lokey, Tradeweb: "Capital Markets", with an EV that measures the business.
+  for (const text of [await report(served("Capital Markets")), valuation(served("Capital Markets"))]) {
+    expect(text).toMatch(/^Enterprise Value 120B USD$/m);
+  }
+});
+
+test("a margin over revenue at or below zero, and growth off it, read N/M in ticker, with no figure in the export", async () => {
+  // A biotech's trailing revenue gone negative on a reversed collaboration payment: the source's margins are numbers
+  // that say nothing (a loss over negative revenue reads as a profit margin), and growth off last year's negative
+  // quarter is no percentage of it.
+  const financials: TickerFinancials = { quote, annualStatements: [], priceHistory: [],
+    quarterlyStatements: [{ date: "2025-06-30", totalRevenue: -4e6 }, { date: "2026-06-30", totalRevenue: 12e6 }],
+    fundamentals: { marketCap: 1e9, marketCapCurrency: "USD", revenue: -2e6, financialCurrency: "USD",
+      operatingMargin: 41.5, profitMargin: 38.2, revenueGrowth: 4, lastQuarterGrowth: 4 } };
+  const text = await report(financials);
+  expect(text).toMatch(/^Operating Margin N\/M$/m);
+  expect(text).toMatch(/^Profit Margin N\/M$/m);
+  expect(text).toMatch(/^Revenue Growth N\/M$/m);
+  expect(text).toMatch(/^Last Quarter Growth N\/M$/m);
+  // CSV's value column holds only numbers: N/M is the formatted text, the value empty.
+  const csv = renderReportCsv(fundamentalsReportTables({ ...financials, symbol: "UNITTEST" }, "fundamentals",
+    { source: "Gloom Cloud", asOf: null, status: "unreported" }));
+  const line = (label: string) => csv.split("\n").find((row) => row.startsWith(`${label},`)) ?? "";
+  for (const label of ["Operating Margin", "Profit Margin", "Revenue Growth"]) {
+    expect(line(label)).toBe(`${label},N/M`);
+    expect(line(label)).not.toMatch(/4150|3820|400/);
+  }
+  // A company with revenue above zero keeps its figures.
+  const healthy = await report({ ...financials, quarterlyStatements: [{ date: "2025-06-30", totalRevenue: 8e6 }, { date: "2026-06-30", totalRevenue: 12e6 }],
+    fundamentals: { ...financials.fundamentals!, revenue: 40e6, operatingMargin: 0.12, profitMargin: 0.08, revenueGrowth: 0.5, lastQuarterGrowth: 0.5 } });
+  expect(healthy).toMatch(/^Operating Margin 12\.00%$/m);
+  expect(healthy).toMatch(/^Revenue Growth \+50\.00%$/m);
 });

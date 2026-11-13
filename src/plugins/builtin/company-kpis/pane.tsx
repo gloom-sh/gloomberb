@@ -218,12 +218,12 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
       if (!points) return { text: "" };
       const change = observationChange(row as KpiObservation, observations).value;
       const tone = changeTone(row as KpiObservation, change);
-      return { text: "", content: <PriceSparkline priceHistory={points} width={column.width} period="all" trend={tone === "muted" ? "neutral" : tone} /> };
+      return { text: "", content: <PriceSparkline priceHistory={points} width={column.width} period="all" trend={tone === "positive" || tone === "negative" ? tone : "neutral"} /> };
     }
     if (column.id === "change") {
       if (guide) return { text: directionLabel(guide), color: toneColor(directionTone(guide), colors), keepColorWhenSelected: guide.direction === "raised" || guide.direction === "cut" };
       const change = observationChange(row as KpiObservation, observations);
-      return { text: changeText(change), value: change.value, color: toneColor(changeTone(row as KpiObservation, change.value), colors) };
+      return { text: changeText(change), value: change.value, color: toneColor(changeTone(row as KpiObservation, change.value, change.notMeaningful), colors) };
     }
     if (desktop && column.id === "metric") {
       // The series in plain words: the metric bright, what tells it apart dim. The detail starts from no width and takes

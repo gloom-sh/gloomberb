@@ -9,7 +9,7 @@ import { barCloseSession } from "../../market-data/market/bar-period";
 import type { EarningsEvent, MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
-import { newsSummaryLine } from "../../news/news-model";
+import { listedRowHeadline, newsSummaryLine, routineNoticeFields } from "../../news/news-model";
 import { shortStoryId } from "../../news/story-id";
 import type {
   AnalystResearchData,
@@ -234,7 +234,7 @@ import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../tim
 import { requestedBarSize } from "../../time-series/bar-spacing";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
-import { withBankEnterpriseValue } from "../../utils/fundamentals";
+import { withFinancialEnterpriseValue } from "../../utils/fundamentals";
 import { fundamentalsFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
 import { fxPairListing, fxQuoteRateMove, fxQuoteRateObservation, METAL_NAMES, readFxQuoteRate } from "../fx-quote-rate";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
@@ -1022,6 +1022,8 @@ function newsRows(articles: NewsArticle[]) {
     url: article.url,
     importance: article.importance,
     breaking: article.isBreaking,
+    // A row standing for a company's routine notices (a buy-back's daily ones): how many, since when.
+    ...routineNoticeFields(article),
   }));
 }
 
@@ -2974,7 +2976,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
           } : {},
           // A bank's EV and EV/revenue are null with why: n/m for banks.
           fundamentals: priced.fundamentals && exportedDividendFundamentals(
-            exportedFundamentals(withBankEnterpriseValue(priced.fundamentals, priced.profile))!, report.distributions),
+            exportedFundamentals(withFinancialEnterpriseValue(priced.fundamentals, priced.profile))!, report.distributions),
           // A bond fund's sponsor figures; fundamentals.dividendYield is then its distribution yield, not its SEC yield.
           ...bond ? { bondFund: bond } : {},
           ...view === "fundamentals" ? { statementFilings, bank: bank.bank, ...bank.note ? { bankNote: bank.note } : {} } : {},
@@ -3044,11 +3046,19 @@ const NEWS_COLUMNS = [
     format: (value: unknown) => typeof value === "string" ? formatUtcTime(value) : "",
   },
   { key: "source", header: "Source" },
-  { key: "title", header: "Title" },
+  // "Transaction in own shares (8 notices since Oct 30)" for a folded row; exports keep the title and the count apart.
+  { key: "title", header: "Title", format: listedRowHeadline },
   { key: "tickers", header: "Tickers" },
   // The short id `fn news-story-pane` opens the story by; exports keep the whole id.
   { key: "id", header: "ID", format: (value: unknown) => typeof value === "string" ? shortStoryId(value) : "" },
   { key: "url", header: "URL", optional: true },
+];
+
+/** CSV's columns: the text table's, and how many routine notices a folded row stands for and since when. */
+const NEWS_EXPORT_COLUMNS = [
+  ...NEWS_COLUMNS,
+  { key: "routineNotices", header: "Routine notices" },
+  { key: "routineSince", header: "Routine since" },
 ];
 
 /**
@@ -3096,7 +3106,8 @@ async function printNewsSearch(
   }, {
     heading: newsSearchHeading(text, [reason, closestReason].filter(Boolean).join("  ·  ") || undefined),
     rows: newsRows,
-    columns: NEWS_COLUMNS,
+    columns: NEWS_EXPORT_COLUMNS,
+    textColumns: NEWS_COLUMNS,
     rowNote: newsRowNote,
     empty: named ? noStoriesMessage(text, route) : empty ?? (searched ? noStoriesMessage(text, null) : "No stories to show."),
     ...(listing ? { footnote: listing.note } : {}),
@@ -3141,7 +3152,8 @@ async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Paramet
   }, {
     heading: metalNewsHeading(route),
     rows: newsRows,
-    columns: NEWS_COLUMNS,
+    columns: NEWS_EXPORT_COLUMNS,
+    textColumns: NEWS_COLUMNS,
     rowNote: newsRowNote,
     empty: failure === undefined ? noMetalStoriesMessage(route) : "No stories to show.",
     ...(ticker ? { footnote: `${word} ${cliArrow("→")} ${route.metal}'s market news. For ${ticker.name ?? ticker.symbol} (ticker ${ticker.symbol}), try: ${companyNews}` } : {}),
@@ -3289,7 +3301,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     }, {
       ...(identity ? { heading: listingHeading(identity) } : {}),
       rows: newsRows,
-      columns: NEWS_COLUMNS,
+      columns: NEWS_EXPORT_COLUMNS,
+    textColumns: NEWS_COLUMNS,
       rowNote: newsRowNote,
       ...(empty ? { empty } : {}),
       ...(wordHint ? { footnote: wordHint } : {}),

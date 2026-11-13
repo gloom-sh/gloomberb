@@ -90,6 +90,31 @@ test("a margin the source did not serve for the trailing year falls back to the 
   expect(gap).toMatchObject({ operatingMargin: null, operatingMarginPeriod: null, gaps: { operatingMargin: "not reported" } });
 });
 
+test("a margin over revenue at or below zero, and growth off it, read N/M and say why", () => {
+  // An insurer whose fair value losses turned a year's revenue negative.
+  const negative: TickerFinancials = {
+    ...snapshot,
+    annualStatements: [{ date: "2025-12-31", totalRevenue: -2e9, operatingIncome: -3e9 }],
+    quarterlyStatements: [
+      { date: "2025-09-30", totalRevenue: -0.5e9 },
+      { date: "2026-09-30", totalRevenue: 1.2e9 },
+    ],
+    fundamentals: { ...snapshot.fundamentals, revenueGrowth: 3.4 },
+  };
+  const values = relativeValuationValues(negative);
+  expect(values).toMatchObject({ operatingMargin: null, revenueGrowth: null, gaps: {} });
+  expect(values.notMeaningful).toMatchObject({
+    operatingMargin: "FY25 revenue is at or below zero",
+    revenueGrowth: "revenue to 2025-09-30 is at or below zero",
+  });
+  // A trailing margin served over trailing revenue at or below zero is N/M too.
+  const trailing = relativeValuationValues({ ...negative, fundamentals: { ...negative.fundamentals, revenue: -1e9, operatingMargin: 1.5 } });
+  expect(trailing).toMatchObject({ operatingMargin: null, notMeaningful: { operatingMargin: "trailing revenue is at or below zero" } });
+  // Off a positive base the served growth stands.
+  const positive = relativeValuationValues({ ...negative, quarterlyStatements: [{ date: "2025-09-30", totalRevenue: 1e9 }, { date: "2026-09-30", totalRevenue: 1.2e9 }] });
+  expect(positive.revenueGrowth).toBe(3.4);
+});
+
 // fn RV of Tokyo's trading houses on 9 Nov 2026 read EV/S "revenue ccy unstated" and "no TTM FCF" for
 // Mitsubishi Corporation, whose statements are in yen with four quarters of free cash flow, and P/E 24.6 on its
 // year to March 2026 as if trailing.

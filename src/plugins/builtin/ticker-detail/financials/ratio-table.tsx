@@ -8,6 +8,7 @@ import {
 } from "../../../../components";
 import { useAssetData } from "../../../runtime";
 import { colors, priceColor } from "../../../../theme/colors";
+import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
 import type { PricePoint } from "../../../../types/financials";
 import { displayWidth, padTo } from "../../../../utils/format";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
@@ -78,8 +79,9 @@ export function PeriodEndHistoryLoader({ oldestPeriodEnd, onChange }: {
   return null;
 }
 
+/** A figure in its colour; N/M as every pane draws it; any other gap muted. */
 function amountColor(amount: RatioAmount, color: string): string {
-  return typeof amount === "number" ? color : colors.textMuted;
+  return typeof amount === "number" ? color : amount === "not-meaningful" ? notMeaningfulColor() : colors.textMuted;
 }
 
 export function RatioTable({

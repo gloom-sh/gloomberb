@@ -389,6 +389,40 @@ describe("periods read from a results announcement", () => {
       .toEqual({ label: "published", date: "2025-09-20" });
   });
 
+  test("a quarter read from the next quarter's earnings release is that release's comparative, not announced with it", () => {
+    // HSBC: each quarter's earnings release also states the quarter before.
+    const release = (title: string, publishedAt: string) => ({ ...announcement, kind: "quarterly_results" as const, title, publishedAt });
+    const quarter = (date: string, documents: ReturnType<typeof release>[]): FinancialStatement => ({
+      date, currency: "USD", eps: 0.27,
+      filledFrom: { source: "results", fields: ["eps"], documents, lines: { eps: { document: 0, page: 4 } } },
+    });
+    const q2 = quarter("2025-06-30", [release("Earnings Release 3Q25", "2025-10-28T04:00:00.000Z")]);
+    const q3 = quarter("2025-09-30", [release("Earnings Release 3Q25", "2025-10-28T04:00:00.000Z")]);
+    const q4 = quarter("2025-12-31", [release("Earnings Release 1Q26", "2026-05-05T04:00:00.000Z")]);
+    // The source's own 1Q26, not filled.
+    const q1: FinancialStatement = { date: "2026-03-31", currency: "USD", eps: 0.4 };
+    const rows = [q1, q4, q3, q2];
+    expect(fillDate(q3, rows)).toEqual({ label: "published", date: "2025-10-28" });
+    expect(fillDateText(fillDate(q2, rows)!)).toBe("comparative in the 2025-10-28 announcement");
+    expect(fillDateText(fillDate(q4, rows)!)).toBe("comparative in the 2026-05-05 announcement");
+    // The interim results give the second quarter before the third ends: its own.
+    const q2026 = quarter("2026-06-30", [{ ...release("2026 Interim results", "2026-08-04T04:00:00.000Z"), kind: "interim_results" as const }]);
+    expect(fillDate(q2026, [...rows, q2026, { date: "2026-09-30", currency: "USD" }])).toEqual({ label: "published", date: "2026-08-04" });
+    // A fourth quarter derived from the year and nine months is the year's, however late the year came out.
+    const derived: FinancialStatement = { ...quarter("2025-12-31", [{ ...release("2025 Annual results", "2026-04-15T04:00:00.000Z"), kind: "annual_results" as const }]) };
+    derived.filledFrom = { ...derived.filledFrom!, derived: "12 months to 2025-12-31 − 9 months to 2025-09-30" } as FinancialStatement["filledFrom"];
+    expect(fillDate(derived, [q1, derived, q3])).toEqual({ label: "published", date: "2026-04-15" });
+    expect(filledPeriodsNote(rows)).toBe("From the company's results announcements: 2025-12-31 diluted EPS (comparative in the 2026-05-05 announcement); "
+      + "2025-09-30 diluted EPS (published 2025-10-28); 2025-06-30 diluted EPS (comparative in the 2025-10-28 announcement).");
+    // Its revenue counts otherwise than the source's quarters around it: left blank, and the note says why.
+    const q3_2026 = quarter("2026-09-30", [release("Earnings Release 3Q26", "2026-10-27T04:00:00.000Z")]);
+    q3_2026.filledFrom = { ...q3_2026.filledFrom!, omitted: ["totalRevenue"] } as FinancialStatement["filledFrom"];
+    expect(filledPeriodsNote([q3_2026, q2026])).toBe("From the company's results announcements: 2026-09-30 diluted EPS (published 2026-10-27); "
+      + "2026-06-30 diluted EPS (published 2026-08-04). 2026-09-30 revenue left blank: the company's results announcements count it otherwise "
+      + "than the statements source.");
+    expect(filledPeriodsNote([q3_2026], new Set(["eps"]))).toBe("From the company's results announcements: 2026-09-30 diluted EPS (published 2026-10-27).");
+  });
+
   test("a merged row keeps the documents' lines it still holds", () => {
     const [merged] = mergeFinancialStatementRows([{ date: "2026-06-30", currency: "CNY", totalRevenue: 17.2e9 }], [half]);
     expect(merged?.filledFrom).toMatchObject({ source: "results", fields: ["netIncome", "operatingCashFlow"], periodMonths: 6 });

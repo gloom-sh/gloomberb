@@ -43,6 +43,10 @@ export interface DividendMetrics {
   growth1YPayments?: GrowthPayments | null;
   /** The same for the two years the 3Y rate compares. */
   growth3YPayments?: GrowthPayments | null;
+  /** Set when the earlier year 1Y growth compares paid no cash and the trailing year did (a resumed dividend): growth off zero, N/M. */
+  growth1YNotMeaningful?: boolean;
+  /** The same for the 3Y rate. */
+  growth3YNotMeaningful?: boolean;
   paymentFrequency: DistributionCadence | null;
   lastExDividendDate: Date | null;
   /** Announced ex-date after now, from the summary or a future-dated history record. */

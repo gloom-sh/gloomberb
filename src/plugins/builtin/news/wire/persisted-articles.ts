@@ -9,9 +9,16 @@ interface PersistedNewsStoryItem extends Omit<NewsStoryItem, "publishedAt"> {
   publishedAt: string;
 }
 
-interface PersistedNewsArticle extends Omit<MarketNewsItem, "publishedAt" | "items"> {
+type NewsRoutineNotices = NonNullable<MarketNewsItem["routine"]>;
+
+interface PersistedNewsRoutineNotices extends Omit<NewsRoutineNotices, "since"> {
+  since: string;
+}
+
+interface PersistedNewsArticle extends Omit<MarketNewsItem, "publishedAt" | "items" | "routine"> {
   publishedAt: string;
   items?: PersistedNewsStoryItem[];
+  routine?: PersistedNewsRoutineNotices;
 }
 
 function articleDate(value: Date | string): Date | null {
@@ -28,15 +35,30 @@ function serializeStoryItem(item: NewsStoryItem): PersistedNewsStoryItem | null 
   };
 }
 
+/** A folded row's notices with their first day as text, as pane state keeps dates; none when that day is unreadable. */
+function serializeRoutine(routine: NewsRoutineNotices | undefined): PersistedNewsRoutineNotices | undefined {
+  const since = routine ? articleDate(routine.since) : null;
+  return routine && since ? { ...routine, since: since.toISOString() } : undefined;
+}
+
+/** A folded row's notices as restored: their first day a Date again, or none when it cannot be read. */
+function restoreRoutine(routine: PersistedNewsRoutineNotices | NewsRoutineNotices | undefined): NewsRoutineNotices | undefined {
+  const since = routine ? articleDate(routine.since) : null;
+  return routine && since ? { ...routine, since } : undefined;
+}
+
 function serializeArticle(article: MarketNewsItem): PersistedNewsArticle | null {
   const publishedAt = articleDate(article.publishedAt);
   if (!publishedAt) return null;
+  const { routine: _routine, ...rest } = article;
+  const routine = serializeRoutine(article.routine);
   return {
-    ...article,
+    ...rest,
     publishedAt: publishedAt.toISOString(),
     items: article.items
       ?.map(serializeStoryItem)
       .filter((item): item is PersistedNewsStoryItem => !!item),
+    ...(routine ? { routine } : {}),
   };
 }
 
@@ -52,12 +74,15 @@ function restoreStoryItem(item: PersistedNewsStoryItem): NewsStoryItem | null {
 function restoreArticle(article: PersistedNewsArticle): MarketNewsItem | null {
   const publishedAt = articleDate(article.publishedAt);
   if (!publishedAt) return null;
+  const { routine: _routine, ...rest } = article;
+  const routine = restoreRoutine(article.routine);
   return {
-    ...article,
+    ...rest,
     publishedAt,
     items: article.items
       ?.map(restoreStoryItem)
       .filter((item): item is NewsStoryItem => !!item),
+    ...(routine ? { routine } : {}),
   };
 }
 

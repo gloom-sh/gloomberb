@@ -344,6 +344,14 @@ test("the TTM dividend steps up at each raise and follows the selected payment",
   expect(await frame()).toContain("● TTM dividend $1.17");
 });
 
+test("cash paid again after a year of none reads N/M for its growth, never a percentage", async () => {
+  const data = await quarterlyIncome();
+  const resumed = { ...data, metrics: { ...data.metrics, growth1Y: null, growth1YNotMeaningful: true } };
+  const shown = await renderLoaded(resumed, 120, 26);
+  expect(shown).toMatch(/1Y growth\s+N\/M/);
+  expect(shown).not.toMatch(/1Y growth\s+n\/a/);
+});
+
 test("mixed-currency payments keep the currency column", async () => {
   const data = await quarterlyIncome((index) => index < 2 ? "USD" : "CAD");
   expect(await renderLoaded(data, 88, 26)).toContain("CCY");

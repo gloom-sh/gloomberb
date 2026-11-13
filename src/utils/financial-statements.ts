@@ -214,15 +214,16 @@ const yearAfter = (day: string) => `${Number(day.slice(0, 4)) + 1}${day.slice(4,
  * When a filled row's figures were published or read: ASX's read, or for a
  * row from the company's results announcements:
  * - its own results: the first of its documents published after its period
- *   ended and before the same period a year on did (a trailing twelve months
- *   to a half also lists the year's documents, which came out before the half
- *   did: it is dated by the half's results);
- * - a comparative: every document came out after the same period a year on
- *   ended, so the lines are that later period's comparative column (H1 FY25
- *   in the 2026 interim report). It is dated by the later period's first
- *   announcement: the row a year on in `rows` where there is one, else the
- *   first results announcement among its documents, never a report published
- *   after them (null when there is neither).
+ *   ended and before the next period did: the next row of `rows`, else the
+ *   same period a year on (a trailing twelve months to a half also lists the
+ *   year's documents, which came out before the half did: it is dated by the
+ *   half's results);
+ * - a comparative: every document came out after that next period ended, so
+ *   the lines are its comparative column (H1 FY25 in the 2026 interim report,
+ *   HSBC's 2Q25 in its 3Q25 earnings release). It is dated by the later
+ *   period's first announcement: that row in `rows` where there is one, else
+ *   the first results announcement among its documents, never a report
+ *   published after them (null when there is neither).
  */
 export function fillDate(row: FilledRow, rows: readonly FilledRow[] = []): FillDate | null {
   const fill = row.filledFrom;
@@ -231,17 +232,24 @@ export function fillDate(row: FilledRow, rows: readonly FilledRow[] = []): FillD
   if (fill.fields.length === 0) return null;
   const periodEnd = (row.aggregation?.periodEnd ?? row.date).slice(0, 10);
   const dates = fill.documents.map((document) => document.publishedAt.slice(0, 10)).sort();
-  const later = yearAfter(periodEnd);
+  // A quarter's announcement also gives the quarter before: the next period is the list's next row where it
+  // has one before the same period a year on. A quarter derived from two years to date ends with the later
+  // one, which its own announcement gives, however late it came out.
+  const yearOn = yearAfter(periodEnd);
+  const next = rows.map((candidate) => candidate.date.slice(0, 10))
+    .filter((end) => /^\d{4}-\d{2}-\d{2}$/.test(end) && end > periodEnd && !areNearbyFinancialPeriodEnds(end, periodEnd))
+    .sort()[0];
+  const later = next && next < yearOn && !(fill.source === "results" && fill.derived) ? next : yearOn;
   const own = dates.find((date) => date >= periodEnd && date <= later);
   if (own || row.aggregation || dates.length === 0 || !dates.every((date) => date > later)) {
     return { label: "published", date: own ?? dates.find((date) => date >= periodEnd) ?? dates[0] ?? null };
   }
   const months = statementPeriodMonths(row);
-  const next = rows.find((candidate) => candidate !== row && !candidate.aggregation
+  const laterRow = rows.find((candidate) => candidate !== row && !candidate.aggregation
     && candidate.filledFrom?.source === "results"
     && areNearbyFinancialPeriodEnds(candidate.date.slice(0, 10), later)
     && statementPeriodMonths(candidate) === months);
-  const nextDate = next ? fillDate(next) : null;
+  const nextDate = laterRow ? fillDate(laterRow, rows) : null;
   const announcement = fill.documents.filter((document) => document.kind.endsWith("_results"))
     .map((document) => document.publishedAt.slice(0, 10)).sort()[0];
   return {
@@ -293,8 +301,9 @@ export function filledPeriodPublications(
  * does not have them yet, newest first, with the lines taken. A period read
  * from the company's results announcement is dated by its publication ("6
  * months to 2026-06-30 revenue, net income (published 2026-08-20)"), each
- * day said once for the periods it dates. `shown` keeps the lines the table
- * has a row for. Null when no shown line was filled.
+ * day said once for the periods it dates. A line left blank because the
+ * announcements count it otherwise (`omitted`) says so. `shown` keeps the
+ * lines the table has a row for. Null when no shown line was filled.
  */
 export function filledPeriodsNote(
   statements: readonly FilledRow[],
@@ -318,7 +327,22 @@ export function filledPeriodsNote(
     const read = filled.map(({ stamp }) => stamp.date).sort().at(-1);
     note = `From ${sources.join(" and ")} (read ${read}): ${filled.map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ")}.`;
   }
-  return trailing ? `${note} ${trailing}` : note;
+  return [note, omittedLinesNote(statements, shown), trailing].filter(Boolean).join(" ");
+}
+
+/** "2026-09-30, 2026-06-30 revenue left blank: the company's results announcements count it otherwise than the statements source." */
+function omittedLinesNote(statements: readonly FilledRow[], shown?: ReadonlySet<string>): string | null {
+  const ends = new Map<string, string[]>();
+  for (const { date, filledFrom } of statements) {
+    if (filledFrom?.source !== "results" || date === "TTM") continue;
+    for (const field of filledFrom.omitted ?? []) {
+      if (!FILL_FIELDS[field] || (shown && !shown.has(field))) continue;
+      ends.set(FILL_FIELDS[field], [...ends.get(FILL_FIELDS[field]) ?? [], date.slice(0, 10)]);
+    }
+  }
+  if (ends.size === 0) return null;
+  const lines = [...ends].map(([line, dates]) => `${[...new Set(dates)].sort().reverse().join(", ")} ${line}`).join("; ");
+  return `${lines} left blank: the company's results announcements count ${ends.size > 1 ? "them" : "it"} otherwise than the statements source.`;
 }
 
 /**

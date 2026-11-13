@@ -1,4 +1,5 @@
 import { logFailure } from "../../../utils/log-failure";
+import { isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import type { EarningsCalendarPayload, EarningsHistoryPayload } from "../../../api-client/earnings";
 import type {
   HeadlessPaneColumn,
@@ -27,6 +28,26 @@ import type { HeadlessPaneOptionDef } from "../../../types/headless";
 
 const right = "right" as const;
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+/**
+ * A surprise as exported: a number, or null with the row's `<key>NotMeaningful` set against a loss or zero
+ * estimate (the text report draws N/M, as RV and DVD do), never text in the number's column.
+ */
+function surpriseFields<Key extends "epsSurprise" | "revenueSurprise">(key: Key, value: unknown) {
+  return isNotMeaningful(value)
+    ? { [key]: null, [`${key}NotMeaningful`]: true } as Record<Key, null> & Record<`${Key}NotMeaningful`, true>
+    : { [key]: num(value) } as Record<Key, number | null>;
+}
+
+/**
+ * A surprise column. Where JSON has null and `<key>NotMeaningful`, the text report draws N/M and CSV leaves the
+ * cell empty, its status column saying `n/m`, as DVD's growth does: the column holds only numbers.
+ */
+function surpriseColumn(key: "epsSurprise" | "revenueSurprise", header: string): HeadlessPaneColumn {
+  const flag = `${key}NotMeaningful`;
+  const draw = (text: string) => (value: unknown, row: Record<string, unknown>) =>
+    typeof value !== "number" && row[flag] === true ? text : signedPercent(num(value));
+  return { key, header, align: right, format: draw(NOT_MEANINGFUL_TEXT.toLowerCase()), textFormat: draw(NOT_MEANINGFUL_TEXT) };
+}
 
 /** The text report says a provisional figure's basis is provisional; exports keep the basis alone and `epsActualProvisional`. */
 const BASIS_COLUMN: HeadlessPaneColumn = {
@@ -49,7 +70,7 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
   BASIS_COLUMN,
-  { key: "epsSurprise", header: "EPS surp", align: right, format: (value) => signedPercent(num(value)) },
+  surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
   { key: "impliedMove", header: "Implied", align: right, format: (value) => impliedText(num(value)) },
   { key: "averageMove", header: "Avg move", align: right, format: (value) => moveSize(num(value)) },
@@ -77,16 +98,16 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
   BASIS_COLUMN,
-  { key: "epsSurprise", header: "EPS surp", align: right, format: (value) => signedPercent(num(value)) },
+  surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
   { key: "revenueActual", header: "Sales act", align: right, format: (value) => moneyText(num(value)) },
-  { key: "revenueSurprise", header: "Sales surp", align: right, format: (value) => signedPercent(num(value)) },
+  surpriseColumn("revenueSurprise", "Sales surp"),
   { key: "impliedMove", header: "Implied", align: right, format: (value) => impliedText(num(value)) },
   { key: "impliedFrom", header: "Implied from" },
   { key: "move", header: "Move", align: right, format: (value) => signedPercent(num(value)) },
 ];
 
-/** A Hong Kong listing's report: what its figures cover, their currency and its results announcement; no options or moves are read for it. */
+/** A Hong Kong, Singapore or China A listing's report: what its figures cover, their currency and its results announcement; no options or moves are read for it. */
 const LISTING_HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
   { key: "dateStatus", header: "Status" },
@@ -97,8 +118,8 @@ const LISTING_HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "filing", header: "Filing" },
 ];
 
-/** What a Hong Kong listing's ERN report's period, currency and filing are, in its metadata. */
-const LISTING_PERIOD_NOTE = "period is what the figures cover: a quarter (Q3 FY2026, or its end month), a half (H1 FY2026), a year (FY2025) or a year to date (9M FY2026), a fiscal year named by the calendar year it ends in. A half-yearly reporter's half is never a quarter. currency is the ISO currency of every amount on the row, estimates included. EPS estimates and actuals are the street's quarter figures, compared only in one currency and on one basis; a period the street has no quarter for shows the company's reported EPS and revenue from its results announcement (filing) with no estimate, its EPS diluted (basis GAAP) where the filing gives one, else basic (basis basic). The announcements' figures and links come with Gloom Pro, as KPIS has them; the street's quarters are everyone's.";
+/** What a Hong Kong, Singapore or China A listing's ERN report's period, currency and filing are, in its metadata. */
+const LISTING_PERIOD_NOTE = "period is what the figures cover: a quarter (Q3 FY2026, or its end month), a half (H1 FY2026), a year (FY2025) or a year to date (9M FY2026), a fiscal year named by the calendar year it ends in. A half-yearly reporter's half is never a quarter. currency is the ISO currency of every amount on the row, estimates included. EPS estimates and actuals are the street's quarter figures, compared only in one currency and on one basis; a period the street has no quarter for shows the company's reported EPS and revenue from its results announcement (filing) with no estimate, its EPS diluted (basis GAAP) where the filing gives one, else basic (basis basic). The street's quarters and the exchange's results calendar (each report's day, time and period) are everyone's; the announcements' figures and links come with Gloom Pro, as KPIS has them. The next report's date is the company's where its exchange has it (status confirmed), else the day the same report came out a year before, 52 weeks on (status projected).";
 
 interface EarningsHeadlessDependencies {
   calendar(query: { from: string; to: string; perDay: number; symbols: string[]; markets?: "all" }, context: HeadlessPaneContext): Promise<EarningsCalendarPayload>;
@@ -212,7 +233,7 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     epsActual: report.epsActual,
     epsActualProvisional: report.provisional,
     epsBasis: showsEpsBasis(report) ? epsBasisName(report.epsBasis) : null,
-    epsSurprise: report.epsSurprise,
+    ...surpriseFields("epsSurprise", report.epsSurprise),
     revenueEstimate: report.revenueEstimate,
     impliedMove: report.impliedMove,
     averageMove: report.averageMove,
@@ -246,14 +267,14 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
  * them on (Sanofi's SNY for SAN:EPA).
  */
 async function abroadHistoryNotice(symbol: string, company: string | null, context: HeadlessPaneContext): Promise<string> {
-  const lead = `Past reports, surprises and implied moves cover US and Hong Kong listings only, so ${symbol} shows its next report.`;
+  const lead = `Past reports, surprises and implied moves cover US, Hong Kong, Singapore and China A listings only, so ${symbol} shows its next report.`;
   const us = await findUsListingOfCompany(context.marketData, company);
   return us ? `${lead} ${shortCompanyName(company!)}'s US listing is ${us.symbol}: ERN ${us.symbol} has them.` : lead;
 }
 
 async function historyReport(symbol: string, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies): Promise<HeadlessRowsResult> {
   // The board is US listings'; SAN:EPA's past reports are not on it, and bare SAN there is another company.
-  // A Hong Kong listing has its own, from its results announcements.
+  // A Hong Kong, Singapore or China A listing has its own, from its exchange's results calendar and announcements.
   const { listing, abroad, ownAbroad } = historyListing(symbol);
   const [history, upcoming] = await Promise.allSettled([
     abroad ? Promise.resolve(null) : ownAbroad ? deps.history(listing, context).catch(noHistoryAbroad) : deps.history(listing, context),
@@ -285,11 +306,11 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     epsActual: row.epsActual,
     epsActualProvisional: row.provisional,
     epsBasis: !showsEpsBasis(row) ? null : !row.epsBasis && row.epsDilution === "basic" ? "basic" : epsBasisName(row.epsBasis),
-    epsSurprise: row.epsSurprise,
+    ...surpriseFields("epsSurprise", row.epsSurprise),
     revenueEstimate: row.revenueEstimate,
     revenueActual: row.revenueActual,
     revenueActualProvisional: row.revenueProvisional,
-    revenueSurprise: row.revenueSurprise,
+    ...surpriseFields("revenueSurprise", row.revenueSurprise),
     impliedMove: row.implied,
     impliedFrom: row.impliedMethod === "trade-close" ? "trade closes" : row.impliedMethod === "quote-mid" ? "quote mids" : null,
     move: row.move,

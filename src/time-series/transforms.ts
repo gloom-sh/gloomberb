@@ -1,6 +1,7 @@
 import type { ResolvedSeries, SeriesTransform, TimeSeriesPoint } from "./types";
 import { calendarMonthsBefore } from "../utils/calendar-date";
 import { isFiniteNumber } from "../utils/guards";
+import { growthRate, rateValue } from "../utils/growth";
 import { isOhlcSeriesStyle } from "./spec";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -26,14 +27,16 @@ function primaryValue(point: TimeSeriesPoint): number | null {
       : null;
 }
 
+/** A value against a positive baseline: its change in percent, or the baseline as 100. */
 function relativeValue(value: number | null | undefined, baseline: number, index100: boolean): number | null {
-  if (!isFiniteNumber(value) || baseline === 0) return null;
-  return index100 ? (value / baseline) * 100 : ((value - baseline) / Math.abs(baseline)) * 100;
+  if (!isFiniteNumber(value) || !(baseline > 0)) return null;
+  return index100 ? (value / baseline) * 100 : ((value - baseline) / baseline) * 100;
 }
 
+/** YoY or QoQ growth in percent: none off a zero or negative base, where it is not meaningful. */
 function growthValue(value: number | null | undefined, previous: number | null | undefined): number | null {
-  if (!isFiniteNumber(value) || !isFiniteNumber(previous) || previous === 0) return null;
-  return ((value - previous) / Math.abs(previous)) * 100;
+  const growth = rateValue(growthRate(value, previous));
+  return growth === null ? null : growth * 100;
 }
 
 function referencePoint(
@@ -122,7 +125,9 @@ export function applySeriesTransform(
     const baseline = options.baseline !== undefined
       ? options.baseline
       : baselinePoint ? primaryValue(baselinePoint) : null;
-    if (baseline === null || baseline === 0) {
+    // Off a baseline at or below zero (a loss, a negative yield) a change in percent or an index is not
+    // meaningful, as growth off one is (utils/growth): the series is left as gaps.
+    if (baseline === null || !(baseline > 0)) {
       return points.map((point) => mapNumericFields(point, () => null));
     }
     return points.map((point) => mapNumericFields(

@@ -65,7 +65,10 @@ test("an uncontradicted reporting currency supports known zero and loss comparis
     { date: "2025-12-31", totalRevenue: 0, netIncome: 0, basicEps: 0, eps: 0 },
   ], quarterlyStatements: [] }, { expandAll: true })!;
   expect(table.rows.find(({ summaryKey }) => summaryKey === "totalRevenue")!.cells[0]).toMatchObject({ value: 0, growth: -1 });
-  expect(table.rows.find(({ summaryKey }) => summaryKey === "netIncome")!.cells[0]).toMatchObject({ value: 0, growth: 1 });
+  // Off a loss, the change is not meaningful: no number, and the cell says so.
+  const netIncome = table.rows.find(({ summaryKey }) => summaryKey === "netIncome")!.cells[0]!;
+  expect(netIncome).toMatchObject({ value: 0, growth: undefined });
+  expect(netIncome.growthText.trim()).toBe("N/M");
   expect(table.rows.find(({ key }) => key === "basicEps")!.cells[0]).toMatchObject({ value: 0, growth: -1 });
   expect(table.rows.find(({ key }) => key === "eps")!.cells[0]).toMatchObject({ value: 0, growth: -1 });
 });
