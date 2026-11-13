@@ -113,8 +113,9 @@ describe("chart series inline quick add", () => {
     await waitForFrameToContain("MSFT · Revenue");
     expect(renderedWidth).toBe(36);
 
+    // Anywhere on the row adds it, its frequency at the right edge included, never the chart under it.
     await act(async () => {
-      await tui.setup().mockMouse.click(2, 1);
+      await tui.setup().mockMouse.click(34, 1);
       await tui.setup().renderOnce();
     });
     expect(updatedSpec?.series).toHaveLength(2);
