@@ -24,15 +24,23 @@ const BUILD_WORKFLOW = join(import.meta.dir, "../.github/workflows/build-release
  * archive installed apps update from, the installers the download page links,
  * and the zip Homebrew and install.sh put on a Mac.
  */
+const WINDOWS_PREFIX = "stable-win-x64-";
+const WINDOWS_INSTALLER = `${WINDOWS_PREFIX}GloomSetup.exe`;
 const DESKTOP_FILES = [
   "stable-macos-arm64-update.json",
   "stable-macos-arm64-Gloom.app.tar.zst",
   "stable-macos-arm64-Gloom.dmg",
   "stable-macos-arm64-Gloom.app.zip",
-  "stable-win-x64-update.json",
-  "stable-win-x64-Gloom.tar.zst",
-  "stable-win-x64-GloomSetup.exe",
+  `${WINDOWS_PREFIX}update.json`,
+  `${WINDOWS_PREFIX}Gloom.tar.zst`,
+  WINDOWS_INSTALLER,
 ];
+
+/**
+ * build-windows-installer.ps1 makes the installer without the prefix and
+ * copies it under it; links to the unprefixed name still reach that one.
+ */
+const UNPREFIXED_WINDOWS_INSTALLER = WINDOWS_INSTALLER.slice(WINDOWS_PREFIX.length);
 
 /** The macOS job packs this one itself, for a Homebrew cask that still installs Gloomberb.app. */
 const LEGACY_HOMEBREW_ZIP = "stable-macos-arm64-Gloomberb.app.zip";
@@ -61,6 +69,7 @@ export function expectedReleaseAssets(workflowYaml: string): string[] {
   return [
     ...terminalAssets(workflowYaml),
     ...DESKTOP_FILES,
+    UNPREFIXED_WINDOWS_INSTALLER,
     // Installs from before the rename update from these names.
     ...legacyDesktopFiles(DESKTOP_FILES).map((file) => file.legacy),
     LEGACY_HOMEBREW_ZIP,

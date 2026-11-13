@@ -48,8 +48,12 @@ test("holds back a release a matrix build uploaded nothing for, and passes it on
   for (const name of V0_20_13_AS_PUBLISHED) writeFileSync(join(dist, name), name);
   const held = check();
   expect(held.exitCode).toBe(1);
-  expect(held.stderr).toContain("1 of 19 release files were not built: gloomberb-darwin-arm64.gz\n");
+  expect(held.stderr).toContain("1 of 20 release files were not built: gloomberb-darwin-arm64.gz\n");
 
   writeFileSync(join(dist, "gloomberb-darwin-arm64.gz"), "built on the rerun");
   expect(check()).toEqual({ exitCode: 0, stderr: "" });
+
+  // The installer without its channel prefix, which links may still name.
+  rmSync(join(dist, "GloomSetup.exe"));
+  expect(check().stderr).toContain("1 of 20 release files were not built: GloomSetup.exe\n");
 });
