@@ -103,12 +103,13 @@ test("events read in the order they happen and open on the next one", async () =
   }, "corporate-actions", 100);
   const lines = tui.frame().split("\n");
   const rowOf = (date: string) => lines.findIndex((line) => line.includes(date));
-  expect(rowOf("2020-02-10")).toBeLessThan(rowOf("2098-02-10"));
-  expect(rowOf("2098-02-10")).toBeLessThan(rowOf("2099-02-10"));
+  expect(rowOf("10 Feb 2020")).toBeGreaterThan(-1);
+  expect(rowOf("10 Feb 2020")).toBeLessThan(rowOf("10 Feb 2098"));
+  expect(rowOf("10 Feb 2098")).toBeLessThan(rowOf("10 Feb 2099"));
   await tui.emitKeypress({ name: "return" });
   await frame();
   expect(tui.frame()).toContain("$0.20");
-  expect(tui.frame()).not.toContain("2020-02-10");
+  expect(tui.frame()).not.toContain("10 Feb 2020");
 });
 
 test("a long history scrolls to the next event, not its first row", async () => {
@@ -116,8 +117,8 @@ test("a long history scrolls to the next event, not its first row", async () => 
   await render({ symbol: "TEST", splits: [], earnings: [], dividends: [...past, { exDate: "2098-02-10", amount: 9.5 }] },
     "corporate-actions", 100);
   // Forty past rows do not fit 24 lines: the table opens scrolled to the next one, the oldest out of view.
-  expect(tui.frame()).toContain("2098-02-10");
-  expect(tui.frame()).not.toContain("1980-03-10");
+  expect(tui.frame()).toContain("10 Feb 2098");
+  expect(tui.frame()).not.toContain("10 Mar 1980");
 });
 
 test("opening a fiscal-period row cannot select a same-day pending announcement", async () => {
