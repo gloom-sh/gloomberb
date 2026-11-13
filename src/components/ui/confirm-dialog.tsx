@@ -51,7 +51,7 @@ export interface ConfirmDialogProps extends PromptContext<boolean> {
   status?: ReactNode;
   /** While the confirmed work runs: the buttons are off and only Esc answers. */
   busy?: boolean;
-  /** Adds the desktop close button beside the title. */
+  /** Adds the desktop close button beside the title; the terminal has its Cancel button. */
   onClose?: () => void;
   /**
    * Lays the buttons out as a form's Cancel and Submit: Cancel, then the
@@ -174,7 +174,8 @@ export function ConfirmDialog({
       title={title}
       footer={footer ?? keyLine}
       desktopFooter={null}
-      onClose={onClose}
+      // The terminal's Cancel is its mouse close already: a second close in the title would only repeat it.
+      onClose={desktop ? onClose : undefined}
     >
       <Box flexDirection="column" {...(desktop ? { style: { width: fitDialogWidth(width) } } : { width })}>
         {renderBody(body)}

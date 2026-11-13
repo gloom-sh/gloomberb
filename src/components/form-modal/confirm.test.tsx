@@ -44,6 +44,8 @@ describe("confirm modal", () => {
     expect(frame()).toContain("bar:closed");
     expect(frame()).toContain("Cancel");
     expect(frame()).not.toContain("Back");
+    // Its Cancel is the mouse's close: no second close beside the title.
+    expect(frame().split("\n").find((line) => line.includes("│  Delete Portfolio"))).not.toMatch(/ x +│/);
 
     // The config moves on while the confirm is open.
     const store = storeRef.current!;
