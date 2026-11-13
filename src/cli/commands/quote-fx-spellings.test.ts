@@ -140,6 +140,49 @@ test("a pair-like miss names the listing search finds nearest, and nothing when 
   }
 });
 
+/**
+ * 13 Nov 2026: eight pasted lines exported five rows. BRK-B had none, BRK.B and BRK/B read two symbols with no
+ * duplicate mark, and N/A and the blank line had none (a warning only), so the export no longer lined up with the sheet.
+ */
+test("a pasted list's export has a row for every line up to the last, a blank or non-symbol line too, and one Symbol per share class", async () => {
+  const stock = (symbol: string, name: string, price: number): Quote => ({
+    symbol, name, currency: "USD", price, change: 1, changePercent: 0.2, previousClose: price - 1, marketState: "REGULAR",
+    listingExchangeName: "NYSE", exchangeName: "NYSE", instrumentType: "EQUITY", dataSource: "delayed", providerId: "gloomberb-cloud",
+    stale: false, lastUpdated: at("2026-10-12T19:00:00Z"),
+  });
+  const quotes: Record<string, Quote> = {
+    "BRK.B": stock("BRK.B", "Berkshire Hathaway Inc.", 589.83), "BRK-B": stock("BRK-B", "Berkshire Hathaway Inc.", 589.83),
+    MSFT: stock("MSFT", "Microsoft Corporation", 523),
+  };
+  const dataProvider = createTestDataProvider({
+    search: async () => [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => {
+      const quote = quotes[target.symbol];
+      return quote ? { target, quote } : { target, quote: null, error: `Not a ticker: ${target.symbol}.` };
+    }),
+  });
+  const stdin = spyOn(Bun.stdin, "text").mockResolvedValue("BRK.B\nBRK-B\nBRK/B\nN/A\n\nMSFT\n\n");
+  try {
+    const cli = createTestCliContext({ dataProvider }, { format: "csv" });
+    await quoteCommand.execute(["--file", "-"], cli.context);
+    const [printed] = cli.printed as [PrintedCliResult];
+    const csv = serializeCliResult(printed.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, printed.options).split("\n");
+    const head = csv[0]!.split(",");
+    const rows = csv.slice(1).map((line) => line.split(",")).filter((row) => row.length === head.length)
+      .map((row) => ["Symbol", "input", "duplicate_of", "status"].map((column) => row[head.indexOf(column)]));
+    expect(rows).toEqual([
+      ["BRK.B", "BRK.B", "", ""],
+      ["BRK.B", "BRK-B", "BRK.B", ""],
+      ["BRK.B", "BRK/B", "BRK.B", ""],
+      ["N/A", "N/A", "", "not a symbol"],
+      ["", "", "", "blank line"],
+      ["MSFT", "MSFT", "", ""],
+    ]);
+  } finally {
+    stdin.mockRestore();
+  }
+});
+
 test("a list's export has a row for every line as typed, in its order, each repeat of a listing marked", async () => {
   // A sheet's column pasted as a file: four lines that are all USD/JPY, and a code no listing is read from between them.
   const dir = mkdtempSync(join(tmpdir(), "quote-input-"));

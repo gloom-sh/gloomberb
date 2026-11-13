@@ -16,6 +16,10 @@ export interface HistoryListRow extends HistoryRow {
   symbol: string;
   /** Why the symbol has no bars, as its warning says it; only on a symbol's one row with no bar. */
   status?: string;
+  /** In a list read from a file or standard input, the line the row is for, as typed. */
+  input?: string;
+  /** In such a list, the earlier line that is the same listing. */
+  duplicateOf?: string;
 }
 
 type ExportedRow = Record<string, unknown>;
