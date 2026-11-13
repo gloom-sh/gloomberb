@@ -29,3 +29,13 @@ test("styled runs wrap only at whitespace, keep their styles across a break, and
   expect(lines.every((line) => displayWidth(line.map((segment) => segment.text).join("")) <= 22)).toBe(true);
   expect(text(wrapSegmentLines([{ text: "a b" }], 80))).toEqual(["a b"]);
 });
+
+test("a no-break space holds its words together, and an indented first line never runs over", () => {
+  const text = (lines: Array<Array<{ text: string }>>) => lines.map((line) => line.map((segment) => segment.text).join(""));
+  expect(text(wrapSegmentLines([{ text: "up 4.2\u00a0% on the day" }], 7))).toEqual(["up", "4.2\u00a0%", "on the", "day"]);
+  expect(wrapTextLines("up 4.2\u00a0% on the day", 7)).toEqual(["up", "4.2\u00a0%", "on the", "day"]);
+  // Four cells of indent leave six for the first word: it is cut there, never drawn past ten.
+  const lines = text(wrapSegmentLines([{ text: "    abcdefghi jk" }], 10));
+  expect(lines).toEqual(["    abcdef", "ghi jk"]);
+  expect(lines.every((line) => displayWidth(line) <= 10)).toBe(true);
+});

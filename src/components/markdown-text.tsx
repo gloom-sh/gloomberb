@@ -101,6 +101,11 @@ type MarkdownBlock =
 /** One rendered line of a table, already padded to its column widths. */
 type TableLine = StyledSegment[];
 
+/** The half blocks a citation chip's square is drawn between in the terminal (`PaneLinkMarker`). */
+const CHIP_OPEN = "\u2590";
+const CHIP_CLOSE = "\u258c";
+const CHIP_ENDS = /[\u2590\u258c]/g;
+
 const TABLE_DELIMITER_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 const TABLE_GAP = 2;
 /** A long word (a URL, a hyphenated compound) breaks rather than claiming a whole column. */
@@ -544,9 +549,15 @@ function MarkdownLine({
     // a list item's later lines hang under its text, as on the desktop.
     const marker = parsed.segments[0];
     const hang = parsed.heading || !marker || !/^([-*\u2022]|\d+\.) $/.test(marker.text) ? 0 : indent + displayWidth(marker.text);
-    const lines = hang > 0
-      ? wrapSegmentLines(parsed.segments.slice(1), Math.max(1, lineWidth - hang))
-      : wrapSegmentLines([{ text: indentStr }, ...parsed.segments], lineWidth);
+    // A chip is measured as drawn (`[ 3 ]` is `▐3▌`), so a line holding one never runs over.
+    const chips = linkChips && onOpenLink;
+    const asDrawn = (segments: readonly StyledSegment[]) => chips
+      ? segments.map((segment) => segment.link ? { ...segment, text: `${CHIP_OPEN}${segment.text.trim()}${CHIP_CLOSE}` } : segment)
+      : segments;
+    const lines = (hang > 0
+      ? wrapSegmentLines(asDrawn(parsed.segments.slice(1)), Math.max(1, lineWidth - hang))
+      : wrapSegmentLines([{ text: indentStr }, ...asDrawn(parsed.segments)], lineWidth)
+    ).map((line) => chips ? line.map((segment) => segment.link ? { ...segment, text: segment.text.replace(CHIP_ENDS, "") } : segment) : line);
     return (
       <Box flexDirection="column" width={lineWidth}>
         {lines.map((line, lineIndex) => (

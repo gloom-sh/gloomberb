@@ -1,5 +1,12 @@
 import { displayWidth, truncateToDisplayWidth } from "./format";
 
+/**
+ * A run of text between break points: whitespace breaks a line, a no-break
+ * space (U+00A0, U+2007, U+202F, U+FEFF) does not.
+ */
+const WORD = /(?:[^\s]|[\u00a0\u2007\u202f\ufeff])+/g;
+const BREAK_SPACE = /[^\S\u00a0\u2007\u202f\ufeff]+/g;
+
 /** Cuts to `width` characters behind one `…`, the mark every cut text ends with. */
 export function truncateWithEllipsis(text: string, width: number): string {
   if (width <= 0) return "";
@@ -35,7 +42,7 @@ export function wrapTextLines(
 
   const paragraphs = text
     .split(/\r?\n/)
-    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim());
+    .map((paragraph) => paragraph.replace(BREAK_SPACE, " ").replace(/^ +| +$/g, ""));
   const lines: string[] = [];
 
   const pushLine = (line: string) => {
@@ -130,13 +137,19 @@ export function wrapSegmentLines<T extends { text: string }>(segments: readonly 
     start = -1;
     used = 0;
   };
-  for (const match of full.matchAll(/\S+/g)) {
+  for (const match of full.matchAll(WORD)) {
     const word = match[0];
     const at = match.index;
     const cells = displayWidth(word);
-    // The first line keeps the indent before its first word.
-    const gap = start >= 0 ? displayWidth(full.slice(end, at)) : ranges.length === 0 ? displayWidth(full.slice(0, at)) : 0;
-    if (start >= 0 && used + gap + cells > width) {
+    // Only the first word can find no line open; the first line keeps the indent before it.
+    const gap = start >= 0 ? displayWidth(full.slice(end, at)) : displayWidth(full.slice(0, at));
+    if (used + gap + cells <= width) {
+      if (start < 0) start = 0;
+      used += gap + cells;
+      end = at + word.length;
+      continue;
+    }
+    if (start >= 0) {
       flush();
       if (cells <= width) {
         start = at;
@@ -144,20 +157,17 @@ export function wrapSegmentLines<T extends { text: string }>(segments: readonly 
         end = at + word.length;
         continue;
       }
-    } else if (cells <= width || (start < 0 && gap + cells <= width)) {
-      if (start < 0) start = ranges.length === 0 ? 0 : at;
-      used += gap + cells;
-      end = at + word.length;
-      continue;
     }
-    // Wider than a line: whole lines of it, then the rest begins the next.
-    flush();
-    const pieces = splitLongTextSegmentByDisplayWidth(word, width);
+    // Wider than the room left: cut by cells, the first piece filling what an
+    // indent leaves of the first line, then whole lines, the rest open.
+    const room = start < 0 && ranges.length === 0 ? width - gap : 0;
+    const head = room > 0 ? splitLongTextSegmentByDisplayWidth(word, room)[0]! : "";
+    const pieces = [...(head ? [head] : []), ...splitLongTextSegmentByDisplayWidth(word.slice(head.length), width)];
     let offset = at;
     pieces.forEach((piece, index) => {
-      start = offset;
+      start = index === 0 && head ? 0 : offset;
       end = offset + piece.length;
-      used = displayWidth(piece);
+      used = displayWidth(full.slice(start, end));
       offset = end;
       if (index < pieces.length - 1) flush();
     });
