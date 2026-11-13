@@ -45,7 +45,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { isAccessDenied } from "../../../api-client/errors";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { loadPortfolioRiskMarket } from "./risk-client";
+import { loadPortfolioRiskMarket, riskInstrumentOf } from "./risk-client";
 import { loadRiskEpisodeHistory, riskEpisodeTargets, type RiskEpisodeState, type RiskEpisodeTarget } from "./risk-episodes";
 import { brokerPerformanceEvidence, parsePortfolioRiskEvidence } from "./risk-evidence";
 import { useBrokerPortfolioPerformance } from "./broker-performance";
@@ -443,7 +443,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   // load only there, once the market load says which holdings the basket takes.
   const episodeTargetsKey = useMemo(() => {
     if (frozen || view !== "stress" || !resource.data) return null;
-    const held = localTickers.map((ticker) => ({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange }));
+    const held = localTickers.map(riskInstrumentOf);
     const targets = riskEpisodeTargets(resource.data, held);
     return targets.length ? JSON.stringify(targets) : null;
   }, [frozen, localTickers, resource.data, view]);

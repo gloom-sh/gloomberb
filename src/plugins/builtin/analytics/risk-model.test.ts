@@ -647,3 +647,14 @@ test("a factor that explains under a tenth of the basket's moves reads as a weak
   expect(withoutFactorFit("60 sessions; R² 0.01, weak fit; independent ETF proxy")).toBe("60 sessions; independent ETF proxy");
   expect(withoutFactorFit("76% USD, 24% TRY of book; 60 sessions; R² 0.28; daily USD/TRY closes")).toBe("76% USD, 24% TRY of book; 60 sessions; daily USD/TRY closes");
 });
+
+test("a holding saved under its venue's code (ES3:XSES) is requested and labelled as the listing it is", async () => {
+  const { listedSymbol } = await import("../../../portfolio/listed-symbol");
+  // Saved as ES3:XSES because the bare ES3 was the CME future's: its history is ES3's on SGX, never a symbol the service does not know.
+  const held = createTestTicker("ES3:XSES", "SPDR Straits Times Index ETF", {
+    exchange: "SGX", currency: "SGD", portfolios: ["book"], positions: [{ portfolio: "book", shares: 10_000, broker: "manual" }],
+  });
+  expect(portfolioRiskRequests([held], "book")[0]).toMatchObject({ symbol: "ES3", exchange: "SGX" });
+  // The pane names it by the venue, as D05:SGX beside it.
+  expect(listedSymbol(held, held.metadata.ticker, "US")).toBe("ES3:SGX");
+});

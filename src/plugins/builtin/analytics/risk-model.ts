@@ -46,6 +46,7 @@ import {
 import {
   RISK_FACTOR_INSTRUMENTS,
   riskInstrumentId,
+  riskInstrumentOf,
   type RiskHoldingRequest,
   type RiskMarketSnapshot,
 } from "./risk-client";
@@ -412,8 +413,7 @@ export function portfolioRiskRequests(
       ? lots.reduce((sum, row) => sum + Math.abs(row.marketValue!), 0)
       : null;
     return {
-      symbol: ticker.metadata.ticker,
-      exchange: ticker.metadata.exchange,
+      ...riskInstrumentOf(ticker),
       quantity: signedQuantity(lots),
       currency,
       snapshotValue: snapshot,
@@ -717,10 +717,7 @@ export function buildPortfolioRisk(
     tickers,
     portfolio.id,
   ).map((ticker) => {
-    const instrument = {
-        symbol: ticker.metadata.ticker,
-        exchange: ticker.metadata.exchange,
-      },
+    const instrument = riskInstrumentOf(ticker),
       id = riskInstrumentId(instrument);
     const history = byId.get(id),
       quote = history?.quote,

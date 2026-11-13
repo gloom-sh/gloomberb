@@ -1,7 +1,7 @@
 import { portfolioSectorReport } from "./risk-sectors";
 import { loadPortfolioOptionBook } from "./risk-options";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { fetchPortfolioRiskMarket, RISK_HISTORY_LIMIT } from "./risk-client";
+import { fetchPortfolioRiskMarket, riskInstrumentOf, RISK_HISTORY_LIMIT } from "./risk-client";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
 import { cloudEpisodeReader, fetchRiskEpisodeHistory, onceEpisodeReader, riskEpisodeTargets } from "./risk-episodes";
 import { describeCollections } from "../../../portfolio/collection-name";
@@ -69,6 +69,32 @@ function emptyPortfolioHint(name: string, listed: readonly string[]): string {
   }
   return `No holdings in ${name}. Add symbols with gloom portfolio add ${portfolio} AAPL,MSFT, `
     + `then their shares with gloom portfolio position set ${portfolio} AAPL 10 150.`;
+}
+
+/**
+ * Why a view of PORT has no rows, in one line, as its section says it in
+ * place of a bare "No data.": what it needs, and where the trustee's question
+ * is answered instead. Performance reads the account's own history, which a
+ * book entered by hand has none of; its P&L over a period is `portfolio show
+ * --from`.
+ */
+export function riskSectionEmpty(
+  view: RiskView,
+  { name, brokerLinked, unvaluedOptions }: { name: string; brokerLinked: boolean; unvaluedOptions: boolean },
+): string {
+  switch (view) {
+    case "performance":
+      return `No account history${brokerLinked ? " from its broker" : ""} (daily values and flows) to measure. `
+        + `For P&L over a period: gloom portfolio show ${shellWord(name)} --from <date>.`;
+    case "attribution":
+      return "No sector weights and returns for this account and its benchmark; import them with --evidence.";
+    case "greeks":
+      return unvaluedOptions ? "No option position in this portfolio could be valued." : "No option positions in this portfolio.";
+    case "correlation":
+      return "Needs two holdings with 60 daily returns each.";
+    default:
+      return "No holding has the daily closes this view needs.";
+  }
 }
 
 /** Rows of one view in the compact result; the pane and reports keep every row. */
@@ -307,7 +333,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     // go unused. A bigger book waits for the basket, so it reads no closes it does not replay.
     const warming = wantsEpisodes && tickers.length <= EPISODE_WARM_LIMIT
       ? fetchRiskEpisodeHistory(
-          tickers.map((ticker) => ({ instrument: { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange }, currency: null })),
+          // With the currency each is saved in, so the FX closes the replay converts at are read alongside, not after.
+          tickers.map((ticker) => ({ instrument: riskInstrumentOf(ticker), currency: ticker.metadata.currency || null })),
           local.portfolio.currency, episodeReader, ctx.signal,
         ).catch(() => {
           // Intentional ignore: the replayed load below reads the same closes and reports their failures.
@@ -335,7 +362,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
         : loadPortfolioOptionBook(tickers, local.portfolio),
     ]);
     const episodeTargets = wantsEpisodes
-      ? riskEpisodeTargets(prices, tickers.map((ticker) => ({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange })))
+      ? riskEpisodeTargets(prices, tickers.map(riskInstrumentOf))
       : [];
     const episodes = episodeTargets.length
       ? await fetchRiskEpisodeHistory(episodeTargets, local.portfolio.currency, episodeReader, ctx.signal)
@@ -406,7 +433,12 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       complete,
       errors: model.warnings,
       notes: [...riskCoverageNotices(model.coverage), ...model.notes.filter((note) => note !== fallback)],
-      sections: shown.map(({ view, rows }) => ({ title: view, columns: RISK_COLUMNS, rows })),
+      // A view with nothing to show says why in one line.
+      sections: shown.map(({ view, rows }) => ({ title: view, columns: RISK_COLUMNS, rows, ...(rows.length === 0 ? { empty: riskSectionEmpty(view, {
+        name: local.portfolio.name,
+        brokerLinked: !!(local.portfolio.brokerId || local.portfolio.brokerInstanceId),
+        unvaluedOptions: (model.greeks?.warnings.length ?? 0) > 0,
+      }) } : {}) })),
       metadata: { coverage: coverageSummary(model.coverage), model, benchmark: model.benchmark, window: model.window,
         notices: [...(shortfall ? [shortfall] : []), ...notices] },
     };
@@ -426,7 +458,10 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       complete: result.complete,
       ...(errors.length ? { errors } : {}),
       ...(notes.length ? { notes } : {}),
-      sections: [{ title: view, columns: RISK_COLUMNS, rows: rows.map(displayRow) }],
+      sections: [{ title: view, columns: RISK_COLUMNS, rows: rows.map(displayRow), ...(rows.length === 0 ? { empty: riskSectionEmpty(view, {
+        name: model.portfolio.name, brokerLinked: !!(model.portfolio.brokerId || model.portfolio.brokerInstanceId),
+        unvaluedOptions: (model.greeks?.warnings.length ?? 0) > 0,
+      }) } : {}) }],
       metadata: {
         portfolio: {
           id: model.portfolio.id,

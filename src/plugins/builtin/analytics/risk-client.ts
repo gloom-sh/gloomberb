@@ -8,7 +8,8 @@ import type {
 } from "../../../api-client/types";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { loadCloudResource } from "../shared/cloud-resource";
-import { canonicalExchange, normalizeSymbol } from "../../../utils/exchanges";
+import { canonicalExchange, normalizeSymbol, storedKeyListing } from "../../../utils/exchanges";
+import type { TickerRecord } from "../../../types/ticker";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { PricePoint } from "../../../types/financials";
 import { resolveDatedReturns, type DatedReturn } from "../../../portfolio/return-metrics";
@@ -113,6 +114,9 @@ export const RISK_FACTOR_INSTRUMENTS: RiskInstrument[] = [
 ].map(([symbol, exchange]) => ({ symbol: symbol!, exchange: exchange! }));
 /** US equity venues quote only in USD, so the listing venue alone establishes currency. */
 const US_LISTING_VENUES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "CBOE"]);
+/** A held row as the listing its history is read for: `ES3:XSES` is ES3 on SGX, never a symbol the service does not know. */
+export const riskInstrumentOf = (ticker: Pick<TickerRecord, "metadata">): RiskInstrument =>
+  storedKeyListing(ticker.metadata.ticker, ticker.metadata.exchange);
 export const riskInstrumentId = (instrument: RiskInstrument) =>
   `${canonicalExchange(instrument.exchange)}:${normalizeSymbol(instrument.symbol)}`;
 const message = (error: unknown) =>

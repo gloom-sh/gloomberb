@@ -303,3 +303,28 @@ test("a hedged book's short enters the basket; with a future too large to leave,
     setSystemTime();
   }
 });
+
+test("each view with nothing to show says why in one line, and performance points to the book's P&L over a period", async () => {
+  setSystemTime(now);
+  try {
+    const book = { ...BROKER_PORTFOLIO, name: "Pension Book", brokerId: undefined, brokerInstanceId: undefined };
+    const context = {
+      config: { ...createDefaultConfig("/unused/risk-headless"), portfolios: [book] },
+      signal: new AbortController().signal,
+      apiClient: brokerRiskClient(now),
+      resolvePortfolio: async () => ({ portfolio: book, tickers: brokerFixtureTickers() }),
+    } as unknown as HeadlessPaneContext;
+    const args = { rawArgument: book.id, argument: book.id, symbols: [], options: { view: "performance" } };
+    const performance = await portfolioRiskHeadless.load(args, context);
+    expect(performance.sections[0]).toMatchObject({ title: "performance", rows: [],
+      empty: "No account history (daily values and flows) to measure. For P&L over a period: gloom portfolio show 'Pension Book' --from <date>." });
+    // The text report prints the line where it printed "No data.".
+    const text = renderHeadlessPaneText(portfolioRiskHeadless, performance, args, "PORT", deriveHeadlessFreshness(portfolioRiskHeadless, performance));
+    expect(text).toContain("gloom portfolio show 'Pension Book' --from <date>");
+    expect(text).not.toContain("No data.");
+    const greeks = await portfolioRiskHeadless.load({ ...args, options: { view: "greeks" } }, context);
+    expect(greeks.sections[0]).toMatchObject({ empty: "No option positions in this portfolio." });
+  } finally {
+    setSystemTime();
+  }
+});
