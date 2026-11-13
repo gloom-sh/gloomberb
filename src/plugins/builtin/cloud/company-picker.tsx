@@ -44,15 +44,13 @@ import { useToastHost } from "../../../ui/toast";
 import { debugLog } from "../../../utils/debug-log";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { PluginRegistry } from "../../registry";
-import { STARTER_SYMBOLS } from "../../../tickers/starter-symbols";
+import { SEEDED_LIST_MIN_STARTERS, STARTER_SYMBOLS } from "../../../tickers/starter-symbols";
 
 const log = debugLog.createLogger("company-picker");
 
 const MIN_COMPANY_PICKS = 2;
 /** Only accounts this new are asked; nobody who has used Gloom for a while. */
 const NEW_ACCOUNT_MS = 24 * 60 * 60 * 1000;
-/** The seeded lists hold 7 (web first run) or 12 (startup) starter tickers. */
-const SEEDED_LIST_MIN_STARTERS = 7;
 const SEARCH_DEBOUNCE_MS = 250;
 const SEARCH_RESULTS = 6;
 const GRID_COLUMNS = 4;

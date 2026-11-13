@@ -35,6 +35,10 @@ import { loadFuturesContractTermsCached } from "../../market-data/futures-contra
 import { formSnapshot } from "../../remote/form";
 import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "../../remote/semantic-tree";
 import { allowTelemetryInTests } from "../../test-support/telemetry-guard";
+import type { InstallExperimentReport } from "../../api-client";
+import { resetInstallExperimentsForTests } from "../../api-client/install-experiments";
+import { installUsageCounter, resetUsageCountsForTests } from "../../telemetry/usage-counts";
+import { SEEDED_LIST_MIN_STARTERS, STARTER_SYMBOLS } from "../../tickers/starter-symbols";
 
 const tui = createOpenTuiTestHarness();
 let tempDataDir: string | null = null;
@@ -334,6 +338,47 @@ async function skipDesks(): Promise<void> {
   await emitKeypress({ name: "s", sequence: "s" });
 }
 
+const originalReportInstallExperiment = apiClient.reportInstallExperiment;
+const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+
+/**
+ * An install with usage counts on, which the API puts in `arm` of
+ * first_run_tickers (or whose answer fails or comes too late, as `answer`
+ * rejects); what the app reports about it lands in the list.
+ */
+function enrollInstall(arm: "control" | "tickers", answer?: Error): InstallExperimentReport[] {
+  const reports: InstallExperimentReport[] = [];
+  // The terminal's own navigator: a DOM test earlier in the run leaves one that reports automation.
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { userAgent: "Bun" } });
+  installUsageCounter({ surface: "terminal", os: "linux", isEnabled: () => true, getInstallId: () => "install-1", send: async () => {} });
+  apiClient.reportInstallExperiment = (async (report: InstallExperimentReport) => {
+    reports.push(report);
+    if (report.event !== "experiment_assign") return { accepted: true };
+    if (answer) throw answer;
+    return { accepted: true, variant: arm };
+  }) as typeof apiClient.reportInstallExperiment;
+  return reports;
+}
+
+/** "What do you hold?" left holding nothing on this build, on the Desks step. */
+function heldNothing(dataDir: string): AppConfig {
+  return {
+    ...createDefaultConfig(dataDir),
+    onboardingProgress: {
+      version: 1, stage: "desks", path: "manual", portfolioId: "main", tickerSymbol: "SPY", positionsImported: 0, asksTickers: true,
+    },
+  };
+}
+
+async function watchlist(tickerRepository: JsonTickerRepository): Promise<string[]> {
+  return (await tickerRepository.loadAllTickers())
+    .filter((ticker) => ticker.metadata.watchlists.includes("watchlist"))
+    .map((ticker) => ticker.metadata.ticker);
+}
+
+/** The first-run watchlist when nothing was picked, as the control has it. */
+const SEEDED_FIRST_RUN_WATCHLIST = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "AMZN", "TSLA"];
+
 // Milestones and pricing go to the network; neither belongs in a render test.
 const originalRecordResearchActivity = apiClient.recordResearchActivity;
 const originalGetCloudPricing = apiClient.getCloudPricing;
@@ -342,6 +387,8 @@ const originalGetChannels = apiClient.getChannels;
 const originalGetSession = apiClient.getSession;
 beforeEach(() => {
   expectedPositionCount = 0;
+  // first_run_tickers is asked once a session, and the session is the test process.
+  resetInstallExperimentsForTests();
   apiClient.recordResearchActivity = (async () => {}) as typeof apiClient.recordResearchActivity;
   apiClient.getCloudPricing = (async () => { throw new Error("offline"); }) as typeof apiClient.getCloudPricing;
   apiClient.getCloudAccountPlan = (async () => ({ trialAvailable: true })) as typeof apiClient.getCloudAccountPlan;
@@ -356,6 +403,10 @@ afterEach(async () => {
   // Checkout refreshes chat directly, even without a registry, and can start verification polling.
   chatController.dispose();
   apiClient.recordResearchActivity = originalRecordResearchActivity;
+  apiClient.reportInstallExperiment = originalReportInstallExperiment;
+  resetInstallExperimentsForTests();
+  resetUsageCountsForTests();
+  if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
   apiClient.getCloudPricing = originalGetCloudPricing;
   apiClient.getCloudAccountPlan = originalGetCloudAccountPlan;
   apiClient.getChannels = originalGetChannels;
@@ -826,6 +877,157 @@ describe("OnboardingWizard", () => {
     await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
     expect(capturedConfig?.onboardingProgress).toMatchObject({ path: "manual", tickerSymbol: "SPY", positionsImported: 0, desks: [] });
     expect(capturedConfig?.layout.instances.find((instance) => instance.paneId === "chart-composer")?.binding).toEqual({ kind: "fixed", symbol: "SPY" });
+  });
+
+  test("first_run_tickers' tickers arm asks after the desks: the picks lead the watchlist, which reads as the user's own, and the end is counted", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-tickers-"));
+    const reports = enrollInstall("tickers");
+    const tickerRepository = new JsonTickerRepository();
+    await tui.render(
+      <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry({ tickerRepository })} />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+    // Holding nothing, then Futures & commodities.
+    await pressEscape();
+    await emitKeypress({ name: "s", sequence: "s" });
+    await waitForFrame("What do you trade most?");
+    expect(reports).toEqual([]);
+    for (let step = 0; step < 2; step += 1) await emitKeypress({ name: "j", sequence: "j" });
+    await pressSpace();
+    await pressEnter();
+
+    const step = await waitForFrame("Which tickers do you follow?");
+    expect(step).toContain("E-Mini S&P 500");
+    expect(step).toMatch(/Skip\s+Esc/);
+    // Asked for the arm, then counted in the arm it showed.
+    await waitUntil(() => reports.length === 2, "the exposure");
+    expect(reports).toMatchObject([
+      { event: "experiment_assign", experiment: "first_run_tickers", installId: "install-1", surface: "terminal" },
+      { event: "experiment_exposed", experiment: "first_run_tickers", variant: "tickers", installId: "install-1" },
+    ]);
+
+    // Enter with nothing ticked ticks the highlighted suggestion, as on the Desks step; Space the next one.
+    await pressEnter();
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await pressSpace();
+    // The third from the app's search: Enter picks the result and clears the search.
+    await typeText("MSFT");
+    await waitForFrame("Microsoft Corp.");
+    await pressEnter();
+    const picked = await waitForFrame("[\u2713] MSFT");
+    expect(picked).toContain("[\u2713] ES=F");
+    expect(picked).toContain("[\u2713] NQ=F");
+    // A fourth waits until one is unticked.
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await pressSpace();
+    expect(tui.frame()).toContain("[ ] CL=F");
+    await pressEnter();
+
+    // Closed from its search, the step takes the field with it: the workspace card shows its keys.
+    expect(await waitForFrame("Built around ES=F")).toMatch(/Keep exploring\s+Esc/);
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "research", tickerSymbol: "ES=F", desks: ["futures"] });
+    expect(capturedConfig?.layout.instances.find((instance) => instance.paneId === "chart-composer")?.binding).toEqual({ kind: "fixed", symbol: "ES=F" });
+    const watching = await watchlist(tickerRepository);
+    expect(watching).toEqual(expect.arrayContaining(["ES=F", "NQ=F", "MSFT"]));
+    expect(watching.filter((symbol) => STARTER_SYMBOLS.has(symbol)).length).toBeLessThan(SEEDED_LIST_MIN_STARTERS);
+    expect((await tickerRepository.loadTicker("ES=F"))?.metadata).toMatchObject({ exchange: "CME", assetCategory: "FUTURE" });
+
+    await waitUntil(() => reports.length === 3, "the step's end");
+    expect(reports[2]).toMatchObject({ event: "onboarding_tickers_finished", picked: 3, skipped: false });
+    expect(JSON.stringify(reports)).not.toMatch(/ES=F|NQ=F|MSFT/);
+  });
+
+  test("a picked search result the app has never saved is saved as its listing, on the watchlist, with the workspace built around it", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-tickers-new-"));
+    const reports = enrollInstall("tickers");
+    const tickerRepository = new JsonTickerRepository();
+    await tui.render(<WizardHarness config={heldNothing(tempDataDir)} pluginRegistry={createPluginRegistry({ tickerRepository })} />, { width: 100, height: 32 });
+    await skipDesks();
+    await waitForFrame("Which tickers do you follow?");
+    expect(await tickerRepository.loadTicker("TTALO")).toBeNull();
+    // The vendor's suffixed symbol, saved as the Helsinki listing it is.
+    await typeText("TTALO.HE");
+    await waitForFrame("Terveystalo Oyj");
+    await pressEnter();
+    await waitForFrame("[\u2713] TTALO");
+    await pressEnter();
+    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ tickerSymbol: "TTALO" });
+    expect(capturedConfig?.layout.instances.find((instance) => instance.paneId === "chart-composer")?.binding).toEqual({ kind: "fixed", symbol: "TTALO" });
+    expect((await tickerRepository.loadTicker("TTALO"))?.metadata).toMatchObject({
+      ticker: "TTALO", name: "Terveystalo Oyj", exchange: "HEL", currency: "EUR", watchlists: ["watchlist"],
+    });
+    expect(await watchlist(tickerRepository)).toContain("TTALO");
+    await waitUntil(() => reports.length === 3, "the step's end");
+  });
+
+  test("on the tickers step, Esc clears a typed search first; Skip adds nothing: the first run is the control's, counted as skipped", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-tickers-skip-"));
+    const reports = enrollInstall("tickers");
+    const tickerRepository = new JsonTickerRepository();
+    await tui.render(<WizardHarness config={heldNothing(tempDataDir)} pluginRegistry={createPluginRegistry({ tickerRepository })} />, { width: 80, height: 24 });
+    await skipDesks();
+    await waitForFrame("Which tickers do you follow?");
+    // Ticked, then a search typed: the first Esc clears the search and stays on the step.
+    await pressSpace();
+    await typeText("MSFT");
+    await waitForFrame("Microsoft Corp.");
+    await pressEscape();
+    expect(await waitForFrame("[\u2713] NVDA")).not.toContain("Microsoft Corp.");
+    expect(tui.frame()).toContain("Which tickers do you follow?");
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("tickers");
+    // The next skips, and Skip keeps none of what was ticked.
+    await pressEscape();
+    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ tickerSymbol: "SPY", desks: [] });
+    expect(await watchlist(tickerRepository)).toEqual(SEEDED_FIRST_RUN_WATCHLIST);
+    await waitUntil(() => reports.length === 3, "the step's end");
+    expect(reports[2]).toMatchObject({ event: "onboarding_tickers_finished", picked: 0, skipped: true });
+  });
+
+  test("the control arm is counted where the step would show and goes on as today; no answer in time is the control, never counted", async () => {
+    for (const answer of [undefined, new Error("Install experiment request timed out.")]) {
+      tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-tickers-control-"));
+      // A new session for each answer.
+      resetInstallExperimentsForTests();
+      // A late answer is the tickers arm's: the app has already gone on as the control.
+      const reports = enrollInstall(answer ? "tickers" : "control", answer);
+      const tickerRepository = new JsonTickerRepository();
+      await tui.render(<WizardHarness config={heldNothing(tempDataDir)} pluginRegistry={createPluginRegistry({ tickerRepository })} />, { width: 100, height: 32 });
+      await skipDesks();
+      await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
+      expect(tui.frame()).not.toContain("Which tickers do you follow?");
+      expect(capturedConfig?.onboardingProgress).toMatchObject({ tickerSymbol: "SPY", desks: [] });
+      expect(await watchlist(tickerRepository)).toEqual(SEEDED_FIRST_RUN_WATCHLIST);
+      await Bun.sleep(10);
+      expect(reports.map((report) => report.event)).toEqual(answer ? ["experiment_assign"] : ["experiment_assign", "experiment_exposed"]);
+      if (!answer) expect(reports[1]).toMatchObject({ variant: "control" });
+    }
+  });
+
+  test("a first run that would not show the tickers step is never put in the experiment", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-tickers-none-"));
+    const reports = enrollInstall("tickers");
+    const progress = heldNothing(tempDataDir).onboardingProgress!;
+    for (const variant of [
+      // Holding something, from a broker, from Settings, and begun on an earlier build.
+      { ...progress, tickerSymbol: "AAPL", positionsImported: 1 },
+      { ...progress, path: "broker" as const, tickerSymbol: "AAPL", positionsImported: 3 },
+      { ...progress, rerun: true },
+      { ...progress, asksTickers: undefined },
+    ]) {
+      await tui.render(
+        <WizardHarness config={{ ...createDefaultConfig(tempDataDir), onboardingProgress: variant }} pluginRegistry={createPluginRegistry()} />,
+        { width: 100, height: 32 },
+      );
+      await skipDesks();
+      await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
+      expect(tui.frame()).not.toContain("Which tickers do you follow?");
+    }
+    expect(reports).toEqual([]);
   });
 
   // Every step saves before it moves on. A profile that refuses the write (a

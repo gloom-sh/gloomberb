@@ -189,6 +189,8 @@ export type OnboardingStage =
   | "portfolio"
   | "add-ticker"
   | "desks"
+  /** "Which tickers do you follow?", after the desks, in the `tickers` arm of first_run_tickers. */
+  | "tickers"
   | "research"
   | "verify"
   | "account"
@@ -212,6 +214,13 @@ export interface OnboardingProgress {
    * step can be left, and the layouts are rebuilt in place.
    */
   rerun?: boolean;
+  /**
+   * This first run left "What do you hold?" holding nothing on a build that
+   * asks "Which tickers do you follow?". Only such a run is put in the
+   * first_run_tickers experiment, so an install that began setup on an
+   * earlier build never sees the step.
+   */
+  asksTickers?: boolean;
 }
 
 /**

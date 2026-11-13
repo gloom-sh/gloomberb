@@ -33,9 +33,11 @@ const WORKSPACE_STAGES: ReadonlySet<OnboardingStage> = new Set(["research", "acc
 /**
  * Whether the workspace is built around a holding: the portfolio and desk
  * steps are finished. Older builds saved no desks, so a later stage with a
- * holding counts too.
+ * holding counts too. "Which tickers do you follow?" holds the desks picked
+ * before it, and the workspace is built once it closes.
  */
 export function isOnboardingWorkspaceBuilt(progress: OnboardingProgress): boolean {
+  if (progress.stage === "tickers") return false;
   return !!progress.tickerSymbol && (Array.isArray(progress.desks) || WORKSPACE_STAGES.has(progress.stage));
 }
 

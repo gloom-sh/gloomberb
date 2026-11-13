@@ -17,6 +17,8 @@ import type { useOnboardingAccount } from "./wizard-account";
 import { POSITION_FIELDS, type useOnboardingPositions } from "./wizard-positions";
 import { toggleDeskChoice } from "./desks-step";
 import { DESKS, type DeskKey } from "../../layout/desks";
+import type { OnboardingTickersState } from "./wizard-tickers";
+import type { TickerPick } from "./tickers-step-model";
 
 /**
  * Card keys, shown on the buttons they press. Letters only act while no field
@@ -32,6 +34,12 @@ export const KEEP_FREE_KEY = "f";
 export const CONNECT_BROKER_KEY = "b";
 export const BROWSER_SIGN_IN_KEY = "b";
 export const SKIP_DESKS_KEY = "s";
+/**
+ * "Which tickers do you follow?" opens in its search field, where a letter is
+ * typed: Esc skips it once the search is empty (the first Esc clears a typed
+ * search, as in the app's other search fields), and F10 skips it at once.
+ */
+export const SKIP_TICKERS_KEY = "Esc";
 export const SKIP_PORTFOLIO_KEY = "s";
 /** What presses the first run's Skip on its portfolio and Desks steps, in a field or not. */
 export const SKIP_KEY = "F10";
@@ -73,6 +81,7 @@ export function useOnboardingKeyboard({
   setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
   setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground, goBack, coachAside = false,
   inputCaptured = false, positionsButtons = [], positionsButton = null, setPositionsButton = () => {},
+  tickers, finishTickers = () => {}, buildingWorkspace = false,
 }: {
   stage: OnboardingStage;
   progress: OnboardingProgress;
@@ -128,8 +137,14 @@ export function useOnboardingKeyboard({
   /** The one Tab put the keyboard on, which Enter presses. */
   positionsButton?: PositionsButton | null;
   setPositionsButton?: (button: PositionsButton | null) => void;
+  /** "Which tickers do you follow?": its search, rows and picks. */
+  tickers?: OnboardingTickersState;
+  /** Leaves it with the picks, or with none when skipped. */
+  finishTickers?: (picks: readonly TickerPick[], skipped: boolean) => void;
+  /** The workspace is being built: the step's keys wait. */
+  buildingWorkspace?: boolean;
 }) {
-  const activeSection: OnboardingSectionId = stage === "portfolio" || stage === "desks"
+  const activeSection: OnboardingSectionId = stage === "portfolio" || stage === "desks" || stage === "tickers"
     ? "portfolio"
     : stage === "upgrade" || (stage === "ready" && progress.accountStatus === "signed-in")
       ? "pro"
@@ -154,6 +169,11 @@ export function useOnboardingKeyboard({
 
     const handled = ((): boolean => {
       if (isPlainKey(event, "f10")) {
+        // "Which tickers do you follow?" is skipped from its search field too.
+        if (stage === "tickers") {
+          if (!buildingWorkspace) finishTickers([], true);
+          return true;
+        }
         // The first run, holding nothing: F10 presses the portfolio step's Skip, the key it shows while the Ticker field has the keyboard.
         if (stage === "portfolio" && portfolioSub === "positions" && positionCount === 0 && !isBrokerCommitting && !progress.rerun) {
           skipPositions();
@@ -292,6 +312,33 @@ export function useOnboardingKeyboard({
         } else if (!chord && (name === "space" || event.sequence === " ")) {
           const desk = DESKS[deskCursor];
           if (desk) setChosenDesks((current) => toggleDeskChoice(current, desk.key));
+        } else {
+          return false;
+        }
+        return true;
+      }
+
+      if (stage === "tickers") {
+        if (!tickers || buildingWorkspace) return true;
+        // The search field has the keyboard: letters, digits and Backspace are typed.
+        const typed = tickers.query.trim().length > 0;
+        if (enter) {
+          // Typed, Enter picks the highlighted result. Otherwise it continues once a name is
+          // ticked, and before that ticks the highlighted one, as on the Desks step.
+          if (!typed && tickers.picks.length > 0) finishTickers(tickers.picks, false);
+          else tickers.toggleRow(tickers.cursor);
+        } else if (!chord && name === "escape") {
+          // A typed search is cleared first; the next Esc skips.
+          if (tickers.query) tickers.setQuery("");
+          else finishTickers([], true);
+        } else if (!chord && name === "up") {
+          tickers.moveCursor(-1);
+        } else if (!chord && name === "down") {
+          tickers.moveCursor(1);
+        } else if (!typed && !chord && (name === "space" || event.sequence === " ")) {
+          tickers.toggleRow(tickers.cursor);
+        } else if (tab) {
+          // Nothing to move to: the field keeps the keyboard.
         } else {
           return false;
         }
