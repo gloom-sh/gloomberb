@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { shortestLegendName, wholeWordsCut } from "./legend";
+import { shortestLegendName, shortestLegendNameAmong, wholeWordsCut } from "./legend";
 
 test("a legend name cut short keeps whole words that tell it from the names beside it", () => {
   const hy = "US high yield OAS";
@@ -24,4 +24,14 @@ test("a legend name on one line loses whole words, never part of one", () => {
   expect(wholeWordsCut("US high yield OAS", 8)).toBe("US high…");
   expect(wholeWordsCut("US high yield OAS", 2)).toBe("US…");
   expect(wholeWordsCut("US high yield OAS", 17)).toBe("US high yield OAS");
+});
+
+test("a legend name is never cut so short it reads as another", () => {
+  // HIVG at 640 px put six names on one line as "IV…" each, where they had wrapped whole.
+  const names = ["IV 30d", "IV 90d", "IV 1Y", "HV 20", "IV 30d quote", "IV 30d - HV 20"];
+  const others = (name: string) => names.filter((other) => other !== name);
+  expect(shortestLegendNameAmong("IV 30d", others("IV 30d"))).toBe("IV 30d");
+  expect(shortestLegendNameAmong("IV 30d quote", others("IV 30d quote"))).toBe("IV…quote");
+  expect(shortestLegendNameAmong("HV 20", others("HV 20"))).toBe("HV…");
+  expect(shortestLegendNameAmong("Bab el-Mandeb", ["Malacca"])).toBe("Bab…");
 });
