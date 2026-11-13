@@ -83,6 +83,19 @@ test("each stablecoin row says whose its price is, and an extreme one exchange a
   expect(lowVenue(["Coinbase", "Kraken"], ["Coinbase", "Kraken"])).toBe("both");
 });
 
+test("an extreme whose exchanges are still being read says so, never that none was read", () => {
+  const board = cryptoFixture();
+  const usdt = board.assets.find((asset) => asset.code === "USDT")!;
+  usdt.range24h = { ...usdt.range24h!, venuesPending: true };
+  expect(buildCryptoRows(board.assets, "stablecoin", new Map(), CRYPTO_FIXTURE_NOW)[0]).toMatchObject({
+    low24hVenueText: "checking", high24hVenueText: "checking",
+  });
+  // No exchange read, and none being read: a dash.
+  const read = cryptoFixture();
+  read.assets.find((asset) => asset.code === "USDT")!.range24h!.venuesPending = undefined;
+  expect(buildCryptoRows(read.assets, "stablecoin", new Map(), CRYPTO_FIXTURE_NOW)[0]).toMatchObject({ low24hVenueText: "—" });
+});
+
 test("an exchange's price outside the 24h range widens it, however old the trade, and the extreme says whose", () => {
   // The board's prices are from 09:30 and its range runs to 11:59. Kraken's last trade, at 09:40, is newer than the
   // board's price but inside the range's window, and above the composite's high of 1.0004.

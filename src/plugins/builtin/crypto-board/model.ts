@@ -110,8 +110,9 @@ export interface CryptoRow extends CryptoRowSupply {
   /**
    * Whose the low and high are, in plain words: `Coinbase only` when it alone of the exchanges read reached it,
    * `Coinbase` when it was the only one read, `2 of 3`, `both` or `all 3` when more did, `other exchange` when none
-   * did (the composite's wick was an exchange not read), or a dash when no exchange was read. `+ Kraken` when the
-   * row's own price from that exchange lay outside the range and widened it.
+   * did (the composite's wick was an exchange not read), `checking` while the server still reads them, or a dash
+   * when no exchange was read. `+ Kraken` when the row's own price from that exchange lay outside the range and
+   * widened it.
    */
   low24hVenueText: string;
   high24hVenueText: string;
@@ -122,17 +123,19 @@ export interface CryptoRow extends CryptoRowSupply {
 
 /** The board's price that is no one exchange's: several blended by the source. */
 const COMPOSITE_PRICE_VENUE = "composite";
+/** An extreme whose exchanges' own candles the server is still reading: the board's refresh brings them. */
+const CHECKING_EXCHANGES = "checking";
 /** An extreme none of the exchanges read reached. */
 const OTHER_EXCHANGE = "other exchange";
 
 /**
  * Whose an extreme is: the exchange that alone reached it among several read (`Coinbase only`), the one read when
  * only one was, how many of those read did (`2 of 3`, `both`, `all 3`), and when none did, another exchange's. An
- * exchange that could not be read is not among those counted. A price newer than the range that widened it is the
- * row's own price venue's.
+ * exchange that could not be read is not among those counted. While the server is still reading them it says so,
+ * never that none was read. A price newer than the range that widened it is the row's own price venue's.
  */
-function extremeVenueText(reached: readonly string[] | undefined, checked: readonly string[] | undefined): string {
-  if (!checked?.length || !reached) return MISSING_VALUE;
+function extremeVenueText(reached: readonly string[] | undefined, checked: readonly string[] | undefined, pending = false): string {
+  if (!checked?.length || !reached) return pending ? CHECKING_EXCHANGES : MISSING_VALUE;
   // The composite blends exchanges not read here: an extreme none of those read reached was one of theirs.
   if (reached.length === 0) return OTHER_EXCHANGE;
   if (reached.length === 1) return checked.length > 1 ? `${reached[0]} only` : reached[0]!;
@@ -329,8 +332,8 @@ function dayRange(asset: CryptoMarketAsset, price: number, updatedAt: number | n
   let high24h = range.high;
   let high24hAt: number | null = Date.parse(range.highAt);
   // The raw extremes stay; each says whose it is.
-  let low24hVenueText = extremeVenueText(range.lowVenues, range.venuesChecked);
-  let high24hVenueText = extremeVenueText(range.highVenues, range.venuesChecked);
+  let low24hVenueText = extremeVenueText(range.lowVenues, range.venuesChecked, range.venuesPending === true);
+  let high24hVenueText = extremeVenueText(range.highVenues, range.venuesChecked, range.venuesPending === true);
   const widens = !!priceVenue || (updatedAt != null && updatedAt > Date.parse(range.end));
   const ownVenue = priceVenue ? `+ ${priceVenue}` : COMPOSITE_PRICE_VENUE;
   const low24hWidened = widens && price < low24h;
