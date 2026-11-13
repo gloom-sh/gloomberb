@@ -563,6 +563,10 @@ export interface HostQueryBarItem {
   narrowing: boolean;
   /** Short exclusive choice drawn as inline segments instead of a menu. */
   inline?: boolean;
+  /** Inline: a long list that runs past the bar's edge, drawn as a strip that scrolls by itself rather than folding into its menu. */
+  scrolls?: boolean;
+  /** Toggles: a shorter label for a bar short of room. */
+  short?: string;
   /** Text filters: the live input, rendered by the kit, and its field state. */
   node?: ReactNode;
   active?: boolean;
@@ -594,6 +598,8 @@ export interface HostQueryBarProps {
     onChange(value: string): void;
     /** Drawn first, where a tab row starts: a nested tab strip. */
     start?: boolean;
+    /** What the choice is ("Interval"), for a screen reader and its folded menu; "View" when unnamed. */
+    label?: string;
   };
   onClearAll?: () => void;
   /** Muted context at the right edge, e.g. the selected row's date. Gives way first. */

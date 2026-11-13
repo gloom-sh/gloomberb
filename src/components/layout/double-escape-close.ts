@@ -4,9 +4,12 @@ import {
   armDoubleEscapeClose,
   createDoubleEscapeCloseState,
   isEscapeKeptFromClosing,
+  isHeldEscapePress,
   offerEscapeTowardClose,
   resetDoubleEscapeClose,
+  swallowEscapeAfterSingleClose,
   takeDoubleEscapeClose,
+  takeSingleEscapeClose,
 } from "../../utils/double-escape-close";
 
 function isEscapeKey(event: KeyEventLike): boolean {
@@ -24,11 +27,19 @@ interface DoubleEscapeCloseOptions {
   dragging?: () => boolean;
   /** Closes the target; false when nothing was closed and the Esc goes on to the pane. */
   close(): boolean;
+  /**
+   * Closes the target on one Esc that nothing in it took, where one Esc is
+   * enough (a floating window); false where it is not, and the Esc goes on.
+   */
+  closeOnSingle?: () => boolean;
 }
 
 /**
  * Esc Esc closes the focused pane, even one that could still go back: every
- * Esc is the first half of a pair, whatever the pane did with it. Kept out:
+ * Esc is the first half of a pair, whatever the pane did with it. Where one
+ * Esc is enough (`closeOnSingle`, a floating window), an Esc nothing took
+ * closes it, and the Esc after it at a double press's pace closes nothing
+ * more. Kept out:
  *
  * - an Esc in a text field, or while the pane is editing, unless the pane
  *   counts it because nothing typed is left behind (an empty composer);
@@ -43,10 +54,12 @@ interface DoubleEscapeCloseOptions {
  * A surface that takes Esc in a scoped `before` handler (onboarding, a form,
  * key capture) runs ahead of the arming and so never counts.
  */
-export function useDoubleEscapeClose({ targetId, overlayOpen, editing, dragging, close }: DoubleEscapeCloseOptions): void {
+export function useDoubleEscapeClose({ targetId, overlayOpen, editing, dragging, close, closeOnSingle }: DoubleEscapeCloseOptions): void {
   const stateRef = useRef(createDoubleEscapeCloseState());
   const live = useRef({ targetId, overlayOpen });
   live.current = { targetId, overlayOpen };
+  /** Esc presses that came as a held key's, judged before they armed anything. */
+  const heldRef = useRef(new WeakSet<object>());
 
   useEffect(() => {
     if (overlayOpen) resetDoubleEscapeClose(stateRef.current);
@@ -60,6 +73,7 @@ export function useDoubleEscapeClose({ targetId, overlayOpen, editing, dragging,
       return;
     }
     const at = Date.now();
+    if (isHeldEscapePress(state, at, event.repeat)) heldRef.current.add(event);
     offerEscapeTowardClose(event, {
       count: () => {
         if (!live.current.overlayOpen) armDoubleEscapeClose(state, live.current.targetId, at, event.repeat);
@@ -72,11 +86,28 @@ export function useDoubleEscapeClose({ targetId, overlayOpen, editing, dragging,
   // with more to go back through still closes. Not in a text field.
   useShortcut((event) => {
     if (!isEscapeKey(event) || overlayOpen || editing || dragging?.()) return;
-    if (takeDoubleEscapeClose(stateRef.current, targetId, Date.now(), event.repeat) && close()) {
+    const now = Date.now();
+    if (swallowEscapeAfterSingleClose(stateRef.current, now, event.repeat)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (takeDoubleEscapeClose(stateRef.current, targetId, now, event.repeat) && close()) {
       event.preventDefault();
       event.stopPropagation();
     }
   }, { phase: "capture" });
+
+  // One Esc that nothing took (the window had nothing to back out of, no menu
+  // to close) closes a floating window, as it does a dialog or Help.
+  useShortcut((event) => {
+    if (!closeOnSingle || !isEscapeKey(event) || overlayOpen || editing || dragging?.()) return;
+    if (isEscapeKeptFromClosing(event) || heldRef.current.has(event)) return;
+    if (!closeOnSingle()) return;
+    takeSingleEscapeClose(stateRef.current, Date.now());
+    event.preventDefault();
+    event.stopPropagation();
+  }, { phase: "idle" });
 
   // The first: after the scoped surfaces that own their Esc (onboarding, a
   // form, key capture), so theirs never counts, and before the pane.

@@ -2,6 +2,7 @@ import { MISSING_VALUE } from "../../../utils/format";
 import { DataTableView, Notice, type DataTableColumn } from "../../../components";
 import { turbo } from "../../../components/chart/surface3d/model";
 import { useThemeColors } from "../../../theme/theme-context";
+import { useSelectionFill } from "../../../components/ui/selection-fill";
 import { Box, Text } from "../../../ui";
 import { deltaLabel, tenorLabel, type SurfaceCell, type VolatilitySurfaceGrid } from "./raster";
 
@@ -75,6 +76,7 @@ export interface SurfaceHeatGridProps {
  */
 export function SurfaceHeatGrid({ grid, range, ticks, selected, onSelect, width, height, notice }: SurfaceHeatGridProps) {
   const colors = useThemeColors();
+  const selectionFill = useSelectionFill();
   const shown = heatGridColumns(grid.moneyness, width);
   const columns: DataTableColumn[] = [{ id: "tenor", label: "Expiry", width: LABEL_WIDTH, align: "left" },
     ...shown.map((column) => ({ id: String(column), label: grid.axis === "delta" ? deltaLabel(grid.moneyness[column]!) : `${Math.round(grid.moneyness[column]! * 100)}%`,
@@ -99,8 +101,8 @@ export function SurfaceHeatGrid({ grid, range, ticks, selected, onSelect, width,
         const onMouseDown = () => onSelect({ tenorIndex: row.index, moneynessIndex: index });
         if (value == null || !Number.isFinite(value)) return { text: MISSING_VALUE, color: colors.textMuted, onMouseDown };
         const fill = surfaceColorHex(value, range);
-        return { text: (value * 100).toFixed(1), color: chosen ? colors.selectedText : surfaceTextColor(fill),
-          backgroundColor: chosen ? colors.selected : fill, onMouseDown };
+        return { text: (value * 100).toFixed(1), color: chosen ? (selectionFill.lit ? colors.selectedText : selectionFill.ink(colors.textBright)) : surfaceTextColor(fill),
+          backgroundColor: chosen ? selectionFill.bg : fill, onMouseDown };
       }} emptyStateTitle="No volatility observations." />
     <Box flexDirection="row" height={1} gap={1} paddingX={1} flexShrink={0} data-gloom-role="surface-legend">
       <Box flexShrink={0}><Text fg={colors.textDim}>{first?.label ?? ""}</Text></Box>

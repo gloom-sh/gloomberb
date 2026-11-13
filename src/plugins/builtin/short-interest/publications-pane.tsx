@@ -11,6 +11,8 @@ import type { PaneProps } from "../../../types/plugin";
 import { isKnownNonUsEquityTicker } from "../../../utils/sec";
 import { listingIdentity } from "../shared/ticker-request";
 import { cachedPublication, loadPublication, type PublicationKind } from "./publications-client";
+import { publicationHeadless } from "./publications-headless";
+import { reportFooterSegment } from "../shared/source-footer";
 import { publicationCell, publicationColumns, publicationRows, sharedFailIdentity, type PublicationColumn, type PublicationRow } from "./publications-model";
 
 function renderCell(row: PublicationRow, column: PublicationColumn, _index: number, state: { selected: boolean }): DataTableCell {
@@ -49,7 +51,9 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: kind, focused, loading: resource.loading, error: resource.error,
     url: selected?.sourceUrl ?? data?.source.url ?? null, showOpenHint: true,
-    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
+    // Its source and newest date, as `fn FTD` and `fn ATS` end; how long ago it loaded goes first on a narrow row.
+    info: data ? [reportFooterSegment(publicationHeadless(kind), { sections: [{ title: "", columns: [], rows: publicationRows(data) }] }),
+      ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : [])] : [],
     stale: !!data && resource.data?.stale,
   });
   if (!symbol) return <EmptyState title="No ticker selected." message={`Select a US stock to view ${subject}.`} />;

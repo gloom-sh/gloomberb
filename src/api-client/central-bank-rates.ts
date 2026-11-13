@@ -46,6 +46,11 @@ export interface CentralBankRow {
   nextMeetingStatus?: "scheduled" | "not-published" | "not-verified" | "no-policy-rate"
   /** The BIS series definition and breaks, also in `notes`: history a citation of the latest rate leaves out. */
   seriesNotes?: string[]
+  /**
+   * Whose published rates the board computed the move in basis points and the percentile from, where the bank's terms
+   * ask that a derived figure say so: "CBE's published rates". Absent elsewhere and from older servers.
+   */
+  computedFrom?: string
 }
 
 export interface CentralBankRatesPayload {

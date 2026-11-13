@@ -13,6 +13,7 @@ import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { blendHex } from "../../../theme/color-utils";
 import { useThemeColors } from "../../../theme/theme-context";
+import { useSelectionFill } from "../../../components/ui/selection-fill";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
@@ -85,6 +86,8 @@ type Axis = "spot" | "forward" | "delta" | "strike";
 
 export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
+  // The chosen cell is the table's cursor: quieter while the pane does not have the keys.
+  const selectionFill = useSelectionFill();
   const { symbol, ticker, financials } = usePaneTicker();
   const { createPaneFromTemplate } = usePluginAppActions();
   const target = resolveOptionsTarget(ticker);
@@ -512,8 +515,8 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       if (column.id === "tenor") return { text: tenorLabel(row), color: colors.textDim };
       const index = Number(column.id), cell = row.cells[index]!;
       const chosen = row.label === tableSelectedRow?.label && index === tableCellIndex;
-      return { text: formatIv(cell.volatility), color: chosen ? colors.selectedText : colors.textBright,
-        backgroundColor: chosen ? colors.selected : cell.volatility == null ? colors.bg : blendHex(colors.bg, cell.volatility > 0.5 ? colors.warning : colors.positive, Math.min(0.48, 0.08 + cell.volatility * 0.5)),
+      return { text: formatIv(cell.volatility), color: chosen ? (selectionFill.lit ? colors.selectedText : selectionFill.ink(colors.textBright)) : colors.textBright,
+        backgroundColor: chosen ? selectionFill.bg : cell.volatility == null ? colors.bg : blendHex(colors.bg, cell.volatility > 0.5 ? colors.warning : colors.positive, Math.min(0.48, 0.08 + cell.volatility * 0.5)),
         onMouseDown: () => { onSelectRow(row); setCoordinate(cell.coordinate); } };
     }} emptyStateTitle="No volatility observations." />;
   const reopen = !shownDate && closedUnfitted ? usOptionsReopen(Date.now()) : null;

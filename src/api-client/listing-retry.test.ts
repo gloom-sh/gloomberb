@@ -58,3 +58,22 @@ test("an answer of no data, a refusal, a rate limit of any wait and an unreachab
   expect(wasAskedTwice(history)).toBe(false);
   expect(gaveUp.paths).toHaveLength(1);
 });
+
+// `quote XU100.IS ^CASE30 ^MERV` took 6.8 s: resolving, quoting and checking whether ^MERV stopped trading each asked again.
+test("a listing the service has no quote for is asked once a minute, so an unknown symbol fails fast", async () => {
+  const notFound = { status: "empty", reasonCode: "NOT_FOUND", data: null };
+  const unknown = service(notFound, quote);
+  expect(await unknown.api.getCloudQuote("^ZZZQ")).toEqual(notFound as never);
+  expect(await unknown.api.getCloudQuote("^ZZZQ")).toEqual(notFound as never);
+  expect(unknown.paths).toEqual(["/market/quote?symbol=%5EZZZQ"]);
+  // Another listing, or the same on another venue, is its own question.
+  await unknown.api.getCloudQuote("^ZZZQ", "NYSE");
+  expect(unknown.paths).toHaveLength(2);
+  // The memory is capped: past 256 unknown listings the oldest is asked about again.
+  const many = service(notFound);
+  for (let index = 0; index < 257; index += 1) await many.api.getCloudQuote(`ZZQ${index}`);
+  await many.api.getCloudQuote("ZZQ256");
+  expect(many.paths).toHaveLength(257);
+  await many.api.getCloudQuote("ZZQ0");
+  expect(many.paths).toHaveLength(258);
+});

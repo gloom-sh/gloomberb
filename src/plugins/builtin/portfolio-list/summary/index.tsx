@@ -20,7 +20,7 @@ import {
 } from "../account-metrics";
 import { formatPortfolioAmount, type PortfolioSummaryTotals } from "./totals";
 import { formatAllocationDrift, formatAllocationWeight, type PortfolioCashLine } from "../../../../portfolio/allocation";
-import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
+import { quoteSourceFooterSegment } from "../../shared/source-footer";
 import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
 import { t } from "../../../../i18n";
 import type { PortfolioValuationBasis } from "../../../../portfolio/valuation-basis";
@@ -490,13 +490,11 @@ export function buildPortfolioFooterSegments({
   if (savedAt != null) return [...accountStatus, savedCopyFooterSegment("refresh", savedAt)];
   if (isPortfolioTab ? !totals.hasPositions && !accountStatusText : totals.watchlistCount === 0) return [];
 
-  const lastRefreshTimestamp = getMostRecentQuoteUpdate(quotes);
-  const refreshText = refreshingSize > 0
-    ? "Refreshing..."
-    : lastRefreshTimestamp != null
-      ? formatClockTime(lastRefreshTimestamp)
-      : MISSING_VALUE;
-  return [...accountStatus, { id: "refresh", parts: [{ text: refreshText, tone: "muted" }] }];
+  // Where the quotes are from and the newest's time, as `quote` ends (`Gloom Cloud · 14:44 UTC · markets open`):
+  // a bare local time ("Thu 12:25") named neither.
+  const quoted = refreshingSize > 0 ? null : quoteSourceFooterSegment(quotes, { id: "refresh" });
+  const refresh: PaneFooterSegment = quoted ?? { id: "refresh", parts: [{ text: refreshingSize > 0 ? "Refreshing..." : MISSING_VALUE, tone: "muted" }] };
+  return [...accountStatus, refresh];
 }
 
 const MAX_NOTICE_SYMBOLS = 12;

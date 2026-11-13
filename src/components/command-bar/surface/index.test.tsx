@@ -608,9 +608,10 @@ describe("CommandBar", () => {
     expect(storeRef.current!.getState().paneState["brokers:main"]?.brokerAddRequest).toEqual(expect.any(Number));
   });
 
-  test("opens ticker search from a launch request with saved ticker metadata", async () => {
+  test("opens ticker search from a launch request with saved ticker metadata, and Esc closes the bar", async () => {
     await tui.render(<CommandBarHarness
       query=""
+      live
       extraTickers={[createTestTicker("BRK.B", "Berkshire Hathaway Inc.", {
         exchange: "NYSE",
         assetCategory: "STK",
@@ -634,9 +635,14 @@ describe("CommandBar", () => {
     // The class moved into the left badge; the trailing text carries only the venue.
     expect(frame).toMatch(/EQ\s+BRK\.B.*NYSE/);
     expect(frame).not.toContain("Equity NYSE");
+
+    // The search key opened the bar on this screen: one Esc puts the user
+    // back where they were, not on a root screen they never saw.
+    await tui.emitKeypress({ name: "escape" }, { frames: 2, afterCommit: true });
+    await waitForFrameToContain("bar:closed");
   });
 
-  test("opens ticker search when activating the Ticker Research pane item without a ticker", async () => {
+  test("opens ticker search when activating the Ticker Research pane item without a ticker, and Esc goes back", async () => {
     await tui.render(<CommandBarHarness query="ticker research" />, {
       width: 100,
       height: 24,
@@ -659,6 +665,10 @@ describe("CommandBar", () => {
     expectSingleBackControl(frame);
     expect(frame).toContain("Security Description");
     expect(frame).toContain("Search tickers");
+
+    await tui.emitKeypress({ name: "escape" }, { frames: 2, afterCommit: true });
+    await waitForFrameToContain("Ticker Research");
+    expect(tui.frame()).not.toContain("Security Description");
   });
 
   test("keeps typed prefixes in the root query until a result is activated", async () => {

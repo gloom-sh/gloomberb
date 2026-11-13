@@ -13,7 +13,12 @@ import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
-import { hasNoPolicyRate, policyBoardRow, policyChange, policyChangeDate, policyHistory, policyLevel, policyNotices, policyRate } from "./model";
+import { centralBankRatesHeadless } from "./headless";
+import { reportFooterSegment } from "../shared/source-footer";
+import {
+  hasNoPolicyRate, policyBoardRow, policyChange, policyChangeDate, policyHistory, policyLevel, policyNotices, policyObservations, policyRate,
+  policySource,
+} from "./model";
 
 const PANELS = [{ id: "main" }];
 
@@ -22,12 +27,15 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
   const series = useMemo(() => [staticSeries(history.map((point) => ({ date: new Date(point.date), observedAt: new Date(point.date), value: point.value })),
     { id: row.id, label: row.instrument, color: colors.positive, calendarSpaced: true, style: "step" })], [row, history]);
   const p = row.percentile;
+  // A bank whose terms ask it: the figures computed from its rates say so (the CBE's).
+  const computed = row.computedFrom ? `computed from ${row.computedFrom}` : null;
   // The chart shows the rank window, so the range carries no window or sample
   // count; short details keep the figures several to a row.
   const items: StatItem[] = [
     { id: "level", label: row.range ? "Target range" : "Policy rate", value: policyLevel(row),
-      detail: formatPercentileRank(p.value, "1Y") },
-    { id: "move", label: "Last change", value: policyChange(row), detail: policyChangeDate(row) ?? undefined },
+      detail: [formatPercentileRank(p.value, "1Y"), computed].filter(Boolean).join(" · ") },
+    { id: "move", label: "Last change", value: policyChange(row),
+      detail: [policyChangeDate(row), computed].filter(Boolean).join(" · ") || undefined },
     // A target range ranks and charts its midpoint, which the band's range would not say.
     { id: "range", label: "1Y range", value: `${policyRate(p.min)} to ${policyRate(p.max)}`, detail: row.range ? "midpoint" : undefined },
     { id: "asOf", label: "As of", value: row.asOf ?? MISSING_VALUE, tone: row.status === "stale" ? "warning" : undefined,
@@ -38,7 +46,7 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
     ...row.latestDecision === undefined ? [] : [{ id: "decided", label: row.latestDecision?.kind === "fixing" ? "Last fixing" : "Last decision",
       value: row.latestDecision?.date ?? MISSING_VALUE }],
     { id: "meeting", label: row.nextMeeting?.kind === "fixing" ? "Next fixing" : "Next meeting", value: row.nextMeeting?.date ?? MISSING_VALUE },
-    { id: "source", label: "Source", value: row.source?.toUpperCase() ?? MISSING_VALUE, detail: row.sourceSeriesIds.join(", ") || undefined },
+    { id: "source", label: "Source", value: policySource(row) ?? MISSING_VALUE, detail: row.sourceSeriesIds.join(", ") || undefined },
     { id: "instrument", label: "Instrument", value: row.instrument, detail: row.centralBank ?? undefined, wide: true },
   ];
   return <StatChartDetail items={items} width={width} height={height} empty={!history.some((point) => point.value != null)}
@@ -63,7 +71,9 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
     notices: [...(data ? policyNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "central-bank-rates", focused, loading: resource.loading, error: resource.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
-    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
+    // Its sources and the rows' dates, as `fn CBR` ends; how long ago it loaded goes first on a narrow row.
+    info: data ? [reportFooterSegment(centralBankRatesHeadless, { sections: [], freshness: { observations: policyObservations(data) } }),
+      ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : [])] : [],
     stale: !!data && resource.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">

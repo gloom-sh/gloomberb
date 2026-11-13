@@ -17,6 +17,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion, PERPETUAL_COLUMN_IDS } from "./cell-version";
 import { getColumnValue, type ColumnContext } from "./metrics";
+import { RANGE_FROM_BARS_NOTE } from "../../../portfolio/column-values";
 import { periodPnlFigure, tickerDisplayName } from "../../../portfolio/column-values";
 import { listedSymbol } from "../../../portfolio/listed-symbol";
 import { displayWidth } from "../../../utils/format";
@@ -297,6 +298,12 @@ export function PortfolioTickerTable({
       priceColumn.width,
     ))
     : 0, [columnContext.valuationBasis, priceColumn, resolveCell, sortedTickers, tableFinancialsMap]);
+  // 52W% grows to show a range read from daily bars as one ("+45.30% bars"), as LAST grows for its session mark.
+  const rangeColumn = columns.find((column) => column.id === "range_52w");
+  const rangeWidth = useMemo(() => rangeColumn && sortedTickers.some((ticker) =>
+    tableFinancialsMap.get(ticker.metadata.ticker)?.quote?.yearRangeBasis === "daily-bars")
+    ? rangeColumn.width + displayWidth(RANGE_FROM_BARS_NOTE) + 1
+    : 0, [rangeColumn, sortedTickers, tableFinancialsMap]);
   // The Ticker column grows to its longest symbol, so ETH-USD and BA:LSE show whole beside their market-state dot.
   const tickerWidth = useMemo(() => Math.min(MAX_TICKER_COLUMN_WIDTH, sortedTickers.reduce(
     (widest, ticker) => Math.max(widest, TICKER_DOT_WIDTH + displayWidth(listedSymbol(ticker, tickerDisplayName(ticker), columnContext.homeMarket))),
@@ -311,13 +318,15 @@ export function PortfolioTickerTable({
     : column.id === "weight" && grossWeights ? { ...column, label: GROSS_WEIGHT_LABEL }
     : column.id === "ticker" && tickerWidth > column.width ? { ...column, width: tickerWidth }
     : column.id === "price" && priceWidth > column.width ? { ...column, width: priceWidth }
+    : column.id === "range_52w" && rangeWidth > column.width ? { ...column, width: rangeWidth }
     : column.id === "pnl_pct" && period ? { ...column, label: CONTRIBUTION_LABEL }
     : pnlLabel !== "P&L" && (column.id === "pnl" || column.id === "pnl_pct") ? {
     ...column,
     label: column.id === "pnl_pct" ? pnlLabel.replace("P&L", "%") : pnlLabel,
   } : column).map((column) => BOOK_CURRENCY_COLUMN_IDS.has(column.id) ? bookCurrencyColumn(column, capCurrency) : column)
     .map((column) => hasFrontReference && column.id === noteColumnId ? { ...column, flexGrow: 1 } : column),
-  [capCurrency, columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, period, pnlLabel, priceWidth, sharesWidth, tickerWidth]);
+  [capCurrency, columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, period, pnlLabel, priceWidth, rangeWidth, sharesWidth,
+    tickerWidth]);
   // Read again as the rows' data moves, from the cells the rows show; the columns change only when what is hidden does.
   // The company columns hidden last time, per list, stay hidden while a row added since settles.
   const hiddenCompanyRef = useRef<{ list: string | undefined; ids: ReadonlySet<string> }>({ list: undefined, ids: new Set() });

@@ -7,6 +7,7 @@ import type { LiveBarAccumulator } from "./live-bars";
 import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "./resolution";
 import type { Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
 import type { FredSeriesLoadResult } from "../sources/gloomberb-cloud/fred-series";
+import { fredSeriesAttribution } from "../sources/gloomberb-cloud/fred-attribution";
 import { extractFredSeries } from "./economic";
 import { isIceSpreadSeries } from "./ice-credit";
 import { BASIS_POINT_UNIT, BP_PER_PERCENT } from "./studies/units";
@@ -332,6 +333,8 @@ export function baseEconomicSeries(
       ? points.map((point) => typeof point.value === "number" ? { ...point, value: Number((point.value * BP_PER_PERCENT).toPrecision(12)) } : point)
       : points,
     warning: "FRED vintage dates are unavailable; observations use period dates.",
+    // Its own publisher and publish date, as `fred` cites them (TurkStat via the CBRT), never Gloom Cloud's name.
+    attribution: fredSeriesAttribution(spec.source.seriesId, data),
   };
 }
 

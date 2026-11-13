@@ -110,6 +110,7 @@ export function CompactRangeBar({
   currency,
   priceOptions,
   endpoints = "price",
+  note,
 }: {
   current: number;
   low: number;
@@ -130,6 +131,11 @@ export function CompactRangeBar({
   priceOptions: MarketFormatOptions;
   /** Shared by ranges drawn together, as `endpointWidth` is (rangeEndpointStyle). */
   endpoints?: RangeEndpointStyle;
+  /**
+   * Muted context after the high, where the range is not the source's own
+   * (`daily bars`): shown only while the track keeps RANGE_MIN_TRACK_WIDTH.
+   */
+  note?: string;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   const range = high - low;
@@ -140,7 +146,9 @@ export function CompactRangeBar({
   const shownLabelWidth = useShortLabel ? displayWidth(shortLabel) : labelWidth;
   const endpointOptions = { ...priceOptions, maxWidth: endpointWidth };
   const [lowText, highText] = formatRangeEndpoints(low, high, currency, endpointOptions, endpoints);
-  const barWidth = Math.max(1, width - rangeRowChrome(shownLabelWidth, endpointWidth));
+  const noteCells = note ? displayWidth(note) + 1 : 0;
+  const shownNote = note && width - rangeRowChrome(shownLabelWidth, endpointWidth) - noteCells >= RANGE_MIN_TRACK_WIDTH ? note : null;
+  const barWidth = Math.max(1, width - rangeRowChrome(shownLabelWidth, endpointWidth) - (shownNote ? noteCells : 0));
 
   // The desktop and the web size the row and its track by CSS, so the high end keeps to the pane's edge on every frame of a
   // resize; the label, the endpoints and which of them show are still worked out from `width`, at each catch-up.
@@ -176,6 +184,11 @@ export function CompactRangeBar({
       <Box width={endpointWidth} flexShrink={0} overflow="hidden">
         <Text fg={colors.text}>{highText}</Text>
       </Box>
+      {shownNote && (
+        <Box width={noteCells} flexShrink={0} overflow="hidden" data-gloom-role="range-note">
+          <Text fg={colors.textDim}>{` ${shownNote}`}</Text>
+        </Box>
+      )}
     </Box>
   );
 }

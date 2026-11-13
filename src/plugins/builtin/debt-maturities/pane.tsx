@@ -45,6 +45,9 @@ import {
   useResearchCloudSession,
 } from "../shared/research-cloud-session";
 import { cachedDebtMaturities, loadDebtMaturities } from "./client";
+import { debtMaturitiesHeadless, debtReportFreshness } from "./headless";
+import { reportFooterSegment } from "../shared/source-footer";
+import { useUtcDay } from "../../../react/auto-refresh";
 import {
   HISTORY_COLUMNS,
   bandScaleText,
@@ -61,7 +64,6 @@ import {
   debtFilingUrl,
   debtMetricCaption,
   debtMetricValue,
-  debtNewestFilingText,
   debtNotices,
   debtPercent,
   historyAxis,
@@ -607,15 +609,12 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
       label: "Principal total", values, value: debtAmount(last), color: colors.warning,
     };
   }, [bars]);
-  // Which filing the pane's date is, then how long ago it loaded: the age goes first in a narrow footer.
-  const filingFooter = useMemo(() => {
-    const [filing, ...shorter] = data ? debtNewestFilingText(data) : [];
-    return [
-      ...(filing ? [{ id: "filing", asOf: true, parts: [{ text: filing, tone: "muted" as const }],
-        variants: shorter.map((text) => [{ text, tone: "muted" as const }]) }] : []),
-      ...(data && updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
-    ];
-  }, [data, updatedAgo]);
+  const utcDay = useUtcDay();
+  // Its source and which filing dates it, as `fn DDIS` ends, then how long ago it loaded: the age goes first in a narrow footer.
+  const filingFooter = useMemo(() => data ? [
+    reportFooterSegment(debtMaturitiesHeadless, { sections: [], freshness: debtReportFreshness(data) }),
+    ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
+  ] : [], [data, updatedAgo, utcDay]);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({

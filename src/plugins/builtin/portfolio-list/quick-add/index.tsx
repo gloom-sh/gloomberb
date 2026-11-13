@@ -214,8 +214,19 @@ export function QuickAddTickerInput({
     keepFailureRef.current = false;
     listMemoRef.current = createQuickAddListMemo();
     setInputValue("");
+    // The field keeps its own text, cursor and scroll until told: an add that left them read the next symbol
+    // scrolled by one ("+ SDTRY=X" for USDTRY=X).
+    inputRef.current?.editBuffer?.setText?.("");
+    inputRef.current?.setCursorOffset?.(0);
     setValidation(IDLE_VALIDATION);
   }, []);
+
+  /** An add is done: the row closes, empty, and `a` opens it again. */
+  const closeAfterAdd = useCallback(() => {
+    resetInput();
+    inputRef.current?.blur?.();
+    setInputFocused(false);
+  }, [resetInput]);
 
   const clearFailedInput = useCallback((failure: QuickAddValidation) => {
     keepFailureRef.current = true;
@@ -393,10 +404,13 @@ export function QuickAddTickerInput({
         ...skipped,
       ].join(" "),
     });
-    if (added.length > 0 || left.length === 0) resetInput();
-    else setValidation(list);
-    queueMicrotask(() => inputRef.current?.focus?.());
-  }, [addReady, collectionKind, collectionName, notify, onAdded, resetInput]);
+    // Something added, or nothing left to fix: done. Entries left out keep the row open on what to fix.
+    if (added.length > 0 || left.length === 0) closeAfterAdd();
+    else {
+      setValidation(list);
+      queueMicrotask(() => inputRef.current?.focus?.());
+    }
+  }, [addReady, closeAfterAdd, collectionKind, collectionName, notify, onAdded]);
 
   const submitInput = useCallback(async (submittedValue?: string) => {
     // Before any lookup: consent to count the add cannot be given after it.
@@ -435,7 +449,7 @@ export function QuickAddTickerInput({
             collection: collectionName,
           }),
         });
-        resetInput();
+        closeAfterAdd();
         return;
       }
       if (currentValidation.status !== "ready") {
@@ -463,6 +477,7 @@ export function QuickAddTickerInput({
             collection: collectionName,
           }),
         });
+        closeAfterAdd();
         return;
       }
 
@@ -472,8 +487,7 @@ export function QuickAddTickerInput({
         collection: collectionName,
       });
       notify({ type: "success", body: added.note ? `${body} ${added.note}.` : body });
-      resetInput();
-      queueMicrotask(() => inputRef.current?.focus?.());
+      closeAfterAdd();
     } catch {
       setValidation({ status: "error", query, message: "Ticker add failed" });
       notify({ type: "error", body: tf("Failed to add {symbol}.", { symbol: query }) });
@@ -483,12 +497,12 @@ export function QuickAddTickerInput({
   }, [
     addReady,
     clearFailedInput,
+    closeAfterAdd,
     collectionName,
     handOffListingChoice,
     inputValue,
     notify,
     onAdded,
-    resetInput,
     submitList,
     submitting,
     validateInput,

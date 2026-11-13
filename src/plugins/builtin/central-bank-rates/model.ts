@@ -17,6 +17,14 @@ export const policyChangeDate = (row: CentralBankRow) => row.lastDecision?.date 
 /** Members with no policy rate to publish, kept out of the board and the notices; docs/research-data.md explains them. */
 export const hasNoPolicyRate = (row: CentralBankRow) => row.status === "unavailable"
   && (row.unavailableReason === "no-policy-rate" || row.unavailableReason === "no-unified-rate");
+/**
+ * Each listed row's date, and whether it is stale, as the report and the pane's footer date the board: a row says
+ * "stale" in its status, not in a `stale` flag.
+ */
+export function policyObservations(data: CentralBankRatesPayload): { asOf: string | null; stale: boolean }[] {
+  return data.rows.filter((row) => row.status !== "unavailable").map((row) => ({ asOf: row.asOf, stale: row.status === "stale" }));
+}
+
 export function policyNotices(data: CentralBankRatesPayload): string[] {
   return data.rows.filter((row) => !hasNoPolicyRate(row)).flatMap((row) => row.status === "stale" ? [`${row.label}: stale, latest observation ${row.asOf ?? "unknown"}${row.lagDays == null ? "" : ` (${row.lagDays} days old)`}.`]
     : row.status === "unavailable" ? [`${row.label}: ${(row.unavailableReason ?? "unavailable").replaceAll("-", " ")}.`] : []);
@@ -37,8 +45,14 @@ export function policyBoardRow(row: CentralBankRow): PolicyBoardRow {
 
 const SOURCE_LABELS = { bis: "BIS", fred: "FRED" } as const;
 
-/** Where the row's series is read from: `BIS` or `FRED`. */
-const policySource = (row: CentralBankRow) => row.source ? SOURCE_LABELS[row.source] : null;
+/**
+ * A bank neither BIS nor FRED reports (Egypt's, Nigeria's): its level is read
+ * from its own published decisions, on the page `sourceUrl` names.
+ */
+const ownPublication = (row: CentralBankRow) => row.source == null && row.sourceUrl != null && row.centralBank != null;
+
+/** Where the row's series is read from: `BIS`, `FRED`, or the bank itself. */
+export const policySource = (row: CentralBankRow) => row.source ? SOURCE_LABELS[row.source] : ownPublication(row) ? row.centralBank : null;
 
 /** Each series' own page: one per FRED series (both bounds of the US range), the country's for BIS. */
 function policySeriesUrls(row: CentralBankRow): string[] {
@@ -48,6 +62,7 @@ function policySeriesUrls(row: CentralBankRow): string[] {
 
 /** `BIS series D.GB (url)`; a two-series range cites each bound: `FRED series DFEDTARL (lower bound, url) and DFEDTARU (upper bound, url)`. */
 function seriesCitation(row: CentralBankRow): string | null {
+  if (ownPublication(row)) return `${row.centralBank}'s published decisions (${row.sourceUrl})`;
   const source = policySource(row);
   const ids = row.sourceSeriesIds;
   const urls = policySeriesUrls(row);
@@ -68,7 +83,9 @@ export function policyCitation(row: CentralBankRow): string {
       : `${row.instrument}: no current observation (${(row.unavailableReason ?? "unavailable").replaceAll("-", " ")})`;
     return series ? `${missing}, ${series}` : missing;
   }
-  const confirmed = row.confirmedAt && row.confirmationSourceUrl ? `; confirmed at ${row.confirmationSourceUrl} on ${row.confirmedAt.slice(0, 10)}` : "";
+  // A bank's own page is its source; it is not cited again as confirming itself.
+  const confirmed = row.confirmedAt && row.confirmationSourceUrl && row.confirmationSourceUrl !== row.sourceUrl
+    ? `; confirmed at ${row.confirmationSourceUrl} on ${row.confirmedAt.slice(0, 10)}` : "";
   return `${row.instrument} ${policyLevel(row)}${series ? `, ${series}` : ""}, as of ${row.asOf}${confirmed}`;
 }
 
@@ -156,6 +173,7 @@ export function policyUnlistedNote(row: CentralBankRow): string {
 
 /** Who a chart of the row's series cites: `FRED series ECBDFR`, published by the European Central Bank. */
 export function policySeriesAttribution(row: CentralBankRow): { source: string; publisher?: string } | null {
+  if (ownPublication(row)) return { source: `${row.centralBank}'s published decisions`, publisher: row.centralBank! };
   const source = policySource(row);
   if (!source || row.sourceSeriesIds.length === 0) return null;
   return { source: `${source} series ${row.sourceSeriesIds.join(" and ")}`, ...(row.centralBank ? { publisher: row.centralBank } : {}) };

@@ -7,6 +7,9 @@ import { deriveQuarterlyStatements } from "../../time-series/fundamentals";
 import { formatMarketChangeWithCurrency, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import { sessionQuotes } from "../../test-support/test-fixture-session-quotes";
 import type { Quote } from "../../types/financials";
+import { statedYearRange } from "../../market-data/quotes/live-valuation";
+import { quoteMarketStateLabel } from "../../market-data/market/status";
+import { dailyCloseText } from "../../market-data/quotes/freshness";
 
 test("daily fund NAV mapping separates its observation kind from monetary price units", () => {
   const raw: CloudQuotePayload = {
@@ -111,6 +114,44 @@ test("a previous close far below the 52-week low drops the move it implies, and 
   expect(pennyGap).toMatchObject({ previousClose: 0.5, change: 4.5, changePercent: 900 });
   const { low52w: _omitted, ...withoutRange } = base;
   expect(mapQuote({ ...withoutRange, previousClose: 0.0002, change: 3813.79, changePercent: 1 }).change).toBe(3813.79);
+});
+
+test("an index's 0 open is none, a 52-week range that repeats its day's is none, and one from the daily bars says so", () => {
+  const index = (overrides: Partial<CloudQuotePayload>) => mapQuote({
+    symbol: "^CASE30", currency: "EGP", instrumentType: "INDEX", price: 52023.4, previousClose: 52500.5, change: -477.1, changePercent: -0.91,
+    open: 52671.5, low: 51904.4, high: 52691.3, low52w: 51904.4, high52w: 52691.3, lastUpdated: Date.parse("2026-11-12T12:25:00Z"),
+    listingExchangeName: "EGX", providerId: "gloomberb-cloud", dataSource: "delayed", ...overrides,
+  } as CloudQuotePayload);
+  // As served on Thu 12 Nov 2026: the day's range again, so no 52-week range at all.
+  expect(statedYearRange(index({}))).toBeNull();
+  const fromBars = index({ low52w: 39537, high52w: 56931, yearRangeBasis: "daily-bars" });
+  expect(statedYearRange(fromBars)).toEqual({ low: 39537, high: 56931 });
+  expect(fromBars.yearRangeBasis).toBe("daily-bars");
+  // The word goes with its range: a tick relaying the same range keeps it, one with the day's range again (a copy
+  // saved before the server read the bars) drops it, never labelling the day's range "daily bars".
+  const kept = normalizeQuoteContribution(fromBars)!;
+  const { yearRangeBasis: _unsaid, ...relayed } = fromBars;
+  expect(mergeQuoteContribution(kept, { ...relayed, price: 52030 }).yearRangeBasis).toBe("daily-bars");
+  const { yearRangeBasis: _none, ...saved } = index({});
+  const merged = mergeQuoteContribution(kept, saved);
+  expect([merged.high52w, merged.yearRangeBasis]).toEqual([52691.3, undefined]);
+  expect(statedYearRange(merged)).toBeNull();
+  // A share whose range is its day's (a new listing) keeps it; a bound at 0 is none.
+  expect(statedYearRange(index({ symbol: "COMI.CA", instrumentType: "EQUITY" }))).toEqual({ low: 51904.4, high: 52691.3 });
+  expect(statedYearRange(index({ low52w: 0, high52w: 209714 }))).toBeNull();
+  // ^BVSP before B3's open: Open 0.00 and Day Range 0.00 - 0.00 are no prices.
+  const beforeOpen = index({ symbol: "^BVSP", currency: "BRL", open: 0, low: 0, high: 0, listingExchangeName: "B3" });
+  expect([beforeOpen.open, beforeOpen.low, beforeOpen.high]).toEqual([undefined, undefined, undefined]);
+  // ^MERV with no live quote: the latest daily bar's close, labelled with its session.
+  const merval = index({ symbol: "^MERV", currency: "ARS", dailyClose: { session: "2026-11-11" }, listingExchangeName: "BYMA" });
+  expect(merval.dailyClose).toEqual({ session: "2026-11-11" });
+  expect([quoteMarketStateLabel(merval), dailyCloseText(merval)]).toEqual(["DAILY CLOSE", "no live quote, daily close of Wed 11 Nov"]);
+  expect(index({ dailyClose: { session: "yesterday" } } as Partial<CloudQuotePayload>).dailyClose).toBeUndefined();
+  // A Treasury yield index's 0 is a level: ^IRX's open, low and 52-week low of 0.00 stand.
+  const bill = index({ symbol: "^IRX", currency: "USD", price: 0.01, open: 0, low: 0, high: 0.02, low52w: -0.01, high52w: 1.62,
+    listingExchangeName: "CBOE" });
+  expect([bill.open, bill.low, bill.high]).toEqual([0, 0, 0.02]);
+  expect(statedYearRange(bill)).toEqual({ low: -0.01, high: 1.62 });
 });
 
 test("a null last-session move from the service is no move", () => {

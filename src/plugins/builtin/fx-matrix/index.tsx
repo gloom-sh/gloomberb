@@ -20,7 +20,7 @@ import { useFxRatesMap } from "../../../market-data/hooks";
 import { resolveEntryData } from "../../../market-data/selectors";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneSettingValue, useUpdatePaneSettings } from "../../../state/app/context";
-import { colors, shownPriceColor } from "../../../theme/colors";
+import { colors, inactiveSelectedBg, shownPriceColor } from "../../../theme/colors";
 import { formatPercentRaw, MISSING_VALUE } from "../../../utils/format";
 import type {
   CommandBarResultDef, CommandBarSearchProvider, GloomPluginContext, PaneProps, PaneTemplateContext, PaneTemplateCreateOptions,
@@ -33,7 +33,8 @@ import { summarizeFxRates, fxStatusLabel } from "../../../utils/fx-status";
 import type { PluginModule } from "../plugin-module";
 import { fxRateObservations } from "../shared/fx-rate-freshness";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
-import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
+import { useAutoRefresh, useUpdatedAgo, useUtcDay } from "../../../react/auto-refresh";
+import { reportFooterSegment } from "../shared/source-footer";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { fxBoardMoveDay, fxLegMoveReference, fxLegQuoteKey, fxLegReferenceRate, fxLegSavedAt, fxLegTargets, fxLegs, fxLegsBehind, liveFxLegEntry } from "./live-legs";
 import { CURRENCY_FLAG_REGIONS, FX_CURRENCIES, formatRate, resolveCurrencies, type FxCurrency } from "./pairs";
@@ -195,20 +196,19 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   }));
   // A report or capture of the board is dated by the rates it draws: when each
   // was observed, whether it is delayed or stale, and where the FX market
-  // stands. The pane draws none of this; its footer keeps its own status.
+  // stands. The footer ends with the same line, as `fn FXC` does.
+  const rateObservations = () => {
+    const legQuotes = new Map(legs.map((leg) => [leg.currency, resolveEntryData(legEntries.get(fxLegQuoteKey(leg)))] as const));
+    return fxRateObservations(currencies, rates, (currency) => ({
+      entry: rateEntries.get(currency),
+      // Only a rate that is the pair quote's own says what that quote says.
+      legQuote: liveEntries.has(currency) ? legQuotes.get(currency) : null,
+    }));
+  };
   useRemoteUiNode({
     role: "report-freshness",
     label: "Rate freshness",
-    getMetadata: () => {
-      const legQuotes = new Map(legs.map((leg) => [leg.currency, resolveEntryData(legEntries.get(fxLegQuoteKey(leg)))] as const));
-      return {
-        observations: fxRateObservations(currencies, rates, (currency) => ({
-          entry: rateEntries.get(currency),
-          // Only a rate that is the pair quote's own says what that quote says.
-          legQuote: liveEntries.has(currency) ? legQuotes.get(currency) : null,
-        })),
-      };
-    },
+    getMetadata: () => ({ observations: rateObservations() }),
   });
   const status = summarizeFxRates(currencies, rates, (currency) => rateEntries.get(currency));
   const statusText = fxStatusLabel(status);
@@ -300,7 +300,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     row: FxCurrency,
     column: DataTableColumn,
     _index: number,
-    rowState: { selected: boolean },
+    rowState: { selected: boolean; inactive?: boolean },
   ): DataTableCell => {
     if (column.id === "base") {
       return {
@@ -344,9 +344,12 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
         ? crossMovePercent(base, rowReference, quote, columnReference)
         : null,
     );
-    // The cursor row keeps its selection colours; the tint leans on them.
+    // The cursor row keeps its selection colours, quieter while the board does
+    // not have the keys; the tint leans on them.
     const backgroundColor = rowState.selected
-      ? directionTint(level, { background: colors.selected, text: colors.selectedText })
+      ? rowState.inactive
+        ? directionTint(level, { background: inactiveSelectedBg(colors), text: colors.text })
+        : directionTint(level, { background: colors.selected, text: colors.selectedText })
       : directionTint(level, { background: colors.bg, text: colors.text });
     return { text: formatRate(base / quote, quoteCurrency, reference), color: colors.text, backgroundColor };
   }, [amount?.currency, convertedAmount, directionReferences, flagged, moveVsUsd, rates, referenceRates, status.loading]);
@@ -354,6 +357,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh), [refresh]);
 
   const updatedAgo = useUpdatedAgo(status.latestFetchedAt || null);
+  const utcDay = useUtcDay();
 
   usePaneFooter(FX_MATRIX_PANE_ID, () => {
     const info: PaneFooterSegment[] = [];
@@ -361,13 +365,20 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     const unreadAmount = amountError ?? (typedAmount && "error" in typedAmount ? typedAmount.error : null);
     if (unreadAmount) info.push({ id: "amount", parts: [{ text: unreadAmount, tone: "warning" }] });
     if (status.loading > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
-    if (statusText) info.push({ id: "rates", parts: [{ text: statusText, tone: status.stale || status.unknownTime || status.unavailable ? "warning" : "muted" }] });
+    // Where the rates are from and when, as `fn FXC` ends, dates them: the rates' status then says only what is wrong,
+    // naming the pair, never the oldest rate's time again.
+    const observations = savedAt == null ? rateObservations() : [];
+    const warns = !!(status.stale || status.unknownTime || status.unavailable);
+    if (statusText && (warns || observations.length === 0)) info.push({ id: "rates", parts: [{ text: statusText, tone: warns ? "warning" : "muted" }] });
     // Every cross is read through each currency's dollar pair, the amount column too; `fx` reads a pair's own quote.
     info.push({ id: "cross", parts: [{ text: "via USD", tone: "muted" }] });
     if (savedAt != null) info.push(savedCopyFooterSegment("updated", savedAt));
-    else if (updatedAgo) info.push(ageFooterSegment(updatedAgo, { verb: "fetched" }));
+    else {
+      if (observations.length) info.push(reportFooterSegment(fxMatrixHeadless, { rows: [], freshness: { observations } }));
+      if (updatedAgo) info.push(ageFooterSegment(updatedAgo, { verb: "fetched" }));
+    }
     return { info };
-  }, [amountError, savedAt, status.loading, statusText, typedAmount, updatedAgo]);
+  }, [amountError, rates, savedAt, status.loading, status.stale, status.unavailable, status.unknownTime, statusText, typedAmount, updatedAgo, utcDay]);
 
   const queryBar = (
     <QueryBar

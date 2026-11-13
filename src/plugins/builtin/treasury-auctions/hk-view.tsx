@@ -20,7 +20,10 @@ import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/d
 import { ageFooterSegment, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useAutoRefresh } from "../../../react/auto-refresh";
+import { useAutoRefresh, useUtcDay } from "../../../react/auto-refresh";
+import { reportFooterSegment } from "../shared/source-footer";
+import { treasuryAuctionsHeadless } from "./headless";
+import { hkTendersReport } from "./hk-headless";
 import { colors } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { formatRelativeAge, formatShortDate } from "../../../utils/datetime-format";
@@ -53,7 +56,6 @@ import {
   hkWindowStart,
   type HkColumn,
   type HkSortPreference,
-  type HkTendersBoard,
 } from "./hk";
 import {
   AUCTION_FILTERS,
@@ -146,13 +148,6 @@ function HkTenderDetail({ tender, width }: { tender: HkTender; width: number }) 
 }
 
 /** How far HKMA's figures run for the paper a group lists: they come a month at a time, after the tenders. */
-function runsToFor(runsTo: HkTendersBoard["runsTo"] | undefined, filter: AuctionFilter): string | null {
-  if (!runsTo) return null;
-  const date = filter === "bill" ? runsTo.efb : filter === "note" ? runsTo.efn : filter === "bond" ? runsTo.hkgb
-    : [runsTo.efb, runsTo.efn].filter((value): value is string => !!value).sort().at(-1) ?? runsTo.hkgb;
-  return date ? hkDateText(date) : null;
-}
-
 interface HkTendersViewProps {
   focused: boolean;
   width: number;
@@ -240,17 +235,21 @@ export function HkTendersView({
     renderTenderCell(tender, column, rowState, showYear)
   ), [showYear]);
 
-  const runsTo = runsToFor(resource.data?.runsTo, filter);
+  const utcDay = useUtcDay();
+  const board = resource.data;
   const info = useMemo(() => {
     const segments = loadingErrorFooterInfo(loading, error);
-    // HKMA's terms ask for the credit; its figures lag the tenders, so the footer says how far they run.
-    if (tenders.length) segments.push({ id: "source", parts: [{ text: "Source: HKMA" }] });
-    if (runsTo) segments.push({ id: "runs-to", parts: [{ text: `figures to ${runsTo}` }], asOf: true });
+    // HKMA's terms ask for the credit; its figures lag the tenders, so the footer dates the newest listed,
+    // as `fn AUCT HK` ends.
+    if (board && tenders.length) {
+      segments.push(reportFooterSegment(treasuryAuctionsHeadless,
+        hkTendersReport(board, { search: searchQuery, filter, window: historyDays, view: "results", sort: null })));
+    }
     if (savedAt != null) segments.push(...savedCopyFooterInfo([savedAt]));
     else if (stale) segments.push(STALE_SEGMENT);
     if (fetchedAt && savedAt == null) segments.push(ageFooterSegment(formatRelativeAge(fetchedAt)));
     return segments;
-  }, [error, fetchedAt, loading, runsTo, savedAt, stale, tenders.length]);
+  }, [board, error, fetchedAt, filter, historyDays, loading, savedAt, searchQuery, stale, tenders.length, utcDay]);
   const hints = useMemo(() => detailOpen || tenders.length === 0 ? [] : [
     { id: "search", key: "/", label: "search", onPress: focusSearch },
     { id: "filter", key: "f", label: "ilter", onPress: cycleFilter },

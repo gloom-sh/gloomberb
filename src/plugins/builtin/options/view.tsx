@@ -360,6 +360,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     id: "expiration",
     label: "Exp",
     inline: true,
+    scrolls: true,
     value: String(selectedExpiration),
     // The dates either side name the key that steps to them: a terminal
     // label prefix, a desktop tooltip.

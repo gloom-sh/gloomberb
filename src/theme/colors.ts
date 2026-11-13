@@ -1,6 +1,6 @@
 import { blendForContrast, blendForContrastOnSurfaces, blendHex, higherContrast } from "./color-utils";
 import { getTheme, DEFAULT_THEME, type Theme } from "./themes";
-import { hoverColour, placeholderColour, themeCssVariables } from "./ui-tokens";
+import { hoverColour, inactiveSelectionColour, inactiveSelectionTextColour, placeholderColour, themeCssVariables } from "./ui-tokens";
 
 export type ThemeColors = Readonly<Omit<Theme, "name" | "description">>;
 
@@ -92,6 +92,22 @@ export function getChartIndicatorColor(index: number): string {
 /** Returns a hover background color derived from bg and selected */
 export function hoverBg(palette: ThemeColors = colors): string {
   return hoverColour(palette);
+}
+
+/**
+ * The chosen row of a list or table in a pane that is not focused (ui-tokens
+ * `inactiveSelectionColour`); the focused pane's chosen row is `selected`.
+ */
+export function inactiveSelectedBg(palette: ThemeColors = colors): string {
+  return inactiveSelectionColour(palette);
+}
+
+/**
+ * Text on the inactive selection (`inactiveSelectedBg`): the row's own colour,
+ * lifted where it would not read there (ui-tokens `inactiveSelectionTextColour`).
+ */
+export function inactiveSelectedText(color: string, palette: ThemeColors = colors): string {
+  return inactiveSelectionTextColour(color, palette);
 }
 
 /**

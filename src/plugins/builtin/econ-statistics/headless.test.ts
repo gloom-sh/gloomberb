@@ -220,3 +220,13 @@ test("nowcasts retain published rates and signed indexes, ranked against their o
     });
   }
 });
+
+// `fn ECST "nigeria inflation"` read as an unknown statistic with no word that ECST is the US's, nor where another country's is.
+test("a statistic ECST does not have says ECST is the US's, and where another country's policy rate and series are", async () => {
+  const error = await Promise.resolve().then(() => econStatisticsHeadless.load({ ...args, rawArgument: "nigeria inflation", argument: "nigeria inflation" },
+    createTestHeadlessContext({ apiClient: { getCloudFredSeries: async () => { throw new Error("not read"); } } as never })))
+    .catch((caught: unknown) => caught as Error);
+  expect(error).toBeInstanceOf(Error);
+  expect((error as Error).message).toContain("ECST covers US statistics only");
+  expect((error as Error).message).toContain("policy rates are in fn CBR and published series in gloom fred --list");
+});

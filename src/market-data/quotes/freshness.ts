@@ -224,6 +224,25 @@ export function nominalSessionLabel(quote: Pick<Quote, "nominalPrice"> | null | 
   return day && Number.isFinite(day.getTime()) ? `${day.getUTCDate()} ${PRINT_MONTHS[day.getUTCMonth()]} close` : null;
 }
 
+/**
+ * What a quote with no live price says beside it (Quote.dailyClose): "no live
+ * quote, daily close of Wed 11 Nov". Null for any other quote.
+ */
+export function dailyCloseText(quote: Pick<Quote, "dailyClose"> | null | undefined): string | null {
+  const session = quote?.dailyClose?.session;
+  const day = session ? new Date(`${session}T00:00:00Z`) : null;
+  return day && Number.isFinite(day.getTime())
+    ? `no live quote, daily close of ${PRINT_WEEKDAYS[day.getUTCDay()]} ${day.getUTCDate()} ${PRINT_MONTHS[day.getUTCMonth()]}`
+    : null;
+}
+
+/** When a daily close is from, as an Updated cell names it: "11 Nov daily close" (Quote.dailyClose). Null for any other quote. */
+export function dailyCloseSessionLabel(quote: Pick<Quote, "dailyClose"> | null | undefined): string | null {
+  const session = quote?.dailyClose?.session;
+  const day = session ? new Date(`${session}T00:00:00Z`) : null;
+  return day && Number.isFinite(day.getTime()) ? `${day.getUTCDate()} ${PRINT_MONTHS[day.getUTCMonth()]} daily close` : null;
+}
+
 /** A US listing's after-hours session ends four hours past its regular close (17:00 New York after an early close). */
 const US_AFTER_HOURS_MS = 4 * 60 * 60_000;
 

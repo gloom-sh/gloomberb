@@ -2,7 +2,8 @@ import { useThemeColors } from "../../theme/theme-context";
 import { Box, ScrollBox, Text, useUiHost } from "../../ui";
 import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
-import { hoverBg } from "../../theme/colors";
+import { hoverBg, inactiveSelectedText } from "../../theme/colors";
+import { useSelectionFill } from "./selection-fill";
 import { t } from "../../i18n";
 import { useRemoteUiNode, useRemoteUiScope } from "../../remote/semantic-tree";
 import { resolveRemoteListIndex } from "../../remote/semantic-helpers";
@@ -145,11 +146,15 @@ export function listCursorMove(event: KeyboardModifierEventLike, pageSize: numbe
 function DefaultRow({
   item,
   selected,
+  lit,
 }: {
   item: ListViewItem;
   selected: boolean;
+  /** The selection is the one the keys move (`useSelectionFill`); off, the row's colours are lifted to read on the quieter fill. */
+  lit: boolean;
 }) {
   const colors = useThemeColors();
+  const ink = (color: string) => (selected && !lit ? inactiveSelectedText(color, colors) : color);
   if (item.kind === "heading") return <Text fg={colors.textMuted}>{t(item.label)}</Text>;
   // The label gives way to the detail: a long label is cut with an ellipsis
   // instead of wrapping under the row or running into the right column.
@@ -160,7 +165,7 @@ function DefaultRow({
           {selected ? "\u25b8 " : "  "}
         </Text>
         <Text
-          fg={item.color ?? (selected ? colors.text : colors.textDim)}
+          fg={ink(item.color ?? (selected ? colors.text : colors.textDim))}
           attributes={selected ? TextAttributes.BOLD : 0}
           wrapMode="none"
           truncate
@@ -172,7 +177,7 @@ function DefaultRow({
       </Box>
       {item.detail && (
         <Box flexShrink={0} paddingLeft={1}>
-          <Text fg={colors.textMuted}>{t(item.detail)}</Text>
+          <Text fg={ink(colors.textMuted)}>{t(item.detail)}</Text>
         </Box>
       )}
     </Box>
@@ -212,6 +217,7 @@ export function ListView({
   remoteMetadata,
 }: ListViewProps) {
   const colors = useThemeColors();
+  const selectionFill = useSelectionFill();
   // Drawn inside a prompt (a dialog that lists a prompt's answers), it carries the prompt's scope.
   const contextScope = useRemoteUiScope();
   useRemoteUiNode({
@@ -290,7 +296,7 @@ export function ListView({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const baseBg = bgColor ?? colors.bg;
-  const activeBg = selectedBgColor ?? colors.selected;
+  const activeBg = selectedBgColor ?? selectionFill.bg;
   const rowHoverBg = hoverBgColor ?? hoverBg(colors);
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;
@@ -366,7 +372,7 @@ export function ListView({
       >
         {renderRow
           ? renderRow(item, state, index)
-          : <DefaultRow item={item} selected={selected} />}
+          : <DefaultRow item={item} selected={selected} lit={selectionFill.lit || selectedBgColor !== undefined} />}
       </Box>
     );
   });

@@ -18,11 +18,14 @@ import { useChartViewReset } from "../../../components/chart/core/view-reset";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { handleRefreshKey, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { useUtcDay } from "../../../react/auto-refresh";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { cachedCryptoEtfFlows, loadCryptoEtfFlows } from "./client";
+import { cryptoEtfFlowFreshness, cryptoEtfFlowsHeadless } from "./headless";
+import { reportFooterSegment } from "../shared/source-footer";
 import {
   CRYPTO_ETF_FLOW_ASSETS,
   CRYPTO_ETF_FLOW_RANGES,
@@ -103,16 +106,18 @@ export function CryptoEtfFlowsPane({ focused, width, height }: PaneProps) {
   ] : [];
 
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
+  const utcDay = useUtcDay();
+  // The publisher and the flows' day, as `fn ETFF` ends; how long ago it loaded goes first on a narrow row.
   const footerInfo = useMemo(() => data ? [
-    { id: "as-of", parts: [{ text: `as of ${data.asOf}`, tone: "muted" as const }] },
+    reportFooterSegment(cryptoEtfFlowsHeadless, { rows: [], freshness: cryptoEtfFlowFreshness(data, data.asOf) }),
     ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
-  ] : [], [data, updatedAgo]);
+  ] : [], [data, updatedAgo, utcDay]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const refresh = useCallback(() => resource.reload(), [resource.reload]);
   usePaneRefreshKey(refresh, { focused });
   usePaneStatusLinkFooter({
     registrationId: CRYPTO_ETF_FLOWS_PANE_ID, focused, loading: resource.loading, error: data ? null : resource.error,
-    url: data?.source.url ?? null, source: data?.source.publisher ?? null, label: "publisher", showOpenHint: true,
+    url: data?.source.url ?? null, showOpenHint: true,
     info: footerInfo, stale: !!data && (data.stale || !!current?.stale),
   });
   usePaneNoticeFooter({
