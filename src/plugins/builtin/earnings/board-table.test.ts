@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { EarningsCalendarReport, EarningsHistoryPayload } from "../../../api-client/earnings";
 import { colors } from "../../../theme/colors";
+import { notMeaningfulColor } from "../../../components/ui/not-meaningful";
 import type { Quote } from "../../../types/financials";
 import { boardReport, boardRowOf, reportMove, type BoardRow } from "./board-model";
 import { boardColumns, boardHasActuals, boardHasCurrencies, boardSymbolWidth, renderBoardCell, type BoardCellContext, type BoardColumn } from "./board-table";
@@ -222,10 +223,10 @@ describe("surprises against a loss or zero estimate", () => {
     implied: null, realized: null, revenueActual: null, dateStatus: "reported", ...fields,
   });
 
-  test("read N/M in EVTS and ERN, and still count a narrower loss as a beat", () => {
+  test("read N/M in EVTS and ERN, in N/M's colour as every pane draws it, and still count a narrower loss as a beat", () => {
     const loss = boardReport(calendarReport({ symbol: "CRWV", epsEstimate: -1.47, epsActual: -1.14, epsActualSource: "calendar", dateStatus: "reported" }), new Map());
     expect(loss.epsSurprise).toBe("not-meaningful");
-    expect(cell(loss, "epsSurprise")).toEqual({ text: "N/M", color: colors.textDim });
+    expect(cell(loss, "epsSurprise")).toEqual({ text: "N/M", color: notMeaningfulColor() });
     expect(cell(PEP, "epsSurprise").text).toBe("+1.3%");
     const rows = historyRows({ asOf: `${TODAY}T15:00:00Z`, symbol: "CRWV", name: null, reports: [
       report({ date: "2026-08-11", epsEstimate: -1.47, epsActual: -1.14, revenueEstimate: 0, revenueActual: 2.1e9 }),
@@ -235,9 +236,9 @@ describe("surprises against a loss or zero estimate", () => {
     ] }, TODAY, null);
     const columns = historyColumns(2000, rows);
     const draw = (index: number, id: string) => renderHistoryCell(rows[index]!, columns.find((entry) => entry.id === id)!);
-    expect(draw(0, "epsSurprise")).toEqual({ text: "N/M", color: colors.textDim });
+    expect(draw(0, "epsSurprise")).toEqual({ text: "N/M", color: notMeaningfulColor() });
     // Sales against a zero estimate: N/M too.
-    expect(draw(0, "revenueSurprise")).toEqual({ text: "N/M", color: colors.textDim });
+    expect(draw(0, "revenueSurprise")).toEqual({ text: "N/M", color: notMeaningfulColor() });
     expect(draw(1, "revenueSurprise").text).toBe("+5.3%");
     expect(draw(2, "epsSurprise")).toEqual({ text: "+25.0%", color: colors.positive });
     // Two of four beat: the narrower loss and the profit above its estimate.

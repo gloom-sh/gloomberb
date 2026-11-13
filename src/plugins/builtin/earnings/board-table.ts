@@ -2,6 +2,8 @@ import type { DataTableCell, DataTableColumn } from "../../../components";
 import { withCompanyLogo } from "../../../components/company-logo";
 import { TABLE_COLUMN_GAP, tableColumnLeadGap, tableColumnWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
+import { notMeaningfulCell } from "../../../components/ui/not-meaningful";
+import { isNotMeaningful } from "../../../utils/growth";
 import { TextAttributes } from "../../../ui";
 import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
 import type { BoardReport, BoardRow, BoardSort } from "./board-model";
@@ -127,6 +129,8 @@ const NO_CONTEXT: BoardCellContext = { statusShown: true, move: () => null };
 
 /** A signed move or surprise, as ERN draws one. */
 function signed(value: Surprise): DataTableCell {
+  // N/M (a surprise against a loss or zero estimate) as every pane draws it; a missing figure dim.
+  if (isNotMeaningful(value)) return notMeaningfulCell();
   return { text: signedPercent(value), color: typeof value !== "number" || value === 0 ? colors.textDim : value > 0 ? colors.positive : colors.negative };
 }
 

@@ -14,7 +14,7 @@ import {
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { companyDataNotes, readCompanyFrom } from "../../../types/company-from";
 import { formatUtcSeconds } from "../../../utils/utc-time";
-import { listedHeadline, newsSummaryLine } from "../../../news/news-model";
+import { listedRowHeadline, newsSummaryLine, routineNoticeFields } from "../../../news/news-model";
 import { shortStoryId } from "../../../news/story-id";
 import { cloudNewsFreshness, cloudRealtimeAccess } from "../shared/report-freshness";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
@@ -23,7 +23,9 @@ import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 const NEWS_COLUMNS = [
   { key: "publishedAt", header: "Published", textFormat: formatUtcSeconds },
   { key: "source", header: "Source" },
-  { key: "headline", header: "Headline" },
+  // A row standing for a company's routine notices (a buy-back's daily ones) says how many; exports keep the
+  // headline as the story's and the count in its own fields.
+  { key: "headline", header: "Headline", textFormat: listedRowHeadline },
   { key: "tickers", header: "Tickers", textFormat: (value: unknown) => Array.isArray(value) ? value.join(", ") : String(value ?? "") },
   { key: "sentiment", header: "Sentiment" },
   { key: "importance", header: "Score", align: "right" as const },
@@ -55,15 +57,9 @@ function newsRow(article: NewsArticle) {
     id: article.id,
     publishedAt: article.publishedAt.toISOString(),
     source: article.source,
-    // A row standing for a company's routine notices (a buy-back's daily ones) says how many, and keeps the count.
-    headline: listedHeadline(article),
+    headline: article.title,
     summary: article.summary ?? null,
-    ...(article.routine ? {
-      routineKind: article.routine.kind,
-      routineNotices: article.routine.notices,
-      routineSince: article.routine.since.toISOString(),
-      routineProgramme: article.routine.programme,
-    } : {}),
+    ...routineNoticeFields(article),
     topic: article.topic,
     topics: article.topics,
     sectors: article.sectors,

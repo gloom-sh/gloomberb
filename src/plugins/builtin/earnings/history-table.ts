@@ -1,6 +1,8 @@
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
+import { notMeaningfulCell } from "../../../components/ui/not-meaningful";
+import { isNotMeaningful } from "../../../utils/growth";
 import { TextAttributes } from "../../../ui";
 import { datedYear, epsText, impliedText, moneyText, signedPercent, TIMING_LABEL, type Surprise } from "./format";
 import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
@@ -84,6 +86,8 @@ export function historyColumns(width: number, rows: readonly HistoryRow[], optio
 }
 
 function signed(value: Surprise): DataTableCell {
+  // N/M (a surprise against a loss or zero estimate) as every pane draws it; a missing figure dim.
+  if (isNotMeaningful(value)) return notMeaningfulCell();
   return { text: signedPercent(value), color: typeof value !== "number" || value === 0 ? colors.textDim : value > 0 ? colors.positive : colors.negative };
 }
 

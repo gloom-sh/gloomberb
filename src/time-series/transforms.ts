@@ -27,9 +27,10 @@ function primaryValue(point: TimeSeriesPoint): number | null {
       : null;
 }
 
+/** A value against a positive baseline: its change in percent, or the baseline as 100. */
 function relativeValue(value: number | null | undefined, baseline: number, index100: boolean): number | null {
-  if (!isFiniteNumber(value) || baseline === 0) return null;
-  return index100 ? (value / baseline) * 100 : ((value - baseline) / Math.abs(baseline)) * 100;
+  if (!isFiniteNumber(value) || !(baseline > 0)) return null;
+  return index100 ? (value / baseline) * 100 : ((value - baseline) / baseline) * 100;
 }
 
 /** YoY or QoQ growth in percent: none off a zero or negative base, where it is not meaningful. */
@@ -124,7 +125,9 @@ export function applySeriesTransform(
     const baseline = options.baseline !== undefined
       ? options.baseline
       : baselinePoint ? primaryValue(baselinePoint) : null;
-    if (baseline === null || baseline === 0) {
+    // Off a baseline at or below zero (a loss, a negative yield) a change in percent or an index is not
+    // meaningful, as growth off one is (utils/growth): the series is left as gaps.
+    if (baseline === null || !(baseline > 0)) {
       return points.map((point) => mapNumericFields(point, () => null));
     }
     return points.map((point) => mapNumericFields(

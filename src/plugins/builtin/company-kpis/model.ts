@@ -4,7 +4,7 @@ import { scalarPoint, staticSeries } from "../../../components/chart/static/seri
 import { getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
 import type { CompositeChartXAxis } from "../../../components/chart/composite/types";
 import { formatCompact, formatNumber } from "../../../utils/format";
-import { growthRate, isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
+import { growthRate, isNotMeaningful, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE } from "../../../utils/growth";
 import { freePreviewNote } from "../shared/free-preview";
 import type { CompanyMode } from "./client";
 
@@ -95,8 +95,9 @@ function unitSuffix(row: Pick<CompanyRow, "unit" | "currency" | "dimensions">): 
 /** Raised reads as good news, a cut as bad, a reiteration as no news, and a New guide as itself whichever way the service reached it. */
 export const directionTone = (guide: Pick<KpiGuidance, "direction" | "previousId">) => guide.direction === "raised" ? "positive" as const : guide.direction === "cut" ? "negative" as const
   : guide.direction === "withdrawn" ? "warning" as const : directionLabel(guide) === "New" ? "text" as const : "muted" as const;
-/** A change is good when it moves the way the metric's owner wants it to. */
-export const changeTone = (row: KpiObservation, value: number | null) => value === null || value === 0 || row.metric.favorable === "neutral" ? "muted" as const
+/** A change is good when it moves the way the metric's owner wants it to. An N/M change takes N/M's tone, as every pane draws it. */
+export const changeTone = (row: KpiObservation, value: number | null, notMeaningful?: boolean) => notMeaningful ? NOT_MEANINGFUL_TONE
+  : value === null || value === 0 || row.metric.favorable === "neutral" ? "muted" as const
   : (value > 0) === (row.metric.favorable === "higher") ? "positive" as const : "negative" as const;
 /**
  * What a guide did against the one before it for the same period, in plain

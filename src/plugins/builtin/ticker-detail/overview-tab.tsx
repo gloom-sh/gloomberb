@@ -41,6 +41,7 @@ import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth
 import {
   appTtmRate, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate, ttmConversionNote, withFinancialEnterpriseValue,
 } from "../../../utils/fundamentals";
+import { servedRatesNotMeaningful } from "../../../utils/served-rates";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
@@ -188,7 +189,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     [fxObservations],
   );
   const ttmRate = appTtmRate(fundamentals, (currency) => fxObservations.get(currency));
-  // A bank's, an insurer's or a broker's EV reads n/m: its deposits, float or repos are funding, not debt.
+  // A bank's or an insurer's EV reads n/m: its deposits or float are funding, not debt.
   const shownFundamentals = useMemo(
     () => (fundamentals ? ttmAtAppRate(withFinancialEnterpriseValue(fundamentals, profile), ttmRate) : fundamentals),
     [fundamentals, profile, ttmRate?.rate, ttmRate?.asOf],
@@ -418,6 +419,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     bond: fundFacts?.bond ?? null,
     runway,
     trailingEpsYear: financials ? trailingEpsFiscalYear(financials) : undefined,
+    notMeaningful: servedRatesNotMeaningful(shownFundamentals, financials),
   });
   const profileFields = buildProfileFields({
     // The contract section names an option's type.

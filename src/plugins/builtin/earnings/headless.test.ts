@@ -5,6 +5,9 @@ import { addDays, newYorkToday } from "./board-model";
 import { calendarWeekDates } from "./calendar-model";
 import { sameHistoryListing } from "./client";
 import { createEarningsBoardHeadless, createEarningsHeadless } from "./headless";
+import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderReportCsv } from "../../../cli/report-tables";
 
 const today = newYorkToday();
 type HistoryReport = EarningsHistoryPayload["reports"][number];
@@ -490,4 +493,33 @@ test("ERN reads a half-yearly reporter's own reports and its projected next date
   await load("D05:SGX");
   await load("600519:SSE");
   expect(asked).toEqual(["1299:HKEX", "D05:SGX", "600519:SSE"]);
+});
+
+test("a surprise against a loss estimate exports null with its NotMeaningful flag, never text; the text report draws N/M", async () => {
+  // CoreWeave's quarters: estimates of -1.52 and -1.17 a share. A beat of a loss is no percentage of it.
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => history,
+    upcoming: async () => [],
+  });
+  const result = await definition.load(args, context);
+  const reported = result.rows.filter((row) => row.dateStatus === "reported");
+  expect(reported.map((row) => [row.epsSurprise, row.epsSurpriseNotMeaningful])).toEqual([[null, true], [null, true]]);
+  expect(result.rows[0]).not.toHaveProperty("epsSurpriseNotMeaningful");
+  const json = serializeHeadlessPaneResult(definition, result) as { rows: Array<Record<string, unknown>> };
+  expect(json.rows.filter((row) => row.dateStatus === "reported").map((row) => row.epsSurprise)).toEqual([null, null]);
+  const text = renderHeadlessPaneText(definition, result, args, "ERN");
+  expect(text.match(/N\/M/g)).toHaveLength(2);
+  // CSV's EPS surprise column holds only numbers: the row's status column says why it is empty.
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "ERN", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
+  const lines = csv.split("\n");
+  const header = lines[0]!.split(",");
+  const surprise = header.indexOf("EPS surp (%)");
+  expect(surprise).toBeGreaterThan(-1);
+  const rows = lines.slice(1).filter((line) => line.includes(",reported,")).map((line) => line.split(","));
+  expect(rows).toHaveLength(2);
+  for (const row of rows) {
+    expect(row[surprise]).toBe("");
+    expect(row.at(-1)).toContain("EPS surp: n/m");
+  }
 });

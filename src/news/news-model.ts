@@ -296,15 +296,45 @@ export function summaryRestatesHeadline(title: string, summary: string): boolean
 function routineNoticesText(article: Pick<NewsArticle, "routine" | "publishedAt">): string | null {
   const routine = article.routine;
   if (!routine || routine.notices < 2) return null;
+  // A day kept as text (a pane's state restored from disk) is read as one; an unreadable one names none.
+  const since = routine.since instanceof Date ? routine.since : new Date(String(routine.since));
+  if (Number.isNaN(since.getTime())) return `${routine.notices} notices`;
   // The year is named only when the run began in another year than its latest notice.
-  const sameYear = routine.since.getUTCFullYear() === article.publishedAt.getUTCFullYear();
-  return `${routine.notices} notices since ${formatShortDate(routine.since, { year: sameYear ? false : "numeric", utc: true })}`;
+  const latest = article.publishedAt instanceof Date ? article.publishedAt : new Date(String(article.publishedAt));
+  const sameYear = since.getUTCFullYear() === latest.getUTCFullYear();
+  return `${routine.notices} notices since ${formatShortDate(since, { year: sameYear ? false : "numeric", utc: true })}`;
 }
 
 /** The headline a list shows: with the notices a folded row stands for ("Transaction in own shares (8 notices since Oct 30)"). */
 export function listedHeadline(article: Pick<NewsArticle, "title" | "routine" | "publishedAt">): string {
   const notices = routineNoticesText(article);
   return notices ? `${article.title} (${notices})` : article.title;
+}
+
+/** The fields an exported row keeps of the notices a folded row stands for: none for any other row. */
+export function routineNoticeFields(article: Pick<NewsArticle, "routine">) {
+  const routine = article.routine;
+  const since = routine ? (routine.since instanceof Date ? routine.since : new Date(String(routine.since))) : null;
+  return routine && since && !Number.isNaN(since.getTime()) ? {
+    routineKind: routine.kind,
+    routineNotices: routine.notices,
+    routineSince: since.toISOString(),
+    routineProgramme: routine.programme,
+  } : {};
+}
+
+/**
+ * A text table's headline from an exported row: its title, with the notices a folded row stands for
+ * (`routineNoticeFields`) after it. Exports keep the title and the count apart.
+ */
+export function listedRowHeadline(title: unknown, row: Record<string, unknown>): string {
+  const text = String(title ?? "");
+  if (typeof row.routineNotices !== "number" || typeof row.routineSince !== "string") return text;
+  return listedHeadline({
+    title: text,
+    routine: { kind: String(row.routineKind ?? ""), notices: row.routineNotices, since: new Date(row.routineSince), programme: null },
+    publishedAt: new Date(String(row.publishedAt ?? row.routineSince)),
+  });
 }
 
 /**

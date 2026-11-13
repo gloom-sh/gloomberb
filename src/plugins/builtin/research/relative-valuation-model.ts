@@ -10,7 +10,8 @@ import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../marke
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
-import { areNearbyFinancialPeriodEnds, halfYearGrowthPeriod } from "../../../utils/financial-statements";
+import { halfYearGrowthPeriod } from "../../../utils/financial-statements";
+import { servedRatesNotMeaningful } from "../../../utils/served-rates";
 import { isNotMeaningful, rateValue, revenueMargin } from "../../../utils/growth";
 import { trailingEpsFiscalYear } from "../../../utils/fundamentals";
 import { enterpriseValueBridgeBasis, listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
@@ -99,19 +100,6 @@ function fiscalYearOperatingMargin(annualStatements: TickerFinancials["annualSta
   };
 }
 
-/**
- * Why the served revenue growth is N/M: the period it is measured against, a year before
- * the latest quarter or half, had revenue at or below zero. Null where it is a number or
- * the base is not on file.
- */
-function revenueGrowthNotMeaningful(financials: Pick<TickerFinancials, "quarterlyStatements"> | null | undefined): string | null {
-  const periods = (financials?.quarterlyStatements ?? []).filter((row) => finiteNumber(row.totalRevenue));
-  const latest = latestFinancialPeriod(periods, (row) => row.date);
-  if (!latest) return null;
-  const yearBefore = `${Number(latest.date.slice(0, 4)) - 1}${latest.date.slice(4, 10)}`;
-  const base = periods.find((row) => areNearbyFinancialPeriodEnds(row.date.slice(0, 10), yearBefore));
-  return base && base.totalRevenue! <= 0 ? `revenue to ${base.date.slice(0, 10)} is at or below zero` : null;
-}
 
 /**
  * A peer's row. Last, its change and the extended print are the quote's
@@ -166,14 +154,15 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const freeCashFlow = finiteNumber(fundamentals?.freeCashFlow) ? { value: fundamentals.freeCashFlow, currency } : filedFreeCashFlow;
   const fcfYield = capitalization && freeCashFlow && freeCashFlow.currency === capitalization.currency && capitalization.value > 0
     ? freeCashFlow.value / capitalization.value : null;
-  // Growth off revenue at or below zero a year earlier, and a margin over revenue at or below zero, are N/M.
-  const growthNotMeaningful = revenueGrowthNotMeaningful(snapshot ?? financials);
-  if (growthNotMeaningful) notMeaningful.revenueGrowth = growthNotMeaningful;
-  const revenueGrowth = growthNotMeaningful ? null : fundamentals?.revenueGrowth ?? fundamentals?.lastQuarterGrowth ?? null;
-  const trailingRevenueNotPositive = finiteNumber(fundamentals?.revenue) && fundamentals.revenue <= 0;
+  // Growth off revenue at or below zero a year earlier, and a margin over revenue at or below zero, are N/M, as DES
+  // and `ticker` read them (servedRatesNotMeaningful).
+  const served = servedRatesNotMeaningful(fundamentals, snapshot ?? financials);
+  if (served.revenueGrowth) notMeaningful.revenueGrowth = served.revenueGrowth;
+  const revenueGrowth = served.revenueGrowth ? null : fundamentals?.revenueGrowth ?? fundamentals?.lastQuarterGrowth ?? null;
+  const trailingRevenueNotPositive = served.operatingMargin != null;
   const trailingOperatingMargin = trailingRevenueNotPositive ? null : fundamentals?.operatingMargin ?? null;
   const fiscalYearMargin = trailingOperatingMargin == null && !trailingRevenueNotPositive ? fiscalYearOperatingMargin(financials?.annualStatements) : null;
-  if (trailingRevenueNotPositive) notMeaningful.operatingMargin = "trailing revenue is at or below zero";
+  if (served.operatingMargin) notMeaningful.operatingMargin = served.operatingMargin;
   else if (isNotMeaningful(fiscalYearMargin?.value)) notMeaningful.operatingMargin = `${fiscalYearMargin.label} revenue is at or below zero`;
   const operatingMargin = trailingOperatingMargin ?? rateValue(fiscalYearMargin?.value);
   const trailingPE = trailingNotMeaningful ? null : comparablePriceEarnings(reportedMultiples.trailingPE);

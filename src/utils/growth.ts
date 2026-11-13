@@ -59,3 +59,9 @@ export function isNotMeaningful(value: unknown): value is NotMeaningful {
 
 /** How a not-meaningful rate reads, as a P/E over a loss does. */
 export const NOT_MEANINGFUL_TEXT = "N/M";
+
+/**
+ * The tone N/M takes where a pane colours by tone (EVTS's rows, KPIS's changes): the text's own, the colour RV draws a
+ * P/E over a loss in (components/ui/not-meaningful). Never muted, positive or negative.
+ */
+export const NOT_MEANINGFUL_TONE = "text" as const;

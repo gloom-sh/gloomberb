@@ -4,9 +4,10 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedCompanyData, companyKpisCache, fetchCompanyData, loadCompanyData, validateCompanyData } from "./client";
 import { getTableWidth } from "../../../components/ui/table-layout";
-import { allObservations, changeText, companyColumns, companyEmptyState, directionLabel, directionTone, fiscalLabel, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
+import { allObservations, changeText, changeTone, companyColumns, companyEmptyState, directionLabel, directionTone, fiscalLabel, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
   seriesOrder } from "./model";
 import { guide, guidancePayload, kpisPayload, observation } from "./test-fixture";
+import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
 
 afterEach(() => { setCloudApiFetchTransport(null); companyKpisCache.reset(); });
 test("runtime boundary rejects nonfinite values, inverted ranges, unsafe evidence and mismatched series", () => {
@@ -35,6 +36,9 @@ test("changes preserve frequency, currency, basis, zero denominators and percent
   const fromLoss = observationChange(current, [{ ...previous, value: -40_000_000 }]);
   expect(fromLoss).toEqual({ value: null, unit: "%", notMeaningful: true });
   expect(changeText(fromLoss)).toBe("N/M");
+  // Drawn as every pane draws N/M: the text's tone, never muted, good or bad.
+  expect(changeTone(current, fromLoss.value, fromLoss.notMeaningful)).toBe(NOT_MEANINGFUL_TONE);
+  expect(changeTone(current, null)).toBe("muted");
   // A rate's change in points stays a number across zero.
   expect(observationChange({ ...current, value: 2, unit: "percent" }, [{ ...previous, value: -1, unit: "percent" }])).toEqual({ value: 3, unit: "pp" });
 });

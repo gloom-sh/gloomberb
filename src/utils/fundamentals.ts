@@ -34,25 +34,19 @@ export const BANK_ENTERPRISE_VALUE = "n/m for banks";
  * cap + debt - cash says nothing of what the business is worth.
  */
 export const INSURER_ENTERPRISE_VALUE = "n/m for insurers";
-/**
- * A broker-dealer's or an investment bank's (capital markets): its repos, customer payables and trading book are its
- * funding and inventory, as a bank's deposits are. An asset manager's, an exchange's or a card network's EV measures
- * its business and is shown.
- */
-export const BROKER_ENTERPRISE_VALUE = "n/m for brokers";
-
-const FINANCIAL_ENTERPRISE_VALUES: ReadonlySet<string> = new Set([BANK_ENTERPRISE_VALUE, INSURER_ENTERPRISE_VALUE, BROKER_ENTERPRISE_VALUE]);
+const FINANCIAL_ENTERPRISE_VALUES: ReadonlySet<string> = new Set([BANK_ENTERPRISE_VALUE, INSURER_ENTERPRISE_VALUE]);
 
 /**
- * Why a financial company's EV is not meaningful, by its industry: a bank ("Banks - Diversified"), an insurer
- * ("Insurance - Life", "Insurance - Property & Casualty", "Insurance - Reinsurance"; not an insurance broker) or a
- * broker ("Capital Markets"). Null for any other industry, asset managers included.
+ * Why a financial company's EV is not meaningful, by its industry: a bank ("Banks - Diversified") or an insurer
+ * ("Insurance - Life", "Insurance - Property & Casualty", "Insurance - Reinsurance"; not an insurance broker). Null
+ * for any other industry. "Capital Markets" is no test: beside dealers (Goldman Sachs, CITIC Securities) it holds
+ * advisers, trading venues and bitcoin miners whose EV measures their business (Evercore, Houlihan Lokey,
+ * MarketAxess, Tradeweb, Riot Platforms), so their EV is shown as the source serves it.
  */
 export function financialEnterpriseValueReason(industry: string | null | undefined): string | null {
   const text = industry ?? "";
   if (/\bbanks?\b/i.test(text)) return BANK_ENTERPRISE_VALUE;
   if (/\b(?:insurance|reinsurance|insurers?)\b/i.test(text) && !/\bbrokers?\b/i.test(text)) return INSURER_ENTERPRISE_VALUE;
-  if (/^\s*capital markets\s*$/i.test(text)) return BROKER_ENTERPRISE_VALUE;
   return null;
 }
 
@@ -62,7 +56,7 @@ export function isFinancialEnterpriseValueReason(reason: string | null | undefin
 }
 
 /**
- * A bank's, an insurer's or a broker's fundamentals with its EV and EV/revenue not meaningful
+ * A bank's or an insurer's fundamentals with its EV and EV/revenue not meaningful
  * (financialEnterpriseValueReason), the source's figure kept on the check: every view that reads an EV then reads
  * N/M. Where the source gave one, or withdrew the one it had (an EV line is shown either way); a company the source
  * gave none for shows no line, as before. Any other company's as they are.
@@ -84,7 +78,7 @@ export function withFinancialEnterpriseValue<F extends Fundamentals | undefined>
   } as F;
 }
 
-/** Why a not meaningful EV is so because of what the company is (withFinancialEnterpriseValue): a bank, an insurer or a broker; null otherwise. */
+/** Why a not meaningful EV is so because of what the company is (withFinancialEnterpriseValue): a bank or an insurer; null otherwise. */
 export function financialEnterpriseValue(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): string | null {
   const reason = enterpriseValueNotMeaningful(fundamentals);
   return reason && isFinancialEnterpriseValueReason(reason) ? reason : null;
@@ -270,7 +264,7 @@ export function enterpriseValueReconciliationNote(
   statements?: BalanceSheets,
 ): string | undefined {
   const notMeaningful = enterpriseValueNotMeaningful(fundamentals);
-  // A bank's, an insurer's or a broker's EV line says it all: "n/m for banks".
+  // A bank's or an insurer's EV line says it all: "n/m for banks".
   if (isFinancialEnterpriseValueReason(notMeaningful)) return undefined;
   if (notMeaningful) return `EV N/M: ${notMeaningful.charAt(0).toLowerCase()}${notMeaningful.slice(1)}.`;
   const check = enterpriseValueCheck(fundamentals);

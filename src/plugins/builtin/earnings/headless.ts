@@ -1,5 +1,5 @@
 import { logFailure } from "../../../utils/log-failure";
-import { isNotMeaningful } from "../../../utils/growth";
+import { isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import type { EarningsCalendarPayload, EarningsHistoryPayload } from "../../../api-client/earnings";
 import type {
   HeadlessPaneColumn,
@@ -28,8 +28,26 @@ import type { HeadlessPaneOptionDef } from "../../../types/headless";
 
 const right = "right" as const;
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
-/** A surprise as exported: a number, "not-meaningful" against a loss or zero estimate, or null. */
-const surpriseValue = (value: unknown) => (isNotMeaningful(value) ? value : num(value));
+/**
+ * A surprise as exported: a number, or null with the row's `<key>NotMeaningful` set against a loss or zero
+ * estimate (the text report draws N/M, as RV and DVD do), never text in the number's column.
+ */
+function surpriseFields<Key extends "epsSurprise" | "revenueSurprise">(key: Key, value: unknown) {
+  return isNotMeaningful(value)
+    ? { [key]: null, [`${key}NotMeaningful`]: true } as Record<Key, null> & Record<`${Key}NotMeaningful`, true>
+    : { [key]: num(value) } as Record<Key, number | null>;
+}
+
+/**
+ * A surprise column. Where JSON has null and `<key>NotMeaningful`, the text report draws N/M and CSV leaves the
+ * cell empty, its status column saying `n/m`, as DVD's growth does: the column holds only numbers.
+ */
+function surpriseColumn(key: "epsSurprise" | "revenueSurprise", header: string): HeadlessPaneColumn {
+  const flag = `${key}NotMeaningful`;
+  const draw = (text: string) => (value: unknown, row: Record<string, unknown>) =>
+    typeof value !== "number" && row[flag] === true ? text : signedPercent(num(value));
+  return { key, header, align: right, format: draw(NOT_MEANINGFUL_TEXT.toLowerCase()), textFormat: draw(NOT_MEANINGFUL_TEXT) };
+}
 
 /** The text report says a provisional figure's basis is provisional; exports keep the basis alone and `epsActualProvisional`. */
 const BASIS_COLUMN: HeadlessPaneColumn = {
@@ -52,7 +70,7 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
   BASIS_COLUMN,
-  { key: "epsSurprise", header: "EPS surp", align: right, format: (value) => signedPercent(surpriseValue(value)) },
+  surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
   { key: "impliedMove", header: "Implied", align: right, format: (value) => impliedText(num(value)) },
   { key: "averageMove", header: "Avg move", align: right, format: (value) => moveSize(num(value)) },
@@ -80,10 +98,10 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
   BASIS_COLUMN,
-  { key: "epsSurprise", header: "EPS surp", align: right, format: (value) => signedPercent(surpriseValue(value)) },
+  surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
   { key: "revenueActual", header: "Sales act", align: right, format: (value) => moneyText(num(value)) },
-  { key: "revenueSurprise", header: "Sales surp", align: right, format: (value) => signedPercent(surpriseValue(value)) },
+  surpriseColumn("revenueSurprise", "Sales surp"),
   { key: "impliedMove", header: "Implied", align: right, format: (value) => impliedText(num(value)) },
   { key: "impliedFrom", header: "Implied from" },
   { key: "move", header: "Move", align: right, format: (value) => signedPercent(num(value)) },
@@ -215,7 +233,7 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     epsActual: report.epsActual,
     epsActualProvisional: report.provisional,
     epsBasis: showsEpsBasis(report) ? epsBasisName(report.epsBasis) : null,
-    epsSurprise: report.epsSurprise,
+    ...surpriseFields("epsSurprise", report.epsSurprise),
     revenueEstimate: report.revenueEstimate,
     impliedMove: report.impliedMove,
     averageMove: report.averageMove,
@@ -288,11 +306,11 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     epsActual: row.epsActual,
     epsActualProvisional: row.provisional,
     epsBasis: !showsEpsBasis(row) ? null : !row.epsBasis && row.epsDilution === "basic" ? "basic" : epsBasisName(row.epsBasis),
-    epsSurprise: row.epsSurprise,
+    ...surpriseFields("epsSurprise", row.epsSurprise),
     revenueEstimate: row.revenueEstimate,
     revenueActual: row.revenueActual,
     revenueActualProvisional: row.revenueProvisional,
-    revenueSurprise: row.revenueSurprise,
+    ...surpriseFields("revenueSurprise", row.revenueSurprise),
     impliedMove: row.implied,
     impliedFrom: row.impliedMethod === "trade-close" ? "trade closes" : row.impliedMethod === "quote-mid" ? "quote mids" : null,
     move: row.move,

@@ -211,8 +211,9 @@ test("fn CN says how many routine notices a folded row stands for, and exports k
   expect(text).toContain("Transaction in own shares (8 notices since Oct 30)");
   expect(text.match(/notices since/g)).toHaveLength(1);
   const json = serializeHeadlessPaneResult(definition, result) as { items: Array<Record<string, unknown>> };
+  // The export's headline is the story's; the count is in fields of its own.
   expect(json.items[0]).toMatchObject({
-    headline: "Transaction in own shares (8 notices since Oct 30)",
+    headline: "Transaction in own shares",
     routineKind: "buyback",
     routineNotices: 8,
     routineSince: "2026-10-30T18:32:16.000Z",

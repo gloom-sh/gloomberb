@@ -14,6 +14,8 @@ import {
   type DataTableColumn,
 } from "../../../../components";
 import { colors, priceColor } from "../../../../theme/colors";
+import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
+import { isNotMeaningful } from "../../../../utils/growth";
 import { fiscalYearEndMonth } from "../../../../utils/fiscal-period";
 import { displayWidth, padTo } from "../../../../utils/format";
 import { filledPeriodPublications, filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
@@ -428,7 +430,8 @@ export function ResolvedFinancialsTab({
           </Text>
           <Text
             attributes={row.kind === "group" ? TextAttributes.BOLD : TextAttributes.NONE}
-            fg={growthColorValue != null ? priceColor(growthColorValue) : colors.text}
+            // N/M growth as every pane draws it.
+            fg={growthColorValue != null ? priceColor(growthColorValue) : isNotMeaningful(growth) ? notMeaningfulColor() : colors.text}
           >
             {cell.growthText}
           </Text>
