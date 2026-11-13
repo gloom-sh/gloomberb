@@ -83,3 +83,24 @@ test("an empty password sends nothing", async () => {
   await tui.waitForFrameToContain("Enter your password.");
   expect(result.dismissed()).toBe(0);
 });
+
+// Both closed only by Esc in the terminal: a mouse could not leave them.
+test("Change Password and Delete Account close from the close button in their title, as the sign-in dialogs do", async () => {
+  for (const [title, dialog] of [
+    ["Change Password", (dismiss: () => void) => <PasswordChangeDialog dismiss={dismiss} onChangePassword={async () => {}} />],
+    ["Delete Account", (dismiss: () => void) => <DeleteAccountPasswordDialog dismiss={dismiss} onDelete={async () => {}} />],
+  ] as const) {
+    let dismissed = 0;
+    await tui.render(dialog(() => { dismissed += 1; }), { width: 80, height: 24 });
+    await tui.renderFrames(2);
+    const rows = (await tui.waitForFrameToContain(title)).split("\n");
+    const titleRow = rows.findIndex((line) => line.includes(title));
+    const close = rows[titleRow]!.lastIndexOf(" x ") + 1;
+    expect(close).toBeGreaterThan(0);
+    await act(async () => {
+      await tui.setup().mockMouse.click(close, titleRow);
+      await tui.setup().renderOnce();
+    });
+    expect(dismissed).toBe(1);
+  }
+});

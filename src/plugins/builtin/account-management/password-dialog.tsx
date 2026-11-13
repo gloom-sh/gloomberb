@@ -60,7 +60,7 @@ export function DeleteAccountPasswordDialog({
 
   const fieldWidth = 42;
   return (
-    <DialogFrame title={t("Delete Account")}>
+    <DialogFrame title={t("Delete Account")} onClose={dismiss}>
       <Box flexDirection="column" gap={1}>
         <ClippedText text={t("Enter your password to delete your account.")} width={fieldWidth} cut={truncateWithEllipsis} wrap />
         <TextField
@@ -152,7 +152,7 @@ export function PasswordChangeDialog({
 
   const fieldWidth = 42;
   return (
-    <DialogFrame title={t("Change Password")}>
+    <DialogFrame title={t("Change Password")} onClose={dismiss}>
       <Box flexDirection="column" gap={1}>
         <TextField
           label={t("Current Password")}
