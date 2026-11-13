@@ -34,6 +34,7 @@ import { useRunSetupAgain } from "./run-setup-again";
 import { loadFuturesContractTermsCached } from "../../market-data/futures-contract";
 import { formSnapshot } from "../../remote/form";
 import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "../../remote/semantic-tree";
+import { allowTelemetryInTests } from "../../test-support/telemetry-guard";
 
 const tui = createOpenTuiTestHarness();
 let tempDataDir: string | null = null;
@@ -371,6 +372,9 @@ afterEach(async () => {
 });
 
 describe("OnboardingWizard", () => {
+  // The first-run milestone is research activity, which the test opt-out turns off.
+  allowTelemetryInTests();
+
   test("saves manual positions and opens the largest one as the research workspace", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-"));
     const tickerRepository = new JsonTickerRepository();
