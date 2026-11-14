@@ -1,4 +1,4 @@
-import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
+import { afterAll, afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient } from "../../../api-client";
 import { DataTableStackView } from "../../../components";
@@ -6,7 +6,7 @@ import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pa
 import { ApiRequestError } from "../../../api-client/errors";
 import { attachFredSeriesPersistence, resetFredSeriesPersistence } from "../../../sources/gloomberb-cloud/fred-series";
 import { outage } from "../../../test-support/outage";
-import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { MemoryPluginPersistence, SAVED_COPY_TEST_NOW } from "../../../test-support/plugin-persistence";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { TestPaneProvider } from "../../../test-support/pane";
@@ -36,6 +36,7 @@ const tui = createOpenTuiTestHarness();
 afterEach(() => {
   resetFredSeriesPersistence();
   fredSpy.mockImplementation(answer);
+  setSystemTime();
 });
 
 /** Paints outside act: resolving the related tickers keeps work queued that act would wait on. */
@@ -139,6 +140,7 @@ test("a bank's decision says it has no stated time and why, with the prior's dat
 
 // The footer said "saved copy from" over a series Gloom Cloud stopped serving, after its warning.
 test("a history a failed refresh left leads the footer with when it was saved; a refusal is the error", async () => {
+  setSystemTime(SAVED_COPY_TEST_NOW);
   // What the detail saves, saved again as a copy past its refresh time.
   const fresh = new MemoryPluginPersistence();
   const saves: Array<Parameters<MemoryPluginPersistence["setResource"]>> = [];
