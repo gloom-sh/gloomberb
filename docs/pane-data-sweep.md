@@ -43,7 +43,12 @@ The specified empty output directory receives the catalog, complete plan,
 per-capture JSON/stderr and PNGs, plus `results.json` and `results.md`. Reports keep
 the actual state wording, raw user-visible reason codes, access/loading/error/empty
 states and columns blank in every rendered row. They do not translate codes or
-hide failures behind an empty result. Reviewed event-list empties (no halts,
+hide failures behind an empty result. Unknown raw status/reason codes in visible
+text or exact state/error markers fail even an otherwise usable capture. Explicit
+ticker-field expressions and labeled field/formula identifiers are not status
+codes. Only reviewed coverage/session codes in matching legitimate empty states
+retain their separate classification; other codes, error evidence or invalid CLI
+exits take precedence. Reviewed event-list empties (no halts,
 calendar reports or recorded analyst actions), explicit no-coverage and closed-session list
 states are distinct from passes and unexplained failures. A usable strict capture
 whose report is incomplete (for example a clipped long list) is **partial**, not

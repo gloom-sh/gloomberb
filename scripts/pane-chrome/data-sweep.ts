@@ -100,6 +100,15 @@ export interface Assessment {
   blankColumns: string[];
 }
 
+function candidateCodes(text: string, symbols?: readonly string[]): string[] {
+  return [...text.matchAll(/\b[a-zA-Z][a-zA-Z0-9]*(?:_[a-zA-Z0-9]+)+\b/g)].filter((match) => {
+    if (!symbols) return true;
+    const before = text.slice(0, match.index);
+    const qualifier = before.match(/\b([A-Z0-9][A-Z0-9:.-]*):$/)?.[1];
+    return !(qualifier && symbols.includes(qualifier)) && !/\b(?:field|expression|formula)\s*[:=]\s*$/i.test(before);
+  }).map((match) => match[0]);
+}
+
 export function assessCapture(result: CommandResult, token: string): Assessment {
   const base = { reason: null, states: [], stateText: {}, visibleText: "", reasonCodes: [], blankColumns: [] };
   if (result.timedOut) return { ...base, status: "timeout", reason: "Capture exceeded its time limit" };
@@ -118,45 +127,55 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
     || typeof data.rowCount !== "number" || typeof rendered.visibleText !== "string"
     || ["errorStateDetected", "emptyStateDetected", "loadingStateDetected"].some((key) => typeof rendered[key] !== "boolean")
     || (data.blankColumns !== undefined && !strings(data.blankColumns))
-    || (rendered.emptyStateText !== undefined && !strings(rendered.emptyStateText))
+    || (data.symbols !== undefined && !strings(data.symbols))
+    || ["emptyStateText", "errorStateMarkers", "emptyStateMarkers"].some((key) => rendered[key] !== undefined && !strings(rendered[key]))
     || (rendered.stateText !== undefined && (!isRecord(rendered.stateText)
       || Object.values(rendered.stateText).some((value) => !strings(value))))) {
     return { ...base, status: "invalid-output", reason: "Missing strict screenshot assessment fields" };
   }
   const shot = data as unknown as PaneScreenshotResult;
   const render = shot.render;
-  const stateText = render.stateText ?? {};
+  const stateText = {
+    ...(render.errorStateMarkers?.length ? { error: render.errorStateMarkers } : {}),
+    ...(render.emptyStateText?.length ? { empty: render.emptyStateText } : render.emptyStateMarkers?.length ? { empty: render.emptyStateMarkers } : {}),
+    ...render.stateText,
+  };
   const reason = shot.unusableReason ?? shot.gaps ?? (!shot.complete ? render.truncationReasons?.join("; ") || "Strict capture is usable but its report is incomplete" : null);
-  const visible = [render.visibleText, reason, ...Object.values(shot.unreadReasons ?? {})].filter(Boolean).join("\n");
-  const reasonCodes = [...new Set(visible.match(/\b[a-zA-Z][a-zA-Z0-9]*(?:_[a-zA-Z0-9]+)+\b/g) ?? [])];
+  const diagnostics = [reason, shot.gaps, ...Object.values(shot.unreadReasons ?? {})].filter((text): text is string => typeof text === "string");
+  const markers = [...Object.values(stateText).flat(), ...(render.emptyStateText ?? []), ...(render.errorStateMarkers ?? []), ...(render.emptyStateMarkers ?? [])];
+  const reasonCodes = [...new Set([...candidateCodes(render.visibleText, shot.symbols ?? []), ...candidateCodes([...diagnostics, ...markers].join("\n"))])];
   const blankColumns = shot.blankColumns ?? [];
-  const states = [render.errorStateDetected ? "error" : "", render.emptyStateDetected || shot.empty ? "empty" : "",
+  const hasError = render.errorStateDetected || !!stateText.error?.length || !!render.errorStateMarkers?.length;
+  const hasEmpty = render.emptyStateDetected || shot.empty || !!stateText.empty?.length || !!render.emptyStateText?.length || !!render.emptyStateMarkers?.length;
+  const states = [hasError ? "error" : "", hasEmpty ? "empty" : "",
     render.loadingStateDetected ? "loading" : "", render.accessGate ? `access:${render.accessGate}` : ""].filter(Boolean);
   const evidence = { reason, states, stateText, visibleText: render.visibleText, reasonCodes, blankColumns };
-  if (blankColumns.length || render.accessGate || render.loadingStateDetected || shot.semanticMismatch || shot.refused || shot.unreadRows?.length) {
+  if (blankColumns.length || hasError || render.accessGate || render.loadingStateDetected || shot.semanticMismatch || shot.refused || shot.unreadRows?.length
+    || ![0, 2].includes(result.exitCode)
+    || diagnostics.some((text) => /\b(?:error|failed|failure|unavailable|timeout|timed out|denied|forbidden|unauthorized)\b/i.test(text))) {
     return { ...evidence, status: "failure" };
   }
-  const said = [...(stateText.error ?? []), ...(stateText.empty ?? []), ...(render.emptyStateText ?? [])].join("\n");
-  if (reasonCodes.some((code) => /error|failed|unavailable|timeout|denied|forbidden|unauth|auth_required|pro_required|rate_limit|upstream/i.test(code))) return { ...evidence, status: "failure" };
-  if (!shot.usable && (shot.empty || (shot.rowCount === 0 && (render.emptyStateDetected || render.errorStateDetected)))) {
+  const said = [...(stateText.empty ?? []), ...(render.emptyStateText ?? []), ...(render.emptyStateMarkers ?? [])].join("\n");
+  let expected: "no-coverage" | "market-closed" | "expected-empty" | null = null;
+  if (!shot.usable && hasEmpty && (shot.empty || shot.rowCount === 0)) {
     if (/\bno (?:analyst |estimate |ratings? )?coverage\b|\bnot covered\b/i.test(said)
-      || (token === "ANR" && /\bsource lists them mainly for North American listings\b/.test(said))
-      || reasonCodes.some((code) => ["no_coverage", "symbol_not_covered"].includes(code.toLowerCase()))) {
-      return { ...evidence, status: "no-coverage" };
-    }
-    if (["MOST", "SCAN", "HILO", "HALT", "FLOW", "QR", "TAS"].includes(token)
-      && !render.errorStateDetected
-      && (/\bmarket (?:is )?closed\b|\boutside (?:regular |market |trading )?hours\b/i.test(said)
-        || reasonCodes.some((code) => ["market_closed", "outside_market_hours", "outside_session"].includes(code.toLowerCase())))) {
-      return { ...evidence, status: "market-closed" };
+      || (token === "ANR" && /\bsource lists them mainly for North American listings\b/.test(said))) {
+      expected = "no-coverage";
+    } else if (["MOST", "SCAN", "HILO", "HALT", "FLOW", "QR", "TAS"].includes(token)
+      && /\bmarket (?:is )?closed\b|\boutside (?:regular |market |trading )?hours\b/i.test(said)) {
+      expected = "market-closed";
     }
     const expectedEmpty: Record<string, RegExp> = {
       ANR: /^No upgrades, downgrades or target changes on record for /m,
       HALT: /^No trading halts reported\./m,
       ERN: /^No reports on the calendar /m,
     };
-    if (!render.errorStateDetected && expectedEmpty[token]?.test(said)) return { ...evidence, status: "expected-empty" };
+    if (!expected && expectedEmpty[token]?.test(said)) expected = "expected-empty";
   }
+  const allowedCodes = expected === "no-coverage" ? ["no_coverage", "symbol_not_covered"]
+    : expected === "market-closed" ? ["market_closed", "outside_market_hours", "outside_session"] : [];
+  if (reasonCodes.some((code) => !allowedCodes.includes(code.toLowerCase()))) return { ...evidence, status: "failure" };
+  if (expected) return { ...evidence, status: expected };
   return { ...evidence, status: shot.usable && !states.length && result.exitCode === 0 ? shot.complete ? "pass" : "partial" : "failure" };
 }
 

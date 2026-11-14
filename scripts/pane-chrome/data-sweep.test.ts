@@ -82,6 +82,32 @@ test("strict failures preserve exact state wording, visible codes and every blan
   expect(assessCapture(capture({}, {}, 2), "ANR").status).toBe("failure");
 });
 
+test("unrecognized visible and state-only codes cannot pass even a usable or partial capture", () => {
+  for (const code of ["NOT_FOUND", "NO_DATA", "UNKNOWN_STATUS", "unfamiliar_status"]) {
+    for (const complete of [true, false]) {
+      expect(assessCapture(capture({ complete }, { visibleText: `AAPL Analyst ratings ${code}` }), "ANR"))
+        .toMatchObject({ status: "failure", reasonCodes: [code] });
+    }
+    for (const render of [{ stateText: { error: [code] } }, { stateText: { empty: [code] } }, { errorStateMarkers: [code] }]) {
+      expect(assessCapture(capture({}, render), "ANR")).toMatchObject({ status: "failure", reasonCodes: [code] });
+    }
+  }
+  expect(assessCapture(capture({}, { stateText: { error: ["Request failed"] } }), "ANR"))
+    .toMatchObject({ status: "failure", states: ["error"] });
+  expect(assessCapture(capture({}, { errorStateMarkers: ["Request failed. UNKNOWN_STATUS"] }), "ANR"))
+    .toMatchObject({ status: "failure", stateText: { error: ["Request failed. UNKNOWN_STATUS"] }, reasonCodes: ["UNKNOWN_STATUS"] });
+});
+
+test("explicit field and ticker-expression identifiers are data, not reason codes", () => {
+  const fields = { visibleText: "G NVDA:net_income / NVDA:revenue Field: custom_metric Expression: USER_FIELD" };
+  expect(assessCapture(capture({ symbols: ["NVDA"] }, fields), "G")).toMatchObject({ status: "pass", reasonCodes: [] });
+  expect(assessCapture(capture({ symbols: ["NVDA"], complete: false }, fields), "G")).toMatchObject({ status: "partial", reasonCodes: [] });
+  expect(assessCapture(capture({ symbols: ["NVDA"] }, { visibleText: `${fields.visibleText} Status: UNKNOWN_STATUS` }), "G"))
+    .toMatchObject({ status: "failure", reasonCodes: ["UNKNOWN_STATUS"] });
+  expect(assessCapture(capture({ symbols: ["NVDA"] }, { ...fields, stateText: { error: ["custom_metric"] } }), "G"))
+    .toMatchObject({ status: "failure", reasonCodes: ["custom_metric"] });
+});
+
 test("explicit no-coverage and closed-session lists are separate, never hide unrelated failures", () => {
   const empty = { usable: false, empty: true, rowCount: 0 };
   const noCoverage = { emptyStateDetected: true, stateText: { empty: ["No analyst coverage for this listing. no_coverage"] } };
@@ -100,6 +126,32 @@ test("explicit no-coverage and closed-session lists are separate, never hide unr
   expect(assessCapture(capture(empty, noHalts, 2), "HALT").status).toBe("expected-empty");
   expect(assessCapture(capture(empty, noHalts, 2), "MOST").status).toBe("failure");
   expect(assessCapture(capture(empty, { ...noHalts, errorStateDetected: true }, 2), "HALT").status).toBe("failure");
+  for (const code of ["NOT_FOUND", "NO_DATA", "UNKNOWN_STATUS", "unfamiliar_status", "market_closed"]) {
+    for (const render of [{ ...noCoverage, visibleText: code }, { ...noCoverage, errorStateMarkers: [code] },
+      { ...noCoverage, stateText: { empty: [...noCoverage.stateText.empty, code] } }]) {
+      expect(assessCapture(capture(empty, render, 2), "ANR")).toMatchObject({ status: "failure", reasonCodes: expect.arrayContaining([code]) });
+    }
+  }
+  for (const exitCode of [1, -1, 137]) {
+    for (const [token, render] of [["ANR", noCoverage], ["MOST", closed], ["HALT", noHalts]] as const) {
+      expect(assessCapture(capture(empty, render, exitCode), token).status).toBe("failure");
+    }
+  }
+  expect(assessCapture(capture(empty, { ...noCoverage, errorStateDetected: true }, 2), "ANR").status).toBe("failure");
+  expect(assessCapture(capture(empty, { ...noCoverage, stateText: { ...noCoverage.stateText, error: ["Request failed"] } }, 2), "ANR").status).toBe("failure");
+  expect(assessCapture(capture(empty, { ...noCoverage, errorStateMarkers: ["Request failed"] }, 2), "ANR").status).toBe("failure");
+  expect(assessCapture(capture({ ...empty, unusableReason: "Request failed" }, noCoverage, 2), "ANR").status).toBe("failure");
+  expect(assessCapture(capture(empty, { emptyStateDetected: true, stateText: { empty: ["No results"] }, visibleText: "no_coverage" }, 2), "ANR").status).toBe("failure");
+  for (const code of ["no_coverage", "SYMBOL_NOT_COVERED"]) {
+    expect(assessCapture(capture(empty, { emptyStateDetected: true, stateText: { empty: [`Not covered. ${code}`] } }, 2), "ANR"))
+      .toMatchObject({ status: "no-coverage", reasonCodes: [code] });
+    expect(assessCapture(capture({}, { visibleText: code }), "ANR").status).toBe("failure");
+  }
+  for (const code of ["market_closed", "OUTSIDE_MARKET_HOURS", "outside_session"]) {
+    expect(assessCapture(capture(empty, { emptyStateDetected: true, stateText: { empty: [`Market closed. ${code}`] } }, 2), "MOST"))
+      .toMatchObject({ status: "market-closed", reasonCodes: [code] });
+    expect(assessCapture(capture(empty, { ...closed, visibleText: `NO_DATA ${code}` }, 2), "MOST").status).toBe("failure");
+  }
 });
 
 test("timeouts, invalid output and CLI errors cannot be mistaken for empty data", async () => {
