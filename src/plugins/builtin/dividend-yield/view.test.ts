@@ -19,8 +19,10 @@ test("cash chart reaches the current zero cash rate after payments stop", () => 
     toDividendPayment("2023-08-04", 0.125, "USD")!,
     toDividendPayment("2024-08-07", 0.125, "USD")!,
   ], new Date("2026-09-10"));
+  // Two ex-dates 369 days apart are an annual cadence, so the last is held through the late grace and goes
+  // when the cadence does (two years and 30 days past the first).
   expect(points.map((point) => [point.date.toISOString().slice(0, 10), point.close])).toEqual([
-    ["2024-08-04", 0], ["2024-08-07", 0.125], ["2025-08-07", 0], ["2026-09-10", 0],
+    ["2024-08-04", 0], ["2024-08-07", 0.125], ["2025-09-03", 0], ["2026-09-10", 0],
   ]);
 });
 
@@ -78,4 +80,21 @@ test("drifting ex-dates count one payment per period in trailing cash and its ch
   const monthly = monthlyDates.map((date) => toDividendPayment(date, 0.25, "USD")!);
   expect(buildDividendMetrics(monthly, null, 50, { now: new Date("2026-09-30T20:00:00Z") }).trailingRate).toBeCloseTo(3, 9);
   expect(buildDividendMetrics(monthly, null, 50, { now: new Date("2026-09-29T20:00:00Z") }).trailingRate).toBeCloseTo(3, 9);
+});
+
+test("an annual payer whose ex-date slips a few days keeps its trailing cash between the two", () => {
+  // Kweichow Moutai: June 25, 2021 and June 30, 2022 are 370 days apart.
+  const moutai = [
+    ["2019-06-28", 14.539], ["2020-06-24", 17.025], ["2021-06-25", 19.293], ["2022-06-30", 21.675], ["2022-12-27", 21.91],
+  ].map(([date, amount]) => toDividendPayment(date as string, amount as number, "CNY")!);
+  const points = buildTrailingCashChartPoints(moutai, new Date("2023-01-31T12:00:00Z"));
+  const at = (day: string) => points.filter((point) => point.date.toISOString().slice(0, 10) <= day).at(-1)?.close;
+  expect(at("2022-06-27")).toBeCloseTo(19.293, 9);
+  expect(at("2022-06-30")).toBeCloseTo(21.675, 9);
+  expect(Math.min(...points.filter((point) => point.date >= new Date("2020-07-01")).map((point) => point.close)))
+    .toBeGreaterThan(17);
+  expect(buildDividendMetrics(moutai, null, 1800, { now: new Date("2022-06-28T12:00:00Z") }).trailingRate).toBeCloseTo(19.293, 9);
+  // A payer that stops still falls to nothing once the grace has passed.
+  const stopped = moutai.filter((payment) => payment.exDate < new Date("2022-01-01"));
+  expect(buildDividendMetrics(stopped, null, 1800, { now: new Date("2022-08-15T12:00:00Z") }).trailingRate ?? 0).toBe(0);
 });

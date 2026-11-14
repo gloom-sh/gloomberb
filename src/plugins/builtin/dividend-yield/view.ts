@@ -5,7 +5,7 @@ import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { NOT_MEANINGFUL, formatPriceEarnings } from "../../../utils/price-earnings";
-import { LATE_GRACE_DAYS, trailingCashAt, type TrailingPayments } from "../../../utils/trailing-dividend";
+import { CADENCE_GRACE_DAYS, LATE_GRACE_DAYS, trailingCashAt, type TrailingPayments } from "../../../utils/trailing-dividend";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -77,6 +77,10 @@ export function buildTrailingCashChartPoints(payments: DividendPayment[], now = 
           const lateExpiry = expiry.getTime() + days * DAY;
           if (lateExpiry <= now.getTime()) dates.add(lateExpiry);
         }
+      } else {
+        // The cadence's look past two years ends too (inferCadence).
+        const cadenceExpiry = expiry.getTime() + CADENCE_GRACE_DAYS * DAY;
+        if (cadenceExpiry <= now.getTime()) dates.add(cadenceExpiry);
       }
     }
   }

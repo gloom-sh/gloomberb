@@ -429,3 +429,40 @@ describe("periods read from a results announcement", () => {
   });
 });
 
+
+describe("expense lines served blank", () => {
+  test("an expense the statements source gives below zero is named, with the quarters it was left blank in", () => {
+    const row = (date: string, value: number): FinancialStatement => ({
+      date, currency: "CNY", totalRevenue: 147.8e9,
+      withheld: { sellingGeneralAndAdministration: { value, reason: "below-zero" } },
+    } as FinancialStatement);
+    const rows = [row("2026-06-30", -1.33e9), { date: "2026-03-31", currency: "CNY", totalRevenue: 129.1e9 } as FinancialStatement, row("2025-12-31", -5.52e9)];
+    expect(filledPeriodsNote(rows)).toBe("SG&A blank for 2026-06-30, 2025-12-31: source value below zero.");
+    const both = [...rows, { date: "2025-06-30", currency: "CNY", withheld: { researchAndDevelopment: { value: -1, reason: "below-zero" } } } as FinancialStatement];
+    expect(filledPeriodsNote(both)).toBe("SG&A blank for 2026-06-30, 2025-12-31; R&D blank for 2025-06-30: source value below zero.");
+    // Not a line the table shows: nothing to say.
+    expect(filledPeriodsNote(rows, new Set(["totalRevenue"]))).toBeNull();
+    expect(filledPeriodsNote(rows, new Set(["sellingGeneralAndAdministration"]))).toContain("SG&A blank for");
+  });
+
+  test("a copy saved before, or another source, never fills a line left blank with a figure below zero", () => {
+    const served = {
+      date: "2026-06-30", currency: "CNY", totalRevenue: 147.8e9,
+      withheld: { sellingGeneralAndAdministration: { value: -1.33e9, reason: "below-zero" } },
+    } as FinancialStatement;
+    const saved = { date: "2026-06-30", currency: "CNY", totalRevenue: 147.8e9, sellingGeneralAndAdministration: -1.33e9 } as FinancialStatement;
+    const note = "SG&A blank for 2026-06-30: source value below zero.";
+    // The served row first, the saved copy filling its blanks.
+    const [fresh] = mergeFinancialStatementRows([served], [saved]);
+    expect(fresh!.sellingGeneralAndAdministration).toBeUndefined();
+    expect(filledPeriodsNote([fresh!])).toBe(note);
+    // The saved copy first, the served row behind it.
+    const [kept] = mergeFinancialStatementRows([saved], [served]);
+    expect(kept!.sellingGeneralAndAdministration).toBeUndefined();
+    expect(filledPeriodsNote([kept!])).toBe(note);
+    // Another source's figure for the line is no impossible one: it is shown, and the line is not called blank.
+    const [other] = mergeFinancialStatementRows([served], [{ ...saved, sellingGeneralAndAdministration: 2.1e9 }]);
+    expect(other!.sellingGeneralAndAdministration).toBe(2.1e9);
+    expect(filledPeriodsNote([other!])).toBeNull();
+  });
+});
