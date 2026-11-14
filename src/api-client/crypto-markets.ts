@@ -36,6 +36,8 @@ interface CryptoDayRange {
   highVenues?: string[];
   /** The exchanges whose own 24-hour range was read beside the composite's. */
   venuesChecked?: string[];
+  /** The exchanges' own candles around the extremes are still being read: a later answer names them. */
+  venuesPending?: boolean;
 }
 
 export interface CryptoMarketAsset {

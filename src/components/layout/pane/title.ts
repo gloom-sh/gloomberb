@@ -8,7 +8,13 @@ import {
 import type { PaneDef } from "../../../types/plugin";
 import { paneTitleMnemonic, TITLE_TICKER } from "../../../layout/pane-follow";
 import { canFollowTickerSource, isTickerLinkPeer } from "../../../layout/ticker-navigation";
+import { withoutCryptoVenueCode } from "../../../utils/crypto-pair";
 import { displayTickerKey } from "../../../utils/exchanges";
+
+/** A ticker as a title names it: by its venue's own code, and a coin by its pair alone (USDT-USD, never USDT-USD:CCC). */
+function titleTickerKey(key: string): string {
+  return withoutCryptoVenueCode(displayTickerKey(key));
+}
 
 /**
  * A title a template wrote, its command and the ticker keys it opened on
@@ -22,7 +28,7 @@ function displayStoredTitle(title: string): string {
   const parts = title.slice(mnemonic.length).split(/(\s*,\s*)/);
   const keys = parts.filter((_, index) => index % 2 === 0).map((key) => key.trim());
   if (!keys[0] || !keys.every((key) => TITLE_TICKER.test(key))) return title;
-  return `${title.slice(0, mnemonic.length)}${parts.map((part, index) => index % 2 === 0 ? part.replace(part.trim(), displayTickerKey(part.trim())) : part).join("")}`;
+  return `${title.slice(0, mnemonic.length)}${parts.map((part, index) => index % 2 === 0 ? part.replace(part.trim(), titleTickerKey(part.trim())) : part).join("")}`;
 }
 
 /** Single-cell link glyph: emoji link icons render double-width in terminals. */
@@ -48,7 +54,7 @@ export function getBasePaneDisplayTitle(
 
   if (instance.paneId === TICKER_RESEARCH_PANE_ID) {
     const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
-    if (ticker) return displayTickerKey(ticker);
+    if (ticker) return titleTickerKey(ticker);
     const collectionId = resolveCollectionForPane(state as AppState, instance.instanceId);
     return state.config.portfolios.find((portfolio) => portfolio.id === collectionId)?.name
       ?? state.config.watchlists.find((watchlist) => watchlist.id === collectionId)?.name
@@ -62,7 +68,7 @@ export function getBasePaneDisplayTitle(
     : null;
   if (mnemonic) {
     const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
-    return ticker ? `${mnemonic} ${displayTickerKey(ticker)}` : mnemonic;
+    return ticker ? `${mnemonic} ${titleTickerKey(ticker)}` : mnemonic;
   }
 
   if (instance.title) return displayStoredTitle(instance.title);
@@ -78,7 +84,7 @@ export function getBasePaneDisplayTitle(
   if (paneDef.tickerSource) return t(paneDef.name);
 
   const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
-  return ticker ? `${t(paneDef.name)}: ${displayTickerKey(ticker)}` : t(paneDef.name);
+  return ticker ? `${t(paneDef.name)}: ${titleTickerKey(ticker)}` : t(paneDef.name);
 }
 
 export function getPaneDisplayTitle(
