@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { OPEN_TUI_RUNTIME_SMOKE_COMMAND } from "../src/cli/native-smoke";
+import { testAppEnv } from "./test-app-env";
 
 const rootDir = join(import.meta.dir, "..");
 const smokeDir = mkdtempSync(join(tmpdir(), "gloomberb-global-upgrade-"));
@@ -9,7 +10,7 @@ const installDir = join(smokeDir, "bun-install");
 const packageDir = join(smokeDir, "package");
 const archiveName = "gloomberb-current.tgz";
 const archivePath = join(smokeDir, archiveName);
-const smokeEnvironment = { ...process.env, BUN_INSTALL: installDir };
+const smokeEnvironment = testAppEnv({ BUN_INSTALL: installDir });
 
 async function run(command: string[], cwd = rootDir): Promise<void> {
   const process = Bun.spawn(command, {

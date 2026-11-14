@@ -3,6 +3,7 @@ import { copyFile, mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promise
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { Jimp } from "jimp";
+import { testAppEnv } from "./test-app-env";
 import { SHOT_VIEW_ARCHIVE } from "../src/cli/desktop-pane-shot-view";
 import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
@@ -47,7 +48,7 @@ async function run(name: string, args: string[], expectedCode = 0, envOverrides:
     ? [process.env.ComSpec ?? "cmd.exe", "/d", "/s", "/c", `""${command}" ${args.map((arg) => `"${arg}"`).join(" ")}"`]
     : [command, ...args];
   const child = Bun.spawn(cmd, {
-    cwd: caller, env: { ...env, ...envOverrides }, stdout: "pipe", stderr: "pipe", timeout: 60_000,
+    cwd: caller, env: testAppEnv({ ...env, ...envOverrides }), stdout: "pipe", stderr: "pipe", timeout: 60_000,
     ...(windows ? { windowsVerbatimArguments: true } : {}),
   });
   const [stdout, stderr, code] = await Promise.all([

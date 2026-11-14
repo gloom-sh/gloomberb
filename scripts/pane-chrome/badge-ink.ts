@@ -1,6 +1,7 @@
 import { mkdir, readdir } from "fs/promises";
 import { join, resolve } from "path";
 import { Jimp } from "jimp";
+import { testAppEnv, TEST_BROWSER_PRIVACY_SCRIPT } from "../test-app-env";
 import { takeOption } from "../tui-benchmark-harness";
 import type { BadgeInkLayout } from "./badge-ink-fixture";
 import { cacheDir, evaluate, launchBrowser, sleep } from "./browser";
@@ -214,15 +215,16 @@ async function shoot(engine: string, url: string, out: string): Promise<void> {
   const { width, height } = VIEWPORT;
   if (engine === "wkwebview") {
     if (process.platform !== "darwin") throw new Error("wkwebview is the macOS system WebKit: run it on a Mac, or picture `page` there and `measure` here.");
-    const run = Bun.spawnSync(["swift", join(import.meta.dir, "wkwebview-snapshot.swift"), url, `${width}x${height}`, out], { stdout: "inherit", stderr: "inherit" });
+    const run = Bun.spawnSync(["swift", join(import.meta.dir, "wkwebview-snapshot.swift"), url, `${width}x${height}`, out], { env: testAppEnv(), stdout: "inherit", stderr: "inherit" });
     if (run.exitCode !== 0) throw new Error(`wkwebview-snapshot.swift failed on ${url}`);
     return;
   }
   if (engine === "webkit") {
     const { webkit } = await import("playwright-core");
-    const browser = await webkit.launch({ headless: true });
+    const browser = await webkit.launch({ headless: true, env: testAppEnv() });
     try {
       const page = await (await browser.newContext({ viewport: { width, height }, deviceScaleFactor: SCALE })).newPage();
+      await page.addInitScript({ content: TEST_BROWSER_PRIVACY_SCRIPT });
       await page.goto(url);
       await page.waitForFunction(() => window.__badgeInk?.ready === true, null, { timeout: 30_000 });
       await Bun.write(`${out}.json`, JSON.stringify(await page.evaluate(() => window.__badgeInk)));

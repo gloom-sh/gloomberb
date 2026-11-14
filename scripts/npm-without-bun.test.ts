@@ -62,7 +62,7 @@ describe("an npm install without Bun", () => {
     try {
       const launcher = installedBin(root);
       const run = Bun.spawnSync([node!, launcher, "--version"], {
-        env: { PATH: "/usr/bin:/bin", HOME: root },
+        env: { PATH: "/usr/bin:/bin", HOME: root, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" },
         stdout: "pipe",
         stderr: "pipe",
       });

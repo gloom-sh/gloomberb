@@ -74,6 +74,10 @@ concurrency:
   group: ui-benchmark-${{ github.event_name == 'push' && 'main' || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
+env:
+  GLOOMBERB_NO_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+
 jobs:
   shoot:
     name: ${{ github.event_name == 'push' && 'Picture main' || 'Picture base and head' }}, shard ${{ matrix.shard }} of 8

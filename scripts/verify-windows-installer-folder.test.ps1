@@ -4,6 +4,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:GLOOMBERB_NO_TELEMETRY = "1"
+$env:DO_NOT_TRACK = "1"
 
 # The script the Windows app leaves to retire an earlier installer's folder
 # (src/renderers/electrobun/bun/desktop/installer-folder.ts), as the app

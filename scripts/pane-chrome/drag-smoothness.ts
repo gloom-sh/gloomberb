@@ -1,5 +1,6 @@
 import { mkdir } from "fs/promises";
 import { basename, join, resolve } from "path";
+import { testAppEnv, TEST_BROWSER_PRIVACY_SCRIPT } from "../test-app-env";
 import { median, positiveInteger, takeOption } from "../tui-benchmark-harness";
 import { cacheDir, evaluate, launchBrowser, sleep, type Cdp, type Point } from "./browser";
 import { serveFixturePage } from "./page";
@@ -180,8 +181,9 @@ async function chromiumDriver(name: string, options: Options): Promise<Driver> {
 
 async function webkitDriver(options: Options): Promise<Driver> {
   const { webkit } = await import("playwright-core");
-  const browser = await webkit.launch({ headless: true });
+  const browser = await webkit.launch({ headless: true, env: testAppEnv() });
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: options.dpr });
+  await context.addInitScript({ content: TEST_BROWSER_PRIVACY_SCRIPT });
   // Nothing past this machine, as the Chromium side does. Only those requests
   // are intercepted: WebKit stops answering now and then when every request,
   // the page's socket among them, goes through Playwright.

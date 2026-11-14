@@ -2,6 +2,7 @@ import { existsSync, readdirSync, statSync } from "fs";
 import { cp, mkdir, readFile, rm, writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join, resolve } from "path";
+import { testAppEnv } from "../test-app-env";
 import { heavyLayout, multiWindowLayout, type MeasuredLayout } from "./layouts";
 
 /**
@@ -262,7 +263,7 @@ async function seedProfile(): Promise<string> {
   await writeFile(join(dir, "config.json"), `${JSON.stringify(config, null, 2)}\n`);
   const root = resolve(join(import.meta.dir, "..", ".."));
   const restore = Bun.spawn(["bun", "-e", `const { restoreExtractedPlugins } = await import(${JSON.stringify(join(root, "src/cli/restore-plugins.ts"))}); await restoreExtractedPlugins();`], {
-    env: { ...process.env, GLOOMBERB_HOME: dir },
+    env: testAppEnv({ GLOOMBERB_HOME: dir }),
     stdout: "inherit",
     stderr: "inherit",
   });

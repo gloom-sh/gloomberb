@@ -1,4 +1,6 @@
 $ErrorActionPreference = "Stop"
+$env:GLOOMBERB_NO_TELEMETRY = "1"
+$env:DO_NOT_TRACK = "1"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $PackageJson = Get-Content (Join-Path $Root "package.json") -Raw | ConvertFrom-Json

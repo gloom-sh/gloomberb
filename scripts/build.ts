@@ -2,6 +2,7 @@ import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, 
 import { tmpdir } from "os";
 import { join } from "path";
 import { gzipSync } from "zlib";
+import { testAppEnv } from "./test-app-env";
 import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
   OPEN_TUI_RUNTIME_SMOKE_COMMAND,
@@ -264,13 +265,13 @@ async function smokeTestBinary(outfile: string, target: BuildTarget) {
     for (const check of checks) {
       const checkRunner = check.runner ?? runner;
       // A container does not see this process's environment, so it gets the check's through `env`.
-      const envInContainer = check.env && checkRunner === runner && inContainer
-        ? ["env", ...Object.entries(check.env).map(([name, value]) => `${name}=${value}`)]
+      const envInContainer = checkRunner === runner && inContainer
+        ? ["env", ...Object.entries({ ...check.env, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" }).map(([name, value]) => `${name}=${value}`)]
         : [];
       const code = await runProcess(
         [...checkRunner, ...envInContainer, check.command ?? smokeBinary, ...check.args],
         check.failureMessage,
-        { cwd: smokeDir, stdout: "ignore", ...(check.env && !envInContainer.length ? { env: { ...process.env, ...check.env } } : {}) },
+        { cwd: smokeDir, stdout: "ignore", env: testAppEnv(check.env) },
         true,
       );
       if (code !== 0) {

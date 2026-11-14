@@ -1,9 +1,14 @@
 import { existsSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
+import { testAppEnv } from "./test-app-env";
 
 export async function runTmux(args: string[], check = true): Promise<void> {
-  const process = Bun.spawn(["tmux", ...args], { stdout: "pipe", stderr: "pipe" });
+  const env = testAppEnv();
+  const command = args[0] === "new-session"
+    ? [args[0], "-e", `GLOOMBERB_NO_TELEMETRY=${env.GLOOMBERB_NO_TELEMETRY}`, "-e", `DO_NOT_TRACK=${env.DO_NOT_TRACK}`, ...args.slice(1)]
+    : args;
+  const process = Bun.spawn(["tmux", ...command], { env, stdout: "pipe", stderr: "pipe" });
   const [exitCode, stderr] = await Promise.all([
     process.exited,
     new Response(process.stderr).text(),

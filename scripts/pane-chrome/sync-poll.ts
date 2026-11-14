@@ -1,5 +1,6 @@
 import { mkdir, rm, writeFile } from "fs/promises";
 import { join, resolve } from "path";
+import { testAppEnv, TEST_BROWSER_PRIVACY_SCRIPT } from "../test-app-env";
 import { cacheDir } from "./browser";
 
 /**
@@ -73,12 +74,13 @@ const server = Bun.serve({
 });
 
 const playwright = await import("playwright-core");
-const browser = await playwright[engine].launch({ headless: true });
+const browser = await playwright[engine].launch({ headless: true, env: testAppEnv() });
 const results: Record<string, Array<{ blockMs: number; totalMs: number; pushed: boolean }>> = { idle: [], quotes: [], layout: [] };
 const codecSamples: Array<{ blockMs: number; totalMs: number }> = [];
 let workspace: Record<string, number> = {};
 try {
   const context = await browser.newContext();
+  await context.addInitScript({ content: TEST_BROWSER_PRIVACY_SCRIPT });
   // As the native side does: the window's key, then Electrobun's preload.
   const { preloadScript } = await import(resolve(option("preload", join(root, ".hutch/devkit/api/preload/.generated/compiled.ts"))));
   await context.addInitScript({ content: `window.__electrobunSecretKeyBytes = ${JSON.stringify(Array.from(crypto.getRandomValues(new Uint8Array(32))))};` });

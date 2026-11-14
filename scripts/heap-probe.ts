@@ -1,4 +1,7 @@
 import { appendFileSync } from "fs";
+import { testAppEnv } from "./test-app-env";
+
+Object.assign(process.env, testAppEnv());
 
 // Preloaded into the app by benchmark-tui-memory.ts. On SIGUSR2 it collects
 // garbage and appends the live heap, so the benchmark reads what is retained

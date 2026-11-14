@@ -1,6 +1,7 @@
 import { appendFile, cp, mkdir, readdir, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { join, resolve } from "path";
+import { testAppEnv } from "../test-app-env";
 import { takeOption } from "../tui-benchmark-harness";
 import { cacheDir } from "./browser";
 import { pixelChange } from "./ui-audit-compare";
@@ -53,7 +54,7 @@ const BODY_INSET = { top: 42, bottom: 42 };
 const SHEET_ROWS = 6;
 
 function sh(command: string[], options: { cwd?: string; quiet?: boolean } = {}): string {
-  const result = Bun.spawnSync(command, { cwd: options.cwd, stdout: options.quiet ? "pipe" : "inherit", stderr: "inherit" });
+  const result = Bun.spawnSync(command, { cwd: options.cwd, env: testAppEnv(), stdout: options.quiet ? "pipe" : "inherit", stderr: "inherit" });
   if (result.exitCode !== 0) throw new Error(`${command.join(" ")} failed (exit ${result.exitCode})`);
   return options.quiet ? (result.stdout?.toString() ?? "").trim() : "";
 }

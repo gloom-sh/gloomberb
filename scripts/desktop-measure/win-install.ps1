@@ -8,6 +8,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:GLOOMBERB_NO_TELEMETRY = "1"
+$env:DO_NOT_TRACK = "1"
 $Watch = [System.Diagnostics.Stopwatch]::StartNew()
 $Install = Start-Process -FilePath $Installer -Wait -PassThru -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER"
 $InstallMs = $Watch.ElapsedMilliseconds

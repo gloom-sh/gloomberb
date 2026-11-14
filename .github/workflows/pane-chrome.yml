@@ -95,6 +95,10 @@ concurrency:
   group: pane-chrome-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GLOOMBERB_NO_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+
 jobs:
   pointer-checks:
     name: Pointer checks

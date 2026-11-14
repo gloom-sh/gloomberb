@@ -1,5 +1,6 @@
 import { appendFile } from "fs/promises";
 import { join, resolve } from "path";
+import { testAppEnv } from "./test-app-env";
 import { median, positiveInteger, takeOption } from "./tui-benchmark-harness";
 
 /**
@@ -76,6 +77,7 @@ async function runBenchmark(root: string, label: string): Promise<NavigationRepo
   // Two retries: a failed launch is a broken run, not a slowdown.
   for (let attempt = 1; ; attempt += 1) {
     const child = Bun.spawn(["bun", "run", benchmark, "--root", root, "--count", "30", "--interval", "25"], {
+      env: testAppEnv(),
       stdout: "pipe",
       stderr: "pipe",
     });

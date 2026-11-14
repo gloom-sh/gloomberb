@@ -1,4 +1,5 @@
 import { join } from "path";
+import { testAppEnv } from "./test-app-env";
 
 const rootDir = join(import.meta.dir, "..");
 // Electrobun 2's npm package is a launcher for Hutch, which runs the build.
@@ -6,6 +7,7 @@ const electrobun = join(rootDir, "node_modules", "electrobun", "bin", "electrobu
 
 const proc = Bun.spawn([process.execPath, electrobun, "dev", "--watch"], {
   cwd: rootDir,
+  env: testAppEnv(),
   stdout: "inherit",
   stderr: "inherit",
   stdin: "inherit",

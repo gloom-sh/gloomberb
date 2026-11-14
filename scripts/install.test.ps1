@@ -4,6 +4,8 @@
 # - a checksum file that cannot be read, or that does not match, stops the install, nothing installed.
 # The user's PATH is put back afterwards.
 $ErrorActionPreference = 'Stop'
+$env:GLOOMBERB_NO_TELEMETRY = "1"
+$env:DO_NOT_TRACK = "1"
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 

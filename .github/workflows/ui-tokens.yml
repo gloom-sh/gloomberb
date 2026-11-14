@@ -40,6 +40,10 @@ concurrency:
   group: ui-tokens-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GLOOMBERB_NO_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+
 jobs:
   shard:
     name: UI tokens, shard ${{ matrix.shard }} of 4

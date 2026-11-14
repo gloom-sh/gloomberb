@@ -20,6 +20,7 @@ import { realpathSync } from "fs";
 import { homedir } from "os";
 import { dirname, join, resolve } from "path";
 import { parseArgs } from "util";
+import { testAppEnv } from "./test-app-env";
 import { getDataDir, initDataDir, saveConfig } from "../src/data/config/store";
 import { getGloomberbDirs } from "../src/data/config/home";
 import { initMarketData } from "../src/cli/context";
@@ -40,6 +41,8 @@ import {
   SWEEP_WATCHLIST_ID,
   type SweepCase,
 } from "./askg-tool-sweep-cases";
+
+Object.assign(process.env, testAppEnv());
 
 const { values: flags } = parseArgs({
   options: {

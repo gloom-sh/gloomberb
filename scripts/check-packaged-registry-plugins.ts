@@ -3,6 +3,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rm
 import { tmpdir } from "os";
 import { basename, join, resolve } from "path";
 import { gunzipSync } from "zlib";
+import { testAppEnv } from "./test-app-env";
 
 import { buildDesktopTuiBundle } from "./desktop-tui-bundle";
 import { type DoctorRun, type LoadProblem, isHostLinkError, loadProblems } from "./packaged-plugin-load";
@@ -102,7 +103,7 @@ function doctor(command: string[], pluginDir: string, home: string, cwd: string)
   // `plugin doctor` takes a path by its slash, and Windows spells it with backslashes.
   const result = spawnSync(command[0]!, [...command.slice(1), "--json", "plugin", "doctor", pluginDir.replaceAll("\\", "/")], {
     cwd,
-    env: { ...process.env, GLOOMBERB_HOME: home },
+    env: testAppEnv({ GLOOMBERB_HOME: home }),
     encoding: "utf8",
     timeout: DOCTOR_TIMEOUT_MS,
     killSignal: "SIGKILL",
