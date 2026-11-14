@@ -342,10 +342,9 @@ const WITHHELD_LINES: Record<string, string> = {
 };
 
 /**
- * "2026-06-30, 2025-12-31, 2025-06-30 SG&A left blank: the statements source gives it below zero, which no
- * expense can be.": lines Gloom Cloud left blank rather than serve an impossible figure (CATL's SG&A, read by
- * the source as a difference of years to date it counts otherwise). `shown` keeps the lines the table has a
- * row for. Null when none is.
+ * "SG&A blank for 2026-06-30, 2025-12-31, 2025-06-30: source value below zero.": lines Gloom Cloud left blank
+ * rather than serve an impossible figure (CATL's SG&A, read by the source as a difference of years to date it
+ * counts otherwise). `shown` keeps the lines the table has a row for. Null when none is.
  */
 function withheldLinesNote(statements: readonly Pick<FinancialStatement, "date">[], shown?: ReadonlySet<string>): string | null {
   const ends = new Map<string, string[]>();
@@ -359,8 +358,8 @@ function withheldLinesNote(statements: readonly Pick<FinancialStatement, "date">
     }
   }
   if (ends.size === 0) return null;
-  const lines = [...ends].map(([line, dates]) => `${[...new Set(dates)].sort().reverse().join(", ")} ${line}`).join("; ");
-  return `${lines} left blank: the statements source gives ${ends.size > 1 ? "them" : "it"} below zero, which no expense can be.`;
+  const lines = [...ends].map(([line, dates]) => `${line} blank for ${[...new Set(dates)].sort().reverse().join(", ")}`).join("; ");
+  return `${lines}: source value below zero.`;
 }
 
 /** "2026-09-30, 2026-06-30 revenue left blank: the company's results announcements count it otherwise than the statements source." */

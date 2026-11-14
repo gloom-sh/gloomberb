@@ -437,9 +437,11 @@ describe("expense lines served blank", () => {
       withheld: { sellingGeneralAndAdministration: { value, reason: "below-zero" } },
     } as FinancialStatement);
     const rows = [row("2026-06-30", -1.33e9), { date: "2026-03-31", currency: "CNY", totalRevenue: 129.1e9 } as FinancialStatement, row("2025-12-31", -5.52e9)];
-    expect(filledPeriodsNote(rows)).toBe("2026-06-30, 2025-12-31 SG&A left blank: the statements source gives it below zero, which no expense can be.");
+    expect(filledPeriodsNote(rows)).toBe("SG&A blank for 2026-06-30, 2025-12-31: source value below zero.");
+    const both = [...rows, { date: "2025-06-30", currency: "CNY", withheld: { researchAndDevelopment: { value: -1, reason: "below-zero" } } } as FinancialStatement];
+    expect(filledPeriodsNote(both)).toBe("SG&A blank for 2026-06-30, 2025-12-31; R&D blank for 2025-06-30: source value below zero.");
     // Not a line the table shows: nothing to say.
     expect(filledPeriodsNote(rows, new Set(["totalRevenue"]))).toBeNull();
-    expect(filledPeriodsNote(rows, new Set(["sellingGeneralAndAdministration"]))).toContain("SG&A left blank");
+    expect(filledPeriodsNote(rows, new Set(["sellingGeneralAndAdministration"]))).toContain("SG&A blank for");
   });
 });
