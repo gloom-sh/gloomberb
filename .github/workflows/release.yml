@@ -29,7 +29,14 @@ jobs:
   build:
     if: ${{ github.event_name == 'push' }}
     uses: ./.github/workflows/build-release-assets.yml
-    secrets: inherit
+    secrets:
+      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+      ELECTROBUN_APPLEAPIKEY: ${{ secrets.ELECTROBUN_APPLEAPIKEY }}
+      ELECTROBUN_APPLEAPIKEY_BASE64: ${{ secrets.ELECTROBUN_APPLEAPIKEY_BASE64 }}
+      ELECTROBUN_APPLEAPIISSUER: ${{ secrets.ELECTROBUN_APPLEAPIISSUER }}
+      ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
 
   # Every plugin the registry lists has to load in what was built, in a job
   # with no secrets. A host that does not serve what plugins import holds the
@@ -45,6 +52,7 @@ jobs:
       all-built: ${{ needs.build.result == 'success' }}
 
   release:
+    environment: release
     needs:
       - build
       - registry-plugins
@@ -54,11 +62,11 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: dist
           merge-multiple: true
@@ -96,7 +104,7 @@ jobs:
 
       - name: Upload assets to GitHub release
         id: upload
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: |
             dist/*.dmg
@@ -144,13 +152,13 @@ jobs:
           git commit -m "Update Gloom to $VERSION"
           git push
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Install npm 11 (required for trusted publishing)
-        run: npm install -g npm@11
+        run: npm install -g npm@11.21.2
 
       - name: Publish to npm
         run: |
@@ -223,6 +231,7 @@ jobs:
   # Workflow dispatch only: publishes @gloom-sh/terminal for an existing tag,
   # the same way the release job does after a push, with nothing else.
   publish-terminal:
+    environment: release
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
@@ -235,13 +244,17 @@ jobs:
         run: |
           set -euo pipefail
           # The same tags the push trigger accepts: v*, never a nightly.
+          if [ "$GITHUB_REF" != "refs/tags/$TAG" ]; then
+            echo "Dispatch this workflow at the matching tag with --ref $TAG -f tag=$TAG." >&2
+            exit 1
+          fi
           case "$TAG" in
             v[0-9]*-nightly.*) echo "$TAG is a nightly tag; nightlies are not published to npm." >&2; exit 1 ;;
             v[0-9]*) ;;
             *) echo "$TAG is not a release tag like v0.19.0." >&2; exit 1 ;;
           esac
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: refs/tags/${{ inputs.tag }}
           persist-credentials: false
@@ -257,13 +270,13 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Install npm 11 (required for trusted publishing)
-        run: npm install -g npm@11
+        run: npm install -g npm@11.21.2
 
       - name: Publish to npm as @gloom-sh/terminal
         run: |

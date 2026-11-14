@@ -158,6 +158,20 @@ Only independently owned, registered product areas implement `GloomPlugin`. Larg
 - The README is a short front door: what it is, how to install it, how to start. Do not add function lists, feature guides, privacy detail or release notes to it. A new function goes in the website's function catalog, and explanations go in `docs/`.
 - Anything reachable from the `exports` in package.json is public API that external plugins depend on. Deprecate before removing or renaming it: mark it `@deprecated`, point at the replacement, and keep it working.
 
+## Release workflows
+
+Stable macOS signing and publication use the `release` environment, which accepts only `v*` tags. Nightly macOS signing and the manually dispatched Homebrew verification use `signing-main`, restricted to the `main` branch. Terminal web deployment uses `web-production`, also restricted to `main`.
+
+The shared build accepts only the seven named Apple signing inputs. Environment secrets with those names take precedence over repository secrets. Registry plugin checks do not receive those inputs. Cloudflare credentials are supplied only to the web deployment step, not installation or browser compilation.
+
+To retry publishing `@gloom-sh/terminal` for an existing stable release, dispatch at that same tag, not at `main`:
+
+```bash
+gh workflow run release.yml --repo gloom-sh/gloomberb --ref v0.19.0 -f tag=v0.19.0
+```
+
+Use the actual release tag in both places. The tag must contain the workflow revision with this recovery path. The recovery job checks that the dispatch ref and requested tag match, then checks the package version. It does not build release assets, update Homebrew, or refresh screenshots. Publishing uses Node 22 and npm 11.21.2 for trusted publishing.
+
 ## Browser development
 
 ```bash
