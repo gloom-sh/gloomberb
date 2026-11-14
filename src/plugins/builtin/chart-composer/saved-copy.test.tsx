@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { ApiRequestError } from "../../../api-client/errors";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -12,7 +12,7 @@ import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { outage } from "../../../test-support/outage";
 import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
-import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { MemoryPluginPersistence, SAVED_COPY_TEST_NOW } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { ChartSnapshotContext } from "../../../time-series/hooks";
 import { useChartResolution } from "../../../time-series/use-chart-resolution";
@@ -20,7 +20,10 @@ import { ChartComposerPane } from "./pane";
 import { buildCustomChartPreset } from "./presets";
 
 const tui = createOpenTuiTestHarness();
-afterEach(resetFredSeriesPersistence);
+afterEach(() => {
+  resetFredSeriesPersistence();
+  setSystemTime();
+});
 
 const CPI: FredSeriesData = {
   observations: Array.from({ length: 13 }, (_, month) => ({
@@ -62,6 +65,7 @@ const footer = () => tui.frame().replace(/\n+$/, "").split("\n").at(-1)!.replace
 
 // A FRED series Gloom Cloud stopped serving, or a refused session, charted its saved copy as "saved copy from".
 test("a FRED series a failed refresh left leads the chart's footer with when it was saved; a refusal is the chart's error", async () => {
+  setSystemTime(SAVED_COPY_TEST_NOW);
   // What the chart saves, saved again as a copy past its refresh time.
   const fresh = new MemoryPluginPersistence();
   const saves: Array<Parameters<MemoryPluginPersistence["setResource"]>> = [];

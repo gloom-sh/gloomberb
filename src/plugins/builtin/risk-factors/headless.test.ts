@@ -1,8 +1,8 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { buildHeadlessFunctionReport } from "../../../cli/pane-functions/headless";
 import { blockExternalNetwork } from "../../../test-support/network-guard";
-import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { MemoryPluginPersistence, SAVED_COPY_TEST_NOW } from "../../../test-support/plugin-persistence";
 import { collectSavedCopies } from "../../../data/saved-copies";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createDefaultConfig } from "../../../types/config";
@@ -20,6 +20,7 @@ afterEach(() => {
   setCloudApiFetchTransport(null);
   apiClient.dispose();
   requests = [];
+  setSystemTime();
 });
 
 function transport(respond: (path: string) => Response) {
@@ -73,6 +74,7 @@ test("actual RISK report distinguishes a stale latest discovery from an independ
 });
 
 test("in a command, RISK answered from saved copies ends with when they were saved instead of the failed refresh", async () => {
+  setSystemTime(SAVED_COPY_TEST_NOW);
   const store = new MemoryPluginPersistence();
   attachRiskFactorsPersistence(store);
   store.seedResource("reports", "ACME", list([2025]), { sourceKey: "risk-factors", schemaVersion: 1, stale: true });
