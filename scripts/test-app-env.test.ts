@@ -45,8 +45,36 @@ test("child apps receive both opt-outs and unrelated environment overrides", () 
   expect(JSON.parse(child.stdout.toString())).toEqual({ ...optOut, GLOOM_TEST_MARKER: "child" });
 });
 
-test("browser QA opts out before page scripts without changing unrelated navigator properties", () => {
-  const navigator = { doNotTrack: "0", language: "en-US" };
+test.each(["inherited", "absent"])("browser privacy init repeats with %s DNT and lets the Share fixture initialize", (property) => {
+  const prototype = property === "inherited" ? { get doNotTrack() { return "0"; } } : null;
+  const navigator = Object.assign(Object.create(prototype), { language: "en-US" });
+  const window = {} as Record<string, number>;
+  let observing = false;
+  const context = {
+    navigator,
+    window,
+    document: {},
+    MutationObserver: class {
+      observe() { observing = true; }
+    },
+  };
+  runInNewContext(TEST_BROWSER_PRIVACY_SCRIPT, context);
+  expect(navigator).toMatchObject({ doNotTrack: "1", language: "en-US" });
+  runInNewContext(TEST_BROWSER_PRIVACY_SCRIPT, context);
+  runInNewContext(`
+    Object.defineProperty(navigator, "doNotTrack", { value: "1" });
+    window.__shareDialogCount = 0;
+    window.__linkCopiedToasts = 0;
+    new MutationObserver(() => {}).observe(document, { childList: true, subtree: true });
+  `, context);
+  expect(navigator).toMatchObject({ doNotTrack: "1", language: "en-US" });
+  expect(window).toEqual({ __shareDialogCount: 0, __linkCopiedToasts: 0 });
+  expect(observing).toBe(true);
+});
+
+test("browser privacy init accepts a fixture's non-configurable opt-out", () => {
+  const navigator = Object.defineProperty({ language: "en-US" }, "doNotTrack", { value: "1" });
+  runInNewContext(TEST_BROWSER_PRIVACY_SCRIPT, { navigator });
   runInNewContext(TEST_BROWSER_PRIVACY_SCRIPT, { navigator });
   expect(navigator).toMatchObject({ doNotTrack: "1", language: "en-US" });
 });

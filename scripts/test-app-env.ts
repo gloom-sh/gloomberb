@@ -7,4 +7,4 @@ export function testAppEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv
   };
 }
 
-export const TEST_BROWSER_PRIVACY_SCRIPT = 'Object.defineProperty(navigator, "doNotTrack", { get: () => "1" });';
+export const TEST_BROWSER_PRIVACY_SCRIPT = 'if (navigator.doNotTrack !== "1") Object.defineProperty(navigator, "doNotTrack", { get: () => "1", configurable: true });';
