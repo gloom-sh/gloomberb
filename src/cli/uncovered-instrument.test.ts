@@ -6,6 +6,7 @@ import type { PaneFunctionCatalog } from "./pane-functions/catalog";
 import { parsePaneFunctionArgs } from "./pane-functions/options";
 import { applyListingArgument } from "./pane-functions/resolver";
 import type { MarketContext } from "./types";
+import { earningsRippleModule } from "../plugins/builtin/earnings-ripple";
 
 const TYPES: Record<string, string> = { AAPL: "EQUITY", VOO: "ETF", VFIAX: "MUTUALFUND", "^VIX": "INDEX", "^GSPC": "INDEX", "^MOVE": "INDEX" };
 const companyPane = (id: string): PaneDef => ({ id, name: id, component: () => null, defaultPosition: "right", tickerFollower: true, instruments: ["equity"] });
@@ -47,4 +48,18 @@ test("a list leaves the index out with the same answer and keeps the companies",
   const parsed = await applyListingArgument(registry, market, parsePaneFunctionArgs(["PEERS", "AAPL,^VIX"], {}));
   expect(parsed.arg).toBe("AAPL");
   expect(parsed.listingNotes).toContain("PEERS covers companies only, and ^VIX is an index. Try: gloom fn VIX");
+});
+
+test("RIPL leaves a portfolio's futures and funds out before any request, in one line", async () => {
+  const ripple = earningsRippleModule.panes![0]!, rippleTemplate = earningsRippleModule.paneTemplates![0]!;
+  const catalog: PaneFunctionCatalog = { panes: new Map([[ripple.id, ripple]]), paneTemplates: new Map([[rippleTemplate.id, rippleTemplate]]), destroy: () => {} };
+  const quotes: Record<string, string> = { ...TYPES, NQ1: "FUTURE", DIA: "ETF" };
+  const context = { ...market, dataProvider: createTestDataProvider({
+    search: async () => [],
+    getQuote: async (symbol) => createTestQuote({ symbol, instrumentType: quotes[symbol] }),
+  }) } as MarketContext;
+  const parsed = await applyListingArgument(catalog, context, parsePaneFunctionArgs(["RIPL", "AAPL,ES=F,NQ1,VOO,DIA"], {}));
+  expect(parsed.arg).toBe("AAPL");
+  expect(parsed.listingNotes).toEqual(["RIPL covers companies only, and leaves out ES=F, NQ1 (futures contracts) and VOO, DIA (ETFs)."]);
+  expect(parsed.refusedListings?.map((entry) => entry.symbol)).toEqual(["ES=F", "NQ1", "VOO", "DIA"]);
 });

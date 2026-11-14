@@ -59,10 +59,12 @@ function commodity(symbol: string): TickerRecord {
     positions: [{ portfolio: "local", shares: 1, broker: "manual" }],
   });
 }
-function market(staleQuotes: readonly string[] = []): RiskMarketSnapshot {
+/** `behind`: proxies whose latest close is a day older than the rest's, as a Singapore close is by the US evening. */
+function market(staleQuotes: readonly string[] = [], behind: readonly string[] = []): RiskMarketSnapshot {
   return {
     histories: RISK_FACTOR_INSTRUMENTS.map((instrument) => {
       const history = riskHistory();
+      if (behind.includes(instrument.symbol)) history.data!.pop();
       history.providerMeta!.normalizedSymbol = instrument.symbol;
       history.providerMeta!.normalizedExchange = instrument.exchange;
       const quote = {
@@ -423,6 +425,21 @@ test("a short enters the basket at its signed weight, not left out", () => {
   const neutral = buildPortfolioRisk(portfolio, [holding("SPY", 3), holding("IWM", -3)], market());
   expect(neutral.notes.filter((note) => note.includes("per gross exposure"))).toHaveLength(1);
   expect(volatility(neutral)).toBeCloseTo(0, 10);
+});
+test("a pair whose latest closes are a day apart correlates over the latest 60 returns both have", () => {
+  const model = buildPortfolioRisk(portfolio, [holding("SPY", 3), holding("IWM", 1), holding("IWD", 1)], market([], ["IWM", "IWD"]));
+  const pairs = new Map(model.rows.correlation.map((row) => [row.label, row]));
+  expect(model.correlation.map((row) => row.samples)).toEqual([60, 60, 60]);
+  expect(pairs.get("SPY / IWM")).toMatchObject({ value: expect.any(Number), detail: "60 matched daily returns" });
+  // Both end on the same older day, so neither ever lacked the other's closes.
+  expect(pairs.get("IWM / IWD")?.asOf).toBe(pairs.get("SPY / IWM")?.asOf);
+  // Holdings that share too few days say how many, not that they have none.
+  const apart = market();
+  const iwd = apart.histories.find((entry) => entry.instrument.symbol === "IWD")!;
+  // Two-day returns from the 21st back, as a market that closes every other day would have.
+  iwd.returns = iwd.returns.map((point, index, all) => index >= all.length - 20 || index % 2 ? point : { ...point, startDateKey: all[index - 1]?.startDateKey ?? point.startDateKey });
+  const sparse = buildPortfolioRisk(portfolio, [holding("SPY", 3), holding("IWD", 1)], apart);
+  expect(sparse.rows.correlation[0]).toMatchObject({ value: null, detail: expect.stringMatching(/^only [1-5]\d daily returns on the same dates; 60 needed$/) });
 });
 test("a crypto holding is excluded by name with its reason, not folded into the equity basket", () => {
   const eth = createTestTicker("ETH-USD", "Ethereum USD", {

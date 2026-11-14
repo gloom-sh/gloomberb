@@ -95,6 +95,33 @@ export function uncoveredInstrumentMessage(
   return `${name} covers ${coveredNoun(covered)} only, and ${instrument.symbol} is ${instrumentKindNoun(instrument)}.`;
 }
 
+/** "futures contracts", "ETFs", "indices": what several instruments of one kind are. */
+function pluralNoun(noun: string): string {
+  const bare = noun.replace(/^an? /, "");
+  if (bare === "index") return "indices";
+  return bare.endsWith("y") ? `${bare.slice(0, -1)}ies` : `${bare}s`;
+}
+
+/**
+ * What a list function says once of every entry outside what it covers, in
+ * place of a line each: "RIPL covers companies only, and leaves out ES=F, NQ1
+ * (futures contracts) and ES3:SGX (an ETF)."
+ */
+export function uncoveredInstrumentsMessage(
+  name: string,
+  covered: readonly TickerInstrumentKind[],
+  instruments: readonly InstrumentOfKind[],
+): string {
+  const groups = new Map<string, string[]>();
+  for (const instrument of instruments) {
+    const noun = instrumentKindNoun(instrument);
+    groups.set(noun, [...groups.get(noun) ?? [], instrument.symbol]);
+  }
+  const parts = [...groups].map(([noun, symbols]) => `${symbols.join(", ")} (${symbols.length > 1 ? pluralNoun(noun) : noun})`);
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0] ?? "";
+  return `${name} covers ${coveredNoun(covered)} only, and leaves out ${list}.`;
+}
+
 /**
  * What a ticker is without asking for its quote: an index, pair, future or
  * coin by its symbol (^VIX, EURUSD=X), a fund by the type it was saved with

@@ -165,7 +165,9 @@ export function parseApiErrorMessage(body: string): string {
     (value): value is string =>
       typeof value === "string" && value.trim().length > 0,
   );
-  return parts.join(" ") || validationErrorText(record) || NO_MESSAGE;
+  // A route can send the schema's refusal as its message, the same object written out as text.
+  const wrapped = parts.length === 1 ? parseApiErrorDetails(parts[0]!) : undefined;
+  return (wrapped && validationErrorText(wrapped)) || parts.join(" ") || validationErrorText(record) || NO_MESSAGE;
 }
 
 const NO_MESSAGE = "The server returned an error without a message.";
