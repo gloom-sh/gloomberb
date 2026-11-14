@@ -331,6 +331,26 @@ export function filledPeriodsNote(
   return [note, omittedLinesNote(statements, shown), trailing, withheld].filter(Boolean).join(" ");
 }
 
+type WithheldLines = Record<string, { value?: number; reason?: string } | undefined>;
+
+/** The lines a row says Gloom Cloud left blank (`withheld`), read through a cast: the type does not name it. */
+function withheldOf(row: FinancialStatement | undefined): WithheldLines | undefined {
+  const withheld = (row as { withheld?: unknown } | undefined)?.withheld;
+  return withheld && typeof withheld === "object" ? withheld as WithheldLines : undefined;
+}
+
+/** Keeps the lines either row withholds as below zero blank in their merge, and says so on it. */
+function withholdBelowZero(merged: FinancialStatement, rows: ReadonlyArray<FinancialStatement | undefined>): void {
+  const withheld = Object.assign({}, ...rows.map(withheldOf).reverse()) as WithheldLines;
+  if (Object.keys(withheld).length === 0) return;
+  const values = merged as unknown as Record<string, unknown>;
+  values.withheld = withheld;
+  for (const [field, entry] of Object.entries(withheld)) {
+    const value = values[field];
+    if (entry?.reason === "below-zero" && typeof value === "number" && value < 0) delete values[field];
+  }
+}
+
 /** Expense lines Gloom Cloud serves blank where the statements source gives them below zero (the row's `withheld`). */
 const WITHHELD_LINES: Record<string, string> = {
   costOfRevenue: "cost of revenue",
@@ -349,11 +369,13 @@ const WITHHELD_LINES: Record<string, string> = {
 function withheldLinesNote(statements: readonly Pick<FinancialStatement, "date">[], shown?: ReadonlySet<string>): string | null {
   const ends = new Map<string, string[]>();
   for (const row of statements) {
-    const withheld = (row as { withheld?: Record<string, { reason?: string } | undefined> }).withheld;
-    if (!withheld || typeof withheld !== "object" || !/^\d{4}-\d{2}-\d{2}/.test(row.date)) continue;
+    const withheld = withheldOf(row as FinancialStatement);
+    if (!withheld || !/^\d{4}-\d{2}-\d{2}/.test(row.date)) continue;
     for (const [field, entry] of Object.entries(withheld)) {
       const line = WITHHELD_LINES[field];
       if (!line || entry?.reason !== "below-zero" || (shown && !shown.has(field))) continue;
+      // Another source's figure for it, merged in, is shown: not blank.
+      if (typeof (row as unknown as Record<string, unknown>)[field] === "number") continue;
       ends.set(line, [...ends.get(line) ?? [], row.date.slice(0, 10)]);
     }
   }
@@ -620,6 +642,9 @@ export function mergeFinancialStatementRows(
       }
     }
 
+    // A line Gloom Cloud left blank as below zero stays blank: no other copy's figure below zero (a copy saved
+    // before, or another source's) fills it.
+    withholdBelowZero(merged, [row, fallback]);
     // A gap either report declares for the period survives the other's value.
     mergeStatementGaps(merged, [row, fallback]);
     const fill = retainedFill(merged, [row, fallback]);
