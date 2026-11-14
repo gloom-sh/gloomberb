@@ -35,6 +35,10 @@ on:
 permissions:
   contents: read
 
+env:
+  GLOOMBERB_NO_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+
 jobs:
   # Before any plugin runs. It sums whatever is there, so the platforms that
   # did build are checked when one failed; Release still publishes nothing

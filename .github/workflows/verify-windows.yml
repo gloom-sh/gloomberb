@@ -14,6 +14,8 @@ permissions:
   contents: read
 
 env:
+  GLOOMBERB_NO_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
   # The last release built with Electrobun 1: installs of it update to this build.
   EARLIER_RELEASE: v0.19.5
 

@@ -1,4 +1,5 @@
 import type { Page } from "playwright-core";
+import { testAppEnv, TEST_BROWSER_PRIVACY_SCRIPT } from "../test-app-env";
 import type { Cdp } from "./browser";
 
 /**
@@ -59,9 +60,10 @@ class WebKitPage implements Pick<Cdp, "send" | "on" | "once"> {
 
 export async function launchChatWebKit(width: number, height: number) {
   const { webkit } = await import("playwright-core");
-  const browser = await webkit.launch({ headless: true });
+  const browser = await webkit.launch({ headless: true, env: testAppEnv() });
   try {
     const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+    await context.addInitScript({ content: TEST_BROWSER_PRIVACY_SCRIPT });
     // The fixture has no remote services. Block accidental requests just as the
     // Chromium harness does, without changing WebKit layout or paint settings.
     await context.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());

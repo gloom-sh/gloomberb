@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import { mkdir, rm } from "fs/promises";
 import { join, resolve } from "path";
 import type { BrowserContext, Page } from "playwright-core";
+import { testAppEnv, TEST_BROWSER_PRIVACY_SCRIPT } from "../test-app-env";
 import { takeOption } from "../tui-benchmark-harness";
 import { cacheDir } from "./browser";
 import { serveFixturePage } from "./page";
@@ -80,7 +81,9 @@ async function launch(name: "chromium" | "webkit", width: number): Promise<Brows
   const engines = await import("playwright-core");
   const profile = join(out, "profiles", `${name}-${width}`);
   await rm(profile, { recursive: true, force: true });
-  return engines[name].launchPersistentContext(profile, { headless: true, viewport: { width, height: HEIGHT }, deviceScaleFactor: 1 });
+  const context = await engines[name].launchPersistentContext(profile, { headless: true, env: testAppEnv(), viewport: { width, height: HEIGHT }, deviceScaleFactor: 1 });
+  await context.addInitScript({ content: TEST_BROWSER_PRIVACY_SCRIPT });
+  return context;
 }
 
 interface Box { x: number; y: number; width: number; height: number }

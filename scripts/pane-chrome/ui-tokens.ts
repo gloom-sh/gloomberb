@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { join, resolve } from "path";
+import { testAppEnv } from "../test-app-env";
 import { takeOption } from "../tui-benchmark-harness";
 import { cacheDir } from "./browser";
 import { readPluginLock } from "./plugin-lock";
@@ -272,7 +273,7 @@ async function main(): Promise<void> {
         ...(only ? ["--only", only] : []),
         ...(root ? ["--root", resolve(root)] : []),
       ];
-      const run = Bun.spawnSync(command, { stdout: "inherit", stderr: "inherit" });
+      const run = Bun.spawnSync(command, { env: testAppEnv(), stdout: "inherit", stderr: "inherit" });
       if (run.exitCode !== 0) throw new Error(`The UI audit stopped (exit ${run.exitCode})`);
     };
     await mkdir(out, { recursive: true });

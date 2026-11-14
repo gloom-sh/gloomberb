@@ -1,6 +1,7 @@
 import { appendFileSync } from "fs";
 import { mkdir } from "fs/promises";
 import { join } from "path";
+import { testAppEnv } from "../test-app-env";
 import { evaluate, sleep, type Cdp } from "./browser";
 
 /**
@@ -410,7 +411,7 @@ export async function shot(cdp: Cdp, scope: string | null, file: string, format:
  * ignores it. A function `catalog` lists by a new name (`x-feed` for `twitter-feed-pane`) is pictured under it.
  */
 export function readCatalog(root: string, home: string): CatalogEntry[] {
-  const env = { ...process.env, GLOOMBERB_HOME: home, GLOOMBERB_CATALOG_APP_PANES: "1" };
+  const env = testAppEnv({ GLOOMBERB_HOME: home, GLOOMBERB_CATALOG_APP_PANES: "1" });
   const listed = Bun.spawnSync(["bun", "src/cli/entry.ts", "catalog", "--all", "--json"], { cwd: root, env });
   return JSON.parse(listed.stdout.toString()).data as CatalogEntry[];
 }

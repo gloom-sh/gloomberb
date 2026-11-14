@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { Jimp } from "jimp";
+import { testAppEnv } from "../test-app-env";
 import { Cdp, evaluate } from "../pane-chrome/browser";
 import { EXTRACTED_PLUGINS } from "../../src/plugins/extracted-plugins";
 import { DETACHED_WINDOW_MIN_SIZE, MAIN_WINDOW_MIN_SIZE } from "../../src/renderers/electrobun/bun/window/frame";
@@ -50,6 +51,7 @@ async function install(installer: string, dir: string): Promise<void> {
   // Inno Setup reads /DIR="..." itself; Bun must not quote the argument again.
   const command = `"${installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR="${dir}" /LOG="${log}"`;
   const child = Bun.spawn([process.env.ComSpec ?? "cmd.exe", "/d", "/s", "/c", `"${command}"`], {
+    env: testAppEnv(),
     stdout: "inherit", stderr: "inherit", windowsVerbatimArguments: true,
   });
   const code = await child.exited;

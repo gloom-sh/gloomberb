@@ -22,6 +22,7 @@ import { appendFileSync, closeSync, copyFileSync, existsSync, fsyncSync, mkdirSy
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
+import { testAppEnv } from "./test-app-env";
 
 const SCRIPT = resolve(import.meta.path);
 const HEAD = resolve(import.meta.dir, "..");
@@ -430,7 +431,7 @@ async function main(): Promise<void> {
         encoding: "utf8",
         maxBuffer: 256 * MB,
         // Every measured section to stderr: slow statements, and the checkpoints where a checkout traces them.
-        env: { ...process.env, GLOOMBERB_PERF_TRACE: "1" },
+        env: testAppEnv({ GLOOMBERB_PERF_TRACE: "1" }),
       });
       const line = spawned.stdout.split("\n").find((text) => text.startsWith("RESULT "));
       if (spawned.status !== 0 || !line) {

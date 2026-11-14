@@ -28,6 +28,10 @@ on:
 permissions:
   contents: read
 
+env:
+  GLOOMBERB_NO_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+
 jobs:
   build:
     strategy:

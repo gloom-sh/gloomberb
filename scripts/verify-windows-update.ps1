@@ -9,6 +9,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:GLOOMBERB_NO_TELEMETRY = "1"
+$env:DO_NOT_TRACK = "1"
 
 # An installed app updated in the app the way a user updates it: the app
 # finds the update in a copy of the release served from this machine,

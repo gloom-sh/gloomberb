@@ -1,4 +1,6 @@
 $ErrorActionPreference = "Stop"
+$env:GLOOMBERB_NO_TELEMETRY = "1"
+$env:DO_NOT_TRACK = "1"
 
 # Load only the production functions under test; do not run the installer or GUI.
 $Tokens = $null

@@ -1,6 +1,7 @@
 import { mkdir, rename, rm } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
+import { testAppEnv, TEST_BROWSER_PRIVACY_SCRIPT } from "../test-app-env";
 
 /**
  * Chrome for Testing's headless shell, pinned so a browser update never changes
@@ -163,7 +164,7 @@ export async function launchBrowser(name: string, width: number, height: number,
     `--user-data-dir=${profile}`,
     `--window-size=${width},${height}`,
     "about:blank",
-  ], { stdout: "ignore", stderr: "pipe" });
+  ], { env: testAppEnv(), stdout: "ignore", stderr: "pipe" });
 
   try {
     const port = await readDevToolsPort(proc.stderr);
@@ -177,6 +178,7 @@ export async function launchBrowser(name: string, width: number, height: number,
     const cdp = await Cdp.connect(pageUrl);
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: TEST_BROWSER_PRIVACY_SCRIPT });
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
     return {
       cdp,

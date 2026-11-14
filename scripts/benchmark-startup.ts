@@ -3,6 +3,7 @@ import { appendFile, cp, mkdir, readFile, rm, writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join, resolve } from "path";
 import { gzipSync } from "zlib";
+import { testAppEnv } from "./test-app-env";
 import { launchBrowser, sleep } from "./pane-chrome/browser";
 import { median, positiveInteger, runTmux, shellQuote, takeOption } from "./tui-benchmark-harness";
 
@@ -76,7 +77,7 @@ async function seedProfile(): Promise<string> {
   const { createDefaultConfig } = await import("../src/types/config");
   await writeFile(join(dir, "config.json"), `${JSON.stringify({ ...createDefaultConfig(dir), onboardingComplete: true }, null, 2)}\n`);
   const restore = Bun.spawn(["bun", "-e", `const { restoreExtractedPlugins } = await import(${JSON.stringify(join(roots.head, "src/cli/restore-plugins.ts"))}); await restoreExtractedPlugins();`], {
-    env: { ...process.env, GLOOMBERB_HOME: dir },
+    env: testAppEnv({ GLOOMBERB_HOME: dir }),
     stdout: "inherit",
     stderr: "inherit",
   });
@@ -102,7 +103,7 @@ async function prepare(side: Side): Promise<unknown> {
   const root = roots[side];
   if (target === "tui") {
     if (!binary) return null;
-    const run = Bun.spawn(["bun", "run", "scripts/build.ts"], { cwd: root, stdout: "inherit", stderr: "inherit" });
+    const run = Bun.spawn(["bun", "run", "scripts/build.ts"], { cwd: root, env: testAppEnv(), stdout: "inherit", stderr: "inherit" });
     if (await run.exited !== 0) throw new Error(`The release build failed in ${root}`);
     const archive = join(root, "dist", `gloomberb-linux-${process.arch === "arm64" ? "arm64" : "x64"}.gz`);
     const out = join(cacheRoot, `gloomberb-${side}`);
@@ -334,13 +335,12 @@ async function runDesktop(side: Side, run: number): Promise<RunResult> {
   const startedAt = Date.now();
   const launcher = Bun.spawn([join(app, "bin", "launcher")], {
     cwd: join(app, "bin"),
-    env: {
-      ...process.env,
+    env: testAppEnv({
       DISPLAY: await xvfbDisplay(),
       GLOOMBERB_HOME: home,
       XDG_CACHE_HOME: webkitCache,
       XDG_DATA_HOME: join(webkitCache, "data"),
-    },
+    }),
     stdout: "ignore",
     stderr: "ignore",
   });

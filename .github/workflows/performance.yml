@@ -16,6 +16,10 @@ concurrency:
   group: performance-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GLOOMBERB_NO_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+
 jobs:
   tui-benchmarks:
     runs-on: ubuntu-latest
