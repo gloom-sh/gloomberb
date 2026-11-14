@@ -756,6 +756,35 @@ export function formatMarketPriceWithCurrency(
   return `${hasNonZeroDigit(body) ? sign : ""}${prefix}${body}${suffix}`;
 }
 
+const writtenDecimals = (text: string) => /\.(\d+)\D*$/.exec(text)?.[1]!.length ?? 0;
+
+/**
+ * A range's low and high, both to one number of decimals, with `currency`'s
+ * sign when given. A coin's ends are rounded to its price's decimals first
+ * (stablePriceFractionDigits' six significant figures): a composite's low of
+ * 0.9989128 beside a high of 0.998990 is a float's tail, not a finer trade the
+ * price's decimals must keep.
+ */
+export function formatMarketPriceRange(
+  low: number,
+  high: number,
+  options: MarketFormatOptions = {},
+  currency?: string,
+): [string, string] {
+  const format = (value: number, digits?: number) => {
+    const shown = digits === undefined ? options : { ...options, fixedFractionDigits: digits };
+    return currency === undefined ? formatMarketPrice(value, shown) : formatMarketPriceWithCurrency(value, currency, shown);
+  };
+  const coinDigits = resolveAssetDisplayKind(options) === "crypto" ? options.fixedFractionDigits : undefined;
+  const round = (value: number) => coinDigits === undefined || !Number.isFinite(value) ? value : Number(value.toFixed(coinDigits));
+  const ends = [round(low), round(high)] as const;
+  const texts: [string, string] = [format(ends[0]), format(ends[1])];
+  const digits = texts.map(writtenDecimals);
+  if (digits[0] === digits[1]) return texts;
+  const shared = Math.max(digits[0]!, digits[1]!);
+  return [format(ends[0], shared), format(ends[1], shared)];
+}
+
 export function formatMarketCostWithCurrency(
   value: number | undefined,
   currency = "USD",
