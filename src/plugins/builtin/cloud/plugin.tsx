@@ -119,6 +119,8 @@ const askgModule: PluginModule = {
     description: "Ask a question about your panes and watch the tools Gloom runs",
     keywords: ["ask", "gloom", "assistant", "ai", "question", "askg"],
     shortcut: { prefix: "ASKG", argPlaceholder: "question", argKind: "text" },
+    // createInstance asks the open pane a question, so catalog discovery must not run it with a sample one.
+    catalogSettings: {},
     createInstance: (_context, options) => {
       // The question is handed to the pane directly, so it is never persisted
       // with the layout and never replayed on the next launch.
