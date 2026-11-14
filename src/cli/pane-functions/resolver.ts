@@ -16,7 +16,7 @@ import { fredSeriesArgument } from "../../series/fred-argument";
 import {
   type CliListing, listCoinNotes, ListingArgError, listingInstrument, listingReadNotes, MAX_CHOICE_LOOKUPS, resolveCliListing, usListingsOnlyMessage,
 } from "../listing-arg";
-import { uncoveredInstrumentKind, uncoveredInstrumentMessage } from "../../tickers/instrument-coverage";
+import { uncoveredInstrumentKind, uncoveredInstrumentMessage, uncoveredInstrumentsMessage } from "../../tickers/instrument-coverage";
 import { uncoveredInstrumentCommand } from "../uncovered-instrument";
 import { listingAbroadVenue } from "../../utils/sec";
 import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
@@ -302,7 +302,10 @@ export async function applyListingArgument(
       if (listings.length === 0) {
         throw new ListingArgError(answers.map((answer) => answer.message).join("\n"), answers.map((answer) => answer.details).join("\n"));
       }
-      notes.push(...answers.map((answer) => `${answer.message} ${answer.details}`));
+      // Several are said in one line (a portfolio's futures and funds), each one's own command left out.
+      notes.push(...outside.length > 1
+        ? [uncoveredInstrumentsMessage(token, covered, outside.map(({ instrument }) => instrument))]
+        : answers.map((answer) => `${answer.message} ${answer.details}`));
       refused.push(...outside.map(({ listing }, index) => ({ symbol: listing.key, reason: answers[index]!.message })));
     }
   }

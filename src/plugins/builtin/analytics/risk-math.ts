@@ -106,12 +106,13 @@ function byInterval(series: readonly DatedReturn[]): Map<string, number> {
   }
   return index;
 }
-/** Matched start and end dates prevent pairing a multi-session return with a daily one. */
-export function regressReturns(
-  asset: readonly DatedReturn[],
-  factor: readonly DatedReturn[],
-  minimum = 60,
-): Regression | null {
+/**
+ * The asset's returns over the same start and end dates as the factor's, in
+ * the asset's order, the latest `window` of them when given. The window is
+ * taken after matching: two series that end on different days (a US close
+ * today, a Singapore close yesterday) still pair their latest common returns.
+ */
+function matchReturns(asset: readonly DatedReturn[], factor: readonly DatedReturn[], window?: number) {
   const other = byInterval(factor);
   const sample: DatedReturn[] = [],
     x: number[] = [],
@@ -124,6 +125,22 @@ export function regressReturns(
     x.push(matched);
     y.push(point.value);
   }
+  const from = window == null ? 0 : Math.max(0, sample.length - window);
+  return { sample: sample.slice(from), x: x.slice(from), y: y.slice(from) };
+}
+/** How many daily returns two series share, by start and end date. */
+export const matchedReturnCount = (asset: readonly DatedReturn[], factor: readonly DatedReturn[]) =>
+  matchReturns(asset, factor).sample.length;
+/**
+ * Matched start and end dates prevent pairing a multi-session return with a
+ * daily one. `window`: the latest so many matched returns, else every one.
+ */
+export function regressReturns(
+  asset: readonly DatedReturn[],
+  factor: readonly DatedReturn[],
+  { window, minimum = 60 }: { window?: number; minimum?: number } = {},
+): Regression | null {
+  const { sample, x, y } = matchReturns(asset, factor, window);
   if (sample.length < minimum) return null;
   const meanX = x.reduce((a, b) => a + b, 0) / x.length,
     meanY = y.reduce((a, b) => a + b, 0) / y.length;

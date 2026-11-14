@@ -16,6 +16,8 @@ export const earningsRippleModule: PluginModule = {
     id: "earnings-ripple", name: "Earnings Ripple", icon: "E", get component(): typeof import("./pane").EarningsRipplePane { const { EarningsRipplePane } = require("./pane"); return EarningsRipplePane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 96, height: 20 },
     tableExport: true,
+    // Customers and suppliers are companies': a future, an index or a fund has none, and is left out before any request.
+    instruments: ["equity"],
     // Without named tickers it lists what is in the person's portfolios.
     personalData: (context) => (typeof context.settings.symbols === "string" && context.settings.symbols.trim() ? null : "holdings"),
     settings: { title: "Earnings Ripple Settings", fields: [

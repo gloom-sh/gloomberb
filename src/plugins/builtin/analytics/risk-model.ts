@@ -19,6 +19,7 @@ import {
 import {
   buyAndHoldReturns,
   concentration,
+  matchedReturnCount,
   pairedReturns,
   regressReturns,
   RISK_TAIL_CONFIDENCE,
@@ -1022,17 +1023,24 @@ export function buildPortfolioRisk(
       : []),
   ].map((factor) => ({
     ...rollingBeta(basket, factor.series, factor.label, factor.id),
-    regression: regressReturns(basket.slice(-60), factor.series),
+    regression: regressReturns(basket, factor.series, { window: 60 }),
   }));
+  // The latest 60 returns both holdings have: a US close today and a Singapore close yesterday still pair their common days.
   const correlation = members.flatMap((left, index) =>
     members.slice(index + 1).map((right) => {
-      const regression = regressReturns(left.returns.slice(-60), right.returns);
+      const regression = regressReturns(left.returns, right.returns, { window: 60 });
+      const matched = regression?.samples ?? matchedReturnCount(left.returns, right.returns);
       return {
         left: left.id,
         right: right.id,
         label: `${left.symbol} / ${right.symbol}`,
         ...regression,
         value: regression?.correlation ?? null,
+        // Why a pair has no correlation, in words.
+        evidence: regression?.correlation != null ? `${matched} matched daily returns`
+          : matched === 0 ? "no daily returns on the same dates"
+          : matched < 60 ? `only ${matched} daily returns on the same dates; 60 needed`
+          : `a price that did not move over ${matched} matched daily returns`,
       };
     }),
   );
@@ -1215,7 +1223,7 @@ export function buildPortfolioRisk(
         unit: "correlation",
         percentile: null,
         asOf: row.asOf ?? null,
-        detail: `${row.samples ?? 0} matched daily returns`,
+        detail: row.evidence,
       }))
       .sort((left, right) => (right.value == null ? -1 : Math.abs(right.value)) - (left.value == null ? -1 : Math.abs(left.value))),
     stress: [
