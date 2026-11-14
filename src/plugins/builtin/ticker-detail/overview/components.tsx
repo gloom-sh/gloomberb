@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ActionRow, ColumnGrid, ColumnGridPair, RangeTrack, usePaneLinkMenuEntry, type ColumnGridCell, type ColumnGridColumn } from "../../../../components";
 import { t, tf } from "../../../../i18n";
-import { formatMarketPrice, formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
+import { formatMarketPrice, formatMarketPriceRange, formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
@@ -60,7 +60,7 @@ function compactRangeOptions(low: number, high: number, priceOptions: MarketForm
   return priceOptions;
 }
 
-/** A range's two ends, in `style`. */
+/** A range's two ends, in `style`, both to one number of decimals. */
 function formatRangeEndpoints(
   low: number,
   high: number,
@@ -68,9 +68,8 @@ function formatRangeEndpoints(
   priceOptions: MarketFormatOptions,
   style: RangeEndpointStyle = "price",
 ): [string, string] {
-  if (style === "price") return [formatMarketPriceWithCurrency(low, currency, priceOptions), formatMarketPriceWithCurrency(high, currency, priceOptions)];
-  const options = compactRangeOptions(low, high, priceOptions);
-  return [formatMarketPrice(low, options), formatMarketPrice(high, options)];
+  if (style === "price") return formatMarketPriceRange(low, high, priceOptions, currency);
+  return formatMarketPriceRange(low, high, compactRangeOptions(low, high, priceOptions));
 }
 
 /** The longest endpoint among ranges drawn together, so stacked tracks start and end in one column. */

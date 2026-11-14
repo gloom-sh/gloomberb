@@ -161,3 +161,27 @@ test("a stablecoin's header keeps six decimals when its previous close was writt
   expect(frame).toMatch(/Day Range \$0\.998680 .* \$0\.999500/);
   expect(frame).not.toMatch(/\$0\.\d{8}/);
 });
+
+test("a coin's ranges write both ends at its price's six decimals, whatever the composite's tail", async () => {
+  // USDT on 14 Nov 2026: the composite's low was its 00:00 UTC close, 0.9989128, and read $0.9989128 beside $0.998990.
+  const quote = createTestQuote({
+    symbol: "USDT-USD", name: "Tether USDt", currency: "USD", instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC",
+    exchangeName: "CCC", price: 0.99899, change: 0.0000772, changePercent: 0.0077, previousClose: 0.9989128, open: 0.99898,
+    low: 0.9989128, high: 0.99899, high52w: 1.003483, low52w: 0.98957714, marketState: "REGULAR", priceVenue: "Coinbase",
+    dataSource: "live", lastUpdated: Date.parse("2026-11-14T00:23:00Z"),
+  });
+  await act(async () => {
+    await tui.render(
+      <AppContext value={createStaticAppStore(createInitialState(config))}>
+        <OverviewTab ticker={createTestTicker("USDT-USD", "Tether USDt", { exchange: "CCC", currency: "USD", assetCategory: "CRYPTOCURRENCY" })}
+          financials={createTestFinancials({ quote })} width={110} height={10} />
+      </AppContext>,
+      { width: 110, height: 10 },
+    );
+  });
+  await settleFrame(tui.setup(), 10);
+  const frame = tui.frame();
+  expect(frame).toMatch(/Day Range \$0\.998913 .* \$0\.998990/);
+  expect(frame).toMatch(/52W Range \$0\.989577 .* \$1\.003483/);
+  expect(frame).not.toMatch(/\$[\d.]*\.\d{7}/);
+});
