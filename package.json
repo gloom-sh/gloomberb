@@ -95,6 +95,7 @@
     "check:pane-screenshot": "bun run scripts/pane-chrome/screenshot.ts",
     "check:pane-rest": "bun run scripts/pane-chrome/rest-diff.ts",
     "check:pane-layout": "bun run scripts/pane-chrome/layout-sweep.ts",
+    "check:pane-data": "bun run scripts/pane-chrome/data-sweep.ts",
     "check:ui-tokens": "bun run scripts/pane-chrome/ui-tokens.ts",
     "ui:benchmark": "bun run scripts/pane-chrome/ui-benchmark.ts",
     "askg:tool-sweep": "bun run scripts/askg-tool-sweep.ts",
