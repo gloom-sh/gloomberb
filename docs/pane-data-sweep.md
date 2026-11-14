@@ -19,6 +19,11 @@ examples or defaults. MOST enumerates its catalog list choices. Aliases are not
 extra coverage; tabs, interactive details and all possible instruments are not
 exhaustively visited.
 
+OSA uses a read-only strategy example and SIW explicit symbols instead of an
+unseeded workspace. Numeric exchange-qualified BUZZ samples and unreviewed
+listed-option-IV cohorts for HVG/HVT are explicit unsupported lanes. Planning
+does not fetch coverage or infer that every small/non-US equity is incompatible.
+
 Captures run sequentially as `shot --strict --json`, 500ms apart, in a newly
 created profile under `~/.cache/gloom-smoke/`. Telemetry is disabled, command
 runtime starts no sync engine, and external plugin folders must remain empty.
@@ -56,6 +61,14 @@ a pass or a broken-pane assertion. Blank columns, loading,
 access gates and mismatches still fail. Timeout, invalid output and command errors
 are separate findings. Exit 1 means a failure, missing review/input, or failed Pro
 preflight; skips and unsupported cases are always counted, never passes.
+
+Visible social `@handles` are data, not reason codes; this exemption never applies
+to state/error markers. Additional token-specific coverage/empty wording stays a
+non-pass finding. Negative-FCF reverse DCF is a narrowly verified unsupported
+mathematical input, not a general exemption for rendered errors. Missing listed
+option IV requires matching structured coverage evidence; other faults still win.
+Explicit nonzero CLI JSON errors on stderr retain their message as command errors.
+Reports are regression findings, not a count of confirmed product bugs.
 
 Stdout prints one total and non-pass findings (selection skips are detailed only
 in the reports). The caller can deduplicate/file findings using its existing tools.

@@ -56,13 +56,14 @@ function catalogExample(entry: PaneCatalogEntry): string[] | null {
   const candidates = [
     ...(entry.shotArgument && !/[<>]/.test(entry.shotArgument) ? [entry.shotArgument] : []),
     ...(entry.argExamples ?? []),
-    ...usages.filter((usage) => usage.split(/\s/)[0] === entry.token).map((usage) => usage.slice(entry.token.length).trim()),
+    ...usages.map((usage) => usage.replace(/^gloom fn /, "")).filter((usage) => usage.split(/\s/)[0] === entry.token).map((usage) => usage.slice(entry.token.length).trim()),
   ];
   for (const example of candidates) {
     if (/[<>]|portfolio-id|watchlist-id/.test(example)) continue;
     const args = exampleArgs(example);
-    if (entry.token === "G" && !args.length) continue;
-    if (args.some((argument) => argument.startsWith("--"))) continue;
+    if (["G", "SIW"].includes(entry.token) && !args.length) continue;
+    if (entry.token === "OSA" && !args.includes("--strategy")) continue;
+    if (args.some((argument) => argument.startsWith("--") && !(entry.token === "OSA" && ["--strategy", "--expiration"].includes(argument)))) continue;
     return args;
   }
   return entry.argKind === "none" || (!entry.argKind && !entry.argPlaceholder) ? [] : null;
@@ -76,7 +77,11 @@ export function planSweep(entries: readonly PaneCatalogEntry[]): SweepCase[] {
     if (entry.capability.screenshotReadiness === "unsupported") return [{ ...base, status: "unsupported", reason: "Catalog screenshot capability is unsupported" }];
     if (!["", "none", "ticker", "tickers", "symbol-list", "text", "free-text"].includes(entry.argKind ?? "")) return [{ ...base, status: "missing", reason: "New argument kind needs input review" }];
     if (EQUITY_MATRIX.has(entry.token) && ["ticker", "tickers", "symbol-list"].includes(entry.argKind ?? "")) {
-      return COHORTS.map(([lane, symbol]) => ({ ...base, id: `${entry.token}/${lane}`, lane, args: [symbol] }));
+      return COHORTS.map(([lane, symbol]) => {
+        const reason = entry.token === "BUZZ" && lane === "non-us" ? "Numeric exchange-qualified sample is not a cashtag"
+          : ["HVG", "HVT"].includes(entry.token) && lane !== "us-large" ? "Listed-option IV needs a reviewed optionable input; this cohort is unsupported" : null;
+        return { ...base, id: `${entry.token}/${lane}`, lane, args: [symbol], ...(reason ? { status: "unsupported" as const, reason } : {}) };
+      });
     }
     if (entry.token === "MOST") {
       const lists = entry.capability.options.find((option) => option.key === "list")?.values;
@@ -91,7 +96,7 @@ export function planSweep(entries: readonly PaneCatalogEntry[]): SweepCase[] {
 
 export interface CommandResult { stdout: string; stderr: string; exitCode: number; timedOut: boolean }
 export interface Assessment {
-  status: "pass" | "partial" | "expected-empty" | "no-coverage" | "market-closed" | "failure" | "timeout" | "invalid-output" | "command-error";
+  status: "pass" | "partial" | "expected-empty" | "no-coverage" | "market-closed" | "unsupported" | "failure" | "timeout" | "invalid-output" | "command-error";
   reason: string | null;
   states: string[];
   stateText: { error?: string[]; empty?: string[] };
@@ -104,21 +109,48 @@ function candidateCodes(text: string, symbols?: readonly string[]): string[] {
   return [...text.matchAll(/\b[a-zA-Z][a-zA-Z0-9]*(?:_[a-zA-Z0-9]+)+\b/g)].filter((match) => {
     if (!symbols) return true;
     const before = text.slice(0, match.index);
+    if (/(?:^|[^\w@])@[a-zA-Z0-9_]*$/.test(before)) return false;
     const qualifier = before.match(/\b([A-Z0-9][A-Z0-9:.-]*):$/)?.[1];
     return !(qualifier && symbols.includes(qualifier)) && !/\b(?:field|expression|formula)\s*[:=]\s*$/i.test(before);
   }).map((match) => match[0]);
 }
 
+const REVIEWED_EMPTY: Record<string, ["no-coverage" | "expected-empty" | "unsupported" | "market-closed", RegExp]> = {
+  APPS: ["no-coverage", /^\S+ has no mapped apps in the observed App Store and Google Play charts\.$/],
+  CALLS: ["no-coverage", /^Earnings calls for \S+ are not yet available\. Calls appear once the company's investor site or filings list a webcast\.$/],
+  CATL: ["expected-empty", /^No events linked to \S+ yet\.$/],
+  EM: ["no-coverage", /^No covered estimate periods\.$/],
+  COVN: ["no-coverage", /^(?:No debt instrument has been read from this issuer's filings yet|This is not an issuer the credit documents cover)\.$/],
+  CRDOC: ["no-coverage", /^(?:No debt instrument has been read from this issuer's filings yet|This is not an issuer the credit documents cover)\.$/],
+  GUIDE: ["no-coverage", /^Guidance for \S+ is not yet available\. Try GUIDE WMT\.$/],
+  KPIS: ["no-coverage", /^KPIs for \S+ are not yet available\. Try KPIS AAPL\.$/],
+  HIRE: ["no-coverage", /^No current role evidence has been captured yet\.$/],
+  HILO: ["market-closed", /^Markets closed(?: until [^.]+)?\. New highs and lows resume at the open\.$/],
+  JOBS: ["no-coverage", /^No careers system found for \S+\. Gloom reads companies' own careers systems\. This one either has none we can read or lists roles only on third-party job boards\.$/],
+  LITI: ["no-coverage", /^No cases linked to \S+\. US court dockets are not collected yet, so only agency and regulator actions show\.$/],
+  MA: ["expected-empty", /^No deals involving \S+\.$/],
+  RIPL: ["expected-empty", /^None of the \d+ disclosed (?:customers and suppliers|customer or supplier) of \S+ reports from \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2} \(the next \d+ days\)\.$/],
+  RISK: ["no-coverage", /^No 10-K risk factors on file for \S+\.$/],
+  SEG: ["no-coverage", /^No revenue breakdown\. This company's filings do not split revenue by product, segment or region\.$/],
+  TBOC: ["no-coverage", /^(?:No relationships in TheBuildout yet|\S+ is not in TheBuildout)\.$/],
+  BUZZ: ["unsupported", /^This ticker cannot be searched as a cashtag\. Use a symbol of up to six letters and digits, starting with a letter\.$/],
+  OSA: ["expected-empty", /^Build an options position\.$/],
+  SIW: ["expected-empty", /^No US-listed names in your portfolios or watchlists\.$/],
+};
+
 export function assessCapture(result: CommandResult, token: string): Assessment {
   const base = { reason: null, states: [], stateText: {}, visibleText: "", reasonCodes: [], blankColumns: [] };
   if (result.timedOut) return { ...base, status: "timeout", reason: "Capture exceeded its time limit" };
   let envelope: unknown;
-  try { envelope = JSON.parse(result.stdout); }
+  const fromStderr = !result.stdout.trim() && result.exitCode !== 0;
+  const serialized = fromStderr ? result.stderr.replace(/^(?:Still drawing [^\r\n]+\.\r?\n)+/, "").trim() : result.stdout;
+  try { envelope = JSON.parse(serialized); }
   catch (error) { return { ...base, status: "invalid-output", reason: `Invalid JSON: ${String(error)}` }; }
   if (!isRecord(envelope)) return { ...base, status: "invalid-output", reason: "Missing CLI envelope" };
   if (envelope.ok === false && isRecord(envelope.error) && typeof envelope.error.message === "string" && typeof envelope.error.code === "string") {
     return { ...base, status: "command-error", reason: envelope.error.message, reasonCodes: [envelope.error.code] };
   }
+  if (fromStderr) return { ...base, status: "invalid-output", reason: "Nonzero CLI exit without a structured CLI error" };
   const data = envelope.data;
   const rendered = isRecord(data) && isRecord(data.render) ? data.render : null;
   const strings = (value: unknown) => Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -150,18 +182,37 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
   const states = [hasError ? "error" : "", hasEmpty ? "empty" : "",
     render.loadingStateDetected ? "loading" : "", render.accessGate ? `access:${render.accessGate}` : ""].filter(Boolean);
   const evidence = { reason, states, stateText, visibleText: render.visibleText, reasonCodes, blankColumns };
-  if (blankColumns.length || hasError || render.accessGate || render.loadingStateDetected || shot.semanticMismatch || shot.refused || shot.unreadRows?.length
+  const negativeFcfText = "reverse DCF unavailable. Free cash flow over the last twelve months is negative, so no growth rate prices it.";
+  const negativeFcf = token === "RDCF" && !shot.usable && shot.empty && shot.rowCount === 0
+    && stateText.error?.join(" ") === negativeFcfText && render.emptyStateText?.join(" ") === negativeFcfText
+    && (!stateText.empty?.length || stateText.empty.join(" ") === negativeFcfText)
+    && (render.errorStateMarkers ?? []).every((text) => /^RDCF [A-Z0-9:.-]+ Discount \d+(?:\.\d+)?% FCF margin Own unavailable reverse DCF unavailable\.$/.test(text))
+    && reason === `The pane rendered an error state. It reads "${negativeFcfText}"`;
+  const details = isRecord(data.dataEvidence) ? data.dataEvidence : {};
+  const ivErrors = [`No options provider available for ${details.symbol}`, "Current ATM IV unavailable"];
+  const missingIv = ["HVG", "HVT"].includes(token) && !shot.usable && details.kind === "realized-volatility"
+    && typeof details.symbol === "string"
+    && !render.emptyStateDetected && !stateText.empty?.length && !render.emptyStateText?.length
+    && details.showIv === true && details.currentIv === null && details.loading === false && details.stale === false
+    && [details.errors, details.ivErrors].every((errors) => Array.isArray(errors) && strings(errors) && errors.length === 2 && ivErrors.every((error) => errors.includes(error)))
+    && shot.unavailableSymbols?.length === 1 && [details.symbol, `${details.symbol} current ATM IV`].includes(shot.unavailableSymbols[0]!)
+    && reason === `Data is unavailable for ${shot.unavailableSymbols[0]}.`;
+  if (blankColumns.length || (hasError && !negativeFcf) || render.accessGate || render.loadingStateDetected || shot.semanticMismatch || shot.refused || shot.unreadRows?.length
     || ![0, 2].includes(result.exitCode)
-    || diagnostics.some((text) => /\b(?:error|failed|failure|unavailable|timeout|timed out|denied|forbidden|unauthorized)\b/i.test(text))) {
+    || diagnostics.some((text) => !((negativeFcf || missingIv) && text === reason) && /\b(?:error|failed|failure|unavailable|timeout|timed out|denied|forbidden|unauthorized)\b/i.test(text))) {
     return { ...evidence, status: "failure" };
   }
   const said = [...(stateText.empty ?? []), ...(render.emptyStateText ?? []), ...(render.emptyStateMarkers ?? [])].join("\n");
-  let expected: "no-coverage" | "market-closed" | "expected-empty" | null = null;
+  let expected: "no-coverage" | "market-closed" | "expected-empty" | "unsupported" | null = negativeFcf ? "unsupported" : missingIv ? "no-coverage" : null;
   if (!shot.usable && hasEmpty && (shot.empty || shot.rowCount === 0)) {
-    if (/\bno (?:analyst |estimate |ratings? )?coverage\b|\bnot covered\b/i.test(said)
-      || (token === "ANR" && /\bsource lists them mainly for North American listings\b/.test(said))) {
+    const reviewed = REVIEWED_EMPTY[token];
+    const texts = [stateText.empty, render.emptyStateText, render.emptyStateMarkers].filter((lines) => lines?.length).map((lines) => lines!.join(" ").replace(/\s+/g, " ").trim());
+    if (!expected && reviewed && texts.length && texts.every((text) => reviewed[1].test(text))) expected = reviewed[0];
+    if (!expected && token === "RIPL" && texts.length && texts.every((text) => /^No US-listed customer or supplier with a share of revenue is disclosed for \S+, so no report date was looked up from \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2} \(the next \d+ days\)\.$/.test(text))) expected = "no-coverage";
+    if (!expected && (/\bno (?:analyst |estimate |ratings? )?coverage\b|\bnot covered\b/i.test(said)
+      || (token === "ANR" && /\bsource lists them mainly for North American listings\b/.test(said)))) {
       expected = "no-coverage";
-    } else if (["MOST", "SCAN", "HILO", "HALT", "FLOW", "QR", "TAS"].includes(token)
+    } else if (!expected && ["MOST", "SCAN", "HILO", "HALT", "FLOW", "QR", "TAS"].includes(token)
       && /\bmarket (?:is )?closed\b|\boutside (?:regular |market |trading )?hours\b/i.test(said)) {
       expected = "market-closed";
     }

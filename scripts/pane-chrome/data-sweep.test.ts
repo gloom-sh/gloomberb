@@ -23,6 +23,13 @@ test("every built-in catalog function has a reviewed safety decision and a concr
     expect(new Set(plan.map((item) => item.token)).size).toBe(catalog.length);
     expect(plan.filter((item) => item.token === "ANR").map((item) => item.lane)).toEqual(["us-large", "us-small", "us-micro", "non-us"]);
     expect(plan.find((item) => item.token === "G")?.args.length).toBeGreaterThan(0);
+    expect(plan.find((item) => item.token === "OSA")?.args).toEqual(["AAPL", "--strategy", "vertical", "--expiration", "2027-01-15"]);
+    expect(plan.find((item) => item.token === "SIW")?.args).toEqual(["GME,", "AMC,", "CVNA"]);
+    expect(plan.find((item) => item.id === "BUZZ/non-us")).toMatchObject({ status: "unsupported", reason: expect.stringContaining("cashtag") });
+    for (const token of ["HVG", "HVT"]) {
+      expect(plan.filter((item) => item.token === token && item.status === "unsupported")).toHaveLength(3);
+      expect(plan.find((item) => item.id === `${token}/us-large`)?.status).toBeUndefined();
+    }
     for (const token of ["ETF", "MDAY", "CDX", "GC", "OMON", "CSP"]) {
       expect(plan.filter((item) => item.token === token).every((item) => !["us-small", "us-micro", "non-us"].includes(item.lane))).toBe(true);
     }
@@ -108,6 +115,81 @@ test("explicit field and ticker-expression identifiers are data, not reason code
     .toMatchObject({ status: "failure", reasonCodes: ["custom_metric"] });
 });
 
+test("social handles are data only in visible content, never a state-code exemption", () => {
+  const visibleText = "@unusual_whales @Mr_Derivatives (@shana_chun)";
+  expect(assessCapture(capture({}, { visibleText }), "BUZZ")).toMatchObject({ status: "pass", reasonCodes: [] });
+  expect(assessCapture(capture({ complete: false }, { visibleText }), "ADR").status).toBe("partial");
+  for (const code of ["NOT_FOUND", "UNKNOWN_STATUS"]) {
+    expect(assessCapture(capture({}, { visibleText: `${visibleText} ${code}` }), "BUZZ"))
+      .toMatchObject({ status: "failure", reasonCodes: [code] });
+  }
+  expect(assessCapture(capture({}, { visibleText, stateText: { empty: ["@unusual_whales"] } }), "BUZZ"))
+    .toMatchObject({ status: "failure", reasonCodes: ["unusual_whales"] });
+});
+
+test("reviewed source empty states remain findings, while mixed faults and unknown empties fail", () => {
+  const cases = [
+    ["APPS", "AAPL has no mapped apps in the observed App Store and Google Play charts.", "no-coverage"],
+    ["CALLS", "Earnings calls for PLPC are not yet available. Calls appear once the company's investor site or filings list a webcast.", "no-coverage"],
+    ["CATL", "No events linked to DWSN yet.", "expected-empty"],
+    ["EM", "No covered estimate periods.", "no-coverage"],
+    ["COVN", "No debt instrument has been read from this issuer's filings yet.", "no-coverage"],
+    ["CRDOC", "This is not an issuer the credit documents cover.", "no-coverage"],
+    ["GUIDE", "Guidance for PLPC is not yet available. Try GUIDE WMT.", "no-coverage"],
+    ["KPIS", "KPIs for DWSN are not yet available. Try KPIS AAPL.", "no-coverage"],
+    ["HIRE", "No current role evidence has been captured yet.", "no-coverage"],
+    ["JOBS", "No careers system found for PLPC. Gloom reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards.", "no-coverage"],
+    ["LITI", "No cases linked to AAPL. US court dockets are not collected yet, so only agency and regulator actions show.", "no-coverage"],
+    ["MA", "No deals involving 7203.T.", "expected-empty"],
+    ["RIPL", "None of the 4 disclosed customers and suppliers of AAPL reports from 2026-11-14 to 2026-12-14 (the next 30 days).", "expected-empty"],
+    ["RIPL", "No US-listed customer or supplier with a share of revenue is disclosed for PLPC, so no report date was looked up from 2026-11-14 to 2026-12-14 (the next 30 days).", "no-coverage"],
+    ["RISK", "No 10-K risk factors on file for 7203:JPX.", "no-coverage"],
+    ["SEG", "No revenue breakdown. This company's filings do not split revenue by product, segment or region.", "no-coverage"],
+    ["TBOC", "DWSN is not in TheBuildout.", "no-coverage"],
+    ["BUZZ", "This ticker cannot be searched as a cashtag. Use a symbol of up to six letters and digits, starting with a letter.", "unsupported"],
+    ["OSA", "Build an options position.", "expected-empty"],
+    ["SIW", "No US-listed names in your portfolios or watchlists.", "expected-empty"],
+    ["HILO", "Markets closed until Mon 14:30 UTC, 09:30 ET. New highs and lows resume at the open.", "market-closed"],
+  ] as const;
+  const empty = { usable: false, empty: true, rowCount: 0 };
+  for (const [token, text, status] of cases) {
+    const render = { emptyStateDetected: true, stateText: { empty: [text] } };
+    expect(assessCapture(capture(empty, render, 2), token)).toMatchObject({ status, stateText: render.stateText });
+    for (const changes of [{ blankColumns: ["Prior"] }, { semanticMismatch: true }]) {
+      expect(assessCapture(capture({ ...empty, ...changes }, render, 2), token).status).toBe("failure");
+    }
+    for (const fault of [{ loadingStateDetected: true }, { errorStateDetected: true }, { accessGate: "pro" },
+      { visibleText: "UNKNOWN_STATUS" }, { errorStateMarkers: ["Request failed"] }]) {
+      expect(assessCapture(capture(empty, { ...render, ...fault }, 2), token).status).toBe("failure");
+    }
+    expect(assessCapture(capture(empty, render, 1), token).status).toBe("failure");
+  }
+  for (const text of ["No covered estimate periods. Backend unavailable.", "Not yet available", "No results"]) {
+    expect(assessCapture(capture(empty, { stateText: { empty: [text] } }, 2), "EM").status).toBe("failure");
+  }
+});
+
+test("negative-FCF and absent listed-option IV are narrow input limits, not backend-error exemptions", () => {
+  const text = "reverse DCF unavailable. Free cash flow over the last twelve months is negative, so no growth rate prices it.";
+  const empty = { usable: false, empty: true, rowCount: 0, unusableReason: `The pane rendered an error state. It reads "${text}"` };
+  const render = { errorStateDetected: true, stateText: { error: [text] }, emptyStateText: ["reverse DCF unavailable.", "Free cash flow over the last twelve months is negative, so no growth rate prices it."],
+    errorStateMarkers: ["RDCF DWSN Discount 9% FCF margin Own unavailable reverse DCF unavailable."] };
+  expect(assessCapture(capture(empty, render, 2), "RDCF")).toMatchObject({ status: "unsupported", states: ["error", "empty"] });
+  expect(assessCapture(capture(empty, render, 2), "FA").status).toBe("failure");
+  for (const fault of [{ stateText: { error: [text, "Request failed"] } }, { errorStateMarkers: [...render.errorStateMarkers, "Backend unavailable"] }, { loadingStateDetected: true }, { visibleText: "NOT_FOUND" }]) {
+    expect(assessCapture(capture(empty, { ...render, ...fault }, 2), "RDCF").status).toBe("failure");
+  }
+  const errors = ["No options provider available for DWSN", "Current ATM IV unavailable"];
+  const dataEvidence = { kind: "realized-volatility", symbol: "DWSN", showIv: true, currentIv: null, loading: false, stale: false, errors, ivErrors: errors };
+  const missingIv = { usable: false, unavailableSymbols: ["DWSN"], unusableReason: "Data is unavailable for DWSN.", dataEvidence };
+  expect(assessCapture(capture(missingIv, {}, 2), "HVT").status).toBe("no-coverage");
+  for (const changes of [{ dataEvidence: { ...dataEvidence, errors: ["Upstream timeout"] } }, { blankColumns: ["IV"] }, { semanticMismatch: true }, { gaps: "Request failed" }]) {
+    expect(assessCapture(capture({ ...missingIv, ...changes }, {}, 2), "HVT").status).toBe("failure");
+  }
+  expect(assessCapture(capture(missingIv, { errorStateDetected: true }, 2), "HVT").status).toBe("failure");
+  expect(assessCapture(capture(missingIv, { stateText: { empty: ["Backend unavailable"] } }, 2), "HVT").status).toBe("failure");
+});
+
 test("explicit no-coverage and closed-session lists are separate, never hide unrelated failures", () => {
   const empty = { usable: false, empty: true, rowCount: 0 };
   const noCoverage = { emptyStateDetected: true, stateText: { empty: ["No analyst coverage for this listing. no_coverage"] } };
@@ -155,6 +237,12 @@ test("explicit no-coverage and closed-session lists are separate, never hide unr
 });
 
 test("timeouts, invalid output and CLI errors cannot be mistaken for empty data", async () => {
+  const stderr = 'Still drawing CALLS DWSN.\n' + JSON.stringify({ ok: false, error: { code: "cli_error", message: "Timed out waiting for the desktop pane screenshot renderer." } });
+  expect(assessCapture({ ...capture(), stdout: "", stderr, exitCode: 1 }, "CALLS"))
+    .toMatchObject({ status: "command-error", reasonCodes: ["cli_error"], reason: "Timed out waiting for the desktop pane screenshot renderer." });
+  for (const changes of [{ stdout: "malformed" }, { exitCode: 0 }, { stderr: `${stderr}\ntrailing noise` }, { stderr: `Unexpected warning\n${stderr}` }, { stderr: capture().stdout }]) {
+    expect(assessCapture({ ...capture(), stdout: "", stderr, exitCode: 1, ...changes }, "CALLS").status).toBe("invalid-output");
+  }
   expect(assessCapture({ ...capture(), timedOut: true }, "ANR").status).toBe("timeout");
   for (const stdout of ["", "not json", "{}", '{"ok":false,"error":{}}', '{"ok":true,"data":{}}', JSON.stringify({ ok: true, data: { kind: "pane-screenshot", render: {} } })]) {
     expect(assessCapture({ ...capture(), stdout }, "ANR").status).toBe("invalid-output");
