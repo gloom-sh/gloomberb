@@ -5,7 +5,7 @@ import type { InstrumentSearchResult } from "../types/instrument";
 import { canonicalExchange, isUsEquityExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { companyLines, companyNameExtraWords, companyNameMatch, foldNameLetters, namedByService, runTogether, sameCompany, shortCompanyName } from "./company-name";
 import { LISTING_SEARCH_LIMIT } from "./search";
-import { lineDistance, primaryCompanyLine } from "./search/home-listing";
+import { isFundReceipt, lineDistance, primaryCompanyLine } from "./search/home-listing";
 import { classifyInstrumentKind, isCryptoInstrumentType } from "./search/ranking";
 import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
 import { readTerminalListingCode, type TerminalListing, type TerminalListingCode } from "./terminal-codes";
@@ -178,8 +178,9 @@ function rankCompanyLines(name: string, results: readonly InstrumentSearchResult
       || parsePublicTickerKey(result.symbol).exchange) return [];
     // A word alone names a company by these lines only; the company's other lines are still its lines.
     const namesCompany = !(options.oneWord && (match.abbreviated > 0 || isCryptoInstrumentType(type) || !(order === 0 || named || match.extra === 0)));
-    // A receipt is a company's shares too, however search types it ("Depositary Receipt" or "American Depositary Receipt").
-    const stock = classifyInstrumentKind(type) === "equity" || RECEIPT.test(type) ? 0 : 1;
+    // A receipt is a company's shares too, however search types it ("Depositary Receipt" or "American Depositary Receipt"),
+    // unless it is one on a fund search lists under its name: the Tracker Fund's Thai receipt is the fund's line.
+    const stock = RECEIPT.test(type) ? (isFundReceipt(result, results) ? 1 : 0) : classifyInstrumentKind(type) === "equity" ? 0 : 1;
     const home = result.homeListing === true;
     const line = home ? 0 : 1 + lineDistance(type, exchange, result.symbol);
     return [{

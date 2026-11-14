@@ -779,8 +779,11 @@ export class ProviderRouterHistoryRoutes {
       if (behind) throw new Error(`Latest history for ${target.symbol} is behind`);
       // A reason the service gave ("ADX listings have daily bars only.") says why; one that has no
       // listing for the symbol says it is not a ticker; otherwise no source answered. A coin trades
-      // around the clock and its sources are there: they could not answer just now.
-      throw noProviderError(coin ? `No source could load history for ${request.target.symbol} just now` : request.missingProviderError,
+      // around the clock and its sources are there: they could not answer just now. So could a
+      // source that failed (a timeout, a 5xx) rather than had nothing: that is no listing without
+      // history, and never reads as one ("No history provider available").
+      const failed = coin || attempts.misses.failure !== undefined;
+      throw noProviderError(failed ? `No source could load history for ${request.target.symbol} just now` : request.missingProviderError,
         attempts.misses, request.target.symbol);
     }
     // A window of dates no source could answer, because one failed rather than had nothing, is that failure:

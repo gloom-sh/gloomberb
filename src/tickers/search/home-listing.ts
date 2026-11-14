@@ -1,6 +1,6 @@
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { companyLines, companyNameExtraWords, companyNameMatch, namedByService, type CompanyLineFacts } from "../company-name";
-import { answersOnlyByKeyword, getIssuerGroupKey, isPlaceholderLine, isQualifiedTickerQuery, normalizeTickerSymbol, readsAsUsTicker } from "./ranking";
+import { answersOnlyByKeyword, classifyInstrumentKind, getIssuerGroupKey, isPlaceholderLine, isQualifiedTickerQuery, normalizeTickerSymbol, readsAsUsTicker } from "./ranking";
 import type { TickerSearchCandidate } from "./types";
 
 /** Venues that only quote shares listed elsewhere: the OTC tiers, Frankfurt's open market and Germany's regional exchanges. */
@@ -23,14 +23,51 @@ export function listingDistance(candidate: TickerSearchCandidate): 0 | 1 | 2 {
   return lineDistance(candidate.instrumentType ?? "", candidateExchange(candidate), candidate.symbol);
 }
 
+/** B3's own codes: four letters and the class's number (PETR3, PETR4, BOVA11). */
+const B3_CODE = /^[A-Z]{4}\d{1,2}$/i;
+/** B3's odd-lot (fractional) line of a code: the code and F (PETR3F), which quotes the same shares in lots under 100. */
+const B3_ODD_LOT = /^[A-Z]{4}\d{1,2}F$/i;
+
 /** `listingDistance` of a line by its type, its canonical venue and its symbol. */
 export function lineDistance(type: string, exchange: string, symbol: string): 0 | 1 | 2 {
   if (RECEIPT_TYPE.test(type)) return 2;
   // An index's code is its own (XU100 for the BIST 100), never a secondary line of shares.
   if (/^\s*index\s*$/i.test(type)) return 0;
+  // B3's own codes mix letters and digits (PETR3); its odd-lot line quotes the same shares (PETR3F).
+  if (exchange === "B3" && (B3_CODE.test(symbol) || B3_ODD_LOT.test(symbol))) return B3_ODD_LOT.test(symbol) ? 1 : 0;
   // A code mixing digits and letters is a secondary line (Milan's 4MSFT, London's 0R1I), except on SGX, whose
   // own codes mix them (D05, 5E2).
   return SECONDARY_VENUES.has(exchange) || exchange !== "SGX" && /\d/.test(symbol) && /[A-Za-z]/.test(symbol) ? 1 : 0;
+}
+
+/** A receipt's name without the words that say it is one: "Tracker Fund of Hong Kong DR" is the fund's name. */
+const receiptFreeName = (name: string | null | undefined) => (name ?? "").toLowerCase()
+  .replace(/\b(?:adrs?|adss?|gdrs?|cdrs?|drs?|cedears?|(?:american |global )?depositary (?:receipts?|shares?))\b/g, " ")
+  .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/**
+ * Whether a depositary receipt is one on a fund: search lists a fund under the
+ * receipt's name. The Thai receipt on the Tracker Fund of Hong Kong (HK01 on
+ * SET) is the fund's line, not a company's shares, so it ranks and is listed
+ * as the fund is, never as a company's primary listing over the fund itself
+ * (2800 on HKEX).
+ */
+export function isFundReceipt(
+  line: { type?: string | null; name?: string | null },
+  lines: readonly { type?: string | null; name?: string | null }[],
+): boolean {
+  if (!RECEIPT_TYPE.test(line.type ?? "")) return false;
+  const name = receiptFreeName(line.name);
+  return !!name && lines.some((other) => other !== line && !RECEIPT_TYPE.test(other.type ?? "")
+    && classifyInstrumentKind(other.type ?? "") === "fund" && receiptFreeName(other.name) === name);
+}
+
+/** Search's rows with each receipt on a fund (`isFundReceipt`) classed as the fund is. */
+export function withFundReceiptsAsFunds<T extends TickerSearchCandidate>(items: T[]): T[] {
+  const lines = items.map((item) => item.result ?? {});
+  return items.map((item, index) => item.kind === "search" && item.instrumentClass !== "fund" && isFundReceipt(lines[index]!, lines)
+    ? { ...item, instrumentClass: "fund" as const }
+    : item);
 }
 
 /** How the primary-listing choice weighs one of a company's lines. */

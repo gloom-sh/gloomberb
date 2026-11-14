@@ -382,6 +382,24 @@ test("a window of dates no source could load is a retryable failure, never an em
   expect(await run(async () => []).catch((error: unknown) => error)).not.toBeInstanceOf(Error);
 });
 
+/**
+ * At 23:07Z on 13 Nov 2026, while Gloom Cloud's reads timed out, `history AAPL --range 1M` said "AAPL resolved to Apple
+ * Inc. (NASDAQ), which has no history" and offered its other listings: a failed read read as a listing without history.
+ */
+test("a range no source could load just now is a failure to retry, never a listing without history with others to try", async () => {
+  pinClosedSession();
+  const provider = { ...fallbackProvider, id: "range-failure",
+    getQuote: async () => createTestQuote({ symbol: "AAPL", name: "Apple Inc.", listingExchangeName: "NASDAQ", currency: "USD" }),
+    getPriceHistory: async () => { throw new Error("Request timed out"); },
+    search: async () => ["NASDAQ", "VIE", "BVC"].map((exchange) => ({ providerId: "range-failure", symbol: "AAPL", name: "Apple Inc.", exchange, type: "Common Stock" })) };
+  const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider: new AssetDataRouter(provider) });
+  const failure = await history.execute(["AAPL", "--range", "1M"], cli.context).catch((error: unknown) => error);
+  expect((failure as Error).message).toBe("No source could load history for AAPL just now");
+  const printed = await captureConsole(() => printCliError(failure, DEFAULT_CLI_OPTIONS));
+  expect(printed.stderr).toContain("Try again in a moment.");
+  expect(printed.stderr).not.toMatch(/no history|Other listings/);
+});
+
 test("a past window reads its own dates' bars, in the size its span takes, with no bar from today's quote and no feed to go stale", async () => {
   // Thursday 22 Oct 2026 while New York trades: a range would end with the session's bar.
   setSystemTime(new Date("2026-10-22T15:00:00Z"));

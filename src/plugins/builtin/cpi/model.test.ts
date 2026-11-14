@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { CpiBoardPayload, CpiRow } from "../../../api-client/cpi";
 import { ApiRequestError } from "../../../api-client/errors";
 import { CPI_NOT_AVAILABLE, fetchCpiBoard } from "./client";
-import { cpiChartSeries, cpiHeaderLine, cpiRowLabel, cpiRowOption, cpiRows, formatCpiChange } from "./model";
+import { loadStatsBundle } from "../econ-statistics/client";
+import { projectStatsHeadlessBundle } from "../econ-statistics/headless";
+import { resolveStatArg } from "../econ-statistics/stats";
+import { cpiChartSeries, cpiHeaderLine, cpiHeadlineYearGapLine, cpiRowLabel, cpiRowOption, cpiRows, formatCpiChange } from "./model";
 
 /** Rows as the board served them for August 2026, history cut to the last three months. */
 function row(id: string, overrides: Partial<CpiRow> = {}): CpiRow {
@@ -83,6 +86,27 @@ describe("CPI table", () => {
     // Nothing listed yet after the last scheduled release.
     expect(cpiHeaderLine({ ...release, nextPeriod: null, nextReleaseAt: null })).toBe("Aug 2026 · released Fri 11 Sep 08:30 ET");
     expect(cpiHeaderLine({ ...release, period: null })).toBeUndefined();
+  });
+
+  test("October 2026's empty y/y says why, with the latest month the headline has one for; any other empty y/y says nothing", async () => {
+    // `fn CPI` for October 2026 showed All items and Core Y/Y as dashes and gave the reason only in `catalog CPI`.
+    const october = board({ release: { period: "2026-10", releasedAt: "2026-11-10T13:30:00.000Z", weightsPeriod: "2026-09",
+      nextPeriod: "2026-11", nextReleaseAt: "2026-12-10T13:30:00.000Z" },
+    rows: [{ ...allItems, yoy: null, history: [...allItems.history, ["2026-09", 0.6485, 3.7377], ["2026-10", 0.35, null]] }, core] });
+    expect(cpiHeadlineYearGapLine(october)).toBe("BLS published no October 2025 index, so no October 2026 y/y; All items 3.7% in September 2026.");
+    expect(cpiHeadlineYearGapLine(board())).toBeNull();
+    // A y/y missing for a month whose year-ago index BLS published is not put down to the shutdown.
+    expect(cpiHeadlineYearGapLine(board({ rows: [{ ...allItems, yoy: null }] }))).toBeNull();
+    // ECST's CPI y/y, a month short of October's release, closes on the same line with its latest figures.
+    const index = (series: string, september: number) => Array.from({ length: 25 }, (_, at) => {
+      const month = new Date(Date.UTC(2024, 8 + at, 1)).toISOString().slice(0, 10);
+      // October 2025 was never published; September 2026 is `september`% above September 2025.
+      return { date: month, value: month === "2025-10-01" ? null : month === "2026-09-01" ? 300 * (1 + september / 100) : 300 };
+    }).filter((point) => point.value != null) as Array<{ date: string; value: number }>;
+    const stats = ["cpi-yoy", "core-cpi-yoy"].map((id) => resolveStatArg(id)!);
+    const bundle = await loadStatsBundle({ loader: async (stat) => index(stat.seriesId, stat.seriesId === "CPIAUCNS" ? 3.7 : 2.6), stats });
+    expect(projectStatsHeadlessBundle(bundle, "5Y", "cpi-yoy").notes?.at(-1))
+      .toBe("BLS published no October 2025 index, so no October 2026 y/y; CPI y/y 3.7%, Core CPI y/y 2.6% in September 2026.");
   });
 
   test("a typed component opens by id, label or the name traders use", () => {

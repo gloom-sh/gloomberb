@@ -650,6 +650,30 @@ test("--search also finds an event by its publisher's name, initials or site: us
   expect(await names("usda payrolls")).toEqual([]);
 });
 
+test("--search cpi lists 10 Nov 2026's y/y with its consensus, as not published, and says why", async () => {
+  // `econ --country US --search cpi --from 2026-09-01` listed index levels only; the y/y and its 3.9% consensus were in MDAY alone.
+  setSystemTime(new Date("2026-11-13T23:00:00.000Z"));
+  const bls = { name: "Bureau of Labor Statistics" };
+  const at = "2026-11-10T13:30:00.000Z";
+  const calendar = [
+    { ...event("2026-10-14T12:30:00.000Z", "US", "high", "Inflation Rate YoY"), actual: "3.7%", forecast: "3.6%", prior: "3.4%",
+      indicatorId: "us-inflation-rate-yoy", source: bls },
+    { ...event(at, "US", "high", "CPI m/m"), actual: "0.4%", forecast: "0.3%", prior: "0.6%", indicatorId: "us-inflation-rate-mom", source: bls },
+    { ...event(at, "US", "high", "Inflation Rate YoY"), forecast: "3.9%", prior: "3.7%", indicatorId: "us-inflation-rate-yoy", source: bls },
+    { ...event(at, "US", "high", "Core Inflation Rate YoY"), forecast: "2.8%", prior: "2.6%", indicatorId: "us-core-inflation-rate-yoy", source: bls },
+  ];
+  const { result } = await econPrinted(calendar, ["--country", "US", "--search", "cpi", "--from", "2026-10-01"], {}, "2026-01-01");
+  expect((result.data as Array<Record<string, unknown>>).map((row) => [row.event, row.forecastText, row.actualStatus])).toEqual([
+    ["Inflation Rate YoY", "3.6%", null],
+    ["CPI m/m", "0.3%", null],
+    ["Inflation Rate YoY", "3.9%", "not published"],
+    ["Core Inflation Rate YoY", "2.8%", "not published"],
+  ]);
+  const text = await econText(calendar, ["--country", "US", "--search", "cpi", "--from", "2026-10-01"], {}, "2026-01-01");
+  expect(text).toContain("2026-11-10 Inflation Rate YoY: BLS published no October 2025 index, so no October 2026 y/y.");
+  expect(text).toContain("2026-11-10 Core Inflation Rate YoY: BLS published no October 2025 index, so no October 2026 y/y.");
+});
+
 test("--search finds the jobs report by what ECST calls it: nfp, nonfarm payrolls, jobs report", async () => {
   const calendar = [
     ...twoWeeks,

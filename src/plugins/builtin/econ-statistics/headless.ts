@@ -14,6 +14,7 @@ import {
   unansweredErrors,
   type StatsBundle,
 } from "./client";
+import { cpiNextYearGap } from "../shared/cpi-year-gap";
 import { historyStartNotice } from "../shared/history-span";
 import { formatMoveRank } from "../shared/move-rank";
 import type { StatPoint } from "../shared/stat-transform";
@@ -201,6 +202,7 @@ export function projectStatsHeadlessBundle(
   });
 
   const notice = selected ? historyStartNotice(selected.stat.label, range, selected.span) : null;
+  const cpiGap = cpiYearGapNote(views);
   // Treasury yields alone (fn ECST 10Y) name when in the day they are taken, as GC does; a mixed table cannot.
   const cutoffs = new Set(views.map((view) => view.stat.cutoff));
   const cutoff = cutoffs.size === 1 ? [...cutoffs][0] : undefined;
@@ -223,6 +225,7 @@ export function projectStatsHeadlessBundle(
       ...(selected?.moves.length
         ? ["A move's pctl is the share of all 1D (or 1W) moves since that year that were smaller, ties counted half; --range does not change it."]
         : []),
+      ...(cpiGap ? [cpiGap] : []),
     ],
     metadata: {
       fetchedAt: bundle.fetchedAt,
@@ -234,6 +237,24 @@ export function projectStatsHeadlessBundle(
       ...(notice ? { notices: [notice] } : {}),
     },
   };
+}
+
+/** The CPI indexes the changes over twelve months are read from: all items and core, not seasonally adjusted. */
+const CPI_INDEXES: ReadonlySet<string> = new Set(["CPIAUCNS", "CPILFENS"]);
+
+/**
+ * Why the CPI changes over twelve months stop a month short of the latest
+ * release, and the latest they have, on one line: "BLS published no October
+ * 2025 index, so no October 2026 y/y; CPI y/y 3.7%, Core CPI y/y 2.6% in
+ * September 2026." Null when they are not short for that reason.
+ */
+function cpiYearGapNote(views: readonly StatViewModel[]): string | null {
+  const cpi = views.filter((view) => CPI_INDEXES.has(view.stat.seriesId) && view.stat.transform === "yoy");
+  const gap = cpi[0] ? cpiNextYearGap(cpi[0].latest.date) : null;
+  if (!gap) return null;
+  const latest = cpi.filter((view) => view.latest.date === cpi[0]!.latest.date)
+    .map((view) => `${view.stat.shortLabel} ${reportFormat(view.stat)(view.latest.value)}`);
+  return `${gap.reason}; ${latest.join(", ")} in ${gap.latestMonth}.`;
 }
 
 // Each row checks its own release schedule and says when it is stale.

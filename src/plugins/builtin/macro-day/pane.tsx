@@ -15,7 +15,7 @@ import { Box } from "../../../ui";
 import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroReleases, macroDayEarningsNotice } from "./client";
 import {
   formatMacroDayMove, macroDayEventLabel, macroDayEventNote, macroDayMoveDecimals, macroDayStats, matchesSurprise, macroFigureGapNotices,
-  projectMacroDays, type MacroDayEvent,
+  macroSurpriseBasisLabel, macroSurpriseExclusionNote, macroSurpriseOf, projectMacroDays, type MacroDayEvent,
   type MacroDayModel, type MacroDayMoveBasis,
 } from "./model";
 import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_SURPRISE_LABELS, MACRO_SURPRISES, staleMacroReleasesNotice, type MacroEventKind,
@@ -36,11 +36,24 @@ const moveColumns = (basis: MacroDayMoveBasis): DataTableColumn[] => [
 /** What each release came out with, under the labels the economic calendar gives them. */
 const FIGURES = [["actual", "Actual"], ["forecast", "Forecast"], ["prior", "Prior"]] as const;
 
-/** The figure columns, shown once any listed day has figures, each as wide as its header and its widest value. */
+/**
+ * Whether the print came in hot, cool or in line, in words, so it never rests on the Actual's colour alone; a
+ * surprise read from another print than the headline's names it: "Hot (core m/m)".
+ */
+export function macroSurpriseText(event: Pick<MacroDayEvent, "figures">): string {
+  const surprise = macroSurpriseOf(event.figures);
+  if (!surprise) return "";
+  const basis = macroSurpriseBasisLabel(event.figures);
+  return basis ? `${MACRO_SURPRISE_LABELS[surprise]} (${basis})` : MACRO_SURPRISE_LABELS[surprise];
+}
+
+/** The figure columns, shown once any listed day has figures, each as wide as its header and its widest value; Surprise after them. */
 function figureColumns(rows: readonly MacroDayEvent[]): DataTableColumn[] {
   if (!rows.some((event) => event.figures)) return [];
-  return FIGURES.map(([id, label]) => ({ id, label, align: "right", width: tableColumnWidth({ label,
-    width: Math.max(6, ...rows.map((event) => displayWidth(event.figures?.[id] ?? ""))) }) }));
+  return [...FIGURES.map(([id, label]): DataTableColumn => ({ id, label, align: "right", width: tableColumnWidth({ label,
+    width: Math.max(6, ...rows.map((event) => displayWidth(event.figures?.[id] ?? ""))) }) })),
+  { id: "surprise", label: "Surprise", align: "left", width: tableColumnWidth({ label: "Surprise",
+    width: Math.max(...rows.map((event) => displayWidth(macroSurpriseText(event)))) }) }];
 }
 
 /**
@@ -123,16 +136,20 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
   [history.data, lookback, symbol]);
   const releasesNotice = history.data ? staleMacroReleasesNotice(history.data.releases) : null;
   const earningsNotice = history.data ? macroDayEarningsNotice(history.data.earnings) : null;
-  const rows = useMemo(() => model ? model.events.filter((event) => (release === "all" || event.kind === release)
-    && matchesSurprise(event, surprise)) : [], [model, release, surprise]);
+  const scoped = useMemo(() => model ? model.events.filter((event) => release === "all" || event.kind === release) : [], [model, release]);
+  const rows = useMemo(() => scoped.filter((event) => matchesSurprise(event, surprise)), [scoped, surprise]);
+  // A surprise filter says how many days in scope it could not read: "3 prints excluded: no actual."
+  const excluded = useMemo(() => macroSurpriseExclusionNote(scoped, surprise), [scoped, surprise]);
   const stats = useMemo(() => !model?.events.length ? [] : surprise === "all" ? figures(model, release) : surpriseFigures(model, rows),
     [model, release, surprise, rows]);
   const columns = useMemo(() => columnsFor(release, rows, model?.basis), [model?.basis, release, rows]);
 
   // A covered release day the calendar left without figures says why; days before the calendar are the docs' to explain.
-  const figureGaps = useMemo(() => macroFigureGapNotices(rows), [rows]);
+  // Why a listed day, or one the filter left out, has no actual.
+  const figureGaps = useMemo(() => macroFigureGapNotices(surprise === "all" ? rows : scoped.filter((event) => matchesSurprise(event, surprise)
+    || macroSurpriseOf(event.figures) == null)), [rows, scoped, surprise]);
   usePaneNoticeFooter({ registrationId: "macro-day-notices", focused,
-    notices: [...new Set([identityError, history.error, history.data?.error, releasesNotice, earningsNotice, ...figureGaps]
+    notices: [...new Set([identityError, history.error, history.data?.error, releasesNotice, earningsNotice, excluded, ...figureGaps]
       .filter((value): value is string => !!value))] });
   usePaneFooter("macro-day", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
@@ -147,6 +164,7 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
     if (column.id === "actual") return { text: event.figures?.actual ?? "", color: event.figures?.surprise === "hot" ? colors.positive
       : event.figures?.surprise === "cool" ? colors.negative : undefined };
     if (column.id === "forecast") return { text: event.figures?.forecast ?? "" };
+    if (column.id === "surprise") return { text: macroSurpriseText(event) };
     if (column.id === "prior") return { text: event.figures?.prior ?? "" };
     if (column.id === "move") {
       const basis = model?.basis ?? "return";

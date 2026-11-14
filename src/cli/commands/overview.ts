@@ -63,6 +63,7 @@ import {
 } from "../../plugins/builtin/econ/calendar-model";
 import { hasNoReleaseTime, hasNoStatedTime, type EconEvent } from "../../plugins/builtin/econ/types";
 import { econRowFigures, figureWithCurrency } from "../../plugins/builtin/econ/figures";
+import { cpiCalendarYearGapReason } from "../../plugins/builtin/shared/cpi-year-gap";
 import { fredSeriesIdForName } from "../../plugins/builtin/econ/fred-catalog";
 import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
@@ -105,6 +106,9 @@ import {
 } from "./fred-series";
 import { fredProvenance, fredPublicationTime, notOnFredSource } from "../../sources/gloomberb-cloud/fred-attribution";
 import { followsUsBondMarket, usBondMarketClosedNote } from "../../market-data/us-bond-market";
+
+/** The Actual of a release its publisher could not compute; the notes say why. */
+const NOT_PUBLISHED_TEXT = "not published";
 
 // Batch quotes often omit names for indices and ETFs; these baskets are fixed, so name them here.
 const BASKET_NAMES = new Map<string, string>([
@@ -665,8 +669,10 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
           forecastText: event.forecast ?? null,
           priorText: event.prior ?? null,
           // A release past its time with no figure yet: "due 07:00 UTC, awaiting figure", then "no figure from the source"
-          // two hours on or once the release's other rows have theirs; null otherwise.
-          actualStatus: ((gap) => gap ? figureGapText(event, gap) : null)(figureGap(event, now, inWindow)),
+          // two hours on or once the release's other rows have theirs; null otherwise. A US CPI y/y BLS could not publish
+          // (no index a year before) says so, and the notes say why.
+          actualStatus: cpiCalendarYearGapReason(event) ? NOT_PUBLISHED_TEXT
+            : ((gap) => gap ? figureGapText(event, gap) : null)(figureGap(event, now, inWindow)),
           // The publisher's own clock, for rows Gloom Cloud adds from a bank's or a statistics office's calendar.
           localTime: event.localTime ?? null,
           timeZone: event.timeZone ?? null,
@@ -697,7 +703,12 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // where the end is said.
     const pastRows = pastListingRows(listed);
     const listedPast = pastRows ? `No releases listed after ${listedThrough}; the rows after it are ${pastRows}` : null;
-    const notes = [listedBefore, listedPast ?? listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []),
+    // Why a US CPI y/y row has no actual: "2026-11-10 Inflation Rate YoY: BLS published no October 2025 index, so no October 2026 y/y."
+    const unpublished = listed.flatMap((event) => {
+      const reason = cpiCalendarYearGapReason(event);
+      return reason ? [`${isoDate(event.date).slice(0, 10)} ${econEventName(event)}: ${reason}.`] : [];
+    });
+    const notes = [listedBefore, listedPast ?? listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []), ...unpublished,
       rows.length > 0 && coverage ? coverage : null,
       // A dash under Forecast on a release still to come is a consensus not in yet, not a missing figure.
       listed.some(awaitsConsensus) ? NO_CONSENSUS_NOTE : null]
