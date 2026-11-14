@@ -175,14 +175,6 @@ Use the actual release tag in both places. The tag must contain the workflow rev
 
 Both npm publishing jobs use the `release` environment. Check the package's existing [trusted publisher configuration](https://docs.npmjs.com/trusted-publishers/): repository `gloom-sh/gloomberb`, workflow filename `release.yml`, and `release` if its optional environment field is constrained. These fields are case-sensitive. The jobs retain `id-token: write`; npm requires CLI 11.5.1+ and Node 22.14.0+. No test publication is needed to review this configuration.
 
-### One-time environment transfer
-
-`migrate-environment-secrets.yml` is manual-only on `main`, for review before a separately authorized run. It checks hosted Ubuntu image `20261111.370.1` and the installed libsodium file's SHA256 against the official [image release and SBOM](https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261111.370). The `ubuntu-24.04` scheduling label is rolling: a different image fails before the input-bearing step, rather than downloading a replacement library. A version change requires review of the new image and checksum.
-
-The fixed mapping seals seven Apple values and the Homebrew token to both `release` and `signing-main`, the dispatch token to `release`, and the Cloudflare account/token to `web-production`. Only that step receives the eleven named existing inputs. It uses standard-library Python ctypes and installed libsodium's `crypto_box_seal`, matching GitHub's [REST secret encryption format](https://docs.github.com/en/rest/guides/encrypting-secrets-for-the-rest-api), without checkout, dependency installation, caches, OIDC or an API write token. It writes only the 19 destination/name/key-id/ciphertext entries; the pinned artifact upload retains them for one day.
-
-Before any run, independently re-read the three environment public keys/key ids and compare them with the reviewed workflow. After an authorized run, verify its repository, reviewed commit, workflow, main ref, event, attempt and conclusion before reading the artifact; validate its fixed inventory and re-read the key bindings before owner-side API PUTs. Successful PUTs and metadata checks are not evidence that signing or publication ran. Keep repository fallbacks until separately authorized verification and removal. Remove this one-time workflow and its fixture tests after the transfer is verified. It does not publish, sign, rotate credentials, remove fallbacks or write environment secrets itself.
-
 ## Browser development
 
 ```bash
