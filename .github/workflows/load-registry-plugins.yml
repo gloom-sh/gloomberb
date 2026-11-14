@@ -45,7 +45,7 @@ jobs:
     outputs:
       sha256: ${{ steps.sum.outputs.sha256 }}
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: built
           merge-multiple: true
@@ -86,7 +86,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
@@ -94,14 +94,14 @@ jobs:
       - uses: ./.github/actions/setup-bun
 
       # By pattern, which matches nothing when the build uploaded nothing.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: ${{ matrix.terminal }}
           path: ${{ runner.temp }}/terminal
           merge-multiple: true
 
       - if: ${{ matrix.desktop }}
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: ${{ matrix.desktop }}
           path: ${{ runner.temp }}/desktop

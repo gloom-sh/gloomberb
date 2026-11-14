@@ -162,7 +162,7 @@ Only independently owned, registered product areas implement `GloomPlugin`. Larg
 
 Stable macOS signing and publication use the `release` environment, which accepts only `v*` tags. Nightly macOS signing and the manually dispatched Homebrew verification use `signing-main`, restricted to the `main` branch. Terminal web deployment uses `web-production`, also restricted to `main`.
 
-The shared build accepts only the seven named Apple signing inputs. Environment secrets with those names take precedence over repository secrets. Registry plugin checks do not receive those inputs. Cloudflare credentials are supplied only to the web deployment step, not installation or browser compilation.
+The shared build accepts only the seven named Apple signing inputs. Environment secrets with those names take precedence over repository secrets, including after repository fallbacks are removed: callers still pass each name explicitly, and the macOS job selects the environment. This follows GitHub's [reusable workflow secret rules](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#using-inputs-and-secrets-in-a-reusable-workflow). Registry plugin checks do not receive those inputs. Cloudflare credentials are supplied only to the web deployment step, not installation or browser compilation.
 
 To retry publishing `@gloom-sh/terminal` for an existing stable release, dispatch at that same tag, not at `main`:
 
@@ -171,6 +171,16 @@ gh workflow run release.yml --repo gloom-sh/gloomberb --ref v0.19.0 -f tag=v0.19
 ```
 
 Use the actual release tag in both places. The tag must contain the workflow revision with this recovery path. The recovery job checks that the dispatch ref and requested tag match, then checks the package version. It does not build release assets, update Homebrew, or refresh screenshots. Publishing uses Node 22 and npm 11.21.2 for trusted publishing.
+
+Both npm publishing jobs use the `release` environment. Check the package's existing [trusted publisher configuration](https://docs.npmjs.com/trusted-publishers/): repository `gloom-sh/gloomberb`, workflow filename `release.yml`, and `release` if its optional environment field is constrained. These fields are case-sensitive. The jobs retain `id-token: write`; npm requires CLI 11.5.1+ and Node 22.14.0+. No test publication is needed to review this configuration.
+
+### One-time environment transfer
+
+`migrate-environment-secrets.yml` is manual-only on `main`, for review before a separately authorized run. It checks hosted Ubuntu image `20261111.370.1` and the installed libsodium file's SHA256 against the official [image release and SBOM](https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261111.370). The `ubuntu-24.04` scheduling label is rolling: a different image fails before the input-bearing step, rather than downloading a replacement library. A version change requires review of the new image and checksum.
+
+The fixed mapping seals seven Apple values and the Homebrew token to both `release` and `signing-main`, the dispatch token to `release`, and the Cloudflare account/token to `web-production`. Only that step receives the eleven named existing inputs. It uses standard-library Python ctypes and installed libsodium's `crypto_box_seal`, matching GitHub's [REST secret encryption format](https://docs.github.com/en/rest/guides/encrypting-secrets-for-the-rest-api), without checkout, dependency installation, caches, OIDC or an API write token. It writes only the 19 destination/name/key-id/ciphertext entries; the pinned artifact upload retains them for one day.
+
+Before any run, independently re-read the three environment public keys/key ids and compare them with the reviewed workflow. After an authorized run, verify its repository, reviewed commit, workflow, main ref, event, attempt and conclusion before reading the artifact; validate its fixed inventory and re-read the key bindings before owner-side API PUTs. Successful PUTs and metadata checks are not evidence that signing or publication ran. Keep repository fallbacks until separately authorized verification and removal. Remove this one-time workflow and its fixture tests after the transfer is verified. It does not publish, sign, rotate credentials, remove fallbacks or write environment secrets itself.
 
 ## Browser development
 

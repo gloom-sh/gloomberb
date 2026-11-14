@@ -50,7 +50,7 @@ jobs:
       version: ${{ steps.plan.outputs.version }}
       previous_tag: ${{ steps.plan.outputs.previous_tag }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -116,7 +116,7 @@ jobs:
       # may have chosen an older commit, and the release is cut with --target,
       # which needs no checkout of it. This job only runs scripts/nightly.ts,
       # which must be the version the plan ran, and check-built-files.sh.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -124,7 +124,7 @@ jobs:
         with:
           install: "false"
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
           merge-multiple: true

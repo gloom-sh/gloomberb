@@ -73,7 +73,7 @@ jobs:
             asset: gloomberb-windows-x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
@@ -90,7 +90,7 @@ jobs:
       - name: Build
         run: bun run scripts/build.ts ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.asset }}
           path: dist/*
@@ -99,7 +99,7 @@ jobs:
     runs-on: macos-latest
     environment: ${{ inputs.channel == 'nightly' && 'signing-main' || 'release' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
@@ -185,7 +185,7 @@ jobs:
           for file in stable-*; do mv "$file" "nightly-${file#stable-}"; done
           ls -l
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: gloomberb-desktop-macos-arm64
           path: artifacts/*
@@ -193,7 +193,7 @@ jobs:
   desktop-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
@@ -239,7 +239,7 @@ jobs:
           for file in stable-*; do mv "$file" "nightly-${file#stable-}"; done
           ls -l
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: gloomberb-desktop-windows-x64
