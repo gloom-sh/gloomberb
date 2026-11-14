@@ -22,6 +22,7 @@ test("every built-in catalog function has a reviewed safety decision and a concr
     expect(plan.filter((item) => item.status === "missing")).toEqual([]);
     expect(new Set(plan.map((item) => item.token)).size).toBe(catalog.length);
     expect(plan.filter((item) => item.token === "ANR").map((item) => item.lane)).toEqual(["us-large", "us-small", "us-micro", "non-us"]);
+    expect(plan.find((item) => item.token === "G")?.args.length).toBeGreaterThan(0);
     for (const token of ["ETF", "MDAY", "CDX", "GC", "OMON", "CSP"]) {
       expect(plan.filter((item) => item.token === token).every((item) => !["us-small", "us-micro", "non-us"].includes(item.lane))).toBe(true);
     }
@@ -75,7 +76,9 @@ test("strict failures preserve exact state wording, visible codes and every blan
   for (const render of [{ loadingStateDetected: true }, { accessGate: "pro" }, { accessGate: "sign-in" }, { errorStateDetected: true }]) {
     expect(assessCapture(capture({}, render), "ANR").status).toBe("failure");
   }
-  expect(assessCapture(capture({ complete: false }), "ANR").status).toBe("failure");
+  expect(assessCapture(capture({ complete: false, usable: false }), "ANR").status).toBe("failure");
+  expect(assessCapture(capture({ complete: false }, { truncationReasons: ["rows below the rendered viewport are cut"] }), "AWARDS"))
+    .toMatchObject({ status: "partial", reason: "rows below the rendered viewport are cut" });
   expect(assessCapture(capture({}, {}, 2), "ANR").status).toBe("failure");
 });
 
@@ -83,6 +86,8 @@ test("explicit no-coverage and closed-session lists are separate, never hide unr
   const empty = { usable: false, empty: true, rowCount: 0 };
   const noCoverage = { emptyStateDetected: true, stateText: { empty: ["No analyst coverage for this listing. no_coverage"] } };
   expect(assessCapture(capture(empty, noCoverage, 2), "ANR").status).toBe("no-coverage");
+  expect(assessCapture(capture({ ...empty, rowCount: 3 }, { emptyStateDetected: true, stateText: { empty: ["No upgrades, downgrades or target changes for 7203:JPX: the source lists them mainly for North American listings."] } }, 2), "ANR").status).toBe("no-coverage");
+  expect(assessCapture(capture(empty, { ...noCoverage, visibleText: "no_coverage source_unavailable" }, 2), "ANR").status).toBe("failure");
   expect(assessCapture(capture({ ...empty, blankColumns: ["Target"] }, noCoverage, 2), "ANR").status).toBe("failure");
   expect(assessCapture(capture({ ...empty, semanticMismatch: true }, noCoverage, 2), "ANR").status).toBe("failure");
   expect(assessCapture(capture(empty, { ...noCoverage, loadingStateDetected: true }, 2), "ANR").status).toBe("failure");
@@ -91,13 +96,18 @@ test("explicit no-coverage and closed-session lists are separate, never hide unr
   expect(assessCapture(capture(empty, closed, 2), "ANR").status).toBe("failure");
   expect(assessCapture(capture(empty, { emptyStateDetected: true, stateText: { empty: ["No results"] } }, 2), "MOST").status).toBe("failure");
   expect(assessCapture(capture(empty, { ...closed, errorStateDetected: true }, 2), "MOST").status).toBe("failure");
+  const noHalts = { emptyStateDetected: true, stateText: { empty: ["No trading halts reported."] } };
+  expect(assessCapture(capture(empty, noHalts, 2), "HALT").status).toBe("expected-empty");
+  expect(assessCapture(capture(empty, noHalts, 2), "MOST").status).toBe("failure");
+  expect(assessCapture(capture(empty, { ...noHalts, errorStateDetected: true }, 2), "HALT").status).toBe("failure");
 });
 
 test("timeouts, invalid output and CLI errors cannot be mistaken for empty data", async () => {
   expect(assessCapture({ ...capture(), timedOut: true }, "ANR").status).toBe("timeout");
-  for (const stdout of ["", "not json", "{}", '{"ok":true,"data":{}}', JSON.stringify({ ok: true, data: { kind: "pane-screenshot", render: {} } })]) {
+  for (const stdout of ["", "not json", "{}", '{"ok":false,"error":{}}', '{"ok":true,"data":{}}', JSON.stringify({ ok: true, data: { kind: "pane-screenshot", render: {} } })]) {
     expect(assessCapture({ ...capture(), stdout }, "ANR").status).toBe("invalid-output");
   }
+  expect(assessCapture(capture({}, { stateText: { error: "not an array" } }), "ANR").status).toBe("invalid-output");
   expect(assessCapture({ ...capture(), stdout: JSON.stringify({ ok: false, error: { code: "auth_required", message: "Sign in first" } }) }, "ANR"))
     .toMatchObject({ status: "command-error", reasonCodes: ["auth_required"], reason: "Sign in first" });
   const timed = await runCommand([process.execPath, "-e", 'setInterval(() => {}, 1000)'], process.env, 100);

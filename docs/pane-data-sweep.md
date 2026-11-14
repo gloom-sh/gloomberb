@@ -43,8 +43,11 @@ The specified empty output directory receives the catalog, complete plan,
 per-capture JSON/stderr and PNGs, plus `results.json` and `results.md`. Reports keep
 the actual state wording, raw user-visible reason codes, access/loading/error/empty
 states and columns blank in every rendered row. They do not translate codes or
-hide failures behind an empty result. Explicit no-coverage and closed-session list
-states are distinct from passes and unexplained failures; blank columns, loading,
+hide failures behind an empty result. Reviewed event-list empties (no halts,
+calendar reports or recorded analyst actions), explicit no-coverage and closed-session list
+states are distinct from passes and unexplained failures. A usable strict capture
+whose report is incomplete (for example a clipped long list) is **partial**, not
+a pass or a broken-pane assertion. Blank columns, loading,
 access gates and mismatches still fail. Timeout, invalid output and command errors
 are separate findings. Exit 1 means a failure, missing review/input, or failed Pro
 preflight; skips and unsupported cases are always counted, never passes.

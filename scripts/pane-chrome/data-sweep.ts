@@ -61,6 +61,7 @@ function catalogExample(entry: PaneCatalogEntry): string[] | null {
   for (const example of candidates) {
     if (/[<>]|portfolio-id|watchlist-id/.test(example)) continue;
     const args = exampleArgs(example);
+    if (entry.token === "G" && !args.length) continue;
     if (args.some((argument) => argument.startsWith("--"))) continue;
     return args;
   }
@@ -90,48 +91,56 @@ export function planSweep(entries: readonly PaneCatalogEntry[]): SweepCase[] {
 
 export interface CommandResult { stdout: string; stderr: string; exitCode: number; timedOut: boolean }
 export interface Assessment {
-  status: "pass" | "no-coverage" | "market-closed" | "failure" | "timeout" | "invalid-output" | "command-error";
+  status: "pass" | "partial" | "expected-empty" | "no-coverage" | "market-closed" | "failure" | "timeout" | "invalid-output" | "command-error";
   reason: string | null;
   states: string[];
   stateText: { error?: string[]; empty?: string[] };
+  visibleText: string;
   reasonCodes: string[];
   blankColumns: string[];
 }
 
 export function assessCapture(result: CommandResult, token: string): Assessment {
-  const base = { reason: null, states: [], stateText: {}, reasonCodes: [], blankColumns: [] };
+  const base = { reason: null, states: [], stateText: {}, visibleText: "", reasonCodes: [], blankColumns: [] };
   if (result.timedOut) return { ...base, status: "timeout", reason: "Capture exceeded its time limit" };
   let envelope: unknown;
   try { envelope = JSON.parse(result.stdout); }
   catch (error) { return { ...base, status: "invalid-output", reason: `Invalid JSON: ${String(error)}` }; }
   if (!isRecord(envelope)) return { ...base, status: "invalid-output", reason: "Missing CLI envelope" };
-  if (envelope.ok === false && isRecord(envelope.error)) {
-    return { ...base, status: "command-error", reason: String(envelope.error.message), reasonCodes: typeof envelope.error.code === "string" ? [envelope.error.code] : [] };
+  if (envelope.ok === false && isRecord(envelope.error) && typeof envelope.error.message === "string" && typeof envelope.error.code === "string") {
+    return { ...base, status: "command-error", reason: envelope.error.message, reasonCodes: [envelope.error.code] };
   }
   const data = envelope.data;
-  if (envelope.ok !== true || !isRecord(data) || data.kind !== "pane-screenshot" || !isRecord(data.render)
+  const rendered = isRecord(data) && isRecord(data.render) ? data.render : null;
+  const strings = (value: unknown) => Array.isArray(value) && value.every((item) => typeof item === "string");
+  if (envelope.ok !== true || !isRecord(data) || data.kind !== "pane-screenshot" || !rendered
     || typeof data.usable !== "boolean" || typeof data.complete !== "boolean" || typeof data.empty !== "boolean"
-    || typeof data.rowCount !== "number" || typeof data.render.visibleText !== "string"
-    || ["errorStateDetected", "emptyStateDetected", "loadingStateDetected"].some((key) => typeof data.render[key] !== "boolean")
-    || (data.blankColumns !== undefined && (!Array.isArray(data.blankColumns) || data.blankColumns.some((column) => typeof column !== "string")))) {
+    || typeof data.rowCount !== "number" || typeof rendered.visibleText !== "string"
+    || ["errorStateDetected", "emptyStateDetected", "loadingStateDetected"].some((key) => typeof rendered[key] !== "boolean")
+    || (data.blankColumns !== undefined && !strings(data.blankColumns))
+    || (rendered.emptyStateText !== undefined && !strings(rendered.emptyStateText))
+    || (rendered.stateText !== undefined && (!isRecord(rendered.stateText)
+      || Object.values(rendered.stateText).some((value) => !strings(value))))) {
     return { ...base, status: "invalid-output", reason: "Missing strict screenshot assessment fields" };
   }
   const shot = data as unknown as PaneScreenshotResult;
   const render = shot.render;
   const stateText = render.stateText ?? {};
-  const reason = shot.unusableReason ?? null;
+  const reason = shot.unusableReason ?? shot.gaps ?? (!shot.complete ? render.truncationReasons?.join("; ") || "Strict capture is usable but its report is incomplete" : null);
   const visible = [render.visibleText, reason, ...Object.values(shot.unreadReasons ?? {})].filter(Boolean).join("\n");
   const reasonCodes = [...new Set(visible.match(/\b[a-zA-Z][a-zA-Z0-9]*(?:_[a-zA-Z0-9]+)+\b/g) ?? [])];
   const blankColumns = shot.blankColumns ?? [];
   const states = [render.errorStateDetected ? "error" : "", render.emptyStateDetected || shot.empty ? "empty" : "",
     render.loadingStateDetected ? "loading" : "", render.accessGate ? `access:${render.accessGate}` : ""].filter(Boolean);
-  const evidence = { reason, states, stateText, reasonCodes, blankColumns };
+  const evidence = { reason, states, stateText, visibleText: render.visibleText, reasonCodes, blankColumns };
   if (blankColumns.length || render.accessGate || render.loadingStateDetected || shot.semanticMismatch || shot.refused || shot.unreadRows?.length) {
     return { ...evidence, status: "failure" };
   }
   const said = [...(stateText.error ?? []), ...(stateText.empty ?? []), ...(render.emptyStateText ?? [])].join("\n");
-  if (!shot.usable && (shot.empty || render.emptyStateDetected || render.errorStateDetected)) {
+  if (reasonCodes.some((code) => /error|failed|unavailable|timeout|denied|forbidden|unauth|auth_required|pro_required|rate_limit|upstream/i.test(code))) return { ...evidence, status: "failure" };
+  if (!shot.usable && (shot.empty || (shot.rowCount === 0 && (render.emptyStateDetected || render.errorStateDetected)))) {
     if (/\bno (?:analyst |estimate |ratings? )?coverage\b|\bnot covered\b/i.test(said)
+      || (token === "ANR" && /\bsource lists them mainly for North American listings\b/.test(said))
       || reasonCodes.some((code) => ["no_coverage", "symbol_not_covered"].includes(code.toLowerCase()))) {
       return { ...evidence, status: "no-coverage" };
     }
@@ -141,8 +150,14 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
         || reasonCodes.some((code) => ["market_closed", "outside_market_hours", "outside_session"].includes(code.toLowerCase())))) {
       return { ...evidence, status: "market-closed" };
     }
+    const expectedEmpty: Record<string, RegExp> = {
+      ANR: /^No upgrades, downgrades or target changes on record for /m,
+      HALT: /^No trading halts reported\./m,
+      ERN: /^No reports on the calendar /m,
+    };
+    if (!render.errorStateDetected && expectedEmpty[token]?.test(said)) return { ...evidence, status: "expected-empty" };
   }
-  return { ...evidence, status: shot.usable && shot.complete && !states.length && result.exitCode === 0 ? "pass" : "failure" };
+  return { ...evidence, status: shot.usable && !states.length && result.exitCode === 0 ? shot.complete ? "pass" : "partial" : "failure" };
 }
 
 export async function runCommand(argv: string[], env: NodeJS.ProcessEnv, timeoutMs: number): Promise<CommandResult> {
@@ -177,6 +192,11 @@ export async function runCommand(argv: string[], env: NodeJS.ProcessEnv, timeout
 }
 
 interface Selection { only: string[]; shard: [number, number]; maxCases: number }
+type SweepResult = Omit<SweepCase, "status" | "reason"> & Omit<Partial<Assessment>, "status"> & {
+  status: NonNullable<SweepCase["status"]> | Assessment["status"];
+  exitCode?: number;
+  png?: string;
+};
 export function selectCases(plan: SweepCase[], selection: Selection): SweepCase[] {
   let selected = 0;
   return plan.map((item) => {
@@ -225,11 +245,14 @@ async function main() {
   const profile = await mkdtemp(join(root, "pane-data-sweep-"));
   const session = process.env.GLOOMBERB_SESSION_TOKEN?.trim();
   const redact = (text: string) => session ? text.replaceAll(session, "[redacted]") : text;
-  const env = { ...process.env, GLOOMBERB_HOME: profile, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1", GLOOMBERB_SESSION_TOKEN: session ?? "" };
+  const temp = join(profile, "tmp");
+  const env = { ...process.env, GLOOMBERB_HOME: profile, TMPDIR: temp, TMP: temp, TEMP: temp,
+    GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1", GLOOMBERB_SESSION_TOKEN: session ?? "" };
   const cli = options.has("--cli") ? [resolve(options.get("--cli")!)] : [process.execPath, resolve(import.meta.dir, "../../src/cli/entry.ts")];
   const started = new Date().toISOString();
   const deadline = Date.now() + maxSeconds * 1_000;
-  const results: Array<Omit<SweepCase, "status"> & Omit<Partial<Assessment>, "status"> & { status: SweepCase["status"] | Assessment["status"]; exitCode?: number; png?: string }> = [];
+  const results: SweepResult[] = [];
+  let planned: SweepCase[] = [];
   let proVerified = false;
   let fatal: string | null = null;
   let profileRemoved = false;
@@ -240,6 +263,7 @@ async function main() {
     return runCommand([...cli, ...argv], env, Math.max(1, Math.min(timeoutSeconds * 1_000, deadline - Date.now())));
   };
   try {
+    await mkdir(temp);
     await writeFile(join(profile, "config.json"), JSON.stringify({ dataDir: profile, onboardingComplete: true }));
     if (!session) throw new Error("No GLOOMBERB_SESSION_TOKEN; no Pro coverage");
     const { apiClient } = await import("../../src/api-client");
@@ -247,7 +271,7 @@ async function main() {
     apiClient.setSessionToken(session);
     let accountTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const account = await Promise.race([apiClient.getAccountProfile(), new Promise<never>((_resolve, reject) => {
+      const account = await Promise.race([apiClient.getAccountProfile(), new Promise<never>((resolveAccount, reject) => {
         accountTimer = setTimeout(() => reject(new Error("Account read timed out; no Pro coverage")), Math.max(1, Math.min(timeoutSeconds * 1_000, deadline - Date.now())));
       })]);
       proVerified = resolvePlanAccess(account).hasProAccess;
@@ -261,10 +285,10 @@ async function main() {
       || envelope.data.some((entry) => !isRecord(entry) || typeof entry.token !== "string" || typeof entry.paneId !== "string" || !isRecord(entry.capability))) throw new Error("Invalid catalog output");
     const plan = planSweep(envelope.data as PaneCatalogEntry[]);
     for (const requested of only) if (!plan.some((item) => item.token === requested || item.id === requested)) throw new Error(`Unknown --only selection: ${requested}`);
-    const selected = selectCases(plan, { only, shard: [shard[0]!, shard[1]!], maxCases });
-    await writeFile(join(out, "plan.json"), JSON.stringify(selected, null, 2));
-    for (const item of selected) {
-      if (item.status) { results.push(item); continue; }
+    planned = selectCases(plan, { only, shard: [shard[0]!, shard[1]!], maxCases });
+    await writeFile(join(out, "plan.json"), JSON.stringify(planned, null, 2));
+    for (const item of planned) {
+      if (item.status) { results.push({ ...item, status: item.status }); continue; }
       if (Date.now() >= deadline) { results.push({ ...item, status: "skipped", reason: "Global time budget exhausted" }); continue; }
       const stem = String(results.length + 1).padStart(4, "0");
       const png = `${stem}.png`;
@@ -286,6 +310,8 @@ async function main() {
     }
   } catch (error) {
     fatal = redact(error instanceof Error ? error.message : String(error));
+    const finished = new Set(results.map((item) => item.id));
+    for (const item of planned) if (!finished.has(item.id)) results.push({ ...item, status: item.status ?? "skipped", reason: item.reason ?? `Run stopped: ${fatal}` });
   } finally {
     await rm(profile, { recursive: true, force: true });
     profileRemoved = true;
@@ -295,9 +321,13 @@ async function main() {
   const report = { started, finished: new Date().toISOString(), proVerified, fatal, profileRemoved,
     bounds: { maxCases, maxSeconds, timeoutSeconds, only, shard }, counts, results };
   await writeFile(join(out, "results.json"), JSON.stringify(report, null, 2));
-  const total = `${results.length} cases: ${Object.entries(counts).map(([status, count]) => `${count} ${status}`).join(", ")}; Pro ${proVerified ? "verified" : "NOT verified"}; profile removed`;
+  const attempted = results.filter((result) => result.exitCode !== undefined).length;
+  const breakdown = Object.entries(counts).map(([status, count]) => `${count} ${status}`).join(", ") || "no pane coverage";
+  const total = `${attempted} attempted / ${results.length} planned: ${breakdown}; Pro ${proVerified ? "verified" : "NOT verified"}; profile removed`;
   const findings = results.filter((result) => result.status !== "pass").map((result) => {
-    const evidence = [result.reason, ...Object.values(result.stateText ?? {}).flat(), result.reasonCodes?.length ? `codes: ${result.reasonCodes.join(", ")}` : "",
+    const evidence = [result.reason, result.states?.length ? `states: ${result.states.join(", ")}` : "", ...Object.values(result.stateText ?? {}).flat(),
+      result.states?.some((state) => state === "loading" || state.startsWith("access:")) ? result.visibleText : "",
+      result.reasonCodes?.length ? `codes: ${result.reasonCodes.join(", ")}` : "",
       result.blankColumns?.length ? `blank columns: ${result.blankColumns.join(", ")}` : ""].filter(Boolean).join(" | ");
     return `${result.id}: ${result.status} — ${evidence}`;
   });
