@@ -22,7 +22,7 @@ function shiftMonth(period: string, months: number): string {
  * before it has no index: "BLS published no October 2025 index, so no
  * October 2026 y/y". Null for any other month (`YYYY-MM`).
  */
-export function cpiYearGapReason(period: string): string | null {
+function cpiYearGapReason(period: string): string | null {
   const yearAgo = shiftMonth(period, -12);
   return UNPUBLISHED_CPI_MONTHS.has(yearAgo) ? `BLS published no ${monthName(yearAgo)} index, so no ${monthName(period)} y/y` : null;
 }

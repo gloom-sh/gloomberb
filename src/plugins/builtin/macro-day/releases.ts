@@ -70,7 +70,7 @@ export interface MacroReleaseFigures {
 }
 
 /** The print a day's surprise is read from when its headline has none: `core m/m`, 0.3% against 0.2%, hot. */
-export interface MacroSurpriseBasis {
+interface MacroSurpriseBasis {
   basis: string;
   actual: string;
   forecast: string;
