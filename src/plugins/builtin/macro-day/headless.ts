@@ -3,8 +3,8 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroDaySeriesHistory, loadMacroReleases, macroDayEarningsNotice, type MacroDayEarnings } from "./client";
 import { fredSeriesArgument } from "../../../series/fred-argument";
-import { formatMacroDayMove, macroDayEventLabel, macroDayReleaseName, macroDayStats, macroFigureGapNotices, matchesSurprise, projectMacroDays, type MacroDayEvent,
-  type MacroDayStats } from "./model";
+import { formatMacroDayMove, macroDayEventLabel, macroDayReleaseName, macroDayStats, macroFigureGapNotices, macroSurpriseBasisLabel,
+  macroSurpriseExclusionNote, macroSurpriseOf, matchesSurprise, projectMacroDays, type MacroDayEvent, type MacroDayStats } from "./model";
 import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, MACRO_SURPRISE_LABELS, MACRO_SURPRISES, staleMacroReleasesNotice,
   US_MACRO_EVENT_KINDS, type MacroEventKind, type MacroReleaseFigures, type MacroSurprise } from "./releases";
 
@@ -27,7 +27,8 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
     "US listings, or a FRED series (FRED:T10Y2Y, whose moves in a rate or spread read in bp); close-to-close on the release day.",
     "Published CPI, jobs and FOMC days, and from Gloom Cloud Brazil's IPCA days, the ECB's decision days (every Governing Council monetary policy meeting) and the BoJ's (each monetary policy meeting's Tokyo day, from 2026); sessions after the list's last covered day (releasesThrough) are left out.",
     "Actual, forecast and prior for the days Gloom Cloud has them (the US headlines from its kept economic calendar, under either feed's title; an FOMC day's are the federal funds target range and whether it held or moved, an ECB day's the deposit facility rate, a BoJ day's its policy rate; IPCA from the central bank's SGS series); --surprise keeps the days that came in hot, cool or in line with the forecast.",
-    "A CPI day the calendar lists without its year-on-year actual takes one computed from the CPI index against a year earlier, labelled computed.",
+    "A CPI day the calendar lists without its year-on-year actual takes one computed from the CPI index against a year earlier, labelled computed; where none can be (October 2026, as the October 2025 index was never published), its surprise is read from core CPI m/m, else CPI m/m, and named so (hot (core m/m)).",
+    "With --surprise, the notes say how many days in scope were left out because their surprise cannot be read (no actual, or no forecast).",
     "A release day without figures says why: before the kept calendar starts, or listed without them.",
     "A release day that is also the reaction session of the company's own earnings report is marked earnings and left out of the release averages and the normal day.",
   ] },
@@ -63,7 +64,11 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
     const header = (label: string) => yieldMoves ? `${label} bp` : label;
     const release = String(args.options.release ?? "all");
     const surprise = String(args.options.surprise ?? "all") as MacroSurprise | "all";
-    const events = model.events.filter((event) => (release === "all" || event.kind === release) && matchesSurprise(event, surprise));
+    const scoped = model.events.filter((event) => release === "all" || event.kind === release);
+    const events = scoped.filter((event) => matchesSurprise(event, surprise));
+    // A surprise filter says how many days it could not read, and the notes below say why for them too.
+    const unread = surprise === "all" ? [] : scoped.filter((event) => macroSurpriseOf(event.figures) == null);
+    const excluded = macroSurpriseExclusionNote(scoped, surprise);
     // The days the filter keeps get a row of their own: how the name moved on hot CPI days.
     const selected = surprise === "all" ? [] : [row(`${MACRO_SURPRISE_LABELS[surprise]} ${release === "all" ? "release"
       : MACRO_EVENT_LABELS[release as MacroEventKind]}`, macroDayStats(events, model.normal.meanAbs))];
@@ -74,8 +79,9 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
     const beforeCalendar = (event: MacroDayEvent) => predates(event) && !event.figures;
     const noForecast = (event: MacroDayEvent) => predates(event) && !!event.figures && event.figures.forecast == null;
     /** "CPI and Jobs days": the kinds of the listed days `pick` takes, in the order the summary lists them. */
+    const noted = [...events, ...unread];
     const daysOf = (pick: (event: MacroDayEvent) => boolean) => {
-      const labels = model.kinds.filter((kind) => events.some((event) => event.kind === kind && pick(event))).map((kind) => MACRO_EVENT_LABELS[kind]);
+      const labels = model.kinds.filter((kind) => noted.some((event) => event.kind === kind && pick(event))).map((kind) => MACRO_EVENT_LABELS[kind]);
       return `${labels.length > 1 ? `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}` : labels[0]} days`;
     };
     // A release Gloom Cloud alone lists (IPCA, the ECB, the BoJ) is summed up on its own: "Any release" is then the US ones'.
@@ -83,9 +89,10 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
     const missing = (event: MacroDayEvent) => event.figures ? null : event.figuresMissing
       ?? (beforeCalendar(event) ? `before ${figuresFrom}, when Gloom Cloud's economic calendar starts` : null);
     const figureNotes = [
-      ...(events.some(beforeCalendar) ? [`${daysOf(beforeCalendar)} before ${figuresFrom} have no actual, forecast or prior: Gloom Cloud's economic calendar starts then.`] : []),
-      ...(events.some(noForecast) ? [`Forecasts start ${figuresFrom}, with Gloom Cloud's economic calendar: ${daysOf(noForecast)} before it have an actual and prior, no forecast or surprise.`] : []),
-      ...macroFigureGapNotices(events),
+      ...(excluded ? [excluded] : []),
+      ...(noted.some(beforeCalendar) ? [`${daysOf(beforeCalendar)} before ${figuresFrom} have no actual, forecast or prior: Gloom Cloud's economic calendar starts then.`] : []),
+      ...(noted.some(noForecast) ? [`Forecasts start ${figuresFrom}, with Gloom Cloud's economic calendar: ${daysOf(noForecast)} before it have an actual and prior, no forecast or surprise.`] : []),
+      ...macroFigureGapNotices(noted.toSorted((left, right) => right.date.localeCompare(left.date) || left.kind.localeCompare(right.kind))),
     ];
     return {
       sections: [
@@ -102,13 +109,17 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "actual", header: "Actual", textFormat: (value, row) => typeof value !== "string" ? MISSING_VALUE
             : row.actualComputed === true ? `${value} (computed)` : value },
           { key: "forecast", header: "Forecast" }, { key: "prior", header: "Prior" },
-          { key: "surprise", header: "Surprise" },
+          // A surprise read from another print than the headline's names it: hot (core m/m).
+          { key: "surprise", header: "Surprise", textFormat: (value, row) => typeof value !== "string" ? MISSING_VALUE
+            : typeof row.surpriseBasis === "string" ? `${value} (${row.surpriseBasis})` : value },
           { key: "session", header: "Session" }, { key: "move", header: header("Move"), format: move }, { key: "multiple", header: "vs normal", format: multiple }],
         rows: events.map((day) => {
           const { figures, figuresMissing: _gap, ...event } = day;
           const why = missing(day);
           return { ...event, event: macroDayReleaseName(day), actual: figures?.actual ?? null,
-            forecast: figures?.forecast ?? null, prior: figures?.prior ?? null, surprise: figures?.surprise ?? null,
+            forecast: figures?.forecast ?? null, prior: figures?.prior ?? null, surprise: macroSurpriseOf(figures),
+            ...(macroSurpriseBasisLabel(figures) ? { surpriseBasis: macroSurpriseBasisLabel(figures),
+              surpriseBasisActual: figures!.surpriseBasis!.actual, surpriseBasisForecast: figures!.surpriseBasis!.forecast } : {}),
             ...(figures ? { headline: figures.event } : {}), ...(figures?.decision ? { decision: figures.decision } : {}),
             ...(figures?.computed ? { actualComputed: true, actualBasis: figures.computed } : {}),
             ...(figures?.actualMissing ? { actualMissing: figures.actualMissing } : {}),

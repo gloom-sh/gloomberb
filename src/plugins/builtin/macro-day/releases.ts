@@ -62,6 +62,19 @@ export interface MacroReleaseFigures {
   computed?: string;
   /** Why a day with a consensus or a prior has no actual, where it cannot be computed either. */
   actualMissing?: string;
+  /**
+   * Where the headline has no actual (a CPI day without its y/y), the print its surprise is read from instead:
+   * core m/m, else m/m, against its own consensus. `surprise` stays the headline's own, null.
+   */
+  surpriseBasis?: MacroSurpriseBasis;
+}
+
+/** The print a day's surprise is read from when its headline has none: `core m/m`, 0.3% against 0.2%, hot. */
+export interface MacroSurpriseBasis {
+  basis: string;
+  actual: string;
+  forecast: string;
+  surprise: MacroSurprise;
 }
 
 export interface MacroRelease {
@@ -106,8 +119,18 @@ function servedFigures(value: unknown): MacroReleaseFigures | undefined {
   const decision = text(figures?.decision);
   const computed = text(figures?.computed);
   const actualMissing = text(figures?.actualMissing);
+  const surpriseBasis = servedSurpriseBasis(figures?.surpriseBasis);
   return { event, actual: text(figures?.actual), forecast: text(figures?.forecast), prior: text(figures?.prior), surprise,
-    ...(decision ? { decision } : {}), ...(computed ? { computed } : {}), ...(actualMissing ? { actualMissing } : {}) };
+    ...(decision ? { decision } : {}), ...(computed ? { computed } : {}), ...(actualMissing ? { actualMissing } : {}),
+    ...(surpriseBasis ? { surpriseBasis } : {}) };
+}
+
+/** The print a surprise is read from as served, or undefined when it breaks the contract. */
+function servedSurpriseBasis(value: unknown): MacroSurpriseBasis | undefined {
+  const served = value as Partial<Record<keyof MacroSurpriseBasis, unknown>> | null;
+  const basis = text(served?.basis), actual = text(served?.actual), forecast = text(served?.forecast);
+  const surprise = MACRO_SURPRISES.find((candidate) => candidate === served?.surprise);
+  return basis && actual && forecast && surprise ? { basis, actual, forecast, surprise } : undefined;
 }
 
 /**

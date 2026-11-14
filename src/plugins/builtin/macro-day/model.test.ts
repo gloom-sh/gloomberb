@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { formatMacroDayMove, macroDayStats, matchesSurprise, projectMacroDays } from "./model";
+import { formatMacroDayMove, macroDayStats, macroFigureGapNotices, macroSurpriseExclusionNote, matchesSurprise, projectMacroDays } from "./model";
+import { mergeMacroReleases } from "./releases";
 
 /** Weekday closes from `from` to `to`, skipping `closed`; each close is 1% above the one before unless `closes` says otherwise. */
 function weekdays(from: string, to: string, closed: string[], closes: Record<string, number> = {}): PricePoint[] {
@@ -122,6 +123,39 @@ describe("macro-day surprises", () => {
       releases: model.events.filter((event) => event.kind !== "ipca").map(({ kind, date }) => ({ kind, date })) });
     expect(usOnly.kinds).toEqual(["cpi", "jobs", "fomc"]);
     expect([model.normal, model.allEvents, model.byKind.cpi]).toEqual([usOnly.normal, usOnly.allEvents, usOnly.byKind.cpi]);
+  });
+});
+
+describe("macro-day surprise without a headline actual", () => {
+  test("a CPI day with no y/y is read by the m/m print Gloom Cloud names, and a filter counts the days it cannot read", () => {
+    // `fn MDAY TLT --release cpi --surprise hot` listed 2 hot CPI days and left out 10 Nov 2026 without a word: BLS
+    // published no October y/y, while its core m/m (0.3% against 0.2%) and m/m (0.4% against 0.3%) came in hot.
+    const served = mergeMacroReleases({ releases: [], coveredThrough: "2026-10-01" }, {
+      coveredThrough: "2026-11-12", releases: { cpi: ["2026-10-14", "2026-11-10"], jobs: [], fomc: ["2026-10-28"] },
+      figures: { cpi: {
+        "2026-10-14": { event: "Inflation Rate YoY", actual: "3.7%", forecast: "3.6%", prior: "3.4%", surprise: "hot" },
+        "2026-11-10": { event: "Inflation Rate YoY", actual: null, forecast: "3.9%", prior: "3.7%", surprise: null,
+          actualMissing: "the CPI index (CPIAUCNS) has no October 2025 level to compute it from",
+          surpriseBasis: { basis: "core m/m", actual: "0.3%", forecast: "0.2%", surprise: "hot" } },
+      } },
+    });
+    const history = weekdays("2026-09-01", "2026-11-12", []);
+    const model = projectMacroDays(history, { symbol: "TLT", lookbackYears: 1, ...served });
+    const cpi = model.events.filter((event) => event.kind === "cpi");
+    expect(cpi.filter((event) => matchesSurprise(event, "hot")).map((event) => event.date)).toEqual(["2026-11-10", "2026-10-14"]);
+    expect(macroFigureGapNotices(cpi)).toEqual(["2026-11-10 CPI has no actual: the CPI index (CPIAUCNS) has no October 2025 level to compute it "
+      + "from. Surprise read from core m/m: 0.3% vs 0.2% forecast."]);
+    // Every CPI day read: nothing left out. The FOMC day before the calendar has no actual, and the filter says so.
+    expect(macroSurpriseExclusionNote(cpi, "hot")).toBeNull();
+    expect(macroSurpriseExclusionNote(model.events, "cool")).toBe("1 print excluded: no actual.");
+    expect(macroSurpriseExclusionNote(model.events, "all")).toBeNull();
+    // A basis that breaks the contract is none: the day is left out, and counted.
+    const broken = mergeMacroReleases({ releases: [], coveredThrough: "2026-10-01" }, { coveredThrough: "2026-11-12",
+      releases: { cpi: ["2026-11-10"], jobs: [], fomc: [] }, figures: { cpi: { "2026-11-10": { event: "Inflation Rate YoY", actual: null,
+        forecast: "3.9%", prior: "3.7%", surprise: null, surpriseBasis: { basis: "core m/m", surprise: "hot" } } } } });
+    const days = projectMacroDays(history, { symbol: "TLT", lookbackYears: 1, ...broken }).events;
+    expect(days.filter((event) => matchesSurprise(event, "hot"))).toEqual([]);
+    expect(macroSurpriseExclusionNote(days, "hot")).toBe("1 print excluded: no actual.");
   });
 });
 

@@ -81,6 +81,42 @@ test("a European company typed with its legal form is its primary listing, as th
   }
 });
 
+test("a name never lands on a receipt or an odd-lot line over its home line, and a receipt on a fund is never a primary listing", async () => {
+  // 13 Nov 2026: `quote "Tracker Fund"` read HK01, a Thai receipt, and `search` called it the primary listing while
+  // the fund itself, 2800 on HKEX, sat under the funds; `quote Petrobras` read B3's odd-lot PETR3F.
+  const tracker = [
+    "2800 | Tracker Fund of Hong Kong | HKEX | ETF",
+    "82800 | Tracker Fund of Hong Kong | HKEX | ETF",
+    "HK01 | Tracker Fund of Hong Kong | SET | Depositary Receipt",
+    "HK13 | Tracker Fund of Hong Kong | SET | Depositary Receipt",
+    "18302 | DBS Bank Ltd. Warrant on Tracker Fund of Hong Kong | HKEX | Warrant",
+  ];
+  const service = answering({ "TRACKER FUND": tracker, "TRACKER FUND OF HONG KONG": tracker });
+  for (const typed of ["Tracker Fund", "Tracker Fund of Hong Kong"]) {
+    expect(await findListingOfCompanyName(service, typed), typed).toMatchObject({ symbol: "2800", exchange: "HKEX" });
+  }
+  const candidates = buildTickerSearchCandidates({ query: "Tracker Fund of Hong Kong", tickers: new Map(), providerResults: tracker.map(row) });
+  expect(candidates.filter((candidate) => candidate.category === "Primary Listing").map((candidate) => candidate.symbol)).toEqual([]);
+  expect(candidates.find((candidate) => candidate.symbol === "HK01")?.category).toBe("Funds & Derivatives");
+  // Gloom Cloud answers "Petrobras" with the whole line, marked with the word; the odd-lot line and receipts stay behind it.
+  const petrobras = [
+    "PETR3 | Petroleo Brasileiro S.A. | B3 | Common Stock | home | Petrobras",
+    "PETR4 | Petrobras - Petroleo Brasileiro S.A. | B3 | Preferred Stock",
+    "PETR3F | PETROBRAS | B3 | Common Stock",
+    "PBR | Petroleo Brasileiro S.A. Petrobras ADR | NYSE | American Depositary Receipt",
+  ];
+  expect(await findListingOfCompanyName(answering({ PETROBRAS: petrobras }), "Petrobras", { oneWord: true }))
+    .toMatchObject({ symbol: "PETR3", exchange: "B3" });
+  // Unmarked, the odd-lot line under the same name still gives way to its whole line: it quotes the same shares.
+  const unmarked = ["PETR3F | Petroleo Brasileiro S.A. | B3 | Common Stock", "PETR3 | Petroleo Brasileiro S.A. | B3 | Common Stock"];
+  expect(await findListingOfCompanyName(answering({ "PETROLEO BRASILEIRO": unmarked }), "Petroleo Brasileiro"))
+    .toMatchObject({ symbol: "PETR3", exchange: "B3" });
+  // A company listed by receipts alone is still its receipt (PDD, above), and a receipt on shares stays a company's line.
+  const hsbc = ["HSBC | HSBC Holdings plc | NYSE | American Depositary Receipt", "HSBA | HSBC Holdings plc | LSE | Common Stock | home"];
+  expect(buildTickerSearchCandidates({ query: "HSBC", tickers: new Map(), providerResults: hsbc.map(row) })
+    .some((candidate) => candidate.instrumentClass === "fund")).toBe(false);
+});
+
 test("a company's name opens the listing search calls its primary, not a one-off line abroad whose short name matched", async () => {
   // `search lufthansa` against the service, 2026-10-29: no home line marked, Budapest's LUFTHANSA has no search score.
   const scored = (line: string, popularity?: number) => ({ ...row(line), ...popularity ? { popularity } : {} });

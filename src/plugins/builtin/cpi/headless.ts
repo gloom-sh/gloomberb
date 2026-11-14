@@ -2,7 +2,7 @@ import { MISSING_VALUE } from "../../../utils/format";
 import type { CpiRow } from "../../../api-client/cpi";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCpiBoard } from "./client";
-import { cpiHeaderLine, cpiMonth, cpiRowOption, cpiRows } from "./model";
+import { cpiHeaderLine, cpiHeadlineYearGapLine, cpiMonth, cpiRowOption, cpiRows, cpiYearGapLine } from "./model";
 
 /** Two decimals; a value that rounds to zero reads 0.00, never -0.00. */
 const percent = (value: unknown) => typeof value === "number" ? (Number(value.toFixed(2)) === 0 ? "0.00" : value.toFixed(2)) : MISSING_VALUE;
@@ -28,6 +28,8 @@ const SUMMARY_COLUMNS = [
   { key: "contributionMonth", header: "M/M pts", align: "right" as const, format: percent },
   { key: "contributionYear", header: "Y/Y pts", align: "right" as const, format: percent },
 ];
+
+const notesOf = (note: string | null) => note ? { notes: [note] } : {};
 
 /** The selected row's months against the headline's year over year: the chart as a table. */
 function historyRows(row: CpiRow, headline: CpiRow | null) {
@@ -73,6 +75,8 @@ export const cpiHeadless: HeadlessPaneDefinition<"bundle"> = {
             rows: historyRows(row, headline) },
         ],
         errors: data.gaps,
+        // Why the month's y/y is empty (no October 2025 index), and the latest the row has.
+        ...notesOf(cpiYearGapLine(data, row)),
         freshness,
         metadata: { ...metadata, rows: [row] },
       };
@@ -80,6 +84,7 @@ export const cpiHeadless: HeadlessPaneDefinition<"bundle"> = {
     return {
       sections: [{ title: header, columns: SUMMARY_COLUMNS, rows: cpiRows(data).map((row) => reportRow(row)) }],
       errors: data.gaps,
+      ...notesOf(cpiHeadlineYearGapLine(data)),
       freshness,
       metadata,
     };

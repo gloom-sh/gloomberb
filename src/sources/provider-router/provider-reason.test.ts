@@ -62,7 +62,8 @@ test("an outage keeps the outage wording, also when another source says the symb
     const router = new AssetDataRouter(null, sources);
     await expect(router.getQuote("APPLE")).rejects.toThrow("No quote provider available for APPLE");
     await expect(router.getTickerFinancials("APPLE")).rejects.toThrow("No provider available for APPLE");
-    await expect(router.getPriceHistory("APPLE", "", "1Y")).rejects.toThrow("No history provider available for APPLE");
+    // A history read that failed says so, never that the symbol has no history.
+    await expect(router.getPriceHistory("APPLE", "", "1Y")).rejects.toThrow("No source could load history for APPLE just now");
   }
 });
 
