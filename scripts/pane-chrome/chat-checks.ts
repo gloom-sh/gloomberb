@@ -609,7 +609,11 @@ export const chatSteps: ChatStep[] = [
     name: "chat window: an offscreen notification target mounts, highlights and copies, and keyboard navigation crosses windows",
     scenario: "chat&count=500&loaded=500&target=m120",
     async run(cdp) {
-      await ready(cdp);
+      await evaluate(cdp, CHAT_HELPERS);
+      if (!await waitFor(cdp, `(() => {
+        const row = __chat.rowRect('m120'), box = __chat.scroller()?.getBoundingClientRect();
+        return row && box && row.y >= box.top && row.y + row.height <= box.bottom && __chat.marked().includes('m120');
+      })()`)) fail("notification target did not mount, scroll into view and highlight");
       expectMarked(await marked(cdp), ["m120"], "notification target");
       if (await evaluate<number>(cdp, "__chat.rows().length") > 80) fail("opening mounted the history");
       const body = '[data-gloom-chat-message-id="m120"] [data-gloom-role=chat-message-body]';
