@@ -238,7 +238,9 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
         {detail ? <ClippedText fg={state.selected ? colors.selectedText : colors.textDim} lead="  " text={detail} width={column.width} flex="1 1 0%" /> : null}
       </Box> };
     }
-    const text = column.id === "metric" && !columns.some((entry) => entry.id === "basis") ? seriesName(row) : companyCellText(row, column.id, observations);
+    const text = column.id === "metric" && !columns.some((entry) => entry.id === "basis")
+      ? [row.metricId === "eps" ? "EPS" : row.metric.name, seriesDetail(row)].filter(Boolean).join(" · ")
+      : companyCellText(row, column.id, observations);
     return { text, ...(column.id === "value" && !guide ? { value: exactObservation(row as KpiObservation) ? (row as KpiObservation).value : observationValue(row as KpiObservation) } : column.id === "actual" ? { value: guide?.actual?.value } : {}),
       color: column.id === "metric" ? colors.textBright : column.id === "value" || column.id === "actual" ? colors.textBright
         : column.id === "outcome" && guide?.actual ? guide.actual.favorable === "beat" ? colors.positive : guide.actual.favorable === "miss" ? colors.negative : colors.text

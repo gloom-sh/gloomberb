@@ -90,7 +90,7 @@ describe("dividend yield headless", () => {
     const definition = createDividendYieldHeadless({ loadData: async () => loss });
     const result = await definition.load(args({ type: "all", limit: 40 }), context);
     expect(result.sections[0]).toMatchObject({ textEntries: expect.arrayContaining([
-      { label: "Payout (basis unstated)", value: null, formatted: "N/M" },
+      { label: "Payout (basis/date unstated)", value: null, formatted: "N/M" },
       { label: "Trailing yield", value: 0.3574, formatted: "35.74% (last 12 months of distributions; counts 9 of 12 monthly payments)" },
     ]) });
     expect(result.metadata).toMatchObject({ trailingPayments: { counted: 9, expected: 12, cadence: "monthly" } });
@@ -140,16 +140,16 @@ test("cash growth and payout text use percentages while JSON and CSV keep fracti
     expect(text).toContain("3Y Cash CAGR");
     expect(text).toContain(formatted);
     // Controlled provider ratio contract; these finite values are not asserted to be live ETF payouts.
-    expect(entries.find((entry) => entry.label === "Payout (basis unstated)"))
-      .toEqual({ label: "Payout (basis unstated)", value: growth, formatted: formatted.replace(/^\+/, ""), exportUnit: "pct", asOf: null });
+    expect(entries.find((entry) => entry.label === "Payout (basis/date unstated)"))
+      .toEqual({ label: "Payout (basis/date unstated)", value: growth, formatted: formatted.replace(/^\+/, ""), exportUnit: "pct", asOf: null });
     const serialized = serializeHeadlessPaneResult(definition, result);
     const json = JSON.parse(serializeCliResult({ data: serialized }, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
-    const raw = json.data.sections[0].entries.filter((entry: { label: string }) => ["Payout (basis unstated)", "1Y Cash Growth", "3Y Cash CAGR"].includes(entry.label));
+    const raw = json.data.sections[0].entries.filter((entry: { label: string }) => ["Payout (basis/date unstated)", "1Y Cash Growth", "3Y Cash CAGR"].includes(entry.label));
     expect(raw.map((entry: { value: unknown }) => entry.value)).toEqual([growth, growth, growth]);
     // fn CSV retains nested sections as JSON cells; display strings cannot replace numeric values.
     const csv = serializeCliResult({ data: serialized }, { ...DEFAULT_CLI_OPTIONS, format: "csv" });
     expect(csv).toContain(`""label"":""1Y Cash Growth"",""value"":${JSON.stringify(growth)},""formatted"":""${formatted}""`);
-    expect(csv).toContain(`""label"":""Payout (basis unstated)"",""value"":${JSON.stringify(growth)}`);
+    expect(csv).toContain(`""label"":""Payout (basis/date unstated)"",""value"":${JSON.stringify(growth)}`);
     expect(data.metrics.growth1Y).toBe(source);
   }
 });
@@ -319,10 +319,10 @@ describe("a bond fund's yields", () => {
     expect(csv.join("\n")).not.toContain("(as of 2026-10-15)");
     // A figure missing with its reason names no unit.
     const metrics = result.sections[0]!;
-    const missing = { ...result, sections: [{ ...metrics, entries: metrics.entries!.map((entry) => entry.label === "Payout (basis unstated)"
+    const missing = { ...result, sections: [{ ...metrics, entries: metrics.entries!.map((entry) => entry.label === "Payout (basis/date unstated)"
       ? { ...entry, value: null, formatted: "n/a: 11 of 12 payments" } : entry) } as typeof metrics, ...result.sections.slice(1)] };
     expect(renderReportCsv(headlessReportTables(definition, missing, request, "DVD", freshness, { complete: true, unavailableSymbols: [] }), freshness))
-      .toContain("Payout (basis unstated),n/a: 11 of 12 payments,MUB,,,Gloom Cloud,");
+      .toContain("Payout (basis/date unstated),n/a: 11 of 12 payments,MUB,,,Gloom Cloud,");
     // The text report is as it was.
     expect(renderHeadlessPaneText(definition, result, request, "DVD")).toContain("30-day SEC yield                             4.04% (as of 2026-10-15)");
   });

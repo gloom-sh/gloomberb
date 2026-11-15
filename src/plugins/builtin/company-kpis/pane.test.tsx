@@ -59,6 +59,16 @@ test.each([46, 52, 60])("a %s-column guide keeps its value and wraps its access 
   expect(frame.replace(/\s+/g, " ")).toContain("Gloom Pro");
 });
 
+test.each([46, 52, 60])("a %s-column EPS range keeps its accounting basis beside the number", async (width) => {
+  const base = guide();
+  const eps = guide({ metricId: "eps", metric: { ...base.metric, id: "eps", name: "Earnings per share" },
+    low: 7.5, high: 8.5, unit: "currency_per_share", currency: "USD", basis: "adjusted", seriesKey: "eps:adjusted:USD" });
+  setCloudApiFetchTransport(async () => Response.json(guidancePayload({ guidance: [eps] })));
+  await mount({ guidance: true, width });
+  const frame = await tui.waitForFrameToContain("EPS · Adjusted");
+  expect(frame).toContain("7.50 – 8.50 USD/sh");
+});
+
 test("guidance history exposes matched actuals and evidence without substituting a range midpoint", async () => {
   setCloudApiFetchTransport(async () => Response.json(guidancePayload()));
   await mount({ guidance: true, tab: "history", width: 150 });

@@ -7,7 +7,7 @@ import { DataServiceUnreachableError } from "../../utils/network-failure";
 import type { TickerRecord } from "../../types/ticker";
 import { quotableSearchSymbol, search } from "./search";
 
-const originalExitCode = process.exitCode;
+const originalExitCode = process.exitCode ?? 0;
 afterEach(() => { process.exitCode = originalExitCode; });
 
 /**

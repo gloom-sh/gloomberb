@@ -74,7 +74,7 @@ export const REFERENCE_DATA: HeadlessPaneFreshness = { status: "not-a-feed", bas
 export const REPORTED_DATA: HeadlessPaneFreshness = { status: "not-a-feed", basis: "reported data" };
 
 /** What a news list's as-of is: its newest story, not the time it was read. */
-export const NEWEST_STORY = "newest story";
+const NEWEST_STORY = "newest story";
 
 /** Gloom Cloud's delayed quotes run behind each venue by a lag the app knows (`delayedFeedLagMs`). */
 const CLOUD_QUOTE_PROVIDER_ID = "gloomberb-cloud";
