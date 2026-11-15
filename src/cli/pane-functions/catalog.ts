@@ -941,7 +941,7 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
  * The command that runs a function with the option value a query names (`compounders` is EQS's `--preset
  * compounders`), with the argument it needs first; null when the query is no value of its options.
  */
-export function optionValueCommand(entry: PaneCatalogEntry, query: string): string | null {
+function optionValueCommand(entry: PaneCatalogEntry, query: string): string | null {
   const wanted = normalizeLookupToken(query);
   if (!wanted) return null;
   // A word that opens one case of the function (FA's `roic`) runs it with that case's options.

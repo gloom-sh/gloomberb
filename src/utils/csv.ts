@@ -49,7 +49,7 @@ export function csvDecimal(): CsvDecimal {
 }
 
 /** The cell separator that goes with a decimal mark: `;` beside a decimal comma, `,` beside a dot. */
-export function csvSeparator(decimal: CsvDecimal = defaultDecimal): string {
+function csvSeparator(decimal: CsvDecimal = defaultDecimal): string {
   return decimal === "comma" ? ";" : ",";
 }
 

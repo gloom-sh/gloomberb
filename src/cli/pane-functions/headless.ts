@@ -1117,7 +1117,7 @@ function cutNote(window: RowWindowOptions, cut: RowWindow<unknown>, table?: stri
  * (`fn CTM CL --limit 3`): the first or last n of each table, of a series' points the oldest or newest n, as every
  * command that prints a list keeps them; the notes say what was cut.
  */
-export function windowHeadlessResult(shape: HeadlessPaneDefinition["shape"], result: HeadlessPaneResult, window: RowWindowOptions): HeadlessPaneResult {
+function windowHeadlessResult(shape: HeadlessPaneDefinition["shape"], result: HeadlessPaneResult, window: RowWindowOptions): HeadlessPaneResult {
   const notes: string[] = [];
   const cut = <Row,>(rows: readonly Row[], table?: string, dateOf?: (row: Row) => unknown): Row[] => {
     const kept = windowRows(rows, window, dateOf);
