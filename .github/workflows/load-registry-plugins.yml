@@ -6,10 +6,11 @@ name: Load Registry Plugins
 #
 # The load runs code from other repositories, so it has a job of its own: a
 # read-only token that is not left on disk, no signing, no Actions cache to
-# restore, and nothing it uploads. It reads the builds from the run's artifacts, which code
-# running there could also replace, so the checksums job sums every built file
-# first, before any plugin runs, and the jobs that publish check what they
-# download against those sums (scripts/check-built-files.sh).
+# restore, and nothing it uploads. It reads the builds from the run's
+# artifacts, which code running there could also replace, in this attempt for
+# a later one to download. So the jobs that publish take only files the build
+# jobs attested in the same run (scripts/check-built-files.ts), and no job
+# here is given the identity those attestations are signed with.
 #
 # The same outcome as the check that used to run in each build: a registry
 # or plugin outage only warns, and a host that does not serve what plugins
@@ -27,10 +28,6 @@ on:
           passes over a platform whose build uploaded nothing.
         type: boolean
         default: true
-    outputs:
-      built-sha256:
-        description: "`sha256sum` lines for every file the builds uploaded, by its name in the merged download."
-        value: ${{ jobs.checksums.outputs.sha256 }}
 
 permissions:
   contents: read
@@ -40,37 +37,8 @@ env:
   DO_NOT_TRACK: "1"
 
 jobs:
-  # Before any plugin runs. It sums whatever is there, so the platforms that
-  # did build are checked when one failed; Release still publishes nothing
-  # until a rerun has built that one too.
-  checksums:
-    runs-on: ubuntu-latest
-    permissions: {}
-    outputs:
-      sha256: ${{ steps.sum.outputs.sha256 }}
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          path: built
-          merge-multiple: true
-
-      - id: sum
-        name: Sum the built files
-        run: |
-          set -euo pipefail
-          mkdir -p built
-          cd built
-          find . -type f -printf '%P\0' | LC_ALL=C sort -z | xargs -0 -r sha256sum -- > "$RUNNER_TEMP/built.sha256"
-          cat "$RUNNER_TEMP/built.sha256"
-          {
-            echo "sha256<<CHECKSUMS"
-            cat "$RUNNER_TEMP/built.sha256"
-            echo "CHECKSUMS"
-          } >> "$GITHUB_OUTPUT"
-
   load:
     name: load (${{ matrix.terminal }})
-    needs: checksums
     strategy:
       fail-fast: false
       matrix:
