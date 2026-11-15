@@ -15,7 +15,7 @@ import { truncateToDisplayWidth } from "../../../../../utils/format";
 import { wrapTextLines } from "../../../../../utils/text-wrap";
 import { formatDetailDate, formatDetailTime } from "../../../../../utils/datetime-format";
 import { logFailure } from "../../../../../utils/log-failure";
-import { mergeNewsArticle } from "../../../../../news/news-model";
+import { mergeNewsArticle, newsArticleRevision } from "../../../../../news/news-model";
 import { usePluginPaneState } from "../../../../runtime";
 import { formatNewsCategory } from "../categories";
 import { shareItemExcerpt } from "../../../../../shares/item";
@@ -23,6 +23,11 @@ import { usePaneShareItem } from "../../../../../shares/pane-item";
 
 function hasStoryItems(article: MarketNewsItem | null): boolean {
   return (article?.items?.length ?? 0) > 0;
+}
+
+/** A story as one answer covers it: the same id and revision ask nothing new, whatever the object. */
+function storyRevisionKey(article: MarketNewsItem): string {
+  return `${article.id}\n${newsArticleRevision(article)}`;
 }
 
 /**
@@ -49,7 +54,10 @@ export function useNewsArticleDetail(
     loading: boolean;
     error: string | null;
   } | null>(null);
-  const requestedArticle = useRef<MarketNewsItem | null>(null);
+  // The revisions of the open story asked for. The feed takes an answer in as a new object, and
+  // one with no coverage (no items, or an empty list) still has none: keyed by object, that copy
+  // would be asked for again, and its answer would make another, without end.
+  const requestedRevisions = useRef(new Set<string>());
   const standaloneRequestId = useRef<string | null>(null);
   const listedDetailArticle = useMemo(
     () => articles.find((article) => article.id === detailArticleId) ?? null,
@@ -96,15 +104,19 @@ export function useNewsArticleDetail(
     if (!baseDetailArticle || hasStoryItems(baseDetailArticle) || !loadArticleDetail) return;
     // A story fetched by id is already the detail; asking again adds nothing.
     if (baseDetailArticle === currentStandalone?.article) return;
-    if (requestedArticle.current === baseDetailArticle) return;
-    requestedArticle.current = baseDetailArticle;
+    const revision = storyRevisionKey(baseDetailArticle);
+    if (requestedRevisions.current.has(revision)) return;
+    requestedRevisions.current.add(revision);
     let active = true;
     setRequest({ base: baseDetailArticle, loading: true, error: null });
     void loadArticleDetail(baseDetailArticle.id)
       .then((article) => {
-        if (!active) return;
         if (article && article.id !== baseDetailArticle.id) throw new Error("Story detail identity mismatch.");
-        setRequest({ base: baseDetailArticle, article: article ? mergeNewsArticle(baseDetailArticle, article) : undefined, loading: false, error: null });
+        const merged = article ? mergeNewsArticle(baseDetailArticle, article) : undefined;
+        // The feed shows the story as merged here next: that revision is answered too.
+        if (merged) requestedRevisions.current.add(storyRevisionKey(merged));
+        if (!active) return;
+        setRequest({ base: baseDetailArticle, article: merged, loading: false, error: null });
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -114,12 +126,12 @@ export function useNewsArticleDetail(
   }, [baseDetailArticle, currentStandalone?.article, loadArticleDetail]);
 
   const openArticle = useCallback((article: MarketNewsItem) => {
-    requestedArticle.current = null;
+    requestedRevisions.current.clear();
     standaloneRequestId.current = null;
     setDetailArticleId(article.id);
   }, [setDetailArticleId]);
   const closeDetail = useCallback(() => {
-    requestedArticle.current = null;
+    requestedRevisions.current.clear();
     standaloneRequestId.current = null;
     setDetailArticleId(null);
     setRequest(null);

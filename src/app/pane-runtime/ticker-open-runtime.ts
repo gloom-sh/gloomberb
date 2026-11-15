@@ -132,6 +132,11 @@ function findTargetPane(
       ], symbol);
     }) ?? null;
   }
+  // Enter on a list row with no research pane of its own shows the ticker in a pinned one.
+  if (!existing && options?.reusePaneId) {
+    const reuse = findPaneInstance(layout, options.reusePaneId);
+    if (reuse?.paneId === paneType && reuse.binding?.kind === "fixed" && isPaneInLayout(layout, reuse.instanceId)) existing = reuse;
+  }
   return { existing, keepBinding };
 }
 
@@ -300,7 +305,7 @@ export function useAppTickerOpenRuntime({
     const paneType = normalizePaneId(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
     const paneDef = pluginRegistry.panes.get(paneType);
     const symbol = normalizeTickerInput(null, rawSymbol);
-    if (paneType !== TICKER_RESEARCH_PANE_ID || !paneDef || !symbol || options?.instrument) return null;
+    if (paneType !== TICKER_RESEARCH_PANE_ID || !paneDef || !symbol || options?.instrument || options?.reusePaneId) return null;
     const state = stateRef.current;
     const layout = state.config.layout;
     if (savedTickerForQuery(rawSymbol, state.tickers)) return null;

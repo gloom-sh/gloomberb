@@ -15,6 +15,7 @@ export const ko: Record<string, string> = {
   "Linked to {source}": "{source}에 연결됨",
   "Link to {source}": "{source}에 연결",
   "Unlink from {source}": "{source} 연결 해제",
+  "Unlinked": "연결 해제됨",
   "Working…": "처리 중…",
   "Searching…": "검색 중…",
   "Loading...": "불러오는 중...",

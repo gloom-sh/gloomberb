@@ -103,6 +103,25 @@ export interface PaneInstanceConfig {
   locked?: boolean;
   /** Set by Move to New Layout and cleared by Move Back; never published. */
   movedFrom?: PaneMovedFrom;
+  /** Set when a follower was pinned on its ticker; read only while it follows nothing. Never published. */
+  unlinkedFrom?: PaneUnlinkedFrom;
+}
+
+/**
+ * The link a follower left when it was pinned on the ticker it showed. Its title says so
+ * (`AAPL  ⧉ Unlinked`) until it is linked again.
+ */
+export interface PaneUnlinkedFrom {
+  /** The pane it followed. */
+  instanceId: string;
+  /** That pane's kind (`portfolio-list`), so a research pane can follow a new one of it. */
+  paneId?: string;
+  /**
+   * The app cut the link, not the user: the source closed or left the layout, or another
+   * research pane took it. A research pane pinned this way follows again once its source, or
+   * one of that kind, is in the layout with no research pane of its own (`relinkPinnedResearchPanes`).
+   */
+  auto?: true;
 }
 
 interface DockPaneNode {

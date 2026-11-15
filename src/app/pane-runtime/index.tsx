@@ -21,7 +21,7 @@ import {
   type AppState,
 } from "../../state/app/context";
 import { scheduleConfigSave } from "../../state/config-save-scheduler";
-import { pinFollowingPane } from "../../layout/pane-follow";
+import { pinOrphanedFollower } from "../../layout/pane-follow";
 import {
   createPaneInstance,
   isTickerPaneId,
@@ -91,7 +91,7 @@ export function useAppPaneRuntime({
     const currentState = stateRef.current;
     const normalizedLayout = normalizePaneLayout(layout, {
       resolveOrphanSymbol: (instanceId) => resolveTickerForPane(currentState, instanceId),
-      pinOrphan: pinFollowingPane,
+      pinOrphan: pinOrphanedFollower(currentState.config.layout),
       externalSourceIds: linkedSourceIds(currentState),
     });
     if (options?.pushHistory !== false) {
