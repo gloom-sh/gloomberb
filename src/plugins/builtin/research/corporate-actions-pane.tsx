@@ -164,8 +164,8 @@ export function buildEventColumns(width: number, unit?: string, variant: "corpor
       { id: "period", label: "PERIOD", width: 9, align: "left" },
       { id: "eps", label: "EPS", width: unit ? 7 : 11, align: "right" },
       { id: "revenue", label: "REVENUE", width: unit ? 9 : 13, align: "right" },
-      { id: "surprise", label: "EPS SURP", width: 9, align: "right" },
-      { id: "growth", label: "YOY GROWTH", width: 14, align: "right" },
+      { id: "surprise", label: "EPS SURP", width: 9, align: "right", omitWhenEmpty: "visible" },
+      { id: "growth", label: "YOY GROWTH", width: 14, align: "right", omitWhenEmpty: true },
       { id: "detail", label: "DETAIL", width: 9, align: "left", flexGrow: 1 },
     ], width, ["detail", "growth", "revenue"]);
   }
@@ -713,6 +713,8 @@ export function CorporateActionsView({
       onRootKeyDown={handleKeyDown}
       columns={columns}
       items={rows}
+      scrollToIndex={selectedIdx}
+      scrollToIndexVersion={rows.length}
       sortColumnId={null}
       sortDirection="asc"
       getItemKey={eventRowKey}

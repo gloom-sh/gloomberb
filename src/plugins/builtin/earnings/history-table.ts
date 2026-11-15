@@ -22,7 +22,7 @@ const ALL_COLUMNS: HistoryColumn[] = [
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
   { id: "analysts", label: "ESTS", width: 4, align: "right" },
   { id: "epsActual", label: "EPS ACT", width: 7, align: "right" },
-  { id: "basis", label: "BASIS", width: 5, align: "left" },
+  { id: "basis", label: "BASIS", width: 5, align: "left", mayBeBlank: true },
   { id: "epsSurprise", label: "EPS SURP", width: 8, align: "right" },
   { id: "revenueEstimate", label: "SALES EST", width: 9, align: "right" },
   { id: "revenueActual", label: "SALES ACT", width: 9, align: "right" },

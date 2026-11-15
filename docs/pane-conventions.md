@@ -486,6 +486,17 @@ this, except:
   symbol in FUT and WEI); `key` separates two tables in one pane that name
   their rows with the same column but are otherwise unrelated.
 
+**Unavailable table columns.** Check the source before treating an empty column
+as missing coverage: fix a dropped field rather than hiding it. A value waiting
+on an event, such as reported EPS and its basis before earnings, uses
+`DataTableColumn.mayBeBlank`. For structurally unavailable coverage, opt that
+column into `omitWhenEmpty: true`: it leaves the pane only while every data row
+renders a missing value, and returns as soon as any row has one. Zero and N/M
+are values, not missing data. A chronological history with coverage only in
+older reports can use `omitWhenEmpty: "visible"`, so scrolling into those
+reports restores their column. This changes presentation only; JSON reports
+and CSV exports retain the fields and missing values.
+
 **Country flags.** Wherever a row or a field names a country (ECO's country,
 a balance's or a board's country or jurisdiction, a venue's market, an IPO's
 exchange, a filing's country), the desktop and the web lead it with the

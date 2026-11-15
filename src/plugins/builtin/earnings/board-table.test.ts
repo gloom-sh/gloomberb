@@ -39,8 +39,10 @@ describe("EVTS rows", () => {
     expect(cell(TRV, "basis")).toEqual({ text: "adj", color: colors.textMuted });
   });
 
-  test("EPS ACT, EPS SURP and BASIS show -- with nothing to show, as ERN does", () => {
+  test("pending EPS ACT, EPS SURP and BASIS wait for the report without hiding a reported basis", () => {
     for (const id of ["epsActual", "epsSurprise", "basis"] as const) expect(cell(LADR, id)).toEqual({ text: MISSING_VALUE, color: colors.textDim });
+    expect(column("basis").mayBeBlank).toBe(true);
+    expect(cell(TRV, "basis").text).toBe("adj");
   });
 
   test("MOVE is the move on a report out today, beside the implied move", () => {
@@ -195,6 +197,16 @@ describe("ERN rows", () => {
   ] }, TODAY, null);
   const columns = historyColumns(2000, rows);
   const draw = (index: number, id: string) => renderHistoryCell(rows[index]!, columns.find((entry) => entry.id === id)!);
+
+  test("BASIS waits for reported EPS, and a reported basis survives beside pending rows", () => {
+    const pending = historyRows({ asOf: `${TODAY}T15:00:00Z`, symbol: "TFC", name: null,
+      reports: [report({ date: "2027-01-15", dateStatus: "projected" })] }, TODAY, null);
+    expect(historyColumns(2000, pending).some((column) => column.id === "basis")).toBe(false);
+    const mixed = [...pending, ...rows];
+    const basis = historyColumns(2000, mixed).find((column) => column.id === "basis")!;
+    expect(basis.mayBeBlank).toBe(true);
+    expect(mixed.map((row) => renderHistoryCell(row, basis).text)).toEqual([MISSING_VALUE, "adj", "adj"]);
+  });
 
   test("mark the press release's EPS and sales quieter, as EVTS does", () => {
     expect(draw(0, "epsActual")).toEqual({ text: "1.16", color: colors.textMuted });

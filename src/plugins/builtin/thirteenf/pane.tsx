@@ -178,7 +178,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   const columns = useMemo(() => {
     if (browserMode !== "performance") return buildBrowserColumns(false);
     const history = rows[0]?.priorReturns ?? [];
-    return [...buildBrowserColumns().filter(column => !["rows", "filed"].includes(column.id)), ...history.map((point, index) => ({ id: `return${index + 1}` as FundBrowserColumnId, label: point.quarter, width: 10, align: "right" as const }))];
+    return [...buildBrowserColumns().filter(column => !["rows", "filed"].includes(column.id)), ...history.map((point, index) => ({ id: `return${index + 1}` as FundBrowserColumnId, label: point.quarter, width: 10, align: "right" as const, omitWhenEmpty: true }))];
   }, [browserMode, rows]);
 
   useEffect(() => {

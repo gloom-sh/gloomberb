@@ -1,15 +1,18 @@
 import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
-import { setCloudApiFetchTransport } from "../../../api-client";
+import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import type { CpiBoardPayload } from "../../../api-client/cpi";
-import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
+import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { cpiBoardCache } from "./client";
 import fixture from "./board.fixture.json";
 import { CpiPane } from "./pane";
+import { cpiHeadless } from "./headless";
 
 const tui = createOpenTuiTestHarness();
 afterEach(() => { setCloudApiFetchTransport(null); cpiBoardCache.reset(); });
@@ -17,9 +20,9 @@ afterEach(() => { setCloudApiFetchTransport(null); cpiBoardCache.reset(); });
 const ALL_ITEMS_READ = "All items rose 0.6% in September and 3.7% over the year; core rose 0.3% and 2.6%.";
 const LONGEST_READ = "Education and communication moved the 0.6% rise by less than 0.01 points and is 5.0% of the basket.";
 
-async function mount(width: number, height: number, row?: string) {
+async function mount(width: number, height: number, row?: string, board = structuredClone(fixture) as unknown as CpiBoardPayload) {
   cpiBoardCache.attach(new MemoryPluginPersistence());
-  setCloudApiFetchTransport(async () => Response.json(structuredClone(fixture) as unknown as CpiBoardPayload));
+  setCloudApiFetchTransport(async () => Response.json(board));
   const id = "cpi:test";
   const state = createInitialState(createTestPaneConfig("/tmp/cpi-pane-test", { paneId: "cpi", instanceId: id, params: row ? { row } : undefined }));
   await act(async () => {
@@ -31,6 +34,25 @@ async function mount(width: number, height: number, row?: string) {
     );
   });
 }
+
+test("a release without annual contributions omits the column, and one contribution restores it", async () => {
+  const board = structuredClone(fixture) as unknown as CpiBoardPayload;
+  for (const row of board.rows) row.contributionYoy = null;
+  await mount(140, 36, undefined, board);
+  expect(await tui.waitForFrameToContain("COMPONENT")).not.toContain("Y/Y PTS");
+  await exportPaneTable("cpi:test", "cpi.csv");
+  expect(takeSavedTextFile()?.text).toContain("Y/Y Pts");
+  const report = await cpiHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient }));
+  expect(report.sections[0]?.columns?.some((column) => column.key === "contributionYear")).toBe(true);
+  expect(report.sections[0]?.rows?.every((row) => row.contributionYear === null)).toBe(true);
+  await tui.destroy();
+  cpiBoardCache.reset();
+  board.rows.find((row) => row.id === "core")!.contributionYoy = 0;
+  await mount(140, 36, undefined, board);
+  const frame = await tui.waitForFrameToContain("Y/Y PTS");
+  expect(frame).toContain("0.00");
+  expect(board.rows.find((row) => row.id === "food")!.contributionYoy).toBeNull();
+});
 
 /** The chart band's read: the rows under the axis line, up to the table's header. */
 function readUnderChart(frame: string): string {
