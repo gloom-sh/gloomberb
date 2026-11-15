@@ -2514,9 +2514,9 @@ A thesis is why you hold something, written so it can be checked: the instrument
 
 ## Changelog
 
-`CHG` lists Gloom's versions, one row per minor version (0.20, 0.19, ...), newest first, with the day of its latest update and how many updates it had. Enter opens a version: its highlights, each naming the update it shipped in, over a table of its updates. Enter on an update opens its full release notes, and Back returns one level at a time. After an update, the app opens on the new release's notes inside its version.
+`CHG` lists Gloom's versions, one row per minor version (0.20, 0.19, ...), newest first, with the day of its latest update and how many updates it had. Enter opens a version's table of updates. Enter on an update opens its full release notes, and Back returns one level at a time. After an update, the app opens on the new release's notes inside its version.
 
-A version's title and highlights come from [`CHANGELOG.md`](../CHANGELOG.md), edited by hand when a version ships. A version it does not cover yet takes its first update's title and the top highlight of each update.
+A version's title comes from [`CHANGELOG.md`](../CHANGELOG.md), edited by hand when a version ships. A version it does not cover yet takes its first update's title.
 
 ## Localized interface
 

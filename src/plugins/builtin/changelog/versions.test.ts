@@ -4,11 +4,9 @@ import type { ChangelogRelease } from "../../../updater/github-releases";
 import {
   DEFAULT_CHANGELOG_VERSION_SORT,
   groupChangelogVersions,
-  HIGHLIGHTS_MAX,
   nextChangelogVersionSort,
   parseVersionSummaries,
   sortChangelogVersions,
-  topHighlight,
   versionOfRelease,
 } from "./versions";
 
@@ -73,7 +71,7 @@ describe("parseVersionSummaries", () => {
     for (const [minor, summary] of summaries) {
       expect(summary.title, `## ${minor} has a title`).toBeTruthy();
       expect(summary.highlights.length, `## ${minor} has 3 to 5 highlights`).toBeGreaterThanOrEqual(3);
-      expect(summary.highlights.length).toBeLessThanOrEqual(HIGHLIGHTS_MAX);
+      expect(summary.highlights.length).toBeLessThanOrEqual(5);
       for (const highlight of summary.highlights) {
         expect(highlight.detail, `"${highlight.lead}" has a line after its claim`).not.toBe("");
         expect(highlight.versions.length, `"${highlight.lead}" names its updates`).toBeGreaterThan(0);
@@ -84,19 +82,19 @@ describe("parseVersionSummaries", () => {
 });
 
 describe("groupChangelogVersions", () => {
-  test("one version per minor, newest first, filling what a summary leaves out from its updates", () => {
+  test("one version per minor, newest first, titled by its summary or else by its first update", () => {
     const releases = [
-      release("v0.20.1", "## Highlights\n\n- **One.** More. (#2)", "2026-11-04T10:00:00Z"),
-      release("v0.20.0", "- **Zero.** More. (#1)", "2026-11-03T10:00:00Z"),
-      release("v0.19.0", "- Intel Macs have an install: `curl a | bash` works. Next. (#9)", "2026-10-28T10:00:00Z"),
-      release("v0.18.0", "No bullets at all.", "2026-10-19T10:00:00Z"),
+      release("v0.20.1", "", "2026-11-04T10:00:00Z"),
+      release("v0.20.0", "", "2026-11-03T10:00:00Z"),
+      release("v0.19.0", "", "2026-10-28T10:00:00Z"),
+      release("v0.18.0", "", "2026-10-19T10:00:00Z"),
     ];
-    const versions = groupChangelogVersions(releases, parseVersionSummaries("## 0.20\n"));
+    const versions = groupChangelogVersions(releases, parseVersionSummaries("## 0.20\n\n## 0.19: Titled\n"));
 
-    expect(versions.map((version) => [version.id, version.title, version.highlights.map((highlight) => highlight.lead), version.releases.length])).toEqual([
-      ["v0.20", "Title of v0.20.0", ["Zero.", "One."], 2],
-      ["v0.19", "Title of v0.19.0", ["Intel Macs have an install."], 1],
-      ["v0.18", "Title of v0.18.0", ["Title of v0.18.0"], 1],
+    expect(versions.map((version) => [version.id, version.title, version.releases.length])).toEqual([
+      ["v0.20", "Title of v0.20.0", 2],
+      ["v0.19", "Titled", 1],
+      ["v0.18", "Title of v0.18.0", 1],
     ]);
     expect(versions[0]).toMatchObject({ firstPublishedAt: "2026-11-03T10:00:00Z", lastPublishedAt: "2026-11-04T10:00:00Z" });
     expect(versionOfRelease(versions, "v0.20.0")?.id).toBe("v0.20");
@@ -118,19 +116,6 @@ describe("groupChangelogVersions", () => {
     // The pane opens on the same order, and a list cut short leaves out its lowest version.
     expect(sortChangelogVersions(versions, DEFAULT_CHANGELOG_VERSION_SORT).map((version) => version.id)).toEqual(["v0.20", "v0.19", "v0.10", "v0.9"]);
     expect(groupChangelogVersions([release("v0.19.7"), release("v0.20.0"), release("v0.19.6")], new Map(), { cut: true }).map((version) => version.id)).toEqual(["v0.20"]);
-  });
-
-  test("without a summary, takes the top claims of the newest five updates, in the order they shipped", () => {
-    const [version] = groupChangelogVersions(
-      Array.from({ length: 7 }, (_, index) => release(`v0.19.${6 - index}`, `- **Claim ${6 - index}.** More.`)),
-      new Map(),
-    );
-
-    expect(version?.highlights.map((highlight) => highlight.lead)).toEqual(["Claim 2.", "Claim 3.", "Claim 4.", "Claim 5.", "Claim 6."]);
-  });
-
-  test("a plain bullet's claim stops at its first sentence or colon, never inside code", () => {
-    expect(topHighlight(release("v0.13.1", "- Open `x.y` in your browser. Then more. (#3, #4)")).lead).toBe("Open `x.y` in your browser.");
   });
 });
 
