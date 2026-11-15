@@ -1,3 +1,4 @@
+import type { RowWindowOptions } from "../row-window";
 import { logFailure } from "../../utils/log-failure";
 import type { PaneInstanceConfig } from "../../types/config";
 import { CHART_COMPOSER_PANE_ID } from "../../types/config";
@@ -79,6 +80,11 @@ export interface ResolvedPaneFunction {
   optionSettings: Record<string, unknown>;
   capability: PaneFunctionCapability;
   options: NormalizedPaneFunctionOptions;
+  /**
+   * `--limit` and `--tail` of a report whose function takes no such option of its own: the rows the report keeps,
+   * as every command that prints a list keeps them (row-window).
+   */
+  rowWindow?: RowWindowOptions;
   /** `--section` of a report: the table `--csv` and `--ndjson` write, when the function has no `section` option of its own. */
   tableSection?: string | true;
 }
@@ -510,6 +516,8 @@ export async function resolvePaneFunction(
   resolutionSettings: {
     strictHeadlessOptions?: boolean;
     tableSection?: boolean;
+    /** `fn`: a `--limit` or `--tail` the function takes no option for picks the report's rows (`rowWindow`). */
+    rowWindow?: boolean;
     command?: "fn" | "shot";
     /** The plugins whose catalog series a name that opens nothing is pointed at. */
     seriesSources?: readonly SeriesSource[];
@@ -533,6 +541,14 @@ export async function resolvePaneFunction(
     throw new Error(`Template "${template?.id}" points at missing pane "${template?.paneId}".`);
   }
   const headless = getHeadlessPaneDefinition(template, pane);
+  // A report that reads a list for a pane that shows one ticker (FA, INS): a capture of the list is refused with
+  // both commands, rather than read as one ticker named by the whole list.
+  const asked = argumentSymbols(args.arg ?? "");
+  if (resolutionSettings.command === "shot" && headless?.argument.kind === "tickers" && template?.shortcut?.argKind === "ticker"
+    && !template.opensTickerList && asked.length > 1) {
+    const code = paneFunctionCode(template, pane, registry);
+    throw new Error(`${code}'s pane shows one ticker: gloom shot ${code} ${asked[0]}. Its report reads all ${asked.length} in one table: gloom fn ${code} ${asked.join(" ")}`);
+  }
   const createOptions = withTickerList(template, buildCreateOptions(template, args.arg), headless, args.arg, paneFunctionCode(template, pane, registry));
   const capability = getPaneFunctionCapability(template, pane);
   let tableSection: string | true | undefined;
@@ -554,6 +570,9 @@ export async function resolvePaneFunction(
     if (bank) throw new UnknownPaneFunctionError(args.target, bank.details, null, bank.message);
     throw new Error(noArgumentMessage(capability.options, token, args.arg, resolutionSettings.command ?? "fn"));
   }
+  // `--limit` and `--tail` are global options: a report whose function has none of its own keeps the rows they say.
+  const rowWindow = resolutionSettings.rowWindow ? reportRowWindow(capability, args.options) : null;
+  if (rowWindow) args = { ...args, options: rowWindow.options };
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {
     strict: args.requireBotSafe || capability.strictOptions === true || (!!headless && resolutionSettings.strictHeadlessOptions === true),
     code: token,
@@ -580,10 +599,34 @@ export async function resolvePaneFunction(
     optionSettings: settings,
     capability,
     options: normalizedOptions,
+    ...(rowWindow ? { rowWindow: rowWindow.window } : {}),
     ...(tableSection !== undefined ? { tableSection } : {}),
   };
   resolved.instance = await buildPaneInstance(resolved, context, args.arg, resolutionSettings.command ?? "fn");
   return resolved;
+}
+
+/**
+ * The `--limit` and `--tail` a function with no option of that name leaves to the report, taken out of its options;
+ * null when neither was given or the function reads both itself. A function with options of its own for them
+ * (DVD's `--limit`) checks and reads them there.
+ */
+function reportRowWindow(
+  capability: PaneFunctionCapability,
+  options: Record<string, string | true>,
+): { window: RowWindowOptions; options: Record<string, string | true> } | null {
+  const window: RowWindowOptions = {};
+  const rest = { ...options };
+  for (const key of ["limit", "tail"] as const) {
+    const value = options[key];
+    if (value === undefined || capabilityHasOption(capability, key)) continue;
+    const count = Number(value);
+    if (value === true || !Number.isInteger(count) || count < 1) throw new Error(`--${key} must be a positive integer.`);
+    window[key] = count;
+    delete rest[key];
+  }
+  if (window.limit != null && window.tail != null) throw new Error("--limit and --tail each pick rows; give one of them.");
+  return window.limit != null || window.tail != null ? { window, options: rest } : null;
 }
 
 /**

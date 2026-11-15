@@ -1268,3 +1268,30 @@ test("a date given to --range points to --from, the option that takes where bars
   expect(await refused("2026.8.1")).toContain("--from 2026-08-01");
   expect(await refused("2026/13/45")).toStartWith("Unknown range");
 });
+
+test("the text prints the newest exact volume at the hundred the rest of the column is served in; JSON and CSV keep it as served", async () => {
+  pinClosedSession();
+  // Visa's week to Fri 13 Nov 2026: earlier bars in round lots, Friday's the exact count.
+  const volumes = [5_901_200, 6_120_000, 6_764_700, 5_647_400, 4_516_500, 5_636_100, 5_210_300, 4_650_114];
+  const days = ["2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"];
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async () => createTestQuote({ symbol: "V", currency: "USD" }),
+      getPriceHistoryWithMetadata: async () => ({
+        resolution: "1d",
+        points: days.map((day, index) => ({ date: new Date(`${day}T00:00:00Z`), open: 420, high: 425, low: 419, close: 424, volume: volumes[index]! })),
+      }),
+    }),
+  });
+  await history.execute(["V", "--range", "1M"], cli.context);
+  const [{ result, options }] = cli.printed;
+  const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options);
+  expect(text).toMatch(/2026-11-12 .* 4,650,100/);
+  expect(text).not.toContain("4,650,114");
+  expect(text).toMatch(/2026-11-05 .* 6,764,700/);
+  const json = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, options));
+  expect((json.data as Array<{ date: string; volume: number }>).at(-1)).toMatchObject({ date: "2026-11-12", volume: 4_650_114 });
+  const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+  expect(csv.find((line) => line.startsWith("2026-11-12,"))!.split(",")[5]).toBe("4650114");
+});

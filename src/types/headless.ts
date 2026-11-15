@@ -241,6 +241,11 @@ export interface HeadlessPaneColumn {
    */
   exportAsShown?: boolean;
   /**
+   * A column the export gained after its others were set (RV's `Fwd P/E period`): CSV and NDJSON write it last,
+   * after the fixed columns and `retrieved_at`, so no column an earlier export had moves.
+   */
+  exportLast?: boolean;
+  /**
    * The text report prints the value on its own lines under the row instead
    * of in a column, for a footnote that belongs to that row; an empty value
    * prints nothing. Exports keep it as a column. `"line"`: one line cut to

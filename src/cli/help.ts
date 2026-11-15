@@ -48,6 +48,7 @@ const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["--csv", "Print rows as CSV under the columns the text shows; each row ends with what it is, its source, as_of and retrieved_at (when it was read), then any columns a report adds (a formula's leg contracts, a board's Group), and fn reports and fundamentals put each table under # section:. The closing source and note lines go to stderr, not into the rows or an --output file"],
   ["--ndjson", "Print one JSON object per table row"],
   ["--output <path>, --out <path>", "Write a --csv, --json or --ndjson export to this file in UTF-8, and print where it went (a redirect is UTF-16 in Windows PowerShell 5.1)"],
+  ["--decimal comma|dot", "Write a --csv export's numbers with a decimal comma (17,2), cells split by ;, for a spreadsheet in a decimal-comma locale; or a dot. gloom config set csvDecimal comma makes the comma the default. Text and JSON keep the dot"],
   ["--limit <n>", "Show at most n rows, the first n as printed"],
   ["--tail <n>", "Show the newest n rows of a dated series (history, fred, econ) in their printed order, or the last n of another list"],
   ["--refresh", "Fetch fresh data instead of reading the cache"],

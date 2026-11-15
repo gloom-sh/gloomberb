@@ -6,6 +6,18 @@ import { parseCliGlobalArgs } from "./options";
 import { inferCliErrorOptions } from "./errors";
 import { cliPlainEnabled, plainByDefault, setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
 
+describe("--decimal", () => {
+  test("names a CSV's decimal mark for one run, and is refused without --csv", () => {
+    expect(parseCliGlobalArgs(["fn", "RV", "V", "--csv", "--decimal", "comma"]).options.decimal).toBe("comma");
+    expect(parseCliGlobalArgs(["quote", "V", "--csv", "--decimal=dot"]).options.decimal).toBe("dot");
+    expect(parseCliGlobalArgs(["fn", "RV", "V", "--csv", "--decimal", "comma"]).args).toEqual(["fn", "RV", "V"]);
+    expect(() => parseCliGlobalArgs(["quote", "V", "--csv", "--decimal", "semicolon"])).toThrow("--decimal takes comma or dot");
+    // Text and JSON keep the dot: the flag says what it is for rather than doing nothing.
+    expect(() => parseCliGlobalArgs(["quote", "V", "--decimal", "comma"])).toThrow("--decimal sets the decimal mark of a CSV export: add --csv");
+    expect(() => parseCliGlobalArgs(["quote", "V", "--json", "--decimal", "comma"])).toThrow("add --csv");
+  });
+});
+
 describe("parseCliGlobalArgs", () => {
   test("extracts global output and execution flags anywhere before --", () => {
     const parsed = parseCliGlobalArgs([

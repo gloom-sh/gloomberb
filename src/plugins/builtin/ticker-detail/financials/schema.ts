@@ -1,8 +1,25 @@
-import { revenueMargin } from "../../../../utils/growth";
+import { revenueMargin, type Rate } from "../../../../utils/growth";
+import type { FinancialStatement } from "../../../../types/financials";
 import type { FinancialSubTab } from "./model";
+import { statementNopat } from "./nopat";
 
 /** A line over revenue: N/M where revenue is zero or negative. */
 const financialRatio = revenueMargin;
+
+/** What went out on a line kept as a negative number (capex, acquisitions), as a positive amount. */
+const spent = (value: number | undefined): number | undefined => (typeof value === "number" && Number.isFinite(value) ? Math.abs(value) : undefined);
+
+/**
+ * The share of after-tax operating profit put back into the business: capex and acquisitions less D&A, over NOPAT
+ * (statementNopat). Acquisitions count where the statement reports them; N/M over NOPAT at or below zero.
+ */
+function reinvestmentRate(statement: FinancialStatement): Rate | undefined {
+  const capex = spent(statement.capitalExpenditure);
+  const depreciation = statement.depreciationAndAmortization ?? statement.depreciationAmortizationDepletion;
+  const nopat = statementNopat(statement);
+  if (capex === undefined || typeof depreciation !== "number" || !Number.isFinite(depreciation) || nopat === undefined) return undefined;
+  return financialRatio(capex + (spent(statement.purchaseOfBusiness) ?? 0) - depreciation, nopat);
+}
 
 const LOWER_IS_BETTER = "lower" as const;
 const NEUTRAL_GROWTH = "neutral" as const;
@@ -130,9 +147,23 @@ export const FINANCIAL_SUB_TABS: FinancialSubTab[] = [
         label: "Free Cash Flow",
         summaryKey: "freeCashFlow",
         defaultExpanded: true,
+        // Operating cash flow is the Operating group's own line below; a row here would repeat it.
         children: [
-          { label: "Operating CF", key: "operatingCashFlow", format: "compact" },
           { label: "CapEx", key: "capitalExpenditure", format: "compact", outflow: true },
+          {
+            label: "CapEx / Revenue",
+            id: "capex-revenue",
+            compute: (statement) => financialRatio(spent(statement.capitalExpenditure), statement.totalRevenue),
+            format: "percent",
+            growthDirection: NEUTRAL_GROWTH,
+          },
+          {
+            label: "Reinvestment Rate",
+            id: "reinvestment-rate",
+            compute: reinvestmentRate,
+            format: "percent",
+            growthDirection: NEUTRAL_GROWTH,
+          },
         ],
       },
       {

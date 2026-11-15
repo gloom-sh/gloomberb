@@ -244,14 +244,26 @@ export function runDirectCommandAction(options: {
       return;
     case "export-config": {
       const exportPath = getDefaultConfigBackupPath();
-      void exportConfig(state.config, exportPath)
-        .then(() => {
-          notify(`Config exported to ${exportPath}`, { type: "success" });
-          closeAll({ revertThemePreview: false });
-        })
-        .catch((error) => {
-          notify(error instanceof Error ? error.message : "Export failed.", { type: "error" });
-        });
+      // A file written to the home folder, over any copy there, says where before it is written: `config` and Enter
+      // once wrote it without a word.
+      openInlineConfirm({
+        confirmId: "export-config",
+        title: "Export Config",
+        body: [
+          `This saves your layouts, portfolios, watchlists, settings and recent commands to ${exportPath}, replacing any copy there.`,
+        ],
+        confirmLabel: "Export",
+        cancelLabel: "Back",
+        onConfirm: async () => {
+          try {
+            await exportConfig(getState().config, exportPath);
+            notify(`Config exported to ${exportPath}`, { type: "success" });
+            closeAll({ revertThemePreview: false });
+          } catch (error) {
+            notify(error instanceof Error ? error.message : "Export failed.", { type: "error" });
+          }
+        },
+      });
       return;
     }
     case "import-config": {

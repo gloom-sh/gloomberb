@@ -14,6 +14,7 @@ import { createCloudSourceDeps } from "./sources";
 import { historyStartNotice, sinceLabel } from "../shared/history-span";
 import { formatSigma } from "../shared/trend";
 import {
+  readingPeriodEnd,
   selectValuationViews,
   type IndicatorViewModel,
   type ValuationBundle,
@@ -45,14 +46,14 @@ function detailEntries(view: IndicatorViewModel): HeadlessPaneEntry[] {
     {
       label: sinceLabel("High", view.historyStart),
       value: { value: view.allTimeHigh.ratio, date: view.allTimeHigh.date },
-      formatted: `${format(view.allTimeHigh.ratio)} ${view.allTimeHigh.date}`,
+      formatted: `${format(view.allTimeHigh.ratio)} ${readingPeriodEnd(view.allTimeHigh.date, view.periodicity)}`,
     },
     {
       label: sinceLabel("Low", view.historyStart),
       value: { value: view.allTimeLow.ratio, date: view.allTimeLow.date },
-      formatted: `${format(view.allTimeLow.ratio)} ${view.allTimeLow.date}`,
+      formatted: `${format(view.allTimeLow.ratio)} ${readingPeriodEnd(view.allTimeLow.date, view.periodicity)}`,
     },
-    { label: "As of", value: view.asOf },
+    { label: "As of", value: view.asOf, formatted: readingPeriodEnd(view.asOf, view.periodicity) },
   ];
 }
 
@@ -113,7 +114,9 @@ function projectValuationHeadlessBundle(
             align: "right",
             format: (value) => formatSigma(value == null ? null : Number(value)),
           },
-          { key: "asOf", header: "As of" },
+          // The day the reading's period ends, as FA dates its columns; the row keeps the period's first day.
+          { key: "asOf", header: "As of", format: (value, row) => typeof value === "string"
+            ? readingPeriodEnd(value, row.periodicity as IndicatorViewModel["periodicity"] | undefined) : MISSING_VALUE },
         ],
         rows,
       },
@@ -122,6 +125,10 @@ function projectValuationHeadlessBundle(
         : []),
     ],
     errors: bundle.errors,
+    // The status line counts the stale readings; each is named here, with the period it is of.
+    ...(rows.some((row) => row.stale) ? {
+      notes: rows.filter((row) => row.stale).map((row) => `${row.indicator} is stale: its latest reading is as of ${readingPeriodEnd(row.asOf, row.periodicity)}, older than its release schedule allows.`),
+    } : {}),
     metadata: {
       fetchedAt: bundle.fetchedAt,
       sources: bundle.sources,

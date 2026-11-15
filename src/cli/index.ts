@@ -28,6 +28,7 @@ import { CLI_EXIT_CODES } from "./exit-codes";
 import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
 import { cliStyles, setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
 import { setDisplayTimeZone } from "../utils/utc-time";
+import { setCsvDecimal } from "../utils/csv";
 import { collectSavedCopies } from "../data/saved-copies";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
 import { ticker } from "./commands/ticker";
@@ -398,6 +399,8 @@ async function createRegistry(options: DispatchCliOptions = {}): Promise<CliComm
   const config = await loadCliConfigIfAvailable();
   // Every time a command prints follows the reader's zone from here on.
   setDisplayTimeZone(config?.timezone);
+  // Every CSV is written with the reader's decimal mark from here on; --decimal decides for one run.
+  setCsvDecimal(config?.csvDecimal);
   let registry: CliCommandRegistry | null = null;
   const coreCommands = createCoreCliCommands(
     () => listedCommands(registry!).map(({ command, source }) => ({ command, source })),
@@ -435,6 +438,7 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   }
 
   const registry = await createRegistry(options);
+  if (parsed.options.decimal) setCsvDecimal(parsed.options.decimal);
   const token = normalizeCliCommandToken(foldTypedText(command));
   let resolved = registry.lookup.get(token);
   if (!resolved) {

@@ -215,7 +215,8 @@ function rawArgumentFor(manifest: ClientToolManifest, args: Record<string, JsonV
     }
     case "tickers":
     case "symbol-list": {
-      const symbols = args.symbols;
+      // One ticker as `symbol`, as a call to a function that took one (FA before it read several) names it.
+      const symbols = args.symbols ?? (typeof args.symbol === "string" ? [args.symbol] : undefined);
       if (symbols == null && manifest.argument.optional) return "";
       if (!Array.isArray(symbols) || !symbols.every((symbol) => typeof symbol === "string")) {
         throw new Error(`${manifest.name} requires a symbols array.`);

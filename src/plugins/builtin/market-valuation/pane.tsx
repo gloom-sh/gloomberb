@@ -20,6 +20,7 @@ import { INDICATORS } from "./indicators";
 import { RANGE_OPTIONS, VALUATION_DEFAULTS } from "./settings";
 import { formatSigma } from "../shared/trend";
 import {
+  readingPeriodEnd,
   selectValuationViews,
   type IndicatorViewModel
 } from "./view";
@@ -148,7 +149,8 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const footerInfo = useMemo<PaneFooterSegment[]>(() => {
     if (!selectedView) return [];
     const info: PaneFooterSegment[] = [
-      { id: "as-of", parts: [{ text: `as of ${selectedView.asOf}`, tone: "muted" }] },
+      // The day the reading's period ends, as FA dates a period.
+      { id: "as-of", parts: [{ text: `as of ${readingPeriodEnd(selectedView.asOf, selectedView.periodicity)}`, tone: "muted" }] },
       ...(width >= 80 ? [DELAYED_SEGMENT] : []),
     ];
     if (selectedView.observationStale) {

@@ -201,6 +201,9 @@ export async function buildDesktopShotPayload(
   if (isFinancialAnalysisFunction(resolved) && !initialPaneState.activeTabId) {
     initialPaneState.activeTabId = "financials";
   }
+  // A capture of a ratio tab shows each ratio's inputs (NOPAT, invested capital), as the report lists them; the
+  // pane opens them collapsed for a reader who opens the one they want.
+  if (shotRatioTab(resolved)) initialPaneState.financialRatiosExpanded = true;
   // The pane opens on what the report found (13F: the fund a name resolved to, on its view's tab).
   const opened = resolved.headless?.shotState
     ? await resolved.headless.shotState(

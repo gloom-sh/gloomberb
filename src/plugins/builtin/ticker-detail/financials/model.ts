@@ -10,7 +10,6 @@ import {
   displayWidth,
   formatGrowthShort,
   formatNumber,
-  formatWithDivisor,
   padTo,
   pickUnit,
 } from "../../../../utils/format";
@@ -283,7 +282,20 @@ function formatFinancialValue(
   if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   if (row.format === "eps") return formatPerShareNumber(value);
   if (row.format === "percent") return `${formatNumber(value * 100, 1)}%`;
-  return formatWithDivisor(value, row.divisor);
+  return formatFinancialAmount(value, row.divisor);
+}
+
+/**
+ * An amount in the table's one unit, to about three significant figures: `23.73` and `1,265.6`, a line a
+ * thousandth of the others as `0.001` rather than `0.00`, so no row needs a unit of its own.
+ */
+export function formatFinancialAmount(value: number, divisor: number): string {
+  const scaled = value / divisor;
+  const magnitude = Math.abs(scaled);
+  if (magnitude >= 100) return formatNumber(scaled, 1);
+  if (magnitude >= 1 || scaled === 0) return scaled.toFixed(2);
+  if (magnitude >= 0.001) return scaled.toFixed(3);
+  return Number(scaled.toPrecision(2)).toString();
 }
 
 /**
@@ -300,9 +312,11 @@ export function formatFinancialHeader(date: string, currency?: string, dateSourc
 }
 
 /**
- * A report column's header (`gloom fn FA`): `formatFinancialHeader`, with a
- * half in the quarterly list named as one (`H1 FY26 2026-06-30`, or
- * `6M 2026-06-30` off the fiscal calendar), and a column Gloom Cloud filled
+ * A report column's header (`gloom fn FA`): the fiscal period as the pane's
+ * column names it and the day it ends (`FY2026 2026-09-30 USD bn (SEC
+ * date)`, `TTM Q3 FY26 2026-09-30 USD`), with a half in the quarterly list
+ * named as one (`H1 FY26 2026-06-30`, or `6M 2026-06-30` off the fiscal
+ * calendar), and a column Gloom Cloud filled
  * from the company's results announcements dated by them alone (fillDate):
  * `(announced 2026-08-20)` for its own results, `(comparative in the
  * 2026-08-20 announcement)` for a later period's comparative column. `rows`
@@ -316,11 +330,17 @@ export function financialReportHeader(
   rows: readonly FinancialStatement[] = [],
 ): string {
   const { date, dateSource } = statement;
-  if (date === "TTM") return formatFinancialHeader(date, currency, dateSource, false, statement.aggregation?.periodEnd).trim();
+  // The fiscal period as the pane names it (`FY2026`, `Q3 FY26`, `TTM Q3 FY26`), then the day it ends.
+  const named = (name: string, end: string) => (name.endsWith(end) ? name : `${name} ${end}`);
+  if (date === "TTM") {
+    const end = statement.aggregation?.periodEnd;
+    const period = end ? named(financialColumnLabel(statement, kind, yearEndMonth), end) : "TTM";
+    return currency ? `${period} ${currency}` : period;
+  }
   const end = date.slice(0, 10);
   const months = kind === "quarterly" ? statementPeriodMonths(statement) : undefined;
   const longer = months && months > 3 ? longerPeriodLabel(end, months, yearEndMonth) : null;
-  const period = !longer ? end : longer.endsWith(end) ? longer : `${longer} ${end}`;
+  const period = named(longer ?? financialColumnLabel(statement, kind, yearEndMonth), end);
   const filled = statement.filledFrom?.source === "results" ? fillDate(statement, rows) : null;
   const source = filled ? fillDateText(filled) : dateSource === "sec" ? "SEC date" : "provider date";
   return `${currency ? `${period} ${currency}` : period} (${source})`;
@@ -501,9 +521,11 @@ function resolveMetricUnit(
 }
 
 /**
- * The money unit most rows share (`bn`), said once beside the currency. Rows
- * in that unit drop their `(bn)`, and money rows too small for any unit are
- * shown in it; rows in another unit, and share counts, keep theirs.
+ * The money unit of the whole table (`bn`), said once beside the currency:
+ * the unit most rows would take on their own. Every money row is shown in it,
+ * a smaller line to more decimals (formatFinancialAmount), so a column copied
+ * out of the table is in one unit and no row carries a `(mn)` of its own.
+ * Share counts are no money and keep theirs.
  */
 export function shareFinancialUnit<T extends { unitLabel: string; label: string; moneyUnit: string | null; divisor: number }>(
   rows: readonly T[],
@@ -513,11 +535,7 @@ export function shareFinancialUnit<T extends { unitLabel: string; label: string;
   const unit = [...counts].sort((left, right) => right[1] - left[1])[0]?.[0];
   if (!unit) return { rows: [...rows], unit: undefined };
   return {
-    rows: rows.map((row) => {
-      if (row.moneyUnit === unit) return { ...row, unitLabel: row.label };
-      if (row.moneyUnit === "") return { ...row, unitLabel: row.label, moneyUnit: unit, divisor: UNIT_DIVISORS[unit]! };
-      return row;
-    }),
+    rows: rows.map((row) => row.moneyUnit == null ? row : { ...row, unitLabel: row.label, moneyUnit: unit, divisor: UNIT_DIVISORS[unit]! }),
     unit,
   };
 }
@@ -527,6 +545,8 @@ export function buildFinancialRows(
   statements: FinancialStatement[],
   collapsedGroups: ReadonlySet<string>,
   depth = 0,
+  /** The lines the table already shows, above this one: a line equal to one of them is left out. */
+  shown: Array<Pick<MetricDef, "key" | "compute" | "format">> = [],
 ): FinancialTableRow[] {
   const rows: FinancialTableRow[] = [];
 
@@ -534,6 +554,11 @@ export function buildFinancialRows(
     if (!hasFinancialRowValue(def, statements)) continue;
 
     if (!isFinancialGroup(def)) {
+      // The same amount under another name further down (CapEx, then Purchase PPE) is shown once, where it is
+      // reported in every period the line above is; a line that differs in any period stays.
+      if (shown.some((line) => line.format === (def.format ?? "compact") && (line.key !== def.key || line.compute !== def.compute)
+        && repeatsLine(def, line, statements))) continue;
+      shown.push({ key: def.key, compute: def.compute, format: def.format ?? "compact" });
       const { unitLabel, moneyUnit, divisor, format } = resolveMetricUnit(statements, def, def.label);
       rows.push({
         kind: "metric",
@@ -561,6 +586,7 @@ export function buildFinancialRows(
       ? resolveMetricUnit(statements, { key: def.summaryKey, format: def.format ?? "compact" }, def.label)
       : { unitLabel: def.label, moneyUnit: null, divisor: 1, format: def.format ?? "compact" };
 
+    if (def.summaryKey) shown.push({ key: def.summaryKey, format: def.format ?? "compact" });
     rows.push({
       kind: "group",
       id: def.id,
@@ -577,7 +603,7 @@ export function buildFinancialRows(
     });
 
     if (expanded) {
-      rows.push(...buildFinancialRows(children, statements, collapsedGroups, depth + 1));
+      rows.push(...buildFinancialRows(children, statements, collapsedGroups, depth + 1, shown));
     }
   }
 
@@ -618,6 +644,12 @@ interface FinancialTableModelRow {
   summaryKey?: keyof FinancialStatement;
   label: string;
   unitLabel: string;
+  /** How the row's figures read: money or a share count (`compact`), per-share earnings, or a percent of a fraction. */
+  format: FinancialMetricFormat;
+  /** What a `compact` figure is divided by to read in the row's unit (1e9 for `bn`). */
+  divisor: number;
+  /** The money unit word the figures are in (`bn`); null for share counts, per-share figures and percents. */
+  moneyUnit: string | null;
   depth: number;
   growthDirection: FinancialGrowthDirection;
   cells: FinancialTableCellModel[];
@@ -783,6 +815,9 @@ export function buildFinancialTableModel(
       summaryKey: row.kind === "group" ? row.summaryKey : undefined,
       label: row.label,
       unitLabel: row.unitLabel,
+      format: row.format,
+      divisor: row.divisor,
+      moneyUnit: row.moneyUnit,
       depth: row.depth,
       growthDirection: row.growthDirection,
       cells,

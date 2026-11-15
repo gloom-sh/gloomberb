@@ -55,6 +55,7 @@ import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
 import { resumeStateKey } from "../../plugins/registry/plugin-state";
 import { logFailure } from "../../utils/log-failure";
+import { windowRows, type RowWindow, type RowWindowOptions } from "../row-window";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -539,7 +540,11 @@ function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (unit === "%" || unit === "pp") return value.toFixed(2);
   if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
   if (unit === "score") return value.toFixed(1);
-  return displayNumber(value);
+  // A count or amount of five digits or more groups its thousands as every other table does (27,256,037 shares).
+  const plain = displayNumber(value);
+  const [whole, fraction] = plain.split(".");
+  return Math.abs(value) >= 10_000 && /^-?\d+(?:\.\d+)?$/.test(plain)
+    ? `${whole!.replace(/\B(?=(\d{3})+$)/g, ",")}${fraction ? `.${fraction}` : ""}` : plain;
 }
 
 function renderRows(
@@ -1100,6 +1105,62 @@ function withUnreached(
   return nothingServed && unreached ? { ...freshness, unreached: true } : freshness;
 }
 
+/** What a cut says: which rows of how many it kept, and of which table when the report has several. */
+function cutNote(window: RowWindowOptions, cut: RowWindow<unknown>, table?: string): string | null {
+  if (cut.rows.length >= cut.total) return null;
+  const kept = `${window.tail != null ? (cut.kept === "newest" ? "newest" : "last") : "first"} ${cut.rows.length} of ${cut.total} rows`;
+  return `${table ? `${table}: ` : ""}${cut.note ?? `${kept} (--${window.tail != null ? "tail" : "limit"} ${window.tail ?? window.limit})`}`;
+}
+
+/**
+ * The report's rows as `--limit` and `--tail` keep them, for a function with no option of its own for them
+ * (`fn CTM CL --limit 3`): the first or last n of each table, of a series' points the oldest or newest n, as every
+ * command that prints a list keeps them; the notes say what was cut.
+ */
+function windowHeadlessResult(shape: HeadlessPaneDefinition["shape"], result: HeadlessPaneResult, window: RowWindowOptions): HeadlessPaneResult {
+  const notes: string[] = [];
+  const cut = <Row,>(rows: readonly Row[], table?: string, dateOf?: (row: Row) => unknown): Row[] => {
+    const kept = windowRows(rows, window, dateOf);
+    const note = cutNote(window, kept, table);
+    if (note) notes.push(note);
+    return kept.rows;
+  };
+  const quiet = <Row,>(rows: readonly Row[] | undefined) => rows ? windowRows(rows, window).rows : undefined;
+  let windowed: HeadlessPaneResult;
+  switch (shape) {
+    case "rows": {
+      const rows = result as HeadlessRowsResult;
+      windowed = { ...rows, rows: cut(rows.rows), ...(rows.textRows ? { textRows: quiet(rows.textRows)! } : {}) };
+      break;
+    }
+    case "bundle": {
+      const bundle = result as HeadlessBundleResult;
+      const several = bundle.sections.filter((section) => section.rows).length > 1;
+      windowed = { ...bundle, sections: bundle.sections.map((section) => !section.rows ? section : {
+        ...section, rows: cut(section.rows, several ? section.title : undefined), ...(section.textRows ? { textRows: quiet(section.textRows)! } : {}),
+      }) };
+      break;
+    }
+    case "series": {
+      const series = result as HeadlessSeriesResult;
+      windowed = { ...series, series: series.series.map((entry) => ({
+        ...entry, points: cut(entry.points, series.series.length > 1 ? entry.label : undefined, (point) => point.date),
+      })) };
+      break;
+    }
+    case "snapshot": {
+      const snapshot = result as HeadlessSnapshotResult;
+      windowed = { ...snapshot, items: cut(snapshot.items) };
+      break;
+    }
+    default: {
+      const _exhaustive: never = shape;
+      return _exhaustive;
+    }
+  }
+  return notes.length > 0 ? { ...windowed, notes: [...windowed.notes ?? [], ...notes] } : windowed;
+}
+
 export async function buildHeadlessFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
@@ -1108,6 +1169,7 @@ export async function buildHeadlessFunctionReport(
   let loaded: LoadedHeadlessPaneModel;
   try {
     loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument);
+    if (resolved.rowWindow) loaded = { ...loaded, result: windowHeadlessResult(loaded.definition.shape, loaded.result, resolved.rowWindow) };
   } catch (error) {
     // A Pro pane the server refused reports what its wall covers, as its rendered view does.
     const locked = await lockedHeadlessReport(resolved, error, () => (

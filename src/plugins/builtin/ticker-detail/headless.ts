@@ -5,7 +5,9 @@ import {
 import { canonicalExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import { quoteMonitorColumns, quoteMonitorRow, QUOTE_MONITOR_BASE_COLUMNS, QUOTE_MONITOR_ROW_KEYS } from "./quote-monitor/rows";
-import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionValues } from "../../../types/headless";
+import type {
+  HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionValues, HeadlessRowsResult,
+} from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { formatPriceObservation, penceFigure, quoteFormatOptions } from "../../../market-data/market/format";
@@ -15,8 +17,8 @@ import {
 } from "../../../utils/price-history-integrity";
 import { indexBarVolume } from "../../../market-data/market/index-level";
 import {
-  buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
-  financialReportHeader, financialStatementPeriods, financialSubTabFields, isPerShareFinancialRow, receiptShareCountLabel,
+  buildFinancialTableModel, financialColumnLabel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
+  financialReportHeader, financialStatementPeriods, financialSubTabFields, formatFinancialAmount, isPerShareFinancialRow, receiptShareCountLabel,
 } from "./financials/model";
 import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import type { FinancialStatement } from "../../../types/financials";
@@ -25,7 +27,8 @@ import { paneSchemas } from "./headless-schema";
 import { loadPeriodEndHistory } from "./financials/period-end-history";
 import { loadExchangeResultsNotes } from "./financials/exchange-results";
 import { latestBalanceSheetDate, loadOfferingNote } from "./financials/offerings";
-import { reportsShortTermTotal, runwayMethod } from "../../../utils/cash-runway";
+import { formatRunwayMonths, reportsShortTermTotal, runwayMethod } from "../../../utils/cash-runway";
+import { formatPerShareNumber } from "../../../utils/reported-money";
 import { logFailure } from "../../../utils/log-failure";
 import {
   RATIO_GAP_TEXT,
@@ -108,12 +111,189 @@ function pastWindowFreshness(window: PriceWindow, size: HistoryBarSize, observed
 export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["financial-analysis-pane"],
   shape: "rows",
-  // Dated by the latest reported period; earlier periods are the statement's history.
-  freshness: { ...REPORTED_DATA, basis: "financial statements", observedKey: "date", oldest: null },
-  description: "Annual or quarterly financial statement rows for one ticker: the income statement, balance sheet, cash flow, or a ratio table.",
-  describe: ({ symbols, options }) => `Financial Statements | ${symbols[0]} | ${options.period} | ${options.statement}`,
+  // Dated by the latest reported period (each row's `periodEnd`); earlier periods are the statement's history.
+  freshness: { ...REPORTED_DATA, basis: "financial statements", observedKey: "periodEnd", oldest: null, retrievedToo: true },
+  description: "Annual or quarterly financial statement rows for one ticker, or several in one long table: the income statement, balance sheet, cash flow, or a ratio table.",
+  describe: ({ symbols, options }) => `Financial Statements | ${symbols.join(", ")} | ${options.period} | ${options.statement}`,
   async load({ symbols, options }, ctx) {
-    const symbol = symbols[0]!;
+    if (financialReportLayout(symbols, options) === "long") return loadLongFinancialReport(symbols, options, ctx);
+    return loadFinancialReport(symbols[0]!, options, ctx);
+  },
+};
+
+/**
+ * Wide, one column per period, for one ticker; long, a row per ticker, period and metric, for several or when
+ * `--layout long` asks for it. Several tickers have no shared columns, so they are never laid out wide.
+ */
+function financialReportLayout(symbols: readonly string[], options: HeadlessPaneOptionValues): "wide" | "long" {
+  if (options.layout === "wide" && symbols.length > 1) {
+    throw new Error(`--layout wide is one ticker's periods as columns; ${symbols.length} tickers have no shared columns. Leave --layout out for one long table, or run FA once per ticker.`);
+  }
+  return options.layout === "long" || symbols.length > 1 ? "long" : "wide";
+}
+
+/** How a figure of an FA row reads: the kind of number it is, which names its unit and draws it. */
+type FigureFormat = "money" | "count" | "perShare" | "percent" | "multiple" | "days" | "months";
+
+const DIVISOR_WORDS: Record<number, string> = { 1e3: "k", 1e6: "mn", 1e9: "bn", 1e12: "tn" };
+
+/** The unit a figure of this kind is in, as exports name it in `currency_or_unit`: `USD bn`, `%`, `USD per share`, `bn shares`. */
+function figureUnit(format: FigureFormat, currency: string | null, divisor: number, shares = "shares"): string {
+  const scale = DIVISOR_WORDS[divisor] ?? "";
+  switch (format) {
+    case "money": return [currency, scale].filter(Boolean).join(" ");
+    case "count": return [scale, shares].filter(Boolean).join(" ");
+    case "perShare": return currency ? `${currency} per ${shares === "shares" ? "share" : "ADR"}` : "per share";
+    case "percent": return "%";
+    case "multiple": return "x";
+    case "days": return "days";
+    case "months": return "months";
+  }
+}
+
+/** A figure as FA's table draws it, from the row's kind and unit: what the text prints and an export reads the scale of. */
+function drawFigure(format: FigureFormat, value: number, divisor: number, ratio = false): string {
+  if (format === "percent") return ratio ? formatRatioValue("percent", value) : `${formatNumber(value * 100, 1)}%`;
+  if (format === "perShare") return formatPerShareNumber(value);
+  if (format === "money" || format === "count") return ratio ? formatRatioInput("money", value, divisor) : formatFinancialAmount(value, divisor);
+  return format === "days" && !ratio ? formatNumber(value, 1) : formatRatioValue(format, value);
+}
+
+/** A statement row's kind of figure. */
+function statementFigure(row: { format: "compact" | "eps" | "percent"; moneyUnit: string | null }): FigureFormat {
+  return row.format === "percent" ? "percent" : row.format === "eps" ? "perShare" : row.moneyUnit == null ? "count" : "money";
+}
+
+/**
+ * A period column of a wide FA table: the cell as the table drew it, its growth beside it in text. The figure is
+ * drawn from the value it is handed, so an export reads its scale, and a reason drawn in place of a missing one
+ * (`needs prior period`, `N/M`) goes to the `status` column rather than into a column of numbers.
+ */
+function financialPeriodColumn(date: string, header: string, index: number, withGrowth: boolean): HeadlessPaneColumn {
+  type Cell = { formatted: string; growthFormatted?: string };
+  const cellOf = (row: Record<string, unknown>) => (row.cells as Cell[] | undefined)?.[index];
+  const draw = (value: unknown, row: Record<string, unknown>) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return cellOf(row)?.formatted ?? MISSING_VALUE;
+    const format = row.figure as FigureFormat | undefined;
+    return format ? drawFigure(format, value, Number(row.divisor) || 1, row.kind === "ratio" || row.kind === "input") : value.toFixed(2);
+  };
+  return {
+    key: date, header, align: "right",
+    // Exports write the amount alone, every digit; its growth (or N/M) is in the JSON and on the text table.
+    format: draw,
+    ...withGrowth ? {
+      textFormat: (value: unknown, row: Record<string, unknown>) => [draw(value, row), cellOf(row)?.growthFormatted].filter(Boolean).join(" "),
+    } : {},
+  };
+}
+
+/** The newest period end of a table's columns, which dates every row of it. */
+function newestPeriodEnd(columns: ReadonlyArray<{ periodEnd: string }>): string | null {
+  return columns.map(({ periodEnd }) => periodEnd).filter(Boolean).sort().at(-1) ?? null;
+}
+
+/** A figure of the long layout as the text prints it: the number in the row's unit, which the Unit column names. */
+function drawLongFigure(format: FigureFormat, value: number, divisor: number): string {
+  switch (format) {
+    case "percent": return formatNumber(value * 100, 1);
+    case "money": case "count": return formatFinancialAmount(value, divisor);
+    case "perShare": return formatPerShareNumber(value);
+    case "multiple": return formatNumber(value, Math.abs(value) < 10 ? 2 : 1);
+    case "days": return formatNumber(value, 1);
+    case "months": return formatRunwayMonths(value, "");
+  }
+}
+
+/** The figure in its long-layout unit: a percent as percent, money and share counts in their unit, the rest as they are. */
+function longFigureValue(format: FigureFormat, value: number, divisor: number): number {
+  return format === "percent" ? value * 100 : format === "money" || format === "count" ? value / divisor : value;
+}
+
+const mostCommon = (values: readonly number[]): number | undefined => {
+  const counts = new Map<number, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return [...counts].sort((left, right) => right[1] - left[1] || right[0] - left[0])[0]?.[0];
+};
+
+/**
+ * Text columns of the long layout. The export keeps Ticker to Value: each row's unit is its `currency_or_unit`,
+ * its period end its `as_of`, and a reason a figure is missing its `status`.
+ */
+const LONG_FINANCIAL_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "ticker", header: "Ticker" },
+  { key: "period", header: "Period" },
+  { key: "periodEnd", header: "Period End" },
+  { key: "metric", header: "Metric" },
+  { key: "value", header: "Value", align: "right", unitKey: "unit",
+    format: (value, row) => typeof value === "number" && Number.isFinite(value) ? String(row.formatted) : String(row.gap ?? MISSING_VALUE) },
+];
+
+/**
+ * FA for several tickers, or one with `--layout long`: a row per ticker, fiscal period and metric (Ticker, Period,
+ * Period End, Metric, Value, Unit), each ticker's table as `fn FA <ticker>` reads it. Money is in the one unit most
+ * of the tables' money rows take, so a figure pasted beside another ticker's needs no conversion; a ratio's input
+ * that several ratios share (Net Income under ROE, ROA and Net Margin) is one row.
+ */
+async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneOptionValues, ctx: HeadlessPaneContext): Promise<HeadlessRowsResult> {
+  const loaded = await loadHeadlessSymbols(symbols, ctx, (symbol) => loadFinancialReport(symbol, options, ctx));
+  type WideRow = { kind: string; label: string; figure: FigureFormat; divisor: number;
+    cells: Array<{ value: number | null; formatted: string; gap?: string | null }> };
+  type WideColumn = { period: string; periodEnd: string; currency: string | null };
+  const tables = loaded.entries.map(({ symbol, data }) => ({
+    symbol, data, rows: data.rows as unknown as WideRow[], columns: (data.metadata?.columns ?? []) as WideColumn[],
+  }));
+  const divisor = mostCommon(tables.flatMap(({ rows }) => rows.filter((row) => row.figure === "money").map((row) => row.divisor))) ?? 1;
+  const rows = tables.flatMap(({ symbol, rows: wide, columns }) => {
+    const said = new Set<string>();
+    return wide.flatMap((row) => {
+      // An input is named without the operator that joins it to its ratio, and once.
+      const metric = row.kind === "input" ? row.label.replace(/^[÷+−-]\s*/, "") : row.label;
+      if (said.has(metric)) return [];
+      said.add(metric);
+      const rowDivisor = row.figure === "money" ? divisor : row.divisor;
+      return columns.map((column, index) => {
+        const cell = row.cells[index];
+        const value = typeof cell?.value === "number" && Number.isFinite(cell.value) ? cell.value : null;
+        return {
+          ticker: symbol, period: column.period, periodEnd: column.periodEnd, metric,
+          value: value == null ? null : longFigureValue(row.figure, value, rowDivisor),
+          unit: figureUnit(row.figure, column.currency, rowDivisor),
+          formatted: value == null ? null : drawLongFigure(row.figure, value, rowDivisor),
+          gap: value == null ? cell?.gap ?? (cell?.formatted && cell.formatted !== MISSING_VALUE ? cell.formatted : null) : null,
+        };
+      });
+    });
+  });
+  // A note every table makes is said once; one only some make names the ticker. The headers' date sources are
+  // not in this layout's columns, so neither is what they mean.
+  const kept = (note: string) => note !== SEC_DATE_NOTE && note !== PROVIDER_DATE_NOTE;
+  for (const table of tables) table.data = { ...table.data, notes: (table.data.notes ?? []).filter(kept) };
+  const notes = tables.flatMap(({ data }) => data.notes ?? []);
+  const shared = (note: string) => tables.every(({ data }) => (data.notes ?? []).includes(note));
+  const ownNotes = tables.flatMap(({ symbol, data }) => (data.notes ?? []).filter((note) => !shared(note)).map((note) => `${symbol}: ${note}`));
+  const empty = tables.filter(({ rows: wide }) => wide.length === 0);
+  const first = tables[0]?.data.metadata ?? {};
+  return {
+    rows,
+    columns: LONG_FINANCIAL_COLUMNS,
+    textColumns: [...LONG_FINANCIAL_COLUMNS, { key: "unit", header: "Unit" }],
+    rowUnitKey: "unit", rowSymbolKey: "ticker", rowAsOfKey: "periodEnd",
+    interval: options.period === "quarterly" ? "quarterly" : "annual",
+    unavailableSymbols: [...loaded.unavailableSymbols, ...empty.flatMap(({ data }) => data.unavailableSymbols ?? [])],
+    errors: [...loaded.errors, ...tables.flatMap(({ symbol, data }) => (data.errors ?? []).map((error) => error.startsWith(symbol) ? error : `${symbol}: ${error}`))],
+    notes: [...new Set([...notes.filter(shared), ...ownNotes])],
+    metadata: {
+      symbols, layout: "long", statement: first.statement ?? options.statement, statementLabel: first.statementLabel ?? null,
+      period: options.period === "quarterly" ? "quarterly" : "annual",
+      notices: [...new Set(tables.flatMap(({ data }) => (data.metadata?.notices ?? []) as string[]))],
+      limitations: [...new Set(tables.flatMap(({ data }) => (data.metadata?.limitations ?? []) as string[]))],
+    },
+  };
+}
+
+/** One ticker's statement or ratio table, its periods as columns. */
+async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionValues, ctx: HeadlessPaneContext): Promise<HeadlessRowsResult> {
+  {
     const financials = await loadHeadlessFinancials(ctx, symbol);
     const requestedPeriod = options.period === "quarterly" ? "quarterly" : "annual";
     const hasRequestedStatements = (requestedPeriod === "quarterly"
@@ -164,29 +344,30 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       dateSource: date === "TTM" ? "derived" : dateSource ?? "provider",
       providerDate: date === "TTM" ? null : providerDate ?? null,
       dateEvidence: date === "TTM" || dateSource !== "sec" ? null : dateEvidence ?? null,
-      // Rows in the shared money unit no longer name it, so the header does.
+      // The fiscal period as the pane names it, and the day it ends, which the long layout and exports date it by.
+      period: financialColumnLabel(statement, requestedPeriod, yearEndMonth),
+      periodEnd: ratioPeriodEnd(statement),
+      // Rows in the table's one money unit do not name it, so the header does.
       label: financialReportHeader(statement, [currency ?? statementCurrency, table.unit].filter(Boolean).join(" ") || undefined, requestedPeriod, yearEndMonth, listRows),
       };
     }) ?? [];
-    const rows = table?.rows.map((row) => ({
-      id: row.id, kind: row.kind, metric: allReceipts ? receiptShareCountLabel(row) : row.unitLabel,
-      cells: row.cells.map((cell, index) => ({
-        date: dates[index]?.date ?? "", value: cell.value ?? null,
-        growth: cell.growth ?? null, formatted: cell.valueText.trim(), growthFormatted: cell.growthText.trim(),
-      })),
-      ...Object.fromEntries(row.cells.map((cell, index) => [dates[index]!.date, cell.value ?? null])),
-    })) ?? [];
+    const asOf = newestPeriodEnd(dates);
+    const rows = table?.rows.map((row) => {
+      const figure = statementFigure(row);
+      return {
+        id: row.id, kind: row.kind, metric: allReceipts ? receiptShareCountLabel(row) : row.unitLabel, label: row.label,
+        // What the figures are in, which exports name in `currency_or_unit`, and the newest period they run to.
+        figure, divisor: row.divisor, unit: figureUnit(figure, statementCurrency ?? null, row.divisor, allReceipts ? "ADRs" : "shares"), periodEnd: asOf,
+        cells: row.cells.map((cell, index) => ({
+          date: dates[index]?.date ?? "", value: cell.value ?? null,
+          growth: cell.growth ?? null, formatted: cell.valueText.trim(), growthFormatted: cell.growthText.trim(),
+        })),
+        ...Object.fromEntries(row.cells.map((cell, index) => [dates[index]!.date, cell.value ?? null])),
+      };
+    }) ?? [];
     const columns: HeadlessPaneColumn[] = [
       { key: "metric", header: "Metric" },
-      ...dates.map(({ date, label }, index) => ({
-        key: date, header: label, align: "right" as const,
-        // Exports write the amount alone, every digit; its growth (or N/M) is in the JSON and on the text table.
-        format: (_value: unknown, row: Record<string, unknown>) => (row.cells as Array<{ formatted: string }>)[index]!.formatted,
-        textFormat: (_value: unknown, row: Record<string, unknown>) => {
-          const cell = (row.cells as Array<{ formatted: string; growthFormatted: string }>)[index]!;
-          return [cell.formatted, cell.growthFormatted].filter(Boolean).join(" ");
-        },
-      })),
+      ...dates.map(({ date, label }, index) => financialPeriodColumn(date, label, index, true)),
     ];
     // The balance sheet's cash, when an offering since is not in it yet.
     const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, financials) : null;
@@ -202,9 +383,12 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       ...(missing ? { errors: [missing] } : {}),
+      // Each exported row names its unit, the statements' period and the newest period end it runs to.
+      rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: requestedPeriod,
       // The report closes with how old its latest period is, how far back its periods go, and how to read further.
       notes: [...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
-        ...statementHistoryNotes(requestedPeriod, periodDates, symbol, await reportOlderStatements(ctx, symbol, requestedPeriod, periodDates))],
+        ...statementHistoryNotes(requestedPeriod, periodDates, symbol, await reportOlderStatements(ctx, symbol, requestedPeriod, periodDates)),
+        ...table?.subTab.key === "cashflow" ? [CASH_FLOW_NOTE] : [], ...dateSourceNotes(dates)],
       metadata: {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
@@ -218,10 +402,33 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
         dateProvenance: financialStatementDateNotice(table?.statements ?? []),
       },
     };
-  },
-};
+  }
+}
 
 const reportAmount = (amount: RatioAmount) => (typeof amount === "number" ? amount : null);
+
+/** What the profitability tab's figures are, said under it, as docs/financial-ratios.md defines them. */
+const PROFITABILITY_NOTES = [
+  "ROIC is NOPAT / average (equity + total debt), cash not netted; ROIC ex Cash takes cash and short-term investments out of that capital.",
+  "NOPAT is operating income x (1 - tax provision / pretax income), the rate held between 0% and 100%; a pretax loss pays no tax.",
+  "Margins and NOPAT are GAAP, as the income statement reports them, not the company's adjusted (non-GAAP) figures.",
+];
+
+const NEEDS_OPENING_NOTE = "needs prior period: an average of the opening and closing balance has no opening balance sheet on file, the period before the column's (the prior year end for a year, the prior quarter end for a quarter, the quarter a year earlier for TTM), as for the oldest column or a year whose prior year is missing.";
+
+/** What the cash flow table works out of its own lines. */
+const CASH_FLOW_NOTE = "CapEx / Revenue is capex over revenue; Reinvestment Rate is capex plus acquisitions less D&A, over NOPAT.";
+
+const SEC_DATE_NOTE = "SEC date: the period end the company's 10-K or 10-Q states.";
+const PROVIDER_DATE_NOTE = "provider date: the period end as the statements source dates it, which can be a few days off the company's own.";
+
+/** What a column header's `(SEC date)` and `(provider date)` mean, for the ones the table has. */
+function dateSourceNotes(columns: ReadonlyArray<{ dateSource: string }>): string[] {
+  return [
+    ...columns.some(({ dateSource }) => dateSource === "sec") ? [SEC_DATE_NOTE] : [],
+    ...columns.some(({ dateSource }) => dateSource === "provider") ? [PROVIDER_DATE_NOTE] : [],
+  ];
+}
 
 /**
  * What a table of quarters says its growth is measured against; a half filled
@@ -315,11 +522,15 @@ async function loadRatioReport(
   const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
   const dates = table?.periods.map(({ statement }) => ({
     date: statement.date,
+    // The fiscal period as the pane names it, and the day it ends.
+    period: financialColumnLabel(statement, period, yearEndMonth),
     periodEnd: ratioPeriodEnd(statement),
     currency: statement.currency ?? statementCurrency ?? null,
+    dateSource: statement.date === "TTM" ? "derived" : statement.dateSource ?? "provider",
     label: financialReportHeader(statement, statement.currency ?? statementCurrency, period, yearEndMonth,
       period === "quarterly" ? financials.quarterlyStatements : financials.annualStatements),
   })) ?? [];
+  const asOf = newestPeriodEnd(dates);
   const rows = table?.rows.map((row) => {
     const cells = table.cells.get(row.def.id)!.map((cell, index) => {
       const amount = row.kind === "ratio" ? cell.value : cell.inputs[row.index]!;
@@ -332,19 +543,23 @@ async function loadRatioReport(
           : formatRatioInput(row.def.inputs[row.index]!.format, amount, row.divisor),
       };
     });
+    const figure: FigureFormat = row.kind === "ratio" ? row.def.format : row.def.inputs[row.index]!.format;
+    const divisor = row.kind === "ratio" ? 1 : row.divisor;
     return {
       id: row.id, kind: row.kind, metric: row.kind === "ratio" ? row.label : row.unitLabel,
+      label: row.kind === "ratio" ? row.label : row.unitLabel.replace(/ \([a-z]+\)$/, ""),
+      // What the figures are in, which exports name in `currency_or_unit`, and the newest period they run to.
+      figure, divisor, unit: figureUnit(figure, statementCurrency ?? null, divisor), periodEnd: asOf,
       cells,
       ...Object.fromEntries(cells.map((cell) => [cell.date, cell.value])),
     };
   }) ?? [];
   const columns: HeadlessPaneColumn[] = [
     { key: "metric", header: "Ratio" },
-    ...dates.map(({ date, label }, index) => ({
-      key: date, header: label, align: "right" as const,
-      format: (_value: unknown, row: Record<string, unknown>) => (row.cells as Array<{ formatted: string }>)[index]!.formatted,
-    })),
+    ...dates.map(({ date, label }, index) => financialPeriodColumn(date, label, index, false)),
   ];
+  // An average with no opening balance sheet on file (the oldest column, a year after a missing one, TTM) says what it needs.
+  const needsOpening = rows.some((row) => row.cells.some((cell) => cell.gap === RATIO_GAP_TEXT["no-opening"]));
   // Liquidity's runway says how it counts months, and that the cash predates an offering since.
   const liquidity = tab.key === "liquidity" && table;
   const runwayShown = liquidity && table.ratios.some((def) => def.format === "months"
@@ -356,12 +571,17 @@ async function loadRatioReport(
     rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
     ...(missing ? { errors: [missing] } : {}),
     ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
+    // Each exported row names its unit, the statements' period and the newest period end it runs to.
+    rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: period,
     notes: [
       ...[stalePeriodNote(dates.map(({ periodEnd }) => ({ date: periodEnd, lead: true })))].filter((note): note is string => !!note),
       ...[filledPeriodsNote(table?.periods.map(({ statement }) => statement) ?? [])].filter((note): note is string => !!note),
       ...offering ? [offering] : [],
       ...runwayShown ? [runwayMethod(reportsShortTermTotal([...financials.quarterlyStatements, ...financials.annualStatements]))] : [],
       ...statementHistoryNotes(period, periodDates, symbol, await reportOlderStatements(ctx, symbol, period, periodDates)),
+      ...tab.key === "profitability" && rows.length ? PROFITABILITY_NOTES : [],
+      ...needsOpening ? [NEEDS_OPENING_NOTE] : [],
+      ...dateSourceNotes(dates),
     ],
     metadata: {
       symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null,
