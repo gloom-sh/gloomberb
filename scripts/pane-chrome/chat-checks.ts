@@ -1,4 +1,4 @@
-import { evaluate, frames, mouse, waitFor, type Cdp, type Point } from "./browser";
+import { copySelection, evaluate, frames, mouse, waitFor, type Cdp, type Point } from "./browser";
 
 /**
  * The chat list, driven with real pointer, wheel and keyboard input over an
@@ -523,8 +523,7 @@ export const chatSteps: ChatStep[] = [
       await evaluate(cdp, `document.addEventListener('copy', e => {
         window.__copyResult = { prevented: e.defaultPrevented, text: e.clipboardData.getData('text/plain'), browser: getSelection().toString() };
       }, {once:true})`);
-      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "c", code: "KeyC", modifiers: 2, windowsVirtualKeyCode: 67 });
-      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC", windowsVirtualKeyCode: 67 });
+      await copySelection(cdp);
       const result = await evaluate<{ prevented: boolean; text: string; browser: string }>(cdp, "window.__copyResult");
       if (!result?.browser.trim()) fail("no extended browser selection to copy", result);
       if (result.prevented) fail("copy replaced a range with an unmounted edge", result);
@@ -538,8 +537,7 @@ export const chatSteps: ChatStep[] = [
       await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", ...fresh, button: "left", clickCount: 3 });
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...fresh, button: "left", clickCount: 3 });
       await evaluate(cdp, "document.addEventListener('copy',e=>{window.__freshCopy=e.clipboardData.getData('text/plain')},{once:true})");
-      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "c", code: "KeyC", modifiers: 2, windowsVirtualKeyCode: 67 });
-      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC", windowsVirtualKeyCode: 67 });
+      await copySelection(cdp);
       if (!await waitFor(cdp, "window.__freshCopy === '**Complete message**'")) fail("a fresh whole-message selection did not copy its original marks");
     },
   },
@@ -611,7 +609,11 @@ export const chatSteps: ChatStep[] = [
     name: "chat window: an offscreen notification target mounts, highlights and copies, and keyboard navigation crosses windows",
     scenario: "chat&count=500&loaded=500&target=m120",
     async run(cdp) {
-      await ready(cdp);
+      await evaluate(cdp, CHAT_HELPERS);
+      if (!await waitFor(cdp, `(() => {
+        const row = __chat.rowRect('m120'), box = __chat.scroller()?.getBoundingClientRect();
+        return row && box && row.y >= box.top && row.y + row.height <= box.bottom && __chat.marked().includes('m120');
+      })()`)) fail("notification target did not mount, scroll into view and highlight");
       expectMarked(await marked(cdp), ["m120"], "notification target");
       if (await evaluate<number>(cdp, "__chat.rows().length") > 80) fail("opening mounted the history");
       const body = '[data-gloom-chat-message-id="m120"] [data-gloom-role=chat-message-body]';
@@ -619,8 +621,7 @@ export const chatSteps: ChatStep[] = [
       await evaluate(cdp, "document.addEventListener('copy',e=>{window.__copied=e.clipboardData.getData('text/plain')||getSelection().toString()},{once:true})");
       await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", ...at, button: "left", clickCount: 3 });
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...at, button: "left", clickCount: 3 });
-      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "c", code: "KeyC", modifiers: 2, windowsVirtualKeyCode: 67 });
-      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC", windowsVirtualKeyCode: 67 });
+      await copySelection(cdp);
       if (!await waitFor(cdp, "window.__copied?.trim()==='Morning all.'")) fail("visible message copy did not retain its text");
       await click(cdp, await listCentre(cdp));
       await pressKey(cdp, "ArrowUp", "ArrowUp");
