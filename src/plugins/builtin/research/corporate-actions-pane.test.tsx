@@ -163,16 +163,21 @@ test("late estimates scroll into view, and scrolling back restores covered histo
   expect(tui.frame()).toContain("+100.00%");
 });
 
-test("the next report opens at the top with forward years visible and old reports still reachable", async () => {
+test.each(["earnings-estimates", "corporate-actions"] as const)("%s keeps its initial viewport and old reports reachable", async (variant) => {
   const past = Array.from({ length: 40 }, (_, index) => ({ date: `${1980 + index}-03-10`, epsActual: 2 }));
   await render({ symbol: "TEST", currency: "USD", splits: [], dividends: [], earnings: [...past,
-    { date: "2098-02-10", epsEstimate: 3.25 }] }, "earnings-estimates", 100,
+    { date: "2098-02-10", epsEstimate: 3.25 }] }, variant, 100,
   { symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [], earningsEstimates: [
     { date: "2098-12-31", period: "current_year", average: 12.5 },
     { date: "2099-12-31", period: "next_year", average: 14 },
   ] });
   expect(tui.frame()).toContain("10 Feb 2098");
-  expect(tui.frame()).toContain("31 Dec 2099");
+  if (variant === "earnings-estimates") {
+    expect(tui.frame()).toContain("31 Dec 2099");
+  } else {
+    expect(tui.frame()).toContain("10 Mar 2019");
+    expect(tui.frame()).not.toContain("31 Dec 2099");
+  }
   await tui.emitKeypress({ name: "home" });
   for (let index = 0; index < 4; index += 1) await frame();
   expect(tui.frame()).toContain("10 Mar 1980");
