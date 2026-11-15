@@ -60,6 +60,24 @@ function bunTarget({ os, arch, libc, bunOs }: BuildTarget): string {
 }
 
 /**
+ * Where `bun build --compile` keeps the runtimes it downloads for a target.
+ * On Windows, Bun 1.3.14 unpacks a runtime in a folder under the working
+ * directory and then moves it into that cache, and the move fails when the
+ * two are on different drives, as on GitHub's Windows runners (the checkout
+ * on D:, the home folder and Bun's default cache on C:). The baseline runtime
+ * is a download even on an x64 Windows host, so the Windows binary failed to
+ * build with "Failed to extract executable for 'bun-windows-x64-baseline-v1.3.14'"
+ * (oven-sh/bun#43446, fixed in Bun 1.4.2). A cache inside the checkout is on
+ * its drive. Elsewhere the default cache is kept, shared by every checkout.
+ */
+function compileCacheEnv(): Record<string, string> {
+  if (process.platform !== "win32") return {};
+  const cacheDir = join(rootDir, "node_modules", ".cache", "bun-compile");
+  mkdirSync(cacheDir, { recursive: true });
+  return { BUN_INSTALL_CACHE_DIR: cacheDir };
+}
+
+/**
  * The CPU the x64 Linux binaries are also smoke tested on, under QEMU's
  * user-mode emulator: Nehalem has SSE4.2 and no AVX, AVX2 or BMI2, so a binary
  * that needs a newer CPU dies with SIGILL here instead of on a user's machine.
@@ -517,7 +535,7 @@ async function build(targetConfig: BuildTarget) {
       `--target=${target}`, compileEntry, `--outfile=${outfile}`,
     ],
     `Failed to build ${target}`,
-    { env: { ...process.env, GLOOMBERB_API_URL: RELEASE_API_URL } },
+    { env: { ...process.env, ...compileCacheEnv(), GLOOMBERB_API_URL: RELEASE_API_URL } },
     true,
   );
   rmSync(compileEntry, { force: true });
