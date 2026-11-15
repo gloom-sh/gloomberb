@@ -108,6 +108,17 @@ for (const symbol of ["DWSN", "7203:JPX"]) {
   });
 }
 
+test("a pending transcript response becomes a capturable empty state instead of indefinite page loading", async () => {
+  serve("none");
+  setCloudApiFetchTransport(async (url) => new URL(String(url)).pathname.includes("/transcripts/")
+    ? Response.json({ status: "pending" }, { status: 202 }) : Response.json({ calls: [CALL] }));
+  const root = await dom.render(<Harness />);
+  await until(() => root.textContent?.includes("Transcript not ready yet.") === true);
+  expect(root.textContent).toContain("Transcript not ready yet.");
+  expect(root.querySelector('[data-gloom-status="loading"]')).toBeNull();
+  expect(root.querySelector('[data-gloom-status="empty"]')).not.toBeNull();
+});
+
 test("a clicked paragraph plays from its start, and the one heard is marked as playback moves", async () => {
   serve("recording");
   const container = await dom.render(<Harness />);
