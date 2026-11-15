@@ -28,6 +28,7 @@ const calendarRequests = spyOn(apiClient, "getCloudEarningsCalendar").mockImplem
     asOf: "2026-10-14T15:00:00Z", from: query.from, to: query.to, reports: [entry("JPM", "2026-10-14"), entry("NFLX", "2026-10-15")],
   }),
 );
+const historyRequests = spyOn(apiClient, "getCloudEarningsHistory").mockImplementation(async (symbol) => ({ asOf: "2026-10-14T15:00:00Z", symbol, name: null, reports: [] }));
 beforeAll(() => {
   resetEarningsCloudCaches();
   setSystemTime(new Date("2026-10-14T15:00:00Z"));
@@ -38,6 +39,7 @@ afterAll(() => {
   setSystemTime();
   setSharedRegistryForTests(undefined);
   calendarRequests.mockRestore();
+  historyRequests.mockRestore();
 });
 
 test("the terminal keeps ERN's table and footer: no calendar, even from a layout that asks for it, and no results alert key", async () => {

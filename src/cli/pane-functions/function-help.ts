@@ -411,7 +411,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CACS"],
   },
   EVTS: {
-    summary: "The market board: report days with implied and past moves, or a past or coming week or day of them; a ticker highlights its row.",
+    summary: "The market board: report days with implied and past moves. In the pane, a ticker opens its next report day, or its latest past one, with its row selected. An explicit week or day keeps that range.",
     usage: ["EVTS", "EVTS NVDA", "gloom fn EVTS --week last", "gloom fn EVTS --date 2026-10-15"],
     keys: [key("t", "icker"), key("e", "stimates"), key("c", "alls"), key("a", "nalysts")],
     data: EARNINGS_DAYS,

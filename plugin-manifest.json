@@ -536,7 +536,7 @@
           {
             "code": "EVTS",
             "name": "Earnings Days",
-            "description": "The market board: report days by week or day, with implied and past moves; a ticker highlights its row."
+            "description": "The market board: report days by week or day, with implied and past moves; a ticker opens its report day and selects its row."
           },
           {
             "code": "CALLS",
