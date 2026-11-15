@@ -14,7 +14,7 @@ const KEY_PREFIX = "visit:";
 /** Accounts whose last visit this device keeps; the one seen longest ago goes first. */
 export const MAX_KEPT_SCOPES = 3;
 /** How long a visit's newest prices wait before they are written, at most. */
-const VISIT_SAVE_DELAY_MS = 60_000;
+const VISIT_SAVE_DELAY_MS = 5 * 60_000;
 
 export interface VisitBaselineStore {
   load(scope: string): VisitBaseline | null;

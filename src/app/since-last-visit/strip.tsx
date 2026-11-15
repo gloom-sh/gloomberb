@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Box, Text, useActionShortcut, useUiCapabilities } from "../../ui";
 import { Button, terminalButtonColumns } from "../../components/ui/button";
 import { TickerBadge } from "../../components/ticker/badge";
@@ -27,45 +27,49 @@ interface StripChip {
 }
 
 interface TerminalFit {
-  lead: string | null;
+  lead: string;
   chips: number;
+  /** Hide says its key. */
+  hideKey: boolean;
   turnOff: boolean;
 }
 
 /**
- * What the terminal's one row has room for, most first: the lead in full,
- * then short, then without Turn off (the command bar's Since Last Visit
- * still has it), then without a lead. Every chip that fits is shown, the
- * biggest moves first; Hide always stays.
+ * What the terminal's one row has room for. The date of the last visit (the
+ * short lead), Hide and one move always stay: a move without its date would
+ * read as the day's. Turn off stays next, as long as a move fits beside it
+ * (the command bar's Since Last Visit has it too); then as many moves as fit,
+ * biggest first; then Hide's key; then the lead in full.
  */
 function fitTerminalStrip(
   width: number,
-  leads: readonly string[],
+  [fullLead, shortLead]: readonly [string, string],
   chipColumns: readonly number[],
-  hideColumns: number,
+  hideColumns: { withKey: number; bare: number },
   turnOffColumns: number,
 ): TerminalFit {
-  const options: Array<{ lead: string | null; turnOff: boolean }> = [
-    ...leads.map((lead) => ({ lead, turnOff: true })),
-    ...leads.slice(-1).map((lead) => ({ lead, turnOff: false })),
-    { lead: null, turnOff: false },
-  ];
-  let best: TerminalFit = { lead: null, chips: 0, turnOff: false };
-  for (const option of options) {
-    // One cell of padding at each edge, a gap before the actions.
-    let room = width - 2 - hideColumns - GAP
-      - (option.turnOff ? GAP + turnOffColumns : 0)
-      - (option.lead ? displayWidth(option.lead) + GAP : 0);
+  const fit = (option: Omit<TerminalFit, "chips">): TerminalFit => {
+    // One cell of padding at each edge, a gap after the lead and before each action.
+    let room = width - 2 - displayWidth(option.lead) - GAP
+      - GAP - (option.hideKey ? hideColumns.withKey : hideColumns.bare)
+      - (option.turnOff ? GAP + turnOffColumns : 0);
     let chips = 0;
     for (const columns of chipColumns) {
       if (columns > room) break;
       room -= columns;
       chips += 1;
     }
-    if (chips === chipColumns.length) return { ...option, chips };
-    if (chips > best.chips) best = { ...option, chips };
-  }
-  return best;
+    return { ...option, chips };
+  };
+  const withTurnOff = [
+    fit({ lead: fullLead, hideKey: true, turnOff: true }),
+    fit({ lead: shortLead, hideKey: true, turnOff: true }),
+    fit({ lead: shortLead, hideKey: false, turnOff: true }),
+  ];
+  const whole = withTurnOff.find((option) => option.chips === chipColumns.length);
+  if (whole) return whole;
+  const most = withTurnOff.reduce((best, option) => (option.chips > best.chips ? option : best));
+  return most.chips > 0 ? most : fit({ lead: shortLead, hideKey: false, turnOff: false });
 }
 
 /**
@@ -81,6 +85,8 @@ export function SinceLastVisitStrip({ strip }: { strip: SinceLastVisit }) {
   const { nativePaneChrome = false } = useUiCapabilities();
   const { width } = useViewport();
   const dismissKey = useActionShortcut("notification-dismiss");
+  // The chip under the pointer says its price, as ticker chips do.
+  const [hovered, setHovered] = useState<string | null>(null);
   const recap = strip.recap;
   const moves: readonly SinceLastVisitMove[] = recap?.moves ?? [];
   const entries = useQuoteEntries(useMemo(() => moves.map((entry) => entry.instrument), [moves]));
@@ -109,16 +115,18 @@ export function SinceLastVisitStrip({ strip }: { strip: SinceLastVisit }) {
   const fullLead = tf("Since your last visit, {time}", { time: when });
   const shortLead = tf("Since {time}", { time: when });
   const hideButton = { label: "Hide", compact: true, shortcut: dismissKey || undefined } as const;
+  const bareHideButton = { label: "Hide", compact: true } as const;
   const turnOffButton = { label: "Turn off", compact: true } as const;
   const chipText = (chip: StripChip) => getTickerBadgeText({ symbol: chip.move.symbol, status: "ready", quote: chip.quote, move: chip.percent });
 
-  const fit = nativePaneChrome
-    ? { lead: width >= NATIVE_FULL_LEAD_COLUMNS ? fullLead : shortLead, chips: chips.length, turnOff: true }
+  // The desktop and the web lay the chips out in CSS: one that has no room wraps out of sight.
+  const fit: TerminalFit = nativePaneChrome
+    ? { lead: width >= NATIVE_FULL_LEAD_COLUMNS ? fullLead : shortLead, chips: chips.length, hideKey: true, turnOff: true }
     : fitTerminalStrip(
       width,
       [fullLead, shortLead],
       chips.map((chip) => displayWidth(chipText(chip)) + TICKER_BADGE_CHROME_WIDTH),
-      terminalButtonColumns(hideButton),
+      { withKey: terminalButtonColumns(hideButton), bare: terminalButtonColumns(bareHideButton) },
       terminalButtonColumns(turnOffButton),
     );
 
@@ -129,6 +137,9 @@ export function SinceLastVisitStrip({ strip }: { strip: SinceLastVisit }) {
       status="ready"
       quote={chip.quote}
       move={chip.percent}
+      hovered={hovered === chip.move.key}
+      onHoverStart={() => setHovered(chip.move.key)}
+      onHoverEnd={() => setHovered((current) => (current === chip.move.key ? null : current))}
       onOpen={() => strip.open(chip.move)}
     />
   ));
@@ -144,11 +155,9 @@ export function SinceLastVisitStrip({ strip }: { strip: SinceLastVisit }) {
       style={nativePaneChrome ? { paddingInline: "var(--gloom-inset)", gap: "var(--gloom-space-sm)" } : undefined}
       paddingX={nativePaneChrome ? undefined : 1}
     >
-      {fit.lead ? (
-        <Box flexShrink={0} paddingRight={nativePaneChrome ? undefined : GAP}>
-          <Text fg={colors.textDim}>{fit.lead}</Text>
-        </Box>
-      ) : null}
+      <Box flexShrink={0} paddingRight={nativePaneChrome ? undefined : GAP}>
+        <Text fg={colors.textDim}>{fit.lead}</Text>
+      </Box>
       <Box
         flexDirection="row"
         flexGrow={1}
@@ -160,10 +169,21 @@ export function SinceLastVisitStrip({ strip }: { strip: SinceLastVisit }) {
       >
         {chipNodes}
       </Box>
-      <Box flexDirection="row" flexShrink={0} paddingLeft={nativePaneChrome ? undefined : GAP}>
-        <Button {...hideButton} variant="plain" title={t("Hide until you next open Gloom")} stopPropagation onPress={strip.hide} />
+      <Box
+        flexDirection="row"
+        flexShrink={0}
+        paddingLeft={nativePaneChrome ? undefined : GAP}
+        style={nativePaneChrome ? { gap: "var(--gloom-space-sm)" } : undefined}
+      >
+        <Button
+          {...(fit.hideKey ? hideButton : bareHideButton)}
+          variant="plain"
+          title={t("Hide until you next open Gloom")}
+          stopPropagation
+          onPress={strip.hide}
+        />
         {fit.turnOff ? (
-          <Box paddingLeft={nativePaneChrome ? undefined : GAP} style={nativePaneChrome ? { marginLeft: "var(--gloom-space-sm)" } : undefined}>
+          <Box paddingLeft={nativePaneChrome ? undefined : GAP}>
             <Button {...turnOffButton} variant="plain" title={t("Stop showing what moved since your last visit")} stopPropagation onPress={strip.turnOff} />
           </Box>
         ) : null}
