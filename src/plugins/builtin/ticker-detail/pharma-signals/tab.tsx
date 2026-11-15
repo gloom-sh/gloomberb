@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useRef, useSyncExternalStore } from "react";
 import { requestAuthDialog } from "../../../../account/auth-dialog";
 import { apiClient } from "../../../../api-client";
+import { usePlanAccess } from "../../../../api-client/plan-access";
+import { isEmailVerificationRequired } from "../../../../api-client/product-waitlist";
 import { Button, confirmDialog, PaneStatusBody, usePaneStatusFooter } from "../../../../components";
 import { usePaneRefreshKey } from "../../../../components/data-table/table-pane";
 import { t } from "../../../../i18n";
@@ -16,6 +18,7 @@ export const PharmaWaitlistClientContext = createContext<WaitlistClient | null>(
 
 const PRODUCT = "pharma-signals";
 const PLANNED = "Planned: alerts the day a trial's endpoint, enrollment, dates or status change, and cash runway against the next catalyst.";
+const RESEND_VERIFICATION = "Resend Verification Email";
 
 function subscribeAccount(onChange: () => void): () => void {
   return apiClient.subscribeCurrentUser(onChange);
@@ -43,11 +46,16 @@ function JoinDialogBody() {
  * built, said plainly, with a no-charge waitlist. Nothing in it is data, so
  * it shows no rows, real or made up. Joining asks first, every time, and
  * never happens at sign-in: signed out, the button only opens the sign-in.
+ * The launch email goes to the account's address, so an unverified one is
+ * asked to verify it first: the app sends nothing for an address it knows is
+ * unverified, and says the same when the service refuses one it thought was.
  */
 export function PharmaSignalsResearchTab({ width, height, focused }: TickerResearchTabProps) {
   const client = useContext(PharmaWaitlistClientContext) ?? apiClient;
   const account = useSyncExternalStore(subscribeAccount, currentAccount, currentAccount);
-  const waitlist = useProductWaitlist(client, PRODUCT, account);
+  const access = usePlanAccess();
+  const waitlist = useProductWaitlist(client, PRODUCT, account && access.emailVerified ? account : null);
+  const needsVerification = !!account && (!access.emailVerified || waitlist.unverified);
   const { change, retry } = waitlist;
   const dialog = useOptionalDialog();
   const { openCommandBar, notify } = usePluginAppActions();
@@ -57,7 +65,11 @@ export function PharmaSignalsResearchTab({ width, height, focused }: TickerResea
   usePaneRefreshKey(retry, { focused });
   usePaneStatusFooter({ registrationId: "pharma-signals", loading: waitlist.loading, error: waitlist.error });
 
-  const failed = useCallback((message: string, error: unknown) => {
+  const failed = useCallback((message: string, unverifiedMessage: string, error: unknown) => {
+    if (isEmailVerificationRequired(error)) {
+      notify({ body: t(unverifiedMessage), type: "error", desktop: "never" });
+      return;
+    }
     logFailure("pharma-signals", message)(error);
     notify({ body: t(message), type: "error", desktop: "never" });
   }, [notify]);
@@ -85,14 +97,27 @@ export function PharmaSignalsResearchTab({ width, height, focused }: TickerResea
         setTimeout(() => { asking.current = false; }, 0);
         return confirmed ? change(true, decidedAs) : null;
       })
-      .catch((error: unknown) => failed("Couldn't join the waitlist. Try again.", error));
+      .catch((error: unknown) => failed("Couldn't join the waitlist. Try again.", "Verify your email to join the waitlist.", error));
   }, [account, change, dialog, failed, openCommandBar]);
 
   const leave = useCallback(() => {
     if (!account) return;
     change(false, account)
-      .catch((error: unknown) => failed("Couldn't leave the waitlist. Try again.", error));
+      .catch((error: unknown) => failed("Couldn't leave the waitlist. Try again.", "Verify your email to leave the waitlist.", error));
   }, [account, change, failed]);
+
+  if (needsVerification) {
+    return (
+      <PaneStatusBody
+        empty
+        width={width}
+        height={height}
+        emptyTitle={t("Verify your email to join the pharma signals waitlist.")}
+        emptyMessage={t(PLANNED)}
+        actions={<Button label={t(RESEND_VERIFICATION)} onPress={() => openCommandBar(RESEND_VERIFICATION)} />}
+      />
+    );
+  }
 
   if (waitlist.joined) {
     return (

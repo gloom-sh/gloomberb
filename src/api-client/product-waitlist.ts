@@ -1,12 +1,23 @@
+import { ApiRequestError } from "./errors";
 import type { CloudApiRequest } from "./request";
 
 /**
  * The no-charge waitlist for an add-on that is not built yet. The signed-in
  * account reads its place on the list, joins it (agreeing to one email if the
  * add-on launches) and leaves it. The service takes the account and its
- * address from the session: nothing here sends either.
+ * address from the session: nothing here sends either. The address must be
+ * verified, since joining consents to email it: the service refuses every
+ * call of an unverified account with a 403.
  */
 export type WaitlistProduct = "pharma-signals";
+
+/** The service's 403 for an account whose address is not verified. */
+const EMAIL_VERIFICATION_REQUIRED = "Email verification required";
+
+/** Whether the waitlist refused a call because the account's address is not verified yet. */
+export function isEmailVerificationRequired(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 403 && error.message === EMAIL_VERIFICATION_REQUIRED;
+}
 
 export interface WaitlistState {
   product: WaitlistProduct;

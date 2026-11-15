@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { apiClient } from "../../../../api-client";
-import type { WaitlistProduct, WaitlistState } from "../../../../api-client/product-waitlist";
+import { isEmailVerificationRequired, type WaitlistProduct, type WaitlistState } from "../../../../api-client/product-waitlist";
 import { errorMessage } from "../../../../utils/errors";
 
 /** The waitlist calls the tab makes; tests hand it their own. */
@@ -13,6 +13,11 @@ export interface ProductWaitlist {
   loading: boolean;
   /** Why the read failed; null otherwise. */
   error: string | null;
+  /**
+   * The service refused the account because its address is not verified: its
+   * place cannot be read or changed until it is. Not an error to retry.
+   */
+  unverified: boolean;
   /** A join or a leave on its way. */
   pending: "join" | "leave" | null;
   /** Reads the account's place again. */
@@ -29,11 +34,12 @@ interface Snapshot {
   account: string | null;
   joined: boolean | undefined;
   error: string | null;
+  unverified: boolean;
   pending: "join" | "leave" | null;
 }
 
 function fresh(account: string | null): Snapshot {
-  return { account, joined: undefined, error: null, pending: null };
+  return { account, joined: undefined, error: null, unverified: false, pending: null };
 }
 
 /**
@@ -41,7 +47,8 @@ function fresh(account: string | null): Snapshot {
  * account's: a sign-in, a sign-out or another account starts from nothing at
  * once, and no answer for the account that left is shown for the next one.
  * A read that was already out when a join or a leave began is dropped, so it
- * cannot put back the state from before the change.
+ * cannot put back the state from before the change. `account` is null for an
+ * account the app already knows is unverified: nothing is sent for it.
  */
 export function useProductWaitlist(client: WaitlistClient, product: WaitlistProduct, account: string | null): ProductWaitlist {
   const [stored, setStored] = useState<Snapshot>(() => fresh(account));
@@ -66,15 +73,17 @@ export function useProductWaitlist(client: WaitlistClient, product: WaitlistProd
     const since = changes.current;
     const current = () => live && accountRef.current === account && changes.current === since;
     client.getWaitlist(product).then((state) => {
-      if (current()) update(account, { joined: state.joined, error: null });
+      if (current()) update(account, { joined: state.joined, error: null, unverified: false });
     }, (error: unknown) => {
-      if (current()) update(account, { error: errorMessage(error) });
+      if (!current()) return;
+      // Refused for an unverified address, the place is unknown again, not the last one read.
+      update(account, isEmailVerificationRequired(error) ? { joined: undefined, unverified: true } : { error: errorMessage(error) });
     });
     return () => { live = false; };
   }, [account, client, product, reads, update]);
 
   const retry = useCallback(() => {
-    if (accountRef.current) update(accountRef.current, { error: null });
+    if (accountRef.current) update(accountRef.current, { error: null, unverified: false });
     setReads((count) => count + 1);
   }, [update]);
 
@@ -86,13 +95,18 @@ export function useProductWaitlist(client: WaitlistClient, product: WaitlistProd
     try {
       const state = joined ? await client.joinWaitlist(product) : await client.leaveWaitlist(product);
       if (accountRef.current !== forAccount) return null;
-      update(forAccount, { joined: state.joined, error: null, pending: null });
+      update(forAccount, { joined: state.joined, error: null, unverified: false, pending: null });
       return state;
     } catch (error) {
       if (accountRef.current === forAccount) {
-        update(forAccount, { pending: null });
-        // The read this change dropped is asked again, so the state is known.
-        setReads((count) => count + 1);
+        if (isEmailVerificationRequired(error)) {
+          // The service holds no answer for this account until it verifies: nothing to read again.
+          update(forAccount, { joined: undefined, unverified: true, pending: null });
+        } else {
+          update(forAccount, { pending: null });
+          // The read this change dropped is asked again, so the state is known.
+          setReads((count) => count + 1);
+        }
       }
       throw error;
     } finally {
@@ -102,8 +116,9 @@ export function useProductWaitlist(client: WaitlistClient, product: WaitlistProd
 
   return {
     joined: snapshot.joined,
-    loading: !!account && snapshot.joined === undefined && snapshot.error === null,
+    loading: !!account && snapshot.joined === undefined && snapshot.error === null && !snapshot.unverified,
     error: snapshot.error,
+    unverified: snapshot.unverified,
     pending: snapshot.pending,
     retry,
     change,

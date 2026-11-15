@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { act, useCallback, useState } from "react";
 import { apiClient } from "../../../../api-client";
+import { ApiRequestError } from "../../../../api-client/errors";
 import type { WaitlistState } from "../../../../api-client/product-waitlist";
 import { createOpenTuiTestHarness, TestDialogProvider } from "../../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../../state/app/context";
@@ -17,16 +18,22 @@ const ON_LIST = "You're on the pharma signals waitlist.";
 // The dialog wraps the line; its start is enough to know it is there.
 const PRICE = "Planned price: $50/month on top of Pro";
 const NO_CHARGE = "Nothing is charged now. No card needed.";
+const VERIFY = "Verify your email to join the pharma signals waitlist.";
+const RESEND = "Resend Verification Email";
+// What the service answers every waitlist call of an unverified account.
+const unverifiedRefusal = () => new ApiRequestError("Email verification required", 403);
 
 // The session, switched by the test as a sign-in, a sign-out or another account would.
 let account: string | null = null;
+let verified = true;
 const accountListeners = new Set<() => void>();
 const spies: Array<{ mockRestore(): void }> = [];
 beforeEach(() => {
   account = null;
+  verified = true;
   spies.push(
     spyOn(apiClient, "getCurrentUser").mockImplementation(() => (
-      account ? { id: account, emailVerified: true, plan: "free" } as ReturnType<typeof apiClient.getCurrentUser> : null
+      account ? { id: account, emailVerified: verified, plan: "free" } as ReturnType<typeof apiClient.getCurrentUser> : null
     )),
     spyOn(apiClient, "subscribeCurrentUser").mockImplementation((listener: () => void) => {
       accountListeners.add(listener);
@@ -48,9 +55,10 @@ async function settle() {
   }
 }
 
-async function signInAs(id: string | null) {
+async function signInAs(id: string | null, emailVerified = true) {
   await act(async () => {
     account = id;
+    verified = emailVerified;
     for (const listener of accountListeners) listener();
   });
   await settle();
@@ -248,4 +256,55 @@ test("a join that fails says so and leaves the account off the list", async () =
   await waitlist.answer(waitlist.of("read")[1], state(false));
   expect(tui.frame()).toContain("Join waitlist");
   expect(tui.frame()).not.toContain(ON_LIST);
+});
+
+test("an unverified address is asked to verify, sends nothing, and verifying reads its place", async () => {
+  account = "acct-a";
+  verified = false;
+  const waitlist = controlledClient();
+  const commands: Array<string | undefined> = [];
+  const frame = await render(waitlist.client, createTestPluginRuntime({ openCommandBar: (query) => { commands.push(query); } }));
+  expect(frame).toContain(VERIFY);
+  expect(frame).toContain(RESEND);
+  expect(frame).not.toContain("Join waitlist");
+  expect(waitlist.calls).toHaveLength(0);
+
+  // The button resends the verification email; it opens no join dialog.
+  await press("enter");
+  expect(commands).toEqual([RESEND]);
+  expect(tui.frame()).not.toContain(PRICE);
+
+  // Verified on the same account: its place is read, and joining still asks first.
+  await signInAs("acct-a", true);
+  expect(waitlist.of("read")).toHaveLength(1);
+  await waitlist.answer(waitlist.of("read")[0], state(false));
+  expect(tui.frame()).toContain("Join waitlist");
+  expect(waitlist.of("join")).toHaveLength(0);
+});
+
+test("the service's verification refusal says to verify, never to try again", async () => {
+  account = "acct-a";
+  const waitlist = controlledClient();
+  const notices: string[] = [];
+  await render(waitlist.client, createTestPluginRuntime({ notify: (notice) => { notices.push(notice.body); } }));
+  // The app thought the address verified; the read says otherwise.
+  await waitlist.answer(waitlist.of("read")[0], unverifiedRefusal());
+  let frame = tui.frame();
+  expect(frame).toContain(VERIFY);
+  expect(frame).toContain(RESEND);
+  expect(frame).not.toContain("Retry");
+  expect(frame).not.toContain("Email verification required");
+
+  // Verified meanwhile: `r` reads again; then a join the service refuses says why.
+  await press("r");
+  await waitlist.answer(waitlist.of("read")[1], state(false));
+  await press("enter");
+  await press("y");
+  await waitlist.answer(waitlist.of("join")[0], unverifiedRefusal());
+  expect(notices).toEqual(["Verify your email to join the waitlist."]);
+  frame = tui.frame();
+  expect(frame).toContain(VERIFY);
+  expect(frame).not.toContain(ON_LIST);
+  // Nothing more is sent for an account the service will not answer.
+  expect(waitlist.of("read")).toHaveLength(2);
 });
