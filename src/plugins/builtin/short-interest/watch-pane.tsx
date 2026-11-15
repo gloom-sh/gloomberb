@@ -55,7 +55,7 @@ const COLUMNS: WatchColumn[] = [
 ];
 const DEFAULT_SORT = { columnId: "setup" as ShortWatchSortId, direction: "desc" as SortDirection };
 const rowKey = (row: ShortWatchRow) => row.symbol;
-const rowSetup = (row: ShortWatchRow) => row.error ?? (row.return1M == null ? "No daily closes" : setupLabel(row.setup));
+const rowSetup = (row: ShortWatchRow) => row.error ?? (row.return1M == null ? "No month of daily closes" : setupLabel(row.setup));
 
 const day = (iso: string | null) => iso ? formatShortDate(`${iso}T00:00:00Z`, { year: false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
 const signed = (value: number | null, digits = 1) => value == null ? MISSING_VALUE : `${value > 0 ? "+" : ""}${formatNumber(value, digits)}%`;

@@ -655,8 +655,6 @@ describe("CompositeChart", () => {
     expect(narrow).not.toContain("...");
   });
 
-  // five trading houses cut alike read "8058 Close · M..." and "8031 Close · M...", and one short of room
-  // read "8058 Mitsubishi" beside "8001:JPX Close · ITOCHU".
   test("a legend short of room keeps each company's name and names their shared field once", async () => {
     const house = (id: string, name: string, value: number) => ({
       ...series(id, "main", "left", "%", [value]), label: `${id}:JPX Close · ${name}`, compactLabel: `${id}:JPX ${name}`,
