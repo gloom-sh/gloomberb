@@ -1,7 +1,7 @@
-import { serializeCsv } from "../utils/csv";
+import { csvDecimal, serializeCsv } from "../utils/csv";
 import { splitCsvFooter } from "./report-tables";
 
-function csvRows(text: string): string[][] {
+function csvRows(text: string, separator: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [], cell = "", quoted = false;
   for (let index = 0; index < text.length; index++) {
@@ -9,7 +9,7 @@ function csvRows(text: string): string[][] {
     if (character === '"') {
       if (quoted && text[index + 1] === '"') { cell += '"'; index++; }
       else quoted = !quoted;
-    } else if (!quoted && character === ",") {
+    } else if (!quoted && character === separator) {
       row.push(cell); cell = "";
     } else if (!quoted && (character === "\n" || character === "\r")) {
       if (character === "\r" && text[index + 1] === "\n") index++;
@@ -21,13 +21,15 @@ function csvRows(text: string): string[][] {
 }
 
 export function portableCsv(text: string, warnings: readonly string[] = [], extraNotes: readonly string[] = []): string {
+  const decimal = csvDecimal();
+  const separator = decimal === "comma" ? ";" : ",";
   const { csv, footer } = splitCsvFooter(text);
   const tables: Array<{ section: string; columns: string[]; rows: string[][] }> = [];
   let section = "", current: (typeof tables)[number] | null = null;
-  for (const row of csvRows(csv)) {
+  for (const row of csvRows(csv, separator)) {
     if (row.length === 1 && row[0] === "") { current = null; continue; }
     if (!current && row[0]?.startsWith("# section: ")) {
-      section = row.join(",").slice("# section: ".length); current = null; continue;
+      section = row.join(separator).slice("# section: ".length); current = null; continue;
     }
     if (!current) {
       current = { section, columns: row, rows: [] }; tables.push(current);
@@ -44,5 +46,8 @@ export function portableCsv(text: string, warnings: readonly string[] = [], extr
     return table.rows.map((row) => [...indices.map((index) => index < 0 ? "" : row[index] ?? ""), ...tagged ? [table.section] : [], notes]);
   });
   if (!rows.length && notes) rows.push([...header.slice(0, -1).map(() => ""), notes]);
-  return serializeCsv([header, ...rows]);
+  const normalized = decimal === "comma"
+    ? [header, ...rows].map((row) => row.map((cell) => /^[+-]?(?:\d+(?:,\d+)?|,\d+)(?:e[+-]?\d+)?%?$/i.test(cell) ? cell.replace(",", ".") : cell))
+    : [header, ...rows];
+  return serializeCsv(normalized);
 }

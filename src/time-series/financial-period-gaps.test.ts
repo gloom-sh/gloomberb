@@ -44,11 +44,12 @@ test("financial chart and report retain missing periods, real zero and trailing 
   ]);
   const original = structuredClone(financials);
   const result = await load(financials);
-  expect(result.chart.series[0]!.points.map(p => p.value)).toEqual([100, null, 0, 120, null]);
-  expect(result.series[0]!.points.map(p => p.value)).toEqual([100, null, 0, 120, null]);
-  expect(result.metadata?.periodCoverage).toEqual([expect.objectContaining({ requested: 3, returned: 3 })]);
+  // The latest three periods, the trailing gap among them: two have a value.
+  expect(result.chart.series[0]!.points.map(p => p.value)).toEqual([0, 120, null]);
+  expect(result.series[0]!.points.map(p => p.value)).toEqual([0, 120, null]);
+  expect(result.metadata?.periodCoverage).toEqual([expect.objectContaining({ requested: 3, returned: 2, complete: false })]);
   const scene = buildCompositeChartScene(result.chart.series, [{ id: "main" }], { width: 80, height: 24 })!;
-  expect(scene.panels[0]!.series[0]!.points.map(p => [p.value, p.breakBefore])).toEqual([[100, true], [0, true], [120, false]]);
+  expect(scene.panels[0]!.series[0]!.points.map(p => [p.value, p.breakBefore])).toEqual([[0, true], [120, false]]);
   expect(scene.cursorValues[0]!.value).toBeNull();
   expect(financials).toEqual(original);
 });
@@ -59,11 +60,11 @@ test("a valuation cycle leaves gaps at losses, zero EPS and unknown denominators
     row("2021-12-31", { eps: 0 }), row("2022-12-31", { totalRevenue: 80 }),
     row("2023-12-31", { eps: 3 }), row("2024-12-31", { totalRevenue: 100 }),
   ]), true);
-  expect(result.series[0]!.points.map(p => p.value)).toEqual([15, null, null, null, 10, null]);
+  expect(result.series[0]!.points.map(p => p.value)).toEqual([null, 10, null]);
   expect(result.series[0]!.points.some(p => p.periodLabel === "Current")).toBe(false);
   const scene = buildCompositeChartScene(result.chart.series, [{ id: "main" }], { width: 80, height: 24 })!;
-  expect(scene.panels[0]!.series[0]!.points.map(p => p.breakBefore)).toEqual([true, true]);
-  expect(result.metadata?.periodCoverage).toEqual([expect.objectContaining({ requested: 3, returned: 2, complete: false })]);
+  expect(scene.panels[0]!.series[0]!.points.map(p => p.breakBefore)).toEqual([true]);
+  expect(result.metadata?.periodCoverage).toEqual([expect.objectContaining({ requested: 3, returned: 1, complete: false })]);
 });
 
 test("TTM periods retain broken windows between complete observations, including currency changes", () => {

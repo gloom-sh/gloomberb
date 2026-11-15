@@ -1,5 +1,6 @@
 import { cloneLayout, createBlankLayout, getPlacedPaneInstanceIds, type SavedLayout } from "../../../types/config";
 import { movePaneBack, movePaneToOwnLayout, paneMoveBackTarget } from "../../../layout/pane-layout-move";
+import { relinkPinnedResearchPanes } from "../../../layout/pane-follow";
 import {
   clonePaneStateMap,
   cloneSavedLayout,
@@ -85,7 +86,8 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
     case "UPDATE_LAYOUT":
       return withFocusedPane(
         state,
-        { ...state.config, layout: action.layout },
+        // A research pane the app unlinked follows again when the change gives it a source back.
+        { ...state.config, layout: relinkPinnedResearchPanes(action.layout, state.config.layout) },
         Object.prototype.hasOwnProperty.call(action, "focusedPaneId")
           ? { focusedPaneId: action.focusedPaneId ?? null }
           : {},

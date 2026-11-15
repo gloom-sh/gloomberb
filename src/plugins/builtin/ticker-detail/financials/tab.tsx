@@ -150,10 +150,12 @@ export function ResolvedFinancialsTab({
   const [storedSubTab, setStoredSubTab] = usePaneStateValue<string>("financialSubTab", FINANCIAL_SUB_TABS[0]!.key);
   const resolvedSubTabKey = resolveFinancialSectionKey(storedSubTab);
   const subTabIdx = Math.max(0, FINANCIAL_SECTIONS.findIndex((tab) => tab.key === resolvedSubTabKey));
-  // Ratios open collapsed: the inputs behind each one show on demand.
+  // Ratios open collapsed: the inputs behind each one show on demand. A capture of a ratio tab opens them all
+  // (`financialRatiosExpanded`), so the picture holds the inputs the report lists.
+  const [ratiosExpanded] = usePaneStateValue<boolean>("financialRatiosExpanded", false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set([
     ...collectDefaultCollapsedGroupIds(FINANCIAL_SUB_TABS.flatMap((tab) => tab.rows)),
-    ...RATIO_TABS.flatMap((tab) => tab.ratios.map((ratio) => ratio.id)),
+    ...ratiosExpanded ? [] : RATIO_TABS.flatMap((tab) => tab.ratios.map((ratio) => ratio.id)),
   ]));
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const bodyScrollRef = useRef<ScrollBoxRenderable>(null);

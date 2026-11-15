@@ -48,6 +48,7 @@ const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["--csv", "Print one rectangular CSV with a single header, readable by pandas.read_csv with no options. Existing columns stay in order; extra tables add columns and a section column. The final export_notes column repeats source details, caveats, warnings and truncation notes on every row, including in files and pipes. Quoted notes may contain newlines"],
   ["--ndjson", "Print one JSON object per table row"],
   ["--output <path>, --out <path>", "Write a --csv, --json or --ndjson export to this file in UTF-8, and print where it went (a redirect is UTF-16 in Windows PowerShell 5.1)"],
+  ["--decimal comma|dot", "Write a --csv export's numbers with a decimal comma (17,2), cells split by ;, for a spreadsheet in a decimal-comma locale; or a dot. gloom config set csvDecimal comma makes the comma the default. Text and JSON keep the dot"],
   ["--limit <n>", "For row/table reports, keep the first n rows in printed order, not the newest n (use --tail). Applies to text, JSON, CSV and NDJSON, not shot or scalar results. Pane reports may set a per-table limit or a source cap; see help fn <function>. It does not request all available source rows"],
   ["--tail <n>", "Show the newest n rows of a dated series (history, fred, econ) in their printed order, or the last n of another list"],
   ["--refresh", "Fetch fresh data instead of reading the cache"],

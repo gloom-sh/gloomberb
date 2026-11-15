@@ -103,6 +103,25 @@ export interface PaneInstanceConfig {
   locked?: boolean;
   /** Set by Move to New Layout and cleared by Move Back; never published. */
   movedFrom?: PaneMovedFrom;
+  /** Set when a follower was pinned on its ticker; read only while it follows nothing. Never published. */
+  unlinkedFrom?: PaneUnlinkedFrom;
+}
+
+/**
+ * The link a follower left when it was pinned on the ticker it showed. Its title says so
+ * (`AAPL  ⧉ Unlinked`) until it is linked again.
+ */
+export interface PaneUnlinkedFrom {
+  /** The pane it followed. */
+  instanceId: string;
+  /** That pane's kind (`portfolio-list`), so a research pane can follow a new one of it. */
+  paneId?: string;
+  /**
+   * The app cut the link, not the user: the source closed or left the layout, or another
+   * research pane took it. A research pane pinned this way follows again once its source, or
+   * one of that kind, is in the layout with no research pane of its own (`relinkPinnedResearchPanes`).
+   */
+  auto?: true;
 }
 
 interface DockPaneNode {
@@ -380,6 +399,13 @@ export interface AppConfig {
    * are never shifted by it.
    */
   timezone?: string;
+  /**
+   * The decimal mark CSV exports write numbers with, the CLI's and the app's:
+   * `comma` writes `17,2` with cells split by `;`, as a spreadsheet in a
+   * decimal-comma locale reads them. Absent is the dot. Text and JSON keep
+   * the dot. Kept on this machine only.
+   */
+  csvDecimal?: "comma" | "dot";
   /**
    * Presentation mode: the panes fill the window, without the header or the
    * status bar, for a screen that is shown rather than worked at. Absent is off.

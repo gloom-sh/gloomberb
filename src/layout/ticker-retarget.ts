@@ -8,7 +8,7 @@ import {
 import type { BrokerContractRef, TickerListingRef } from "../types/instrument";
 import type { PaneDef } from "../types/plugin";
 import { tickerInstrumentLabel } from "../tickers/instrument-label";
-import { pinnedTitle } from "./pane-follow";
+import { pinnedTitle, userUnlinkedFrom } from "./pane-follow";
 import { isPaneInLayout } from "./pane-manager";
 import { isTickerLinkPeer } from "./ticker-navigation";
 
@@ -79,7 +79,8 @@ export function retargetTickerPane(
   };
   const research = target.paneId === TICKER_RESEARCH_PANE_ID;
   const title = research ? tickerInstrumentLabel(symbol, instrument) : pinnedTitle(target, symbol);
-  const pinned: PaneInstanceConfig = { ...target, binding, ...(title ? { title } : {}) };
+  const unlinkedFrom = userUnlinkedFrom(target, layout);
+  const pinned: PaneInstanceConfig = { ...target, binding, ...(title ? { title } : {}), ...(unlinkedFrom ? { unlinkedFrom } : {}) };
   const next = paneDef?.retargetTicker?.(pinned, symbol, previous) ?? pinned;
   return {
     ...layout,

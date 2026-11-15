@@ -177,6 +177,7 @@ import {
   historyPriceDecimals,
   historyRolls,
   historyRows,
+  historyTextVolumes,
   historyUnit,
   quotedPriceDivisor,
   withDailyRebuiltBars,
@@ -2334,8 +2335,9 @@ function historyTextColumns(intraday: boolean, price: (value: unknown, row: Reco
  * market's shows it beside the venue, never as its volume, and a bar without
  * volume in a history that reports it prints as missing, never as 0 or blank.
  */
-function historyVolumeCell(missingVolume: (row: Record<string, unknown>) => string) {
-  return (value: unknown, row: Record<string, unknown>) => formatCountCell(value)
+function historyVolumeCell(missingVolume: (row: Record<string, unknown>) => string, shown?: (row: Record<string, unknown>) => number | undefined) {
+  // The newest bars' exact counts print at the step of the rest of the column (historyTextVolumes).
+  return (value: unknown, row: Record<string, unknown>) => formatCountCell(shown?.(row) ?? value)
     || (typeof row.venueVolume === "number"
       ? cliStyles.muted(`${formatCountCell(row.venueVolume)} ${typeof row.volumeVenue === "string" ? row.volumeVenue : ""}`.trim())
       : missingVolume(row));
@@ -2451,8 +2453,9 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const price = historyPrice(history.decimals);
     // A bar without volume in a history that reports it prints as missing.
     const missingVolume = historyReportsVolume(data) ? MISSING_VOLUME_TEXT : "";
+    const textVolumes = historyTextVolumes(data, intraday);
     const textColumns = historyTextColumns(intraday, price).map((column) => column.key !== "volume" ? column
-      : { ...column, format: historyVolumeCell(() => missingVolume) });
+      : { ...column, format: historyVolumeCell(() => missingVolume, (row) => textVolumes.get(String(row.date))) });
     // The largest fall from a close to a later one in the bars shown, said under the heading: within one contract
     // of a continuous future, never from one month's close to another's across a roll.
     // A yield (^TNX) falls and rises by its level, in bp, and its largest rise is said too.
@@ -2858,11 +2861,12 @@ async function runHistoryList(
     }
     const decimals = (row: Record<string, unknown>) => bySymbol.get(String(row.symbol))?.decimals ?? 2;
     const intraday = served.some((history) => history.intraday);
+    const textVolumes = new Map(served.map((history) => [history.listing.key, historyTextVolumes(history.data, history.intraday)] as const));
     const textColumns = historyTextColumns(intraday, (value, row) => historyPrice(decimals(row))(value)).map((column) => column.key !== "volume" ? column
       : { ...column, format: historyVolumeCell((row) => {
         const history = bySymbol.get(String(row.symbol));
         return history && row.date && historyReportsVolume(history.data) ? MISSING_VOLUME_TEXT : "";
-      }) });
+      }, (row) => textVolumes.get(String(row.symbol))?.get(String(row.date))) });
     ctx.printResult({
       data: rows,
       metadata: {

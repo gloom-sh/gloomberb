@@ -1,5 +1,5 @@
 import { compactFloatingZ, getDockLeafLayouts, getDockedPaneIds, removePane, showDockTab, withoutTransientPanes } from "../../../layout/pane-manager";
-import { pinFollowingPane } from "../../../layout/pane-follow";
+import { pinOrphanedFollower } from "../../../layout/pane-follow";
 import {
   cloneLayout,
   findPaneInstance,
@@ -627,7 +627,7 @@ export function withFocusedPane(
   const normalizedLayout = normalizePaneLayout(config.layout, {
     // Keep a follower alive on its last symbol when its source pane is gone.
     resolveOrphanSymbol: (instanceId) => resolveTickerForPane(state, instanceId),
-    pinOrphan: pinFollowingPane,
+    pinOrphan: pinOrphanedFollower(state.config.layout),
     externalSourceIds: options.externalSourceIds ?? linkedSourceIds(state),
   });
   const nextConfig = normalizedLayout === config.layout

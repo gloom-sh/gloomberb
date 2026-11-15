@@ -186,10 +186,11 @@ test("FA: a filled half is headed as one with its growth on the half before; a f
       + "6 months to 2025-06-30 revenue (comparative in the 2026-08-20 announcement).");
 
     const annual = await load("annual");
+    // Each period is named as the pane's column names it, then the day it ends.
     expect(headers(annual)).toEqual([
-      "TTM 2026-06-30 CNY bn",
-      "2025-12-31 CNY bn (announced 2026-03-25)",
-      "2024-12-31 CNY bn (provider date)",
+      "TTM H1 FY26 2026-06-30 CNY bn",
+      "FY2025 2025-12-31 CNY bn (announced 2026-03-25)",
+      "FY2024 2024-12-31 CNY bn (provider date)",
     ]);
     // The year's revenue, restated alike in its announcement, has its growth; its net income is not compared.
     expect(growth(annual, "income:revenue")["2025-12-31"]).toBeCloseTo(37.12 / 13.04 - 1, 6);
@@ -223,7 +224,7 @@ test("FA CSV writes every amount as a bare number, every digit, whatever growth 
   const lines = renderReportCsv(headlessReportTables(financialStatementsHeadless, result, input, "FA", freshness, { complete: true, unavailableSymbols: [] }), freshness)
     .split("\n\n")[0]!.split("\n");
   const header = lines[0]!.split(",");
-  const periods = header.flatMap((column, index) => /^\d{4}-\d{2}-\d{2} /.test(column) ? [index] : []);
+  const periods = header.flatMap((column, index) => /(^| )\d{4}-\d{2}-\d{2} /.test(column) ? [index] : []);
   expect(periods).toHaveLength(3);
   const amounts = lines.slice(1).flatMap((line) => periods.map((index) => line.split(",")[index]!)).filter(Boolean);
   expect(amounts.length).toBeGreaterThan(0);
@@ -247,8 +248,8 @@ test("financial exports distinguish provider dates from SEC period evidence and 
   } }) } as HeadlessPaneContext;
   const result = await financialStatementsHeadless.load(args(["COST"], { period: "annual", statement: "income" }), ctx);
   const columns = result.metadata!.columns as Array<Record<string, unknown>>;
-  expect(columns.find(({ date }) => date === "2024-09-01")).toMatchObject({ dateSource: "sec", providerDate: "2024-08-31", dateEvidence, label: "2024-09-01 USD (SEC date)" });
-  expect(columns.find(({ date }) => date === "2023-08-31")).toMatchObject({ dateSource: "provider", dateEvidence: null, label: "2023-08-31 USD (provider date)" });
+  expect(columns.find(({ date }) => date === "2024-09-01")).toMatchObject({ dateSource: "sec", providerDate: "2024-08-31", dateEvidence, label: "FY2024 2024-09-01 USD (SEC date)", period: "FY2024", periodEnd: "2024-09-01" });
+  expect(columns.find(({ date }) => date === "2023-08-31")).toMatchObject({ dateSource: "provider", dateEvidence: null, label: "FY2023 2023-08-31 USD (provider date)" });
   expect(columns.find(({ date }) => date === "TTM")).toMatchObject({ dateSource: "derived", dateEvidence: null, providerDate: null });
   expect(columns.every((column) => column.availableAt === null && column.fieldAvailability === null)).toBe(true);
   expect(result.columns?.find(({ key }) => key === "2023-08-31")?.header).toContain("provider date");
@@ -898,4 +899,71 @@ test("FA cash-only runway labels its actual input and caps only formatted values
   const bank = await financialStatementsHeadless.load(request, ctx);
   expect(bank.rows.some((row) => String(row.id).startsWith("runway-"))).toBe(false);
   expect(bank.notes?.some((note) => note.startsWith("Runway:"))).toBe(false);
+});
+
+// A memo of three companies' ROIC: Copart, debt free with its cash in its equity, and the oldest year without the one before it.
+function memoContext() {
+  const year = (date: string, equity: number, cash: number, operatingIncome: number, revenue: number) => ({
+    date, currency: "USD", dateSource: "sec" as const, totalRevenue: revenue, grossProfit: revenue * 0.45, operatingIncome,
+    pretaxIncome: operatingIncome, taxProvision: operatingIncome * 0.2, netIncome: operatingIncome * 0.8,
+    totalEquity: equity, totalDebt: 0, totalAssets: equity * 1.1, cashCashEquivalentsAndShortTermInvestments: cash,
+    capitalExpenditure: -revenue * 0.07, depreciationAndAmortization: revenue * 0.05, operatingCashFlow: revenue * 0.34,
+    freeCashFlow: revenue * 0.27, purchaseOfPPE: -revenue * 0.07,
+  });
+  return { marketData: createTestDataProvider({ async getTickerFinancials(symbol) {
+    const scale = symbol === "V" ? 10 : 1;
+    return { financialCurrency: "USD", annualStatements: [
+      year("2024-07-31", 6e9 * scale, 3e9, 1.5e9 * scale, 4.2e9 * scale),
+      year("2025-07-31", 8e9 * scale, 4e9, 1.7e9 * scale, 4.6e9 * scale),
+      year("2026-07-31", 10e9 * scale, 5e9, 1.65e9 * scale, 4.7e9 * scale),
+    ], quarterlyStatements: [], priceHistory: [] };
+  } }), signal: new AbortController().signal } as HeadlessPaneContext;
+}
+
+test("FA profitability defines ROIC, nets cash in ROIC ex Cash, names fiscal years, and says what the oldest year needs", async () => {
+  const input = args(["CPRT"], { period: "annual", statement: "profitability" });
+  const result = await financialStatementsHeadless.load(input, memoContext());
+  expect(result.columns!.slice(1).map(({ header }) => header)).toEqual([
+    "FY2026 2026-07-31 USD (SEC date)", "FY2025 2025-07-31 USD (SEC date)", "FY2024 2024-07-31 USD (SEC date)",
+  ]);
+  const values = (id: string) => (result.rows.find((row) => row.id === id)!.cells as Array<{ value: number | null; formatted: string }>);
+  // NOPAT 1.32bn over average equity 9bn; less the 4.5bn of cash on average, over 4.5bn.
+  expect(values("roic")[0]!.value).toBeCloseTo(1.32 / 9, 6);
+  expect(values("roic-ex-cash")[0]!.value).toBeCloseTo(1.32 / 4.5, 6);
+  expect(values("roic").map(({ formatted }) => formatted).at(-1)).toBe("needs prior period");
+  expect(result.notes).toEqual(expect.arrayContaining([
+    "ROIC is NOPAT / average (equity + total debt), cash not netted; ROIC ex Cash takes cash and short-term investments out of that capital.",
+    "Margins and NOPAT are GAAP, as the income statement reports them, not the company's adjusted (non-GAAP) figures.",
+    "SEC date: the period end the company's 10-K or 10-Q states.",
+  ]));
+  // The CSV names each row's unit, interval and period end, and a figure that is missing is empty with its reason.
+  const freshness = deriveHeadlessFreshness(financialStatementsHeadless, result);
+  const [header, ...lines] = renderReportCsv(headlessReportTables(financialStatementsHeadless, result, input, "FA", freshness,
+    { complete: true, unavailableSymbols: [] }), freshness).split("\n\n")[0]!.split("\n");
+  const at = (name: string) => header!.split(",").indexOf(name);
+  const roic = lines.find((line) => line.startsWith("ROIC (%)"))!.split(",");
+  expect([roic[at("currency_or_unit")], roic[at("interval")], roic[at("as_of")]]).toEqual(["%", "annual", "2026-07-31"]);
+  expect(roic[3]).toBe("");
+  expect(roic[at("status")]).toBe("FY2024 2024-07-31 USD (SEC date): needs prior period");
+  expect(lines.find((line) => line.startsWith("NOPAT"))!.split(",")[at("currency_or_unit")]).toBe("USD bn");
+  expect(lines.flatMap((line) => line.split(",").slice(1, 4)).filter((cell) => cell && !Number.isFinite(Number(cell)))).toEqual([]);
+});
+
+test("FA of several tickers is one long table: a row per ticker, fiscal period and metric, money in one unit, shared inputs once", async () => {
+  const input = args(["V", "CPRT"], { period: "annual", statement: "profitability" });
+  const result = await financialStatementsHeadless.load(input, memoContext());
+  const row = (ticker: string, period: string, metric: string) => result.rows.find((entry) => entry.ticker === ticker && entry.period === period && entry.metric === metric);
+  expect(row("V", "FY2026", "ROIC")).toMatchObject({ periodEnd: "2026-07-31", unit: "%" });
+  expect(row("V", "FY2026", "ROIC")!.value as number).toBeCloseTo(13.2 / 90 * 100, 6);
+  // Copart's NOPAT in bn beside Visa's, whatever unit its own table takes.
+  expect(row("CPRT", "FY2026", "NOPAT")).toMatchObject({ unit: "USD bn" });
+  expect(row("CPRT", "FY2026", "NOPAT")!.value as number).toBeCloseTo(1.32, 6);
+  expect(result.rows.filter((entry) => entry.ticker === "CPRT" && entry.period === "FY2026" && entry.metric === "Net Income")).toHaveLength(1);
+  expect(row("CPRT", "FY2024", "ROE")).toMatchObject({ value: null, gap: "needs prior period" });
+  const freshness = deriveHeadlessFreshness(financialStatementsHeadless, result);
+  const [header, ...lines] = renderReportCsv(headlessReportTables(financialStatementsHeadless, result, input, "FA", freshness,
+    { complete: true, unavailableSymbols: [] }), freshness).split("\n\n")[0]!.split("\n");
+  expect(header).toBe("Ticker,Period,Period End,Metric,Value,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at");
+  expect(lines.find((line) => line.startsWith("CPRT,FY2024,2024-07-31,ROE,"))).toStartWith("CPRT,FY2024,2024-07-31,ROE,,Value: needs prior period,CPRT,%,annual,Gloom Cloud,2024-07-31,");
+  await expect(financialStatementsHeadless.load(args(["V", "CPRT"], { statement: "income", layout: "wide" }), memoContext())).rejects.toThrow("--layout wide");
 });

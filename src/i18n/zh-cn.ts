@@ -17,6 +17,7 @@ export const zhCN: Record<string, string> = {
   "Linked to {source}": "已链接到 {source}",
   "Link to {source}": "链接到 {source}",
   "Unlink from {source}": "取消链接 {source}",
+  "Unlinked": "已取消链接",
   "Working…": "处理中…",
   "Searching…": "搜索中…",
   "Loading...": "加载中...",

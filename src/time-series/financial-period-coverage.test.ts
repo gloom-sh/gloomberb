@@ -6,7 +6,7 @@ import type { ResolvedSeries, TimeSeriesPoint } from "./types";
 
 const point = (date: string, value: number | null, periodLabel: string): TimeSeriesPoint => ({ date: new Date(date), observedAt: new Date(date), value, periodLabel });
 
-test("latest quarterly valuation counts usable periods while preserving gaps and excluding the current snapshot", () => {
+test("--periods keeps the latest periods, their gaps included, and leaves out the current snapshot", () => {
   const spec = applyChartComposerCapabilityOptions(buildValuationChartPreset(["MSFT"]), "valuation-series", { metric: "trailingPE", period: "quarterly", periods: 3 });
   const series = { id: spec.series[0]!.id, label: "MSFT P/E", nativeFrequency: "quarterly", points: [
     point("2025-03-31", 20, "Q1 2025"), point("2025-06-30", 21, "Q2 2025"),
@@ -14,15 +14,16 @@ test("latest quarterly valuation counts usable periods while preserving gaps and
     point("2026-03-31", Number.NaN, "Q1 2026"), point("2026-09-10", 25, "Current"),
   ] } as ResolvedSeries;
   const result = limitSeriesObservations(spec, series);
-  expect(result.points.map((entry) => entry.value)).toEqual([20, 21, null, 22, Number.NaN]);
-  expect(financialPeriodCoverage(spec, [result])).toEqual([expect.objectContaining({ requested: 3, returned: 3, period: "quarterly", complete: true })]);
+  // Copart's annual margin with four years missing: five periods are the last five, not five values reaching back past the gap.
+  expect(result.points.map((entry) => entry.value)).toEqual([null, 22, Number.NaN]);
+  expect(financialPeriodCoverage(spec, [result])).toEqual([expect.objectContaining({ requested: 3, returned: 1, period: "quarterly", complete: false })]);
   const currentOnly = limitSeriesObservations(spec, { ...series, points: [series.points.at(-1)!] });
   expect(currentOnly.points).toEqual([]);
   expect(financialPeriodCoverage(spec, [currentOnly])[0]).toMatchObject({ returned: 0, complete: false });
   spec.viewport.maxPoints = 2;
   const lastTwo = limitSeriesObservations(spec, series);
-  expect(lastTwo.points.map((entry) => entry.value)).toEqual([21, null, 22, Number.NaN]);
-  expect(financialPeriodCoverage(spec, [lastTwo])[0]).toMatchObject({ returned: 2, complete: true });
+  expect(lastTwo.points.map((entry) => entry.value)).toEqual([22, Number.NaN]);
+  expect(financialPeriodCoverage(spec, [lastTwo])[0]).toMatchObject({ returned: 1, complete: false });
 });
 
 test("zero-valued financial observations are usable and hidden series do not create coverage deficits", () => {

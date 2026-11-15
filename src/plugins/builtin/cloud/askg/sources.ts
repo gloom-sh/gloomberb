@@ -216,8 +216,9 @@ function clientToolCommand(catalog: PaneFunctionCatalog, found: CatalogFunction,
   if (!headless) return null;
   const arg = headless.argument.kind === "ticker"
     ? text(args.symbol)
+    // A call made while the function took one ticker (FA before it read several) named it as `symbol`.
     : headless.argument.kind === "tickers" || headless.argument.kind === "symbol-list"
-      ? symbols(args.symbols).join(",")
+      ? symbols(args.symbols ?? args.symbol).join(",")
       : headless.argument.kind === "free-text"
         ? text(args.text)
         : "";

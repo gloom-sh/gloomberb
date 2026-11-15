@@ -288,3 +288,17 @@ test("an outlet's summary that is the story's lead is printed once", async () =>
   expect(capture()).toContain("Timeline cash consideration 1");
   expect(capture().split("Acme cash consideration version 1").length - 1).toBe(1);
 });
+
+// The feed takes a detail in as a new object; one with no coverage still had none, so the open
+// story asked again for every copy, without end ("Maximum update depth exceeded").
+test.each([
+  ["an empty", [] as NewsArticle["items"]],
+  ["no", undefined],
+])("a detail with %s coverage list is asked for once", async (_label, items) => {
+  let calls = 0;
+  await mount(async () => [story()], async () => { calls++; return { ...story(), items }; });
+  await key("return");
+  await settleFrame(tui.setup(), 20);
+  expect(calls).toBe(1);
+  expect(capture()).toContain("Acme cash consideration version 1");
+});

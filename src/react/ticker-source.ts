@@ -6,7 +6,8 @@ import { usePluginAppActions, usePluginTickerActions } from "../plugins/runtime"
 
 /**
  * Shared Enter routing for panes that publish a cursor symbol: reuse the Ticker Research pane
- * already bound to this one instead of stacking another pane on top of it.
+ * already bound to this one, or a pinned one the layout has, instead of stacking another pane on
+ * top of it (`resolveTickerActivation`).
  */
 export function useTickerSourceActivate(): (
   symbol: string,
@@ -27,6 +28,7 @@ export function useTickerSourceActivate(): (
       floating: options?.floating ?? true,
       forceNewPane: options?.newPane,
       paneType: TICKER_RESEARCH_PANE_ID,
+      ...(activation.reusePaneId ? { reusePaneId: activation.reusePaneId } : {}),
     });
   }, [focusPane, paneId, pinTicker, stateRef]);
 }

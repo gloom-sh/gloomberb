@@ -1,5 +1,5 @@
 import { MISSING_VALUE, formatCompact, formatCurrency } from "../../../utils/format";
-import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
+import { comparablePriceEarnings, forwardFiscalYear, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { marketCapBasisNote, viewMarketCapitalization, withheldMarketCap } from "../../../utils/market-capitalization";
 import {
   enterpriseValueNotMeaningful, enterpriseValueReconciliationNote, enterpriseValueWithdrawn, fundamentalsCurrency,
@@ -170,6 +170,10 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const trailingPEPeriod = reportedMultiples.trailingPE != null && !trailingNotMeaningful && financials
     ? trailingEpsFiscalYear(financials) ?? null : null;
   const forwardPE = forwardNotMeaningful ? null : comparablePriceEarnings(reportedMultiples.forwardPE);
+  // The fiscal year the consensus is for, as `valuation` and DES name it (`FY28`): for a September filer, next year
+  // is two fiscal years out.
+  const forwardPEPeriod = (forwardPE != null || reportedMultiples.forwardPE != null) && !forwardNotMeaningful
+    ? forwardFiscalYear(fundamentals?.forwardEpsPeriodEnd) : null;
   // Every figure a row lacks says why, so an export's blank cell is never silent: N/M multiples say so themselves.
   const gaps: Partial<Record<RelativeValuationGapKey, string>> = {};
   if (session.price == null) gaps.price = quoteStale ? QUOTE_STALE : NOT_REPORTED;
@@ -218,6 +222,8 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     /** The fiscal year the P/E's EPS is ("FY Mar-26") when it is a year's filed figure, not the trailing four quarters'; null otherwise. */
     trailingPEPeriod,
     forwardPE,
+    /** The fiscal year of the consensus EPS the forward P/E is on (`FY28`); null when unknown or there is none. */
+    forwardPEPeriod,
     reportedMultiples,
     /**
      * Why a figure is N/M: a P/E's earnings base is zero or a loss, EV/S's enterprise value is at or below zero,

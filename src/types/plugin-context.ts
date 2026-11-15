@@ -53,6 +53,11 @@ export interface PinTickerOptions {
   tabId?: string;
   /** Merge this state into the resolved research pane when selecting `tabId`. */
   tabState?: Record<string, unknown>;
+  /**
+   * A pinned pane of `paneType` that shows the ticker instead of a new one, when no pane shows
+   * it yet: Enter on a list row with no research pane of its own.
+   */
+  reusePaneId?: string;
 }
 
 export interface GloomPluginContext {

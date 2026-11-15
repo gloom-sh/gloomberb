@@ -36,7 +36,7 @@ export const FINANCIAL_PERIOD_OPTION: HeadlessPaneOptionDef = {
 
 export const FINANCIAL_PERIOD_COUNT_OPTION: HeadlessPaneOptionDef = {
   key: "periods",
-  description: "Keep only the latest N annual or quarterly observations per ticker.",
+  description: "Keep only the latest N annual or quarterly periods per ticker; a period without a value stays as a gap.",
   type: "integer",
   aliases: ["years", "limit"],
   minimum: 1,

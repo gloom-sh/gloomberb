@@ -82,6 +82,11 @@ export interface CliReportColumn<Row = Record<string, unknown>> {
   unitColumn?: boolean;
   /** CSV and NDJSON write the figure to the digits `format` draws (figureAsDrawn); JSON keeps it whole. */
   exportAsShown?: boolean;
+  /**
+   * A column the export gained after its others were set (RV's `Fwd P/E period`): it closes the row, after the
+   * fixed columns and `retrieved_at` (`appendedColumns`), so no column an earlier export had moves.
+   */
+  exportLast?: boolean;
 }
 
 /** A label/value line of a report. `unit` names the unit of a numeric `value` when `formatted` cannot say it. */
@@ -111,6 +116,8 @@ interface ResolvedColumn {
   unit?: string;
   /** The unit always has a column of its own (`unitColumn`). */
   unitColumn?: boolean;
+  /** The column closes the row after the fixed columns (`exportLast`). */
+  last?: boolean;
 }
 
 const BLANK = { kind: "blank" } as const;
@@ -397,7 +404,8 @@ function assembleTable(title: string, columns: readonly ResolvedColumn[], rowCou
   const units = columns.map((column) => rowCount === 0 && column.unit != null ? new Set([column.unit]) : numberUnits(column.cells));
   const mixed = units.map((columnUnits, index) => columnUnits.size > 1 || columns[index]!.unitColumn === true);
   const byRow = mixed.some(Boolean) ? rowUnits(columns, mixed, rowCount) : null;
-  const layout = columns.flatMap((column, index) => {
+  type LayoutColumn = { header: string; value: (row: number) => CliReportValue };
+  const columnLayout = (column: ResolvedColumn, index: number): LayoutColumn[] => {
     const columnUnits = units[index]!;
     const cell = (row: number) => cellValue(column.cells[row] ?? BLANK);
     if (index === 0 && byRow) {
@@ -418,12 +426,18 @@ function assembleTable(title: string, columns: readonly ResolvedColumn[], rowCou
         },
       },
     ];
-  });
+  };
+  const layoutOf = new Map<ResolvedColumn, LayoutColumn[]>(columns.map((column, index) => [column, columnLayout(column, index)]));
+  const layout = columns.flatMap((column) => layoutOf.get(column)!);
   if (status) layout.push({ header: status.header, value: (row: number) => status.values[row] ?? "" });
+  // A column the export gained later (`exportLast`) closes the row, after the status and the fixed columns.
+  const appended = columns.flatMap((column) => column.last ? layoutOf.get(column) ?? [] : []);
+  const ordered = [...layout.filter((entry) => !appended.includes(entry)), ...appended];
   return {
     title,
-    columns: layout.map((column) => column.header),
-    rows: Array.from({ length: rowCount }, (_, row) => layout.map((column) => column.value(row))),
+    columns: ordered.map((column) => column.header),
+    rows: Array.from({ length: rowCount }, (_, row) => ordered.map((column) => column.value(row))),
+    ...appended.length > 0 ? { appendedColumns: appended.length } : {},
   };
 }
 
@@ -566,7 +580,8 @@ export function exportRowsTable<Row extends Record<string, unknown>>(
     };
     const unit = units[columnIndex];
     const withUnit = unit == null ? table : { ...table, unit };
-    return column.unitColumn && column.unitKey && !inRowUnit ? { ...withUnit, unitColumn: true } : withUnit;
+    const last = column.exportLast ? { ...withUnit, last: true } : withUnit;
+    return column.unitColumn && column.unitKey && !inRowUnit ? { ...last, unitColumn: true } : last;
   });
   const statusColumn = withStatus ? {
     header: columns.some((column) => column.header.trim().toLowerCase() === "status") ? "value_status" : "status",

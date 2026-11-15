@@ -17,6 +17,7 @@ export const es: Record<string, string> = {
   "Linked to {source}": "Vinculado a {source}",
   "Link to {source}": "Vincular a {source}",
   "Unlink from {source}": "Desvincular de {source}",
+  "Unlinked": "Desvinculado",
   "Working…": "Procesando…",
   "Searching…": "Buscando…",
   "Loading...": "Cargando...",

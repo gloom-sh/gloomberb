@@ -1,3 +1,4 @@
+import type { CsvDecimal } from "../utils/csv";
 export type CliOutputFormat = "text" | "json" | "csv" | "ndjson";
 
 export interface CliGlobalOptions {
@@ -27,6 +28,12 @@ export interface CliGlobalOptions {
    * `--output` read the flag themselves.
    */
   output?: string;
+  /**
+   * `--decimal comma|dot`: the decimal mark of a `--csv` export, for this run.
+   * A decimal comma separates the cells with `;`. Unset, the `csvDecimal`
+   * setting decides, and without it the dot.
+   */
+  decimal?: CsvDecimal;
 }
 
 export interface ParsedCliArgs {
@@ -75,6 +82,14 @@ function parseColumnCount(value: string | undefined): number {
   return parsed;
 }
 
+/** The decimal mark `--decimal` names: `comma` (or `,`), or `dot` (`.`, `point`). */
+export function parseCsvDecimal(value: string | undefined, flag = "--decimal"): CsvDecimal {
+  const word = value?.trim().toLowerCase();
+  if (word === "comma" || word === ",") return "comma";
+  if (word === "dot" || word === "." || word === "point" || word === "period") return "dot";
+  throw new Error(`${flag} takes comma or dot: --csv --decimal comma writes 17,2 with cells split by ;, for a spreadsheet that reads a decimal comma.`);
+}
+
 function parseOutputFile(value: string | undefined): string {
   if (!value?.trim() || value.startsWith("--")) throw new Error("--output needs a file to write, such as --csv --output report.csv.");
   return value;
@@ -85,7 +100,7 @@ function commandWord(rawArgs: readonly string[]): string | undefined {
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index]!;
     if (arg === "--") return rawArgs[index + 1];
-    if (arg === "--limit" || arg === "--tail" || arg === "--width" || arg === "--output" || arg === "--out") index += 1;
+    if (arg === "--limit" || arg === "--tail" || arg === "--width" || arg === "--output" || arg === "--out" || arg === "--decimal") index += 1;
     else if (!arg.startsWith("-")) return arg;
   }
   return undefined;
@@ -183,6 +198,15 @@ export function parseCliGlobalArgs(rawArgs: string[], settings: { ownsOutput?: b
       options.output = parseOutputFile(arg.slice(arg.indexOf("=") + 1));
       continue;
     }
+    if (arg === "--decimal") {
+      index += 1;
+      options.decimal = parseCsvDecimal(rawArgs[index]);
+      continue;
+    }
+    if (arg.startsWith("--decimal=")) {
+      options.decimal = parseCsvDecimal(arg.slice("--decimal=".length));
+      continue;
+    }
     if (arg === "--limit" || arg === "--tail") {
       index += 1;
       options[arg === "--limit" ? "limit" : "tail"] = parseRowCount(arg, rawArgs[index]);
@@ -211,5 +235,9 @@ export function parseCliGlobalArgs(rawArgs: string[], settings: { ownsOutput?: b
 export function checkCliOutputFormat(parsed: Pick<ParsedCliArgs, "options" | "help">): void {
   if (parsed.options.output !== undefined && parsed.options.format === "text" && !parsed.help) {
     throw new Error("--output writes an export: add --csv, --json or --ndjson, such as --csv --output report.csv.");
+  }
+  // The text a terminal prints and JSON's numbers keep their dot: only a CSV is read by a spreadsheet's locale.
+  if (parsed.options.decimal !== undefined && parsed.options.format !== "csv" && !parsed.help) {
+    throw new Error("--decimal sets the decimal mark of a CSV export: add --csv, such as --csv --decimal comma.");
   }
 }

@@ -946,7 +946,9 @@ header, with the detail's height.
   hint's `title` when its key is not the action's first letter. A pane that
   shows one ticker sets `tickerFollower` on its `PaneDef`, and the menu gains
   "Link to" each visible list, scanner, or other single-ticker pane and "Unlink from" the one it follows;
-  the title then reads `OPX NVDA  ⧉ Linked to Watchlist`. Such a pane changes
+  the title then reads `OPX NVDA  ⧉ Linked to Watchlist`, and once the link is
+  cut (an unlink, the list closing) `OPX NVDA  ⧉ Unlinked`, the host's only
+  link-state marks. Such a pane changes
   ticker while mounted, so it keys its view by symbol and keeps saved
   per-ticker choices (expiry, strike) per symbol.
 - One component renders in the terminal, the desktop app and the web. Import
