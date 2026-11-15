@@ -253,6 +253,7 @@ export interface DataTableProps<
    * which a count of rows cannot, the header being a taller bar there.
    */
   fitRows?: boolean;
+  dense?: boolean;
   overscan?: number;
   columnGap?: number;
   horizontalPadding?: number;

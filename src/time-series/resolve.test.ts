@@ -1699,11 +1699,13 @@ describe("resolveChartSpecData", () => {
     expect(result.errors).toEqual([]);
     expect(result.series).toHaveLength(3);
     const price = result.series.find((entry) => entry.id === "aapl-price")!;
+    expect(price.legendContext).toBe("Close");
     expect(price.points.map((point) => point.value)).toEqual([0, 25]);
     expect(price.axis).toBe("left");
     const bufferedPrice = result.bufferedSeries?.find((entry) => entry.id === "aapl-price");
     expect(bufferedPrice?.points.map((point) => point.value)).toEqual([-20, 0, 25]);
     const revenue = result.series.find((entry) => entry.id === "msft-revenue")!;
+    expect(revenue.legendContext).toBe("Revenue");
     expect(revenue.points[0]?.date.toISOString().slice(0, 10)).toBe("2026-02-15");
     expect(revenue.axis).toBe("right");
     expect(result.series.find((entry) => entry.id === "cpi")?.panelId).toBe("macro");

@@ -16,7 +16,7 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCompact, formatNumber } from "../../../utils/format";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { shortInterestPublicationSegments } from "./schedule";
 import { loadShortWatch } from "./watch-client";
@@ -55,6 +55,7 @@ const COLUMNS: WatchColumn[] = [
 ];
 const DEFAULT_SORT = { columnId: "setup" as ShortWatchSortId, direction: "desc" as SortDirection };
 const rowKey = (row: ShortWatchRow) => row.symbol;
+const rowSetup = (row: ShortWatchRow) => row.error ?? (row.return1M == null ? "No daily closes" : setupLabel(row.setup));
 
 const day = (iso: string | null) => iso ? formatShortDate(`${iso}T00:00:00Z`, { year: false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
 const signed = (value: number | null, digits = 1) => value == null ? MISSING_VALUE : `${value > 0 ? "+" : ""}${formatNumber(value, digits)}%`;
@@ -87,21 +88,19 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
   // A date every row shares moves to the query bar; a column no row fills is left out.
   const settled = useMemo(() => sharedDate(rows, "settlementDate"), [rows]);
   const closed = useMemo(() => sharedDate(rows, "closeDate"), [rows]);
-  const columns = useMemo(() => COLUMNS.filter((column) => !(column.id === "settlementDate" && settled)
+  const columns = useMemo(() => COLUMNS.map((column) => column.id === "setup"
+    ? { ...column, width: Math.max(column.width, ...rows.map((row) => Math.min(32, displayWidth(rowSetup(row))))) } : column)
+    .filter((column) => !(column.id === "settlementDate" && settled)
     && !(column.id === "closeDate" && closed)
     && !(column.id === "percentFloat" && rows.length > 0 && rows.every((row) => row.percentFloat == null))), [rows, settled, closed]);
   const [selected, setSelected] = usePluginPaneState<string | null>("short-watch:selected", null);
 
-  const unreported = rows.filter((row) => !row.settlementDate).map((row) => row.symbol);
-  const unpriced = rows.filter((row) => row.settlementDate && row.return1M == null).map((row) => row.symbol);
   usePaneNoticeFooter({
     registrationId: "short-watch-notices",
     focused,
     notices: [
       universe.symbols.length ? universe.notice : null,
       resource.data ? resource.error : null,
-      unreported.length ? `No short interest settlement for ${unreported.join(", ")}.` : null,
-      unpriced.length ? `No month of daily closes for ${unpriced.join(", ")}.` : null,
     ].filter((value): value is string => !!value),
   });
   // When the newest settlement listed was published and the next is due, as `fn SIW` dates it.
@@ -119,7 +118,8 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
   const renderCell = useCallback((row: ShortWatchRow, column: WatchColumn): DataTableCell => {
     switch (column.id) {
       case "symbol": return { text: row.symbol, color: colors.textBright, attributes: TextAttributes.BOLD };
-      case "setup": return { text: setupLabel(row.setup), color: row.setup === "crowded-rising" ? colors.warning : colors.textDim };
+      case "setup": return { text: rowSetup(row),
+        color: row.error || row.return1M == null || row.setup === "crowded-rising" ? colors.warning : colors.textDim };
       case "percentFloat": return { text: row.percentFloat == null ? MISSING_VALUE : `${formatNumber(row.percentFloat, 1)}%`,
         color: row.setup ? colors.textBright : colors.text, value: row.percentFloat ?? undefined };
       case "daysToCover": return { text: row.daysToCover == null ? MISSING_VALUE : formatNumber(row.daysToCover, 1), value: row.daysToCover ?? undefined };
@@ -155,6 +155,7 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
         rootWidth={width}
         rootHeight={Math.max(2, height - 1)}
         freezeFirstColumn
+        dense
         getItemKey={rowKey}
         sortColumnId={sort.columnId}
         sortDirection={sort.direction}

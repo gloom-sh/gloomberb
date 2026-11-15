@@ -271,7 +271,8 @@ function WebDataTableRowInner<
   const colors = useThemeColors();
   const sectionHeader: DataTableSectionHeader | null =
     renderSectionHeader?.(item, index) ?? null;
-  const baseRowStyle: CSSProperties = {
+  const baseRowStyle: CSSProperties & Record<"--gloom-table-row-h", string> = {
+    "--gloom-table-row-h": `${rowSize}px`,
     position: "absolute",
     top: 0,
     left: 0,
@@ -418,7 +419,7 @@ function WebDataTableRowInner<
               marginLeft: leadGapCss(columns, columnIndex, columnGap),
               paddingLeft: columnIndex > 0 ? insets[columnIndex] : undefined,
               boxSizing: "border-box",
-              height: WEB_CELL_HEIGHT,
+              height: rowSize,
               overflow: "hidden",
               cursor: cell.onMouseDown ? "pointer" : undefined,
               backgroundColor: cell.backgroundColor ?? rowBg,
