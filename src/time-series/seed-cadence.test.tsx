@@ -5,7 +5,7 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import { setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { createIdleEntry } from "../market-data/result-types";
 import { IDLE_COORDINATOR_QUOTES } from "../test-support/quote-store";
-import { parsedPriceHistoryKey, readParsedHistoryResult, rememberParsedPriceHistory } from "./parsed-history-cache";
+import { parsedPriceHistoryKey, readParsedHistoryResult, rememberParsedPriceHistory, rememberSeedListingFacts } from "./parsed-history-cache";
 import { useChartResolution, type UseChartResolutionResult } from "./use-chart-resolution";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 import type { PricePoint } from "../types/financials";
@@ -29,6 +29,9 @@ const daily: PricePoint[] = [
 ];
 
 async function mount(spec: ChartSpec, now = new Date("2026-09-22T12:00:00Z"), options: ChartResolveOptions = {}) {
+  for (const { source } of spec.series) {
+    if (source.kind === "security") rememberSeedListingFacts(source.instrument, { quoteMetadata: null });
+  }
   let resolve!: (points: PricePoint[]) => void;
   const waiting = new Promise<PricePoint[]>(done => { resolve = done; });
   let requested = false;

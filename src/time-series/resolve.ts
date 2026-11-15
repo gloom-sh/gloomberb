@@ -991,7 +991,7 @@ async function resolveChartSpecPass(
       if (marketField) {
         // Same precedence as baseSecuritySeries: the quote's own facts first.
         const listingFacts = mergeQuoteMetadata(merged.quote ? quoteMetadataFromQuote(merged.quote) : undefined, quoteMetadata);
-        if (listingFacts?.currency || listingFacts?.instrumentType) rememberSeedListingFacts(source.instrument, { quoteMetadata: listingFacts });
+        rememberSeedListingFacts(source.instrument, { quoteMetadata: listingFacts ?? null });
         if (contractUnit) rememberSeedListingFacts(source.instrument, { contractUnit });
       }
       if (history) {

@@ -85,7 +85,7 @@ export function seedChartResolutionResult(
     const facts = readSeedListingFacts(seriesSpec.source.instrument);
     const { symbol, exchange } = seriesSpec.source.instrument;
     const bars = builtBarSize ? aggregatePriceBars(history, builtBarSize, { symbol, exchange }) : history;
-    const base = baseSecuritySeries(seriesSpec, emptyFinancials(bars), index, resolution, facts?.quoteMetadata, facts?.contractUnit);
+    const base = baseSecuritySeries(seriesSpec, emptyFinancials(bars), index, resolution, facts?.quoteMetadata ?? undefined, facts?.contractUnit);
     const resolved = base && builtBarSize ? withBuiltBarSize(base, builtBarSize) : base;
     if (!resolved?.points.length) return;
     if (hidden) {

@@ -3,7 +3,7 @@ import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { DataProvider } from "../types/data-provider";
-import type { PricePoint, TickerFinancials } from "../types/financials";
+import type { PricePoint, QuoteMetadata, TickerFinancials } from "../types/financials";
 import {
   MarketDataCoordinator,
   setSharedMarketDataCoordinator,
@@ -14,6 +14,7 @@ import { connectionHealth, DESKTOP_BRIDGE_CONNECTION_ID } from "../core/connecti
 import { CONNECTION_LOST_MESSAGE, RpcTimeoutError } from "../utils/rpc-timeout-error";
 import type { ChartResolveSources } from "./resolve-context";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
+import { rememberSeedListingFacts } from "./parsed-history-cache";
 import {
   useChartResolution,
   type UseChartResolutionResult,
@@ -497,6 +498,7 @@ describe("useChartResolution", () => {
   });
 
   test("paints coordinator-cached candles on the first frame", async () => {
+    rememberSeedListingFacts({ symbol: "RESOLUTION-HOOK-TEST", exchange: "NASDAQ" }, { quoteMetadata: null });
     const history = Promise.withResolvers<PricePoint[]>();
     const provider = createTestDataProvider({
       getTickerFinancials: async () => EMPTY_FINANCIALS,
@@ -536,7 +538,54 @@ describe("useChartResolution", () => {
     await waitFor(() => latestResult?.loading === false);
   });
 
+  test.each(["USD", null])("cached bars wait for listing units (%s), then a warm open paints the settled units immediately", async (currency) => {
+    const instrument = { symbol: `SEED-UNIT-BOUNDARY-${currency ?? "UNKNOWN"}`, exchange: "NASDAQ" };
+    const spec: ChartSpec = { ...SPEC, series: [{ ...SPEC.series[0]!, source: {
+      kind: "security", instrument, fieldId: "market.ohlcv",
+    } }] };
+    const history = Promise.withResolvers<PricePoint[]>();
+    const metadata = Promise.withResolvers<QuoteMetadata | null>();
+    let metadataCalls = 0;
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: async () => history.promise,
+      getQuoteMetadata: async () => { metadataCalls += 1; return metadata.promise; },
+    });
+    setSharedMarketDataCoordinator({
+      ...IDLE_COORDINATOR_QUOTES,
+      subscribe: () => () => {}, getVersion: () => 1, getKeysVersion: () => 1,
+      getChartEntry: () => ({ ...createIdleEntry<PricePoint[]>(), phase: "ready",
+        data: INITIAL_HISTORY, lastGoodData: INITIAL_HISTORY, source: "test", fetchedAt: Date.now() }),
+    } as never);
+
+    await tui.render(<ResolutionHarness sources={sourcesFor(provider)} spec={spec} />, { width: 24, height: 1 });
+    expect(latestResult?.loading).toBe(true);
+    expect(latestResult?.series).toEqual([]);
+    history.resolve(INITIAL_HISTORY);
+    await waitFor(() => metadataCalls === 1);
+    expect(latestResult?.series).toEqual([]);
+    const facts: QuoteMetadata | null = currency ? { symbol: instrument.symbol, listingExchangeName: instrument.exchange,
+      currency, instrumentType: "EQUITY" } : null;
+    metadata.resolve(facts);
+    await waitFor(() => latestResult?.loading === false);
+    expect(latestResult?.series[0]?.unit).toBe(currency ? "USD/share" : "currency");
+
+    const warmHistory = Promise.withResolvers<PricePoint[]>();
+    const warmProvider = createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: async () => warmHistory.promise,
+      getQuoteMetadata: async () => facts,
+    });
+    await tui.render(<ResolutionHarness key="warm" sources={sourcesFor(warmProvider)} spec={spec} />, { width: 24, height: 1 });
+    expect(latestResult?.loading).toBe(true);
+    expect(latestResult?.series[0]?.points).toHaveLength(2);
+    expect(latestResult?.series[0]?.unit).toBe(currency ? "USD/share" : "currency");
+    warmHistory.resolve(INITIAL_HISTORY);
+    await waitFor(() => latestResult?.loading === false);
+  });
+
   test("a settled history failure is not replaced by an indefinitely loading cached seed", async () => {
+    rememberSeedListingFacts({ symbol: "RESOLUTION-HOOK-TEST", exchange: "NASDAQ" }, { quoteMetadata: null });
     const history = Promise.withResolvers<PricePoint[]>();
     const provider = createTestDataProvider({
       getTickerFinancials: async () => EMPTY_FINANCIALS,
