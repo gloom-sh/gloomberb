@@ -26,6 +26,7 @@ export interface StatViewModel {
   reading: string;
   /** The day the latest print was released (`YYYY-MM-DD`), when FRED says; null for a daily rate. */
   releasedOn: string | null;
+  firstReleased: string | null;
   revisedOn: string | null;
   firstReleaseValue: number | null;
   /** `released Tue 20 Oct`, or null when the release is not known. */
@@ -153,6 +154,7 @@ export function projectStat(
     period: formatStatPeriod(latest.date, perYear),
     reading,
     releasedOn,
+    firstReleased: build.firstReleased ?? null,
     revisedOn: build.revisedOn ?? null,
     firstReleaseValue: build.firstReleaseValue ?? null,
     released: releasedText(releasedOn, latest.date),

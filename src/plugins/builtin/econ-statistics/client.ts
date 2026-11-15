@@ -14,6 +14,7 @@ export interface StatBuild {
   trend: TrendFit;
   /** The day the latest point's figure was released (`YYYY-MM-DD`), when FRED says. */
   releasedOn?: string;
+  firstReleased?: string;
   revisedOn?: string;
   firstReleaseValue?: number;
   cache?: SeriesCacheMetadata;
@@ -64,6 +65,7 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
   };
   // These go negative routinely, so the fit stays linear.
   return { stat: def, points, trend: fitTrend(points, "linear"), ...(releasedOn ? { releasedOn } : {}),
+    ...(release?.firstReleased ? { firstReleased: release.firstReleased } : {}),
     ...(release?.revisedOn ? { revisedOn: release.revisedOn } : {}),
     ...(def.transform === "level" && release?.firstReleaseValue != null ? { firstReleaseValue: release.firstReleaseValue * scale } : {}),
     ...(cache ? { cache } : {}) };
@@ -83,7 +85,7 @@ function alignDerivedBuilds(builds: StatBuild[]): StatBuild[] {
     if ((entry.points.at(-1)?.date ?? "") <= cap) return entry;
     const points = entry.points.filter((point) => point.date <= cap);
     if (points.length === 0) return entry;
-    const { releasedOn: _cutRelease, ...rest } = entry;
+    const { releasedOn: _cutRelease, firstReleased: _cutFirst, revisedOn: _cutRevision, firstReleaseValue: _cutValue, ...rest } = entry;
     return { ...rest, points, trend: fitTrend(points, "linear") };
   });
 }

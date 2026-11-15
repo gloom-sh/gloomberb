@@ -213,7 +213,7 @@ export function projectStatsHeadlessBundle(
         // The period the figure covers; `releasedOn` is when it was published, which the report is as of.
         asOf: view.latest.date,
         releasedOn: view.releasedOn,
-        firstReleased: view.releasedOn,
+        firstReleased: view.firstReleased,
         revisedOn: view.revisedOn,
         firstReleaseValue: view.firstReleaseValue,
         formattedFirstRelease: view.firstReleaseValue == null ? null : reportFormat(view.stat)(view.firstReleaseValue),
