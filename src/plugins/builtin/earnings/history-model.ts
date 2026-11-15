@@ -7,8 +7,8 @@ import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financ
 import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
 import { resolveReportRows, type ReportRowAdapter } from "../shared/earnings-calendar";
 import { addDays, MIN_AVERAGE_REPORTS } from "./board-model";
-import { fiscalQuarterOf, fiscalQuarterText, placedPeriod, type FiscalQuarter } from "./fiscal-quarter";
-import { datedYear, fiscalMonth, impliedText, moveSize, shortDate, surprise, TIMING_LABEL, type Surprise } from "./format";
+import { fiscalQuarterOf, fiscalPeriodText, placedPeriod, type FiscalQuarter } from "./fiscal-quarter";
+import { datedYear, epsText, fiscalMonth, impliedText, moveSize, shortDate, surprise, TIMING_LABEL, type Surprise } from "./format";
 
 export interface HistoryRow {
   key: string;
@@ -67,7 +67,7 @@ export function periodText(
   row: Pick<HistoryRow, "periodKind" | "periodMonths" | "periodFiscalYear" | "fiscalHalf" | "fiscalQuarter" | "fiscalPeriod">,
   short = true,
 ): string {
-  if (row.periodKind === "quarter") return fiscalQuarterText(row.fiscalQuarter, short) ?? fiscalMonth(row.fiscalPeriod);
+  if (row.periodKind === "quarter") return fiscalPeriodText(row.fiscalPeriod, row.fiscalQuarter, short);
   const year = row.periodFiscalYear == null ? null : `FY${short ? String(row.periodFiscalYear).slice(-2) : row.periodFiscalYear}`;
   if (row.periodKind === "year" && year) return year;
   if (row.periodKind === "half" && year && row.fiscalHalf != null) return `H${row.fiscalHalf} ${year}`;
@@ -262,11 +262,13 @@ export function historyFigures(rows: readonly HistoryRow[], today: string): Stat
   const beats = past.filter((row) => row.epsSurprise != null && row.epsActual != null && row.epsEstimate != null);
   const figures: StatItem[] = [];
   if (next) {
+    const estimate = next.epsEstimate == null ? null : `EPS est ${epsText(next.epsEstimate)}${next.currency ? ` ${next.currency}` : ""}`;
     figures.push({
       id: "next",
       label: "Next report",
       value: `${shortDate(next.date)}${next.timing ? ` ${TIMING_LABEL[next.timing]}` : ""}`,
-      detail: [next.dateStatus === "reported" ? null : next.dateStatus, daysUntil(next.date, today)].filter(Boolean).join(", "),
+      detail: [estimate, next.dateStatus === "reported" ? null : next.dateStatus, daysUntil(next.date, today)].filter(Boolean).join(", "),
+      ...(estimate ? { detailVariants: [estimate] } : {}),
     });
     if (next.implied != null) {
       figures.push({

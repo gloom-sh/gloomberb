@@ -1,4 +1,5 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import { isProLock } from "../../../cli/pane-functions/access-gate";
 import type { HeadlessPaneColumn, HeadlessPaneContext } from "../../../types/headless";
 import {
   KPI_FIELDS,
@@ -387,7 +388,9 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const extra = extraScreenColumns(metrics, data.definition.sort.field);
     const states = new Set(rows.map((row) => row.metrics[metric].state));
     const legend = STATE_LEGEND.filter(({ state }) => states.has(state)).map(({ text }) => text);
-    const notes = [...watchlistRead.notes, ...listingReadNotes(data.listings, data.definition.currency), ...kpiGaps, ...legend];
+    const locked = rows.some((row) => metrics.some((field) => row.metrics[field]?.access === "pro"));
+    const notes = [...watchlistRead.notes, ...listingReadNotes(data.listings, data.definition.currency), ...kpiGaps, ...legend,
+      ...(locked && !errors.some(isProLock) ? ["Locked figures require Gloom Pro access."] : [])];
     // Payload status also counts ordinary per-field sparsity; only generation
     // warnings are failures, and more pages are not an error.
     return {

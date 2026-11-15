@@ -130,7 +130,7 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
       ...metrics.forwardRate != null ? converted : {} },
     growthItem("growth-1y", short ? "1Y chg" : "1Y growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful),
     growthItem("cagr-3y", "3Y CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),
-    { id: "payout", label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : MISSING_VALUE },
+    { id: "payout", label: "Payout (basis unstated)", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : MISSING_VALUE },
     { id: "cadence", label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
     ...exDate,
     { id: "next-pay", label: "Next pay", value: formatDate(metrics.nextPayDate) },

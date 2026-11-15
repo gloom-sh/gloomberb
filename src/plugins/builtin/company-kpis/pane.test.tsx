@@ -10,7 +10,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { companyKpisCache } from "./client";
 import { CompanyGuidancePane, CompanyKpisPane } from "./pane";
-import { guidancePayload, kpisPayload } from "./test-fixture";
+import { guide, guidancePayload, kpisPayload } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 afterEach(() => { setCloudApiFetchTransport(null); companyKpisCache.reset(); });
@@ -47,6 +47,16 @@ test("preview keeps real values and evidence navigable at narrow size while lock
   expect(detail).toContain("2026-04-01 to 2026-06-30");
   await tui.emitKeypress({ name: "escape" });
   expect(await tui.waitForFrameToContain("METRIC")).toContain("125.00M");
+});
+
+test.each([46, 52, 60])("a %s-column guide keeps its value and wraps its access and older-issue notices", async (width) => {
+  setCloudApiFetchTransport(async () => Response.json(guidancePayload({ access: "preview", lockedRows: 8, truncated: true,
+    guidance: [guide({ issuedDate: "2026-05-20" }), guide({ id: "newer", issuedDate: "2026-08-19", seriesKey: "other" })] })));
+  await mount({ guidance: true, width, height: 30 });
+  const frame = await tui.waitForFrameToContain("110.00M");
+  expect(frame).toContain("120.00M");
+  expect(frame).toContain("2026-05-20");
+  expect(frame.replace(/\s+/g, " ")).toContain("Gloom Pro");
 });
 
 test("guidance history exposes matched actuals and evidence without substituting a range midpoint", async () => {

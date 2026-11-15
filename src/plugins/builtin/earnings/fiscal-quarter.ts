@@ -1,5 +1,6 @@
 import type { EarningsFiscalAnchor } from "../../../api-client/earnings";
 import { addDays } from "./board-model";
+import { quarterLabel } from "../shared/earnings-report";
 
 /** A quarter as the company names it: NVIDIA's October 2026 quarter is Q3 of fiscal 2027. */
 export interface FiscalQuarter {
@@ -51,4 +52,8 @@ export function placedPeriod(date: string, anchor: EarningsFiscalAnchor | null |
 export function fiscalQuarterText(quarter: FiscalQuarter | null | undefined, short = false): string | null {
   if (!quarter) return null;
   return `Q${quarter.fiscalQuarter} FY${short ? String(quarter.fiscalYear).slice(-2) : quarter.fiscalYear}`;
+}
+
+export function fiscalPeriodText(period: string | null | undefined, quarter?: FiscalQuarter | null, short = false): string {
+  return fiscalQuarterText(quarter, short) ?? quarterLabel(period ?? undefined);
 }

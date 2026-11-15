@@ -73,7 +73,7 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   revenueGrowthPercent: "FY REV GR%",
   earningsGrowthPercent: "FY EARN GR%",
   grossMarginPercent: "FY GROSS MGN%",
-  payoutRatioPercent: "FY PAYOUT%",
+  payoutRatioPercent: "FY CASH PAYOUT%",
   dividendGrowth1YPercent: "DIV GR 1Y%",
   dividendGrowth3YPercent: "DIV CAGR 3Y%",
   operatingMarginPercent: "FY OP MGN%",
@@ -257,15 +257,16 @@ export function formatScreenValue(field: NumericField, value: number | null): st
 }
 
 /** A row's metric as a cell prints it: N/M for a multiple that is not meaningful, as RV and `valuation` print it. */
-export function formatScreenMetric(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful">): string {
-  return metric.value == null && metric.notMeaningful ? formatPriceEarnings(NOT_MEANINGFUL) : formatScreenValue(field, metric.value);
+export function formatScreenMetric(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful"> & Partial<Pick<ScreenMetric, "reason">>): string {
+  const text = metric.value == null && metric.notMeaningful ? formatPriceEarnings(NOT_MEANINGFUL) : formatScreenValue(field, metric.value);
+  return field === "dividendGrowthYears" && metric.value != null && /^At least \d+: the stored history starts \d{4}-\d{2}-\d{2}$/.test(metric.reason ?? "") ? `${text}+` : text;
 }
 
 /** A metric as a company's detail prints it: with its unit, but a grade or the composite reads as itself (B+, 4.72 Top). */
-export function screenDetailValue(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful" | "unit">): string {
+export function screenDetailValue(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful" | "unit"> & Partial<Pick<ScreenMetric, "reason">>): string {
   // A missing value is just "--", without the unit it would have had; N/M says so.
   if (metric.value == null) return metric.notMeaningful ? formatScreenMetric(field, metric) : formatScreenValue(field, null);
-  const text = formatScreenValue(field, metric.value);
+  const text = formatScreenMetric(field, metric);
   if (GRADE_DISPLAY_FIELDS.has(field)) return text;
   // A count of one is singular: 1 year, 1 day.
   const unit = metric.value === 1 && COUNT_UNITS.has(metric.unit) ? metric.unit.slice(0, -1) : metric.unit;
@@ -484,7 +485,7 @@ export const screenLabel = (field: string) =>
     dividendYieldPercent: "Dividend yield %",
     xPostsPerDay: "X posts per day",
     xPostsVsMedian: "X posts vs median",
-    payoutRatioPercent: "Annual payout ratio %",
+    payoutRatioPercent: "FY cash dividends / parent net income %",
     dividendGrowth1YPercent: "Dividend growth 1Y %",
     dividendGrowth3YPercent: "Dividend growth 3Y CAGR %",
     wikiViewsPerDay: "Wikipedia views per day",

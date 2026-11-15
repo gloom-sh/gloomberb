@@ -76,7 +76,6 @@ function projectEarningsEstimatesHeadless(
   });
   const errors = [...(sources.errors ?? []), ...(notice?.failed ? [notice.text] : [])];
   const unmatchedReportedPeriods = matching.filter((row) => row.earningsState === "reported" && !row.fiscalPeriodEnd).map((row) => row.date);
-  if (unmatchedReportedPeriods.length) errors.push(`No statement period identified for ${unmatchedReportedPeriods.length} reported earnings row(s); quarterly revenue is unavailable.`);
 
   return {
     columns: ESTIMATE_COLUMNS,

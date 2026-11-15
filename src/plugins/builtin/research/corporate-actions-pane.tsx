@@ -714,6 +714,7 @@ export function CorporateActionsView({
       columns={columns}
       items={rows}
       scrollToIndex={selectedIdx}
+      scrollToIndexAlign="start"
       scrollToIndexVersion={rows.length}
       sortColumnId={null}
       sortDirection="asc"

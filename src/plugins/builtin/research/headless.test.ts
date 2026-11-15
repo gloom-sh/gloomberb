@@ -66,6 +66,8 @@ describe("earnings estimates headless", () => {
     const reported = await definition.load(args({ kind: "reported" }), context);
     expect(reported.rows).toHaveLength(1);
     expect(reported.rows[0]).toMatchObject({ epsActual: 0.48, epsEstimate: 0.45, epsDifference: 0.03, surprisePercent: 6.67 });
+    expect(reported.errors ?? []).toEqual([]);
+    expect(reported.metadata?.unmatchedReportedPeriods).toEqual(["2026-07-28"]);
   });
 
   test("stale source rows remain usable while reporting incomplete coverage", async () => {

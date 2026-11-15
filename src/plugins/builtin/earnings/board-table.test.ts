@@ -7,6 +7,15 @@ import type { Quote } from "../../../types/financials";
 import { boardReport, boardRowOf, reportMove, type BoardRow } from "./board-model";
 import { boardColumns, boardHasActuals, boardHasCurrencies, boardSymbolWidth, renderBoardCell, type BoardCellContext, type BoardColumn } from "./board-table";
 import { historyFigures, historyRows } from "./history-model";
+
+test("the next-report figure retains a rounded consensus independently of dropped narrow table columns", () => {
+  const rows = historyRows({ asOf: `${TODAY}T15:00:00Z`, symbol: "CRWV", name: null, reports: [
+    { ...calendarReport({ symbol: "CRWV", date: "2026-11-18", fiscalPeriod: "2026-10", epsEstimate: 1.6374, dateStatus: "confirmed" }), revenueActual: null },
+  ] }, "2026-11-15", null);
+  const next = historyFigures(rows, "2026-11-15").find((figure) => figure.id === "next")!;
+  expect(next.detail).toStartWith("EPS est 1.64");
+  expect(next.detailVariants).toEqual(["EPS est 1.64"]);
+});
 import { historyColumns, renderHistoryCell } from "./history-table";
 
 const TODAY = "2026-10-16";

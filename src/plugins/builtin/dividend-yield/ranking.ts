@@ -216,7 +216,7 @@ const RANKING_COLUMNS: HeadlessPaneColumn[] = [
     // CSV and NDJSON say `n/m` where JSON has null; the text report draws `N/M` as P/E does.
     format: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL.toLowerCase() : ratio(value),
     textFormat: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL : ratio(value),
-    description: "Trailing twelve-month dividends over trailing twelve-month diluted EPS; N/M when that EPS is zero or negative." },
+    description: "Supplied earnings payout ratio; its accounting basis and measurement period are unstated. N/M when known trailing EPS is non-positive." },
   { key: "growth1Y", header: "1Y growth", align: "right", format: growth("growth1Y"), textFormat: growth("growth1Y", NOT_MEANINGFUL_TEXT),
     description: "Trailing twelve-month cash per share against a year earlier; N/M when the year earlier paid nothing; n/a when either year holds fewer payments than the cadence pays." },
   { key: "growth3Y", header: "3Y CAGR", align: "right", format: growth("growth3Y"), textFormat: growth("growth3Y", NOT_MEANINGFUL_TEXT),

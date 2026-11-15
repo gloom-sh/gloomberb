@@ -767,8 +767,8 @@ describe("OnboardingWizard", () => {
     await emitKeypress({ name: "f10" });
     // Review, 12 Nov 2026: skipping setup took F10 here and s on the next step; Skip is F10 on both.
     expect(await waitForFrame("What do you trade most?")).toMatch(/Skip\s+F10/);
-    await emitKeypress({ name: "f10" });
-    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
+    await pressEscape();
+    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "Esc skips the desks step");
     expect(capturedConfig?.onboardingProgress).toMatchObject({ desks: [] });
     expect(completionCount).toBe(0);
   });
