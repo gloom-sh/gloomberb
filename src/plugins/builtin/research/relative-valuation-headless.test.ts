@@ -100,6 +100,25 @@ test("RV's TTM Op Margin names the fiscal year it falls back to, in the text tab
   expect(result.unavailableSymbols).toEqual([]);
 });
 
+test("RV's forward P/E names the fiscal year of its consensus, as valuation does, in the text table and the export", async () => {
+  // Visa's year ends in September: in November 2026 next year's consensus is FY28's, which a bare 24.8 never said.
+  const visa = {
+    annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    quote: { symbol: "V", price: 425.76, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1, marketCap: 800e9 },
+    fundamentals: { financialCurrency: "USD", marketCap: 800e9, trailingPE: 34.6, forwardPE: 24.84, forwardEps: 17.14, forwardEpsPeriodEnd: "2028-09-30" },
+  };
+  const unknown = { ...visa, quote: { ...visa.quote, symbol: "MCO" }, fundamentals: { ...visa.fundamentals, forwardEpsPeriodEnd: undefined } };
+  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
+    async getTickerFinancials(symbol) { return symbol === "V" ? visa : unknown; },
+  }) } as HeadlessPaneContext;
+  const result = await relativeValuationHeadless.load({ symbols: ["V", "MCO"], argument: ["V", "MCO"], rawArgument: "V MCO", options: {} }, ctx);
+  const forward = relativeValuationHeadless.columns!.find((column) => column.key === "forwardPE")!;
+  expect(result.rows.map((row) => forward.textFormat!(row.forwardPE, row))).toEqual(["24.8 FY28", "24.8"]);
+  expect(result.rows.map((row) => forward.format!(row.forwardPE, row))).toEqual(["24.8", "24.8"]);
+  const period = relativeValuationHeadless.columns!.find((column) => column.header === "Fwd P/E period")!;
+  expect(result.rows.map((row) => period.format!(row[period.key], row))).toEqual(["FY28", ""]);
+});
+
 test("relative valuation does not divide unconverted foreign cash flows by a USD market value", () => {
   const financials = {
     annualStatements: [], quarterlyStatements: [], priceHistory: [], financialCurrency: "TWD",

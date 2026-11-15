@@ -110,6 +110,7 @@ function buildRelativeColumns(
   peNamesYear = false,
   growthLabel = REVENUE_GROWTH_LABEL,
   symbolWidth = SYMBOL_WIDTH,
+  forwardNamesYear = false,
 ): RelativeColumn[] {
   // The name gives back what a wide ticker takes, so the figures keep their place.
   const nameWidth = Math.max(10, 16 - (symbolWidth - SYMBOL_WIDTH));
@@ -129,7 +130,8 @@ function buildRelativeColumns(
     { id: "marketCap", label: `MCAP ${baseCurrency}`, width: capWidth, align: "right" },
     // Wider while a peer's P/E is on its latest fiscal year's EPS and names it ("24.6 FY Mar-26").
     { id: "trailingPE", label: "P/E", width: peNamesYear ? 14 : metricWidth, align: "right" },
-    { id: "forwardPE", label: "FWD", width: metricWidth, align: "right" },
+    // Wider while a peer's forward P/E names the fiscal year of its consensus ("24.8 FY28").
+    { id: "forwardPE", label: "FWD", width: forwardNamesYear ? 10 : metricWidth, align: "right" },
     { id: "evSales", label: "EV/S", width: metricWidth, align: "right" },
     { id: "fcfYield", label: "FCF%", width: metricWidth, align: "right" },
     // Latest quarter against the year before, and a trailing-twelve-month margin.
@@ -284,11 +286,12 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const extendedSessionsKey = extendedSessionsOf(rows).join(",");
   const marginNamesYear = rows.some((row) => row.operatingMarginPeriod != null);
   const peNamesYear = rows.some((row) => row.trailingPEPeriod != null);
+  const forwardNamesYear = rows.some((row) => row.forwardPEPeriod != null);
   const growthLabel = revenueGrowthHeader(rows, REVENUE_GROWTH_LABEL, PERIOD_REVENUE_GROWTH_LABEL);
   const columns = useMemo(
     () => buildRelativeColumns(baseCurrency, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], marginNamesYear, peNamesYear,
-      growthLabel, symbolWidth),
-    [baseCurrency, extendedSessionsKey, marginNamesYear, peNamesYear, growthLabel, symbolWidth],
+      growthLabel, symbolWidth, forwardNamesYear),
+    [baseCurrency, extendedSessionsKey, marginNamesYear, peNamesYear, growthLabel, symbolWidth, forwardNamesYear],
   );
 
   const comparableRows = useMemo(() => rows.map((row) => ({
@@ -382,7 +385,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
         return { text: `${formatPriceEarnings(row.reportedMultiples.trailingPE)}${row.trailingPEPeriod ? ` ${row.trailingPEPeriod}` : ""}`, color: colors.text };
       case "forwardPE":
         if (row.notMeaningful.forwardPE) return notMeaningfulCell();
-        return { text: formatPriceEarnings(row.reportedMultiples.forwardPE), color: colors.text };
+        return { text: `${formatPriceEarnings(row.reportedMultiples.forwardPE)}${row.forwardPEPeriod ? ` ${row.forwardPEPeriod}` : ""}`, color: colors.text };
       case "evSales":
         // A withdrawn EV says so, one at or below zero reads N/M as a P/E over a loss does; the footer says why.
         if (row.evSales == null && row.notMeaningful.evSales) return notMeaningfulCell();

@@ -6,6 +6,7 @@ import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-d
 import { MISSING_VALUE, formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { loadHeadlessFinancials, loadHeadlessSymbols } from "../shared/headless-market-data";
 import { quoteFreshnessFields } from "../shared/report-freshness";
+import { formatUtcWeekdayTime } from "../../../utils/utc-time";
 import {
   RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, RELATIVE_VALUATION_STALE_QUOTE_NOTICE, relativeValuationValues, type RelativeValuationGapKey,
 } from "./relative-valuation-model";
@@ -36,10 +37,13 @@ function gapText(row: Record<string, unknown>, key: RelativeValuationGapKey): st
 function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
   return {
     key: "extendedPrice",
-    header: EXTENDED_SESSION_LABELS[session],
+    // When the print was, in UTC as the header says: a Friday evening's after-hours print read on a Sunday says so.
+    header: `${EXTENDED_SESSION_LABELS[session]} UTC`,
+    literalHeader: true,
     align: "right",
     format: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? `${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`
+      ? [`${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`,
+        typeof row.quoteAsOf === "number" ? formatUtcWeekdayTime(row.quoteAsOf) : ""].filter(Boolean).join(" ")
       : MISSING_VALUE,
   };
 }
@@ -99,10 +103,12 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
         const multiple = multipleOf(value, row);
         return multiple == null ? gapText(row, key) : formatPriceEarnings(multiple);
       },
-      // A P/E on a fiscal year's EPS, where no four newer quarters were filed, says which year; an export has it in P/E period.
+      // A P/E on a fiscal year's EPS, where no four newer quarters were filed, says which year, and a forward P/E the
+      // year of its consensus; an export has them in P/E period and Fwd P/E period.
       textFormat: (value: unknown, row: Record<string, unknown>) => {
         const multiple = multipleOf(value, row);
-        const year = key === "trailingPE" && multiple !== NOT_MEANINGFUL ? (row as Partial<ReturnType<typeof relativeValuationValues>>).trailingPEPeriod : null;
+        const values = row as Partial<ReturnType<typeof relativeValuationValues>>;
+        const year = multiple === NOT_MEANINGFUL ? null : key === "trailingPE" ? values.trailingPEPeriod : values.forwardPEPeriod;
         return multiple == null ? gapText(row, key) : year ? `${formatPriceEarnings(multiple)} ${year}` : formatPriceEarnings(multiple);
       },
     };
@@ -130,13 +136,16 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
 
 /**
  * The period each export's figure is of, in a column after it, where the text
- * table puts it beside the figure: a P/E on a fiscal year's EPS (`FY Mar-26`),
+ * table puts it beside the figure: a P/E on a fiscal year's EPS (`FY Mar-26`), a
+ * forward P/E's consensus year (`FY28`),
  * a half's revenue growth (`H2 FY26 vs H2 FY25`) or a quarter's (`quarter to
  * 2026-09-30`), a fiscal year's margin (`FY25`); `TTM` for a trailing figure.
  */
 const VALUATION_PERIOD_COLUMNS: Record<string, HeadlessPaneColumn> = {
   trailingPE: { key: "trailingPEPeriod", header: "P/E period",
     format: (value, row) => row.trailingPE == null && !(row.reportedMultiples as Record<string, unknown> | undefined)?.trailingPE ? "" : typeof value === "string" && value ? value : "TTM" },
+  forwardPE: { key: "forwardPEPeriod", header: "Fwd P/E period",
+    format: (value, row) => row.forwardPE == null && !(row.reportedMultiples as Record<string, unknown> | undefined)?.forwardPE ? "" : typeof value === "string" ? value : "" },
   revenueGrowth: { key: "revenueGrowthHalf", header: "Revenue YoY period",
     format: (value, row) => row.revenueGrowth == null ? "" : typeof value === "string" && value ? value
       : typeof row.revenueGrowthQuarter === "string" ? `quarter to ${row.revenueGrowthQuarter}` : "" },
