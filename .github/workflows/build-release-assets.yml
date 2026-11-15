@@ -253,7 +253,9 @@ jobs:
 
       # The runner image comes with an Inno Setup of its own, which moves when
       # the image does. The installer is built with this one, and a newer one
-      # is taken back to it.
+      # is taken back to it. ISCC.exe's file properties carry no version (they
+      # read 0.0.0.0), so the check reads the one the compiler prints for its
+      # engine, here on a script it writes no installer for.
       - name: Install Inno Setup
         shell: pwsh
         env:
@@ -261,9 +263,17 @@ jobs:
         run: |
           choco install innosetup --version $env:INNO_SETUP_VERSION --allow-downgrade -y --no-progress
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $Iscc = (Get-Item "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe").VersionInfo
-          $Installed = "$($Iscc.FileMajorPart).$($Iscc.FileMinorPart).$($Iscc.FileBuildPart)"
+          $Iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $Iscc)) { throw "ISCC.exe is not at $Iscc." }
+          $Script = Join-Path $env:RUNNER_TEMP "inno-setup-version.iss"
+          Set-Content -LiteralPath $Script -Value "[Setup]`nAppName=Version check`nAppVersion=1`nDefaultDirName={autopf}\Version check"
+          $Output = & $Iscc /O- $Script
+          if ($LASTEXITCODE -ne 0) { $Output; throw "ISCC.exe failed on the version check script (exit $LASTEXITCODE)." }
+          $Engine = $Output | Select-String -Pattern '^Compiler engine version: Inno Setup (\S+)' | Select-Object -First 1
+          if (-not $Engine) { $Output; throw "ISCC.exe printed no compiler engine version." }
+          $Installed = $Engine.Matches[0].Groups[1].Value
           if ($Installed -ne $env:INNO_SETUP_VERSION) { throw "Inno Setup $Installed is installed, not $env:INNO_SETUP_VERSION." }
+          Write-Host "Inno Setup $Installed"
 
       - name: Build Windows installer
         shell: pwsh
