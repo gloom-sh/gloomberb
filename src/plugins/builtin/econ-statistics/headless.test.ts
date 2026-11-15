@@ -81,7 +81,7 @@ describe("economic statistics headless model", () => {
     const row = table!.rows![0]!;
     // The row keeps the period it covers and says when it was published.
     expect(row).toMatchObject({ asOf: "2026-09-01", releasedOn: "2026-10-20", periodicity: "monthly", reading: "Sep 2026" });
-    expect(row).toMatchObject({ firstReleased: "2026-10-20", revisedOn: "2026-10-27", firstReleaseValue: 1400 });
+    expect(row).toMatchObject({ firstReleased: "2026-10-20", revisedOn: "2026-10-27", firstReleaseValue: 1400, exportAsOf: "2026-10-27" });
     expect(table!.columns!.find((column) => column.key === "releasedOn")!.format!(row.releasedOn, row)).toBe("Tue 20 Oct");
     expect(detail!.entries!.find((entry) => entry.label === "Period")).toMatchObject({ value: "2026-09-01", formatted: "Sep 2026, released Tue 20 Oct" });
     const freshness = deriveHeadlessFreshness(econStatisticsHeadless, report, Date.parse("2026-10-23T15:00:00Z"));

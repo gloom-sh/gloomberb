@@ -124,12 +124,12 @@ function exportDating(view: StatViewModel): { period: string; released?: string;
 }
 
 /**
- * What an exported row is as of: the day its figure was released, else its own
+ * What an exported row is as of: the revision or first release day, else its own
  * day when it is observed daily or weekly (a Treasury yield), and nothing when
  * the date only starts the period it covers.
  */
 function exportAsOf(view: StatViewModel): string | null {
-  return view.releasedOn ?? (view.periodicity ? null : view.latest.date);
+  return view.revisedOn ?? view.releasedOn ?? (view.periodicity ? null : view.latest.date);
 }
 
 export function projectStatsHeadlessBundle(
@@ -185,7 +185,7 @@ export function projectStatsHeadlessBundle(
       title: category.label,
       columns: columns(false),
       textColumns: columns(true),
-      // `as_of` is the release; a figure with none stated is as of its own day when it is observed daily or weekly, never its period's first day.
+      // `as_of` is the revision or release; without either, only daily or weekly figures use their observation day.
       rowAsOfKey: "exportAsOf",
       rowSymbolKey: "seriesId",
       rowUnitKey: "unit",

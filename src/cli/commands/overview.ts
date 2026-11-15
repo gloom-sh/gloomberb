@@ -867,7 +867,7 @@ async function printFredAligned(ctx: Parameters<CliCommandDef["execute"]>[1], se
   const byDate = new Map<string, Record<string, unknown>>();
   const metadata: Record<string, unknown> = {};
   const notes = ["Aligned on observation dates, not release dates. Missing observations remain blank; values are not forward-filled."];
-  const suffixes = ["unit", "interval", "source", "released", "first_released", "revised_on", "first_release_value", ...options.horizon ? ["change", "changeFrom"] : []];
+  const suffixes = ["unit", "interval", "source", "released", "first_released", "revised_on", "first_release_value", ...options.horizon ? ["change", "changeFrom"] : [], "as_of"];
   for (const { seriesId, result, render } of reports) {
     metadata[seriesId] = result.metadata;
     notes.push(...render.exportNotes ?? []);
@@ -880,6 +880,7 @@ async function printFredAligned(ctx: Parameters<CliCommandDef["execute"]>[1], se
       row[`${seriesId}_interval`] = identity?.interval;
       row[`${seriesId}_source`] = result.freshness?.source;
       for (const suffix of suffixes.slice(3)) row[`${seriesId}_${suffix}`] = entry[suffix];
+      row[`${seriesId}_as_of`] = identity?.asOf;
       byDate.set(date, row);
     }
   }
@@ -985,14 +986,15 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
     dateKey: "date",
     empty: fredEmptyMessage(startDate, latest == null ? null : exportRow(latest)),
     ...(notes.length ? { footnote: notes.join("\n"), exportNotes: notes } : {}),
-    // `as_of` is the release. A figure with none stated is as of its own day when the series is known to observe
+    // `as_of` is the revision or release. Without either, it is its own day when the series is known to observe
     // days (a daily or weekly rate), and of nothing otherwise, never the first day of the period it covers.
     exportDated: true,
     exportAppendedKeys: ["first_released", "revised_on", "first_release_value"],
     exportIdentity: (row) => {
       const released = typeof row.released === "string" ? row.released : null;
+      const revised = typeof row.revised_on === "string" ? row.revised_on : null;
       const date = typeof row.date === "string" ? row.date : null;
-      return { symbolOrSeries: seriesId, currencyOrUnit: unit, interval, asOf: released ?? (observesDays ? date : null), period: date, released };
+      return { symbolOrSeries: seriesId, currencyOrUnit: unit, interval, asOf: revised ?? released ?? (observesDays ? date : null), period: date, released };
     },
     // The release closes the row with the other dating columns, so it is not one of the observation's own.
     columns: [...new Set([...rows.flatMap((row) => Object.keys(row)), "first_released", "revised_on", "first_release_value"])].filter((key) => key !== "released").map((key) => ({ key, header: key })),

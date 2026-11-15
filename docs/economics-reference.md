@@ -24,7 +24,7 @@ Exports retain each statistic's retrieval time separately from its observation-p
 
 ## Release dates and exports
 
-`released` and `first_released` identify the first numeric vintage available in ALFRED, not the date of the current revision. `revised_on` is separate when a later vintage exists; `first_release_value` is included for level series where available. ALFRED's archive can start after an older figure's original publication, so its earliest known vintage is not proof of an original publisher timestamp. Missing provenance stays blank. Transformed CPI and other changes use the release of the matching observation, not a later raw index month that could not be transformed.
+`released` and `first_released` identify the first numeric vintage available in ALFRED, not the date of the current revision. `revised_on` is separate when a later vintage exists; `first_release_value` is included for level series where available. `as_of` dates the current value's revision when known, otherwise its first release. ALFRED's archive can start after an older figure's original publication, so its earliest known vintage is not proof of an original publisher timestamp. Missing provenance stays blank. Transformed CPI and other changes use the release of the matching observation, not a later raw index month that could not be transformed.
 
 Each ECST CSV row names its series, unit, frequency and originator, with FRED as distributor. Its compact housing values are multiplied out in exports: `1.398M` means `1398000` units at an annual rate, while `fred PERMIT` exports `1398` thousands of units. Spreads export in basis points. New provenance fields and the common `export_notes` field are appended after existing columns.
 

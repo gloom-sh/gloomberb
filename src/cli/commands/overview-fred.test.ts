@@ -47,7 +47,7 @@ test("multiple series align sparse dates without filling gaps, retaining each un
   for (const args of [["PERMIT", "MORTGAGE30US10Y"], ["permit,MORTGAGE30US10Y,permit"]]) {
     const { result, options } = await runFred([...args, "--start", "2026-09-01", "--sort", "asc"]);
     expect(result.data).toMatchObject([
-      { date: "2026-09-01", PERMIT: 1398, PERMIT_unit: "Thousands of Units", PERMIT_source: "Census Bureau via FRED", PERMIT_released: "2026-10-20", PERMIT_first_released: "2026-10-20", PERMIT_revised_on: "2026-10-27", PERMIT_first_release_value: 1400 },
+      { date: "2026-09-01", PERMIT: 1398, PERMIT_unit: "Thousands of Units", PERMIT_source: "Census Bureau via FRED", PERMIT_released: "2026-10-20", PERMIT_first_released: "2026-10-20", PERMIT_revised_on: "2026-10-27", PERMIT_first_release_value: 1400, PERMIT_as_of: "2026-10-27" },
       { date: "2026-10-22", MORTGAGE30US10Y: 233, MORTGAGE30US10Y_unit: "bp" },
     ]);
     expect((result.data as Record<string, unknown>[])[0]).not.toHaveProperty("MORTGAGE30US10Y");
@@ -59,6 +59,7 @@ test("multiple series align sparse dates without filling gaps, retaining each un
   await expect(runFred(["PERMIT", "--bogus"])).rejects.toThrow("space- or comma-separated series IDs");
   const single = await runFred(["PERMIT", "--start", "2026-09-01"]);
   expect(single.result.data).toMatchObject([{ value: 1398, released: "2026-10-20", first_released: "2026-10-20", revised_on: "2026-10-27", first_release_value: 1400 }]);
+  expect(serializeCliResult(single.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, single.options)).toContain(",Census Bureau via FRED,2026-10-27,2026-09-01,2026-10-20,");
   serve(Object.fromEntries(["T10Y2Y", "DGS10"].map((seriesId) => [`/cloud/econ/series/${seriesId}`, { status: 200, body: {
     observations: [{ date: "2026-11-12", value: 0.2 }, { date: "2026-11-13", value: 0.3 }],
     info: { id: seriesId, units: "Percent", frequency: "Daily" },

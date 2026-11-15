@@ -122,7 +122,7 @@ const LAGGING_SERIES: Readonly<Record<string, string>> = {
   UMCSENT: "University of Michigan sentiment is delayed one month on FRED at the publisher's request; newer preliminary readings are in fn ECO.",
 };
 
-export const FRED_VINTAGE_NOTE = "Release dates are the first numeric ALFRED vintage available; archive coverage can begin after an older figure's original publication. Missing release provenance stays blank.";
+export const FRED_VINTAGE_NOTE = "Release dates are the first numeric ALFRED vintage available; archive coverage can begin after an older figure's original publication. Missing release provenance stays blank. The as_of field dates the current value's revision when available, not its first release.";
 
 export function laggingSeriesNote(seriesId: string): string | null {
   return LAGGING_SERIES[seriesId.toUpperCase()] ?? null;
