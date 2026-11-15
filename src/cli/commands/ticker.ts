@@ -59,9 +59,10 @@ import { apiClient } from "../../api-client";
 import { withBalanceSheetRate } from "../../market-data/quotes/balance-sheet-rate";
 import { enterpriseValueBridgeNote, listingEnterpriseValue } from "../../market-data/quotes/listing-enterprise-value";
 import { regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
+import { quoteStatsBasisText } from "../../market-data/quotes/export-identity";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
-import { INDEX_POINTS_LABEL, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
+import { INDEX_POINTS_LABEL, isIndexLevel, quoteVolumeCurrency, reportedQuoteVolume } from "../../market-data/market/index-level";
 import type { SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle } from "../../news/types";
 import { summaryRestatesHeadline } from "../../news/news-model";
@@ -1479,8 +1480,14 @@ export async function buildTickerReport({
       )
       : "—";
     const volume = reportedQuoteVolume(quote);
-    // A coin's volume is traded value in its quote currency (BTC-USD: US dollars), not a count of coins.
-    const volumeCurrency = quote.currency && isRoundTheClockCoin(quote.symbol ?? symbol, quote.exchangeName) ? ` ${quote.currency}` : "";
+    // A coin's volume is traded value in its quote currency (BTC-USD: US dollars), not a count of coins, and its
+    // range and volume say whose day they are (composite, 1 exchange), as the Overview's do.
+    const volumeCurrency = quoteVolumeCurrency(quote, symbol);
+    const coinBasis = (range: boolean) => {
+      const basis = quoteStatsBasisText(quote, range);
+      return basis ? ` (${basis})` : "";
+    };
+    const rangeBasis = consolidatedRangeBasis(quote);
     // A futures price is its latest trade; the exchange settlement is its own row, dated by its session.
     appendMetricSection(lines, "Quote", [
       // A price in cents says what it is per: 314.95¢/lb.
@@ -1496,7 +1503,7 @@ export async function buildTickerReport({
       // A listing that no longer trades: its last session's range, never today's. A US line's says what it counts,
       // the rule GIP and TAS read the session's low and high by.
       [quote.delisting ? "Last Session" : "Day Range", quote.low != null || quote.high != null
-        ? `${formatPriceRange(quote.low, quote.high, quote.currency, quoteOptions)}${consolidatedRangeBasis(quote) ? ` (${consolidatedRangeBasis(quote)})` : ""}`
+        ? `${formatPriceRange(quote.low, quote.high, quote.currency, quoteOptions)}${rangeBasis ? ` (${rangeBasis})` : coinBasis(true)}`
         : "—"],
       // The year's high and low come from bars (a continuous future's are float32, 54.97999954): they print at
       // the instrument's own decimals, as the Overview's ranges do, never at every digit the bars carry.
@@ -1504,7 +1511,7 @@ export async function buildTickerReport({
       ["52W Range", yearRangeText(quote, quoteOptions)],
       ["Bid / Ask", bidAskText(quote, quoteOptions)],
       // An index's and a perpetual's 0 means none is counted, not no trades: no Volume row.
-      ["Volume", volume != null ? `${formatNumber(volume, 0)}${volumeCurrency}` : "—"],
+      ["Volume", volume != null ? `${formatNumber(volume, 0)}${volumeCurrency ? ` ${volumeCurrency}` : ""}${coinBasis(false)}` : "—"],
       ["Updated", formatTimestamp(quoteHeadlineTime(quote))],
     ]);
 

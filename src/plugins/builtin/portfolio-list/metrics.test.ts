@@ -482,6 +482,12 @@ describe("portfolio-metrics", () => {
     expect(getColumnValue({ id: "range_52w", label: "52W%", width: 7, align: "right" }, ticker, rebuilt, context))
       .toEqual({ text: "+50.00%", note: "bars" });
     expect(getColumnValue({ id: "dollar_volume", label: "$VOL", width: 9, align: "right" }, ticker, financials, context).text).toBe("1.50B");
+    // A coin's volume is already the dollars it traded: never priced again (64,700 x $44B).
+    const coinTicker = createTestTicker("BTC-USD", "Bitcoin USD", { exchange: "CCC" });
+    const coin = createFinancials({ quote: { symbol: "BTC-USD", exchangeName: "CCC", price: 64_700, currency: "USD", volume: 44_019_244_180 } });
+    const dollarVolume = { id: "dollar_volume", label: "$VOL", width: 9, align: "right" } as const;
+    expect(getColumnValue(dollarVolume, coinTicker, coin, context).text).toBe("44.02B");
+    expect(getSortValue(dollarVolume, coinTicker, coin, context)).toBe(44_019_244_180);
     expect(getColumnValue({ id: "spread_pct", label: "SPR%", width: 7, align: "right" }, ticker, financials, context).text).toBe("+0.83%");
     expect(getColumnValue({ id: "bid_ask_size", label: "B/A SZ", width: 9, align: "right" }, ticker, financials, context).text).toBe("100/150");
     expect(getColumnValue({ id: "mark_delta", label: "MARK%", width: 8, align: "right" }, ticker, financials, context).text).toBe("+1.00%");

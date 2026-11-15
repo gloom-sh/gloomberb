@@ -27,7 +27,8 @@ import {
   formatMarketQuantity,
   withCurrencyMinorDigits,
 } from "../../../../market-data/market/format";
-import { reportedQuoteVolume } from "../../../../market-data/market/index-level";
+import { quoteVolumeCurrency, reportedQuoteVolume } from "../../../../market-data/market/index-level";
+import { formatChartLegendValue } from "../../../../components/chart/composite/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import type { OverviewDividendState } from "./dividend";
 import { lapseValue } from "../../../../utils/forward-dividend";
@@ -211,9 +212,12 @@ export function buildOverviewStats({
   const volume = reportedQuoteVolume(quote);
   if (volume != null) {
     // Live figures keep their decimals (12.30M, not 12.3M) so the digits hold still.
-    // A coin's volume is the composite's or one exchange's own day, said beside it as its range's is.
+    // A coin's volume is the value it traded in its quote currency, written as the chart's volume reads ($47.94B),
+    // and the composite's or one exchange's own day, said beside it as its range's is.
     const basis = quoteStatsBasisText(quote, false);
-    stats.push({ label: "Volume", value: formatCompact(volume, { fixedDecimals: true }), ...(basis ? { detail: basis } : {}) });
+    const currency = quoteVolumeCurrency(quote);
+    const value = currency ? formatChartLegendValue(volume, currency, "volume") : formatCompact(volume, { fixedDecimals: true });
+    stats.push({ label: "Volume", value, ...(basis ? { detail: basis } : {}) });
   }
   // Price-derived statistics follow the quote; see live-valuation for when a stored figure is kept.
   // Market cap and EV read in the currency they are reported in, as the revenue and income beside them do, with

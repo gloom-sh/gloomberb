@@ -40,7 +40,7 @@ import {
 import { formatOptionTicker } from "../utils/options";
 import { distributionHistory, forwardYieldMayHaveLapsed, lapsedDividend } from "../utils/forward-dividend";
 import { classifyInstrumentType } from "../tickers/instrument-kind";
-import { isIndexLevel, reportedQuoteVolume } from "../market-data/market/index-level";
+import { isIndexLevel, quoteVolumeCurrency, reportedQuoteVolume } from "../market-data/market/index-level";
 import { futuresQuoteFromSettle } from "../market-data/market/change-basis";
 import { perpetualDisplaySymbol, perpetualListing } from "../tickers/perpetual-listing";
 import { premiumToUnderlying, type PerpetualPremiumRow } from "../market-data/perpetual-premium";
@@ -692,9 +692,8 @@ export function getColumnValue(
       return { text: volume != null ? formatCompact(volume, { fixedDecimals: true }) : MISSING_VALUE };
     }
     case "dollar_volume": {
-      const volume = reportedQuoteVolume(quote);
-      if (!displayQuote || volume == null) return { text: MISSING_VALUE };
-      return { text: formatCompact(toBaseQuote(displayQuote.price * volume), { fixedDecimals: true }) };
+      const traded = tradedValue(quote, displayQuote, toBaseQuote);
+      return { text: traded == null ? MISSING_VALUE : formatCompact(traded, { fixedDecimals: true }) };
     }
     case "range_52w": {
       const position = fiftyTwoWeekPosition(displayQuote, quote);
@@ -869,6 +868,21 @@ export function getColumnValue(
   }
 }
 
+/**
+ * The value a row's volume traded, in the base currency: shares or contracts at the price, or a coin's volume
+ * itself, which is already a value in its quote currency (quoteVolumeCurrency), never priced again.
+ */
+function tradedValue(
+  quote: Quote | null | undefined,
+  displayQuote: { price: number } | null | undefined,
+  toBaseQuote: (value: number) => number,
+): number | null {
+  const volume = reportedQuoteVolume(quote);
+  if (volume == null) return null;
+  if (quoteVolumeCurrency(quote)) return toBaseQuote(volume);
+  return displayQuote ? toBaseQuote(displayQuote.price * volume) : null;
+}
+
 export function getSortValue(
   col: ColumnConfig,
   ticker: TickerRecord,
@@ -942,10 +956,8 @@ export function getSortValue(
       return quote?.delisting ? null : headlineChangePercent(headlineQuote, quote) ?? null;
     case "volume":
       return reportedQuoteVolume(quote);
-    case "dollar_volume": {
-      const volume = reportedQuoteVolume(quote);
-      return displayQuote && volume != null ? toBaseQuote(displayQuote.price * volume) : null;
-    }
+    case "dollar_volume":
+      return tradedValue(quote, displayQuote, toBaseQuote);
     case "range_52w":
       return fiftyTwoWeekPosition(displayQuote, quote);
     case "market_cap": {

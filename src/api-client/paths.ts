@@ -125,7 +125,8 @@ function normalizeCloudLogoSymbol(
   symbol: string,
 ): string | null {
   let normalized = symbol.trim().toUpperCase();
-  if (kind === "crypto") normalized = normalized.replace(CRYPTO_QUOTE, "");
+  // A coin is its code alone: BTC-USD:CCC and BTC/USDT are both BTC.
+  if (kind === "crypto") normalized = parsePublicTickerKey(normalized).symbol.replace(CRYPTO_QUOTE, "");
   return LOGO_SYMBOL_RE.test(normalized) ? normalized : null;
 }
 
