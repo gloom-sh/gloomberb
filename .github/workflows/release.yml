@@ -28,6 +28,11 @@ jobs:
   # desktop installer, shared with the Nightly workflow.
   build:
     if: ${{ github.event_name == 'push' }}
+    # Its jobs attest what they upload; no other job here may.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     uses: ./.github/workflows/build-release-assets.yml
     secrets:
       APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
@@ -61,14 +66,17 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      attestations: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
+      # What the build jobs upload; not the Windows verification's screenshots.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
+          pattern: gloomberb-*
           merge-multiple: true
 
       - uses: ./.github/actions/setup-bun
@@ -83,12 +91,13 @@ jobs:
       - name: Check every release file was built
         run: bun scripts/release-assets.ts check dist
 
-      # Each file is the one the build uploaded, and there is no other: the
-      # plugin check ran after the build and could reach the artifacts.
+      # Each file is one a build job of this run attested, under its name,
+      # and there is no other: the plugin check ran after the build and could
+      # reach the artifacts, in this attempt or an earlier one.
       - name: Check the files are the ones built
         env:
-          BUILT_SHA256: ${{ needs.registry-plugins.outputs.built-sha256 }}
-        run: bash scripts/check-built-files.sh dist
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/check-built-files.ts dist
 
       # install.sh and install.ps1 read each asset's SHA-256 from
       # `<asset>.sha256` beside it, by its download URL (the API's digests are

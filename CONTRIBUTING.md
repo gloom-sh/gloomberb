@@ -165,6 +165,13 @@ Stable macOS signing and publication use the `release` environment, which accept
 
 The shared build accepts only the seven named Apple signing inputs. Environment secrets with those names take precedence over repository secrets, including after repository fallbacks are removed: callers still pass each name explicitly, and the macOS job selects the environment. This follows GitHub's [reusable workflow secret rules](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#using-inputs-and-secrets-in-a-reusable-workflow). Registry plugin checks do not receive those inputs. Cloudflare credentials are supplied only to the web deployment step, not installation or browser compilation.
 
+The build jobs attest every file they upload with build provenance. They are the only jobs given `attestations: write`, and the registry plugin check gets neither that nor `id-token: write`. Release and Nightly publish a file only when an attestation from the same run names it with its digest (`scripts/check-built-files.ts`), so a release held back for a missing build still publishes after `gh run rerun <run> --failed`, and a file changed after its build fails the check. A downloaded release file can be checked the same way:
+
+```bash
+gh attestation verify gloomberb-linux-x64.gz --repo gloom-sh/gloomberb \
+  --signer-workflow gloom-sh/gloomberb/.github/workflows/build-release-assets.yml
+```
+
 To retry publishing `@gloom-sh/terminal` for an existing stable release, dispatch at that same tag, not at `main`:
 
 ```bash
