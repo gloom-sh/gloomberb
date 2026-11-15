@@ -256,6 +256,13 @@ export const commands: Command[] = [
     category: "Config",
   },
   {
+    id: "toggle-since-last-visit",
+    prefix: "",
+    label: "Since Last Visit",
+    description: "Turn on or off the strip that shows what moved in your tickers since your last visit",
+    category: "Config",
+  },
+  {
     id: "font-size-increase",
     prefix: "FONT+",
     label: "Increase Font Size",

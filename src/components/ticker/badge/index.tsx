@@ -21,6 +21,8 @@ export interface TickerBadgeProps {
   maxTextWidth?: number;
   /** Trailing gap to the next chip, which the last chip in a row does not need. */
   trailingGap?: boolean;
+  /** A move in percent the chip says and takes its tone from, instead of the day's change. */
+  move?: number;
   onHoverStart?: () => void;
   onHoverEnd?: () => void;
   onOpen: (symbol: string) => void;
@@ -46,6 +48,7 @@ export function TickerBadge({
   hovered = false,
   maxTextWidth,
   trailingGap = true,
+  move,
   onHoverStart,
   onHoverEnd,
   onOpen,
@@ -61,11 +64,14 @@ export function TickerBadge({
     onOpen,
   });
   const quoteForDisplay = liveQuote ? quote : null;
-  const tone = status === "ready" && quoteForDisplay
+  const shownMove = liveQuote && move != null && Number.isFinite(move) ? move : null;
+  const tone = status === "ready" && shownMove != null
+    ? priceColor(shownMove)
+    : status === "ready" && quoteForDisplay
     ? priceColor(quoteForDisplay.changePercent)
     : colors.borderFocused;
-  const text = getTickerBadgeText({ symbol, status, quote, liveQuote, maxTextWidth });
-  const price = hovered ? getTickerBadgeHoverText({ symbol, status, quote, liveQuote, maxTextWidth }) : null;
+  const text = getTickerBadgeText({ symbol, status, quote, liveQuote, maxTextWidth, move });
+  const price = hovered ? getTickerBadgeHoverText({ symbol, status, quote, liveQuote, maxTextWidth, move }) : null;
   const { fg: color, bg: backgroundColor } = tickerBadgeColors(tone, hovered);
   // An ambiguous symbol is worth opening: that is how the listing gets picked.
   const interactive = status !== "loading";

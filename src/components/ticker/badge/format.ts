@@ -59,21 +59,30 @@ export interface TickerBadgeTextOptions {
    * worse than no price, so the badge drops back to whatever still fits.
    */
   maxTextWidth?: number;
+  /**
+   * A move in percent to say instead of the day's change, over a span the
+   * caller names beside the chips (since the user's last visit).
+   */
+  move?: number;
 }
 
 /**
- * Candidates run richest first: the day's change, then the bare symbol, which
- * always fits because the caller sized the column for it.
+ * Candidates run richest first: the move (the day's change unless the caller
+ * gives another), then the bare symbol, which always fits because the caller
+ * sized the column for it.
  */
 function tickerBadgeTextCandidates({
   symbol,
   status,
   quote,
   liveQuote = true,
+  move,
 }: TickerBadgeTextOptions): string[] {
   const candidates: string[] = [];
   if (liveQuote) {
-    if (status === "ready" && quote && Number.isFinite(quote.changePercent)) {
+    if (status === "ready" && move != null && Number.isFinite(move)) {
+      candidates.push(`${symbol} ${formatTickerBadgeChange(move)}`);
+    } else if (status === "ready" && quote && Number.isFinite(quote.changePercent)) {
       candidates.push(`${symbol} ${formatTickerBadgeChange(quote.changePercent)}`);
     } else if (status === "loading") {
       candidates.push(`${symbol} \u2026`);

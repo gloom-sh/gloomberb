@@ -319,6 +319,13 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="status-bar"] span {
   line-height: var(--cell-h);
 }
+/* The returning-user strip under the header: one row of shell chrome, ruled off from the layout. */
+[data-gloom-role="since-last-visit"] {
+  flex: none;
+  align-items: center;
+  border-bottom: 1px solid var(--gloom-hairline);
+  font-size: var(--gloom-type-ui);
+}
 [data-gloom-role="pane-body"] {
   overflow: hidden;
 }

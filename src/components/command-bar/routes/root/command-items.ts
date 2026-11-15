@@ -176,6 +176,10 @@ export function createRootCommandItemBuilder({
         return state.config.valueFlashingEnabled ? "Currently on" : "Currently off";
       case "toggle-presentation-mode":
         return state.config.presentationMode ? "Currently on" : "Currently off";
+      case "toggle-since-last-visit":
+        return state.config.sinceLastVisit === false
+          ? "Currently off"
+          : "Currently on: what moved in your tickers shows above the layout when you come back";
       case "toggle-crash-reports":
         return state.config.telemetry?.crashReports === false ? "Currently off" : "Currently on";
       case "toggle-usage-counts":
@@ -208,6 +212,8 @@ export function createRootCommandItemBuilder({
         return state.config.telemetry?.usage === false ? "off" : "on";
       case "toggle-attention-counts":
         return state.config.telemetry?.attention === false ? "off" : "on";
+      case "toggle-since-last-visit":
+        return state.config.sinceLastVisit === false ? "off" : "on";
       case "release-channel":
         return resolveUpdateChannel(state.config);
       default:
@@ -231,6 +237,8 @@ export function createRootCommandItemBuilder({
         return "nightly stable beta prerelease update updates channel";
       case "run-setup-again":
         return "settings onboarding wizard guide first run start over desks holdings";
+      case "toggle-since-last-visit":
+        return "settings return strip what changed moves since away recap welcome back";
       case "quit":
         return "quit exit";
       default:
