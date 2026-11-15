@@ -32,7 +32,7 @@ export function portableCsv(text: string, warnings: readonly string[] = [], extr
       section = row.join(separator).slice("# section: ".length); current = null; continue;
     }
     if (!current) {
-      current = { section, columns: row, rows: [] }; tables.push(current);
+      current = { section, columns: row.map((name) => name.replace(/\r\n?|\n/g, "\\n")), rows: [] }; tables.push(current);
     } else current.rows.push(row);
   }
   const usedNames = new Set(tables.flatMap((table) => table.columns));

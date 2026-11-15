@@ -66,4 +66,5 @@ test("duplicate headers keep every cell without colliding with named suffixes or
     "4,5,,,,,,B,note: caveat",
   ]);
   expect(portableCsv(",\n1,2")).toBe(",_2,export_notes\n1,2,");
+  expect(portableCsv('"Value\nName",Value\\nName\n1,2')).toBe("Value\\nName,Value\\nName_2,export_notes\n1,2,");
 });
