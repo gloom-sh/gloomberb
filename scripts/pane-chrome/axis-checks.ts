@@ -1,6 +1,6 @@
 import { mkdir } from "fs/promises";
 import { join } from "path";
-import { cacheDir, evaluate, frames, mouse, type Cdp } from "./browser";
+import { cacheDir, evaluate, frames, mouse, waitFor, type Cdp } from "./browser";
 import { renderAsciiText } from "../../src/ui/ascii-font";
 
 interface Expected { id: string; panel: string; side: string; value: number; label: string; ratio: number; color: string; carried: boolean }
@@ -260,6 +260,11 @@ axisSteps.push({
   name: "chart screenshot watermark: glyph sizing, centering and capture-only visibility",
   scenario: "cmp",
   async run(cdp) {
+    if (!await waitFor(cdp, `(() => {
+      const pane = document.querySelector('[data-gloom-pane-id="chart-composer:a"]');
+      return !!pane?.querySelector('[data-gloom-role=composite-chart]')?.dataset.gloomView
+        && !!pane.querySelector('[data-gloom-role=composite-chart-panel] canvas');
+    })()`, 10_000)) throw new Error("The chart did not load its bars before checking the watermark");
     const lines = renderAsciiText("Gloom", "wordmark");
     const base = { width: Math.max(...lines.map((line) => [...line].length)) * 8, height: lines.length * 12 };
     try {
