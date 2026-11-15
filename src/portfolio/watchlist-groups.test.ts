@@ -6,8 +6,10 @@ import {
   normalizeWatchlistGroups,
   sectionWatchlistItems,
   setWatchlistGroup,
+  withoutStaleWatchlistGroupSymbols,
   withoutWatchlistGroupSymbols,
 } from "./watchlist-groups";
+import { createTestTicker } from "../test-support/ticker";
 
 function configWith(watchlist: Watchlist) {
   return { ...createDefaultConfig("/unused-watchlist-groups"), watchlists: [watchlist] };
@@ -80,4 +82,23 @@ test("a row merged into its listing's key keeps its group there, unless the list
     { name: "Watch", symbols: ["AKBNK:BIST"] },
   ]);
   expect(moveWatchlistGroupSymbols(config, new Map([["SHOP.TO", "SHOP:TSX"]]))).toBe(config);
+});
+
+test("a ticker that left its list some other way leaves its group, so an add puts it in none; a list no ticker is on keeps its groups", () => {
+  const config = {
+    ...createDefaultConfig("/unused-watchlist-groups"),
+    watchlists: [
+      { id: "growth", name: "Growth", groups: [{ name: "Energy", symbols: ["XOM", "CVX"] }, { name: "Tech", symbols: ["NVDA"] }] },
+      // Nothing loaded is on this list: the store may not have been read.
+      { id: "funds", name: "Funds", groups: [{ name: "Index", symbols: ["VTSAX"] }] },
+    ],
+  };
+  // CVX was deleted, and NVDA taken off Growth while it stays on another list.
+  const tickers = [createTestTicker("XOM", "Exxon", { watchlists: ["growth"] }), createTestTicker("NVDA", "NVIDIA", { watchlists: ["other"] })];
+  expect(withoutStaleWatchlistGroupSymbols(config, tickers).watchlists).toEqual([
+    { id: "growth", name: "Growth", groups: [{ name: "Energy", symbols: ["XOM"] }] },
+    { id: "funds", name: "Funds", groups: [{ name: "Index", symbols: ["VTSAX"] }] },
+  ]);
+  expect(withoutStaleWatchlistGroupSymbols(config, [...tickers, createTestTicker("CVX", "Chevron", { watchlists: ["growth"] }),
+    createTestTicker("NVDA", "NVIDIA", { watchlists: ["growth"] }), createTestTicker("VTSAX", "Vanguard", { watchlists: ["funds"] })])).toBe(config);
 });

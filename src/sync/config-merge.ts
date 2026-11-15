@@ -1,7 +1,7 @@
 import { normalizeStoredBaseCurrency } from "../utils/base-currency";
 import { stableStringify } from "../utils/hash";
 import type { AppConfig, BrokerInstanceConfig } from "../types/config";
-import type { Portfolio } from "../types/ticker";
+import type { Portfolio, Watchlist } from "../types/ticker";
 import {
   addLegacyBuiltinDisabledPluginAliases,
   addLegacyBuiltinPluginOwnerAliases,
@@ -33,7 +33,9 @@ import {
   sanitizePortfolio,
   sanitizeUnknown,
   sanitizeWatchlist,
+  WATCHLISTS_CARRY_GROUPS,
   withLocalPluginSecrets,
+  withLocalWatchlistGroups,
 } from "./sanitize";
 
 export function collectCoreConfigPayload(config: AppConfig) {
@@ -43,6 +45,7 @@ export function collectCoreConfigPayload(config: AppConfig) {
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     portfolios: config.portfolios.map(sanitizePortfolio),
     watchlists: config.watchlists.map(sanitizeWatchlist),
+    [WATCHLISTS_CARRY_GROUPS]: true,
     ...collectLayoutPayload(config),
     brokerInstances: config.brokerInstances.map(sanitizeBrokerInstance),
     // This build merges profiles one by one before it pushes, so a profile
@@ -169,7 +172,12 @@ export function mergeConfigPayload(
       ? mergeLocalBrokerPortfolioIdentity(config.portfolios, syncedPortfolios as Portfolio[], next.brokerInstances)
       : syncedPortfolios as AppConfig["portfolios"];
   }
-  assign("watchlists");
+  // An older build pushes its lists without their groups: they keep the groups they have here.
+  if ("watchlists" in payload && canApply("watchlists")) {
+    next.watchlists = Array.isArray(payload.watchlists)
+      ? withLocalWatchlistGroups(payload.watchlists, config.watchlists, payload[WATCHLISTS_CARRY_GROUPS] === true)
+      : payload.watchlists as Watchlist[];
+  }
   assign("disabledSources");
   assign("theme");
   assign("chartPreferences");

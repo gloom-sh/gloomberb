@@ -15,6 +15,7 @@ import { getDockedPaneIds } from "../../layout/pane-manager";
 import { debugLog } from "../../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../../utils/perf-marks";
 import { mergeSavedSuffixedListings } from "../../portfolio/suffixed-listings";
+import { withoutStaleWatchlistGroupSymbols } from "../../portfolio/watchlist-groups";
 import { saveConfigImmediately } from "../config-save-scheduler";
 
 export const DEFAULT_WATCHLIST_TICKERS: Array<Pick<TickerMetadata, "ticker" | "exchange" | "currency" | "name">> = [
@@ -274,6 +275,16 @@ export async function initializeAppState({
     }
   } catch (error) {
     startupLog.warn("suffixed listing merge failed", { message: error instanceof Error ? error.message : String(error) });
+  }
+
+  // A ticker that left a list some other way than its own remove leaves the list's groups too.
+  const ungrouped = withoutStaleWatchlistGroupSymbols(config, tickers);
+  if (ungrouped !== config) {
+    config = ungrouped;
+    dispatch({ type: "SET_CONFIG", config });
+    await saveConfigImmediately(config).catch((error: unknown) => {
+      startupLog.warn("stale watchlist group symbols not saved", { message: error instanceof Error ? error.message : String(error) });
+    });
   }
 
   // Seed default watchlist tickers on first run
