@@ -39,6 +39,7 @@ interface Step {
   name: string;
   /** The fixture layout the step starts from (fixture.tsx). */
   scenario: string;
+  isolatedClock?: boolean;
   run(cdp: Cdp): Promise<void>;
 }
 
@@ -1300,6 +1301,7 @@ const steps: Step[] = [
     // frame. The table keeps the size the pane last rendered it at.
     name: "floating board: the table under the chart band keeps its size between catch-ups",
     scenario: "resize&float=board",
+    isolatedClock: true,
     async run(cdp) {
       const width = `__check.rect(__check.pane("board:float")?.querySelector("[data-gloom-role=data-table]"))?.width ?? null`;
       const before = await evaluate<number | null>(cdp, width) ?? fail("board:float has no table");
@@ -1307,17 +1309,24 @@ const steps: Step[] = [
       await mouse(cdp, "mouseMoved", from.x, from.y, false);
       await mouse(cdp, "mousePressed", from.x, from.y, true);
       await frames(cdp);
+      await cdp.send("Emulation.setVirtualTimePolicy", { policy: "pause" });
       let during: number | null = null;
       try {
         await mouse(cdp, "mouseMoved", from.x + 6, from.y + 6, true);
         await mouse(cdp, "mouseMoved", from.x + 140, from.y + 54, true);
-        await frames(cdp, 2);
+        const painted = cdp.once("Emulation.virtualTimeBudgetExpired");
+        await cdp.send("Emulation.setVirtualTimePolicy", { policy: "advance", budget: 2 * 1000 / 60 });
+        await painted;
         during = await evaluate<number | null>(cdp, width);
+        if (during === null || Math.abs(during - before) > 0.5) fail("mid-drag, the table under the chart band was laid out at the frame's size", { before, during });
+        const expired = cdp.once("Emulation.virtualTimeBudgetExpired");
+        await cdp.send("Emulation.setVirtualTimePolicy", { policy: "advance", budget: 1000 });
+        await expired;
+        const caughtUp = await evaluate<number | null>(cdp, width);
+        if (caughtUp === null || Math.abs(caughtUp - before - 140) > 0.5) fail("the table did not catch up while the pointer stayed down", { before, caughtUp });
       } finally {
         await mouse(cdp, "mouseReleased", from.x + 140, from.y + 54, false);
-        await frames(cdp, 2);
       }
-      if (during === null || Math.abs(during - before) > 0.5) fail("mid-drag, the table under the chart band was laid out at the frame's size", { before, during });
     },
   },
   {
@@ -1883,9 +1892,12 @@ async function main(): Promise<void> {
     for (let round = 1; round <= repeat; round += 1) {
       for (const step of selected) {
         const started = performance.now();
+        const isolated = step.isolatedClock ? await launchBrowser("checks-clock", VIEWPORT.width, VIEWPORT.height) : null;
+        const stepCdp = isolated?.cdp ?? cdp;
         try {
-          await openScenario(cdp, page, step.scenario);
-          await step.run(cdp);
+          if (isolated) await stepCdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PAGE_HELPERS + pageClock(process.env.PANE_CHROME_NOW) });
+          await openScenario(stepCdp, page, step.scenario);
+          await step.run(stepCdp);
           passes.set(step.name, (passes.get(step.name) ?? 0) + 1);
           console.log(`ok   ${step.name} (${Math.round(performance.now() - started)} ms)`);
         } catch (error) {
@@ -1893,7 +1905,9 @@ async function main(): Promise<void> {
           failures.push({ name: step.name, message });
           console.log(`FAIL ${step.name}\n     ${message}`);
           if (process.env.GITHUB_ACTIONS) console.log(`::error title=Pane chrome: ${step.name}::${message.replaceAll("\n", " ")}`);
-          await saveScreenshot(cdp, step.name).catch(() => {});
+          await saveScreenshot(stepCdp, step.name).catch(() => {});
+        } finally {
+          await isolated?.close();
         }
       }
       if (repeat > 1) console.log(`round ${round}/${repeat}: ${failures.length} failures so far`);

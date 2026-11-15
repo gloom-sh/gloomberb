@@ -311,6 +311,13 @@ export async function pressKey(cdp: Cdp, letter: string, modifiers: Array<keyof 
   await frames(cdp, 2);
 }
 
+export async function copySelection(cdp: Cdp): Promise<void> {
+  const mac = process.platform === "darwin";
+  const event = { key: "c", code: "KeyC", modifiers: mac ? MODIFIERS.meta : MODIFIERS.ctrl, windowsVirtualKeyCode: 67 };
+  await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...event, ...(mac ? { commands: ["copy"] } : {}) });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...event });
+}
+
 /** A key chord as DevTools describes it: `modifiers` is Alt 1, Ctrl 2, Meta 4, Shift 8. */
 export interface Chord { key: string; code: string; keyCode: number; modifiers: number }
 
