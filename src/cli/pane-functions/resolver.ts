@@ -541,6 +541,14 @@ export async function resolvePaneFunction(
     throw new Error(`Template "${template?.id}" points at missing pane "${template?.paneId}".`);
   }
   const headless = getHeadlessPaneDefinition(template, pane);
+  // A report that reads a list for a pane that shows one ticker (FA, INS): a capture of the list is refused with
+  // both commands, rather than read as one ticker named by the whole list.
+  const asked = argumentSymbols(args.arg ?? "");
+  if (resolutionSettings.command === "shot" && headless?.argument.kind === "tickers" && template?.shortcut?.argKind === "ticker"
+    && !template.opensTickerList && asked.length > 1) {
+    const code = paneFunctionCode(template, pane, registry);
+    throw new Error(`${code}'s pane shows one ticker: gloom shot ${code} ${asked[0]}. Its report reads all ${asked.length} in one table: gloom fn ${code} ${asked.join(" ")}`);
+  }
   const createOptions = withTickerList(template, buildCreateOptions(template, args.arg), headless, args.arg, paneFunctionCode(template, pane, registry));
   const capability = getPaneFunctionCapability(template, pane);
   let tableSection: string | true | undefined;
