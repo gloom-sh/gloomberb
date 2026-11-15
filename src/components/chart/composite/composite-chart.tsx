@@ -84,8 +84,8 @@ import type {
   CompositePanelScene,
 } from "./types";
 
-// Wordmark cell grid at scale 1 (27 columns of 8px, 4 rows of 12px).
-const WATERMARK_BASE_WIDTH_PX = 216;
+// Wordmark cell grid at scale 1 (15 columns of 8px, 4 rows of 12px).
+const WATERMARK_BASE_WIDTH_PX = 120;
 const WATERMARK_BASE_HEIGHT_PX = 48;
 
 /** The most lines a legend wraps to, and the plot rows each panel keeps when it does. */
@@ -1232,7 +1232,7 @@ function ThemedCompositeChart({
           style={plotInsetStyle}
           data-gloom-role={CHART_WATERMARK_ROLE}
         >
-          <AsciiText text="Gloomberb" font="wordmark" scale={watermarkScale} color={resolvedColors.textDim} />
+          <AsciiText text="Gloom" font="wordmark" scale={watermarkScale} color={resolvedColors.textDim} />
         </Box>
       ) : null}
       {axisMarkers.length > 0 ? (
