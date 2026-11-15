@@ -22,7 +22,7 @@ const ALL_COLUMNS: HistoryColumn[] = [
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
   { id: "analysts", label: "ESTS", width: 4, align: "right" },
   { id: "epsActual", label: "EPS ACT", width: 7, align: "right" },
-  { id: "basis", label: "BASIS", width: 5, align: "left" },
+  { id: "basis", label: "BASIS", width: 5, align: "left", mayBeBlank: true },
   { id: "epsSurprise", label: "EPS SURP", width: 8, align: "right" },
   { id: "revenueEstimate", label: "SALES EST", width: 9, align: "right" },
   { id: "revenueActual", label: "SALES ACT", width: 9, align: "right" },
@@ -55,7 +55,7 @@ const MOVE_COLUMNS: Partial<Record<HistoryColumnId, (row: HistoryRow) => number 
  * Columns a history can hold nothing in: an A share's reports state no time where its exchange gave none, and
  * no count of estimates is served for it. One blank in every row is left out, as the sales columns are.
  */
-const OPTIONAL_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["when", "analysts", "epsEstimate", "epsActual", "basis", "epsSurprise"]);
+const OPTIONAL_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["when", "analysts", "epsEstimate", "epsActual", "epsSurprise"]);
 
 /** Amount columns that carry a listing abroad's currency after each figure ("7.22 CNY"), and the room it takes. */
 const AMOUNT_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["epsEstimate", "epsActual", "revenueEstimate", "revenueActual"]);

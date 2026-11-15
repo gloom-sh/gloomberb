@@ -201,7 +201,7 @@ export type BucketColumn = Omit<DataTableColumn, "id"> & { id: BucketColumnId };
 const BUCKET_TEXT_COLUMNS: BucketColumn[] = [
   { id: "label", label: "MATURITY", width: 15, align: "left" },
   { id: "value", label: "PRINCIPAL", width: 10, align: "right" },
-  { id: "share", label: "% TOTAL", width: 8, align: "right" },
+  { id: "share", label: "% TOTAL", width: 8, align: "right", omitWhenEmpty: true },
 ];
 /** Below this the wall bars are too short to compare. */
 const MIN_WALL_WIDTH = 10;

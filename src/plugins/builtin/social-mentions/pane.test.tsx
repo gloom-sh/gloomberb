@@ -9,6 +9,7 @@ import { createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { SocialMentionsPane } from "./pane";
+import { socialMentionsCache } from "./client";
 
 const DAY_MS = 86_400_000;
 function payload(): SocialMentionsPayload {
@@ -34,6 +35,7 @@ const tui = createOpenTuiTestHarness();
 const spies: Array<{ mockRestore(): void }> = [];
 afterEach(() => {
   for (const spy of spies.splice(0)) spy.mockRestore();
+  socialMentionsCache.reset();
 });
 
 async function settle() {
@@ -67,6 +69,27 @@ test("the pane leads with the last closed day against its median, then the daily
   expect(frame).toContain("REDDIT");
   expect(frame).toContain("4.0x median · 09-26");
   expect(frame).toContain("3,600");
+});
+
+test("uncovered Wikipedia and a zero median omit only their columns; one zero view restores Wikipedia", async () => {
+  const data = payload();
+  data.wikipedia = { article: null, baseline: null, days: [] };
+  data.x.baseline = 0;
+  const request = spyOn(apiClient, "getCloudSocialMentions").mockImplementation(async () => structuredClone(data));
+  spies.push(request);
+  const empty = await render(120, 30);
+  expect(empty).not.toContain("VS MEDIAN");
+  expect(empty).not.toMatch(/\bWIKI\b/);
+  expect(empty).toContain("STANCE");
+  await tui.destroy();
+  socialMentionsCache.reset();
+  data.x.baseline = 77;
+  data.wikipedia.days = [{ day: "2026-09-26", views: 0 }];
+  const mixed = await render(120, 30);
+  expect(mixed).toContain("VS MEDIAN");
+  expect(mixed).toMatch(/\bWIKI\b/);
+  expect(mixed.split("\n").find((line) => line.includes("2026-09-26"))).toContain("0");
+  expect(mixed.split("\n").find((line) => line.includes("2026-09-25"))).toContain("—");
 });
 
 test("an alphanumeric overseas ticker requests its cashtag history", async () => {

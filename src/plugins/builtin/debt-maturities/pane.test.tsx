@@ -63,6 +63,27 @@ async function render(width: number, height: number, tab = "maturities"): Promis
 
 const bar = (line: string | undefined) => (line?.match(/[█▏▎▍▌▋▊▉]+/)?.[0] ?? "").length;
 
+test("an incomplete schedule omits shares without a denominator, and a complete schedule restores them", async () => {
+  const incomplete = payload();
+  incomplete.latest!.complete = false;
+  incomplete.latest!.totalPrincipal.value = null;
+  incomplete.latest!.next3Years.value = null;
+  incomplete.latest!.next12MonthsShare.value = null;
+  incomplete.latest!.next3YearsShare.value = null;
+  incomplete.latest!.buckets[2]!.value = null;
+  incomplete.latest!.buckets[2]!.fact = null;
+  Object.assign(incomplete.history.at(-1)!, { complete: false, totalPrincipal: null, next3Years: null,
+    next12MonthsShare: null, next3YearsShare: null });
+  spy = spyOn(apiClient, "getCloudDebtMaturities").mockResolvedValue(incomplete);
+  const missing = (await render(100, 30)).join("\n");
+  expect(missing).toContain("MATURITY");
+  expect(missing).not.toContain("% TOTAL");
+  await tui.destroy();
+  debtMaturitiesCache.reset();
+  spy.mockResolvedValue(payload());
+  expect((await render(100, 30)).join("\n")).toContain("% TOTAL");
+});
+
 test("the maturity wall is an inline bar column scaled to the dated years", async () => {
   const lines = await render(94, 29);
   const row = (label: string) => lines.find((line) => line.includes(label));

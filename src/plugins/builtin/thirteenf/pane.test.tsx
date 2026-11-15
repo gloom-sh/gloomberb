@@ -68,6 +68,35 @@ const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event, { trackPro
 
 const emitKeypressBatch = (events: TestKeyEvent[]) => tui.emitKeypress(events, { trackPropagation: true });
 
+test("unserved ranking quarters leave the table, and one fund's zero return restores just its quarter", async () => {
+  setSystemTime(new Date("2026-08-20T12:00:00Z"));
+  let covered = false;
+  installAlpha13FTransport([], (path, parsed) => {
+    if (!path.endsWith("/topfunds")) return null;
+    const quarter = parsed.searchParams.get("quarter");
+    if (quarter === "2026Q2") return json([
+      { cik: "1", name: "Alpha Capital", period_of_report: "2026-06-30", pnl: 12 },
+      { cik: "2", name: "Beta Capital", period_of_report: "2026-06-30", pnl: 8 },
+    ]);
+    return json(covered && quarter === "2026Q1"
+      ? [{ cik: "1", name: "Alpha Capital", period_of_report: "2026-03-31", pnl: 0 }] : []);
+  });
+  await act(async () => { await tui.render(<Harness />, { width: 130, height: 20 }); });
+  await renderFrames();
+  expect(tui.frame()).toContain("Alpha Capital");
+  expect(tui.frame()).not.toContain("2026Q1");
+  await tui.destroy();
+  resetThirteenFApiPersistence();
+  covered = true;
+  await act(async () => { await tui.render(<Harness />, { width: 130, height: 20 }); });
+  await renderFrames();
+  const screen = tui.frame();
+  expect(screen).toContain("2026Q1");
+  expect(screen).not.toContain("2025Q4");
+  expect(screen.split("\n").find((line) => line.includes("Alpha Capital"))).toContain("0.00%");
+  expect(screen.split("\n").find((line) => line.includes("Beta Capital"))).toContain("—");
+});
+
 function installAlpha13FTransport(urls: string[] = [], override?: (path: string, parsed: URL) => Response | null) {
   setHttpFetchTransport(async (url) => {
     urls.push(String(url));

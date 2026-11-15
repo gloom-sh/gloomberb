@@ -27,6 +27,15 @@ export type DataTableColumn = Pick<
    * column blank in every row as data the pane lost, except this one.
    */
   mayBeBlank?: boolean;
+  /**
+   * Leave this column out of the pane while every data row renders an empty
+   * cell or MISSING_VALUE. Use for unavailable coverage, not a pending event
+   * (mayBeBlank). "visible" checks just the viewport, for a chronological
+   * history whose older rows have coverage its recent rows lack. Scrolling
+   * restores the column when a row has a value. Reports and CSV exports keep
+   * the column and its raw cells.
+   */
+  omitWhenEmpty?: boolean | "visible";
 };
 
 export interface DataTableCell {

@@ -47,8 +47,8 @@ export type SocialColumn = Omit<DataTableColumn, "id"> & { id: SocialColumnId };
 export const SOCIAL_COLUMNS: SocialColumn[] = [
   { id: "day", label: "DATE", width: 12, align: "left" },
   { id: "mentions", label: "POSTS", width: 9, align: "right" },
-  { id: "ratio", label: "VS MEDIAN", width: 10, align: "right" },
-  { id: "wikiViews", label: "WIKI", width: 8, align: "right" },
+  { id: "ratio", label: "VS MEDIAN", width: 10, align: "right", omitWhenEmpty: true },
+  { id: "wikiViews", label: "WIKI", width: 8, align: "right", omitWhenEmpty: true },
   { id: "redditMentions", label: "REDDIT", width: 8, align: "right" },
   { id: "stance", label: "STANCE", width: 8, align: "right" },
   { id: "topPost", label: "TOP POST", width: 24, flexGrow: 1, align: "left" },

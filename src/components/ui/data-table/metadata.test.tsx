@@ -7,6 +7,9 @@ import { AppContext, PaneInstanceProvider, createInitialState } from "../../../s
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
 import { DataTable } from "./index";
+import { MISSING_VALUE } from "../../../utils/format";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
+import { takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 
 const tui = createOpenTuiTestHarness();
 
@@ -62,6 +65,38 @@ async function renderTable(selectedId: string | null, reportEveryRow?: boolean) 
 }
 
 describe("DataTable remote metadata", () => {
+  test("an omitted column stays report-only in JSON and present in the registered CSV export", async () => {
+    function OptionalTable() {
+      const scrollRef = useRef<ScrollBoxRenderable>(null);
+      return <DataTable columns={[
+        { id: "name", label: "Name", width: 12, align: "left" },
+        { id: "missing", label: "Missing", width: 10, align: "right", omitWhenEmpty: true },
+      ]} items={[{ id: "one", name: "One" }]} sortColumnId={null} sortDirection="asc"
+        scrollRef={scrollRef} headerScrollRef={scrollRef} syncHeaderScroll={() => {}} onBodyScrollActivity={() => {}}
+        getItemKey={(row) => row.id} isSelected={() => false} onSelect={() => {}}
+        renderCell={(row, column) => column.id === "name" ? { text: row.name } : { text: MISSING_VALUE, value: null }}
+        emptyStateTitle="No rows." reportEveryRow />;
+    }
+    const registry = createRemoteUiRegistry();
+    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-optional-column"));
+    await act(async () => {
+      await tui.render(<RemoteUiRegistryProvider registry={registry}>
+        <AppContext value={createStaticAppStore(state)}>
+          <PaneInstanceProvider paneId="optional-column"><OptionalTable /></PaneInstanceProvider>
+        </AppContext>
+      </RemoteUiRegistryProvider>, { width: 40, height: 6 });
+    });
+    const node = registry.snapshot().find((entry) => entry.role === "table");
+    expect(tui.frame()).not.toContain("MISSING");
+    expect(node?.metadata?.columns).toEqual([{ id: "name", label: "Name" }]);
+    expect(node?.metadata?.rows).toEqual([{ key: "one", selected: false, cells: [
+      { columnId: "name", columnLabel: "Name", text: "One" },
+      { columnId: "missing", columnLabel: "Missing", text: MISSING_VALUE, reportOnly: true },
+    ] }]);
+    await exportPaneTable("optional-column", "optional.csv");
+    expect(takeSavedTextFile()?.text).toContain("Name,Missing\nOne,");
+  });
+
   test("publishes the row count and a selected key past the first 200 rows, without row objects", async () => {
     const { node } = await renderTable("row-230");
 

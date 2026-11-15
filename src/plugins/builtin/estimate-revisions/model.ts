@@ -50,7 +50,7 @@ export const PERIOD_COLUMNS: DataTableColumn[] = [
   { id: "percentile", label: "PCTL 1Y", width: 9, align: "right" },
   { id: "change", label: "CHANGE %", width: 11, align: "right" },
   { id: "breadth", label: "UP/DN 30D", width: 12, align: "right" },
-  { id: "range", label: "HI-LO", width: 11, align: "right" },
+  { id: "range", label: "HI-LO", width: 11, align: "right", omitWhenEmpty: true },
   { id: "asOf", label: "AS OF", width: 12, align: "left", flexGrow: 1 },
 ];
 export function sortPeriods(

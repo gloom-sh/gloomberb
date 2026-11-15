@@ -42,6 +42,7 @@ afterAll(() => estimatesSpy.mockRestore());
 const tui = createOpenTuiTestHarness();
 afterEach(() => {
   estimateRevisionsCache.reset();
+  estimatesSpy.mockResolvedValue(payload);
 });
 
 async function settle(delayMs = 5) {
@@ -49,13 +50,13 @@ async function settle(delayMs = 5) {
 }
 
 /** The pane with the quarter's detail open, as a reload restores it. */
-async function renderDetail(width: number, height: number): Promise<string[]> {
+async function renderDetail(width: number, height: number, open = true): Promise<string[]> {
   const id = "estimate-revisions:AAPL";
   const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-estimates-test", {
     instanceId: id, paneId: "estimate-revisions", binding: { kind: "fixed", symbol: "AAPL" },
   }));
   state.tickers.set("AAPL", createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ" }));
-  state.paneState[id] = { pluginState: { "estimate-revisions": { "estimates:open": period.id } } } as never;
+  if (open) state.paneState[id] = { pluginState: { "estimate-revisions": { "estimates:open": period.id } } } as never;
   const runtime = createTestPluginRuntime();
   function Harness() {
     const [paneState, setPaneState] = useState(state.paneState);
@@ -71,6 +72,22 @@ async function renderDetail(width: number, height: number): Promise<string[]> {
   await settle();
   return tui.frame().split("\n");
 }
+
+test("a single-analyst consensus omits dispersion, and one covered period restores it", async () => {
+  const uncovered = structuredClone(payload);
+  uncovered.periods[0]!.current = { ...uncovered.periods[0]!.current!, analysts: 1, range: null, relativeRange: null };
+  estimatesSpy.mockResolvedValue(uncovered);
+  expect((await renderDetail(160, 28, false)).join("\n")).not.toContain("HI-LO");
+  await tui.destroy();
+  estimateRevisionsCache.reset();
+  const mixed = { ...uncovered, periods: [...uncovered.periods,
+    { ...period, id: "quarterly:2026-12-31:USD", periodEnd: "2026-12-31" }] };
+  estimatesSpy.mockResolvedValue(mixed);
+  const frame = (await renderDetail(160, 28, false)).join("\n");
+  expect(frame).toContain("HI-LO");
+  expect(frame).toContain("0.3");
+  expect(frame).toContain("—");
+});
 
 test("the period detail charts recorded and lookback EPS over its observations, the selected one as the cursor", async () => {
   const lines = await renderDetail(102, 28);
