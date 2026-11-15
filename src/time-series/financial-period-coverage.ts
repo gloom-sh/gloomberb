@@ -15,19 +15,11 @@ export function limitSeriesObservations(spec: ChartSpec, series: ResolvedSeries)
   if (!isFinancialSeries(definition)) {
     return { ...series, points: series.points.slice(-spec.viewport.maxPoints) };
   }
+  // The latest N periods, a missing one among them, so `--periods 5` reads the last five fiscal years and never reaches
+  // back past a gap for older ones; the gap stays a point so a chart cannot draw through it, and the coverage counts
+  // how many of the N have a value.
   const points = series.points.filter((point) => point.periodLabel !== "Current");
-  let remaining = spec.viewport.maxPoints;
-  let start = points.length;
-  for (let index = points.length - 1; index >= 0; index--) {
-    if (!isUsableFinancialObservation(points[index]!)) continue;
-    start = index;
-    if (--remaining <= 0) break;
-  }
-  // Count usable observations, but retain missing periods within the selected
-  // history and at its end so charts cannot draw through absent financial data.
-  // If coverage is short, retain leading gaps too: they explain which requested
-  // periods failed, including the case where every observation is unavailable.
-  return { ...series, points: points.slice(remaining > 0 ? 0 : start) };
+  return { ...series, points: points.slice(-spec.viewport.maxPoints) };
 }
 
 export interface FinancialPeriodCoverage {
