@@ -2237,6 +2237,8 @@ Signing out pauses sync and keeps unsynced edits for your next sign-in to the sa
 
 **Invite a friend.** `ACM` > Pro shows your invite link with **Copy**, and the panes you share carry it too. Each friend who starts paying for Pro through it earns you a free Pro month, up to three; the row counts them.
 
+**An unpaid Pro invoice.** `ACM` > Pro shows a Payment row when your personal subscription is past due, including when a team still gives you Pro. **Pay invoice** opens the current invoice in your browser to complete payment or use another card. A failed or unavailable payment page stays on that row instead of starting a new subscription. The row clears when your account refreshes after payment.
+
 ## Connect an AI assistant (MCP)
 
 `MCP` opens a short setup for the [Gloom MCP server](https://gloom.sh/docs/mcp) (typing mcp, claude, codex or cursor in the command bar, or `ACM` > Advanced > Assistants (MCP), finds it too). Pick the client and copy its one command or config with `c` or Copy.

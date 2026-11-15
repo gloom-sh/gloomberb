@@ -74,6 +74,7 @@ import { deleteAccountConfirmingSession } from "./delete-account";
 import { endTrialAfterWarning } from "./trial-cancel";
 import { CalendarAccountTab } from "./calendar-tab";
 import { InviteRow } from "./invite-row";
+import { PaymentRecoveryRow, usePaymentRecovery } from "./payment-recovery-row";
 import { useAccountManagementFooter } from "./footer";
 import { useAccountManagementKeyboard } from "./keyboard";
 import {
@@ -241,6 +242,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   );
   const [message, setMessage] = useState<{ tone: "info" | "success" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState<AccountBusy>(null);
+  const paymentRecovery = usePaymentRecovery(hasSession && activeTab === "pro", sessionMarker);
 
   // A requested tab switches the open pane; one requested before it mounted wins over the restored tab once.
   useEffect(() => subscribeRequestedAccountManagementTab((tab) => {
@@ -722,6 +724,11 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const startUpgrade = useCloudUpgradeAction("acm");
   const openUpgrade = useCallback(() => {
     setActiveField("upgradeAction");
+    if (paymentRecovery.checking) return;
+    if (paymentRecovery.visible) {
+      void paymentRecovery.pay();
+      return;
+    }
     if (busy) return;
     let opening = false;
     void startUpgrade({
@@ -735,7 +742,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       setBusy(null);
       setMessage(null);
     });
-  }, [busy, startUpgrade]);
+  }, [busy, startUpgrade, paymentRecovery.visible, paymentRecovery.pay, paymentRecovery.checking]);
 
   const deleteAccount = useCallback(async () => {
     setActiveField("deleteAccountAction");
@@ -1067,14 +1074,24 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 width={contentWidth}
                 activePlan={planAccess.hasProAccess ? "pro" : "free"}
               />
-              <Box flexDirection="row" gap={1}>
+              {paymentRecovery.visible ? (
+                <PaymentRecoveryRow
+                  active={activeField === "upgradeAction"}
+                  busy={paymentRecovery.busy}
+                  message={paymentRecovery.message}
+                  labelWidth={formLabelWidth}
+                  nodeRef={fieldNodeRef("upgradeAction")}
+                  onPay={openUpgrade}
+                  onFocus={() => setActiveField("upgradeAction")}
+                />
+              ) : <Box flexDirection="row" gap={1}>
                 <Box ref={fieldNodeRef("upgradeAction")} flexDirection="row">
                   <Button
                     label={planAccess.isPayingPro ? t("Manage Pro") : busy === "billing" ? t("Opening...") : t("Upgrade to Pro")}
                     variant={planAccess.isPayingPro ? "secondary" : "primary"}
                     active={activeField === "upgradeAction"}
                     onPress={openUpgrade}
-                    disabled={!!busy}
+                    disabled={!!busy || paymentRecovery.checking}
                   />
                 </Box>
                 {planAccess.isTrialActive ? (
@@ -1088,7 +1105,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                     />
                   </Box>
                 ) : null}
-              </Box>
+              </Box>}
               {invite ? (
                 <InviteRow
                   invite={invite}
