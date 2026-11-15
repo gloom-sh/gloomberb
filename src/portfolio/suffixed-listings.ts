@@ -1,6 +1,7 @@
 import type { AppConfig } from "../types/config";
 import type { TickerMetadata, TickerPosition, TickerRecord } from "../types/ticker";
 import { listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
+import { moveWatchlistGroupSymbols } from "./watchlist-groups";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../utils/exchanges";
 
 /**
@@ -197,7 +198,8 @@ export async function mergeSavedSuffixedListings(
 ): Promise<{ tickers: TickerRecord[]; config: AppConfig; keptCustom: SuffixedListingMerge["keptCustom"] } | null> {
   const merge = mergeSuffixedListings(tickers);
   if (!merge) return null;
-  const nextConfig = moveTargetWeights(config, merge.moved);
+  // Target weights and watchlist groups follow their rows to the listing's key.
+  const nextConfig = moveWatchlistGroupSymbols(moveTargetWeights(config, merge.moved), merge.moved);
   if (merge.saves.length === 0 && nextConfig === config) return null;
   if (nextConfig !== config) await save.config(nextConfig);
   if (merge.saves.length > 0) await save.tickers(merge.saves);

@@ -25,6 +25,7 @@ import type { TickerFinancials, PricePoint } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { PRICE_SPARKLINE_COLUMN_ID, PriceSparkline } from "../price-sparkline/view";
 import { DataTableView, type DataTableKeyEvent, type DataTableSelection } from "../data-table/view";
+import { sectionHeaderText } from "../data-table/sections";
 import type { QuoteFlashDirection } from "../quote-flash";
 import type { DataTableColumnReorder } from "../ui";
 import { objectVersion } from "../../utils/object-version";
@@ -90,7 +91,41 @@ function summaryRecord(row: TickerTableSummaryRow): TickerRecord {
   return record;
 }
 
-const isTickerRow = (item: TickerRecord) => !summaryRowOf.has(item);
+/**
+ * A section of a ticker table: a header that Enter or a click collapses and
+ * expands, and the rows under it.
+ */
+export interface TickerTableGroup {
+  /** The same while the group is: its header's row key (`groupRowKey`) and what its collapsed state is kept under. */
+  id: string;
+  label: string;
+  /** Its rows in order, shown or collapsed: the header counts them and an export writes them all. */
+  tickers: readonly TickerRecord[];
+  collapsed: boolean;
+}
+
+const GROUP_ROW_PREFIX = "\u0000group:";
+
+/** What the cursor reads on a group's header: no ticker has this key. */
+export function groupRowKey(id: string): string {
+  return `${GROUP_ROW_PREFIX}${id}`;
+}
+
+/** The group whose header a cursor key is, or null for any other row. */
+export function groupIdOfRowKey(key: string | null): string | null {
+  return key?.startsWith(GROUP_ROW_PREFIX) ? key.slice(GROUP_ROW_PREFIX.length) : null;
+}
+
+/** The record a group's header stands in the table's items as, and the group it heads. */
+const groupHeaderOf = new WeakMap<TickerRecord, TickerTableGroup>();
+
+function groupHeaderRecord(group: TickerTableGroup): TickerRecord {
+  const record = { metadata: { ticker: groupRowKey(group.id), exchange: "", currency: "", name: "", portfolios: [], watchlists: [], positions: [] } } as unknown as TickerRecord;
+  groupHeaderOf.set(record, group);
+  return record;
+}
+
+const isTickerRow = (item: TickerRecord) => !summaryRowOf.has(item) && !groupHeaderOf.has(item);
 /** Tickers, and the summary rows that take the cursor (CASH); never the others (TOTAL, a period's FX line). */
 const isNavigableRow = (item: TickerRecord) => {
   const summary = summaryRowOf.get(item);
@@ -145,6 +180,15 @@ export interface TickerListTableViewProps {
   emptyHint?: string;
   /** Rows after the tickers that add them up; shown only beside at least one ticker. */
   summaryRows?: readonly TickerTableSummaryRow[];
+  /**
+   * Sections the rows show under, in this order, each under a header the
+   * cursor lands on. `tickers` still holds every row.
+   */
+  groups?: readonly TickerTableGroup[];
+  /** Collapses or expands a group: Enter on its header, or a click. */
+  onToggleGroup?: (id: string) => void;
+  /** The pane's own items in a row's menu (right-click, and the pane menu for the cursor row), after the list items. */
+  rowMenuItems?: (ticker: TickerRecord) => ContextMenuItem[];
   /**
    * The pane's own key for adding a ticker, which the empty table names. The
    * command bar's key when absent. The pane shows its add control once, in its
@@ -206,16 +250,24 @@ function getTickerKey(ticker: TickerRecord): string {
   return ticker.metadata.ticker;
 }
 
+/** The pane's own row items, after the list items and before the actions plugins and the app add. */
+function withPaneRowItems(items: ContextMenuItem[], paneItems: readonly ContextMenuItem[] | undefined): ContextMenuItem[] {
+  if (!paneItems?.length) return items;
+  const at = items.findIndex((item) => item.id === "ticker:actions-divider");
+  return at < 0 ? [...items, ...paneItems] : [...items.slice(0, at), ...paneItems, ...items.slice(at)];
+}
+
 /** What right-clicking the row offers, plugin additions included. */
 function tickerRowMenuItems(
   ticker: TickerRecord,
   financials: TickerFinancials | null,
   copyText: (text: string) => Promise<void>,
+  paneItems?: readonly ContextMenuItem[],
 ): ContextMenuItem[] {
   const registry = getSharedRegistry() ?? null;
   return withPluginContextMenuItems(
     { kind: "ticker", symbol: ticker.metadata.ticker, ticker, financials },
-    tickerContextMenuItems({ ticker, financials, registry, copyText }),
+    withPaneRowItems(tickerContextMenuItems({ ticker, financials, registry, copyText }), paneItems),
     registry,
   );
 }
@@ -230,18 +282,21 @@ export function useTickerRowPaneMenu({
   financials,
   enabled,
   accelerators,
+  paneItems,
 }: {
   ticker: TickerRecord | null;
   financials: TickerFinancials | null;
   enabled: boolean;
   /** The pane's own keys for these actions, by item id, shown beside them. */
   accelerators?: Readonly<Record<string, string>>;
+  /** The pane's own items for this row (`TickerListTableViewProps.rowMenuItems`). */
+  paneItems?: readonly ContextMenuItem[];
 }): void {
   const renderer = useRendererHost();
   const registrationId = `ticker-row-menu:${useId()}`;
   usePaneFooter(registrationId, () => {
     if (!enabled || !ticker) return null;
-    const items = tickerRowMenuItems(ticker, financials, renderer.copyText.bind(renderer));
+    const items = tickerRowMenuItems(ticker, financials, renderer.copyText.bind(renderer), paneItems);
     return {
       order: -1,
       menu: accelerators
@@ -250,7 +305,7 @@ export function useTickerRowPaneMenu({
           : { ...item, accelerator: accelerators[item.id] }))
         : items,
     };
-  }, [accelerators, enabled, financials, renderer, ticker]);
+  }, [accelerators, enabled, financials, paneItems, renderer, ticker]);
 }
 
 export function TickerListTableView({
@@ -287,6 +342,9 @@ export function TickerListTableView({
   emptyHint,
   addTickerShortcut,
   summaryRows,
+  groups,
+  onToggleGroup,
+  rowMenuItems,
   virtualize = true,
   overscan = 4,
   exportName,
@@ -326,6 +384,8 @@ export function TickerListTableView({
     _index: number,
     rowState: { selected: boolean },
   ) => {
+    // A group's header draws as a header, never as cells.
+    if (groupHeaderOf.has(ticker)) return { text: "" };
     const summary = summaryRowOf.get(ticker);
     if (summary) {
       const cell = summary.cells[column.id];
@@ -364,22 +424,33 @@ export function TickerListTableView({
   }, []);
 
   const getRowVersion = useCallback((ticker: TickerRecord) => {
-    const summary = summaryRowOf.get(ticker);
+    const summary = summaryRowOf.get(ticker) ?? groupHeaderOf.get(ticker);
     if (summary) return summary;
     const symbol = ticker.metadata.ticker;
     return `${resolveEpoch}|${objectVersion(financialsMap.get(symbol))}|${safeFlashSymbols.get(symbol) ?? ""}`;
   }, [financialsMap, resolveEpoch, safeFlashSymbols]);
 
+  // A grouped list's rows name their group in the export, collapsed or not.
+  const groupLabels = useMemo(() => groups?.length
+    ? new Map(groups.flatMap((group) => group.tickers.map((ticker) => [ticker.metadata.ticker, group.label] as const)))
+    : null, [groups]);
   // An export ends each row as `quote --csv` does: its session and feed, its listing with the venue, its unit,
   // its source and the ISO time its price was observed. A summary line is no listing.
-  const exportIdentity = useMemo(() => ({
-    headers: QUOTE_EXPORT_IDENTITY_HEADERS,
-    cells: (ticker: TickerRecord) => isTickerRow(ticker)
-      ? quoteExportIdentityCells(exportedListingKey(ticker), financialsRef.current.get(ticker.metadata.ticker)?.quote, Date.now(),
-        // A broker's quote names the broker as its source.
-        (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name)
-      : null,
-  }), []);
+  const exportIdentity = useMemo(() => {
+    const identity = (ticker: TickerRecord) => quoteExportIdentityCells(exportedListingKey(ticker), financialsRef.current.get(ticker.metadata.ticker)?.quote,
+      Date.now(),
+      // A broker's quote names the broker as its source.
+      (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name);
+    return groupLabels
+      ? {
+        headers: ["Group", ...QUOTE_EXPORT_IDENTITY_HEADERS],
+        cells: (ticker: TickerRecord) => isTickerRow(ticker) ? [groupLabels.get(ticker.metadata.ticker) ?? "", ...identity(ticker)] : null,
+      }
+      : {
+        headers: QUOTE_EXPORT_IDENTITY_HEADERS,
+        cells: (ticker: TickerRecord) => isTickerRow(ticker) ? identity(ticker) : null,
+      };
+  }, [groupLabels]);
 
   const selection = useMemo<DataTableSelection<TickerRecord>>(() => ({
     kind: "id",
@@ -394,6 +465,8 @@ export function TickerListTableView({
     if (isTickerRow(ticker)) onRowActivate?.(ticker);
   }, [onRowActivate]);
 
+  const rowMenuItemsRef = useRef(rowMenuItems);
+  rowMenuItemsRef.current = rowMenuItems;
   const showTickerContextMenu = useCallback((
     ticker: TickerRecord,
     event: TableMouseEvent,
@@ -407,12 +480,12 @@ export function TickerListTableView({
         ticker,
         financials: financials ?? null,
       },
-      tickerContextMenuItems({
+      withPaneRowItems(tickerContextMenuItems({
         ticker,
         financials: financials ?? null,
         registry,
         copyText: renderer.copyText.bind(renderer),
-      }),
+      }), rowMenuItemsRef.current?.(ticker)),
       event,
     );
   }, [renderer, showContextMenu]);
@@ -433,16 +506,43 @@ export function TickerListTableView({
 
   // Summary rows follow the tickers, as records of their own the table never selects.
   const summaries = useMemo(() => tickers.length && summaryRows?.length ? summaryRows.map(summaryRecord) : [], [summaryRows, tickers.length]);
-  const items = useMemo(() => summaries.length ? [...tickers, ...summaries] : tickers, [summaries, tickers]);
+  // A grouped list shows each group's header and, unless it is collapsed, its rows.
+  const grouped = useMemo(() => groups?.length
+    ? groups.flatMap((group) => [groupHeaderRecord(group), ...group.collapsed ? [] : group.tickers])
+    : null, [groups]);
+  const rows = grouped ?? tickers;
+  const items = useMemo(() => summaries.length ? [...rows, ...summaries] : rows, [rows, summaries]);
+  // An export writes every row, a collapsed group's too, in the groups' order.
+  const exportItems = useMemo(() => groups?.length
+    ? [...groups.flatMap((group) => group.tickers), ...summaries]
+    : undefined, [groups, summaries]);
+  const toggleGroupRef = useRef(onToggleGroup);
+  toggleGroupRef.current = onToggleGroup;
+  const renderGroupHeader = useCallback((item: TickerRecord) => {
+    const group = groupHeaderOf.get(item);
+    return group
+      ? { text: sectionHeaderText(group.label, group.tickers.length), expanded: !group.collapsed, onMouseDown: () => toggleGroupRef.current?.(group.id) }
+      : null;
+  }, []);
+  // The pane counts the rows in view among its tickers: a header between them is not one.
+  const handleVisibleRangeChange = useMemo(() => {
+    if (!grouped || !onVisibleRangeChange) return onVisibleRangeChange;
+    const tickersBefore = [0];
+    for (const item of grouped) tickersBefore.push(tickersBefore.at(-1)! + (groupHeaderOf.has(item) ? 0 : 1));
+    const at = (index: number) => tickersBefore[Math.max(0, Math.min(index, grouped.length))]!;
+    return ({ start, end }: TickerListVisibleRange) => onVisibleRangeChange({ start: at(start), end: at(end) });
+  }, [grouped, onVisibleRangeChange]);
 
   // The cursor row's right-click menu, for the keyboard, while the table is focused.
   const cursorTicker = selectedIndex >= 0 ? tickers[selectedIndex] ?? null : null;
   const cursorFinancials = cursorTicker ? financialsMap.get(cursorTicker.metadata.ticker) ?? null : null;
+  const cursorPaneItems = useMemo(() => cursorTicker ? rowMenuItems?.(cursorTicker) : undefined, [cursorTicker, rowMenuItems]);
   useTickerRowPaneMenu({
     ticker: cursorTicker,
     financials: cursorFinancials,
     enabled: focused && keyboardNavigation,
     accelerators: rowMenuAccelerators,
+    paneItems: cursorPaneItems,
   });
 
   return (
@@ -463,7 +563,9 @@ export function TickerListTableView({
       onRowContextMenu={handleRowContextMenu}
       rowContextMenuSurface
       renderCell={renderCell}
+      renderSectionHeader={grouped ? renderGroupHeader : undefined}
       exportIdentity={exportIdentity}
+      exportItems={exportItems}
       exportName={exportName}
       getRowVersion={getRowVersion}
       emptyStateTitle={emptyTitle}
@@ -479,7 +581,7 @@ export function TickerListTableView({
       scrollRef={scrollRef}
       syncHeaderScroll={syncHeaderScroll}
       onBodyScrollActivity={onBodyScrollActivity}
-      onVisibleRangeChange={onVisibleRangeChange}
+      onVisibleRangeChange={handleVisibleRangeChange}
       visibleRangeBuffer={visibleRangeBuffer}
       keyboardNavigation={keyboardNavigation}
       onRootKeyDown={onRootKeyDown}

@@ -1,6 +1,7 @@
 import type { AppConfig, BrokerInstanceConfig } from "../types/config";
 import type { Portfolio, TickerPosition, Watchlist } from "../types/ticker";
 import { isRecord } from "../utils/guards";
+import { normalizeWatchlistGroups } from "../portfolio/watchlist-groups";
 
 const SENSITIVE_KEY_PATTERN = /(token|secret|password|credential|private|api[_-]?key|access[_-]?key|refresh[_-]?key|session|cookie|dataDir|path|directory|localPath)/i;
 
@@ -78,10 +79,15 @@ export function sanitizePortfolio(portfolio: Portfolio): Portfolio {
 }
 
 export function sanitizeWatchlist(watchlist: Watchlist): Watchlist {
+  // The user's own sections: a pulled list without them would erase them on this device. A list
+  // without groups goes as before. They are an array, never keyed by a name or symbol, which
+  // `sanitizeUnknown` would drop for reading like a secret (a Private group, the PATH ticker).
+  const groups = normalizeWatchlistGroups(watchlist.groups);
   return {
     id: watchlist.id,
     name: watchlist.name,
     description: watchlist.description,
+    ...(groups ? { groups } : {}),
   };
 }
 

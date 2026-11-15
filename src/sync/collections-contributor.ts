@@ -8,6 +8,7 @@ import type { SyncContributor } from "./types";
 import { isRecord, recordOrNull } from "../utils/guards";
 import { withoutMissingWatchlists } from "../portfolio/mutations";
 import { mergeSuffixedListings, moveTargetWeights } from "../portfolio/suffixed-listings";
+import { moveWatchlistGroupSymbols } from "../portfolio/watchlist-groups";
 import { knownBrokerHoldings } from "../brokers/broker-portfolio-sync";
 import {
   localOnlyScope,
@@ -168,6 +169,6 @@ function mergePulledSuffixedListings(
     else changed.push(row);
   }
   for (const kept of merged.keptCustom) log.info("sync.suffixed-listing.custom-kept", kept);
-  const next = moveTargetWeights(config, merged.moved);
+  const next = moveWatchlistGroupSymbols(moveTargetWeights(config, merged.moved), merged.moved);
   return { config: next === config ? null : next };
 }

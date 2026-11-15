@@ -127,6 +127,10 @@ import {
 } from "../../../../portfolio/allocation";
 import { allocationSummaryRows, CASH_ROW_KEY } from "../allocation-rows";
 import { useTargetWeightActions, type TargetRow } from "./target-weights";
+import { groupIdOfRowKey, groupRowKey } from "../../../../components/ticker/list-table-view";
+import { withoutWatchlistGroupSymbols } from "../../../../portfolio/watchlist-groups";
+import { scheduleConfigSave } from "../../../../state/config-save-scheduler";
+import { buildWatchlistTableGroups, toggleCollapsedGroup, useWatchlistGroupActions, type CollapsedGroup } from "./groups";
 
 /** Columns that need the portfolio's total. */
 const ALLOCATION_COLUMN_IDS = new Set(["weight", "drift", "trade", "trade_value"]);
@@ -142,6 +146,9 @@ const firstSortDirection = (columnId: string) => columnId === "drift" ? "desc" a
 const NO_COLLECTION_SORTS: Record<string, CollectionSortPreference> = {};
 /** What the pane's `cursorSummaryRow` holds while the cursor is on the CASH row. */
 const CASH_SUMMARY_ROW = "cash";
+/** What it holds, before the group's id, while the cursor is on a watchlist group's header. */
+const GROUP_SUMMARY_ROW = "group:";
+const NO_COLLAPSED_GROUPS: CollapsedGroup[] = [];
 
 export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const activateTicker = useTickerSourceActivate();
@@ -157,13 +164,20 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   const [currentCollectionId, setCurrentCollectionId] = usePaneStateValue<string>("collectionId", paneCollection.collectionId ?? "");
   const [committedCursorSymbol, setCommittedCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
-  // The CASH row's cursor has a key of its own: `cursorSymbol`, which followers, recent tickers and saved layouts
-  // read, only ever holds a ticker, and keeps the last one while the cursor is on cash.
+  // The CASH row's and a group header's cursor have a key of their own: `cursorSymbol`, which followers, recent
+  // tickers and saved layouts read, only ever holds a ticker, and keeps the last one while the cursor is on them.
   const [cursorSummaryRow, setCursorSummaryRow] = usePaneStateValue<string | null>("cursorSummaryRow", null);
-  const committedCursorRow = cursorSummaryRow === CASH_SUMMARY_ROW ? CASH_ROW_KEY : committedCursorSymbol;
+  const committedCursorRow = cursorSummaryRow === CASH_SUMMARY_ROW ? CASH_ROW_KEY
+    : cursorSummaryRow?.startsWith(GROUP_SUMMARY_ROW) ? groupRowKey(cursorSummaryRow.slice(GROUP_SUMMARY_ROW.length))
+      : committedCursorSymbol;
   const commitCursorRow = useCallback((row: string | null) => {
     if (row === CASH_ROW_KEY) {
       setCursorSummaryRow(CASH_SUMMARY_ROW);
+      return;
+    }
+    const group = groupIdOfRowKey(row);
+    if (group != null) {
+      setCursorSummaryRow(`${GROUP_SUMMARY_ROW}${group}`);
       return;
     }
     setCursorSummaryRow(null);
@@ -171,6 +185,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   }, [setCommittedCursorSymbol, setCursorSummaryRow]);
   const [collectionSorts, setCollectionSorts] = usePaneStateValue<Record<string, CollectionSortPreference>>("collectionSorts", NO_COLLECTION_SORTS);
   const [cashDrawerExpanded, setCashDrawerExpanded] = usePaneStateValue<boolean>("cashDrawerExpanded", false);
+  // The watchlist groups this pane shows collapsed, of any list.
+  const [collapsedGroups, setCollapsedGroups] = usePaneStateValue<CollapsedGroup[]>("collapsedGroups", NO_COLLAPSED_GROUPS);
   const [, setViewMode] = usePaneSettingValue<PortfolioViewMode>("viewMode", "table");
   const updateColumnIds = useOptionalPaneSettingUpdater(paneInstance?.instanceId ?? null, "columnIds");
 
@@ -204,6 +220,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       ? config.portfolios.find((portfolio) => portfolio.id === activeCollectionId) ?? null
       : null
   ), [activeCollectionId, config.portfolios, isPortfolioTab]);
+  const currentWatchlist = useMemo(() => (
+    isPortfolioTab ? null : config.watchlists.find((watchlist) => watchlist.id === activeCollectionId) ?? null
+  ), [activeCollectionId, config.watchlists, isPortfolioTab]);
   const viewMode: PortfolioViewMode = isPortfolioTab ? paneSettings.viewMode : "table";
   const valuationBasis = paneSettings.valueAtClose ? "regular-close" as const : "latest-print" as const;
 
@@ -421,6 +440,22 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     }),
     [orderedSymbols, tickerBySymbol],
   );
+  // A watchlist with groups shows its rows under them, each group sorted on its own; any other list has none.
+  const tableGroups = useMemo(
+    () => viewMode === "table" ? buildWatchlistTableGroups(currentWatchlist, sortedTickers, collapsedGroups) : undefined,
+    [collapsedGroups, currentWatchlist, sortedTickers, viewMode],
+  );
+  // The rows the table shows, in its order: a collapsed group's are left out.
+  const displayedTickers = useMemo(
+    () => tableGroups ? tableGroups.flatMap((group) => group.collapsed ? [] : group.tickers) : sortedTickers,
+    [sortedTickers, tableGroups],
+  );
+  // The order quotes stream in: the rows shown, which the visible range counts, then a collapsed group's, off screen.
+  const streamOrder = useMemo(
+    () => tableGroups ? [...displayedTickers, ...tableGroups.flatMap((group) => group.collapsed ? group.tickers : [])] : sortedTickers,
+    [displayedTickers, sortedTickers, tableGroups],
+  );
+  const shownGroupKeys = useMemo(() => new Set(tableGroups?.map((group) => groupRowKey(group.id))), [tableGroups]);
 
   // What LAST shows for each row, snapshotted when the table goes out of sight.
   const priceColumn = viewMode === "table" ? columns.find((column) => column.id === "price") : undefined;
@@ -454,7 +489,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     getSharedMarketDataCoordinator()?.warmTickerGaps(instrument);
   }, []);
   const noteCursorForPrefetch = useCursorNeighborPrefetch({
-    tickers: sortedTickers,
+    tickers: displayedTickers,
     cursorSymbol,
     portfolioId: financialsInstrumentOptions.portfolioId,
     enabled: appActive,
@@ -638,25 +673,27 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       return;
     }
 
-    // The cash row takes the cursor too, while it is shown.
-    const hasSelection = cursorSymbol && ((cursorSymbol === CASH_ROW_KEY && cashRowShown)
-      || sortedTickers.some((ticker) => ticker.metadata.ticker === cursorSymbol));
+    // The cash row and a group's header take the cursor too, while they are shown.
+    const hasSelection = cursorSymbol && ((cursorSymbol === CASH_ROW_KEY && cashRowShown) || shownGroupKeys.has(cursorSymbol)
+      || displayedTickers.some((ticker) => ticker.metadata.ticker === cursorSymbol));
     if (!hasSelection) {
-      setCursorSymbol(sortedTickers[0]!.metadata.ticker, { immediate: true });
+      // Every group collapsed: the first header.
+      const first = displayedTickers[0]?.metadata.ticker ?? (tableGroups?.[0] ? groupRowKey(tableGroups[0].id) : null);
+      if (first) setCursorSymbol(first, { immediate: true });
     }
-  }, [cashRowShown, cursorSymbol, setCursorSymbol, sortedTickers]);
+  }, [cashRowShown, cursorSymbol, displayedTickers, setCursorSymbol, shownGroupKeys, sortedTickers.length, tableGroups]);
 
   const effectiveStreamWindow = useMemo(() => (
     viewMode === "grid"
       ? { start: 0, end: Math.min(sortedTickers.length, 96) }
       : {
         start: streamWindow.start,
-        end: Math.min(sortedTickers.length, Math.max(streamWindow.end, height + 4)),
+        end: Math.min(displayedTickers.length, Math.max(streamWindow.end, height + 4)),
       }
-  ), [height, sortedTickers.length, streamWindow, viewMode]);
+  ), [displayedTickers.length, height, sortedTickers.length, streamWindow, viewMode]);
 
   const perpetualsInViewKey = showsPerpetuals
-    ? sortedTickers.slice(effectiveStreamWindow.start, effectiveStreamWindow.end).map((ticker) => ticker.metadata.ticker).join("\u001f")
+    ? displayedTickers.slice(effectiveStreamWindow.start, effectiveStreamWindow.end).map((ticker) => ticker.metadata.ticker).join("\u001f")
     : "";
   useEffect(() => {
     setPerpetualsInView(new Set(perpetualsInViewKey ? perpetualsInViewKey.split("\u001f") : []));
@@ -665,7 +702,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   usePortfolioPaneStreaming({
     appActive,
     activeCollectionId: isPortfolioTab ? activeCollectionId : undefined,
-    sortedTickers,
+    sortedTickers: streamOrder,
     cursorSymbol,
     streamWindow: effectiveStreamWindow,
     isPortfolioTab,
@@ -721,8 +758,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     [activeCollectionId, config],
   );
   const selectedTicker = cursorSymbol ? tickerBySymbol.get(cursorSymbol) : undefined;
-  const sortedTickersRef = useRef(sortedTickers);
-  sortedTickersRef.current = sortedTickers;
+  const sortedTickersRef = useRef(displayedTickers);
+  sortedTickersRef.current = displayedTickers;
   const removingRef = useRef(false);
   // Asks first: a manual portfolio's position goes with the row, and a stray
   // key should not take either.
@@ -752,6 +789,15 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       const symbols = sortedTickersRef.current.map((ticker) => ticker.metadata.ticker);
       setCursorSymbol(cursorAfterRemoval(symbols, symbol), { immediate: true });
       dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
+      // Out of its group too: added back later, it starts in none.
+      if (collection.kind === "watchlist") {
+        const config = appStateRef.current.config;
+        const next = withoutWatchlistGroupSymbols(config, collection.id, [symbol]);
+        if (next !== config) {
+          dispatch({ type: "SET_CONFIG", config: next });
+          scheduleConfigSave(next);
+        }
+      }
       notify({ type: "success", body: tf("Removed {symbol} from {collection}.", { symbol, collection: collection.name }) });
     } catch {
       notify({ type: "error", body: tf("Failed to remove {symbol}.", { symbol }) });
@@ -795,6 +841,32 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   }, [cashRowShown, cashValue, currentPortfolio, cursorSymbol, isPortfolioTab, portfolioWeightBase, portfolioWeightBasis, selectedTicker, weightHoldings]);
   const listedSymbols = useMemo(() => new Set(collectionTickers.map((ticker) => ticker.metadata.ticker)), [collectionTickers]);
   useTargetWeightActions({ portfolio: currentPortfolio, row: targetRow, listedSymbols, enabled: focused && viewMode === "table" && !quickAddFocused });
+
+  // A group's header collapses or expands its rows; one collapsing with the cursor in it leaves the cursor on it.
+  const toggleGroup = useCallback((id: string) => {
+    const group = tableGroups?.find((entry) => entry.id === id);
+    if (!group || !activeCollectionId) return;
+    if (!group.collapsed && group.tickers.some((ticker) => ticker.metadata.ticker === cursorSymbol)) {
+      setCursorSymbol(groupRowKey(id), { immediate: true });
+    }
+    setCollapsedGroups((current) => toggleCollapsedGroup(current, activeCollectionId, id));
+  }, [activeCollectionId, cursorSymbol, setCollapsedGroups, setCursorSymbol, tableGroups]);
+  // A row moved to a group that is collapsed opens it, so the cursor stays on the row.
+  const showMovedRow = useCallback((symbol: string, group: string | null) => {
+    if (!activeCollectionId) return;
+    const id = group ?? "";
+    setCollapsedGroups((current) => current.filter((entry) => entry.list !== activeCollectionId || entry.group !== id));
+    setCursorSymbol(symbol, { immediate: true });
+  }, [activeCollectionId, setCollapsedGroups, setCursorSymbol]);
+  const cursorGroupId = groupIdOfRowKey(cursorSymbol);
+  const groupRowMenuItems = useWatchlistGroupActions({
+    watchlist: currentWatchlist,
+    cursorTicker: selectedTicker ?? null,
+    // Ungrouped has no name to change.
+    cursorGroup: cursorGroupId ? cursorGroupId : null,
+    enabled: focused && viewMode === "table" && !quickAddFocused,
+    onMoved: showMovedRow,
+  });
 
   usePaneFooter("portfolio-list", () => ({
     info: [
@@ -942,6 +1014,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           exportName={activeCollectionEntry?.name}
           allocationRows={allocationRows}
           columnReorder={columnReorder}
+          groups={tableGroups}
+          onToggleGroup={toggleGroup}
+          rowMenuItems={groupRowMenuItems}
         />
       ) : (
         <PortfolioGrid

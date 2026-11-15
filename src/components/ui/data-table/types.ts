@@ -277,6 +277,11 @@ export interface DataTableProps<
    */
   exportCsv?: () => string;
   /**
+   * The rows Export CSV writes in place of `items`, for a table that draws
+   * fewer rows than it holds: a watchlist writes the rows of a collapsed group too.
+   */
+  exportItems?: T[];
+  /**
    * A rendered-view report (`gloom fn`) reads every row, not only those
    * the viewport shows. For a bounded table a reader needs whole, such as an
    * option chain's strike window; leave it off for long or paged lists.

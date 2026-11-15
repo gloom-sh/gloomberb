@@ -8,7 +8,8 @@ import { useDataTableSortMenu } from "../../../components/data-table/sort-menu";
 import { followLiveSparklinePrice } from "../../../components/price-sparkline/model";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
 import type { QuoteFlashDirection } from "../../../components/quote-flash";
-import type { TickerTableCell, TickerTableSummaryRow } from "../../../components/ticker/list-table-view";
+import type { TickerTableCell, TickerTableGroup, TickerTableSummaryRow } from "../../../components/ticker/list-table-view";
+import type { ContextMenuItem } from "../../../types/context-menu";
 import { createRowValueCache } from "../../../components/ui/row-value-cache";
 import type { DataTableColumnReorder } from "../../../components/ui";
 import type { ColumnConfig } from "../../../types/config";
@@ -215,6 +216,9 @@ export function PortfolioTickerTable({
   exportName,
   allocationRows,
   columnReorder,
+  groups,
+  onToggleGroup,
+  rowMenuItems,
 }: {
   columns: ColumnConfig[];
   focused?: boolean;
@@ -253,6 +257,11 @@ export function PortfolioTickerTable({
   allocationRows?: readonly TickerTableSummaryRow[];
   /** Header drags rewrite the pane's Columns setting (`DataTableProps.columnReorder`). */
   columnReorder?: DataTableColumnReorder;
+  /** A watchlist's groups, each holding its share of `sortedTickers` in their order. */
+  groups?: readonly TickerTableGroup[];
+  onToggleGroup?: (id: string) => void;
+  /** The pane's own items in a row's menu. */
+  rowMenuItems?: (ticker: TickerRecord) => ContextMenuItem[];
 }) {
   const cellCacheRef = useRef(createRowValueCache<string, ReturnType<typeof getColumnValue> & TickerTableCell>(5000));
   const openPerpetualRef = useRef(onOpenPerpetual);
@@ -413,6 +422,9 @@ export function PortfolioTickerTable({
       rootHeight={rootHeight}
       exportName={exportName}
       columnReorder={columnReorder}
+      groups={groups}
+      onToggleGroup={onToggleGroup}
+      rowMenuItems={rowMenuItems}
     />
   );
 }

@@ -47,8 +47,13 @@ export function isSectionedItemRow<T>(row: SectionedRow<T>): row is { kind: "ite
   return row.kind === "item";
 }
 
+/** A section header's text: its label and how many rows it holds, shown or collapsed. */
+export function sectionHeaderText(label: string, count: number): string {
+  return `${label} (${count})`;
+}
+
 export function renderSectionedRowHeader<T>(row: SectionedRow<T>): DataTableSectionHeader | null {
-  return row.kind === "section" ? { text: `${row.label} (${row.count})` } : null;
+  return row.kind === "section" ? { text: sectionHeaderText(row.label, row.count) } : null;
 }
 
 /** Row count a section list needs when the table is embedded at a fixed height. */
