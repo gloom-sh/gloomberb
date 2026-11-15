@@ -1,7 +1,7 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { act } from "react";
+import { act, useLayoutEffect, useRef } from "react";
 import { apiClient, setCloudApiFetchTransport, type AccountProfile } from "../../../api-client";
-import { InputHostProvider } from "../../../react/input";
+import { InputHostProvider, shouldDeliverShortcut, type InputHost, type KeyEventLike, type ShortcutOptions } from "../../../react/input";
 import { createDomTestHarness } from "../../../renderers/dom/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
@@ -38,10 +38,64 @@ const invoiceUrl = "https://invoice.stripe.com/i/acct_1/test_switch";
 
 type Answer = { status?: number; body: unknown };
 
+const PHASES = ["capture", "before", "normal", "after", "idle"] as const;
+
+/**
+ * Keys delivered to the pane's shortcuts phase by phase, in the order they
+ * mounted. `afterCommit` runs inside every commit of the pane, before any
+ * passive effect: a key sent from there is one that lands between a render
+ * and the effects that follow it.
+ */
+function keyboard(afterCommit: () => void) {
+  const handlers = new Set<{ current: { handler: (event: KeyEventLike) => void; options?: ShortcutOptions } }>();
+  const host: InputHost = {
+    useShortcut(handler, options) {
+      const latest = useRef({ handler, options });
+      latest.current = { handler, options };
+      useLayoutEffect(() => {
+        handlers.add(latest);
+        return () => { handlers.delete(latest); };
+      }, []);
+      useLayoutEffect(afterCommit);
+    },
+    useBeforeShortcut() {},
+    useViewport: () => ({ width: 90, height: 50 }),
+  };
+  const press = (name: string, repeat = false) => {
+    let prevented = false;
+    let stopped = false;
+    const event: KeyEventLike = {
+      key: name,
+      name,
+      sequence: name === "return" ? "\r" : name,
+      ctrl: false,
+      shift: false,
+      alt: false,
+      meta: false,
+      repeat,
+      get defaultPrevented() { return prevented; },
+      get propagationStopped() { return stopped; },
+      preventDefault() { prevented = true; },
+      stopPropagation() { stopped = true; },
+    };
+    for (const phase of PHASES) {
+      for (const entry of [...handlers]) {
+        const { handler, options } = entry.current;
+        if (options?.enabled === false || (options?.phase ?? "normal") !== phase) continue;
+        if (!shouldDeliverShortcut(event, options?.allowEditable ?? false)) continue;
+        handler(event);
+        if (stopped) return;
+      }
+    }
+  };
+  return { host, press };
+}
+
 /** The pane on its Pro tab, for an account and a stand-in billing API. */
 async function proTab(
   plan: { plan: "free" | "pro"; trialEndsAt?: string | null },
   answer: (path: string, body: unknown) => Answer | Promise<Answer>,
+  inputHost: InputHost = { useShortcut() {}, useBeforeShortcut() {}, useViewport: () => ({ width: 90, height: 50 }) },
 ) {
   const requests: Array<{ path: string; method: string; body: unknown }> = [];
   restore.push(
@@ -64,7 +118,7 @@ async function proTab(
   const app = createInitialState(config);
   app.paneState["account-yearly"] = { pluginState: { cloud: { activeTab: "pro" } } };
   const container = await dom.render(
-    <InputHostProvider host={{ useShortcut() {}, useBeforeShortcut() {}, useViewport: () => ({ width: 90, height: 50 }) }}>
+    <InputHostProvider host={inputHost}>
       <DialogHostProvider dialog={{ alert: async () => {}, prompt: async () => undefined }} isOpen={false}>
         <TestPaneProvider state={app} paneId="account-yearly" pluginId="cloud" runtime={createTestPluginRuntime()}>
           <AccountManagementPane paneId="account-yearly" paneType="account-management" focused width={90} height={50} />
@@ -103,6 +157,38 @@ test("a monthly payer sees the offer from the server's amounts, and its review c
   await screen.press("Not Now");
   expect(screen.button("Review Yearly")).toBeDefined();
   expect(screen.requests.some((request) => request.path.endsWith("/confirm"))).toBe(false);
+});
+
+test("an Enter held from Review Yearly lands on Not Now as the review opens, never on the payment", async () => {
+  let page: HTMLElement | null = null;
+  let repeated = false;
+  const keys = keyboard(() => {
+    // The first commit that draws the payment: a held key's repeat arrives now.
+    const pay = [...(page?.querySelectorAll("button") ?? [])].some((node) => node.textContent === "Pay $567.29 and Switch");
+    if (!pay || repeated) return;
+    repeated = true;
+    keys.press("return", true);
+  });
+  const screen = await proTab({ plan: "pro" }, (path) => {
+    if (path === "/stripe/subscription/yearly") return { body: { state: "available", offer } };
+    if (path.endsWith("/preview")) return { body: { review } };
+    return { body: { state: "switched", amountPaid: 56729, renewalAmount: 63000, renewsAt: review.renewsAt } };
+  }, keys.host);
+  page = screen.container;
+  // From Manage Pro down to the Yearly row, then Enter.
+  await act(async () => { keys.press("down"); await Bun.sleep(0); });
+  await act(async () => { keys.press("return"); await Bun.sleep(0); });
+  await act(() => Bun.sleep(0));
+  await act(() => Bun.sleep(0));
+  expect(repeated).toBe(true);
+  expect(screen.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
+    "GET /stripe/subscription/yearly",
+    "POST /stripe/subscription/yearly/preview",
+  ]);
+  // The repeat pressed Not Now: the review closed and the offer is back.
+  expect(screen.button("Pay $567.29 and Switch")).toBeUndefined();
+  expect(screen.button("Review Yearly")).toBeDefined();
+  expect(screen.container.textContent).not.toContain("You're on yearly billing.");
 });
 
 test("confirming sends the reviewed token once, however often it is pressed, and says done only when paid", async () => {

@@ -280,11 +280,15 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       logFailure("account-management.pane", "Refresh yearly account profile failed"),
     );
   }, []);
+  // An opened review lands on Not Now, in the same update that draws it: no
+  // render ever has Pay active on open, so a held Enter never pays.
+  const focusYearlyDismiss = useCallback(() => setActiveField("yearlyPlanDismissAction"), []);
   // Only a paying Pro subscriber is asked; the server decides who may switch.
   const yearlyPlan = useYearlyPlan(
     hasSession && activeTab === "pro" && planAccess.isPayingPro && !paymentRecovery.visible && !paymentRecovery.checking,
     sessionMarker,
     refreshAfterYearlySwitch,
+    focusYearlyDismiss,
   );
   const fieldOrder = useMemo(() => ACCOUNT_TAB_FIELD_ORDER[activeTab].filter((field) => {
     if (field === "showLocalTime" || field === "showDesks") return chatCardSupported;
@@ -295,10 +299,6 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     if (field === "inviteCopyAction") return invite !== null;
     return true;
   }), [activeTab, chatCardSupported, draft.showDesks, invite, planAccess.isTrialActive, yearlyPlan.primary, yearlyPlan.reviewing]);
-  // An opened review lands on Not Now: paying takes its own, second choice.
-  useEffect(() => {
-    if (yearlyPlan.reviewing) setActiveField("yearlyPlanDismissAction");
-  }, [yearlyPlan.reviewing]);
   const accountTabs = ACCOUNT_TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.label) }));
 
   const planPrice = useMemo(() => formatCloudMonthlyPrice(pricing), [language, pricing]);

@@ -60,7 +60,12 @@ export type YearlyPlanView =
   | { kind: "pending"; invoiceUrl: string | null; expiresAt: string | null }
   | { kind: "result"; result: CloudYearlyResult };
 
-export function useYearlyPlan(enabled: boolean, sessionMarker: string, onSwitched: () => void) {
+/**
+ * `onReviewOpened` runs in the same update that shows the review, so the
+ * caller can move the keyboard to Not Now before any render has the payment
+ * active.
+ */
+export function useYearlyPlan(enabled: boolean, sessionMarker: string, onSwitched: () => void, onReviewOpened: () => void) {
   const renderer = useRendererHost();
   const [status, setStatus] = useState<CloudYearlyPlanStatus | null>(null);
   const [review, setReview] = useState<CloudYearlyReview | null>(null);
@@ -102,7 +107,11 @@ export function useYearlyPlan(enabled: boolean, sessionMarker: string, onSwitche
     setMessage(null);
     try {
       const next = await apiClient.previewCloudYearlyPlan();
-      if (generation.current === current) setReview(next);
+      if (generation.current === current) {
+        // One batched update: a key held down never finds Pay active on open.
+        setReview(next);
+        onReviewOpened();
+      }
     } catch (error) {
       if (generation.current !== current) return;
       const code = yearlyRefusalCode(error);
@@ -111,7 +120,7 @@ export function useYearlyPlan(enabled: boolean, sessionMarker: string, onSwitche
     } finally {
       if (generation.current === current) setBusy(null);
     }
-  }, [busy, load]);
+  }, [busy, load, onReviewOpened]);
 
   const confirm = useCallback(async () => {
     if (!review || confirming.current) return;

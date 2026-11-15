@@ -261,6 +261,28 @@ describe("CloudApiRequestTransport market deadlines", () => {
     }
   });
 
+  // A server from before yearly billing answers its status with 404: the Pro
+  // tab then shows no yearly row, and Cloud must not read as failing for it.
+  test("the yearly billing status a server does not have yet is not a Cloud failure", async () => {
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const transport = new CloudApiRequestTransport({ connectionHealth: health, fetchTransport: async () => ({
+      ok: false,
+      status: 404,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ error: "Not Found" }),
+    }) as Response });
+    try {
+      await expect(transport.request("/stripe/subscription/yearly", { method: "GET" })).rejects.toBeInstanceOf(ApiRequestError);
+      const cloud = health.getSnapshot().sources.find((source) => source.id === "gloom-cloud-http");
+      expect(cloud?.status).toBe("idle");
+      expect(cloud?.lastError).toBeNull();
+      expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
+    } finally {
+      transport.dispose();
+    }
+  });
+
   // A web page offline asked nothing more once its panes had failed, so the
   // outage never ended: nothing was left to get the answer that ends it.
   test("an unreachable service is checked again on its own, backing off, until it answers", async () => {

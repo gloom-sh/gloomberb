@@ -307,7 +307,8 @@ export async function putWithRevision<T, Current extends { revision: number }>(
  * beside a list check that still answers for the listing itself. Nor the
  * batched searches and ticker changes a list of symbols starts with: a service
  * without them answers 404, and whatever they leave unanswered is looked up
- * one symbol at a time, which is tracked.
+ * one symbol at a time, which is tracked. Nor the Pro tab's yearly billing
+ * status: a server without it answers 404 and the tab shows no yearly row.
  */
 function isBackgroundRequest(path: string): boolean {
   return path.startsWith("/telemetry/")
@@ -318,7 +319,8 @@ function isBackgroundRequest(path: string): boolean {
     || path.startsWith("/market/issuer-listings?")
     || path === "/market/ticker-changes/batch"
     || path === "/market/search/batch"
-    || path === "/market/organization-tickers";
+    || path === "/market/organization-tickers"
+    || path === "/stripe/subscription/yearly";
 }
 
 function throwIfRequestAborted(signal: AbortSignal | null | undefined): void {
