@@ -35,12 +35,12 @@ const TRANSCRIPT: CloudEarningsTranscriptPayload = {
   analystFocus: null, sentimentRationale: null, qaStartTurn: 2, asrModel: null, updatedAt: "2026-08-02",
 };
 
-function Harness() {
+function Harness({ symbol }: { symbol?: string } = {}) {
   const [paneState, setPaneState] = useState<AppState["paneState"]>({
-    "calls:test": { pluginState: { research: { view: "transcripts", detailOpen: true, selectedId: CALL.id, readerTab: "transcript" } } },
+    "calls:test": { pluginState: { research: { view: "transcripts", detailOpen: !symbol, selectedId: symbol ? null : CALL.id, readerTab: "transcript" } } },
   });
   const config = createTestPaneConfig("/tmp/gloom-calls-desktop-test/unused", {
-    instanceId: "calls:test", paneId: "earnings-calls", binding: { kind: "none" },
+    instanceId: "calls:test", paneId: "earnings-calls", binding: symbol ? { kind: "fixed", symbol } : { kind: "none" },
   });
   const state = createInitialState(config);
   state.paneState = paneState;
@@ -91,6 +91,22 @@ afterEach(() => {
   apiClient.setSessionToken(null);
   resetEarningsCallsPersistence();
 });
+
+for (const symbol of ["DWSN", "7203:JPX"]) {
+  test(`${symbol}'s background call discovery is a capturable empty state, not an unfinished page load`, async () => {
+    serve("none");
+    const response = Promise.withResolvers<Response>();
+    setCloudApiFetchTransport(() => response.promise);
+    const root = await dom.render(<Harness symbol={symbol} />);
+    await until(() => root.querySelector('[data-gloom-status="loading"]') !== null);
+    expect(root.querySelector('[data-gloom-status="loading"]')).not.toBeNull();
+    await act(async () => response.resolve(Response.json({ calls: [], pending: true })));
+    await until(() => root.textContent?.includes(`Looking for ${symbol}`) === true);
+    expect(root.textContent).toContain(`Looking for ${symbol}`);
+    expect(root.querySelector('[data-gloom-status="loading"]')).toBeNull();
+    expect(root.querySelector('[data-gloom-status="empty"]')).not.toBeNull();
+  });
+}
 
 test("a clicked paragraph plays from its start, and the one heard is marked as playback moves", async () => {
   serve("recording");

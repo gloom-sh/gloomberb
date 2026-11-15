@@ -1010,7 +1010,7 @@ function CallsListView({
   // for the company, or it has nothing to search for.
   if (ticker && calls.length === 0) {
     return listPending ? (
-      <PaneStatusBody loading align="center" loadingLabel={`Looking for ${ticker}'s earnings calls...`} />
+      <PaneStatusBody empty align="center" emptyTitle={`Looking for ${ticker}'s earnings calls...`} />
     ) : (
       <EmptyState {...noCallsText(ticker)} />
     );
@@ -1026,7 +1026,7 @@ function CallsListView({
   ) : selected && selectedUpcoming ? (
     <UpcomingCallState call={selected} now={now} />
   ) : selected && !selectedTranscript && (producing || (!selected.hasTranscript && !transcriptError)) ? (
-    <PaneStatusBody loading loadingLabel="Producing the transcript. This usually takes two to three minutes." />
+    <PaneStatusBody empty emptyTitle="Transcript not ready yet." emptyMessage="Producing the transcript. This usually takes two to three minutes." />
   ) : (
 
     // The reader gets its own find field: a transcript runs to thousands of
