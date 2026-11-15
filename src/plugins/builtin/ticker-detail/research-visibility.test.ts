@@ -6,7 +6,7 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import { createTestTicker } from "../../../test-support/ticker";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { createDefaultConfig } from "../../../types/config";
-import type { TickerFinancials } from "../../../types/financials";
+import type { CompanyProfile, TickerFinancials } from "../../../types/financials";
 import type { TickerInstrumentKind } from "../../../types/instrument";
 import type { GloomPluginContext, TickerResearchTabDef } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
@@ -37,6 +37,7 @@ import { thirteenFModule } from "../thirteenf";
 import { tickerDetailModule } from ".";
 import { buildVisibleTickerResearchTabs } from "./settings";
 import { groupTickerResearchTabs } from "./research-groups";
+import { PHARMA_SIGNALS_TAB_ID } from "./pharma-signals/eligibility";
 
 const modules: PluginModule[] = [
   tickerDetailModule, chartComposerModule, optionsModule, congressResearchModule,
@@ -194,4 +195,32 @@ test("each asset type gets only the groups it has views for, and a one-view grou
     "Notes: thesis notes",
     "External: external",
   ]);
+});
+
+// The waitlist is for drug developers' holders: the profile decides, never the
+// sector alone, the name, a fund's theme or a profile still loading.
+test("Signals shows for biotech and drug makers only: not other healthcare, other industries, funds or an unread profile", () => {
+  const profiled = (instrumentType: string, profile: CompanyProfile) => createTestFinancials({ quote: createTestQuote({ instrumentType }), profile });
+  const cases: Array<[label: string, ticker: TickerRecord, financials: TickerFinancials | null | undefined, shown: boolean]> = [
+    ["VKTX biotech", createTestTicker("VKTX"), profiled("EQUITY", { sector: "Healthcare", industry: "Biotechnology" }), true],
+    ["PFE drug manufacturer", createTestTicker("PFE"), profiled("EQUITY", { sector: "Healthcare", industry: "Drug Manufacturers - General" }), true],
+    ["TEVA receipt, specialty and generic drugs", createTestTicker("TEVA"), profiled("ADR", { sector: "Healthcare", industry: "Drug Manufacturers - Specialty & Generic" }), true],
+    ["a US drug filer known by its SEC code", createTestTicker("CRMD"), profiled("EQUITY", { sic: "2834" }), true],
+    ["ISRG medical instruments", createTestTicker("ISRG"), profiled("EQUITY", { sector: "Healthcare", industry: "Medical Instruments & Supplies" }), false],
+    ["UNH healthcare plans", createTestTicker("UNH"), profiled("EQUITY", { sector: "Healthcare", industry: "Healthcare Plans" }), false],
+    ["TMO diagnostics and research", createTestTicker("TMO"), profiled("EQUITY", { sector: "Healthcare", industry: "Diagnostics & Research" }), false],
+    ["a diagnostics filer by SEC code", createTestTicker("DGX"), profiled("EQUITY", { sic: "2835" }), false],
+    ["a drug SEC code under another industry", createTestTicker("XYZ"), profiled("EQUITY", { industry: "Specialty Chemicals", sic: "2834" }), false],
+    ["AAPL consumer electronics", createTestTicker("AAPL"), profiled("EQUITY", { sector: "Technology", industry: "Consumer Electronics" }), false],
+    ["XBI biotech ETF", createTestTicker("XBI"), profiled("ETF", { name: "SPDR S&P Biotech ETF" }), false],
+    ["a fund whose profile names biotech", createTestTicker("BBH"), profiled("ETF", { sector: "Healthcare", industry: "Biotechnology" }), false],
+    ["a drug developer whose profile has not loaded", createTestTicker("VKTX", "Viking Therapeutics, Inc."), quoted("EQUITY"), false],
+    ["a drug developer with nothing loaded", createTestTicker("VKTX", "Viking Therapeutics, Inc."), undefined, false],
+  ];
+  for (const [label, ticker, financials, shown] of cases) {
+    const visible = buildVisibleTickerResearchTabs(tabs, ticker, financials, { config, hasOptionsChain: true });
+    expect(visible.some((tab) => tab.id === PHARMA_SIGNALS_TAB_ID), label).toBe(shown);
+    // Beside the catalysts, the last of Events.
+    if (shown) expect(groupTickerResearchTabs(visible).find((group) => group.id === "events")?.views.at(-1)?.id, label).toBe(PHARMA_SIGNALS_TAB_ID);
+  }
 });

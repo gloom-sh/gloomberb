@@ -12,7 +12,11 @@ import { setSharedRegistryForTests, type PluginRegistry } from "../../registry";
 import { PluginRenderProvider } from "../../runtime";
 import { researchEntryFromSearch } from "../../../renderers/browser/research-entry";
 import { optionPaneState } from "../../../cli/pane-functions/options";
+import { createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
+import type { AppAction, AppState } from "../../../state/app/context";
 import { tickerDetailModule } from ".";
+import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
+import { PHARMA_SIGNALS_TAB_ID } from "./pharma-signals/eligibility";
 
 const PANE_ID = "ticker-research:groups";
 const tui = createOpenTuiTestHarness();
@@ -20,6 +24,8 @@ const runtime = createTestPluginRuntime();
 /** Past the pane's 120ms commit of a tab change. */
 const COMMIT_MS = 160;
 let paneState: Record<string, unknown> = {};
+let dispatchApp: ((action: AppAction) => void) | null = null;
+let appState: AppState | null = null;
 
 const DetailPane = tickerDetailModule.panes![0]!.component as (props: {
   paneId: string; paneType: string; focused: boolean; width: number; height: number;
@@ -45,19 +51,27 @@ const US_EQUITY_TABS = [
   stubTab("news", "News", 40),
 ];
 
-function Harness({ state, settings }: { state: Record<string, unknown>; settings?: Record<string, unknown> }) {
+function Harness({ state, settings, symbol = "AAPL", symbols = [symbol] }: {
+  state: Record<string, unknown>;
+  settings?: Record<string, unknown>;
+  symbol?: string;
+  /** Saved tickers, for a pane switched from one to another. */
+  symbols?: string[];
+}) {
   const config = createTestPaneConfig("/tmp/gloomberb-test", {
     instanceId: PANE_ID,
     paneId: TICKER_RESEARCH_PANE_ID,
-    binding: { kind: "fixed", symbol: "AAPL" },
+    binding: { kind: "fixed", symbol },
     ...(settings ? { settings } : {}),
   });
   const initial = createInitialState(config);
   initial.focusedPaneId = PANE_ID;
-  initial.tickers = new Map([["AAPL", createTestTicker("AAPL")]]);
+  initial.tickers = new Map(symbols.map((entry) => [entry, createTestTicker(entry)]));
   initial.paneState[PANE_ID] = state;
   const [app, dispatch] = useReducer(appReducer, initial);
   paneState = app.paneState[PANE_ID] ?? {};
+  appState = app;
+  dispatchApp = (action) => act(() => dispatch(action));
   return (
     <AppContext value={createStaticAppStore(app, dispatch)}>
       <PaneInstanceProvider paneId={PANE_ID}>
@@ -69,8 +83,8 @@ function Harness({ state, settings }: { state: Record<string, unknown>; settings
   );
 }
 
-async function render(state: Record<string, unknown>, settings?: Record<string, unknown>): Promise<string> {
-  await tui.render(<Harness state={state} settings={settings} />, { width: 100, height: 20 });
+async function render(state: Record<string, unknown>, settings?: Record<string, unknown>, tickers?: { symbol: string; symbols: string[] }): Promise<string> {
+  await tui.render(<Harness state={state} settings={settings} {...tickers} />, { width: 100, height: 20 });
   await act(async () => { await tui.setup().renderOnce(); });
   return tui.frame();
 }
@@ -85,9 +99,21 @@ async function press(key: string): Promise<string> {
   return tui.frame();
 }
 
+/** Draws what a dispatch changed. */
+async function redraw(): Promise<string> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, COMMIT_MS));
+    await tui.setup().renderOnce();
+  });
+  await act(async () => { await tui.setup().renderOnce(); });
+  return tui.frame();
+}
+
 afterEach(() => {
   setSharedRegistryForTests(undefined);
   paneState = {};
+  dispatchApp = null;
+  appState = null;
 });
 
 describe("Ticker Research groups", () => {
@@ -146,5 +172,52 @@ describe("Ticker Research groups", () => {
     // A group never chosen in opens on its first view.
     await press("h");
     expect(paneState.activeTabId).toBe("chart");
+  });
+  // The tab shows once the profile says drug developer, so a saved or linked
+  // Signals must outlive the profile's load and a switch to another ticker.
+  test("a saved Signals waits for the profile, opens inside Events, and follows the ticker", async () => {
+    const signals = TICKER_RESEARCH_BUILTIN_TABS.find((tab) => tab.id === PHARMA_SIGNALS_TAB_ID)!;
+    useRegistry([
+      ...US_EQUITY_TABS,
+      stubTab("catalysts", "Catalysts", 35),
+      { ...signals, component: () => <text>{`body:${PHARMA_SIGNALS_TAB_ID}`}</text> },
+    ]);
+    const saved = { activeTabId: researchEntryFromSearch(`?ticker=VKTX&tab=${PHARMA_SIGNALS_TAB_ID}`)!.tab };
+    let frame = await render(saved, undefined, { symbol: "VKTX", symbols: ["VKTX", "AAPL"] });
+    // No profile yet: Overview shows, the saved tab stays saved.
+    expect(frame).toContain("body:overview");
+    expect(frame).not.toContain("Signals");
+    expect(paneState.activeTabId).toBe(PHARMA_SIGNALS_TAB_ID);
+
+    const company = (industry: string) => createTestFinancials({
+      quote: createTestQuote({ instrumentType: "EQUITY" }),
+      profile: { sector: industry === "Biotechnology" ? "Healthcare" : "Technology", industry },
+    });
+    dispatchApp!({ type: "HYDRATE_FINANCIALS", financials: new Map([["VKTX", company("Biotechnology")], ["AAPL", company("Consumer Electronics")]]) });
+    frame = await redraw();
+    expect(frame).toContain(`body:${PHARMA_SIGNALS_TAB_ID}`);
+    const lines = frame.split("\n");
+    expect(lines[0]).toContain("Events");
+    expect(lines[1]).toMatch(/Catalysts\s+Signals/);
+
+    // Another company: no Signals, and nothing of it left on screen; the saved tab waits.
+    const showTicker = (symbol: string) => dispatchApp!({
+      type: "UPDATE_LAYOUT",
+      layout: {
+        ...appState!.config.layout,
+        instances: appState!.config.layout.instances.map((instance) => (
+          instance.instanceId === PANE_ID ? { ...instance, binding: { kind: "fixed" as const, symbol } } : instance
+        )),
+      },
+    });
+    showTicker("AAPL");
+    frame = await redraw();
+    expect(frame).not.toContain("Signals");
+    expect(frame).not.toContain(`body:${PHARMA_SIGNALS_TAB_ID}`);
+    expect(paneState.activeTabId).toBe(PHARMA_SIGNALS_TAB_ID);
+
+    showTicker("VKTX");
+    frame = await redraw();
+    expect(frame).toContain(`body:${PHARMA_SIGNALS_TAB_ID}`);
   });
 });
