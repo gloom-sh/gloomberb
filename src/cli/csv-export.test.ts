@@ -7,11 +7,12 @@ import { printCliResult, takeCliFileExport } from "./result";
 
 afterEach(() => setCsvDecimal("dot"));
 
-test("one rectangular CSV preserves columns, heterogeneous sections and quoted multiline cells", () => {
+test("one rectangular CSV preserves columns and heterogeneous sections while escaping data line breaks", () => {
   const csv = portableCsv('# section: Trades\nTime,Price\n10:00,100\n\n# section: Details\nMetric,Value\nNote,"line one\n\nline two, with ""quotes"""\n\n# note: Listing the first 100 of 123 trades.');
   expect(csv.split("\n")[0]).toBe("Time,Price,Metric,Value,section,export_notes");
   expect(csv).toContain('10:00,100,,,Trades,note: Listing the first 100 of 123 trades.');
-  expect(csv).toContain(',,Note,"line one\n\nline two, with ""quotes""",Details,');
+  expect(csv).toContain(',,Note,"line one\\n\\nline two, with ""quotes""",Details,');
+  expect(csv.split("\n")).toHaveLength(3);
   expect(csv).not.toContain("# section:");
 });
 
@@ -30,7 +31,7 @@ test("file and pipe exports retain caveats and warnings, even when quiet suppres
 
 test("a quoted cell ending in a note-like line is data, not an export footer", () => {
   const csv = portableCsv('Value\n"line one\n\n# note: still data"');
-  expect(csv).toBe('Value,export_notes\n"line one\n\n# note: still data",');
+  expect(csv).toBe('Value,export_notes\nline one\\n\\n# note: still data,');
 });
 
 test("a data cell resembling a section marker stays attached to its row", () => {
@@ -43,4 +44,26 @@ test("decimal-comma exports retain their cells, precision and caveats through th
   expect(portableCsv(`${data}\n\n# note: Revised; first release differs.`)).toBe(
     'Name;Value;export_notes\n"permits; revised";1,398;"note: Revised; first release differs."\nrate;17,2;"note: Revised; first release differs."\namount;1234,5;"note: Revised; first release differs."',
   );
+});
+
+test("source details and multiline caveats leave one physical line per CSV record", () => {
+  const csv = portableCsv("Time,Price\n10:00,100\n10:01,101\n\n# Source: session prices\n# note: Regular session only.", ["First 100 of 123 trades.\r\nWindow: last session."], ["Free shows 3 of 64.\nPreview only."]);
+  const lines = csv.split("\n");
+  expect(lines).toHaveLength(3);
+  for (const line of lines.slice(1)) {
+    expect(line).toContain("Source: session prices | note: Regular session only.");
+    expect(line).toContain("note: Free shows 3 of 64. | note: Preview only.");
+    expect(line).toContain("warning: First 100 of 123 trades. | Window: last session.");
+    expect(line).not.toContain("\r");
+  }
+});
+
+test("duplicate headers keep every cell without colliding with named suffixes or export metadata", () => {
+  const csv = portableCsv("# section: A\nValue,Value,Value_2,export_notes,_export_notes,section,_section\n1,2,3,original,other,sector,legacy\n\n# section: B\nValue,Value\n4,5\n\n# note: caveat");
+  expect(csv.split("\n")).toEqual([
+    "Value,Value_3,Value_2,export_notes,_export_notes,section,_section,__section,__export_notes",
+    "1,2,3,original,other,sector,legacy,A,note: caveat",
+    "4,5,,,,,,B,note: caveat",
+  ]);
+  expect(portableCsv(",\n1,2")).toBe(",_2,export_notes\n1,2,");
 });

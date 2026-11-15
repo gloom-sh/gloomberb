@@ -45,7 +45,7 @@ const START_HERE: Array<[string, string]> = [
 
 const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["--json", "Print the full result as JSON"],
-  ["--csv", "Print one rectangular CSV with a single header, readable by pandas.read_csv with no options. Existing columns stay in order; extra tables add columns and a section column. The final export_notes column repeats source details, caveats, warnings and truncation notes on every row, including in files and pipes. Quoted notes may contain newlines"],
+  ["--csv", "Print one rectangular CSV with a single header, readable by pandas.read_csv with no options. Existing columns stay in order; duplicate headers gain unique numeric suffixes, and extra tables add columns and a section column. Each record stays on one physical line: data line breaks are escaped as \\n, and the final export_notes column repeats source details, caveats, warnings and truncation notes joined with |, including in files and pipes"],
   ["--ndjson", "Print one JSON object per table row"],
   ["--output <path>, --out <path>", "Write a --csv, --json or --ndjson export to this file in UTF-8, and print where it went (a redirect is UTF-16 in Windows PowerShell 5.1)"],
   ["--decimal comma|dot", "Write a --csv export's numbers with a decimal comma (17,2), cells split by ;, for a spreadsheet in a decimal-comma locale; or a dot. gloom config set csvDecimal comma makes the comma the default. Text and JSON keep the dot"],

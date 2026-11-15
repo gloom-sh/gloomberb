@@ -35,19 +35,39 @@ export function portableCsv(text: string, warnings: readonly string[] = [], extr
       current = { section, columns: row, rows: [] }; tables.push(current);
     } else current.rows.push(row);
   }
+  const usedNames = new Set(tables.flatMap((table) => table.columns));
+  const variants = new Map<string, string[]>();
+  for (const table of tables) {
+    const occurrences = new Map<string, number>();
+    table.columns = table.columns.map((name) => {
+      const occurrence = occurrences.get(name) ?? 0;
+      occurrences.set(name, occurrence + 1);
+      const names = variants.get(name) ?? [name];
+      if (names[occurrence] === undefined) {
+        let suffix = occurrence + 1;
+        while (usedNames.has(`${name}_${suffix}`)) suffix++;
+        names[occurrence] = `${name}_${suffix}`;
+        usedNames.add(names[occurrence]!);
+      }
+      variants.set(name, names);
+      return names[occurrence]!;
+    });
+  }
   const columns = [...new Set(tables.flatMap((table) => table.columns))];
   const tagged = tables.length > 1 || tables.some((table) => table.section);
-  const sectionKey = columns.includes("section") ? "_section" : "section";
-  const notesKey = columns.includes("export_notes") ? "_export_notes" : "export_notes";
-  const notes = [...new Set([...footer, ...extraNotes.flatMap((note) => note.split("\n").filter(Boolean).map((line) => `note: ${line}`)), ...warnings.map((warning) => `warning: ${warning}`)])].join("\n");
+  let sectionKey = "section", notesKey = "export_notes";
+  while (usedNames.has(sectionKey)) sectionKey = `_${sectionKey}`;
+  while (usedNames.has(notesKey)) notesKey = `_${notesKey}`;
+  const notes = [...new Set([...footer, ...extraNotes.flatMap((note) => note.split(/\r\n?|\n/).filter(Boolean).map((line) => `note: ${line}`)), ...warnings.map((warning) => `warning: ${warning}`)].map((note) => note.replace(/\r\n?|\n/g, " | ")))].join(" | ");
   const header = [...columns, ...tagged ? [sectionKey] : [], notesKey];
   const rows = tables.flatMap((table) => {
     const indices = columns.map((column) => table.columns.indexOf(column));
     return table.rows.map((row) => [...indices.map((index) => index < 0 ? "" : row[index] ?? ""), ...tagged ? [table.section] : [], notes]);
   });
   if (!rows.length && notes) rows.push([...header.slice(0, -1).map(() => ""), notes]);
+  const singleLine = [header, ...rows].map((row) => row.map((cell) => cell.replace(/\r\n?|\n/g, "\\n")));
   const normalized = decimal === "comma"
-    ? [header, ...rows].map((row) => row.map((cell) => /^[+-]?(?:\d+(?:,\d+)?|,\d+)(?:e[+-]?\d+)?%?$/i.test(cell) ? cell.replace(",", ".") : cell))
-    : [header, ...rows];
+    ? singleLine.map((row) => row.map((cell) => /^[+-]?(?:\d+(?:,\d+)?|,\d+)(?:e[+-]?\d+)?%?$/i.test(cell) ? cell.replace(",", ".") : cell))
+    : singleLine;
   return serializeCsv(normalized);
 }

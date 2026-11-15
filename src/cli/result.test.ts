@@ -269,8 +269,9 @@ test("a printed CSV retains source and truncation notes in a rectangular export 
   const freshness = { source: "Gloom Cloud", asOf: "2026-10-23T15:48:00Z", status: "not-a-feed", basis: "calendar" } as ReportFreshness;
   const printed = await captureConsole(() => printCliResult({ data: rows, freshness }, { ...baseOptions, format: "csv", limit: 2 }, { dateKey: "date" }));
   expect(printed.stdout.split("\n")[0]).toBe("date,symbol_or_series,currency_or_unit,interval,source,as_of,export_notes");
-  expect(printed.stdout).toContain('2026-10-05,,,,Gloom Cloud,2026-10-23T15:48:00Z,"Source: Gloom Cloud');
-  expect(printed.stdout).toContain('2026-10-06,,,,Gloom Cloud,2026-10-23T15:48:00Z,"Source: Gloom Cloud');
+  expect(printed.stdout).toContain('2026-10-05,,,,Gloom Cloud,2026-10-23T15:48:00Z,Source: Gloom Cloud');
+  expect(printed.stdout).toContain('2026-10-06,,,,Gloom Cloud,2026-10-23T15:48:00Z,Source: Gloom Cloud');
+  expect(printed.stdout.split("\n")).toHaveLength(3);
   expect(printed.stdout).toContain("note: showing the oldest 2 of 3 rows; --tail 2 for the latest");
   const notes = printed.stderr.split("\n");
   expect(notes[0]).toStartWith("Source: Gloom Cloud");
