@@ -164,6 +164,17 @@ describe("financial ratios", () => {
     expect(table.cells.get("roe")!.map((cell) => cell.value)).toEqual([0.24, "no-opening"]);
     // Two inputs a ratio: ROE, ROA, ROIC, ROIC ex Cash and the three margins.
     expect(table.rows.filter((row) => row.kind === "input").length).toBe(14);
+    // A year whose prior year is missing from the statements needs it too, mid-history, not only the oldest column.
+    const gap = createTestFinancials({
+      annualStatements: [
+        { date: "2022-12-31", netIncome: 8, totalRevenue: 80, totalEquity: 30 },
+        { date: "2024-12-31", netIncome: 10, totalRevenue: 100, totalEquity: 40 },
+        { date: "2025-12-31", netIncome: 12, totalRevenue: 120, totalEquity: 60 },
+      ],
+      quarterlyStatements: [],
+    });
+    const gapped = ratioTableForFinancials(gap, RATIO_TABS.find((tab) => tab.key === "profitability")!, "annual");
+    expect(gapped.cells.get("roe")!.map((cell) => cell.value)).toEqual([0.24, "no-opening", "no-opening"]);
   });
 
   test("quarterly leverage divides by the trailing year, not a quarter times four, and says when four quarters are not on file", () => {

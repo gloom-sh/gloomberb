@@ -22,8 +22,8 @@ import {
 
 /**
  * Why a ratio or one of its inputs has no number: a line the statements do
- * not carry for the period, an average whose opening balance is the period
- * before the oldest one loaded, a ratio whose denominator makes it meaningless
+ * not carry for the period, an average with no opening balance sheet on file
+ * (the period before the column's), a ratio whose denominator makes it meaningless
  * (a loss under P/E, negative equity under ROE), no close at the period end,
  * a close still loading, a quarter with fewer than four quarters to sum
  * for a trailing flow, or operations that brought cash in, where a runway
@@ -34,7 +34,8 @@ export type RatioAmount = number | RatioGap;
 
 export const RATIO_GAP_TEXT: Record<RatioGap, string> = {
   "not-reported": "not reported",
-  // An average of the opening and closing balance in the oldest column, whose opening balance sheet is not loaded.
+  // An average of the opening and closing balance with no opening balance sheet on file: the oldest column's, a year's
+  // whose prior year is missing, a TTM column's without the quarter a year earlier.
   "no-opening": "needs prior period",
   "short-history": SHORT_RUNWAY_HISTORY,
   "no-burn": "no burn",
@@ -159,7 +160,7 @@ const balanceEnds = (...lines: BalanceLine[]) => ({ statement, opening }: RatioP
   return undefined;
 };
 
-/** The mean of the opening and closing balance; the oldest column, whose opening balance sheet is not loaded, says it needs it. */
+/** The mean of the opening and closing balance; a period with no opening balance sheet on file says it needs it. */
 const average = (...lines: BalanceLine[]) => {
   const ends = balanceEnds(...lines);
   return (period: RatioPeriod): RatioAmount => {

@@ -414,7 +414,7 @@ const PROFITABILITY_NOTES = [
   "Margins and NOPAT are GAAP, as the income statement reports them, not the company's adjusted (non-GAAP) figures.",
 ];
 
-const NEEDS_OPENING_NOTE = "needs prior period: an average of the opening and closing balance, and the oldest column's opening balance sheet is the period before it, which is not loaded.";
+const NEEDS_OPENING_NOTE = "needs prior period: an average of the opening and closing balance has no opening balance sheet on file, the period before the column's (the prior year end for a year, the prior quarter end for a quarter, the quarter a year earlier for TTM), as for the oldest column or a year whose prior year is missing.";
 
 /** What the cash flow table works out of its own lines. */
 const CASH_FLOW_NOTE = "CapEx / Revenue is capex over revenue; Reinvestment Rate is capex plus acquisitions less D&A, over NOPAT.";
@@ -558,7 +558,7 @@ async function loadRatioReport(
     { key: "metric", header: "Ratio" },
     ...dates.map(({ date, label }, index) => financialPeriodColumn(date, label, index, false)),
   ];
-  // An average whose opening balance is before the oldest column says what it needs.
+  // An average with no opening balance sheet on file (the oldest column, a year after a missing one, TTM) says what it needs.
   const needsOpening = rows.some((row) => row.cells.some((cell) => cell.gap === RATIO_GAP_TEXT["no-opening"]));
   // Liquidity's runway says how it counts months, and that the cash predates an offering since.
   const liquidity = tab.key === "liquidity" && table;

@@ -10,7 +10,7 @@ Each ratio opens (Enter, a click, or `e` for all) onto the inputs behind it. The
 
 The ratio tabs use the Income statement's columns: the latest fiscal years, with a TTM column when the last four quarters run past the latest year, or the latest quarters. Headers are the same fiscal labels (`FY2026`, `Q4 FY26`, `TTM Q3 FY26`).
 
-- **Averages.** Inputs marked `Avg` are the mean of the opening and closing balance. The opening balance is the prior fiscal year end for a year, the prior quarter end for a quarter, and the quarter end a year earlier for TTM. Both ends must come from the same line (total equity at both ends, or common equity at both), never one of each. The oldest column on screen has no opening balance loaded, so its averaged ratios read `needs prior period`; `gloom fn GF <ticker> --period annual --periods 40` reads further back, one metric at a time.
+- **Averages.** Inputs marked `Avg` are the mean of the opening and closing balance. The opening balance is the prior fiscal year end for a year, the prior quarter end for a quarter, and the quarter end a year earlier for TTM. Both ends must come from the same line (total equity at both ends, or common equity at both), never one of each. A period with no opening balance sheet on file reads `needs prior period` for its averaged ratios: the oldest column on screen, a year whose prior year is missing from the statements, or a TTM column without the quarter a year earlier. `gloom fn GF <ticker> --period annual --periods 40` reads further back, one metric at a time.
 - **Quarters.** A quarterly column reads a flow one of two ways:
   - **Trailing year.** Net debt / EBITDA, interest coverage, FCF / debt and, on Valuation, P/E, EV / EBITDA, P/S and FCF yield read the year, never one quarter times four. The input label says `TTM` (`÷ EBITDA TTM`) and shows the fiscal year when one ends with the quarter, otherwise the four quarters to it, summed.
   - **One quarter × 4.** ROE, ROA, ROIC and asset turnover annualize, and the label says `× 4` (`Net Income × 4`). Day counts spread a quarter's flow over 91.25 days and a year's over 365. Margins, a ratio of two flows over the same period, need no annualization.
@@ -18,7 +18,7 @@ The ratio tabs use the Income statement's columns: the latest fiscal years, with
 
 ## Missing and meaningless values
 
-- `needs prior period`: an average whose opening balance sheet is the period before the oldest column, which is not loaded.
+- `needs prior period`: an average whose opening balance sheet (the period before the column's) is not on file: the oldest column's, a year's whose prior year is missing, a TTM column's without the quarter a year earlier.
 - `not reported`: an input line is not in the statements for that period. Apple, for example, has not tagged interest expense since FY2023, so its interest coverage reads `not reported` from FY2024. A missing line is never read as zero; a reported zero stays a value.
 - `< 4 quarters`: a quarterly ratio on the trailing year has none to read, because fewer than four consecutive quarters are on file and no fiscal year ends with the quarter. A short history is never annualized.
 - `no burn`: a [cash runway](#cash-runway) whose operating cash flow over the period is zero or positive, so the operations used no cash to run out of.
