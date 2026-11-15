@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Box, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { usePaneInstance } from "../../../state/app/context";
 import {
   DataTableStackView,
   DataTableView,
-  MarkdownText,
   PaneLinkMenu,
   PaneStatusBody,
   useExternalLinkFooter,
@@ -12,7 +11,6 @@ import {
   type DataTableColumn,
 } from "../../../components";
 import { DetailReader } from "../../../components/reader/detail-reader";
-import { DESKTOP_LINE_HEIGHT, READER_COLUMN_FONT, READER_MEASURE } from "../../../components/reader/reader-text";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { getReleaseSummaries } from "../../../api-client/release-summaries";
 import { createTtlCache } from "../../../data/ttl-cache";
@@ -38,7 +36,6 @@ import {
 import {
   DEFAULT_CHANGELOG_VERSION_SORT,
   groupChangelogVersions,
-  highlightsMarkdown,
   nextChangelogVersionSort,
   parseVersionSummaries,
   sortChangelogVersions,
@@ -76,7 +73,7 @@ export function resetChangelogCacheForTests(): void {
 /**
  * CHANGELOG.md from Gloom Cloud, which reads GitHub with its own credentials,
  * else from GitHub itself; null when neither has it, and then each version
- * shows its updates' own highlights.
+ * takes its first update's title.
  */
 async function readSummaries(signal: AbortSignal): Promise<string | null> {
   try {
@@ -164,42 +161,9 @@ function ReleaseNotes({
   );
 }
 
-/** The pane's inset around the highlights, as a detail reader has: 12px above, 16px below. */
-const HIGHLIGHTS_BOX_STYLE = { padding: "var(--gloom-space-md) var(--gloom-inset) var(--gloom-space-lg)" } as const;
-/** The reader's type and measure; markdown lines take the reader's line height (the host sets Text line height from --cell-h). */
-const HIGHLIGHTS_COLUMN_STYLE = {
-  fontSize: READER_COLUMN_FONT,
-  lineHeight: DESKTOP_LINE_HEIGHT,
-  maxWidth: READER_MEASURE,
-  "--cell-h": `${DESKTOP_LINE_HEIGHT}em`,
-} as const;
-
 /**
- * A version's highlights above its updates. The desktop and the web set them
- * in the reader's type at the reading measure, as the notes an update opens
- * are, lined up with the table's left edge; the terminal wraps them at `width`.
- */
-function VersionHighlights({ markdown, width }: { markdown: string; width: number }) {
-  const { nativePaneChrome } = useUiCapabilities();
-  if (nativePaneChrome) {
-    return (
-      <Box flexDirection="column" width="100%" flexShrink={0} style={HIGHLIGHTS_BOX_STYLE} data-gloom-ui="changelog-highlights">
-        <Box flexDirection="column" width="100%" style={HIGHLIGHTS_COLUMN_STYLE}>
-          <MarkdownText text={markdown} />
-        </Box>
-      </Box>
-    );
-  }
-  return (
-    <Box flexDirection="column" paddingX={1} paddingY={1} flexShrink={0}>
-      <MarkdownText text={markdown} lineWidth={Math.max(12, width - 2)} />
-    </Box>
-  );
-}
-
-/**
- * An open version: its highlights, each naming the updates it shipped in,
- * over the table of those updates. Enter opens an update's notes.
+ * An open version: the table of its updates, under the title the stack
+ * header already gives it. Enter opens an update's notes.
  */
 function VersionDetail({
   version,
@@ -227,12 +191,10 @@ function VersionDetail({
   );
   const selectedIndex = resolveSelectedReleaseIndex(releases, selectedReleaseId);
   const columns = useMemo(() => buildReleaseColumns(version.releases), [version.releases]);
-  const highlights = useMemo(() => highlightsMarkdown(version), [version]);
 
   return (
     <DataTableView<ChangelogRelease, ReleaseColumn>
       focused={focused}
-      rootBefore={highlights ? <VersionHighlights markdown={highlights} width={width} /> : undefined}
       selection={{
         kind: "id",
         selectedId: releases[selectedIndex]?.id ?? null,
@@ -258,8 +220,8 @@ function VersionDetail({
 
 /**
  * The Changelog, as its own pane (CHG) and as ROADMAP's Changelog view: one
- * row per minor version, then a version's highlights and updates, then an
- * update's notes, one Back at a time.
+ * row per minor version, then a version's updates, then an update's notes,
+ * one Back at a time.
  */
 export function ChangelogPane({ focused, width, height }: PaneProps) {
   const paneInstance = usePaneInstance();
