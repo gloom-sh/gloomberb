@@ -13,7 +13,7 @@ import {
 } from "../../../../utils/cli-output";
 import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext, CliCommandDef } from "../../../../types/plugin";
-import type { Watchlist } from "../../../../types/ticker";
+import type { TickerRecord, Watchlist } from "../../../../types/ticker";
 import type { ConfigContext, MarketContext } from "../../../../cli/types";
 import {
   addTickerToWatchlist,
@@ -27,7 +27,6 @@ import {
   watchlistTakesGroups,
   withoutWatchlistGroupSymbols,
 } from "../../../../portfolio/watchlist-groups";
-import type { TickerStore } from "../../../../types/data-provider";
 import { collectionAddCommand, showCollection } from "./render";
 import { listingFields, misplacedSymbolList, refuseDryRun, takeCollectionName } from "./shared";
 import { addOneSymbol, addSymbols, FILE_OPTION, listAddLookups, printSymbolRows, progressNotice, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
@@ -38,6 +37,14 @@ const ADD_USAGE = "Usage: gloom watchlist add <watchlist> <symbols...> [--file <
 const REMOVE_USAGE = "Usage: gloom watchlist remove <watchlist> <symbols...> [--file <path>]";
 const MOVE_USAGE = "Usage: gloom watchlist move <watchlist> <symbols...> --group <name>";
 const UNGROUP_USAGE = "Usage: gloom watchlist ungroup <watchlist> <symbols...> | --group <name>";
+
+const GROUPS_HELP = {
+  title: "Groups",
+  lines: [
+    "A watchlist's tickers can sit in named groups (Energy, Tech, Index funds), which PF shows under headers that collapse, and watchlist show in a Group column; the rest show under Ungrouped. A ticker is in one group of a list at most, and a ticker on two lists can be in a different group on each.",
+    "add --group puts the symbols added, and those already in the list, in the group, made when new. move --group puts symbols of the list in it. ungroup takes symbols out of their group, and ungroup --group takes every symbol out of that group. A group with no symbols left goes. Names are matched in any case.",
+  ],
+};
 
 const GROUP_OPTION = {
   flags: "--group <name>",
@@ -129,7 +136,7 @@ async function groupAdded(ctx: CliCommandContext, config: AppConfig, watchlist: 
   if (result.moved.length === 0) return;
   await saveConfig(result.config);
   if (!ctx.cliOptions.quiet) {
-    console.error(cliStyles.muted(`Group "${result.group}" of "${watchlist.name}": ${result.moved.length === 1 ? result.moved[0] : `${result.moved.length} tickers`} put in it.`));
+    console.error(cliStyles.muted(`Put ${result.moved.length === 1 ? result.moved[0] : `${result.moved.length} tickers`} in group "${result.group}".`));
   }
 }
 
@@ -187,8 +194,8 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
       },
       member: (ticker) => ticker.metadata.watchlists.includes(watchlist.id),
     });
-    await groupAdded(ctx, market.config, watchlist, added, group);
     printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, notes: list.notes, retry, dryRun });
+    await groupAdded(ctx, market.config, watchlist, added, group);
   });
 }
 
@@ -198,7 +205,7 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
  * not in the list, before anything changes.
  */
 async function requireListedKeys(
-  symbols: readonly string[], exchange: string | undefined, store: TickerStore, watchlist: Watchlist, usage: string, ctx: CliCommandContext,
+  symbols: readonly string[], exchange: string | undefined, store: ConfigContext["store"], watchlist: Watchlist, usage: string, ctx: CliCommandContext,
 ): Promise<string[]> {
   const held = (ticker: TickerRecord) => ticker.metadata.watchlists.includes(watchlist.id);
   const keys: string[] = [];
@@ -357,7 +364,7 @@ async function listWatchlists(ctx: CliCommandContext) {
 export const watchlistCliCommand: CliCommandDef = {
   name: "watchlist",
   aliases: ["watchlists"],
-  description: "Show watchlist quotes, and add or remove symbols",
+  description: "Show watchlist quotes, add or remove symbols, and group them",
   help: {
     group: CLI_COMMAND_GROUPS.portfolios,
     usage: [
@@ -365,10 +372,13 @@ export const watchlistCliCommand: CliCommandDef = {
       "watchlist show <name>",
       "watchlist create <name>",
       "watchlist delete <name>",
-      "watchlist add <watchlist> <symbols...> [--file <path>]",
+      "watchlist add <watchlist> <symbols...> [--file <path>] [--group <name>]",
       "watchlist remove <watchlist> <symbols...> [--file <path>]",
+      "watchlist move <watchlist> <symbols...> --group <name>",
+      "watchlist ungroup <watchlist> <symbols...>",
+      "watchlist ungroup <watchlist> --group <name>",
     ],
-    options: [EXCHANGE_OPTION, FILE_OPTION],
+    options: [EXCHANGE_OPTION, FILE_OPTION, GROUP_OPTION],
     examples: [
       "watchlist show Growth",
       "watchlist create Growth",
@@ -379,15 +389,23 @@ export const watchlistCliCommand: CliCommandDef = {
       "watchlist add Growth --file holdings.csv",
       "watchlist add Growth --file holdings.csv --dry-run",
       "watchlist show Growth --csv",
+      "watchlist add Funds VTSAX FXAIX --group \"Index funds\"",
+      "watchlist move Growth XOM CVX --group Energy",
+      "watchlist ungroup Growth XOM",
     ],
-    sections: [SYMBOL_LIST_HELP],
+    sections: [SYMBOL_LIST_HELP, GROUPS_HELP],
   },
   execute: async (rawArgs, ctx) => {
     const args = [...rawArgs];
     const exchange = takeOption(args, "--exchange");
     const hasFile = args.some((arg) => arg === "--file" || arg.startsWith("--file="));
     const file = hasFile ? takeOption(args, "--file") ?? "" : undefined;
+    const hasGroup = args.some((arg) => arg === "--group" || arg.startsWith("--group="));
+    const group = hasGroup ? takeOption(args, "--group") ?? "" : undefined;
     const action = args[0];
+    if (group != null && action !== "add" && action !== "move" && action !== "ungroup") {
+      ctx.fail(`--group is an option of watchlist add, move and ungroup, not watchlist ${action ?? "list"}.`, MOVE_USAGE);
+    }
     if (file != null && action !== "add" && action !== "remove") ctx.fail(`--file is an option of watchlist add and remove, not watchlist ${action ?? "list"}.`, ADD_USAGE);
     if (MUTATING_ACTIONS.has(action ?? "")) refuseDryRun(ctx, "watchlist", action!);
 
@@ -418,7 +436,12 @@ export const watchlistCliCommand: CliCommandDef = {
     }
 
     if (action === "add") {
-      await addToWatchlistCommand(args.slice(1), file, exchange, ctx);
+      await addToWatchlistCommand(args.slice(1), file, exchange, group, ctx);
+      return;
+    }
+
+    if (action === "move" || action === "ungroup") {
+      await groupWatchlistSymbols(action, args.slice(1), exchange, group, ctx);
       return;
     }
 

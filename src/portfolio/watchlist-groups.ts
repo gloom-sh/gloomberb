@@ -139,9 +139,13 @@ export function moveWatchlistGroupSymbols(config: AppConfig, moved: ReadonlyMap<
     const groups = watchlistGroups(watchlist);
     if (!groups.some((group) => group.symbols.some((symbol) => moved.has(symbol)))) return watchlist;
     changed = true;
+    const grouped = new Set(groups.flatMap((group) => group.symbols));
     const next = normalizeWatchlistGroups(groups.map((group) => ({
       ...group,
-      symbols: group.symbols.map((symbol) => moved.get(symbol) ?? symbol),
+      symbols: group.symbols.flatMap((symbol) => {
+        const to = moved.get(symbol);
+        return to == null ? [symbol] : grouped.has(to) ? [] : [to];
+      }),
     })));
     const { groups: _groups, ...rest } = watchlist;
     return next ? { ...rest, groups: next } : rest;

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useEffect, useRef, useState, type ReactNode } from "react";
-import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../renderers/opentui/test-utils";
+import { exportPaneTable } from "../../state/pane-table-export-registry";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
@@ -9,7 +10,7 @@ import type { TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import type { ScrollBoxRenderable } from "../../ui";
 import { PaneFooterProvider, type CombinedPaneFooter } from "../layout/pane/footer";
-import { TickerListTableView, flashesOnQuoteTick, type TickerTableCell } from "./list-table-view";
+import { TickerListTableView, flashesOnQuoteTick, type TickerTableCell, type TickerTableGroup } from "./list-table-view";
 import { createTestTicker } from "../../test-support/ticker";
 
 const tui = createOpenTuiTestHarness();
@@ -288,6 +289,56 @@ describe("TickerListTableView", () => {
 
     await act(async () => { setFocused(false); await tui.setup().renderOnce(); });
     expect(labels()).not.toContain("Open T1 Ticker Research");
+  });
+});
+
+describe("TickerListTableView groups", () => {
+  test("rows show under headers the cursor lands on, Enter collapses one, and an export writes every row with its group", async () => {
+    const [t0, t1, t2, t3] = manyTickers.slice(0, 4) as [TickerRecord, TickerRecord, TickerRecord, TickerRecord];
+    function Harness() {
+      const [cursorSymbol, setCursorSymbol] = useState("T0");
+      const [collapsed, setCollapsed] = useState(["Tech"]);
+      const groups: TickerTableGroup[] = [
+        { id: "Energy", label: "Energy", tickers: [t0, t1], collapsed: collapsed.includes("Energy") },
+        { id: "Tech", label: "Tech", tickers: [t2], collapsed: collapsed.includes("Tech") },
+        { id: "", label: "Ungrouped", tickers: [t3], collapsed: collapsed.includes("") },
+      ];
+      return (
+        <TickerTableTestProviders>
+          <TickerListTableView
+            focused
+            columns={columns}
+            tickers={[t0, t1, t2, t3]}
+            groups={groups}
+            onToggleGroup={(id) => setCollapsed((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id])}
+            cursorSymbol={cursorSymbol}
+            setCursorSymbol={setCursorSymbol}
+            resolveCell={resolveCell}
+            financialsMap={financialsMap}
+          />
+        </TickerTableTestProviders>
+      );
+    }
+    await tui.render(<Harness />, { width: 30, height: 10 });
+    let frame = await tui.waitForFrameToContain("Energy (2)");
+    expect(frame).toContain("\u25be Energy (2)");
+    expect(frame).toContain("\u25b8 Tech (1)");
+    expect(frame).toContain("Ungrouped (1)");
+    expect(frame).toContain("T1");
+    expect(frame).not.toContain("T2");
+
+    // Up from the first row is its group's header; Enter there collapses the group.
+    await tui.emitKeypress({ name: "k" });
+    await act(async () => { await tui.setup().renderOnce(); });
+    await tui.emitKeypress({ name: "return" });
+    frame = await tui.waitForFrameToContain("\u25b8 Energy (2)");
+    expect(frame).not.toContain("T0");
+
+    // The collapsed groups' rows are exported too, each with its group.
+    await exportPaneTable("ticker-table-test", "grouped.csv");
+    const csv = takeSavedTextFile()!.text.split(/\r?\n/);
+    expect(csv[0]).toStartWith("\ufeffTicker,Group,");
+    expect(csv.slice(1, 5).map((line) => line.split(",").slice(0, 2).join(","))).toEqual(["T0,Energy", "T1,Energy", "T2,Tech", "T3,Ungrouped"]);
   });
 });
 

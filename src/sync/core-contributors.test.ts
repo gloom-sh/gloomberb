@@ -425,6 +425,23 @@ describe("core sync contributors", () => {
     expect(merged?.portfolios).toEqual(elsewhere.portfolios);
   });
 
+  test("a watchlist's groups reach the account's other devices whatever they are named, and a list without them pushes as before", async () => {
+    const elsewhere = createDefaultConfig("/tmp/gloomberb-sync-groups-elsewhere");
+    // Names and symbols that read like secrets: keyed by them, the push would drop them.
+    elsewhere.watchlists = [
+      { id: "growth", name: "Growth", groups: [{ name: "Private equity", symbols: ["PATH", "KKR"] }, { name: "Session", symbols: ["SPY"] }] },
+      { id: "plain", name: "Plain" },
+    ];
+    const pushed = await coreConfigSyncContributor.collect({ state: createInitialState(elsewhere) }) as { watchlists: Array<Record<string, unknown>> };
+    expect(Object.keys(pushed.watchlists[1]!)).toEqual(["id", "name"]);
+
+    const config = createDefaultConfig("/tmp/gloomberb-sync-groups-here");
+    config.watchlists = [{ id: "growth", name: "Growth" }, { id: "plain", name: "Plain" }];
+    const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, pushed);
+
+    expect(merged?.watchlists).toEqual(elsewhere.watchlists);
+  });
+
   test("does not reintroduce older unlinked broker portfolios from cloud", () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-broker-identity-test");
     config.portfolios = [

@@ -14,7 +14,7 @@ function sourceInput(arg: string, context: PaneTemplateContext): string {
   const source = SOURCE.exec(arg.trim());
   if (!source) return arg;
   const prefix = source[1]!.toUpperCase();
-  const match = findNamedCollection(prefix === "PORT" ? context.config.portfolios : context.config.watchlists, source[2]);
+  const match = findNamedCollection<{ id: string; name: string }>(prefix === "PORT" ? context.config.portfolios : context.config.watchlists, source[2]);
   return match ? `${prefix}:${match.id}` : arg;
 }
 

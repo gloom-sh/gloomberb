@@ -97,6 +97,7 @@ import { isoDateToday } from "../../../../utils/calendar-date";
 import { lastTradeDate } from "../../../../tickers/listing-fate";
 import type { PriceWindow } from "../../../../utils/price-window";
 import { showPeriodPnl } from "./period-report";
+import { sectionWatchlistItems, UNGROUPED_LABEL, watchlistGroups } from "../../../../portfolio/watchlist-groups";
 import { DIVIDEND_READ_DEADLINE_MS, incomeGapNote, loadHoldingDividends, portfolioIncome, projectDrip, showsIncomeColumns, type DripYear, type HoldingDividend } from "../income";
 
 /** Money prices pad to the currency's minor unit ($337.90, not $337.9), as the ticker view does. */
@@ -1455,7 +1456,11 @@ async function showCollectionWithMarketData(
       if (unprojected.length > 0) console.log(cliStyles.muted(`Not projected: ${unprojected.join("; ")}.`));
     }
   } else {
-    const watched = await valueWatchlistRows({ tickers: filtered, quotes, dataProvider, currency, toBase });
+    // A list with groups runs group by group, as PF shows it, and each row names its group.
+    const sections = sectionWatchlistItems(watchlistGroups(config.watchlists.find((entry) => entry.id === id)), filtered, (ticker) => ticker.metadata.ticker);
+    const groupOf = new Map(sections?.flatMap((section) => section.items.map((ticker) => [ticker.metadata.ticker, section.name] as const)));
+    const valued = await valueWatchlistRows({ tickers: sections ? sections.flatMap((section) => section.items) : filtered, quotes, dataProvider, currency, toBase });
+    const watched = sections ? valued.map((entry) => ({ ...entry, row: { ...entry.row, group: groupOf.get(entry.ticker.metadata.ticker) ?? null } })) : valued;
     if (structured) {
       ctx.printResult({
         data: watched.map((entry) => entry.row),
@@ -1469,7 +1474,13 @@ async function showCollectionWithMarketData(
     const showFunding = watched.some(({ funding }) => funding !== undefined);
     // So is Last Trade, by holding a stale quote: the rows the closing line counts stale, dated as `quote` dates them.
     const stale = watched.filter((entry) => entry.stale);
-    const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap, funding, stale: rowStale, lastTrade }) => {
+    // The group's name on its first row only, so the rows read as sections.
+    const groupCell = (index: number) => {
+      const name = groupOf.get(watched[index]!.ticker.metadata.ticker) ?? null;
+      const previous = index > 0 ? groupOf.get(watched[index - 1]!.ticker.metadata.ticker) ?? null : undefined;
+      return name === previous ? "" : cliStyles.bold(name ?? UNGROUPED_LABEL);
+    };
+    const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap, funding, stale: rowStale, lastTrade }, index) => {
       const priceText = quote && headline
         ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
         : "—";
@@ -1477,6 +1488,7 @@ async function showCollectionWithMarketData(
       const changeText = quote?.delisting ? "—" : headline ? colorBySign(formatPercentRaw(headline.changePercent), headline.change) : "—";
       const staleText = quote?.delisting ? delistingLabel(quote.delisting) : lastTrade ? `STALE ${lastTrade}` : "STALE";
       return [
+        ...sections ? [groupCell(index)] : [],
         listingLabel(ticker),
         venue ?? "—",
         priceText,
@@ -1490,6 +1502,7 @@ async function showCollectionWithMarketData(
 
     console.log(renderTable(
       [
+        ...sections ? [{ header: "Group" }] : [],
         { header: "Ticker" },
         { header: "Exchange" },
         { header: "Last", align: "right" },
