@@ -4,7 +4,7 @@ import { parseCollectionRef } from "../team/collections";
 import { isRecord } from "../utils/guards";
 
 /** The longest name a group takes, so its header and the CLI's Group column stay readable. */
-export const MAX_GROUP_NAME_LENGTH = 40;
+const MAX_GROUP_NAME_LENGTH = 40;
 
 /** The section a list's tickers in no group show under; no group takes the name. */
 export const UNGROUPED_LABEL = "Ungrouped";
