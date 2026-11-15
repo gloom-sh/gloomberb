@@ -11,7 +11,7 @@ import type {
 import { tableColumnLeadGap } from "../../../components/ui/table-layout";
 import { WebIcon } from "../desktop/icons";
 import { useFrozenColumnInsets } from "./frozen-column";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
+import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { selectedRowCellColor } from "../../../theme/tone-contrast";
 import { useThemeColors } from "../../../theme/theme-context";
 import {
