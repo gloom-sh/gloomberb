@@ -144,7 +144,8 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   const displayProps = {
     ...props,
     columns,
-    anchoredColumns: displayColumns.filter((column) => props.columns.indexOf(column) < props.anchoredColumns).length,
+    anchoredColumns: props.anchoredColumns == null ? undefined
+      : props.columns.slice(0, props.anchoredColumns).filter((column) => displayColumns.includes(column)).length,
     onColumnMove: props.onColumnMove ? (columnId: string, toIndex: number) => {
       const target = displayColumns[toIndex];
       if (target) props.onColumnMove?.(columnId, props.columns.indexOf(target));

@@ -1,15 +1,18 @@
 import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
-import { setCloudApiFetchTransport } from "../../../api-client";
+import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import type { CpiBoardPayload } from "../../../api-client/cpi";
-import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
+import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { cpiBoardCache } from "./client";
 import fixture from "./board.fixture.json";
 import { CpiPane } from "./pane";
+import { cpiHeadless } from "./headless";
 
 const tui = createOpenTuiTestHarness();
 afterEach(() => { setCloudApiFetchTransport(null); cpiBoardCache.reset(); });
@@ -37,6 +40,11 @@ test("a release without annual contributions omits the column, and one contribut
   for (const row of board.rows) row.contributionYoy = null;
   await mount(140, 36, undefined, board);
   expect(await tui.waitForFrameToContain("COMPONENT")).not.toContain("Y/Y PTS");
+  await exportPaneTable("cpi:test", "cpi.csv");
+  expect(takeSavedTextFile()?.text).toContain("Y/Y Pts");
+  const report = await cpiHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient }));
+  expect(report.sections[0]?.columns?.some((column) => column.key === "contributionYear")).toBe(true);
+  expect(report.sections[0]?.rows?.every((row) => row.contributionYear === null)).toBe(true);
   await tui.destroy();
   cpiBoardCache.reset();
   board.rows.find((row) => row.id === "core")!.contributionYoy = 0;

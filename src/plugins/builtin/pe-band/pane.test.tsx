@@ -50,8 +50,8 @@ test("YoY without a positive base is omitted, but a covered comparison restores 
   expect(takeSavedTextFile()?.text).toContain("YoY");
   const result = await peBandHeadless.load(createTestHeadlessArgs({ symbols: ["TEST"] }), createTestHeadlessContext());
   const section = result.sections.find((entry) => entry.title === "Trailing EPS")!;
-  expect(section.columns.some((column) => column.key === "yoy")).toBe(true);
-  expect(section.rows.map((row) => row.yoy)).toEqual([null, null]);
+  expect(section.columns?.some((column) => column.key === "yoy")).toBe(true);
+  expect(section.rows?.map((row) => row.yoy)).toEqual([null, null]);
   await tui.destroy();
   loadSpy.mockResolvedValue(inputs(1));
   await render();

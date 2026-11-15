@@ -2,8 +2,9 @@ import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { EstimateObservation, EstimatePeriod, EstimateRevisionsPayload } from "../../../api-client/estimate-revisions";
-import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { estimateRevisionsCache } from "./client";
@@ -78,6 +79,8 @@ test("a single-analyst consensus omits dispersion, and one covered period restor
   uncovered.periods[0]!.current = { ...uncovered.periods[0]!.current!, analysts: 1, range: null, relativeRange: null };
   estimatesSpy.mockResolvedValue(uncovered);
   expect((await renderDetail(160, 28, false)).join("\n")).not.toContain("HI-LO");
+  await exportPaneTable("estimate-revisions:AAPL", "em.csv");
+  expect(takeSavedTextFile()?.text).toContain("HI-LO");
   await tui.destroy();
   estimateRevisionsCache.reset();
   const mixed = { ...uncovered, periods: [...uncovered.periods,

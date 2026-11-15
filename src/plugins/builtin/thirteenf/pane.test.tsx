@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { outage } from "../../../test-support/outage";
 import { act, useReducer } from "react";
-import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -85,6 +86,8 @@ test("unserved ranking quarters leave the table, and one fund's zero return rest
   await renderFrames();
   expect(tui.frame()).toContain("Alpha Capital");
   expect(tui.frame()).not.toContain("2026Q1");
+  await exportPaneTable(PANE_ID, "funds.csv");
+  expect(takeSavedTextFile()?.text).toContain("2026Q1,2025Q4,2025Q3");
   await tui.destroy();
   resetThirteenFApiPersistence();
   covered = true;
