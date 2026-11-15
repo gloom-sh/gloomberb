@@ -87,10 +87,10 @@ export function PaymentRecoveryRow({ active, busy, message, labelWidth, nodeRef,
   return (
     <Box ref={nodeRef} flexDirection="row" gap={1} onMouseDown={onFocus}>
       <FieldLabel label={t("Payment")} active={active} width={labelWidth} />
-      <Box flexDirection="column" flexShrink={1} gap={1}>
-        <Text fg={colors.text}>{t("Your Pro payment did not go through.")}</Text>
+      <Box flexDirection="column" flexShrink={1} minWidth={0} gap={1}>
+        <Text fg={colors.text} wrapMode="word">{t("Your Pro payment did not go through.")}</Text>
         <Button label={busy ? t("Opening...") : t("Pay invoice")} active={active} disabled={busy} onPress={onPay} />
-        {message ? <Text fg={colors.textDim}>{message}</Text> : null}
+        {message ? <Text fg={colors.textDim} wrapMode="word">{message}</Text> : null}
       </Box>
     </Box>
   );
