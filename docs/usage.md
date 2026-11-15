@@ -888,6 +888,17 @@ The right end of the header follows one market: its exchange's state and its lev
 - **The level.** An index or a coin above a thousand reads in whole units (`Hang Seng 24,533`, `BTC $75,686`), anything else as its quote does. When a source has no usable level for an index, the header shows the fund that tracks it under its own symbol (`SPY $687.18`) rather than a zero.
 - **A narrow header** drops the opening time or countdown first, then shortens the state (`NYSE pre`, then `pre`) before it drops it, then the move, and keeps the level longest.
 
+#### Since your last visit
+
+When you open Gloom again after an hour or more, a strip under the header names what moved most in your own portfolios and watchlists since you were last in the app, as in `Since your last visit, Wed 16:05  NVDA +4.2%  TSLA -3.1%`. Click a ticker to open its research.
+
+- **What counts as a move.** Each visit keeps the last price Gloom had of each ticker while you were in the app (a hidden window or a terminal in the background does not count). The next visit compares the price it loads with that one: the same listing, in the same currency and on the same price basis, the newer printed after the older. A ticker with no such pair (no current quote, a stale one, a different listing or currency, or a ratio a stock split would give) is left out rather than shown as unchanged. Moves under 1% either way are left out, and the strip shows up to five, biggest first.
+- **What it leaves out.** Lists shared with a team, portfolios imported from a 13F and option contracts. The first time you open Gloom, and any time nothing moved enough, there is no strip.
+- **Keys.** The notification keys work on it while no toast is up: the action key (`Alt+Enter`, or `Ctrl+Shift+Enter`, `Cmd+Shift+Enter` on a Mac) opens the biggest move, and the dismiss key (`Alt+Backspace`, or `Ctrl+Shift+Backspace`, `Cmd+Shift+Backspace` on a Mac) hides it.
+- **Hide** puts it away until you next open Gloom. **Turn off** puts it away for good on this machine; **Since Last Visit** in the command bar turns it on again. It is saved as `"sinceLastVisit": false` in the config.
+- **Where the prices are kept.** On this machine only, in Gloom's local state store, one set per signed-in account (and one signed out), so an account never sees another's. They are never synced or sent. Turning the strip off deletes them.
+- The strip shows in the main window only: not in popped-out panes, during setup or in presentation mode.
+
 **Run Setup Again** in the command bar opens setup at its first step, with your holdings listed and the desk tabs it made ticked. Picking the desks rebuilds Home and those tabs where they are, so no layout is copied: a desk you untick loses its tab, and your other layouts and your watchlist stay as they are. **Skip setup** (or `F10`) before then leaves your layouts as they were. The browser version has no setup, so it has no Run Setup Again.
 
 In `PF`, `a` adds a ticker to the open manual portfolio or watchlist and `d` removes the selected one after a confirm.

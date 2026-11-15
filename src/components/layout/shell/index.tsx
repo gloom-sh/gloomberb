@@ -98,6 +98,8 @@ interface ShellProps {
   desktopWindowBridge?: DesktopWindowBridge;
   desktopDockPreview?: DesktopDockPreviewState | null;
   commandBarNativeOccluder?: LayoutBounds | null;
+  /** Rows of app chrome between the header and the layout (the since-last-visit strip). */
+  topBandRows?: number;
 }
 
 interface TransientFocusLayoutState {
@@ -114,6 +116,7 @@ export function Shell({
   desktopWindowBridge,
   desktopDockPreview,
   commandBarNativeOccluder = null,
+  topBandRows = 0,
 }: ShellProps) {
   const colors = useThemeColors();
   const dispatch = useAppDispatch();
@@ -143,7 +146,8 @@ export function Shell({
   const shellRef = useRef<BoxRenderable | null>(null);
 
   const chrome = useAppChromeShown();
-  const appHeaderHeight = chrome.header ? resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx }) : 0;
+  // Where the layout starts: the header, then any band of chrome under it.
+  const appHeaderHeight = (chrome.header ? resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx }) : 0) + topBandRows;
   const contentHeight = Math.max(1, height - appHeaderHeight - (chrome.statusBar ? 1 : 0));
   pluginRegistry.bindHost({ getTermSize: () => ({ width, height: contentHeight }) });
 
