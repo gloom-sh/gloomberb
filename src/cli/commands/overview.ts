@@ -4,7 +4,8 @@ import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices, withConfigData, withMarketData } from "../context";
 import { CLI_ERROR_CODE, failWithFields } from "../errors";
-import type { CliResultColumn } from "../result";
+import type { CliResult, CliResultColumn, CliResultRenderOptions } from "../result";
+import { fredCitation, fredPublisher } from "../../sources/gloomberb-cloud/fred-publisher";
 import { MISSING_VALUE, formatCompact } from "../../utils/format";
 import { DATE_OPTION_EXAMPLES, DATE_OPTION_FORMATS, dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import {
@@ -102,6 +103,7 @@ import {
   fredValueHeader,
   isSpreadSeries,
   laggingSeriesNote,
+  FRED_VINTAGE_NOTE,
   parseFredChange,
 } from "./fred-series";
 import { fredProvenance, fredPublicationTime, notOnFredSource } from "../../sources/gloomberb-cloud/fred-attribution";
@@ -745,12 +747,12 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       }),
       // The exports add what a script needs to read a row; the text table keeps the columns it had.
       columns: [...econExportHeadColumns(viewerZone, publisherTimed), ...econFigureColumns(false), ...econExportColumns],
-      textColumns: [...econTextHeadColumns(viewerZone, publisherTimed), ...econFigureColumns(true), ECON_PUBLISHER_COLUMN],
+      textColumns: [...econTextHeadColumns(viewerZone, publisherTimed), { key: "referencePeriod", header: "Period" }, ...econFigureColumns(true), ECON_PUBLISHER_COLUMN],
     });
   });
 }
 
-const FRED_USAGE = "fred <series-id> [--start <date>] [--sort desc|asc] [--change 1D|1W]";
+const FRED_USAGE = "fred <series-id> [series-id ...] [--start <date>] [--sort desc|asc] [--change 1D|1W]";
 const FRED_LIST_USAGE = "fred --list [filter]";
 
 /** A year or a month stands for the first day of it. */
@@ -844,10 +846,52 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   if (changeGiven && !horizon) {
     ctx.fail(change ? `Unknown change "${change}".` : "--change needs 1D or 1W.", "Use 1D (from the previous observation) or 1W (from a week before).");
   }
+  if (args.length > 1 || args[0]?.includes(",")) {
+    const seriesIds = [...new Set(args.flatMap((value) => value.split(",")).map((value) => value.trim().toUpperCase()).filter(Boolean))];
+    if (!seriesIds.length || seriesIds.some((seriesId) => !/^[A-Z0-9_]+$/.test(seriesId))) ctx.fail("Use space- or comma-separated series IDs.", `Usage: gloom ${FRED_USAGE}`);
+    if (seriesIds.length > 20) ctx.fail("fred accepts at most 20 series in one aligned report.");
+    return withSavedFredSeries(ctx, () => printFredAligned(ctx, seriesIds, { start, startDate, sortOrder, horizon }));
+  }
   const asked = requireOneArg(args, FRED_USAGE, "series", ctx);
   // A series by its name (`3 month t-bill` is DTB3) when one alone fits it.
   const seriesId = (/\s/.test(asked.trim()) ? fredSeriesIdForName(asked) : null) ?? asked.toUpperCase();
   await withSavedFredSeries(ctx, () => printFredSeries(ctx, { seriesId, start, startDate, sortOrder, horizon }));
+}
+
+async function printFredAligned(ctx: Parameters<CliCommandDef["execute"]>[1], seriesIds: string[],
+  options: { start?: string; startDate: string; sortOrder: "asc" | "desc"; horizon: ReturnType<typeof parseFredChange> }) {
+  const reports: Array<{ seriesId: string; result: CliResult; render: CliResultRenderOptions }> = [];
+  for (const seriesId of seriesIds) {
+    await printFredSeries({ ...ctx, printResult: (result, render = {}) => { reports.push({ seriesId, result, render: render as unknown as CliResultRenderOptions }); } }, { ...options, start: options.start, seriesId });
+  }
+  const byDate = new Map<string, Record<string, unknown>>();
+  const metadata: Record<string, unknown> = {};
+  const notes = ["Aligned on observation dates, not release dates. Missing observations remain blank; values are not forward-filled."];
+  const suffixes = ["unit", "interval", "source", "released", "first_released", "revised_on", "first_release_value"];
+  for (const { seriesId, result, render } of reports) {
+    metadata[seriesId] = result.metadata;
+    notes.push(...render.exportNotes ?? []);
+    for (const entry of result.data as Record<string, unknown>[]) {
+      const date = String(entry.date);
+      const row = byDate.get(date) ?? { date };
+      const identity = typeof render.exportIdentity === "function" ? render.exportIdentity(entry) : render.exportIdentity;
+      row[seriesId] = entry.value;
+      row[`${seriesId}_unit`] = identity?.currencyOrUnit;
+      row[`${seriesId}_interval`] = identity?.interval;
+      row[`${seriesId}_source`] = result.freshness?.source;
+      for (const suffix of suffixes.slice(3)) row[`${seriesId}_${suffix}`] = entry[suffix];
+      byDate.set(date, row);
+    }
+  }
+  const rows = [...byDate.values()].sort((left, right) => options.sortOrder === "asc"
+    ? String(left.date).localeCompare(String(right.date)) : String(right.date).localeCompare(String(left.date)));
+  ctx.printResult({ data: rows, metadata: { series: metadata, alignment: "observation date" },
+    warnings: reports.flatMap(({ result }) => result.warnings ?? []),
+    freshness: rowsFreshness(rows, { source: [...new Set(reports.map(({ result }) => result.freshness?.source).filter(Boolean))].join("; "),
+      status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null }),
+  }, { dateKey: "date", columns: ["date", ...seriesIds, ...seriesIds.flatMap((seriesId) => suffixes.map((suffix) => `${seriesId}_${suffix}`))].map((key) => ({ key, header: key })),
+    exportIdentity: { symbolOrSeries: seriesIds.join(" "), currencyOrUnit: "see per-series unit columns", interval: "see per-series interval columns" },
+    exportNotes: [...new Set(notes)], footnote: [...new Set(notes)].join("\n") });
 }
 
 async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { seriesId, start, startDate, sortOrder, horizon }: {
@@ -870,11 +914,11 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
   if (mismatch) ctx.fail(mismatch);
   // Each row's change in the unit its value exports in, and the date it is from; a holiday's stays blank.
   const changes = horizon ? fredChanges(seriesId, data.observations, horizon) : null;
-  const releasedOf = (observation: { publisher?: string; publishedAt?: string; releasedOn?: string }) =>
-    observation.releasedOn ?? (observation.publisher?.trim() ? observation.publishedAt : undefined);
+  const releasedOf = (observation: { publisher?: string; publishedAt?: string; releasedOn?: string; firstReleased?: string }) =>
+    observation.firstReleased ?? observation.releasedOn ?? (observation.publisher?.trim() ? observation.publishedAt : undefined);
   // A value FRED does not list yet carries its publisher and when it published, in every export.
   // A row from the copy an earlier read saved, the refresh having failed, carries its mark: the source line says so.
-  const exportRow = (observation: { date: string; value: number | null; publisher?: string; publishedAt?: string; releasedOn?: string }) => ({
+  const exportRow = (observation: CloudFredSeriesPayload["observations"][number]) => ({
     ...savedCopyMark(data),
     date: observation.date,
     value: fredExportValue(seriesId, observation.value),
@@ -882,6 +926,9 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
     ...(observation.publisher?.trim() ? { publisher: observation.publisher.trim(), ...(observation.publishedAt ? { publishedAt: observation.publishedAt } : {}) } : {}),
     // When the figure came out, where the data says: only a series' newest observation does. `date` is the period it covers.
     ...releasedOf(observation) ? { released: releasedOf(observation) } : {},
+    ...(observation.firstReleased ? { first_released: observation.firstReleased } : {}),
+    ...(observation.revisedOn ? { revised_on: observation.revisedOn } : {}),
+    ...(observation.firstReleaseValue != null ? { first_release_value: fredExportValue(seriesId, observation.firstReleaseValue) } : {}),
   });
   // A --start before the series begins comes back padded with blank days: the rows start at its first observation.
   const fromStart = fredObservationsFromStart(data.observations, data.info?.observationStart)
@@ -892,6 +939,7 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
     ...fredHistoryNotes({ startDate, startGiven: start != null, seriesStart: data.info?.observationStart }),
     laggingSeriesNote(seriesId),
     computedFredSeriesNote(seriesId),
+    ...(data.observations.some((observation) => observation.firstReleased) ? [FRED_VINTAGE_NOTE] : []),
     // A publisher's licence asks for its attribution wherever its series is shown (MAS's SORA).
     seriesNotOnFred(seriesId)?.attribution ?? null,
   ].filter((note): note is string => note != null);
@@ -913,7 +961,7 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
   // A newest value FRED does not list yet names its publisher, Treasury for a yield; FRED's own stay "FRED".
   const ahead = fredProvenance(data.observations.filter((observation) => observation.date === newestDate), seriesId);
   // FRED names the series' publisher when Gloom Cloud passes it on, and when it last updated the series.
-  const publisher = ahead?.publisher ?? data.info?.source?.trim();
+  const publisher = ahead?.publisher ?? fredPublisher(seriesId, data.info?.source);
   const publishedAt = ahead ? ahead.publishedAt : fredPublicationTime(data.info, newestDate);
   // When the newest figure was released: the report is as of then, `Sep 2026, released Tue 20 Oct`.
   const releasedOn = ahead ? undefined : data.observations.find((observation) => observation.date === newestDate)?.releasedOn;
@@ -926,7 +974,7 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
       ...(latest && !closedDay ? { latestObservation: exportRow(latest) } : {}),
     },
     freshness: rowsFreshness(rows, {
-      source: ahead?.source ?? notOnFredSource(seriesId) ?? "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
+      source: ahead?.source ?? notOnFredSource(seriesId) ?? fredCitation(seriesId, data.info?.source), status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
       // A monthly or quarterly observation is dated the first of its period, not a day it was seen.
       ...(periodicity ? { periodicity } : {}),
       ...(releasedOn ? { releasedOn } : {}),
@@ -940,13 +988,14 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
     // `as_of` is the release. A figure with none stated is as of its own day when the series is known to observe
     // days (a daily or weekly rate), and of nothing otherwise, never the first day of the period it covers.
     exportDated: true,
+    exportAppendedKeys: ["first_released", "revised_on", "first_release_value"],
     exportIdentity: (row) => {
       const released = typeof row.released === "string" ? row.released : null;
       const date = typeof row.date === "string" ? row.date : null;
       return { symbolOrSeries: seriesId, currencyOrUnit: unit, interval, asOf: released ?? (observesDays ? date : null), period: date, released };
     },
     // The release closes the row with the other dating columns, so it is not one of the observation's own.
-    columns: [...new Set(rows.flatMap((row) => Object.keys(row)))].filter((key) => key !== "released").map((key) => ({ key, header: key })),
+    columns: [...new Set([...rows.flatMap((row) => Object.keys(row)), "first_released", "revised_on", "first_release_value"])].filter((key) => key !== "released").map((key) => ({ key, header: key })),
     textColumns: [
       { key: "date", header: "Date" },
       isSpreadSeries(seriesId)
@@ -1140,7 +1189,7 @@ export const overviewCliCommands: CliCommandDef[] = [
       options: [
         { flags: "--country <regions or countries>", description: "US, G7, EU, all (default), or countries by their two-letter codes, comma separated, such as MX or MX,BR,ZA" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
-        { flags: "--search <words>", description: "Events whose name or publisher has these words, case, spaces and hyphens aside, such as nonfarm, fed funds or USDA" },
+        { flags: "--search <words>", description: "Match all words in an event name or publisher; OR joins alternatives, such as \"housing OR mortgage OR NAHB\". Case, spaces and hyphens are ignored" },
         { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day lists past events from the stored calendar and says where it starts` },
         { flags: "--tz <zone>", description: "Add a column with each release's time on that clock, an IANA zone such as America/New_York; with the weekday when it falls on another day than the UTC date" },
       ],
@@ -1168,9 +1217,10 @@ export const overviewCliCommands: CliCommandDef[] = [
         title: "Series",
         lines: [
           "Gloom Cloud serves a curated set of FRED series and needs no sign-in for them. gloom fred (or fred --list) prints them by topic; any other ID fails with that pointer.",
+          "Several IDs, separated by spaces or commas, align on observation dates without forward filling. Each series keeps its own unit, source and release fields.",
         ],
       }],
-      examples: ["fred CPIAUCSL", "fred DGS10 --tail 5", "fred DGS10 --change 1D --tail 5", "fred UNRATE --start 2020-01-01 --csv", "fred", "fred --list credit", "fred --list fx"],
+      examples: ["fred CPIAUCSL", "fred DGS10 --tail 5", "fred DGS10 --change 1D --tail 5", "fred UNRATE --start 2020-01-01 --csv", "fred PERMIT HOUST --start 2026-01-01 --csv", "fred", "fred --list credit", "fred --list fx"],
     },
     execute: runFred,
   },

@@ -90,6 +90,10 @@ describe("CLI registry", () => {
     expect(help).toContain("alias-example");
     expect(help).toContain("Synthetic Help");
     expect(help).toContain("Hello from the synthetic plugin.");
+    expect(help).toContain("--limit");
+    expect(help).toContain("first");
+    expect(help).toContain("--tail");
+    expect(help).toContain("export_notes");
   });
 
   test("rejects duplicate command names and aliases", () => {

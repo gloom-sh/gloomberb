@@ -21,7 +21,7 @@ const pct2 = (value: number) => `${formatNumber(value, 2)}%`;
 const plain = (value: number) => formatNumber(value, 1);
 const index2 = (value: number) => formatNumber(value, 2);
 /** FRED reports payrolls and claims in thousands already. */
-const thousands = (value: number) => `${formatNumber(value / 1000, value >= 10_000 ? 1 : 2)}M`;
+const thousands = (value: number) => `${formatNumber(value / 1000, 3)}M`;
 const signedThousands = (value: number) =>
   `${value > 0 ? "+" : ""}${formatNumber(value, 0)}k`;
 const billions = (value: number) => `${formatNumber(value, 0)}B`;
@@ -407,6 +407,7 @@ export const STATS: readonly StatDef[] = [
   // ---- Housing ---------------------------------------------------------
   stat({
     id: "housing-starts",
+    aliases: ["homebuilders", "homebuilder", "homebuilding"],
     measurementBasis: "Annual rate",
     label: "Housing Starts",
     shortLabel: "Starts",

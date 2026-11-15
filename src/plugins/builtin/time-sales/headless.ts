@@ -5,7 +5,7 @@ import type { TapeRange, TapeSnapshot } from "../../../api-client/tape";
 import { fetchTape } from "./client";
 import { newestFirst, quoteSpread, tapePrice, tapePriceDigits, tapeStatistics, tapeTimeKey } from "./model";
 import { REPORT_ROWS } from "../shared/headless-options";
-import { inTapeRange, normalizeTapeClock, parseTapeClock, servedWindow, sessionDay, tapeMoment, tapeWindowRange } from "./window";
+import { inTapeRange, lastSessionNote, normalizeTapeClock, parseTapeClock, servedWindow, sessionDay, tapeMoment, tapeWindowRange } from "./window";
 
 type Format = NonNullable<HeadlessPaneColumn["format"]>;
 const fixedPrice = (digits: number): Format => (value) => tapePrice(typeof value === "number" ? value : null, digits);
@@ -109,6 +109,9 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
     const price = fixedPrice(tapePriceDigits(data.trades.map((row) => row.price)));
     const trades = ordered(data.trades).slice(0, limit).map((row) => ({ ...row, conditions: row.conditions.join(" ") }));
     const notes = windowed ? [...windowed.notes, ...listedNote(windowed.range, data.trades.length, trades.length)] : [];
+    const lastSession = lastSessionNote(data);
+    if (!windowed && lastSession) notes.unshift(lastSession);
+    if (!windowed && trades.length < data.trades.length) notes.push(`Listing the first ${trades.length} of ${data.trades.length} observed trades, newest first; --limit takes up to 1000.`);
     // SIP prints, real-time or fifteen minutes delayed by entitlement, dated by the newest print.
     const freshness = data.feed === "sip"
       ? { status: "live" as const, cadence: "daily" as const }

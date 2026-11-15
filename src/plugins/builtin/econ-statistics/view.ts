@@ -26,6 +26,8 @@ export interface StatViewModel {
   reading: string;
   /** The day the latest print was released (`YYYY-MM-DD`), when FRED says; null for a daily rate. */
   releasedOn: string | null;
+  revisedOn: string | null;
+  firstReleaseValue: number | null;
   /** `released Tue 20 Oct`, or null when the release is not known. */
   released: string | null;
   /** The reading and its release, as every macro pane says it: "Sep 2026, released Tue 20 Oct". */
@@ -89,9 +91,9 @@ function formatStatPeriod(date: string, perYear: number): string {
   const month = Number(date.slice(5, 7));
   const name = MONTHS[month - 1];
   if (!name) return date;
-  if (perYear <= 4) return `Q${Math.ceil(month / 3)}`;
-  if (perYear <= 12) return name;
-  return `${name} ${Number(date.slice(8, 10))}`;
+  if (perYear <= 4) return `Q${Math.ceil(month / 3)} ${date.slice(0, 4)}`;
+  if (perYear <= 12) return `${name} ${date.slice(0, 4)}`;
+  return `${date.slice(5)} ${date.slice(0, 4)}`;
 }
 
 /**
@@ -151,6 +153,8 @@ export function projectStat(
     period: formatStatPeriod(latest.date, perYear),
     reading,
     releasedOn,
+    revisedOn: build.revisedOn ?? null,
+    firstReleaseValue: build.firstReleaseValue ?? null,
     released: releasedText(releasedOn, latest.date),
     readingReleased: periodReleasedText(reading, releasedOn, latest.date),
     periodicity: periodStartPeriodicity(latest.date, perYear),

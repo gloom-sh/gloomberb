@@ -119,8 +119,10 @@ export function basisPointsCell(value: unknown): string {
  * reading the source has put out.
  */
 const LAGGING_SERIES: Readonly<Record<string, string>> = {
-  UMCSENT: "FRED publishes the University of Michigan survey with a lag; latest preliminary reading: fn ECO",
+  UMCSENT: "University of Michigan sentiment is delayed one month on FRED at the publisher's request; newer preliminary readings are in fn ECO.",
 };
+
+export const FRED_VINTAGE_NOTE = "Release dates are the first numeric ALFRED vintage available; archive coverage can begin after an older figure's original publication. Missing release provenance stays blank.";
 
 export function laggingSeriesNote(seriesId: string): string | null {
   return LAGGING_SERIES[seriesId.toUpperCase()] ?? null;

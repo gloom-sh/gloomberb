@@ -4,7 +4,9 @@ import type {
   HeadlessPaneEntry,
 } from "../../../types/plugin";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
-import { fredSourceLabel } from "../../../sources/gloomberb-cloud/fred-series";
+import { fredCitation, fredPublisher } from "../../../sources/gloomberb-cloud/fred-publisher";
+import { FRED_CATALOG_SERIES } from "../econ/fred-catalog";
+import { FRED_VINTAGE_NOTE, laggingSeriesNote } from "../../../cli/commands/fred-series";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import type { StatDef } from "./defs";
@@ -26,6 +28,14 @@ import { selectStatViews, type StatRangeId, type StatViewModel } from "./view";
 /** How a report reads a statistic: a spread in basis points, everything else as the pane does. */
 function reportFormat(stat: StatDef): (value: number) => string {
   return stat.basisPoints ? (value) => formatBasisPoints(value) : stat.formatValue;
+}
+
+function exportUnit(stat: StatDef): string {
+  if (stat.basisPoints || stat.id === "mortgage-spread") return "bp";
+  if (stat.axisUnit === "%" || ["yoy", "mom", "qoq-annualized"].includes(stat.transform)) return "pct";
+  const catalog = FRED_CATALOG_SERIES.find((series) => series.id === `fred:${stat.seriesId}`);
+  const unit = catalog?.unit.replace(/^(?:thousand|million|billion) /, "") ?? "index points";
+  return stat.category === "housing" && unit === "units" ? "units, annual rate" : unit;
 }
 
 /**
@@ -83,7 +93,7 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
     // A Treasury yield adds when in the day it was taken, so it is not read against ^TNX's earlier close.
     // A figure dated by its period also says when it was released: "Sep 2026, released Tue 20 Oct".
     { label: "Period", value: view.latest.date, formatted: view.stat.cutoff && !cutoffShown ? `${view.reading} ${view.stat.cutoff}` : view.readingReleased },
-    { label: "Source", value: fredSourceLabel(view.stat.seriesId) },
+    { label: "Source", value: fredCitation(view.stat.seriesId) },
   ];
 }
 
@@ -164,6 +174,12 @@ export function projectStatsHeadlessBundle(
         textHeader: "Released",
         format: (_value: unknown, row: Record<string, unknown>) => typeof row.released === "string" ? row.released.replace(/^released /, "") : "",
       },
+      ...text ? [] : [
+        { key: "firstReleased", header: "first_released", literalHeader: true },
+        { key: "revisedOn", header: "revised_on", literalHeader: true },
+        { key: "firstReleaseValue", header: "first_release_value", literalHeader: true,
+          format: (_value: unknown, row: Record<string, unknown>) => typeof row.formattedFirstRelease === "string" ? row.formattedFirstRelease : "" },
+      ],
     ];
     return [{
       title: category.label,
@@ -171,9 +187,18 @@ export function projectStatsHeadlessBundle(
       textColumns: columns(true),
       // `as_of` is the release; a figure with none stated is as of its own day when it is observed daily or weekly, never its period's first day.
       rowAsOfKey: "exportAsOf",
+      rowSymbolKey: "seriesId",
+      rowUnitKey: "unit",
+      rowIntervalKey: "interval",
+      rowSourceKey: "source",
+      appendedColumns: 3,
       rows: categoryViews.map((view) => savedCopyRow(view, {
         id: view.stat.id,
         indicator: view.stat.shortLabel,
+        seriesId: view.stat.seriesId,
+        unit: exportUnit(view.stat),
+        interval: FRED_CATALOG_SERIES.find((series) => series.id === `fred:${view.stat.seriesId}`)?.frequency ?? (view.periodicity ?? "daily"),
+        source: fredCitation(view.stat.seriesId),
         latest: view.latest.value,
         formattedLatest: reportFormat(view.stat)(view.latest.value),
         previous: view.previous?.value ?? null,
@@ -188,6 +213,10 @@ export function projectStatsHeadlessBundle(
         // The period the figure covers; `releasedOn` is when it was published, which the report is as of.
         asOf: view.latest.date,
         releasedOn: view.releasedOn,
+        firstReleased: view.releasedOn,
+        revisedOn: view.revisedOn,
+        firstReleaseValue: view.firstReleaseValue,
+        formattedFirstRelease: view.firstReleaseValue == null ? null : reportFormat(view.stat)(view.firstReleaseValue),
         exportAsOf: exportAsOf(view),
         ...(view.periodicity ? { periodicity: view.periodicity } : {}),
         reading: view.reading,
@@ -207,11 +236,16 @@ export function projectStatsHeadlessBundle(
   const cutoffs = new Set(views.map((view) => view.stat.cutoff));
   const cutoff = cutoffs.size === 1 ? [...cutoffs][0] : undefined;
   return {
-    ...(cutoff ? { freshness: { ...ECST_FRESHNESS, schedule: cutoff } } : {}),
+    freshness: { ...ECST_FRESHNESS, ...(cutoff ? { schedule: cutoff } : {}),
+      ...(selected ? { source: fredCitation(selected.stat.seriesId), publisher: fredPublisher(selected.stat.seriesId) ?? undefined } : {}) },
     sections: [
       ...sections,
       ...(selected ? [{
         title: selected.stat.label,
+        symbol: selected.stat.seriesId,
+        unit: exportUnit(selected.stat),
+        interval: FRED_CATALOG_SERIES.find((series) => series.id === `fred:${selected.stat.seriesId}`)?.frequency ?? (selected.periodicity ?? "daily"),
+        source: fredCitation(selected.stat.seriesId),
         entries: detailEntries(selected, cutoff != null, false),
         textEntries: detailEntries(selected, cutoff != null, true),
         ...exportDating(selected),
@@ -226,6 +260,8 @@ export function projectStatsHeadlessBundle(
         ? ["A move's pctl is the share of all 1D (or 1W) moves since that year that were smaller, ties counted half; --range does not change it."]
         : []),
       ...(cpiGap ? [cpiGap] : []),
+      ...(views.some((view) => view.releasedOn) ? [FRED_VINTAGE_NOTE] : []),
+      ...views.flatMap((view) => laggingSeriesNote(view.stat.seriesId) ?? []),
     ],
     metadata: {
       fetchedAt: bundle.fetchedAt,

@@ -638,6 +638,7 @@ export type HeadlessBundleSection =
      * lists them all.
      */
     rowSourceKey?: string;
+    appendedColumns?: number;
     /** The symbol every row is of, where the report's own is not (a section per name): each exported row names it in `symbol_or_series`. */
     symbol?: string;
     /** When every row was observed (an ISO date or instant), where it is not the report's newest: each exported row names it in `as_of`. */
@@ -656,6 +657,7 @@ export type HeadlessBundleSection =
   | {
     title: string;
     entries: HeadlessPaneEntry[];
+    source?: string;
     /**
      * The lines the text report prints in place of `entries`, when the pane
      * says in one line what the exported records keep apart (a range as
@@ -678,9 +680,9 @@ export type HeadlessBundleSection =
     rows?: never;
     textColumns?: never;
     textRows?: never;
-    unit?: never;
+    unit?: string;
     rowUnitKey?: never;
-    interval?: never;
+    interval?: string;
     rowIntervalKey?: never;
     rowSourceKey?: never;
     locked?: never;

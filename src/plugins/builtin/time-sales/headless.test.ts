@@ -4,6 +4,10 @@ import type { HeadlessBundleResult, HeadlessPaneContext } from "../../../types/h
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { timeSalesHeadless } from "./headless";
 import { tapeFixture } from "./test-fixture";
+import { headlessReportTables } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderReportCsv } from "../../../cli/report-tables";
+import { portableCsv } from "../../../cli/csv-export";
 
 async function report(symbol: string, exchange?: string) {
   const asked: string[] = [];
@@ -75,6 +79,25 @@ function windowContext(readsWindows: boolean) {
 
 const windowArgs = (from: string, to = "") => createTestHeadlessArgs({ argument: "HYG", symbols: ["HYG"], options: { limit: 100, from, to } });
 const tradeTimes = (result: HeadlessBundleResult) => result.sections.find((section) => section.title === "Trades")!.rows!.map((row) => row.timestamp);
+
+test("TAS exports keep default truncation, the last session and explicit window caveats", async () => {
+  const snapshot = tapeFixture();
+  const friday = "2026-11-13T20:59:59.000Z";
+  const data = { ...snapshot, generatedAt: "2026-11-15T19:00:00Z", asOf: friday, observedFrom: friday,
+    session: { date: "2026-11-13", high: 102, low: 100, asOf: "2026-11-13T21:00:00Z" },
+    trades: Array.from({ length: 123 }, (_, index) => ({ ...snapshot.trades[0]!, id: String(index), timestamp: friday })) };
+  const args = createTestHeadlessArgs({ argument: "AAPL", symbols: ["AAPL"] });
+  const result = await timeSalesHeadless.load(args, createTestHeadlessContext({
+    resolveInstrument: async () => ({ symbol: "AAPL", exchange: "NASDAQ" }),
+    apiClient: { getCloudTape: async () => data } as unknown as HeadlessPaneContext["apiClient"],
+  })) as HeadlessBundleResult;
+  const exported = (report: HeadlessBundleResult, options = args) => portableCsv(renderReportCsv(headlessReportTables(timeSalesHeadless, report, options, "TAS", deriveHeadlessFreshness(timeSalesHeadless, report), { complete: true, unavailableSymbols: [] })));
+  expect(exported(result)).toContain("Listing the first 100 of 123 observed trades");
+  expect(exported(result)).toContain("Market closed; last session Fri 13 Nov 2026.");
+  const options = windowArgs("10:30", "10:31");
+  const window = await timeSalesHeadless.load(options, windowContext(true).context) as HeadlessBundleResult;
+  expect(exported(window, options)).toContain("Window: Fri 16 Oct 2026");
+});
 
 test("--from and --to read that window of the served session, oldest first, saying what it covers and when the server cut it", async () => {
   const { context, asked } = windowContext(true);

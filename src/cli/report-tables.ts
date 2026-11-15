@@ -525,7 +525,7 @@ export function exportRowsTable<Row extends Record<string, unknown>>(
   title: string,
   columns: readonly CliReportColumn<Row>[],
   rows: readonly Row[],
-  { status = false, rowUnitKey }: { status?: boolean; rowUnitKey?: string } = {},
+  { status = false, rowUnitKey, appendedColumns = 0 }: { status?: boolean; rowUnitKey?: string; appendedColumns?: number } = {},
 ): CliReportTable {
   const reasons = rows.map((): Array<{ header: string; text: string }> => []);
   const units = columns.map(columnUnit);
@@ -572,7 +572,14 @@ export function exportRowsTable<Row extends Record<string, unknown>>(
     header: columns.some((column) => column.header.trim().toLowerCase() === "status") ? "value_status" : "status",
     values: reasons.map(statusText),
   } : undefined;
-  return assembleTable(title, resolved, rows.length, statusColumn);
+  const table = assembleTable(title, resolved, rows.length, statusColumn);
+  if (appendedColumns && statusColumn) {
+    const before = table.columns.length - 1 - appendedColumns;
+    const reorder = <Value,>(values: Value[]) => [...values.slice(0, before), values.at(-1)!, ...values.slice(before, -1)];
+    table.columns = reorder(table.columns);
+    table.rows = table.rows.map(reorder);
+  }
+  return appendedColumns ? { ...table, appendedColumns } : table;
 }
 
 /** Label/value lines as `Metric,Value`; a number's unit moves into its label. */

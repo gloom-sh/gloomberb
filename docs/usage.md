@@ -1239,7 +1239,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 ### Limiting rows
 
-`--limit <n>` keeps the first n rows as printed. On a series that runs oldest first, such as `history`, those are the oldest, and text output says `showing the oldest 2 of 252 rows; --tail 2 for the latest`. `--json` carries `metadata.rows` (`shown`, `total`, `kept`).
+`--limit <n>` keeps the first n rows as printed, in text and exports. On a series that runs oldest first, such as `history`, those are the oldest, and text output says `showing the oldest 2 of 252 rows; --tail 2 for the latest`. It does not change a scalar result or a `shot` image. A pane report accepts it only when its own help lists it, and its upstream history or plan cap may be smaller. `--json` carries `metadata.rows` (`shown`, `total`, `kept`). CSV retains the truncation caveat in `export_notes`.
 
 `--tail <n>` keeps the newest n rows of a dated series (`history`, `fred`, `econ`), in their printed order, and the last n of any other list. The two cannot be combined. `fn` reports fail on either one they do not have.
 
@@ -1249,7 +1249,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 **Names**
 
-- `--search <words>` keeps the events whose name has every word typed, case, spaces and hyphens aside: `econ --search nonfarm` lists `Non Farm Payrolls` and `Nonfarm Payrolls Private`, `econ --search "fed funds"` the Fed's rate. `--json` has `metadata.search`.
+- `--search <words>` keeps the events whose name or publisher has every word typed, case, spaces and hyphens aside: `econ --search nonfarm` lists `Non Farm Payrolls` and `Nonfarm Payrolls Private`, `econ --search "fed funds"` the Fed's rate. Separate alternatives with `OR`: `econ --search "housing OR mortgage OR NAHB"`. Each alternative still requires all its words. `--json` has `metadata.search`.
 - The Fed's rate decision reads `Federal Funds Rate (upper bound)`: its figures are the top of the target range (4.00% for 3.75-4.00%), the range `WIRP` shows. Alerts take the name either way.
 - A release still to come with a prior and no forecast has no consensus yet: text ends with a note that the dash under Forecast means just that, and the ECO pane says it in its footer on that row.
 - A release past its time whose figure is not in yet reads `due 07:00 UTC, awaiting figure` under Actual for a day after its time, not a dash: `--json` and the exports carry it as `actualStatus` (`actual_status`), with `actual` still null, and the ECO pane shows `awaiting` in the warning color, with the time it was due in the row's detail and its footer. A row with no release time, a tentative one off the five-minute grid (a feed's `09:03 UTC` for a release not yet timed), or with no forecast or prior to come out against (a speech), is not awaited.
@@ -1859,7 +1859,7 @@ On the third day you open the terminal app, after a minute on screen, the status
 - A function's header is the same for every symbol: a column with no figures keeps its unit (`IV30 (%)` for `SCHD` as for `SPY`).
 - A cell the text fills with why a figure is missing (`not quoted`, `no 25D quotes`, `under 7d`) is empty, with the reason in a `status` column after the data (`RR, BF: no 25D quotes`; `value_status` in a table with a Status column of its own). Text such as a range `2.0-3.0`, `N/M` or `ATM` stays in its column.
 
-**Several tables.** A report with several tables, such as `WEI` by region, writes each as its own block: a `# section: <title>` line, the header, the rows, and a blank line.
+**Several tables.** Every CSV has one rectangular header, including a report with several tables such as `WEI` by region. The columns of later tables are appended without moving existing columns; cells outside a row's table stay blank. An appended `section` column names its table (`_section` if the report already has a `section` column).
 
 - `--section <title or number>` (any case, numbered from 1) writes only that table (`gloom fn WEI --csv --section europe`). The start of a title is enough when no other starts the same way (`fn OPX IBIT --csv --section strikes`), and an unknown section fails and lists the report's.
 - `CALLS` keeps `--section` as the transcript part it reads.
@@ -1870,7 +1870,7 @@ A FRED series ID given where a ticker goes says to chart it as `fn G fred:DEXSFU
 
 **Bars the source does not serve.** A chart asked for bars the source does not serve for the range (`fn G USDZAR=X --rangePreset ALL --chartResolution 1d`) says so on stderr and in `--json` (`warnings`, `data.metadata.resolution`): `1d is not available for ALL on USDZAR=X (1d bars go back 5Y at most); returning 1mo bars.` Each row's `interval` is the bars returned.
 
-**Trailing lines.** A CSV written to standard output or `--output` holds its rows alone, so a spreadsheet opens it without junk rows. Its closing lines go to stderr, beside the warnings: the source, as-of and status line the text prints, the [export source lines](#how-current-a-report-is), `incomplete` with what is missing (`incomplete: 19 of 20 available`), and `error:` and `note:` lines, among them what a `--limit` or a command's default cap left out (`note: showing the oldest 50 of 751 rows; --tail 50 for the latest`). `--ndjson` says the same on stderr. Every row still names its source and as-of in its own columns (below). A report of several tables keeps a `# section:` line over each.
+**Caveats inside the file.** Every CSV appends `export_notes` (`_export_notes` on a name collision). Every data row repeats the report's source details, warnings, errors, incompleteness and notes in that quoted cell, including session coverage, preview limits and truncation. Pipes and `--output` retain the same caveats even with `--quiet`. There are no comment rows or trailing metadata blocks: `pandas.read_csv(path)` works with no options. An otherwise empty report with notes has one blank data row carrying them. Stderr still repeats the source details and warnings for people; NDJSON keeps its existing stderr notes.
 
 #### What every exported row says
 
@@ -1881,7 +1881,7 @@ Exports end each row with six fixed columns, so a row still says what it is, and
 | `symbol_or_series` | The symbol or series ID asked for: `USDZAR=X`, `SAN:EPA`, `DEXSFUS`; each row's own ticker in a table of several (`fn DVD MUB VTEB`); blank for a report about no one symbol |
 | `currency_or_unit` | The currency or unit of the values: `ZAR`, `USD`, `JPY per USD` (a pair's quote currency per base), `bp`, `pct`, `index points`; blank when the values mix units (their headers name them) |
 | `interval` | The bar interval or observation frequency actually returned: `1d`, `1mo`, `daily`, `monthly`, `spot` for an FX rate, `snapshot` for an options chain |
-| `source` | The source the `Source:` line names: `Gloom Cloud`, `FRED` |
+| `source` | The source the `Source:` line names: `Gloom Cloud`, `Census Bureau via FRED`. FRED distributes the originator's figures. |
 | `as_of` | The `Observation date:` of the export in ISO 8601, the same on every row; blank when it reads `not published`. Rows dated apart carry their own (a `fn DVD` ranking dates each ticker's row by the price its yields are over). In a statistic's export (below) it is the day or time the figure was released |
 | `retrieved_at` | When the export read the data, an ISO time in UTC, the same on every row: `as_of` is when the data is from, `retrieved_at` when it was fetched. A statistic's export (below) has `retrieved` in its place |
 
@@ -1911,7 +1911,7 @@ The plain commands that print market data end the same way: `quote`, `compare`, 
 
 A top-level `source` object has `name`, `publisher`, `observationDate`, `publicationTime`, `retrievalTime`.
 
-**In `--csv`,** the line goes to stderr after the rows, followed by `Publisher:`, `Observation date:` (with `Oldest observation:` for a portfolio whose rows are dated apart, see [What a portfolio is priced at](#what-a-portfolio-is-priced-at)), `Publication time:` and `Retrieval time:` (UTC); the file keeps the rows alone.
+**In `--csv`,** the source line, `Publisher:`, `Observation date:` (and `Oldest observation:` when relevant), `Publication time:` and `Retrieval time:` (UTC) are retained in every row's `export_notes` and repeated on stderr.
 
 `--ndjson` stays rows only, each ending with the [fixed fields](#what-every-exported-row-says). A field the data does not state reads `not published` in CSV and `null` in JSON, never a guess.
 

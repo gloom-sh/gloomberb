@@ -1,7 +1,15 @@
 import { expect, test } from "bun:test";
-import { parseTapeClock, servedWindow, tapeWindowRange } from "./window";
+import { lastSessionNote, parseTapeClock, servedWindow, tapeWindowRange } from "./window";
 
 const closed = (date: string) => servedWindow({ session: { date, high: null, low: null, asOf: null }, generatedAt: "2026-12-07T10:00:00.000Z", delaySeconds: 900 })!;
+
+test("Sunday at 14:00 New York labels Friday as the last session without labelling Monday premarket prints as Friday", () => {
+  const snapshot = { session: { date: "2026-11-13", high: 102, low: 98, asOf: "2026-11-13T21:00:00Z" },
+    generatedAt: "2026-11-15T19:00:00Z", delaySeconds: 900, asOf: "2026-11-13T20:59:59Z" };
+  expect(lastSessionNote(snapshot)).toBe("Market closed; last session Fri 13 Nov 2026.");
+  expect(servedWindow(snapshot)?.date).toBe("2026-11-13");
+  expect(lastSessionNote({ ...snapshot, generatedAt: "2026-11-16T14:00:00Z", asOf: "2026-11-16T13:44:59Z" })).toBeNull();
+});
 
 test("a window's times are New York's clock on the served session's date, through either daylight-saving offset, or UTC's when marked", () => {
   const october = closed("2026-10-16");

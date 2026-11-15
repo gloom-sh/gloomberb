@@ -22,6 +22,18 @@ STALE marks a statistic whose newest print is overdue. FRED dates a print at the
 
 Exports retain each statistic's retrieval time separately from its observation-period date. Aggregate `fetchedAt` is the oldest known retrieval among included statistics, or `null` when none is known. `fetchedAtComplete` is false if any included statistic lacks retrieval provenance, so the aggregate does not establish freshness for that statistic. Hydrated or injected observations without retrieval metadata keep a null retrieval time and unknown cache freshness. Reading or projecting cached observations does not advance their retrieval time.
 
+## Release dates and exports
+
+`released` and `first_released` identify the first numeric vintage available in ALFRED, not the date of the current revision. `revised_on` is separate when a later vintage exists; `first_release_value` is included for level series where available. ALFRED's archive can start after an older figure's original publication, so its earliest known vintage is not proof of an original publisher timestamp. Missing provenance stays blank. Transformed CPI and other changes use the release of the matching observation, not a later raw index month that could not be transformed.
+
+Each ECST CSV row names its series, unit, frequency and originator, with FRED as distributor. Its compact housing values are multiplied out in exports: `1.398M` means `1398000` units at an annual rate, while `fred PERMIT` exports `1398` thousands of units. Spreads export in basis points. New provenance fields and the common `export_notes` field are appended after existing columns.
+
+`fred PERMIT HOUST --start 2026-01-01 --csv` aligns multiple series on the union of their observation dates, not release dates. Missing observations stay blank without forward filling, and each series has its own unit, source and release columns. Comma-separated IDs work too.
+
+Calendar text includes the period. Weekly housing periods use `week ending YYYY-MM-DD`: Freddie Mac PMMS covers the prior Thursday through Wednesday, normally published Thursday; MBA identifies the Friday ending its survey week. The publication time remains separate from the covered period.
+
+Michigan sentiment on FRED is delayed one month at the publisher's request. The pane labels this source lag; newer preliminary readings may appear in ECO, not in the lagged history.
+
 ## Series catalog
 
 | Statistic | FRED series | Transform | Description |

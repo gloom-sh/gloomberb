@@ -458,6 +458,8 @@ const POLICY_DECISION_TITLES: Readonly<Record<string, string>> = {
  * `usda` every row the U.S. Department of Agriculture publishes.
  */
 export function matchesEventSearch(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior" | "source">, query: string): boolean {
+  const alternatives = query.split(/\s+OR\s+/i);
+  if (alternatives.length > 1) return alternatives.some((alternative) => alternative.trim() && matchesEventSearch(event, alternative));
   const words = query.split(/\s+/).map(compactName).filter(Boolean);
   if (words.length === 0) return true;
   const names = eventSearchNames(event);

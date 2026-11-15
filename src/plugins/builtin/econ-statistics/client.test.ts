@@ -7,6 +7,14 @@ import { resolveStatArg } from "./stats";
 
 const cpi = resolveStatArg("cpi-yoy")!;
 const unemployment = resolveStatArg("unemployment")!;
+
+test("a transformed CPI observation keeps its own release when a newer month has no year-earlier index", async () => {
+  const monthly = observations().map((entry) => ({ ...entry, ...(entry.date === "2026-01-01" ? { releasedOn: "2026-02-12", firstReleased: "2026-02-12", revisedOn: "2026-03-12" } : {}) }));
+  monthly.push({ date: "2026-02-01", value: 111, releasedOn: "2026-03-12" });
+  const bundle = await loadStatsBundle({ stats: [cpi], loader: async () => monthly.filter((entry) => entry.date !== "2025-02-01") });
+  const latest = rows(bundle)[0]!;
+  expect(latest).toMatchObject({ asOf: "2026-01-01", releasedOn: "2026-02-12", revisedOn: "2026-03-12", exportAsOf: "2026-02-12" });
+});
 const now = Date.parse("2026-02-20T12:00:00Z");
 let clock: ReturnType<typeof spyOn> | undefined;
 afterEach(() => { clock?.mockRestore(); statsCache.reset(); });

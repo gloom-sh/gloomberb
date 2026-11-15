@@ -15,6 +15,7 @@ import {
   type CliTableColumn,
 } from "../utils/cli-output";
 import { serializeCsv } from "../utils/csv";
+import { portableCsv } from "./csv-export";
 import { logFailure } from "../utils/log-failure";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 import { formatFreshnessLine, withSavedCopy, type ReportFreshness } from "./pane-functions/freshness";
@@ -732,17 +733,15 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   const serialized = hinted(toFile
     ? renderForFile(() => serializeCliResult(cells, options, renderOptions))
     : serializeCliResult(cells, options, renderOptions));
-  // A CSV's closing source and note lines go to stderr with the warnings: in the file they are rows of junk to a spreadsheet.
   const { csv, footer } = options.format === "csv" ? splitCsvFooter(serialized) : { csv: serialized, footer: [] };
-  const output = csv;
+  const output = options.format === "csv" ? portableCsv(serialized, result.warnings,
+    [...renderOptions.exportNotes ?? [], ...renderOptions.footnote ? [renderOptions.footnote] : []]) : csv;
   if (toFile) fileExport.push(output);
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.
   else if (output && !process.stdout.write(`${output}\n`)) {
     stdoutWritten = new Promise((resolve) => process.stdout.once("drain", () => resolve()));
   }
-  // JSON carries warnings in its envelope. Text, CSV and NDJSON are only the
-  // rows, so a warning goes to stderr, out of a file the rows are piped into.
   if (options.format !== "json" && !options.quiet) {
     // Each wraps to a narrow --width, as a note does.
     for (const warning of result.warnings ?? []) {
@@ -750,8 +749,6 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
     }
   }
   if (!options.quiet) for (const line of footer) console.error(line);
-  // CSV says what its rows do not in closing `note:` lines, on stderr; NDJSON has no place for one among its rows,
-  // so the same notes go to stderr, where the warnings are.
   if (options.format === "ndjson" && !options.quiet) {
     for (const note of exportNdjsonNotes(result, options, renderOptions)) console.error(`note: ${note}`);
   }

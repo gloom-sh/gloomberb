@@ -11,7 +11,7 @@ export const CREDIT_SPREAD_SERIES: readonly SeriesDefinition[] = ICE_CREDIT_SERI
   frequency: "daily",
   group: "Credit",
   tags: [series.measure, ...series.tags, "corporate bonds"],
-  publisher: "FRED",
+  publisher: "ICE Data Indices",
   // A fixed note on every ICE series. G and CRD read the same sentence from each series' FRED notes instead, so there it lapses if FRED lifts the limit.
   limitation: ICE_HISTORY_LIMIT_NOTICE,
   url: fredSeriesUrl(series.seriesId),

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readStatArg } from "./stats";
+import { readStatArg, resolveStatArg } from "./stats";
 
 const read = (arg: string) => {
   const found = readStatArg(arg);
@@ -38,4 +38,12 @@ test("the start of a name is read too, and nothing else is guessed", () => {
   expect(read("unemp")).toEqual({ id: "unemployment", readAs: 'Read "unemp" as Unemployment Rate (Unemployment).' });
   expect(readStatArg("zzz")).toBeNull();
   expect(readStatArg("  ")).toBeNull();
+});
+
+test("housing aliases resolve and thousand-unit changes do not round to the same million value", () => {
+  expect(readStatArg("homebuilders")?.stat.id).toBe("housing-starts");
+  const permits = resolveStatArg("permits")!;
+  const sales = resolveStatArg("new-home-sales")!;
+  expect([permits.formatValue(1398), permits.formatValue(1403)]).toEqual(["1.398M", "1.403M"]);
+  expect([sales.formatValue(676), sales.formatValue(680)]).toEqual(["0.676M", "0.680M"]);
 });

@@ -96,6 +96,15 @@ export function servedWindow(snapshot: Pick<TapeSnapshot, "session" | "generated
   return { date, from, to: Math.min(close, cutoff), cutoff: cutoff < close, delayMinutes: Math.round(snapshot.delaySeconds / 60) };
 }
 
+export function lastSessionNote(snapshot: Pick<TapeSnapshot, "session" | "generatedAt" | "delaySeconds" | "asOf">): string | null {
+  const served = servedWindow(snapshot);
+  if (!served) return null;
+  const today = newYorkParts(Date.parse(snapshot.generatedAt)).date;
+  const observedDay = snapshot.asOf ? newYorkParts(Date.parse(snapshot.asOf)).date : served.date;
+  if (observedDay > served.date) return null;
+  return today > served.date || !served.cutoff ? `Market closed; last session ${sessionDay(served.date)}.` : null;
+}
+
 /** What TAS serves, for a window it cannot read: `Fri 16 Oct 2026, 04:00:00 ET (08:00:00 UTC) to ...`. */
 function servedWindowText(served: ServedWindow): string {
   const end = served.cutoff ? `${tapeMoment(served.to)}, the feed cutoff${served.delayMinutes ? ` (${served.delayMinutes} min delayed)` : ""}` : tapeMoment(served.to);
