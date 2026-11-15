@@ -569,3 +569,27 @@ test("a quarterly reporter missing a quarter's lines: the served TTM to the same
     trailing: { ...trailing.trailing, interim: { end: "2026-06-28", months: 6 } } } }, { period: "annual", statement: "income" })!;
   expect(nearby.statements[0]).toMatchObject({ date: "TTM", totalRevenue: 382.84e9, aggregation: { kind: "annual-plus-interim" } });
 });
+
+test("a cash flow table is in one unit, shows a line once, and works out capex intensity and the reinvestment rate", () => {
+  // Visa's FY2026 cash flow, in USD: depreciation and payables changes a thousandth of the rest, capex reported twice.
+  const year = (date: string, scale: number) => ({
+    date, currency: "USD", totalRevenue: 45.903e9 * scale, operatingIncome: 28.11e9 * scale, pretaxIncome: 28.093e9 * scale,
+    taxProvision: 4.589e9 * scale, freeCashFlow: 22.057e9 * scale, operatingCashFlow: 23.728e9 * scale, capitalExpenditure: -1.671e9 * scale,
+    purchaseOfPPE: -1.671e9 * scale, purchaseOfBusiness: -0.705e9 * scale, depreciationAndAmortization: 1.403e9 * scale,
+    changeInAccountPayable: 1e6 * scale, stockBasedCompensation: 0.928e9 * scale, netIncome: 23.504e9 * scale,
+  });
+  const model = buildFinancialTableModel(createTestFinancials({ annualStatements: [year("2025-09-30", 0.9), year("2026-09-30", 1)] }),
+    { period: "annual", statement: "cashflow", expandAll: true })!;
+  expect(model.unit).toBe("bn");
+  // No row names a unit of its own: the header's bn is every amount's.
+  expect(model.rows.filter((row) => /\((?:k|mn|bn|tn)\)$/.test(row.unitLabel)).map((row) => row.unitLabel)).toEqual([]);
+  const cell = (label: string) => model.rows.find((row) => row.label === label)?.cells[0]?.valueText.trim();
+  expect(cell("Stock-Based Comp")).toBe("0.928");
+  expect(cell("Acct Payable")).toBe("0.001");
+  // Operating cash flow is the Operating group's line, and Purchase PPE equals CapEx in every year: each is shown once.
+  expect(model.rows.filter((row) => row.label === "Operating CF" || row.label === "Purchase PPE")).toEqual([]);
+  expect(model.rows.filter((row) => row.label === "CapEx")).toHaveLength(1);
+  expect(cell("CapEx / Revenue")).toBe("3.6%");
+  // (1.671 + 0.705 - 1.403) / (28.11 x (1 - 4.589 / 28.093)) = 4.1%.
+  expect(cell("Reinvestment Rate")).toBe("4.1%");
+});
