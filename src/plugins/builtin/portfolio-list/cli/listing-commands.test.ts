@@ -220,7 +220,7 @@ test("one pasted list where the list name goes is a list of symbols, not a missi
     watchlists: [{ id: "growth", name: "Growth" }, { id: "watch-two", name: "Watch Two" }],
   };
   const run = (command: CliCommandDef, args: string[]) => caught(command.execute(args, hintedContext({ config, store }).context));
-  const watchlistUsage = "Usage: gloom watchlist add <watchlist> <symbols...> [--file <path>]";
+  const watchlistUsage = "Usage: gloom watchlist add <watchlist> <symbols...> [--file <path>] [--group <name>]";
 
   const pasted = await run(watchlistCliCommand, ["add", "  usdngn=x , USDZAR=X;  usdsar=x\n"]);
   expect(pasted?.message).toBe(
