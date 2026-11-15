@@ -470,7 +470,6 @@ export function historyRows(
         : {}),
     };
   });
-  roundToServedVolumeStep(rows, intraday);
   const breaks = historyBreakFlags(times, rows.map((row) => row.close), interval);
   const thin = thinVolumeBars(rows.map((row, index) => ({ ...row, contract: points[index]!.contract })));
   let contract: string | null = null;
@@ -500,18 +499,22 @@ const VOLUME_STEP_MIN_BARS = 5;
 const VOLUME_STEP_NEWEST = 2;
 
 /**
- * Daily or longer bars whose source serves volume in whole hundreds (round lots) and the newest one or two as exact
- * counts (the session's own feed): those take the hundred too, so the column reads at one precision, never
- * 6,764,700 above 4,650,114. Bars of another step, and intraday bars, stay as served.
+ * The volumes a text table prints at the step the rest of the column is in, by bar date: daily or longer bars whose
+ * source serves volume in whole hundreds (round lots) and the newest one or two as exact counts (the session's own
+ * feed) print those at the hundred too, so the column reads at one precision, never 6,764,700 above 4,650,114.
+ * Only the text rounds: the rows, `--json` and `--csv` keep every count as served. Empty for bars of another step
+ * and for intraday bars.
  */
-function roundToServedVolumeStep(rows: Array<{ volume: number | null }>, intraday: boolean): void {
-  if (intraday) return;
+export function historyTextVolumes(rows: ReadonlyArray<{ date: string; volume: number | null }>, intraday: boolean): Map<string, number> {
+  const shown = new Map<string, number>();
+  if (intraday) return shown;
   const recent = rows.slice(-VOLUME_STEP_BARS);
   const older = recent.slice(0, -VOLUME_STEP_NEWEST).flatMap((row) => row.volume != null && row.volume > 0 ? [row.volume] : []);
-  if (older.length < VOLUME_STEP_MIN_BARS || !older.every((volume) => volume % 100 === 0)) return;
+  if (older.length < VOLUME_STEP_MIN_BARS || !older.every((volume) => volume % 100 === 0)) return shown;
   for (const row of rows.slice(-VOLUME_STEP_NEWEST)) {
-    if (row.volume != null && row.volume % 100 !== 0) row.volume = Math.round(row.volume / 100) * 100;
+    if (row.volume != null && row.volume % 100 !== 0) shown.set(row.date, Math.round(row.volume / 100) * 100);
   }
+  return shown;
 }
 
 /** Bars on each side of a bar whose volumes it is held against. */
