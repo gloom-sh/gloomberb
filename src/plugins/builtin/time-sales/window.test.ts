@@ -8,6 +8,7 @@ test("Sunday at 14:00 New York labels Friday as the last session without labelli
     generatedAt: "2026-11-15T19:00:00Z", delaySeconds: 900 as const, asOf: "2026-11-13T20:59:59Z" };
   expect(lastSessionNote(snapshot)).toBe("Market closed; last session Fri 13 Nov 2026.");
   expect(servedWindow(snapshot)?.date).toBe("2026-11-13");
+  expect(lastSessionNote({ ...snapshot, generatedAt: "2026-11-16T15:00:00Z" })).toBe("Last available session Fri 13 Nov 2026.");
   expect(lastSessionNote({ ...snapshot, generatedAt: "2026-11-16T14:00:00Z", asOf: "2026-11-16T13:44:59Z" })).toBeNull();
 });
 

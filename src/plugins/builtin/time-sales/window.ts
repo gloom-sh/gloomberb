@@ -1,4 +1,5 @@
 import type { TapeRange, TapeSnapshot } from "../../../api-client/tape";
+import { isVenueTradingDay } from "../../../market-data/market/freshness";
 import { formatUtcDayTime } from "../../../utils/utc-time";
 import { tapeTimeKey } from "./model";
 
@@ -99,10 +100,12 @@ export function servedWindow(snapshot: Pick<TapeSnapshot, "session" | "generated
 export function lastSessionNote(snapshot: Pick<TapeSnapshot, "session" | "generatedAt" | "delaySeconds" | "asOf">): string | null {
   const served = servedWindow(snapshot);
   if (!served) return null;
-  const today = newYorkParts(Date.parse(snapshot.generatedAt)).date;
+  const now = newYorkParts(Date.parse(snapshot.generatedAt));
   const observedDay = snapshot.asOf ? newYorkParts(Date.parse(snapshot.asOf)).date : served.date;
   if (observedDay > served.date) return null;
-  return today > served.date || !served.cutoff ? `Market closed; last session ${sessionDay(served.date)}.` : null;
+  if (now.date <= served.date && served.cutoff) return null;
+  const closed = !isVenueTradingDay("NYSE", now.date) || now.seconds < SIP_OPEN || now.seconds >= SIP_CLOSE;
+  return `${closed ? "Market closed; last session" : "Last available session"} ${sessionDay(served.date)}.`;
 }
 
 /** What TAS serves, for a window it cannot read: `Fri 16 Oct 2026, 04:00:00 ET (08:00:00 UTC) to ...`. */

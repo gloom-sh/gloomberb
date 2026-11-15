@@ -1,8 +1,11 @@
-import { FRED_CATALOG_SERIES } from "../../plugins/builtin/econ/fred-catalog";
-import { CREDIT_SPREAD_SERIES } from "../../plugins/builtin/credit-conditions/series";
+import { FRED_CATALOG_SERIES } from "../../plugins/builtin/shared/fred-catalog";
+import { ICE_CREDIT_PUBLISHER, ICE_CREDIT_SERIES } from "../../time-series/ice-credit";
 import { seriesNotOnFred } from "./fred-series";
 
-const publishers = new Map([...FRED_CATALOG_SERIES, ...CREDIT_SPREAD_SERIES].map((series) => [series.id.slice(5), series.publisher!]));
+const publishers = new Map([
+  ...FRED_CATALOG_SERIES.map((series): [string, string] => [series.id.slice(5), series.publisher!]),
+  ...ICE_CREDIT_SERIES.map((series): [string, string] => [series.seriesId, ICE_CREDIT_PUBLISHER]),
+]);
 const additional: Readonly<Record<string, string>> = {
   GDPNOW: "Federal Reserve Bank of Atlanta",
   NFCI: "Federal Reserve Bank of Chicago",

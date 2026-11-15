@@ -126,7 +126,7 @@ describe("parseCliGlobalArgs", () => {
     // The rows are the file's, not stdout's, which says where they went.
     const bytes = await readFile(path);
     expect(bytes.subarray(0, 2).toString("hex")).not.toBe("fffe");
-    expect(bytes.toString("utf8")).toStartWith("version,bun,platform,arch,dataDir\n");
+    expect(bytes.toString("utf8")).toStartWith("version,bun,platform,arch,dataDir,export_notes\n");
     expect(printed.join("")).toBe(`Saved ${path}\n`);
     await rm(folder, { recursive: true, force: true });
   });

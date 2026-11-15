@@ -63,7 +63,7 @@ beforeEach(() => {
       "fred-series",
       `${seriesId}:limit=300:sort=desc`,
       entry(seriesId, index).data,
-      { sourceKey: "gloomberb-cloud", schemaVersion: 2 },
+      { sourceKey: "gloomberb-cloud", schemaVersion: 3 },
     );
   }
   attachFredSeriesPersistence(persistence);
@@ -87,7 +87,7 @@ test.each([80, 120])("mixed cached observation dates stay attached to credit val
   const old = entry("BAMLC0A4CBBB", 4).data;
   old.observations = old.observations.slice(0, 1);
   persistence.seedResource("fred-series", "BAMLC0A4CBBB:limit=300:sort=desc", old,
-    { sourceKey: "gloomberb-cloud", schemaVersion: 2 });
+    { sourceKey: "gloomberb-cloud", schemaVersion: 3 });
   requestSpy = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (seriesId) => {
     const index = CREDIT_SERIES.findIndex((definition) => definition.seriesId === seriesId);
     if (index < 0) throw new Error("Unknown fixture series");

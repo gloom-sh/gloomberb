@@ -23,7 +23,8 @@ const NOT_MODULES = new Set(["shared"]);
 // Transportation Security Administration, publishes the daily checkpoint travel numbers. DTCC's swap data
 // repository publishes the public CDS trade reports whose daily medians the CDX and sovereign CDS series are,
 // as `fn SOVR` and `fn CDX` name their source.
-const PUBLISHERS = new Set(["FRED", "BIS", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "Banxico", "Tesouro Nacional", "ECB", "U.S. Treasury", "SEC", "Ember", "EEX", "GIE AGSI+", "IMF PortWatch", "TurkStat", "IBGE", "NAHB", "MAS", "DefiLlama", "TSA", "DTCC"]);
+const PUBLISHERS = new Set(["FRED", "BIS", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "Banxico", "Tesouro Nacional", "ECB", "U.S. Treasury", "SEC", "Ember", "EEX", "GIE AGSI+", "IMF PortWatch", "TurkStat", "IBGE", "NAHB", "MAS", "DefiLlama", "TSA", "DTCC",
+  "ADP Research Institute", "Bureau of Economic Analysis", "Bureau of Economic Analysis and Census Bureau", "Bureau of Labor Statistics", "Cboe", "Census Bureau", "Department of Labor", "European Central Bank", "Federal Reserve Bank of New York", "Federal Reserve Bank of St. Louis", "Federal Reserve Board", "Freddie Mac", "Freddie Mac and Federal Reserve Board", "International Monetary Fund", "National Association of Realtors", "OECD", "U.S. Energy Information Administration", "University of Michigan", "ICE Data Indices"]);
 const SAMPLE_INPUTS = { ticker: "AAPL", option: "AAPL260618C00200000", crypto: "BTC-USD" } as const;
 
 function sourceFiles(dir: string): string[] {
