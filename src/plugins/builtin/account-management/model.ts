@@ -24,6 +24,8 @@ export type AccountFieldKey =
   | "chatEmailNotificationsEnabled"
   | "emailAlertsOffAction"
   | "upgradeAction"
+  | "yearlyPlanAction"
+  | "yearlyPlanDismissAction"
   | "cancelTrialAction"
   | "inviteCopyAction"
   | "assistantsAction"

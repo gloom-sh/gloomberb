@@ -37,6 +37,8 @@ export function useAccountManagementKeyboard({
   endTrial,
   copyInvite,
   turnOffEmailAlerts,
+  yearlyPlanAction,
+  dismissYearlyReview,
 }: {
   activeField: AccountFieldKey;
   cyclePortfolio: (delta: number) => void;
@@ -57,6 +59,10 @@ export function useAccountManagementKeyboard({
   endTrial: () => Promise<void>;
   copyInvite: () => void;
   turnOffEmailAlerts: () => Promise<void>;
+  /** The yearly row's action: review, pay or open the invoice. */
+  yearlyPlanAction: () => void;
+  /** Closes the yearly review while it is open, else null. */
+  dismissYearlyReview: (() => void) | null;
 }): FieldRing<AccountFieldKey> {
   const actions: Partial<Record<AccountFieldKey, () => void>> = {
     sharedPortfolioId: () => { void openPortfolioDialog(); },
@@ -68,6 +74,8 @@ export function useAccountManagementKeyboard({
     assistantsAction: openAssistants,
     deleteAccountAction: () => { void deleteAccount(); },
     emailAlertsOffAction: () => { void turnOffEmailAlerts(); },
+    yearlyPlanAction,
+    yearlyPlanDismissAction: () => dismissYearlyReview?.(),
   };
   for (const key of TOGGLE_FIELDS) actions[key] = () => setDraftValue(key, !draftRef.current[key]);
 
@@ -89,6 +97,12 @@ export function useAccountManagementKeyboard({
     if (event.ctrl && event.name === "s") {
       consume();
       void saveProfile();
+      return;
+    }
+    // Esc closes the yearly review, as Cancel does a form.
+    if (dismissYearlyReview && !event.targetEditable && isPlainKey(event, "escape")) {
+      consume();
+      dismissYearlyReview();
       return;
     }
     if (event.targetEditable || activeField !== "sharedPortfolioId") return;

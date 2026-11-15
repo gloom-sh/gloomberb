@@ -33,6 +33,7 @@ import { CloudTeamsApi } from "./teams";
 import { CloudTelemetryApi } from "./telemetry";
 import { CloudThesesApi } from "./theses";
 import { CloudViewsApi } from "./views";
+import { readYearlyPlanStatus, readYearlyResult, readYearlyReview } from "./yearly-plan";
 import type { CommandSearchReport } from "./telemetry";
 import type {
   AssistCommandDescriptor,
@@ -40,6 +41,9 @@ import type {
   AuthUser,
   CloudCancelFeedback,
   CloudSyncPushResponse,
+  CloudYearlyPlanStatus,
+  CloudYearlyResult,
+  CloudYearlyReview,
   CloudSyncSnapshotResponse,
   PersistedAuthUser
 } from "./types";
@@ -50,6 +54,7 @@ export type { ChatPaneLink } from "./chat-pane-link";
 export { NoteConflictError } from "./notes";
 export { ThesisConflictError, ThesisGoalpostError } from "./theses";
 export { TeamRevisionConflictError } from "./views";
+export { yearlyRefusalCode } from "./yearly-plan";
 export type * from "./types";
 export type {
   CommandSearchChoice,
@@ -641,6 +646,38 @@ class GloomApiClient {
       throw new Error("Could not open invoice payment.");
     }
     return { url: url.href };
+  }
+
+  /** Whether this account's monthly Pro can move to yearly billing; reads only. */
+  async getCloudYearlyPlan(): Promise<CloudYearlyPlanStatus> {
+    return readYearlyPlanStatus(await this.request<unknown>("/stripe/subscription/yearly", { method: "GET" }));
+  }
+
+  /** The exact charge of switching to yearly now. Charges nothing. */
+  async previewCloudYearlyPlan(): Promise<CloudYearlyReview> {
+    const body = await this.request<{ review?: unknown }>("/stripe/subscription/yearly/preview", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    const review = readYearlyReview(body?.review);
+    if (!review) throw new Error("Couldn't work out the yearly total. Try again in a minute.");
+    return review;
+  }
+
+  /**
+   * Switches to yearly billing for exactly what `token`'s review showed. Call it
+   * only after the person confirmed that review. Refusals (a total that moved,
+   * a switch already going through) are ApiRequestErrors; `yearlyRefusalCode`
+   * names them.
+   */
+  async confirmCloudYearlyPlan(token: string): Promise<CloudYearlyResult> {
+    const body = await this.request<unknown>("/stripe/subscription/yearly/confirm", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+    const result = readYearlyResult(body);
+    if (!result) throw new Error("We couldn't confirm the switch. Refresh your account before trying again.");
+    return result;
   }
 
   /**

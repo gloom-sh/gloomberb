@@ -2250,6 +2250,8 @@ Signing out pauses sync and keeps unsynced edits for your next sign-in to the sa
 
 **An unpaid Pro invoice.** `ACM` > Pro shows a Payment row when your personal subscription is past due, including when a team still gives you Pro. **Pay invoice** opens the current invoice in your browser to complete payment or use another card. A failed or unavailable payment page stays on that row instead of starting a new subscription. The row clears when your account refreshes after payment.
 
+**Switch to yearly billing.** When you pay for Pro monthly at the list price, `ACM` > Pro shows a Yearly row with the yearly price and what it saves against twelve monthly payments. **Review Yearly** shows the exact charge before anything is paid: the yearly price from today to your next yearly billing date, the credit for the rest of the month you already paid, any tax or account credit, the total due today and the renewal. Nothing is charged until you press **Pay … and Switch**; **Not Now** or Esc closes the review. Your billing date stays the same, so the first yearly charge covers today up to it and every renewal after is the full yearly price. If your bank asks to confirm the payment, or the card is declined, you stay on monthly billing and the row links to the invoice to finish it; an unpaid switch is dropped after about a day. The row is not shown for trials, teams, discounted or other prices, or a subscription set to cancel.
+
 ## Connect an AI assistant (MCP)
 
 `MCP` opens a short setup for the [Gloom MCP server](https://gloom.sh/docs/mcp) (typing mcp, claude, codex or cursor in the command bar, or `ACM` > Advanced > Assistants (MCP), finds it too). Pick the client and copy its one command or config with `c` or Copy.
