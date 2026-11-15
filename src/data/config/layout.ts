@@ -8,6 +8,7 @@ import type {
   PaneMovedFrom,
   PaneMovedLink,
   PanePlacementMemory,
+  PaneUnlinkedFrom,
 } from "../../types/config";
 import type { BrokerContractRef, TickerListingRef } from "../../types/instrument";
 import {
@@ -148,6 +149,17 @@ function sanitizePaneMovedFrom(value: unknown): PaneMovedFrom | undefined {
   };
 }
 
+function sanitizePaneUnlinkedFrom(value: unknown): PaneUnlinkedFrom | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.instanceId !== "string" || !raw.instanceId) return undefined;
+  return {
+    instanceId: raw.instanceId,
+    ...(typeof raw.paneId === "string" && raw.paneId ? { paneId: raw.paneId } : {}),
+    ...(raw.auto === true ? { auto: true as const } : {}),
+  };
+}
+
 function sanitizePlacementMemory(value: unknown): PanePlacementMemory | undefined {
   if (!value || typeof value !== "object") return undefined;
 
@@ -212,6 +224,7 @@ function sanitizePaneInstances(
       const binding = sanitizePaneBinding(entry.binding);
       const settings = sanitizePaneSettings(entry.settings);
       const movedFrom = sanitizePaneMovedFrom(entry.movedFrom);
+      const unlinkedFrom = sanitizePaneUnlinkedFrom(entry.unlinkedFrom);
       return {
         instanceId,
         paneId,
@@ -226,6 +239,7 @@ function sanitizePaneInstances(
         placementMemory: sanitizePlacementMemory(entry.placementMemory),
         locked: entry.locked === true ? true : undefined,
         ...(movedFrom ? { movedFrom } : {}),
+        ...(unlinkedFrom ? { unlinkedFrom } : {}),
       };
     });
   return instances;

@@ -9,6 +9,9 @@ import {
   type LayoutConfig,
 } from "../../../types/config";
 import type { PaneDef } from "../../../types/plugin";
+import { sanitizeLayout } from "../../../data/config/layout";
+import { resolveTickerActivation } from "../../../layout/ticker-navigation";
+import { retargetTickerPane } from "../../../layout/ticker-retarget";
 import { getPaneDisplayTitle } from "../pane/title";
 import { tickerLinkMenuItems } from "./ticker-link-menu";
 
@@ -254,6 +257,116 @@ describe("tickerLinkMenuItems", () => {
       title: "OMON SPY",
       binding: { kind: "fixed", symbol: "SPY" },
     });
+  });
+});
+
+// A research pane pinned without the user asking (its list closed, or another research pane took
+// the list) once stayed off the list for good, and Enter on a row stacked a new pane each time.
+describe("a research pane its link left", () => {
+  const research = "ticker-detail:main";
+  const portfolio = "portfolio-list:main";
+  const setup = (path: string) => {
+    const state = createInitialState(createDefaultConfig(path));
+    state.paneState[portfolio] = { collectionId: "main", cursorSymbol: "AAPL" };
+    return state;
+  };
+  const withPanes = (layout: LayoutConfig, ...added: ReturnType<typeof createPaneInstance>[]): LayoutConfig => ({
+    ...layout,
+    instances: [...layout.instances, ...added],
+    floating: [...layout.floating, ...added.map((instance, index) => ({ instanceId: instance.instanceId, x: index, y: index, width: 40, height: 12 }))],
+  });
+  const title = (state: ReturnType<typeof setup>, instanceId = research) => {
+    const instance = findPaneInstance(state.config.layout, instanceId)!;
+    return getPaneDisplayTitle(state, instance, panes.get(instance.paneId)!, panes);
+  };
+  const update = (state: ReturnType<typeof setup>, layout: LayoutConfig) => appReducer(state, { type: "UPDATE_LAYOUT", layout });
+
+  test("one displaced by another research pane follows its list again once that pane leaves it", () => {
+    let state = setup("/tmp/gloomberb-relink-displaced");
+    const second = createPaneInstance(TICKER_RESEARCH_PANE_ID, { instanceId: "ticker-detail:second", binding: { kind: "fixed", symbol: "MSFT" } });
+    state = update(state, withPanes(state.config.layout, second));
+    tickerLinkMenuItems({
+      instance: second,
+      layout: state.config.layout,
+      panes,
+      state,
+      persistLayout: (layout) => { state = update(state, layout); },
+    }).find((item) => item.id === `link:${portfolio}`)!.onSelect!();
+
+    expect(findPaneInstance(state.config.layout, research)).toMatchObject({
+      binding: { kind: "fixed", symbol: "AAPL" },
+      unlinkedFrom: { instanceId: portfolio, paneId: "portfolio-list", auto: true },
+    });
+    expect(title(state)).toBe("AAPL  ⧉ Unlinked");
+    expect(resolveTickerActivation(state.config.layout, portfolio)).toEqual({ kind: "focus", paneId: second.instanceId });
+
+    // A ticker the user picks for it makes the pin theirs: it stays when the list is free.
+    const searched = update(state, removePaneInstances(retargetTickerPane(state.config.layout,
+      findPaneInstance(state.config.layout, research)!, "NVDA", { previous: "AAPL" }), [second.instanceId]));
+    expect(findPaneInstance(searched.config.layout, research)).toMatchObject({
+      binding: { kind: "fixed", symbol: "NVDA" },
+      unlinkedFrom: { instanceId: portfolio, paneId: "portfolio-list" },
+    });
+    expect(findPaneInstance(searched.config.layout, research)?.unlinkedFrom?.auto).toBeUndefined();
+
+    state = update(state, removePaneInstances(state.config.layout, [second.instanceId]));
+    expect(findPaneInstance(state.config.layout, research)?.binding).toEqual({ kind: "follow", sourceInstanceId: portfolio });
+    expect(findPaneInstance(state.config.layout, research)?.unlinkedFrom).toBeUndefined();
+    expect(title(state)).toBe("AAPL  ⧉ Linked to Main Portfolio");
+  });
+
+  test("one whose list closed follows that kind of list opened again, not one already there", () => {
+    let state = setup("/tmp/gloomberb-relink-closed");
+    const watchlist = createPaneInstance("portfolio-list", { instanceId: "portfolio-list:watch", params: { collectionId: "watchlist" } });
+    state = update(state, withPanes(state.config.layout, watchlist));
+    state = update(state, removePaneInstances(state.config.layout, [portfolio]));
+
+    expect(findPaneInstance(state.config.layout, research)).toMatchObject({
+      binding: { kind: "fixed", symbol: "AAPL" },
+      unlinkedFrom: { instanceId: portfolio, paneId: "portfolio-list", auto: true },
+    });
+    expect(title(state)).toBe("AAPL  ⧉ Unlinked");
+    // A restart keeps how it was pinned.
+    expect(findPaneInstance(sanitizeLayout(JSON.parse(JSON.stringify(state.config.layout)), state.config.layout), research)?.unlinkedFrom)
+      .toEqual({ instanceId: portfolio, paneId: "portfolio-list", auto: true });
+    // Enter on the list that was there shows the row in it rather than stacking another pane.
+    expect(resolveTickerActivation(state.config.layout, watchlist.instanceId)).toEqual({ kind: "open", reusePaneId: research });
+    expect(resolveTickerActivation(state.config.layout, watchlist.instanceId, { newPane: true })).toEqual({ kind: "open" });
+
+    const reopened = createPaneInstance("portfolio-list", { instanceId: "portfolio-list:reopened", params: { collectionId: "main" } });
+    state = update(state, withPanes(state.config.layout, reopened));
+    expect(findPaneInstance(state.config.layout, research)?.binding).toEqual({ kind: "follow", sourceInstanceId: reopened.instanceId });
+    expect(resolveTickerActivation(state.config.layout, reopened.instanceId)).toEqual({ kind: "focus", paneId: research });
+  });
+
+  test("one the user unlinked stays pinned, and Enter reuses it while it is the only one", () => {
+    let state = setup("/tmp/gloomberb-relink-user");
+    const menu = () => tickerLinkMenuItems({
+      instance: findPaneInstance(state.config.layout, research)!,
+      layout: state.config.layout,
+      panes,
+      state,
+      persistLayout: (layout) => { state = update(state, layout); },
+    });
+    menu().find((item) => item.id === `unlink:${portfolio}`)!.onSelect!();
+    expect(findPaneInstance(state.config.layout, research)).toMatchObject({
+      binding: { kind: "fixed", symbol: "AAPL" },
+      unlinkedFrom: { instanceId: portfolio, paneId: "portfolio-list" },
+    });
+    expect(title(state)).toBe("AAPL  ⧉ Unlinked");
+
+    const reopened = createPaneInstance("portfolio-list", { instanceId: "portfolio-list:other", params: { collectionId: "main" } });
+    state = update(state, withPanes(state.config.layout, reopened));
+    expect(findPaneInstance(state.config.layout, research)?.binding).toEqual({ kind: "fixed", symbol: "AAPL" });
+    expect(resolveTickerActivation(state.config.layout, portfolio)).toEqual({ kind: "open", reusePaneId: research });
+
+    // With two pinned and neither cut by the app, there is no telling which one Enter means.
+    const typed = createPaneInstance(TICKER_RESEARCH_PANE_ID, { instanceId: "ticker-detail:typed", binding: { kind: "fixed", symbol: "MSFT" } });
+    expect(resolveTickerActivation(withPanes(state.config.layout, typed), portfolio)).toEqual({ kind: "open" });
+
+    menu().find((item) => item.id === `link:${portfolio}`)!.onSelect!();
+    expect(findPaneInstance(state.config.layout, research)?.unlinkedFrom).toBeUndefined();
+    expect(title(state)).toBe("AAPL  ⧉ Linked to Main Portfolio");
   });
 });
 

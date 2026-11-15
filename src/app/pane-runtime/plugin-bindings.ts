@@ -42,6 +42,7 @@ import {
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
 } from "../../layout/ticker-navigation";
+import { userUnlinkedFrom } from "../../layout/pane-follow";
 import {
   resolveTickerForPane,
   type AppAction,
@@ -367,11 +368,12 @@ export function bindAppPanePluginRegistry({
               ...(instrument !== undefined ? { instrument } : {}),
               ...(target.listing ? { listing: target.listing } : {}),
             };
+            const unlinkedFrom = userUnlinkedFrom(detailPane, currentLayout);
             const nextLayout = {
               ...currentLayout,
               instances: currentLayout.instances.map((instance) => (
                 instance.instanceId === detailPane.instanceId
-                  ? { ...instance, title: tickerInstrumentLabel(symbol, instrument), binding }
+                  ? { ...instance, title: tickerInstrumentLabel(symbol, instrument), binding, ...(unlinkedFrom ? { unlinkedFrom } : {}) }
                   : instance
               )),
             };

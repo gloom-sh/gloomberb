@@ -17,6 +17,7 @@ export const ja: Record<string, string> = {
   "Linked to {source}": "{source} にリンク中",
   "Link to {source}": "{source} にリンク",
   "Unlink from {source}": "{source} とのリンクを解除",
+  "Unlinked": "リンク解除済み",
   "Working…": "処理中…",
   "Searching…": "検索中…",
   "Loading...": "読み込み中...",

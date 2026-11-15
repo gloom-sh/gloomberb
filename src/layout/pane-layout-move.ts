@@ -11,7 +11,7 @@ import {
   type PaneMovedFrom,
   type PaneMovedLink,
 } from "../types/config";
-import { pinFollowingPane } from "./pane-follow";
+import { linkFollower, pinOrphanedFollower } from "./pane-follow";
 import { findDockLeaf, getNodeAtPath, getRepresentativeLeafId } from "./pane-manager/dock-tree";
 import { dockPane, insertAtRootEdge, resizeSplitAtPath } from "./pane-manager/docking";
 import { floatAtRect } from "./pane-manager/floating-actions";
@@ -68,20 +68,23 @@ function movedLink(before: PaneInstanceConfig, after: PaneInstanceConfig, symbol
 
 /**
  * Pins every pane whose link source is gone on the ticker it showed, the way
- * closing that source does, and says which links were cut.
+ * closing that source does, and says which links were cut. `previous` is the
+ * layout the source left.
  */
 function pinOrphanedFollowers(
   layout: LayoutConfig,
+  previous: LayoutConfig,
   resolveSymbol: ResolvePaneSymbol,
 ): { layout: LayoutConfig; links: PaneMovedLink[] } {
   const ids = new Set(layout.instances.map((instance) => instance.instanceId));
+  const pin = pinOrphanedFollower(previous);
   const links: PaneMovedLink[] = [];
   let changed = false;
   const instances = layout.instances.map((instance) => {
     if (instance.binding?.kind !== "follow" || ids.has(instance.binding.sourceInstanceId)) return instance;
     changed = true;
     const symbol = resolveSymbol(instance.instanceId)?.trim() || null;
-    const pinned = pinFollowingPane(instance, symbol);
+    const pinned = pin(instance, symbol);
     if (symbol) links.push(movedLink(instance, pinned, symbol));
     return pinned;
   });
@@ -132,14 +135,14 @@ export function movePaneToOwnLayout(
   const floating: FloatingPlacementMemory | undefined = floatingEntry
     ? { x: floatingEntry.x, y: floatingEntry.y, width: floatingEntry.width, height: floatingEntry.height }
     : undefined;
-  const left = pinOrphanedFollowers(removePane(layout, paneId), resolveSymbol);
+  const left = pinOrphanedFollowers(removePane(layout, paneId), layout, resolveSymbol);
 
   // Alone in its layout the pane has nothing to follow, so it keeps the ticker it shows.
   let moved: PaneInstanceConfig = instance;
   const links: PaneMovedLink[] = [];
   if (instance.binding?.kind === "follow") {
     const symbol = resolveSymbol(paneId)?.trim() || null;
-    moved = pinFollowingPane(instance, symbol);
+    moved = pinOrphanedFollower(layout)(instance, symbol);
     if (symbol) links.push(movedLink(instance, moved, symbol));
   }
   links.push(...left.links);
@@ -223,7 +226,7 @@ function relink(layout: LayoutConfig, links: readonly PaneMovedLink[]): LayoutCo
       ...next,
       instances: next.instances.map((entry) => (
         entry.instanceId === link.instanceId
-          ? { ...entry, binding: { kind: "follow", sourceInstanceId: link.sourceInstanceId }, ...("title" in link ? { title: link.title } : {}) }
+          ? { ...linkFollower(entry, link.sourceInstanceId), ...("title" in link ? { title: link.title } : {}) }
           : entry
       )),
     };
@@ -246,7 +249,7 @@ export function movePaneBack(
   const instance = findPaneInstance(layout, paneId);
   const movedFrom = instance?.movedFrom;
   if (!instance || !movedFrom) return null;
-  const left = pinOrphanedFollowers(removePane(layout, paneId), resolveSymbol).layout;
+  const left = pinOrphanedFollowers(removePane(layout, paneId), layout, resolveSymbol).layout;
   const { movedFrom: _movedFrom, ...returning } = instance;
   // A copy an undo put back in the target gives way to the pane coming home.
   const base = findPaneInstance(target, paneId) ? removePane(target, paneId) : target;

@@ -339,6 +339,42 @@ test("a ticker link brings forward the DES the command bar opened on the public 
   expect(stateRef.current.config.layout.instances).toEqual([des]);
 });
 
+// Enter on a list row with no research pane of its own stacked a new pane per row.
+test("Enter from a list shows its ticker in the pinned research pane it names, keeping how it was pinned", async () => {
+  const config = createDefaultConfig(":memory:");
+  const pinned = {
+    ...createPaneInstance(TICKER_RESEARCH_PANE_ID, { instanceId: "ticker-research:pinned", title: "AAPL", binding: { kind: "fixed", symbol: "AAPL" } }),
+    unlinkedFrom: { instanceId: "portfolio-list:main", paneId: "portfolio-list" },
+  };
+  config.layout = { dockRoot: null, instances: [pinned], floating: [{ instanceId: pinned.instanceId, x: 2, y: 2, width: 80, height: 20, zIndex: 1 }], detached: [] };
+  const stateRef = { current: createInitialState(config) };
+  stateRef.current.tickers.set("MSFT", createTestTicker("MSFT", "Microsoft Corporation", { exchange: "NASDAQ" }));
+  const focused: string[] = [];
+  let runtime!: ReturnType<typeof useAppTickerOpenRuntime>;
+  function Harness() {
+    runtime = useAppTickerOpenRuntime({ stateRef, dataProvider: createTestDataProvider(), tickerRepository: {} as any, dispatch() {},
+      pluginRegistry: { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} }, notify() {},
+        getTermSize: () => ({ width: 120, height: 40 }), getDisabledPaneOwner: () => null } as any,
+      buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: "ticker-research:stacked" }),
+      persistLayout: (layout) => { stateRef.current.config.layout = layout; },
+      activatePane: (paneId) => { focused.push(paneId); }, focusVisiblePane: (paneId) => { focused.push(paneId); },
+    });
+    return <text>Research</text>;
+  }
+  const rendered = await tui.render(<Harness />);
+  await act(async () => { await rendered.renderOnce(); });
+  await act(async () => {
+    await runtime.openPinnedTicker("MSFT", { floating: true, paneType: TICKER_RESEARCH_PANE_ID, reusePaneId: pinned.instanceId });
+  });
+  expect(focused).toEqual([pinned.instanceId]);
+  expect(stateRef.current.config.layout.instances).toHaveLength(1);
+  expect(stateRef.current.config.layout.instances[0]).toMatchObject({
+    instanceId: pinned.instanceId,
+    binding: { kind: "fixed", symbol: "MSFT" },
+    unlinkedFrom: pinned.unlinkedFrom,
+  });
+});
+
 // With Ticker Research off, its pane would be added and then hidden.
 test("opening a ticker while its pane's plugin is off offers to turn it on instead", async () => {
   const config = createDefaultConfig(":memory:");

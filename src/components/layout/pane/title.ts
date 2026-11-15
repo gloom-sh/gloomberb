@@ -6,7 +6,7 @@ import {
   type PaneInstanceConfig,
 } from "../../../types/config";
 import type { PaneDef } from "../../../types/plugin";
-import { paneTitleMnemonic, TITLE_TICKER } from "../../../layout/pane-follow";
+import { isUnlinkedFollower, paneTitleMnemonic, TITLE_TICKER } from "../../../layout/pane-follow";
 import { canFollowTickerSource, isTickerLinkPeer } from "../../../layout/ticker-navigation";
 import { withoutCryptoVenueCode } from "../../../utils/crypto-pair";
 import { displayTickerKey } from "../../../utils/exchanges";
@@ -94,9 +94,13 @@ export function getPaneDisplayTitle(
   panes?: ReadonlyMap<string, PaneDef>,
 ): string {
   const title = getBasePaneDisplayTitle(state, instance, paneDef, panes);
-  if (instance.binding?.kind !== "follow" || !panes) return title;
+  if (!panes) return title;
   const research = instance.paneId === TICKER_RESEARCH_PANE_ID;
   if (!research && !canFollowTickerSource(instance, panes)) return title;
+  // A pane its link left (an unlink, its source closed, or another research pane took it) says
+  // so where it named the source, until it follows a pane again.
+  if (isUnlinkedFollower(instance)) return `${title}  ${LINK_GLYPH} ${t("Unlinked")}`;
+  if (instance.binding?.kind !== "follow") return title;
 
   const source = findPaneInstance(state.config.layout, instance.binding.sourceInstanceId);
   const sourceDef = source ? panes.get(source.paneId) : null;

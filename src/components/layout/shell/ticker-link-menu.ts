@@ -8,7 +8,7 @@ import {
 import { isPaneInLayout } from "../../../layout/pane-manager";
 import { resolveTickerForPane, type AppState } from "../../../state/app/context";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
-import { paneTitleMnemonic, pinFollowingPane } from "../../../layout/pane-follow";
+import { linkFollower, paneTitleMnemonic, pinFollowingPane } from "../../../layout/pane-follow";
 import {
   findPaneInstance,
   TICKER_RESEARCH_PANE_ID,
@@ -45,11 +45,15 @@ export function tickerLinkMenuItems({
   const linkable = research || canFollowTickerSource(instance, panes);
 
   const sourceInstanceId = instance.binding?.kind === "follow" ? instance.binding.sourceInstanceId : null;
+  const sourcePaneId = (id: string) => findPaneInstance(layout, id)?.paneId;
   const unlink = (symbol: string) => {
     const contract = resolveInstrumentForPane(state, instance.instanceId)?.instrument;
     persistLayout(updatePaneInstance(layout, instance.instanceId, (current) => {
       const mnemonic = research ? null : paneTitleMnemonic(current.title);
-      return pinFollowingPane(mnemonic ? { ...current, title: mnemonic } : current, symbol, contract);
+      // The user's own unlink: the pane stays on its ticker until they link it again.
+      return pinFollowingPane(mnemonic ? { ...current, title: mnemonic } : current, symbol, contract, {
+        sourcePaneId: sourceInstanceId ? sourcePaneId(sourceInstanceId) : undefined,
+      });
     }));
   };
   const linkToSource = (nextSourceId: string) => {
@@ -59,11 +63,7 @@ export function tickerLinkMenuItems({
         if (current.instanceId === instance.instanceId) {
           // The stored title drops its ticker ("OMON AAPL" to "OMON"); the header adds the live one.
           const mnemonic = research ? null : paneTitleMnemonic(current.title);
-          return {
-            ...current,
-            ...(mnemonic ? { title: mnemonic } : {}),
-            binding: { kind: "follow" as const, sourceInstanceId: nextSourceId },
-          };
+          return linkFollower(mnemonic ? { ...current, title: mnemonic } : current, nextSourceId);
         }
         // Ticker Research keeps one follower per source, so Enter on a source row has one target.
         // Any number of other panes may follow the same source.
@@ -73,7 +73,11 @@ export function tickerLinkMenuItems({
           || current.binding?.kind !== "follow"
           || current.binding.sourceInstanceId !== nextSourceId
         ) return current;
-        return pinFollowingPane(current, resolveTickerForPane(state as AppState, current.instanceId));
+        // The pane it displaces follows the source again once this one leaves it.
+        return pinFollowingPane(current, resolveTickerForPane(state as AppState, current.instanceId), undefined, {
+          auto: true,
+          sourcePaneId: sourcePaneId(nextSourceId),
+        });
       }),
     });
   };

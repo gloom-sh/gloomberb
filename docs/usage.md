@@ -111,6 +111,9 @@ A pane that shows one ticker (`GP`, `GIP`, `GF`, `GE`, `OMON`, `OPX`, `SEAS`, `F
 - A chart links when all its lines are one ticker's, whatever the fields: `GF AAPL` with revenue and total debt moves both lines to the selected row and keeps their fields, range and settings. FRED lines stay as they are. A chart of two tickers (`GF AAPL MSFT`, `CMP`) has no **Link to**.
 - It can also follow another single-ticker pane (**Link to Ticker Research AAPL**), so a desk of option panes moves with one research pane.
 - **Unlink from** keeps the ticker the pane shows. If the list was empty, a linked `OMON`, `CN`, `FA`, `HP`, `SEC`, `INS`, `HDS`, `ANR`, `EVT` or `EE` pane has no ticker to keep and closes.
+- A pane that leaves its list keeps its ticker and says so in its title (`AAPL  ⧉ Unlinked`) until you link it again: after **Unlink from**, a ticker you pick for it with ticker search, a ticker link you follow inside the research pane, or when the list it follows closes.
+- The research pane follows one list at a time, and a list has one research pane. Linking a second one to the list unlinks the first. A research pane unlinked that way, or by its list closing, follows the list again on its own once that list has no research pane: when the other pane closes or leaves the list, or when you open a list of the closed one's kind again (`PF` after closing the portfolio). One you unlinked yourself stays on its ticker.
+- Enter on a row of a list with no research pane of its own shows the ticker in the layout's research pane that follows no list, rather than opening another each time. With several such panes, it uses one unlinked on its own, else opens a pane as before. `Shift+Enter` always opens a new pane.
 - Typing `OPX AAPL` while a linked OPX is open opens a separate pane.
 
 ### Move to New Layout
