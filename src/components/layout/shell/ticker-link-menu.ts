@@ -2,13 +2,12 @@ import { tf } from "../../../i18n";
 import { updatePaneInstance } from "../../../pane-settings";
 import {
   canFollowTickerSource,
-  followBindingReaches,
   isTickerLinkPeer,
 } from "../../../layout/ticker-navigation";
 import { isPaneInLayout } from "../../../layout/pane-manager";
 import { resolveTickerForPane, type AppState } from "../../../state/app/context";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
-import { linkFollower, paneTitleMnemonic, pinFollowingPane } from "../../../layout/pane-follow";
+import { followBindingReaches, linkFollower, paneTitleMnemonic, pinFollowingPane } from "../../../layout/pane-follow";
 import {
   findPaneInstance,
   TICKER_RESEARCH_PANE_ID,

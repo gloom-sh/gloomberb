@@ -1,13 +1,14 @@
+// Only types and the layout model: the public share page bundles this module, and the pane
+// manager and ticker navigation would bring the app (and its signed-in clients) in with it.
 import {
   findPaneInstance,
+  getPlacedPaneInstanceIds,
   TICKER_RESEARCH_PANE_ID,
   type LayoutConfig,
   type PaneInstanceConfig,
   type PaneUnlinkedFrom,
 } from "../types/config";
 import type { BrokerContractRef } from "../types/instrument";
-import { isPaneInLayout } from "./pane-manager";
-import { findTickerResearchFollower, followBindingReaches } from "./ticker-navigation";
 
 const PANE_TITLE_MNEMONIC = /^([A-Z][A-Z0-9]{0,7})(?=\s|$)/;
 /** One ticker key as a template writes it after the command: "AAPL", "BRK.B", "BTC-USD:CCC", "^SPX". */
@@ -31,6 +32,21 @@ export function pinnedTitle(instance: PaneInstanceConfig, pinned: string): strin
   if (!title || !mnemonic) return null;
   const rest = title.slice(mnemonic.length).trim();
   return !rest || TITLE_TICKER.test(rest) ? `${mnemonic} ${pinned}` : null;
+}
+
+/** True when `fromInstanceId`'s follow chain reaches `targetInstanceId`. */
+export function followBindingReaches(
+  layout: LayoutConfig,
+  fromInstanceId: string,
+  targetInstanceId: string,
+  seen = new Set<string>(),
+): boolean {
+  if (seen.has(fromInstanceId)) return false;
+  seen.add(fromInstanceId);
+  const instance = findPaneInstance(layout, fromInstanceId);
+  if (instance?.binding?.kind !== "follow") return false;
+  const next = instance.binding.sourceInstanceId;
+  return next === targetInstanceId || followBindingReaches(layout, next, targetInstanceId, seen);
 }
 
 /** Who cut a follower's link, and the kind of pane it followed (`PaneUnlinkedFrom`). */
@@ -123,6 +139,9 @@ export function pinOrphanedFollower(
  * unlinked, or gave a ticker of its own, stays pinned.
  */
 export function relinkPinnedResearchPanes(layout: LayoutConfig, previous: LayoutConfig): LayoutConfig {
+  if (!layout.instances.some((pane) => pane.unlinkedFrom?.auto)) return layout;
+  // Relinking moves no pane, so what is placed stays as `layout` has it.
+  const placed = new Set(getPlacedPaneInstanceIds(layout));
   let next = layout;
   for (const pane of layout.instances) {
     const from = pane.unlinkedFrom;
@@ -130,12 +149,18 @@ export function relinkPinnedResearchPanes(layout: LayoutConfig, previous: Layout
       pane.paneId !== TICKER_RESEARCH_PANE_ID
       || !from?.auto
       || pane.binding?.kind === "follow"
-      || !isPaneInLayout(next, pane.instanceId)
+      || !placed.has(pane.instanceId)
     ) continue;
+    const hasResearch = (sourceId: string) => next.instances.some((instance) => (
+      instance.paneId === TICKER_RESEARCH_PANE_ID
+      && instance.binding?.kind === "follow"
+      && instance.binding.sourceInstanceId === sourceId
+      && placed.has(instance.instanceId)
+    ));
     const free = (candidate: PaneInstanceConfig) => (
       candidate.instanceId !== pane.instanceId
-      && isPaneInLayout(next, candidate.instanceId)
-      && !findTickerResearchFollower(next, candidate.instanceId)
+      && placed.has(candidate.instanceId)
+      && !hasResearch(candidate.instanceId)
       && !followBindingReaches(next, candidate.instanceId, pane.instanceId)
     );
     const original = findPaneInstance(next, from.instanceId);
