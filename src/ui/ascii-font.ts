@@ -72,10 +72,7 @@ const GLOOMBERB_WORDMARK = [
 /** The first five letters of the wordmark above. */
 const GLOOM_WORDMARK = GLOOMBERB_WORDMARK.map((line) => line.slice(0, 15));
 
-/**
- * The drawn wordmarks, by the text they spell. The app is Gloom; chart
- * screenshots keep the Gloomberb watermark.
- */
+/** The drawn wordmarks, by the text they spell. */
 const WORDMARKS = new Map<string, string[]>([
   ["gloom", GLOOM_WORDMARK],
   ["gloomberb", GLOOMBERB_WORDMARK],

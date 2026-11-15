@@ -1,6 +1,7 @@
 import { mkdir } from "fs/promises";
 import { join } from "path";
 import { cacheDir, evaluate, frames, mouse, type Cdp } from "./browser";
+import { renderAsciiText } from "../../src/ui/ascii-font";
 
 interface Expected { id: string; panel: string; side: string; value: number; label: string; ratio: number; color: string; carried: boolean }
 interface Rect { x: number; y: number; width: number; height: number }
@@ -254,3 +255,59 @@ export const axisSteps = ["desktop", "browser"].flatMap((host) => [640, 1280].fl
 }))))));
 
 axisSteps.push(...toolSteps);
+
+axisSteps.push({
+  name: "chart screenshot watermark: glyph sizing, centering and capture-only visibility",
+  scenario: "cmp",
+  async run(cdp) {
+    const lines = renderAsciiText("Gloom", "wordmark");
+    const base = { width: Math.max(...lines.map((line) => [...line].length)) * 8, height: lines.length * 12 };
+    try {
+      for (const [width, height] of [[1400, 900], [480, 500], [300, 240]]) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+        await frames(cdp, 12);
+        await evaluate(cdp, `(async () => {
+          const pane = document.querySelector('[data-gloom-pane-id="chart-composer:a"]');
+          const mark = pane?.querySelector('[data-gloom-role=chart-watermark]');
+          if (${width} === 300) {
+            if (mark) throw new Error('An illegible watermark was mounted on a tiny plot');
+            return;
+          }
+          const canvas = mark?.querySelector('canvas');
+          if (!canvas) throw new Error('A legible plot has no watermark');
+          const plot = mark.getBoundingClientRect(), word = canvas.getBoundingClientRect();
+          const base = ${JSON.stringify(base)};
+          const scale = Math.round(Math.min(plot.width * 0.5 / base.width, plot.height * 0.4 / base.height, 3) * 4) / 4;
+          if (Math.abs(word.width - base.width * scale) > 1 || Math.abs(word.height - base.height * scale) > 1) {
+            throw new Error('Watermark sizing does not match its drawn glyph grid');
+          }
+          if (Math.abs(word.x + word.width / 2 - plot.x - plot.width / 2) > 0.5
+            || Math.abs(word.y + word.height / 2 - plot.y - plot.height / 2) > 0.5) {
+            throw new Error('Watermark is not centered in the plot');
+          }
+          if (word.x < plot.x || word.y < plot.y || word.right > plot.right || word.bottom > plot.bottom) {
+            throw new Error('Watermark is clipped');
+          }
+          if (getComputedStyle(mark).visibility !== 'hidden') throw new Error('Interactive chart reveals its watermark');
+          let painted = 0;
+          const original = CanvasRenderingContext2D.prototype.drawImage;
+          CanvasRenderingContext2D.prototype.drawImage = function(image, ...args) {
+            if (image === canvas) {
+              if (getComputedStyle(mark).visibility !== 'visible') throw new Error('Capture did not reveal its watermark');
+              painted++;
+            }
+            return original.call(this, image, ...args);
+          };
+          try { await window.__paneChrome.capturePane(pane.dataset.gloomPaneId); }
+          finally { CanvasRenderingContext2D.prototype.drawImage = original; }
+          if (painted !== 1) throw new Error('Capture did not paint the watermark once');
+          if (getComputedStyle(mark).visibility !== 'hidden' || document.documentElement.hasAttribute('data-gloom-screenshot')) {
+            throw new Error('Capture did not restore the hidden watermark');
+          }
+        })()`);
+      }
+    } finally {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+    }
+  },
+});
