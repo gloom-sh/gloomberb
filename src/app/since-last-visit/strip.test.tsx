@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { act, useEffect } from "react";
+import { act, useEffect, useState } from "react";
 import { AppPersistence } from "../../data/app-persistence";
 import { setConfigStoreHost, type ConfigStoreHost } from "../../data/config/store";
 import type { QueryEntry } from "../../market-data/result-types";
@@ -14,6 +14,13 @@ import { createDefaultConfig, type AppConfig } from "../../types/config";
 import type { Quote } from "../../types/financials";
 import type { AppNotificationRequest } from "../../types/plugin";
 import type { TickerRecord } from "../../types/ticker";
+import type { UsageCountsPayload } from "../../api-client";
+import {
+  flushUsageCounts,
+  installUsageCounter,
+  resetUsageCountsForTests,
+  subscribeFunctionOpens,
+} from "../../telemetry/usage-counts";
 import { pressSinceLastVisitKey } from "./keys";
 import type { VisitBaseline } from "./model";
 import { SinceLastVisitStrip } from "./strip";
@@ -124,6 +131,8 @@ const TICKERS = new Map<string, TickerRecord>([
 interface Launch {
   getState: () => AppState;
   dispatch: ReturnType<typeof useAppDispatch>;
+  /** Setup or the sign-in gate in front of the workspace (false), or not. */
+  setActive: (active: boolean) => void;
 }
 
 async function launch({
@@ -143,12 +152,14 @@ async function launch({
     const dispatch = useAppDispatch();
     handle.getState = useAppGetState();
     handle.dispatch = dispatch;
+    const [active, setActive] = useState(true);
+    handle.setActive = setActive;
     useEffect(() => {
       dispatch({ type: "SET_TICKERS", tickers: new Map(TICKERS) });
       dispatch({ type: "SET_INITIALIZED" });
     }, [dispatch]);
     const strip = useSinceLastVisit({
-      active: true,
+      active,
       marketData,
       pluginState: persistence.pluginState,
       notify: (request) => notices.push(request),
@@ -184,6 +195,7 @@ describe("SinceLastVisitStrip", () => {
     await flushPendingPersistence();
     Date.now = realNow;
     setConfigStoreHost(null);
+    resetUsageCountsForTests();
     for (const persistence of persistences.splice(0)) persistence.close();
     removeTempDbFiles();
   });
@@ -235,6 +247,58 @@ describe("SinceLastVisitStrip", () => {
     // B has no last visit here; A's was read once and is still A's, untouched.
     expect(marketData.batches).toHaveLength(1);
     expect(createVisitBaselineStore(openProfile(path).pluginState).load("account:a")).toEqual(lastVisit("account:a"));
+  });
+
+  test("showing counts as on screen at launch, never as an open, and not at all with usage counts off", async () => {
+    for (const enabled of [true, false]) {
+      const sent: UsageCountsPayload[] = [];
+      installUsageCounter({
+        surface: "terminal",
+        isEnabled: () => enabled,
+        getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
+        send: async (payload) => {
+          sent.push(payload);
+        },
+      });
+      let opens = 0;
+      const stopListening = subscribeFunctionOpens(() => {
+        opens += 1;
+      });
+      const path = createTempDbPath("since-last-visit");
+      seed(path, lastVisit());
+      const marketData = fakeMarketData(new Map([["NVDA", quote("NVDA", 110)]]));
+      await launch({ path, marketData });
+      await answer(marketData);
+      await tui.waitForFrameToContain(LEAD);
+      await flushUsageCounts({ timeoutMs: 500 });
+      stopListening();
+
+      // A strip showing itself is not the user opening a function: the One Tap prompt and the like never hear of it.
+      expect(opens).toBe(0);
+      expect(sent.flatMap((payload) => payload.counts)).toEqual(enabled ? [{ fn: "LASTVISIT", opened: 0, restored: 1 }] : []);
+      await tui.destroy();
+      resetUsageCountsForTests();
+    }
+  });
+
+  test("setup or the sign-in gate in front of the workspace takes the strip and its keys away until it closes", async () => {
+    const path = createTempDbPath("since-last-visit");
+    seed(path, lastVisit());
+    const marketData = fakeMarketData(new Map([["NVDA", quote("NVDA", 110)]]));
+    const app = await launch({ path, marketData });
+    await answer(marketData);
+    await tui.waitForFrameToContain(LEAD);
+
+    // Run Setup Again opens in front of it.
+    await act(async () => app.setActive(false));
+    await tui.waitForFrameToExclude(LEAD);
+    expect(pressSinceLastVisitKey("open")).toBe(false);
+
+    await act(async () => app.setActive(true));
+    await tui.waitForFrameToContain(LEAD);
+    await act(async () => {
+      expect(pressSinceLastVisitKey("dismiss")).toBe(true);
+    });
   });
 
   test("Hide puts it away for the session, and a relaunch soon after compares with this visit", async () => {

@@ -241,6 +241,23 @@ export function recordRestoredFunctions(fns: readonly UsageFunction[]): void {
   }
 }
 
+/**
+ * Counts a function that put itself on screen at launch, with nothing opened
+ * by the user (the since-last-visit strip): in `restored`, never `opened`, and
+ * no open listener hears of it. Unlike `recordRestoredFunctions` it can be
+ * called on its own, once the function knows it showed. Never throws.
+ */
+export function recordFunctionShown(fn: UsageFunction): void {
+  try {
+    if (automationDepth > 0) return;
+    if (host && !host.isEnabled()) return;
+    count(fn, "restored");
+    scheduleFlush();
+  } catch (error) {
+    logFailure("telemetry-usage-counts", "Could not record a function shown at launch")(error);
+  }
+}
+
 /** The install as its usage counts name it: the random install id, the surface and the OS. */
 export interface UsageInstall {
   installId: string;

@@ -81,7 +81,7 @@ How often:
 - It sends each function's mnemonic (such as `DES` or `GP`) with those two counts, the surface, the app version and the operating system.
 - It sends them a minute after the first count, then every 15 minutes, and when you quit.
 - Functions from plugins other than the official gloom-sh ones are sent as `plugin`, so their names never leave your machine.
-- The since-last-visit strip counts as `LASTVISIT` when it shows, `LASTVISIT-OPEN` when a ticker is opened from it and `LASTVISIT-OFF` when it is turned off. Which tickers it named or moved never leaves your machine.
+- The since-last-visit strip counts as `LASTVISIT` on screen at launch when it shows (it opened itself, so that is not counted as a function you opened), as `LASTVISIT-OPEN` opened when you open a ticker from it and as `LASTVISIT-OFF` opened when you turn it off. Which tickers it named or moved never leaves your machine.
 - The server adds your plan (signed out, Free or Pro); the counts are never tied to your account.
 
 ### Also covered by the usage setting

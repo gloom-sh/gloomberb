@@ -9,7 +9,7 @@ import { useAppActive, useAppVisible } from "../../state/app/activity";
 import { useAppDispatch, useAppGetState, useAppSelector } from "../../state/app/context";
 import { scheduleConfigSave } from "../../state/config-save-scheduler";
 import { useInlineTickerOpener } from "../../state/hooks/inline-tickers";
-import { recordFunctionOpen } from "../../telemetry/usage-counts";
+import { recordFunctionOpen, recordFunctionShown } from "../../telemetry/usage-counts";
 import type { AppNotificationRequest } from "../../types/plugin";
 import { logFailure } from "../../utils/log-failure";
 import {
@@ -30,7 +30,11 @@ const COMPARE_WAIT_MS = 10_000;
 /** Quotes ticking in batches are read once they settle, not on every tick. */
 const SWEEP_DELAY_MS = 2_000;
 
-/** Usage counts, by the strip's own names: never which tickers. */
+/**
+ * Usage counts, by the strip's own names: never which tickers. Showing is not
+ * the user opening anything, so it counts as on screen at launch (`restored`);
+ * opening a move and turning the strip off are opens.
+ */
 const SHOWN_FUNCTION = "LASTVISIT";
 const OPENED_FUNCTION = "LASTVISIT-OPEN";
 const OFF_FUNCTION = "LASTVISIT-OFF";
@@ -230,7 +234,8 @@ export function useSinceLastVisit({
   }, [marketData, present, running, scope, tracked, tracker]);
 
   const recap = useMemo(() => {
-    if (!enabled || hidden || !shown || shown.scope !== scope) return null;
+    // Not over setup or the sign-in gate, which can open in front of a strip already shown.
+    if (!enabled || !active || hidden || !shown || shown.scope !== scope) return null;
     const instruments = new Map(tracked.map((listing) => [listing.key, listing.instrument] as const));
     // A ticker taken out of the collections leaves the strip with it.
     const moves = shown.recap.moves.flatMap((move) => {
@@ -238,7 +243,7 @@ export function useSinceLastVisit({
       return instrument ? [{ move, instrument }] : [];
     });
     return moves.length > 0 ? { seenAt: shown.recap.seenAt, moves } : null;
-  }, [enabled, hidden, scope, shown, tracked]);
+  }, [active, enabled, hidden, scope, shown, tracked]);
 
   const setEnabled = useCallback((on: boolean) => {
     const current = getState().config;
@@ -277,7 +282,7 @@ export function useSinceLastVisit({
   const noteShown = useCallback(() => {
     if (countedShown.current) return;
     countedShown.current = true;
-    recordFunctionOpen({ shortcut: SHOWN_FUNCTION, externalPluginId: null });
+    recordFunctionShown({ shortcut: SHOWN_FUNCTION, externalPluginId: null });
   }, []);
 
   return useMemo(() => ({ recap, hide, turnOff, open, noteShown }), [hide, noteShown, open, recap, turnOff]);
