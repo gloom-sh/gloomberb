@@ -55,7 +55,7 @@ const MOVE_COLUMNS: Partial<Record<HistoryColumnId, (row: HistoryRow) => number 
  * Columns a history can hold nothing in: an A share's reports state no time where its exchange gave none, and
  * no count of estimates is served for it. One blank in every row is left out, as the sales columns are.
  */
-const OPTIONAL_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["when", "analysts", "epsEstimate", "epsActual", "epsSurprise"]);
+const OPTIONAL_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["when", "analysts", "epsEstimate", "epsActual", "basis", "epsSurprise"]);
 
 /** Amount columns that carry a listing abroad's currency after each figure ("7.22 CNY"), and the room it takes. */
 const AMOUNT_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["epsEstimate", "epsActual", "revenueEstimate", "revenueActual"]);

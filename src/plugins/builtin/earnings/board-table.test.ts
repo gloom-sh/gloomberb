@@ -201,11 +201,10 @@ describe("ERN rows", () => {
   test("BASIS waits for reported EPS, and a reported basis survives beside pending rows", () => {
     const pending = historyRows({ asOf: `${TODAY}T15:00:00Z`, symbol: "TFC", name: null,
       reports: [report({ date: "2027-01-15", dateStatus: "projected" })] }, TODAY, null);
-    const basis = historyColumns(2000, pending).find((column) => column.id === "basis")!;
-    expect(basis.mayBeBlank).toBe(true);
-    expect(renderHistoryCell(pending[0]!, basis).text).toBe(MISSING_VALUE);
+    expect(historyColumns(2000, pending).some((column) => column.id === "basis")).toBe(false);
     const mixed = [...pending, ...rows];
-    expect(historyColumns(2000, mixed).some((column) => column.id === "basis")).toBe(true);
+    const basis = historyColumns(2000, mixed).find((column) => column.id === "basis")!;
+    expect(basis.mayBeBlank).toBe(true);
     expect(mixed.map((row) => renderHistoryCell(row, basis).text)).toEqual([MISSING_VALUE, "adj", "adj"]);
   });
 
