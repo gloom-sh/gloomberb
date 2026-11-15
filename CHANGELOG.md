@@ -21,7 +21,7 @@ How to edit this file (update it in the release commit):
 
 - **A faster, lighter desktop app.** It starts about a third faster on Mac and uses less memory. (0.20.0)
 - **Import positions from your broker's CSV.** For brokers Gloom does not sync, in the app or the CLI. (0.20.2)
-- **Your tickers at a glance.** A strip shows what moved since your last visit, watchlists take named groups, and the header follows any market. (0.20.3, 0.20.15)
+- **Your tickers at a glance.** A strip shows what moved since your last visit, watchlists take named groups, and the header follows any market. (0.20.3, 0.20.16)
 - **Ask Gloom shows its sources and asks before it acts.** Every figure links to the data behind it, and it asks before it presses a button. (0.20.2, 0.20.4)
 - **Listings and reports read correctly.** Hong Kong reports keep their period and currency, and company or fund names find the home line. (0.20.1, 0.20.2, 0.20.14)
 
