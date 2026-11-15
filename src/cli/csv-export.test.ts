@@ -24,3 +24,8 @@ test("file and pipe exports retain caveats and warnings, even when quiet suppres
   expect(piped.stdout).toContain("Window: 10:00 to 11:00 New York.");
   expect(piped.stderr).toBe("");
 });
+
+test("a quoted cell ending in a note-like line is data, not an export footer", () => {
+  const csv = portableCsv('Value\n"line one\n\n# note: still data"');
+  expect(csv).toBe('Value,export_notes\n"line one\n\n# note: still data",');
+});

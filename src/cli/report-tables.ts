@@ -779,7 +779,14 @@ export function splitCsvFooter(text: string): { csv: string; footer: string[] } 
   const last = blocks.at(-1) ?? "";
   const lines = last.split("\n");
   if (!last || !lines.every(isComment) || lines.some((line) => line.startsWith("# section: "))) return { csv: text, footer: [] };
-  return { csv: blocks.slice(0, -1).join("\n\n"), footer: lines.map((line) => line.slice(2)) };
+  const csv = blocks.slice(0, -1).join("\n\n");
+  let quoted = false;
+  for (let index = 0; index < csv.length; index++) {
+    if (csv[index] !== '"') continue;
+    if (quoted && csv[index + 1] === '"') index++;
+    else quoted = !quoted;
+  }
+  return quoted ? { csv: text, footer: [] } : { csv, footer: lines.map((line) => line.slice(2)) };
 }
 
 /** CSV with its closing `#` lines after a blank line. */
