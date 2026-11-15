@@ -152,6 +152,17 @@ describe("CommandBar", () => {
     expect(quits).toBe(1);
   });
 
+  // `config` and Enter wrote a backup of the whole config to the home folder: the first row was Export Config.
+  test("config lists the app's settings, a choice first, ahead of Export and Import Config", async () => {
+    await tui.render(<CommandBarHarness query="config" />, { width: 100, height: 40 });
+    await tui.waitForFrameToContain("Export Config");
+    const rows = tui.frame().split("\n").slice(1).map((line) => line.trim()).filter(Boolean);
+    const at = (label: string) => rows.findIndex((row) => row.endsWith(label) || row.includes(` ${label} `) || row.includes(`${label}  `));
+    expect(rows[1]).toContain("Change Theme");
+    expect(at("Change Theme")).toBeLessThan(at("Export Config"));
+    expect(at("Change Language")).toBeLessThan(at("Import Config"));
+  });
+
   // A partial word put QUIT first, so Enter on `q` or `e` quit the app.
   test.each([
     ["q", "QQ Quote Monitor"],

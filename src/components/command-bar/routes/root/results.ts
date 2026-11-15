@@ -173,6 +173,16 @@ function buildBindKeyItem(
   };
 }
 
+/** Words a query asks for the app's settings with. */
+const CONFIG_QUERY_WORDS = new Set(["config", "configuration", "preferences", "prefs"]);
+
+/** The commands that open or change one of the app's settings, in the order a settings query lists them: choices first. */
+const APP_SETTING_COMMAND_IDS = [
+  "theme", "language", "header-market", "release-channel", "cycle-chart-renderer", "toggle-value-flashing", "toggle-since-last-visit",
+  "toggle-status-bar", "toggle-presentation-mode", "font-size-increase", "font-size-decrease", "toggle-crash-reports",
+  "toggle-usage-counts", "toggle-attention-counts", "check-for-updates",
+];
+
 /**
  * Ranks a provider's in-memory rows with the local matches without reordering
  * them: the provider decided which rows answer and in what order, so the block
@@ -440,6 +450,12 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       ...pluginItems,
     ];
     if (pastedList) items.push(pastedListItem(pastedList, executeCollectionCommand));
+    // `config` asks for the app's settings: each one, a choice to open first, ahead of Export and Import Config,
+    // which its words match by name and which write or replace a whole file.
+    if (CONFIG_QUERY_WORDS.has(rootQuery.trim().toLowerCase())) {
+      const byId = new Map(commandItems.map((item) => [item.id, item]));
+      items.push(...APP_SETTING_COMMAND_IDS.flatMap((id) => byId.get(id) ?? []));
+    }
     items.push(...rankMatchBlock(allItems, providerMatchItems, rootQuery));
   }
 
