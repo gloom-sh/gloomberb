@@ -629,6 +629,18 @@ class GloomApiClient {
     return this.request<{ url: string }>("/stripe/portal", { method: "POST", body: JSON.stringify({}) });
   }
 
+  async createInvoicePayment(): Promise<{ url: string }> {
+    const result = await this.request<{ url: string }>("/stripe/pay-invoice", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    const url = new URL(result.url);
+    if (url.origin !== "https://invoice.stripe.com" || url.username || url.password) {
+      throw new Error("Could not open invoice payment.");
+    }
+    return { url: url.href };
+  }
+
   /**
    * Ends the Pro trial and Pro now, unbilled. Call it only once the person
    * confirmed a warning that says so. `endedNow` is false when the server

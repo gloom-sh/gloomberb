@@ -35,6 +35,7 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "eservices.mas.gov.sg",
   "exchange.gemini.com",
   "fred.stlouisfed.org",
+  "invoice.stripe.com",
   "kalshi.com",
   "limitless.exchange",
   "polymarket.com",

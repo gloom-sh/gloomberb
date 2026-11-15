@@ -38,6 +38,7 @@ interface CloudPricingTier {
 
 /** `/account/cloud`, reduced to the plan fields the apps read. */
 export interface CloudAccountPlan {
+  subscription?: { status: string | null };
   effectivePlan?: "free" | "pro";
   /** Whether a checkout started now comes with the free trial attached. */
   trialAvailable?: boolean;
