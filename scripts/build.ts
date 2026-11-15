@@ -45,6 +45,77 @@ function targetName({ os, arch, libc }: BuildTarget): string {
 }
 
 /**
+ * The Bun runtime a target's binary is built on. The x64 Linux and Windows
+ * binaries take Bun's baseline runtime, built for Nehalem (SSE4.2, 2008 on):
+ * Bun's default x64 runtime needs AVX2 and BMI2 (Intel Haswell, AMD
+ * Excavator, 2013 on) and dies with SIGILL on an older CPU (#2754). The
+ * assets keep their names, so the install scripts, the updater and packages
+ * that download them see no change. The Intel Mac binary keeps the default:
+ * Bun 1.3.14's darwin-x64 baseline package is the same file, and every Mac
+ * that runs macOS 13, which Bun needs, has AVX2.
+ */
+function bunTarget({ os, arch, libc, bunOs }: BuildTarget): string {
+  const baseline = arch === "x64" && os !== "darwin";
+  return `bun-${bunOs}-${arch}${libc === "musl" ? "-musl" : ""}${baseline ? "-baseline" : ""}`;
+}
+
+/**
+ * The CPU the x64 Linux binaries are also smoke tested on, under QEMU's
+ * user-mode emulator: Nehalem has SSE4.2 and no AVX, AVX2 or BMI2, so a binary
+ * that needs a newer CPU dies with SIGILL here instead of on a user's machine.
+ *
+ * The check runs in a container, so the C library the binary loads is built
+ * for any x86-64 CPU, as on such a machine. The host's may not be: GitHub's
+ * Ubuntu 26.04 runners install amd64v3 packages, whose dynamic loader runs an
+ * AVX instruction before the binary does. A musl binary runs in the Alpine
+ * image below, a glibc one in Debian's.
+ */
+const OLD_CPU_MODEL = "Nehalem";
+const GLIBC_OLD_CPU_IMAGE = "debian:13-slim";
+/** Where the emulator is mounted in the container. */
+const CONTAINER_EMULATOR = "/usr/local/bin/qemu-x86_64";
+
+/** Whether an ELF file has no program interpreter, so it runs without the host's C library. */
+function isStaticElf(path: string): boolean {
+  const elf = readFileSync(path);
+  // A 64-bit ELF file, whose program header table the loop reads.
+  if (elf.length < 64 || elf.readUInt32BE(0) !== 0x7f454c46 || elf[4] !== 2) return false;
+  const tableOffset = Number(elf.readBigUInt64LE(0x20));
+  const entrySize = elf.readUInt16LE(0x36);
+  for (let index = 0; index < elf.readUInt16LE(0x38); index += 1) {
+    const offset = tableOffset + index * entrySize;
+    // PT_INTERP names the dynamic loader the file needs.
+    if (offset + 4 > elf.length || elf.readUInt32LE(offset) === 3) return false;
+  }
+  return true;
+}
+
+/**
+ * The emulator for the old CPU check, or null: a statically linked one, which
+ * runs in any container. Debian 13 and Ubuntu 26.04 ship it in qemu-user,
+ * older releases in qemu-user-static.
+ */
+function x64Emulator(target: BuildTarget): string | null {
+  if (target.os !== "linux" || target.arch !== "x64") return null;
+  const found = [Bun.which("qemu-x86_64-static"), Bun.which("qemu-x86_64")].filter((path): path is string => path !== null);
+  return found.find(isStaticElf) ?? null;
+}
+
+function containerTool(): string | null {
+  return Bun.which("docker") ?? Bun.which("podman");
+}
+
+/** Runs a command in `image` with the smoke folder, and the emulator when there is one, mounted. */
+function containerRunner(container: string, image: string, smokeDir: string, emulator: string | null): string[] {
+  // Read-only, so the container's root user leaves nothing in the smoke folder.
+  return [
+    container, "run", "--rm", "--volume", `${smokeDir}:${smokeDir}:ro`,
+    ...(emulator ? ["--volume", `${emulator}:${CONTAINER_EMULATOR}:ro`] : []),
+    "--workdir", smokeDir, image,
+  ];
+}
+
+/**
  * The Alpine image a musl binary is smoke tested in when the build host runs
  * glibc: plain Alpine plus libstdc++, which every musl Bun binary links.
  */
@@ -138,22 +209,39 @@ async function removeSmokeDir(smokeDir: string) {
 
 /**
  * What runs a target's binary on this host: nothing in front of it when the
- * host can run it, an Alpine container for a musl binary built on glibc, and
- * null when it cannot run here.
+ * host can run it, an Alpine container for a musl binary built on glibc
+ * (with the old CPU check's emulator, when there is one), and null when it
+ * cannot run here.
  */
-async function smokeRunner(target: BuildTarget, smokeDir: string): Promise<string[] | null> {
+async function smokeRunner(target: BuildTarget, smokeDir: string, emulator: string | null): Promise<string[] | null> {
   if (!canRunTarget(target.os, target.arch)) return null;
   if (target.os !== "linux" || target.libc === (detectLinuxLibc() ?? "glibc")) return [];
   if (target.libc !== "musl") return null;
-  const container = Bun.which("docker") ?? Bun.which("podman");
+  const container = containerTool();
   if (!container) return null;
   await runProcess(
     [container, "build", "--quiet", "--tag", MUSL_SMOKE_IMAGE, "-"],
     `Failed to build the ${MUSL_SMOKE_IMAGE} smoke test image`,
     { stdin: new Blob([`FROM ${MUSL_SMOKE_BASE_IMAGE}\nRUN apk add --no-cache libstdc++\n`]), stdout: "ignore" },
   );
-  // Read-only, so the container's root user leaves nothing in the smoke folder.
-  return [container, "run", "--rm", "--volume", `${smokeDir}:${smokeDir}:ro`, "--workdir", smokeDir, MUSL_SMOKE_IMAGE];
+  return containerRunner(container, MUSL_SMOKE_IMAGE, smokeDir, emulator);
+}
+
+/**
+ * What runs the old CPU check, or null when nothing here can: the musl
+ * binary's own container, or Debian's for a glibc binary.
+ */
+async function oldCpuRunner(runner: string[], smokeDir: string, emulator: string | null): Promise<string[] | null> {
+  if (!emulator) return null;
+  if (runner.length > 0) return runner;
+  const container = containerTool();
+  if (!container) return null;
+  await runProcess(
+    [container, "pull", "--quiet", GLIBC_OLD_CPU_IMAGE],
+    `Failed to pull ${GLIBC_OLD_CPU_IMAGE} for the old CPU check`,
+    { stdout: "ignore" },
+  );
+  return containerRunner(container, GLIBC_OLD_CPU_IMAGE, smokeDir, emulator);
 }
 
 interface SmokeCheck {
@@ -164,6 +252,8 @@ interface SmokeCheck {
   env?: Record<string, string>;
   /** Runs this check under another runner than the target's. */
   runner?: string[];
+  /** That runner is a container, which gets the environment through `env`. */
+  runnerIsContainer?: boolean;
   failureMessage: string;
 }
 
@@ -186,7 +276,8 @@ async function noexecTempRunner(dir: string): Promise<string[] | null> {
 async function smokeTestBinary(outfile: string, target: BuildTarget) {
   const { os } = target;
   const smokeDir = mkdtempSync(join(tmpdir(), "gloomberb-smoke-"));
-  const runner = await smokeRunner(target, smokeDir);
+  const emulator = x64Emulator(target);
+  const runner = await smokeRunner(target, smokeDir, emulator);
   if (!runner) {
     rmSync(smokeDir, { recursive: true, force: true });
     const reason = !canRunTarget(target.os, target.arch)
@@ -213,6 +304,19 @@ async function smokeTestBinary(outfile: string, target: BuildTarget) {
   const noexecTemp = join(smokeDir, "noexec-temp");
   const noexec = inContainer ? null : await noexecTempRunner(noexecTemp);
   if (!inContainer && !noexec) console.log("Skipping the noexec temp folder check: no unprivileged mount namespace here");
+  const oldCpu = await oldCpuRunner(runner, smokeDir, emulator);
+  // CI installs the emulator and has docker, so a runner without them fails rather than skips.
+  if (target.os === "linux" && target.arch === "x64" && !oldCpu) {
+    const missing = emulator
+      ? "without docker or podman to run it in Debian"
+      : "without a statically linked QEMU x86_64 user-mode emulator (apt-get install qemu-user)";
+    if (process.env.CI) {
+      await removeSmokeDir(smokeDir);
+      console.error(`Cannot run the old CPU check for ${targetName(target)} ${missing}`);
+      process.exit(1);
+    }
+    console.log(`Skipping the old CPU check ${missing}`);
+  }
 
   const checks: SmokeCheck[] = [
     {
@@ -258,6 +362,13 @@ async function smokeTestBinary(outfile: string, target: BuildTarget) {
       args: ["help"],
       failureMessage: `Packaged binary did not add the gloom command beside gloomberb: ${outfile}`,
     }]),
+    ...(oldCpu ? [{
+      runner: oldCpu,
+      runnerIsContainer: true,
+      command: CONTAINER_EMULATOR,
+      args: ["-cpu", OLD_CPU_MODEL, smokeBinary, OPEN_TUI_RUNTIME_SMOKE_COMMAND],
+      failureMessage: `Packaged binary does not start on a CPU without AVX2 or BMI2 (an emulated ${OLD_CPU_MODEL}): ${outfile}`,
+    }] : []),
   ];
   let failureMessage: string | undefined;
 
@@ -265,7 +376,7 @@ async function smokeTestBinary(outfile: string, target: BuildTarget) {
     for (const check of checks) {
       const checkRunner = check.runner ?? runner;
       // A container does not see this process's environment, so it gets the check's through `env`.
-      const envInContainer = checkRunner === runner && inContainer
+      const envInContainer = (check.runner ? check.runnerIsContainer : inContainer)
         ? ["env", ...Object.entries({ ...check.env, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" }).map(([name, value]) => `${name}=${value}`)]
         : [];
       const code = await runProcess(
@@ -380,13 +491,13 @@ function compressGzip(path: string): string {
 }
 
 async function build(targetConfig: BuildTarget) {
-  const { os, arch, libc, bunOs, extension } = targetConfig;
+  const { os, extension } = targetConfig;
   mkdirSync(join(rootDir, "dist"), { recursive: true });
   const name = targetName(targetConfig);
   const outfile = join(rootDir, `dist/gloomberb-${name}${extension}`);
   const compileEntry = join(rootDir, "dist", `.gloomberb-compile-entry-${name}.ts`);
   const renderLibModule = `.gloomberb-render-lib-${name}.ts`;
-  const target = `bun-${bunOs}-${arch}${libc === "musl" ? "-musl" : ""}`;
+  const target = bunTarget(targetConfig);
   console.log(`Building ${target}...`);
   writeFileSync(join(rootDir, "dist", renderLibModule), buildRenderLibModuleSource(targetConfig));
   writeFileSync(compileEntry, buildCompileEntrySource(renderLibModule));

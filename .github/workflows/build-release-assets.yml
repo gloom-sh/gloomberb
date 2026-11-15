@@ -103,6 +103,12 @@ jobs:
           BUILD_VERSION: ${{ inputs.version }}
         run: npm pkg set "version=$BUILD_VERSION"
 
+      # build.ts also runs the x64 Linux binaries on an emulated Nehalem CPU,
+      # which has no AVX2 or BMI2, so a build that needs a newer CPU fails here.
+      - name: Install QEMU's user-mode emulator
+        if: runner.os == 'Linux' && runner.arch == 'X64'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-user
+
       - name: Build
         run: bun run scripts/build.ts ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
