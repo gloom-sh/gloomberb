@@ -3,6 +3,7 @@ import type { CpiBoardPayload, CpiReleaseStatus, CpiRow } from "../../../api-cli
 import type { ChartStripSpec } from "../../../components/chart-table/header";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { ResolvedSeries } from "../../../time-series/types";
+import { cpiYearGapNote } from "../shared/cpi-year-gap";
 
 /**
  * The rows Gloom Cloud serves, by the ids its board uses, so `CPI shelter`
@@ -190,6 +191,22 @@ export function cpiChartSeries(row: CpiRow, headline: CpiRow | null, colors: Cpi
       calendarSpaced: true }), ...YEAR_UNIT, axis: "right" });
   return series.filter((entry) => entry.points.length > 0);
 }
+
+/**
+ * Why a row's year-over-year change is empty for the release's month, with the
+ * latest month it has one for (`cpiYearGapNote`): "BLS published no October
+ * 2025 index, so no October 2026 y/y; All items 3.7% in September 2026." Null
+ * when the row has its change, or misses it for another reason.
+ */
+export function cpiYearGapLine(payload: Pick<CpiBoardPayload, "release">, row: CpiRow | null | undefined): string | null {
+  if (!payload.release.period || !row || row.yoy != null) return null;
+  const latest = row.history.findLast(([period, , yoy]) => yoy != null && period < payload.release.period!);
+  return cpiYearGapNote(payload.release.period, row.label, latest ? { period: latest[0], value: latest[2]! } : null);
+}
+
+/** The headline's gap line (`cpiYearGapLine`), which the table closes on. */
+export const cpiHeadlineYearGapLine = (payload: CpiBoardPayload) =>
+  cpiYearGapLine(payload, payload.rows.find((row) => row.code === "SA0"));
 
 /** One row for a short pane: the row's year-over-year line and its latest value. */
 export function cpiChartStrip(row: CpiRow, color: string): ChartStripSpec | null {

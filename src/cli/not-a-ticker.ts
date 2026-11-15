@@ -1,4 +1,5 @@
 import { futuresContractByWord } from "../market-data/futures-board";
+import { venueOfDatedContract } from "../utils/futures-generic";
 import { notATickerSymbol } from "../sources/provider-errors";
 import { renamedListingFor, renamedListingHint } from "../tickers/renamed-listings";
 import { boardCoinFor } from "./board-coins";
@@ -58,6 +59,9 @@ export function withSearchHints(text: string, args: readonly string[], isFredSer
       if (renamed) return `${sentence} ${renamedListingHint(renamed)}`;
       const coin = boardCoinFor(id);
       if (coin) return `${sentence} Did you mean ${coin.symbol}${coin.name && coin.name.toUpperCase() !== coin.symbol ? ` (${coin.name})` : ""}?`;
+      // A dated contract typed without its venue (ZQZ26) is quoted with it: ZQZ26.CBT, as WIRP prints it.
+      const contract = venueOfDatedContract(id);
+      if (contract) return `${sentence} Did you mean ${contract}?`;
       const tenor = treasuryYieldTenor(typed);
       // A currency's name (`yen`) is its rate and its pair, not a ticker search could find; a commodity's word
       // (`oil`, `brent`) is its future, which no search for the word finds first.

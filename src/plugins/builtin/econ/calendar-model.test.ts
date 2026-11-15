@@ -299,6 +299,18 @@ describe("econ calendar energy units", () => {
   });
 });
 
+test("cpi and inflation rate find a CPI change under either feed's title, and an index level only under its own", () => {
+  // `econ --search cpi` listed the index levels alone; the 14 Oct y/y print was "Inflation Rate YoY", the 10 Nov m/m "CPI m/m".
+  const row = (event: string) => ({ country: "US", event, actual: "3.7%", forecast: "3.6%", prior: "3.4%", source: { name: "Bureau of Labor Statistics" } });
+  for (const event of ["Inflation Rate YoY", "Core Inflation Rate MoM", "CPI m/m", "Core CPI y/y"]) {
+    expect(matchesEventSearch(row(event), "cpi")).toBe(true);
+    expect(matchesEventSearch(row(event), "inflation rate")).toBe(true);
+  }
+  expect(matchesEventSearch(row("Core Inflation Rate YoY"), "core cpi")).toBe(true);
+  expect(matchesEventSearch(row("CPI"), "inflation rate")).toBe(false);
+  expect(matchesEventSearch(row("PPI m/m"), "cpi")).toBe(false);
+});
+
 test("a bank's own names find its decision, and an empty search names the decisions they mean", () => {
   const decision = (country: string, event: string) => ({ country, event, actual: null, forecast: null, prior: "13.75%", source: { name: "Central Bank of Brazil" } });
   expect(matchesEventSearch(decision("BR", "Copom Interest Rate Decision"), "selic")).toBe(true);

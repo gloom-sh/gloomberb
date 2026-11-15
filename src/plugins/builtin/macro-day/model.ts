@@ -119,8 +119,42 @@ export const macroFigureGapNotices = (events: readonly Pick<MacroDayEvent, "kind
     const label = `${event.date} ${MACRO_EVENT_LABELS[event.kind]}`;
     if (!event.figures) return event.figuresMissing ? [`${label} has no figures: ${event.figuresMissing}.`] : [];
     if (event.figures.computed) return [`${label} actual is ${event.figures.computed}.`];
-    return event.figures.actualMissing ? [`${label} has no actual: ${event.figures.actualMissing}.`] : [];
+    // The print its surprise is read from instead, with its own figures.
+    const basis = event.figures.surpriseBasis;
+    const read = basis ? ` Surprise read from ${basis.basis}: ${basis.actual} vs ${basis.forecast} forecast.` : "";
+    return event.figures.actualMissing ? [`${label} has no actual: ${event.figures.actualMissing}.${read}`]
+      : basis ? [`${label} has no actual.${read}`] : [];
   });
+
+/**
+ * Whether a day's print came in hot, cool or in line: its headline against
+ * the consensus, or where the headline has no actual (a CPI day with no y/y)
+ * the print the surprise is read from instead (core m/m, else m/m). Null
+ * when neither can say.
+ */
+export const macroSurpriseOf = (figures: Pick<MacroReleaseFigures, "surprise" | "surpriseBasis"> | null | undefined): MacroSurprise | null =>
+  figures?.surprise ?? figures?.surpriseBasis?.surprise ?? null;
+
+/** The print a surprise was read from when it is not the headline's, as a cell names it: `core m/m`; null for the headline's own. */
+export const macroSurpriseBasisLabel = (figures: Pick<MacroReleaseFigures, "surprise" | "surpriseBasis"> | null | undefined): string | null =>
+  figures?.surprise == null && figures?.surpriseBasis ? figures.surpriseBasis.basis : null;
+
+/**
+ * What a surprise filter leaves out, for the days in scope: those whose
+ * surprise cannot be read, "3 prints excluded: no actual." (or no forecast,
+ * for a print with no consensus). Null when the filter keeps every day it can
+ * read, and with no filter.
+ */
+export function macroSurpriseExclusionNote(events: readonly Pick<MacroDayEvent, "figures">[], surprise: MacroSurprise | "all"): string | null {
+  if (surprise === "all") return null;
+  const unread = events.filter((event) => macroSurpriseOf(event.figures) == null);
+  if (!unread.length) return null;
+  const noActual = unread.filter((event) => !event.figures?.actual).length;
+  const noForecast = unread.length - noActual;
+  const prints = `${unread.length} print${unread.length === 1 ? "" : "s"} excluded`;
+  return noActual && noForecast ? `${prints}: ${noActual} no actual, ${noForecast} no forecast.`
+    : `${prints}: no ${noActual ? "actual" : "forecast"}.`;
+}
 
 /** What a row adds to its release's name: a policy decision's move, and the earnings marker. */
 export const macroDayEventNote = (event: Pick<MacroDayEvent, "earnings" | "figures">) =>
@@ -141,9 +175,12 @@ export function macroDayStats(events: readonly MacroDayEvent[], normalAbs: numbe
   return stats(events.filter((event) => !event.earnings).map((event) => event.move), normalAbs);
 }
 
-/** Whether a release day's print matches a surprise filter; `all` matches every day, figures or not. */
+/**
+ * Whether a release day's print matches a surprise filter (`macroSurpriseOf`, the m/m print's where the headline has
+ * no actual); `all` matches every day, figures or not.
+ */
 export const matchesSurprise = (event: Pick<MacroDayEvent, "figures">, surprise: MacroSurprise | "all") =>
-  surprise === "all" || event.figures?.surprise === surprise;
+  surprise === "all" || macroSurpriseOf(event.figures) === surprise;
 
 function stats(moves: number[], normalAbs: number | null): MacroDayStats {
   if (!moves.length) return { count: 0, meanAbs: null, mean: null, hitRate: null, multiple: null };

@@ -231,6 +231,20 @@ export function futuresContractMonth(code: string): { root: string; month: numbe
   return { root: match[1]!, month: (2000 + Number(match[3])) * 12 + MONTH_CODES.indexOf(match[2]!) };
 }
 
+/**
+ * A dated contract typed without its venue (ZQZ26), named as its quote is, with
+ * the venue that lists its root: ZQZ26.CBT, as WIRP prints it. A Bloomberg
+ * root reads as the exchange's (FFZ26 is ZQZ26.CBT). Null for a root Gloom
+ * Cloud does not archive and for any other code.
+ */
+export function venueOfDatedContract(code: string): string | null {
+  const match = /^([A-Z0-9]{1,4}?)([FGHJKMNQUVXZ])(\d{2})$/.exec(code.trim().toUpperCase());
+  if (!match) return null;
+  const root = ALIASES[match[1]!] ?? match[1]!;
+  const venue = ROOT_VENUES[root];
+  return venue ? `${root}${match[2]}${match[3]}.${venue}` : null;
+}
+
 /** A root's contract for a delivery month as `futuresContractMonth` counts it: CL and 2026 × 12 + 11 are CLZ26. */
 export function futuresContractCode(root: string, month: number): string {
   return `${root}${MONTH_CODES[month % 12]}${String(Math.floor(month / 12) % 100).padStart(2, "0")}`;

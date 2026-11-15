@@ -359,7 +359,23 @@ export function eventSeriesId(event: Pick<EconEvent, "country" | "event">): stri
 export function eventSearchNames(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">): string[] {
   const series = resolveFredMapping(event.event, event.country)?.seriesId;
   const policy = POLICY_DECISION.test(event.event) ? policyRateNames(event.country) : [];
-  return [...[event.event, econEventName(event)].map(compactName), ...series ? statNamesOf(series) : [], ...policy];
+  const names = [event.event, econEventName(event)];
+  return [...[...names, ...names.flatMap(inflationRateNames)].map(compactName), ...series ? statNamesOf(series) : [], ...policy];
+}
+
+/** A CPI change, as one feed titles it (`CPI y/y`, `Core CPI m/m`). */
+const CPI_CHANGE = /\bCPI\b(?=.*(?:\b[ymq]\/[ymq]\b|\b(?:yoy|mom|qoq)\b))/i;
+/** A headline or core inflation rate, as the other feed titles the same CPI change (`Inflation Rate YoY`). */
+const INFLATION_RATE = /^(core )?inflation rate\b/i;
+
+/**
+ * The other feed's title for a CPI change, which one feed calls `CPI y/y` and
+ * the other `Inflation Rate YoY`: `--search cpi` finds both, and so does
+ * `--search "inflation rate"`. A CPI index level (`CPI` 334.98) is no rate.
+ */
+function inflationRateNames(name: string): string[] {
+  if (INFLATION_RATE.test(name)) return [name.replace(INFLATION_RATE, (_whole, core: string | undefined) => `${core ?? ""}CPI`)];
+  return CPI_CHANGE.test(name) ? [name.replace(/\bCPI\b/i, "Inflation Rate")] : [];
 }
 
 /** A central bank's decision or fixing, under the titles the calendar gives them. */

@@ -135,7 +135,9 @@ function cliErrorObject(error: unknown): CliErrorObject {
   }
   // A source failed (a timeout, a rate limit) where none had the data to answer: asked again it may.
   if (isSourceFailure(error) || isSourceUnavailableAnswer(error)) {
-    return { code: SOURCE_UNAVAILABLE_CODE, message: error instanceof Error ? error.message : String(error), retryable: true };
+    const message = error instanceof Error ? error.message : String(error);
+    // It failed, it is not missing: says to ask again unless the message already says when.
+    return { code: SOURCE_UNAVAILABLE_CODE, message, ...(/\btry again\b/i.test(message) ? {} : { details: "Try again in a moment." }), retryable: true };
   }
   // A listing read the data service failed to answer twice: said in Gloom's words. Any other 5xx keeps the server's.
   if (wasAskedTwice(error)) {

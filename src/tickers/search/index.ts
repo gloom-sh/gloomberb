@@ -41,7 +41,7 @@ import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTermin
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
-import { withHomeListingLead, withNamedCompanyAfterUsLead } from "./home-listing";
+import { withFundReceiptsAsFunds, withHomeListingLead, withNamedCompanyAfterUsLead } from "./home-listing";
 import { answeredInFull, rememberSearchAnswer, withKnownListings } from "./listing-index";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
 import { delistingLabel, parseListingWithdrawal, withdrawalLabel } from "../../market-data/quotes/delisting";
@@ -361,7 +361,8 @@ export function buildTickerSearchCandidates({
     createLocalTickerSearchCandidates(tickers.values(), providerHints.results, candidateOptions),
     query,
   );
-  const providerItems = createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions);
+  // A receipt on a fund is the fund's line, never a company's primary listing over it (HK01 on SET for the Tracker Fund).
+  const providerItems = withFundReceiptsAsFunds(createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions));
   const ranked = withNamedCompanyAfterUsLead(
     withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query),
     query,

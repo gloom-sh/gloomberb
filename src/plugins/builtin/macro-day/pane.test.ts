@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { MacroDayEvent } from "./model";
-import { columnsFor, moveTone } from "./pane";
+import { columnsFor, macroSurpriseText, moveTone } from "./pane";
 
 const day = (figures: MacroDayEvent["figures"]): MacroDayEvent => ({ kind: "jobs", date: "2026-10-02", session: "2026-10-02", move: 0.01,
   multiple: 1, earnings: false, figures });
@@ -32,4 +32,17 @@ test("an average move that rounds to 0.00% is neither up nor down", () => {
   expect(moveTone(null)).toBeUndefined();
   expect(moveTone(0.0001)).toBe("positive");
   expect(moveTone(-0.0001)).toBe("negative");
+});
+
+test("the Surprise column says hot, cool or in line in words, and names the print a surprise was read from", () => {
+  // The pane showed a surprise only as the Actual's colour; the CLI had words.
+  const hot = day({ event: "Inflation Rate YoY", actual: "3.7%", forecast: "3.6%", prior: "3.4%", surprise: "hot" });
+  const read = day({ event: "Inflation Rate YoY", actual: null, forecast: "3.9%", prior: "3.7%", surprise: null,
+    surpriseBasis: { basis: "core m/m", actual: "0.3%", forecast: "0.2%", surprise: "hot" } });
+  const cool = day({ event: "Non Farm Payrolls", actual: "29K", forecast: "50K", prior: "133K", surprise: "cool" });
+  const level = day({ event: "Non Farm Payrolls", actual: "50K", forecast: "50K", prior: "133K", surprise: "in-line" });
+  expect([hot, read, cool, level, day(null)].map(macroSurpriseText)).toEqual(["Hot", "Hot (core m/m)", "Cool", "In line", ""]);
+  const surprise = columnsFor("cpi", [hot, read]).find((column) => column.id === "surprise")!;
+  expect(surprise.label).toBe("Surprise");
+  expect(surprise.width).toBe("Hot (core m/m)".length);
 });

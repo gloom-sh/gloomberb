@@ -29,6 +29,7 @@ import {
   cpiChartSeries,
   cpiChartStrip,
   cpiHeaderLine,
+  cpiHeadlineYearGapLine,
   cpiMonthDate,
   cpiRowLabel,
   cpiRows,
@@ -146,7 +147,8 @@ export function CpiPane({ width, height, focused }: PaneProps) {
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "cpi:notices", focused,
-    notices: [...(data?.gaps ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
+    notices: [...(data?.gaps ?? []), ...(data ? [cpiHeadlineYearGapLine(data)].filter((line): line is string => !!line) : []),
+      ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusFooter({ registrationId: "cpi", loading: resource.loading, error: notAvailable ? null : resource.error,
     stale: !!data && resource.data?.stale });
   return (

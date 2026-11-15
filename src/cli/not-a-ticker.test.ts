@@ -35,6 +35,14 @@ test("a currency's name that is no ticker points to its rate and its pair, once;
   expect(withSearchHints("Not a ticker: PESOS.", ["pesos"])).toBe("Not a ticker: PESOS. Try `gloom search pesos`.");
 });
 
+test("a dated futures contract typed without its venue names the contract with it, which a search for the bare code never finds", () => {
+  // `history ZQZ26` said "Try `gloom search ZQZ26`" while `history ZQZ26.CBT`, as WIRP prints the contract, worked.
+  expect(withSearchHints("Not a ticker: ZQZ26.", ["zqz26"])).toBe("Not a ticker: ZQZ26. Did you mean ZQZ26.CBT?");
+  expect(withSearchHints("Not a ticker: FFZ26.", ["FFZ26"])).toBe("Not a ticker: FFZ26. Did you mean ZQZ26.CBT?");
+  // A code of a root no venue here lists keeps the search.
+  expect(withSearchHints("Not a ticker: QQZ26.", ["QQZ26"])).toBe("Not a ticker: QQZ26. Try `gloom search QQZ26`.");
+});
+
 test("a FRED series the catalog charts points to the fred command, not a search that finds no ticker", () => {
   const isFred = (id: string) => id === "DFEDTARU";
   expect(withSearchHints("Not a ticker: DFEDTARU.", ["HP", "dfedtaru"], isFred)).toBe("Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.");
