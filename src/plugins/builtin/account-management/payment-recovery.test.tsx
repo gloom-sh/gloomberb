@@ -103,7 +103,7 @@ test("repeated presses while opening issue only one invoice request", async () =
   const screen = await account();
   let requests = 0;
   restore.push(spyOn(noopRendererHost, "openExternal").mockResolvedValue(true));
-  setCloudApiFetchTransport((async () => { requests++; return pending.promise; }) as typeof fetch);
+  setCloudApiFetchTransport((async () => { requests++; return pending.promise; }) as unknown as typeof fetch);
   await act(async () => { screen.pay()!.click(); screen.pay()?.click(); await Bun.sleep(0); });
   expect(requests).toBe(1);
   await act(async () => { pending.resolve(Response.json({ url: "https://invoice.stripe.com/i/test_current" })); await Bun.sleep(0); });

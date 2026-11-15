@@ -35,14 +35,14 @@ export function usePaymentRecovery(enabled: boolean, sessionMarker: string) {
     setMessage(null);
     setBusy(false);
     setLoaded(false);
-    if (enabled) void refresh(current);
+    if (enabled) void refresh(current).catch(() => setMessage(t("Could not refresh your account. Try again.")));
     return () => { generation.current++; };
   }, [enabled, sessionMarker, refresh]);
 
   useEffect(() => {
     if (!enabled || !visible) return;
     const current = generation.current;
-    const timer = setInterval(() => { void refresh(current); }, 5_000);
+    const timer = setInterval(() => { void refresh(current).catch(() => setMessage(t("Could not refresh your account. Try again."))); }, 5_000);
     return () => clearInterval(timer);
   }, [enabled, visible, refresh]);
 
@@ -68,7 +68,11 @@ export function usePaymentRecovery(enabled: boolean, sessionMarker: string) {
     }
   }, [enabled, visible, renderer, refresh]);
 
-  return { visible, busy, message, pay, checking: enabled && !loaded };
+  const openPayment = useCallback(() => {
+    void pay().catch(() => setMessage(t("Could not open invoice payment. Try again.")));
+  }, [pay]);
+
+  return { visible, busy, message, pay: openPayment, checking: enabled && !loaded };
 }
 
 export function PaymentRecoveryRow({ active, busy, message, labelWidth, nodeRef, onPay, onFocus }: {

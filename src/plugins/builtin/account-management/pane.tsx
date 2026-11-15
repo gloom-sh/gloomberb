@@ -726,7 +726,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     setActiveField("upgradeAction");
     if (paymentRecovery.checking) return;
     if (paymentRecovery.visible) {
-      void paymentRecovery.pay();
+      paymentRecovery.pay();
       return;
     }
     if (busy) return;
