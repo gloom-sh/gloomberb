@@ -4,7 +4,13 @@ import { loadEarningsHistory, noHistoryAbroad } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { historyRows } from "./history-model";
 
-export async function loadEarningsHighlight(symbol: string, today: string, provider: DataProvider | null, force: boolean, accessKey: string): Promise<BoardReport | null> {
+interface EarningsHighlight {
+  report: BoardReport;
+  stale: boolean;
+  refreshError: string | null;
+}
+
+export async function loadEarningsHighlight(symbol: string, today: string, provider: DataProvider | null, force: boolean, accessKey: string): Promise<EarningsHighlight | null> {
   const { listing, abroad, ownAbroad } = historyListing(symbol);
   const [history, upcoming] = await Promise.allSettled([
     abroad ? Promise.resolve(null)
@@ -20,13 +26,18 @@ export async function loadEarningsHighlight(symbol: string, today: string, provi
     const key = boardKey(symbol);
     const source = payload?.reports.find((report) => report.date === row.date);
     return {
-      key: `${key}:${row.date}`, symbol: key, name: payload?.name ?? event?.name ?? key,
-      date: row.date, timing: row.timing, expectedTiming: row.expectedTiming, dateStatus: row.dateStatus,
-      marketCap: source?.marketCap ?? null,
-      epsEstimate: row.epsEstimate, epsAnalysts: row.epsAnalysts, epsActual: row.epsActual,
-      provisional: row.provisional, epsBasis: row.epsBasis, epsSurprise: row.epsSurprise,
-      revenueEstimate: row.revenueEstimate, impliedMove: row.implied, averageMove: null,
-      owned: null, currency: row.currency ?? "USD",
+      report: {
+        key: `${key}:${row.date}`, symbol: key, name: payload?.name ?? event?.name ?? key,
+        date: row.date, timing: row.timing, expectedTiming: row.expectedTiming, dateStatus: row.dateStatus,
+        marketCap: source?.marketCap ?? null,
+        epsEstimate: row.epsEstimate, epsAnalysts: row.epsAnalysts, epsActual: row.epsActual,
+        provisional: row.provisional, epsBasis: row.epsBasis, epsSurprise: row.epsSurprise,
+        revenueEstimate: row.revenueEstimate, impliedMove: row.implied, averageMove: null,
+        owned: null, currency: row.currency ?? "USD",
+      },
+      stale: (history.status === "fulfilled" && !!history.value?.stale) || (upcoming.status === "fulfilled" && upcoming.value.stale),
+      refreshError: history.status === "rejected" ? (history.reason instanceof Error ? history.reason.message : String(history.reason))
+        : history.value?.refreshError ?? (upcoming.status === "rejected" ? (upcoming.reason instanceof Error ? upcoming.reason.message : String(upcoming.reason)) : upcoming.value.refreshError) ?? null,
     };
   }
   if (history.status === "rejected") throw history.reason;

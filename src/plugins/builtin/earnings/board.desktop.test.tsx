@@ -201,6 +201,24 @@ test("an explicit range and a later user choice stay put and say where the highl
   expect(calendarRequests.mock.calls.at(-1)?.[0]).toMatchObject({ from: "2026-10-12", to: "2026-10-16" });
 });
 
+test("a failed history refresh keeps the highlighted report and marks its cached figures stale", async () => {
+  historyRequests.mockImplementation(async (symbol) => ({
+    asOf: "2026-10-14T15:00:00Z", symbol, name: null, reports: [{ ...entry(symbol, "2027-01-28"), revenueActual: null }],
+  }));
+  const root = await dom.render(<Harness highlight="AAPL" />);
+  await settle();
+  await settle();
+  expect(rowKeys(root)).toContain("AAPL:2027-01-28");
+  historyRequests.mockRejectedValue(outage("History refresh failed"));
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true, cancelable: true })));
+  await settle();
+  await settle();
+  expect(rowKeys(root)).toContain("AAPL:2027-01-28");
+  const status = footer.info.flatMap((segment) => segment.parts.map((part) => part.text)).join(" ");
+  expect(status).toContain("History refresh failed");
+  expect(status).toContain("stale");
+});
+
 test("the table and the calendar share the cursor, and +N more opens its group in the calendar", async () => {
   const root = await dom.render(<Harness />);
   await settle();

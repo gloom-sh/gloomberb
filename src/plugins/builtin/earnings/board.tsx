@@ -178,7 +178,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "pro" : "free"}`;
   const highlightLoader = useCallback((force: boolean) => loadEarningsHighlight(highlight!, today, dataProvider, force, accessKey), [accessKey, dataProvider, highlight, today]);
   const highlightedReport = useAsyncResource(market && highlight ? highlightLoader : null);
-  const range = chosenRange ?? (requestedBoardRange(requestedDate, requestedWeek) || highlightedReport.data?.date || "");
+  const range = chosenRange ?? (requestedBoardRange(requestedDate, requestedWeek) || highlightedReport.data?.report.date || "");
   // Keyed by content: ticker records change for many reasons, the board reloads only when the list's names do.
   const collectionKey = useMemo(() => {
     if (scope.kind !== "portfolio" && scope.kind !== "watchlist") return "";
@@ -236,7 +236,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     const extra = fallback.status === "fulfilled"
       ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, owned, today))
       : [];
-    const target = highlightedReport.data;
+    const target = highlightedReport.data?.report;
     if (target && target.date >= read.from && target.date <= read.to && ![...reports, ...extra].some((report) => boardRowOf(report, target.symbol))) {
       extra.push({ ...target, owned: owned.get(target.symbol) ?? null });
     }
@@ -340,7 +340,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const footerInfo = useMemo(() => [
     ...(highlightMissing ? [{ id: "highlight", capture: true, parts: [{
       text: highlightedReport.error ? `${highlight}: report date unavailable`
-        : highlightedReport.data ? `${highlight} reports on ${highlightedReport.data.date}; not in this range`
+        : highlightedReport.data ? `${highlight} reports on ${highlightedReport.data.report.date}; not in this range`
           : `No report date for ${highlight}.`,
       tone: "warning" as const,
     }] }] : []),
@@ -351,8 +351,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     registrationId: "earnings-board",
     enabled: !open,
     loading: resource.loading || highlightedReport.loading,
-    error: resource.error ?? highlightedReport.error ?? data?.refreshError ?? null,
-    stale: !!data?.stale,
+    error: resource.error ?? highlightedReport.error ?? data?.refreshError ?? highlightedReport.data?.refreshError ?? null,
+    stale: !!data?.stale || !!highlightedReport.data?.stale,
     info: footerInfo,
   });
   const symbol = open?.symbol ?? selectedReport?.symbol ?? null;
