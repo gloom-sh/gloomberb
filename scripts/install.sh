@@ -52,6 +52,23 @@ main() {
     esac
   fi
 
+  # The x64 build needs SSE4.2 and POPCNT (Intel Nehalem, AMD Bulldozer and
+  # later). An older CPU would install a binary that dies with SIGILL at once.
+  if [ "$os" = "linux" ] && [ "$arch" = "x64" ]; then
+    cpu_flags="$(grep -m 1 '^flags' /proc/cpuinfo 2>/dev/null || true)"
+    if [ -n "$cpu_flags" ]; then
+      for flag in sse4_2 popcnt; do
+        case " ${cpu_flags#*:} " in
+          *" $flag "*) ;;
+          *)
+            echo "Error: Gloom needs an x64 CPU with SSE4.2 and POPCNT (Intel Nehalem, AMD Bulldozer or newer), and this one has no ${flag}. Nothing was installed." >&2
+            exit 1
+            ;;
+        esac
+      done
+    fi
+  fi
+
   # Apple Silicon shells under Rosetta report x86_64, and they still want the
   # arm64 build. Genuine Intel Macs keep x64 and get the terminal app, because
   # the desktop app bundle is published for Apple Silicon only.

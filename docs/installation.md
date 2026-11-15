@@ -4,6 +4,8 @@
 
 The command is `gloom`. `gloomberb`, its name before 0.18.4, runs the same program.
 
+On x64, Gloom needs a CPU with SSE4.2: Intel Nehalem (2008), AMD Bulldozer (2011) or newer, and on an Intel Mac a Haswell (2013) or newer.
+
 ## macOS
 
 ```bash
