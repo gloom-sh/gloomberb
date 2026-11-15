@@ -10,7 +10,7 @@ Each ratio opens (Enter, a click, or `e` for all) onto the inputs behind it. The
 
 The ratio tabs use the Income statement's columns: the latest fiscal years, with a TTM column when the last four quarters run past the latest year, or the latest quarters. Headers are the same fiscal labels (`FY2026`, `Q4 FY26`, `TTM Q3 FY26`).
 
-- **Averages.** Inputs marked `Avg` are the mean of the opening and closing balance. The opening balance is the prior fiscal year end for a year, the prior quarter end for a quarter, and the quarter end a year earlier for TTM. Both ends must come from the same line (total equity at both ends, or common equity at both), never one of each. The oldest column on screen usually has no opening balance loaded, so its averaged ratios read `not reported`.
+- **Averages.** Inputs marked `Avg` are the mean of the opening and closing balance. The opening balance is the prior fiscal year end for a year, the prior quarter end for a quarter, and the quarter end a year earlier for TTM. Both ends must come from the same line (total equity at both ends, or common equity at both), never one of each. The oldest column on screen has no opening balance loaded, so its averaged ratios read `needs prior period`; `gloom fn GF <ticker> --period annual --periods 40` reads further back, one metric at a time.
 - **Quarters.** A quarterly column reads a flow one of two ways:
   - **Trailing year.** Net debt / EBITDA, interest coverage, FCF / debt and, on Valuation, P/E, EV / EBITDA, P/S and FCF yield read the year, never one quarter times four. The input label says `TTM` (`÷ EBITDA TTM`) and shows the fiscal year when one ends with the quarter, otherwise the four quarters to it, summed.
   - **One quarter × 4.** ROE, ROA, ROIC and asset turnover annualize, and the label says `× 4` (`Net Income × 4`). Day counts spread a quarter's flow over 91.25 days and a year's over 365. Margins, a ratio of two flows over the same period, need no annualization.
@@ -18,6 +18,7 @@ The ratio tabs use the Income statement's columns: the latest fiscal years, with
 
 ## Missing and meaningless values
 
+- `needs prior period`: an average whose opening balance sheet is the period before the oldest column, which is not loaded.
 - `not reported`: an input line is not in the statements for that period. Apple, for example, has not tagged interest expense since FY2023, so its interest coverage reads `not reported` from FY2024. A missing line is never read as zero; a reported zero stays a value.
 - `< 4 quarters`: a quarterly ratio on the trailing year has none to read, because fewer than four consecutive quarters are on file and no fiscal year ends with the quarter. A short history is never annualized.
 - `no burn`: a [cash runway](#cash-runway) whose operating cash flow over the period is zero or positive, so the operations used no cash to run out of.
@@ -50,6 +51,7 @@ The cap is on the return, not on equity as a share of total assets. Insurers, br
 | Profitability | ROE | Net income ÷ average equity |
 | | ROA | Net income ÷ average total assets |
 | | ROIC | NOPAT ÷ average invested capital |
+| | ROIC ex Cash | NOPAT ÷ average (invested capital − cash and short-term investments) |
 | | Gross, operating and net margin | Gross profit, operating income or net income ÷ revenue |
 | Leverage | Net debt / EBITDA | (Total debt + lease liabilities − cash and short-term investments) ÷ EBITDA; leases as in [Leases](#leases) |
 | | Debt / equity | Total debt ÷ equity, at the period end |
@@ -76,11 +78,23 @@ The cap is on the return, not on equity as a share of total assets. Insurers, br
 - **Total debt** is borrowings (current and long-term debt, commercial paper and other short-term borrowings) plus finance lease liabilities. Operating lease liabilities are never debt. For US filers the total is derived from the company's filings. Other listings keep the data vendor's total less its lease line, and only when that total is exactly long-term debt plus current debt plus the lease line; a total built any other way is kept as reported, so some non-US totals still include leases.
 - **NOPAT** is operating income × (1 − tax provision ÷ pretax income). The rate is held between 0% and 100%, and is 0% when pretax income is not positive.
 - **Invested capital** is equity plus total debt, finance leases included: the same equity and total debt the Leverage rows use, so ROIC and the Balance Sheet's Invested Capital row agree with them. Where either is missing, the data vendor's figure stands. Microsoft's FY2026 is 549.3bn: 442.4bn of equity plus 106.9bn of total debt, 66.6bn of it finance leases. Negative equity puts invested capital below total debt, and ROIC reads `N/M` when average invested capital is zero or negative.
+- **ROIC ex Cash** takes cash and short-term investments out of invested capital at both ends, so a company that holds its cash in its equity and has no debt (Copart) reads the return on the capital its operations use: Copart's FY2026 is 14.6% on 9.14bn of average equity and 29.6% on 4.50bn without its cash. ROIC itself nets no cash. Both are GAAP: NOPAT is from operating income as reported, never an adjusted figure, and so are the margins.
 - **Cash and short-term investments** falls back to cash alone when the filer does not report the total.
 - **Receivables** are trade accounts receivable, or total receivables where trade is not reported; **payables** likewise. Apple's total receivables include vendor non-trade receivables, which is why DSO uses the trade line.
 - **Free cash flow** is the reported figure, or operating cash flow plus (negative) capital expenditure.
 - **EBITDA** is the statements' line; in SEC-derived periods it is operating income plus depreciation and amortization.
 - **Enterprise value** is market cap + net debt: total debt, lease liabilities as in [Leases](#leases), less cash and short-term investments. Minority interest and preferred equity are not added.
+
+## Cash flow
+
+The Cash Flow statement is in one unit, the one most of its lines take (`USD bn` in its header), a line a thousandth of the rest to three decimals (`0.001`); no row names a unit of its own. A line that repeats one above it in every period is shown once: operating cash flow is the Operating line, and Purchase PPE goes when it equals CapEx in every year (it stays where they differ). Under Free Cash Flow, beside CapEx:
+
+| Line | Formula |
+|---|---|
+| CapEx / Revenue | Capital expenditure ÷ revenue |
+| Reinvestment Rate | (Capital expenditure + acquisitions − D&A) ÷ NOPAT; acquisitions count where the statement reports them, and NOPAT at or below zero reads `N/M` |
+
+Visa's FY2026 reads 3.6% and 4.1%: 1.671bn of capex on 45.90bn of revenue, and 1.671bn plus 0.705bn of acquisitions less 1.403bn of D&A over 23.52bn of NOPAT.
 
 ## Leases
 
