@@ -1,10 +1,9 @@
 import type { ScannerCapture } from "../plugins/builtin/shared/scanner-capture";
 import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
-import { mkdtemp, rm } from "fs/promises";
 import { randomBytes, timingSafeEqual } from "crypto";
-import { tmpdir } from "os";
 import { join } from "path";
 import { writeOutputFile } from "./output-file";
+import { withShotTempDir } from "./shot-temp-dir";
 import { encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
 import type { AppConfig } from "../types/config";
 import type { ChartResolutionResult } from "../time-series/types";
@@ -272,32 +271,31 @@ export async function renderDesktopPaneScreenshot(
 ): Promise<DesktopPaneShotRenderResult> {
   const chrome = await findChromeExecutable();
   const view = await loadShotView();
-  const tempDir = await mkdtemp(join(tmpdir(), "gloom-pane-shot-"));
-  let server: ShotServer | null = null;
-  try {
-    server = serveShotPage(view, shotPageHtml(view, payload), apiProxy, options.bridge ?? null);
-    return await capturePageScreenshot({
-      chrome,
-      url: server.url,
-      outputPath,
-      widthPx: payload.widthPx,
-      heightPx: payload.heightPx,
-      deviceScaleFactor: payload.deviceScaleFactor ?? DEFAULT_DEVICE_SCALE_FACTOR,
-      userDataDir: join(tempDir, "chrome-profile"),
-      captureImage: options.captureImage !== false,
-      statusLine: payload.statusLine ? options.statusLine : undefined,
-      ...(payload.maxHeightCells ? {
-        fitRows: {
-          heightCells: payload.heightCells,
-          maxHeightCells: payload.maxHeightCells,
-          roles: payload.fitRoles ?? ["data-table-body-scroll"],
-        },
-      } : {}),
-    });
-  } finally {
-    server?.stop();
-    await rm(tempDir, { recursive: true, force: true });
-  }
+  return withShotTempDir("gloom-pane-shot-", async (tempDir) => {
+    const server = serveShotPage(view, shotPageHtml(view, payload), apiProxy, options.bridge ?? null);
+    try {
+      return await capturePageScreenshot({
+        chrome,
+        url: server.url,
+        outputPath,
+        widthPx: payload.widthPx,
+        heightPx: payload.heightPx,
+        deviceScaleFactor: payload.deviceScaleFactor ?? DEFAULT_DEVICE_SCALE_FACTOR,
+        userDataDir: join(tempDir, "chrome-profile"),
+        captureImage: options.captureImage !== false,
+        statusLine: payload.statusLine ? options.statusLine : undefined,
+        ...(payload.maxHeightCells ? {
+          fitRows: {
+            heightCells: payload.heightCells,
+            maxHeightCells: payload.maxHeightCells,
+            roles: payload.fitRoles ?? ["data-table-body-scroll"],
+          },
+        } : {}),
+      });
+    } finally {
+      server.stop();
+    }
+  });
 }
 
 /** The page for one capture: the shared view, with this capture's pane and data in its bootstrap script. */
