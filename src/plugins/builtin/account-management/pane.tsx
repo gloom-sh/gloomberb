@@ -75,6 +75,7 @@ import { endTrialAfterWarning } from "./trial-cancel";
 import { CalendarAccountTab } from "./calendar-tab";
 import { InviteRow } from "./invite-row";
 import { PaymentRecoveryRow, usePaymentRecovery } from "./payment-recovery-row";
+import { YearlyPlanRow, useYearlyPlan } from "./yearly-plan-row";
 import { useAccountManagementFooter } from "./footer";
 import { useAccountManagementKeyboard } from "./keyboard";
 import {
@@ -131,8 +132,9 @@ const ACCOUNT_TAB_FIELD_ORDER: Record<AccountManagementTab, AccountFieldKey[]> =
   ],
   // Its actions are footer hints; the tab owns its footer.
   calendar: [],
-  // Cancel Trial shows only while a trial runs, the invite once it loaded.
-  pro: ["upgradeAction", "cancelTrialAction", "inviteCopyAction"],
+  // Cancel Trial shows only while a trial runs, the yearly row while it has
+  // an action, Not Now while its review is open, the invite once it loaded.
+  pro: ["upgradeAction", "cancelTrialAction", "yearlyPlanAction", "yearlyPlanDismissAction", "inviteCopyAction"],
   // The Teams tab owns its own keyboard handling (a list, not form fields).
   teams: [],
   // Remote assistants allowed to drive this terminal; a list with its own footer.
@@ -270,13 +272,33 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   // Chat's card settings show once the server keeps them; the desks only while showing them is on.
   const chatCardSupported = profile?.showLocalTime !== undefined;
   const planAccess = useMemo(() => resolvePlanAccess(profile), [profile]);
+  // A paid switch changes the plan on the server: the session and the tab follow it.
+  const refreshAfterYearlySwitch = useCallback(() => {
+    void chatController.refreshSession().catch(logFailure("account-management.pane", "Refresh yearly account session failed"));
+    void apiClient.getAccountProfile().then(
+      (nextProfile) => { if (nextProfile) setProfile(nextProfile); },
+      logFailure("account-management.pane", "Refresh yearly account profile failed"),
+    );
+  }, []);
+  // An opened review lands on Not Now, in the same update that draws it: no
+  // render ever has Pay active on open, so a held Enter never pays.
+  const focusYearlyDismiss = useCallback(() => setActiveField("yearlyPlanDismissAction"), []);
+  // Only a paying Pro subscriber is asked; the server decides who may switch.
+  const yearlyPlan = useYearlyPlan(
+    hasSession && activeTab === "pro" && planAccess.isPayingPro && !paymentRecovery.visible && !paymentRecovery.checking,
+    sessionMarker,
+    refreshAfterYearlySwitch,
+    focusYearlyDismiss,
+  );
   const fieldOrder = useMemo(() => ACCOUNT_TAB_FIELD_ORDER[activeTab].filter((field) => {
     if (field === "showLocalTime" || field === "showDesks") return chatCardSupported;
     if (field === "desks") return chatCardSupported && draft.showDesks;
     if (field === "cancelTrialAction") return planAccess.isTrialActive;
+    if (field === "yearlyPlanAction") return yearlyPlan.primary !== null;
+    if (field === "yearlyPlanDismissAction") return yearlyPlan.reviewing;
     if (field === "inviteCopyAction") return invite !== null;
     return true;
-  }), [activeTab, chatCardSupported, draft.showDesks, invite, planAccess.isTrialActive]);
+  }), [activeTab, chatCardSupported, draft.showDesks, invite, planAccess.isTrialActive, yearlyPlan.primary, yearlyPlan.reviewing]);
   const accountTabs = ACCOUNT_TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.label) }));
 
   const planPrice = useMemo(() => formatCloudMonthlyPrice(pricing), [language, pricing]);
@@ -855,6 +877,16 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     setActiveField,
     setDraftValue,
     turnOffEmailAlerts,
+    yearlyPlanAction: () => {
+      setActiveField("yearlyPlanAction");
+      yearlyPlan.primary?.();
+    },
+    dismissYearlyReview: yearlyPlan.reviewing
+      ? () => {
+        yearlyPlan.dismiss();
+        setActiveField("yearlyPlanAction");
+      }
+      : null,
   });
 
   const textField = (key: "username" | "name" | "company" | "title" | "publicEmail" | "xAccount", label: string, placeholder: string) => (
@@ -1106,6 +1138,29 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                   </Box>
                 ) : null}
               </Box>}
+              {paymentRecovery.visible ? null : (
+                <YearlyPlanRow
+                  view={yearlyPlan.view}
+                  busy={yearlyPlan.busy}
+                  message={yearlyPlan.message}
+                  width={contentWidth}
+                  labelWidth={formLabelWidth}
+                  primaryActive={activeField === "yearlyPlanAction"}
+                  dismissActive={activeField === "yearlyPlanDismissAction"}
+                  primaryRef={fieldNodeRef("yearlyPlanAction")}
+                  dismissRef={fieldNodeRef("yearlyPlanDismissAction")}
+                  onPrimary={yearlyPlan.primary ? () => {
+                    setActiveField("yearlyPlanAction");
+                    yearlyPlan.primary?.();
+                  } : null}
+                  onDismiss={() => {
+                    yearlyPlan.dismiss();
+                    setActiveField("yearlyPlanAction");
+                  }}
+                  onFocusPrimary={() => setActiveField("yearlyPlanAction")}
+                  onFocusDismiss={() => setActiveField("yearlyPlanDismissAction")}
+                />
+              )}
               {invite ? (
                 <InviteRow
                   invite={invite}

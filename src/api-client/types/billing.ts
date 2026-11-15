@@ -46,6 +46,50 @@ export interface CloudAccountPlan {
   paymentFailed?: boolean;
 }
 
+/** Moving a monthly Pro subscription to yearly billing, in integer cents. */
+export interface CloudYearlyOffer {
+  currency: "usd";
+  monthlyAmount: number;
+  yearlyAmount: number;
+  /** Twelve monthly payments, and what the yearly price saves on them. */
+  twelveMonthlyAmount: number;
+  savingsAmount: number;
+}
+
+/** Whether this account can switch to yearly billing now. */
+export type CloudYearlyPlanStatus =
+  | { state: "unavailable" }
+  | { state: "available"; offer: CloudYearlyOffer }
+  /** A switch waiting for its payment; `invoiceUrl` is Stripe's hosted invoice. */
+  | { state: "pending"; invoiceUrl: string | null; expiresAt: string | null };
+
+/** The exact charge of a switch made now, from the billing provider's own preview. */
+export interface CloudYearlyReview {
+  /** Confirms this review, and only this one, for a few minutes. */
+  token: string;
+  expiresAt: string;
+  currency: "usd";
+  /** Charged today, after any account credit. */
+  amountDue: number;
+  /** The yearly price from today to the first yearly billing date. */
+  yearlyAmount: number;
+  /** Credit for the unused part of the month already paid. */
+  credit: number;
+  tax: number;
+  /** Account credit the charge uses up. */
+  balanceApplied: number;
+  renewalAmount: number;
+  renewsAt: string;
+  renewalTaxed: boolean;
+  offer: CloudYearlyOffer;
+}
+
+/** What a confirmed switch came to. Only `switched` is a completed, paid switch. */
+export type CloudYearlyResult =
+  | { state: "switched"; amountPaid: number | null; renewalAmount: number; renewsAt: string | null }
+  | { state: "payment_required"; invoiceUrl: string | null; expiresAt: string | null }
+  | { state: "processing" };
+
 /** Public `/pricing` payload; no session required. */
 export interface CloudPricing {
   currency: "usd";
