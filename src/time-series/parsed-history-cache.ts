@@ -33,7 +33,7 @@ export function parsedPriceHistoryKey(
  * moment later moves the plot and redraws every label.
  */
 interface SeedListingFacts {
-  quoteMetadata?: QuoteMetadata;
+  quoteMetadata?: QuoteMetadata | null;
   /** What a future's price counts ("USD / gallon"), so a seed states the unit the settled chart will. */
   contractUnit?: string;
   resolutionSupport?: ChartResolutionSupport[];

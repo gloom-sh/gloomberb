@@ -6,7 +6,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { ChartSnapshotContext } from "../../../time-series/hooks";
-import { parsedPriceHistoryKey, rememberParsedPriceHistory } from "../../../time-series/parsed-history-cache";
+import { parsedPriceHistoryKey, rememberParsedPriceHistory, rememberSeedListingFacts } from "../../../time-series/parsed-history-cache";
 import { useChartResolution, type UseChartResolutionResult } from "../../../time-series/use-chart-resolution";
 import type { PricePoint } from "../../../types/financials";
 import { ChartComposerPane } from "./pane";
@@ -42,6 +42,7 @@ for (const outcome of ["success", "disjoint", "empty", "failed"] as const) {
     // Reproduce the live range switch: a cached first leg seeds an unusable
     // shared window while the required histories are still in flight.
     rememberParsedPriceHistory(parsedPriceHistoryKey({ symbol: firstSymbol, exchange: "NASDAQ" }, "1Y", "1d"), history);
+    rememberSeedListingFacts({ symbol: firstSymbol, exchange: "NASDAQ" }, { quoteMetadata: null });
     let first = Promise.withResolvers<PricePoint[]>();
     let second = Promise.withResolvers<PricePoint[]>();
     const requested = new Set<string>();

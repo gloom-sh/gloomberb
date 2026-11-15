@@ -33,6 +33,7 @@ import { withFormulaNextMonths } from "./formula-months";
 import {
   parsedPriceHistoryKey,
   readParsedHistoryResult,
+  readSeedListingFacts,
 } from "./parsed-history-cache";
 
 export interface UseChartResolutionResult extends ChartResolutionResult {
@@ -223,7 +224,11 @@ export function useChartResolution(
     const now = sources.now ?? new Date();
     // The first paint prices a formula's legs in one month as the settled chart does, from the next months it read.
     const seedSpec = withFormulaNextMonths(spec);
-    return seedChartResolutionResult(seedSpec, collectSeedHistory(seedSpec, now, options), now, options);
+    const history = collectSeedHistory(seedSpec, now, options);
+    if (seedSpec.series.some(({ source }) => source.kind === "security"
+      && history.has(chartQuoteOverrideKeyForSource(source))
+      && readSeedListingFacts(source.instrument)?.quoteMetadata === undefined)) return null;
+    return seedChartResolutionResult(seedSpec, history, now, options);
   };
   const [state, setState] = useState(() => ({
     key: specKey,
