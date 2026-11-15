@@ -69,8 +69,7 @@ export function useNewsArticleFooter({
   const realtime = newsFeedRealtime(feedAccess, access.hasProAccess);
   const storyPastDelay = publishedBeforeNewsDelay(article);
 
-  // A report or capture of the pane says how far its stories are held back, as the footer does, and dates the
-  // list by its newest story, named so it is not read as the time now.
+  // A report or capture dates the list by its newest story, named so it is not read as the time now.
   useRemoteUiNode({
     role: "report-freshness",
     label: "News freshness",
