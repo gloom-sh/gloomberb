@@ -240,6 +240,9 @@ export function futuresContractMonth(code: string): { root: string; month: numbe
 export function venueOfDatedContract(code: string): string | null {
   const match = /^([A-Z0-9]{1,4}?)([FGHJKMNQUVXZ])(\d{2})$/.exec(code.trim().toUpperCase());
   if (!match) return null;
+  const year = 2000 + Number(match[3]);
+  const currentYear = new Date().getUTCFullYear();
+  if (year < currentYear - 1 || year > currentYear + 10) return null;
   const root = ALIASES[match[1]!] ?? match[1]!;
   const venue = ROOT_VENUES[root];
   return venue ? `${root}${match[2]}${match[3]}.${venue}` : null;

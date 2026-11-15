@@ -128,7 +128,7 @@ describe("macro-day surprises", () => {
 
 describe("macro-day surprise without a headline actual", () => {
   test("gap notices use a fallback only when it supplies the effective surprise", () => {
-    const figures: MacroReleaseFigures = { actual: "3.7%", forecast: "3.6%", prior: "3.4%", surprise: "hot",
+    const figures: MacroReleaseFigures = { event: "Inflation Rate YoY", actual: "3.7%", forecast: "3.6%", prior: "3.4%", surprise: "hot",
       surpriseBasis: { basis: "core m/m", actual: "0.2%", forecast: "0.3%", surprise: "cool" } };
     const event = { kind: "cpi", date: "2026-11-10", figures } as const;
     expect(macroFigureGapNotices([event])).toEqual([]);
@@ -139,7 +139,7 @@ describe("macro-day surprise without a headline actual", () => {
   });
 
   test("unread surprises have disjoint reasons, while classified fallbacks stay readable", () => {
-    const figures: MacroReleaseFigures = { actual: "3.7%", forecast: "3.6%", prior: "3.4%", surprise: null };
+    const figures: MacroReleaseFigures = { event: "Inflation Rate YoY", actual: "3.7%", forecast: "3.6%", prior: "3.4%", surprise: null };
     const complete = { figures };
     const missingBoth = { figures: { ...figures, actual: null, forecast: null } };
     const fallback = { figures: { ...figures, actual: null,
