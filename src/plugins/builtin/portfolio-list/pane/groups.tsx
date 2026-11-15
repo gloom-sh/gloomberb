@@ -173,7 +173,8 @@ export function useWatchlistGroupActions({
       { id: "watchlist:move-to-group", label: t("Move to Group…"), accelerator: MOVE_TO_GROUP_KEY, onSelect: () => startMove(symbol) },
       ...inGroup ? [{ id: "watchlist:remove-from-group", label: t("Remove from Group"), onSelect: () => moveTo(symbol, null) }] : [],
     ];
-  } : undefined, [currentList, listId, moveTo, startMove]);
+    // Built again when the list's groups change, so the cursor row's menu offers Remove from Group once it is in one.
+  } : undefined, [currentList, listId, moveTo, startMove, watchlist?.groups]);
 
   const cursorSymbol = cursorTicker?.metadata.ticker ?? null;
   usePaneFooter("portfolio-list-groups", () => enabled && listId && cursorSymbol ? {

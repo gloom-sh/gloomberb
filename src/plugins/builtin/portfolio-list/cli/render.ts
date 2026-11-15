@@ -1474,13 +1474,7 @@ async function showCollectionWithMarketData(
     const showFunding = watched.some(({ funding }) => funding !== undefined);
     // So is Last Trade, by holding a stale quote: the rows the closing line counts stale, dated as `quote` dates them.
     const stale = watched.filter((entry) => entry.stale);
-    // The group's name on its first row only, so the rows read as sections.
-    const groupCell = (index: number) => {
-      const name = groupOf.get(watched[index]!.ticker.metadata.ticker) ?? null;
-      const previous = index > 0 ? groupOf.get(watched[index - 1]!.ticker.metadata.ticker) ?? null : undefined;
-      return name === previous ? "" : cliStyles.bold(name ?? UNGROUPED_LABEL);
-    };
-    const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap, funding, stale: rowStale, lastTrade }, index) => {
+    const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap, funding, stale: rowStale, lastTrade }) => {
       const priceText = quote && headline
         ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
         : "—";
@@ -1488,7 +1482,7 @@ async function showCollectionWithMarketData(
       const changeText = quote?.delisting ? "—" : headline ? colorBySign(formatPercentRaw(headline.changePercent), headline.change) : "—";
       const staleText = quote?.delisting ? delistingLabel(quote.delisting) : lastTrade ? `STALE ${lastTrade}` : "STALE";
       return [
-        ...sections ? [groupCell(index)] : [],
+        ...sections ? [groupOf.get(ticker.metadata.ticker) ?? UNGROUPED_LABEL] : [],
         listingLabel(ticker),
         venue ?? "—",
         priceText,
