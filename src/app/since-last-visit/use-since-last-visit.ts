@@ -26,7 +26,7 @@ import {
 import { createVisitBaselineStore, VisitTracker } from "./visit-tracker";
 
 /** How long the return waits for its quotes before it compares what it has. */
-export const COMPARE_WAIT_MS = 10_000;
+const COMPARE_WAIT_MS = 10_000;
 /** Quotes ticking in batches are read once they settle, not on every tick. */
 const SWEEP_DELAY_MS = 2_000;
 
@@ -35,7 +35,7 @@ const SHOWN_FUNCTION = "LASTVISIT";
 const OPENED_FUNCTION = "LASTVISIT-OPEN";
 const OFF_FUNCTION = "LASTVISIT-OFF";
 
-export const SINCE_LAST_VISIT_OFF_MESSAGE = "Since Last Visit is off. Turn it on again from the command bar: Since Last Visit.";
+const SINCE_LAST_VISIT_OFF_MESSAGE = "Since Last Visit is off. Turn it on again from the command bar: Since Last Visit.";
 
 /** Who is signed in, as the visit is kept for: the API client unless a test says otherwise. */
 export interface VisitAccountSource {

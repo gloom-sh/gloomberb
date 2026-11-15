@@ -38,7 +38,7 @@ interface TerminalFit {
  * still has it), then without a lead. Every chip that fits is shown, the
  * biggest moves first; Hide always stays.
  */
-export function fitTerminalStrip(
+function fitTerminalStrip(
   width: number,
   leads: readonly string[],
   chipColumns: readonly number[],

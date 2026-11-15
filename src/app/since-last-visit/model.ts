@@ -19,13 +19,13 @@ import { isRecord } from "../../utils/guards";
  */
 
 /** Listings a visit keeps, portfolios first: one batch of quotes, and a small row in the state store. */
-export const MAX_TRACKED_LISTINGS = 50;
+const MAX_TRACKED_LISTINGS = 50;
 /** Less time away than this is the same visit (a restart, an update). */
 export const MIN_AWAY_MS = 60 * 60_000;
 /** The smallest move, in percent either way, the strip names. */
-export const MIN_MOVE_PERCENT = 1;
+const MIN_MOVE_PERCENT = 1;
 /** The most moves the strip names; a narrow window shows fewer. */
-export const MAX_STRIP_MOVES = 5;
+const MAX_STRIP_MOVES = 5;
 
 /** One price of a listing, as a visit keeps it for the next one. */
 export interface VisitObservation {
