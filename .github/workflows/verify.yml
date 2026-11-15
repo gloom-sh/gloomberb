@@ -74,6 +74,10 @@ jobs:
       - name: Dry-run Cloudflare Worker
         run: bunx wrangler deploy --dry-run --env production
 
+      # build.ts also runs the x64 binaries on an emulated CPU without AVX2.
+      - name: Install QEMU's user-mode emulator
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-user
+
       # The musl one is smoke tested in an Alpine container.
       - name: Build core binaries
         run: bun run scripts/build.ts --target linux-x64 --target linux-x64-musl
@@ -118,6 +122,10 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
+
+      # build.ts also runs the x64 binary on an emulated CPU without AVX2.
+      - name: Install QEMU's user-mode emulator
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-user
 
       - name: Build the terminal binary
         run: bun run scripts/build.ts --target linux-x64
