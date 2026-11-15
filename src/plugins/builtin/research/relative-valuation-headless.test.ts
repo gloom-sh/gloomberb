@@ -117,6 +117,13 @@ test("RV's forward P/E names the fiscal year of its consensus, as valuation does
   expect(result.rows.map((row) => forward.format!(row.forwardPE, row))).toEqual(["24.8", "24.8"]);
   const period = relativeValuationHeadless.columns!.find((column) => column.header === "Fwd P/E period")!;
   expect(result.rows.map((row) => period.format!(row[period.key], row))).toEqual(["FY28", ""]);
+  // The column came after the export's others were set: it closes the row, so none of the earlier ones moves.
+  const input = { symbols: ["V", "MCO"], argument: ["V", "MCO"], rawArgument: "V MCO", options: {} };
+  const freshness = deriveHeadlessFreshness(relativeValuationHeadless, result);
+  const header = renderReportCsv(headlessReportTables(relativeValuationHeadless, result, input, "RV", freshness,
+    { complete: true, unavailableSymbols: [] }), freshness).split("\n")[0]!.split(",");
+  expect(header.slice(header.indexOf("Fwd P/E"), header.indexOf("Fwd P/E") + 2)).toEqual(["Fwd P/E", "EV/S"]);
+  expect(header.slice(-3)).toEqual(["as_of", "retrieved_at", "Fwd P/E period"]);
 });
 
 test("relative valuation does not divide unconverted foreign cash flows by a USD market value", () => {

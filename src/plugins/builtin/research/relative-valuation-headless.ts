@@ -144,7 +144,8 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
 const VALUATION_PERIOD_COLUMNS: Record<string, HeadlessPaneColumn> = {
   trailingPE: { key: "trailingPEPeriod", header: "P/E period",
     format: (value, row) => row.trailingPE == null && !(row.reportedMultiples as Record<string, unknown> | undefined)?.trailingPE ? "" : typeof value === "string" && value ? value : "TTM" },
-  forwardPE: { key: "forwardPEPeriod", header: "Fwd P/E period",
+  // Added after the export's other columns: it closes the row, so none of theirs moves.
+  forwardPE: { key: "forwardPEPeriod", header: "Fwd P/E period", exportLast: true,
     format: (value, row) => row.forwardPE == null && !(row.reportedMultiples as Record<string, unknown> | undefined)?.forwardPE ? "" : typeof value === "string" ? value : "" },
   revenueGrowth: { key: "revenueGrowthHalf", header: "Revenue YoY period",
     format: (value, row) => row.revenueGrowth == null ? "" : typeof value === "string" && value ? value
