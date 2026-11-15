@@ -303,3 +303,28 @@ test("reading put skew finds the surface's skew tab first, ahead of the screen t
     geo.mockRestore();
   }
 });
+
+test("a memo's figures find FA with the tab that shows them, and an option's value finds its function with the command", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    const searched = (query: string) => renderPaneCatalogReport(filterPaneCatalogEntries(entries, query), parsePaneCatalogArgs([query]))
+      .replace(/\x1b\[[0-9;]*m/g, "");
+    for (const query of ["roic", "return on invested capital", "operating margin", "capex", "free cash flow"]) {
+      expect(filterPaneCatalogEntries(entries, query).slice(0, 3).map((entry) => entry.token), query).toContain("FA");
+    }
+    expect(searched("roic")).toStartWith('"roic": gloom fn FA <ticker> --statement profitability\n\nFA  Financial Analysis');
+    expect(searched("capex")).toStartWith('"capex": gloom fn FA <ticker> --statement cashflow');
+    // GF still answers a margin across companies, by the metric its option takes.
+    expect(searched("operating margin").replace(/\s+/g, " ")).toContain("gloom fn GF <tickers> --metric operatingMargin");
+    // An EQS preset is found by its value, which only the option's list named.
+    expect(searched("compounders")).toStartWith('"compounders": gloom fn EQS --preset compounders\n\nEQS  Equity Screener');
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
+  }
+});

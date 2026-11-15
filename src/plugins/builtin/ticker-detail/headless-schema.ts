@@ -43,8 +43,18 @@ export const paneSchemas = {
     discovery: {
       id: "financial-statements",
       aliases: ["financials", "financial statement", "income statement", "balance sheet", "cash flow statement", "financial ratios"],
-      // `fn runway VKTX` is the liquidity view, where cash + ST investments, burn and runway are.
-      opens: [{ words: ["runway", "cash runway", "burn", "cash burn", "months of cash"], argument: "", options: { statement: "liquidity" } }],
+      // What a memo asks for by name: `catalog roic` and `catalog "operating margin"` find FA, and `fn ROIC V` opens
+      // the tab with it, as `fn runway VKTX` is the liquidity view, where cash + ST investments, burn and runway are.
+      intents: [
+        "ROIC (return on invested capital), ROE, ROA and gross, operating and net margins, with NOPAT and invested capital",
+        "Capex, capex as a share of revenue, free cash flow and reinvestment rate by fiscal year",
+      ],
+      opens: [
+        { words: ["runway", "cash runway", "burn", "cash burn", "months of cash"], argument: "", options: { statement: "liquidity" } },
+        { words: ["roic", "return on invested capital", "nopat", "operating margin", "gross margin", "net margin", "margins"], argument: "",
+          options: { statement: "profitability" } },
+        { words: ["capex", "capital expenditure", "capital expenditures", "reinvestment rate"], argument: "", options: { statement: "cashflow" } },
+      ],
       limitations: [
         "One company per invocation; use GF for cross-company metric comparisons.",
         "Excludes bank regulatory capital (CET1, risk-weighted assets) and REIT FFO/AFFO.",

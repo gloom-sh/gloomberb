@@ -14,6 +14,7 @@ import {
   getPaneFunctionCapability,
   MAX_INLINE_CHOICES,
   optionChoices,
+  optionFlag,
   optionFlags,
   paneFunctionArgument,
   type PaneFunctionCapability,
@@ -539,6 +540,9 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   ].filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));
   const flagKeys = entry.capability.options
     .flatMap((option) => [option.key, ...(option.aliases ?? [])]).map((value) => normalizeLookupToken(value));
+  // A value one of its options takes names the function as a flag's own name does: `compounders` is EQS's preset.
+  const flagValues = new Set(entry.capability.options.flatMap((option) => (option.values ?? [])
+    .flatMap((value) => [value.value, ...(value.aliases ?? [])])).map((value) => normalizeLookupToken(value)));
   const named = nameAndDescription(entry);
   const flags = flagText(entry);
   const wholeQuery = query.toLowerCase().trim().replace(/\s+/g, " ");
@@ -575,7 +579,7 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
     } else if (normalized !== term && named.includes(normalized)) {
       score += 1;
       matchedNamed += 1;
-    } else if (flagKeys.includes(normalized)) {
+    } else if (flagKeys.includes(normalized) || flagValues.has(normalized)) {
       score += 2;
       matchedFlagKeys += 1;
     } else if (containsPhrase(flags, term)) {
@@ -587,6 +591,9 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   }
 
   if (matchedTerms === 0) return none;
+  // The whole query a value an option takes (GF's `operating margin` metric) is a name the function answers to.
+  const valueNamed = terms.length > 1 && flagValues.has(normalizeLookupToken(wholeQuery));
+  if (valueNamed) matchedNamed = terms.length;
   // Words found only in a function's flags make a match when they are a flag's own name ("expiration") or,
   // together, cover the whole query ("funding rate" in two flags); one stray word in a flag's description
   // ("budget" in OSA's hedge budget) does not.
@@ -930,6 +937,30 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
   return lines.join("\n");
 }
 
+/**
+ * The command that runs a function with the option value a query names (`compounders` is EQS's `--preset
+ * compounders`), with the argument it needs first; null when the query is no value of its options.
+ */
+export function optionValueCommand(entry: PaneCatalogEntry, query: string): string | null {
+  const wanted = normalizeLookupToken(query);
+  if (!wanted) return null;
+  // A word that opens one case of the function (FA's `roic`) runs it with that case's options.
+  const opening = entry.capability.opens?.find((candidate) => candidate.words.some((word) => normalizeLookupToken(word) === wanted));
+  if (opening?.options && Object.keys(opening.options).length > 0) {
+    const argument = opening.argument || argumentHint(entry);
+    const flags = Object.entries(opening.options).map(([key, value]) => `${optionFlag(key)} ${value}`).join(" ");
+    return `gloom fn ${entry.token}${argument ? ` ${argument}` : ""} ${flags}`;
+  }
+  for (const option of entry.capability.options) {
+    const value = option.values?.find((candidate) => [candidate.value, ...(candidate.aliases ?? [])]
+      .some((name) => normalizeLookupToken(name) === wanted));
+    if (!value) continue;
+    const argument = argumentHint(entry);
+    return `gloom fn ${entry.token}${argument ? ` ${argument}` : ""} ${optionFlag(option.key)} ${value.value}`;
+  }
+  return null;
+}
+
 /** The functions a search lists, one row each. */
 function renderMatchesTable(shown: readonly PaneCatalogEntry[]): string {
   return renderTable(
@@ -1025,9 +1056,12 @@ export function renderPaneCatalogReport(
   const withGap = (text: string) => withSetting([gap ? wrapText(gap, width).join("\n") : "", text].filter(Boolean).join("\n\n"));
   const withTerms = (text: string) => withGap([text, charted, terms].filter(Boolean).join("\n\n"));
   if (args.query && entries.length === 1) {
-    // A function found only through a word of its description or keywords is the closest there is, and says so.
-    const closest = isClosestCatalogMatch(entries[0]!, args.query)
-      ? `${cliStyles.muted(`Closest match for "${args.query.trim()}": no function is named for it.`)}\n\n` : "";
+    // A value of one of its options (EQS's `compounders` preset) is run with that option; a function found only
+    // through a word of its description or keywords is the closest there is, and says so.
+    const run = optionValueCommand(entries[0]!, args.query);
+    const closest = run ? `${cliStyles.muted(`"${args.query.trim()}": ${run}`)}\n\n`
+      : isClosestCatalogMatch(entries[0]!, args.query)
+        ? `${cliStyles.muted(`Closest match for "${args.query.trim()}": no function is named for it.`)}\n\n` : "";
     return withTerms(`${closest}${renderCatalogEntry(entries[0]!)}`);
   }
 
@@ -1049,10 +1083,13 @@ export function renderPaneCatalogReport(
   const more = args.query
     ? `${hidden} more ${hidden === 1 ? "match" : "matches"}: refine the query, or add --all to list every match.`
     : `Add --all to list all ${entries.length}.`;
+  // The functions that take the query as an option's value, with the command that runs them on it.
+  const runs = args.query ? shown.flatMap((entry) => optionValueCommand(entry, args.query) ?? []).slice(0, 3) : [];
   const lines = [
     `${renderSection(title)} ${cliStyles.muted(`(${count})`)}`,
     renderMatchesTable(shown),
     "",
+    ...runs.length > 0 ? [note(`"${args.query.trim()}": ${runs.join("; ")}`)] : [],
     note([
       loose ? "No function carries every word of the query; these are the closest." : "",
       "gloom catalog <function> shows its options and examples.",
