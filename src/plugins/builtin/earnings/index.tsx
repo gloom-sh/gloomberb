@@ -139,7 +139,7 @@ export const earningsModule: PluginModule = {
       id: "earnings-board-pane",
       paneId: "earnings-calendar",
       label: "Earnings Days",
-      description: "The market board: report days by week or day, with implied and past moves; a ticker highlights its row.",
+      description: "The market board: report days by week or day, with implied and past moves; a ticker opens its report day and selects its row.",
       keywords: ["evts", "events", "earnings calendar", "earnings season", "reporting today"],
       // Bloomberg's calendar: the market board always, never one company's history.
       shortcut: { prefix: "EVTS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },

@@ -28,7 +28,9 @@ import { useAssetData, usePluginAppActions, usePluginTickerActions } from "../..
 import { earningsResultsAlertValues } from "../alerts/research-builder";
 import { cachedMembers, loadMembers } from "../members/client";
 import { isBoardRowLoading, useQuoteBoard } from "../shared/use-quote-board";
-import { listingAbroadVenue } from "../../../utils/sec";
+import { usePlanAccess } from "../../../api-client/plan-access";
+import { useResearchCloudSession } from "../shared/research-cloud-session";
+import { loadEarningsHighlight } from "./highlight";
 import {
   addDays,
   boardKey,
@@ -117,7 +119,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   height: number;
   /** Named on the command bar; empty for the market board. */
   scopedSymbols: readonly string[];
-  /** `EVTS <ticker>`: the row to select when that company reports in these days. */
+  /** `EVTS <ticker>`: open on this company's report and select its row. */
   highlight?: string | null;
 }) {
   const dataProvider = useAssetData();
@@ -151,7 +153,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   // range for both views: the table draws its days, the calendar its week (this week for the days ahead).
   const [requestedDate] = usePaneSettingValue<string>("date", "");
   const [requestedWeek] = usePaneSettingValue<string>("week", "");
-  const [range, setRange] = usePluginPaneState<BoardRange>("range", requestedBoardRange(requestedDate, requestedWeek));
+  const [chosenRange, setRange] = usePluginPaneState<BoardRange | null>("range", null);
   // The calendar's groups opened past their "+N more" slot, by `calendarGroupKey`.
   const [expanded, setExpanded] = useState(NONE_EXPANDED);
   const desktop = useUiCapabilities().nativePaneChrome === true;
@@ -171,6 +173,12 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
 
   const today = newYorkToday();
   const market = !scoped && scope.kind === "all";
+  const access = usePlanAccess();
+  const session = useResearchCloudSession();
+  const accessKey = `${session.requestKey}:${access.hasProAccess ? "pro" : "free"}`;
+  const highlightLoader = useCallback((force: boolean) => loadEarningsHighlight(highlight!, today, dataProvider, force, accessKey), [accessKey, dataProvider, highlight, today]);
+  const highlightedReport = useAsyncResource(market && highlight ? highlightLoader : null);
+  const range = chosenRange ?? (requestedBoardRange(requestedDate, requestedWeek) || highlightedReport.data?.report.date || "");
   // Keyed by content: ticker records change for many reasons, the board reloads only when the list's names do.
   const collectionKey = useMemo(() => {
     if (scope.kind !== "portfolio" && scope.kind !== "watchlist") return "";
@@ -196,7 +204,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const weekOffset = boardRangeWeek(range, today);
   const week = useMemo(() => calendarWeekDates(today, weekOffset), [today, weekOffset]);
   // EVTS 0700.HK names its listing, which the market board then keeps whatever the day's cut.
-  const highlightListing = market && highlight && listingAbroadVenue(boardKey(highlight)) ? boardKey(highlight) : null;
+  const highlightListing = market && highlight ? boardKey(highlight) : null;
   // The calendar reads its week, reported days included; the table its days. Each report says its currency
   // (CCY), so every board reads the listings abroad too.
   const query = useMemo<EarningsCalendarQuery>(() => {
@@ -228,6 +236,10 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     const extra = fallback.status === "fulfilled"
       ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, owned, today))
       : [];
+    const target = highlightedReport.data?.report;
+    if (target && target.date >= read.from && target.date <= read.to && ![...reports, ...extra].some((report) => boardRowOf(report, target.symbol))) {
+      extra.push({ ...target, owned: owned.get(target.symbol) ?? null });
+    }
     return {
       queryKey,
       reports: [...reports, ...extra],
@@ -237,8 +249,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
         ? (cloud.reason instanceof Error ? cloud.reason.message : String(cloud.reason))
         : holdings?.refreshError ?? cloud.value.refreshError,
     };
-  }, [calendar, dataProvider, market, named, owned, perTicker, query, queryKey, range, fund, today]);
-  const resource = useAsyncResource(loader, {
+  }, [calendar, dataProvider, highlightedReport.data, market, named, owned, perTicker, query, queryKey, range, fund, today]);
+  const resource = useAsyncResource(highlightedReport.loading ? null : loader, {
     keepPreviousData: true,
     initialData: () => {
       const holdings = fund ? cachedMembers(fund.etf) : null;
@@ -324,16 +336,23 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   const utcDay = useUtcDay();
   // Its source and when the calendar was read, as `fn EVTS` ends; how long ago it loaded goes first on a narrow row.
-  const footerInfo = useMemo(() => data ? [
-    reportFooterSegment(earningsBoardHeadless, { rows: [], metadata: { asOf: data.asOf } }),
-    ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
-  ] : [], [data, updatedAgo, utcDay]);
+  const highlightMissing = market && highlight && !resource.loading && !highlightedReport.loading && !data?.reports.some((report) => boardRowOf(report, highlight));
+  const footerInfo = useMemo(() => [
+    ...(highlightMissing ? [{ id: "highlight", capture: true, parts: [{
+      text: highlightedReport.error ? `${highlight}: report date unavailable`
+        : highlightedReport.data ? `${highlight} reports on ${highlightedReport.data.report.date}; not in this range`
+          : `No report date for ${highlight}.`,
+      tone: "warning" as const,
+    }] }] : []),
+    ...(data ? [reportFooterSegment(earningsBoardHeadless, { rows: [], metadata: { asOf: data.asOf } }),
+      ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : [])] : []),
+  ], [data, highlight, highlightedReport.data, highlightedReport.error, highlightMissing, updatedAgo, utcDay]);
   usePaneStatusFooter({
     registrationId: "earnings-board",
     enabled: !open,
-    loading: resource.loading,
-    error: resource.error ?? data?.refreshError ?? null,
-    stale: !!data?.stale,
+    loading: resource.loading || highlightedReport.loading,
+    error: resource.error ?? highlightedReport.error ?? data?.refreshError ?? highlightedReport.data?.refreshError ?? null,
+    stale: !!data?.stale || !!highlightedReport.data?.stale,
     info: footerInfo,
   });
   const symbol = open?.symbol ?? selectedReport?.symbol ?? null;
@@ -357,8 +376,9 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   }), [alerts, createPaneFromTemplate, navigateTicker, notify, symbol]);
 
   // t, e, c, a and n are footer hints, which bind their own keys.
-  const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, () => resource.reload()), [resource.reload]);
-  usePaneRefreshKey(() => resource.reload(), { focused, enabled: calendar && !open });
+  const refresh = useCallback(() => { highlightedReport.reload(); resource.reload(); }, [highlightedReport.reload, resource.reload]);
+  const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh), [refresh]);
+  usePaneRefreshKey(refresh, { focused, enabled: calendar && !open });
 
   const sortColumn = (Object.entries(SORTABLE).find(([, value]) => value === sort.column)?.[0]) ?? null;
   const namesFilter: QueryBarFilter[] = scoped ? [] : [{
@@ -457,7 +477,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
       rootWidth={width}
       rootHeight={height}
       rootBefore={queryBar}
-      status={{ loading: resource.loading && !data, error: !data ? resource.error : null, subject: "the earnings calendar" }}
+      status={{ loading: (resource.loading || highlightedReport.loading) && !data, error: !data ? resource.error : null, subject: "the earnings calendar" }}
       columns={columns}
       items={rows}
       getItemKey={(row) => row.key}
