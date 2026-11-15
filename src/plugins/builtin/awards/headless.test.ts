@@ -99,6 +99,20 @@ test("cohort amounts print compact as the pane draws them, while exports keep th
   expect(csv).toContain("100000000.05");
 });
 
+test("an entirely unreported amount keeps its raw null and its column in headless and CSV reports", async () => {
+  const payload = awardsPayload({ rows: [awardRow({ awardAmount: null, obligatedAmount: null, ceilingAmount: null, revenueComparison: null })] });
+  const args = createTestHeadlessArgs({ options: { tab: "feed" } });
+  const result = await awardsHeadless.load(args, createTestHeadlessContext({
+    apiClient: { getCloudAwards: async () => payload } as unknown as HeadlessPaneContext["apiClient"],
+  }));
+  expect(firstRow(result)).toMatchObject({ value: null, obligated: null, ceiling: null, revenueComparison: null });
+  const { tables } = headlessReportTables(awardsHeadless, result, args, "AWARDS", deriveHeadlessFreshness(awardsHeadless, result), { complete: true, unavailableSymbols: [] });
+  for (const label of ["Value", "Obligated", "Ceiling"]) {
+    expect(tables[0]!.columns).toContain(label);
+    expect(tables[0]!.rows[0]![tables[0]!.columns.indexOf(label)]).toBe("");
+  }
+});
+
 test("a source's licence statement is a note under the awards it covers", async () => {
   const notice = "Contains information from Government Procurement via GeBIZ accessed on 12 November 2026 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence";
   const payload = awardsPayload({ rows: [awardRow({ source: "sg-gebiz", jurisdiction: "SG", currency: "SGD", revenueComparison: null })], sources: [{ ...source("sg-gebiz", "2021-04-01", 246), attribution: notice }] });

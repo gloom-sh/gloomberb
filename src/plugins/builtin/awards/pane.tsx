@@ -6,7 +6,7 @@ import { Badge, ChartTableHeader, DataTableView, Notice, PageStackView, PaneStat
   usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableColumn, type PaneHint, type QueryBarFilter } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { formatCompactAxis } from "../../../components/chart-table";
-import { missingCell, shareCell, withoutQuietColumns } from "../shared/research-cells";
+import { missingCell, shareCell } from "../shared/research-cells";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -49,8 +49,8 @@ const rowDate = (row: AwardRow) => new Date(`${row.awardDate}T00:00:00Z`);
 const COLUMN = {
   date: { id: "date", label: "Date", width: 11, align: "left" }, recipient: { id: "recipient", label: "Awardee", width: 26, flexGrow: 1, align: "left" },
   ticker: { id: "ticker", label: "Ticker", width: 10, align: "left" }, currency: { id: "currency", label: "CCY", width: 5, align: "left" },
-  value: { id: "value", label: "Value", width: 11, align: "right" }, obligated: { id: "obligated", label: "Obligated", width: 11, align: "right" },
-  ceiling: { id: "ceiling", label: "Ceiling", width: 11, align: "right" }, agency: { id: "agency", label: "Agency", width: 24, align: "left" },
+  value: { id: "value", label: "Value", width: 11, align: "right", omitWhenEmpty: true }, obligated: { id: "obligated", label: "Obligated", width: 11, align: "right", omitWhenEmpty: true },
+  ceiling: { id: "ceiling", label: "Ceiling", width: 11, align: "right", omitWhenEmpty: true }, agency: { id: "agency", label: "Agency", width: 24, align: "left" },
   country: { id: "country", label: "Country", width: 8, align: "left" }, period: { id: "period", label: "Performance period", width: 24, align: "left" },
   title: { id: "title", label: "Contract", width: 36, flexGrow: 1, align: "left" },
   dateBasis: { id: "dateBasis", label: "Date basis", width: 14, align: "left" },
@@ -59,8 +59,6 @@ const COLUMN = {
 // shows the contract; the period and date basis follow.
 const FEED_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker, COLUMN.title, COLUMN.agency, COLUMN.currency,
   COLUMN.value, COLUMN.obligated, COLUMN.ceiling, COLUMN.country, COLUMN.period, COLUMN.dateBasis];
-/** Amounts a source never reports (UK and EU notices have no obligation or ceiling) leave a column of dashes. */
-const QUIET_AMOUNTS = { obligated: [MISSING_VALUE], ceiling: [MISSING_VALUE] } as const;
 const EVENT_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker,
   { id: "ratio", label: "% revenue", width: 11, align: "right" }, COLUMN.currency, { ...COLUMN.value, label: "Compared value" },
   { id: "revenue", label: "Annual revenue", width: 14, align: "right" }, { id: "basis", label: "Value basis", width: 13, align: "left" },
@@ -68,8 +66,8 @@ const EVENT_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.
 // The share leads the figures: concentration is what these views are for.
 const AGG_COLUMNS: DataTableColumn[] = [
   { id: "label", label: "Agency", width: 30, flexGrow: 1, align: "left" }, { id: "currency", label: "CCY", width: 5, align: "left" },
-  { id: "share", label: "Share %", width: 24, align: "right" }, { id: "obligated", label: "Obligated", width: 12, align: "right" }, { id: "value", label: "Value", width: 12, align: "right" },
-  { id: "ceiling", label: "Ceiling", width: 12, align: "right" },
+  { id: "share", label: "Share %", width: 24, align: "right" }, { ...COLUMN.obligated, width: 12 }, { ...COLUMN.value, width: 12 },
+  { ...COLUMN.ceiling, width: 12 },
   { id: "contracts", label: "Awards", width: 8, align: "right" },
   { id: "scope", label: "Scope", width: 27, align: "left" },
 ];
@@ -220,7 +218,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     view={tab === "sectors" ? { value: leaderView, options: [{ value: "companies", label: "Companies" }, { value: "sectors", label: "Sectors" }], onChange: setLeaderView } : undefined} />;
   const columns = showLeaders ? LEADER_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency")
     : aggregated ? AGG_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency").map((column) => column.id === "label" ? { ...column, label: tab === "agencies" ? "Agency" : "Sector" } : column)
-    : tab === "events" ? EVENT_COLUMNS : withoutQuietColumns(FEED_COLUMNS, rows, (row, id) => (id === "obligated" ? row.obligatedAmount : row.ceilingAmount) ?? MISSING_VALUE, QUIET_AMOUNTS);
+    : tab === "events" ? EVENT_COLUMNS : FEED_COLUMNS;
   const maxShare = Math.max(0, ...items.map((item) => item.kind === "aggregate" || item.kind === "leader" ? item.row.sharePercent ?? 0 : 0));
   // A preview's cohorts are the latest of any company, so they never chart as the ticker's.
   const charted = data?.locked ? [] : series;

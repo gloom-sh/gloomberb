@@ -2,12 +2,14 @@ import { act, useReducer } from "react";
 import { afterEach, expect, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
+import { MISSING_VALUE } from "../../../utils/format";
 import { awardDetailCache, awardsCache } from "./client";
 import { AwardsPane } from "./pane";
 import { awardDetail, awardRow, awardsPayload } from "./test-fixture";
@@ -31,6 +33,70 @@ async function mount(tab = "feed", width = 120, height = 26, onNavigate: (id: st
   }
   await act(async () => { await tui.render(<Harness />, { width, height }); });
 }
+
+test("unreported amounts leave the feed, not its export, and any reported amount restores its column", async () => {
+  const missing = awardRow({ awardAmount: null, obligatedAmount: null, ceilingAmount: null, revenueComparison: null });
+  let rows = [missing];
+  setCloudApiFetchTransport(async () => Response.json(awardsPayload({ rows })));
+  await mount("feed", 240, 26);
+  const empty = await tui.waitForFrameToContain("Contractor Corporation");
+  expect(empty).not.toMatch(/VALUE|OBLIGATED|CEILING/);
+  await exportPaneTable("awards:test", "awards.csv");
+  const [header, record] = takeSavedTextFile()!.text.trim().split("\n").map((line) => line.split(","));
+  for (const label of ["Value", "Obligated", "Ceiling"]) {
+    expect(header).toContain(label);
+    expect(record![header!.indexOf(label)]).toBe("");
+  }
+  await tui.destroy();
+  awardsCache.reset();
+  rows = [missing, awardRow({ id: "reported", recipient: { name: "Reported contractor" }, awardAmount: "0", obligatedAmount: "2500000", ceilingAmount: "0" })];
+  await mount("feed", 240, 26);
+  const populated = await tui.waitForFrameToContain("Reported contractor");
+  expect(populated).toMatch(/VALUE\s+OBLIGATED\s+CEILING/);
+  expect(populated.split("\n").find((line) => line.includes("Reported contractor"))).toMatch(/USD\s+0\s+2\.50M\s+0/);
+  expect(populated.split("\n").find((line) => line.includes("Contractor Corporation"))).toMatch(new RegExp(`USD\\s+${MISSING_VALUE}\\s+${MISSING_VALUE}\\s+${MISSING_VALUE}`));
+  await exportPaneTable("awards:test", "awards.csv");
+  expect(takeSavedTextFile()!.text).toContain("USD,0,2500000,0");
+});
+
+test("a withheld amount alone keeps Value visible without reviving unavailable amounts", async () => {
+  setCloudApiFetchTransport(async () => Response.json(awardsPayload({ rows: [awardRow({ awardAmount: null, obligatedAmount: null, ceilingAmount: null, amountWithheld: "under S$6,000", revenueComparison: null })] })));
+  await mount("feed", 240, 26);
+  const frame = await tui.waitForFrameToContain("withheld");
+  expect(frame).toContain("VALUE");
+  expect(frame).not.toMatch(/OBLIGATED|CEILING/);
+});
+
+test("events decide Compared value from the revenue comparison, not the award face value", async () => {
+  let alerts = [awardRow({ revenueComparison: null })];
+  setCloudApiFetchTransport(async () => Response.json(awardsPayload({ alerts })));
+  await mount("events", 240, 26);
+  expect(await tui.waitForFrameToContain("Contractor Corporation")).not.toContain("COMPARED VALUE");
+  await tui.destroy();
+  awardsCache.reset();
+  alerts = [...alerts, awardRow({ id: "compared", awardAmount: null, recipient: { name: "Compared contractor" }, revenueComparison: { ...awardRow().revenueComparison!, awardAmount: "2500000" } })];
+  await mount("events", 240, 26);
+  const frame = await tui.waitForFrameToContain("Compared contractor");
+  expect(frame).toContain("COMPARED VALUE");
+  expect(frame.split("\n").find((line) => line.includes("Compared contractor"))).toContain("2.50M");
+  expect(frame.split("\n").find((line) => line.includes("Contractor Corporation"))).toMatch(new RegExp(`USD\\s+${MISSING_VALUE}`));
+});
+
+for (const tab of ["agencies", "sectors"]) test(`${tab} omit unavailable amounts despite section rows and keep a reported zero`, async () => {
+  const payload = awardsPayload();
+  for (const row of [...payload.agencies, ...payload.leaders]) Object.assign(row, { awardAmount: null, obligatedAmount: null, ceilingAmount: null });
+  setCloudApiFetchTransport(async () => Response.json(payload));
+  await mount(tab, 240, 26);
+  const label = tab === "agencies" ? "Department of Defense" : "Contractor Corporation";
+  expect(await tui.waitForFrameToContain(label)).not.toMatch(/VALUE|OBLIGATED|CEILING/);
+  await tui.destroy();
+  awardsCache.reset();
+  for (const row of [...payload.agencies, ...payload.leaders]) row.awardAmount = "0";
+  await mount(tab, 240, 26);
+  const frame = await tui.waitForFrameToContain(label);
+  expect(frame).toContain("VALUE");
+  expect(frame).not.toMatch(/OBLIGATED|CEILING/);
+});
 
 test("preview retains original award evidence and keyboard navigation opens verified ticker links", async () => {
   const row = awardRow({ entity: { ...awardRow().entity!, ticker: "2330", exchange: "TWSE" } });
