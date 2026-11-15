@@ -7,6 +7,16 @@ import { buildTickerSearchCandidates, resolveTickerSearch } from "./search";
 import { search } from "../cli/commands/search";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { PrintedCliResult } from "../test-support/cli-context";
+import { lineDistance } from "./search/home-listing";
+
+test("typed B3 receipts retain receipt distance ahead of the local share-code rule", () => {
+  for (const symbol of ["AAPL34", "MSFT34"]) {
+    for (const type of ["BDR", "Depositary Receipt"]) expect(lineDistance(type, "B3", symbol)).toBe(2);
+  }
+  expect(lineDistance("Common Stock", "B3", "PETR3")).toBe(0);
+  expect(lineDistance("Preferred Stock", "B3", "PETR4")).toBe(0);
+  expect(lineDistance("Common Stock", "B3", "PETR3F")).toBe(1);
+});
 
 const listing = (symbol: string, name: string, exchange: string, type = "Common Stock"): InstrumentSearchResult =>
   ({ providerId: "test", symbol, name, exchange, type, currency: "USD" });

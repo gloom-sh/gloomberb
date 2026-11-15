@@ -120,7 +120,7 @@ export const macroFigureGapNotices = (events: readonly Pick<MacroDayEvent, "kind
     if (!event.figures) return event.figuresMissing ? [`${label} has no figures: ${event.figuresMissing}.`] : [];
     if (event.figures.computed) return [`${label} actual is ${event.figures.computed}.`];
     // The print its surprise is read from instead, with its own figures.
-    const basis = event.figures.surpriseBasis;
+    const basis = macroSurpriseBasisLabel(event.figures) != null ? event.figures.surpriseBasis : null;
     const read = basis ? ` Surprise read from ${basis.basis}: ${basis.actual} vs ${basis.forecast} forecast.` : "";
     return event.figures.actualMissing ? [`${label} has no actual: ${event.figures.actualMissing}.${read}`]
       : basis ? [`${label} has no actual.${read}`] : [];
@@ -150,10 +150,12 @@ export function macroSurpriseExclusionNote(events: readonly Pick<MacroDayEvent, 
   const unread = events.filter((event) => macroSurpriseOf(event.figures) == null);
   if (!unread.length) return null;
   const noActual = unread.filter((event) => !event.figures?.actual).length;
-  const noForecast = unread.length - noActual;
+  const noForecast = unread.filter((event) => event.figures?.actual && !event.figures.forecast).length;
+  const unavailable = unread.length - noActual - noForecast;
+  const reasons = ([[noActual, "no actual"], [noForecast, "no forecast"], [unavailable, "surprise unavailable"]] as const)
+    .filter(([count]) => count > 0);
   const prints = `${unread.length} print${unread.length === 1 ? "" : "s"} excluded`;
-  return noActual && noForecast ? `${prints}: ${noActual} no actual, ${noForecast} no forecast.`
-    : `${prints}: no ${noActual ? "actual" : "forecast"}.`;
+  return `${prints}: ${reasons.map(([count, reason]) => reasons.length > 1 ? `${count} ${reason}` : reason).join(", ")}.`;
 }
 
 /** What a row adds to its release's name: a policy decision's move, and the earnings marker. */
