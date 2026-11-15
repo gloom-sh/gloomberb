@@ -9,15 +9,17 @@
  * repositories on runners that can reach the run's artifacts, and a file
  * replaced there stays replaced for every later attempt of the run. So what
  * the artifacts hold proves nothing, and neither would a sum of them taken in
- * a later attempt. The jobs of build-release-assets.yml attest each file
- * they upload with their own OIDC identity, which no other job is given. This
- * asks GitHub for those attestations (`gh attestation verify`, bound to this
- * repository and that workflow) and passes a file only when one made in this
- * run, in any attempt, names it with its digest. A held release still
- * publishes after `gh run rerun --failed`; a file from another run or under
- * another name, an unattested one, a link or a folder fails it.
+ * a later attempt. The jobs of build-release-assets.yml attest each file they
+ * upload, signed with an OIDC identity that names that workflow and the run,
+ * which no job outside it can take on. This asks GitHub for those
+ * attestations (`gh attestation verify`, bound to this repository and that
+ * workflow) and passes a file only when one made in this run, in any attempt,
+ * names it with its digest. A held release still publishes after
+ * `gh run rerun --failed`; a file from another run or under another name, an
+ * unattested one, a link or a folder fails it.
  */
-import { readdirSync } from "fs";
+import { createHash } from "crypto";
+import { createReadStream, readdirSync } from "fs";
 import { join } from "path";
 
 const BUILD_WORKFLOW = ".github/workflows/build-release-assets.yml";
@@ -52,7 +54,7 @@ export function attestedInRun(verified: readonly VerifiedAttestation[], runUrl: 
 }
 
 /** The plain files directly in the folder, and every other entry: a folder or a link, which no build uploads. */
-export function readBuiltFolder(dir: string): { files: string[]; others: string[] } {
+function readBuiltFolder(dir: string): { files: string[]; others: string[] } {
   const files: string[] = [];
   const others: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -62,9 +64,9 @@ export function readBuiltFolder(dir: string): { files: string[]; others: string[
 }
 
 async function sha256File(path: string): Promise<string> {
-  const hasher = new Bun.CryptoHasher("sha256");
-  for await (const chunk of Bun.file(path).stream()) hasher.update(chunk);
-  return hasher.digest("hex");
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest("hex");
 }
 
 if (import.meta.main) {
@@ -99,8 +101,9 @@ if (import.meta.main) {
     let verified: unknown;
     try {
       verified = JSON.parse(gh.stdout.toString());
-    } catch {
-      verified = null;
+    } catch (error) {
+      failed.push(`${name}: gh attestation verify printed no JSON: ${error instanceof Error ? error.message : String(error)}`);
+      continue;
     }
     if (!Array.isArray(verified) || !attestedInRun(verified, runUrl, name, sha256)) {
       failed.push(`${name}: no attestation from this run names it with sha256 ${sha256}`);
