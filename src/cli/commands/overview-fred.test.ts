@@ -59,6 +59,13 @@ test("multiple series align sparse dates without filling gaps, retaining each un
   await expect(runFred(["PERMIT", "--bogus"])).rejects.toThrow("space- or comma-separated series IDs");
   const single = await runFred(["PERMIT", "--start", "2026-09-01"]);
   expect(single.result.data).toMatchObject([{ value: 1398, released: "2026-10-20", first_released: "2026-10-20", revised_on: "2026-10-27", first_release_value: 1400 }]);
+  serve(Object.fromEntries(["T10Y2Y", "DGS10"].map((seriesId) => [`/cloud/econ/series/${seriesId}`, { status: 200, body: {
+    observations: [{ date: "2026-11-12", value: 0.2 }, { date: "2026-11-13", value: 0.3 }],
+    info: { id: seriesId, units: "Percent", frequency: "Daily" },
+  } }])));
+  const changed = await runFred(["T10Y2Y", "DGS10", "--start", "2026-11-12", "--sort", "asc", "--change", "1D"]);
+  expect(changed.result.data).toMatchObject([{ T10Y2Y_change: null }, { T10Y2Y_change: 10, T10Y2Y_changeFrom: "2026-11-12" }]);
+  expect(serializeCliResult(changed.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, changed.options).split("\n")[0]).toContain("T10Y2Y_change,T10Y2Y_changeFrom");
 });
 
 test("an unsupported series is a usage error that points at the list, whichever body the server sends", async () => {

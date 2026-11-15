@@ -867,7 +867,7 @@ async function printFredAligned(ctx: Parameters<CliCommandDef["execute"]>[1], se
   const byDate = new Map<string, Record<string, unknown>>();
   const metadata: Record<string, unknown> = {};
   const notes = ["Aligned on observation dates, not release dates. Missing observations remain blank; values are not forward-filled."];
-  const suffixes = ["unit", "interval", "source", "released", "first_released", "revised_on", "first_release_value"];
+  const suffixes = ["unit", "interval", "source", "released", "first_released", "revised_on", "first_release_value", ...options.horizon ? ["change", "changeFrom"] : []];
   for (const { seriesId, result, render } of reports) {
     metadata[seriesId] = result.metadata;
     notes.push(...render.exportNotes ?? []);
