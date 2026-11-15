@@ -24,6 +24,7 @@ import { migrateSavedConfig, type ConfigMigrationHost } from "./migrations";
 import { encodeBuiltinDisabledPluginIds, expandBuiltinPluginGroups } from "../../../plugins/ownership";
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
+import { normalizeWatchlistGroups } from "../../../portfolio/watchlist-groups";
 import { normalizeStoredBaseCurrency } from "../../../utils/base-currency";
 import { debugLog } from "../../../utils/debug-log";
 import { DEFAULT_THEME, themes } from "../../../theme/themes";
@@ -433,7 +434,11 @@ function sanitizeWatchlists(value: unknown, fallback: Watchlist[]): Watchlist[] 
       && typeof (entry as Watchlist).id === "string"
       && typeof (entry as Watchlist).name === "string",
     )
-    .map((entry) => ({ ...entry }));
+    .map(({ groups, ...entry }) => {
+      // Malformed groups are dropped, and a list left with none has no `groups` at all.
+      const kept = normalizeWatchlistGroups(groups);
+      return kept ? { ...entry, groups: kept } : entry;
+    });
 }
 
 function sanitizeBrokerInstances(value: unknown): BrokerInstanceConfig[] {

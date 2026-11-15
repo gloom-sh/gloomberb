@@ -923,6 +923,18 @@ Published layouts keep portable pane setup and state (searches, chart viewport, 
 
 The AI screener, the AI research workspace and the Ask AI research tab come from the [BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai), which connects your own provider account. The selected model writes the screener's reasons, so review the cited fiscal periods, metric values and sources in company research. Missing data is not evidence that a company meets a criterion.
 
+#### Watchlist groups
+
+A watchlist's tickers can sit in named groups, such as Energy, Tech or Index funds, which you set yourself, so a list of mutual funds (which have no sector) sorts as neatly as one of stocks. `PF` shows each group under a header, in the order the groups were made, and the tickers in no group under Ungrouped. A list without groups looks as it always has.
+
+- **Move to Group…** in a row's menu (right-click, or `.` for the selected row), or `g`, puts the ticker in one of the list's groups or a new one. **Remove from Group** takes it out. A ticker is in one group of a list at most; a ticker on two lists can be in a different group on each.
+- Enter or a click on a header collapses or expands its group. Each `PF` pane remembers which groups it shows collapsed.
+- With the cursor on a header, the pane menu offers **Rename Group…** and **Delete Group…**; deleting a group leaves its tickers in the list, in no group. A group goes once its last ticker leaves it.
+- The sort applies within each group, and the columns, links to other panes and CSV export work as in any list. An export writes every row, a collapsed group's too, with a Group column.
+- Groups are saved with the watchlist and sync to your other devices with it. Team watchlists have none.
+
+From the command line, `watchlist add <list> <symbols...> --group <name>` adds the symbols and puts them in the group, `watchlist move <list> <symbols...> --group <name>` moves symbols already in the list, and `watchlist ungroup <list> <symbols...>` takes them out of their group (`watchlist ungroup <list> --group <name>` empties that group). `watchlist show` lists a grouped list group by group, with a Group column, and its `--json` and `--csv` rows carry `group`. See [Groups](#groups).
+
 ### Filing event alerts
 
 Open `ALRT` and choose **Events** to follow Congress trades for your portfolio and watchlist, a representative's or senator's first and last name (optionally `name:district` or `name:state`), or a fund's numeric SEC CIK. Use **Add Event Alert** in the command bar, or the pane's add action. Enter or the pause action toggles a rule, delete removes it.
@@ -1700,6 +1712,19 @@ gloom watchlist add Growth NVDA 'philip morris intl' --dry-run
 ```
 
 The first argument names the list (quote a name with spaces). A list nothing names fails with the lists there are, and a pasted list of symbols with no name in front says so (`did you mean watchlist add <name> <list>`).
+
+#### Groups
+
+`--group <name>` on `watchlist add` puts the symbols it adds, and those already in the list, in that group of the watchlist, made when it is new. Names are matched in any case, at most 40 characters, and no group is called Ungrouped.
+
+```bash
+gloom watchlist add Funds VTSAX FXAIX --group "Index funds"
+gloom watchlist move Growth XOM CVX --group Energy   # symbols already in the list
+gloom watchlist ungroup Growth XOM                    # out of its group
+gloom watchlist ungroup Growth --group Energy         # every symbol out of Energy
+```
+
+`move` and `ungroup` read a symbol as `remove` does (`SAN:EPA`, `--exchange`), and change nothing when a symbol is not in the list. `remove` takes a symbol out of its group too, so one added back later starts in none. See [Watchlist groups](#watchlist-groups).
 
 #### How an entry is read
 

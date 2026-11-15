@@ -8,6 +8,7 @@ import type { SyncContributor } from "./types";
 import { isRecord, recordOrNull } from "../utils/guards";
 import { withoutMissingWatchlists } from "../portfolio/mutations";
 import { mergeSuffixedListings, moveTargetWeights } from "../portfolio/suffixed-listings";
+import { moveWatchlistGroupSymbols } from "../portfolio/watchlist-groups";
 import { knownBrokerHoldings } from "../brokers/broker-portfolio-sync";
 import {
   localOnlyScope,
@@ -23,7 +24,7 @@ import {
 } from "./analytics-payload";
 import { idEntries } from "./broker-instances";
 import { CORE_CONFIG_CONTRIBUTOR_ID, log } from "./config-contributor";
-import { sanitizePortfolio, sanitizeWatchlist } from "./sanitize";
+import { sanitizePortfolio, sanitizeWatchlist, WATCHLISTS_CARRY_GROUPS } from "./sanitize";
 import {
   lastSyncedTickersById,
   latestBrokerPortfolioSyncs,
@@ -55,6 +56,8 @@ export function collectCoreCollectionsPayload(
     exchangeRates: { USD: 1 },
     portfolios: config.portfolios.map(sanitizePortfolio),
     watchlists: config.watchlists.map(sanitizeWatchlist),
+    // The lists carry their groups, as the config payload's do: a reader can tell a list without them from an older build's.
+    [WATCHLISTS_CARRY_GROUPS]: true,
     analyticsByPortfolio: collectAnalyticsByPortfolio(config, tickers, financials, exchangeRates, brokerAccounts),
     accountsByPortfolio: collectAccountsByPortfolio(config, brokerAccounts),
     tickers: records,
@@ -168,6 +171,6 @@ function mergePulledSuffixedListings(
     else changed.push(row);
   }
   for (const kept of merged.keptCustom) log.info("sync.suffixed-listing.custom-kept", kept);
-  const next = moveTargetWeights(config, merged.moved);
+  const next = moveWatchlistGroupSymbols(moveTargetWeights(config, merged.moved), merged.moved);
   return { config: next === config ? null : next };
 }

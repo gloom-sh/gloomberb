@@ -1,5 +1,6 @@
 import { saveConfig } from "../data/config/store";
 import { mergeSavedSuffixedListings } from "../portfolio/suffixed-listings";
+import { withoutStaleWatchlistGroupSymbols } from "../portfolio/watchlist-groups";
 import type { CliCommandContext } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
 import { logFailure } from "../utils/log-failure";
@@ -28,6 +29,16 @@ async function mergedForWrite<TContext extends ConfigContext>(ctx: Pick<CliComma
     for (const kept of merged?.keptCustom ?? []) log.info("custom fields kept on the suffixed row", kept);
   } catch (error) {
     logFailure("cli.suffixed-listings", "Merging suffixed listing rows failed")(error);
+  }
+  // A ticker that left a list some other way leaves its groups too, so an add puts it in none.
+  try {
+    const ungrouped = withoutStaleWatchlistGroupSymbols(context.config, await context.store.loadAllTickers());
+    if (ungrouped !== context.config) {
+      await saveConfig(ungrouped);
+      context.config = ungrouped;
+    }
+  } catch (error) {
+    logFailure("cli.suffixed-listings", "Dropping stale watchlist group symbols failed")(error);
   }
   return context;
 }

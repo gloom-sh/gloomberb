@@ -7,7 +7,7 @@ import { createTestDataProvider, createTestQuote } from "../../../../test-suppor
 import { createTestTicker } from "../../../../test-support/ticker";
 import { createDefaultConfig } from "../../../../types/config";
 import type { Quote } from "../../../../types/financials";
-import type { TickerRecord } from "../../../../types/ticker";
+import type { TickerRecord, Watchlist } from "../../../../types/ticker";
 import { setCliColorEnabledOverride } from "../../../../utils/cli-output";
 import { perpBoard, venueRow } from "../../perps/test-fixture";
 import { showCollection } from "./render";
@@ -40,8 +40,8 @@ const quotes: Record<string, Quote> = {
 };
 
 /** `watchlist show Mix` over these rows: its text, and its JSON rows. */
-async function show(tickers: TickerRecord[]) {
-  const market = { config, store: { loadAllTickers: async () => tickers },
+async function show(tickers: TickerRecord[], { groups }: { groups?: Watchlist["groups"] } = {}) {
+  const market = { config: groups ? { ...config, watchlists: [{ ...config.watchlists[0]!, groups }] } : config, store: { loadAllTickers: async () => tickers },
     dataProvider: createTestDataProvider({ getQuote: async (symbol) => quotes[symbol]! }) };
   setCliColorEnabledOverride(false);
   const output: string[] = [];
@@ -118,4 +118,19 @@ test("a perpetual whose market cannot be read shows a dash under Fund 8H and sti
     expect(line("BZUSDT")).toMatch(/\$?101\.48 +-0\.98% +— +—$/);
     expect(rows[0]).toMatchObject({ fundingRate8h: null });
   } finally { markets.mockRestore(); }
+});
+
+test("a list with groups runs group by group under a Group column, and each JSON row names its group; a list without keeps its columns", async () => {
+  const { text, rows } = await show([stock, halted, abroad], { groups: [{ name: "Banks", symbols: ["SIVB"] }, { name: "Energy", symbols: ["XOM"] }] });
+  const lines = text.split("\n");
+  const header = lines.findIndex((line) => /^Group +Ticker/.test(line));
+  expect(header).toBeGreaterThanOrEqual(0);
+  expect(lines.slice(header + 2, header + 5).map((line) => line.split(/ {2,}/).slice(0, 2))).toEqual([
+    ["Banks", "SIVB:NASDAQ"], ["Energy", "XOM:NYSE"], ["Ungrouped", "ASML:AMS"],
+  ]);
+  expect(rows.map((row) => [row.symbol, row.group])).toEqual([["SIVB", "Banks"], ["XOM", "Energy"], ["ASML:AMS", null]]);
+
+  const plain = await show([stock, abroad]);
+  expect(plain.text).not.toContain("Group");
+  expect(plain.rows.every((row) => !("group" in row))).toBe(true);
 });

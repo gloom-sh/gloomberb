@@ -1,6 +1,7 @@
 import type { AppConfig, BrokerInstanceConfig } from "../types/config";
 import type { Portfolio, TickerPosition, Watchlist } from "../types/ticker";
 import { isRecord } from "../utils/guards";
+import { normalizeWatchlistGroups } from "../portfolio/watchlist-groups";
 
 const SENSITIVE_KEY_PATTERN = /(token|secret|password|credential|private|api[_-]?key|access[_-]?key|refresh[_-]?key|session|cookie|dataDir|path|directory|localPath)/i;
 
@@ -77,11 +78,38 @@ export function sanitizePortfolio(portfolio: Portfolio): Portfolio {
   };
 }
 
+/**
+ * Set on every payload this build pushes with watchlists: its lists carry their
+ * groups, so one without `groups` has none. An older build's lists never carry
+ * them, and taken as they came they would erase the groups here and then
+ * everywhere this device pushes to.
+ */
+export const WATCHLISTS_CARRY_GROUPS = "watchlistsCarryGroups";
+
+/**
+ * Pulled watchlists, each list an older build pushed (no `WATCHLISTS_CARRY_GROUPS`)
+ * keeping the groups it has here; a build that sends groups is taken as it
+ * came, so a group removed there is removed here.
+ */
+export function withLocalWatchlistGroups(pulled: unknown[], local: readonly Watchlist[], carriesGroups: boolean): Watchlist[] {
+  if (carriesGroups) return pulled as Watchlist[];
+  return pulled.map((entry) => {
+    if (!isRecord(entry) || entry.groups !== undefined) return entry as unknown as Watchlist;
+    const groups = local.find((watchlist) => watchlist.id === entry.id)?.groups;
+    return (groups ? { ...entry, groups } : entry) as unknown as Watchlist;
+  });
+}
+
 export function sanitizeWatchlist(watchlist: Watchlist): Watchlist {
+  // The user's own sections: a pulled list without them would erase them on this device. A list
+  // without groups goes as before. They are an array, never keyed by a name or symbol, which
+  // `sanitizeUnknown` would drop for reading like a secret (a Private group, the PATH ticker).
+  const groups = normalizeWatchlistGroups(watchlist.groups);
   return {
     id: watchlist.id,
     name: watchlist.name,
     description: watchlist.description,
+    ...(groups ? { groups } : {}),
   };
 }
 

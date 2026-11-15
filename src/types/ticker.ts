@@ -117,10 +117,24 @@ export interface PortfolioCash {
   currency: string;
 }
 
+/** A named section of a watchlist's tickers (`Watchlist.groups`). */
+export interface WatchlistGroup {
+  name: string;
+  /** The tickers' keys (`TickerMetadata.ticker`); a ticker is in one group of a list at most. */
+  symbols: string[];
+}
+
 export interface Watchlist {
   id: string;
   name: string;
   description?: string;
   /** Set on watchlists shared with a team; the server holds the items. */
   teamId?: string;
+  /**
+   * Sections the user put the list's tickers in, in the order they show; a
+   * ticker in none shows under Ungrouped. Kept on the list, not the ticker, so
+   * a ticker on two lists can sit in a different group on each. Absent on a
+   * list without groups, which shows and syncs as it did before groups.
+   */
+  groups?: WatchlistGroup[];
 }

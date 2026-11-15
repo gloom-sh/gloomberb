@@ -425,6 +425,44 @@ describe("core sync contributors", () => {
     expect(merged?.portfolios).toEqual(elsewhere.portfolios);
   });
 
+  test("a watchlist's groups reach the account's other devices whatever they are named, and a list without them pushes as before", async () => {
+    const elsewhere = createDefaultConfig("/tmp/gloomberb-sync-groups-elsewhere");
+    // Names and symbols that read like secrets: keyed by them, the push would drop them.
+    elsewhere.watchlists = [
+      { id: "growth", name: "Growth", groups: [{ name: "Private equity", symbols: ["PATH", "KKR"] }, { name: "Session", symbols: ["SPY"] }] },
+      { id: "plain", name: "Plain" },
+    ];
+    const pushed = await coreConfigSyncContributor.collect({ state: createInitialState(elsewhere) }) as { watchlists: Array<Record<string, unknown>> };
+    expect(Object.keys(pushed.watchlists[1]!)).toEqual(["id", "name"]);
+
+    const config = createDefaultConfig("/tmp/gloomberb-sync-groups-here");
+    config.watchlists = [{ id: "growth", name: "Growth" }, { id: "plain", name: "Plain" }];
+    const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, pushed);
+
+    expect(merged?.watchlists).toEqual(elsewhere.watchlists);
+  });
+
+  test("a pull from a build that sends no groups keeps the groups here, which go back out marked; one that sends them can remove them", async () => {
+    const { collectCoreConfigPayload, collectCoreCollectionsPayload, mergeConfigPayload } = __syncContributorInternalsForTests;
+    const groups = [{ name: "Energy", symbols: ["XOM", "CVX"] }];
+    const config = createDefaultConfig("/tmp/gloomberb-sync-groups-older");
+    config.watchlists = [{ id: "growth", name: "Growth", groups }, { id: "plain", name: "Plain" }];
+    const lastSynced = collectCoreConfigPayload(config);
+
+    // An older build's push: its lists carry no groups and the payload no marker. It renamed one.
+    const older = { ...lastSynced as Record<string, unknown>, watchlists: [{ id: "growth", name: "Growth stocks" }, { id: "plain", name: "Plain" }] };
+    delete older.watchlistsCarryGroups;
+    const kept = mergeConfigPayload(config, older, config, lastSynced);
+    expect(kept?.watchlists).toEqual([{ id: "growth", name: "Growth stocks", groups }, { id: "plain", name: "Plain" }]);
+    const pushedBack = collectCoreConfigPayload(kept!) as Record<string, unknown>;
+    expect(pushedBack).toMatchObject({ watchlistsCarryGroups: true, watchlists: [{ id: "growth", name: "Growth stocks", groups }, { id: "plain", name: "Plain" }] });
+    expect(collectCoreCollectionsPayload(kept!, new Map(), new Map(), new Map(), {})).toMatchObject({ watchlistsCarryGroups: true, watchlists: pushedBack.watchlists });
+
+    // A build that sends groups and sends none: the list's last group was removed there.
+    const removed = mergeConfigPayload(config, { ...older, watchlistsCarryGroups: true }, config, lastSynced);
+    expect(removed?.watchlists).toEqual([{ id: "growth", name: "Growth stocks" }, { id: "plain", name: "Plain" }]);
+  });
+
   test("does not reintroduce older unlinked broker portfolios from cloud", () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-broker-identity-test");
     config.portfolios = [
