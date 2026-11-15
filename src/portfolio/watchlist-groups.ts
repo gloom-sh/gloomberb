@@ -117,30 +117,25 @@ export function withoutWatchlistGroupSymbols(config: AppConfig, watchlistId: str
 }
 
 /**
- * The config without group symbols that are no longer on their list: a
- * ticker deleted, or taken off the list some other way (the command bar,
- * another device, an older build), so one added back later starts in no
- * group. A list none of `tickers` is on keeps its groups, since an empty or
- * unread store says nothing of what the list holds.
+ * The config without group symbols whose ticker is loaded and no longer on
+ * the list: taken off it some other way (the command bar, another device, an
+ * older build), so one added back later starts in no group. A symbol with no
+ * loaded row is kept: a pull may not have written it yet, or its row did not
+ * read, and a symbol with no row shows nowhere anyway.
  */
 export function withoutStaleWatchlistGroupSymbols(
   config: AppConfig,
   tickers: Iterable<{ metadata: { ticker: string; watchlists: readonly string[] } }>,
 ): AppConfig {
   if (!config.watchlists.some((watchlist) => watchlist.groups)) return config;
-  const members = new Map<string, Set<string>>();
-  for (const ticker of tickers) {
-    for (const list of ticker.metadata.watchlists) {
-      const listed = members.get(list) ?? new Set<string>();
-      listed.add(ticker.metadata.ticker);
-      members.set(list, listed);
-    }
-  }
+  const listsOf = new Map<string, readonly string[]>();
+  for (const ticker of tickers) listsOf.set(ticker.metadata.ticker, ticker.metadata.watchlists);
   let next = config;
   for (const watchlist of config.watchlists) {
-    const listed = members.get(watchlist.id);
-    if (!listed) continue;
-    const stale = watchlistGroups(watchlist).flatMap((group) => group.symbols.filter((symbol) => !listed.has(symbol)));
+    const stale = watchlistGroups(watchlist).flatMap((group) => group.symbols.filter((symbol) => {
+      const lists = listsOf.get(symbol);
+      return lists != null && !lists.includes(watchlist.id);
+    }));
     if (stale.length > 0) next = withoutWatchlistGroupSymbols(next, watchlist.id, stale);
   }
   return next;

@@ -84,21 +84,22 @@ test("a row merged into its listing's key keeps its group there, unless the list
   expect(moveWatchlistGroupSymbols(config, new Map([["SHOP.TO", "SHOP:TSX"]]))).toBe(config);
 });
 
-test("a ticker that left its list some other way leaves its group, so an add puts it in none; a list no ticker is on keeps its groups", () => {
+test("a loaded ticker that left its list some other way leaves its group; a symbol with no loaded row keeps its group", () => {
   const config = {
     ...createDefaultConfig("/unused-watchlist-groups"),
     watchlists: [
       { id: "growth", name: "Growth", groups: [{ name: "Energy", symbols: ["XOM", "CVX"] }, { name: "Tech", symbols: ["NVDA"] }] },
-      // Nothing loaded is on this list: the store may not have been read.
-      { id: "funds", name: "Funds", groups: [{ name: "Index", symbols: ["VTSAX"] }] },
+      { id: "funds", name: "Funds", groups: [{ name: "Index", symbols: ["VTSAX", "FXAIX"] }] },
     ],
   };
-  // CVX was deleted, and NVDA taken off Growth while it stays on another list.
+  // NVDA is loaded and was taken off Growth while it stays on another list: it leaves Tech.
+  // CVX has no loaded row (a pull not yet written, or a row that did not read): it stays in Energy.
   const tickers = [createTestTicker("XOM", "Exxon", { watchlists: ["growth"] }), createTestTicker("NVDA", "NVIDIA", { watchlists: ["other"] })];
   expect(withoutStaleWatchlistGroupSymbols(config, tickers).watchlists).toEqual([
-    { id: "growth", name: "Growth", groups: [{ name: "Energy", symbols: ["XOM"] }] },
-    { id: "funds", name: "Funds", groups: [{ name: "Index", symbols: ["VTSAX"] }] },
+    { id: "growth", name: "Growth", groups: [{ name: "Energy", symbols: ["XOM", "CVX"] }] },
+    { id: "funds", name: "Funds", groups: [{ name: "Index", symbols: ["VTSAX", "FXAIX"] }] },
   ]);
-  expect(withoutStaleWatchlistGroupSymbols(config, [...tickers, createTestTicker("CVX", "Chevron", { watchlists: ["growth"] }),
-    createTestTicker("NVDA", "NVIDIA", { watchlists: ["growth"] }), createTestTicker("VTSAX", "Vanguard", { watchlists: ["funds"] })])).toBe(config);
+  // FXAIX is missing from the store while Funds has another loaded ticker: still kept, and nothing changes.
+  const funds = [createTestTicker("VTSAX", "Vanguard", { watchlists: ["funds"] })];
+  expect(withoutStaleWatchlistGroupSymbols(config, funds)).toBe(config);
 });
