@@ -5,6 +5,8 @@ import { AdrPairResearchTab } from "./adr-pair/tab";
 import { ADR_PAIR_TAB_ID } from "./adr-pair/model";
 import { listingDepositaryPair } from "../../../market-data/depositary-pair";
 import { hasStatementFinancials } from "./financials/model";
+import { isPharmaSignalsListing, PHARMA_SIGNALS_TAB_ID } from "./pharma-signals/eligibility";
+import { PharmaSignalsResearchTab } from "./pharma-signals/tab";
 
 /**
  * Tabs this module owns. They are registered through `setup()` like any other
@@ -35,5 +37,14 @@ export const TICKER_RESEARCH_BUILTIN_TABS: TickerResearchTabDef[] = [
     order: 21,
     component: AdrPairResearchTab,
     isVisible: ({ financials }) => !!listingDepositaryPair(financials),
+  },
+  {
+    // A drug developer's add-on that is not built yet: a no-charge waitlist, on no other listing.
+    id: PHARMA_SIGNALS_TAB_ID,
+    name: "Signals",
+    order: 36,
+    component: PharmaSignalsResearchTab,
+    instruments: ["equity"],
+    isVisible: ({ financials, instrumentKind }) => isPharmaSignalsListing(instrumentKind, financials?.profile),
   },
 ];

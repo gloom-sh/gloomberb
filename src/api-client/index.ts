@@ -27,6 +27,7 @@ import { CloudApiSocket } from "./socket";
 import { CloudCollectionsApi } from "./collections";
 import { CloudFeedbackApi } from "./feedback";
 import { CloudRoadmapApi } from "./roadmap";
+import { CloudWaitlistApi } from "./product-waitlist";
 import { CloudNotesApi } from "./notes";
 import { CloudTeamsApi } from "./teams";
 import { CloudTelemetryApi } from "./telemetry";
@@ -183,6 +184,7 @@ class GloomApiClient {
   private readonly notes: CloudNotesApi = new CloudNotesApi((path, options) => this.request(path, options));
   private readonly feedback: CloudFeedbackApi = new CloudFeedbackApi((path, options) => this.request(path, options));
   private readonly roadmap: CloudRoadmapApi = new CloudRoadmapApi((path, options) => this.request(path, options));
+  private readonly waitlist: CloudWaitlistApi = new CloudWaitlistApi((path, options) => this.request(path, options));
   private readonly telemetry: CloudTelemetryApi = new CloudTelemetryApi((path, options) => this.request(path, options));
   private readonly theses: CloudThesesApi = new CloudThesesApi((path, options) => this.request(path, options));
   private readonly collections: CloudCollectionsApi = new CloudCollectionsApi((path, options) => this.request(path, options));
@@ -931,6 +933,9 @@ class GloomApiClient {
   listFeedback = this.feedback.listFeedback.bind(this.feedback);
   getRoadmap = this.roadmap.getRoadmap.bind(this.roadmap);
   setRoadmapVote = this.roadmap.setRoadmapVote.bind(this.roadmap);
+  getWaitlist = this.waitlist.getWaitlist.bind(this.waitlist);
+  joinWaitlist = this.waitlist.joinWaitlist.bind(this.waitlist);
+  leaveWaitlist = this.waitlist.leaveWaitlist.bind(this.waitlist);
   reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
   reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
   reportInstallExperiment = this.telemetry.reportInstallExperiment.bind(this.telemetry);

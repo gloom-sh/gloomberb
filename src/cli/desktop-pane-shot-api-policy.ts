@@ -18,12 +18,15 @@ const AUTH_IN_FAMILY = /^\/cloud\/auth(?:\/|$)/;
  * theses, and a signed-in broker's catalog, connection status, holdings,
  * orders and fills. The Buildout plan is one: its answer is the plan and its
  * prices, never the token `POST /account/buildout/token` mints, which stays
- * refused, so the Buildout panes cannot be drawn with a plan's data.
+ * refused, so the Buildout panes cannot be drawn with a plan's data. So is
+ * the account's place on an add-on waitlist (joined or not); joining and
+ * leaving are writes, refused like any other.
  */
 const READ_PATHS = [
   /^\/auth\/get-session$/,
   /^\/account\/cloud$/,
   /^\/account\/buildout$/,
+  /^\/account\/waitlist\/[a-z0-9-]+$/,
   /^\/pricing$/,
   /^\/health$/,
   /^\/roadmap$/,
