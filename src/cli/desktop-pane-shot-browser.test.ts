@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "fs";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { chromeSandboxRefused, findChromeExecutable, launchShotBrowser, startsWithoutSandbox } from "./desktop-pane-shot-browser";
@@ -19,7 +19,14 @@ test.skipIf(chrome === null || process.platform === "win32")("the capture browse
       : new Response("Not found", { status: 404 }),
   });
   const userDataDir = await mkdtemp(join(tmpdir(), "gloom-shot-browser-"));
-  const browser = await launchShotBrowser(chrome!, { widthPx: 400, heightPx: 300, userDataDir });
+  const home = process.env.HOME;
+  const emptyHome = join(userDataDir, "empty-home");
+  await mkdir(emptyHome);
+  process.env.HOME = emptyHome;
+  const browser = await launchShotBrowser(chrome!, { widthPx: 400, heightPx: 300, userDataDir }).finally(() => {
+    if (home === undefined) delete process.env.HOME;
+    else process.env.HOME = home;
+  });
   try {
     await browser.open(`http://127.0.0.1:${server.port}/folder/`);
     const { result } = await browser.page.send("Runtime.evaluate", {
@@ -61,10 +68,13 @@ if (sandboxed) {
   createReadStream("", { fd: 3, encoding: "utf8" }).on("data", (chunk) => {
     buffered += chunk;
     for (let end = buffered.indexOf("\\0"); end >= 0; end = buffered.indexOf("\\0")) {
-      const { id, method } = JSON.parse(buffered.slice(0, end));
+      const { id, method, params } = JSON.parse(buffered.slice(0, end));
       buffered = buffered.slice(end + 1);
-      const result = method === "Target.createTarget" ? { targetId: "t1" } : method === "Target.attachToTarget" ? { sessionId: "s1" } : {};
-      out.write(JSON.stringify({ id, result }) + "\\0");
+      const result = method === "Target.createBrowserContext" ? { browserContextId: "private1" }
+        : method === "Target.createTarget" ? { targetId: "t1" } : method === "Target.attachToTarget" ? { sessionId: "s1" } : {};
+      const error = method === "Target.createTarget" && params.browserContextId !== "private1"
+        ? { message: "Capture used the default browser context." } : undefined;
+      out.write(JSON.stringify({ id, result, error }) + "\\0");
     }
   });
 }

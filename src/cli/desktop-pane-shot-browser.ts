@@ -357,7 +357,8 @@ async function startShotBrowser(
       }
       throw error;
     }
-    const { targetId } = await connection.send("Target.createTarget", { url: "about:blank" }) as { targetId: string };
+    const { browserContextId } = await connection.send("Target.createBrowserContext", { disposeOnDetach: true }) as { browserContextId: string };
+    const { targetId } = await connection.send("Target.createTarget", { url: "about:blank", browserContextId }) as { targetId: string };
     const { sessionId } = await connection.send("Target.attachToTarget", { targetId, flatten: true }) as { sessionId: string };
     const page: CdpPage = { send: (method, params) => connection.send(method, params, sessionId) };
     return {
