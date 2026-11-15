@@ -102,6 +102,7 @@ export function normalizeLoadedConfig(
     ...(candidate.sinceLastVisit === false ? { sinceLastVisit: false } : {}),
     ...withHeaderMarket(sanitizeHeaderMarketChoice(candidate.headerMarket)),
     ...(typeof candidate.timezone === "string" && candidate.timezone.trim() ? { timezone: candidate.timezone.trim() } : {}),
+    ...(candidate.csvDecimal === "comma" ? { csvDecimal: "comma" as const } : {}),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
     pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
     theme: sanitizeTheme(candidate.theme, defaults.theme),

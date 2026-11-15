@@ -14,6 +14,7 @@ import {
 } from "react";
 import type { AppSessionStorePort } from "../../../core/app-service-ports";
 import { ThemeProvider } from "../../../theme/theme-context";
+import { setCsvDecimal } from "../../../utils/csv";
 import { syncFontScale } from "../../../theme/font-scale";
 import {
   findPaneInstance,
@@ -697,6 +698,11 @@ export function AppProvider({
       window.dispatchEvent(new Event("resize"));
     }
   }, [state.config.fontSize]);
+
+  // Every CSV the app exports (a table's Export CSV, the quote board's) writes the decimal mark the reader set.
+  useLayoutEffect(() => {
+    setCsvDecimal(state.config.csvDecimal);
+  }, [state.config.csvDecimal]);
 
   useLayoutEffect(() => {
     stateRef.current = state;

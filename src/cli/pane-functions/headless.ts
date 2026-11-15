@@ -540,7 +540,11 @@ function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (unit === "%" || unit === "pp") return value.toFixed(2);
   if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
   if (unit === "score") return value.toFixed(1);
-  return displayNumber(value);
+  // A count or amount of five digits or more groups its thousands as every other table does (27,256,037 shares).
+  const plain = displayNumber(value);
+  const [whole, fraction] = plain.split(".");
+  return Math.abs(value) >= 10_000 && /^-?\d+(?:\.\d+)?$/.test(plain)
+    ? `${whole!.replace(/\B(?=(\d{3})+$)/g, ",")}${fraction ? `.${fraction}` : ""}` : plain;
 }
 
 function renderRows(

@@ -381,6 +381,13 @@ export interface AppConfig {
    */
   timezone?: string;
   /**
+   * The decimal mark CSV exports write numbers with, the CLI's and the app's:
+   * `comma` writes `17,2` with cells split by `;`, as a spreadsheet in a
+   * decimal-comma locale reads them. Absent is the dot. Text and JSON keep
+   * the dot. Kept on this machine only.
+   */
+  csvDecimal?: "comma" | "dot";
+  /**
    * Presentation mode: the panes fill the window, without the header or the
    * status bar, for a screen that is shown rather than worked at. Absent is off.
    */
