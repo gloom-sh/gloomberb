@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import { formatMacroDayMove, macroDayStats, macroFigureGapNotices, macroSurpriseExclusionNote, matchesSurprise, projectMacroDays } from "./model";
-import { mergeMacroReleases } from "./releases";
+import { mergeMacroReleases, type MacroReleaseFigures } from "./releases";
 
 /** Weekday closes from `from` to `to`, skipping `closed`; each close is 1% above the one before unless `closes` says otherwise. */
 function weekdays(from: string, to: string, closed: string[], closes: Record<string, number> = {}): PricePoint[] {
@@ -127,6 +127,32 @@ describe("macro-day surprises", () => {
 });
 
 describe("macro-day surprise without a headline actual", () => {
+  test("gap notices use a fallback only when it supplies the effective surprise", () => {
+    const figures: MacroReleaseFigures = { actual: "3.7%", forecast: "3.6%", prior: "3.4%", surprise: "hot",
+      surpriseBasis: { basis: "core m/m", actual: "0.2%", forecast: "0.3%", surprise: "cool" } };
+    const event = { kind: "cpi", date: "2026-11-10", figures } as const;
+    expect(macroFigureGapNotices([event])).toEqual([]);
+    expect(macroFigureGapNotices([{ ...event, figures: { ...figures, actual: null, surprise: null } }]))
+      .toEqual(["2026-11-10 CPI has no actual. Surprise read from core m/m: 0.2% vs 0.3% forecast."]);
+    expect(macroFigureGapNotices([{ ...event, figures: { ...figures, computed: "the index change" } }]))
+      .toEqual(["2026-11-10 CPI actual is the index change."]);
+  });
+
+  test("unread surprises have disjoint reasons, while classified fallbacks stay readable", () => {
+    const figures: MacroReleaseFigures = { actual: "3.7%", forecast: "3.6%", prior: "3.4%", surprise: null };
+    const complete = { figures };
+    const missingBoth = { figures: { ...figures, actual: null, forecast: null } };
+    const fallback = { figures: { ...figures, actual: null,
+      surpriseBasis: { basis: "core m/m", actual: "0.3%", forecast: "0.2%", surprise: "hot" as const } } };
+    const events = [complete, missingBoth, { figures: null }, { figures: { ...figures, forecast: null } }, fallback];
+    expect(macroSurpriseExclusionNote(events, "hot"))
+      .toBe("4 prints excluded: 2 no actual, 1 no forecast, 1 surprise unavailable.");
+    expect(macroSurpriseExclusionNote([complete], "cool")).toBe("1 print excluded: surprise unavailable.");
+    expect(macroSurpriseExclusionNote([missingBoth], "hot")).toBe("1 print excluded: no actual.");
+    expect(macroSurpriseExclusionNote([fallback], "hot")).toBeNull();
+    expect(macroSurpriseExclusionNote(events, "all")).toBeNull();
+  });
+
   test("a CPI day with no y/y is read by the m/m print Gloom Cloud names, and a filter counts the days it cannot read", () => {
     // `fn MDAY TLT --release cpi --surprise hot` listed 2 hot CPI days and left out 10 Nov 2026 without a word: BLS
     // published no October y/y, while its core m/m (0.3% against 0.2%) and m/m (0.4% against 0.3%) came in hot.

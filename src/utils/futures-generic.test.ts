@@ -1,8 +1,26 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { rebindFollowChartSpec } from "../plugins/builtin/chart-composer/follow-binding";
 import { chartFuturesGeneric, rebindResearchChartSpec, setChartFuturesGeneric } from "../plugins/builtin/chart-composer/chart-spec-edit";
 import { buildPriceChartPreset } from "../plugins/builtin/chart-composer/presets";
-import { formatFuturesGeneric, futuresGenericCaption, futuresGenericListing, futuresGenericRollFromValue, parseFuturesGeneric } from "./futures-generic";
+import { formatFuturesGeneric, futuresContractCode, futuresContractMonth, futuresGenericCaption, futuresGenericListing,
+  futuresGenericRollFromValue, futuresListingVenue, parseFuturesGeneric, venueOfDatedContract } from "./futures-generic";
+
+afterEach(() => setSystemTime());
+
+test("dated contract hints bound delivery years without restricting explicit historical contracts", () => {
+  setSystemTime(new Date("2026-12-31T23:30:00Z"));
+  const year = new Date().getUTCFullYear();
+  for (const offset of [-2, -1, 0, 10, 11]) {
+    const month = (year + offset) * 12 + 11;
+    const code = futuresContractCode("ZQ", month);
+    expect(venueOfDatedContract(code), code).toBe(offset >= -1 && offset <= 10 ? `${code}.CBT` : null);
+    expect(futuresContractMonth(`${code}.CBT`)).toEqual({ root: "ZQ", month });
+    expect(futuresListingVenue(`${code}.CBT`)).toEqual({ venue: "CBT", root: "ZQ" });
+  }
+  expect(venueOfDatedContract(" ffz26 ")).toBe("ZQZ26.CBT");
+  expect(futuresContractMonth("SOLH11.CME")).toEqual({ root: "SOL", month: 2011 * 12 + 2 });
+  expect(futuresListingVenue("SOLH11.CME")).toEqual({ venue: "CME", root: "SOL" });
+});
 
 describe("generic futures tickers", () => {
   test("parse the root or Bloomberg alias, position, roll and adjustment, and nothing else", () => {
