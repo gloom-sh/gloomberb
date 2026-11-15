@@ -1,9 +1,10 @@
-import { type ComponentType, useEffect, useMemo, useRef } from "react";
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRendererHost, useUiHost } from "../../../ui";
 import { OpenTuiDataTable } from "./opentui";
 import type {
   DataTableColumn,
   DataTableProps,
+  DataTableVisibleRange,
 } from "./types";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { remoteNumberValue, resolveRemoteRowIndex } from "../../../remote/semantic-helpers";
@@ -13,6 +14,7 @@ import { createDataTableCsv } from "../../data-table/export";
 import { headerCase } from "../header-case";
 import { figureColumnCells } from "./render-cell";
 import { useDataTableColumnOrder } from "./use-column-order";
+import { dataTableDisplayColumns } from "./display-columns";
 
 export type {
   DataTableCell,
@@ -37,6 +39,21 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     columns: order.columns,
     onColumnMove: ownProps.onColumnMove ?? order.onColumnMove,
     anchoredColumns: ownProps.onColumnMove ? ownProps.anchoredColumns : order.anchoredColumns,
+  };
+  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange | null>(null);
+  const onVisibleRangeChange = useCallback((range: DataTableVisibleRange) => {
+    setVisibleRange((previous) => previous?.start === range.start && previous.end === range.end ? previous : range);
+    ownProps.onVisibleRangeChange?.(range);
+  }, [ownProps.onVisibleRangeChange]);
+  const displayColumns = useMemo(() => dataTableDisplayColumns(props, visibleRange),
+    [props.columns, props.items, props.renderCell, props.renderSectionHeader, props.isSelected, visibleRange]);
+  const reportProps = {
+    ...props,
+    columns: displayColumns,
+    reportColumns: useMemo(() => [
+      ...props.columns.filter((column) => !displayColumns.includes(column)),
+      ...props.reportColumns ?? [],
+    ], [props.columns, displayColumns, props.reportColumns]),
   };
   const paneId = useOptionalPaneInstanceId();
   const renderer = useRendererHost();
@@ -106,30 +123,42 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
       paneInstanceId: paneId,
       sortColumnId: props.sortColumnId,
       sortDirection: props.sortDirection,
-      columns: props.columns.map((column) => ({ id: column.id, label: column.label, ...(column.mayBeBlank ? { mayBeBlank: true } : {}) })),
+      columns: displayColumns.map((column) => ({ id: column.id, label: column.label, ...(column.mayBeBlank ? { mayBeBlank: true } : {}) })),
       rowCount: props.items.length,
       selectedId: firstSelectedId(props),
-      ...(props.reportEveryRow ? { rows: cachedReportedRows(props, reportedRowsRef) } : {}),
+      ...(props.reportEveryRow ? { rows: cachedReportedRows(reportProps, reportedRowsRef) } : {}),
     }),
     // Read for this table alone: a confirmation names the row a call would open.
-    getDetail: () => ({ rows: cachedReportedRows(props, reportedRowsRef) }),
+    getDetail: () => ({ rows: cachedReportedRows(reportProps, reportedRowsRef) }),
   });
   // Header labels read the same in every table whatever case a pane wrote
   // them in. Exports and automation keep the pane's own labels.
   const columns = useMemo(
-    () => props.columns.map((column) => {
+    () => displayColumns.map((column) => {
       const label = headerCase(column.label);
       return label === column.label ? column : { ...column, label };
     }),
-    [props.columns],
+    [displayColumns],
   );
   const HostDataTable = useUiHost().DataTable as
     | ComponentType<DataTableProps<T, C>>
     | undefined;
+  const displayProps = {
+    ...props,
+    columns,
+    anchoredColumns: props.anchoredColumns == null ? undefined
+      : props.columns.slice(0, props.anchoredColumns).filter((column) => displayColumns.includes(column)).length,
+    onColumnMove: props.onColumnMove ? (columnId: string, toIndex: number) => {
+      const target = displayColumns[toIndex];
+      if (target) props.onColumnMove?.(columnId, props.columns.indexOf(target));
+    } : undefined,
+    onVisibleRangeChange: props.columns.some((column) => column.omitWhenEmpty === "visible")
+      ? onVisibleRangeChange : props.onVisibleRangeChange,
+  };
   if (HostDataTable) {
-    return <HostDataTable {...props} columns={columns} />;
+    return <HostDataTable {...displayProps} />;
   }
-  return <OpenTuiDataTable {...props} columns={columns} />;
+  return <OpenTuiDataTable {...displayProps} />;
 }
 
 function resolveTableIndex<T, C extends DataTableColumn>(

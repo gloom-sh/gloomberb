@@ -36,7 +36,7 @@ const ALL_COLUMNS: BoardColumn[] = [
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
   { id: "analysts", label: "ESTS", width: 4, align: "right" },
   { id: "epsActual", label: "EPS ACT", width: 7, align: "right", mayBeBlank: true },
-  { id: "basis", label: "BASIS", width: 5, align: "left" },
+  { id: "basis", label: "BASIS", width: 5, align: "left", mayBeBlank: true },
   { id: "epsSurprise", label: "EPS SURP", width: 8, align: "right", mayBeBlank: true },
   { id: "revenueEstimate", label: "SALES EST", width: 9, align: "right" },
   { id: "cap", label: "MKT CAP", width: 8, align: "right" },

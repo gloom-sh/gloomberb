@@ -124,14 +124,17 @@ test("lists one row per minor version, highest first: its newest update's date, 
   expect(frame).not.toContain("example");
 });
 
-test("Enter opens a version's highlights over its updates, Enter an update's notes, and Back goes one level at a time", async () => {
+test("Enter opens a version's title over the table of its updates, Enter an update's notes, and Back goes one level at a time", async () => {
   stubGithub();
   await render();
 
   const version = await press("enter");
-  expect(version).toContain("v0.20 A faster desktop app, and a responsive one on Windows");
-  expect(version).toContain("A faster, lighter desktop app. It starts about a third faster. (0.20.0)");
-  expect(version).toContain("The Windows app stays responsive. Menus no longer freeze it. (0.20.1)");
+  // The table starts right under the title: the summary's highlights are not repeated above it.
+  const title = lines(version).findIndex((line) => line.includes("v0.20 A faster desktop app, and a responsive one on Windows"));
+  expect(title).toBeGreaterThanOrEqual(0);
+  expect(lines(version)[title + 1]).toMatch(/DATE\b.*VERSION\s+TITLE/);
+  expect(version).not.toContain("It starts about a third faster.");
+  expect(version).not.toContain("Menus no longer freeze it.");
   expect(lineWith(version, "v0.20.1")).toMatch(/4 Nov 2026\s+v0\.20\.1\s+Responsive Windows app/);
   expect(lineWith(version, "v0.20.0")).toMatch(/3 Nov 2026\s+v0\.20\.0\s+Faster desktop app/);
 
@@ -146,7 +149,6 @@ test("Enter opens a version's highlights over its updates, Enter an update's not
 
   const root = await press("backspace");
   expect(root).toMatch(/DATE\b.*VERSION\b.*TITLE\s+UPDATES/);
-  expect(root).not.toContain("It starts about a third faster.");
 });
 
 test("reads the summaries from Gloom Cloud and makes one request to GitHub, for the first page of releases", async () => {
@@ -189,18 +191,6 @@ test("going back from an update keeps the version's updates in the order chosen"
   await press("enter");
   const back = await press("escape");
   expect(lines(back)[header + 1]).toContain("v0.20.0");
-});
-
-test("a version without a summary shows the top claims of its newest updates, in the order they shipped, and a plain bullet's first clause", async () => {
-  stubGithub();
-  await render();
-  await press("j");
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
-  const version = await press("enter");
-
-  expect(version).toContain("v0.19 Options strategy screens");
-  expect(version).toMatch(/Screen option strategies\. \(0\.19\.0\)[\s\S]*Plain bullet first\. \(0\.19\.1\)/);
-  expect(version).not.toContain("CSP");
 });
 
 test("what's new after an update opens that release's notes inside its version", async () => {

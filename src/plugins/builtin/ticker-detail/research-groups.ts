@@ -1,4 +1,5 @@
 import { ADR_PAIR_TAB_ID } from "./adr-pair/model";
+import { PHARMA_SIGNALS_TAB_ID } from "./pharma-signals/eligibility";
 
 /** What the grouping reads of a research tab. */
 export interface TickerResearchTabSummary {
@@ -23,9 +24,10 @@ interface TickerResearchGroupDef {
  * Trade is Chart with the ticket beside it, and closing the ticket goes back
  * to Chart (`ResearchTradeWorkspace`), so it is Chart's second view. ADR vs
  * Home, the receipt's price against its home line, is the last of
- * Financials. Both show only for some tickers, so each comes after the views
- * every ticker has. A plugin's own tab is in no group: it gets its own top
- * tab after these (`groupTickerResearchTabs`).
+ * Financials. Signals, a drug developer's add-on waitlist, is the last of
+ * Events, beside its catalysts. Each shows only for some tickers, so each
+ * comes after the views every ticker has. A plugin's own tab is in no group:
+ * it gets its own top tab after these (`groupTickerResearchTabs`).
  */
 const TICKER_RESEARCH_GROUPS: readonly TickerResearchGroupDef[] = [
   { id: "overview", name: "Overview", views: ["overview"] },
@@ -33,7 +35,7 @@ const TICKER_RESEARCH_GROUPS: readonly TickerResearchGroupDef[] = [
   { id: "financials", name: "Financials", views: ["financials", "revenue", "equity-diagnostic", "dividend-yield", ADR_PAIR_TAB_ID] },
   { id: "analysts", name: "Analysts", views: ["analyst-research", "earnings-calls"] },
   { id: "options", name: "Options", views: ["options"] },
-  { id: "events", name: "Events", views: ["corporate-actions", "catalysts", "mna"] },
+  { id: "events", name: "Events", views: ["corporate-actions", "catalysts", "mna", PHARMA_SIGNALS_TAB_ID] },
   { id: "filings", name: "Filings", views: ["sec", "filing-events", "risk-factors"] },
   { id: "ownership", name: "Ownership", views: ["holders", "insider", "thirteenf", "congress", "short-interest"] },
   { id: "people", name: "People", views: ["executives", "jobs", "hiring-momentum"] },

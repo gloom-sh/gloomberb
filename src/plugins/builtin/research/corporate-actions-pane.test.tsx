@@ -14,6 +14,29 @@ import { buildEventRows } from "./event-model";
 
 const tui = createOpenTuiTestHarness();
 
+test("EE omits uncovered comparisons, restores covered rows, and exports both raw fields", async () => {
+  const actions: CorporateActionsData = { symbol: "TEST", currency: "USD", dividends: [], splits: [], earnings: [
+    { date: "2026-06-01", epsActual: 2 }, { date: "2026-09-01", epsActual: 3 },
+  ] };
+  await render(actions, "earnings-estimates", 140);
+  expect(tui.frame()).not.toContain("EPS SURP");
+  expect(tui.frame()).not.toContain("YOY GROWTH");
+  await exportPaneTable("earnings-estimates:TEST", "uncovered.csv");
+  const csv = takeSavedTextFile()!.text;
+  expect(csv).toContain("EPS SURP");
+  expect(csv).toContain("YOY GROWTH");
+  await tui.destroy();
+  actions.earnings[0]!.epsEstimate = 1;
+  await render(actions, "earnings-estimates", 140, { symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [],
+    earningsEstimates: [{ date: "2027-03-31", period: "next quarter", average: 4, growth: 0.25, currency: "USD" }] });
+  const mixed = tui.frame();
+  expect(mixed).toContain("EPS SURP");
+  expect(mixed).toContain("+100.00%");
+  expect(mixed).toContain("YOY GROWTH");
+  expect(mixed).toContain("+25.00% EPS");
+  expect(mixed.split("\n").find((line) => line.includes("01 Sep 2026"))).toContain("—");
+});
+
 test("EVT drops annual estimates before quarterly values and keeps VALUE and the complete period visible", () => {
   for (const unit of [undefined, "USD"]) {
     for (const width of [68, 88, 90, 120, 160]) {
@@ -37,7 +60,7 @@ async function frame() {
   await act(async () => { await tui.setup().renderOnce(); });
 }
 
-async function render(actions: CorporateActionsData, variant: "corporate-actions" | "earnings-estimates", width = 80, estimates?: AnalystResearchData) {
+async function render(actions: CorporateActionsData, variant: "corporate-actions" | "earnings-estimates", width = 80, estimates?: AnalystResearchData | Promise<AnalystResearchData>) {
   const paneId = `${variant}:TEST`;
   const config = createTestPaneConfig("/tmp/gloom-corporate-actions-pane-test", {
     instanceId: paneId, paneId: variant, binding: { kind: "fixed", symbol: "TEST" },
@@ -119,6 +142,25 @@ test("a long history scrolls to the next event, not its first row", async () => 
   // Forty past rows do not fit 24 lines: the table opens scrolled to the next one, the oldest out of view.
   expect(tui.frame()).toContain("10 Feb 2098");
   expect(tui.frame()).not.toContain("10 Mar 1980");
+});
+
+test("late estimates scroll into view, and scrolling back restores covered historical surprises", async () => {
+  const estimates = Promise.withResolvers<AnalystResearchData>();
+  await render({ symbol: "TEST", currency: "USD", splits: [], dividends: [], earnings: Array.from({ length: 40 }, (_, index) => ({
+    date: `${1980 + index}-03-10`, epsActual: 2, ...(index === 0 ? { epsEstimate: 1 } : {}),
+  })) }, "earnings-estimates", 140, estimates.promise);
+  expect(tui.frame()).not.toContain("EPS SURP");
+  estimates.resolve({ symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [],
+    earningsEstimates: [{ date: "2098-03-31", period: "next quarter", average: 4, growth: 0.25, currency: "USD" }] });
+  for (let index = 0; index < 6; index += 1) await frame();
+  expect(tui.frame()).toContain("31 Mar 2098");
+  expect(tui.frame()).toContain("+25.00% EPS");
+  expect(tui.frame()).not.toContain("EPS SURP");
+  await tui.emitKeypress({ name: "home" });
+  for (let index = 0; index < 4; index += 1) await frame();
+  expect(tui.frame()).toContain("10 Mar 1980");
+  expect(tui.frame()).toContain("EPS SURP");
+  expect(tui.frame()).toContain("+100.00%");
 });
 
 test("opening a fiscal-period row cannot select a same-day pending announcement", async () => {

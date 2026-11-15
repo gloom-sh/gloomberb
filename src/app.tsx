@@ -77,6 +77,8 @@ import { isPaneShareHandoff } from "./shares/location";
 import { apiClient } from "./api-client";
 import { reportTelemetryConfig } from "./telemetry/live-config";
 import { AttentionCountsNotice } from "./app/attention-notice";
+import { useSinceLastVisit } from "./app/since-last-visit/use-since-last-visit";
+import { SinceLastVisitStrip } from "./app/since-last-visit/strip";
 import { recordFunctionOpen } from "./telemetry/usage-counts";
 import { logFailure } from "./utils/log-failure";
 
@@ -486,6 +488,17 @@ function AppInner({
     }
   }, [focusedTickerSymbol]);
 
+  // What moved in the user's tickers since their last visit: the main window
+  // only, never over setup or the sign-in gate, never in presentation mode.
+  const sinceLastVisit = useSinceLastVisit({
+    active: !appWideWorkElsewhere && !onboardingActive && !signInGateActive,
+    marketData,
+    pluginState: pluginRegistry.persistence.pluginState,
+    pluginsReady,
+    notify: notifyRequest,
+  });
+  const showSinceLastVisit = !!sinceLastVisit.recap && state.config.presentationMode !== true;
+
   const chrome = useAppChromeShown();
   const keybindingHost = useUiHost().kind === "opentui" ? "terminal" : "desktop";
   const keybindings = useResolvedKeybindings(state.config.keybindings, keybindingHost);
@@ -547,6 +560,7 @@ function AppInner({
               onRestartForUpdate={updatesEnabled && !isDetachedWindow ? restartToApplyUpdate : undefined}
             />
           )}
+          {showSinceLastVisit ? <SinceLastVisitStrip strip={sinceLastVisit} /> : null}
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}
@@ -555,6 +569,7 @@ function AppInner({
               desktopWindowBridge={desktopWindowBridge}
               desktopDockPreview={desktopDockPreview}
               commandBarNativeOccluder={commandBarNativeOccluder}
+              topBandRows={showSinceLastVisit ? 1 : 0}
             />
             <StatusBar />
           </TransientLayoutProvider>

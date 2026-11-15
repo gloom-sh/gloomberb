@@ -99,6 +99,7 @@ export function normalizeLoadedConfig(
     ...sanitizePluginSeedFailure(candidate.pluginSeedFailure),
     ...(candidate.portfolioCurrenciesAdopted === true ? { portfolioCurrenciesAdopted: true } : {}),
     ...(candidate.presentationMode === true ? { presentationMode: true } : {}),
+    ...(candidate.sinceLastVisit === false ? { sinceLastVisit: false } : {}),
     ...withHeaderMarket(sanitizeHeaderMarketChoice(candidate.headerMarket)),
     ...(typeof candidate.timezone === "string" && candidate.timezone.trim() ? { timezone: candidate.timezone.trim() } : {}),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
@@ -185,6 +186,9 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
   Object.assign(persisted, withStarPrompt(sanitizeStarPrompt(config.starPrompt)));
   delete persisted.updates;
   Object.assign(persisted, withUpdates(sanitizeUpdatesConfig(config.updates)));
+  // Only off is saved; on is the default.
+  delete persisted.sinceLastVisit;
+  if (config.sinceLastVisit === false) persisted.sinceLastVisit = false;
 
   return persisted;
 }

@@ -94,7 +94,13 @@ async function measureOpen(cdp: Cdp, paneId: string, opens: string[] = []): Prom
       return { x: r.x + r.width / 3, y: r.y + r.height / 2 };
     })()`) ?? fail(`${paneId} has no row to open ${opened}`);
     await doubleClick(cdp, row.x, row.y);
-    if (!await waitFor(cdp, `(() => { const text = ${detail}?.innerText ?? ""; return text.length > 300 && text !== ${JSON.stringify(before)}; })()`, 5_000)) {
+    // A reader (a study, a release) opens on its text; a list (a version's updates) on its table.
+    if (!await waitFor(cdp, `(() => {
+      const open = ${detail};
+      const text = open?.innerText ?? "";
+      if (text === ${JSON.stringify(before)}) return false;
+      return text.length > 300 || open?.querySelector("[data-gloom-role=data-table-row]") != null;
+    })()`, 5_000)) {
       fail(`double clicking a row did not open ${opened}`);
     }
     measures.push({ level: `${opened}: `, measure: await measure(cdp, instanceId) });

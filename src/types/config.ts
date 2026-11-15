@@ -390,6 +390,12 @@ export interface AppConfig {
    * benchmark of this machine's time zone. Kept on this machine only.
    */
   headerMarket?: HeaderMarketChoice;
+  /**
+   * The strip above the layout that says what moved in the user's portfolios
+   * and watchlists since their last visit. `false` turns it off; absent means
+   * on. Kept on this machine only.
+   */
+  sinceLastVisit?: boolean;
 }
 
 /** A benchmark the header offers, by its id (`hang-seng`), or any listing the user searched for. */

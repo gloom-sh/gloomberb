@@ -1,8 +1,7 @@
 import { existsSync } from "fs";
-import { mkdtemp, rm } from "fs/promises";
-import { tmpdir } from "os";
 import { join } from "path";
 import { buildViewBundle, electrobunViewPath, readViewStylesheet } from "../renderers/dom/build-assets";
+import { withShotTempDir } from "./shot-temp-dir";
 
 /**
  * The page `shot` and rendered `fn` reports draw a pane in: the view bundle,
@@ -90,13 +89,10 @@ async function unpackShotView(archivePath: string): Promise<ShotViewFiles> {
 async function buildShotViewFromSource(): Promise<ShotViewFiles> {
   // A bundle of the CLI without its sources, and without the page embedded.
   if (!existsSync(electrobunViewPath(SHOT_VIEW_ENTRY))) throw new Error(MISSING_VIEW_MESSAGE);
-  const dir = await mkdtemp(join(tmpdir(), "gloom-pane-shot-view-"));
-  try {
+  return withShotTempDir("gloom-pane-shot-view-", async (dir) => {
     await buildShotView(dir, process.env.GLOOMBERB_API_URL ?? "");
     return completeShotView(await readShotViewDir(dir));
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+  });
 }
 
 /**

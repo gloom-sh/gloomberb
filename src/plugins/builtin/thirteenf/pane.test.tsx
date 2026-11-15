@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { outage } from "../../../test-support/outage";
 import { act, useReducer } from "react";
-import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -67,6 +68,37 @@ async function renderFrames(count = 4) {
 const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event, { trackPropagation: true });
 
 const emitKeypressBatch = (events: TestKeyEvent[]) => tui.emitKeypress(events, { trackPropagation: true });
+
+test("unserved ranking quarters leave the table, and one fund's zero return restores just its quarter", async () => {
+  setSystemTime(new Date("2026-08-20T12:00:00Z"));
+  let covered = false;
+  installAlpha13FTransport([], (path, parsed) => {
+    if (!path.endsWith("/topfunds")) return null;
+    const quarter = parsed.searchParams.get("quarter");
+    if (quarter === "2026Q2") return json([
+      { cik: "1", name: "Alpha Capital", period_of_report: "2026-06-30", pnl: 12 },
+      { cik: "2", name: "Beta Capital", period_of_report: "2026-06-30", pnl: 8 },
+    ]);
+    return json(covered && quarter === "2026Q1"
+      ? [{ cik: "1", name: "Alpha Capital", period_of_report: "2026-03-31", pnl: 0 }] : []);
+  });
+  await act(async () => { await tui.render(<Harness />, { width: 130, height: 20 }); });
+  await renderFrames();
+  expect(tui.frame()).toContain("Alpha Capital");
+  expect(tui.frame()).not.toContain("2026Q1");
+  await exportPaneTable(PANE_ID, "funds.csv");
+  expect(takeSavedTextFile()?.text).toContain("2026Q1,2025Q4,2025Q3");
+  await tui.destroy();
+  resetThirteenFApiPersistence();
+  covered = true;
+  await act(async () => { await tui.render(<Harness />, { width: 130, height: 20 }); });
+  await renderFrames();
+  const screen = tui.frame();
+  expect(screen).toContain("2026Q1");
+  expect(screen).not.toContain("2025Q4");
+  expect(screen.split("\n").find((line) => line.includes("Alpha Capital"))).toContain("0.00%");
+  expect(screen.split("\n").find((line) => line.includes("Beta Capital"))).toContain("—");
+});
 
 function installAlpha13FTransport(urls: string[] = [], override?: (path: string, parsed: URL) => Response | null) {
   setHttpFetchTransport(async (url) => {

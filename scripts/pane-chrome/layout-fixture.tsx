@@ -92,13 +92,11 @@ const RELEASE_BODY = [
   "[Full diff](https://example.invalid/compare/v0.9.8...v0.9.9)",
 ].join("\n");
 
-/** The invented version's summary, long enough to wrap in a narrow pane. */
+/** The invented version's summary, its title long enough to wrap in a narrow pane. */
 const SUMMARIES = [
   "# Changelog",
   "",
   "## 0.9: An invented version, its title long enough to wrap where the pane is narrow",
-  "",
-  ...Array.from({ length: 4 }, (_, index) => `- **An invented highlight ${index + 1}.** ${SENTENCES[index % SENTENCES.length]} ${SENTENCES[(index + 3) % SENTENCES.length]} (0.9.${9 - index})`),
 ].join("\n");
 
 const RELEASES = Array.from({ length: 6 }, (_, index) => ({

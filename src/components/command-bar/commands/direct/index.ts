@@ -342,6 +342,17 @@ export function runDirectCommandAction(options: {
       closeAll({ revertThemePreview: false });
       return;
     }
+    case "toggle-since-last-visit": {
+      // Only off is saved; on is the default.
+      const { sinceLastVisit, ...rest } = state.config;
+      const enabled = sinceLastVisit === false;
+      const nextConfig: AppConfig = enabled ? rest : { ...rest, sinceLastVisit: false };
+      dispatch({ type: "SET_CONFIG", config: nextConfig });
+      persistConfig(nextConfig);
+      notify(`${t(command.label)}: ${t(enabled ? "on" : "off")}`, { type: "success" });
+      closeAll({ revertThemePreview: false });
+      return;
+    }
     case "toggle-crash-reports":
     case "toggle-usage-counts":
     case "toggle-attention-counts": {

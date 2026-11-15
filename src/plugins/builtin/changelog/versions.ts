@@ -4,9 +4,10 @@ import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 
 /*
  * The Changelog by minor version: every update of 0.20 under one row, with
- * the version's title and highlights from the repository's CHANGELOG.md, or,
- * for a version it does not cover yet, from the updates' own notes. The
- * website's changelog reads the same file the same way.
+ * the version's title from the repository's CHANGELOG.md, or, for a version
+ * it does not cover yet, its first update's title. The website's changelog
+ * reads the same file the same way and shows its highlights too; they are
+ * read here so the file's own test holds them to that format.
  *
  * CHANGELOG.md has one section per minor version:
  *
@@ -21,10 +22,7 @@ import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
  * skipped here.
  */
 
-/** Highlights shown for a version at most. */
-export const HIGHLIGHTS_MAX = 5;
-
-export interface ChangelogHighlight {
+interface ChangelogHighlight {
   /** The bold claim, as written: "A faster, lighter desktop app." */
   lead: string;
   /** The line after the claim (inline markdown), or "". */
@@ -46,7 +44,6 @@ export interface ChangelogVersion {
   /** "0.20" */
   minor: string;
   title: string;
-  highlights: ChangelogHighlight[];
   /** Newest first, as GitHub lists them. */
   releases: ChangelogRelease[];
   firstPublishedAt: string;
@@ -57,7 +54,6 @@ const SECTION = /^##\s+v?(\d+\.\d+)(?:\s*:\s*(.*))?$/;
 const VERSIONS = /\s*\(\s*(v?\d+\.\d+\.\d+(?:\s*,\s*v?\d+\.\d+\.\d+)*)\s*\)\s*$/;
 const BULLET = /^[-*]\s+(.+)$/;
 const BOLD_LEAD = /^\*\*(.+?)\*\*\s*(.*)$/;
-const PULL_REFS = /\s*\(\s*#\d+(?:\s*,\s*#\d+)*\s*\)\s*$/;
 const IMAGE = /^!\[[^\]]*\]\([^)\s]+\)$/;
 
 /** "**Claim.** Line" as its claim and its line; text without a claim is all claim. */
@@ -143,35 +139,6 @@ function minorOf(tagName: string): string {
   return tagName.match(/^v?(\d+\.\d+)\.\d+$/i)?.[1] ?? tagName;
 }
 
-/**
- * A plain bullet's claim: its first sentence, up to a colon that brings in
- * the details. Never inside inline code.
- */
-function firstClaim(text: string): string {
-  let code = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (char === "`") code = !code;
-    if (code) continue;
-    const next = text[index + 1];
-    if ((char === "." || char === "!" || char === "?") && (next === undefined || next === " ")) return text.slice(0, index + 1);
-    if (char === ":" && next === " ") return `${text.slice(0, index)}.`;
-  }
-  return text;
-}
-
-/**
- * An update's top highlight: the claim of the first bullet of its notes, a
- * plain bullet's first sentence, or its title when the notes have no bullet.
- */
-export function topHighlight(release: ChangelogRelease): ChangelogHighlight {
-  const versions = [release.version.replace(/^v/i, "")];
-  const bullet = release.body.split(/\r?\n/).map((line) => line.trim().match(BULLET)?.[1]).find(Boolean);
-  if (!bullet) return { lead: release.title, detail: "", versions };
-  const lead = bullet.startsWith("**") ? splitLead(bullet).lead : firstClaim(bullet.replace(PULL_REFS, ""));
-  return { lead, detail: "", versions };
-}
-
 function fallbackTitle(releases: ChangelogRelease[], minor: string): string {
   const first = releases.find((release) => release.version.replace(/^v/i, "") === `${minor}.0`) ?? releases.at(-1);
   return first?.title ?? `Version ${minor}`;
@@ -190,10 +157,10 @@ function compareMinors(left: string, right: string): number {
 
 /**
  * The releases (newest first) as one version per minor, the highest first. A
- * version's title and highlights come from its summary; what the summary
- * leaves out comes from the updates themselves, so a missing or half-written
- * summary never empties a row. With `cut`, the list stopped at its limit, so
- * its oldest version may be missing updates and is left out.
+ * version's title comes from its summary, else from its first update, so a
+ * missing or half-written summary never empties a row. With `cut`, the list
+ * stopped at its limit, so its oldest version may be missing updates and is
+ * left out.
  */
 export function groupChangelogVersions(
   releases: ChangelogRelease[],
@@ -210,22 +177,14 @@ export function groupChangelogVersions(
 
   const versions = [...byMinor]
     .sort(([left], [right]) => compareMinors(left, right))
-    .map(([minor, group]): ChangelogVersion => {
-      const summary = summaries.get(minor);
-      const highlights = summary?.highlights.length
-        ? summary.highlights.slice(0, HIGHLIGHTS_MAX)
-        // The newest updates', in the order they shipped.
-        : group.slice(0, HIGHLIGHTS_MAX).reverse().map(topHighlight);
-      return {
-        id: /^\d+\.\d+$/.test(minor) ? `v${minor}` : minor,
-        minor,
-        title: summary?.title ?? fallbackTitle(group, minor),
-        highlights,
-        releases: group,
-        firstPublishedAt: group.at(-1)?.publishedAt ?? "",
-        lastPublishedAt: group[0]?.publishedAt ?? "",
-      };
-    });
+    .map(([minor, group]): ChangelogVersion => ({
+      id: /^\d+\.\d+$/.test(minor) ? `v${minor}` : minor,
+      minor,
+      title: summaries.get(minor)?.title ?? fallbackTitle(group, minor),
+      releases: group,
+      firstPublishedAt: group.at(-1)?.publishedAt ?? "",
+      lastPublishedAt: group[0]?.publishedAt ?? "",
+    }));
   return cut && versions.length > 1 ? versions.slice(0, -1) : versions;
 }
 
@@ -233,16 +192,6 @@ export function groupChangelogVersions(
 export function versionOfRelease(versions: ChangelogVersion[], releaseId: string | null): ChangelogVersion | null {
   if (!releaseId) return null;
   return versions.find((version) => version.releases.some((release) => release.id === releaseId)) ?? null;
-}
-
-/** A version's highlights as the markdown list its detail shows, each naming its updates. */
-export function highlightsMarkdown(version: ChangelogVersion): string {
-  return version.highlights.map((highlight) => {
-    const claim = `**${highlight.lead}**`;
-    const detail = highlight.detail ? ` ${highlight.detail}` : "";
-    const shipped = highlight.versions.length ? ` (${highlight.versions.join(", ")})` : "";
-    return `- ${claim}${detail}${shipped}`;
-  }).join("\n");
 }
 
 export type ChangelogVersionColumnId = "date" | "version" | "title" | "updates";

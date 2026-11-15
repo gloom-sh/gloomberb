@@ -51,7 +51,7 @@ const COLUMNS: DataTableColumn[] = [
   { id: "annualized6m", label: "6M Ann", width: 7, align: "right", flexGrow: 1 },
   { id: "yoy", label: "Y/Y", width: 7, align: "right", flexGrow: 1 },
   { id: "contribution", label: "M/M Pts", width: 8, align: "right", flexGrow: 1 },
-  { id: "contributionYoy", label: "Y/Y Pts", width: 8, align: "right", flexGrow: 1 },
+  { id: "contributionYoy", label: "Y/Y Pts", width: 8, align: "right", flexGrow: 1, omitWhenEmpty: true },
 ];
 const PANELS = [{ id: "main" }];
 /** Legend, four plot rows and the time axis; the read under them takes its own rows. */

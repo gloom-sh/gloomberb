@@ -35,7 +35,7 @@ function tableColumns(conversion: PeBandModel["conversion"]): DataTableColumn[] 
     { id: "known", label: "Known", width: 11, align: "left" },
     { id: "eps", label: conversion ? `EPS ${conversion.currency}` : "EPS", width: 9, align: "right" },
     ...(conversion ? [{ id: "fx", label: fxPairQuote(conversion.currency, conversion.latest.rate).pair, width: 9, align: "right" as const }] : []),
-    { id: "yoy", label: "YoY", width: 8, align: "right" },
+    { id: "yoy", label: "YoY", width: 8, align: "right", omitWhenEmpty: true },
     { id: "price", label: "Price", width: 10, align: "right" },
     { id: "pe", label: "P/E", width: 7, align: "right" },
   ];
