@@ -80,7 +80,7 @@ export function clippedCellTextStyle(
   };
 }
 
-export function toCellY(pixels: number, rowHeight = WEB_CELL_HEIGHT): number {
+function toCellY(pixels: number, rowHeight = WEB_CELL_HEIGHT): number {
   return Math.max(0, Math.round(pixels / rowHeight));
 }
 
