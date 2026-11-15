@@ -71,6 +71,29 @@ test("--section picks a report table, unless the function has a section option o
   await expect(fn(["WEI", "--section", "Europe"], false)).rejects.toThrow("WEI does not support --section");
 });
 
+test("--limit and --tail pick the report's rows of a function with no such option, and stay refused by shot", async () => {
+  const contracts = Array.from({ length: 10 }, (_, index) => ({ contract: `CL${index}`, settle: 80 - index }));
+  const curve: HeadlessPaneDefinition<"bundle"> = {
+    shape: "bundle", argument: { kind: "none" }, options: [],
+    load: () => ({ sections: [{ title: "Contracts", rows: contracts }, { title: "Terms", entries: [{ label: "Unit", value: "USD / barrel" }] }] }),
+  };
+  const catalog: PaneFunctionCatalog = { ...registry, panes: new Map([["curve", pane("curve")]]),
+    paneTemplates: new Map([["curve-pane", template("CRV", "curve", curve)]]) };
+  const withWindow = (args: string[], globals: { limit?: number; tail?: number }) => resolvePaneFunction(
+    catalog, context, parsePaneFunctionArgs(args, globals), { strictHeadlessOptions: true, tableSection: true, rowWindow: true });
+  const limited = await withWindow(["CRV"], { limit: 3 });
+  expect(limited.rowWindow).toEqual({ limit: 3 });
+  expect(limited.options).not.toHaveProperty("limit");
+  const report = await buildFunctionReport(limited, context, "");
+  expect(report.tables.tables[0]!.rows.map((row) => row[0])).toEqual(["CL0", "CL1", "CL2"]);
+  expect(report.text).toContain("first 3 of 10 rows (--limit 3)");
+  const tail = await buildFunctionReport(await withWindow(["CRV"], { tail: 2 }), context, "");
+  expect(tail.tables.tables[0]!.rows.map((row) => row[0])).toEqual(["CL8", "CL9"]);
+  // A capture draws the pane, which lists every row: it still refuses an option the pane does not draw.
+  await expect(resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["CRV"], { limit: 3 }), { strictHeadlessOptions: true, command: "shot" }))
+    .rejects.toThrow("CRV does not support --limit");
+});
+
 test("a pair option reads the words after its flag, and a refused option is named as it was typed", async () => {
   const args = ["MARS", "book", "--view", "stress", "--fx-shift", "TRY", "-20,", "EUR", "5", "--asset-shift", "BTC-USD", "-30"];
   const parsed = parsePaneFunctionArgsFor(registry, args);
