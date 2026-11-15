@@ -26,7 +26,7 @@ export function portableCsv(text: string, warnings: readonly string[] = [], extr
   let section = "", current: (typeof tables)[number] | null = null;
   for (const row of csvRows(csv)) {
     if (row.length === 1 && row[0] === "") { current = null; continue; }
-    if (row[0]?.startsWith("# section: ")) {
+    if (!current && row[0]?.startsWith("# section: ")) {
       section = row.join(",").slice("# section: ".length); current = null; continue;
     }
     if (!current) {

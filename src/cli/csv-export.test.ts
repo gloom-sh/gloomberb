@@ -29,3 +29,7 @@ test("a quoted cell ending in a note-like line is data, not an export footer", (
   const csv = portableCsv('Value\n"line one\n\n# note: still data"');
   expect(csv).toBe('Value,export_notes\n"line one\n\n# note: still data",');
 });
+
+test("a data cell resembling a section marker stays attached to its row", () => {
+  expect(portableCsv("Headline,Value\n# section: housing,10")).toBe("Headline,Value,export_notes\n# section: housing,10,");
+});
