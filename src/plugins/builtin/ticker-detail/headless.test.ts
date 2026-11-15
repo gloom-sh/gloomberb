@@ -186,10 +186,11 @@ test("FA: a filled half is headed as one with its growth on the half before; a f
       + "6 months to 2025-06-30 revenue (comparative in the 2026-08-20 announcement).");
 
     const annual = await load("annual");
+    // Each period is named as the pane's column names it, then the day it ends.
     expect(headers(annual)).toEqual([
-      "TTM 2026-06-30 CNY bn",
-      "2025-12-31 CNY bn (announced 2026-03-25)",
-      "2024-12-31 CNY bn (provider date)",
+      "TTM H1 FY26 2026-06-30 CNY bn",
+      "FY2025 2025-12-31 CNY bn (announced 2026-03-25)",
+      "FY2024 2024-12-31 CNY bn (provider date)",
     ]);
     // The year's revenue, restated alike in its announcement, has its growth; its net income is not compared.
     expect(growth(annual, "income:revenue")["2025-12-31"]).toBeCloseTo(37.12 / 13.04 - 1, 6);
@@ -223,7 +224,7 @@ test("FA CSV writes every amount as a bare number, every digit, whatever growth 
   const lines = renderReportCsv(headlessReportTables(financialStatementsHeadless, result, input, "FA", freshness, { complete: true, unavailableSymbols: [] }), freshness)
     .split("\n\n")[0]!.split("\n");
   const header = lines[0]!.split(",");
-  const periods = header.flatMap((column, index) => /^\d{4}-\d{2}-\d{2} /.test(column) ? [index] : []);
+  const periods = header.flatMap((column, index) => /(^| )\d{4}-\d{2}-\d{2} /.test(column) ? [index] : []);
   expect(periods).toHaveLength(3);
   const amounts = lines.slice(1).flatMap((line) => periods.map((index) => line.split(",")[index]!)).filter(Boolean);
   expect(amounts.length).toBeGreaterThan(0);
@@ -247,8 +248,8 @@ test("financial exports distinguish provider dates from SEC period evidence and 
   } }) } as HeadlessPaneContext;
   const result = await financialStatementsHeadless.load(args(["COST"], { period: "annual", statement: "income" }), ctx);
   const columns = result.metadata!.columns as Array<Record<string, unknown>>;
-  expect(columns.find(({ date }) => date === "2024-09-01")).toMatchObject({ dateSource: "sec", providerDate: "2024-08-31", dateEvidence, label: "2024-09-01 USD (SEC date)" });
-  expect(columns.find(({ date }) => date === "2023-08-31")).toMatchObject({ dateSource: "provider", dateEvidence: null, label: "2023-08-31 USD (provider date)" });
+  expect(columns.find(({ date }) => date === "2024-09-01")).toMatchObject({ dateSource: "sec", providerDate: "2024-08-31", dateEvidence, label: "FY2024 2024-09-01 USD (SEC date)", period: "FY2024", periodEnd: "2024-09-01" });
+  expect(columns.find(({ date }) => date === "2023-08-31")).toMatchObject({ dateSource: "provider", dateEvidence: null, label: "FY2023 2023-08-31 USD (provider date)" });
   expect(columns.find(({ date }) => date === "TTM")).toMatchObject({ dateSource: "derived", dateEvidence: null, providerDate: null });
   expect(columns.every((column) => column.availableAt === null && column.fieldAvailability === null)).toBe(true);
   expect(result.columns?.find(({ key }) => key === "2023-08-31")?.header).toContain("provider date");

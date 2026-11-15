@@ -4,6 +4,7 @@ import { MISSING_VALUE, formatNumber, pickUnit } from "../../../../utils/format"
 import { pricePointIntegrity } from "../../../../utils/price-history-integrity";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
+import { statementNopat } from "./nopat";
 import { debtAndLeases, leaseBasis, type LeaseBasis } from "../../../../utils/lease-liabilities";
 import { cashAndShortTermInvestments, excludesCashRunway, formatRunwayMonths, SHORT_RUNWAY_HISTORY, monthlyOperatingBurn, QUARTER_MONTHS, reportsShortTermTotal, runwayMonths, YEAR_MONTHS } from "../../../../utils/cash-runway";
 import {
@@ -21,17 +22,20 @@ import {
 
 /**
  * Why a ratio or one of its inputs has no number: a line the statements do
- * not carry for the period, a ratio whose denominator makes it meaningless
+ * not carry for the period, an average whose opening balance is the period
+ * before the oldest one loaded, a ratio whose denominator makes it meaningless
  * (a loss under P/E, negative equity under ROE), no close at the period end,
  * a close still loading, a quarter with fewer than four quarters to sum
  * for a trailing flow, or operations that brought cash in, where a runway
  * has no burn to divide by.
  */
-export type RatioGap = "not-reported" | "short-history" | "no-burn" | "not-meaningful" | "no-price" | "loading";
+export type RatioGap = "not-reported" | "no-opening" | "short-history" | "no-burn" | "not-meaningful" | "no-price" | "loading";
 export type RatioAmount = number | RatioGap;
 
 export const RATIO_GAP_TEXT: Record<RatioGap, string> = {
   "not-reported": "not reported",
+  // An average of the opening and closing balance in the oldest column, whose opening balance sheet is not loaded.
+  "no-opening": "needs prior period",
   "short-history": SHORT_RUNWAY_HISTORY,
   "no-burn": "no burn",
   "not-meaningful": "N/M",
@@ -155,10 +159,11 @@ const balanceEnds = (...lines: BalanceLine[]) => ({ statement, opening }: RatioP
   return undefined;
 };
 
-/** The mean of the opening and closing balance. */
+/** The mean of the opening and closing balance; the oldest column, whose opening balance sheet is not loaded, says it needs it. */
 const average = (...lines: BalanceLine[]) => {
   const ends = balanceEnds(...lines);
   return (period: RatioPeriod): RatioAmount => {
+    if (!period.opening) return "no-opening";
     const pair = ends(period);
     return pair ? (pair[0] + pair[1]) / 2 : "not-reported";
   };
@@ -201,6 +206,23 @@ const debtPlusEquity: BalanceLine = (statement) => {
   const common = equity(statement);
   return debt !== undefined && common !== undefined ? debt + common : undefined;
 };
+/** Invested capital as ROIC reads it: the data vendor's line, else total debt plus equity. */
+const investedCapital = line("investedCapital");
+
+/**
+ * Invested capital less cash and short-term investments, averaged as ROIC averages it (both ends from the same
+ * line): the capital the operations use, so a debt-free company holding cash is not read as using it.
+ */
+function averageOperatingCapital(period: RatioPeriod): RatioAmount {
+  const { statement, opening, shortTermTotalOnFile } = period;
+  if (!opening) return "no-opening";
+  const cash = (at: FinancialStatement) => cashAndShortTermInvestments(at, shortTermTotalOnFile)?.amount;
+  const [closeCash, openCash] = [cash(statement), cash(opening)];
+  if (closeCash === undefined || openCash === undefined) return "not-reported";
+  const ends = balanceEnds(investedCapital, debtPlusEquity)(period);
+  return ends ? (ends[0] - openCash + ends[1] - closeCash) / 2 : "not-reported";
+}
+
 const freeCashFlow: BalanceLine = (statement) => {
   const reportedFlow = finite(statement.freeCashFlow);
   if (reportedFlow !== undefined) return reportedFlow;
@@ -240,14 +262,9 @@ const netIncome = flow("Net Income", line("netIncome"));
 const revenue = line("totalRevenue");
 const costOfRevenue = line("costOfRevenue");
 
-/** Operating income after tax at the period's effective rate; a pretax loss pays no tax. */
+/** Operating income after tax at the period's effective rate; a pretax loss pays no tax (statementNopat). */
 function nopat({ statement }: RatioPeriod): RatioAmount {
-  const operating = finite(statement.operatingIncome);
-  const tax = finite(statement.taxProvision);
-  const pretax = finite(statement.pretaxIncome);
-  if (operating === undefined || tax === undefined || pretax === undefined) return "not-reported";
-  const rate = pretax > 0 ? Math.min(1, Math.max(0, tax / pretax)) : 0;
-  return operating * (1 - rate);
+  return reported(statementNopat(statement));
 }
 
 function dilutedEps({ statement }: RatioPeriod): RatioAmount {
@@ -366,7 +383,7 @@ export const RATIO_TABS: RatioTabDef[] = [
         inputs: [netIncome, { label: "Avg Equity", operator: "÷", format: "money", value: average(...equityLines) }],
         compute: ([income], period) => {
           const ends = equityEnds(period);
-          return ends ? returnOnEquity(income!, ends) : "not-reported";
+          return ends ? returnOnEquity(income!, ends) : period.opening ? "not-reported" : "no-opening";
         },
       },
       {
@@ -384,7 +401,20 @@ export const RATIO_TABS: RatioTabDef[] = [
         signed: true,
         inputs: [
           { label: "NOPAT", format: "money", annualized: true, value: nopat },
-          { label: "Avg Invested Capital", operator: "÷", format: "money", value: average(line("investedCapital"), debtPlusEquity) },
+          { label: "Avg Invested Capital", operator: "÷", format: "money", value: average(investedCapital, debtPlusEquity) },
+        ],
+        compute: ([income, base]) => over(income!, base!),
+      },
+      {
+        // ROIC with cash and short-term investments taken out of invested capital: Copart, debt free with its
+        // cash in its equity, reads its operations' return rather than one diluted by the cash.
+        id: "roic-ex-cash",
+        label: "ROIC ex Cash",
+        format: "percent",
+        signed: true,
+        inputs: [
+          { label: "NOPAT", format: "money", annualized: true, value: nopat },
+          { label: "Avg IC less Cash", operator: "÷", format: "money", value: averageOperatingCapital },
         ],
         compute: ([income, base]) => over(income!, base!),
       },
@@ -602,7 +632,7 @@ export const RATIO_TAB_KEYS = new Set(RATIO_TABS.map((tab) => tab.key));
  * report explains more than a missing close, and a close still loading may
  * yet arrive.
  */
-const GAP_ORDER: RatioGap[] = ["not-reported", "short-history", "no-burn", "not-meaningful", "no-price", "loading"];
+const GAP_ORDER: RatioGap[] = ["not-reported", "no-opening", "short-history", "no-burn", "not-meaningful", "no-price", "loading"];
 
 function inputAmount(input: RatioInputDef, period: RatioPeriod): RatioAmount {
   if (!input.trailing || !period.quarterly) return input.value(period);

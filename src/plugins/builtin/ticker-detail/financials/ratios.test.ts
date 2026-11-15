@@ -61,7 +61,8 @@ describe("financial ratios", () => {
     expect(evaluateRatio(ratio("roa"), period(closing, opening, { quarterly: true })).value).toBeCloseTo(0.05);
     // Both ends must use one definition: common equity at one end and total at the other is not an average.
     expect(evaluateRatio(ratio("roe"), period(closing, { date: "2025-03-31", commonStockEquity: 80 })).value).toBe("not-reported");
-    expect(evaluateRatio(ratio("roe"), period(closing)).value).toBe("not-reported");
+    // The oldest column, with no opening balance sheet loaded, says it needs the period before rather than "not reported".
+    expect(evaluateRatio(ratio("roe"), period(closing)).value).toBe("no-opening");
   });
 
   test("ROE reads N/M when equity changes sign or is under a fifth of net income, keeping its inputs", () => {
@@ -160,8 +161,9 @@ describe("financial ratios", () => {
     });
     const table = ratioTableForFinancials(financials, RATIO_TABS.find((tab) => tab.key === "profitability")!, "annual");
     expect(table.periods.map(({ statement }) => statement.date)).toEqual(["2025-12-31", "2024-12-31"]);
-    expect(table.cells.get("roe")!.map((cell) => cell.value)).toEqual([0.24, "not-reported"]);
-    expect(table.rows.filter((row) => row.kind === "input").length).toBe(12);
+    expect(table.cells.get("roe")!.map((cell) => cell.value)).toEqual([0.24, "no-opening"]);
+    // Two inputs a ratio: ROE, ROA, ROIC, ROIC ex Cash and the three margins.
+    expect(table.rows.filter((row) => row.kind === "input").length).toBe(14);
   });
 
   test("quarterly leverage divides by the trailing year, not a quarter times four, and says when four quarters are not on file", () => {
