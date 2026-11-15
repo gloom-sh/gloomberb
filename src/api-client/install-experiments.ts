@@ -5,18 +5,19 @@
  * The registry and the bucketing live with the Gloom Cloud API, as they do for
  * the web terminal's experiments (web-experiments.ts). The app asks for its
  * arm at the moment an experiment's change would show, in every arm
- * (`experiment_assign`, which the API records nothing for), and once it has
- * gone on with that arm it confirms it (`experiment_exposed`). The
- * confirmation is the exposure, counted under `install:<id>`, the id its
- * usage counts already go under, so what the install does on later days
- * reads against the arm it saw. Turning an experiment off there takes effect
- * here without a release.
+ * (`experiment_assign`), and once it has gone on with that arm it confirms
+ * it (`experiment_exposed`). The API records the assignment as
+ * `experiment_assigned` and the confirmation as `experiment_exposed`, both
+ * under `install:<id>`, the id its usage counts already go under. Later usage
+ * can read against the assigned arm or the arm it saw. Turning an experiment
+ * off there takes effect here without a release.
  *
  * It is covered by the Usage setting and sends nothing with it off, under
  * Do Not Track or Global Privacy Control, or in an automated browser: those
  * installs get the control and are not counted. An answer that fails or
  * comes too late gets the control too, so the change never holds anything
- * up, and confirms nothing: an install never counts in an arm it did not see.
+ * up, and confirms nothing: an install never confirms an exposure to an arm
+ * it did not see.
  */
 import { apiClient, type InstallExperimentAnswer, type InstallExperimentReport } from "./index";
 import { VERSION } from "../version";
