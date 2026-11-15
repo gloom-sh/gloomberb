@@ -8,6 +8,7 @@ import type { DataTableCell } from "./ui/data-table";
 import { LogoMark, type LogoMarkProps } from "./ui/logo-mark";
 import { canonicalExchange, canonicalTickerKey, isUsEquityExchange } from "../utils/exchanges";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
+import { isRoundTheClockCoin } from "../utils/crypto-pair";
 
 /**
  * A company's listing as the logo service knows it: one abroad by its venue
@@ -26,7 +27,7 @@ export function resolveCompanyLogoSrc(input: {
   /** The listing's venue, so a symbol a US company also uses draws its own company's logo. */
   exchange?: string;
 }): string | null {
-  const kind = logoKindForAsset(input.assetCategory);
+  const kind = logoKindForAsset(input.assetCategory, input.symbol, input.exchange);
   if (!kind) return null;
   const path = cloudLogoPath(kind, kind === "ticker" ? logoListing(input.symbol, input.exchange) : input.symbol);
   return path ? `${getCloudApiBaseUrl()}${path}` : null;
@@ -124,8 +125,14 @@ export function CompanyLogo({
   );
 }
 
-function logoKindForAsset(assetCategory?: string): CloudLogoKind | null {
+/**
+ * A coin is asked for on the crypto path, never as a ticker. A listing opened
+ * from its quote keeps no type (BTC-USD on CCC from a board row or a link), so
+ * without one its listing says whether it is a coin: a bare BTC is a US fund.
+ */
+function logoKindForAsset(assetCategory?: string, symbol?: string, exchange?: string): CloudLogoKind | null {
   const kind = resolveAssetDisplayKind({ assetCategory });
   if (kind === "cash" || kind === "contract") return null;
-  return kind === "crypto" ? "crypto" : "ticker";
+  if (kind === "crypto") return "crypto";
+  return kind === "other" && isRoundTheClockCoin(symbol, exchange) ? "crypto" : "ticker";
 }

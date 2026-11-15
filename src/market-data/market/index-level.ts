@@ -1,6 +1,7 @@
 import { classifyInstrumentType, isCryptoVenuePerpetual } from "../../tickers/instrument-kind";
 import type { PriceBasis } from "../../types/instrument";
 import type { MarketState, Quote } from "../../types/financials";
+import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 
 /**
  * The unit an index level is in, as a chart's axis and series name it. A
@@ -88,4 +89,22 @@ export function reportedQuoteVolume(
   if (classifyInstrumentType(quote!.instrumentType) === "currency") return null;
   if (volume === 0 && (isIndexLevel(quote!.instrumentType) || isCryptoVenuePerpetual(quote!.instrumentType, quote!.name))) return null;
   return volume;
+}
+
+/**
+ * The currency a quote's volume is a value in, where it is one: a coin's is
+ * the value traded in its quote currency (BTC-USD's in US dollars), whether it
+ * is the composite's or one exchange's day, as its bars' and the crypto
+ * board's are, never a count of coins. Null for a listing that counts shares
+ * or contracts, and for a quote that names no currency. `symbol` and
+ * `exchange` stand in for a quote that names no listing.
+ */
+export function quoteVolumeCurrency(
+  quote: { symbol?: string | null; exchangeName?: string | null; currency?: string | null } | null | undefined,
+  symbol?: string,
+  exchange?: string,
+): string | null {
+  const currency = quote?.currency?.trim();
+  if (!currency) return null;
+  return isRoundTheClockCoin(quote?.symbol || symbol, quote?.exchangeName || exchange) ? currency : null;
 }
