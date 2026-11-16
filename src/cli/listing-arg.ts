@@ -1342,24 +1342,48 @@ export async function loadForListing<T>(
   const all = "symbol" in listings ? [listings] : listings;
   const named = all.filter((listing) => listing.exchange);
   const checkVenues = () => Promise.all(named.map((listing) => failIfNotTraded(listing, deps, ctx)));
+  // One listing a command asked for: what became of its symbol is looked up beside the load, so a company that moved
+  // ends the command naming its new symbol, as `quote` names it, whether the load served, came back empty or failed
+  // (FI's window before the listing that reused the symbol has no bars at all).
+  const fate = request && all.length === 1 ? request.fate ?? commandFate(all[0]!, deps) : null;
+  const refuseMoved = async () => {
+    const moved = fate ? (await fate()).moved : null;
+    if (moved) failMovedSymbol(moved, request!);
+  };
   let value: T;
   try {
     value = await load();
   } catch (error) {
     await checkVenues();
+    await refuseMoved();
     if (request && all.length === 1 && isNoProviderError(error)) await failUnservedListing(ctx, request, otherListingsMessage(all[0]!, deps, request));
     throw error;
   }
   if (isMiss?.(value)) await checkVenues();
   // Data came back, but the symbol's company moved and nothing new lists there: the data is another security's.
-  if (request?.fate && all.length === 1) {
-    const { moved } = await request.fate();
-    if (moved) failMovedSymbol(moved, request);
-  }
+  await refuseMoved();
   return value;
 }
 
-type ListingForLoad = Pick<ListingArg, "symbol" | "exchange"> & Partial<Pick<CliListing, "saved">>;
+/**
+ * The fate of a command's one listing when the command did not look it up
+ * itself (`listingFateLoader`): the change lookup starts now, beside the
+ * command's request, and the listing's quote is read when the fate is asked
+ * for. A symbol the change history is not about (a listing abroad, a pair)
+ * asks nothing of it.
+ */
+function commandFate(listing: ListingForLoad, deps: Pick<ListingDeps, "dataProvider">): () => Promise<ListingFate> {
+  const changes = startTickerChangeLookup(deps.dataProvider, listing.symbol, listing.exchange);
+  let fate: Promise<ListingFate> | null = null;
+  return () => fate ??= loadListingFate(listing, deps.dataProvider, { changes });
+}
+
+/** A command that ended naming the new symbol of a company that moved (`failMovedSymbol`). */
+export function isMovedSymbolFailure(error: unknown): boolean {
+  return error instanceof Error && (error as { code?: unknown }).code === "ticker_moved";
+}
+
+type ListingForLoad = Pick<ListingArg, "symbol" | "exchange"> & Partial<Pick<CliListing, "saved" | "request">>;
 
 /** The saved ticker for a listing: under its own key, or a saved symbol whose venue it is. */
 export async function loadSavedListing(store: ListingStore, listing: ListingArg): Promise<TickerRecord | null> {

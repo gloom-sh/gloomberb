@@ -285,6 +285,7 @@ import {
   failUnchosenListing,
   futureByWordLine,
   loadBareVenues,
+  isMovedSymbolFailure,
   loadForListing,
   ownedCodeNotes,
   loadListingQuote,
@@ -3478,7 +3479,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
           hidden = shown.hidden;
           return shown.filings;
         }),
-        (found) => found.length === 0),
+        (found) => found.length === 0, { command: form ? `filings --form ${form}` : "filings", noun: "SEC filings" }),
         quotePromise,
       ]);
       const hiddenNote = hidden ? hiddenFilingsNote(hidden) : null;
@@ -3706,7 +3707,8 @@ async function printBeneficialOwners(
   const abroad = nonUsSecListingVenue(symbol, exchange) ? listingIdentity(listing, await quotePromise) : null;
   const request = { form: beneficialRouteForm(form), history, listing: { exchange, name: abroad?.name ?? undefined } };
   const [payload, holders, quote, financials] = await Promise.all([
-    loadForListing(listing, market, ctx, () => fetchBeneficialOwners(symbol, request)),
+    loadForListing(listing, market, ctx, () => fetchBeneficialOwners(symbol, request), undefined,
+      { command: `holders --form ${form}${history ? " --history" : ""}`, noun: "beneficial owners" }),
     market.dataProvider.getHolders?.(symbol, exchange).catch(logFailure("cli.commands-market", "Read company holders failed", null)) ?? null,
     quotePromise,
     // Today's share count, which the filed percents are set against.
@@ -3792,6 +3794,8 @@ async function runHolders(
         (found) => found.holders.length === 0,
         { command: commandName, noun: "holder data" },
       ).catch(async (error: unknown) => {
+        // A symbol whose company moved names its new symbol, as every command does.
+        if (isMovedSymbolFailure(error)) throw error;
         // A fund has no ownership breakdown, and a listing may have no holders on record: say so
         // (and what reads a fund) rather than the source's NO_DATA.
         const none = await noHoldersAnswer(listing.key, listing.request.exchange, error, await quoted, apiClient);

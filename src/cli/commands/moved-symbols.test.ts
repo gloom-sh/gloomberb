@@ -82,6 +82,24 @@ test("history and ticker of a symbol whose company moved serve nothing of their 
   }
 });
 
+test("a dated window, holders and filings of a moved symbol whose own request fails name its new symbol, never the source's dead end", async () => {
+  // FI's window before the listing that reused the symbol: the dated request fails, and the whole history starts in 2026.
+  const reused = source(undefined, {
+    getDetailedPriceHistoryWithMetadata: async () => { throw new Error("No data for HFC from 2022-03-10 to 2022-03-18."); },
+    getPriceHistoryWithMetadata: async () => ({ resolution: "1mo", points: [{ date: new Date("2026-07-01"), open: 1, high: 1, low: 1, close: 1, volume: 0 }] }),
+    getHolders: async () => { throw new Error("No holders on record for HFC."); },
+    getSecFilings: async () => { throw new Error("Unknown ticker HFC"); },
+  });
+  const window = await runHistory(["HFC", "--from", "2022-03-10", "--to", "2022-03-18", "--interval", "daily"], reused);
+  expect((window.error as Error).message).toBe("HFC became DINO on 2022-03-15: `gloom history DINO --from 2022-03-10 --to 2022-03-18 --interval daily`");
+  for (const [name, line] of [["holders", "`gloom holders DINO`"], ["13f", "`gloom 13f DINO`"], ["filings", "`gloom filings DINO`"]] as const) {
+    const command = marketDataCliCommands.find((entry) => entry.name === name)!;
+    const cli = createTestCliContext({ config, dataProvider: reused });
+    const error = await command.execute(["HFC"], cli.context).then(() => null, (failure: unknown) => failure);
+    expect((error as Error).message, name).toBe(`HFC became DINO on 2022-03-15: ${line}`);
+  }
+});
+
 async function runQuote(symbols: string[]) {
   const cli = createTestCliContext({ config, dataProvider: source() });
   await quote.execute(symbols, cli.context);
