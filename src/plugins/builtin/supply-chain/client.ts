@@ -45,7 +45,7 @@ export function validSupplyEntity(value: SupplyEntity): boolean {
 export function validSupplyRow(value: SupplyRow): boolean {
   return !!value && text(value.id) && validSupplyEntity(value.counterparty) && validSupplyEntity(value.reportingEntity)
     && SUPPLY_ROLES.includes(value.role) && ["in", "out", "mutual"].includes(value.direction)
-    && nullableText(value.pctScope) && [undefined, "total", "segment"].includes(value.pctScopeBasis)
+    && nullableText(value.pctScope) && [undefined, null, "total", "segment"].includes(value.pctScopeBasis)
     && nullableNumber(value.pctOfRevenue) && (value.pctOfRevenue === null || value.pctOfRevenue <= 100)
     && [null, "revenue", "receivables", "cost", "purchases"].includes(value.pctBasis)
     && nullableNumber(value.usd) && [null, "disclosed", "derived"].includes(value.usdBasis)
@@ -71,7 +71,10 @@ export function validSupplyRow(value: SupplyRow): boolean {
     && (value.whyUnconfirmed === undefined || nullableText(value.whyUnconfirmed))
     && (value.evidence === undefined || Array.isArray(value.evidence) && value.evidence.every(evidence));
 }
-export function normalizeSupplyRow(value: SupplyRow): SupplyRow {
+export function normalizeSupplyRow(input: SupplyRow): SupplyRow {
+  // A share basis a server sends as null is no basis read yet, as an absent one is.
+  const { pctScopeBasis, ...rest } = input;
+  const value: SupplyRow = pctScopeBasis == null ? rest : input;
   const items = value.evidence?.map(publicEvidence);
   const unconfirmed = isUnconfirmed(value) || !activeRelationship(value);
   // Restrict again before cache, exports or screenshot metadata, even if a server regresses.

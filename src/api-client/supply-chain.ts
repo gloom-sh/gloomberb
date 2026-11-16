@@ -55,7 +55,7 @@ export interface SupplyRow {
    * earns (NVDA's 16% of total revenue, from Compute & Networking), "segment"
    * for the segment's own. Absent while unread, and from older servers.
    */
-  pctScopeBasis?: "total" | "segment";
+  pctScopeBasis?: "total" | "segment" | null;
   pctBasis: "revenue" | "receivables" | "cost" | "purchases" | null;
   usd: number | null;
   usdBasis: "disclosed" | "derived" | null;

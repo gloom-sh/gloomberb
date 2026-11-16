@@ -21,6 +21,11 @@ test("untrusted disclosure rows cannot fabricate units, clickable schemes or ano
     expect(() => validateSupplyChain(supplyPayload({ says: [row] }))).toThrow("unreadable");
   }
   expect(validateSupplyChain(supplyPayload()).says[0]?.pctOfRevenue).toBe(22);
+  // A share basis sent as null is no basis read yet: the payload stays readable and the row carries none.
+  const unread = validateSupplyChain(supplyPayload({ says: [supplyRow("x", { pctScopeBasis: null })] })).says[0]!;
+  expect("pctScopeBasis" in unread).toBe(false);
+  expect(validateSupplyChain(supplyPayload({ says: [supplyRow("x", { pctScopeBasis: "total" })] })).says[0]?.pctScopeBasis).toBe("total");
+  expect(() => validateSupplyChain(supplyPayload({ says: [supplyRow("x", { pctScopeBasis: "segments" as never })] }))).toThrow("unreadable");
 });
 
 test("cache partitions accounts and entitlements, preserves data on outage, refuses revoked access", async () => {
