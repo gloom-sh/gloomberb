@@ -16,7 +16,7 @@ const number = (value: unknown) => value === null || typeof value === "number" &
 const count = (value: unknown) => value === null || typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 const code = (value: unknown) => typeof value === "string" && /^[0-9A-Z]{5}[0-9A-Z+]$/.test(value);
 function base(data: CotPayloadBase, family: CotFamily, positions: CotPositions) {
-  if (!data || data.source !== "CFTC" || data.scope !== positions || data.reportFamily !== family
+  if (!data || !["CFTC", "ICE Futures Europe", "CFTC / ICE Futures Europe"].includes(data.source) || data.scope !== positions || data.reportFamily !== family
     || !Array.isArray(data.gaps) || !data.gaps.every((gap) => typeof gap === "string")
     || !Array.isArray(data.classes) || data.classes.some((row) => !COT_CLASSES[family].some((option) => option.value === row.id))
     || data.asOf !== null && !date(data.asOf) || !Number.isFinite(Date.parse(data.generatedAt))

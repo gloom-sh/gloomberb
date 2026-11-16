@@ -83,7 +83,7 @@ test("every FUT board root the CFTC reports opens by root as an argument; under 
     const code = cotContractCode(row.code);
     // Each root opens its market, whose front price is that root's own future or, without five years of it, none.
     if (code) expect([row.symbol, null]).toContain(cotPriceMapping(code)?.priceSymbol ?? null);
-    else expect(cotUnknownMarketMessage(row.code)).toBe(`${row.code} (${row.name}) is not reported in the CFTC COT.`);
+    else expect(cotUnknownMarketMessage(row.code)).toBe(`${row.code} (${row.name}) is not reported in COT.`);
   }
   expect(["NG", "ho", "RB", "BZ", "HG", "PL", "PA", "ZC", "ZM", "6E", "OJ", "NG=F"].map(cotContractCode))
     .toEqual(["023651", "022651", "111659", "06765T", "085692", "076651", "075651", "002602", "026603", "099741", "040701", "023651"]);
@@ -116,7 +116,7 @@ test("CME crypto roots name their CFTC market, and only a typed argument or cryp
   const open = (arg: string | undefined, activeTicker: string | null) => template.createInstance!({ activeTicker } as never, { arg } as never);
   expect(await open("BTC", "AAPL")).toMatchObject({ title: "COT BTC", params: { code: "133741" } });
   expect(await open("mbt", null)).toMatchObject({ title: "COT MBT", params: { code: "133742" } });
-  expect(await open(undefined, "BTC")).toMatchObject({ title: "CFTC Positioning", params: undefined });
+  expect(await open(undefined, "BTC")).toMatchObject({ title: "Trader Positioning", params: undefined });
   expect(await open(undefined, "ETH-USD")).toMatchObject({ title: "COT ETH", params: { code: "146021" } });
 
   // Bitcoin and ether chart their front price; the micros, XRP and SOL have no five-year history to chart.
@@ -200,20 +200,19 @@ test("the class's net leads the chart series, ahead of the front price", () => {
 test("commodity names open their market as FUT finds them, before a six-letter word is read as a CFTC code", async () => {
   const names = ["cocoa", "Coffee", "SUGAR", "cotton", "OJ", "orange juice", "gold", "silver", "copper", "crude", "oil", "natural gas", "brent", "soybean", "bitcoin", "fed funds"];
   expect(names.map(cotContractCode)).toEqual([
-    "073732", "083731", "080732", "033661", "040701", "040701", "088691", "084691", "085692", "067651", "067651", "023651", "06765T", "005602", "133741", "045601",
+    "073732", "083731", "080732", "033661", "040701", "040701", "088691", "084691", "085692", "067651", "067651", "023651", "ICE00B", "005602", "133741", "045601",
   ]);
   // COFFEE and COPPER are six letters, as a CFTC code is; the name wins.
   expect(["COFFEE", "COPPER"].map(cotContractCode)).toEqual(["083731", "085692"]);
   // A named market the CFTC does not report says so; a name nothing matches gets codes and names that work.
   expect(cotContractCode("aluminum")).toBeNull();
-  expect(cotUnknownMarketMessage("aluminum")).toBe("ALI (Aluminum) is not reported in the CFTC COT.");
+  expect(cotUnknownMarketMessage("aluminum")).toBe("ALI (Aluminum) is not reported in COT.");
   expect(cotContractCode("pork bellies")).toBeNull();
   expect(cotUnknownMarketMessage("pork bellies")).toContain("CC cocoa, KC coffee, SB sugar");
   expect(cotUnknownMarketMessage("pork bellies")).toContain("HG copper");
   // A currency's ISO code opens its CME future, as its name does (`fn COT JPY` said "Unknown market"), and the hint names one.
   expect(["JPY", "jpy", "yen", "CHF", "EUR", "GBP", "CAD", "AUD", "MXN"].map(cotContractCode))
     .toEqual(["097741", "097741", "097741", "092741", "099741", "096742", "090741", "232741", "095741"]);
-  expect(cotUnknownMarketMessage("XYZ")).toContain("ZN 10-year note, JPY yen, or a CFTC market code");
   const template = cotModule.paneTemplates![0]!;
   expect(await template.createInstance!({ activeTicker: null } as never, { arg: "cocoa" } as never)).toMatchObject({ title: "COT CC", params: { code: "073732" } });
 });

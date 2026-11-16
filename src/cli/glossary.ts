@@ -781,7 +781,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     term: "Commitments of Traders", short: "COT", aliases: ["cot report", "commitment of traders", "cftc", "cftc report", "cftc positioning", "positioning"],
     functions: ["COT"], shown: ["CFTC", "COT"],
-    definition: "The CFTC's weekly count of who holds each US futures market: open contracts split by type of trader, as of Tuesday and published that Friday. "
+    definition: "Weekly open contracts split by trader type, from the CFTC and ICE Futures Europe. ICE publishes Brent, gasoil and other European markets itself, separately from the CFTC's ICE WTI market. Tuesday positions are released later; ICE's usual release is Friday at 18:30 London time, subject to holidays. "
       + "It shows whether speculators or hedgers are net long or short, and how that moved since the week before.",
   },
   {
