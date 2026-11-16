@@ -1506,8 +1506,12 @@ export class CloudDataApi {
   async getCloudEarningsCalls(
     params: CloudEarningsCallsParams = {},
   ): Promise<CloudEarningsCallListPayload> {
+    // A company never looked at is searched while it is asked about, for a few
+    // seconds at most (the search goes on and the list says pending): a list
+    // that has not come in 20 s is a failure the pane says, not a minute's wait.
     return this.request<CloudEarningsCallListPayload>(
       cloudEarningsCallsPath(params),
+      { signal: AbortSignal.timeout(20_000) },
     );
   }
 
