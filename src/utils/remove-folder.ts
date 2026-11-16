@@ -1,6 +1,6 @@
 import { rm } from "fs/promises";
 
-export type RemoveFolder = (path: string, options: { recursive: true; force: true }) => Promise<void>;
+type RemoveFolder = (path: string, options: { recursive: true; force: true }) => Promise<void>;
 
 export interface RemoveFolderOptions {
   /** How long to keep trying while the folder stays locked. */
