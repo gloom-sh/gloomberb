@@ -56,7 +56,7 @@ import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQu
 import type { CpiBoardPayload } from "./cpi";
 import type { TapeRange, TapeSnapshot } from "./tape";
 import { LIVE_SCAN_PATH, type LiveScanPayload, type LiveScanWireDefinition } from "./live-scan";
-import { abortable, signalWithTimeout } from "../utils/async-deadline";
+import { abortable, signalWithTimeout, withDeadline } from "../utils/async-deadline";
 import { ApiRequestError, isRetryableApiError, markAskedTwice } from "./errors";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
@@ -211,6 +211,12 @@ function batchAnswers<K extends string, T>(response: CloudMarketResponse<CloudBa
 
 /** How long a listing read waits before asking again after the service said its source failed. */
 const LISTING_RETRY_DELAY_MS = 400;
+/**
+ * A company never looked at is searched while it is asked about, for a few
+ * seconds at most (the search goes on and the list says pending): a list
+ * that has not come in this long is a failure the pane says, not a minute's wait.
+ */
+const EARNINGS_CALLS_LIST_TIMEOUT_MS = 20_000;
 
 /**
  * How long the service's answer that it has no quote for a listing stands.
@@ -1506,12 +1512,12 @@ export class CloudDataApi {
   async getCloudEarningsCalls(
     params: CloudEarningsCallsParams = {},
   ): Promise<CloudEarningsCallListPayload> {
-    // A company never looked at is searched while it is asked about, for a few
-    // seconds at most (the search goes on and the list says pending): a list
-    // that has not come in 20 s is a failure the pane says, not a minute's wait.
-    return this.request<CloudEarningsCallListPayload>(
-      cloudEarningsCallsPath(params),
-      { signal: AbortSignal.timeout(20_000) },
+    const abandon = new AbortController();
+    return withDeadline(
+      this.request<CloudEarningsCallListPayload>(cloudEarningsCallsPath(params), { signal: abandon.signal }),
+      EARNINGS_CALLS_LIST_TIMEOUT_MS,
+      `No answer within ${EARNINGS_CALLS_LIST_TIMEOUT_MS / 1000} s.`,
+      () => abandon.abort(),
     );
   }
 
