@@ -32,7 +32,7 @@ export async function loadEarningsHighlight(symbol: string, today: string, provi
         marketCap: source?.marketCap ?? null,
         epsEstimate: row.epsEstimate, epsAnalysts: row.epsAnalysts, epsActual: row.epsActual,
         provisional: row.provisional, epsBasis: row.epsBasis, epsSurprise: row.epsSurprise,
-        revenueEstimate: row.revenueEstimate, impliedMove: row.implied, averageMove: null,
+        revenueEstimate: row.revenueEstimate, impliedMove: row.implied, averageMove: null, realizedMove: row.move,
         owned: null, currency: row.currency ?? "USD",
       },
       stale: (history.status === "fulfilled" && !!history.value?.stale) || (upcoming.status === "fulfilled" && upcoming.value.stale),

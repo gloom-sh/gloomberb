@@ -27,10 +27,13 @@ const ALL_COLUMNS: BoardColumn[] = [
   { id: "name", label: "NAME", width: NAME_MIN_WIDTH, align: "left" },
   { id: "when", label: "WHEN", width: 7, align: "left" },
   { id: "status", label: "STATUS", width: 9, align: "left" },
-  { id: "implied", label: "IMPLIED", width: 7, align: "right" },
+  // The implied move, the move on the report and their average are left out
+  // while no report in view has one: small caps list no options and too few
+  // reports to average, and a move is only measured on the day a report is out.
+  { id: "implied", label: "IMPLIED", width: 7, align: "right", omitWhenEmpty: "visible" },
   // The move, the actual EPS and its surprise come with the report: an upcoming one has none.
-  { id: "move", label: "MOVE", width: 7, align: "right", mayBeBlank: true },
-  { id: "average", label: "AVG MOVE", width: 8, align: "right" },
+  { id: "move", label: "MOVE", width: 7, align: "right", mayBeBlank: true, omitWhenEmpty: "visible" },
+  { id: "average", label: "AVG MOVE", width: 8, align: "right", omitWhenEmpty: "visible" },
   // The currency of the EPS and sales figures, on a board with a listing abroad's (CNY for Tencent).
   { id: "ccy", label: "CCY", width: 3, align: "left" },
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
@@ -120,7 +123,7 @@ export function renderBoardSection(row: BoardRow) {
 export interface BoardCellContext {
   /** Whether the STATUS column is on screen; without it the WHEN cell says which reports are out. */
   statusShown: boolean;
-  /** The move on a report out today (reportMove); "loading" while its quote is. */
+  /** The move on the report (boardMove): so far for one out today, across it for one out before; "loading" while today's quote is. */
   move: (report: BoardReport) => number | "loading" | null;
   /** The desktop and the web lead each name with the company's logo; the terminal draws none. */
   logos?: boolean;
