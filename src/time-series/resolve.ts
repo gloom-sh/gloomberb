@@ -1148,7 +1148,9 @@ async function resolveChartSpecPass(
       { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
   }
   const splitNotice = priceComparison?.legs ? await comparedSplitNotice(spec, priceComparison, rawSeries, loadDistributions, comparisonOptions.now) : null;
-  const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
+  const comparedBounds = comparisonDisplayBounds(bounds, priceComparison);
+  const displayBounds = spec.viewport.dateWindow?.endAtLatestObservation && !requestBounds
+    ? endAtNewestObservation(comparedBounds, rawSeries) : comparedBounds;
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
   const baseSeries = rawSeries

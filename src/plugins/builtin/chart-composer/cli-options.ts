@@ -67,7 +67,7 @@ export function applyChartComposerCapabilityOptions(
   let next = spec;
   if ((options.rangePreset ?? options.range) === "YTD") {
     // A year of daily bars, shown from the prior year's last close.
-    next = { ...next, viewport: { ...next.viewport, range: "1Y", dateWindow: yearToDateWindow(next) } };
+    next = { ...next, viewport: { ...next.viewport, range: "1Y", dateWindow: { ...yearToDateWindow(next), endAtLatestObservation: true } } };
   }
   const selectedRange = chartRange(options);
   const range = capabilityId === "intraday-price-chart" && typeof options.session === "string"
@@ -90,7 +90,9 @@ export function applyChartComposerCapabilityOptions(
     ? readPriceWindow(typeof options.from === "string" ? options.from : undefined, typeof options.to === "string" ? options.to : undefined)
     : null;
   if (window) {
-    next = { ...next, viewport: { ...next.viewport, range: rangeCovering(window.from), dateWindow: { start: window.from, end: window.to } } };
+    next = { ...next, viewport: { ...next.viewport, range: rangeCovering(window.from), dateWindow: {
+      start: window.from, end: window.to, ...(options.to == null ? { endAtLatestObservation: true } : {}),
+    } } };
   }
 
   if (capabilityId === "price-chart" && options.extendedHours === true) {

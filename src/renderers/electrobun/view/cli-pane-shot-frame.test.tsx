@@ -48,9 +48,9 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
 
   await act(async () => update({ warning: true, active: true }));
-  expect(root.querySelector('button[aria-label="Data warnings"] svg')).not.toBeNull();
+  expect(root.querySelector('button[aria-label="Data warnings"] svg')).toBeNull();
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).not.toBeNull();
-  expect(root.textContent).not.toContain("Source publication date unavailable.");
+  expect(root.textContent).toContain("Source publication date unavailable.");
   expect(root.textContent).not.toContain("Loading a normal source");
   expect(root.querySelector('[data-gloom-role="pane-hint"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withFooter);
@@ -60,7 +60,7 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
 
   await act(async () => update({ warning: true, active: true }));
-  expect(root.querySelector('button[aria-label="Data warnings"]')).not.toBeNull();
+  expect(root.textContent).toContain("Source publication date unavailable.");
   await act(async () => update({ warning: false, active: true }));
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
@@ -69,6 +69,11 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(root.textContent).toContain("Loading a normal source");
   expect(root.querySelector('[data-gloom-role="pane-hint"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withFooter);
+
+  await act(async () => update({ warning: true, active: true, preserveStatus: true }));
+  expect(root.textContent).toContain("Source publication date unavailable.");
+  expect(root.textContent).toContain("Loading a normal source");
+  expect(root.querySelector('button[aria-label="Data warnings"]')).toBeNull();
 });
 
 test("a status line replaces the pane's own text that says the same: its as-of for the pane's data, its quote date and delay for quotes", async () => {

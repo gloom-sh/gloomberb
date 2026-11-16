@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { FloatingPaneWrapper } from "../../../components/layout/floating-pane";
-import { CaptureDatesDataContext } from "../../../components/layout/pane/capture-status";
+import { CaptureDatesDataContext, PaneCaptureContext } from "../../../components/layout/pane/capture-status";
 import { PaneFooterProvider, datesPaneData, hasPaneFooterContent, type PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { resolvePaneBodyFrame } from "../../../components/layout/pane/sizing";
 
@@ -159,7 +159,13 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
     const status: PaneFooterSegment[] = statusLine && statusText !== null ? [{ id: "shot-status", parts: [{ text: statusText, tone: "label" }] }] : [];
     const info = registeredFooter.info.filter((segment) => (preserveStatus || segment.icon === "warning" || segment.capture)
       && !(datesPaneData(segment) && (datesData || crowded))
-      && !(segment.quoteStatus && statusLine && dates !== null));
+      && !(segment.quoteStatus && statusLine && dates !== null))
+      .map((segment): PaneFooterSegment => segment.icon === "warning" ? {
+        ...segment,
+        icon: undefined,
+        onPress: undefined,
+        parts: [{ text: segment.captureText ?? segment.label ?? segment.title ?? segment.parts.map((part) => part.text).join(" "), tone: "warning" }],
+      } : segment);
     shownAsOf.current = info.some(datesPaneData);
     const footer = { info: [...info, ...status], hints: [], menu: [], keys: [] };
     const bodyFrame = resolvePaneBodyFrame({
@@ -181,7 +187,9 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
       showActions={false}
       footer={footer}
     >
-      <CaptureDatesDataContext.Provider value={datesData}>{children(bodyFrame)}</CaptureDatesDataContext.Provider>
+      <PaneCaptureContext.Provider value>
+        <CaptureDatesDataContext.Provider value={datesData}>{children(bodyFrame)}</CaptureDatesDataContext.Provider>
+      </PaneCaptureContext.Provider>
     </FloatingPaneWrapper>;
   }}</PaneFooterProvider>;
 }

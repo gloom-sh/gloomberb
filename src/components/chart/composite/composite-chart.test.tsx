@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { PaneCaptureContext } from "../../layout/pane/capture-status";
 import {
   Box,
   Text,
@@ -859,6 +860,31 @@ describe("CompositeChart", () => {
     expect(toggled).toEqual(["price"]);
   });
 
+  test("counts series that overflow the last legend line, with and without room to wrap", async () => {
+    const symbols = ["QQQ", "VUG", "IWF", "SCHG"];
+    const entries = symbols.map((symbol) => ({
+      ...series(symbol, "main", "left", "%", [0, 12.34]),
+      label: `${symbol}:NASDAQ Close · Fund`, compactLabel: `${symbol} Fund`, legendContext: "Close",
+    }));
+    for (const width of [30, 40]) {
+      for (const height of [6, 22]) {
+        for (const capture of [false, true]) {
+          await tui.render(<PaneCaptureContext.Provider value={capture}>
+            <CompositeChart width={width} height={height} series={entries} panels={[{ id: "main" }]}
+              legendAccessory={<Text>Add series</Text>} legendAccessoryWidth={14} />
+          </PaneCaptureContext.Provider>, { width: width + 2, height: height + 2 });
+          await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+          const legend = tui.frame().split("\n").slice(0, height === 6 ? 1 : 3).join("\n");
+          expect(legend).toContain("Close");
+          if (capture && height === 22) {
+            expect(legend).not.toContain("Add series");
+            for (const symbol of symbols) expect(legend).toContain(symbol);
+          } else if (!symbols.every((symbol) => legend.includes(symbol))) expect(legend).toContain("4 series");
+        }
+      }
+    }
+  });
+
   test("scrolls an overflowing legend horizontally", async () => {
     const labels = ["FIRST LONG SERIES", "SECOND LONG SERIES", "THIRD LONG SERIES", "LAST LONG SERIES"];
     const overflowingSeries = labels.map((label, index) => ({
@@ -958,7 +984,7 @@ describe("CompositeChart", () => {
     };
     // Every word a legend line shows is one of a name's words, whole: "Malacca", never "Malacc" or "transi".
     // A series' one-letter marker (o) is not a word.
-    const cutWords = (shown: readonly string[]) => shown.flatMap((line) => line.split(/\s+|…/))
+    const cutWords = (shown: readonly string[]) => shown.flatMap((line) => line.replace(/\d+ series/g, "").split(/\s+|…/))
       .filter((token) => /^[A-Za-z][A-Za-z-]+$/.test(token) && !words.has(token));
     const wrapped = await lines(24);
     expect(wrapped.length).toBeGreaterThan(1);

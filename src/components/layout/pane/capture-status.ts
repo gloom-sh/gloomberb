@@ -1,5 +1,11 @@
 import { createContext, useContext } from "react";
 
+export const PaneCaptureContext = createContext(false);
+
+export function usePaneCapture(): boolean {
+  return useContext(PaneCaptureContext);
+}
+
 /**
  * True inside a `gloom shot` whose status line dates the pane's data: the
  * pane's own `as of` text (a query bar's `asOf`) is left out, so the date is

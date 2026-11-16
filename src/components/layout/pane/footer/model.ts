@@ -53,6 +53,7 @@ export interface PaneFooterSegment {
    * warning.
    */
   capture?: boolean;
+  captureText?: string;
   /**
    * The segment only says how long ago the pane's data loaded (`5m ago`,
    * `fetched just now`), relative to the moment it is read: build it with

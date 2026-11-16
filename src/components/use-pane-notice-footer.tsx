@@ -128,11 +128,12 @@ export function usePaneNoticeFooter({
     info: [{
       id: "data-warnings",
       icon: "warning",
+      captureText: currentNotices.join(" · "),
       label: title,
       title: `${title} (!)`,
       shortcut: "!",
       parts: [{ text: "⚠", tone: seen ? "muted" : "warning" }],
       onPress: open,
     }],
-  } : null, [active, open, seen, title]);
+  } : null, [active, open, seen, title, currentNotices]);
 }
