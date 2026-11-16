@@ -18,6 +18,54 @@ afterEach(() => {
   statsCache.reset();
 });
 
+test("housing chart ticks use the table's millions and the period keeps its year", async () => {
+  statsCache.hydrate(STATS.map((stat) => [stat.seriesId, Array.from({ length: 25 }, (_, index) => ({
+    date: new Date(Date.UTC(2024, index, 1)).toISOString().slice(0, 10), value: 500 + index * 50,
+  }))] as const));
+  const state = createInitialState(createTestPaneConfig("/tmp/gloom-ecst-axis", {
+    instanceId: "ecst:axis", paneId: "econ-statistics", settings: { stat: "housing-starts" },
+  }));
+  await act(async () => {
+    await tui.render(<TestPaneFrame state={state} dispatch={() => {}} paneId="ecst:axis" pluginId="market-overview" runtime={createTestPluginRuntime()} width={240} height={60}>
+      {(body) => <EconStatisticsPane paneId="ecst:axis" paneType="econ-statistics" focused {...body} />}
+    </TestPaneFrame>, { width: 240, height: 60 });
+  });
+  for (let frame = 0; frame < 4; frame++) await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0)); await tui.setup().renderOnce();
+  });
+  expect(tui.frame()).toContain("1.700M");
+  expect(tui.frame()).toContain("1.000M");
+  expect(tui.frame()).toContain("Jan 2026");
+  expect(tui.frame()).not.toContain("1.0K");
+  expect(tui.frame()).toContain("Rates & Money");
+});
+
+test("the selected Michigan series labels publication lag without warning on the next indicator", async () => {
+  statsCache.hydrate(STATS.map((stat) => [stat.seriesId, Array.from({ length: 25 }, (_, index) => ({
+    date: new Date(Date.UTC(2024, index, 1)).toISOString().slice(0, 10), value: 100 + index,
+  }))] as const));
+  const state = createInitialState(createTestPaneConfig("/tmp/gloom-ecst-lag", {
+    instanceId: "ecst:lag", paneId: "econ-statistics", settings: { stat: "consumer-sentiment" },
+  }));
+  state.focusedPaneId = "ecst:lag";
+  function Harness() {
+    const [current, dispatch] = useReducer(appReducer, state);
+    return <TestPaneFrame state={current} dispatch={dispatch} paneId="ecst:lag" pluginId="market-overview" runtime={createTestPluginRuntime()} width={240} height={48}>
+      {(body) => <EconStatisticsPane paneId="ecst:lag" paneType="econ-statistics" focused {...body} />}
+    </TestPaneFrame>;
+  }
+  await act(async () => {
+    await tui.render(<Harness />, { width: 240, height: 48 });
+  });
+  for (let frame = 0; frame < 4; frame++) await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0)); await tui.setup().renderOnce();
+  });
+  expect(tui.frame()).toContain("delayed one month");
+  await tui.emitKeypress({ name: "down" });
+  await act(async () => { await tui.setup().renderOnce(); });
+  expect(tui.frame()).not.toContain("delayed one month");
+});
+
 test.each([
   { width: 48, partial: false },
   { width: 120, partial: false },

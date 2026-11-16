@@ -54,7 +54,7 @@ describe("loadCreditConditions", () => {
     expect(result.rows.some((row) => row.seriesId === aaa)).toBe(false);
     expect(result.errors).toEqual([`${aaa}: unexpected FRED metadata`]);
     expect(persistence.getResource("fred-series", `${aaa}:limit=300:sort=desc`,
-      { sourceKey: "gloomberb-cloud", schemaVersion: 2 })).toBeNull();
+      { sourceKey: "gloomberb-cloud", schemaVersion: 3 })).toBeNull();
   });
 
   test("invalid metadata refresh retains the dated prior row and cache until valid recovery", async () => {
@@ -62,7 +62,7 @@ describe("loadCreditConditions", () => {
     attachFredSeriesPersistence(persistence);
     const aaa = CREDIT_SERIES[1]!.seriesId;
     const readCached = () => persistence.getResource<ReturnType<typeof payload>>(
-      "fred-series", `${aaa}:limit=300:sort=desc`, { sourceKey: "gloomberb-cloud", schemaVersion: 2 });
+      "fred-series", `${aaa}:limit=300:sort=desc`, { sourceKey: "gloomberb-cloud", schemaVersion: 3 });
     await loadCreditConditions(false, async (seriesId) => payload(seriesId));
     const before = readCached();
     for (const change of ["units", "identity"] as const) {
@@ -102,7 +102,7 @@ describe("loadCreditConditions", () => {
       expect(persistence.getResource<{ observations: unknown[] }>(
         "fred-series",
         `${CREDIT_SERIES[0]!.seriesId}:limit=300:sort=desc`,
-        { sourceKey: "gloomberb-cloud", schemaVersion: 2 },
+        { sourceKey: "gloomberb-cloud", schemaVersion: 3 },
       )?.value.observations).toHaveLength(300);
 
       resetFredSeriesPersistence();

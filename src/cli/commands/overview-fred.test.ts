@@ -33,6 +33,42 @@ function serve(routes: Record<string, { status: number; body: unknown }>) {
 
 afterEach(() => setCloudApiFetchTransport(null));
 
+test("multiple series align sparse dates without filling gaps, retaining each unit and vintage", async () => {
+  serve({
+    "/cloud/econ/series/PERMIT": { status: 200, body: {
+      observations: [{ date: "2026-09-01", value: 1398, releasedOn: "2026-10-20", firstReleased: "2026-10-20", revisedOn: "2026-10-27", firstReleaseValue: 1400 }],
+      info: { id: "PERMIT", units: "Thousands of Units", frequency: "Monthly" },
+    } },
+    "/cloud/econ/series/MORTGAGE30US10Y": { status: 200, body: {
+      observations: [{ date: "2026-10-22", value: 2.33 }],
+      info: { id: "MORTGAGE30US10Y", units: "Percent", frequency: "Weekly" },
+    } },
+  });
+  for (const args of [["PERMIT", "MORTGAGE30US10Y"], ["permit,MORTGAGE30US10Y,permit"]]) {
+    const { result, options } = await runFred([...args, "--start", "2026-09-01", "--sort", "asc"]);
+    expect(result.data).toMatchObject([
+      { date: "2026-09-01", PERMIT: 1398, PERMIT_unit: "Thousands of Units", PERMIT_source: "Census Bureau via FRED", PERMIT_released: "2026-10-20", PERMIT_first_released: "2026-10-20", PERMIT_revised_on: "2026-10-27", PERMIT_first_release_value: 1400, PERMIT_as_of: "2026-10-27" },
+      { date: "2026-10-22", MORTGAGE30US10Y: 233, MORTGAGE30US10Y_unit: "bp" },
+    ]);
+    expect((result.data as Record<string, unknown>[])[0]).not.toHaveProperty("MORTGAGE30US10Y");
+    expect((result.data as Record<string, unknown>[])[1]).not.toHaveProperty("PERMIT");
+    const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options);
+    expect(csv.split("\n")[0]).toStartWith("date,PERMIT,MORTGAGE30US10Y,PERMIT_unit");
+    expect(options?.exportNotes).toContain("Aligned on observation dates, not release dates. Missing observations remain blank; values are not forward-filled.");
+  }
+  await expect(runFred(["PERMIT", "--bogus"])).rejects.toThrow("space- or comma-separated series IDs");
+  const single = await runFred(["PERMIT", "--start", "2026-09-01"]);
+  expect(single.result.data).toMatchObject([{ value: 1398, released: "2026-10-20", first_released: "2026-10-20", revised_on: "2026-10-27", first_release_value: 1400 }]);
+  expect(serializeCliResult(single.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, single.options)).toContain(",Census Bureau via FRED,2026-10-27,2026-09-01,2026-10-20,");
+  serve(Object.fromEntries(["T10Y2Y", "DGS10"].map((seriesId) => [`/cloud/econ/series/${seriesId}`, { status: 200, body: {
+    observations: [{ date: "2026-11-12", value: 0.2 }, { date: "2026-11-13", value: 0.3 }],
+    info: { id: seriesId, units: "Percent", frequency: "Daily" },
+  } }])));
+  const changed = await runFred(["T10Y2Y", "DGS10", "--start", "2026-11-12", "--sort", "asc", "--change", "1D"]);
+  expect(changed.result.data).toMatchObject([{ T10Y2Y_change: null }, { T10Y2Y_change: 10, T10Y2Y_changeFrom: "2026-11-12" }]);
+  expect(serializeCliResult(changed.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, changed.options).split("\n")[0]).toContain("T10Y2Y_change,T10Y2Y_changeFrom");
+});
+
 test("an unsupported series is a usage error that points at the list, whichever body the server sends", async () => {
   for (const body of [
     { code: "unsupported_series", message: "Unsupported FRED series DEXSFUS" },
@@ -126,8 +162,8 @@ test("a start before the series begins starts every format at its first observat
   expect(text.split("\n")[2]).toStartWith("1980-01-02");
   const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
   // A daily series is as of each row's own day; the release has nothing to say yet.
-  expect(csv[0]).toBe("date,value,symbol_or_series,currency_or_unit,interval,source,as_of,period,released,retrieved");
-  expect(csv[1]).toStartWith("1980-01-02,0.8271,DEXSFUS,South African Rand to One U.S. Dollar,daily,FRED,1980-01-02,1980-01-02,,");
+  expect(csv[0]).toBe("date,value,symbol_or_series,currency_or_unit,interval,source,as_of,period,released,retrieved,first_released,revised_on,first_release_value");
+  expect(csv[1]).toStartWith("1980-01-02,0.8271,DEXSFUS,South African Rand to One U.S. Dollar,daily,Federal Reserve Board via FRED,1980-01-02,1980-01-02,,");
   expect(csv.at(-1)).toBe("# note: Series begins 1980-01-02.");
 });
 
@@ -141,9 +177,9 @@ test("a spread prints and exports in basis points as value, names bp in its unit
   expect(result.data).toEqual([{ date: "2026-10-09", value: 44 }, { date: "2026-10-08", value: -12.5 }]);
   expect(result.metadata).toMatchObject({ unit: "bp", interval: "daily" });
   const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
-  expect(csv[0]).toBe("date,value,symbol_or_series,currency_or_unit,interval,source,as_of,period,released,retrieved");
-  expect(csv[1]).toStartWith("2026-10-09,44,T10Y2Y,bp,daily,FRED,2026-10-09,2026-10-09,,");
-  expect(csv[2]).toStartWith("2026-10-08,-12.5,T10Y2Y,bp,daily,FRED,2026-10-08,2026-10-08,,");
+  expect(csv[0]).toBe("date,value,symbol_or_series,currency_or_unit,interval,source,as_of,period,released,retrieved,first_released,revised_on,first_release_value");
+  expect(csv[1]).toStartWith("2026-10-09,44,T10Y2Y,bp,daily,Federal Reserve Bank of St. Louis via FRED,2026-10-09,2026-10-09,,");
+  expect(csv[2]).toStartWith("2026-10-08,-12.5,T10Y2Y,bp,daily,Federal Reserve Bank of St. Louis via FRED,2026-10-08,2026-10-08,,");
   expect(csv).toContain("# Publication time: 2026-10-09T21:02:11.000Z");
   expect(csv.at(-1)).toBe("# note: Showing from 2021-01-01; earlier: --start YYYY-MM-DD (series begins 1976-06-01).");
   // The default start says it is one.
@@ -212,8 +248,8 @@ test("a yield ahead of FRED names Treasury and when it published, in the source 
   // Once FRED lists it, the line is FRED's again, with FRED's own publication time.
   serveSeries(() => ({ observations: [{ date: "2026-10-09", value: 5.24 }], info: { ...info, observationEnd: "2026-10-09", lastUpdated: "2026-10-12 15:16:37-05" } }));
   const listed = await runFred(["DGS10"]);
-  expect(listed.text.split("\n").at(-1)).toBe("Source: FRED \u00b7 Fri 9 Oct 2026 \u00b7 not a live feed (published statistics)");
-  expect(listed.result.freshness).toMatchObject({ publisher: info.source, publishedAt: "2026-10-12T20:16:37.000Z" });
+  expect(listed.text.split("\n").at(-1)).toBe("Source: Federal Reserve Board via FRED \u00b7 Fri 9 Oct 2026 \u00b7 not a live feed (published statistics)");
+  expect(listed.result.freshness).toMatchObject({ publisher: "Federal Reserve Board", publishedAt: "2026-10-12T20:16:37.000Z" });
 });
 
 test("a series FRED does not carry names its publisher and where it is read from, never FRED", async () => {
@@ -270,8 +306,8 @@ test("a monthly series is dated by its month, and a lagging one carries its note
   }));
   const { result, text } = await runFred(["UMCSENT"]);
   const lines = text.split("\n");
-  expect(lines.at(-1)).toBe("Source: FRED \u00b7 Aug 2026 (monthly) \u00b7 not a live feed (published statistics)");
-  expect(text).toContain("FRED publishes the University of Michigan survey with a lag; latest preliminary reading: fn ECO");
+  expect(lines.at(-1)).toBe("Source: University of Michigan via FRED \u00b7 Aug 2026 (monthly) \u00b7 not a live feed (published statistics)");
+  expect(text).toContain("University of Michigan sentiment is delayed one month on FRED at the publisher's request");
   expect(result.metadata?.notes).toHaveLength(2);
   expect(result.freshness).toMatchObject({ asOf: "2026-08-01", periodicity: "monthly" });
 });
@@ -285,8 +321,8 @@ test("a monthly series names its month and the day it was released, and the repo
         lastUpdated: "2026-10-20 07:33:50-05", source: "U.S. Census Bureau" },
     }));
     const { result, text } = await runFred(["PERMIT"]);
-    expect(text.split("\n").at(-1)).toBe("Source: FRED \u00b7 Sep 2026, released Tue 20 Oct \u00b7 not a live feed (published statistics)");
-    expect(result.freshness).toMatchObject({ asOf: "2026-10-20", referencePeriod: "2026-09-01", periodicity: "monthly", publisher: "U.S. Census Bureau" });
+    expect(text.split("\n").at(-1)).toBe("Source: Census Bureau via FRED \u00b7 Sep 2026, released Tue 20 Oct \u00b7 not a live feed (published statistics)");
+    expect(result.freshness).toMatchObject({ asOf: "2026-10-20", referencePeriod: "2026-09-01", periodicity: "monthly", publisher: "Census Bureau" });
   } finally {
     setSystemTime();
   }
@@ -299,7 +335,7 @@ test("a quarterly flow at a seasonally adjusted annual rate says so in its value
   }));
   const { result, text } = await runFred(["FDEFX"]);
   expect(text.split("\n")[0]).toBe("Date        Value (Billions of Dollars, annual rate)");
-  expect(text.split("\n").at(-1)).toBe("Source: FRED \u00b7 Q2 2026 (quarterly) \u00b7 not a live feed (published statistics)");
+  expect(text.split("\n").at(-1)).toBe("Source: Bureau of Economic Analysis via FRED \u00b7 Q2 2026 (quarterly) \u00b7 not a live feed (published statistics)");
   expect(result.data[0]).toEqual({ date: "2026-04-01", value: 1152.4 });
   expect(result.metadata).toMatchObject({ unit: "Billions of Dollars, annual rate", interval: "quarterly" });
   // A monthly total that is not annualized keeps FRED's units alone.
@@ -355,10 +391,10 @@ test("every export dates a figure by the period it covers, when it was released 
   const { result, options } = await runFred(["PERMIT", "--start", "2026-08-01"]);
   const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
   const retrieved = (result.freshness as { retrievedAt: string }).retrievedAt;
-  expect(csv[0]).toBe("date,value,symbol_or_series,currency_or_unit,interval,source,as_of,period,released,retrieved");
+  expect(csv[0]).toBe("date,value,symbol_or_series,currency_or_unit,interval,source,as_of,period,released,retrieved,first_released,revised_on,first_release_value");
   // The period's first day is never the as-of: the release is, and a month with none says none.
-  expect(csv[1]).toBe(`2026-09-01,1400,PERMIT,Thousands of Units,monthly,FRED,2026-10-20,2026-09-01,2026-10-20,${retrieved}`);
-  expect(csv[2]).toBe(`2026-08-01,1403,PERMIT,Thousands of Units,monthly,FRED,,2026-08-01,,${retrieved}`);
+  expect(csv[1]).toBe(`2026-09-01,1400,PERMIT,Thousands of Units,monthly,Census Bureau via FRED,2026-10-20,2026-09-01,2026-10-20,${retrieved},,,`);
+  expect(csv[2]).toBe(`2026-08-01,1403,PERMIT,Thousands of Units,monthly,Census Bureau via FRED,,2026-08-01,,${retrieved},,,`);
   // NDJSON and JSON say the same release, the JSON beside the period the row's date is.
   const [newest] = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
   expect(newest).toMatchObject({ date: "2026-09-01", as_of: "2026-10-20", period: "2026-09-01", released: "2026-10-20", retrieved });

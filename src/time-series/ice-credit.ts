@@ -22,6 +22,7 @@ export interface IceCreditSeries {
 
 /** What every surface that shows an ICE series says about how far back FRED carries it. */
 export const ICE_HISTORY_LIMIT_NOTICE = "History limited to 3 years by the publisher.";
+export const ICE_CREDIT_PUBLISHER = "ICE Data Indices";
 
 const HIGH_YIELD = ["high yield", "junk"];
 const EMERGING = ["EM", "emerging markets"];

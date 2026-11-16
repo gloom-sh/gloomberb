@@ -140,6 +140,8 @@ test("fn --output writes the report to the file, in the format asked for, and sa
     const csv = await readFile(target, "utf8");
     expect(csv.split("\n")[0]).toContain(",");
     expect(csv).toContain("GME");
+    expect(csv.split("\n")[0]).toEndWith("export_notes");
+    expect(csv).not.toContain("# section:");
     expect(csv).not.toContain("\x1b[");
 
     const shot = siwContext();

@@ -102,7 +102,7 @@ describe("FRED series cache", () => {
       makeSeries(319),
       {
         sourceKey: "gloomberb-cloud",
-        schemaVersion: 2,
+        schemaVersion: 3,
         stale: true,
       },
     );
@@ -123,7 +123,7 @@ describe("FRED series cache", () => {
   test("a refusal or a reply that fails validation is thrown, whatever copy is saved", async () => {
     const persistence = new MemoryPluginPersistence();
     persistence.seedResource("fred-series", "CPIAUCSL:start=2021-05-24:sort=asc", makeSeries(319), {
-      sourceKey: "gloomberb-cloud", schemaVersion: 2, stale: true,
+      sourceKey: "gloomberb-cloud", schemaVersion: 3, stale: true,
     });
     attachFredSeriesPersistence(persistence);
     for (const error of [new ApiRequestError("Series not found", 404), new ApiRequestError("Sign in", 401),

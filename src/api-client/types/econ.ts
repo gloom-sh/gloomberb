@@ -147,6 +147,9 @@ export interface CloudFredObservationPayload {
    * 1 Sep and were released 20 Oct. Absent on daily series and older points.
    */
   releasedOn?: string;
+  firstReleased?: string;
+  revisedOn?: string;
+  firstReleaseValue?: number;
 }
 
 export interface CloudFredSeriesInfoPayload {

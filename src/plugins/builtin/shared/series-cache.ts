@@ -6,6 +6,9 @@ export interface DatedObservation {
   value: number | null;
   /** The day the value was released, when the source says (FRED's newest monthly figure). */
   releasedOn?: string;
+  firstReleased?: string;
+  revisedOn?: string;
+  firstReleaseValue?: number;
 }
 
 export interface SeriesCacheMetadata {

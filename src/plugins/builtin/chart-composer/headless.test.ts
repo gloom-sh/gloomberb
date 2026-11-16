@@ -9,6 +9,7 @@ import type { FuturesContractTermsPayload } from "../../../api-client/futures-cu
 import { headlessReportTables } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderReportCsv } from "../../../cli/report-tables";
+import { portableCsv } from "../../../cli/csv-export";
 
 const history = ["2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03"]
   .flatMap((date, day) => [0, 1].map((bar) => ({
@@ -448,6 +449,10 @@ describe("GIP headless sessions", () => {
     // The range is the regular session's, as `quote` reads the day's; the bars say what they count and the minutes with none.
     expect(regular).toContain("\nAAPL:XNAS regular-session low (USD),85.1\n");
     expect(regular).toContain("\n# note: Regular session only, from the 09:30 New York open: pre-market and after-hours bars are not included.");
+    const exported = portableCsv(regular);
+    expect(exported.split("\n")[0]).toEndWith("section,export_notes");
+    expect(exported).toContain("Regular session only, from the 09:30 New York open");
+    expect(exported).not.toContain("# section:");
     expect(regular).toContain("\n# note: Bars are of every US venue's prints that set a price; odd lots and special-condition prints count only in volume."
       + " 388 of 390 minutes had none, so no bar.");
     // Bars from 08:30 New York, when a housing release lands, are not the regular session, nor is their low.

@@ -69,6 +69,7 @@ export function StatDetail({
       reference={stat.reference}
       resetKey={`${stat.id}:${view.range}`}
       formatValue={stat.formatValue}
+      formatAxisValue={stat.formatValue}
       // The source line under the chart; the chart takes every other row.
       belowChartRows={SOURCE_ROWS}
       belowChart={(

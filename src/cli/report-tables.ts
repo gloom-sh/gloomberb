@@ -539,7 +539,7 @@ export function exportRowsTable<Row extends Record<string, unknown>>(
   title: string,
   columns: readonly CliReportColumn<Row>[],
   rows: readonly Row[],
-  { status = false, rowUnitKey }: { status?: boolean; rowUnitKey?: string } = {},
+  { status = false, rowUnitKey, appendedColumns = 0 }: { status?: boolean; rowUnitKey?: string; appendedColumns?: number } = {},
 ): CliReportTable {
   const reasons = rows.map((): Array<{ header: string; text: string }> => []);
   const units = columns.map(columnUnit);
@@ -587,7 +587,14 @@ export function exportRowsTable<Row extends Record<string, unknown>>(
     header: columns.some((column) => column.header.trim().toLowerCase() === "status") ? "value_status" : "status",
     values: reasons.map(statusText),
   } : undefined;
-  return assembleTable(title, resolved, rows.length, statusColumn);
+  const table = assembleTable(title, resolved, rows.length, statusColumn);
+  if (appendedColumns && statusColumn) {
+    const before = table.columns.length - 1 - appendedColumns;
+    const reorder = <Value,>(values: Value[]) => [...values.slice(0, before), values.at(-1)!, ...values.slice(before, -1)];
+    table.columns = reorder(table.columns);
+    table.rows = table.rows.map(reorder);
+  }
+  return appendedColumns ? { ...table, appendedColumns } : table;
 }
 
 /** Label/value lines as `Metric,Value`; a number's unit moves into its label. */
@@ -787,7 +794,14 @@ export function splitCsvFooter(text: string): { csv: string; footer: string[] } 
   const last = blocks.at(-1) ?? "";
   const lines = last.split("\n");
   if (!last || !lines.every(isComment) || lines.some((line) => line.startsWith("# section: "))) return { csv: text, footer: [] };
-  return { csv: blocks.slice(0, -1).join("\n\n"), footer: lines.map((line) => line.slice(2)) };
+  const csv = blocks.slice(0, -1).join("\n\n");
+  let quoted = false;
+  for (let index = 0; index < csv.length; index++) {
+    if (csv[index] !== '"') continue;
+    if (quoted && csv[index + 1] === '"') index++;
+    else quoted = !quoted;
+  }
+  return quoted ? { csv: text, footer: [] } : { csv, footer: lines.map((line) => line.slice(2)) };
 }
 
 /** CSV with its closing `#` lines after a blank line. */

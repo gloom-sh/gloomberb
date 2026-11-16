@@ -80,6 +80,7 @@ export function SeriesDetailChart({
   reference,
   resetKey,
   formatValue,
+  formatAxisValue,
   aboveChartRows = 0,
   aboveChart,
   belowChartRows = 0,
@@ -102,6 +103,7 @@ export function SeriesDetailChart({
   /** A new key drops the user's zoom and pan. */
   resetKey: string;
   formatValue: (value: number) => string;
+  formatAxisValue?: (value: number) => string;
   /** Rows kept for `aboveChart`, drawn between the figures and a drawable chart. */
   aboveChartRows?: number;
   aboveChart?: (chartWidth: number) => ReactNode;
@@ -159,6 +161,7 @@ export function SeriesDetailChart({
             viewportResetKey={resetKey}
             onViewportChange={setUserViewport}
             formatValue={(value) => formatValue(value)}
+            formatAxisValue={formatAxisValue}
             emptyMessage="Not enough chart data"
           />
         </>

@@ -73,7 +73,7 @@ describe("economic statistics headless model", () => {
     setSystemTime(new Date("2026-10-23T15:00:00Z"));
     const permits = resolveStatArg("building-permits")!;
     const observations = ["2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01"].map((date, index) => ({
-      date, value: 1400 + index, ...(date === "2026-09-01" ? { releasedOn: "2026-10-20" } : {}),
+      date, value: 1400 + index, ...(date === "2026-09-01" ? { value: 1398, releasedOn: "2026-10-27", firstReleased: "2026-10-20", revisedOn: "2026-10-27", firstReleaseValue: 1400 } : {}),
     }));
     const bundle = await loadStatsBundle({ loader: async () => observations, stats: [permits] });
     const report = projectStatsHeadlessBundle(bundle, "ALL", permits.id);
@@ -81,16 +81,19 @@ describe("economic statistics headless model", () => {
     const row = table!.rows![0]!;
     // The row keeps the period it covers and says when it was published.
     expect(row).toMatchObject({ asOf: "2026-09-01", releasedOn: "2026-10-20", periodicity: "monthly", reading: "Sep 2026" });
+    expect(row).toMatchObject({ firstReleased: "2026-10-20", revisedOn: "2026-10-27", firstReleaseValue: 1400, exportAsOf: "2026-10-27" });
     expect(table!.columns!.find((column) => column.key === "releasedOn")!.format!(row.releasedOn, row)).toBe("Tue 20 Oct");
     expect(detail!.entries!.find((entry) => entry.label === "Period")).toMatchObject({ value: "2026-09-01", formatted: "Sep 2026, released Tue 20 Oct" });
     const freshness = deriveHeadlessFreshness(econStatisticsHeadless, report, Date.parse("2026-10-23T15:00:00Z"));
     expect(freshness).toMatchObject({ asOf: "2026-10-20", referencePeriod: "2026-09-01" });
-    expect(formatFreshnessLine(freshness)).toBe("Source: FRED · Sep 2026, released Tue 20 Oct · not a live feed (published statistics)");
+    expect(formatFreshnessLine(freshness)).toBe("Source: Census Bureau via FRED · Sep 2026, released Tue 20 Oct · not a live feed (published statistics)");
+    const csv = renderReportCsv(headlessReportTables(econStatisticsHeadless, report, args, "ECST", freshness, { complete: true, unavailableSymbols: [] }), freshness);
+    expect(csv).toContain(",2026-10-20,2026-10-27,1400000");
     // Before Gloom Cloud sends the release, the report names the period, never its first day.
     const unreleased = projectStatsHeadlessBundle(
       await loadStatsBundle({ loader: async () => observations.map(({ date, value }) => ({ date, value })), stats: [permits] }), "ALL", permits.id);
     expect(formatFreshnessLine(deriveHeadlessFreshness(econStatisticsHeadless, unreleased, Date.parse("2026-10-23T15:00:00Z"))))
-      .toBe("Source: FRED · Sep 2026 (monthly) · not a live feed (published statistics)");
+      .toBe("Source: Census Bureau via FRED · Sep 2026 (monthly) · not a live feed (published statistics)");
   });
 
   test("prints a spread in basis points while its values stay in percentage points", async () => {
@@ -133,26 +136,26 @@ test("an export says which period Previous is, dates each row by its release, an
   const housing = csv.indexOf("# section: Housing");
   const rates = csv.indexOf("# section: Rates & Money");
   // Previous names its period beside it; the table's own period and released stand in for the fixed columns of those names.
-  expect(csv[housing + 1]).toBe("Indicator,Latest,Previous,Previous period,%ile,period,released,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved");
+  expect(csv[housing + 1]).toBe("Indicator,Latest,Previous,Previous period,%ile,period,released,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved,first_released,revised_on,first_release_value");
   // The release is the row's as-of, never September's first day.
-  expect(csv[housing + 2]).toBe(`Permits,1412000,1411000,2026-08-01,100,2026-09-01,2026-10-20,,,,,FRED,2026-10-20,${retrieved}`);
+  expect(csv[housing + 2]).toBe(`Permits,1412000,1411000,2026-08-01,100,2026-09-01,2026-10-20,,PERMIT,"units, annual rate",monthly,Census Bureau via FRED,2026-10-20,${retrieved},,,`);
   // A daily yield has no release to state: it is as of its own day, and its release stays empty.
-  expect(csv[rates + 2]).toBe(`10Y yield,5,4.95,2026-10-22,100,2026-10-23,,,,,,FRED,2026-10-23,${retrieved}`);
+  expect(csv[rates + 2]).toBe(`10Y yield,5,4.95,2026-10-22,100,2026-10-23,,,DGS10,pct,daily,Federal Reserve Board via FRED,2026-10-23,${retrieved},,,`);
   // The selected statistic's lines are dated the same way.
   const permitsLines = csv.slice(csv.indexOf("# section: Building Permits") + 1);
   expect(permitsLines[0]).toBe(`Metric,Value,${fixed}`);
-  expect(permitsLines.find((line) => line.startsWith("Latest,"))).toMatch(/^Latest,1412000,,,,FRED,2026-10-20,2026-09-01,2026-10-20,/);
+  expect(permitsLines.find((line) => line.startsWith("Latest,"))).toMatch(/^Latest,1412000,PERMIT,"units, annual rate",monthly,Census Bureau via FRED,2026-10-20,2026-09-01,2026-10-20,/);
   // Previous and a year ago are of their own period, and carry no release: the server dates only the newest print.
   for (const [label, period] of [["Previous", "2026-08-01"], ["Previous period", "2026-08-01"], ["1Y ago", "2025-09-01"]] as const) {
-    expect(permitsLines.find((line) => line.startsWith(`${label},`))!.split(",").slice(2)).toEqual(["", "", "", "FRED", "", period, "", retrieved]);
+    expect(permitsLines.find((line) => line.startsWith(`${label},`))).toEndWith(`,PERMIT,"units, annual rate",monthly,Census Bureau via FRED,,${period},,${retrieved}`);
   }
   // A month whose release the server does not say yet is as of nothing, never the first day of the month.
   const unreleased = projectStatsHeadlessBundle(
     await loadStatsBundle({ loader: async () => months.map(({ date, value }) => ({ date, value })), stats: [permits] }), "ALL", permits.id);
   const unreleasedFreshness = deriveHeadlessFreshness(econStatisticsHeadless, unreleased, Date.parse("2026-10-25T10:00:00Z"));
   const unreleasedCsv = renderReportCsv(headlessReportTables(econStatisticsHeadless, unreleased, args, "Economic Statistics", unreleasedFreshness, { complete: true, unavailableSymbols: [] }), unreleasedFreshness).split("\n");
-  expect(unreleasedCsv.find((line) => line.startsWith("Permits,"))).toBe(`Permits,1412000,1411000,2026-08-01,100,2026-09-01,,,,,,FRED,,${unreleasedFreshness.retrievedAt}`);
-  expect(unreleasedCsv.find((line) => line.startsWith("Latest,"))).toMatch(/^Latest,1412000,,,,FRED,,2026-09-01,,/);
+  expect(unreleasedCsv.find((line) => line.startsWith("Permits,"))).toBe(`Permits,1412000,1411000,2026-08-01,100,2026-09-01,,,PERMIT,"units, annual rate",monthly,Census Bureau via FRED,,${unreleasedFreshness.retrievedAt},,,`);
+  expect(unreleasedCsv.find((line) => line.startsWith("Latest,"))).toMatch(/^Latest,1412000,PERMIT,"units, annual rate",monthly,Census Bureau via FRED,,2026-09-01,,/);
   // NDJSON rows say the same.
   const [first] = renderReportNdjson(tables, freshness).split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
   expect(first).toMatchObject({ section: "Housing", Indicator: "Permits", "Previous period": "2026-08-01", period: "2026-09-01", released: "2026-10-20", as_of: "2026-10-20", retrieved });
@@ -160,7 +163,7 @@ test("an export says which period Previous is, dates each row by its release, an
   const text = renderHeadlessPaneText(econStatisticsHeadless, report, args, "Economic Statistics", freshness);
   expect(text).toMatch(/Indicator\s+Latest\s+Previous\s+%ile\s+Period\s+Released/);
   expect(text).not.toContain("Previous period");
-  expect(text).toMatch(/Previous\s+1\.41M \(Aug 2026\)/);
+  expect(text).toMatch(/Previous\s+1\.411M \(Aug 2026\)/);
 });
 
 test("a quarterly statistic's lines, and a daily rate's, are as of their own release or day, never the start of their period", async () => {

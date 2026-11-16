@@ -50,6 +50,7 @@ import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
 import { selectReportTables, splitCsvFooter, withRefusedRows, type CliReportTables } from "../report-tables";
+import { portableCsv } from "../csv-export";
 import { cliOutputWritten, printCliResult, serializeCliResult, type CliErrorObject } from "../result";
 import { checkOutputPath, resolveOutputPath, writeOutputFile } from "../output-file";
 import type { CatalogCommandHit } from "../unknown-command";
@@ -471,10 +472,9 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         // A report with no data writes no file: a header alone would read as a screen that matched nothing. It fails
         // as plain --json fails, with its code and whether to retry.
         if (failure) failWithError({ ...failure, details: `Nothing was written to ${outputPath}.` });
-        // A CSV file holds its rows alone; its closing source and note lines go to stderr, as printed CSV's do.
         const written = renderForFile(() => serializeCliResult(result, ctx.cliOptions, render));
         const { csv, footer } = ctx.cliOptions.format === "csv" ? splitCsvFooter(written) : { csv: written, footer: [] };
-        await writeOutputFile(outputPath, `${csv}\n`);
+        await writeOutputFile(outputPath, `${ctx.cliOptions.format === "csv" ? portableCsv(written, warnings) : csv}\n`);
         if (!ctx.cliOptions.quiet) for (const line of footer) console.error(line);
         // What was written and where; warnings go to stderr as they would beside printed rows, and JSON keeps its envelope.
         const saved = { output: outputPath, format: ctx.cliOptions.format, rows: report.data.rowCount, replaced: replacing };

@@ -19,12 +19,14 @@ import { categoryLabel, changeColor, type StatCategoryId } from "./defs";
 import { StatDetail } from "./detail";
 import { DEFAULT_STAT_ID } from "./stats";
 import { selectStatViews, type StatRangeId, type StatViewModel } from "./view";
+import { laggingSeriesNote } from "../../../cli/commands/fred-series";
+import { fredCitation } from "../../../sources/gloomberb-cloud/fred-publisher";
 
 const loadBundle = (force: boolean) => loadStatsBundle({ force });
 
-const LIST_WIDTH = 53;
+const LIST_WIDTH = 60;
 const NAME_MIN_WIDTH = 13;
-const PERIOD_WIDTH = 6;
+const PERIOD_WIDTH = 10;
 
 const RANGE_OPTIONS = [
   { value: "5Y" as const, label: "5Y" },
@@ -158,8 +160,11 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     // A Treasury yield names when in the day it was taken, as GC does, so it is not read against ^TNX's earlier close.
     const cutoff = selected.stat.cutoff ? ` ${selected.stat.cutoff}` : "";
     const info: PaneFooterSegment[] = [
+      { id: "publisher", parts: [{ text: fredCitation(selected.stat.seriesId), tone: "muted" }] },
       { id: "as-of", parts: [{ text: `reading for ${cutoff ? selected.reading : selected.readingReleased}${cutoff}`, tone: "muted" }] },
     ];
+    const lag = laggingSeriesNote(selected.stat.seriesId);
+    if (lag) info.push({ id: "publication-lag", parts: [{ text: lag, tone: "warning" }] });
     // The cached first paint is being replaced; its age only counts once that load fails, and then it is the
     // copy an earlier read saved, which says when that was.
     const seeding = resource.loading && resource.updatedAt === null && !selected.refreshError;

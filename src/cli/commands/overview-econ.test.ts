@@ -224,7 +224,7 @@ test("plain output leaves out the Local and Viewer columns when nothing fills th
   try {
     // A calendar of the feeds' own rows has no publisher clock and, without --tz, no viewer clock: no column of dashes for either.
     const feeds = await econText(twoWeeks, ["--country", "US"]);
-    expect(feeds).toMatch(/Date\s+Day\s+Time\s+Country\s+Impact\s+Event\s+Actual\s+Forecast\s+Prior/);
+    expect(feeds).toMatch(/Date\s+Day\s+Time\s+Country\s+Impact\s+Event\s+Period\s+Actual\s+Forecast\s+Prior/);
     expect(feeds).not.toContain("Local");
     expect(feeds).not.toContain("Viewer");
     // One row a publisher times itself brings the column back, with the dash on the rows that have none.
@@ -268,7 +268,7 @@ test("a row names who publishes it, the period it covers and its page, in the ta
   expect(rows.find((row) => row.event === "Housing Starts")).toMatchObject({ publisher: null, referencePeriod: null, sourceUrl: null });
   const text = await econText(mortgages, ["--country", "US"]);
   expect(text).toMatch(/Publisher/);
-  expect(text).toMatch(/30-Year Mortgage Rate\s+7\.32%\s+7\.40%\s+Freddie Mac/);
+  expect(text).toMatch(/30-Year Mortgage Rate\s+22 Oct 2026\s+7\.32%\s+7\.40%\s+Freddie Mac/);
   // A calendar without publishers prints no empty column for them.
   expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Publisher");
 });
@@ -285,7 +285,7 @@ test("--tz adds the viewer's clock, with the weekday there in Day", async () => 
   expect(text).toMatch(/Date\s+Time\s+Day\s+New York\s+Local/);
   // Wednesday the 14th in UTC is still Tuesday evening in New York, and the clock says its own date.
   expect(text).toMatch(/2026-10-14\s+01:30 UTC\s+Tue\s+10-13 21:30\s+BR\s+medium\s+Night release/);
-  expect(text).toMatch(/2026-10-23\s+12:00 UTC\s+Fri\s+08:00\s+09:00 Sao Paulo\s+BR\s+high\s+IPCA-15 Mid-Month CPI m\/m\s+0\.32%\s+0\.43%\s+0\.70%/);
+  expect(text).toMatch(/2026-10-23\s+12:00 UTC\s+Fri\s+08:00\s+09:00 Sao Paulo\s+BR\s+high\s+IPCA-15 Mid-Month CPI m\/m\s+2026-10\s+0\.32%\s+0\.43%\s+0\.70%/);
   const printed = await econPrinted(brazil, ["--country", "BR", "--tz", "America/New_York"]);
   expect(printed.result.metadata).toMatchObject({ timeZone: "America/New_York" });
   expect((printed.result.data as Record<string, unknown>[]).at(-1)).toMatchObject({ viewerDate: "2026-10-23", viewerTime: "08:00" });
@@ -375,8 +375,8 @@ test("an export carries the calendar's figures as numbers with their unit and sc
   expect(by("Housing Starts")).toMatchObject({ actual: null, forecast: null, prior: null, unit: null, scale: null });
   // The text table still draws them as they were.
   const text = await econText(exportCalendar, ["--from", "2026-10-14"]);
-  expect(text).toMatch(/Claimant Count Change\s+30\.3K\s+19\.4K\s+-27\.8K/);
-  expect(text).toMatch(/EIA Crude Oil Stocks Change\s+-4\.1M bbl\s+-0\.987M bbl\s+0\.5M bbl/);
+  expect(text).toMatch(/Claimant Count Change\s+Sep 2026\s+30\.3K\s+19\.4K\s+-27\.8K/);
+  expect(text).toMatch(/EIA Crude Oil Stocks Change\s+9 Oct 2026\s+-4\.1M bbl\s+-0\.987M bbl\s+0\.5M bbl/);
   expect(text).not.toContain("Scale");
 });
 
@@ -633,6 +633,22 @@ test("--search finds an event however its name is spaced or hyphenated, and the 
     expect(rate).not.toContain("no consensus yet");
   }
   expect(await econText(calendar, ["--search", "ism"])).toContain("No matching events");
+});
+
+test("calendar text includes periods and OR combines housing names without requiring every term", async () => {
+  const calendar = [
+    { ...event("2026-10-22T12:30:00Z", "US", "high", "Housing Starts"), referencePeriod: "Sep 2026" },
+    { ...event("2026-10-22T16:00:00Z", "US", "low", "30-Year Mortgage Rate"), referencePeriod: "week ending 2026-10-21" },
+    { ...event("2026-10-23T14:00:00Z", "US", "medium", "NAHB Housing Market Index"), referencePeriod: "Oct 2026" },
+    event("2026-10-23T12:30:00Z", "US", "high", "CPI"),
+  ];
+  setSystemTime(new Date("2026-10-21T12:00:00Z"));
+  const text = await econText(calendar, ["--search", "housing OR mortgage OR NAHB"]);
+  expect(text).toContain("Period");
+  expect(text).toContain("Sep 2026");
+  expect(text).toContain("week ending 2026-10-21");
+  const { result } = await econPrinted(calendar, ["--search", "housing or mortgage OR NAHB"]);
+  expect((result.data as Array<{ event: string }>).map((row) => row.event)).toEqual(["Housing Starts", "30-Year Mortgage Rate", "NAHB Housing Market Index"]);
 });
 
 test("--search also finds an event by its publisher's name, initials or site: usda is the WASDE", async () => {

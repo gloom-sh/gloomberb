@@ -891,6 +891,9 @@ export function headlessReportTables(
         // A section of one name or one date says so for every line it exports.
         const named = {
           ...(section.symbol?.trim() ? { symbolOrSeries: section.symbol.trim() } : {}),
+          ...(section.unit?.trim() ? { currencyOrUnit: section.unit.trim() } : {}),
+          ...(section.interval?.trim() ? { interval: section.interval.trim() } : {}),
+          ...("source" in section && section.source?.trim() ? { source: section.source.trim() } : {}),
           ...(section.asOf === null ? { asOf: null } : section.asOf?.trim() ? { asOf: section.asOf.trim() } : {}),
           ...(section.period?.trim() ? { period: section.period.trim() } : {}),
           ...(section.released?.trim() ? { released: section.released.trim() } : {}),
@@ -913,14 +916,16 @@ export function headlessReportTables(
           const rowIdentities = section.entries.some((entry) => own(entry)) ? section.entries.map(own) : undefined;
           return { ...entries, ...(Object.keys(named).length > 0 ? { identity: named } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
         }
-        const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows, { status: true });
+        const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows,
+          { status: true, appendedColumns: section.appendedColumns });
         const identity = {
           ...named,
           ...(section.unit?.trim() ? { currencyOrUnit: section.unit.trim() } : {}),
           ...(section.interval?.trim() ? { interval: section.interval.trim() } : {}),
         };
         const rowIdentities = rowIdentitiesOf(section.rows, section);
-        return { ...table, ...(Object.keys(identity).length > 0 ? { identity } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
+        return { ...table, ...(section.appendedColumns ? { appendedColumns: section.appendedColumns } : {}),
+          ...(Object.keys(identity).length > 0 ? { identity } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
       });
       break;
     case "series": {

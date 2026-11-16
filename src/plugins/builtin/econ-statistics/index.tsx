@@ -17,6 +17,7 @@ export const econStatisticsModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 120, height: 36 },
+    shotFitsRows: true,
   }],
   paneTemplates: [{
     id: "econ-statistics-pane",
