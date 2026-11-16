@@ -14,6 +14,7 @@ import { createTestFinancials, createTestQuote } from "../../test-support/data-p
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { printCliError } from "../errors";
 import { marketDataCliCommands } from "./market";
+import { overviewCliCommands } from "./overview";
 import { ticker } from "./ticker";
 
 const history = marketDataCliCommands.find((command) => command.name === "history")!;
@@ -98,6 +99,33 @@ test("a dated window, holders and filings of a moved symbol whose own request fa
     const error = await command.execute(["HFC"], cli.context).then(() => null, (failure: unknown) => failure);
     expect((error as Error).message, name).toBe(`HFC became DINO on 2022-03-15: ${line}`);
   }
+});
+
+test("a read of a symbol that trades costs no change lookup and no second quote; one whose line stopped still names the new symbol", async () => {
+  const counted = () => {
+    const counts = { quote: 0, changes: 0 };
+    const provider = source(async (symbol) => { counts.changes++; return CHANGES[symbol] ?? null; }, {
+      getHolders: async (symbol) => ({ symbol, holders: [{ name: "Vanguard Group", shares: 1, value: 1, percentHeld: 0.1, reportDate: "2026-09-30", ownerType: "institution" }] }) as never,
+      getSecFilings: async () => [{ form: "10-Q", filingDate: "2026-10-30", accessionNumber: "0000320193-26-000001", filingUrl: "https://www.sec.gov/x" }] as never,
+    });
+    const quote = provider.getQuote.bind(provider);
+    provider.getQuote = async (...args) => { counts.quote++; return quote(...args); };
+    return { counts, provider };
+  };
+  const commands = [...marketDataCliCommands, ...overviewCliCommands];
+  // Each reads AAPL's quote once for itself (correlation each symbol's), as before: the quote says the line trades.
+  for (const [name, args, quotes] of [["holders", ["AAPL"], 1], ["13f", ["AAPL"], 1], ["filings", ["AAPL"], 1], ["correlation", ["AAPL", "META"], 2]] as const) {
+    const { counts, provider } = counted();
+    const cli = createTestCliContext({ config, dataProvider: provider });
+    await commands.find((command) => command.name === name)!.execute([...args], cli.context);
+    expect(cli.printed, name).toHaveLength(1);
+    expect(counts, name).toEqual({ quote: quotes, changes: 0 });
+  }
+  // HFC's holders come back, but its quote stopped in 2022: its change is looked up and named.
+  const { provider } = counted();
+  const cli = createTestCliContext({ config, dataProvider: provider });
+  const error = await marketDataCliCommands.find((command) => command.name === "holders")!.execute(["HFC"], cli.context).then(() => null, (failure: unknown) => failure);
+  expect((error as Error).message).toBe("HFC became DINO on 2022-03-15: `gloom holders DINO`");
 });
 
 async function runQuote(symbols: string[]) {

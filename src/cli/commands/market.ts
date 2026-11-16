@@ -3053,9 +3053,12 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const venues = loadBareVenues(listing, market);
-    const loaded = await loadForListing(listing, market, ctx, () => market.dataProvider.getTickerFinancials(
+    // The statements carry the listing's quote: what says whether the line can have moved, with no read of its own.
+    const read = market.dataProvider.getTickerFinancials(
       listing.request.symbol, listing.request.exchange, { cacheMode: ctx.cliOptions.refresh ? "refresh" : "default" },
-    ), undefined, { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName });
+    );
+    const loaded = await loadForListing(listing, market, ctx, () => read, undefined,
+      { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName, quote: read.then((found) => found.quote ?? null, () => null) });
     // A converted TTM block at the rate `fx` reports, as `ticker` shows it; only the US dollar legs are read.
     // A withdrawn EV's bridge converts a balance sheet in another currency at our close on its date (withBalanceSheetRate).
     const financials = view === "statements" ? loaded
@@ -3539,7 +3542,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
           hidden = shown.hidden;
           return shown.filings;
         }),
-        (found) => found.length === 0, { command: form ? `filings --form ${form}` : "filings", noun: "SEC filings" }),
+        (found) => found.length === 0, { command: form ? `filings --form ${form}` : "filings", noun: "SEC filings", quote: quotePromise }),
         quotePromise,
       ]);
       const hiddenNote = hidden ? hiddenFilingsNote(hidden) : null;
@@ -3768,7 +3771,7 @@ async function printBeneficialOwners(
   const request = { form: beneficialRouteForm(form), history, listing: { exchange, name: abroad?.name ?? undefined } };
   const [payload, holders, quote, financials] = await Promise.all([
     loadForListing(listing, market, ctx, () => fetchBeneficialOwners(symbol, request), undefined,
-      { command: `holders --form ${form}${history ? " --history" : ""}`, noun: "beneficial owners" }),
+      { command: `holders --form ${form}${history ? " --history" : ""}`, noun: "beneficial owners", quote: quotePromise }),
     market.dataProvider.getHolders?.(symbol, exchange).catch(logFailure("cli.commands-market", "Read company holders failed", null)) ?? null,
     quotePromise,
     // Today's share count, which the filed percents are set against.
@@ -3852,7 +3855,7 @@ async function runHolders(
         listing, market, ctx,
         () => market.dataProvider.getHolders(listing.request.symbol, listing.request.exchange),
         (found) => found.holders.length === 0,
-        { command: commandName, noun: "holder data" },
+        { command: commandName, noun: "holder data", quote: quoted },
       ).catch(async (error: unknown) => {
         // A symbol whose company moved names its new symbol, as every command does.
         if (isMovedSymbolFailure(error)) throw error;
@@ -3987,13 +3990,14 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const venues = loadBareVenues(listing, market);
+    const quoted = loadListingQuote(market.dataProvider, listing);
     const [data, quote] = await Promise.all([
       loadForListing(
         // A listing no analyst covers loads as research with nothing in it, said below rather than failed.
         listing, market, ctx, () => loadAnalystResearch(market.dataProvider, listing.request.symbol, listing.request.exchange),
-        undefined, { command: "analyst", noun: "analyst research" },
+        undefined, { command: "analyst", noun: "analyst research", quote: quoted },
       ),
-      loadListingQuote(market.dataProvider, listing),
+      quoted,
     ]);
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
@@ -4044,12 +4048,13 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
     // The earnings rows are resolved against the calendar `earnings` reads, so the next report is the same in both.
     const calendar = market.dataProvider.getEarningsCalendar?.([listing.key])
       .catch(logFailure("cli.commands-market", "Read the earnings calendar for events failed", [] as EarningsEvent[]));
+    const quoted = loadListingQuote(market.dataProvider, listing);
     const [recorded, quote, events] = await Promise.all([
       loadForListing(
         listing, market, ctx, () => market.dataProvider.getCorporateActions(listing.request.symbol, listing.request.exchange),
-        undefined, { command: "events", noun: "corporate events" },
+        undefined, { command: "events", noun: "corporate events", quote: quoted },
       ),
-      loadListingQuote(market.dataProvider, listing),
+      quoted,
       calendar,
     ]);
     const data = withResolvedEarnings(recorded, calendarEventOf(events, listing.key), newYorkDay());

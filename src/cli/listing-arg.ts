@@ -436,6 +436,12 @@ export interface ListingDataRequest {
    * whatever came back (`failMovedSymbol`).
    */
   fate?: () => Promise<ListingFate>;
+  /**
+   * The listing's own quote, as the command reads it for itself: what says,
+   * without the fate, whether the line can have moved at all. A line whose
+   * quote trades is served as it comes back, with no lookup of its own.
+   */
+  quote?: Promise<Quote | null>;
 }
 
 /**
@@ -1327,9 +1333,11 @@ export async function failUnchosenListing(
  * calls what it returned empty, and a listing's exchange is one its symbol does
  * not trade on, the command ends in that message instead of the request's own
  * "unavailable". With `request`, a bare symbol no source serves ends naming
- * its other listings (`otherListingsMessage`), and with `request.fate` a symbol
- * whose company moved ends naming its new symbol, served or not. A request
- * that succeeds costs no extra lookup beyond the fate the command reads anyway.
+ * its other listings (`otherListingsMessage`), and a symbol whose company
+ * moved ends naming its new symbol, served or not. A request that succeeds
+ * costs no extra lookup beyond the fate the command reads anyway, or, given
+ * the command's own quote (`request.quote`), beyond a quote that says the
+ * line stopped.
  */
 export async function loadForListing<T>(
   listings: ListingForLoad | readonly ListingForLoad[],
@@ -1342,40 +1350,44 @@ export async function loadForListing<T>(
   const all = "symbol" in listings ? [listings] : listings;
   const named = all.filter((listing) => listing.exchange);
   const checkVenues = () => Promise.all(named.map((listing) => failIfNotTraded(listing, deps, ctx)));
-  // One listing a command asked for: what became of its symbol is looked up beside the load, so a company that moved
-  // ends the command naming its new symbol, as `quote` names it, whether the load served, came back empty or failed
-  // (FI's window before the listing that reused the symbol has no bars at all).
-  const fate = request && all.length === 1 ? request.fate ?? commandFate(all[0]!, deps) : null;
-  const refuseMoved = async () => {
-    const moved = fate ? (await fate()).moved : null;
-    if (moved) failMovedSymbol(moved, request!);
+  // One listing a command asked for: a company that moved ends the command naming its new symbol, as `quote` names
+  // it, whether the load came back empty or failed (FI's window before the listing that reused the symbol has no bars
+  // at all) or served the old line (FI's 2024 statements). A command that reads the fate itself asks it either way.
+  // Otherwise a load that served asks only when the command's own quote says the line stopped, so a symbol that
+  // trades costs no lookup; a load that failed or came back empty asks with the quote it has, or reads one.
+  const one = request && all.length === 1 ? all[0]! : null;
+  const refuseMoved = async (served: boolean) => {
+    if (!one || !request) return;
+    const quote = request.fate || !request.quote ? undefined : await request.quote.catch(() => null);
+    if (served && !request.fate && (quote === undefined || !lineMayHaveMoved(quote))) return;
+    const moved = (await (request.fate ?? commandFate(one, deps, quote))()).moved;
+    if (moved) failMovedSymbol(moved, request);
   };
   let value: T;
   try {
     value = await load();
   } catch (error) {
     await checkVenues();
-    await refuseMoved();
+    await refuseMoved(false);
     if (request && all.length === 1 && isNoProviderError(error)) await failUnservedListing(ctx, request, otherListingsMessage(all[0]!, deps, request));
     throw error;
   }
-  if (isMiss?.(value)) await checkVenues();
+  const missed = isMiss?.(value) === true;
+  if (missed) await checkVenues();
   // Data came back, but the symbol's company moved and nothing new lists there: the data is another security's.
-  await refuseMoved();
+  await refuseMoved(!missed);
   return value;
 }
 
 /**
  * The fate of a command's one listing when the command did not look it up
- * itself (`listingFateLoader`): the change lookup starts now, beside the
- * command's request, and the listing's quote is read when the fate is asked
- * for. A symbol the change history is not about (a listing abroad, a pair)
- * asks nothing of it.
+ * itself (`listingFateLoader`), read with the quote the command has (`quote`;
+ * left out, the fate reads one). A symbol the change history is not about (a
+ * listing abroad, a pair) asks nothing of it.
  */
-function commandFate(listing: ListingForLoad, deps: Pick<ListingDeps, "dataProvider">): () => Promise<ListingFate> {
-  const changes = startTickerChangeLookup(deps.dataProvider, listing.symbol, listing.exchange);
+function commandFate(listing: ListingForLoad, deps: Pick<ListingDeps, "dataProvider">, quote?: Quote | null): () => Promise<ListingFate> {
   let fate: Promise<ListingFate> | null = null;
-  return () => fate ??= loadListingFate(listing, deps.dataProvider, { changes });
+  return () => fate ??= loadListingFate(listing, deps.dataProvider, quote === undefined ? {} : { quote });
 }
 
 /** A command that ended naming the new symbol of a company that moved (`failMovedSymbol`). */
