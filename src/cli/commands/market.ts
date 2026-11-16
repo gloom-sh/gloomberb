@@ -14,6 +14,7 @@ import { shortStoryId } from "../../news/story-id";
 import type {
   AnalystResearchData,
   CorporateActionsData,
+  DemergerAction,
   HolderData,
   OptionsChain,
   PricePoint,
@@ -141,6 +142,7 @@ import {
 import { historyCoverageNotice, WindowBeforeFirstBarError } from "../../sources/history-coverage";
 import { fetchHistoryResult } from "../../sources/history-result";
 import { settleWithin } from "../../utils/async-deadline";
+import { demergerRuns, demergerSuccessor, hasPriceBreak, historyDemergerNote, withDemergerFlags } from "../history-demergers";
 import type { FxInterventionsPayload } from "../../api-client/fx-interventions";
 import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
@@ -332,7 +334,7 @@ import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentC
 import { isCryptoPairSymbol, isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { listingSuffixVenue } from "../../sources/listing-symbols";
-import { resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
+import { classifyInstrumentType, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import {
   describeFormerIssuer, describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type FormerIssuer, type TickerChange,
 } from "../../tickers/ticker-changes";
@@ -1108,6 +1110,13 @@ function cleanDecimal(value: number | undefined): string {
   return value == null || !Number.isFinite(value) ? "" : String(Number(value.toFixed(6)));
 }
 
+/** "commercial vehicles into TMCV:NSE (Tata Motors Limited), 1 share per share, listed 2025-11-12". */
+function demergerDetail(event: DemergerAction): string {
+  return [`${event.business ? `${event.business} ` : ""}into ${demergerSuccessor(event)}`,
+    event.ratio ? `${cleanDecimal(event.ratio)} share per share` : null,
+    event.successor.listedOn ? `listed ${event.successor.listedOn}` : "not yet listed"].filter(Boolean).join(", ");
+}
+
 function corporateActionRows(data: CorporateActionsData) {
   const currency = /^[A-Z]{3}$/.test(data.currency ?? "") ? data.currency! : null;
   // EPS is in the reporting currency, which can differ from the listing's dividends (Tencent: CNY vs HKD).
@@ -1158,6 +1167,12 @@ function corporateActionRows(data: CorporateActionsData) {
       type: "split",
       date: event.date,
       detail: event.description ?? `${event.fromFactor ?? ""}:${event.toFactor ?? ""}`,
+    })),
+    // A business demerged out of the listing: its price fell by that business's value on the day, no market move.
+    ...(data.demergers ?? []).map((event) => ({
+      type: "demerger",
+      date: event.exDate,
+      detail: demergerDetail(event),
     })),
   ].sort((left, right) => right.date.localeCompare(left.date));
 }
@@ -1875,6 +1890,8 @@ interface ListingHistory {
   fx?: HistoryConversion;
   /** A catalog series (`CAP:bond-yield:jp-10y`) read beside listings: its values are in `close`, and are no price. */
   catalogSeries?: true;
+  /** The bars a business was demerged out of the listing at (flag `demerger`): a drawdown is measured within the runs between them. */
+  demergers?: Array<{ date: string; action: DemergerAction }>;
 }
 
 /**
@@ -2163,7 +2180,10 @@ async function loadListingHistory(
   const identity = listingIdentity(listing, quote);
   // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
   const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(logFailure("cli.commands-market", "Read quote metadata for history failed", null));
-  const unit = historyUnit(listing.key, listed ?? quote, await priceUnit);
+  // With neither, the currency the listing was saved with from search (TMPV on NSE trades in INR) still names the unit.
+  const savedCurrency = listing.saved?.metadata.currency?.trim();
+  const unit = historyUnit(listing.key, listed?.currency || quote?.currency || !savedCurrency ? listed ?? quote
+    : { ...listed ?? quote ?? {}, currency: savedCurrency }, await priceUnit);
   const mostTraded = /=F$/i.test(listing.symbol) && (await futuresTerms)?.roll?.mostTraded === true;
   const traded = {
     listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,
@@ -2192,7 +2212,10 @@ async function loadListingHistory(
   const forming = formingPeriodBar(served, venue);
   // A complete one is dated by the day its last session closed, the day its close is from.
   const closedDay = forming ? null : closedPeriodBarDay(served, venue);
-  const data = forming?.rows ?? served;
+  // A close that falls a fifth or more below the one before can be a business demerged out of the listing (TMPV's
+  // commercial vehicles on 2025-10-14): its corporate actions say, and that bar is flagged rather than read as a crash.
+  const demerged = await listingDemergerFlags(forming?.rows ?? served, market, listing, instrumentType);
+  const data = demerged.rows;
   const interval = data[0]?.interval ?? null;
   // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
   const intraday = data.some((row) => row.date.length > 10);
@@ -2254,13 +2277,37 @@ async function loadListingHistory(
     historyVenueVolumeNote(data) ?? [],
     // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
     historyRollNote(listing.symbol, data, { mostTraded }) ?? [], historyThinNote(data) ?? [],
+    historyDemergerNote(data, demerged.breaks, historyPrice(historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor))) ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
     await interventionWindowNote(interventions, interventionPair, data) ?? [],
   ].flat();
   return {
     listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes, mostTraded,
     decimals: historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor),
+    ...demerged.breaks.length > 0 ? { demergers: demerged.breaks } : {},
   };
+}
+
+/** How long a history waits for the corporate actions it reads beside a price break; the bars are served without them after. */
+const DEMERGER_READ_WAIT_MS = 3_000;
+
+/**
+ * A share's bars with the bar each demerger falls in flagged (withDemergerFlags), read only when a close falls a
+ * fifth or more below the one before: a future, a pair or an index has no business to demerge. Fails soft.
+ */
+async function listingDemergerFlags(
+  rows: HistoryRow[],
+  market: MarketContext,
+  listing: CliListing,
+  instrumentType: string | undefined,
+): Promise<{ rows: HistoryRow[]; breaks: Array<{ date: string; action: DemergerAction }> }> {
+  const kind = classifyInstrumentType(instrumentType ?? "");
+  const share = kind === "equity" || kind === "fund" || !instrumentType;
+  if (!share || isFuturesInstrument(listing.symbol, instrumentType ?? null) || isCurrencyPairListing(listing.symbol, listing.request.exchange)
+    || !hasPriceBreak(rows) || typeof market.dataProvider.getCorporateActions !== "function") return { rows, breaks: [] };
+  const actions = await settleWithin(Promise.resolve().then(() => market.dataProvider.getCorporateActions(listing.request.symbol, listing.request.exchange))
+    .catch(logFailure("cli.commands-market", "Read corporate actions for a price break failed", null)), DEMERGER_READ_WAIT_MS);
+  return withDemergerFlags(rows, actions?.demergers ?? []);
 }
 
 /**
@@ -2466,13 +2513,18 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const closes = (interval === "1wk" || interval === "1mo"
       ? data.map((row) => ({ ...row, date: barCloseSession(interval, row.date, identity.exchange || undefined, Date.now()) }))
       : data).filter((row) => !row.flag?.split(",").includes(CLOSE_COPIED_FLAG));
-    const contractDrawdown = historyContractDrawdown(closes, yieldUnits ? "yield" : "return");
+    // Nor from a close that held a business the listing demerged to one that did not (TMPV before 2025-10-14).
+    const demergedOn = history.demergers?.map((entry) => entry.date.slice(0, 10)) ?? [];
+    const contractDrawdown = demergedOn.length > 0
+      ? deepestRunDrawdown(demergerRuns(closes, history.demergers!).map((run) => historyContractDrawdown(run, yieldUnits ? "yield" : "return")))
+      : historyContractDrawdown(closes, yieldUnits ? "yield" : "return");
     // A window's last week can close after the dates asked for (--to 2003, a week ending Fri 2 Jan 2004): measured to its end.
     const until = ask.window?.to;
     const drawdown = contractDrawdown ? measuredUntil(contractDrawdown.drawdown, until) : null;
     const rose = yieldUnits ? maxRunUp(closes) : null;
     const runUp = rose && measuredUntil(rose, until);
-    const moveText = interval ? { basis: `${BAR_INTERVAL_LABELS[interval]} closes${contractDrawdown?.contract ? `, ${contractDrawdown.contract}` : ""}`, price,
+    const across = demergedOn.length > 0 ? `, not across the ${demergedOn.join(" and ")} ${demergedOn.length === 1 ? "demerger" : "demergers"}` : "";
+    const moveText = interval ? { basis: `${BAR_INTERVAL_LABELS[interval]} closes${contractDrawdown?.contract ? `, ${contractDrawdown.contract}` : ""}${across}`, price,
       date: (text: string) => intraday ? formatUtcTime(text) : text.slice(0, 10) } : null;
     ctx.printResult({
       data,
@@ -2491,6 +2543,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         unbrokenFrom: historyUnbrokenFrom(data) ?? data[0]?.date ?? null,
         bars: data.length,
         maxDrawdown: drawdown && contractDrawdown?.contract ? { ...drawdown, contract: contractDrawdown.contract } : drawdown,
+        ...(history.demergers ? { demergers: history.demergers.map(({ date, action }) => ({ bar: date, ...action })) } : {}),
         ...(runUp ? { maxRunUp: runUp } : {}),
         asOf: freshness?.asOf ?? null,
         ...(history.fx ? { converted: history.fx } : {}),
@@ -2513,6 +2566,12 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       exportIdentity: { symbolOrSeries: history.listing.key, currencyOrUnit: historyExportUnit(unit), interval },
     });
   });
+}
+
+/** The deepest of the drawdowns measured within each run between demergers. */
+function deepestRunDrawdown(runs: ReadonlyArray<ReturnType<typeof historyContractDrawdown>>): ReturnType<typeof historyContractDrawdown> {
+  const depth = (entry: NonNullable<ReturnType<typeof historyContractDrawdown>>) => entry.drawdown.bp ?? entry.drawdown.drawdown;
+  return runs.reduce<ReturnType<typeof historyContractDrawdown>>((deepest, run) => run && (!deepest || depth(run) < depth(deepest)) ? run : deepest, null);
 }
 
 /** The window from `years` back to today. */
