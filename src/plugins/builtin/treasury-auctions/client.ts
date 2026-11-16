@@ -66,9 +66,13 @@ export interface AuctionQuery {
   pageSize?: number;
 }
 
+// A query that has not answered in 15 s does not answer the second time
+// either: the source stalls for a minute at a time. The board then stands on
+// TreasuryDirect and the saved copy (cache.ts) at once, not after 48 s of retries.
 const TREASURY_FETCH = createThrottledFetch({
   requestsPerMinute: 20,
   maxRetries: 2,
+  retryTimeouts: false,
   timeoutMs: 15_000,
   backoffBaseMs: 800,
   defaultHeaders: { Accept: "application/json" },

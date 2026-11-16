@@ -39,6 +39,8 @@ export interface BoardReport {
   revenueEstimate: number | null;
   impliedMove: number | null;
   averageMove: number | null;
+  /** The move on a report already out: the close after it over the close before, signed. Null until both closes are in. */
+  realizedMove: number | null;
   owned: Ownership | null;
   /** ISO currency of the EPS and sales figures; null when the report has none. The market cap is always dollars. */
   currency?: string | null;
@@ -156,6 +158,7 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
     revenueEstimate: report.revenueEstimate,
     impliedMove: report.implied?.move ?? null,
     averageMove: report.averageReports >= MIN_AVERAGE_REPORTS ? report.averageMove : null,
+    realizedMove: report.realized?.move ?? null,
     owned: owned.get(report.symbol) ?? null,
     // The board's US reports are in dollars; a listing abroad's say their own.
     currency: report.currency ?? "USD",
@@ -248,6 +251,7 @@ export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, 
     revenueEstimate: dollars("revenueEstimate"),
     impliedMove: null,
     averageMove: null,
+    realizedMove: null,
     owned: owned.get(event.symbol) ?? null,
     currency: epsEstimate != null || dollars("revenueEstimate") != null ? "USD" : null,
   };
@@ -272,6 +276,14 @@ export function reportMove(report: Pick<BoardReport, "date" | "dateStatus" | "ti
       ? traded?.session === "PRE" ? traded.changePercent : null
       : getRegularSessionMoveDisplay(quote)?.changePercent;
   return percent != null && Number.isFinite(percent) ? percent / 100 : null;
+}
+
+/**
+ * The MOVE a board row shows: the move so far on a report out today
+ * (reportMove), else the move across a report already out (`realizedMove`).
+ */
+export function boardMove(report: BoardReport, quote: Quote | null | undefined, today: string): number | null {
+  return reportMove(report, quote, today) ?? report.realizedMove;
 }
 
 function compare(left: BoardReport, right: BoardReport, sort: BoardSort): number {

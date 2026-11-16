@@ -258,7 +258,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `GR <tickers>` | Ratio, rolling correlation and regression of two tickers (`GR GC=F SI=F`) |
 | `EE <ticker>` | Events view with earnings and revenue estimates |
 | `ERN [tickers]` | Earnings history with implied and realized moves. Several tickers, their upcoming reports. Nothing active, the market's report days |
-| `EVTS [ticker]` | The market's report days with implied and average moves, and each report's actual, surprise and move so far |
+| `EVTS [ticker]` | The market's report days with implied and average moves, and each report's actual, surprise and move |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
 | `CALLS [ticker]` | Earnings calls and their transcripts; alone, the calendar of every company's calls |
 | `JOBS [ticker]` | Hiring from the company's careers system; alone, every covered company |

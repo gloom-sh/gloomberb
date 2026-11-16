@@ -190,6 +190,21 @@ describe("createThrottledFetch timeouts and caller aborts", () => {
     expect(signals.every((signal) => signal instanceof AbortSignal)).toBe(true);
   });
 
+  test("a host that stalls is not waited out again when timeouts are not retried, while a dropped connection still is", async () => {
+    const stalled = hangingTransport();
+    const client = createThrottledFetch({ maxRetries: 2, timeoutMs: 20, backoffBaseMs: 0, retryTimeouts: false, transport: stalled });
+    await expect(client.fetch("https://api.example.com/stalled")).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(stalled).toHaveBeenCalledTimes(1);
+
+    let calls = 0;
+    const dropped = mock(() => ++calls === 1
+      ? Promise.reject(Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }))
+      : Promise.resolve(new Response("ok", { status: 200 })));
+    const retried = createThrottledFetch({ maxRetries: 2, timeoutMs: 20, backoffBaseMs: 0, retryTimeouts: false, transport: dropped });
+    expect((await retried.fetch("https://api.example.com/dropped")).status).toBe(200);
+    expect(dropped).toHaveBeenCalledTimes(2);
+  });
+
   test.each([
     ["an error", () => new Error("pane closed")],
     // A caller's own deadline looks like a retryable timeout but is not ours to retry.

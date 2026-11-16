@@ -31,6 +31,14 @@ export interface ThrottledFetchOptions {
    * rate-limited feed cannot hold its callers for that long. Default: 10000
    */
   maxRetryWaitMs?: number;
+  /**
+   * Whether an attempt that ran out its `timeoutMs` is tried again (default
+   * true). Off for a host that stalls rather than blips: one that has not
+   * answered in the timeout does not on the retry either, and the caller's
+   * fallback (another source, a saved copy) should not wait out every attempt.
+   * Network errors, 429s and 5xx answers are retried either way.
+   */
+  retryTimeouts?: boolean;
   /** Default headers applied to every request */
   defaultHeaders?: Record<string, string>;
   /** Share concurrent GET requests to the same URL. Default: true */
@@ -58,6 +66,7 @@ export function createThrottledFetch(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const backoffBaseMs = options.backoffBaseMs ?? BACKOFF_BASE_MS;
   const maxRetryWaitMs = options.maxRetryWaitMs ?? DEFAULT_MAX_RETRY_WAIT_MS;
+  const retryTimeouts = options.retryTimeouts ?? true;
   const defaultHeaders = options.defaultHeaders ?? {};
   const dedupeGetRequests = options.dedupeGetRequests ?? true;
   const fetchTransport =
@@ -129,6 +138,11 @@ export function createThrottledFetch(
     );
   }
 
+  /** The attempt's own timeout (the caller's abort has been ruled out by then). */
+  function isTimeoutError(error: unknown): boolean {
+    return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+  }
+
   function abortReason(signal: AbortSignal): unknown {
     return signal.reason ?? abortError("The operation was aborted.");
   }
@@ -188,7 +202,7 @@ export function createThrottledFetch(
       resp = await fetchTransport(url, mergedInit);
     } catch (error) {
       throwIfAborted(callerSignal);
-      if (retriesLeft > 0 && isRetryableFetchError(error)) {
+      if (retriesLeft > 0 && isRetryableFetchError(error) && (retryTimeouts || !isTimeoutError(error))) {
         await wait(getBackoffMs(retriesLeft), callerSignal);
         return executeRequest(url, init, retriesLeft - 1);
       }

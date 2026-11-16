@@ -86,6 +86,51 @@ function LiveBoard({ initial, runtime: live, highlight, onFooter }: {
   );
 }
 
+test("EVTS on a small company's past report day: moves no report in view has leave, and a report out shows its move across it", async () => {
+  resetEarningsCloudCaches();
+  // Yesterday's board, largest first: twenty with options, enough reports to average and both closes in,
+  // then ten small caps with none of the three, the last of them the company asked for.
+  const priced = Array.from({ length: 20 }, (_, index) => ({
+    ...entry(`BIG${index + 10}`, "2026-10-13"), marketCap: (900 - index) * 1e9, dateStatus: "reported" as const, epsActual: 1.2,
+    implied: { move: 0.052, straddle: 5.2, spot: 100, strike: 100, expiry: "2026-10-17", session: "2026-10-12", method: "quote-mid" as const, final: true, at: "2026-10-12T20:00:00Z" },
+    realized: { move: 0.031, baseSession: "2026-10-12", baseClose: 100, afterSession: "2026-10-13", afterClose: 103.1 },
+    averageMove: 0.044, averageReports: 8,
+  }));
+  const small = Array.from({ length: 10 }, (_, index) => ({
+    ...entry(`SM${index + 10}`, "2026-10-13"), timing: null, timingSource: null, marketCap: (90 - index) * 1e6, dateStatus: "reported" as const, epsActual: -0.04,
+  }));
+  calendarRequests.mockImplementation(async (query: EarningsCalendarQuery) => ({
+    asOf: "2026-10-14T15:00:00Z", from: query.from, to: query.to, reports: [...priced, ...small],
+  }));
+  // EVTS SM19 opens on SM19's report day, yesterday's.
+  historyRequests.mockImplementation(async (symbol) => ({
+    asOf: "2026-10-14T15:00:00Z", symbol, name: null, reports: [{ ...small.at(-1)!, revenueActual: null }],
+  }));
+  try {
+    const instance = `${PANE}:moves`;
+    const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-evts-moves-tui-test", { paneId: "earnings-calendar", instanceId: instance }));
+    state.focusedPaneId = instance;
+    await act(async () => {
+      await tui.render(<LiveBoard initial={state} runtime={runtime} highlight="SM19" onFooter={() => {}} />, { width: 150, height: 12 });
+    });
+    await tui.waitForFrameToContain("SM19", 40);
+    const smallCaps = await tui.waitForFrameToExclude("IMPLIED", 40);
+    expect(smallCaps).not.toContain("BIG");
+    expect(smallCaps).not.toMatch(/\bMOVE\b/);
+    await act(async () => { await tui.emitKeypress({ name: "home" }); });
+    await tui.waitForFrameToContain("BIG10", 40);
+    const priced = await tui.waitForFrameToContain("IMPLIED", 40);
+    expect(priced).toMatch(/IMPLIED\s+MOVE\s+AVG MOVE/);
+    expect(priced.split("\n").find((line) => line.includes("BIG10"))).toMatch(/±5\.2%\s+\+3\.1%\s+4\.4%/);
+  } finally {
+    calendarRequests.mockImplementation(async (query: EarningsCalendarQuery) => ({
+      asOf: "2026-10-14T15:00:00Z", from: query.from, to: query.to, reports: [entry("JPM", "2026-10-14"), entry("NFLX", "2026-10-15")],
+    }));
+    historyRequests.mockImplementation(async (symbol) => ({ asOf: "2026-10-14T15:00:00Z", symbol, name: null, reports: [] }));
+    resetEarningsCloudCaches();
+  }
+});
+
 test("EVTS 0700.HK: the market board reads the listings abroad, lands on Tencent's row below the US companies, and says its currency", async () => {
   resetEarningsCloudCaches();
   const asked: EarningsCalendarQuery[] = [];

@@ -53,6 +53,21 @@ test("the closing balance history is one filtered request, read oldest first, an
   expect(failed).toMatchObject({ tga: [], tgaError: "Treasury account history request failed (503)" });
 });
 
+test("a source that does not answer fails in the read's deadline, even under a command's own signal", async () => {
+  // As the statement's gateway did: no answer for a minute, then a 503.
+  setHttpFetchTransport((_url, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(init.signal!.reason), { once: true });
+  }));
+  const command = new AbortController();
+  const started = performance.now();
+  await expect(fetchTreasuryDaily(command.signal, { history: false, timeoutMs: 40 })).rejects.toThrow(/^Treasury (?:cash|debt) request timed out after/);
+  expect(performance.now() - started).toBeLessThan(1_000);
+  const cancelled = new AbortController();
+  const read = fetchTreasuryDaily(cancelled.signal, { history: false, timeoutMs: 5_000 });
+  cancelled.abort(new Error("cancelled"));
+  await expect(read).rejects.toThrow("cancelled");
+});
+
 test("a range counts back whole months from the newest close", () => {
   const closes = ["2025-10-22", "2026-04-22", "2026-07-21", "2026-07-22", "2026-10-22"].map((date) => ({ date, millions: 1 }));
   expect(tgaClosesInRange(closes, "3M").map((close) => close.date)).toEqual(["2026-07-22", "2026-10-22"]);

@@ -196,6 +196,35 @@ test("every route answers only the capture's page: its secret folder, named as 1
   }
 });
 
+test("a read the page gives up on through the HTTP bridge ends there too, holding nothing past the page's deadline", async () => {
+  const reading = Promise.withResolvers<AbortSignal>();
+  const bridge: DesktopPaneShotBridge = {
+    async marketData() { return null; },
+    httpFetch: (_request, signal) => new Promise((_resolve, reject) => {
+      // A source that never answers: only the page's abort ends the read.
+      reading.resolve(signal!);
+      signal!.addEventListener("abort", () => reject(signal!.reason), { once: true });
+    }),
+  };
+  const server = serveShotPage(new Map(), "<html></html>", apiProxy, bridge);
+  try {
+    const { origin, host } = new URL(server.url);
+    const page = new AbortController();
+    const asked = fetch(shotRouteUrl(SHOT_HTTP_BRIDGE_PATH, server.url), {
+      method: "POST", signal: page.signal,
+      headers: { "content-type": "application/json", Host: host, Origin: origin },
+      body: JSON.stringify({ url: "https://api.example.com/stalled" }),
+    }).catch((error: unknown) => error);
+    const signal = await reading.promise;
+    page.abort(new DOMException("deadline", "TimeoutError"));
+    expect(await asked).toMatchObject({ name: "TimeoutError" });
+    for (let wait = 0; wait < 50 && !signal.aborted; wait += 1) await Bun.sleep(10);
+    expect(signal.aborted).toBe(true);
+  } finally {
+    server.stop();
+  }
+});
+
 test("the API proxy sends the reads panes make and refuses anything that acts on the account", async () => {
   const server = serveShotPage(new Map(), "<html></html>", apiProxy, null);
   try {

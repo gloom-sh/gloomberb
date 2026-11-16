@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Quote } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
-import { adrPairComparison, adrPairFigures, adrPairInputRows, adrPairLegs } from "./model";
+import { adrPairComparison, adrPairFigures, adrPairInputRows, adrPairLegs, adrPairQuotes } from "./model";
 
 const GSK = { receipt: "GSK", ratio: 2, ordinary: ["GSK.L"] };
 
@@ -24,6 +24,23 @@ test("a home line finds itself among the pair's lines however its listing is key
   const bhp = { receipt: "BHP", ratio: 2, ordinary: ["BHP.AX", "BHP.L"] };
   expect(adrPairLegs(records(false, bhp), saved("BHP", "LSE"), "BHP")?.homeKey).toBe("BHP.L");
   expect(adrPairLegs({ quote: {} as Quote }, null, "AAPL")).toBeNull();
+});
+
+test("a listing whose own quote read came back empty compares at the price its pane already shows", () => {
+  const toyota = { receipt: "TM", ratio: 10, ordinary: ["7203.T"] };
+  const quote = (fields: Partial<Quote>) => ({ symbol: "X", change: 0, changePercent: 0, lastUpdated: Date.UTC(2026, 10, 16, 0, 5), marketState: "REGULAR", ...fields }) as Quote;
+  const tm = quote({ price: 212.43, currency: "USD", marketState: "CLOSED" });
+  const shown = quote({ price: 3454, currency: "JPY" });
+  // 7203:JPX's DES: its read of 7203:JPX failed, TM's answered.
+  const home = adrPairLegs(records(false, toyota), saved("7203", "JPX"), "7203:JPX")!;
+  const quotes = adrPairQuotes(home, { own: null, other: tm }, shown);
+  expect(quotes).toEqual({ receipt: tm, home: shown });
+  expect(adrPairComparison(home, quotes, null)?.impliedFx).toBeCloseTo(162.59, 2);
+  // A read that answered is used over the pane's; the other line is never stood in for.
+  const read = quote({ price: 3460, currency: "JPY" });
+  expect(adrPairQuotes(home, { own: read, other: null }, shown)).toEqual({ receipt: null, home: read });
+  const receipt = adrPairLegs(records(true, toyota), null, "TM")!;
+  expect(adrPairQuotes(receipt, { own: undefined, other: shown }, tm)).toEqual({ receipt: tm, home: shown });
 });
 
 test("both legs' prices keep their instrument's decimals, as the quote monitor writes them", () => {

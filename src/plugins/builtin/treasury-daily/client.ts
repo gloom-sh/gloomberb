@@ -1,3 +1,4 @@
+import { signalWithTimeout } from "../../../utils/async-deadline";
 import { httpFetch } from "../../../utils/http-transport";
 import { numericOrNull, scalarTextOrNull } from "../../../utils/guards";
 import { cashLineLabel, type CashAccount, type DebtDay, type OperatingCash, type TgaClose } from "./model";
@@ -100,13 +101,21 @@ function parseDebtToPenny(payload: unknown): DebtDay[] {
     .slice(0, DEBT_DAYS);
 }
 
-async function readJson(url: string, label: string, signal?: AbortSignal): Promise<unknown> {
-  const response = await httpFetch(url, {
-    headers: { Accept: "application/json" },
-    signal: signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`${label} request failed (${response.status})`);
-  return response.json() as Promise<unknown>;
+/**
+ * One statement read, bounded whoever asks: a caller's signal (a command's)
+ * ends it sooner, never later, so a source that does not answer is an error
+ * in seconds rather than whenever its gateway gives up.
+ */
+async function readJson(url: string, label: string, signal: AbortSignal | undefined, timeoutMs: number): Promise<unknown> {
+  const deadline = signalWithTimeout(signal, timeoutMs);
+  try {
+    const response = await httpFetch(url, { headers: { Accept: "application/json" }, signal: deadline });
+    if (!response.ok) throw new Error(`${label} request failed (${response.status})`);
+    return await response.json() as unknown;
+  } catch (error) {
+    if (deadline.aborted && !signal?.aborted) throw new Error(`${label} request timed out after ${Math.round(timeoutMs / 1000)} s`);
+    throw error;
+  }
 }
 
 /**
@@ -114,11 +123,14 @@ async function readJson(url: string, label: string, signal?: AbortSignal): Promi
  * closing balance history unless `history` is off (a report that does not draw it).
  * A history that cannot be read leaves the figures as they are.
  */
-export async function fetchTreasuryDaily(signal?: AbortSignal, { history = true }: { history?: boolean } = {}): Promise<TreasuryDaily> {
+export async function fetchTreasuryDaily(
+  signal?: AbortSignal,
+  { history = true, timeoutMs = FETCH_TIMEOUT_MS }: { history?: boolean; timeoutMs?: number } = {},
+): Promise<TreasuryDaily> {
   const [cash, debt, tga] = await Promise.all([
-    readJson(CASH_URL, "Treasury cash", signal),
-    readJson(DEBT_URL, "Treasury debt", signal),
-    history ? readJson(TGA_HISTORY_URL, "Treasury account history", signal).then(parseTgaHistory).then(
+    readJson(CASH_URL, "Treasury cash", signal, timeoutMs),
+    readJson(DEBT_URL, "Treasury debt", signal, timeoutMs),
+    history ? readJson(TGA_HISTORY_URL, "Treasury account history", signal, timeoutMs).then(parseTgaHistory).then(
       (closes) => ({ closes }),
       (error: unknown) => ({ closes: [] as TgaClose[], error: error instanceof Error ? error.message : String(error) }),
     ) : { closes: [] as TgaClose[] },

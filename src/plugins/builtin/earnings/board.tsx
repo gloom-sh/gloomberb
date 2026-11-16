@@ -41,7 +41,7 @@ import {
   newYorkToday,
   ownershipBySymbol,
   relativeDays,
-  reportMove,
+  boardMove,
   type BoardReport,
   type BoardRow,
   type BoardSort,
@@ -302,7 +302,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
       logos,
       move: (report) => {
         const state = quotesRef.current.get(report.symbol);
-        const move = reportMove(report, state?.quote, today);
+        const move = boardMove(report, state?.quote, today);
         return move == null && report.dateStatus === "reported" && report.date === today && isBoardRowLoading(state) ? "loading" : move;
       },
     };
