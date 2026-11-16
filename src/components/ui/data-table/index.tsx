@@ -43,7 +43,9 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   };
   const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange | null>(null);
   const onVisibleRangeChange = useCallback((range: DataTableVisibleRange) => {
-    setVisibleRange((previous) => previous && sameVisibleRange(previous, range) ? previous : range);
+    // A viewport not laid out yet reports no rows: it would hide every in-view
+    // column for a frame, so the columns wait for a range with rows in it.
+    if (range.end > range.start) setVisibleRange((previous) => previous && sameVisibleRange(previous, range) ? previous : range);
     ownProps.onVisibleRangeChange?.(range);
   }, [ownProps.onVisibleRangeChange]);
   const displayColumns = useMemo(() => dataTableDisplayColumns(props, visibleRange),

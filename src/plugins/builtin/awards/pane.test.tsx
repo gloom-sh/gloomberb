@@ -65,13 +65,16 @@ test("a mixed-source feed hides the obligation and ceiling its newest notices la
   const prime = awardRow({ id: "prime", recipient: { name: "Prime contractor" }, awardDate: "2026-11-12", awardAmount: null, obligatedAmount: "112.52", ceilingAmount: "150" });
   setCloudApiFetchTransport(async () => Response.json(awardsPayload({ rows: [...notices, prime] })));
   await mount("feed", 240, 26);
-  await tui.waitForFrameToContain("Notice supplier 0");
-  await tui.renderFrames(4);
-  const top = tui.frame();
+  await tui.waitForFrameToContain("Notice supplier 0", 40);
+  // The table opens on every loaded row, then measures the rows in view.
+  const top = await tui.waitForFrameToExclude("OBLIGATED", 40);
+  expect(top).toContain("Notice supplier 0");
   expect(top).toContain("VALUE");
-  expect(top).not.toMatch(/OBLIGATED|CEILING/);
+  expect(top).not.toContain("CEILING");
   await act(async () => { await tui.emitKeypress({ name: "end" }); });
-  const bottom = await tui.waitForFrameToContain("Prime contractor");
+  await tui.waitForFrameToContain("Prime contractor", 40);
+  // Scrolling measures the new rows in view after the frame that drew them.
+  const bottom = await tui.waitForFrameToContain("OBLIGATED", 40);
   expect(bottom).toMatch(/VALUE\s+OBLIGATED\s+CEILING/);
   expect(bottom.split("\n").find((line) => line.includes("Prime contractor"))).toMatch(new RegExp(`USD\\s+${MISSING_VALUE}\\s+112\\.52\\s+150`));
   await exportPaneTable("awards:test", "awards.csv");
