@@ -329,3 +329,13 @@ test("a numbered listing reads by its company's name, a ticker that is a word by
   // SGX files CapitaLand Integrated Commercial Trust as "CapLand IntCom T": its code is no word, so its listing's name reads.
   expect(focusCompanyName("CapLand IntCom T", "C38U:SGX", "CapitaLand Integrated Commercial Trust")).toBe("CapitaLand Integrated Commercial Trust");
 });
+
+test("a segment-tagged share reads as its filing says: of total revenue from the segment, of the segment's own, or as a tag while unread", () => {
+  // NVDA's 10-Q: one direct customer was 16% of total revenue, primarily attributable to Compute & Networking.
+  const tags = "BusinessSegments=ComputeAndNetworking;ConcentrationRiskByBenchmark=SalesRevenueNet;ConcentrationRiskByType=CustomerConcentrationRisk;MajorCustomers=RevenueCustomer1;";
+  const nvda = (pctScopeBasis?: "total" | "segment") => supplyRow("c1", { sourceKind: "xbrl", pctOfRevenue: 16, pctScope: "Compute And Networking", quote: tags, ...pctScopeBasis ? { pctScopeBasis } : {} });
+  expect(shareParts(nvda("total"), "FOCUS")?.forms).toEqual(["of total revenue, from Compute & Networking", "of total revenue", "revenue"]);
+  expect(shareParts(nvda("segment"), "FOCUS")?.basis).toBe("of Compute & Networking revenue");
+  // Never "of revenue (Compute & Networking)", which reads as the segment's own.
+  expect(shareParts(nvda(), "FOCUS")?.basis).toBe("of revenue, tagged Compute & Networking");
+});

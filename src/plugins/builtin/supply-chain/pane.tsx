@@ -11,7 +11,7 @@ import {
 import { staticSeries } from "../../../components/chart/static/series";
 import { ClippedText } from "../../../components/ui/display";
 import { RatioBar } from "../../../components/ui/ratio-bar";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { fitTableCellText, getTableWidth } from "../../../components/ui/table-layout";
 import { chromeBarRows } from "../../../components/layout/pane/sizing";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
@@ -31,14 +31,17 @@ import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
 import { entityTicker } from "./graph-model";
 import {
-  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, fitShareBasis, focusCompanyLabel, focusCompanyName, receivablesConcentration, lockedDisclosures, nativeValue, percentage, relationshipLabel, ROLE_COLORS, roleLabel,
+  cellText, counterpartyKind, disclosureText, isTaggedFact, counterpartyKindLabel, counterpartyLabel, counterpartyLabelEnd, counterpartyName, disclosedValue, earlierRows, fitShareBasis, focusCompanyLabel, focusCompanyName, receivablesConcentration, lockedDisclosures, nativeValue, percentage, relationshipLabel, ROLE_COLORS, roleLabel,
   periodDate, shareParts, sortRows, supplyEmptyText, supplyPreviewNote, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
-import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, TIER_OPTIONS } from "./trust";
+import { DisclosureQuote } from "./disclosure-quote";
+import { canShowQuote, evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, TIER_OPTIONS } from "./trust";
 import { logFailure } from "../../../utils/log-failure";
 
 type Item = { kind: "edge"; row: SupplyRow } | { kind: "locked"; id: string };
+/** A name cut to `cells` that keeps `end` whole, as a table cell's `keepEnd` does: "Undisclosed cu… A". */
+const keepingEnd = (text: string, cells: number, end: string | null) => fitTableCellText(text, cells, "left", end ?? undefined).trimEnd();
 const itemId = (item: Item) => item.kind === "edge" ? item.row.id : item.id;
 const rowId = (row: SupplyRow) => row.id;
 const formatShare = (value: number) => `${Number(value.toFixed(2))}%`;
@@ -175,6 +178,26 @@ function ShareCell({ row, focusId, width, layout, selected }: { row: SupplyRow; 
   </Box>;
 }
 
+/** Rows a table must leave free before the selected relationship's own words take them: a heading and a few lines of quote. */
+const DISCLOSURE_BAND_MIN_ROWS = 8;
+
+/**
+ * The selected relationship's own words, in the rows a short table leaves
+ * free, as a chart takes a short table's spare rows: the quote the row rests
+ * on, or a tagged fact read out. Who said it and when are the row's own
+ * columns; `e` opens the whole evidence.
+ */
+function SelectedDisclosure({ row, width, height }: { row: SupplyRow; width: number; height: number }) {
+  const desktop = !!useUiCapabilities().nativePaneChrome;
+  const item = row.evidence?.find((entry) => entry.status === "active" && canShowQuote(entry) && entry.quote);
+  const tagged = !item && isTaggedFact(row);
+  return <Box flexDirection="column" width={width} height={height} flexShrink={1} minHeight={0} overflow="hidden" paddingX={desktop ? 0 : 1}
+    data-gloom-role="supply-selected-disclosure">
+    <DisclosureQuote role={row.role} quote={item?.quote ?? disclosureText(row)} quoteLanguage={item?.quoteLanguage ?? row.quoteLanguage}
+      width={Math.max(1, width - (desktop ? 0 : 2))} label={tagged ? "Tagged in the filing" : undefined} />
+  </Box>;
+}
+
 export function SupplyChainPane({ width, height, focused }: PaneProps) {
   const { symbol, ticker } = usePaneTickerIdentity();
   return <SupplyView key={symbol ?? "empty"} symbol={symbol} listingName={ticker?.metadata.name ?? null} width={width} height={height} focused={focused} />;
@@ -198,9 +221,12 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const initialTiers = useMemo(() => supplyOptions(openingTab === "graph" || openingTab === "path" ? undefined : openingTiers).tiers, [openingTiers, openingTab]);
   const [savedTiers, setTiers] = usePluginPaneState<SupplyTierFilter[]>("supply:tiers", initialTiers);
   const options = useMemo(() => supplyOptions(savedTiers), [savedTiers]);
-  const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadSupplyChain(symbol!, accessKey, force, options), [symbol, accessKey, snapshot, options]);
+  // `--as-of`: the disclosures known by that day, read by the server and never shown past it.
+  const [asOfSetting] = usePaneSettingValue<string>("asOf", "");
+  const read = useMemo(() => ({ ...options, ...asOfSetting ? { asOf: asOfSetting } : {} }), [options, asOfSetting]);
+  const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadSupplyChain(symbol!, accessKey, force, read), [symbol, accessKey, snapshot, read]);
   const resource = useAsyncResource(symbol && !graphTab ? loader : null, {
-    initialData: () => symbol ? cachedSupplyChain(symbol, accessKey, options) : null, clearOnError: isAccessDenied,
+    initialData: () => symbol ? cachedSupplyChain(symbol, accessKey, read) : null, clearOnError: isAccessDenied,
   });
   const data = resource.data?.payload ?? null;
   const [openingView] = usePaneSettingValue("view", "says");
@@ -253,8 +279,10 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
     ] : []),
     ...(data?.truncated ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade }] : []),
   ];
+  // Dated by the newest disclosure the reader can see, as its Published column says, never by the latest period one covers.
+  const published = useMemo(() => allRows.map(evidenceDate).sort().at(-1) ?? null, [allRows]);
   usePaneStatusFooter({ registrationId: "supply-chain", enabled: !graphTab, loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale,
-    info: data?.asOf ? [{ id: "as-of", parts: [{ text: `as of ${data.asOf}`, tone: "muted" as const }] }] : [], hints });
+    info: published ? [{ id: "as-of", parts: [{ text: asOfSetting ? `known by ${asOfSetting}` : `as of ${published}`, tone: "muted" as const }] }] : [], hints });
   usePaneNoticeFooter({ registrationId: "supply-chain:notices", focused, enabled: !graphTab, notices: [
     ...(resource.data?.refreshError ? [resource.data.refreshError] : []),
     ...(savedTab === "flow" && tooSmall ? ["Flow needs a wider pane. Showing the table."] : []),
@@ -308,7 +336,9 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
         const room = Math.max(8, column.width - (kind ? displayWidth(kind) + 4 : 0) - (ticker ? displayWidth(ticker) + 1 : 0));
         // On the desktop the name gives way at the column's edge by CSS and the ticker and kind keep their room.
         return { text: cellText(row, "name"), content: <Box flexDirection="row" height={1} gap={ticker ? 1 : 2} overflow="hidden" {...(desktop ? { flexShrink: 1, minWidth: 0 } : {})}>
-          <ClippedText fg={ink ?? (company ? colors.textBright : colors.textDim)} text={counterpartyLabel(row)} width={room} />
+          {/* A name cut short keeps the letter or number that tells two undisclosed customers apart ("Cu… 1"). */}
+          <ClippedText fg={ink ?? (company ? colors.textBright : colors.textDim)} text={counterpartyLabel(row)} width={room}
+            cut={(text, cells) => keepingEnd(text, cells, counterpartyLabelEnd(row))} />
           {ticker ? <Text fg={ink ?? colors.textDim} style={desktop ? { flex: "0 0 auto" } : undefined}>{ticker}</Text> : null}
           {kind ? desktop ? <Badge label={kind} /> : <Text fg={ink ?? colors.textMuted}>{kind}</Text> : null}
         </Box> };
@@ -347,6 +377,11 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const header = concentrationChart
     ? <ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} figures={figures} chart={concentrationChart} query={query} />
     : <Box flexDirection="column" flexShrink={0}>{query}<StatGrid items={figures} width={width} /></Box>;
+  // The rows the table leaves free under its last row: the query bar, the figures, the column header and the rows,
+  // and a scrollbar row a wide table may draw.
+  const spareRows = bodyHeight - 1 - statGridRows(figures, width) - 1 - items.length - 1;
+  const disclosureBand = tab === "table" && !concentrationChart && !openRow && selected && spareRows >= DISCLOSURE_BAND_MIN_ROWS
+    ? <SelectedDisclosure row={selected} width={width} height={spareRows} /> : null;
   const flowFigureColumns = Math.min(Math.max(1, figures.length), Math.max(1, Math.floor(width / 24)));
   // A short flow keeps one row of figures, dropping the last roles, so the cards keep their room.
   const flowFigures = bodyHeight < 26 ? figures.slice(0, flowFigureColumns) : figures;
@@ -368,6 +403,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
           {data.truncated ? <Box paddingX={1}><UpgradeLabel text="Upgrade to see every relationship" onPress={openUpgrade} role="supply-upgrade" /></Box> : null}
         </Box> : <DataTableView<SectionedRow<Item>> columns={columns}
           items={items} focused={focused && !openRow} rootWidth={width} rootHeight={bodyHeight} rootBefore={header}
+          {...disclosureBand ? { rootAfter: disclosureBand, fitRows: true, virtualize: false } : {}}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (entry) => entry.key, onChange: (id) => setSelected(id) }} getItemKey={(entry) => entry.key}
           isNavigable={isSectionedItemRow}
           // The placeholders stand for every locked disclosure; the header says what free shows and counts those, as the figures do.

@@ -3,6 +3,8 @@ export type SupplyTier = 1 | 2 | 3 | 4 | 5 | 6;
 export type SupplyTierFilter = "sec" | "company" | "call" | "reported" | "unconfirmed";
 type SupplyClaim = "disclosed" | "company_confirmed" | "reported" | "rumored";
 export interface SupplyOptions { tiers?: SupplyTierFilter[]; includeLeads?: boolean; }
+/** A read of the disclosures: the trust filters, and the day they were known by (YYYY-MM-DD), when one is asked for. */
+export type SupplyRead = SupplyOptions & { asOf?: string };
 export interface SupplyEvidenceItem {
   id: string;
   tier: SupplyTier;
@@ -47,6 +49,13 @@ export interface SupplyRow {
   direction: "in" | "out" | "mutual";
   pctOfRevenue: number | null;
   pctScope: string | null;
+  /**
+   * For a share tagged with a business segment, what the filing's sentence
+   * makes it a share of: "total" for the whole company's revenue the segment
+   * earns (NVDA's 16% of total revenue, from Compute & Networking), "segment"
+   * for the segment's own. Absent while unread, and from older servers.
+   */
+  pctScopeBasis?: "total" | "segment";
   pctBasis: "revenue" | "receivables" | "cost" | "purchases" | null;
   usd: number | null;
   usdBasis: "disclosed" | "derived" | null;

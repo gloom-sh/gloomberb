@@ -9,7 +9,7 @@ import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power
 import type { PerpBoardPayload, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery,
   PerpMarketPayload, PerpLiquidationsPayload, PerpDepthPayload } from "./perps";
 import type { ExposureRequest, ExposurePayload, ExposureScenario } from "./exposure";
-import type { SupplyChainPayload, SupplyOptions } from "./supply-chain";
+import type { SupplyChainPayload, SupplyOptions, SupplyRead } from "./supply-chain";
 import { createReadCoalescer } from "./coalesce";
 import { supplyGraphQuery, type GraphOptions, type GraphPayload } from "./supply-chain-graph";
 import type { AwardDetailPayload, AwardFilter, AwardsPayload } from "./awards";
@@ -1050,10 +1050,11 @@ export class CloudDataApi {
     return this.request<{ scenarios: ExposureScenario[] }>("/cloud/exposure/scenarios");
   }
 
-  async getCloudSupplyChain(symbol: string, options: SupplyOptions = {}): Promise<SupplyChainPayload> {
+  async getCloudSupplyChain(symbol: string, options: SupplyRead = {}): Promise<SupplyChainPayload> {
     const query = new URLSearchParams();
     if (options.tiers?.length) query.set("tiers", options.tiers.join(","));
     if (options.includeLeads) query.set("includeLeads", "1");
+    if (options.asOf) query.set("asOf", options.asOf);
     return this.request<SupplyChainPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}${query.size ? `?${query}` : ""}`);
   }
 
