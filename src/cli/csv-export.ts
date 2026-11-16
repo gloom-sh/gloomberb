@@ -65,9 +65,9 @@ export function portableCsv(text: string, warnings: readonly string[] = [], extr
     return table.rows.map((row) => [...indices.map((index) => index < 0 ? "" : row[index] ?? ""), ...tagged ? [table.section] : [], notes]);
   });
   if (!rows.length && notes) rows.push([...header.slice(0, -1).map(() => ""), notes]);
-  const singleLine = [header, ...rows].map((row) => row.map((cell) => cell.replace(/\r\n?|\n/g, "\\n")));
+  const records = [header, ...rows];
   const normalized = decimal === "comma"
-    ? singleLine.map((row) => row.map((cell) => /^[+-]?(?:\d+(?:,\d+)?|,\d+)(?:e[+-]?\d+)?%?$/i.test(cell) ? cell.replace(",", ".") : cell))
-    : singleLine;
+    ? records.map((row) => row.map((cell) => /^[+-]?(?:\d+(?:,\d+)?|,\d+)(?:e[+-]?\d+)?%?$/i.test(cell) ? cell.replace(",", ".") : cell))
+    : records;
   return serializeCsv(normalized);
 }

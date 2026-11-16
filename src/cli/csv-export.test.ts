@@ -7,22 +7,22 @@ import { printCliResult, takeCliFileExport } from "./result";
 
 afterEach(() => setCsvDecimal("dot"));
 
-test("one rectangular CSV preserves columns and heterogeneous sections while escaping data line breaks", () => {
+test("one rectangular CSV preserves columns, heterogeneous sections and quoted data line breaks", () => {
   const csv = portableCsv('# section: Trades\nTime,Price\n10:00,100\n\n# section: Details\nMetric,Value\nNote,"line one\n\nline two, with ""quotes"""\n\n# note: Listing the first 100 of 123 trades.');
   expect(csv.split("\n")[0]).toBe("Time,Price,Metric,Value,section,export_notes");
   expect(csv).toContain('10:00,100,,,Trades,note: Listing the first 100 of 123 trades.');
-  expect(csv).toContain(',,Note,"line one\\n\\nline two, with ""quotes""",Details,');
-  expect(csv.split("\n")).toHaveLength(3);
+  expect(csv).toContain(',,Note,"line one\n\nline two, with ""quotes""",Details,');
   expect(csv).not.toContain("# section:");
 });
 
 test("file and pipe exports retain caveats and warnings, even when quiet suppresses stderr", async () => {
-  const result = { data: [{ symbol: "AAPL", value: 100 }], warnings: ["Free shows 3 of 64 disclosures."] };
+  const result = { data: [{ symbol: "AAPL", value: 100, note: "first line\r\nsecond line" }], warnings: ["Free shows 3 of 64 disclosures."] };
   const render = { exportNotes: ["Regular session only.", "Window: 10:00 to 11:00 New York."] };
   const piped = await captureConsole(() => printCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv", quiet: true }, render));
   await captureConsole(() => printCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv", quiet: true, output: "report.csv" }, render));
   expect(takeCliFileExport()).toBe(piped.stdout);
-  expect(piped.stdout.split("\n")[0]).toBe("symbol,value,export_notes");
+  expect(piped.stdout.split("\n")[0]).toBe("symbol,value,note,export_notes");
+  expect(piped.stdout).toContain('"first line\r\nsecond line"');
   expect(piped.stdout).toContain("Regular session only.");
   expect(piped.stdout).toContain("Free shows 3 of 64 disclosures.");
   expect(piped.stdout).toContain("Window: 10:00 to 11:00 New York.");
@@ -31,7 +31,7 @@ test("file and pipe exports retain caveats and warnings, even when quiet suppres
 
 test("a quoted cell ending in a note-like line is data, not an export footer", () => {
   const csv = portableCsv('Value\n"line one\n\n# note: still data"');
-  expect(csv).toBe('Value,export_notes\nline one\\n\\n# note: still data,');
+  expect(csv).toBe('Value,export_notes\n"line one\n\n# note: still data",');
 });
 
 test("a data cell resembling a section marker stays attached to its row", () => {
@@ -46,7 +46,7 @@ test("decimal-comma exports retain their cells, precision and caveats through th
   );
 });
 
-test("source details and multiline caveats leave one physical line per CSV record", () => {
+test("source details and multiline caveats are joined inside each export-notes cell", () => {
   const csv = portableCsv("Time,Price\n10:00,100\n10:01,101\n\n# Source: session prices\n# note: Regular session only.", ["First 100 of 123 trades.\r\nWindow: last session."], ["Free shows 3 of 64.\nPreview only."]);
   const lines = csv.split("\n");
   expect(lines).toHaveLength(3);
@@ -56,6 +56,13 @@ test("source details and multiline caveats leave one physical line per CSV recor
     expect(line).toContain("warning: First 100 of 123 trades. | Window: last session.");
     expect(line).not.toContain("\r");
   }
+});
+
+test.each(["dot", "comma"] as const)("%s exports preserve data newlines and literal escapes while normalizing headers", (decimal) => {
+  setCsvDecimal(decimal);
+  const data = ['line one\r\nline two\nline three\rline four\\n', 'news, with "quotes"'];
+  const csv = portableCsv(serializeCsv([["Headline\r\nText", "Notes"], data]));
+  expect(csv).toBe(serializeCsv([["Headline\\nText", "Notes", "export_notes"], [...data, ""]]));
 });
 
 test("duplicate headers keep every cell without colliding with named suffixes or export metadata", () => {
