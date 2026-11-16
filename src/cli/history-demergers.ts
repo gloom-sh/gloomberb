@@ -102,15 +102,15 @@ export function historyDemergerNote(
 }
 
 /**
- * The rows split at each demerger: a drawdown is measured within one, never
- * from a close that held the business to one that did not.
+ * The rows split before each bar flagged `demerger`: a drawdown is measured
+ * within one run, never from a close that held the business to one that did
+ * not. Split by the bar's own flag, not its date: a weekly or monthly close
+ * is dated by its last session, not by the date its bar carries.
  */
-export function demergerRuns<Row extends { date: string }>(rows: readonly Row[], breaks: ReadonlyArray<{ date: string }>): Row[][] {
-  if (breaks.length === 0) return [[...rows]];
+export function demergerRuns<Row extends { flag?: string | null }>(rows: readonly Row[]): Row[][] {
   const runs: Row[][] = [[]];
-  const starts = new Set(breaks.map((entry) => entry.date.slice(0, 10)));
   for (const row of rows) {
-    if (starts.has(row.date.slice(0, 10)) && runs.at(-1)!.length > 0) runs.push([]);
+    if ((row.flag ?? "").split(",").includes(DEMERGER_FLAG) && runs.at(-1)!.length > 0) runs.push([]);
     runs.at(-1)!.push(row);
   }
   return runs;

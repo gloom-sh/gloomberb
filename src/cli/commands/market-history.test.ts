@@ -1333,3 +1333,34 @@ test("a share's fall on a demerger's ex-date is flagged, said, and no drawdown i
   expect((none.result.data as Array<{ flag: string | null }>).every((row) => row.flag == null)).toBe(true);
   expect(actionsRead).toBe(2);
 });
+
+test("weekly and monthly bars split their drawdown at the bar a demerger falls in, as daily bars do", async () => {
+  pinClosedSession();
+  const demerger = { exDate: "2025-10-14", recordDate: "2025-10-14", business: "commercial vehicles", ratio: 1,
+    successor: { symbol: "TMCV", exchange: "NSE", name: "Tata Motors Limited", listedOn: "2025-11-12" } };
+  // TMPV's weeks (dated by their Monday) and months: the demerger falls in the week of 13 Oct and in October.
+  const bars: Record<"1wk" | "1mo", Array<[string, number]>> = {
+    "1wk": [["2025-09-29", 690], ["2025-10-06", 678.95], ["2025-10-13", 396.6], ["2025-10-20", 399.75], ["2025-10-27", 390]],
+    "1mo": [["2025-08-01", 700], ["2025-09-01", 681.55], ["2025-10-01", 403.3], ["2025-11-01", 391.2]],
+  };
+  for (const [interval, word, from, to, flagged, depth] of [
+    ["1wk", "weekly", "2025-09-29", "2025-10-31", "2025-10-13", "-2.4%"],
+    ["1mo", "monthly", "2025-08-01", "2025-11-30", "2025-10-01", "-3.0%"],
+  ] as const) {
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-demerger-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "TMPV", currency: "INR", listingExchangeName: "NSE", exchangeName: "NSE", instrumentType: "EQUITY" }),
+        getDetailedPriceHistoryWithMetadata: async () => ({
+          resolution: interval, points: bars[interval].map(([date, close]) => ({ date: new Date(date), open: close, high: close, low: close, close, volume: 1 })),
+        }),
+        getCorporateActions: async () => ({ symbol: "TMPV", dividends: [], splits: [], earnings: [], demergers: [demerger] }),
+      }),
+    });
+    await history.execute(["TMPV:NSE", "--from", from, "--to", to, "--interval", word], cli.context);
+    const { result, options } = cli.printed[0]!;
+    expect((result.data as Array<{ date: string; flag: string | null }>).find((row) => row.flag === "demerger")?.date, word).toBe(flagged);
+    // Never the -42% from a close before the demerger to one after it.
+    expect(String(options?.heading), word).toContain(`Max drawdown ${depth} (${word} closes, not across the 2025-10-14 demerger)`);
+  }
+});

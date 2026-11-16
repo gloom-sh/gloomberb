@@ -2513,10 +2513,11 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const closes = (interval === "1wk" || interval === "1mo"
       ? data.map((row) => ({ ...row, date: barCloseSession(interval, row.date, identity.exchange || undefined, Date.now()) }))
       : data).filter((row) => !row.flag?.split(",").includes(CLOSE_COPIED_FLAG));
-    // Nor from a close that held a business the listing demerged to one that did not (TMPV before 2025-10-14).
-    const demergedOn = history.demergers?.map((entry) => entry.date.slice(0, 10)) ?? [];
+    // Nor from a close that held a business the listing demerged to one that did not (TMPV before 2025-10-14): split
+    // before each bar flagged `demerger`, whatever date its close is given, and named by the demerger's own day.
+    const demergedOn = history.demergers?.map((entry) => entry.action.exDate) ?? [];
     const contractDrawdown = demergedOn.length > 0
-      ? deepestRunDrawdown(demergerRuns(closes, history.demergers!).map((run) => historyContractDrawdown(run, yieldUnits ? "yield" : "return")))
+      ? deepestRunDrawdown(demergerRuns(closes).map((run) => historyContractDrawdown(run, yieldUnits ? "yield" : "return")))
       : historyContractDrawdown(closes, yieldUnits ? "yield" : "return");
     // A window's last week can close after the dates asked for (--to 2003, a week ending Fri 2 Jan 2004): measured to its end.
     const until = ask.window?.to;
