@@ -1358,7 +1358,10 @@ export async function loadForListing<T>(
   const one = request && all.length === 1 ? all[0]! : null;
   const refuseMoved = async (served: boolean) => {
     if (!one || !request) return;
-    const quote = request.fate || !request.quote ? undefined : await request.quote.catch(() => null);
+    const quote = request.fate || !request.quote ? undefined : await request.quote.catch(() => {
+      // Intentional ignore: the quote is the command's own read, which reports its failure; with none, the line reads as unquoted.
+      return null;
+    });
     if (served && !request.fate && (quote === undefined || !lineMayHaveMoved(quote))) return;
     const moved = (await (request.fate ?? commandFate(one, deps, quote))()).moved;
     if (moved) failMovedSymbol(moved, request);

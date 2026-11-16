@@ -3058,7 +3058,10 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       listing.request.symbol, listing.request.exchange, { cacheMode: ctx.cliOptions.refresh ? "refresh" : "default" },
     );
     const loaded = await loadForListing(listing, market, ctx, () => read, undefined,
-      { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName, quote: read.then((found) => found.quote ?? null, () => null) });
+      { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName, quote: read.then((found) => found.quote ?? null, () => {
+        // Intentional ignore: this is the same read loadForListing awaits as the command's load, which reports its failure.
+        return null;
+      }) });
     // A converted TTM block at the rate `fx` reports, as `ticker` shows it; only the US dollar legs are read.
     // A withdrawn EV's bridge converts a balance sheet in another currency at our close on its date (withBalanceSheetRate).
     const financials = view === "statements" ? loaded
