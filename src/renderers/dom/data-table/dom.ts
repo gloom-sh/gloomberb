@@ -10,7 +10,6 @@ import {
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui/host";
 import type { DataTableColumn } from "../../../components/ui/data-table";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH, chromeRowPx } from "../../../theme/font-scale";
-import { SPACE } from "../../../theme/ui-tokens";
 
 export const TABLE_INLINE_PADDING_PX = 8;
 
@@ -21,9 +20,6 @@ export const TABLE_INLINE_PADDING_PX = 8;
  */
 export function tableHeaderPx(): number {
   return chromeRowPx();
-}
-export function tableRowPx(dense: boolean): number {
-  return dense ? SPACE.lg * WEB_CELL_WIDTH / SPACE.sm : WEB_CELL_HEIGHT;
 }
 export const CSS_BG = "var(--gloom-bg)";
 export const CSS_PANEL = "var(--gloom-panel)";
@@ -44,7 +40,7 @@ export function cellTextStyle(
   return {
     color,
     display: "inline-block",
-    lineHeight: "var(--gloom-table-row-h, var(--cell-h))",
+    lineHeight: "var(--cell-h)",
     fontWeight: hasAttribute(attributes, TextAttributes.BOLD) ? 700 : undefined,
     fontStyle: hasAttribute(attributes, TextAttributes.ITALIC) ? "italic" : undefined,
     opacity: hasAttribute(attributes, TextAttributes.DIM) ? 0.65 : undefined,
@@ -80,8 +76,8 @@ export function clippedCellTextStyle(
   };
 }
 
-function toCellY(pixels: number, rowHeight = WEB_CELL_HEIGHT): number {
-  return Math.max(0, Math.round(pixels / rowHeight));
+export function toCellY(pixels: number): number {
+  return Math.max(0, Math.round(pixels / WEB_CELL_HEIGHT));
 }
 
 export function toCellX(pixels: number): number {
@@ -117,20 +113,18 @@ export function useScrollBoxHandle(
   options: {
     headerOnly?: boolean;
     viewportTopInsetPx?: number;
-    rowHeight?: number;
   } = {},
 ) {
-  const rowHeight = options.rowHeight ?? WEB_CELL_HEIGHT;
   useImperativeHandle(ref, () => ({
     get scrollTop() {
       if (options.headerOnly) return 0;
-      return toCellY(elementRef.current?.scrollTop ?? 0, rowHeight);
+      return toCellY(elementRef.current?.scrollTop ?? 0);
     },
     set scrollTop(value: number) {
       if (options.headerOnly) return;
       const element = elementRef.current;
       if (!element) return;
-      element.scrollTop = Math.max(0, value) * rowHeight;
+      element.scrollTop = Math.max(0, value) * WEB_CELL_HEIGHT;
     },
     get scrollLeft() {
       return toCellX(elementRef.current?.scrollLeft ?? 0);
@@ -144,7 +138,7 @@ export function useScrollBoxHandle(
       const element = elementRef.current;
       if (!element) return 0;
       if (options.headerOnly) return 1;
-      return toCellY(Math.max(0, element.scrollHeight - (options.viewportTopInsetPx ?? 0)), rowHeight);
+      return toCellY(Math.max(0, element.scrollHeight - (options.viewportTopInsetPx ?? 0)));
     },
     get scrollWidth() {
       return toCellX(elementRef.current?.scrollWidth ?? 0);
@@ -179,7 +173,7 @@ export function useScrollBoxHandle(
         width: toCellX(element?.clientWidth ?? 0),
         height: Math.max(
           1,
-          toCellY(Math.max(0, (element?.clientHeight ?? 0) - (options.viewportTopInsetPx ?? 0)), rowHeight),
+          toCellY(Math.max(0, (element?.clientHeight ?? 0) - (options.viewportTopInsetPx ?? 0))),
         ),
       };
     },
@@ -214,7 +208,7 @@ export function useScrollBoxHandle(
         return;
       }
       if (typeof target === "number") {
-        element.scrollTop = Math.max(0, target) * rowHeight;
+        element.scrollTop = Math.max(0, target) * WEB_CELL_HEIGHT;
         if (typeof y === "number") {
           element.scrollLeft = Math.max(0, y) * WEB_CELL_WIDTH;
         }
@@ -222,7 +216,7 @@ export function useScrollBoxHandle(
       }
       element.scrollTo({
         left: Math.max(0, target.x ?? toCellX(element.scrollLeft)) * WEB_CELL_WIDTH,
-        top: Math.max(0, target.y ?? toCellY(element.scrollTop, rowHeight)) * rowHeight,
+        top: Math.max(0, target.y ?? toCellY(element.scrollTop)) * WEB_CELL_HEIGHT,
       });
     },
   }), [
@@ -231,7 +225,6 @@ export function useScrollBoxHandle(
     options.headerOnly,
     options.viewportTopInsetPx,
     ref,
-    rowHeight,
     verticalScrollBar,
   ]);
 }

@@ -11,7 +11,7 @@ import type {
 import { tableColumnLeadGap } from "../../../components/ui/table-layout";
 import { WebIcon } from "../desktop/icons";
 import { useFrozenColumnInsets } from "./frozen-column";
-import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { selectedRowCellColor } from "../../../theme/tone-contrast";
 import { useThemeColors } from "../../../theme/theme-context";
 import {
@@ -271,8 +271,7 @@ function WebDataTableRowInner<
   const colors = useThemeColors();
   const sectionHeader: DataTableSectionHeader | null =
     renderSectionHeader?.(item, index) ?? null;
-  const baseRowStyle: CSSProperties & Record<"--gloom-table-row-h", string> = {
-    "--gloom-table-row-h": `${rowSize}px`,
+  const baseRowStyle: CSSProperties = {
     position: "absolute",
     top: 0,
     left: 0,
@@ -419,7 +418,7 @@ function WebDataTableRowInner<
               marginLeft: leadGapCss(columns, columnIndex, columnGap),
               paddingLeft: columnIndex > 0 ? insets[columnIndex] : undefined,
               boxSizing: "border-box",
-              height: rowSize,
+              height: WEB_CELL_HEIGHT,
               overflow: "hidden",
               cursor: cell.onMouseDown ? "pointer" : undefined,
               backgroundColor: cell.backgroundColor ?? rowBg,

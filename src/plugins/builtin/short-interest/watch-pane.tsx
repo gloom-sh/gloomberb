@@ -155,7 +155,6 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
         rootWidth={width}
         rootHeight={Math.max(2, height - 1)}
         freezeFirstColumn
-        dense
         getItemKey={rowKey}
         sortColumnId={sort.columnId}
         sortDirection={sort.direction}

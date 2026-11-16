@@ -21,7 +21,7 @@ let setOptions: (patch: Partial<LiveOptions>) => void = () => {};
 
 /** Mount DataTableView on the web DataTable; `setOptions` flips focus or the frozen column afterwards. */
 async function renderDataTableView<T>(
-  props: Pick<DataTableViewProps<T>, "items" | "columns" | "getItemKey" | "renderCell" | "dense"> & { onSelect?: (item: T) => void },
+  props: Pick<DataTableViewProps<T>, "items" | "columns" | "getItemKey" | "renderCell"> & { onSelect?: (item: T) => void },
   initial: Partial<LiveOptions> = {},
 ) {
   const { onSelect, ...tableProps } = props;
@@ -53,34 +53,6 @@ function setScrollExtent(body: HTMLElement, clientCells: number, scrollCells: nu
   Object.defineProperty(body, "clientWidth", { configurable: true, value: clientCells * WEB_CELL_WIDTH });
   Object.defineProperty(body, "scrollWidth", { configurable: true, value: scrollCells * WEB_CELL_WIDTH });
 }
-
-test("dense tables fit sixteen rows and their scroll handles navigate in the same row units", async () => {
-  const { container, body, bodyRef } = await renderDataTableView({
-    dense: true,
-    items: Array.from({ length: 16 }, (_, index) => `NAME${index}`),
-    columns: [{ id: "symbol", label: "Symbol", width: 8 }],
-    getItemKey: (row) => row,
-    renderCell: (row) => ({ text: row }),
-  });
-  const rows = Array.from(container.querySelectorAll<HTMLElement>('[data-gloom-role="data-table-row"]'));
-  const last = rows.at(-1)!;
-  const rowHeight = Number.parseFloat(last.style.height);
-  const lastTop = Number.parseFloat(last.style.transform.match(/translateY\((.+)px\)/)![1]!);
-  const header = container.querySelector<HTMLElement>('[data-gloom-role="data-table-header-row"]')!;
-  const headerHeight = Number.parseFloat(header.style.height);
-  expect(lastTop + rowHeight).toBeLessThanOrEqual(280);
-  expect(lastTop + rowHeight).toBe(headerHeight + 16 * rowHeight);
-  expect(last.children[0]!.getAttribute("style")).toContain(`height: ${rowHeight}px`);
-  Object.defineProperty(body, "clientHeight", { configurable: true, value: headerHeight + 16 * rowHeight });
-  Object.defineProperty(body, "scrollHeight", { configurable: true, value: headerHeight + 32 * rowHeight });
-  expect(bodyRef.current!.viewport.height).toBe(16);
-  expect(bodyRef.current!.scrollHeight).toBe(32);
-  bodyRef.current!.scrollTop = 3;
-  expect(body.scrollTop).toBe(3 * rowHeight);
-  bodyRef.current!.scrollTo({ y: 5 });
-  expect(body.scrollTop).toBe(5 * rowHeight);
-  expect(bodyRef.current!.scrollTop).toBe(5);
-});
 
 test("DOM table handles expose horizontal extent to shared keyboard navigation", async () => {
   const { container, body, bodyRef, headerRef } = await renderDataTableView({

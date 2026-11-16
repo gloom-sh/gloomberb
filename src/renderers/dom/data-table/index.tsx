@@ -38,8 +38,8 @@ import {
   CSS_PANEL,
   CSS_TEXT_DIM,
   tableHeaderPx,
-  tableRowPx,
   toCellX,
+  toCellY,
   useScrollBoxHandle,
   useScrollbarState,
 } from "./dom";
@@ -114,7 +114,6 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   emptyStateActions,
   virtualize = true,
   fitRows = false,
-  dense = false,
   overscan = 3,
   columnGap = 1,
   horizontalPadding = 1,
@@ -125,7 +124,6 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
 }: DataTableProps<T, C>) {
-  const rowHeight = tableRowPx(dense);
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const focusPane = useFocusOwningPane();
   const bodyElementRef = useRef<HTMLDivElement | null>(null);
@@ -169,11 +167,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     const element = bodyElementRef.current;
     if (!element) return;
     reportVisibleRange({
-      rowSize: rowHeight,
+      rowSize: WEB_CELL_HEIGHT,
       scrollOffset: element.scrollTop,
       viewportSize: Math.max(0, element.clientHeight - tableHeaderPx()),
     });
-  }, [reportVisibleRange, rowHeight]);
+  }, [reportVisibleRange]);
   const handleBodyScrollActivity = useCallback(() => {
     onBodyScrollActivity();
     emitVisibleRange();
@@ -191,12 +189,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => bodyElementRef.current,
-    estimateSize: () => rowHeight,
+    estimateSize: () => WEB_CELL_HEIGHT,
     overscan,
     paddingStart: headerPx,
     scrollPaddingStart: headerPx,
   });
-  useLayoutEffect(() => { rowVirtualizer.measure(); }, [rowVirtualizer, rowHeight]);
 
   const allRows = useMemo<VirtualRow[]>(
     () => {
@@ -204,18 +201,18 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
       return Array.from({ length: items.length }, (_, index) => ({
         index,
         key: getItemKey(items[index]!, index),
-        size: rowHeight,
-        start: headerPx + index * rowHeight,
+        size: WEB_CELL_HEIGHT,
+        start: headerPx + index * WEB_CELL_HEIGHT,
       }));
     },
-    [getItemKey, headerPx, items, virtualize, rowHeight],
+    [getItemKey, headerPx, items, virtualize],
   );
   const virtualRows = virtualize
     ? (rowVirtualizer.getVirtualItems() as VirtualRow[])
     : allRows;
   const totalHeight = virtualize
     ? rowVirtualizer.getTotalSize()
-    : headerPx + items.length * rowHeight;
+    : headerPx + items.length * WEB_CELL_HEIGHT;
   const bodyAfterHeight = bodyAfter ? WEB_CELL_HEIGHT * 6 : 0;
   const horizontalScrollEnabled = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, viewportWidth, columnGap);
@@ -297,11 +294,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     const targetIndex = Math.max(0, Math.min(scrollToIndex, items.length - 1));
     const element = bodyElementRef.current;
     if (!element) return;
-    const viewportRows = Math.max(1, Math.floor((element.clientHeight - tableHeaderPx()) / rowHeight));
-    const currentTop = Math.max(0, Math.round(element.scrollTop / rowHeight));
+    const viewportRows = Math.max(1, Math.floor((element.clientHeight - tableHeaderPx()) / WEB_CELL_HEIGHT));
+    const currentTop = toCellY(element.scrollTop);
     const nextTop = resolveDataTableScrollTop(targetIndex, currentTop, viewportRows, items.length, scrollToIndexAlign);
     if (nextTop !== currentTop) {
-      element.scrollTop = nextTop * rowHeight;
+      element.scrollTop = nextTop * WEB_CELL_HEIGHT;
       // A controlled scroll is navigation requested by the app. Reporting it
       // as user activity makes panes such as options stop following the spot
       // price before the user has touched the table. Remember the actual
@@ -318,7 +315,6 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     scrollToIndexVersion,
     scheduleControlledScrollActivity,
     scheduleVisibleRangeMeasure,
-    rowHeight,
   ]);
 
   useScrollBoxHandle(
@@ -333,7 +329,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     bodyElementRef,
     bodyHorizontal.bar,
     bodyVertical.bar,
-    { viewportTopInsetPx: headerPx, rowHeight },
+    { viewportTopInsetPx: headerPx },
   );
   // The terminal table body is a ScrollBox the pane scroll keys already reach;
   // this is the same for the desktop one. A table with a cursor takes the keys

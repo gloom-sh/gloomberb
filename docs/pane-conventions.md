@@ -425,12 +425,6 @@ Reference: Brokers (`broker-manager/pane-actions.tsx`, `table.ts`
 `brokerRowStatus`), Plugins (`plugin-marketplace/pane.tsx` `rowStatus`),
 Orders (`broker-trading/orders.tsx`) and Team (`cloud/team/pane.tsx`).
 
-`DataTableView dense` uses the shared compact body row on the desktop and
-web (16px at the default font scale), without changing type size, header
-height or the terminal's one-cell rows. Its viewport, virtualizer and scroll
-handles all count those same rows. Use it for dense watch tables such as SIW,
-not pane-local row heights.
-
 Table header labels are uppercased by the kit; write them in any case.
 Section headings read in title case, bright and bold: the kit capitalises
 lower-case words, so write acronyms in capitals and never a whole heading in
