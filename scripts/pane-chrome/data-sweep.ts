@@ -126,6 +126,10 @@ const REVIEWED_EMPTY: Record<string, ["no-coverage" | "expected-empty" | "unsupp
   KPIS: ["no-coverage", /^KPIs for \S+ are not yet available\. Try KPIS AAPL\.$/],
   HIRE: ["no-coverage", /^No current role evidence has been captured yet\.$/],
   HILO: ["market-closed", /^Markets closed(?: until [^.]+)?\. New highs and lows resume at the open\.$/],
+  // The default scan's conditions (a move and a volume spike over 5 minutes) only hold in the session.
+  SCAN: ["market-closed", /^Nothing matched at the close\. The scan runs again at the open\.$/],
+  // Collection is on (a disabled one says so) and no hour yet has activity that passes the privacy threshold.
+  "gloom-trending": ["expected-empty", /^Waiting for privacy-qualified research activity\.$/],
   JOBS: ["no-coverage", /^No careers system found for \S+\. Gloom reads companies' own careers systems\. This one either has none we can read or lists roles only on third-party job boards\.$/],
   LITI: ["no-coverage", /^No cases linked to \S+\. US court dockets are not collected yet, so only agency and regulator actions show\.$/],
   MA: ["expected-empty", /^No deals involving \S+\.$/],

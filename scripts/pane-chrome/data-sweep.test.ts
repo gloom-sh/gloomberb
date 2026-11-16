@@ -150,6 +150,8 @@ test("reviewed source empty states remain findings, while mixed faults and unkno
     ["OSA", "Build an options position.", "expected-empty"],
     ["SIW", "No US-listed names in your portfolios or watchlists.", "expected-empty"],
     ["HILO", "Markets closed until Mon 14:30 UTC, 09:30 ET. New highs and lows resume at the open.", "market-closed"],
+    ["SCAN", "Nothing matched at the close. The scan runs again at the open.", "market-closed"],
+    ["gloom-trending", "Waiting for privacy-qualified research activity.", "expected-empty"],
   ] as const;
   const empty = { usable: false, empty: true, rowCount: 0 };
   for (const [token, text, status] of cases) {
