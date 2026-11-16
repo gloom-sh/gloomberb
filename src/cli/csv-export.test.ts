@@ -46,6 +46,22 @@ test("decimal-comma exports retain their cells, precision and caveats through th
   );
 });
 
+test("decimal-comma exports keep numeric-looking identifiers as typed: only values take the comma", async () => {
+  // A spreadsheet would read 0700 as 700, but the export must still write it as the listing's code, and a
+  // CIK, an accession number or a long id as they are; the price beside them is a number.
+  setCsvDecimal("comma");
+  const data = [
+    { symbol: "0700", exchange: "HKEX", cik: "0000320193", accession: "0000320193-26-000001", id: "12345678901234567890", price: 412.6 },
+    { symbol: "7203", exchange: "TSE", cik: "320193", accession: "0001045810-26-000052", id: "000001", price: 2_634.5 },
+  ];
+  const { stdout } = await captureConsole(() => printCliResult({ data }, { ...DEFAULT_CLI_OPTIONS, format: "csv", quiet: true }));
+  expect(stdout.trimEnd().split("\n")).toEqual([
+    "symbol;exchange;cik;accession;id;price;export_notes",
+    "0700;HKEX;0000320193;0000320193-26-000001;12345678901234567890;412,6;",
+    "7203;TSE;320193;0001045810-26-000052;000001;2634,5;",
+  ]);
+});
+
 test("source details and multiline caveats are joined inside each export-notes cell", () => {
   const csv = portableCsv("Time,Price\n10:00,100\n10:01,101\n\n# Source: session prices\n# note: Regular session only.", ["First 100 of 123 trades.\r\nWindow: last session."], ["Free shows 3 of 64.\nPreview only."]);
   const lines = csv.split("\n");
