@@ -318,5 +318,9 @@ test("receivables chart keeps earlier shares beside their basis and their eviden
   }
   await act(async () => { await tui.clickFrameText("Previous buyer"); });
   await tui.emitKeypress({ name: "e" });
-  expect(await tui.waitForFrameToContain("Previous buyer")).toContain("2026-01-31");
+  // The earlier share's evidence opens with its own period, not the current row's 31 Jul 2026.
+  const evidence = await tui.waitForFrameToContain("← Back");
+  expect(evidence).toContain("Previous buyer");
+  expect(evidence).toMatch(/Period\s+as of 31 Jan 2026|Period\s+31 Jan 2026/);
+  expect(evidence).not.toContain("31 Jul 2026");
 });

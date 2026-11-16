@@ -107,7 +107,7 @@ export function validateSupplyChain(data: SupplyChainPayload): SupplyChainPayloa
     ...(data.earlier ? { earlier: { says: data.earlier.says.map(normalizeSupplyRow), names: data.earlier.names.map(normalizeSupplyRow) } } : {}) };
 }
 /** A server that answered a cutoff (`asOf`) with disclosures published after it, which it does not read. */
-export class AsOfUnsupportedError extends Error {
+class AsOfUnsupportedError extends Error {
   constructor(readonly asOf: string) {
     super(`Gloom Cloud does not read --as-of ${asOf} yet: it answered with disclosures published after that day, so none are shown.`);
     this.name = "AsOfUnsupportedError";
@@ -119,7 +119,7 @@ export class AsOfUnsupportedError extends Error {
  * cutoff sends none published after it, and one that answers with any never
  * has them shown as that day's (AsOfUnsupportedError).
  */
-export function knownBy(data: SupplyChainPayload, asOf: string | undefined): SupplyChainPayload {
+function knownBy(data: SupplyChainPayload, asOf: string | undefined): SupplyChainPayload {
   if (!asOf) return data;
   const rows = [...data.says, ...data.names, ...data.earlier?.says ?? [], ...data.earlier?.names ?? []];
   if (rows.some((row) => evidenceDate(row) > asOf)) throw new AsOfUnsupportedError(asOf);
