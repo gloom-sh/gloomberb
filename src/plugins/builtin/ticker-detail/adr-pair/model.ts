@@ -54,6 +54,22 @@ export function adrPairLegs(
   return { pair, receiptSide, receiptKey: pair.receipt, homeKey: home, otherKey: pair.receipt };
 }
 
+/**
+ * Each leg's quote: the other line's from its own read, and the listing's own
+ * from its read or, while that has none (a read that failed), the quote its
+ * pane already shows. The pane heads with that price, so the tab never says
+ * it is unavailable beside it.
+ */
+export function adrPairQuotes(
+  legs: AdrPairLegs,
+  read: { own: Quote | null | undefined; other: Quote | null | undefined },
+  paneQuote: Quote | null | undefined,
+): { receipt: Quote | null; home: Quote | null } {
+  const own = read.own ?? paneQuote ?? null;
+  const other = read.other ?? null;
+  return legs.receiptSide ? { receipt: own, home: other } : { receipt: other, home: own };
+}
+
 /** The comparison from the two quotes and the home currency's USD value (as exchange rates are served). */
 export function adrPairComparison(
   legs: AdrPairLegs,

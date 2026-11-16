@@ -10,7 +10,7 @@ import { heldCurrencyUnit } from "../../../../utils/currency-units";
 import type { TickerResearchTabProps } from "../../../../types/plugin";
 import { Box } from "../../../../ui";
 import { useOpenDescription } from "../../shared/open-description";
-import { adrPairComparison, adrPairFigures, adrPairInputRows, adrPairLegs, type AdrPairInputRow } from "./model";
+import { adrPairComparison, adrPairFigures, adrPairInputRows, adrPairLegs, adrPairQuotes, type AdrPairInputRow } from "./model";
 
 // The price and its time first: a narrow pane keeps them and drops the role.
 const COLUMNS: DataTableColumn[] = [
@@ -37,9 +37,12 @@ export function AdrPairResearchTab({ width, height, focused }: TickerResearchTab
   // Both legs through the quote path, so each is read alike whichever side the pane is on.
   const ownEntry = useQuoteEntry(legs ? ticker?.metadata.ticker ?? symbol : null, ticker);
   const otherEntry = useQuoteEntry(legs?.otherKey ?? null, null);
+  const quotes = legs
+    ? adrPairQuotes(legs, { own: resolveEntryData(ownEntry), other: resolveEntryData(otherEntry) }, financials?.quote)
+    : { receipt: null, home: null };
+  const receiptQuote = quotes.receipt;
+  const homeQuote = quotes.home;
   const [receiptEntry, homeEntry] = legs?.receiptSide ? [ownEntry, otherEntry] : [otherEntry, ownEntry];
-  const receiptQuote = resolveEntryData(receiptEntry);
-  const homeQuote = resolveEntryData(homeEntry);
   // The home price's currency, a minor unit read as its own (GBp as GBP), as the comparison reads it.
   const homeCurrency = homeQuote?.currency ? heldCurrencyUnit(homeQuote.currency).currency : "";
   const observed = useFxRateObservations([homeCurrency]).get(homeCurrency);
@@ -53,7 +56,8 @@ export function AdrPairResearchTab({ width, height, focused }: TickerResearchTab
 
   if (!legs) return <EmptyState title="No ADR pair for this listing." />;
   const pending = (entry: typeof receiptEntry) => !entry || entry.phase === "loading" || entry.phase === "idle";
-  const loading = !comparison && (pending(receiptEntry) || pending(homeEntry));
+  // A leg with a quote is not waiting on its read.
+  const loading = !comparison && ((!receiptQuote && pending(receiptEntry)) || (!homeQuote && pending(homeEntry)));
   const error = !comparison && !loading
     ? `Prices unavailable for ${!receiptQuote ? legs.receiptKey : legs.homeKey}.`
     : null;
