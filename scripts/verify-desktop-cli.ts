@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { copyFile, mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, realpath, symlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { Jimp } from "jimp";
 import { testAppEnv } from "./test-app-env";
+import { removeFolder } from "../src/utils/remove-folder";
 import { SHOT_VIEW_ARCHIVE } from "../src/cli/desktop-pane-shot-view";
 import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
@@ -150,5 +151,9 @@ try {
   }, null, 2));
   console.log(`Desktop CLI verification passed. Evidence: ${evidence}`);
 } finally {
-  await rm(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  // Windows keeps the folder locked for a moment after the capture browser's
+  // helper processes are told to stop, and Bun's rm ignores its retry options.
+  // Cleaning up never fails a verification, or replaces what failed it.
+  const left = await removeFolder(work, { budgetMs: 15_000 });
+  if (left !== null) console.warn(`Could not remove ${work}: ${left instanceof Error ? left.message : String(left)}`);
 }

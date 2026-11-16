@@ -1,5 +1,5 @@
 import { basename, join, resolve } from "path";
-import { existsSync, lstatSync, readFileSync, rmSync } from "fs";
+import { existsSync, lstatSync, readFileSync } from "fs";
 import {
   DEPRECATED_HOST_EXPORTS,
   REMOVED_HOST_EXPORTS,
@@ -31,6 +31,7 @@ import {
 } from "../../plugins/installer";
 import { isReservedBuiltinPluginId } from "../../plugins/ownership";
 import { pluginFromModule, pluginSupportsTarget } from "../../plugins/plugin-export";
+import { removeFolder } from "../../utils/remove-folder";
 import { formatVersion, requiredGloomberb } from "../../utils/semver";
 import { ALL_PLUGIN_TARGETS, type GloomPlugin, type PluginTarget } from "../../types/plugin";
 import {
@@ -311,7 +312,7 @@ async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorReport> {
       const result = await bundleExternalPlugin(candidate, outDir, { define: { "process.env.NODE_ENV": "\"production\"" } });
       const size = Math.round(Bun.file(result.outputPath).size / 1024);
       add("browser-build", "ok", `${basename(browserEntry ?? entryFile)} compiles for the desktop view (${size}KB)`);
-      rmSync(outDir, { recursive: true, force: true });
+      await removeFolder(outDir);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       add("browser-build", "fail", `Desktop build failed: ${message.split("\n")[0]}. Ship an index.browser.ts without node:* imports, or set targets to ["cli", "tui"].`);

@@ -87,11 +87,20 @@ self.onmessage = (event) => {
 };
 `;
 
+/** What `PRAGMA wal_checkpoint` answers: frames in the WAL, and how many of them now sit in the database. */
+export interface WalCheckpointResult {
+  busy?: number;
+  log?: number;
+  checkpointed?: number;
+}
+
 export interface WalCheckpointerOptions {
   /** Overrides how long the thread may owe an answer before it counts as stuck. */
   stuckAfterMs?: number;
   /** Overrides the thread's code, so a test can run one that never answers. */
   workerSource?: string;
+  /** Runs on the app's thread after each checkpoint, so a test can wait for one instead of the clock. */
+  onCheckpoint?: (result: WalCheckpointResult) => void;
 }
 
 export interface WalCheckpointer {
@@ -107,7 +116,7 @@ interface WorkerMessage {
   ms?: number;
   startedAt?: number;
   endedAt?: number;
-  result?: { busy?: number; log?: number; checkpointed?: number };
+  result?: WalCheckpointResult;
 }
 
 /**
@@ -251,6 +260,7 @@ export function startWalCheckpointer(
         endedAt: Math.round(message.endedAt ?? 0),
       }, { lastStep: false });
       if (pending) schedule();
+      options.onCheckpoint?.(message.result ?? {});
     }
   };
   worker.onerror = (event) => {

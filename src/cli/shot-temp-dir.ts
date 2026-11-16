@@ -1,12 +1,8 @@
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { logFailure } from "../utils/log-failure";
-
-type RemoveFolder = (
-  path: string,
-  options: { recursive: true; force: true; maxRetries: number; retryDelay: number },
-) => Promise<void>;
+import { removeFolder, type RemoveFolderOptions } from "../utils/remove-folder";
 
 /**
  * Hands `use` a fresh folder under the system temp folder and removes it
@@ -18,13 +14,12 @@ type RemoveFolder = (
 export async function withShotTempDir<T>(
   prefix: string,
   use: (dir: string) => Promise<T>,
-  remove: RemoveFolder = rm,
+  removal: RemoveFolderOptions = {},
 ): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   try {
     return await use(dir);
   } finally {
-    await remove(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-      .catch(logFailure("cli.screenshot", "Could not remove a capture's temporary folder"));
+    if (await removeFolder(dir, removal) !== null) logFailure("cli.screenshot", "Could not remove a capture's temporary folder")(null);
   }
 }

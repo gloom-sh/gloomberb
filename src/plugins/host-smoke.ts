@@ -1,7 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
+import { logFailure } from "../utils/log-failure";
+import { removeFolder } from "../utils/remove-folder";
 import { loadExternalPlugin } from "./loader";
 
 /**
@@ -101,6 +103,7 @@ export async function smokePluginHostLoad(): Promise<void> {
       throw new Error(`The smoke plugin's dependency resolved to its "${probe.platform}" entry instead of "node".`);
     }
   } finally {
-    rmSync(pluginDir, { recursive: true, force: true });
+    // A folder Windows still has locked is left behind, not reported as a failed load.
+    if (await removeFolder(pluginDir) !== null) logFailure("plugins", "Could not remove the plugin host smoke's temporary folder")(null);
   }
 }
