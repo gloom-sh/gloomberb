@@ -33,6 +33,9 @@ test("a visible-window column returns when scrolling to a row with coverage", ()
   expect(dataTableDisplayColumns(props, { start: 1, end: 2 }).map((column) => column.id)).toEqual(["id"]);
   expect(dataTableDisplayColumns(props, { start: 0, end: 1 }).map((column) => column.id)).toEqual(["id", "value"]);
   expect(dataTableDisplayColumns(props)).toHaveLength(2);
+  // A covered row cut at the viewport's edge is not in view, unless only cut rows fit.
+  expect(dataTableDisplayColumns(props, { start: 0, end: 2, wholeStart: 1, wholeEnd: 2 }).map((column) => column.id)).toEqual(["id"]);
+  expect(dataTableDisplayColumns(props, { start: 0, end: 1, wholeStart: 0, wholeEnd: 0 })).toHaveLength(2);
 });
 
 test("omitting a drawn column never removes its CSV field or turns null into a number", () => {

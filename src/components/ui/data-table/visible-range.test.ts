@@ -2,20 +2,28 @@ import { describe, expect, test } from "bun:test";
 import { resolveDataTableScrollTop, resolveDataTableVisibleRange } from "./visible-range";
 
 describe("data table visible range", () => {
-  test("includes partially visible desktop rows without counting the sticky header", () => {
+  test("includes partially visible desktop rows without counting the sticky header, and says which are whole", () => {
     expect(resolveDataTableVisibleRange({
       itemCount: 100,
       rowSize: 20,
       scrollOffset: 10,
       viewportSize: 180,
-    })).toEqual({ start: 0, end: 10 });
+    })).toEqual({ start: 0, end: 10, wholeStart: 1, wholeEnd: 9 });
 
     expect(resolveDataTableVisibleRange({
       itemCount: 100,
       rowSize: 20,
       scrollOffset: 30,
       viewportSize: 180,
-    })).toEqual({ start: 1, end: 11 });
+    })).toEqual({ start: 1, end: 11, wholeStart: 2, wholeEnd: 10 });
+
+    // Subpixel layout a fraction of a pixel short of a row still shows it whole.
+    expect(resolveDataTableVisibleRange({
+      itemCount: 100,
+      rowSize: 18,
+      scrollOffset: 0,
+      viewportSize: 18 * 35 - 0.4,
+    })).toEqual({ start: 0, end: 35 });
   });
 
   test("clamps a terminal range to the available rows", () => {
@@ -34,7 +42,7 @@ describe("data table visible range", () => {
       scrollOffset: 2,
       viewportSize: 8,
       buffer: 3,
-    })).toEqual({ start: 0, end: 12 });
+    })).toEqual({ start: 0, end: 12, wholeStart: 2, wholeEnd: 10 });
   });
 
   test("scrolls the target index into view without exceeding bounds", () => {
