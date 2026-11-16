@@ -23,15 +23,24 @@ const snapshotScript = join(cache, "snapshot.ps1");
 await Bun.write(snapshotScript, `
 Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'chrome|crashpad' } | ForEach-Object {
   $line = ($_.CommandLine -replace '\\s+', ' ')
-  if ($line.Length -gt 300) { $line = $line.Substring(0, 300) }
-  "$($_.ProcessId)<-$($_.ParentProcessId) $($_.Name) $line"
+  $type = if ($line -match '--type=([a-z-]+)') { $Matches[1] } else { 'browser' }
+  $sub = if ($line -match '--utility-sub-type=([A-Za-z.]+)') { '/' + $Matches[1] } else { '' }
+  "$($_.ProcessId) $type$sub"
 }
 `);
 
+async function roles(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  for (const line of (await sh(["powershell.exe", "-NoProfile", "-File", snapshotScript])).split("\n")) {
+    const [pid, role] = line.trim().split(" ");
+    if (pid && role) map.set(pid, role);
+  }
+  return map;
+}
+
 async function alive(): Promise<string[]> {
   const out = await sh(["tasklist", "/NH", "/FO", "CSV"]);
-  return out.split("\n").map((line) => line.split('","')[0]?.replace(/^"/, "") + ":" + line.split('","')[1])
-    .filter((entry) => /chrome|crashpad/i.test(entry));
+  return out.split("\n").map((line) => line.split('","')).filter((cols) => /chrome|crashpad/i.test(cols[0] ?? "")).map((cols) => cols[1] ?? "?");
 }
 
 async function removeCode(path: string): Promise<string> {
@@ -54,7 +63,25 @@ async function endpoint(profile: string): Promise<string> {
   throw new Error("no DevToolsActivePort");
 }
 
-type Variant = "kill-cwd-inside" | "kill-cwd-outside" | "tree-kill" | "cdp-close";
+const bigScript = Array.from({ length: 40_000 }, (_, i) => `function f${i}(a,b){var c=a+${i};for(var d=0;d<b;d++){c+=d*${i}}return c}`).join("\n") + "\nwindow.__big=true;";
+const server = Bun.serve({
+  port: 0,
+  hostname: "127.0.0.1",
+  fetch(request) {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/big.js") return new Response(bigScript, { headers: { "content-type": "text/javascript", "cache-control": "max-age=3600" } });
+    return new Response(`<!doctype html><body style="margin:0"><canvas id=c width=600 height=400></canvas>
+<script src="/big.js"></script>
+<script>
+const gl = document.getElementById("c").getContext("webgl");
+if (gl) { gl.clearColor(0.1, 0.4, 0.8, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
+localStorage.setItem("probe", "x".repeat(10000));
+document.body.append(document.createTextNode("ready " + !!window.__big));
+</script></body>`, { headers: { "content-type": "text/html" } });
+  },
+});
+
+type Variant = "kill" | "tree-kill" | "cdp-close";
 
 async function iteration(variant: Variant, index: number): Promise<void> {
   const work = join(cache, `${variant}-${index}-${Date.now()}`);
@@ -62,20 +89,32 @@ async function iteration(variant: Variant, index: number): Promise<void> {
   const profile = join(work, "t", "gloom-pane-shot-probe", "chrome-profile");
   await mkdir(caller, { recursive: true });
   await mkdir(profile, { recursive: true });
-  const cwd = variant === "kill-cwd-outside" ? (process.env.RUNNER_TEMP ?? "C:\\") : caller;
   const proc = Bun.spawn([chrome, ...ARGS, `--user-data-dir=${profile}`, "--window-size=800,600", "--remote-debugging-port=0", "about:blank"], {
-    cwd, stdout: "ignore", stderr: "ignore",
+    cwd: caller, stdout: "ignore", stderr: "ignore",
   });
   const socket = new WebSocket(await endpoint(profile));
   await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve(), { once: true }));
-  socket.send(JSON.stringify({ id: 1, method: "Target.createTarget", params: { url: "data:text/html,<h1>probe</h1><canvas id=c></canvas>" } }));
-  await Bun.sleep(1500);
-  if (index === 0) console.log(`[${variant}] process tree before stop:\n${(await sh(["powershell.exe", "-NoProfile", "-File", snapshotScript])).trim()}`);
+  const pending = new Map<number, (value: any) => void>();
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(String(event.data));
+    if (message.id) pending.get(message.id)?.(message.result);
+  });
+  let nextId = 1;
+  const send = (method: string, params: object = {}, sessionId?: string) => new Promise<any>((resolve) => {
+    const id = nextId++;
+    pending.set(id, resolve);
+    socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+  });
+  const { targetId } = await send("Target.createTarget", { url: `http://127.0.0.1:${server.port}/` });
+  const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
+  await Bun.sleep(2500);
+  await send("Page.captureScreenshot", { format: "png" }, sessionId);
+  const before = await roles();
 
   if (variant === "tree-kill") {
     await sh(["taskkill", "/PID", String(proc.pid), "/T", "/F"]);
   } else if (variant === "cdp-close") {
-    socket.send(JSON.stringify({ id: 2, method: "Browser.close" }));
+    socket.send(JSON.stringify({ id: nextId++, method: "Browser.close" }));
     const timer = setTimeout(() => proc.kill(), 10_000);
     await proc.exited;
     clearTimeout(timer);
@@ -99,17 +138,23 @@ async function iteration(variant: Variant, index: number): Promise<void> {
       firstTry[label] ??= code;
       if (code === "ok") removedAfter[label] = elapsed;
     }
-    if (elapsed - lastAliveSample >= 150 && Object.keys(removedAfter).length < targets.length) {
+    if (elapsed - lastAliveSample >= 100 && Object.keys(removedAfter).length < targets.length) {
       lastAliveSample = elapsed;
       aliveAt.push(`+${elapsed}ms ${(await alive()).join(" ") || "none"}`);
     }
-    await Bun.sleep(20);
+    await Bun.sleep(10);
   }
-  console.log(`[${variant} #${index}] first rm: ${JSON.stringify(firstTry)} removable after (ms): ${JSON.stringify(removedAfter)}`);
-  for (const line of aliveAt.slice(0, 4)) console.log(`    alive ${line}`);
+  const survivors = [...before].filter(([pid]) => aliveAt[0]?.includes(pid)).map(([pid, role]) => `${pid}=${role}`);
+  const flag = Object.values(firstTry).some((code) => code !== "ok") ? "  <-- LOCKED" : "";
+  console.log(`[${variant} #${index}] first rm: ${JSON.stringify(firstTry)} removable after (ms): ${JSON.stringify(removedAfter)}${flag}`);
+  if (flag) {
+    for (const line of aliveAt.slice(0, 4)) console.log(`    alive ${line}`);
+    console.log(`    roles of survivors at first sample: ${survivors.join(" ") || "(none of the browser's own processes)"}`);
+  }
   await rm(work, { recursive: true, force: true }).catch(() => {});
 }
 
-for (const variant of ["kill-cwd-inside", "kill-cwd-outside", "tree-kill", "cdp-close"] as const) {
-  for (let index = 0; index < 4; index++) await iteration(variant, index);
+for (const variant of ["kill", "tree-kill", "cdp-close"] as const) {
+  for (let index = 0; index < 12; index++) await iteration(variant, index);
 }
+server.stop(true);

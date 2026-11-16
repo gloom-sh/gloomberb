@@ -1167,6 +1167,28 @@ function Assert-WindowsUpdateManifest {
   }
 }
 
+# Windows keeps a folder locked for a moment after what used it has ended: a
+# virus scan of programs just unpacked, a helper process still exiting. Cleaning
+# up after a check that passed tries again, then leaves the folder behind
+# rather than failing the check.
+function Remove-FolderBestEffort {
+  param([string]$Path, [int]$Attempts = 10)
+
+  for ($Attempt = 1; $Attempt -le $Attempts; $Attempt++) {
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    try {
+      Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+      return
+    } catch {
+      if ($Attempt -eq $Attempts) {
+        Write-Host "Could not remove ${Path}: $($_.Exception.Message)"
+        return
+      }
+      Start-Sleep -Milliseconds (200 * $Attempt)
+    }
+  }
+}
+
 # An install from 0.18.4 or before asks the release for its update archive
 # under the old name, unpacks it with the zig-zstd it ships, and installs the
 # folder inside it named Gloomberb. This unpacks it the same way.
@@ -1198,7 +1220,7 @@ function Assert-LegacyUpdateArchive {
       throw "The update archive under the old name has no Gloomberb\$Required"
     }
   }
-  Remove-Item -Recurse -Force $CheckDir
+  Remove-FolderBestEffort $CheckDir
 }
 
 function Get-NormalizedPathEntries {
