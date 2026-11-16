@@ -217,6 +217,7 @@ export interface ResolvedSeries {
    * "8058 Close · M..." and "8031 Close · M...".
    */
   compactLabel?: string;
+  legendContext?: string;
   color: string;
   unit: string;
   /** Unit of rawValue, retained when presentation transforms change unit. */

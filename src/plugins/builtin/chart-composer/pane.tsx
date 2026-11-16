@@ -494,7 +494,8 @@ function ChartComposerSurface({
       if (authored?.source.kind === "security" && authored.source.fieldId.startsWith("valuation.")) {
         const field = getTimeSeriesField(authored.source.fieldId);
         return { ...entry, label: authored.label?.trim()
-          || `${authored.source.instrument.symbol} ${field?.shortLabel ?? "Multiple"}` };
+          || `${authored.source.instrument.symbol} ${field?.shortLabel ?? "Multiple"}`,
+          legendContext: authored.label?.trim() ? undefined : field?.shortLabel ?? "Multiple" };
       }
       const name = nameSeries ? listings.names.get(entry.id) : undefined;
       const company = name ? shortCompanyName(name) : "";
@@ -518,6 +519,8 @@ function ChartComposerSurface({
       ...missing.map((entry): ResolvedSeries => ({
         id: entry.id,
         label: chartSeriesLabel(entry),
+        legendContext: entry.label?.trim() || entry.source.kind !== "security" ? undefined
+          : getTimeSeriesField(entry.source.fieldId)?.seriesLabel ?? getTimeSeriesField(entry.source.fieldId)?.shortLabel,
         color: entry.color ?? colors.textDim,
         unit: "",
         unitGroup: "unknown",

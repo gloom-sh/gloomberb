@@ -106,6 +106,12 @@ function nameWords(label: string): string[] {
   return label.split(" ").filter(Boolean);
 }
 
+function sharedLegendContext(series: readonly ResolvedSeries[]): string | null {
+  const context = series[0]?.legendContext;
+  return context && series.length > 1 && series.every((entry) => entry.legendContext === context
+    && entry.label.split(" · ")[0]!.endsWith(` ${context}`)) ? context : null;
+}
+
 /** The shortest a legend name reads on one line: its first word whole, with one `…` for the rest ("Bab…"). */
 export function shortestLegendName(label: string): string {
   const words = nameWords(label);
@@ -303,6 +309,7 @@ export function CompositeLegend({
   const valueDates = legendValueDates(series, scene, cursorValueById);
   // A series read against the right axis while others in its panel read against the left says which is its scale.
   const leftPanels = new Set(allSeries.filter((entry) => entry.axis === "left" && !entry.hidden).map((entry) => entry.panelId));
+  let context: string | null = null;
   const buildEntries = (withFiscalPeriods: boolean, withAxisNotes = true) => series.map((entry) => {
     const cue = lineCues.get(entry.id) ?? null;
     const downColor = !cue && directionDownColor && seriesColorsDirection(entry) ? directionDownColor : null;
@@ -342,8 +349,11 @@ export function CompositeLegend({
       && cursorValue?.value != null && Number.isFinite(cursorValue.value)
       ? `Value ${cursorValue.value} ${entry.unit}` : "";
     const tooltip = [fullText, exactTotal, details].filter(Boolean).join(" · ");
-    const label = entry.label;
-    const compactLabel = withoutListingExchange(entry.compactLabel ?? label);
+    const metric = entry.legendContext && entry.label.split(" · ")[0]!.endsWith(` ${entry.legendContext}`) ? entry.legendContext : null;
+    const shortLabel = withoutListingExchange(entry.compactLabel ?? entry.label);
+    const compact = !context && metric && !shortLabel.endsWith(` ${metric}`) ? `${shortLabel} ${metric}` : shortLabel;
+    const compactLabel = context && compact.endsWith(` ${context}`) ? compact.slice(0, -context.length - 1) : compact;
+    const label = context ? compactLabel : entry.label;
     const labelWidth = displayWidth(label);
     const text = [label, valueText].filter(Boolean).join(" ");
     return {
@@ -354,6 +364,7 @@ export function CompositeLegend({
       markerWidth,
       label,
       compactLabel,
+      metric,
       text,
       width: Math.max(1, displayWidth(text)) + markerWidth,
       labelWidth,
@@ -370,9 +381,17 @@ export function CompositeLegend({
   let entries = buildEntries(true);
   type LegendEntry = (typeof entries)[number];
   const otherNames = (target: LegendEntry) => entries.filter((other) => other !== target).map((other) => other.compactLabel);
+  const labelParts = (target: LegendEntry, label: string) => {
+    const suffix = !context && target.metric && label.endsWith(` ${target.metric}`) ? ` ${target.metric}` : "";
+    return { name: suffix ? label.slice(0, -suffix.length) : label, suffix };
+  };
+  const cutEntryLabel = (target: LegendEntry, label: string, budget: number) => {
+    const { name, suffix } = labelParts(target, label);
+    return wholeWordsCut(name, budget - displayWidth(suffix), otherNames(target)) + suffix;
+  };
   const setEntryLabel = (target: LegendEntry, label: string, labelWidth: number) => {
     target.label = label;
-    const shown = wholeWordsCut(label, labelWidth, otherNames(target));
+    const shown = cutEntryLabel(target, label, labelWidth);
     target.labelWidth = displayWidth(shown);
     target.text = [shown, target.valueText].filter(Boolean).join(" ");
     target.width = Math.max(1, displayWidth(target.text)) + target.markerWidth;
@@ -385,7 +404,12 @@ export function CompositeLegend({
   // line up with the query bar and tables above and below the chart.
   const inset = width > 1 ? 1 : 0;
   const leadWidth = valueDates.lead ? displayWidth(valueDates.lead) + 1 : 0;
-  const innerWidth = Math.max(0, width - inset - leadWidth);
+  if (measureSeriesWidth() > width - inset - leadWidth - (accessory ? accessoryWidth ?? 14 : 0)) {
+    context = sharedLegendContext(series);
+    if (context) entries = buildEntries(true);
+  }
+  const contextWidth = context ? displayWidth(context) + 1 : 0;
+  const innerWidth = Math.max(0, width - inset - leadWidth - contextWidth);
   const resolvedAccessoryWidth = accessory
     ? Math.max(1, Math.min(innerWidth, Math.floor(accessoryWidth ?? 14)))
     : 0;
@@ -412,7 +436,8 @@ export function CompositeLegend({
     const key = `${apart ? "apart" : "first"}:${label}`;
     let name = known.get(key);
     if (name === undefined) {
-      name = apart ? shortestLegendNameAmong(label, otherNames(entry)) : shortestLegendName(label);
+      const parts = labelParts(entry, label);
+      name = (apart ? shortestLegendNameAmong(parts.name, otherNames(entry)) : shortestLegendName(parts.name)) + parts.suffix;
       known.set(key, name);
     }
     return name;
@@ -446,7 +471,7 @@ export function CompositeLegend({
       Math.max(1, widthBeforeAccessory - entry.markerWidth - (entry.valueText ? displayWidth(entry.valueText) + 1 : 0)),
     );
     const wrappedWidths = entries.map((entry) => entry.markerWidth + Math.max(1, displayWidth(
-      [wholeWordsCut(entry.compactLabel, wrappedLabelWidth(entry), otherNames(entry)), entry.valueText].filter(Boolean).join(" "),
+      [cutEntryLabel(entry, entry.compactLabel, wrappedLabelWidth(entry)), entry.valueText].filter(Boolean).join(" "),
     )));
     wantedRows = packLegendLines(wrappedWidths, widthBeforeAccessory).length;
     if (rows > 1) {
@@ -460,7 +485,7 @@ export function CompositeLegend({
         const widest = Math.max(...entries.map((entry) => entry.labelWidth));
         for (let cap = widest - 1; cap >= 1; cap -= 1) {
           const packed = packLegendLines(entries.map((entry) => entry.markerWidth + Math.max(1, displayWidth(
-            [wholeWordsCut(entry.compactLabel, Math.min(cap, wrappedLabelWidth(entry)), otherNames(entry)), entry.valueText].filter(Boolean).join(" "),
+            [cutEntryLabel(entry, entry.compactLabel, Math.min(cap, wrappedLabelWidth(entry))), entry.valueText].filter(Boolean).join(" "),
           ))), widthBeforeAccessory);
           if (packed.length <= rows) {
             lines = packed;
@@ -705,6 +730,11 @@ export function CompositeLegend({
       {valueDates.lead ? (
         <Box width={leadWidth} height={1} flexShrink={0} data-gloom-role="composite-chart-legend-date">
           <Text fg={themeColors.textMuted}>{valueDates.lead}</Text>
+        </Box>
+      ) : null}
+      {context ? (
+        <Box width={contextWidth} height={1} flexShrink={0} data-gloom-role="composite-chart-legend-context">
+          <Text fg={themeColors.textMuted}>{context}</Text>
         </Box>
       ) : null}
       {seriesWidth > 0 && lines ? (

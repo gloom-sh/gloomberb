@@ -655,11 +655,10 @@ describe("CompositeChart", () => {
     expect(narrow).not.toContain("...");
   });
 
-  // five trading houses cut alike read "8058 Close · M..." and "8031 Close · M...", and one short of room
-  // read "8058 Mitsubishi" beside "8001:JPX Close · ITOCHU".
-  test("a legend short of room keeps each company's name, giving up every field together, in one form", async () => {
+  test("a legend short of room keeps each company's name and names their shared field once", async () => {
     const house = (id: string, name: string, value: number) => ({
       ...series(id, "main", "left", "%", [value]), label: `${id}:JPX Close · ${name}`, compactLabel: `${id}:JPX ${name}`,
+      legendContext: "Close",
     });
     const houses = [
       house("8058", "Mitsubishi", 44.17), house("8031", "Mitsui", 2.95), house("8001", "Itochu", 18.99),
@@ -674,9 +673,49 @@ describe("CompositeChart", () => {
       await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
       const legend = tui.frame().split("\n")[0]!;
       for (const name of ["8058 Mitsubishi", "8031 Mitsui", "8001 Itochu", "8053 Sumitomo", "8002 Marubeni"]) expect(legend, `${width}`).toContain(name);
-      expect(legend, `${width}`).not.toContain("Close");
+      expect(legend.split("Close")).toHaveLength(2);
       expect(legend).not.toContain("...");
     }
+  });
+
+  test("a compact multi-company financial legend keeps its metric and values at narrow widths", async () => {
+    for (const metric of ["Revenue", "Gross Profit"]) {
+      for (const width of [70, 90]) {
+        const financials = ["MSFT", "GOOGL", "AMZN"].map((symbol, index) => ({
+          ...series(symbol, "main", "left", "USD", [90_000_000_000 + index * 10_000_000_000]),
+          label: `${symbol}:XNAS ${metric} · Company ${index}`,
+          compactLabel: `${symbol} Company ${index}`,
+          legendContext: metric,
+          unitGroup: "currency-total:USD",
+          style: "bar" as const,
+        }));
+        await tui.render(<CompositeChart width={width} height={12} panels={[{ id: "main" }]} series={financials} />,
+          { width: width + 2, height: 14 });
+        await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+        const legend = tui.frame().split("\n")[0]!;
+        expect(legend).toContain(metric);
+        for (const symbol of ["MSFT", "GOOGL", "AMZN"]) expect(legend).toContain(symbol);
+        for (const value of ["$90B", "$100B", "$110B"]) expect(legend).toContain(value);
+      }
+    }
+  });
+
+  test("different compacted fields keep their own metric instead of sharing a misleading caption", async () => {
+    const entries = ["Revenue", "Operating Income"].map((metric, index) => ({
+      ...series(`series-${index}`, "main", "left", "USD", [90_000_000_000]),
+      label: `${index ? "GOOGL" : "MSFT"} ${metric} · Company`,
+      compactLabel: index ? "GOOGL Alphabet" : "MSFT Microsoft",
+      legendContext: metric,
+      unitGroup: "currency-total:USD",
+    }));
+    await tui.render(<CompositeChart width={70} height={12} panels={[{ id: "main" }]} series={entries} />,
+      { width: 72, height: 14 });
+    await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+    const legend = tui.frame().split("\n")[0]!;
+    expect(legend).toContain("Revenue");
+    expect(legend).toContain("Operating Income");
+    expect(legend).toContain("MSFT");
+    expect(legend).toContain("GOOGL");
   });
 
   test("keeps non-plotted legend series available for restoring", async () => {

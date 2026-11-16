@@ -52,6 +52,7 @@ export function unloadableSeries(spec: ChartSeriesSpec, index: number, warning: 
   return {
     id: spec.id,
     label: spec.label?.trim() || label,
+    legendContext: spec.label?.trim() ? undefined : field?.seriesLabel ?? field?.shortLabel,
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     unit: field?.unit ?? "",
     unitGroup: field?.unitGroup ?? "unknown",
@@ -242,6 +243,8 @@ export function baseSecuritySeries(
     id: spec.id,
     label: spec.label?.trim() || (generic ? futuresGenericCaption(generic)
       : `${symbol} ${field.id === "market.volume" && volumeBasis ? INDEX_MEMBERS_VOLUME_LABEL : field.seriesLabel ?? field.shortLabel}`),
+    legendContext: spec.label?.trim() || generic ? undefined
+      : field.id === "market.volume" && volumeBasis ? INDEX_MEMBERS_VOLUME_LABEL : field.seriesLabel ?? field.shortLabel,
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     unit,
     unitGroup: currencyUnitGroup,
