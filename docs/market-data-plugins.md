@@ -1,18 +1,18 @@
 # Bring your own licensed market data
 
-Connect a documented feed API you are entitled to use through Gloom's existing `assetDataProvider` plugin capability. It takes an `AssetDataProvider` from `gloomberb/types/data-provider`; panes and the CLI use the shared market-data router, not a separate per-pane data path. This guide adds no feed or bridge.
+Connect your entitled, documented feed API through Gloom's existing `assetDataProvider` capability. Panes and the CLI use the shared router, not per-pane adapters.
 
 ## Rights and a clean profile
 
-Confirm your feed licence permits the API access, venues, instruments, display, processing and local storage you intend. Keep credentials in your process environment or credential store, never in plugin source. Keep licensed payloads, quotes, caches and exports out of the repository, logs, issues and screenshots; the fixture below is synthetic.
+Use a fresh, signed-out local profile. Confirm API, storage, sync, export and sharing rights. Keep credentials in your environment or credential store. Keep secrets and licensed data out of repositories, logs and screenshots.
 
-Use a new, signed-out local profile for this CLI-only demonstration. Do not sign it into Gloom Cloud or copy an existing profile into it. This is isolation for the demonstration, **not enforcement of non-redistribution**. A generic asset-data provider is not protected by `BrokerAdapter.localMarketData`: the sync filter checks the broker registry/config, not arbitrary providers. Do not assume its data is excluded from Cloud sync. Before using a real feed in a signed-in profile, exporting, sharing panes or sending screenshots, confirm the applicable sync/export/sharing rights and what those paths carry.
+Generic providers are **not** covered by `BrokerAdapter.localMarketData` and may sync if signed in. This guide does not enforce non-redistribution.
 
-This guide does not implement or endorse a TradingView bridge. A subscription is not an assumption of external API or reuse permission. Review the [current TradingView terms](https://www.tradingview.com/policies/), especially sections 3 and 12, and confirm applicable terms and permissions before attempting any separate community bridge.
+This guide does not implement or endorse a TradingView bridge; a subscription does not establish external API/reuse permission. Confirm [current terms](https://www.tradingview.com/policies/) and permissions before any separate community bridge.
 
 ## One quote adapter
 
-Create a directory outside the Gloom checkout, `licensed-feed-demo/`, containing these two files. For editor/type-check setup, use the dependencies described in [Developing a plugin](../PLUGINS.md#developing-a-plugin).
+Create `licensed-feed-demo/` outside the checkout with these files. For dependencies, see [Developing a plugin](../PLUGINS.md#developing-a-plugin). The fixture is synthetic, never live.
 
 `gloom.json`:
 
@@ -113,17 +113,17 @@ export default {
 } satisfies GloomPlugin;
 ```
 
-The request shape is adapter-owned, **not a vendor API**. `ESZ26:CME` explicitly means the December 2026 E-mini S&P 500 futures contract on CME here. The guard accepts both the bare symbol and Gloom's venue-qualified spelling, always with the matching exchange argument. In the callback, map that pair to your feed's documented contract identifier, expiry and venue, and validate the response identity. Never silently substitute a continuous future, another expiry, a CFD or another venue. Missing venues and unsupported symbols are rejected, including when a quote read calls the method without first calling `canProvide`.
+- Map `ESZ26:CME` to your feed's documented December 2026 E-mini S&P 500 contract on CME. Never substitute a continuous future, another expiry or venue.
 
-**Replace the callback passed to `createProvider` with your licensed feed API call.** Check entitlement before returning a quote; return `null` for unavailable/not-entitled data. Let authentication, transport and malformed-response errors surface rather than disguising every failure as a miss. Declare the actual fetched hosts in both the plugin's `hosts` and `gloom.json` ([Network access](../PLUGINS.md#network-access)); the synthetic example fetches nothing. Rename the synthetic labels for a real adapter, and keep secrets out of browser bundles.
+- **Replace the callback passed to `createProvider` with your licensed feed API call.** The request shape is adapter-owned, not a vendor API. Return `null` for unavailable/unentitled data; surface authentication, transport and malformed-response errors. Rename synthetic labels. Declare fetched hosts in the plugin's `hosts` and `gloom.json` ([Network access](../PLUGINS.md#network-access)).
 
-All required provider methods are present: unsupported financials, FX and history throw a provider miss, search has no results, and article summaries are absent. Do not fabricate zero financials to satisfy the interface. The quote requires a genuine reference close for the same contract, currency and units to compute its move; if unavailable, return a miss rather than inventing one. Add real history or other methods only when licensed and correctly mapped.
+- Use a genuine reference close for the same contract, currency and units. Return a miss if unavailable; never invent financials.
 
-Preserve the source trade time in `lastUpdated`/`lastTradeTime`, and its original retrieval time in `retrievedAt` (epoch milliseconds). If your API retrieves a fresh observation directly, record when that retrieval completes; a cached observation retains its original retrieval time. Do not replace the trade time with `Date.now()` or re-date a saved copy. Map actual feed entitlement/response metadata to `dataSource: "live"`, `"delayed"` or `"snapshot"`; polling a real-time observation is still `delivery: "poll"`, not tick-by-tick streaming. A paid account alone does not establish live entitlement. This fixture is a fixed, dated synthetic snapshot, never live; an absent stale flag is not evidence of freshness. No `subscribeQuotes` implementation is needed here.
+- Preserve source trade time in `lastUpdated`/`lastTradeTime` and retrieval completion time in `retrievedAt`, in epoch milliseconds. Cached observations retain original timestamps. Set `dataSource` to `"live"`, `"delayed"` or `"snapshot"` from actual entitlement/response metadata. Polling real-time observations is still `delivery: "poll"`, not tick-by-tick streaming. Omit `subscribeQuotes`.
 
 ## Link, check and read
 
-With Gloom installed, run from the parent of `licensed-feed-demo/` in a fresh shell. Pick a profile path that does not already exist:
+With Gloom installed, run from the parent directory in a fresh shell. Choose a profile path that does not exist:
 
 ```bash
 export GLOOMBERB_HOME="$HOME/.cache/gloom-smoke/licensed-feed-demo"
@@ -137,10 +137,10 @@ gloom api invoke asset-data.licensed-feed-demo.getQuote '{"ticker":"ESZ26","exch
 gloom quote ESZ26:CME --json
 ```
 
-The first invocation must return `6251.25`, `dataSource: "snapshot"`, `delivery: "poll"` and the two distinct fixture timestamps. The wrong venue returns `false` from `canProvide`; its direct quote invocation deliberately fails with a provider miss. Direct capability invocation isolates the adapter; `quote` exercises the normal router and can answer from another source or mark the old snapshot stale. It may contact other configured sources, including Gloom Cloud.
+Expect `6251.25`, `snapshot`, `poll` and distinct trade/retrieval timestamps. The wrong venue returns `false`, then a deliberate provider miss.
 
-In `quote --json`, inspect each row's `quote.providerId`, `quote.dataSource`, `quote.delivery`, `quote.lastTradeTime` and `quote.retrievedAt`, not just the price. The command-level source/freshness summary currently defaults to Gloom Cloud for this generic provider and dates the export separately; it does not establish your feed's identity or entitlement. Each CLI command is a fresh process; restart any running Gloom app after linking or editing the plugin. Doctor validates plugin compatibility/builds, not your feed licence or live data access.
+In `quote --json`, check each row's `quote.providerId`, `dataSource`, `lastTradeTime` and `retrievedAt`. Restart running Gloom apps after linking or editing. Doctor checks compatibility/builds, not feed access.
 
-Sources sort by ascending priority: this example's `50` precedes the Gloom Cloud market provider's `100`. Priority is not an exclusive override: quotes are checked for listing identity and freshness, caches and broker routes also participate, and financials can be enriched/merged across sources. A `createProviderMiss` lets the router try another source without logging a provider failure; a miss is not an entitlement firewall for other sources. Verify each source's permissions separately. With no usable answer, expect a reason/no-provider error or a dated stale last-known quote, not an invented price.
+Ascending priority puts `50` before Gloom Cloud's `100`, not an exclusive override. `createProviderMiss` permits fallback; routed reads may contact other sources or return stale cached data, and financials may merge across sources.
 
-After the demonstration, remove only the throwaway profile you created and close that shell. Keep real-feed verification local and within your licence: test a supported contract, wrong/missing venue, another expiry, unavailable entitlement, and delayed/cached observations before using the adapter for decisions.
+Test missing/wrong venues, another expiry, unavailable entitlement and delayed/cached observations before real use. Remove your throwaway profile and close the shell.
