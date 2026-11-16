@@ -228,6 +228,23 @@ test("graph selection collapses a branch and recenters an unlisted company throu
   expect(requests.every(url => url.includes("/graph?") && url.includes("tiers=primary"))).toBe(true);
 });
 
+test("a graph read without the filing cutoff asked for warns in the footer; one that reads it does not", async () => {
+  const requests: string[] = [];
+  // The free preview answers the latest snapshot: its options carry no cutoff, and the fixture raises no other notice.
+  setCloudApiFetchTransport(async (input) => { requests.push(String(input)); return Response.json(graphPayload()); });
+  await mount(120, 24, "graph", "says", () => {}, { asOf: "2025-01-01" });
+  await tui.waitForFrameToContain("Private supplier");
+  expect(await tui.waitForFrameToContain("⚠")).toContain("[!]");
+  expect(requests.some((url) => url.includes("asOf=2025-01-01"))).toBe(true);
+  await tui.destroy();
+  graphCache.reset();
+  setCloudApiFetchTransport(async () => { const data = graphPayload(); return Response.json({ ...data, options: { ...data.options, asOf: "2025-01-01" } }); });
+  await mount(120, 24, "graph", "says", () => {}, { asOf: "2025-01-01" });
+  await tui.waitForFrameToContain("Private supplier");
+  await tui.renderFrames(3);
+  expect(tui.frame()).not.toContain("⚠");
+});
+
 test("path evidence preserves every hop and opens the filter form without losing the route", async () => {
   const data = graphPayload(); data.paths = [data.upstream[1]!.bestPath]; data.target = data.nodes[2]!; data.upstream = [];
   Object.assign(data.links[0]!.evidence[0]!, { pctOfRevenue: 22, pctBasis: "revenue", pctScope: "Compute And Networking Segment" });

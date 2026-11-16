@@ -166,7 +166,9 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
     info: data?.asOf ? [{ id: "as-of", parts: [{ text: `as of ${data.asOf}`, tone: "muted" }] }] : [] });
   usePaneNoticeFooter({ registrationId: "supply-graph:notices", focused, notices: [...(resource.data?.refreshError ? [resource.data.refreshError] : []),
     ...(data && !data.search.complete ? [`Search limited: ${data.search.reasons.join(", ").replaceAll("_", " ")}. Narrow filters or reduce depth to inspect more routes.`] : []),
-    ...(data?.access === "preview" ? [`Pro preview: depth ${data.options.depth}. Upgrade for four hops and the full graph.`] : [])] });
+    ...(data?.access === "preview" ? [`Pro preview: depth ${data.options.depth}. Upgrade for four hops and the full graph.`] : []),
+    // A cutoff the server did not read (the free preview always reads the latest snapshot) is said, never drawn as that day's.
+    ...(data && options.asOf && data.options.asOf !== options.asOf ? ["Filing cutoff needs Gloom Pro; showing the latest disclosures."] : [])] });
   useRemoteUiNode({ role: "chart-data", label: "Rendered supply chain graph", getMetadata: () => ({ kind: "supply-chain", version: 1, complete: !!data, ready: !!data, plottedValueCount: tab === "graph" ? visibleLinks.length : paths.length, payload: data, tab, evidenceOpen: !!openPath, evidenceId: openPath?.id ?? null, rowIds: tab === "graph" ? visibleLinks : paths.map(path => path.id) }) });
   const filters: QueryBarFilter[] = [
     { id: "target", kind: "text", label: "To", value: targetDraft, placeholder: "Ticker or id:123", onChange: setTargetDraft, onSubmit: applyTarget, focused, active: targetActive, onActiveChange: setTargetActive, width: 16 },
