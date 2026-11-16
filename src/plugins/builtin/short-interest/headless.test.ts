@@ -10,6 +10,7 @@ import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-
 import { shortInterestFreshness } from "./schedule";
 import { shortWatchHeadless } from "./watch-headless";
 import { setupLabel } from "./watch-model";
+import { loadShortWatch } from "./watch-client";
 
 const records = [
   {
@@ -38,6 +39,34 @@ function args(overrides: Partial<HeadlessPaneLoadArgs["options"]> = {}): Headles
 }
 
 describe("short interest client", () => {
+  test("a slow empty or failed settlement among sixteen requested symbols survives the worker queue", async () => {
+    const symbols = "GME,AMC,CVNA,UPST,BYND,RIVN,LCID,PLUG,SOFI,MARA,RIOT,CHWY,SMCI,HOOD,COIN,AI".split(",");
+    for (const failure of [false, true]) {
+      const release = Promise.withResolvers<void>();
+      const requested = Promise.withResolvers<void>();
+      const calls: string[] = [];
+      const pending = loadShortWatch(symbols, {}, {
+        loadRecords: async (symbol) => {
+          calls.push(symbol);
+          if (calls.length === symbols.length) requested.resolve();
+          if (symbol !== "HOOD") return records;
+          await release.promise;
+          if (failure) throw new Error("Settlement lookup failed");
+          return [];
+        },
+        loadSnapshots: async () => [],
+        loadChart: async () => { throw new Error("No daily closes"); },
+      });
+      await requested.promise;
+      release.resolve();
+      const rows = await pending;
+      expect(rows.map((row) => row.symbol)).toEqual(symbols);
+      expect(rows.find((row) => row.symbol === "HOOD")).toMatchObject({ settlementDate: null,
+        error: failure ? "Settlement lookup failed" : "No short interest reported" });
+      expect(rows.filter((row) => row.settlementDate)).toHaveLength(15);
+    }
+  });
+
   test("uses the served market route for FINRA history", async () => {
     const paths: string[] = [];
     const dataApi = new CloudDataApi(async <T>(path: string): Promise<T> => {

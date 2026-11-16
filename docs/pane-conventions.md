@@ -638,6 +638,13 @@ is named in the table's words (`Short %`, `US HY OAS`, `5Y spread`) and shows
 its value, the latest one until the cursor moves. Units live in the axis
 labels. No loose title line above a chart, no `yAxisLabel` row, no unnamed
 single line. A chart that follows the selected row names that row. When the
+legend compacts multi-company series of the same metric, the metric stays
+once at its start (`Revenue`, then each company's value), never only in
+tooltips. Different metrics stay whole in their own entries instead of
+sharing a caption. `ResolvedSeries.legendContext` supplies that context;
+security series carry their field's label through resolution, including
+unavailable and hidden series. Custom labels are left as authored. A wide
+legend keeps the full names. When the
 legend runs short of width, a curve's caption gives way before any series
 name does. A series read against the right axis of a panel whose other
 series read against the left says so after its value, dim: `51.57 USD / troy
