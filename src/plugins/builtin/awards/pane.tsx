@@ -56,9 +56,13 @@ const COLUMN = {
   dateBasis: { id: "dateBasis", label: "Date basis", width: 14, align: "left" },
 } satisfies Record<string, DataTableColumn>;
 // Who won, what for, from whom and how much come first, so a 1280-wide pane
-// shows the contract; the period and date basis follow.
+// shows the contract; the period and date basis follow. The feed is newest
+// first across sources, so a screen of notices without an obligation or
+// ceiling (UK, EU, Japan) can sit above older awards that report one: each
+// amount shows while a row in view has it.
 const FEED_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker, COLUMN.title, COLUMN.agency, COLUMN.currency,
-  COLUMN.value, COLUMN.obligated, COLUMN.ceiling, COLUMN.country, COLUMN.period, COLUMN.dateBasis];
+  ...[COLUMN.value, COLUMN.obligated, COLUMN.ceiling].map((column) => ({ ...column, omitWhenEmpty: "visible" as const })),
+  COLUMN.country, COLUMN.period, COLUMN.dateBasis];
 const EVENT_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker,
   { id: "ratio", label: "% revenue", width: 11, align: "right" }, COLUMN.currency, { ...COLUMN.value, label: "Compared value" },
   { id: "revenue", label: "Annual revenue", width: 14, align: "right" }, { id: "basis", label: "Value basis", width: 13, align: "left" },

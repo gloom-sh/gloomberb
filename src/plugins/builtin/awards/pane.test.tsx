@@ -59,6 +59,27 @@ test("unreported amounts leave the feed, not its export, and any reported amount
   expect(takeSavedTextFile()!.text).toContain("USD,0,2500000,0");
 });
 
+test("a mixed-source feed hides the obligation and ceiling its newest notices lack until scrolled to awards that report them", async () => {
+  const notices = Array.from({ length: 30 }, (_, index) => awardRow({ id: `notice-${index}`, source: "contracts-finder", jurisdiction: "GB", currency: "GBP",
+    recipient: { name: `Notice supplier ${index}` }, awardDate: "2026-11-13", awardAmount: "56612", obligatedAmount: null, ceilingAmount: null, entity: null, revenueComparison: null }));
+  const prime = awardRow({ id: "prime", recipient: { name: "Prime contractor" }, awardDate: "2026-11-12", awardAmount: null, obligatedAmount: "112.52", ceilingAmount: "150" });
+  setCloudApiFetchTransport(async () => Response.json(awardsPayload({ rows: [...notices, prime] })));
+  await mount("feed", 240, 26);
+  await tui.waitForFrameToContain("Notice supplier 0");
+  await tui.renderFrames(4);
+  const top = tui.frame();
+  expect(top).toContain("VALUE");
+  expect(top).not.toMatch(/OBLIGATED|CEILING/);
+  await act(async () => { await tui.emitKeypress({ name: "end" }); });
+  const bottom = await tui.waitForFrameToContain("Prime contractor");
+  expect(bottom).toMatch(/VALUE\s+OBLIGATED\s+CEILING/);
+  expect(bottom.split("\n").find((line) => line.includes("Prime contractor"))).toMatch(new RegExp(`USD\\s+${MISSING_VALUE}\\s+112\\.52\\s+150`));
+  await exportPaneTable("awards:test", "awards.csv");
+  const csv = takeSavedTextFile()!.text;
+  expect(csv).toContain("GBP,56612,,");
+  expect(csv).toContain("USD,,112.52,150");
+});
+
 test("a withheld amount alone keeps Value visible without reviving unavailable amounts", async () => {
   setCloudApiFetchTransport(async () => Response.json(awardsPayload({ rows: [awardRow({ awardAmount: null, obligatedAmount: null, ceilingAmount: null, amountWithheld: "under S$6,000", revenueComparison: null })] })));
   await mount("feed", 240, 26);

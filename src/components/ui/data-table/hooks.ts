@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 import { useAppDispatch, usePaneInstance } from "../../../state/app/context";
 import type { DataTableProps, DataTableVisibleRange } from "./types";
-import { resolveDataTableVisibleRange } from "./visible-range";
+import { resolveDataTableVisibleRange, sameVisibleRange } from "./visible-range";
 
 /** Focuses the pane that owns the table, as every click inside it does. */
 export function useFocusOwningPane(): () => void {
@@ -37,8 +37,7 @@ export function useVisibleRangeEmitter({
     if (
       previous !== null
       && previous.key === visibleRangeKey
-      && previous.range.start === range.start
-      && previous.range.end === range.end
+      && sameVisibleRange(previous.range, range)
     ) return;
     lastVisibleRangeRef.current = { key: visibleRangeKey, range };
     onVisibleRangeChange(range);

@@ -30,10 +30,10 @@ export type DataTableColumn = Pick<
   /**
    * Leave this column out of the pane while every data row renders an empty
    * cell or MISSING_VALUE. Use for unavailable coverage, not a pending event
-   * (mayBeBlank). "visible" checks just the viewport, for a chronological
-   * history whose older rows have coverage its recent rows lack. Scrolling
-   * restores the column when a row has a value. Reports and CSV exports keep
-   * the column and its raw cells.
+   * (mayBeBlank). "visible" checks just the rows wholly in view, for a
+   * chronological history whose older rows have coverage its recent rows
+   * lack. Scrolling restores the column when a row has a value. Reports and
+   * CSV exports keep the column and its raw cells.
    */
   omitWhenEmpty?: boolean | "visible";
 };
@@ -163,6 +163,13 @@ export interface DataTableVisibleRange {
   start: number;
   /** Exclusive end of the visible row range. */
   end: number;
+  /**
+   * The rows wholly in view, without the buffer, where they are not
+   * start/end: a row the viewport cuts at an edge, drawn in part, is left
+   * out. A capture that ends on a whole row draws exactly these.
+   */
+  wholeStart?: number;
+  wholeEnd?: number;
 }
 
 export interface DataTableProps<

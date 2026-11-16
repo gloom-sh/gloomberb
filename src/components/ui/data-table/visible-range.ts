@@ -21,7 +21,17 @@ export function resolveDataTableVisibleRange({
   const extra = Number.isFinite(buffer) ? Math.max(0, Math.floor(buffer)) : 0;
   const start = Math.min(count, Math.floor(offset / size));
   const end = Math.min(count, Math.max(start, Math.ceil((offset + viewport) / size)));
-  return { start: Math.max(0, start - extra), end: Math.min(count, end + extra) };
+  // A pixel of subpixel layout does not cut a row.
+  const wholeStart = Math.max(0, Math.min(count, Math.ceil(offset / size - WHOLE_ROW_TOLERANCE)));
+  const wholeEnd = Math.min(count, Math.max(wholeStart, Math.floor((offset + viewport) / size + WHOLE_ROW_TOLERANCE)));
+  const range = { start: Math.max(0, start - extra), end: Math.min(count, end + extra) };
+  return range.start === wholeStart && range.end === wholeEnd ? range : { ...range, wholeStart, wholeEnd };
+}
+
+const WHOLE_ROW_TOLERANCE = 0.05;
+
+export function sameVisibleRange(a: DataTableVisibleRange, b: DataTableVisibleRange): boolean {
+  return a.start === b.start && a.end === b.end && a.wholeStart === b.wholeStart && a.wholeEnd === b.wholeEnd;
 }
 
 /** The first visible row, in rows, that brings `targetIndex` into view. */
