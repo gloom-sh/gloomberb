@@ -78,7 +78,7 @@ export interface SqliteDatabaseOptions {
    * another program's lock (see access.ts). Commands and tests wait it out.
    */
   interactive?: boolean;
-  /** Tests only: the WAL checkpointer's thread and how long it may go silent. */
+  /** Tests only: the WAL checkpointer's thread, how long it may go silent, and what it reports. */
   checkpointer?: WalCheckpointerOptions;
 }
 

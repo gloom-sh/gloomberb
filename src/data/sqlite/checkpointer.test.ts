@@ -1,7 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import { openSync, readSync, closeSync, statSync } from "fs";
+import type { WalCheckpointResult } from "./checkpointer";
 import { SqliteDatabase } from "./database";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
+import { withDeadline } from "../../utils/async-deadline";
 
 afterEach(removeTempDbFiles);
 
@@ -21,7 +23,9 @@ function walCheckpointSequence(dbPath: string): number {
 // that crossed it: 150 ms to a second of frozen app, every few hundred writes.
 test("in the app, commits leave copying the WAL into the database to the checkpointer's thread", async () => {
   const dbPath = createTempDbPath("checkpointer");
-  const database = new SqliteDatabase(dbPath, { interactive: true });
+  let copiedWal!: (result: WalCheckpointResult) => void;
+  const checkpoint = new Promise<WalCheckpointResult>((resolve) => { copiedWal = resolve; });
+  const database = new SqliteDatabase(dbPath, { interactive: true, checkpointer: { onCheckpoint: copiedWal } });
   const { connection, access } = database;
   try {
     connection.exec("CREATE TABLE blobs (k INTEGER PRIMARY KEY, v BLOB NOT NULL)");
@@ -31,17 +35,19 @@ test("in the app, commits leave copying the WAL into the database to the checkpo
     // A commit that checkpointed would have started the WAL over at 1,000 pages.
     expect(statSync(`${dbPath}-wal`).size).toBeGreaterThan(1_400 * pageSize);
 
+    // No commit while the thread copies: one that lands inside a checkpoint
+    // leaves its frame behind, and the checkpoint takes as long as the disk
+    // does, so a stream of commits can keep the WAL from ever being whole.
     const sequence = walCheckpointSequence(dbPath);
-    const deadline = performance.now() + 5_000;
-    while (walCheckpointSequence(dbPath) === sequence && performance.now() < deadline) {
-      await Bun.sleep(100);
-      access.write("put", () => { put.run(1); });
-    }
+    const result = await withDeadline(checkpoint, 20_000, "The checkpointer never copied the WAL");
+    expect(result.checkpointed).toBe(result.log);
+    // The first commit after a whole WAL is in the database starts it over.
+    access.write("put", () => { put.run(1); });
     expect(walCheckpointSequence(dbPath)).not.toBe(sequence);
   } finally {
     database.close();
   }
-});
+}, 30_000);
 
 // A thread stuck in a checkpoint sends no error event. The app's user writes
 // skip their flush while the checkpointer runs, so without a clock on its
