@@ -105,7 +105,7 @@ export interface ChartPanelSpec {
 export interface ChartViewportSpec {
   range: TimeRange;
   resolution: ChartResolution;
-  dateWindow?: { start: string; end: string };
+  dateWindow?: { start: string; end: string; endAtLatestObservation?: boolean };
   /** Optional latest-observation cap, useful for period-based financial views. */
   maxPoints?: number;
   /** Intraday market history includes pre-market and after-hours bars where the venue has them. */

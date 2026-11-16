@@ -15,6 +15,7 @@ import {
 import type { CompositeChartProps, CompositeChartScene } from "./types";
 import { DIRECTION_MARKER, seriesColorsDirection, seriesCueCssBackground, type SeriesLineCue } from "./series-cues";
 import { DisclosureMarker as KitDisclosureMarker } from "../../ui/disclosure-marker";
+import { usePaneCapture } from "../../layout/pane/capture-status";
 
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
 const NO_LINE_CUES: ReadonlyMap<string, SeriesLineCue> = new Map();
@@ -253,7 +254,7 @@ export function CompositeLegend({
   cellPlot = false,
   directionDownColor = null,
   width,
-  accessory,
+  accessory: liveAccessory,
   accessoryWidth,
   formatValue,
   showLatestChangePercent,
@@ -297,6 +298,7 @@ export function CompositeLegend({
   /** Folds or opens the legend: a chevron in its inset, shown under the pointer while it is open. */
   onToggleCollapsed?: () => void;
 }) {
+  const accessory = usePaneCapture() ? null : liveAccessory;
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const foldKey = useShortcutLabel()("Shift+L");
   // Folded, the legend keeps its first series; the rest wait behind a count.
@@ -670,24 +672,36 @@ export function CompositeLegend({
       </Box>
     );
   };
-  const scrollLine = (line: number[] | null, key: string | number, ref: typeof scrollRef | undefined) => (
-    <ScrollBox
-      key={key}
-      ref={ref}
-      width={seriesWidth}
-      height={1}
-      flexShrink={0}
-      scrollX
-      focusable={false}
-      horizontalScrollbarOptions={{ visible: false }}
-      onMouseScroll={ref ? handleMouseScroll : undefined}
-      data-gloom-role="composite-chart-legend-scroll"
-    >
-      <Box flexDirection="row" width={line ? lineWidth(line) : desiredSeriesWidth} height={1} gap={1}>
-        {line ? line.map((index) => renderEntry(entries[index]!, index)) : entries.map(renderEntry)}
+  const scrollLine = (line: number[] | null, key: string | number, ref: typeof scrollRef | undefined) => {
+    const contentWidth = line ? lineWidth(line) : desiredSeriesWidth;
+    const count = ref && !collapsed && series.length > 1 && contentWidth > seriesWidth ? `${series.length} series` : "";
+    const countWidth = count ? Math.min(seriesWidth, displayWidth(count) + 1) : 0;
+    return (
+      <Box key={key} flexDirection="row" width={seriesWidth} height={1} flexShrink={0}>
+        <ScrollBox
+          ref={ref}
+          width={Math.max(0, seriesWidth - countWidth)}
+          height={1}
+          flexShrink={0}
+          scrollX
+          focusable={false}
+          horizontalScrollbarOptions={{ visible: false }}
+          onMouseScroll={ref ? handleMouseScroll : undefined}
+          data-gloom-role="composite-chart-legend-scroll"
+        >
+          <Box flexDirection="row" width={contentWidth} height={1} gap={1}>
+            {line ? line.map((index) => renderEntry(entries[index]!, index)) : entries.map(renderEntry)}
+          </Box>
+        </ScrollBox>
+        {count ? (
+          <Box width={countWidth} height={1} flexShrink={0} paddingLeft={countWidth > displayWidth(count) ? 1 : 0}
+            data-gloom-role="composite-chart-legend-count" title={series.map((entry) => entry.label).join(" · ")}>
+            <Text fg={themeColors.textDim}>{countWidth < displayWidth(count) ? String(series.length) : count}</Text>
+          </Box>
+        ) : null}
       </Box>
-    </ScrollBox>
-  );
+    );
+  };
   const lineCount = lines?.length ?? 1;
   const foldLabel = foldedCount > 0
     ? `Show ${foldedCount} more series (${foldKey})`

@@ -308,6 +308,9 @@ the origin of a number. The one count the kit draws is the
   `o` hint opening the current item's URL), `usePaneNoticeFooter` (warnings).
 - Info is what changes. If a segment reads the same on every render of every
   instance, delete it.
+- Static pane captures print warning text instead of an icon that opens a
+  dialog: `usePaneNoticeFooter` supplies the notices through `captureText`.
+  Warnings remain visible with `--no-status` too.
 - The footer sets info segments apart with a muted ` · ` (`PANE_FOOTER_SEPARATOR`),
   and an icon (`⚠`, `◷15m`) with one column, so two segments never read as one
   sentence. A pane neither adds its own `·` between segments nor starts one
@@ -647,6 +650,9 @@ unavailable and hidden series. Custom labels are left as authored. A wide
 legend keeps the full names. Compact company names use the available row
 width together: keep every company name when they all fit; otherwise use
 clean tickers for all of them, never a mix of names and ticker ellipses.
+If even the wrapped legend cannot fit every series, its last scrolling line
+keeps the total series count visible; no drawn series disappears silently.
+Static captures give the legend the space of its hidden add-series control.
 Values, units and the shared metric stay visible. When the
 legend runs short of width, a curve's caption gives way before any series
 name does. A series read against the right axis of a panel whose other
@@ -657,6 +663,9 @@ gold) take an axis each: the smaller goes right, with what is drawn in its
 price. Each is read at the median of its loaded bars, and the split is kept
 for that set of prices, so the axes never trade places on a new high or a
 pan.
+
+An open-ended date window ends at its latest observation, not the viewer's
+clock. An explicit end date or a panned viewport keeps its requested bounds.
 
 **The chart earns its rows.** It shows what the table cannot: a trend, a
 curve's shape, how a level moved (look-back curves, trails). The table adds

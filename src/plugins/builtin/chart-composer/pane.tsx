@@ -1217,8 +1217,11 @@ function ChartComposerSurface({
     const timeZone = exchange?.kind === "security"
       ? intradaySessionTimeZone(exchange.instrument.symbol, exchange.instrument.exchange)
       : "UTC";
-    return formatChartDateWindow(window, timeZone);
-  }, [spec.series, spec.viewport.dateWindow]);
+    const end = window.endAtLatestObservation && viewport?.end
+      ? /^\d{4}-\d{2}-\d{2}$/.test(window.end) ? viewport.end.toISOString().slice(0, 10) : viewport.end.toISOString()
+      : window.end;
+    return formatChartDateWindow({ ...window, end }, timeZone);
+  }, [spec.series, spec.viewport.dateWindow, viewport?.end]);
 
   // A generic future (CL1) is a rolling series: its roll rule and adjustment are chart controls.
   const generic = useMemo(() => chartFuturesGeneric(spec), [spec]);
