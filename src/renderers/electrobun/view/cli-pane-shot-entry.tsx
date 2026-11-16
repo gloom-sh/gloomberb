@@ -201,6 +201,8 @@ function installShotHttpFetchTransport(): void {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(await toRequestEnvelope(url, init)),
+      // A pane's own deadline ends the read here as in the app, not when the Bun side gives up.
+      signal: init?.signal ?? null,
     });
     const result = await response.json() as { ok: boolean; error?: string; data?: HttpProxyResponseEnvelope };
     if (!result.ok || !result.data) throw new Error(result.error ?? `Request failed: ${url}`);

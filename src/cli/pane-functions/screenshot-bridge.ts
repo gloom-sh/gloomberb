@@ -8,6 +8,7 @@ import {
   type HttpProxyRequestEnvelope,
   type HttpProxyResponseEnvelope,
 } from "../../utils/http-proxy-response";
+import { signalWithTimeout } from "../../utils/async-deadline";
 import { fetchCheckingRedirects, readBytesWithin } from "../../utils/http-proxy-upstream";
 import { isPublicAddress } from "../../utils/public-address";
 import type { DesktopPaneShotApiProxy, DesktopPaneShotBridge } from "../desktop-pane-shot";
@@ -146,7 +147,7 @@ export function createDesktopShotBridge(
         args,
       );
     },
-    httpFetch: (request) => runDesktopShotHttpFetch(request, httpOptions),
+    httpFetch: (request, signal) => runDesktopShotHttpFetch(request, httpOptions, signal),
   };
 }
 
@@ -196,6 +197,7 @@ async function checkShotHttpTarget(
 async function runDesktopShotHttpFetch(
   request: HttpProxyRequestEnvelope,
   options: ShotHttpOptions,
+  signal?: AbortSignal,
 ): Promise<HttpProxyResponseEnvelope> {
   const resolve = options.resolveHost ?? resolveHost;
   const addresses = new Map<string, string>();
@@ -218,7 +220,7 @@ async function runDesktopShotHttpFetch(
       return fetchShotHttpAddress(url, init ?? {}, address);
     }) as typeof fetch,
     check: checkTarget,
-    signal: AbortSignal.timeout(SHOT_BRIDGE_HTTP_TIMEOUT_MS),
+    signal: signalWithTimeout(signal, SHOT_BRIDGE_HTTP_TIMEOUT_MS),
   });
   if ("error" in result) throw new Error(result.error);
   const { response } = result;

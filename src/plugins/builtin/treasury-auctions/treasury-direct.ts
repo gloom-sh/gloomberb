@@ -22,9 +22,11 @@ export const DIRECT_LOOKBACK_DAYS = 60;
 /** Announced auctions are listed days to two weeks ahead; a month leaves none out. */
 const DIRECT_LOOKAHEAD_DAYS = 30;
 
+// As Fiscal Data's (client.ts): a stalled search is not waited out twice more.
 const DIRECT_FETCH = createThrottledFetch({
   requestsPerMinute: 20,
   maxRetries: 2,
+  retryTimeouts: false,
   timeoutMs: 20_000,
   backoffBaseMs: 800,
   defaultHeaders: { Accept: "application/json" },

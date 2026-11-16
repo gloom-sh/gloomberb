@@ -122,7 +122,8 @@ export interface DesktopPaneShotApiProxy {
  */
 export interface DesktopPaneShotBridge {
   marketData(operation: string, args: unknown[]): Promise<unknown>;
-  httpFetch(request: HttpProxyRequestEnvelope): Promise<HttpProxyResponseEnvelope>;
+  /** `signal` ends the read when the page gives up on it (its own deadline), so it holds nothing past that. */
+  httpFetch(request: HttpProxyRequestEnvelope, signal?: AbortSignal): Promise<HttpProxyResponseEnvelope>;
 }
 
 interface DesktopPaneShotRenderedCell {
@@ -494,7 +495,7 @@ async function runShotHttpBridge(
   if (!bridge) return Response.json({ ok: false, error: "No HTTP bridge" }, { status: 404 });
   try {
     const payload = await request.json() as HttpProxyRequestEnvelope;
-    const data = await bridge.httpFetch(payload);
+    const data = await bridge.httpFetch(payload, request.signal);
     return Response.json({ ok: true, data });
   } catch (error) {
     return Response.json({ ok: false, error: errorMessage(error) });
