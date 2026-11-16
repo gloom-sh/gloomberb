@@ -644,7 +644,10 @@ tooltips. Different metrics stay whole in their own entries instead of
 sharing a caption. `ResolvedSeries.legendContext` supplies that context;
 security series carry their field's label through resolution, including
 unavailable and hidden series. Custom labels are left as authored. A wide
-legend keeps the full names. When the
+legend keeps the full names. Compact company names use the available row
+width together: keep every company name when they all fit; otherwise use
+clean tickers for all of them, never a mix of names and ticker ellipses.
+Values, units and the shared metric stay visible. When the
 legend runs short of width, a curve's caption gives way before any series
 name does. A series read against the right axis of a panel whose other
 series read against the left says so after its value, dim: `51.57 USD / troy
