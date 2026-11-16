@@ -62,8 +62,9 @@ jobs:
         shell: pwsh
         run: ./scripts/build-windows-desktop-package.ps1
 
+      # The release's pinned Inno Setup, so this checks the compiler it ships with.
       - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
+        uses: ./.github/actions/inno-setup
 
       - name: Build Windows installer
         shell: pwsh

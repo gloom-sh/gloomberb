@@ -48,6 +48,7 @@ on:
         default: ""
   pull_request:
     paths:
+      - ".github/actions/inno-setup/**"
       - ".github/workflows/windows-desktop-check.yml"
       - "scripts/windows-desktop-check/**"
       - "src/renderers/electrobun/**"
@@ -63,6 +64,7 @@ on:
     branches:
       - main
     paths:
+      - ".github/actions/inno-setup/**"
       - ".github/workflows/windows-desktop-check.yml"
       - "scripts/windows-desktop-check/**"
       - "src/renderers/electrobun/**"
@@ -98,6 +100,23 @@ jobs:
         with:
           ref: ${{ inputs.app_ref }}
 
+      # The Inno Setup install comes from this run's commit even when the app
+      # comes from another, which may be older than the pin.
+      - uses: actions/checkout@v4
+        if: inputs.app_ref != ''
+        with:
+          path: harness
+          sparse-checkout: .github/actions/inno-setup
+
+      - name: Take the Inno Setup install from this run's commit
+        if: inputs.app_ref != ''
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force .github/actions/inno-setup -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force .github/actions | Out-Null
+          Move-Item harness/.github/actions/inno-setup .github/actions/inno-setup
+          Remove-Item -Recurse -Force harness
+
       - uses: ./.github/actions/setup-bun
         with:
           desktop: "true"
@@ -106,8 +125,9 @@ jobs:
         shell: pwsh
         run: ./scripts/build-windows-desktop-package.ps1
 
+      # The release's pinned Inno Setup, so this checks the compiler it ships with.
       - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
+        uses: ./.github/actions/inno-setup
 
       - name: Build the installer
         shell: pwsh
