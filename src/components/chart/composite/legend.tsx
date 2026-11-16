@@ -458,6 +458,17 @@ export function CompositeLegend({
   if (entries.some(({ axisNote }) => axisNote) && minimumWidthOf(entries) > widthBeforeAccessory) {
     entries = buildEntries(entries.some(({ fiscalPeriod }) => fiscalPeriod), false);
   }
+  if (entries.some((entry) => entry.entry.compactLabel) && measureSeriesWidth() > widthBeforeAccessory) {
+    for (const entry of entries) setEntryLabel(entry, entry.compactLabel, displayWidth(entry.compactLabel));
+    if (measureSeriesWidth() > widthBeforeAccessory) {
+      for (const entry of entries) {
+        if (!entry.entry.compactLabel) continue;
+        const { name, suffix } = labelParts(entry, entry.compactLabel);
+        entry.compactLabel = (nameWords(name)[0] ?? name) + suffix;
+        setEntryLabel(entry, entry.compactLabel, displayWidth(entry.compactLabel));
+      }
+    }
+  }
   const fitsOneLine = minimumWidthOf(entries, true) <= widthBeforeAccessory;
   // Entries that cannot share a line even with names cut to fragments wrap onto
   // more lines when the chart gives them room, each whole, its name only cut

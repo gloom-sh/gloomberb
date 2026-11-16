@@ -700,6 +700,35 @@ describe("CompositeChart", () => {
     }
   });
 
+  test("company legend names fit together or fall back to clean tickers together", async () => {
+    const companies = [
+      ["MSFT", "Microsoft", 92_279_000_000],
+      ["GOOGL", "Alphabet", 127_577_000_000],
+      ["AMZN", "Amazon.com", 201_944_000_000],
+    ] as const;
+    for (const metric of ["Revenue", "Close"]) {
+      const entries = companies.map(([symbol, company, value]) => ({
+        ...series(symbol, "main", "left", "USD", [value]),
+        label: `${symbol}:NASDAQ ${metric} · ${company}`,
+        compactLabel: `${symbol} ${company}`,
+        legendContext: metric,
+        unitGroup: "currency-total:USD",
+      }));
+      for (const [width, accessory, names] of [[90, false, 3], [82, false, 0], [70, false, 0], [90, true, 0], [106, true, 3], [90, false, 3]] as const) {
+        await tui.render(<CompositeChart width={width} height={12} panels={[{ id: "main" }]} series={entries}
+          legendAccessory={accessory ? <Text>Add series</Text> : undefined} legendAccessoryWidth={14} />,
+          { width: width + 2, height: 14 });
+        await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+        const legend = tui.frame().split("\n")[0]!;
+        expect(legend).toContain(metric);
+        expect(legend).not.toContain("…");
+        expect(companies.filter(([, company]) => legend.includes(company))).toHaveLength(names);
+        for (const [symbol] of companies) expect(legend).toContain(symbol);
+        for (const value of ["$92.28B", "$127.58B", "$201.94B"]) expect(legend).toContain(value);
+      }
+    }
+  });
+
   test("different compacted fields keep their own metric instead of sharing a misleading caption", async () => {
     const entries = ["Revenue", "Operating Income"].map((metric, index) => ({
       ...series(`series-${index}`, "main", "left", "USD", [90_000_000_000]),
