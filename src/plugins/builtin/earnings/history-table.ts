@@ -6,7 +6,7 @@ import { notMeaningfulCell } from "../../../components/ui/not-meaningful";
 import { isNotMeaningful } from "../../../utils/growth";
 import { TextAttributes } from "../../../ui";
 import { datedYear, epsText, impliedText, moneyText, signedPercent, TIMING_LABEL, type Surprise } from "./format";
-import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
+import { epsBasisShort, lacksConsensus, NO_CONSENSUS_SHORT, showsEpsBasis } from "../shared/earnings-report";
 import { periodText, type HistoryRow } from "./history-model";
 
 type HistoryColumnId =
@@ -117,7 +117,8 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
     case "period":
       return { text: periodText(row), color: dim };
     case "epsEstimate":
-      return { text: inCurrency(epsText(row.epsEstimate), row), color: dim };
+      // A reported quarter with no consensus on record says so; its surprise stays blank.
+      return { text: lacksConsensus(row) ? NO_CONSENSUS_SHORT : inCurrency(epsText(row.epsEstimate), row), color: dim };
     case "analysts":
       return { text: row.epsAnalysts == null ? MISSING_VALUE : String(row.epsAnalysts), color: dim };
     case "epsActual":
