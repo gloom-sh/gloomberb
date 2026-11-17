@@ -861,7 +861,9 @@ export class MarketDataCoordinator {
         delayMinutes: result?.delayMinutes,
         staleAt: result?.staleAt ?? null,
         error: classified ?? (!loading && empty ? { reasonCode: "NO_DATA", message: "No data available" } : null),
-        attempts: result ? [createAttempt(result.source, result.fetchedAt, error ? errorStatus(error) : empty ? "empty" : "success", classified?.reasonCode, classified?.message)] : [],
+        // A read that failed with nothing to show records the failure too, so its entry says whether asking again may answer.
+        attempts: result ? [createAttempt(result.source, result.fetchedAt, error ? errorStatus(error) : empty ? "empty" : "success", classified?.reasonCode, classified?.message)]
+          : error ? [createAttempt(this.dataProvider.id, Date.now(), errorStatus(error), classified?.reasonCode, classified?.message)] : [],
       });
     };
     const existing = this.cachedQueries.get(key);
@@ -1125,8 +1127,17 @@ export function resolveEntryValue<T>(entry: QueryEntry<T>): T | null {
  */
 export function savedCopyEntryAt<T>(entry: QueryEntry<T> | null | undefined): number | null {
   if (!entry?.error || entry.fetchedAt == null || !resolveEntryData(entry)) return null;
+  return entryFailedTransiently(entry) ? entry.fetchedAt : null;
+}
+
+/**
+ * Whether `entry`'s last load failed for a reason asking again may get past:
+ * no connection, a timeout, 429 or a 5xx (a `retryable_error` attempt), as
+ * opposed to an answer that there is nothing or a refusal.
+ */
+export function entryFailedTransiently<T>(entry: QueryEntry<T> | null | undefined): boolean {
+  if (!entry?.error) return false;
   const { reasonCode, message } = entry.error;
-  const transient = entry.attempts.at(-1)?.status === "retryable_error"
+  return entry.attempts.at(-1)?.status === "retryable_error"
     || reasonCode === "TIMEOUT" || message === DATA_SERVICE_UNREACHABLE_MESSAGE || isNetworkFailure(message);
-  return transient ? entry.fetchedAt : null;
 }

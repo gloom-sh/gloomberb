@@ -3,20 +3,13 @@ import { FUTURES_CONTRACTS, FUTURES_SECTOR_LABELS, futuresGroupTags, type Future
 import { futuresContractCode } from "../../../utils/futures-generic";
 
 /**
- * Grains and softs the board quotes in US cents with no unit of its own
- * (soybean meal and cocoa quote in dollars). Checked against the server's
- * contract terms on 2026-10-13.
- */
-const US_CENT_CONTRACTS: ReadonlySet<string> = new Set(["ZC", "ZS", "ZL", "ZW", "KE", "KC", "SB", "CT"]);
-
-/**
  * The unit the board prints, not a blanket dollar price. Index and sector
  * futures are points, rates are points (the board prints decimals, not 32nds), cents
  * contracts are USX, and a declared quote unit wins over USD. Currency
  * futures are dollars per unit of the foreign currency.
  */
 function futuresSeriesUnit(contract: FuturesContract): string {
-  if (contract.unit?.startsWith("US cents") || US_CENT_CONTRACTS.has(contract.code)) return "USX";
+  if (contract.unit?.startsWith("US cents")) return "USX";
   if (contract.unit?.startsWith("EUR")) return "EUR";
   if (contract.unit?.startsWith("USD")) return "USD";
   if (contract.sector === "equity-index" || contract.sector === "equity-sectors" || contract.sector === "rates") return "points";

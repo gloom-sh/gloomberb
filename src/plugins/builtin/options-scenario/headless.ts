@@ -13,7 +13,7 @@ import {
 import { scenarioFreshness } from "./freshness";
 import { cashSecuredPut, cspReportEntries, loadNextEarningsDate } from "./csp";
 import { formatSpotTime } from "../options/model-spot";
-import { amountUnit, buildScenario, currencyLabel, exportPercent, parseLegs, scenarioValueUnit } from "./model";
+import { amountUnit, buildScenario, currencyLabel, exportPercent, parseLegs, scenarioDateLabels, scenarioValueUnit } from "./model";
 import { hedgeInputsFromSettings, hedgeReportEntries, scenarioHedgeBudget, seededLegQuotes } from "./hedge";
 import { collarReportEntries, scenarioCollar } from "./collar";
 import { modelDividendYieldNote } from "../../../market-data/model-dividend-yield";
@@ -168,7 +168,11 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
             formatted: `${money(lastPrint)} ${PRICE_UNIT}${lastSession && lastSession !== "last price" ? ` (${scenarioSpotStamp(lastSession, market.asOf)})` : ""}` }] : []),
           ...(position!.underlying ? [{ key: "shares", label: "Shares held", value: position!.underlying.quantity, unit: "shares",
             formatted: `${position!.underlying.quantity.toLocaleString("en-US")} at ${money(position!.underlying.price)} ${PRICE_UNIT}` }] : []),
-          { key: "asOf", label: "Valued at", value: new Date(position!.asOf).toISOString(), formatted: formatSpotTime(position!.asOf) },
+          // The figures are valued at the scenario date; its spot, IVs and rate are as of the position's own time.
+          ...(scenario.controls.date !== position!.asOf ? [
+            { key: "asOf", label: "As of", value: new Date(position!.asOf).toISOString(), formatted: formatSpotTime(position!.asOf) },
+            { key: "valuedAt", label: "Valued at", value: new Date(scenario.controls.date).toISOString(), formatted: formatSpotTime(scenario.controls.date) },
+          ] : [{ key: "asOf", label: "Valued at", value: new Date(position!.asOf).toISOString(), formatted: formatSpotTime(position!.asOf) }]),
           { key: "rate", label: "Rate", value: exportPercent(position!.rate), unit: "%", formatted: percent(position!.rate) },
           // A yield read as 0 because no dividend was paid, or the dividend stopped, says so; a stated or typed one is the figure alone.
           { key: "dividendYield", label: "Dividend yield", value: exportPercent(position!.dividendYield), unit: "%", formatted: percent(position!.dividendYield)
@@ -191,7 +195,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
         { title: `Scenario grid (P&L, ${per})`, columns: [
           { key: "spot", header: "Spot/share", format: money },
           { key: "move", header: "Move", format: (value) => typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : MISSING_VALUE },
-          ...scenario.dates.map((date, index) => ({ key: `date${index}`, header: new Date(date).toISOString().slice(0, 10), format: money })),
+          ...scenarioDateLabels(scenario.dates).map((label, index) => ({ key: `date${index}`, header: label, format: money })),
         ], rows: scenario.grid.map((row) => ({ spot: row.spot, move: row.move,
           ...Object.fromEntries(row.values.map((value, index) => [`date${index}`, value])) })) },
       ] : [],

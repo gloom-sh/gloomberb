@@ -2,7 +2,10 @@ import type { FuturesContractTermsPayload } from "../../../api-client/futures-cu
 import type { Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
-import { FUTURES_SECTOR_ORDER, futuresBoardCode, futuresGroupFilter, futuresNameKey, type FuturesContract, type FuturesSector } from "../../../market-data/futures-board";
+import {
+  FUTURES_BOARD_ROWS, FUTURES_SECTOR_ORDER, futuresBoardCode, futuresBoardContract, futuresGroupFilter, futuresNameKey,
+  type FuturesContract, type FuturesSector,
+} from "../../../market-data/futures-board";
 import { CONTRACT_MONTH_NAME, futuresPriceUnit } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { quoteDotMarketState } from "../../../market-data/market/status";
@@ -163,6 +166,16 @@ function matchesFuturesSearch(contract: FuturesContract, query: string, quote?: 
     // Everyday names the board's own does not hold: natgas is Natural Gas.
     || (contract.aliases ?? []).some((alias) => alias.includes(normalized))
   );
+}
+
+/**
+ * The board's contracts a search lists, as the board filters them: the one a
+ * code or symbol names (`FUT HG` opens on HG=F), else every contract the text
+ * matches (`FUT copper`, `FUT metals`).
+ */
+export function futuresSearchContracts(query: string): FuturesContract[] {
+  const named = futuresBoardContract(query.trim());
+  return named ? [named] : FUTURES_BOARD_ROWS.filter((contract) => matchesFuturesSearch(contract, query));
 }
 
 /**

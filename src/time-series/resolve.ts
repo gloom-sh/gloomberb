@@ -11,6 +11,7 @@ import { subtractTimeRange } from "./date-window";
 import { hiddenOnLogScale, logScaleHiddenWarning } from "./log-scale";
 import {
   CHART_RESOLUTION_STEP_MS,
+  chartBarSizeName,
   chartBarSizeSource,
   clampTimeRangeToMaxRange,
   DEFAULT_CHART_RESOLUTION_SUPPORT,
@@ -1135,6 +1136,16 @@ async function resolveChartSpecPass(
   const servedCadences = new Set(rawSeries.filter((entry) => entry.observationKind === "market" && entry.points.length > 0)
     .map((entry) => entry.historyResolution));
   const commonCadence = servedCadences.size === 1 ? [...servedCadences][0] : undefined;
+  // A series served in other bars than the chart's (a source that did not answer for 5-minute bars, then
+  // answered daily ones) says so, so its line is not read in the bars the others are in.
+  if (servedCadences.size > 1) {
+    const chartBars = builtBarSize ?? initialResolution;
+    for (const entry of rawSeries) {
+      const served = entry.barSize ?? entry.historyResolution;
+      if (!visibleSeriesIds.has(entry.id) || entry.observationKind !== "market" || !entry.points.length || !served || served === chartBars) continue;
+      warnings.push(`${entry.label}: ${chartBarSizeName(served)} bars, not the chart's ${chartBarSizeName(chartBars)} bars.`);
+    }
+  }
   const resolution = commonCadence ?? undefined;
   const comparisonResolution = resolution ?? "auto";
   const comparisonOptions = { preset: hasExplicitWindow ? null : spec.viewport.range, now: referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt) };

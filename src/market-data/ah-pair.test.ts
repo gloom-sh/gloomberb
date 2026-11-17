@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ahListingKey, ahPairOf, ahPairSide, ahSpotFromUsdValues, compareAhPair } from "./ah-pair";
+import { ahListingKey, ahPairOf, ahPairSide, ahSpotFromUsdValues, compareAhPair, listingBoardLot, statesBoardLot } from "./ah-pair";
 import type { PairPriceInput } from "./depositary-pair";
 
 // CATL's lines as Gloom Cloud's company universe holds them, and HSBC's: London, Hong Kong and New York.
@@ -23,6 +23,26 @@ test("an A+H company is one line in Hong Kong and one in Shanghai or Shenzhen", 
     { symbol: "HSBC", exchange: "NYSE", name: "HSBC HOLDINGS PLC", primary: false },
   ] })).toBeNull();
   expect(ahPairOf(null)).toBeNull();
+});
+
+test("a Hong Kong or Singapore line's board lot is read off its own listing, however the line is written", () => {
+  // Zijin Mining's lines with the lot HKEX states for its H shares (500 since 13 Nov 2026), and DBS on SGX in 10s.
+  const zijin = { listings: [
+    { symbol: "601899:SSE", exchange: "SSE", name: "ZIJIN MINING", primary: true },
+    { symbol: "2899:HKEX", exchange: "HKEX", name: "ZIJIN MINING", primary: false, boardLot: 500 },
+  ] };
+  for (const [symbol, exchange] of [["2899", "HKEX"], ["2899.HK", null], ["2899:HKEX", null]] as const) {
+    expect(statesBoardLot(symbol, exchange)).toBe(true);
+    expect(listingBoardLot(zijin, symbol, exchange)).toBe(500);
+  }
+  // The A share states none; neither does a line the company does not list, nor a lot that is not a whole number of shares.
+  expect(listingBoardLot(zijin, "601899", "SSE")).toBeNull();
+  expect(listingBoardLot(zijin, "0005", "HKEX")).toBeNull();
+  expect(listingBoardLot({ listings: [{ ...zijin.listings[1]!, boardLot: 0 }] }, "2899", "HKEX")).toBeNull();
+  expect(listingBoardLot({ listings: [{ symbol: "D05:SGX", exchange: "SGX", name: "DBS", primary: true, boardLot: 10 }] }, "D05", "SGX")).toBe(10);
+  // Only the venues that state one are asked for it.
+  for (const [symbol, exchange] of [["601899", "SSE"], ["HSBA", "LSE"], ["AAPL", null], [null, "HKEX"]] as const)
+    expect(statesBoardLot(symbol, exchange)).toBe(false);
 });
 
 test("the H price over the A price at the yuan's Hong Kong dollar rate, each price in its own currency", () => {

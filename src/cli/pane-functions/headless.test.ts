@@ -79,6 +79,19 @@ describe("headless pane printer", () => {
     expect(report.text.split("\n").find((line) => line.startsWith("AAPL P/E"))?.trimEnd()).toMatch(/ 2$/);
   });
 
+  test("series served in different bars name their own in a Bars column; series in one bar size need none", () => {
+    const series: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
+    const bars = (label: string, interval: string) => ({ id: label, label, interval, points: [{ date: "2026-11-17T16:30:00Z", close: 6 }] });
+    // G COPX, HG=F, where copper's 5-minute bars timed out and its daily ones answered.
+    const lines = renderHeadlessPaneText(series, { series: [bars("COPX Price", "5m"), bars("HG=F Price", "1d"), bars("CPI", "monthly")] }, args, "Chart")
+      .split("\n");
+    expect(lines.find((line) => line.startsWith("Series"))).toContain("Bars");
+    expect(lines.find((line) => line.startsWith("HG=F Price"))).toMatch(/ 1d +1$/);
+    expect(lines.find((line) => line.startsWith("COPX Price"))).toMatch(/ 5m +1$/);
+    const alike = renderHeadlessPaneText(series, { series: [bars("COPX Price", "5m"), bars("HG=F Price", "5m")] }, args, "Chart");
+    expect(alike).not.toContain("Bars");
+  });
+
   test("--width wraps the notes, errors and source line under a table, and never cuts a cell", () => {
     const definition: HeadlessPaneDefinition<"rows"> = {
       shape: "rows", argument: { kind: "none" }, options: [],

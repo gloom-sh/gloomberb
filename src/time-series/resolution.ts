@@ -181,6 +181,19 @@ export function chartBarSizeParts(size: unknown): { count: number; unit: ChartBa
   return canonicalBarSize(count, unit) === size ? { count, unit } : null;
 }
 
+const BAR_SIZE_NAMES: Readonly<Record<ManualChartResolution, string>> = {
+  "1m": "1-minute", "5m": "5-minute", "15m": "15-minute", "30m": "30-minute", "45m": "45-minute",
+  "1h": "hourly", "1d": "daily", "1wk": "weekly", "1mo": "monthly",
+};
+const BAR_UNIT_NAMES: Readonly<Record<ChartBarSizeUnit, string>> = { m: "minute", h: "hour", d: "day", wk: "week", mo: "month" };
+
+/** A bar size in words, as a sentence names it: `5-minute`, `daily`, a built one `4-hour`. */
+export function chartBarSizeName(size: ChartBarSize): string {
+  if (isManualChartResolution(size)) return BAR_SIZE_NAMES[size];
+  const parts = chartBarSizeParts(size);
+  return parts ? `${parts.count}-${BAR_UNIT_NAMES[parts.unit]}` : size;
+}
+
 /** A stored bar size (`4h`, `2d`, `1wk`); `auto` is not one. */
 function isChartBarSize(value: unknown): value is ChartBarSize {
   return chartBarSizeParts(value) !== null;

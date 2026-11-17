@@ -1,5 +1,5 @@
 import { DataServiceUnreachableError, isNetworkFailure } from "../utils/network-failure";
-import { ApiRequestError, wasAskedTwice } from "../api-client/errors";
+import { ApiRequestError, isTransientFailure, wasAskedTwice } from "../api-client/errors";
 
 // Registered, so a miss raised by another copy of this module (a plugin that
 // resolved `gloomberb/market-data` from the source tree) is still recognized.
@@ -186,6 +186,15 @@ export function rateLimitedMessage(symbol?: string, retryAfterMs?: number): stri
  */
 export function isSourceFailure(error: unknown): boolean {
   return error instanceof NoProviderError && error.failure !== undefined;
+}
+
+/**
+ * A source failure (`isSourceFailure`) that asking again shortly may get
+ * past: the source timed out, was rate limited or overloaded
+ * (`isTransientFailure`). A source that refused the read is not one.
+ */
+export function isTransientSourceFailure(error: unknown): boolean {
+  return error instanceof NoProviderError && error.failure !== undefined && isTransientFailure(error.failure);
 }
 
 /**

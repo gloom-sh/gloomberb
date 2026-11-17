@@ -94,7 +94,8 @@ describe("buildFuturesRows search", () => {
     const spec = { unit: "USD / barrel", size: "1,000 barrels", pointValue: 1000, tick: 0.01, tickValue: 10, settlement: "physical" as const };
     expect(futuresUnitLabel(row("CL=F"), { spec })).toBe("USD / barrel");
     expect(futuresUnitLabel(row("TTF=F"), { spec: null })).toBe("EUR / MWh");
-    expect(futuresUnitLabel(row("CL=F"), null)).toBeNull();
+    expect(futuresUnitLabel(row("CL=F"), null)).toBe("USD / barrel");
+    expect(futuresUnitLabel(row("ES=F"), null)).toBeNull();
   });
 
   test("matches contract code, name, and listed symbol case-insensitively", () => {
