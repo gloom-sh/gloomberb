@@ -3,7 +3,7 @@ import { applyListingArgument } from "../cli/pane-functions/resolver";
 import { parsePaneFunctionArgs } from "../cli/pane-functions/options";
 import type { PaneFunctionCatalog } from "../cli/pane-functions/catalog";
 import type { MarketContext } from "../cli/types";
-import { ListingArgError, parseListingArg, resolveCliListing } from "../cli/listing-arg";
+import { ListingArgError, notTradedMessage, parseListingArg, resolveCliListing } from "../cli/listing-arg";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { InstrumentSearchResult } from "../types/instrument";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../types/plugin";
@@ -43,6 +43,18 @@ test.each([
   ["BBCA IJ", "BBCA:JAKARTA"],
   ["PTT TB", "PTT:SET"],
   ["1155 MK", "1155:BURSAMY"],
+  // Borsa Istanbul, the Gulf, Cairo, Iceland and the CSE, whose venues the exchange table names.
+  ["AKBNK TI", "AKBNK:BIST"],
+  ["AKBNK TI Equity", "AKBNK:BIST"],
+  ["2222 AB Equity", "2222:TADAWUL"],
+  ["QNBK QD", "QNBK:QE"],
+  ["NBB BI", "NBB:BHB"],
+  ["EMAAR DB", "EMAAR:DFM"],
+  ["OTEL OM", "OTEL:MSX"],
+  ["NBK KK Equity", "NBK:KUWAIT"],
+  ["COMI EY", "COMI:EGX"],
+  ["ARION IR", "ARION:ICEX"],
+  ["RWB CF", "RWB:CSE"],
   ["BT/A LN", "BT.A:LSE"],
   ["SPX Index", "^GSPC"],
   ["ES1 Index", "ES1E"],
@@ -87,15 +99,40 @@ test("every market code reads as a venue of the shared exchange table, on its ow
   }
   expect(Object.keys(BLOOMBERG_MARKETS)).toEqual(expect.arrayContaining([
     "LN", "GY", "GR", "FP", "SW", "NA", "IM", "SM", "SS", "DC", "NO", "FH", "JP", "JT", "HK", "KS", "CH", "TT", "AU", "IN", "CN",
-    "ID", "IJ", "TB", "MK", "PM",
+    "ID", "IJ", "TB", "MK", "PM", "TI", "AB", "QD", "BI", "DB", "OM", "KK", "EY", "IR", "CF",
   ]));
+});
+
+// `AKBNK IS` reads as NSE, IS being Bloomberg's code for India; the refusal named neither the code nor the line to type.
+test("a code whose venue does not list the symbol says which venue the code is and writes the symbol's own line the same way", async () => {
+  const stock = (symbol: string, name: string, exchange: string): InstrumentSearchResult =>
+    ({ providerId: "test", symbol, name, exchange, currency: "TRY", type: "Common Stock" });
+  const listed: Record<string, InstrumentSearchResult[]> = {
+    AKBNK: [stock("AKBNK", "Akbank T.A.S.", "BIST")],
+    // Search finds Saudi Aramco by Bloomberg's ticker, under Tadawul's own code.
+    ARAMCO: [stock("2222", "Saudi Arabian Oil Co.", "TADAWUL")],
+  };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => listed[query] ?? [],
+    getQuote: async () => { throw new Error("Not a ticker"); },
+  });
+  const deps = { store: { loadTicker: async () => null, loadAllTickers: async () => [] }, dataProvider };
+  const listing = await resolveCliListing("AKBNK IS", undefined, deps);
+  expect(listing).toMatchObject({ key: "AKBNK:NSE", typed: "AKBNK IS" });
+  expect(await notTradedMessage(listing, deps)).toBe("IS is Bloomberg's code for NSE, where AKBNK does not trade. Did you mean AKBNK TI (AKBNK:BIST)?");
+  // Typed as a key, the venue is the reader's own choice: the plain answer.
+  expect(await notTradedMessage({ symbol: "AKBNK", exchange: "NSE" }, deps)).toBe("AKBNK does not trade on NSE. AKBNK trades on: BIST.");
+  const refusal = await resolveCliListing("ARAMCO AB", undefined, deps).then(() => null, (error: ListingArgError) => error);
+  expect(refusal?.message).toBe("ARAMCO is not a TADAWUL code; did you mean 2222 AB (Saudi Arabian Oil Co.)?");
+  expect(refusal?.details).toBe(BLOOMBERG_MARKETS.AB!.hint);
 });
 
 test("a code that names several listings lists the others to try after the first", () => {
   // Bloomberg glues a Nordic class on (VOLVB); ABB and NOKIA end in a letter too, so the code as written goes first.
   expect(readTerminalListingCode("VOLVB SS")).toMatchObject({ key: "VOLVB:SFB", alternatives: [{ key: "VOLV.B:SFB" }] });
   expect(readTerminalListingCode("ABB SS")?.key).toBe("ABB:SFB");
-  expect(readTerminalListingCode("RY CN")).toMatchObject({ key: "RY:TSX", alternatives: [{ key: "RY:TSXV" }] });
+  // Canada's composite is Toronto, then the Venture exchange, then the CSE.
+  expect(readTerminalListingCode("RY CN")).toMatchObject({ key: "RY:TSX", alternatives: [{ key: "RY:TSXV" }, { key: "RY:CSE" }] });
 });
 
 test("words written as a code with a market code no venue answers to are one refused entry; a name is not", () => {
