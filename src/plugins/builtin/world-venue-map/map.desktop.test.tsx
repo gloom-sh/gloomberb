@@ -146,6 +146,21 @@ test("a map mounted again for the same pane reopens where the last one rested", 
   expect(second.querySelector('[data-gloom-role="basemap"]')!.getAttribute("transform")).toBe(before);
 });
 
+test("the list's first automatic selection does not pull a starting place away", async () => {
+  let select: (mic: string) => void = () => {};
+  function Pane() {
+    const [selected, setSelected] = useState<string | null>(null);
+    select = setSelected;
+    return <WorldVenueMap venues={[venue]} selectedMic={selected} width={80} height={24} onSelect={() => {}}
+      focus={{ key: "initial-place", longitude: 151.21, latitude: -33.87, zoom: 32, exact: true }} />;
+  }
+  const container = await renderDom(<Pane />);
+  const before = placed(container, 151.21, -33.87);
+  expect(before.x).toBeCloseTo(39.5, 0);
+  await act(async () => { select("XNYS"); });
+  expect(placed(container, 151.21, -33.87)).toEqual(before);
+});
+
 test("a map that first lays out with no width still centres on the entity it was asked to show", async () => {
   let resize: (width: number) => void = () => {};
   const focus: WorldMapFocus = { key: "open:vessels:mmsi:319032700", longitude: 54.4, latitude: 24.5, zoom: 64 };

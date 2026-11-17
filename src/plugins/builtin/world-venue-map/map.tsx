@@ -720,7 +720,11 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
 
   // A venue picked in the table pans a zoomed map to it when it is out of view.
   // Only a new selection moves the map, so a drag away from it stays put.
+  const previousSelectedMic = useRef(props.selectedMic);
   useEffect(() => {
+    const previous = previousSelectedMic.current;
+    previousSelectedMic.current = props.selectedMic;
+    if (!previous || previous === props.selectedMic) return;
     const venue = selectedVenueRef.current;
     if (!venue) return;
     setViewport((current) => {

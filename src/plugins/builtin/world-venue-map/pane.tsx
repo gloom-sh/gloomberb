@@ -31,6 +31,9 @@ import { useMapKeyboard, WorldVenueMap } from "./map";
 import { filterWorldVenues, formatVenueLocalTime } from "./model";
 import { useGeoCatalog } from "./use-geo";
 import { SelectedVenueHeader } from "./venue-header";
+import { cloudGeoRequest } from "./client";
+import { initialMapFocus, nearestPlaces, resolveMapPlace, type MapStart } from "./place";
+import { useWorldMapEvidence } from "./evidence";
 
 export { WORLD_VENUE_MAP_PANE_ID } from "./ids";
 
@@ -54,6 +57,23 @@ function venueColumns(width: number): VenueColumn[] {
  * server without them leaves the venue map exactly as it was.
  */
 export function WorldVenueMapPane(props: PaneProps) {
+  const [placeSetting] = usePaneSettingValue<string>("place", "");
+  const [initialPlace] = useState(placeSetting);
+  const [mapStart, setMapStart] = useState<MapStart | null>(() => initialPlace ? null : { place: null, note: null });
+  useEffect(() => {
+    if (!initialPlace) return;
+    const controller = new AbortController();
+    resolveMapPlace(initialPlace, {
+      venues: async () => (await loadWorldVenues()).venues,
+      request: cloudGeoRequest,
+      signal: controller.signal,
+    }).then((start) => {
+      if (!controller.signal.aborted) setMapStart(start);
+    }, () => {
+      if (!controller.signal.aborted) setMapStart({ place: null, note: "Place unavailable; showing world." });
+    });
+    return () => controller.abort();
+  }, [initialPlace]);
   const [layerSetting] = usePaneSettingValue<unknown>(LAYERS_SETTING_KEY, null);
   const [venuesSetting] = usePaneSettingValue<boolean | undefined>(VENUES_SETTING_KEY, undefined);
   const { catalog, settled } = useGeoCatalog();
@@ -61,15 +81,16 @@ export function WorldVenueMapPane(props: PaneProps) {
   const plain = isPlainMap(settings);
   const tokens = useMemo(() => activeLayerTokens(settings, catalog?.layers), [catalog, settings]);
   const layers = useMemo(() => resolveActiveLayers(tokens, catalog?.layers), [catalog, tokens]);
-  if (layers.length) return <LayeredMapView {...props} layers={layers} tokens={tokens} plain={plain} />;
+  if (!mapStart) return <PaneStatusBody loading align="center" width={props.width} height={props.height} loadingLabel="Finding place..." />;
+  if (layers.length) return <LayeredMapView {...props} layers={layers} tokens={tokens} plain={plain} start={mapStart} />;
   // A preset or a plain map waits for the catalog rather than flashing the venue map first.
   if ((plain || tokens.length) && !settled) {
     return <PaneStatusBody loading align="center" width={props.width} height={props.height} loadingLabel="Loading map..." />;
   }
-  return <VenueMapView {...props} />;
+  return <VenueMapView {...props} start={mapStart} />;
 }
 
-function VenueMapView({ focused, width, height }: PaneProps) {
+function VenueMapView({ focused, width, height, start }: PaneProps & { start: MapStart }) {
   // A background refresh keeps the venues on screen, so loading only shows before the first answer.
   const { data, loading, error, load } = useAsyncResource(loadWorldVenues);
   const [query, setQuery] = useState("");
@@ -90,7 +111,9 @@ function VenueMapView({ focused, width, height }: PaneProps) {
     return () => clearInterval(timer);
   }, []);
 
-  const venues = useMemo(() => filterWorldVenues(data?.venues ?? [], query), [data?.venues, query]);
+  const venues = useMemo(() => nearestPlaces(filterWorldVenues(data?.venues ?? [], query), start.place,
+    (venue) => venue), [data?.venues, query, start.place]);
+  useWorldMapEvidence([], [], venues.length, loading);
   useEffect(() => {
     if (selectedMic && venues.some((venue) => venue.mic === selectedMic)) return;
     setSelectedMic(venues[0]?.mic ?? null);
@@ -117,15 +140,17 @@ function VenueMapView({ focused, width, height }: PaneProps) {
       ...(data && !data.stale ? [{ id: "live", parts: [{ text: "live", tone: "positive" as const }] }] : []),
       ...(data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
       ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
+      ...(start.note ? [{ id: "place", parts: [{ text: start.note, tone: "warning" as const }] }] : []),
     ],
     hints: [
       ...(searchable ? [{ id: "search", key: "/", label: "search", onPress: focusSearch }] : []),
     ],
-  }), [data, error, focusSearch, loading, searchable]);
+  }), [data, error, focusSearch, loading, searchable, start.note]);
 
   const { nativePaneChrome } = useUiCapabilities();
   const [storedSidebarWidth, setStoredSidebarWidth] = usePluginPaneState<number | null>("sidebarWidth", null);
   const [savedViewport, setSavedViewport] = usePluginPaneState<unknown>("map:viewport", null);
+  const [initialFocus] = useState(() => initialMapFocus(start.place, savedViewport));
   const [draggedSidebarWidth, setDraggedSidebarWidth] = useState<number | null>(null);
   const horizontal = shouldShowPaneSidebar(data?.venues.length ?? 0, width, height);
   // Venue names need more room than a conversation list, so the width the pane
@@ -227,6 +252,7 @@ function VenueMapView({ focused, width, height }: PaneProps) {
         onSelect={(venue) => setSelectedMic(venue.mic)}
         savedViewport={savedViewport}
         onViewportSettled={setSavedViewport}
+        focus={initialFocus}
         keyboard={mapKeys.keyboard}
       />
     </Box>

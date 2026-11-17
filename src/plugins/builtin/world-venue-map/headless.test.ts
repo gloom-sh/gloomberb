@@ -5,6 +5,7 @@ import { createGeoFixtureRequest } from "../../../test-support/test-fixture-geo"
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { mapHeadless } from "./headless";
 import { worldVenueMapModule } from "./index";
+import { buildMapSettingsDef, HOME_AREA_SETTING_KEY } from "./layers";
 
 afterEach(() => resetGeoCatalogCache());
 
@@ -49,4 +50,37 @@ test("a layer reports the status its cadence implies, and a layer that cannot se
   expect(await freshness("airports")).toMatchObject({ status: "not-a-feed", basis: "reference data" });
   // An unavailable live layer has no rows to call live; its error says why.
   expect(await freshness("flights")).toBeUndefined();
+});
+
+test("home area is shared across new maps, explicit places win, and clearing it restores world", async () => {
+  const template = worldVenueMapModule.paneTemplates!.find((entry) => entry.id === "world-venue-map-pane")!;
+  const context = createTestHeadlessContext();
+  context.config.pluginConfig["market-overview"] = { [HOME_AREA_SETTING_KEY]: "51.5,-0.1" };
+  const templateContext = createTestTemplateContext({ config: context.config });
+  expect(await template.createInstance!(templateContext, { arg: "ships" })).toMatchObject({ settings: { place: "51.5,-0.1" } });
+  expect(await template.createInstance!(templateContext, { arg: "air Sydney" })).toMatchObject({ settings: { place: "Sydney", layers: ["air"] } });
+  expect(await template.createInstance!(templateContext, {})).toMatchObject({ settings: { place: "51.5,-0.1" } });
+  expect(buildMapSettingsDef({}, null).fields.find((field) => field.key === HOME_AREA_SETTING_KEY)).toMatchObject({ storage: "plugin" });
+  context.config.pluginConfig["market-overview"]![HOME_AREA_SETTING_KEY] = "";
+  expect(await template.createInstance!(templateContext, {})).toEqual({ placement: "floating" });
+});
+
+test("headless places bound and order the table; an unknown place reports once and returns the world", async () => {
+  const paths: string[] = [];
+  const client = { geo: createGeoFixtureRequest({ onRequest: (path) => paths.push(path) }) } as unknown as HeadlessPaneContext["apiClient"];
+  const context = createTestHeadlessContext({ apiClient: client });
+  const args = createTestHeadlessArgs({ argument: "ships Suez Canal" });
+  const near = await mapHeadless.load(args, context);
+  expect(near.metadata?.place).toMatchObject({ label: "Suez Canal" });
+  expect(near.rows.map((row) => row.label)).toEqual(["Suez Canal"]);
+  expect(paths.some((path) => path.includes("bbox="))).toBe(true);
+  expect(mapHeadless.describe(args, near)).toContain("near Suez Canal");
+  const unknown = await mapHeadless.load(createTestHeadlessArgs({ argument: "ships Atlantis" }), context);
+  expect(unknown.errors).toEqual(['Unknown place "Atlantis"; showing world.']);
+  expect(unknown.rows.length).toBeGreaterThan(1);
+  context.config.pluginConfig["market-overview"] = { [HOME_AREA_SETTING_KEY]: "30,32" };
+  const home = await mapHeadless.load(createTestHeadlessArgs({ argument: "ships" }), context);
+  expect(home.metadata?.place).toMatchObject({ latitude: 30, longitude: 32 });
+  const coordinates = await mapHeadless.load(createTestHeadlessArgs({ argument: "ships 26.5,56.3" }), context);
+  expect(coordinates.metadata?.place).toMatchObject({ latitude: 26.5, longitude: 56.3 });
 });
