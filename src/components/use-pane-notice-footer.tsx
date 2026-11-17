@@ -12,6 +12,7 @@ import { Prose } from "./ui/prose";
 import { logFailure } from "../utils/log-failure";
 import { markPaneNoticesSeen, usePaneNoticesSeen } from "./pane-notice-seen";
 import { withoutCryptoVenueCode } from "../utils/crypto-pair";
+import { readableStatus } from "../utils/reason-codes";
 
 export interface UsePaneNoticeFooterOptions {
   registrationId: string;
@@ -83,8 +84,9 @@ export function usePaneNoticeFooter({
   const dialogOpen = useDialogState((state) => state.isOpen);
   const scopeActive = usePaneFooterScopeActive();
   const title = t(rawTitle);
-  // Said as a reader takes it: a coin's pair without the internal code of the venue it is charted on.
-  const noticeKey = JSON.stringify([...new Set(notices.map((notice) => withoutCryptoVenueCode(notice.trim())).filter(Boolean))]);
+  // Said as a reader takes it: a coin's pair without the internal code of the venue it is charted on, and a
+  // source's reason code (UPSTREAM_ERROR) as what happened.
+  const noticeKey = JSON.stringify([...new Set(notices.map((notice) => readableStatus(withoutCryptoVenueCode(notice.trim()))).filter(Boolean))]);
   const currentNotices = useMemo<readonly string[]>(() => JSON.parse(noticeKey), [noticeKey]);
   const active = enabled && scopeActive && currentNotices.length > 0;
   const seen = usePaneNoticesSeen(currentNotices);
@@ -128,7 +130,7 @@ export function usePaneNoticeFooter({
     info: [{
       id: "data-warnings",
       icon: "warning",
-      captureText: currentNotices.join(" · "),
+      notes: currentNotices,
       label: title,
       title: `${title} (!)`,
       shortcut: "!",
