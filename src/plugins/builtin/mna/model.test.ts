@@ -229,3 +229,19 @@ test("in the regular session a spread is the last trades, timed by the older one
   expect(spreadBasisLabel(stale.basis, clock, now)).toBe("1h apart");
 });
 
+// A trade printed on a Saturday or on Thanksgiving read "pre-market", a session that never opened that day.
+test("a print on a weekend or a holiday is labelled by the session it was, never the next day's pre-market", () => {
+  const { deal: shls, quote: q } = SHLS_ARRY;
+  const cash = deal({ target: shls.target, expectedClose: null });
+  const session = (at: string) => dealSpread(cash, q("SHLS", 7.9, at, 8.02, { marketState: "CLOSED" }), null, Date.parse(at))!.legs[0]!.session;
+  expect(session("2026-11-21T00:00:00Z")).toBe("after-hours"); // Friday 19:00 New York
+  expect(session("2026-11-21T02:00:00Z")).toBe("closed"); // Friday 21:00: no overnight session before a Saturday
+  expect(session("2026-11-21T15:00:00Z")).toBe("closed"); // Saturday 10:00
+  expect(session("2026-11-26T03:00:00Z")).toBe("closed"); // Wednesday 22:00, the eve of Thanksgiving
+  expect(session("2026-11-26T15:00:00Z")).toBe("closed"); // Thanksgiving, 10:00
+  expect(session("2026-11-27T19:00:00Z")).toBe("after-hours"); // 14:00 the day after, past its 13:00 close
+  expect(session("2026-11-30T02:00:00Z")).toBe("overnight"); // Sunday 21:00, before Monday's session
+  expect(session("2026-11-30T07:00:00Z")).toBe("overnight"); // Monday 02:00
+  expect(session("2026-11-30T13:00:00Z")).toBe("pre-market"); // Monday 08:00
+});
+

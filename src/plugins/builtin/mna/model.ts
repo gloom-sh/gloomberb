@@ -1,7 +1,7 @@
 import type { MnaDeal, MnaOutsideDate, MnaStatus, MnaTerms } from "../../../api-client/mna";
 import type { Quote } from "../../../types/financials";
 import { getListingSymbol } from "../../../sources/listing-symbols";
-import { isRegularSessionTime, latestRegularSessionClose } from "../../../market-data/market/freshness";
+import { isRegularSessionTime, isVenueTradingDay, latestRegularSessionClose, regularSessionCloseOn } from "../../../market-data/market/freshness";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
@@ -198,8 +198,12 @@ export function offerSeries(
 /** Legs whose prints are further apart than this are not one moment's prices: the row flags them. */
 const LEGS_APART_MS = 30 * 60_000;
 
-/** The session a print was made in, as its venue's hours place it. */
-export type PrintSession = "regular" | "pre-market" | "after-hours" | "overnight";
+/**
+ * The session a print was made in, as its venue's hours place it: `closed`
+ * for one made when no session was open, on a weekend or a holiday, or on a
+ * night no overnight session follows.
+ */
+export type PrintSession = "regular" | "pre-market" | "after-hours" | "overnight" | "closed";
 
 /** One leg's latest print: the target's, or the listing a ratio pays in. */
 export interface SpreadLeg {
@@ -248,25 +252,36 @@ function printTime(quote: Quote): number | null {
   return typeof at === "number" && Number.isFinite(at) && at > 0 ? at : null;
 }
 
+/** The calendar day after a `YYYY-MM-DD`. */
+function nextDay(date: string): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
+
 /**
- * The session `at` falls in on the quote's venue: its regular hours, else
- * after its close that day (after hours; overnight from 20:00 New York for a
- * US listing), or before the next open (pre-market; overnight before 04:00
- * New York). Null for a venue with unknown hours.
+ * The session `at` falls in on the quote's venue, read from its calendar:
+ * its regular hours; on a trading day, before the open (pre-market; for a
+ * US listing overnight before 04:00 New York) or after the close (after
+ * hours; for a US listing overnight from 20:00 when the next day trades).
+ * A day the venue does not trade (a weekend, a holiday) has no session of
+ * its own: `closed`, but for a US listing's overnight session from 20:00 on
+ * the eve of a trading day (Sunday night). Null for a venue with unknown hours.
  */
 function printSession(quote: Pick<Quote, "listingExchangeName" | "exchangeName">, at: number): PrintSession | null {
   const exchange = quote.listingExchangeName || quote.exchangeName;
   const regular = isRegularSessionTime(exchange, at);
   if (regular === null) return null;
   if (regular) return "regular";
-  const close = latestRegularSessionClose(exchange, at);
-  if (!close) return null;
-  const local = zonedDateTimeParts(at, close.timeZone);
+  const latest = latestRegularSessionClose(exchange, at);
+  if (!latest) return null;
+  const local = zonedDateTimeParts(at, latest.timeZone);
   const date = `${local.year}-${String(local.month).padStart(2, "0")}-${String(local.day).padStart(2, "0")}`;
   const minutes = local.hour * 60 + local.minute;
   const us = isUsListingExchange(canonicalExchange(exchange));
-  if (us && (minutes >= 20 * 60 || minutes < 4 * 60)) return "overnight";
-  return date === close.date ? "after-hours" : "pre-market";
+  const eveOfSession = us && minutes >= 20 * 60 && isVenueTradingDay(exchange, nextDay(date));
+  if (!isVenueTradingDay(exchange, date)) return eveOfSession ? "overnight" : "closed";
+  const close = regularSessionCloseOn(exchange, date);
+  if (close != null && at >= close) return eveOfSession ? "overnight" : us && minutes >= 20 * 60 ? "closed" : "after-hours";
+  return us && minutes < 4 * 60 ? "overnight" : "pre-market";
 }
 
 function leg(quote: Quote): SpreadLeg | null {
@@ -397,7 +412,7 @@ export function legsApart(basis: SpreadBasis): boolean {
   return basis.kind === "last" && basis.apartMs != null && basis.apartMs > LEGS_APART_MS;
 }
 
-/** A print's session when it is not the regular one (`pre-market`, `after-hours`, `overnight`); empty for the regular session. */
+/** A print's session when it is not the regular one (`pre-market`, `after-hours`, `overnight`, `closed`); empty for the regular session. */
 function extendedSessionWord(session: PrintSession | null): string {
   return session && session !== "regular" ? session : "";
 }
