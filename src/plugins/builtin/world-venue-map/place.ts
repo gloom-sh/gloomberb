@@ -3,6 +3,7 @@ import { getGeoEntities, loadGeoCatalog, type GeoBbox, type GeoRequest } from ".
 import type { AppConfig } from "../../../types/config";
 import { HOME_AREA_SETTING_KEY } from "./layers";
 import { savedWorldMapViewport } from "./model";
+import { logFailure } from "../../../utils/log-failure";
 
 export interface MapPlace {
   label: string;
@@ -43,7 +44,10 @@ export async function resolveMapPlace(
     const { COUNTRY_LABELS } = await import("./natural-earth/labels.chunk.js");
     const country = COUNTRY_LABELS.find(([label]) => normalize(label) === name);
     if (country) return { place: { label: country[0], longitude: country[1], latitude: country[2], zoom: 4 }, note: null };
-    const venues = await sources.venues().catch(() => []);
+    const venues = await sources.venues().catch((error: unknown) => {
+      logFailure("world-venue-map.place", "Loading venue places failed")(error);
+      return [];
+    });
     const venue = venues.find((entry) => [entry.city, entry.title, entry.mic, entry.country, entry.countryCode].some((label) => normalize(label) === name));
     if (venue) return { place: { label: typed, longitude: venue.longitude, latitude: venue.latitude, zoom: 32 }, note: null };
     const catalog = await loadGeoCatalog(sources.request, { signal: sources.signal });
@@ -54,7 +58,10 @@ export async function resolveMapPlace(
     });
     for (const layer of layers) {
       if (layer.status === "unavailable" || sources.signal?.aborted) continue;
-      const page = await getGeoEntities(sources.request, layer.id, { q: typed, limit: 20 }, sources.signal).catch(() => null);
+      const page = await getGeoEntities(sources.request, layer.id, { q: typed, limit: 20 }, sources.signal).catch((error: unknown) => {
+        if (!sources.signal?.aborted) logFailure("world-venue-map.place", "Searching map places failed")(error);
+        return null;
+      });
       const row = page?.rows.find((entry) => Number.isFinite(entry.lon) && Number.isFinite(entry.lat)
         && [entry.label, entry.id, ...Object.values(entry.props).filter((value): value is string => typeof value === "string")]
           .some((value) => normalize(value) === name)) ?? (page?.rows.length === 1 ? page.rows[0] : null);
