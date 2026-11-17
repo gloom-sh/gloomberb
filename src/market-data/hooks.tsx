@@ -26,8 +26,8 @@ import {
 } from "./selectors";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
 import { createBaselineChartRequest } from "./coordinator/chart";
-import { fateListing, LATE_CHANGE_WAIT_MS, listingFateGate, type ListingFateGate } from "../tickers/listing-fate";
-import type { TickerChangeLookup } from "../tickers/ticker-changes";
+import { fateListing, LATE_CHANGE_WAIT_MS, listingChangeLine, listingFateGate, tradingListing, type ListingFateGate } from "../tickers/listing-fate";
+import { describeFormerIssuer, describeTickerChange, type TickerChangeLookup } from "../tickers/ticker-changes";
 import type { TickerChanges } from "../types/ticker-changes";
 
 const TICKER_FINANCIALS_LOAD_DELAY_MS = 250;
@@ -423,6 +423,37 @@ export function useListingFateGate(symbol: string | null | undefined, ticker: Ti
     return () => clearTimeout(timer);
   }, [instrumentKey, waiting]);
   return waiting && expired === instrumentKey ? SERVE_GATE : gate;
+}
+
+/**
+ * What `quote` says beside a symbol whose company left it while something
+ * else lists there now ("FB now lists ProShares S&P 500 Dynamic Buffer ETF;
+ * FB was Meta Platforms before, now META (changed 2022-06-09)"), or whose
+ * company merged into another, for a pane that shows the listing there now.
+ * Null for a symbol nothing became of, and until its changes are read.
+ */
+export function useTickerChangeNote(symbol: string | null | undefined, ticker: TickerRecord | null | undefined, quote: Quote | null | undefined): string | null {
+  const coordinator = getSharedMarketDataCoordinator();
+  const instrument = useTickerInstrument(symbol, ticker);
+  const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;
+  const listing = useMemo(() => (instrument ? fateListing(instrument) : null), [instrumentKey]);
+  const lookup = useMemo(
+    () => (coordinator && instrument && listing ? coordinator.lookupTickerChanges(instrument) : null),
+    [coordinator, instrumentKey],
+  );
+  const [answer, setAnswer] = useState<{ lookup: TickerChangeLookup; changes: TickerChanges | null } | null>(null);
+  const changes = !lookup ? null : answer?.lookup === lookup ? answer.changes : lookup.peek();
+  useEffect(() => {
+    if (!lookup || lookup.peek() !== undefined) return;
+    let current = true;
+    lookup.settle(LATE_CHANGE_WAIT_MS).then((value) => {
+      if (current) setAnswer({ lookup, changes: value });
+    }, logFailure("market-data.hooks", "Read a symbol's ticker changes failed"));
+    return () => { current = false; };
+  }, [lookup]);
+  if (!listing || !changes) return null;
+  const now = tradingListing(quote);
+  return listingChangeLine({ change: describeTickerChange(listing.symbol, changes, now), formerIssuer: describeFormerIssuer(listing.symbol, changes, now) });
 }
 
 /**

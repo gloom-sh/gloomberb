@@ -1030,7 +1030,10 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - It emails it (verified email address, once per arming, up to 20 a day) once no app has synced your account for about 15 minutes.
 - Signed out, nothing outside the running app notifies you.
 
-- The symbol is read as `quote` reads it, so `USDMXN` and `USD/MXN` are the one pair `USDMXN=X`. A symbol that quotes nothing is refused with the nearest listing (`did you mean AAPL`), and a bare code kept on a listing abroad names it.
+- The symbol is read as `quote` reads it, in `alerts add`, **Add Alert** and `SA` alike, so `USDMXN` and `USD/MXN` are the one pair `USDMXN=X` and a company's name (`Singtel`, `Facebook`) is its listing (`Z74:SGX`, `META`). A symbol that quotes nothing is refused with the nearest listing (`did you mean AAPL`), and a bare code kept on a listing abroad names it.
+- A listing that stopped trading is refused, since nothing would ever check it: `alerts add DBS below 65` names the silver fund delisted in 2023 and asks after `D05:SGX` (DBS Group Holdings), and `alerts add SQ above 80` names XYZ, the symbol Block moved to. A symbol its company left while something else lists there now keeps the alert and says where the company went (`FB now lists ProShares S&P 500 Dynamic Buffer ETF; FB was Meta Platforms before, now META`).
+- A reading from pre-market, after-hours or overnight trading says so, as `quote` names the session beside Last: `Last price 624.78 after hours` when it is added, `624.78 USD after hours as of …` in `alerts list`, and `AH 624.78` in ALRT's **Current**.
+- A commodity's word a company trades as names the future: `alerts add gold below 3700` is on GOLD (Gold.com), and the refusal of a target ten times its price says the future is `GC=F`.
 - A bare ticker of a top coin (BTC, ETH, SOL, LINK) read as another listing says so as `quote`, `ticker`, `history`, `options`, `news`, `fn` and the portfolio and watchlist adds do. A fund named for the coin, or a stale or delisted listing, gets `SOL is Emeren Group Ltd, not solana. For solana use SOL-USD.`; a live company that shares the letters gets the softer `LINK is Interlink Electronics, Inc. Also a coin: LINK-USD.`. A listing named with its exchange (`ETH:ARCA`, `--exchange`) gets neither.
 - A target more than 10 times the last price, or under a tenth of it, is refused, in **Add Alert** too (`alerts add btc above 85000` is bitcoin's price typed on the fund).
 - A bare ticker that is also a catalog series' name says which listing the alert follows: `alerts add DVOL above 60` is on `DVOL:NASDAQ`, a US fund, and the add names it, the series (`gloom fn G CAP:volatility:dvol-btc`, Deribit's bitcoin volatility index) and the alert on bitcoin's own implied volatility (`gloom alerts add BTC-USD iv above 60`).
@@ -1097,6 +1100,8 @@ gloom alerts add "NBS PMI"
 gloom alerts add CN PMI
 gloom alerts add "Industrial Profits" --country CN --days 2
 ```
+
+Earnings alerts follow US listings. A bare symbol is read as `quote` reads it, so `D05` (DBS on SGX) gets the same refusal as `0700:HKEX`, and a listing that stopped trading is refused as a price alert's is.
 
 The next date comes from `ERN`, the BLS release calendar behind `CPI`, the Fed meeting calendar behind `WIRP` and, for any other release, the economic calendar `ECO` and `econ` list. A symbol with no upcoming earnings date, or an event with no known next date, gets no alert. The **Events** tab and `alerts list` show each alert's next event date and state.
 
@@ -1239,6 +1244,9 @@ A US symbol that changed says so in one line.
   - `quote` and `compare` keep the old line's last price and print ``RDS-A became SHEL on 2022-01-31: `gloom quote SHEL` `` above it.
   - The `--json` error has `code` `ticker_moved`, `tickerChange` and `retry`.
 - **The new symbol.** The symbol a company renamed into (`META`, `XYZ`, `METV`) prints nothing extra, but its `history` from before the change says so: `Includes FB-era bars: META was FB until 2022-06-09`.
+- **In the app.** `DES FB` says the same line in the pane's data warnings, and typing `FB` in the command bar offers **FB as a ticker** under Send Feedback.
+
+A split the bars run across is said too: `history NFLX --from 2025-11-12 --to 2025-11-20` adds `Splits in range: NFLX 10-for-1 on 2025-11-17; bars before it are split-adjusted.`, and `events` and `EVT` give a split in share terms (`10-for-1`; DBS's 2024 bonus issue is `11-for-10, 1 new share for every 10 held`).
 
 In `--json`, each row's `tickerChange` carries `kind`, `note`, `changes` and, for a company that moved, `tradesAs`, `issuer` and `listed`. A renamed company's new symbol has `kind` `formerly` and the symbol it had before (`METV was META until 2022-01-31`).
 
@@ -1606,7 +1614,7 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 
 - Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`). `Cur` is the currency and `currency_or_unit` the unit: the currency, a pair's quote currency per base (`JPY per USD` for `USDJPY=X`), `index points`, or `pct` for a yield. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too. `--ndjson` rows carry the reason as `status` too (`value_status` beside a field of that name), with a figure that is no number as `null`.
 
-**`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was empty, was still loading, was behind an access gate, or drew a table column with no value in any row. `shot --strict` exits 2 in those cases, with the PNG still saved (`--json` carries `usable` and `unusableReason`). `fn` fails on `--strict`. A table column the picture cuts at its edge is a warning that names the columns (`warning:` on stderr, `warnings` and `cutColumns` in `--json`): a wider `--width` shows them, and the picture stays usable.
+**`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was still loading, was behind an access gate, or drew a table column with no value in any row. A pane that drew nothing but its empty state ("No ticker selected.") exits 1, as `fn` does for an empty report. `shot --strict` exits 2 in all those cases, with the PNG still saved (`--json` carries `usable` and `unusableReason`). `fn` fails on `--strict`. A table column the picture cuts at its edge is a warning that names the columns (`warning:` on stderr, `warnings` and `cutColumns` in `--json`): a wider `--width` shows them, and the picture stays usable.
 
 - The Reason quotes what an error or empty state said (`The pane rendered an empty state. It reads "No movers returned."`) and names a column blank in every row (`The VOL and V/AVG columns are blank in every row.`); `--json` lists those columns in `blankColumns`.
 - A column is blank when every row of a table of three rows or more shows a dash or `n/a` in it. A column some rows leave empty, such as an event marker, is not, and neither is one whose value comes after an event the row is waiting on: an upcoming report's move in `ERN`, an IPO's first-day return, a halt's resumption time. A plugin marks such a column with `mayBeBlank` on its `DataTableColumn`.

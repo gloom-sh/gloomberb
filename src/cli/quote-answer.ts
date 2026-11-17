@@ -1,4 +1,4 @@
-import type { QuoteBatchResult } from "../types/data-provider";
+import type { QuoteBatchOptions, QuoteBatchResult } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import { bareListingNote } from "../tickers/listing-fate";
 import { isRateLimited, isTransientServiceFailure, notATickerSymbol, rateLimitedError } from "../sources/provider-errors";
@@ -35,13 +35,13 @@ import {
   tradingBoardNote,
   type CliListing,
   type ListingDataRequest,
+  type ListingDeps,
   type ListingVenue,
 } from "./listing-arg";
 import { isNotATickerMessage, withListingSuggestion } from "./not-a-ticker";
 import { notATickerWords } from "./company-name-hint";
 import { isNetworkFailure } from "../utils/network-failure";
 import { logFailure } from "../utils/log-failure";
-import type { MarketContext } from "./types";
 
 /** The text of an error, or null for none. */
 export function errorMessage(error: unknown): string | null {
@@ -96,7 +96,7 @@ export interface QuoteAnswer {
 export async function answerQuote(
   result: QuoteBatchResult,
   listing: CliListing,
-  market: MarketContext,
+  market: ListingDeps,
   request: ListingDataRequest,
   refresh: boolean,
   venues: Promise<ListingVenue[]> | null,
@@ -209,7 +209,7 @@ export async function answerQuote(
  * (`.IS`, `.JO`): another one-letter suffix is as likely a US share class
  * (MKC.V, BRK.B) and keeps its own answer. Null otherwise.
  */
-async function notTradedOnSuffixVenue(listing: CliListing, market: MarketContext): Promise<string | null> {
+async function notTradedOnSuffixVenue(listing: CliListing, market: ListingDeps): Promise<string | null> {
   if (listing.exchange) return null;
   const suffix = listing.symbol.slice(listing.symbol.lastIndexOf(".") + 1);
   if (!listing.symbol.includes(".") || (suffix.length < 2 && suffix.toUpperCase() !== "L")) return null;
@@ -231,7 +231,7 @@ async function notTradedOnSuffixVenue(listing: CliListing, market: MarketContext
 async function answerCompanyName(
   result: QuoteBatchResult,
   listing: CliListing,
-  market: MarketContext,
+  market: ListingDeps,
   request: ListingDataRequest,
   refresh: boolean,
   datesChangeBasis: boolean,
@@ -261,7 +261,7 @@ async function answerCompanyName(
 export async function withJoinedCompanyNames(
   answers: readonly QuoteAnswer[],
   asked: readonly CliListing[],
-  market: MarketContext,
+  market: ListingDeps,
   request: ListingDataRequest,
   refresh: boolean,
   datesChangeBasis: boolean,
@@ -281,7 +281,7 @@ export async function withJoinedCompanyNames(
 async function abroadShareClass(
   listing: CliListing,
   quote: Quote,
-  market: MarketContext,
+  market: ListingDeps,
   request: ListingDataRequest,
   refresh: boolean,
   datesChangeBasis: boolean,
@@ -297,7 +297,7 @@ async function abroadShareClass(
  */
 async function answerNamedListing(
   named: ListingArg,
-  market: MarketContext,
+  market: ListingDeps,
   request: ListingDataRequest,
   refresh: boolean,
   datesChangeBasis: boolean,
@@ -309,12 +309,28 @@ async function answerNamedListing(
   });
   const found = resolved ? { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {}, ...named.readFromName ? { readFromName: named.readFromName } : {},
     ...named.wordAsName ? { wordAsName: named.wordAsName } : {} } : null;
-  const [quoted] = found ? await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true, datesChangeBasis }) : [];
+  const quoted = found ? await quoteOne(market, found.request, { forceRefresh: refresh, revalidate: true, datesChangeBasis }) : null;
   return found && quoted?.quote ? answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis }) : null;
 }
 
+/**
+ * One listing's quote as `quote` asks for it: the service's quote of the
+ * moment, through the batch request where the provider has one (the app's
+ * own provider may not), with why there is none.
+ */
+async function quoteOne(deps: ListingDeps, target: { symbol: string; exchange: string }, options: QuoteBatchOptions): Promise<QuoteBatchResult> {
+  if (deps.dataProvider.getQuotesBatch) {
+    const [result] = await deps.dataProvider.getQuotesBatch([target], options);
+    return result ?? { target, quote: null };
+  }
+  return deps.dataProvider.getQuote(target.symbol, target.exchange, {
+    cacheMode: options.forceRefresh ? "refresh" : "default",
+    ...(options.datesChangeBasis ? { datesChangeBasis: true } : {}),
+  }).then((quote) => ({ target, quote }), (error: unknown) => ({ target, quote: null, error }));
+}
+
 /** A listing a command found a quote for, with what `quote` says beside it. */
-interface QuotedListing {
+export interface QuotedListing {
   /** The listing the quote is of: the one typed, or the venue a bare symbol was quoted on. */
   listing: CliListing;
   quote: Quote;
@@ -334,15 +350,15 @@ interface QuotedListing {
 export async function requireQuotedListing(
   raw: string,
   exchange: string | null | undefined,
-  market: MarketContext,
+  market: ListingDeps,
   ctx: Pick<Parameters<CliCommandDef["execute"]>[1], "fail">,
   command: string,
 ): Promise<QuotedListing> {
   // A word that names a company is read after the quote, as `quote` reads it.
   const listing = await requireCliListing(raw, exchange, market, ctx, { companyWord: false });
   const venues = loadBareVenues(listing, market);
-  const [result] = await market.dataProvider.getQuotesBatch([listing.request], { revalidate: true });
-  const answer = await answerQuote(result ?? { target: listing.request, quote: null }, listing, market, { command, noun: "quote" }, false, venues);
+  const result = await quoteOne(market, listing.request, { revalidate: true });
+  const answer = await answerQuote(result, listing, market, { command, noun: "quote" }, false, venues);
   const quote = answer.result.quote;
   if (!quote) {
     if (answer.failure) ctx.fail(answer.failure.message, answer.failure.details);
@@ -375,7 +391,7 @@ export type IndexFormRead = () => Promise<Quote | null>;
  * goes beside the quote the service has not answered yet instead of after it. A symbol some venue lists asks only
  * when its answer needs it.
  */
-export function indexFormRead(listing: CliListing, market: MarketContext, venues: Promise<ListingVenue[]> | null): IndexFormRead | null {
+export function indexFormRead(listing: CliListing, market: ListingDeps, venues: Promise<ListingVenue[]> | null): IndexFormRead | null {
   if (listing.exchange || listing.saved || !CARETLESS_INDEX.test(listing.symbol) || indexRootFor(listing.symbol)) return null;
   let read: Promise<Quote | null> | null = null;
   const start: IndexFormRead = () => read ??= Promise.resolve().then(() => market.dataProvider.getQuote(`^${listing.symbol}`, ""))
@@ -412,7 +428,7 @@ const FIVE_DIGIT_CODE = /^0\d{4}$/;
  * (Tencent Holdings Limited)". Null for any other symbol, a named or saved
  * listing, and a code HKEX does not list.
  */
-async function hongKongCodeNote(listing: CliListing, quote: Quote, market: MarketContext): Promise<string | null> {
+async function hongKongCodeNote(listing: CliListing, quote: Quote, market: ListingDeps): Promise<string | null> {
   if (listing.exchange || listing.saved || !FIVE_DIGIT_CODE.test(listing.symbol)) return null;
   if (canonicalExchange(quote.listingExchangeName || quote.exchangeName) === "HKEX") return null;
   const code = String(Number(listing.symbol));
@@ -429,7 +445,7 @@ async function hongKongCodeNote(listing: CliListing, quote: Quote, market: Marke
  * Naira)?". When search finds nothing near, the row keeps its own error and its
  * search hint.
  */
-async function withCurrencyPairHint(result: QuoteBatchResult, market: MarketContext): Promise<QuoteBatchResult> {
+async function withCurrencyPairHint(result: QuoteBatchResult, market: ListingDeps): Promise<QuoteBatchResult> {
   const message = errorMessage(result.error);
   const symbol = message ? notATickerSymbol(message) : null;
   if (!message || !symbol || !looksLikeCurrencyPair(symbol)) return result;

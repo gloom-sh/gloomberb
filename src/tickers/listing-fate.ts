@@ -19,7 +19,7 @@ import {
 } from "./ticker-changes";
 import { isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../market-data/market/format";
-import { canonicalExchange, isUsListingExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "../utils/exchanges";
+import { canonicalExchange, exchangeLabel, isUsListingExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "../utils/exchanges";
 import { zonedDateKey } from "../utils/zoned-date-time";
 import { delistingLabel } from "../market-data/quotes/delisting";
 
@@ -295,19 +295,23 @@ export function isVenueAbroad(venue: string): boolean {
 }
 
 /**
- * "SXR8 -> XETRA" for a bare symbol the data service read on its home listing
- * abroad, as it reads a symbol with no US listing whose listings belong to one
- * company or fund: a row that shows the symbol as typed says which listing it
- * is. Null for a named or saved venue, and for a venue the app does not place
- * outside the US (a US exchange, OTC, a futures exchange).
+ * "Z74 has no US listing; it trades on Singapore Exchange (SGX), in SGD." for
+ * a bare symbol the data service read on its home listing abroad, as it reads
+ * a symbol with no US listing whose listings belong to one company or fund: a
+ * row that shows the symbol as typed says which listing it is, in the words
+ * `watchlist add` says it. Null for a named or saved venue, and for a venue
+ * the app does not place outside the US (a US exchange, OTC, a futures
+ * exchange).
  */
 export function bareListingNote(
   listing: { symbol: string; request: { exchange: string } },
-  quote: Pick<Quote, "listingExchangeName" | "exchangeName"> | null | undefined,
+  quote: Pick<Quote, "listingExchangeName" | "exchangeName" | "currency"> | null | undefined,
 ): string | null {
   if (listing.request.exchange || !quote || !/^[A-Z0-9]{1,10}$/.test(listing.symbol)) return null;
   const venue = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
-  return isVenueAbroad(venue) ? `${listing.symbol} -> ${venue}` : null;
+  if (!isVenueAbroad(venue)) return null;
+  const unit = quote.currency?.trim();
+  return `${listing.symbol} has no US listing; it trades on ${exchangeLabel(venue)}${unit ? `, in ${unit}` : ""}.`;
 }
 
 /** `ListingFate` from a listing's quote (null when it has none) and its ticker changes. */

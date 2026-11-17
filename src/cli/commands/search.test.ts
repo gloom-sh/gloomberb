@@ -195,6 +195,27 @@ test("a debt line the bare symbol's quote reads gives way to another company's h
 });
 
 /**
+ * `search DBS`, 17 Nov 2026: the Invesco silver fund, delisted in 2023, was the Primary Listing over DBS Group
+ * Holdings' home line on SGX, which the service marks with "DBS" and `quote DBS` asks after.
+ */
+test("a symbol whose line stopped trading leads with the live company the service marks by it", async () => {
+  const fund = { providerId: "gloomberb-cloud", symbol: "DBS", name: "Invesco DB Silver Fund", exchange: "ARCA", type: "Common Stock", primaryExchange: "ARCA" };
+  const bank = (symbol: string, exchange: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol, name: "DBS Group Holdings Ltd.", exchange, type: "Common Stock", primaryExchange: exchange, ...extra });
+  const answer = [fund, bank("D05", "SGX", { homeListing: true, searchAliases: ["DBS"] }), bank("DBSDF", "OTC")];
+  const stopped = Date.parse("2023-03-03T21:00:00Z");
+  const quote = { symbol: "DBS", name: fund.name, price: 28.68, change: 0, changePercent: 0, currency: "USD", lastUpdated: stopped, lastTradeTime: stopped,
+    stale: true, listingExchangeName: "ARCA", delisting: { status: "delisted", lastTradeDate: "2023-03-03", historyStart: "2016-01-04" } };
+  const dataProvider = createTestDataProvider({ search: async () => answer as never, getQuote: async () => quote as never });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("DBS", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; symbol: string }>;
+  expect(rows[0]).toMatchObject({ symbol: "D05", category: "Primary Listing" });
+  expect(rows.find((item) => item.symbol === "DBS")?.category).toBe("Other Matches");
+});
+
+/**
  * `search DHL`, 13 Nov 2026: DHL Group's Vienna, Hanover and Toronto lines still carry the name it had, Deutsche Post
  * AG. Read by name they were another company, an Other Match, and the cut dropped DHL Group's own venues for them.
  */

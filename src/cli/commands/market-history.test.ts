@@ -1334,6 +1334,29 @@ test("a share's fall on a demerger's ex-date is flagged, said, and no drawdown i
   expect(actionsRead).toBe(2);
 });
 
+// `history NFLX --from 2025-11-12 --to 2025-11-20` ran across the 10-for-1 split of 2025-11-17 in split-adjusted bars,
+// and said nothing of it, while META's FB-era bars say what they are.
+test("bars across a split say so, and a range that starts on the split day or a spinoff factor does not", async () => {
+  pinClosedSession();
+  const days = ["2025-11-12", "2025-11-13", "2025-11-14", "2025-11-17", "2025-11-18", "2025-11-19", "2025-11-20"];
+  const run = async (from: string, splits: Array<{ date: string; fromFactor: number; toFactor: number; ratio: number }>) => {
+    const dataProvider = createTestDataProvider({
+      getQuote: async () => createTestQuote({ symbol: "NFLX", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", instrumentType: "EQUITY" }),
+      getDetailedPriceHistoryWithMetadata: async () => ({
+        resolution: "1d", points: sessionBars(days, days.map(() => 30_000_000)).filter((bar) => bar.date.toISOString().slice(0, 10) >= from),
+      }),
+      getCorporateActions: async () => ({ symbol: "NFLX", dividends: [], splits, earnings: [] }),
+    });
+    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-split-fixture"), dataProvider });
+    await history.execute(["NFLX", "--from", from, "--to", "2025-11-20"], cli.context);
+    return cli.printed[0]!.result.warnings ?? [];
+  };
+  const tenForOne = { date: "2025-11-17", fromFactor: 1, toFactor: 10, ratio: 10 };
+  expect(await run("2025-11-12", [tenForOne])).toContain("Splits in range: NFLX 10-for-1 on 2025-11-17; bars before it are split-adjusted.");
+  expect((await run("2025-11-17", [tenForOne])).join("\n")).not.toContain("Splits in range");
+  expect((await run("2025-11-12", [{ date: "2025-11-17", fromFactor: 1000, toFactor: 1253, ratio: 1.253 }])).join("\n")).not.toContain("Splits in range");
+});
+
 test("weekly and monthly bars split their drawdown at the bar a demerger falls in, as daily bars do", async () => {
   pinClosedSession();
   const demerger = { exDate: "2025-10-14", recordDate: "2025-10-14", business: "commercial vehicles", ratio: 1,

@@ -1,3 +1,4 @@
+import { splitShareTerms } from "../../../market-data/split-terms";
 import type {
   AnalystEstimateRecord,
   AnalystResearchData,
@@ -37,7 +38,7 @@ import {
 
 export const CORPORATE_ACTION_COVERAGE = "Split-feed factors may include spinoff price adjustments. Merger terms, spinoff distributions, and security conversions are not covered.";
 
-export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Factor";
+export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Split" | "Factor";
 
 export interface EventRow {
   id: string;
@@ -342,6 +343,7 @@ function eventSortRank(status: EventStatus): number {
     case "Earnings": return 2;
     case "TTM": return 3;
     case "Dividend": return 4;
+    case "Split":
     case "Factor": return 5;
   }
 }
@@ -491,12 +493,15 @@ export function buildEventRows(
   }
 
   for (const split of data?.splits ?? []) {
+    // A factor of whole share counts is a split, said in its terms (DBS's bonus issue: 11-for-10, 1 new share for
+    // every 10 held); any other may be a spinoff's price adjustment, and says no more than that.
+    const terms = splitShareTerms(split);
     rows.push({
       id: `split:${split.date}:${split.description ?? ""}`,
       date: split.date,
-      status: "Factor",
+      status: terms ? "Split" : "Factor",
       period: MISSING_VALUE,
-      detail: "Split/adjustment",
+      detail: terms ?? "Split/adjustment",
       providerDescription: split.description,
       adjustmentFactor: split.fromFactor && split.toFactor ? split.toFactor / split.fromFactor : split.ratio,
       value: split.fromFactor && split.toFactor

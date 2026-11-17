@@ -10,6 +10,7 @@ import { createTestDataProvider, createTestQuote } from "../../../test-support/d
 import { createDefaultConfig } from "../../../types/config";
 import type { QuoteBatchResult, QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
+import type { TickerChanges } from "../../../types/ticker-changes";
 import { currencyPairSpelling } from "../../../utils/currency-pair";
 import { alertsCliCommand, parseAlertAddArgs } from "./cli";
 import { farTargetMessage } from "./quotes";
@@ -125,6 +126,63 @@ test("a symbol nothing quotes is refused and nothing is stored, with the nearest
   const typo = await addAlert(["AAPLL", "above", "100"]);
   expect(typo.error).toContain("Did you mean AAPL");
   expect(typo.stored).toEqual([]);
+});
+
+// As `quote` read them on 2026-11-17: DBS is the Invesco silver fund delisted in 2023 (search marks DBS Group
+// Holdings on SGX with "DBS"), SQ last traded before Block became XYZ, and FB lists a fund while Meta trades as META.
+test("an alert on a listing that stopped trading is refused with what to add instead, and one its company left says where it went", async () => {
+  setSystemTime(new Date("2026-11-17T15:00:00Z"));
+  const stopped = (symbol: string, name: string, price: number, lastTrade: string, delisted: boolean) => createTestQuote({
+    symbol, name, price, currency: "USD", exchangeName: "ARCA", lastUpdated: Date.parse(lastTrade), lastTradeTime: Date.parse(lastTrade), stale: true,
+    ...delisted ? { delisting: { status: "delisted" as const, lastTradeDate: lastTrade.slice(0, 10), historyStart: "2016-01-04" } } : {},
+  });
+  const quotes: Record<string, Quote> = {
+    DBS: stopped("DBS", "Invesco DB Silver Fund", 28.68, "2023-03-03T21:00:00Z", true),
+    SQ: stopped("SQ", "Block, Inc.", 86.96, "2025-01-17T21:00:00Z", false),
+    D05: createTestQuote({ symbol: "D05", name: "DBS Group Holdings Ltd.", price: 68.22, currency: "SGD", listingExchangeName: "SGX", exchangeName: "SGX" }),
+    FB: createTestQuote({ symbol: "FB", name: "ProShares S&P 500 Dynamic Buffer ETF", price: 44.35, listingExchangeName: "BATS", exchangeName: "BATS" }),
+  };
+  const hop = (from: string, to: string, date: string) => ({ from, to, date });
+  const changes: Record<string, TickerChanges> = {
+    SQ: { symbol: "SQ", moved: { symbol: "XYZ", name: "Block, Inc.", hops: [hop("SQ", "XYZ", "2025-01-21")] }, formerly: null, listedName: null, changes: [hop("SQ", "XYZ", "2025-01-21")] },
+    FB: { symbol: "FB", moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [hop("FB", "META", "2022-06-09")] }, formerly: null, listedName: null, changes: [hop("FB", "META", "2022-06-09")] },
+  };
+  const dataProvider = createTestDataProvider({
+    search: async (query: string) => query.toUpperCase() === "DBS" ? [
+      { providerId: "test", symbol: "DBS", name: "Invesco DB Silver Fund", exchange: "ARCA", type: "Common Stock", currency: "USD" },
+      { providerId: "test", symbol: "D05", name: "DBS Group Holdings Ltd.", exchange: "SGX", type: "Common Stock", currency: "SGD", homeListing: true, searchAliases: ["DBS"] },
+    ] : [],
+    getQuote: async (symbol: string) => {
+      if (!quotes[symbol]) throw new Error(`Not a ticker: ${symbol}.`);
+      return quotes[symbol]!;
+    },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => (
+      quotes[target.symbol] ? { target, quote: quotes[target.symbol]! } : { target, quote: null, error: `Not a ticker: ${target.symbol}.` }
+    )),
+    getTickerChanges: async (symbol: string) => changes[symbol] ?? null,
+  });
+
+  const delisted = await addAlert(["DBS", "below", "65"], undefined, { dataProvider });
+  expect([delisted.error, delisted.details]).toEqual([
+    "DBS (Invesco DB Silver Fund): Delisted 3 Mar 2023 (last price $28.68), so no alert was added.",
+    "Did you mean D05:SGX (DBS Group Holdings Ltd.)?",
+  ]);
+  const renamed = await addAlert(["SQ", "above", "80"], undefined, { dataProvider });
+  expect([renamed.error, renamed.details]).toEqual([
+    "SQ (Block, Inc.): no longer trading since 2025-01-17 (last price $86.96), so no alert was added.",
+    "SQ became XYZ on 2025-01-21: `gloom alerts add XYZ above 80`",
+  ]);
+  expect([...delisted.stored, ...renamed.stored]).toEqual([]);
+
+  const fund = await addAlert(["FB", "below", "40"], undefined, { dataProvider });
+  expect(fund.stored.map((alert) => alert.symbol)).toEqual(["FB"]);
+  expect(fund.printed!.result.warnings).toContain(
+    "FB now lists ProShares S&P 500 Dynamic Buffer ETF; FB was Meta Platforms before, now META (changed 2022-06-09)");
+
+  // A bare symbol's earnings alert is read the same way: D05 is DBS on SGX, which earnings alerts do not follow, so it
+  // gets the line 0700:HKEX gets, never that the dates could not be loaded.
+  expect((await addAlert(["D05", "earnings"], undefined, { dataProvider })).error)
+    .toBe("Earnings alerts follow US listings, such as CRWV or AAPL:NASDAQ. D05:SGX is not one.");
 });
 
 test("a price alert says what delivers it, and the app is the one thing that always does", async () => {
@@ -514,7 +572,8 @@ test("alerts list --csv keeps its columns in their order and adds when each aler
   expect(rows[0]!.slice(1, 7)).toEqual(["Price", "AAPL", "above 260.00", "", "active", "300"]);
   expect(rows[0]![8]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   expect(rows[0]!.slice(9, 11)).toEqual(["AAPL:NASDAQ", "USD"]);
-  expect(rows[0]![11]).toMatch(/^300\.00 USD as of \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/);
+  // An after-hours print says so, as `quote` names it beside Last.
+  expect(rows[0]![11]).toMatch(/^300\.00 USD after hours as of \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/);
   expect(rows[0]![12]).toMatch(/Z$/);
   expect(rows[1]!.slice(8)).toEqual(["2026-10-20T09:30:00Z", "LINK", "", "not checked yet", ""]);
   // Gloom Cloud checks a 52-week rule for a signed-in account; signed out, nothing has read it yet.

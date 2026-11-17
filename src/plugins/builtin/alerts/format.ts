@@ -2,6 +2,8 @@ import { MISSING_VALUE } from "../../../utils/format";
 import { closeBasis, metricName, metricReadingText, rotationQuadrant } from "./metric-model";
 import { moveBasisText, movePercentText, moveTargetText, moveTriggerLabel } from "./move";
 import { formatMarketPrice } from "../../../market-data/market/format";
+import { EXTENDED_PRINT_WORDS } from "../../../market-data/market/change-basis";
+import { EXTENDED_SESSION_MARKS } from "../../../market-data/market/status";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { formatQuoteAgeWithSource } from "../../../market-data/quotes/time";
 import { alertListingKey, alertPriceText } from "./price-text";
@@ -27,7 +29,12 @@ export function relativeTime(ts: number): string {
 /** A price ratio to four decimals, as GR states the latest ratio. */
 const formatRatio = (value: number) => value.toFixed(Math.abs(value) >= 100 ? 2 : 4);
 
-export function formatCurrentPrice(alert: AlertRule, maxWidth = 9): string {
+/**
+ * The current reading in a cell: an after-hours, pre-market or overnight
+ * print marked before it as the portfolio marks a price (AH 158.78), or in
+ * words after it where there is room to say it (`words`: 158.78 after hours).
+ */
+export function formatCurrentPrice(alert: AlertRule, maxWidth = 9, { words = false }: { words?: boolean } = {}): string {
   if (alert.lastCheckError) return !alert.metric ? "No quote"
     : /US listing|US equities|calendar/.test(alert.lastCheckError) ? "US only"
     : /missing|bars|history|weekly closes/i.test(alert.lastCheckError) ? "Bar gap" : "No data";
@@ -35,10 +42,19 @@ export function formatCurrentPrice(alert: AlertRule, maxWidth = 9): string {
   if (alert.metric?.kind === "rrg") return rotationQuadrant(alert.lastCheckedPrice, alert.lastCheckedTarget) ?? MISSING_VALUE;
   if (alert.metric?.kind === "rs_ratio" && alert.lastCheckedPrice != null) return formatRatio(alert.lastCheckedPrice);
   if (alert.lastCheckedPrice == null) return MISSING_VALUE;
-  // A move rule reads the day's move: -0.38%.
-  if (alert.move) return movePercentText(alert.lastCheckedPrice);
-  // A price at its instrument's precision (1.34032 on GBP/USD, 117.35p on a London line), as `quote` prints it.
-  return alert.metric ? formatMarketPrice(alert.lastCheckedPrice, { maxWidth, minimumFractionDigits: 2 }) : alertPriceText(alert, alert.lastCheckedPrice, maxWidth);
+  const session = alert.metric ? undefined : alert.lastQuoteSession;
+  const mark = session && !words ? `${EXTENDED_SESSION_MARKS[session]} ` : "";
+  // A move rule reads the day's move: -0.38%. A price at its instrument's precision (1.34032 on GBP/USD, 117.35p
+  // on a London line), as `quote` prints it.
+  const figure = alert.move ? movePercentText(alert.lastCheckedPrice)
+    : alert.metric ? formatMarketPrice(alert.lastCheckedPrice, { maxWidth, minimumFractionDigits: 2 })
+    : alertPriceText(alert, alert.lastCheckedPrice, Math.max(1, maxWidth - mark.length));
+  return session && words ? `${figure} ${EXTENDED_PRINT_WORDS[session]}` : `${mark}${figure}`;
+}
+
+/** " after hours" after a reading that is an extended session's print; nothing for the regular session's. */
+export function readingSessionWords(alert: Pick<AlertRule, "lastQuoteSession" | "metric">): string {
+  return alert.lastQuoteSession && !alert.metric ? ` ${EXTENDED_PRINT_WORDS[alert.lastQuoteSession]}` : "";
 }
 
 export function formatAlertTargetPrice(alert: AlertRule, maxWidth = 9): string {
@@ -135,7 +151,7 @@ export function alertReadingText(alert: AlertRule): string {
   // A move, with the close it is measured from: `-0.38% vs Thu 5 Nov close as of 2026-11-06T08:47Z`.
   if (alert.move) {
     const at = alertReadingAt(alert);
-    const figure = `${movePercentText(value)} ${moveBasisText(alert.lastMoveBasis)}`;
+    const figure = `${movePercentText(value)}${readingSessionWords(alert)} ${moveBasisText(alert.lastMoveBasis)}`;
     return at ? `${figure} as of ${isoUtc(at).replace(/:\d{2}Z$/, "Z")}` : figure;
   }
   const unit = readingUnit(alert);
@@ -144,8 +160,8 @@ export function alertReadingText(alert: AlertRule): string {
   const price = !alert.metric ? alertPriceText(alert, value) : null;
   const figure = alert.metric?.kind === "rrg" ? metricReadingText(alert.metric, { value, target: alert.lastCheckedTarget ?? Number.NaN })
     : alert.metric?.kind === "rs_ratio" ? formatRatio(value)
-    : price?.endsWith("p") ? price
-    : `${price ?? value.toFixed(2)}${unit === "x" ? "x" : unit ? ` ${unit}` : ""}`;
+    : price?.endsWith("p") ? `${price}${readingSessionWords(alert)}`
+    : `${price ?? value.toFixed(2)}${unit === "x" ? "x" : unit ? ` ${unit}` : ""}${readingSessionWords(alert)}`;
   const basis = alert.metric ? closeBasis(alert.metric) : null;
   if (basis && alert.lastDailyClose) return `${figure} on the ${alert.lastDailyClose} ${basis === "weekly close" ? "weekly close" : "close"}`;
   const at = alertReadingAt(alert);
