@@ -314,7 +314,9 @@ function withPositionLines(
         return { ...column, textFormat: (value, row) => typeof row.cashLabel === "string" ? row.cashLabel
           : lineLabel(row) ? `${text(value, row)} ${lineLabel(row)}` : text(value, row) };
       }
-      return POSITION_LINE_KEYS.has(column.key) ? column : { ...column, textFormat: (value, row) => isLine(row) ? "" : text(value, row) };
+      // The cash line counts no units: its quantity is blank, as everything else it does not fill in is.
+      const blank = (row: HeadlessPaneRow) => isLine(row) && (!POSITION_LINE_KEYS.has(column.key) || (row.cashLine === true && column.key === "shares"));
+      return { ...column, textFormat: (value, row) => blank(row) ? "" : text(value, row) };
     }),
   };
 }

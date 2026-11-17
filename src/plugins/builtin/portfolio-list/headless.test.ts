@@ -258,7 +258,7 @@ test("cash in several currencies is a CASH row each, the CASH target once on the
       "CASH USD Cash — — — — USD — 1,000 — 6.7% — — — — —",
       "CASH TRY Cash — — — — TRY — — — — — — — — —",
       // The whole line: unknown while the lira has no rate, its 50% target still shown.
-      "CASH — — — 50.0% — — —",
+      "CASH — — 50.0% — — —",
     ]);
   } finally {
     setCliColorEnabledOverride(null);
