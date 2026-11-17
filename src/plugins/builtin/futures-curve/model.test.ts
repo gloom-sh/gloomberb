@@ -136,7 +136,9 @@ test("Dutch TTF gas is a curve root that reads in euros per MWh at its 0.001 tic
   // The server sends no contract terms for the euro contract, so the catalogue says what a price counts.
   expect(curveUnitLabel(ttf)).toBe("EUR / MWh");
   // A root with neither terms nor a catalogue unit reads its quote unit, and the server's terms win.
-  expect(curveUnitLabel({ ...payload(), spec: null })).toBe("USD");
+  expect(curveUnitLabel({ ...payload(), root: "VX", spec: null })).toBe("USD");
+  // Crude whose terms are missing reads per barrel, from the catalogue.
+  expect(curveUnitLabel({ ...payload(), spec: null })).toBe("USD / barrel");
   expect(curveUnitLabel({ ...ttf, spec: { unit: "EUR / MWh", size: "1 MW", pointValue: 1, tick: 0.001, tickValue: 0.001, settlement: "cash" } })).toBe("EUR / MWh");
   // A past TTF curve keeps the archive's euro rather than defaulting to dollars.
   const past = archivedFuturesCurve("TTF", { root: "TTF", name: "Dutch TTF Natural Gas", date: "2026-10-02", asOf: "2026-10-02", currency: "EUR", quoteUnit: "EUR",
