@@ -14,6 +14,7 @@ import { clickOutsideWhileClean } from "../ui/dialog-stack";
 import { AuthForm, authFormTitle } from "./auth-form";
 import type { AccountMode } from "./auth-model";
 import { CloudVerificationPanel } from "./verification-panel";
+import { markHeardFromDue } from "./heard-from";
 
 function AuthDialog({
   initialMode,
@@ -21,10 +22,13 @@ function AuthDialog({
   resolve,
   dismiss,
   onCleanChange,
+  onAccount,
 }: PromptContext<AuthUser | undefined> & {
   initialMode: AccountMode;
   reason?: string;
   onCleanChange: (clean: boolean) => void;
+  /** The account the form signed in or up, before its email is confirmed too. */
+  onAccount: (user: AuthUser) => void;
 }) {
   useAppLanguage();
   const [mode, setMode] = useState<AccountMode>(initialMode);
@@ -44,7 +48,11 @@ function AuthDialog({
       <AuthForm
         initialMode={initialMode}
         onModeChange={setMode}
-        onSignedIn={(user) => user.emailVerified ? resolve(user) : setVerifyingUser(user)}
+        onSignedIn={(user) => {
+          onAccount(user);
+          if (user.emailVerified) resolve(user);
+          else setVerifyingUser(user);
+        }}
         onEscape={dismiss}
         onTypedChange={setTyped}
       />
@@ -57,6 +65,8 @@ export interface AuthDialogRequest {
   /** What asked for it, under the title: the delayed mark says what is delayed and by how much. */
   reason?: string;
   onSignedIn?: (user: AuthUser) => void;
+  /** The sign-in goes on to a checkout: nothing else is asked before it. */
+  checkout?: boolean;
 }
 
 const authDialogListeners = new Set<(request: AuthDialogRequest) => void>();
@@ -93,6 +103,8 @@ export function AuthDialogHost() {
       openRef.current = true;
       openAuthDialogs += 1;
       const { closeOnClickOutside, setClean } = clickOutsideWhileClean();
+      // Signed up, even when the dialog then closes before the email is confirmed.
+      let account: AuthUser | null = null;
       void dialog
         .prompt<AuthUser | undefined>({
           closeOnClickOutside,
@@ -102,11 +114,17 @@ export function AuthDialogHost() {
               initialMode={request.mode ?? "login"}
               reason={request.reason}
               onCleanChange={setClean}
+              onAccount={(user) => {
+                account = user;
+              }}
             />
           ),
         })
         .then((user) => {
           if (user) request.onSignedIn?.(user);
+          // Where it heard about Gloom, once the dialog and what follows it have closed.
+          const signedIn = user ?? account;
+          if (signedIn && !request.checkout) markHeardFromDue(signedIn.id);
         })
         .finally(() => {
           openRef.current = false;

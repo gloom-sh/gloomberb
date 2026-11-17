@@ -24,7 +24,7 @@ export function registerCloudUpgradeCommand(ctx: GloomPluginContext): void {
       };
       if (!apiClient.isSignedIn()) {
         // Upgrading needs an account first; continue to checkout once signed in.
-        if (!requestAuthDialog({ mode: "signup", onSignedIn: openUpgrade })) {
+        if (!requestAuthDialog({ mode: "signup", onSignedIn: openUpgrade, checkout: true })) {
           ctx.openCommandBar("Sign Up");
         }
         return;

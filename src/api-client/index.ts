@@ -28,6 +28,7 @@ import { CloudCollectionsApi } from "./collections";
 import { CloudFeedbackApi } from "./feedback";
 import { CloudRoadmapApi } from "./roadmap";
 import { CloudWaitlistApi } from "./product-waitlist";
+import { CloudHeardFromApi } from "./heard-from";
 import { CloudNotesApi } from "./notes";
 import { CloudTeamsApi } from "./teams";
 import { CloudTelemetryApi } from "./telemetry";
@@ -201,6 +202,7 @@ class GloomApiClient {
   private readonly feedback: CloudFeedbackApi = new CloudFeedbackApi((path, options) => this.request(path, options));
   private readonly roadmap: CloudRoadmapApi = new CloudRoadmapApi((path, options) => this.request(path, options));
   private readonly waitlist: CloudWaitlistApi = new CloudWaitlistApi((path, options) => this.request(path, options));
+  private readonly heardFrom: CloudHeardFromApi = new CloudHeardFromApi((path, options) => this.request(path, options));
   private readonly telemetry: CloudTelemetryApi = new CloudTelemetryApi((path, options) => this.request(path, options));
   private readonly theses: CloudThesesApi = new CloudThesesApi((path, options) => this.request(path, options));
   private readonly collections: CloudCollectionsApi = new CloudCollectionsApi((path, options) => this.request(path, options));
@@ -1036,6 +1038,10 @@ class GloomApiClient {
   getWaitlist = this.waitlist.getWaitlist.bind(this.waitlist);
   joinWaitlist = this.waitlist.joinWaitlist.bind(this.waitlist);
   leaveWaitlist = this.waitlist.leaveWaitlist.bind(this.waitlist);
+  getHeardFrom = this.heardFrom.getHeardFrom.bind(this.heardFrom);
+  reportHeardFromShown = this.heardFrom.reportHeardFromShown.bind(this.heardFrom);
+  answerHeardFrom = this.heardFrom.answerHeardFrom.bind(this.heardFrom);
+  skipHeardFrom = this.heardFrom.skipHeardFrom.bind(this.heardFrom);
   reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
   reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
   reportInstallExperiment = this.telemetry.reportInstallExperiment.bind(this.telemetry);

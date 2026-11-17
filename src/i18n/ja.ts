@@ -1612,6 +1612,12 @@ export const ja: Record<string, string> = {
   "TICKERS": "銘柄",
   "Which tickers do you follow?": "どの銘柄をフォローしていますか？",
   "Pick up to 3 for your watchlist.": "ウォッチリストに入れる銘柄を最大3つ選べます。",
+  // "Where did you hear about Gloom?", once, after an account signs up
+  "Where did you hear about Gloom?": "Gloom をどこで知りましたか？",
+  "AI assistant": "AI アシスタント",
+  "Friend or colleague": "友人・同僚",
+  "Article or newsletter": "記事・ニュースレター",
+  "Where?": "どこで？",
   "Skip": "スキップ",
   "Equities": "株式",
   "Futures & commodities": "先物・コモディティ",

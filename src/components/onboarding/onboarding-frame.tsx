@@ -1,5 +1,5 @@
 import { RADIUS, SPACE } from "../../theme/ui-tokens";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { useViewport } from "../../react/input";
 import { blendHex } from "../../theme/colors";
@@ -10,6 +10,7 @@ import type { ButtonProps } from "../ui/button";
 import { ListRowLines } from "../ui/list-row-lines";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../layout/titlebar-overlay";
 import { RemoteSurface, useRemoteSurfaceHeader, useRemoteSurfaceHeading } from "../../remote/surface";
+import { holdSetupCard } from "./setup-cards";
 
 /**
  * Spacing for the DOM card, in px. The card is a form the user fills in, not
@@ -58,6 +59,8 @@ export function OnboardingModal({
   const colors = useThemeColors();
   const desktop = useUiCapabilities().nativePaneChrome === true;
   const viewport = useViewport();
+  // Up while drawn, so a card that must not open over it can wait (setup-cards.ts).
+  useEffect(() => holdSetupCard(), []);
 
   // It covers the app, so remote control reads it as the open form.
   const content = <RemoteSurface kind="setup">{children}</RemoteSurface>;
@@ -533,7 +536,8 @@ export function OnboardingChoiceList({
       onActivate={(_item, index) => onActivate(index)}
       surface="framed"
       rowGap={0}
-      rowHeight={2}
+      // Two lines where a choice says more under its name; one where none does.
+      rowHeight={items.some((item) => item.description) ? 2 : 1}
       selectOnHover
       renderRow={(item, state) => (
         <Box flexDirection="row" alignItems="center" width="100%" minWidth={0}>
