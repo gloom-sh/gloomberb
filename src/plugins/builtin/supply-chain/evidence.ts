@@ -4,7 +4,7 @@ import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/scr
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
 import { fetchSupplyChain, validateSupplyChain } from "./client";
-import { earlierRows } from "./model";
+import { earlierRows, openingSupplyView } from "./model";
 import { isUnconfirmed, matchesSupplyOptions, supplyOptions } from "./trust";
 import { fetchSupplyGraph, graphOptions, validateGraph } from "./graph-client";
 
@@ -80,7 +80,8 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
     if (resolved.options.evidence === true && (!evidence.evidenceOpen || !evidence.evidenceId)) mismatches.push("Supply chain evidence detail was not opened");
     if (evidence.tab !== (resolved.options.tab ?? "table")) mismatches.push("Supply chain tab does not match");
     if (!graphTab(evidence.tab)) {
-      if (evidence.view !== (resolved.options.view ?? "says")) mismatches.push("Supply chain direction does not match");
+      const view = resolved.options.view ?? openingSupplyView(evidence.payload as SupplyChainPayload, supplyOptions(resolved.options.tiers));
+      if (evidence.view !== view) mismatches.push("Supply chain direction does not match");
       if (JSON.stringify(evidence.tiers) !== JSON.stringify(supplyOptions(resolved.options.tiers).tiers)) mismatches.push("Supply chain evidence tiers do not match");
     }
     return mismatches;

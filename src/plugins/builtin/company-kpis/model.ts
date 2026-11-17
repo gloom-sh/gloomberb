@@ -129,15 +129,41 @@ export function allObservations(data: KpisPayload): KpiObservation[] {
 export function allGuidance(data: GuidancePayload): KpiGuidance[] {
   return [...new Map([...data.guidance, ...data.history].map((row) => [row.id, row])).values()];
 }
-/** A KPI's change on the period before: N/M off a zero or negative base, where a percentage of it says nothing. */
+/**
+ * How far back the period just before is, for the kinds that repeat: in fiscal
+ * quarters, and in days between period ends (52- and 53-week calendars included).
+ */
+const PERIOD_STEP: Partial<Record<KpiObservation["period"]["kind"], { quarters: number; days: readonly [number, number] }>> = {
+  quarter: { quarters: 1, days: [80, 100] },
+  half: { quarters: 2, days: [170, 195] },
+  year: { quarters: 4, days: [350, 380] },
+};
+const DAY_MS = 86_400_000;
+/**
+ * A KPI's change on the period just before: N/M off a zero or negative base,
+ * where a percentage of it says nothing. A quarter is set against the quarter
+ * before it and a year against the year before, never against an older one
+ * when that period is missing: Tencent's Q2 2026 revenue over its Q3 2025 one
+ * read +6.19% as if quarter on quarter, where the quarter before gave +4%.
+ */
 export function observationChange(row: KpiObservation, observations: KpiObservation[]): { value: number | null; unit: string; notMeaningful?: true } {
   const fiscalOrder = (item: KpiObservation) => item.period.fiscalYear !== null && (item.period.kind === "year" || item.period.fiscalQuarter !== null)
     ? item.period.fiscalYear * 4 + (item.period.fiscalQuarter ?? 0) : null;
   const previousPeriod = (other: KpiObservation) => other.period.end && row.period.end ? other.period.end < row.period.end
     : fiscalOrder(other) !== null && fiscalOrder(row) !== null && fiscalOrder(other)! < fiscalOrder(row)!;
+  const step = PERIOD_STEP[row.period.kind];
+  const adjacent = (other: KpiObservation) => {
+    if (!step) return true;
+    if (other.period.end && row.period.end) {
+      const days = (Date.parse(row.period.end) - Date.parse(other.period.end)) / DAY_MS;
+      return days >= step.days[0] && days <= step.days[1];
+    }
+    const [from, to] = [fiscalOrder(other), fiscalOrder(row)];
+    return from !== null && to !== null && to - from === step.quarters;
+  };
   const prior = observations.filter((other) => other.id !== row.id && other.current && !other.conflict && !other.contested && exactObservation(other) && other.seriesKey === row.seriesKey
     && other.period.kind === row.period.kind && previousPeriod(other)).sort((a, b) => periodOrder(b).localeCompare(periodOrder(a)))[0];
-  if (!prior || (row.conflict || row.contested) || !exactObservation(row)) return { value: null, unit: "" };
+  if (!prior || !adjacent(prior) || (row.conflict || row.contested) || !exactObservation(row)) return { value: null, unit: "" };
   if (row.unit === "percent") return { value: row.value - prior.value, unit: "pp" };
   if (row.unit === "basis_points") return { value: row.value - prior.value, unit: "bp" };
   const growth = growthRate(row.value, prior.value);

@@ -61,8 +61,17 @@ export const counterpartyKindLabel = (row: SupplyRow, short = false) => {
   if (isRelatedParty(row)) return namedGroup(row) ? short ? "related group" : "related-party group" : "related party";
   return namedGroup(row) ? short ? "group" : "corporate group" : null;
 };
+/**
+ * A row's role as the company it is read for sees it. An investee row runs
+ * from the holder to the company held, so read inbound its counterparty is
+ * the holder: Sinopec, whose interim report holds CATL shares, is CATL's
+ * investor, not its investee.
+ */
+export const rowRoleLabel = (row: Pick<SupplyRow, "role"> & { direction?: SupplyRow["direction"] }) =>
+  row.role === "investee" && row.direction === "in" ? "Investor" : roleLabel(row.role);
 /** The relationship in words: "Related-party supplier" for a related-party trade, else the role. */
-export const relationshipLabel = (row: Pick<SupplyRow, "role" | "relatedParty">) => isRelatedParty(row) ? `Related-party ${row.role}` : roleLabel(row.role);
+export const relationshipLabel = (row: Pick<SupplyRow, "role" | "relatedParty"> & { direction?: SupplyRow["direction"] }) =>
+  isRelatedParty(row) ? `Related-party ${rowRoleLabel(row).toLowerCase()}` : rowRoleLabel(row);
 
 /**
  * The end of a counterparty's label that tells it apart, which a narrow column keeps whole while it cuts what comes
@@ -245,6 +254,16 @@ export function supplyRoleCounts(data: Pick<SupplyChainPayload, "says" | "names"
  */
 export const earlierRows = (data: Pick<SupplyChainPayload, "earlier">, view: "says" | "names"): SupplyRow[] => data.earlier?.[view] ?? [];
 
+/**
+ * The direction a table opens on before one is chosen: what the company says,
+ * unless its own reports name no one and others' name it (CATL: none of its
+ * own, ten from customers, competitors and a holder), not an empty table.
+ */
+export function openingSupplyView(data: Pick<SupplyChainPayload, "says" | "names" | "earlier">, options: Required<SupplyOptions>): "says" | "names" {
+  const shown = (rows: SupplyRow[]) => rows.some((row) => matchesSupplyOptions(row, options));
+  return !shown(data.says) && !shown(earlierRows(data, "says")) && shown(data.names) ? "names" : "says";
+}
+
 /** Disclosures a free preview withholds from these views: the server's counts less the rows it sent. */
 export function lockedDisclosures(data: Pick<SupplyChainPayload, "says" | "names" | "counts" | "earlier" | "earlierCounts">, views: readonly ("says" | "names")[]): number {
   const total = (counts: Record<SupplyRole, number> | undefined) => Object.values(counts ?? {}).reduce((a, b) => a + b, 0);
@@ -372,7 +391,7 @@ export const periodText = (row: Pick<SupplyRow, "period" | "periodMonths">) => {
 export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL" : row.sourceKind === "filing_text" ? row.form ?? "Filing" : row.sourceKind === "call" ? "Call" : row.sourceKind === "news" ? "News" : row.sourceKind === "press_release" ? "Release" : row.sourceKind === "web" ? "Web" : "Disclosure";
 export function cellText(row: SupplyRow, column: string): string {
   return column === "name" ? counterpartyName(row) : column === "ticker" ? entityTicker(row.counterparty) ?? MISSING_VALUE
-    : column === "role" ? roleLabel(row.role) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
+    : column === "role" ? rowRoleLabel(row) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
     : column === "pct" ? percentage(row) : column === "usd" ? disclosedValue(row) : column === "fy" ? periodText(row)
     : column === "publisher" ? row.evidence?.find((item) => item.status === "active")?.publisher ?? row.reportingEntity.name
     : column === "corroboration" ? corroborationLabel(row)

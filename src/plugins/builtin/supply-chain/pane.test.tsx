@@ -118,6 +118,26 @@ test("reverse table labels the percentage denominator and diagram pages a crowde
 
 
 
+test("a company named only in others' reports opens on them, and a holder of its shares reads as its investor", async () => {
+  const names = [
+    supplyRow("Buyer Motors", { role: "customer", direction: "out", pctOfRevenue: null }),
+    supplyRow("Holder Petro", { role: "investee", direction: "in", pctOfRevenue: null }),
+  ];
+  const data = supplyPayload({ says: [], names, totalRows: names.length });
+  data.counts.says.customer = 0; data.counts.names.customer = 1; data.counts.names.investee = 1;
+  setCloudApiFetchTransport(async () => Response.json(data));
+  await mount(140, 24, "table", "");
+  const frame = await tui.waitForFrameToContain("Holder Petro");
+  expect(frame).toContain("Buyer Motors");
+  expect(frame).toContain("Investor");
+  expect(frame).not.toContain("Investee");
+  expect(frame).toContain("Investors");
+  await tui.destroy();
+  // A direction chosen, even the empty one, stays chosen.
+  await mount(140, 24, "table", "says");
+  expect(await tui.waitForFrameToContain("No relationships")).not.toContain("Holder Petro");
+});
+
 test("a related party says so on its flow card and in the table's report, not only in a tooltip or a chip", async () => {
   const group = supplyRow("cssc-group", { counterparty: entity("cssc-group", "China State Shipbuilding Group"), relatedParty: true, entityScope: "group",
     pctOfRevenue: null, pctBasis: null, nativeAmount: 1_042_897_044.18, nativeCurrency: "CNY", nativeScale: 1, quote: "中国船舶集团有限公司及其子公司 销售商品 1,042,897,044.18" });
