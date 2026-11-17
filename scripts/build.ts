@@ -89,7 +89,8 @@ function compileCacheEnv(): Record<string, string> {
  * image below, a glibc one in Debian's.
  */
 const OLD_CPU_MODEL = "Nehalem";
-const GLIBC_OLD_CPU_IMAGE = "debian:13-slim";
+// debian:13-slim, pinned by its multi-arch index digest so a moved tag cannot change what runs here.
+const GLIBC_OLD_CPU_IMAGE = "debian@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2";
 /** Where the emulator is mounted in the container. */
 const CONTAINER_EMULATOR = "/usr/local/bin/qemu-x86_64";
 
@@ -137,7 +138,8 @@ function containerRunner(container: string, image: string, smokeDir: string, emu
  * The Alpine image a musl binary is smoke tested in when the build host runs
  * glibc: plain Alpine plus libstdc++, which every musl Bun binary links.
  */
-const MUSL_SMOKE_BASE_IMAGE = "alpine:3.22";
+// alpine:3.22, pinned by its multi-arch index digest.
+const MUSL_SMOKE_BASE_IMAGE = "alpine@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f";
 const MUSL_SMOKE_IMAGE = "gloomberb-musl-smoke:alpine-3.22";
 
 const args = process.argv.slice(2);
