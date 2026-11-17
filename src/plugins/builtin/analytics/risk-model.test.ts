@@ -3,6 +3,8 @@ import { expect, test } from "bun:test";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import {
   buildPortfolioRisk,
+  riskPaneWarnings,
+  riskRowWarnings,
   factorFitText,
   withoutFactorFit,
   portfolioRiskRequests,
@@ -699,4 +701,16 @@ test("the days a basket's returns are on are named when it holds a market abroad
   expect(riskReturnCalendar([{ exchange: "LSE" }, { exchange: "XETRA" }, { exchange: "JPX" }])).toBe("US trading days, other markets at their last close");
   // A listing abroad saved without its venue still says the days, without naming one.
   expect(riskReturnCalendar([{ exchange: "", convertedFrom: "TRY" }])).toBe("US trading days, other markets at their last close");
+});
+
+// A holding's failed mark and an option's failed valuation read as the whole book's in the footer.
+test("a warning that names a holding or an option is its row's; the book's stay the footer's", () => {
+  const model = {
+    warnings: ["AAPL: quote is from another listing", "AAPL261120C00200000: no implied volatility", "Treasury yield: the source did not answer"],
+    holdings: [{ symbol: "AAPL" }, { symbol: "MSFT" }],
+    greeks: { rows: [{ symbol: "AAPL261120C00200000" }] },
+  } as unknown as Parameters<typeof riskPaneWarnings>[0];
+  expect(riskPaneWarnings(model)).toEqual(["Treasury yield: the source did not answer"]);
+  expect(riskRowWarnings(model, "AAPL")).toEqual(["quote is from another listing"]);
+  expect(riskRowWarnings(model, "MSFT")).toEqual([]);
 });

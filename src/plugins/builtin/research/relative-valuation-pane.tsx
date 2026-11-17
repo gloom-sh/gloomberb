@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
   DataTableView,
-  RowNote,
   usePaneStatusFooter,
   type DataTableCell,
   type DataTableColumn,
@@ -354,12 +353,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   );
 
   // The footer says what concerns the whole comparison; what concerns one peer is on its row (its symbol
-  // in the warning colour) and, for the selected row, under the table (rowNote).
+  // in the warning colour) and, for the selected row, under the table (`rowNote`).
   const status = [error, peerError, missingFx ? "Market-cap FX unavailable" : null].filter(Boolean).join(" · ") || null;
 
   useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
-  const selectedRow = sortedRows[selectedIdx];
-  const rowNote = selectedRow ? relativeRowNotes(selectedRow).join(" ") : "";
 
   const renderCell = useCallback((row: RelativeRow, column: RelativeColumn): DataTableCell => {
     switch (column.id) {
@@ -438,7 +435,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       onHeaderClick={handleHeaderClick}
       getItemKey={(row) => row.symbol}
       renderCell={renderCell}
-      rootAfter={rowNote ? <RowNote>{`${canonicalTickerKey(selectedRow!.symbol)}: ${rowNote}`}</RowNote> : undefined}
+      rowNote={(row) => {
+        const notes = relativeRowNotes(row);
+        return notes.length ? `${canonicalTickerKey(row.symbol)}: ${notes.join(" ")}` : null;
+      }}
       selectedTextOverridesCellColor
       getExportMetadata={() => sortedRows.flatMap((row) => [
         [row.symbol, "Quote as of", parseDisplayDate(row.quoteAsOf)?.toISOString() ?? "unavailable", "Stale", String(row.quoteStale ?? "unknown")],

@@ -19,7 +19,7 @@ import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL 
 import { historyRows, periodText } from "./history-model";
 import { fiscalPeriodText, fiscalQuarterText } from "./fiscal-quarter";
 import { loadNoEarningsText } from "./no-earnings";
-import { EPS_BASIS_NOTE, epsBasisName, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
+import { EPS_BASIS_NOTE, epsBasisName, lacksConsensus, NO_CONSENSUS, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
 import { lastReportOnRecord, listingDay, noNextReportText } from "../shared/earnings-calendar";
 import { commandWord } from "../../../utils/shell-word";
 import { listingAbroadVenue } from "../../../utils/sec";
@@ -97,7 +97,8 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "timing", header: "When" },
   // The quarter as the company names it; its end month where the company's calls do not say. Exports keep both.
   { key: "fiscalQuarter", header: "Quarter", format: (value, row) => typeof value === "string" ? value : fiscalPeriodText(typeof row.fiscalPeriod === "string" ? row.fiscalPeriod : undefined) },
-  { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
+  // A reported quarter with no consensus on record says so (exports: in the status column), never a bare blank.
+  { key: "epsEstimate", header: "EPS est", align: right, format: (value, row) => lacksConsensus({ epsActual: num(row.epsActual), epsEstimate: num(value) }) ? NO_CONSENSUS : epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
   BASIS_COLUMN,

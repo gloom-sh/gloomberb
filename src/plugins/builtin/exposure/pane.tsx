@@ -21,7 +21,7 @@ import { ExposurePathDiagram, ExposureRanges } from "./charts";
 import { fetchExposure, fetchScenarios, validateExposure } from "./client";
 import { ExposureEditor, type ExposureInputs } from "./editor";
 import { portfolioHoldings, watchlistHoldings } from "./holdings";
-import { basisLabel, DEFAULT_SCENARIO, exposureCellText, fraction, hopsText, parseCustomScenario, parseHoldings, pathRows, periodText, portfolioRows, rangeText, tableRows, TABS, type ExposureRow } from "./model";
+import { analysisNotes, basisLabel, DEFAULT_SCENARIO, exposureCellText, fraction, hopsText, parseCustomScenario, parseHoldings, pathRows, periodText, portfolioRows, rangeText, tableRows, TABS, type ExposureRow } from "./model";
 import { useExposureEvidence } from "./evidence";
 import { driverRows, driverScope, driverUnits, driverValue } from "./drivers";
 
@@ -188,7 +188,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   usePaneStatusFooter({ registrationId: "exposure", loading: resource.loading, error: inputError ?? (data ? resource.error : null), hints,
     info: data ? [{ id: "asof", parts: [{ text: `analyzed ${data.evaluatedAt.slice(0, 10)}`, tone: "muted" as const }] }] : [] });
   // The footer's notes are the analysis's; what one holding's rows could not see is on those rows (gapsNote) and in their detail.
-  usePaneNoticeFooter({ registrationId: "exposure:notices", focused, notices: [...(library.error ? [library.error] : []), ...(data?.unknowns ?? [])] });
+  usePaneNoticeFooter({ registrationId: "exposure:notices", focused, notices: [...(library.error ? [library.error] : []), ...(data ? analysisNotes(data) : [])] });
   const sources = [{ value: "typed", label: "Typed holdings" }, ...config.portfolios.map(p => ({ value: `PORT:${p.id}`, label: `PORT · ${p.name}` })), ...config.watchlists.map(w => ({ value: `WATCH:${w.id}`, label: `Watchlist · ${w.name}` }))];
   const bodyHeight = Math.max(3, height - tabRows);
   const concentration = tab === "portfolio" && view !== "stress";

@@ -438,9 +438,15 @@ The same holds for what the data says about one row of a list of names
 not price, a peer whose fundamentals are stale, a holding whose evidence has
 gaps. The row says it in a few words (`no price` in its first column with
 room, `Estimated 3 gaps`, its symbol in the warning colour), and the whole
-reason goes in its detail or, for a table with none, under the table while
-the row is selected (`RowNote` as the table's `rootAfter`). The footer's
-notes are the pane's: what concerns every row. CSP, EXPO and RV do this.
+reason goes in its detail or under the table while the row is selected
+(DataTableView's and MarketBoardStack's `rowNote`, drawn as `RowNote`). A
+pane that is no table says it where its selection is: a correlation cell's
+symbols under the matrix, a series' limitation above its chart. The
+footer's notes are the pane's: what concerns every row, and names with no
+row of their own (a ticker with no trades in the window). A payload that
+repeats its rows' notes among its own (EXPO's `AAPL: …`) is filtered before
+the footer. CSP, EXPO, RV, VIX, PORT, BI, RRG, BTMM, CBR, VAL, CORR, WEI,
+CAT and PF do this.
 
 `useRowNotes` (`gloomberb/components`) keeps the notes: `setNote(key,
 note)` after an action, `noteFor(row)` in the status cell and the detail.
@@ -580,7 +586,7 @@ logo.
 
 **The body under a bar.** What sits under a pane's tabs, query bar and figures takes the rest of the pane by flex on the desktop and the web: spread `FILL_REST` (`components/ui/fill.ts`) on its box, and on the pane's own root box, instead of the rows the terminal counts. A chrome bar is taller than a row there, so a body given `height - 1` rows runs past the footer by the difference. Tables, charts and the 3D surface in that box fill it to the footer. `SeriesListDetail` does this for a series list beside its detail. A pane that shows other panes as views under its own bars (Fixed Income) puts each in a box with `data-gloom-role="nested-pane-content"`, and the view's root takes that box the way a pane's root takes the pane.
 
-**Text that may not fit.** One line that can run past its room (a name in a table cell, a heading) is `ClippedText`, or `SectionHeading` with a `width`: the terminal cuts it at a count of cells, the desktop and the web at the box's edge in CSS with an ellipsis. Siblings that must stay whole (a ticker, a kind badge) keep their room and the text gives way. Never pass a string already cut with `truncateToDisplayWidth` to a DOM render. `ClippedText` takes the caller's own terminal cut (`cut={truncateWithEllipsis}`) so the terminal frame stays as it was, a `lead` kept whole before the text, and `wrap` for a message or description the desktop should wrap rather than cut. An optional item that shows only when it fits beside the rest (a ticker after a name) goes in a row with `flexWrap: "wrap"`, one line tall and clipped: the browser moves what does not fit to the hidden line, as the terminal's count of columns dropped it.
+**Text that may not fit.** One line that can run past its room (a name in a table cell, a heading) is `ClippedText`, or `SectionHeading` with a `width`: the terminal cuts it at a count of cells, the desktop and the web at the box's edge in CSS with an ellipsis. Siblings that must stay whole (a ticker, a kind badge) keep their room and the text gives way. Never pass a string already cut with `truncateToDisplayWidth` to a DOM render. `ClippedText` takes the caller's own terminal cut (`cut={truncateWithEllipsis}`) so the terminal frame stays as it was, a `lead` kept whole before the text, `keepEnd` for the end that tells it apart from its neighbours (an undisclosed customer's number or letter: "Cus… 1"), kept whole in both renderers while what comes before it is cut, and `wrap` for a message or description the desktop should wrap rather than cut. An optional item that shows only when it fits beside the rest (a ticker after a name) goes in a row with `flexWrap: "wrap"`, one line tall and clipped: the browser moves what does not fit to the hidden line, as the terminal's count of columns dropped it.
 
 A table cell's optional `note` adds muted context after its `text`, such as a reference contract and price. It appears whole only when both fit; otherwise the primary text keeps its room and normal ellipsis. Use it through `DataTableCell` or `TickerTableCell`, so the terminal, desktop and web share the same behavior. It does not change the exported cell value.
 

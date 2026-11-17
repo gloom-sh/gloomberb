@@ -17,6 +17,7 @@ import { graphCache } from "./graph-client";
 import { graphPayload } from "./test-fixture-graph";
 import { SupplyChainPane } from "./pane";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
+import { displayWidth } from "../../../utils/format";
 
 const tui = createOpenTuiTestHarness();
 let commits = 0;
@@ -340,4 +341,25 @@ test("receivables chart keeps earlier shares beside their basis and their eviden
   expect(evidence).toContain("Previous buyer");
   expect(evidence).toMatch(/Period\s+as of 31 Jan 2026|Period\s+31 Jan 2026/);
   expect(evidence).not.toContain("31 Jul 2026");
+});
+
+test("a name keeps what tells it apart before a share keeps the words after its basis, at the desktop's default width", async () => {
+  const { tableColumns } = await import("./pane");
+  // NVDA's preview: two undisclosed customers' shares of total revenue from Compute & Networking, one of receivables.
+  const forms = (...texts: string[]) => texts.map(displayWidth);
+  const bases = [forms("of total revenue, from Compute & Networking", "of total revenue", "revenue"),
+    forms("of total revenue, from Compute & Networking", "of total revenue", "revenue"), forms("of receivables (owed to NVIDIA)", "of receivables", "receivables")];
+  // "Hon Hai Precision Industry", and "Customer 1" beside its "undisclosed" chip.
+  const nameCells = displayWidth("Hon Hai Precision Industry");
+  // 170 cells is the desktop's 1280 px default, where the name was cut to 18 so the share kept "…, from Compute & Networking".
+  for (const width of [160, 170]) {
+    const columns = tableColumns(width, true, true, null, bases, displayWidth("quarter to 26 Jul 2026"), nameCells);
+    const name = columns.find((column) => column.id === "name")!;
+    expect(name.width, String(width)).toBeGreaterThanOrEqual(nameCells);
+    expect(columns.map((column) => column.id), String(width)).toEqual(["name", "evidence", "ticker", "role", "pct", "fy", "filed", "publisher", "corroboration"]);
+    // The share keeps its basis, in its shorter form; the selected row's words and its evidence keep the whole.
+    const share = columns.find((column) => column.id === "pct")!;
+    // The bar, a gap, the figure and a gap before the basis.
+    expect(share.width, String(width)).toBeGreaterThanOrEqual(3 + 1 + 5 + 1 + displayWidth("of total revenue"));
+  }
 });

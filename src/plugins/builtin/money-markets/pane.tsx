@@ -17,7 +17,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedHongKongMoneyMarkets, getCachedMoneyMarkets, loadHongKongMoneyMarkets, loadMoneyMarkets } from "./client";
 import { moneyMarketReport, moneyMarketsHeadless } from "./headless";
 import { reportFooterSegment } from "../shared/source-footer";
-import { isHongKongTab, MONEY_MARKET_TABS, moneyMarketAxis, moneyMarketChange, moneyMarketCurves, moneyMarketNotices, moneyMarketObservations, moneyMarketRateChange, moneyMarketRowNotices, moneyMarketRows, moneyMarketValue } from "./model";
+import { isHongKongTab, MONEY_MARKET_TABS, moneyMarketAxis, moneyMarketChange, moneyMarketBoardNotices, moneyMarketCurves, moneyMarketObservations, moneyMarketRateChange, moneyMarketRowNote, moneyMarketRows, moneyMarketValue } from "./model";
 
 const TABS = MONEY_MARKET_TABS.map(({ value, label }) => ({ value, label }));
 const PANELS = [{ id: "main" }];
@@ -147,7 +147,8 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   useAutoRefresh(active.updatedAt, active.load);
   usePaneRefreshKey(() => active.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "money-markets:notices", focused,
-    notices: [...(hongKong ? hongKongData ? moneyMarketRowNotices(hongKongData.rows) : [] : data ? moneyMarketNotices(data) : []),
+    // The board's own; a rate with no figure or an old one says so on its row (`rowNote`).
+    notices: [...(!hongKong && data ? moneyMarketBoardNotices(data) : []),
       ...(active.data?.refreshError ? [active.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "money-markets", focused, loading: active.loading, error: active.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
@@ -161,7 +162,7 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
       empty={!active.loading && !active.error && !shown} subject={hongKong ? "Hong Kong money markets" : "money markets"}>
       {shown ? <MarketBoardStack rows={rows} width={width} height={bodyHeight} focused={focused}
         selectedId={selectedRow?.id ?? null} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-        changeLabel="Δ OBS" renderDetail={(row) => <ObservationDetail row={row.observation} width={width} height={Math.max(5, bodyHeight - 2)} focused={focused} />}
+        changeLabel="Δ OBS" rowNote={(row) => moneyMarketRowNote(row.observation)} renderDetail={(row) => <ObservationDetail row={row.observation} width={width} height={Math.max(5, bodyHeight - 2)} focused={focused} />}
         rootBefore={({ columns }) => <ChartTableHeader width={width} height={bodyHeight} figures={figures} chart={chart}
           tableRows={rows.length} tableColumns={columns} />} /> : null}
     </PaneStatusBody>

@@ -76,7 +76,8 @@ export function fitTableCellText(text: string, width: number, align?: string, ke
   return padToWidth(clipKeepingEnd(text, width, keepEnd), width, align);
 }
 
-function clipKeepingEnd(text: string, width: number, keepEnd: string | undefined): string {
+/** `text` cut to `width` cells keeping `keepEnd` whole after the ellipsis, as a table cell's `keepEnd` cuts it. */
+export function clipKeepingEnd(text: string, width: number, keepEnd: string | undefined): string {
   if (!keepEnd || displayWidth(text) <= width || !text.endsWith(keepEnd)) return clipToDisplayWidth(text, width);
   const lead = text.slice(0, -keepEnd.length);
   const room = width - displayWidth(keepEnd);

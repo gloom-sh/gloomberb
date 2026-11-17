@@ -17,7 +17,8 @@ import {
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { declaredDividends } from "../../../utils/declared-dividends";
-import { fiscalPeriodText } from "../earnings/fiscal-quarter";
+import { fiscalPeriodText, fiscalQuarterInYear, fiscalQuarterText, fiscalYearText } from "../earnings/fiscal-quarter";
+import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { isReasonCode, readableStatus } from "../../../utils/reason-codes";
 import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fundamentals";
 import { isNotMeaningful, NOT_MEANINGFUL, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE, type Rate } from "../../../utils/growth";
@@ -165,13 +166,16 @@ function buildEstimatePairs(data: AnalystResearchData | null): EstimatePair[] {
   return [...pairs.values()];
 }
 
-function formatEstimateDetail(pair: EstimatePair): string {
+function formatEstimateDetail(pair: EstimatePair, relative?: string): string {
   const analystCounts: string[] = [];
   if (pair.eps?.analysts != null) analystCounts.push(`${pair.eps.analysts} EPS`);
   if (pair.revenue?.analysts != null) analystCounts.push(`${pair.revenue.analysts} rev`);
-  if (analystCounts.length) return `${analystCounts.join(" / ")} analysts`;
-  return "Consensus";
+  const counts = analystCounts.length ? `${analystCounts.join(" / ")} analysts` : "Consensus";
+  return relative ? `${relative}, ${counts}` : counts;
 }
+
+/** An estimate period the fiscal calendar names: the current or next quarter or year. */
+const NAMED_ESTIMATE_PERIOD = /^(?:cur|next) (?:qtr|yr)$/;
 
 /**
  * An estimate's growth over its year-ago figure: the source's, except off a year-ago figure at or below zero, where
@@ -210,6 +214,8 @@ function estimateValue(growth: Rate | undefined): string {
  * the figure `ticker` prints as EPS (TTM) (the filed quarters' when they give one, see time-series/filed-trailing-eps).
  */
 export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency"> & {
+  /** The years, whose last end names the fiscal quarters (`Q1 FY2027`) as GUIDE and ERN do. */
+  annualStatements?: readonly Pick<FinancialStatement, "date">[];
   fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency" | "trailingEpsSource"> | null;
   /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency), and its type. */
   quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType"> | null;
@@ -367,6 +373,8 @@ export function buildEventRows(
   if (ttm) rows.push(ttm);
 
   const earningsIds = earningsRowIds(earnings);
+  // Quarters and years by the names GUIDE and ERN give them (Q1 FY2027), where the company's years say when they end.
+  const yearEnd = fiscalYearEndMonth(financials?.annualStatements ?? []);
   // An upcoming report often arrives without a currency; the feed's reported
   // quarters give it when they all agree on one.
   const feedCurrencies = new Set(earnings.map((earning) => earning.currency).filter(Boolean));
@@ -390,7 +398,7 @@ export function buildEventRows(
       dateType: earning.dateType,
       status: "Earnings",
       // The fiscal quarter, never the time of day ("After Hours"), which the row keeps as reportTime.
-      period: fiscalPeriodText(earning.fiscalPeriod ?? statement?.date),
+      period: fiscalPeriodText(earning.fiscalPeriod ?? statement?.date, fiscalQuarterInYear(earning.fiscalPeriod ?? statement?.date, yearEnd)),
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
       detail: upcomingEarningsDetail(earning),
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),
@@ -426,12 +434,16 @@ export function buildEventRows(
     const isFiscal = isFiscalEstimatePeriod(pair.period);
     if (!isFiscal && isReportedQuarter(pair.date, reportedPeriodEnds)) continue;
     const growth = estimatePairGrowth(pair);
+    const relative = formatPeriod(pair.period);
+    const named = !NAMED_ESTIMATE_PERIOD.test(relative) ? null
+      : isFiscal ? fiscalYearText(pair.date, yearEnd) : fiscalQuarterText(fiscalQuarterInYear(pair.date, yearEnd));
     rows.push({
       id: `estimate:${pair.date}:${pair.period}`,
       date: pair.date,
       status: isFiscal ? "FY Est" : "Q Est",
-      period: formatPeriod(pair.period),
-      detail: formatEstimateDetail(pair),
+      // Named as the company's fiscal calendar names it; which one it is from today ("cur qtr") leads the detail.
+      period: named ?? relative,
+      detail: formatEstimateDetail(pair, named ? relative : undefined),
       providerId: estimates?.providerId,
       fetchedAt: estimates?.fetchedAt,
       estimateInputs: {

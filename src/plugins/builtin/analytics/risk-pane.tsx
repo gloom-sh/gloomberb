@@ -61,11 +61,12 @@ import {
   NO_HOLDINGS_HINT,
   portfolioRiskRequests,
   portfolioRiskTickers,
-  riskCoverageNotices,
   riskCoverageParts,
   riskCoverageShortfall,
+  riskPaneWarnings,
   riskPercentile,
   riskEvidence,
+  riskRowWarnings,
   riskReturnsCurrency,
   riskValue,
   RISK_VIEWS,
@@ -631,15 +632,16 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     [frozen, importEvidence, portfolios.length, nextPortfolio],
   );
   // Only real data limitations raise the footer warning; the empty evidence
-  // views say what they need in the body, with the import action.
+  // views say what they need in the body, with the import action. What
+  // concerns one holding is its row's: a left-out holding's reason is its
+  // detail, a holding's or an option's failure its note under the table.
   const failures = [
-    ...(model?.warnings ?? []),
+    ...(model ? riskPaneWarnings(model) : []),
     ...shocks.errors,
     ...(derived.error ? [derived.error] : []),
     ...(resource.error ? [resource.error] : []),
   ];
   const notices = [
-    ...riskCoverageNotices(model?.coverage),
     ...(model?.notes ?? []),
     ...failures,
   ];
@@ -1013,6 +1015,10 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           return { text: factorFits ? withoutFactorFit(row.detail) : row.detail };
         }}
         selectedTextOverridesCellColor
+        rowNote={(row) => {
+          const notes = model ? riskRowWarnings(model, row.label) : [];
+          return notes.length ? `${row.label}: ${notes.join(" ")}` : null;
+        }}
         onActivate={(row) => setOpen(row.id)}
         detailOpen={!!openRow}
         detailTitle={openRow?.label}

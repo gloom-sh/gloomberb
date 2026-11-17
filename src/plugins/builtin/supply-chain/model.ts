@@ -20,7 +20,7 @@ export const ROLE_COLORS: Readonly<Record<SupplyRole, string>> = currentThemeCol
 
 /** A company, a customer the filer does not name, or a geographic or channel cohort that is not one company. */
 export type CounterpartyKind = "company" | "undisclosed" | "group";
-export const counterpartyKind = (row: SupplyRow): CounterpartyKind =>
+export const counterpartyKind = (row: Pick<SupplyRow, "counterparty">): CounterpartyKind =>
   row.counterparty.aggregate ? "group" : row.counterparty.anonymous ? "undisclosed" : "company";
 
 const GENERIC_WORDS = /\b(And|Of|The|Based|End|Customers?|Suppliers?|Vendors?|Channel|Partners?|Undisclosed|Other|Carriers?|Networks?|Cellular|Distributors?|Retailers?)\b/g;
@@ -32,7 +32,7 @@ const GENERIC_WORDS = /\b(And|Of|The|Based|End|Customers?|Suppliers?|Vendors?|Ch
 const MEASURE_PREFIX = /^(?:revenues?|net sales|sales|a\/r|ar|accounts receivables?|receivables?|trade receivables?)\s+(?=(?:customer|client|supplier|vendor)\b)/i;
 
 /** The counterparty's name without the kind spelled into it; the kind travels as its own label. */
-export function counterpartyLabel(row: SupplyRow): string {
+export function counterpartyLabel(row: Pick<SupplyRow, "counterparty" | "pctBasis">): string {
   const kind = counterpartyKind(row);
   if (kind === "company") return row.counterparty.name;
   const name = counterpartyName(row).replace(/^Group: /, "").replace(/\s*\(undisclosed\)$/i, "")
@@ -68,7 +68,7 @@ export const relationshipLabel = (row: Pick<SupplyRow, "role" | "relatedParty">)
  * The end of a counterparty's label that tells it apart, which a narrow column keeps whole while it cuts what comes
  * before: the letter or number of an undisclosed customer ("Customer 1", "Customer A"). Null for a company's name.
  */
-export function counterpartyLabelEnd(row: SupplyRow): string | null {
+export function counterpartyLabelEnd(row: Pick<SupplyRow, "counterparty" | "pctBasis">): string | null {
   if (counterpartyKind(row) !== "undisclosed") return null;
   return / (?:\d{1,3}|[A-Z]|One|Two|Three|Four|Five|Six)$/i.exec(counterpartyLabel(row))?.[0] ?? null;
 }
@@ -176,7 +176,7 @@ export function disclosureText(row: SupplyRow): string {
     .filter((part): part is string => !!part).join(", ") || "Tagged in the filing";
 }
 
-export function counterpartyName(row: SupplyRow): string {
+export function counterpartyName(row: Pick<SupplyRow, "counterparty">): string {
   if (row.counterparty.aggregate) return `Group: ${row.counterparty.name.replace(/^Undisclosed customer \((.+)\)$/i, "$1")}`;
   if (!row.counterparty.anonymous) return row.counterparty.name;
   const name = row.counterparty.name;
