@@ -55,7 +55,7 @@ function choiceLabel(answer: HeardFromAnswer): string {
  * fine). Esc, or Skip, skips; from the note, Esc goes back to the list. The
  * card holds the keyboard while it is up, as setup does.
  */
-export function HeardFromCard({ onShown, onDone }: {
+function HeardFromCard({ onShown, onDone }: {
   onShown: () => void;
   onDone: (choice: HeardFromChoice) => void;
 }) {
