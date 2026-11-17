@@ -927,6 +927,7 @@ export class DesktopBackend {
       case "update.start":
       case "update.apply":
       case "ticker.loadAll":
+      case "ticker.changesElsewhere":
       case "ticker.load":
       case "ticker.save":
       case "ticker.delete":
