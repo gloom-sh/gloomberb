@@ -70,10 +70,12 @@ test("a company with no deal says so as the pane does, not that MA does not cove
 // The spread columns were inserted before Stage, Close and Closed, moving them for a script reading the CSV by position.
 test("the CSV keeps an earlier export's columns where they were, the spread's and the outside date's after them", async () => {
   const { headlessReportTables } = await import("../../../cli/pane-functions/headless");
+  const { deriveHeadlessFreshness } = await import("../../../cli/pane-functions/freshness");
   const { renderReportCsv } = await import("../../../cli/report-tables");
   const { result } = await load("ATH.TO");
   const args = createTestHeadlessArgs({ rawArgument: "ATH.TO", argument: "ATH.TO", symbols: ["ATH.TO"] });
-  const header = renderReportCsv(headlessReportTables(mnaHeadless, result, args, "M&A", undefined, { complete: true, unavailableSymbols: [] })).split("\n")[0]!;
+  const freshness = deriveHeadlessFreshness(mnaHeadless, result);
+  const header = renderReportCsv(headlessReportTables(mnaHeadless, result, args, "M&A", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n")[0]!;
   const columns = header.split(",");
   expect(columns.slice(0, 9)).toEqual(["Announced", "Target", "Symbol", "Acquirer", "Terms", "Value", "Stage", "Close", "Closed"]);
   const added = ["Spread", "As of", "Latest", "Latest as of", "Outside"].map((name) => columns.findIndex((column) => column.startsWith(name)));
