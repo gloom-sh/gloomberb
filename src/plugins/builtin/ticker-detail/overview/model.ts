@@ -6,7 +6,7 @@ import { NOT_MEANINGFUL_TEXT } from "../../../../utils/growth";
 import type { ServedRate } from "../../../../utils/served-rates";
 import type { CedearRatio, CompanyProfile, DepositaryPair, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
 import { adrRatioText } from "../../../../utils/depositary-receipt";
-import { cedearRatioText, ratioCount } from "../../../../market-data/depositary-pair";
+import { cedearRatioText, premiumText, ratioCount } from "../../../../market-data/depositary-pair";
 import { ADR_PAIR_TAB_ID, ADR_PAIR_TEMPLATE_ID } from "../adr-pair/model";
 import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
 import type { BrokerInstanceConfig } from "../../../../types/config";
@@ -158,6 +158,7 @@ export function buildOverviewStats({
   nextEarnings,
   depositaryReceipt = false,
   depositaryPair = null,
+  ahPair = null,
   cedearRatio = null,
   today,
   dividend,
@@ -179,6 +180,11 @@ export function buildOverviewStats({
   depositaryReceipt?: boolean;
   /** The receipt pair the listing is a side of, as Gloom Cloud serves it; `receiptSide` when the listing is the receipt. */
   depositaryPair?: { pair: DepositaryPair; receiptSide: boolean } | null;
+  /**
+   * An A+H company's other line (`useAhPair`): the A share on the H line's DES, the H share on the A line's, with
+   * the H price over the A price at spot. `linked` when this DES has the ADR vs Home tab that shows them.
+   */
+  ahPair?: { other: string; side: "h" | "a"; premiumPercent: number | null; linked: boolean } | null;
   /** A Buenos Aires CEDEAR's ratio in its company's shares, as Gloom Cloud serves it. */
   cedearRatio?: CedearRatio | null;
   /** The listing's calendar day, YYYY-MM-DD; dates before it are left out. */
@@ -254,6 +260,16 @@ export function buildOverviewStats({
     stats.push(receiptSide
       ? { label: "ADR Ratio", value: `1:${count}`, detail: [adrRatioText(pair.ratio, pair.ordinary[0])!, `${count} sh per ADR`], link: ADR_PAIR }
       : { label: "ADR", value: pair.receipt, detail: [`1 ADR = ${count} of these shares`, `1:${count}`], link: ADR_PAIR });
+  }
+  // An A+H company's other line, and the H price over the A price at spot, as ADR vs Home shows them.
+  if (ahPair) {
+    const premium = ahPair.premiumPercent == null ? null : premiumText(ahPair.premiumPercent);
+    stats.push({
+      label: ahPair.side === "h" ? "A Share" : "H Share",
+      value: ahPair.other,
+      ...(premium ? { detail: [`H ${premium} at spot`, `H ${premium.replace(/ (?:premium|discount|at par)$/, "")}`] } : {}),
+      ...(ahPair.linked ? { link: ADR_PAIR } : {}),
+    });
   }
   if (cedearRatio) {
     const receipts = ratioCount(cedearRatio.receipts);

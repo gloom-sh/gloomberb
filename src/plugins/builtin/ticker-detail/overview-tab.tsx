@@ -78,6 +78,7 @@ import { currentListingName } from "../../../tickers/listing-name";
 import { isYieldIndexSymbol } from "../../../tickers/index-roots";
 import { coinPriceVenueText, quoteStatsBasisText } from "../../../market-data/quotes/export-identity";
 import { hiddenOnLogScale, logScaleHiddenWarning } from "../../../time-series/log-scale";
+import type { AhPairState } from "./adr-pair/ah";
 import {
   autoOverviewChartScale, resolveOverviewChartScale, toggledOverviewChartScale, type OverviewChartScaleChoice,
 } from "./overview/chart-scale";
@@ -119,6 +120,8 @@ interface OverviewTabProps {
   onOpenFunction?: (link: OverviewFunctionLink) => void;
   /** The history the dividend yield reads (useOverviewDividend): a trailing one's cash, a forward one's lapse; without it the yield stands. */
   dividend?: OverviewDividendState;
+  /** An A+H company's other line and how the two prices compare (useAhPair); none for any other listing. */
+  ah?: AhPairState | null;
   /** Where the ticker's snapshot load stands (useTickerSnapshotState), for the state shown before anything of it is in. */
   snapshot?: TickerSnapshotState;
   /** The rates `fn DES --tax-rate` set (taxRatesFromSettings): a fund's tax-equivalent yield and muni/Treasury ratio follow its facts. */
@@ -159,7 +162,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({
-  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, tax = null,
+  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, ah = null, tax = null,
   chartScale: chartScaleChoice = "auto", onChartScaleChange,
 }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
@@ -435,6 +438,7 @@ function ResolvedOverviewTab({
   const contractGridColumns = futuresFields.length > 0 ? contractColumns : textGridColumns(optionFields, contentWidth);
   const depositaryPair = listingDepositaryPair(financials);
   const stats = buildOverviewStats({
+    ahPair: ah ? { other: ah.side === "h" ? ah.pair.a : ah.pair.h, side: ah.side, premiumPercent: ah.comparison?.premiumPercent ?? null, linked: !!depositaryPair } : null,
     quote,
     fundamentals: shownFundamentals,
     financialCurrency: financials?.financialCurrency,

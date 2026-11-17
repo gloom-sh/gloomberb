@@ -18,6 +18,7 @@ import { OverviewTab } from "../overview-tab";
 import { useOpenResearchTab } from "../research-tab-navigation";
 import type { OverviewFunctionLink } from "./types";
 import { useOverviewDividend } from "./dividend";
+import { useAhPair } from "../adr-pair/ah";
 import { useTickerSnapshotState } from "../../../../market-data/hooks";
 import { taxRatesFromSettings } from "../../../../market-data/tax-equivalent";
 import { PaneLinkMenu } from "../../../../components";
@@ -38,6 +39,8 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
   const openResearchTab = useOpenResearchTab();
   const { createPaneFromTemplate } = usePluginAppActions();
   const dividend = useOverviewDividend(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange ?? "", financials?.fundamentals);
+  // An A+H company's other line and the premium between them, beside the ADR row.
+  const ah = useAhPair(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange || financials?.quote?.listingExchangeName, financials?.quote);
   // A pane locked to one tab has nowhere to go.
   const lockedToOneTab = getTickerResearchPaneSettings(paneInstance?.settings).hideTabs;
   // The chart's scale, once set from the pane menu, holds for every ticker the pane shows.
@@ -63,6 +66,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       onOpenChart={paneId && !lockedToOneTab ? openChart : undefined}
       onOpenFunction={openFunction}
       dividend={dividend}
+      ah={ah}
       snapshot={snapshot}
       tax={taxRatesFromSettings(paneInstance?.settings)}
       chartScale={parseOverviewChartScaleChoice(chartScale)}
