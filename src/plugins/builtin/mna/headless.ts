@@ -19,6 +19,17 @@ const COLUMNS: HeadlessPaneColumn[] = [
   { key: "closed", header: "Closed" },
 ];
 
+/**
+ * What a company's empty deal list says: the pane's "No deals involving X.",
+ * with the status and search asked for. Newer deals a free account waits for
+ * are the report's Pro line.
+ */
+function emptyDealsText(symbol: string, params: MnaDealsParams): string {
+  const status = params.status && params.status !== "all" ? `${params.status} ` : "";
+  const query = params.query ? ` matching "${params.query}"` : "";
+  return `No ${status}deals involving ${symbol}${query}.`;
+}
+
 export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   freshness: { status: "not-a-feed", basis: "reported deals" },
@@ -68,7 +79,12 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
       limit: Number(args.options.limit ?? 50),
     };
     const payload = await fetchMnaDeals(params, ctx.apiClient);
+    // No deal involving a company is the list's answer for it, as the pane says, never a company MA does not cover.
+    const none = payload.deals.length === 0 && symbol
+      ? { empty: emptyDealsText(filed || symbol, params), unavailableSymbols: [] }
+      : {};
     return {
+      ...none,
       columns: COLUMNS,
       rows: payload.deals.map((deal) => ({
         id: deal.id,

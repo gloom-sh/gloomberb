@@ -103,6 +103,23 @@ function cellText(cell: DesktopPaneShotRenderedRow["cells"][number]): string {
   return formatUtcTime(cell.instant) || cell.text;
 }
 
+/** A zone named at the end of a column header: `TIME HKT`, `TIME GMT+8`, `DATE ET`, `TIME UTC`. */
+const HEADER_ZONE = /^(.*\S)\s+(?:UTC|GMT(?:[+-]\d{1,2}(?::?\d{2})?)?|[A-Z]{1,4}T)$/;
+
+/**
+ * A column the report prints from the instants behind its cells (cellText:
+ * UTC, the reader's zone beside it when set; the CSV and JSON the instant
+ * itself) is headed in UTC. The pane's header names the clock it drew the
+ * times on, the host's (`TIME HKT` over Top News); over the report's UTC
+ * times it named the wrong zone. Any other header stays as the pane drew it.
+ */
+function reportedHeader(header: string, cells: ReadonlyArray<DesktopPaneShotRenderedRow["cells"][number] | undefined>): string {
+  const filled = cells.filter((cell) => cell !== undefined);
+  if (filled.length === 0 || !filled.every((cell) => cell.instant)) return header;
+  const zoned = HEADER_ZONE.exec(header);
+  return zoned ? `${zoned[1]} UTC` : header;
+}
+
 interface DomTable {
   tableIndex: number;
   columns: Array<{ key: string; header: string }>;
@@ -133,13 +150,14 @@ function domTables(rows: DesktopPaneShotRenderedRow[]): DomTable[] {
         previous = position;
       }
     }
+    const cellRows = tableRows.map((row) => {
+      const keys = domCellKeys(row);
+      return new Map(row.cells.map((cell, cellIndex) => [keys[cellIndex]!, cell]));
+    });
     return {
       tableIndex,
-      columns,
-      rows: tableRows.map((row) => {
-        const keys = domCellKeys(row);
-        return new Map(row.cells.map((cell, cellIndex) => [keys[cellIndex]!, cell]));
-      }),
+      columns: columns.map((column) => ({ ...column, header: reportedHeader(column.header, cellRows.map((cells) => cells.get(column.key))) })),
+      rows: cellRows,
     };
   });
 }

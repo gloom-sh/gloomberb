@@ -70,10 +70,10 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
       visibleText: "",
       footerText: "15m delayed",
       rows: [
-        // The pane shortens times to fit; the cell keeps the instant behind them.
-        { tableIndex: 0, rowIndex: 0, selected: false, cells: [cell("time", "TIME", "Wed 11:27", "2026-10-07T11:27:00.000Z"), cell("title", "HEADLINE", "Deal"), cell("tickers", "TICKERS", "PSKY"), cell("categories", "CATEGORY", "M&A")] },
+        // The pane shortens times to fit, on the host's clock its header names; the cell keeps the instant behind them.
+        { tableIndex: 0, rowIndex: 0, selected: false, cells: [cell("time", "TIME HKT", "Wed 19:27", "2026-10-07T11:27:00.000Z"), cell("title", "HEADLINE", "Deal"), cell("tickers", "TICKERS", "PSKY"), cell("categories", "CATEGORY", "M&A")] },
         // The DOM capture drops the blank TICKERS cell.
-        { tableIndex: 0, rowIndex: 1, selected: false, cells: [cell("time", "TIME", "Oct 2", "2026-10-02T14:00:00.000Z"), cell("title", "HEADLINE", "Sanctions"), cell("categories", "CATEGORY", "Regulatory")] },
+        { tableIndex: 0, rowIndex: 1, selected: false, cells: [cell("time", "TIME HKT", "Oct 2", "2026-10-02T14:00:00.000Z"), cell("title", "HEADLINE", "Sanctions"), cell("categories", "CATEGORY", "Regulatory")] },
       ],
       truncated: false,
       truncationReasons: [],
@@ -91,12 +91,14 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
   const row = lines.find((line) => line.includes("Sanctions"))!;
   expect(row.indexOf("Regulatory")).toBe(header.indexOf("CATEGORY"));
   expect(lines.find((line) => line.includes("Deal"))).toContain("2026-10-07 11:27 UTC");
+  // `fn TOP` headed those UTC times "TIME HKT": the header names the report's zone, not the clock the pane drew.
+  expect(header).toStartWith("TIME UTC ");
   expect(row).toContain("2026-10-02 14:00 UTC");
   // The pane's declaration says what the data is; a footer phrase does not turn it into a feed.
   expect(report.data.freshness).toMatchObject({ source: "Gloom Cloud", asOf: "2026-10-07T11:27:00.000Z", status: "not-a-feed" });
   // --csv writes the same columns, the blank cell empty and each time as the instant behind it.
   expect(renderReportCsv(report.tables).split("\n").slice(0, 5)).toEqual([
-    "TIME,HEADLINE,TICKERS,CATEGORY",
+    "TIME UTC,HEADLINE,TICKERS,CATEGORY",
     "2026-10-07T11:27:00.000Z,Deal,PSKY,M&A",
     "2026-10-02T14:00:00.000Z,Sanctions,,Regulatory",
     "",

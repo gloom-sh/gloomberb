@@ -58,3 +58,11 @@ test("a US ticker, with or without its venue, and the market's deals ask as befo
   expect(market).toMatchObject({ status: "pending", target: "public" });
   expect(market.symbol).toBeUndefined();
 });
+
+test("a company with no deal says so as the pane does, not that MA does not cover it", async () => {
+  const ctx = createTestHeadlessContext({
+    apiClient: { getCloudMnaDeals: async () => ({ ...payload, deals: [] }) } as unknown as HeadlessPaneContext["apiClient"],
+  });
+  const result = await mnaHeadless.load(createTestHeadlessArgs({ rawArgument: "KO", argument: "KO", symbols: ["KO"], options: { status: "pending" } }), ctx);
+  expect(result).toMatchObject({ empty: "No pending deals involving KO.", unavailableSymbols: [] });
+});
