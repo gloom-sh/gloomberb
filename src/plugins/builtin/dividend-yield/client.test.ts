@@ -65,7 +65,7 @@ describe("cash distribution calculations", () => {
     } } }));
     const data = await fetchDividendData("VOD", 117.7, "LSE", "GBp");
     expect(data.payments[0]!.declared).toEqual({ amount: 0.023625, currency: "EUR" });
-    expect(data.declared[0]!.amount).toBeCloseTo(0.021, 10);
+    expect(data.declared?.[0]?.amount).toBeCloseTo(0.021, 10);
     expect(data.metrics.forwardRate).toBeCloseTo(0.042, 10);
     expect(data.metrics.forwardYield).toBeCloseTo(0.042 / 1.177, 10);
     expect(data.metrics.forwardEstimate).toBeUndefined();
