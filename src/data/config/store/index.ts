@@ -2,6 +2,12 @@ import type { AppConfig } from "../../../types/config";
 
 export { sanitizeLayout } from "../layout";
 
+/** Another program's change to config.json, to fold into this program's copy. */
+export interface ExternalConfigChange {
+  /** `config` with the change folded in, or the same object when it already holds it. */
+  apply(config: AppConfig): AppConfig;
+}
+
 export interface ConfigStoreHost {
   getDataDir(): Promise<string | null>;
   loadConfig(dataDir: string): Promise<AppConfig>;
@@ -10,6 +16,12 @@ export interface ConfigStoreHost {
   resetAllData(dataDir: string): Promise<void>;
   exportConfig(config: AppConfig, destPath: string): Promise<void>;
   importConfig(dataDir: string, srcPath: string): Promise<AppConfig>;
+  /**
+   * Reports each change another program makes to the config while this one
+   * runs (a `gloom` command run beside the app). A host whose config no other
+   * program writes leaves it out.
+   */
+  watchExternalChanges?(dataDir: string, listener: (change: ExternalConfigChange) => void): () => void;
 }
 
 let configuredHost: ConfigStoreHost | null = null;
@@ -60,4 +72,23 @@ export async function exportConfig(config: AppConfig, destPath: string): Promise
 
 export async function importConfig(dataDir: string, srcPath: string): Promise<AppConfig> {
   return (await getHost()).importConfig(dataDir, srcPath);
+}
+
+/**
+ * Calls `listener` with each change another program makes to the config of
+ * `dataDir` while this one runs. The listener folds it into the app's state
+ * at once: saves already waiting are written with it.
+ */
+export function watchExternalConfigChanges(dataDir: string, listener: (change: ExternalConfigChange) => void): () => void {
+  let stop: (() => void) | null = null;
+  let stopped = false;
+  void getHost().then((host) => {
+    if (stopped || !host.watchExternalChanges) return;
+    stop = host.watchExternalChanges(dataDir, listener);
+  }, () => { /* Intentional ignore: a renderer without a config store has no file to watch. */ });
+  return () => {
+    stopped = true;
+    stop?.();
+    stop = null;
+  };
 }

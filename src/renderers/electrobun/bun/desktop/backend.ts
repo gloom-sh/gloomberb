@@ -7,7 +7,7 @@ import {
   reconcileAppSessionSnapshot,
   type AppSessionSnapshot,
 } from "../../../../core/state/session-persistence";
-import { saveConfig } from "../../../../data/config/store";
+import { saveConfig, watchExternalConfigChanges } from "../../../../data/config/store";
 import { pluginAutoUpdateEnabled } from "../../../../plugins/auto-update";
 import { startNodePluginAutoUpdates } from "../../../../plugins/auto-update-node";
 import { getPluginSeedProgress, subscribePluginSeed } from "../../../../plugins/seed-progress";
@@ -167,6 +167,7 @@ export class DesktopBackend {
   private pluginAutoUpdatesStarted = false;
   private commandLinksScheduled = false;
   private remoteControlServer: RemoteControlServer | null = null;
+  private stopWatchingConfig: (() => void) | null = null;
   private readonly pendingDeepLinks: string[] = [];
   private readonly contextMenuRequestRpcs = new Map<string, DesktopRpc>();
   /** Extra windows open once the main window has drawn, like popped-out panes. */
@@ -494,7 +495,23 @@ export class DesktopBackend {
     });
     this.workspace = createDesktopWorkspace(config, this.getSessionSnapshot(), this.windowController?.screenSetup.windows);
     this.reconcileWindows();
+    this.watchConfigWrittenElsewhere(config.dataDir);
     return { config, services };
+  }
+
+  /**
+   * A `gloom` command run beside the app writes the same config.json (an
+   * alert, a setting, a watchlist): the change is taken in and shown in every
+   * window, so no save of the app's copy writes over it.
+   */
+  private watchConfigWrittenElsewhere(dataDir: string): void {
+    this.stopWatchingConfig?.();
+    this.stopWatchingConfig = watchExternalConfigChanges(dataDir, (change) => {
+      if (!this.config || !this.workspace) return;
+      const next = change.apply(this.config);
+      if (next === this.config) return;
+      this.commitDesktopSnapshotInBackground(this.workspace.replaceConfig(next, { layoutChanged: false }), { persistConfig: false });
+    });
   }
 
   /** Compiles the view's plugins ahead of its first `plugins.listExternal`. */
@@ -503,6 +520,8 @@ export class DesktopBackend {
   }
 
   teardownServices(): void {
+    this.stopWatchingConfig?.();
+    this.stopWatchingConfig = null;
     this.stopRemoteControlServer();
     this.capabilityBridge.disposeAll();
     this.httpStreamBridge.disposeAll();

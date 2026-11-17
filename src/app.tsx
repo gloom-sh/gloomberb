@@ -51,6 +51,7 @@ import { AppDialogBridge } from "./app/dialog-bridge";
 import { KeybindingsProvider, useResolvedKeybindings } from "./app/keybindings";
 import { useAppPaneRuntime } from "./app/pane-runtime";
 import { bindPluginRegistryRuntimeAccess } from "./app/runtime/plugin-bindings";
+import { useExternalProfileChanges } from "./app/runtime/external-profile-changes";
 import { useAppStartupRuntime } from "./app/runtime/startup";
 import { useTickerRefreshRuntime } from "./app/runtime/ticker-refresh";
 import { useAppUpdateRuntime } from "./app/runtime/update";
@@ -426,6 +427,16 @@ function AppInner({
     scheduleConfigSave(nextConfig);
   }, []);
   useTeamCollectionsSync({ persistConfig, tickerRepository });
+  // A `gloom` command run beside the app writes the same profile: take its
+  // changes in, so none is written over. A popped-out window leaves that to the main one.
+  useExternalProfileChanges({
+    enabled: !appWideWorkElsewhere,
+    dataDir: config.dataDir,
+    dispatch,
+    stateRef,
+    pluginRegistry,
+    tickerRepository,
+  });
 
   useAppPaneRuntime({
     dataProvider,

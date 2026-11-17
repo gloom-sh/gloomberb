@@ -64,7 +64,6 @@
   "src/components/ui/multi-select/dialog.tsx": ["void:toggleOption()"],
   "src/components/ui/query-bar-keys.tsx": ["void:choose()","void:choose()","void:dialog.alert()"],
   "src/components/use-external-link-footer.ts": ["void:rendererHost.openExternal()"],
-  "src/data/config/store/node.ts": ["void:settled.then()"],
   "src/data/ticker-writes.ts": ["void:Promise.allSettled().then()"],
   "src/layout-marketplace/linked-sync.ts": ["void:check()","void:check()","void:check()"],
   "src/market-data/coordinator/index.ts": ["void:this.reloadTogether()","void:this.reloadTogether()"],

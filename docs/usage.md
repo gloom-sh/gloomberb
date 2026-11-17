@@ -1164,6 +1164,8 @@ News panes refresh every two minutes while the app is visible (a hidden browser 
 
 Running `gloom` with no arguments launches the terminal UI. Normal commands run headless. Use `gloom launch-ui` when a script should explicitly open the UI.
 
+A command that changes your profile (`alerts add`, `config set`, `watchlist add`, `portfolio create`, `notes set`) can run while the app is open on the same profile. The app takes the change in within a few seconds, and neither the app nor the command writes over what the other saved: an alert added from the terminal is checked by the open app and is still there after the app's next save.
+
 ### Output and flags
 
 Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text keeps every cell whole.
