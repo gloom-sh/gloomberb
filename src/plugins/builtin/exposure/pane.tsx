@@ -36,6 +36,12 @@ function EvidenceItem({ item }: { item: ExposureEvidence }) {
     {item.url ? <ActionRow label="Open primary evidence" onPress={() => void host.openExternal(item.url!)} /> : null}
   </Box>;
 }
+/** How many things a row's evidence could not see, beside its evidence word (`Estimated 3 gaps`); its detail lists them. */
+function gapsNote(row: ExposureRow): { note?: string } {
+  const gaps = new Set(row.unknowns).size;
+  return gaps ? { note: `${gaps} gap${gaps === 1 ? "" : "s"}` } : {};
+}
+
 function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: ExposurePayload; width: number }) {
   const colors = useThemeColors();
   const unknowns = row ? row.unknowns : [...data.unknowns, ...data.holdings.flatMap(h => h.unknowns.map(u => `${h.symbol}: ${u}`))];
@@ -181,7 +187,8 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   ];
   usePaneStatusFooter({ registrationId: "exposure", loading: resource.loading, error: inputError ?? (data ? resource.error : null), hints,
     info: data ? [{ id: "asof", parts: [{ text: `analyzed ${data.evaluatedAt.slice(0, 10)}`, tone: "muted" as const }] }] : [] });
-  usePaneNoticeFooter({ registrationId: "exposure:notices", focused, notices: [...(library.error ? [library.error] : []), ...(data?.unknowns ?? []), ...(data?.holdings.flatMap(h => h.unknowns.map(u => `${h.symbol}: ${u}`)) ?? [])] });
+  // The footer's notes are the analysis's; what one holding's rows could not see is on those rows (gapsNote) and in their detail.
+  usePaneNoticeFooter({ registrationId: "exposure:notices", focused, notices: [...(library.error ? [library.error] : []), ...(data?.unknowns ?? [])] });
   const sources = [{ value: "typed", label: "Typed holdings" }, ...config.portfolios.map(p => ({ value: `PORT:${p.id}`, label: `PORT · ${p.name}` })), ...config.watchlists.map(w => ({ value: `WATCH:${w.id}`, label: `Watchlist · ${w.name}` }))];
   const bodyHeight = Math.max(3, height - tabRows);
   const concentration = tab === "portfolio" && view !== "stress";
@@ -222,7 +229,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
       case "basis": return row.basis ? { text: exposureCellText(row, "basis"), color: colors.textDim } : missingCell(colors);
       case "exposure": return row.exposure ? { text: exposureCellText(row, "exposure"), value: row.exposure.high, color: colors.textBright } : { text: exposureCellText(row, "exposure"), value: null, color: colors.textMuted };
       // Disclosed figures stand out; estimates read plainly, and the word says which is which.
-      case "classification": return { text: exposureCellText(row, "classification"),
+      case "classification": return { text: exposureCellText(row, "classification"), ...gapsNote(row),
         color: row.classification === "disclosed" ? colors.borderFocused : unknown ? colors.textMuted : colors.textDim, keepColorWhenSelected: row.classification === "disclosed" };
       case "impact": return !row.impact ? missingCell(colors) : { text: exposureCellText(row, "impact"), value: row.impact.low,
         color: row.concentration ? colors.text : row.impact.high < 0 ? colors.negative : row.impact.low > 0 ? colors.positive : colors.text };

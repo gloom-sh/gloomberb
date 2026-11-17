@@ -62,7 +62,7 @@ export { Tabs } from "./tabs";
 export type { TabsProps } from "./tabs";
 export { SegmentedControl } from "./toggle";
 export type { SegmentedControlProps } from "./toggle";
-export { EmptyState, PaneStatusBody, Notice, loadingText, unavailableText } from "./status";
+export { EmptyState, PaneStatusBody, Notice, RowNote, loadingText, unavailableText } from "./status";
 export type { EmptyStateProps, PaneStatusBodyProps, NoticeProps, StatusRetry } from "./status";
 export { Badge, BulletList, Divider, FigureList, KeyValueRow, Prose, READING_WIDTH, Section, SectionHeading } from "./display";
 export { Card } from "./card";
