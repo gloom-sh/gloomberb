@@ -645,7 +645,10 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   ];
   // What the basket views cover of the book and leave out, unless the body already says why they show nothing.
   // Stress showing its shocks alone says instead why the basket scenarios are not there.
-  const coverage = !model || !BASKET_VIEWS.has(view) || basketBody || stressShortfall ? null : riskCoverageParts(model.coverage);
+  const coverage = useMemo(
+    () => (!model || !BASKET_VIEWS.has(view) || basketBody || stressShortfall ? null : riskCoverageParts(model.coverage)),
+    [basketBody, model, stressShortfall, view],
+  );
   const coverageText = !model || !BASKET_VIEWS.has(view) || basketBody
     ? null
     : stressShortfall
@@ -662,8 +665,9 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     ? null
     : DAILY_CLOSE_VIEWS.has(view) && !stressShortfall ? `daily closes to ${asOfDate}` : `as of ${asOfDate}`;
   // Each fact its own segment, in the order a narrow footer keeps them: what the numbers cover, how the tail rows are
-  // estimated and on which days; the date and the currency give way first. A capture keeps the first three, which say what its rows leave out and how they read.
-  // Dated evidence only when a row has a date; a missing date is not a claim about history.
+  // estimated and on which days; the date and the currency give way first. A capture keeps the first three, which say
+  // what its rows leave out and how they read. Dated evidence only when a row has a date; a missing date is not a
+  // claim about history.
   const tailMethodShort = view === "risk" && footerEvidence ? footerEvidence.replace(/^historical, 1-day, \d+%, /, "historical, ") : null;
   const infoSegments = useMemo((): PaneFooterSegment[] => {
     if (!model || basketBody) return [];

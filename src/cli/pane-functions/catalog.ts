@@ -269,7 +269,9 @@ export function nearFunctionCodes(
 export function suggestedFunctionCodes(registry: PaneFunctionCatalog, name: string): NearFunctionCode[] {
   const wanted = normalizeLookupToken(name);
   if (!wanted) return [];
-  const showing = new Set(glossaryFunctionsNamed(name));
+  // A term many functions show (a percentile) names none of them in particular: the catalog search lists those.
+  const named = glossaryFunctionsNamed(name);
+  const showing = new Set(named.length <= NEAR_CODE_LIMIT ? named : []);
   return [...registry.paneTemplates.values()].flatMap((template) => {
     if (template.listed === false) return [];
     const pane = registry.panes.get(template.paneId);

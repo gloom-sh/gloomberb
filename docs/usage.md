@@ -1819,6 +1819,7 @@ A company's listings are the ones Gloom Cloud groups under one issuer (share cla
 **Searching the catalog**
 
 - `gloom catalog <query>` also finds a function by a value one of its options takes, and says the command: `catalog compounders` is `gloom fn EQS --preset compounders`, `catalog "operating margin"` names `gloom fn FA <ticker> --statement profitability` and `gloom fn GF <tickers> --metric operatingMargin`. `roic`, `return on invested capital`, `capex` and `free cash flow` find FA.
+- A glossary term finds the functions that show it, as their own keywords do: `catalog VaR`, `catalog "value at risk"`, `catalog "expected shortfall"` and `catalog "stress test"` list MARS and PORT first, `gloom fn VAR` suggests them, and so does the app's command bar.
 - A plain `gloom catalog <query>` names the terms it matches under the functions. Beside a term the query names, the related ones hold its words whole: `catalog float` relates no floating rate note. A multi-word query lists the functions that carry every word in their name or description, or the few closest when none does (`--all` lists every match).
 - A topic no function covers, such as `catalog "defense budget"`, says so and names the nearest functions. `catalog "borrow fee"`, `catalog utilization` and `catalog locate` say that borrow data is not available and name `SI`, `SIW` and `SIV`.
 - A `search` that finds no ticker lists the functions that carry every word of the query instead (`search "target weights rebalance"` names `PF`).
