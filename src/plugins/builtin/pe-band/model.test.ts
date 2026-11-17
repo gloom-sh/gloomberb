@@ -47,6 +47,36 @@ describe("P/E band", () => {
     expect(model.rows.map((row) => row.periodEnd)).not.toContain("2024-06-30");
   });
 
+  // PEB DWSN on 17 Nov 2026: TTM Sep 2026 became known on Wed 11 Nov, yet its row read the 1.69 close of Fri the 13th and
+  // the chart's cursor sat on the weekly bar dated Mon 9 Nov, while the daily closes ran to Mon 16 Nov.
+  test("each figure is priced at the close of the day it became known, its row's cursor lands on that day, and a week is dated by its close", () => {
+    const data = financials([
+      quarter("2025-09-30", 0.01, "2025-11-12"), quarter("2025-12-31", 0.03, "2026-03-30"), quarter("2026-03-31", 0.04, "2026-05-14"),
+      quarter("2026-06-30", 0.05, "2026-08-13"), quarter("2026-09-30", 0.02, "2026-11-11"),
+    ], [], { price: 1.65, currency: "USD" });
+    const day = (date: string, close: number): PricePoint => ({ date: new Date(`${date}T00:00:00Z`), close });
+    const weekly = [day("2026-11-02", 1.64), day("2026-11-09", 1.69), day("2026-11-16", 1.65)];
+    const daily = [day("2026-11-06", 1.64), day("2026-11-09", 1.6), day("2026-11-10", 1.66), day("2026-11-11", 1.58),
+      day("2026-11-12", 1.53), day("2026-11-13", 1.69), day("2026-11-16", 1.65)];
+    const options = { symbol: "DWSN", lookbackYears: 0, now: Date.parse("2026-11-17T00:20:00Z") };
+    const model = projectPeBand(data, weekly, { ...options, daily });
+    const row = model.rows[0]!;
+    expect(row.knownAt.toISOString().slice(0, 10)).toBe("2026-11-11");
+    expect(row.price).toBe(1.58);
+    expect(row.pe).toBeCloseTo(1.58 / 0.14, 10);
+    // The weeks the band ranks keep their closes, dated by the session each is from.
+    expect(model.weeks.map((week) => [week.date.toISOString().slice(0, 10), week.close]))
+      .toEqual([["2026-11-06", 1.64], ["2026-11-13", 1.69], ["2026-11-16", 1.65]]);
+    // The chart draws the row's day too, so its cursor reads that day and the row's price; the line ends at today's close.
+    expect(model.points.map((point) => [point.date.toISOString().slice(0, 10), point.close]))
+      .toEqual([["2026-11-06", 1.64], ["2026-11-11", 1.58], ["2026-11-13", 1.69], ["2026-11-16", 1.65]]);
+    expect(model.points.at(-1)!.close).toBe(model.current!.price);
+    // Without daily closes the weekly bars stand alone, as before.
+    const weeklyOnly = projectPeBand(data, weekly, options);
+    expect(weeklyOnly.rows[0]!.price).toBe(1.69);
+    expect(weeklyOnly.points).toEqual(weeklyOnly.weeks);
+  });
+
   test("a warrant's price over its company's EPS is no band", () => {
     // BZFDW, BuzzFeed's warrant at $0.0054, read 0.03x here.
     const data = financials([unfiled("2025-03-31", 0.04), unfiled("2025-06-30", 0.04), unfiled("2025-09-30", 0.04), unfiled("2025-12-31", 0.045)], [],

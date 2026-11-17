@@ -68,14 +68,14 @@ function chartSeries(model: PeBandModel, colors: ReturnType<typeof useThemeColor
     // Cheap multiples toward the positive colour, rich ones toward the negative, both faded so the price stays on top.
     ...model.multiples.map((value, index) => staticSeries(
       // Values past the ceiling leave the chart, so a far line cannot stretch the axis away from the price.
-      model.weeks.map((week) => {
+      model.points.map((week) => {
         const band = week.eps == null ? null : week.eps * value;
         return scalarPoint(week.date, band != null && model.bandCeiling != null && band > model.bandCeiling ? null : band);
       }),
       { id: `x${value}`, label: `${value}x`, calendarSpaced: true, color: blendHex(colors.bg,
         blendHex(colors.positive, colors.negative, last > 0 ? index / last : 0.5), 0.75) },
     )),
-    staticSeries(model.weeks.map((week) => scalarPoint(week.date, week.close)), { id: "price", label: "Price", color: colors.textBright, calendarSpaced: true }),
+    staticSeries(model.points.map((week) => scalarPoint(week.date, week.close)), { id: "price", label: "Price", color: colors.textBright, calendarSpaced: true }),
   ];
 }
 
@@ -103,7 +103,7 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
   const lookbackYears = Number(lookback);
   const model = useMemo(() => inputs.data
     ? projectPeBand(inputs.data.financials, inputs.data.history, { symbol: symbol ?? "", lookbackYears: Number.isFinite(lookbackYears) ? lookbackYears : 10,
-      reports: inputs.data.reports, fx: inputs.data.fx, fxError: inputs.data.fxError })
+      reports: inputs.data.reports, fx: inputs.data.fx, fxError: inputs.data.fxError, daily: inputs.data.daily })
     : null, [inputs.data, lookbackYears, symbol]);
   const rows = model?.rows ?? [];
   const conversion = model?.conversion ?? null;
@@ -166,8 +166,8 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
         selectedTextOverridesCellColor
         getExportMetadata={() => [["symbol", model.symbol], ["currency", model.currency ?? ""],
           ["units", conversion
-            ? `EPS as reported in ${conversion.currency}; FX close of the day it became known; price in ${model.currency ?? ""}; P/E at that close and that week's close`
-            : "EPS and price in the listing currency; P/E at the close of the week the EPS became known"]]}
+            ? `EPS as reported in ${conversion.currency}; FX close of the day it became known; price in ${model.currency ?? ""}; P/E at that day's close`
+            : "EPS and price in the listing currency; P/E at the close of the day the EPS became known"]]}
         renderCell={(row, column) => renderCell(row, column, colors)}
         rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns} query={query} figures={figures}
           chart={model.weeks.length >= 2 ? { series, formatValue: formatPrice, formatAxisValue: formatAxis, remoteKind: "pe-band", ...link } : null} />} />
