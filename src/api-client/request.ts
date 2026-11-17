@@ -116,6 +116,7 @@ function pause(ms: number, signal: AbortSignal | null | undefined): Promise<void
 interface RequestDeadline {
   answerMs: number;
   limitMs: number;
+  probeDuringOutage: boolean;
   /** When to check that the service answers at all, if nothing has by then; null when the deadline is too short for it. */
   probeAtMs: number | null;
 }
@@ -539,21 +540,24 @@ export class CloudApiRequestTransport {
    * four, and any request at three after one went unanswered, until something
    * answers again. Three seconds before that, a request still unanswered
    * checks that the service answers at all, so one slow request on a working
-   * connection is waited for and a dead connection is not.
+   * connection is waited for and a dead connection is not. The calendar's
+   * bounded retry must be able to make a fresh read even after a hung one.
    */
   private deadlineFor(path: string, limitMs?: number): RequestDeadline {
     this.forgetOtherTransport();
     const pathname = path.split("?")[0]!;
+    const probeDuringOutage = pathname === "/cloud/ipo/calendar";
     const market = pathname.startsWith("/market/");
     const limit = limitMs ?? (!market ? DEFAULT_SERVICE_REQUEST_LIMIT_MS
       : RESEARCH_MARKET_PATHS.has(pathname) ? this.researchRequestTimeoutMs : this.marketRequestTimeoutMs);
     let answerMs = pathname === "/market/search"
       ? Math.min(this.marketRequestTimeoutMs, SEARCH_ANSWER_TIMEOUT_MS)
       : this.marketRequestTimeoutMs;
-    if (this.unreachable) answerMs = Math.min(answerMs, UNREACHABLE_REQUEST_TIMEOUT_MS);
+    if (this.unreachable && !probeDuringOutage) answerMs = Math.min(answerMs, UNREACHABLE_REQUEST_TIMEOUT_MS);
     return {
       answerMs,
       limitMs: Math.max(limit, answerMs),
+      probeDuringOutage,
       probeAtMs: answerMs >= SERVICE_PROBE_TIMEOUT_MS ? answerMs - SERVICE_PROBE_TIMEOUT_MS : null,
     };
   }
@@ -591,7 +595,7 @@ export class CloudApiRequestTransport {
     };
     const timedOut = (ms: number) => failed(`${what} timed out after ${ms}ms`);
     const timers: Array<ReturnType<typeof setTimeout>> = [];
-    if (this.hungAt != null && Date.now() - this.hungAt < HUNG_FAIL_FAST_MS && !controller.signal.aborted) {
+    if (!deadline.probeDuringOutage && this.hungAt != null && Date.now() - this.hungAt < HUNG_FAIL_FAST_MS && !controller.signal.aborted) {
       callerSignal?.removeEventListener("abort", abortFromCaller);
       throw new DataServiceUnreachableError(failed(`${what} not sent: the last one got no answer`));
     }

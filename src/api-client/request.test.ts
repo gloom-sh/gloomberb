@@ -357,6 +357,22 @@ describe("CloudApiRequestTransport market deadlines", () => {
     expect(String((error as Error).cause)).toContain("timed out after 10ms");
   });
 
+  test("a retry of the IPO calendar reaches the service after an unanswered read", async () => {
+    let reads = 0;
+    const transport = new CloudApiRequestTransport({
+      marketRequestTimeoutMs: 10,
+      fetchTransport: async () => ++reads === 1 ? new Promise<Response>(() => {}) : Response.json({ deals: [] }),
+    });
+    try {
+      await expect(transport.request("/cloud/ipo/calendar")).rejects.toBeInstanceOf(DataServiceUnreachableError);
+      await expect(transport.request("/market/quote?symbol=AAPL")).rejects.toBeInstanceOf(DataServiceUnreachableError);
+      expect(await transport.request("/cloud/ipo/calendar")).toEqual({ deals: [] });
+      expect(reads).toBe(2);
+    } finally {
+      transport.dispose();
+    }
+  });
+
   test("aborts when response headers never arrive", async () => {
     let signal: AbortSignal | null | undefined;
     const transport = new CloudApiRequestTransport({

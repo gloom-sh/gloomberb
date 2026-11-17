@@ -62,7 +62,7 @@ const GLOBAL_OPTIONS: Array<[string, string]> = [
 const EXIT_CODES: Array<[string, string]> = [
   [String(CLI_EXIT_CODES.ok), "Success"],
   [String(CLI_EXIT_CODES.error), "Failed: bad input, no data found or a failed check. fn exits 0 on partial data with warnings; --json ok is false exactly when this is 1"],
-  [String(CLI_EXIT_CODES.unusableShot), "shot --strict saved an image of a pane with no usable data"],
+  [String(CLI_EXIT_CODES.unusableShot), "shot --strict found no usable data and did not save an image"],
 ];
 
 export interface CliHelpEntry {

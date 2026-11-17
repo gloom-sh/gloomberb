@@ -64,6 +64,7 @@ import { getTimeSeriesField, isMarketFieldId } from "../../../time-series/field-
 import { isDatasetChart, isOhlcSeriesStyle } from "../../../time-series/spec";
 import { useThemeColors } from "../../../theme/theme-context";
 import { comparisonLegCurrencies, priceComparisonSeriesIds } from "../../../time-series/price-comparison";
+import { periodDayText } from "../../../market-data/market/period-return";
 import { companyLegendLabels } from "./legend-names";
 import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
@@ -1222,6 +1223,8 @@ function ChartComposerSurface({
       : window.end;
     return formatChartDateWindow({ ...window, end }, timeZone);
   }, [spec.series, spec.viewport.dateWindow, viewport?.end]);
+  const comparisonEnd = resolution.resolution === "1d" ? Object.values(resolution.priceComparison?.legs ?? {})[0] : undefined;
+  const comparisonAsOf = comparisonEnd && `${periodDayText(comparisonEnd.endDay, new Date().getUTCFullYear())} ${comparisonEnd.intraday ? "partial" : "close"}`;
 
   // A generic future (CL1) is a rolling series: its roll rule and adjustment are chart controls.
   const generic = useMemo(() => chartFuturesGeneric(spec), [spec]);
@@ -1326,7 +1329,7 @@ function ChartComposerSurface({
           options: resolutionOptions,
           onChange: (value: string) => setResolution(value as ChartResolution),
         } : undefined}
-        meta={dateWindowLabel}
+        meta={[dateWindowLabel, comparisonAsOf].filter(Boolean).join(" · ") || undefined}
       />
       <MultiSelectDialogButton
         ref={indicatorsDialogRef}

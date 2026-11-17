@@ -1,7 +1,9 @@
 import { apiClient } from "../../../api-client";
+import { ApiRequestError, isTransientFailure } from "../../../api-client/errors";
 import type { IpoCalendarParams, IpoCalendarPayload, IpoDeal, IpoLockup, IpoSourceHealth } from "../../../api-client/ipo";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { signalWithTimeout } from "../../../utils/async-deadline";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
 
 /**
@@ -88,8 +90,16 @@ export async function fetchIpoCalendar(
   signal?: AbortSignal,
   params: IpoCalendarParams = {},
 ): Promise<IpoCalendarPayload> {
+  const requestSignal = signalWithTimeout(signal, 30_000);
+  const read = () => client.getCloudIpoCalendar(params, { signal: requestSignal });
   try {
-    return validateIpoCalendar(await client.getCloudIpoCalendar(params, { signal }));
+    requestSignal.throwIfAborted();
+    const data = await read().catch((error: unknown) => {
+      if (requestSignal.aborted || !isTransientFailure(error)
+        || (error instanceof ApiRequestError && (error.retryAfterMs ?? 0) > 0)) throw error;
+      return read();
+    });
+    return validateIpoCalendar(data);
   } catch (error) {
     // The route answers 503 until its first pass has run.
     throw unavailableOnServer(error, UNAVAILABLE, [404, 503]);
