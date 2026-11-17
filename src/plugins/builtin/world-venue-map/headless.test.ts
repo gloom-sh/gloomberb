@@ -52,14 +52,18 @@ test("a layer reports the status its cadence implies, and a layer that cannot se
   expect(await freshness("flights")).toBeUndefined();
 });
 
-test("home area is shared across new maps, explicit places win, and clearing it restores world", async () => {
+test("a new map keeps only the place that was typed: the home area is read when the map opens, and clearing it restores world", async () => {
   const template = worldVenueMapModule.paneTemplates!.find((entry) => entry.id === "world-venue-map-pane")!;
   const context = createTestHeadlessContext();
   context.config.pluginConfig["market-overview"] = { [HOME_AREA_SETTING_KEY]: "51.5,-0.1" };
   const templateContext = createTestTemplateContext({ config: context.config });
-  expect(await template.createInstance!(templateContext, { arg: "ships" })).toMatchObject({ settings: { place: "51.5,-0.1" } });
-  expect(await template.createInstance!(templateContext, { arg: "air Sydney" })).toMatchObject({ settings: { place: "Sydney", layers: ["air"] } });
-  expect(await template.createInstance!(templateContext, {})).toMatchObject({ settings: { place: "51.5,-0.1" } });
+  for (const arg of ["ships", undefined]) {
+    const made = await template.createInstance!(templateContext, arg ? { arg } : {});
+    expect(JSON.stringify(made)).not.toContain("51.5");
+    expect(made!.settings ?? {}).not.toHaveProperty("place");
+  }
+  expect(await template.createInstance!(templateContext, { arg: "ships" })).toMatchObject({ title: "Map · Ships", settings: { layers: ["ships"] } });
+  expect(await template.createInstance!(templateContext, { arg: "air Sydney" })).toMatchObject({ title: "Map · Air · Sydney", settings: { place: "Sydney", layers: ["air"] } });
   expect(buildMapSettingsDef({}, null).fields.find((field) => field.key === HOME_AREA_SETTING_KEY)).toMatchObject({ storage: "plugin" });
   context.config.pluginConfig["market-overview"]![HOME_AREA_SETTING_KEY] = "";
   expect(await template.createInstance!(templateContext, {})).toEqual({ placement: "floating" });

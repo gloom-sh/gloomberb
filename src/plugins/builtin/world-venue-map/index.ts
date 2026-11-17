@@ -12,7 +12,7 @@ import { contextGeoRequest, mapHeadless } from "./headless";
 import { buildMapSettingsDef, groupTitle, MAP_PRESET_OPTIONS, parseMapPreset } from "./layers";
 import { WORLD_VENUE_MAP_PANE_ID, WorldVenueMapPane } from "./pane";
 import { mapFollowsTicker } from "./scope";
-import { mapHomeArea } from "./place";
+import { mapHomeArea, paneWithoutHomeArea } from "./place";
 
 const chartComposerHeadless = chartHeadless("chart-composer-pane");
 
@@ -42,7 +42,16 @@ const chokepointTemplate: PaneTemplateDef = {
   createInstance: (_context, options) => createChokepointInstance(cloudGeoRequest, options?.arg),
 };
 
+/** The home area a share is checked against, read from the running app's config. */
+let currentHomeArea = (): string => "";
+
 export const worldVenueMapModule: PluginModule = {
+  setup: (ctx) => {
+    currentHomeArea = () => mapHomeArea(ctx.getConfig());
+  },
+  dispose: () => {
+    currentHomeArea = () => "";
+  },
   panes: [
     {
       id: WORLD_VENUE_MAP_PANE_ID,
@@ -55,6 +64,8 @@ export const worldVenueMapModule: PluginModule = {
       // Linked to a list, a map with the app's own layers (facilities) shows the selected company's.
       shareItem: { ticker: true, argument: true },
       tickerFollower: mapFollowsTicker,
+      // Maps made before the home area was read when a map opens stored it as their place.
+      portableShare: { prepare: (pane) => paneWithoutHomeArea(pane, currentHomeArea()) },
       settings: (context) => buildMapSettingsDef(context.settings, peekGeoCatalog()?.layers),
     },
   ],
@@ -73,10 +84,11 @@ export const worldVenueMapModule: PluginModule = {
         argOptions: () => MAP_PRESET_OPTIONS,
       },
       headless: mapHeadless,
-      createInstance: (context, options) => {
+      createInstance: (_context, options) => {
         const preset = parseMapPreset(options?.arg ?? options?.values?.layers, peekGeoCatalog()?.layers);
-        const place = preset?.place ?? mapHomeArea(context.config);
-        if (!preset) return { placement: "floating", ...(place ? { settings: { place } } : {}) };
+        // Only a place that was typed is kept: the home area is read when the map opens, so a saved or shared map never carries it.
+        const place = preset?.place;
+        if (!preset) return { placement: "floating" };
         return {
           title: `${preset.layers.length ? `Map · ${preset.layers.map(groupTitle).join(", ")}` : "Map · Venues"}${place ? ` · ${place}` : ""}`,
           placement: "floating",
