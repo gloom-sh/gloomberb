@@ -197,8 +197,8 @@ function DiscoverStatus({ controller }: { controller: LayoutGalleryController })
         <EmptyState title="Log in to browse community layouts." />
         {/* The sidebar is narrow, so the pair wraps instead of running under the divider. */}
         <Box flexDirection="row" flexWrap="wrap" gap={1} marginTop={1}>
-          <Button label={t("Log in")} variant="primary" compact onPress={controller.requestSignIn} />
-          <Button label={t("Sign up free")} variant="secondary" compact onPress={controller.requestSignUp} />
+          <Button label={t("Sign up free")} variant="primary" compact onPress={controller.requestSignUp} />
+          <Button label={t("Log in")} variant="secondary" compact onPress={controller.requestSignIn} />
         </Box>
       </SidebarState>
     );

@@ -46,8 +46,8 @@ function OriginalWall({ needsVerification = false }: { needsVerification?: boole
   return <Box flexDirection="column" paddingX={1} paddingY={1} data-gloom-ui="sign-in-wall">
     <EmptyState title={needsVerification ? "Verify your email to read risk factors." : "Sign in to read risk factors."}
       actions={needsVerification ? <Button label="Resend Verification Email" onPress={() => {}} /> : <>
-        <Button label="Log in" variant="primary" onPress={() => {}} />
-        <Button label="Sign up free" variant="secondary" onPress={() => {}} />
+        <Button label="Sign up free" variant="primary" onPress={() => {}} />
+        <Button label="Log in" variant="secondary" onPress={() => {}} />
       </>} />
   </Box>;
 }
@@ -86,7 +86,12 @@ test("a sign-in sample preserves keyboard and mouse auth actions and their place
   arm("teaser");
   await renderWall(<Harness placement="flow-signin" />);
   await tui.waitForFrameToContain("Sample");
+  // Sign up free leads and takes the key: most people at a wall have no account.
+  expect(tui.frame().indexOf("Sign up free")).toBeLessThan(tui.frame().indexOf("Log in"));
   await tui.emitKeypress({ name: "return" });
+  expect(activity.recordWallCtaClicked).toHaveBeenLastCalledWith("flow-signin", "signup");
+  expect(authDialog.requestAuthDialog).toHaveBeenLastCalledWith({ mode: "signup" });
+  await tui.clickFrameText("Log in");
   expect(activity.recordWallCtaClicked).toHaveBeenLastCalledWith("flow-signin", "login");
   expect(authDialog.requestAuthDialog).toHaveBeenLastCalledWith({ mode: "login" });
   await tui.clickFrameText("Sign up free");
