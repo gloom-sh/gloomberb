@@ -17,6 +17,7 @@ import {
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { declaredDividends } from "../../../utils/declared-dividends";
+import { fiscalPeriodText } from "../earnings/fiscal-quarter";
 import { isReasonCode, readableStatus } from "../../../utils/reason-codes";
 import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fundamentals";
 import { isNotMeaningful, NOT_MEANINGFUL, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE, type Rate } from "../../../utils/growth";
@@ -29,7 +30,6 @@ import {
   epsSurprise,
   inFiscalMonth,
   isProvisionalActual,
-  quarterLabel,
   showsEpsBasis,
   type EpsBasisName,
 } from "../shared/earnings-report";
@@ -390,7 +390,7 @@ export function buildEventRows(
       dateType: earning.dateType,
       status: "Earnings",
       // The fiscal quarter, never the time of day ("After Hours"), which the row keeps as reportTime.
-      period: statement ? quarterLabel(statement.date) : earning.fiscalPeriod ? quarterLabel(earning.fiscalPeriod) : MISSING_VALUE,
+      period: fiscalPeriodText(earning.fiscalPeriod ?? statement?.date),
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
       detail: upcomingEarningsDetail(earning),
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),

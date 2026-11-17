@@ -1,7 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { act, useState } from "react";
+import { act, useRef, useState } from "react";
 import { createDomTestHarness } from "../../renderers/dom/test-utils";
-import { EmptyState } from "./status";
+import { WebDataTable } from "../../renderers/dom/data-table";
+import { AppContext, createInitialState } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
+import { createDefaultConfig } from "../../types/config";
+import type { ScrollBoxRenderable } from "../../ui/host";
+import { EmptyState, Notice } from "./status";
 
 const { render, window } = createDomTestHarness();
 const prototype = window.HTMLElement.prototype as unknown as { getBoundingClientRect: () => DOMRect };
@@ -55,4 +60,26 @@ test("a state 4px in is placed, and one whose container stops padding it takes t
   expect(state().style.padding).toBe("");
   await act(async () => { setLeft("100"); });
   expect(state().style.padding).toContain("var(--gloom-inset)");
+});
+
+test.each(["pane-window", "detached-pane-window"])("a wrapping table notice takes a missing %s inset but does not double its container's inset", async (role) => {
+  layOut();
+  const state = createInitialState(createDefaultConfig("/unused/table-notice-inset"));
+  function Table({ left }: { left: number }) {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return <div data-gloom-role={role} data-left="100" data-pane={left}>
+      <div data-left={left}>
+        <WebDataTable columns={[{ id: "value", label: "Value", width: 10 }]} items={[1]}
+          sortColumnId={null} sortDirection="asc" headerScrollRef={headerScrollRef} scrollRef={scrollRef}
+          syncHeaderScroll={() => {}} onBodyScrollActivity={() => {}} getItemKey={String}
+          isSelected={() => false} onSelect={() => {}} renderCell={(value) => ({ text: String(value) })} emptyStateTitle="No values" virtualize={false}
+          bodyAfter={<Notice tone="muted">Free shows 3 of 70 KPI values. Gloom Pro shows all values.</Notice>} />
+      </div>
+    </div>;
+  }
+  const container = await render(<AppContext value={createStaticAppStore(state)}><Table left={100} /><Table left={108} /></AppContext>);
+  const notice = (left: number) => container.querySelector(`[data-pane="${left}"] [data-gloom-ui="notice"]`) as HTMLElement;
+  expect(notice(100).style.paddingInline).toBe("var(--gloom-inset)");
+  expect(notice(108).style.paddingInline).toBeFalsy();
 });

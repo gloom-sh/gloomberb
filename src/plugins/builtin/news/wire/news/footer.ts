@@ -5,7 +5,7 @@ import type { NewsAccess } from "../../../../../news/types";
 import { t, tf } from "../../../../../i18n";
 import { useAppLanguage } from "../../../../../i18n/react";
 import { useCloudAccessFooter } from "../../../shared/cloud-upgrade";
-import { NEWEST_STORY } from "../../../shared/report-freshness";
+import { cloudNewsFreshness } from "../../../shared/report-freshness";
 import { CLOUD_NEWS_DELAY_HOURS } from "../../../../../api-client/plan-access";
 import { usePaneStatusLinkFooter } from "../../../../../components/layout/pane/status-footer";
 import { useRemoteUiNode } from "../../../../../remote/semantic-tree";
@@ -69,16 +69,11 @@ export function useNewsArticleFooter({
   const realtime = newsFeedRealtime(feedAccess, access.hasProAccess);
   const storyPastDelay = publishedBeforeNewsDelay(article);
 
-  // A report or capture of the pane says how far its stories are held back, as the footer does, and dates the
-  // list by its newest story, named so it is not read as the time now.
+  // A report or capture dates the list by its newest story, named so it is not read as the time now.
   useRemoteUiNode({
     role: "report-freshness",
     label: "News freshness",
-    getMetadata: () => (realtime === true
-      ? { status: "live", asOfLabel: NEWEST_STORY }
-      : realtime === false
-        ? { status: "delayed", delayMinutes: CLOUD_NEWS_DELAY_HOURS * 60, asOfLabel: NEWEST_STORY }
-        : { status: "not-a-feed", basis: "published stories", asOfLabel: NEWEST_STORY }),
+    getMetadata: () => ({ ...cloudNewsFreshness(realtime) }),
   });
 
   const accessInfo = useMemo<PaneFooterSegment[]>(() => {

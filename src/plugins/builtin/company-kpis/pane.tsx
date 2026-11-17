@@ -3,7 +3,7 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { KpiObservation } from "../../../api-client/company-kpis";
 import { listingAbroad } from "../../../api-client/paths";
-import { ChartTableHeader, DataTableStackView, DetailScrollBody, EmptyState, KeyValueRow, PaneStatusBody, QueryBar, SectionHeading,
+import { ChartTableHeader, DataTableStackView, DetailScrollBody, EmptyState, KeyValueRow, Notice, PaneStatusBody, QueryBar, SectionHeading,
   useChartTableSelection, usePaneMenuItems, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type PaneHint } from "../../../components";
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -21,7 +21,7 @@ import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
-import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, companyEmptyState, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, fiscalLabel,
+import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, companyEmptyState, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, guidanceIssueNote, fiscalLabel,
   isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, QUIET_COLUMNS, rangeText, scopeWords, seriesDetail, seriesLabel, seriesLabels, seriesName,
   seriesOrder, unitLabel, valueText, companyPreviewNote, type CompanyRow } from "./model";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
@@ -148,8 +148,12 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const preview = data?.access === "preview" && data.lockedRows > 0;
   const lockedCount = preview ? Math.min(3, data.lockedRows) : 0;
   const previewNote = preview ? companyPreviewNote(data, mode === "guidance") : null;
-  const items = useMemo<Item[]>(() => [...rows.map((row) => ({ id: row.id, row })), ...(previewNote ? [{ id: "note:preview", row: null, note: previewNote }] : []),
-    ...Array.from({ length: lockedCount }, (_, index) => ({ id: `locked:${index}`, row: null }))], [rows, lockedCount, previewNote]);
+  const items = useMemo<Item[]>(() => [...rows.map((row) => ({ id: row.id, row })),
+    ...Array.from({ length: lockedCount }, (_, index) => ({ id: `locked:${index}`, row: null }))], [rows, lockedCount]);
+  const issueNotes = guidance?.guidance.flatMap((row) => {
+    const note = guidanceIssueNote(row, guidance.guidance);
+    return note ? [`${row.metric.name}: ${note}.`] : [];
+  }) ?? [];
   // One trend per series beside its latest value, once a series has three comparable points.
   const trends = useMemo(() => {
     const map = new Map<string, PricePoint[]>();
@@ -234,7 +238,9 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
         {detail ? <ClippedText fg={state.selected ? colors.selectedText : colors.textDim} lead="  " text={detail} width={column.width} flex="1 1 0%" /> : null}
       </Box> };
     }
-    const text = companyCellText(row, column.id, observations);
+    const text = column.id === "metric" && !columns.some((entry) => entry.id === "basis")
+      ? [row.metricId === "eps" ? "EPS" : row.metric.name, seriesDetail(row)].filter(Boolean).join(" · ")
+      : companyCellText(row, column.id, observations);
     return { text, ...(column.id === "value" && !guide ? { value: exactObservation(row as KpiObservation) ? (row as KpiObservation).value : observationValue(row as KpiObservation) } : column.id === "actual" ? { value: guide?.actual?.value } : {}),
       color: column.id === "metric" ? colors.textBright : column.id === "value" || column.id === "actual" ? colors.textBright
         : column.id === "outcome" && guide?.actual ? guide.actual.favorable === "beat" ? colors.positive : guide.actual.favorable === "miss" ? colors.negative : colors.text
@@ -258,7 +264,12 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
           chart={tab === "chart" ? { series, ...(mode === "kpis" ? { xAxis: kpiChart.xAxis, viewport: kpiChart.viewport } : {}), empty: preview ? "Full history is available with Pro." : "History is accumulating. Two comparable disclosures are needed for a trend.",
             formatValue: (value) => selected ? `${valueText(selected, value)}${selected.currency ? ` ${unitLabel(selected)}` : ""}` : String(value),
             formatAxisValue: (value) => selected ? valueText(selected, value) : String(value), remoteKind: "company-disclosure-history", ...link } : null} />}
-        bodyAfter={lockedCount && desktop ? <LockedOverlay rows={lockedCount} text="Upgrade for all disclosures and history" onPress={openUpgrade} /> : undefined}
+        bodyAfter={<Box flexDirection="column" width={width}>
+          {mode === "guidance" && selected && !columns.some((column) => column.id === "period") ? <Notice tone="muted">{`${seriesName(selected)} · ${fiscalLabel(selected)}`}</Notice> : null}
+          {issueNotes.map((note) => <Notice key={note}>{note}</Notice>)}
+          {previewNote ? <Notice tone="muted">{previewNote}</Notice> : null}
+          {lockedCount && desktop ? <LockedOverlay rows={lockedCount} text="Upgrade for all disclosures and history" onPress={openUpgrade} /> : null}
+        </Box>}
       /> : null}
     </PaneStatusBody>
   </Box>;

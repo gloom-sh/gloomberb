@@ -243,13 +243,14 @@ export interface NoticeProps {
 export function Notice({ children, tone = "warning", variant = "inline" }: NoticeProps) {
   const colors = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
+  const { id, flush } = useFlushInPane(native === true && variant === "inline");
   const color = tone === "muted" ? colors.textDim : colors[tone];
   const status = tone === "negative" ? "error" : "notice";
   const body = typeof children === "string" ? readableError(children) : children;
   // Inline feedback keeps its original single-text shape: a flex row here collapses inside content-sized parents.
   if (variant !== "callout") {
     return (
-      <Box data-gloom-status={status} data-gloom-ui="notice">
+      <Box id={id} data-gloom-status={status} data-gloom-ui="notice" style={flush ? { paddingInline: "var(--gloom-inset)" } : undefined}>
         <Text fg={color} wrapText>{body}</Text>
       </Box>
     );

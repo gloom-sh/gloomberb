@@ -824,7 +824,9 @@ function readinessCell(readiness: PaneFunctionReadiness): string {
  */
 function reportCell(entry: PaneCatalogEntry): string {
   const readiness = readinessCell(entry.capability.reportReadiness);
-  return FUNCTION_HELP[entry.token]?.access === "pro" ? `${readiness} · ${cliStyles.warning("Pro")}` : readiness;
+  if (FUNCTION_HELP[entry.token]?.access === "pro") return `${readiness} · ${cliStyles.warning("Pro")}`;
+  return entry.capability.dataRequirements.some((requirement) => /\bsign-in\b/i.test(requirement))
+    ? `${readiness} · ${cliStyles.warning("Sign-in")}` : readiness;
 }
 
 function optionDescription(option: PaneFunctionOptionDef): string {

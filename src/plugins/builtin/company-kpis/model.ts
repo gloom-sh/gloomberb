@@ -251,7 +251,7 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
 }
 
 /** Cells a column gives up on a narrow pane, before any column is dropped: a date needs 10, a range about 19. */
-const NARROW_WIDTHS: Record<string, number> = { value: 19, change: 11, issued: 10, actual: 12, outcome: 9, basis: 12, scope: 18 };
+const NARROW_WIDTHS: Record<string, number> = { period: 13, value: 19, change: 11, issued: 10, actual: 12, outcome: 9, basis: 12, scope: 18 };
 /** The metric keeps at least this much: a name such as "Revenue growth", and its series detail only when there is room. */
 const METRIC_FLOOR = 14;
 
@@ -259,9 +259,8 @@ const METRIC_FLOOR = 14;
  * The table's columns at a pane `width` in cells, so none is cut at the right edge.
  * A table that already fits is left as it is. Otherwise the columns take their
  * narrow widths, and the metric, which flexes, keeps what is left down to its
- * floor. Below that a column whose meaning is in the detail goes (Action in History,
- * where the outcome says it, then Issued), never one that names the row. A table that
- * cannot fit even so keeps its narrow widths and scrolls sideways, as it always has.
+ * floor. Below that optional columns give way, preserving the metric and its value.
+ * The selected row's detail retains the fields that no longer fit.
  */
 export function fitCompanyColumns(columns: readonly DataTableColumn[], width: number, history = false): DataTableColumn[] {
   const room = width - 1;
@@ -275,12 +274,17 @@ export function fitCompanyColumns(columns: readonly DataTableColumn[], width: nu
     return fitted >= METRIC_FLOOR ? tight.map((column) => column === metric ? { ...column, width: fitted } : column) : null;
   };
   let shown = [...columns];
-  for (const drop of [null, ...(history ? ["change", "issued"] : ["issued"])]) {
+  for (const drop of [null, ...(history ? ["change", "issued"] : ["issued", "change"]), "scope", "basis", "trend", "period", "outcome", "actual"]) {
     if (drop) shown = shown.filter((column) => column.id !== drop);
     const fitted = attempt(shown);
     if (fitted) return fitted;
   }
-  return narrow(columns);
+  return narrow(shown);
+}
+
+export function guidanceIssueNote(row: KpiGuidance, rows: readonly KpiGuidance[]): string | null {
+  const newest = rows.reduce((date, guide) => guide.issuedDate > date ? guide.issuedDate : date, row.issuedDate);
+  return row.issuedDate < newest ? `Issued ${row.issuedDate}; newer outlook ${newest}` : null;
 }
 
 /** Companies to point an empty pane at, one that has data and one for when the pane is for the first. */

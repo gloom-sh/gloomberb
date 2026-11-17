@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import type { PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createTestTicker } from "../../test-support/ticker";
@@ -7,12 +7,15 @@ import { DataServiceUnreachableError } from "../../utils/network-failure";
 import type { TickerRecord } from "../../types/ticker";
 import { quotableSearchSymbol, search } from "./search";
 
+const originalExitCode = process.exitCode ?? 0;
+afterEach(() => { process.exitCode = originalExitCode; });
+
 /**
  * A rate-limited catalogue printed "No matches found." and exited 0, which
  * reads as "this company does not exist" (Eagle Bulk, 2026-10-18), and so did
  * a search offline or through a proxy that never answered.
  */
-test("a search the data service was too busy for or never answered fails, unlike a search that found nothing", async () => {
+test("an empty search prints a valid empty result but exits with the documented no-data status", async () => {
   const run = async (answer: () => Promise<never[]>, tickers: TickerRecord[] = []) => {
     const dataProvider = createTestDataProvider({ search: answer });
     const initMarketData = async () => ({ store: { loadAllTickers: async () => tickers }, dataProvider, persistence: { close() {} } }) as never;
@@ -35,6 +38,8 @@ test("a search the data service was too busy for or never answered fails, unlike
   const empty = await run(async () => []);
   expect(empty.failure).toBeNull();
   expect(empty.printed[0]!.data).toEqual([]);
+  expect(process.exitCode).toBe(1);
+  process.exitCode = originalExitCode;
 
   // A saved ticker that matches still answers while the service is busy.
   const partial = await run(busy, [createTestTicker("EGLE", "Eagle Bulk Shipping Inc.")]);

@@ -17,7 +17,7 @@ import { fetchEarningsCalendar, fetchEarningsHistory, noHistoryAbroad, sameHisto
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows, periodText } from "./history-model";
-import { fiscalQuarterText } from "./fiscal-quarter";
+import { fiscalPeriodText, fiscalQuarterText } from "./fiscal-quarter";
 import { loadNoEarningsText } from "./no-earnings";
 import { EPS_BASIS_NOTE, epsBasisName, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
 import { lastReportOnRecord, listingDay, noNextReportText } from "../shared/earnings-calendar";
@@ -96,7 +96,7 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "dateStatus", header: "Status" },
   { key: "timing", header: "When" },
   // The quarter as the company names it; its end month where the company's calls do not say. Exports keep both.
-  { key: "fiscalQuarter", header: "Quarter", format: (value, row) => typeof value === "string" ? value : typeof row.fiscalPeriod === "string" ? row.fiscalPeriod : MISSING_VALUE },
+  { key: "fiscalQuarter", header: "Quarter", format: (value, row) => typeof value === "string" ? value : fiscalPeriodText(typeof row.fiscalPeriod === "string" ? row.fiscalPeriod : undefined) },
   { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
@@ -245,6 +245,8 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   return {
     columns: BOARD_COLUMNS,
     rows,
+    complete: rows.length === all.length && cloud.status !== "rejected",
+    ...(rows.length < all.length ? { notes: [`Showing ${rows.length} of ${all.length} reports. Retrieve all with --limit ${all.length}.`] } : {}),
     errors: cloud.status === "rejected" ? [String(cloud.reason instanceof Error ? cloud.reason.message : cloud.reason)] : undefined,
     metadata: {
       ...(ticker ? { notices: [ticker.notice], highlight: { symbol: highlight, onBoard: ticker.date != null, date: ticker.date, row: ticker.row } } : {}),

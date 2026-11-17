@@ -352,6 +352,19 @@ test("cash paid again after a year of none reads N/M for its growth, never a per
   expect(shown).not.toMatch(/1Y growth\s+n\/a/);
 });
 
+test.each([32, 46, 52, 60, 80, 120])("an undated payout keeps its label, value and basis detail without shortening unrelated labels at %d columns", async (width) => {
+  const data = await quarterlyIncome();
+  const shown = await renderLoaded({ ...data, metrics: { ...data.metrics, payoutRatio: 0.47 } }, width, 40);
+  expect(shown).toMatch(/Payout\s+47\.0%/);
+  expect(shown).toContain("Basis/date unstated");
+  expect(shown).not.toMatch(/Payout[^\n]*…/);
+  if (width >= 80) {
+    expect(shown).toContain("TTM/share");
+    expect(shown).toContain("Fwd/share");
+    expect(shown).toContain("1Y growth");
+  }
+});
+
 test("mixed-currency payments keep the currency column", async () => {
   const data = await quarterlyIncome((index) => index < 2 ? "USD" : "CAD");
   expect(await renderLoaded(data, 88, 26)).toContain("CCY");

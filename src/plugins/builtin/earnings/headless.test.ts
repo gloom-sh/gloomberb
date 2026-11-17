@@ -24,6 +24,26 @@ const history: EarningsHistoryPayload = { asOf: `${today}T12:00:00.000Z`, symbol
 const context = {} as HeadlessPaneContext;
 const args = { rawArgument: "CRWV", argument: "CRWV", symbols: ["CRWV"], options: {} };
 
+test("a cut market board is incomplete, advertises its full count, and the suggested limit retrieves the omitted tail", async () => {
+  const reports = Array.from({ length: 331 }, (_, index) => ({
+    ...report({ symbol: `STOCK${index}`, date: addDays(today, index % 5) }),
+    averageMove: null, averageReports: 0,
+  }));
+  const definition = createEarningsBoardHeadless({
+    calendar: async () => ({ asOf: `${today}T12:00:00Z`, from: today, to: addDays(today, 6), reports }),
+    history: async () => history, upcoming: async () => [],
+  });
+  const boardArgs = { rawArgument: "", argument: null, symbols: [], options: {} };
+  const cut = await definition.load(boardArgs, context);
+  expect(cut.rows).toHaveLength(200);
+  expect(cut.complete).toBe(false);
+  expect(cut.notes).toEqual(["Showing 200 of 331 reports. Retrieve all with --limit 331."]);
+  const full = await definition.load({ ...boardArgs, options: { limit: 331 } }, context);
+  expect(full.complete).toBe(true);
+  expect(new Set(full.rows.map((row) => row.symbol)).size).toBe(331);
+  expect(full.notes).toBeUndefined();
+});
+
 test("ERN rows carry each quarter's basis, the estimate's analysts and whether the next date is projected", async () => {
   const definition = createEarningsHeadless({
     calendar: async () => { throw new Error("unused"); },
