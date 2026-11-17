@@ -6,7 +6,7 @@ import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import { AssetDataRouter } from "../provider-router";
 import { GloomberbCloudProvider } from "./index";
-import { getPerpetualHistory, PERPETUAL_HISTORY_LOCKED, perpetualBoardRequested, perpetualQuote, searchPerpetualMarkets, streamedPerpetualQuote } from "./perpetuals";
+import { getPerpetualHistory, PERPETUAL_HISTORY_LOCKED, PerpetualBoardCache, perpetualQuote, searchPerpetualMarkets, streamedPerpetualQuote } from "./perpetuals";
 
 /** Hyperliquid's Brent contract on its xyz dex, as Gloom Cloud served it on 2026-10-12. */
 function brent(patch: Partial<PerpBoardRow> = {}): PerpBoardRow {
@@ -131,11 +131,14 @@ test("a batched search's perpetual markets are the ones each query's own search 
 
 test("a signed-out account reads the board once for every one-word search, and a signed-in account's searches go to the service", async () => {
   const signedOut = fakeClient();
-  expect((await searchPerpetualMarkets("brent", signedOut)).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE", "XYZ-BRENTOIL:HYPERLIQUID"]);
-  expect((await searchPerpetualMarkets("bz", signedOut)).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE"]);
-  expect(await searchPerpetualMarkets("nvda", signedOut)).toEqual([]);
+  const boards = new PerpetualBoardCache();
+  expect((await searchPerpetualMarkets("brent", signedOut, boards)).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE", "XYZ-BRENTOIL:HYPERLIQUID"]);
+  expect((await searchPerpetualMarkets("bz", signedOut, boards)).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE"]);
+  expect(await searchPerpetualMarkets("nvda", signedOut, boards)).toEqual([]);
   expect(signedOut.boards).toEqual([{}]);
-  expect(perpetualBoardRequested(signedOut)).toBe(true);
+  // The board is kept by the cache a provider holds, not by the process: a cache of its own reads it again.
+  await searchPerpetualMarkets("bz", signedOut, new PerpetualBoardCache());
+  expect(signedOut.boards).toEqual([{}, {}]);
   // Words the service reads as it likes are asked of it.
   const phrase = fakeClient();
   await searchPerpetualMarkets("brent oil", phrase);
@@ -144,10 +147,9 @@ test("a signed-out account reads the board once for every one-word search, and a
   const signedIn = { ...fakeClient(), hasSessionCredential: () => true };
   expect((await searchPerpetualMarkets("bz", signedIn)).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE"]);
   expect(signedIn.boards).toEqual([{ search: "bz" }]);
-  expect(perpetualBoardRequested(signedIn)).toBe(false);
 });
 
-test("a command looking up a symbol asks for perpetual markets only when the listings show it is no US stock", async () => {
+test("a lookup asks for perpetual markets beside the listings, and not at all for a symbol known to be a US stock", async () => {
   const client = fakeClient([brent(), bz()].map((row) => row), [brent(), bz(), brent({ marketId: "binance:NVDAUSDT", venue: "binance", dex: "", symbol: "NVDAUSDT", baseAsset: "NVDA", displayName: "NVDAUSDT" })]);
   patch(apiClient, "getCloudPerpsBoard", client.getCloudPerpsBoard as typeof apiClient.getCloudPerpsBoard);
   patch(apiClient, "getCloudPerpsMarket", client.getCloudPerpsMarket as typeof apiClient.getCloudPerpsMarket);
@@ -155,19 +157,30 @@ test("a command looking up a symbol asks for perpetual markets only when the lis
     NVDA: [{ providerId: "gloomberb-cloud", symbol: "NVDA", name: "NVIDIA Corporation", exchange: "NASDAQ", type: "Common Stock" }],
     BRENT: [{ providerId: "gloomberb-cloud", symbol: "BRENT", name: "Brent Fund", exchange: "NYSE", type: "ETF" }],
   };
-  patch(apiClient, "searchInstruments", (async (query: string) => rows[query.toUpperCase()] ?? []) as typeof apiClient.searchInstruments);
+  let release: () => void = () => {};
+  const listed = new Promise<void>((resolve) => { release = resolve; });
+  patch(apiClient, "searchInstruments", (async (query: string) => { await listed; return rows[query.toUpperCase()] ?? []; }) as typeof apiClient.searchInstruments);
   const provider = new GloomberbCloudProvider();
-  // The stock NVDA: no contract search, so no board request.
-  expect((await provider.search("NVDA")).map((row) => row.symbol)).toEqual(["NVDA"]);
-  expect(client.boards).toEqual([]);
-  // A fund is no stock: the contracts are asked for once its listings are in.
-  expect((await provider.search("BRENT")).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE", "XYZ-BRENTOIL:HYPERLIQUID", "BRENT"]);
+  provider.knownUsStock = (symbol) => symbol === "NVDA";
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  // A fund, a symbol nothing lists or a coin: the board is asked for with the listings, not after them.
+  const fund = provider.search("BRENT");
+  await tick();
   expect(client.boards).toEqual([{}]);
-  // The board is read now, so the same lookup asks it at once and finds NVDA's contract beside the stock.
+  // The stock NVDA: nothing is asked for beside its listings.
+  const stock = provider.search("NVDA");
+  await tick();
+  expect(client.boards).toEqual([{}]);
+  release();
+  expect((await fund).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE", "XYZ-BRENTOIL:HYPERLIQUID", "BRENT"]);
+  expect((await stock).map((row) => row.symbol)).toEqual(["NVDA"]);
+  // The search a person types, and the command bar, keep the contracts for a stock; the board is read once.
   expect((await provider.search("NVDA", { perpetuals: "always" })).map((row) => row.symbol)).toEqual(["NVDAUSDT:BINANCE", "NVDA"]);
-  // The search a person types, and the command bar, keep the contracts for a stock.
   expect((await provider.search("NVDA", { interactive: true })).map((row) => row.symbol)).toEqual(["NVDAUSDT:BINANCE", "NVDA"]);
   expect(client.boards).toEqual([{}]);
+  // Without a command line's list of stocks, every lookup asks.
+  provider.knownUsStock = undefined;
+  expect((await provider.search("NVDA")).map((row) => row.symbol)).toEqual(["NVDAUSDT:BINANCE", "NVDA"]);
 });
 
 test("a streamed row that leaves out a figure it does not have still quotes, the figure read as none", () => {

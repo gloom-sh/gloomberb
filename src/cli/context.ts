@@ -15,6 +15,7 @@ import type { PluginRegistry } from "../plugins/registry";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import { apiClient } from "../api-client";
 import { fail } from "./errors";
+import { isKnownUsStock } from "./known-us-stocks";
 import { resolvePersistedCloudSessionToken } from "./pane-functions/cloud-session";
 import { cloudStatementReportSources } from "./statement-filings";
 import type { ConfigContext, MarketContext } from "./types";
@@ -120,6 +121,13 @@ export async function initMarketData(options: CliContextOptions = {}): Promise<M
   applyPersistedCloudSession(context);
   const plugins: SeriesPlugins = options.plugins ?? (() => (require("../plugins/catalog") as typeof import("../plugins/catalog")).getLoadablePlugins());
   const capabilities = resolveCliCapabilities(context.config, options.dataPlugins ?? (typeof plugins === "function" ? plugins() : plugins));
+  // A lookup of a symbol the shipped listings show to be a US stock asks for no perpetual contracts.
+  const { GloomberbCloudProvider } = require("../sources/gloomberb-cloud") as typeof import("../sources/gloomberb-cloud");
+  for (const capability of capabilities) {
+    if (capability.kind === "asset-data" && "provider" in capability && capability.provider instanceof GloomberbCloudProvider) {
+      capability.provider.knownUsStock = isKnownUsStock;
+    }
+  }
   const dataProvider = new AssetDataRouter(null, [], context.persistence.resources);
   const registryAdapter: Pick<PluginRegistry, "brokers" | "getEnabledCapabilities"> = {
     brokers: new Map(),

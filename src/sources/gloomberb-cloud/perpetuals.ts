@@ -210,39 +210,33 @@ export function boardSearchesFrom(board: PerpBoardPayload, client: PerpsClient =
 
 /** How long the board a signed-out search reads stays in memory: a command lives for seconds, an open app for much longer. */
 const SEARCH_BOARD_TTL_MS = 5 * 60_000;
-const searchBoards = new WeakMap<object, { readAt: number; board: Promise<PerpBoardPayload> }>();
-/** Kept by the client's board call, so a client whose call is replaced (a test's) does not share a board with the one it replaced. */
-const boardKey = (client: PerpsClient): object => client.getCloudPerpsBoard;
 
 /**
- * The board without a search, read once per client while it is fresh. A signed-out account's search is the preview
- * rows that hold its word (`boardSearchesFrom`), so every search of a command costs this one request. A signed-in
- * account's board is the whole of it, which only a list's searches (`searchBatch`) read.
+ * The board without a search, read once while it is fresh. A signed-out account's search is the preview rows that
+ * hold its word (`boardSearchesFrom`), so every search of a command costs this one request. A signed-in account's
+ * board is the whole of it, which only a list's searches (`searchBatch`) read. A provider holds one, so a process
+ * reads the board once however many symbols it looks up.
  */
-export function readPerpetualBoard(client: PerpsClient = apiClient): Promise<PerpBoardPayload> {
-  const key = boardKey(client);
-  const kept = searchBoards.get(key);
-  if (kept && Date.now() - kept.readAt < SEARCH_BOARD_TTL_MS) return kept.board;
-  const board = client.getCloudPerpsBoard({});
-  const entry = { readAt: Date.now(), board };
-  searchBoards.set(key, entry);
-  void board.catch(() => {
-    if (searchBoards.get(key) === entry) searchBoards.delete(key);
-  });
-  return board;
-}
+export class PerpetualBoardCache {
+  private kept: { readAt: number; board: Promise<PerpBoardPayload> } | null = null;
 
-/** Whether a signed-out search would find the board already read, or on its way, rather than ask for it. */
-export function perpetualBoardRequested(client: PerpsClient = apiClient): boolean {
-  const kept = searchBoards.get(boardKey(client));
-  return !!kept && Date.now() - kept.readAt < SEARCH_BOARD_TTL_MS && !client.hasSessionCredential?.();
+  read(client: PerpsClient = apiClient): Promise<PerpBoardPayload> {
+    const kept = this.kept;
+    if (kept && Date.now() - kept.readAt < SEARCH_BOARD_TTL_MS) return kept.board;
+    const entry = { readAt: Date.now(), board: client.getCloudPerpsBoard({}) };
+    this.kept = entry;
+    void entry.board.catch(() => {
+      if (this.kept === entry) this.kept = null;
+    });
+    return entry.board;
+  }
 }
 
 /**
  * The client a search asks the board with: a signed-out account's one-word search is answered from the board read
  * once, with the rows the service would have sent; any other search goes to the service.
  */
-function searchBoardClient(client: PerpsClient): PerpsClient {
+function searchBoardClient(client: PerpsClient, boards: PerpetualBoardCache): PerpsClient {
   if (client.hasSessionCredential?.()) return client;
   return {
     getCloudPerpsMarket: client.getCloudPerpsMarket,
@@ -251,7 +245,7 @@ function searchBoardClient(client: PerpsClient): PerpsClient {
       const { search, ...rest } = query;
       const word = search?.trim();
       if (!word || /\s/.test(word) || Object.values(rest).some((value) => value !== undefined)) return client.getCloudPerpsBoard(query);
-      const board = await readPerpetualBoard(client).catch(logFailure("sources.gloomberb-cloud.perpetuals", "Reading the perpetual board for a search failed", null));
+      const board = await boards.read(client).catch(logFailure("sources.gloomberb-cloud.perpetuals", "Reading the perpetual board for a search failed", null));
       return board ? boardSearchesFrom(board, client).getCloudPerpsBoard({ search: word }) : client.getCloudPerpsBoard(query);
     },
   };
@@ -274,7 +268,11 @@ const MAX_ALIAS_SEARCHES = 3;
  * Hyperliquid's BRENTOIL). A free account searches the board's preview, as
  * PERP's own search does, but can still name any one market.
  */
-export async function searchPerpetualMarkets(query: string, client: PerpsClient = apiClient): Promise<InstrumentSearchResult[]> {
+export async function searchPerpetualMarkets(
+  query: string,
+  client: PerpsClient = apiClient,
+  cache: PerpetualBoardCache = new PerpetualBoardCache(),
+): Promise<InstrumentSearchResult[]> {
   const trimmed = query.trim();
   const named = namedListing(trimmed);
   if (named) {
@@ -302,7 +300,7 @@ export async function searchPerpetualMarkets(query: string, client: PerpsClient 
       keep: (row: PerpBoardRow) => row.assetClass === assetClass && row.baseAsset.toUpperCase() === symbol,
     })),
   ];
-  const boardClient = searchBoardClient(client);
+  const boardClient = searchBoardClient(client, cache);
   const boards = await Promise.all(searches.map(async ({ search, keep }) => {
     const board = await boardClient.getCloudPerpsBoard({ search });
     return (Array.isArray(board?.rows) ? board.rows : []).filter((row) => !row.delisted && keep(row));
