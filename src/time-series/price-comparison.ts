@@ -66,10 +66,9 @@ export interface PriceComparison {
 export interface PriceComparisonOptions {
   /**
    * The chart's untouched preset range; null for authored dates or a view
-   * panned or zoomed off it. A preset's legs each run to their own newest
-   * observation, so one that is behind does not cut the others short, and a
-   * calendar range (1W to 5Y) is measured from the close on or before the
-   * same date a range before (periodBaseDay), as RETURN is.
+   * panned or zoomed off it. A calendar range (1W to 5Y) is measured from
+   * the close on or before the same date a range before the shared end
+   * (periodBaseDay), as RETURN is.
    */
   preset?: TimeRange | null;
   now?: number;
@@ -328,11 +327,10 @@ interface ComparedLeg {
  *
  * Calendar bars compare by session date. An untouched preset range measures
  * each leg from its own close on or before the same date a range before the
- * newest observation of the chart (periodBaseDay), the convention RETURN
- * and every period return share, and runs each leg to its own newest
- * observation. Authored dates and a panned view start every leg at the first
- * date they share and end them at the last. A leg with no prices, or one,
- * is left out with its reason and the others still compare.
+ * last shared observation (periodBaseDay), the convention RETURN and every
+ * period return share. Authored dates and a panned view use a shared base.
+ * A daily bar that is still forming is comparable only if it is forming on
+ * every leg. A leg without a usable span is left out with its reason.
  */
 export function resolvePriceComparison(
   spec: ChartSpec,
@@ -390,12 +388,16 @@ export function resolvePriceComparison(
   const dayOf = (leg: ComparedLeg, key: string) => calendarBars ? key : observationDate(Number(key), leg.entry);
   const preset = options.preset ?? null;
   const period = !dateWindow && isReturnPeriod(preset) ? preset : null;
-  const ownEnds = preset !== null && !dateWindow;
   const shared = (keys: (leg: ComparedLeg) => readonly string[]) => {
     const sets = legs.map((leg) => new Set(keys(leg)));
     return legs.length ? keys(legs[0]!).filter((key) => sets.every((set) => set.has(key))) : [];
   };
   const sharedWindow = shared((leg) => leg.window);
+  const isForming = (leg: ComparedLeg, key: string): boolean => calendarBars && !options.closedEnds?.has(leg.id)
+    && (leg.points.get(key)?.partial === true || isIntradayDailyBar(sessionDay(key), legVenue(leg.entry), now));
+  const sharedEnd = resolution === "1d"
+    ? sharedWindow.findLast((key) => legs.every((leg) => isForming(leg, key) === isForming(legs[0]!, key)))
+    : sharedWindow.at(-1);
   // Authored dates (`--from 2026-10-19`) measure from the close before the first date, as RETURN does: the last
   // date the legs share before it. Weekly and monthly bars keep the bar the window starts in.
   const authoredFrom = !preset && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start) && (resolution === "1d" || !calendarBars)
@@ -406,10 +408,7 @@ export function resolvePriceComparison(
       && legs.every((leg) => nonzero(leg, key))).at(-1)
     : undefined;
   const sharedStart = authoredBase ?? sharedWindow.find((key) => legs.every((leg) => nonzero(leg, key)));
-  // The period is measured back from the chart's newest observation, by its session day.
-  const anchor = period && legs.length
-    ? legs.map((leg) => calendarBars ? sessionDay(leg.window.at(-1)!) : dayOf(leg, leg.window.at(-1)!)).sort().at(-1)!
-    : null;
+  const anchor = period && sharedEnd !== undefined ? (calendarBars ? sessionDay(sharedEnd) : dayOf(legs[0]!, sharedEnd)) : null;
   const baseDay = anchor && period ? periodBaseDay(anchor, period) : null;
   const closeDay = (leg: ComparedLeg, key: string) => calendarBars && resolution !== "1d" ? barCloseDay(key, resolution, legVenue(leg.entry)) : key;
   // Intraday bars share their times, so their base is the last bar the legs share on or before the base day.
@@ -426,18 +425,14 @@ export function resolvePriceComparison(
     // Without a close on or before the base day (a listing younger than the range), its first close in range.
     return base !== undefined && nonzero(leg, base) ? base : leg.window.find((key) => nonzero(leg, key));
   };
-  const sharedEnd = sharedWindow.at(-1);
-  // Legs that share their dates compare over two of them or not at all; a leg that runs on its own is left out alone.
-  const sharedSpan = sharedStart !== undefined && sharedEnd !== undefined && order(sharedStart, sharedEnd) < 0;
-  const compared = baseDay || ownEnds || sharedSpan ? legs.flatMap((leg) => {
+  const compared = sharedEnd === undefined ? [] : legs.flatMap((leg) => {
     const start = startOf(leg);
-    const end = ownEnds ? leg.window.at(-1) : sharedEnd;
-    if (start !== undefined && end !== undefined && order(start, end) < 0) return [{ leg, start, end }];
+    if (start !== undefined && order(start, sharedEnd) < 0) return [{ leg, start, end: sharedEnd }];
     if (baseDay || sharedStart !== undefined) {
       dropped.push({ seriesId: leg.id, label: leg.label, reason: start === undefined ? "no nonzero price to measure from in this range" : "only one price in this range" });
     }
     return [];
-  }) : [];
+  });
   // "Left out: VIX; EWJ (only one price in this range)."
   const droppedText = dropped.length
     ? ` Left out: ${dropped.map((entry) => reported.has(entry.seriesId) ? entry.label : `${entry.label} (${entry.reason})`).join("; ")}.`
@@ -457,9 +452,8 @@ export function resolvePriceComparison(
   const currentYear = new Date(now).getUTCFullYear();
   const legDays = Object.fromEntries(compared.map(({ leg, start, end }) => {
     const endDay = calendarBars ? sessionDay(end) : dayOf(leg, end);
-    // A daily bar of the session still trading, or a week or month running through it.
     return [leg.id, { baseDay: calendarBars ? sessionDay(start) : dayOf(leg, start), endDay,
-      intraday: calendarBars && !options.closedEnds?.has(leg.id) && isIntradayDailyBar(endDay, legVenue(leg.entry), now) }];
+      intraday: isForming(leg, end) }];
   }));
   const span = calendarBars
     ? (() => {

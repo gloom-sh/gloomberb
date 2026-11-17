@@ -1,7 +1,7 @@
 import { logFailure } from "../../utils/log-failure";
 import { apiClient } from "../../api-client";
 import { loadResolvedHeadlessPaneModel, reportCoverage, reportGaps, type LoadedHeadlessPaneModel } from "./headless";
-import { createOutputFolder } from "../output-file";
+import { createOutputFolder, writeOutputFile } from "../output-file";
 import type { Quote } from "../../types/financials";
 import { isRecord } from "../../utils/guards";
 import {
@@ -225,6 +225,7 @@ export async function renderDesktopShot({
   maxHeightCells,
   options,
   captureImage = true,
+  onlyUsable = false,
   onStalledReport,
   onDrawing,
 }: {
@@ -247,6 +248,7 @@ export async function renderDesktopShot({
   maxHeightCells?: number;
   options: Record<string, string | true>;
   captureImage?: boolean;
+  onlyUsable?: boolean;
   /**
    * Called when the report behind the status line was still loading at the
    * wait's end: the load was aborted, but a loader that ignores the signal
@@ -255,13 +257,14 @@ export async function renderDesktopShot({
   onStalledReport?: () => void;
   /** Called once the pane's data is read and the page starts to draw it. */
   onDrawing?: () => void;
-}): Promise<PaneScreenshotResult> {
+}): Promise<PaneScreenshotResult & { saved: boolean }> {
   prepareDesktopPaneShotView();
   if (captureImage) await createOutputFolder(outputPath);
   const apiProxy = resolveDesktopShotApiProxy(context);
   const previousSessionToken = apiClient.getSessionToken();
   let payload: DesktopPaneShotPayload;
   let render: DesktopPaneShotRenderResult;
+  let image: Uint8Array | undefined;
   let freshness: ReportFreshness | undefined;
   let coverage: Promise<ShotReportCoverage | undefined> | undefined;
   let covered: ShotReportCoverage | undefined;
@@ -309,7 +312,7 @@ export async function renderDesktopShot({
     coverage = captureImage ? reportShotCoverage(resolved, loadModel) : undefined;
     const recorded = recordBridgedQuotes(createDesktopShotBridge(context));
     const shotPayload = payload;
-    render = await renderDesktopPaneScreenshot(payload, outputPath, apiProxy, {
+    ({ image, ...render } = await renderDesktopPaneScreenshot(payload, apiProxy, {
       captureImage,
       bridge: recorded.bridge,
       statusLine: async (rendered) => {
@@ -327,7 +330,7 @@ export async function renderDesktopShot({
         return { variants: unread ? line.variants.map((variant) => `${variant} · ${unread}`) : line.variants, dates: line.dates,
           dateEvidence: statusDateEvidence(line.freshness) };
       },
-    });
+    }));
     covered = coverage && await settledWithin(coverage, SHOT_REPORT_WAIT_MS);
   } finally {
     apiClient.setSessionToken(previousSessionToken);
@@ -336,8 +339,10 @@ export async function renderDesktopShot({
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
   const assessed = withReportCoverage(assessPaneScreenshot(resolved, payload, render, rawArg, outputPath), covered);
+  const save = image && (!onlyUsable || assessed.usable) ? image : undefined;
+  if (save) await writeOutputFile(outputPath, save);
   const unreadRows = payload.unreadRows?.length ? { unreadRows: payload.unreadRows, ...(payload.unreadReasons ? { unreadReasons: payload.unreadReasons } : {}) } : {};
-  return freshness ? { ...assessed, ...unreadRows, freshness } : { ...assessed, ...unreadRows };
+  return { ...assessed, ...unreadRows, saved: save !== undefined, ...(freshness ? { freshness } : {}) };
 }
 
 /** "FRC did not load": a list's rows whose read failed, as the capture's status line marks them. */

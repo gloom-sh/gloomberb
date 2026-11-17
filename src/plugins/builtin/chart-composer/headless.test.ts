@@ -2,7 +2,7 @@ import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { bareCatalogSeries, chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
 import { setPairStudies } from "./studies";
-import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
+import { buildComparisonChartPreset, buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import { resetFuturesPriceUnits } from "../../../market-data/futures-contract";
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
@@ -39,6 +39,27 @@ function fixture(bars = history) {
     argument: "AAPL:NASDAQ", rawArgument: "AAPL:NASDAQ", symbols: ["AAPL:NASDAQ"], options,
   }, context) as ChartPaneModel };
 }
+
+test("CMP requests daily history on the resolved US fund listings, not the unqualified ticker", async () => {
+  const listings: Record<string, string> = { IVV: "ARCA", VOO: "ARCA", QQQ: "NASDAQ" };
+  const symbols = Object.keys(listings);
+  const spec = buildComparisonChartPreset(symbols);
+  spec.viewport.dateWindow = { start: "2026-08-28", end: "2026-08-31" };
+  const closes = history.filter((_point, index) => index % 2 === 0)
+    .map((point) => ({ ...point, date: new Date(point.date.toISOString().slice(0, 10)) }));
+  const read = async (symbol: string, exchange: string) => listings[symbol] === exchange ? closes : [];
+  const result = await chartHeadless("comparison-chart-pane").load({
+    rawArgument: symbols.join(","), argument: symbols.join(","), symbols, options: {},
+  }, createTestHeadlessContext({
+    resolveListing: async (symbol) => ({ symbol, exchange: listings[symbol] }),
+    settings: { chartSpec: spec },
+    marketData: createTestDataProvider({ getPriceHistoryForResolution: read, getDetailedPriceHistory: read }),
+  }));
+  expect(result.errors).toEqual([]);
+  expect(result.series.map(({ label, points }) => [label, points.length])).toEqual([
+    ["IVV:ARCA Close", 3], ["VOO:ARCA Close", 3], ["QQQ:NASDAQ Close", 3],
+  ]);
+});
 
 test("an unavailable currency spread reaches headless errors even with normalized chart presentation", async () => {
   for (const currency of ["EUR", ""]) for (const transform of ["raw", "percent"] as const) {

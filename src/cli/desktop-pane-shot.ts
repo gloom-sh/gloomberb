@@ -2,7 +2,6 @@ import type { ScannerCapture } from "../plugins/builtin/shared/scanner-capture";
 import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
 import { randomBytes, timingSafeEqual } from "crypto";
 import { join } from "path";
-import { writeOutputFile } from "./output-file";
 import { withShotTempDir } from "./shot-temp-dir";
 import { encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
 import type { AppConfig } from "../types/config";
@@ -279,10 +278,9 @@ export function prepareDesktopPaneShotView(): void {
 
 export async function renderDesktopPaneScreenshot(
   payload: DesktopPaneShotPayload,
-  outputPath: string,
   apiProxy: DesktopPaneShotApiProxy,
   options: { captureImage?: boolean; bridge?: DesktopPaneShotBridge; statusLine?: ShotStatusLine } = {},
-): Promise<DesktopPaneShotRenderResult> {
+): Promise<DesktopPaneShotRenderResult & { image?: Uint8Array }> {
   const chrome = await findChromeExecutable();
   const view = await loadShotView();
   return withShotTempDir("gloom-pane-shot-", async (tempDir) => {
@@ -291,7 +289,6 @@ export async function renderDesktopPaneScreenshot(
       return await capturePageScreenshot({
         chrome,
         url: server.url,
-        outputPath,
         widthPx: payload.widthPx,
         heightPx: payload.heightPx,
         deviceScaleFactor: payload.deviceScaleFactor ?? DEFAULT_DEVICE_SCALE_FACTOR,
@@ -642,7 +639,6 @@ async function shotApiResponse(response: Response, path: string): Promise<Respon
 async function capturePageScreenshot({
   chrome,
   url,
-  outputPath,
   widthPx,
   heightPx,
   deviceScaleFactor,
@@ -653,7 +649,6 @@ async function capturePageScreenshot({
 }: {
   chrome: string;
   url: string;
-  outputPath: string;
   widthPx: number;
   heightPx: number;
   deviceScaleFactor: number;
@@ -661,7 +656,7 @@ async function capturePageScreenshot({
   captureImage: boolean;
   statusLine?: ShotStatusLine;
   fitRows?: { heightCells: number; maxHeightCells: number; roles: readonly string[] };
-}): Promise<DesktopPaneShotRenderResult> {
+}): Promise<DesktopPaneShotRenderResult & { image?: Uint8Array }> {
   const browser = await launchShotBrowser(chrome, { widthPx, heightPx, userDataDir });
   const session = browser.page;
   try {
@@ -695,7 +690,7 @@ async function capturePageScreenshot({
         captureBeyondViewport: false,
       }) as { data?: string };
       if (!screenshot.data) throw new Error("Chrome did not return screenshot data.");
-      await writeOutputFile(outputPath, Buffer.from(screenshot.data, "base64"));
+      return { ...rendered, image: Buffer.from(screenshot.data, "base64") };
     }
     return rendered;
   } catch (error) {

@@ -608,6 +608,7 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
         ? resolve(process.cwd(), ensurePngExtension(parsed.outputPath))
         : defaultScreenshotPath(resolved, parsed.arg);
       const progress = progressNotice(ctx, [resolved.token, parsed.arg].filter(Boolean).join(" "));
+      const onlyUsable = parsed.strict === true || parsed.requireBotSafe === true;
       const result = await renderDesktopShot({
         resolved,
         context,
@@ -621,6 +622,7 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
         statusLine: parsed.status !== false,
         fitRows: parsed.heightGiven !== true,
         options: parsed.options,
+        onlyUsable,
         onStalledReport,
         onDrawing: progress.drawing,
       }).finally(progress.stop).catch(async (error: unknown) => {
@@ -662,11 +664,10 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
           if (data.blankColumns?.length) stats.push(["Blank columns", cliStyles.warning(data.blankColumns.join(", "))]);
           if (data.render.emptyStateMarkers.length > 0) stats.push(["Empty states", data.render.emptyStateMarkers.join(", ")]);
           if (data.render.missingExpectedText.length > 0) stats.push(["Missing text", data.render.missingExpectedText.join(", ")]);
-          return [`Saved ${displayPath(data.outputPath)}`, renderStats(stats)].join("\n");
+          return [data.saved ? `Saved ${displayPath(data.outputPath)}` : "No image saved.", renderStats(stats)].join("\n");
         },
       });
-      // The image is saved and the reason printed; --strict tells a script it should not be used. A pane that drew
-      // nothing but its empty state ("No ticker selected.") failed either way, as `fn` does for an empty report.
+      // A pane that drew nothing but its empty state ("No ticker selected.") fails either way, as `fn` does for an empty report.
       if (parsed.strict && !result.usable) process.exitCode = CLI_EXIT_CODES.unusableShot;
       else if (!result.usable && result.render.emptyStateDetected && result.rowCount === 0) process.exitCode = CLI_EXIT_CODES.error;
     }, { command: "shot" });
