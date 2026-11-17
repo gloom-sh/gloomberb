@@ -1,7 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import type { ExposurePayload, ExposureScenario } from "../../../api-client/exposure";
-import { exposureCellText, hopsText, parseCustomScenario, parseHoldings, pathRows, periodText, portfolioRows, tableRows } from "./model";
+import { analysisNotes, exposureCellText, hopsText, parseCustomScenario, parseHoldings, pathRows, periodText, portfolioRows, tableRows } from "./model";
 import { validateExposure } from "./client";
 import drivers from "./fixtures/drivers.fixture.json";
 import { driverValue, driverUnits, driverRows } from "./drivers";
@@ -101,4 +101,14 @@ test("a quarter key reads as the month it ends in, a date or the source's own wo
   expect(exposureCellText({ ...row, period: "quarter:2026-07-31" }, "period")).toBe("Jul 2026");
   expect(exposureCellText({ ...row, period: null }, "period")).toBe(MISSING_VALUE);
   expect([1, 2, 4].map(hopsText)).toEqual(["1 hop", "2 hops", "4 hops"]);
+});
+
+// EXPO with NVDA and AAPL put "AAPL: No supported credit observations are available for this holding. +14 more" in its footer:
+// the service repeats each holding's unknowns among the analysis's, and those belong on the holding's rows.
+test("the footer keeps what the analysis says of the whole portfolio, not what one holding could not see", () => {
+  const note = "No supported credit observations are available for this holding.";
+  const portfolio = "Cash weight was not supplied. The residual is unallocated or financed NAV, not an assumed cash balance.";
+  const data = { holdings: [{ symbol: "AAPL", unknowns: [note] }, { symbol: "NVDA", unknowns: [] }],
+    unknowns: [`AAPL: ${note}`, `NVDA: ${note}`, portfolio] } as unknown as Parameters<typeof analysisNotes>[0];
+  expect(analysisNotes(data)).toEqual([portfolio]);
 });

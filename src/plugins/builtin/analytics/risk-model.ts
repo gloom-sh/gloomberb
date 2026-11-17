@@ -1436,6 +1436,26 @@ export function buildPortfolioRisk(
   };
 }
 export type PortfolioRiskModel = ReturnType<typeof buildPortfolioRisk>;
+
+/** The holdings and options the views list by symbol, each a row of its own. */
+function riskRowSymbols(model: Pick<PortfolioRiskModel, "holdings" | "greeks">): string[] {
+  return [...model.holdings.map((row) => row.symbol), ...(model.greeks?.rows ?? []).map((row) => row.symbol)];
+}
+
+/** What a warning says of one holding or option (`AAPL: …`), named by `symbol`, less the name: its row's note. */
+export function riskRowWarnings(model: Pick<PortfolioRiskModel, "warnings">, symbol: string): string[] {
+  return model.warnings.flatMap((warning) => warning.startsWith(`${symbol}: `) ? [warning.slice(symbol.length + 2)] : []);
+}
+
+/**
+ * The warnings the footer says, which concern the whole book: a holding's or
+ * an option's own are its row's (its detail, its note under the table), as
+ * a left-out holding's reason is.
+ */
+export function riskPaneWarnings(model: Pick<PortfolioRiskModel, "warnings" | "holdings" | "greeks">): string[] {
+  const symbols = riskRowSymbols(model);
+  return model.warnings.filter((warning) => !symbols.some((symbol) => warning.startsWith(`${symbol}: `)));
+}
 export const riskValue = (row: RiskDisplayRow) =>
   row.leftOut
     ? "left out"

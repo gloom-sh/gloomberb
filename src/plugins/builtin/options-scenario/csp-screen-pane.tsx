@@ -2,7 +2,7 @@ import { MISSING_VALUE } from "../../../utils/format";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  DataTableView, PaneStatusBody, QueryBar, RowNote, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type DataTableKeyEvent,
+  DataTableView, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type DataTableKeyEvent,
   type QueryBarFilter,
 } from "../../../components";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
@@ -317,8 +317,7 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
   const selectedSymbol = selected ?? firstSymbol;
   const selection = { kind: "id" as const, selectedId: selectedSymbol, getId: (row: { symbol: string }) => row.symbol, onChange: (id: string) => setSelected(id) };
   // The selected name's whole reason, under the table: the row has room for its few words only.
-  const selectedNote = shownRows.find((row) => row.symbol === selectedSymbol)?.source.note ?? null;
-  const rowNote = selectedNote ? <RowNote>{`${selectedSymbol}: ${selectedNote}`}</RowNote> : undefined;
+  const rowNote = (row: ScreenRow | TradeRow) => row.source.note ? `${row.symbol}: ${row.source.note}` : null;
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     {tabStrip}
     <QueryBar width={width} filters={filters} meta={strategy === "csp" ? undefined : STRATEGY_MONEY_UNIT} />
@@ -326,9 +325,9 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
       error={criteria.error && !ready ? criteria.error : !data ? resource.error : null}>
       {strategy === "csp"
         ? <DataTableView<ScreenRow> {...table} columns={putColumns} items={putRows} selection={selection}
-          renderCell={(row, column) => putCell(row, column.id)} rootAfter={rowNote} />
+          renderCell={(row, column) => putCell(row, column.id)} rowNote={rowNote} />
         : <DataTableView<TradeRow> {...table} columns={shownTradeColumns} items={tradeRows} selection={selection}
-          renderCell={(row, column) => tradeCell(row, column.id)} rootAfter={rowNote} />}
+          renderCell={(row, column) => tradeCell(row, column.id)} rowNote={rowNote} />}
     </PaneStatusBody>
   </Box>;
 }

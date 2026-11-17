@@ -205,6 +205,24 @@ export function correlationRollNotes(symbols: readonly string[], seriesBySymbol:
 }
 
 /**
+ * What the matrix says under itself for the selected cell: each of its
+ * symbols' rolls and failed refresh, then the pair's own note. A note about
+ * one symbol is said where that symbol is selected, never in the footer.
+ */
+export function matrixCellNotes(symbols: readonly string[], seriesBySymbol: ReadonlyMap<string, CorrelationSeries>, pairNote: string | null): string[] {
+  return [
+    ...correlationRollNotes(symbols, seriesBySymbol).map((note) => `${note.replace(/\.$/, "")}.`),
+    ...symbols.flatMap((symbol) => {
+      const series = seriesBySymbol.get(symbol);
+      return series?.refreshError
+        ? [`${symbol}: ${series.refreshError}${series.fetchedAt ? ` Retained history retrieved ${new Date(series.fetchedAt).toISOString()}.` : ""}`]
+        : [];
+    }),
+    ...(pairNote ? [pairNote] : []),
+  ];
+}
+
+/**
  * The matrix already labels every symbol on both axes and the pane now carries
  * its own range control, so the title stays generic instead of repeating them.
  */

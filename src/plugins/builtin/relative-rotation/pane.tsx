@@ -280,11 +280,9 @@ function RotationView({
   usePaneNoticeFooter({
     registrationId: "relative-rotation:notices",
     focused,
+    // What concerns the whole chart; a symbol's own gaps are its row's (`rowNote`).
     notices: [
       ...(data?.gaps ?? []),
-      ...(data?.rows.flatMap((row) =>
-        row.gaps.map((gap) => `${row.symbol}: ${gap}`),
-      ) ?? []),
       ...(resource.data?.refreshError ? [resource.data.refreshError] : []),
     ],
   });
@@ -350,6 +348,7 @@ function RotationView({
                 onChange: setSelectedId,
               }}
               onActivate={(row) => setOpenId(row.id)}
+              rowNote={(row) => row.gaps.length ? `${row.symbol}: ${row.gaps.join(" ")}` : null}
               detailOpen={!!selected}
               onBack={() => setOpenId(null)}
               detailTitle={selected?.label}

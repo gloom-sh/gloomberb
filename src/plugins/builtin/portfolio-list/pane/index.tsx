@@ -3,9 +3,11 @@ import { Box, useUiCapabilities } from "../../../../ui";
 import { brokerPortfolioLogo } from "../../../../brokers/logos";
 import { LogoMark } from "../../../../components/ui/logo-mark";
 import { describeFundamentalMarketCap } from "../../../../utils/market-capitalization";
+import { wrapTextLines } from "../../../../utils/text-wrap";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   confirmDialog,
+  RowNote,
   usePaneFooter,
   usePaneMenuItems,
   usePaneNoticeFooter,
@@ -952,10 +954,14 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const delistedNotice = selectedDelisting ? `${cursorSymbol}: ${delistingLabel(selectedDelisting)}.` : undefined;
   usePaneNoticeFooter({
     registrationId: "portfolio-list-notices",
-    notices: [...summaryNotices, ...periodPnlNotices(periodPnl), delistedNotice, capNotice, multiplierNotice].filter((notice): notice is string => !!notice),
+    notices: [...summaryNotices, ...periodPnlNotices(periodPnl)],
     focused: focused && !quickAddFocused,
   });
-  const contentHeight = Math.max(1, height - headerHeight - summaryHeight - drawerHeight - quickAddHeight);
+  // What concerns the selected holding is said under the list while it is selected, as a table's row note is:
+  // its delisting, where its market cap comes from, its missing multiplier. The footer's notes are the list's.
+  const cursorNote = [delistedNotice, capNotice, multiplierNotice].filter((notice): notice is string => !!notice).join(" ");
+  const cursorNoteHeight = cursorNote ? wrapTextLines(cursorNote, Math.max(1, width - 2)).length : 0;
+  const contentHeight = Math.max(1, height - headerHeight - summaryHeight - drawerHeight - quickAddHeight - cursorNoteHeight);
   const quickAddRow = activeCollectionId && activeCollectionEntry && quickAddCollectionKind ? (
     <QuickAddTickerInput
       collectionId={activeCollectionId}
@@ -1033,6 +1039,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           height={contentHeight}
         />
       )}
+      <RowNote>{cursorNote}</RowNote>
 
       {quickAddRow}
       {positionsImport.picker}

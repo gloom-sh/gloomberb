@@ -104,6 +104,16 @@ function shockLabel(data: ExposurePayload, id: string): string {
   return shock ? shockText(shock) : id;
 }
 /** The scenario as the pane's scenario picker names it, with its one shock when it has one: Taiwan disruption (TW -100%). */
+/**
+ * What the analysis says of the whole portfolio, for the footer: the
+ * payload's unknowns less each holding's own, which the service repeats there
+ * as `AAPL: …` and which that holding's rows (`Estimated 6 gaps`) and detail say.
+ */
+export function analysisNotes(data: Pick<ExposurePayload, "unknowns" | "holdings">): string[] {
+  const holdings = data.holdings.map((holding) => `${holding.symbol}: `);
+  return data.unknowns.filter((note) => !holdings.some((prefix) => note.startsWith(prefix)));
+}
+
 export function scenarioTitle(scenario: ExposureScenario): string {
   return `${scenario.label}${scenario.shocks.length === 1 ? ` (${shockText(scenario.shocks[0]!)})` : ""}`;
 }

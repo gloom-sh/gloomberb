@@ -1,6 +1,7 @@
 import { Box, type InputRenderable } from "../../../ui";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter } from "../../../components";
+import { PaneStatusBody, QueryBar, RowNote, usePaneFooter } from "../../../components";
+import { wrapTextLines } from "../../../utils/text-wrap";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -37,7 +38,7 @@ import {
   buildCorrelationPaneTitle,
   buildGeoCorrelationSeries,
   buildStatusSummary,
-  correlationRollNotes,
+  matrixCellNotes,
   type CorrelationSeries,
   getSeriesForEntry,
   pairKey,
@@ -215,29 +216,23 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
     phase: "before",
     scope: "correlation:tickers",
   });
-  usePaneNoticeFooter({
-    registrationId: "correlation-warnings", focused,
-    notices: [...seriesBySymbol.values()].flatMap((series) => series.refreshError
-      ? [`${series.symbol}: ${series.refreshError}${series.fetchedAt ? ` Retained history retrieved ${new Date(series.fetchedAt).toISOString()}.` : ""}`]
-      : []).concat(pair && pairHistory?.unavailable ? [`${pair.join("/")}: ${pairHistory.unavailable}`] : []),
-  });
-
-  // The ticker set and range are visible in-pane and an invalid list shows in
-  // the body, so the footer carries load state, and a future's rolls as GR
-  // says them. `r` is global: no hint.
-  const rollNotes = correlationRollNotes(symbols, seriesBySymbol).join(" · ");
+  // What concerns a symbol (a failed refresh, a future's rolls as GR says them) or the selected pair is said under
+  // the matrix while a cell of it is selected, as a table's row note is; the footer carries the matrix's load state.
+  // The ticker set and range are visible in-pane and an invalid list shows in the body. `r` is global: no hint.
+  const cellNote = matrixCellNotes(selection ? [...new Set(selection)] : [], seriesBySymbol,
+    pair && pairHistory?.unavailable ? `${pair.join("/")}: ${pairHistory.unavailable}` : null).join(" ");
   usePaneFooter("correlation", () => ({
     info: !settings.symbolsError && symbols.length >= 2 && statusSummary
-      ? [{ id: "status", parts: [{ text: statusSummary, tone: "muted" as const }] },
-        ...(rollNotes ? [{ id: "rolls", parts: [{ text: rollNotes, tone: "muted" as const }] }] : [])]
+      ? [{ id: "status", parts: [{ text: statusSummary, tone: "muted" as const }] }]
       : [],
-  }), [rollNotes, settings.symbolsError, statusSummary, symbols.length]);
+  }), [settings.symbolsError, statusSummary, symbols.length]);
 
   // Rows are exactly as wide as the matrix (after the one-cell inset), so the
   // zebra and hover bands stop at the last column instead of running on.
   const matrixRowWidth = correlationMatrixLayout(symbols, width).rowWidth;
   const chartRows = pair ? matrixChartRows(width, height, symbols.length, matrixRowWidth) : 0;
-  const matrixHeight = Math.max(1, height - 1 - (chartRows > 0 ? chartRows + 1 : 0));
+  const noteRows = cellNote ? wrapTextLines(cellNote, Math.max(1, width - 2)).length : 0;
+  const matrixHeight = Math.max(1, height - 1 - noteRows - (chartRows > 0 ? chartRows + 1 : 0));
   const bodyStatus = settings.symbolsError
     ? <PaneStatusBody error={settings.symbolsError} />
     : symbols.length < 2
@@ -287,6 +282,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
             rowColor={(symbol) => rowHeaderColor(seriesBySymbol.get(symbol)?.status ?? "loading")}
             onOpenSymbol={openSymbol}
           />
+          <RowNote>{cellNote}</RowNote>
           {chartRows > 0 && pair && pairHistory ? (
             <MatrixPairChart
               pair={pair}

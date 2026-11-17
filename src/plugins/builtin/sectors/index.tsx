@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box } from "../../../ui";
-import { DataTableView, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange } from "../../../components";
+import { DataTableView, usePaneFooter, usePaneTabs, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange } from "../../../components";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -304,7 +304,7 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
       case "name":
         return { text: row.name, color: colors.text };
       case "etf":
-        return { text: row.etf, color: colors.textDim };
+        return { text: row.etf, color: !row.loading && sectorRowIssues(row).length > 0 ? colors.warning : colors.textDim };
       case "price":
         if (row.loading && row.price === null) {
           return { text: "…", color: colors.textDim };
@@ -352,13 +352,9 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
 
   const updatedAgo = useUpdatedAgo(lastRefreshMs);
   const returnAsOfDate = rows.map((row) => row.returnAsOfDate).filter((date): date is string => !!date).sort().at(-1);
-  // Rows with a value the source could not supply are a limitation of the
-  // table on screen; they sit behind the footer's warning indicator, one line
-  // per ETF, rather than as a count beside the status.
-  const rowIssueNotices = rows
-    .filter((row) => !row.loading && sectorRowIssues(row).length > 0)
-    .map((row) => `${row.etf}: ${sectorRowIssues(row).join(" · ")}`);
-  usePaneNoticeFooter({ registrationId: "sectors:row-issues", notices: rowIssueNotices, focused });
+  // A row with a value the source could not supply says so on that row: its
+  // ETF in the warning colour, and the reason under the table while it is
+  // selected (`rowNote`). The footer is for the whole board.
 
   // Signed out or free, the ETFs' quotes are delayed ones.
   const quoteDelay = useQuoteDelayFooter(rows.map((row) => (row.loading ? null : { dataSource: row.quoteDataSource })), "sectors-delay");
@@ -406,6 +402,7 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
       onHeaderClick={handleHeaderClick}
       getItemKey={(row) => row.etf}
       renderCell={renderCell}
+      rowNote={(row) => !row.loading && sectorRowIssues(row).length > 0 ? `${row.etf}: ${sectorRowIssues(row).join("; ")}.` : null}
       selectedTextOverridesCellColor
       emptyStateTitle={loadError ?? "No sectors selected."}
     />
