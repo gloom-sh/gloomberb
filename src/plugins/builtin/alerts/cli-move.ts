@@ -8,7 +8,7 @@ import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchange
 import { chunked, mapWithConcurrency } from "../../../utils/concurrency";
 import type { QuoteBatchResult } from "../../../types/data-provider";
 import { findCollection } from "../portfolio-list/cli/render";
-import { alertListing } from "./format";
+import { alertListing, readingSessionWords } from "./format";
 import { createAlert, sameLevelRule } from "./alert-engine";
 import { moveBasisText, moveCondition, movePercentText, moveReached, moveRuleWords, parseMovePercent } from "./move";
 import { moveQuoteFields } from "./quotes";
@@ -220,7 +220,7 @@ export function moveNowText(alert: AlertRule, now = Date.now()): string | null {
   const percent = alert.lastCheckedPrice;
   if (percent == null || !Number.isFinite(percent)) return null;
   const reached = moveReached(alert, percent) ? ", so it goes off at the app's next check" : "";
-  return `now ${movePercentText(percent)} ${moveBasisText(alert.lastMoveBasis, now)}${reached}`;
+  return `now ${movePercentText(percent)}${readingSessionWords(alert)} ${moveBasisText(alert.lastMoveBasis, now)}${reached}`;
 }
 
 /** "LSE 120, JPX 100, NYSE 3": how many alerts were added on each venue, most first. */

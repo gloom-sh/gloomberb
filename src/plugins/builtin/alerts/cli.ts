@@ -5,7 +5,7 @@ import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metr
 import { ALERT_ADD_FORMS, ALERT_KINDS_TEXT, parseRuleAddArgs, RULE_US_DATA, ruleDelivery, type RuleAddRequest } from "./cli-forms";
 import { alertChangeEntry, appendAlertLog, type AlertLogAction } from "./fired-log";
 import { alertLogRule } from "./alert-log";
-import { alertListing, alertReadingAt, alertReadingText, isoUtc, listingWithCurrency, measureLabel, NOT_CHECKED_YET } from "./format";
+import { alertListing, alertReadingAt, alertReadingText, isoUtc, listingWithCurrency, measureLabel, NOT_CHECKED_YET, readingSessionWords } from "./format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { quoteAlertFields } from "./quotes";
 import { createEventAlert } from "./events";
@@ -18,13 +18,14 @@ import { checkedWhenSignedIn, NEEDS_SIGN_IN, needsSignInNote } from "./event-row
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
-import { requireQuotedListing } from "../../../cli/quote-answer";
-import { coinListingNotes, EXCHANGE_OPTION, listingReadNotes, requireListingArg, usListingsOnlyMessage } from "../../../cli/listing-arg";
+import { AlertListingRefusal, resolveAlertListing } from "../../../cli/alert-listing";
+import { earningsListingVenue } from "./earnings-listing";
+import { coinListingNotes, EXCHANGE_OPTION, listingReadNotes, requireListingArg, usListingsOnlyMessage, type ListingDeps } from "../../../cli/listing-arg";
 import { saveConfig } from "../../../data/config/store";
 import { resumeStateKey } from "../../registry/plugin-state";
 import type { CliCommandDef } from "../../../types/plugin";
 import type { Quote } from "../../../types/financials";
-import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { extendedPrintSession, getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { cliStyles } from "../../../utils/cli-output";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
@@ -51,13 +52,13 @@ import {
 } from "./calendar-events";
 import { createAlert, formatAlertDescription, levelAlreadyMet, rearmAlert, sameLevelRule } from "./alert-engine";
 import { alertPriceText } from "./price-text";
-import { ALERTS_PLUGIN_ID } from "./constants";
+import { ALERTS_PLUGIN_ID, PRICE_DELIVERY } from "./constants";
 import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
 import { alertKindLabel, fetchAlertHistory, ruleStateText, type AlertRuleState } from "./history";
 import { apiClient } from "../../../api-client";
 import { IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
 import { isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
-import { farTargetMessage, levelInQuoteUnit } from "./quotes";
+import { commodityFutureNote, farTargetMessage, levelInQuoteUnit } from "./quotes";
 import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel } from "./research-builder";
 import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
@@ -93,14 +94,6 @@ import { MOVE_CHECKS_KEY, moveChecksOf, readMoveChecks, withMoveChecks, type Mov
 import { listAddLookups } from "../portfolio-list/cli/bulk-symbols";
 import type { AlertCondition, AlertRule } from "./types";
 
-/**
- * What delivers a price alert, as docs/usage.md states it: the app checks it on
- * every tick while it runs. Signed in with Cloud sync on, Gloom Cloud also
- * pushes the trigger to a registered phone, and emails it once no app has
- * synced the account for a while, so a rule the app has synced reaches you
- * with the app closed. Signed out, only the running app does.
- */
-const PRICE_DELIVERY = "the app alerts while it is running; sign in with Cloud sync for email or phone alerts when it is closed";
 
 const ADD_USAGE = `Usage: gloom alerts add <symbol> <above|below|crosses> <price>, or another kind. ${ALERT_KINDS_TEXT}`;
 const DAYS_RULE = `--days takes a whole number of days from 1 to ${MAX_LEAD_DAYS}; without it the alert goes off 1 day before.`;
@@ -110,11 +103,6 @@ const COUNTRY_RULE = "--country is for an alert on a calendar event, such as ale
 const BENCHMARK_RULE = "--benchmark takes the listing an RRG alert is measured against (SPY by default, as in RRG),";
 /** `XLK/SPY`, `XLK:NYSEARCA/SPY`: two listings, or one written with a slash (BRK/B, EUR/USD). */
 const PAIR_SHAPE = /^[^/\s]+\/[^/\s]+$/;
-/** A listing check that hands back its refusal instead of ending the command, so a pair can be read as a ratio. */
-class ListingRefusal extends Error {
-  constructor(message: string, readonly details?: string) { super(message); }
-}
-const PROBE = { fail: (message: string, details?: string): never => { throw new ListingRefusal(message, details); } };
 
 /** What `alerts add` was asked for, before any listing or date is looked up. */
 export type AlertAddRequest =
@@ -888,6 +876,14 @@ export const alertsCliCommand: CliCommandDef = {
     const now = Date.now();
     const today = newYorkToday(new Date(now));
     const failWith = (error: unknown): never => ctx.fail(error instanceof Error ? error.message : String(error));
+    // A symbol whose company moved names the same add on its new symbol.
+    const alertRetry = (symbol: string) => `gloom alerts add ${symbol} ${args.slice(2).join(" ")}`;
+    // The listing an alert follows, read as `quote` reads it and held to one that trades (`resolveAlertListing`).
+    const requireAlertListing = (typed: string, market: ListingDeps, exchange: string | null | undefined = exchangeOption) =>
+      resolveAlertListing(typed, exchange, market, { retry: alertRetry }).catch((error: unknown) => {
+        if (error instanceof AlertListingRefusal) return ctx.fail(error.message, error.details);
+        throw error;
+      });
 
     const parseAdd = (): AlertAddRequest => {
       try {
@@ -916,18 +912,18 @@ export const alertsCliCommand: CliCommandDef = {
         // of several, each that fails is named in the summary.
         if (unique.inputs.length === 1) {
           const input = unique.inputs[0]!.input;
-          const quoted = await requireQuotedListing(input, exchangeOption, market, ctx, "alerts add");
+          const quoted = await requireAlertListing(input, market);
           const exchange = quoted.listing.exchange || canonicalExchange(quoted.quote.listingExchangeName || quoted.quote.exchangeName);
           return { listings: [{ input, listing: { symbol: quoted.listing.key, ...exchange ? { exchange } : {} }, quote: quoted.quote, notes: quoted.notes }], repeats: unique.repeats, leftOut: 0 };
         }
-        const listings = await quoteTypedSymbols(unique.inputs.map((entry) => entry.input), (symbol) => requireQuotedListing(symbol, exchangeOption, market, PROBE, "alerts add"));
+        const listings = await quoteTypedSymbols(unique.inputs.map((entry) => entry.input), (symbol) => resolveAlertListing(symbol, exchangeOption, market, { retry: alertRetry }));
         return { listings, repeats: unique.repeats, leftOut: unique.leftOut };
       });
     }
     // XLK/SPY is first a listing written with a slash (BRK/B, EUR/USD); one that quotes nothing is the ratio of the two.
     const pairListing = typedRequest?.kind === "price" && PAIR_SHAPE.test(typedRequest.symbol)
-      ? await withMarketData(ctx, (market) => requireQuotedListing(typedRequest.symbol, exchangeOption, market, PROBE, "alerts add")).catch((error: unknown) => {
-        if (!(error instanceof ListingRefusal)) throw error;
+      ? await withMarketData(ctx, (market) => resolveAlertListing(typedRequest.symbol, exchangeOption, market, { retry: alertRetry })).catch((error: unknown) => {
+        if (!(error instanceof AlertListingRefusal)) throw error;
         if (!notATickerSymbol(error.message)) return ctx.fail(error.message, error.details);
         return null;
       })
@@ -952,7 +948,7 @@ export const alertsCliCommand: CliCommandDef = {
     // a news, flow or IV rule on a symbol follows that listing too, and only in the US, where their data is.
     const priced = pairListing ? pairListing : listedSymbol
       ? await withMarketData(ctx, async (market) => {
-        const quoted = await requireQuotedListing(listedSymbol, exchangeOption, market, ctx, "alerts add");
+        const quoted = await requireAlertListing(listedSymbol, market);
         // BTC-USD and ETH-USD have Deribit's options, which OPX and OVDV read: an IV level or risk reversal follows that fit.
         const coinOptions = research?.kind === "iv_level" && listedCoinOptions(quoted.listing.key) != null;
         if (usOnly && !coinOptions) {
@@ -972,6 +968,9 @@ export const alertsCliCommand: CliCommandDef = {
     // A bare coin ticker read as another listing (SOL, a stale company; BTC, the Grayscale trust) gets `quote`'s note
     // naming the coin's pair, before a metric alert names the venue it was read on.
     const coinNote = priced ? coinListingNotes(priced.listing, priced.quote)[0] ?? null : null;
+    // GOLD is Gold.com, whose price is no gold future's: `quote` names GC=F beside it, and so does the alert.
+    const futureNote = priced && listedSymbol && !exchangeOption && !coinNote
+      ? commodityFutureNote(listedSymbol, priced.quote, request?.kind === "price" ? alertRetry : null) : null;
     // What the alert reads now, which it is saved with, so lists and ALRT show it before the app has run.
     let reading: Partial<AlertRule> = {};
     // A daily rule whose close could not be read yet: why, which the add says beside when it is first checked.
@@ -983,7 +982,7 @@ export const alertsCliCommand: CliCommandDef = {
       const typedMetric = request.metric;
       if (isRelativeMetric(typedMetric)) {
         // The benchmark is held to a listing that quotes, as the symbol is.
-        const reference = await withMarketData(ctx, (market) => requireQuotedListing(benchmarkKey(typedMetric), null, market, ctx, "alerts add"));
+        const reference = await withMarketData(ctx, (market) => requireAlertListing(benchmarkKey(typedMetric), market, null));
         const benchmarkExchange = canonicalExchange(reference.listing.exchange || reference.quote.listingExchangeName || reference.quote.exchangeName);
         if (reference.listing.symbol === priced.listing.symbol && benchmarkExchange === exchange) {
           ctx.fail(`${typedMetric.kind === "rrg" ? "An RRG alert" : "A ratio alert"} compares two listings; ${priced.listing.symbol} is on both sides.`);
@@ -1033,7 +1032,7 @@ export const alertsCliCommand: CliCommandDef = {
     if (request?.kind === "price" && priced) {
       // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
       // Against the price the alert is checked on, as Add Alert measures it.
-      const far = farTargetMessage(priced.listing.key, request.price, priced.quote.price, coinNote, isPenceQuotedLine(priced.quote));
+      const far = farTargetMessage(priced.listing.key, request.price, priced.quote.price, coinNote ?? futureNote, isPenceQuotedLine(priced.quote));
       if (far) ctx.fail(far);
     }
     // What a typed listing was read as (7203:TSE as 7203:JPX, MXN as MXN:FWB2), said beside what was added.
@@ -1042,7 +1041,7 @@ export const alertsCliCommand: CliCommandDef = {
       && !listedSymbol.includes(":") && !PAIR_SHAPE.test(listedSymbol)
       ? await withMarketData(ctx, (market) => sameNameSeriesNote(listedSymbol, priced, market.findCatalogSeriesNamed?.(listedSymbol), request))
       : null;
-    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...seriesNote ? [seriesNote] : [], ...benchmarkNotes, ...penceNote ? [penceNote] : []];
+    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...futureNote ? [futureNote] : [], ...seriesNote ? [seriesNote] : [], ...benchmarkNotes, ...penceNote ? [penceNote] : []];
     let newEventRule: EventAlertRule | null = null;
     let newResearchRule: EventAlertRule | null = null;
     if (research) {
@@ -1114,9 +1113,16 @@ export const alertsCliCommand: CliCommandDef = {
       const target: ScheduledEventTarget = macro
         ? { kind: "macro", event: macro.event }
         : await requireListingArg(earnings!.symbol, exchangeOption, ctx)
-          .then((listing) => {
+          .then(async (listing) => {
             read = listingReadNotes(listing);
-            return { kind: "earnings" as const, symbol: listing.symbol, exchange: listing.exchange };
+            if (listing.exchange) return { kind: "earnings" as const, symbol: listing.symbol, exchange: listing.exchange };
+            // A bare symbol is the listing `quote` reads it as: D05 and "Singtel" are on SGX, which earnings alerts do not follow.
+            const abroad = await withMarketData(ctx, (market) => earningsListingVenue(earnings!.symbol, market, { retry: alertRetry })
+              .catch((error: unknown) => error instanceof AlertListingRefusal ? ctx.fail(error.message, error.details) : Promise.reject(error)));
+            read.push(...abroad.notes);
+            return abroad.exchange
+              ? { kind: "earnings" as const, symbol: abroad.symbol, exchange: abroad.exchange }
+              : { kind: "earnings" as const, symbol: listing.symbol, exchange: listing.exchange };
           });
       const lead = earnings?.results ? "results" as const : (macro ?? earnings!).leadDays;
       // A listing the rule cannot follow fails before any request.
@@ -1311,7 +1317,7 @@ export const alertsCliCommand: CliCommandDef = {
         const goesOffThen = daily && alreadyMet ? ` It goes off then if it is still ${alert.condition}.` : "";
         const notes = [
           alert.metric ? unread ? `Not read yet: ${unread.replace(/\.$/, "")}.` : `${metricReadingNote(alert)}${met}.`
-            : checkedPrice != null ? `Last price ${alertPriceText(alert, checkedPrice)}${met}.` : null,
+            : checkedPrice != null ? `Last price ${alertPriceText(alert, checkedPrice)}${readingSessionWords({ lastQuoteSession: extendedPrintSession(priced?.quote, checkedPrice) ?? undefined })}${met}.` : null,
           firstCheck ? `First checked on the ${firstCheck.day} ${weekly ? "weekly close" : "close"}, from ${isoUtc(firstCheck.at).slice(11, 16)} UTC.${goesOffThen}`
             : goesOffThen ? `It goes off on the first close it is checked on if it is still ${alert.condition}.` : null,
         ].filter(Boolean).join(" ");

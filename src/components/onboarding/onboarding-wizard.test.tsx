@@ -485,6 +485,23 @@ describe("OnboardingWizard", () => {
     expect(watching).toEqual(["SPY", "QQQ", "NVDA", "AMZN", "TSLA"]);
   });
 
+  test("the setup quote preview dates its price even in a narrow terminal", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-"));
+    const tickerRepository = new JsonTickerRepository();
+    const marketData = createMarketData();
+    const readQuote = marketData.getQuote.bind(marketData);
+    marketData.getQuote = async (...args) => {
+      const quote = await readQuote(...args);
+      return quote ? { ...quote, lastUpdated: Date.parse("2026-11-13T16:30:00Z") } : quote;
+    };
+    await tui.render(
+      <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={{ ...createPluginRegistry({ tickerRepository }), marketData }} />,
+      { width: 60, height: 32 },
+    );
+    await typeText("MSFT");
+    expect(await waitForFrame("As of")).toContain("2026-11-13 16:30 UTC");
+  });
+
   test("each position takes its listing's currency unless one is typed, and blank falls back to the portfolio's", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-currency-"));
     const tickerRepository = new JsonTickerRepository();

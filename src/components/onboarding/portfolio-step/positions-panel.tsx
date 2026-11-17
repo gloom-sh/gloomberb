@@ -5,6 +5,8 @@ import { shownPriceColor } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
+import { regularSessionValuationTime } from "../../../market-data/quotes/regular-session-valuation";
+import { formatUtcTime } from "../../../utils/utc-time";
 import { formatPercentRaw } from "../../../utils/format";
 import { Button, NumberField, Prose, TextField } from "../../ui";
 import { DelayedMark } from "../../ui/delayed-mark";
@@ -67,17 +69,26 @@ function PreviewLine({ preview, error }: Pick<OnboardingPositionsState, "preview
   const change = headline?.changePercent;
   // Only the name gives way to a narrow row, clipped on its right: the symbol, price and move keep every cell.
   return (
-    <Box flexDirection="row" alignItems="center" minWidth={0} overflow="hidden">
-      <Box flexShrink={0}><Text fg={colors.text} attributes={TextAttributes.BOLD}>{preview.symbol}</Text></Box>
-      {preview.name ? (
-        <Box flexShrink={1} minWidth={0} overflow="hidden" paddingLeft={2}><Text fg={colors.textDim}>{preview.name}</Text></Box>
-      ) : null}
-      {price != null ? <Box flexShrink={0} paddingLeft={2}><Text fg={colors.text}>{formatMarketPrice(price, { maxWidth: 12 })}</Text></Box> : null}
-      {change != null ? <Box flexShrink={0} paddingLeft={1}><Text fg={shownPriceColor(change, 2, colors)}>{formatPercentRaw(change)}</Text></Box> : null}
-      {price != null && delay != null ? <Box flexShrink={0} paddingLeft={1}><DelayedMark minutes={delay} /></Box> : null}
-      {preview.duplicate ? <Box flexShrink={0}><Text fg={colors.textMuted}>{t("  already added")}</Text></Box> : null}
+    <Box flexDirection="column" minWidth={0} flexShrink={0}>
+      <Box flexDirection="row" alignItems="center" minWidth={0} overflow="hidden">
+        <Box flexShrink={0}><Text fg={colors.text} attributes={TextAttributes.BOLD}>{preview.symbol}</Text></Box>
+        {preview.name ? (
+          <Box flexShrink={1} minWidth={0} overflow="hidden" paddingLeft={2}><Text fg={colors.textDim}>{preview.name}</Text></Box>
+        ) : null}
+        {price != null ? <Box flexShrink={0} paddingLeft={2}><Text fg={colors.text}>{formatMarketPrice(price, { maxWidth: 12 })}</Text></Box> : null}
+        {change != null ? <Box flexShrink={0} paddingLeft={1}><Text fg={shownPriceColor(change, 2, colors)}>{formatPercentRaw(change)}</Text></Box> : null}
+        {price != null && delay != null ? <Box flexShrink={0} paddingLeft={1}><DelayedMark minutes={delay} /></Box> : null}
+        {preview.duplicate ? <Box flexShrink={0}><Text fg={colors.textMuted}>{t("  already added")}</Text></Box> : null}
+      </Box>
+      {price != null ? <Text fg={colors.textDim} wrapText>{previewTime(preview)}</Text> : null}
     </Box>
   );
+}
+
+function previewTime(preview: OnboardingPositionsState["preview"]): string {
+  if (preview.status !== "ready") return "";
+  const time = regularSessionValuationTime(preview.quote);
+  return time ? `As of ${formatUtcTime(time)}` : "Price time unavailable";
 }
 
 const wholeCurrencyFormatters = new Map<string, Intl.NumberFormat>();
@@ -280,11 +291,6 @@ function TuiFieldRow({
           <Text fg={value ? colors.text : colors.textMuted}>{value || fieldPlaceholder(field, state)}</Text>
         )}
       </Box>
-      {field === "ticker" ? (
-        <Box flexGrow={1} minWidth={0} overflow="hidden" paddingLeft={1}>
-          <PreviewLine preview={state.preview} error={null} />
-        </Box>
-      ) : null}
       {/* The form's last field ends in Add, as the desktop's row does, so a mouse adds the row without Enter. */}
       {index === POSITION_FIELDS.length - 1 ? (
         <Box flexShrink={0} paddingLeft={1}>
@@ -332,7 +338,9 @@ function tuiPositionsNote(state: OnboardingPositionsState, editing: boolean): st
  */
 export function tuiPositionsPanelRows(state: OnboardingPositionsState, editing: boolean, width: number): number {
   const noteRows = wrapTextLines(tuiPositionsNote(state, editing), tuiNoteWidth(width)).length;
-  return POSITION_FIELDS.length + noteRows + 4 + Math.min(state.positions.length, TUI_VISIBLE_ROWS);
+  const previewRows = state.preview.status === "idle" ? 0
+    : state.preview.status === "ready" ? 1 + wrapTextLines(previewTime(state.preview), tuiNoteWidth(width)).length : 1;
+  return POSITION_FIELDS.length + previewRows + noteRows + 4 + Math.min(state.positions.length, TUI_VISIBLE_ROWS);
 }
 
 function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut, columns }: PositionsPanelProps) {
@@ -347,6 +355,7 @@ function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut,
       {POSITION_FIELDS.map((field, index) => (
         <TuiFieldRow key={field} field={field} index={index} state={state} inputRef={inputRef} editing={editing} />
       ))}
+      <PreviewLine preview={state.preview} error={null} />
       {/* Wraps in a narrow window (64 columns) rather than cutting how the step goes on, at the words the
           card's height counted (tuiPositionsPanelRows), so the card holds every line it draws. */}
       <Box flexShrink={0} flexDirection="column">

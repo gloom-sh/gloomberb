@@ -15,6 +15,9 @@ import {
 import { matchPrefix, type Command } from "../../commands/registry";
 import { pastedRootList } from "../../commands/collection-list";
 import { isCollectionCommand, SECURITY_DESCRIPTION_SEARCH } from "../../helpers";
+
+/** A command's code that is a ticker's shape too: letters, as a US listing's symbol is written. */
+const TICKER_SHAPED_CODE = /^[A-Z]{1,5}$/;
 import { recentPaneTemplateArg } from "../../pane-templates/items";
 import { dedupeById, PASTED_LIST_CATEGORY } from "../../view-model";
 import type { ResultItem } from "../../list/model";
@@ -392,6 +395,19 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
   } else if (match && !match.command.hasArg) {
     const item = commandToItem(match.command);
     if (item) items.push(item);
+    // FB is Send Feedback and a ticker too (VF, SB and CR are companies): the ticker is the row under the command,
+    // which Enter still runs, for someone who typed the code meaning the listing.
+    const code = rootQuery.trim().toUpperCase();
+    if (!match.arg && TICKER_SHAPED_CODE.test(code) && availableCommands.some((command) => command.id === "security-description")) {
+      items.push({
+        id: `ticker-code:${code}`,
+        label: `${code} as a ticker`,
+        detail: "Open security details after resolving a ticker",
+        category: "Search",
+        kind: "command",
+        action: () => openModeRoute("ticker-search", code, SECURITY_DESCRIPTION_SEARCH),
+      });
+    }
   } else if (!rootQuery) {
     // One row per function: a code a group above already runs as it is (a
     // recent CHAT, Start Here's PF) is not listed again in the groups below.

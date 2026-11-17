@@ -53,7 +53,7 @@ import { notATickerStop } from "../company-name-hint";
 import { CLI_ERROR_CODE, failUnreachable, failWithError, isCliFailure, isSourceUnavailableAnswer, unreachableError } from "../errors";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
-import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
+import { appCommandPointer, knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
 import { selectReportTables, splitCsvFooter, withRefusedRows, type CliReportTables } from "../report-tables";
 import { portableCsv } from "../csv-export";
 import { cliOutputWritten, printCliResult, serializeCliResult, type CliErrorObject } from "../result";
@@ -664,8 +664,10 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
           return [`Saved ${displayPath(data.outputPath)}`, renderStats(stats)].join("\n");
         },
       });
-      // The image is saved and the reason printed; --strict tells a script it should not be used.
+      // The image is saved and the reason printed; --strict tells a script it should not be used. A pane that drew
+      // nothing but its empty state ("No ticker selected.") failed either way, as `fn` does for an empty report.
       if (parsed.strict && !result.usable) process.exitCode = CLI_EXIT_CODES.unusableShot;
+      else if (!result.usable && result.render.emptyStateDetected && result.rowCount === 0) process.exitCode = CLI_EXIT_CODES.error;
     }, { command: "shot" });
   });
 }
@@ -786,14 +788,16 @@ function printCatalog(
   const botSafeEntries = effectiveParsed.botSafeOnly
     ? entries.filter((entry) => entry.capability.botSafe)
     : entries;
-  // A topic no function covers is answered by its pointer, not by the loose matches its words find.
+  // A topic no function covers is answered by its pointer, not by the loose matches its words find; so is a
+  // command of the app's own that no function is (FB, Send Feedback).
   const pointer = topicPointer(parsed.query);
-  const typed = pointer ? [] : filterPaneCatalogEntries(botSafeEntries, parsed.query);
+  const appCommand = pointer || commandPointer(parsed.query) ? null : appCommandPointer(parsed.query);
+  const typed = pointer || appCommand ? [] : filterPaneCatalogEntries(botSafeEntries, parsed.query);
   // Data no source carries yet is said once: in the text, else as the envelope's warning.
   const gap = knownGapMessage(parsed.query);
   // A word one letter off every function's ("fundng") is read as the one it is near, and the report says so; a
   // word the catalog has its own answer for ("libor") is not a typo.
-  const corrected = pointer || gap || typed.length ? null : correctCatalogQuery(botSafeEntries, parsed.query);
+  const corrected = pointer || gap || appCommand || typed.length ? null : correctCatalogQuery(botSafeEntries, parsed.query);
   const correctedMatches = corrected ? filterPaneCatalogEntries(botSafeEntries, corrected) : [];
   const readAs = corrected && correctedMatches.length ? corrected : null;
   const filtered = readAs ? correctedMatches : typed;
@@ -802,8 +806,8 @@ function printCatalog(
   const glossary = lookupGlossary(parsed.query);
   // A setting or a report can be a command, not a function: "light theme" names `config themes` beside THEM,
   // "drip" names `portfolio show --drip` beside DVD.
-  const setting = commandPointer(parsed.query);
-  const settingLeads = commandPointerLeads(parsed.query);
+  const setting = commandPointer(parsed.query) ?? appCommand;
+  const settingLeads = commandPointerLeads(parsed.query) || !!appCommand;
   const listed = pointer
     ? pointer.codes.flatMap((code) => entries.filter((entry) => entry.token === code))
     : selectPaneCatalogMatches(filtered, query, effectiveParsed.limit).shown;

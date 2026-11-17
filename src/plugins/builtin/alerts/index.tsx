@@ -13,6 +13,7 @@ import { newYorkToday } from "../earnings/board-model";
 import { checkScheduledEventAlertsNow, startScheduledEventAlerts } from "./scheduled-check";
 import { scheduledEventSources } from "./scheduled-sources";
 import {
+  earningsUsOnlyMessage,
   eventDateUnavailableMessage,
   lookupScheduledDates,
   noUpcomingEventMessage,
@@ -22,7 +23,8 @@ import {
 } from "./scheduled";
 import { isResearchAlertKind, MAX_LEAD_DAYS } from "./research-rules";
 import { EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, eventAlertStoreKey, readEventAlertStores, updateEventAlerts } from "./events";
-import { settleTypedListingKey } from "../../../tickers/listing-venues";
+import { AlertListingRefusal, resolveAlertListing } from "../../../cli/alert-listing";
+import { earningsListingVenue } from "./earnings-listing";
 import { parseListingArg } from "../../../cli/listing-arg";
 import { notATickerSymbol } from "../../../sources/provider-errors";
 import type { Quote } from "../../../types/financials";
@@ -38,16 +40,18 @@ import {
   parseAlertCommandValues,
   parseAlertShortcutValues,
 } from "./command";
-import { ALERTS_PLUGIN_ID, POLL_INTERVAL_MS, POLL_SECONDS_KEY } from "./constants";
+import { ALERTS_PLUGIN_ID, POLL_INTERVAL_MS, POLL_SECONDS_KEY, PRICE_DELIVERY } from "./constants";
 import { alertHistoryLockNote, alertsHeadless } from "./headless";
 import { alertsCliCommand } from "./cli";
 import {
+  commodityFutureNote,
   createQuoteErrorMessage,
   farTargetMessage,
   levelInQuoteUnit,
   moveQuoteFields,
   quoteAlertFields,
   quoteErrorAlertFields,
+  alertQuote,
   resolveAlertQuote,
   resolveAlertQuotes,
 } from "./quotes";
@@ -60,7 +64,7 @@ import { createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream }
 import { alertPriceText } from "./price-text";
 import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { judgeMove, moveBasisText, moveFiredText } from "./move";
-import { alertListing } from "./format";
+import { alertListing, readingSessionWords } from "./format";
 import type { AlertRule } from "./types";
 
 let catalystAlertsStop: (() => void) | null = null;
@@ -264,10 +268,18 @@ export const alertsPlugin: GloomPlugin = {
       async execute(values) {
         let input = parseAlertCommandValues(values);
         if (!input) throw new Error("Use a symbol, condition, and target price.");
-        // 7203:TSE, typed or from a link, is the venue its symbol trades on, as `alerts add` reads it.
+        // Read as `alerts add` and `quote` read it (`resolveAlertListing`): 7203:TSE is the venue its symbol trades on,
+        // "Singtel" is Z74:SGX, a listing that stopped trading is refused, and FB says Meta trades as META.
+        const notes: string[] = [];
         const quoteFor = async (typed: string) => {
-          const key = (await settleTypedListingKey(typed, { store: ctx.tickerRepository, dataProvider: ctx.marketData })).toUpperCase();
-          return { key, quote: await resolveAlertQuote(ctx.marketData, key) };
+          const found = await resolveAlertListing(typed, null, { store: ctx.tickerRepository, dataProvider: ctx.marketData })
+            .catch((error: unknown) => {
+              if (error instanceof AlertListingRefusal) throw new Error(error.details ? `${error.message} ${error.details}` : error.message);
+              throw error;
+            });
+          notes.push(...found.notes);
+          const key = found.listing.key.toUpperCase();
+          return { key, quote: alertQuote(found.quote, key) };
         };
         let resolved: Awaited<ReturnType<typeof quoteFor>>;
         try {
@@ -296,7 +308,9 @@ export const alertsPlugin: GloomPlugin = {
         // A London line's level is in the pence its quote shows: 70p, or 70 where 70 in pounds is far off.
         if (!input.metric) input = { ...input, price: levelInQuoteUnit(input, quote, symbol).price };
         // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
-        const far = farTargetMessage(symbol, input.price, quote.price, symbol.includes(":") ? null : notTheCoinNote(symbol, quote), isPenceQuotedLine(quote));
+        // GOLD is Gold.com: a target at gold's price names the future, as `alerts add` does.
+        const named = input.symbol.includes(":");
+        const far = farTargetMessage(symbol, input.price, quote.price, named ? null : notTheCoinNote(input.symbol.toUpperCase(), quote) ?? commodityFutureNote(input.symbol, quote), isPenceQuotedLine(quote));
         if (!input.metric && far) throw new Error(far);
 
         const alert: AlertRule = {
@@ -334,8 +348,13 @@ export const alertsPlugin: GloomPlugin = {
         // A level the price is already past goes off at the next check, as `alerts add` says.
         const met = !input.metric && levelAlreadyMet(alert.condition, quote.price, alert.targetPrice)
           ? `, already ${alert.condition}, so it goes off at the next check` : "";
+        // What delivers it and what became of the symbol, as `alerts add` says them.
         ctx.notify({
-          body: `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : ` (current ${alertPriceText(alert, quote.price)}${met})`}`,
+          body: [
+            `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : ` (current ${alertPriceText(alert, quote.price)}${readingSessionWords(alert)}${met})`}.`,
+            `${PRICE_DELIVERY.charAt(0).toUpperCase()}${PRICE_DELIVERY.slice(1)}.`,
+            ...notes.map((note) => /[.?!]$/.test(note) ? note : `${note}.`),
+          ].join(" "),
           type: "success",
         });
       },
@@ -358,7 +377,8 @@ export const alertsPlugin: GloomPlugin = {
           key: "event",
           label: "Event",
           type: "select",
-          defaultValue: "congress-watched",
+          // Earnings first, as the command describes itself: an alert anyone can add for any US listing.
+          defaultValue: "earnings_date",
           options: [...RESEARCH_FORM_KINDS.map((value) => ({ value, label: RESEARCH_LABELS[value] })), ...EVENT_ALERT_TEMPLATES.map((entry) => ({ label: entry.label, value: entry.id }))],
         },
         ...EVENT_ALERT_TEMPLATES.filter((entry) => entry.field != null).map((entry) => ({
@@ -383,6 +403,15 @@ export const alertsPlugin: GloomPlugin = {
         const awaitsResults = event === "earnings_date" && values["earnings_date:when"] === "results";
         if (scheduled && !awaitsResults && parseLeadDays(values[`${event}:leadDays`]) == null)
           throw new Error(`Days before must be a whole number from 1 to ${MAX_LEAD_DAYS}.`);
+        // A bare symbol is read as every alert reads it: D05 is on SGX, which earnings alerts do not follow, as `alerts add` says.
+        const earningsSymbol = event === "earnings_date" ? String(values["earnings_date:symbol"] ?? "").trim() : "";
+        if (earningsSymbol && (values["earnings_date:exchange"] ?? "US") === "US" && !parseListingArg(earningsSymbol).exchange) {
+          const abroad = await earningsListingVenue(earningsSymbol, { store: ctx.tickerRepository, dataProvider: ctx.marketData }).catch((error: unknown) => {
+            if (error instanceof AlertListingRefusal) throw new Error(error.details ? `${error.message} ${error.details}` : error.message);
+            throw error;
+          });
+          if (abroad.exchange) throw new Error(earningsUsOnlyMessage(`${abroad.symbol}:${abroad.exchange}`));
+        }
         let rule = isResearchAlertKind(event) ? createResearchAlert(event, values) : createEventAlert(event, values?.[event] || "");
         const target = scheduled ? readScheduledRule(rule)?.target : null;
         if (target) {

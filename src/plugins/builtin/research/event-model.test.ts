@@ -345,6 +345,11 @@ test("spinoff adjustment factors are not presented as verified share splits", ()
   expect(row).toMatchObject({ status: "Factor", value: "1253:1000", adjustmentFactor: 1.253,
     detail: "Split/adjustment", providerDescription: "1253:1000 split" });
   expect(row?.qEps).toBeUndefined();
+  // DBS's 1-for-10 bonus issue of 2024 is a factor of whole share counts: a split, in its terms.
+  const [bonus] = buildEventRows({ symbol: "D05", earnings: [], dividends: [],
+    splits: [{ date: "2024-04-22", fromFactor: 10, toFactor: 11, ratio: 1.1, description: "11:10" }],
+  }, null, null, "SGD");
+  expect(bonus).toMatchObject({ status: "Split", value: "11:10", detail: "11-for-10, 1 new share for every 10 held" });
 
 });
 
@@ -514,7 +519,8 @@ describe("event rows", () => {
     expect(rows).toMatchObject([
       { id: "div:2026-02-10", status: "Dividend", value: "$0.26" },
       { id: "earn:2026-01-30", status: "Earnings" },
-      { id: "split:2025-12-01:4-for-1 split", status: "Factor", value: "4:1" },
+      // Whole share counts are a split, in its terms.
+      { id: "split:2025-12-01:4-for-1 split", status: "Split", value: "4:1", detail: "4-for-1" },
     ]);
     expect(rows[0]?.qEps).toBeUndefined();
     expect(rows[0]?.annualEps).toBeUndefined();

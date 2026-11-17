@@ -20,6 +20,7 @@ import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
+import { HeardFromQuestionHost } from "./account/heard-from-question";
 import { useRunSetupAgain } from "./components/onboarding/run-setup-again";
 import { CompanyPickerHost } from "./plugins/builtin/cloud/company-picker";
 import { TerminalRelayHost } from "./plugins/builtin/cloud/terminal-relay/host";
@@ -50,6 +51,7 @@ import { AppDialogBridge } from "./app/dialog-bridge";
 import { KeybindingsProvider, useResolvedKeybindings } from "./app/keybindings";
 import { useAppPaneRuntime } from "./app/pane-runtime";
 import { bindPluginRegistryRuntimeAccess } from "./app/runtime/plugin-bindings";
+import { useExternalProfileChanges } from "./app/runtime/external-profile-changes";
 import { useAppStartupRuntime } from "./app/runtime/startup";
 import { useTickerRefreshRuntime } from "./app/runtime/ticker-refresh";
 import { useAppUpdateRuntime } from "./app/runtime/update";
@@ -425,6 +427,16 @@ function AppInner({
     scheduleConfigSave(nextConfig);
   }, []);
   useTeamCollectionsSync({ persistConfig, tickerRepository });
+  // A `gloom` command run beside the app writes the same profile: take its
+  // changes in, so none is written over. A popped-out window leaves that to the main one.
+  useExternalProfileChanges({
+    enabled: !appWideWorkElsewhere,
+    dataDir: config.dataDir,
+    dispatch,
+    stateRef,
+    pluginRegistry,
+    tickerRepository,
+  });
 
   useAppPaneRuntime({
     dataProvider,
@@ -564,7 +576,8 @@ function AppInner({
         <ThemedAppRoot>
           {chrome.header && (
             <Header
-              onOpenHelp={() => {
+              commandInputAvailable={!onboardingActive}
+              onOpenHelp={onboardingActive ? undefined : () => {
                 recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
                 pluginRegistry.showPane("help");
               }}
@@ -587,6 +600,7 @@ function AppInner({
           </TransientLayoutProvider>
           {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}
           {initialized && !onboardingActive && !signInGateActive ? <AttentionCountsNotice notify={notifyRequest} /> : null}
+          {initialized && !onboardingActive && !signInGateActive ? <HeardFromQuestionHost /> : null}
           <TerminalRelayHost device={remoteControlAdapter?.terminalDevice} />
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard

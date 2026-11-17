@@ -1,0 +1,112 @@
+import { describe, expect, test } from "bun:test";
+import { ApiRequestError } from "../api-client/errors";
+import { CloudHeardFromApi, type HeardFromState } from "../api-client/heard-from";
+import {
+  heardFromDueAccount,
+  type HeardFromChoice,
+  markHeardFromDue,
+  runHeardFromQuestion,
+  takeHeardFromDue,
+} from "./heard-from";
+
+function deps({ state, choice = null, fail }: {
+  state: () => Promise<HeardFromState>;
+  choice?: HeardFromChoice;
+  fail?: "writes";
+}) {
+  const calls: string[] = [];
+  const write = (name: string) => async () => {
+    calls.push(name);
+    if (fail === "writes") throw new Error("offline");
+  };
+  return {
+    calls,
+    deps: {
+      getState: state,
+      reportShown: write("shown"),
+      answer: async (answer: string, note?: string) => {
+        calls.push(note ? `answer ${answer} ${note}` : `answer ${answer}`);
+        if (fail === "writes") throw new Error("offline");
+      },
+      skip: write("skip"),
+      ask: async (shown: () => void) => {
+        shown();
+        shown();
+        calls.push("asked");
+        return choice;
+      },
+    },
+  };
+}
+
+describe("when the app asks where an account heard about Gloom", () => {
+  test("a just-made account is asked, and its answer kept", async () => {
+    const run = deps({
+      state: async () => ({ ask: true, settled: false }),
+      choice: { answer: "other", note: "a podcast" },
+    });
+    expect(await runHeardFromQuestion(run.deps)).toBe("answered");
+    expect(run.calls).toEqual(["shown", "asked", "answer other a podcast"]);
+  });
+
+  test("Skip is kept as a skip", async () => {
+    const run = deps({ state: async () => ({ ask: true, settled: false }), choice: null });
+    expect(await runHeardFromQuestion(run.deps)).toBe("skipped");
+    expect(run.calls).toEqual(["shown", "asked", "skip"]);
+  });
+
+  test("an account the service has settled (answered, skipped, too old) is not asked", async () => {
+    const run = deps({ state: async () => ({ ask: false, settled: true }) });
+    expect(await runHeardFromQuestion(run.deps)).toBe("not-asked");
+    expect(run.calls).toEqual([]);
+  });
+
+  test("a failed read, or a service too old to know the question, asks nothing and never throws", async () => {
+    for (const error of [new Error("network down"), new ApiRequestError("Not found", 404)]) {
+      const run = deps({ state: async () => { throw error; } });
+      expect(await runHeardFromQuestion(run.deps)).toBe("not-asked");
+      expect(run.calls).toEqual([]);
+    }
+    const garbled = deps({ state: () => new CloudHeardFromApi(async () => ({ ok: true }) as never).getHeardFrom() });
+    expect(await runHeardFromQuestion(garbled.deps)).toBe("not-asked");
+  });
+
+  test("failed writes after the question closed are only logged", async () => {
+    const run = deps({ state: async () => ({ ask: true, settled: false }), choice: { answer: "youtube" }, fail: "writes" });
+    expect(await runHeardFromQuestion(run.deps)).toBe("answered");
+    expect(run.calls).toEqual(["shown", "asked", "answer youtube"]);
+  });
+
+  test("a sign-in marks its account once; taking the mark asks at most once", () => {
+    markHeardFromDue("u1");
+    expect(heardFromDueAccount()).toBe("u1");
+    expect(takeHeardFromDue("u2")).toBe(false);
+    expect(takeHeardFromDue("u1")).toBe(true);
+    expect(takeHeardFromDue("u1")).toBe(false);
+    expect(heardFromDueAccount()).toBeNull();
+  });
+});
+
+describe("the service calls", () => {
+  test("ask before the email is confirmed, and send a note only with Other, cut to 120 characters", async () => {
+    const sent: Array<[string, RequestInit | undefined]> = [];
+    const api = new CloudHeardFromApi(async (path, options) => {
+      sent.push([path, options]);
+      return { ask: true, settled: false, outcome: null } as never;
+    });
+    expect(await api.getHeardFrom()).toEqual({ ask: true, settled: false });
+    await api.reportHeardFromShown();
+    await api.answerHeardFrom("youtube", "ignored");
+    await api.answerHeardFrom("other", `  ${"\u{1F4FA}".repeat(130)}  `);
+    await api.answerHeardFrom("other", "   ");
+    await api.skipHeardFrom();
+    expect(sent.map(([path, options]) => [path, options?.method ?? "GET", options?.body ?? null])).toEqual([
+      ["/account/heard-from?unconfirmed=1", "GET", null],
+      ["/account/heard-from/shown?unconfirmed=1", "POST", null],
+      ["/account/heard-from", "POST", JSON.stringify({ answer: "youtube" })],
+      ["/account/heard-from", "POST", JSON.stringify({ answer: "other", other: "\u{1F4FA}".repeat(120) })],
+      ["/account/heard-from", "POST", JSON.stringify({ answer: "other" })],
+      ["/account/heard-from", "POST", JSON.stringify({ skip: true })],
+    ]);
+  });
+});

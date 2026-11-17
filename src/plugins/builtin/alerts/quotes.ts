@@ -1,10 +1,12 @@
 import type { DataProvider } from "../../../types/data-provider";
 import { chunked } from "../../../utils/concurrency";
 import type { Quote } from "../../../types/financials";
-import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { extendedPrintSession, getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { canonicalExchange } from "../../../utils/exchanges";
+import { futuresContractByWord } from "../../../market-data/futures-board";
+import { isFuturesInstrument } from "../../../market-data/futures-contract";
 import { readMove } from "./move";
 import type { AlertRule } from "./types";
 
@@ -63,7 +65,7 @@ export async function resolveAlertQuotes(
 }
 
 /** A quote an alert may be judged on, at the price its active session shows; throws for a stale one or one with no price. */
-function alertQuote(quote: Quote, symbol: string): Quote {
+export function alertQuote(quote: Quote, symbol: string): Quote {
   // A last known price is not the price now: it must neither trigger an alert nor set its baseline.
   if (isQuoteStaleForCurrentSession(quote)) throw new Error(`The quote for "${symbol}" is stale.`);
   const display = getActiveQuoteDisplay(quote);
@@ -91,6 +93,7 @@ export function quoteAlertFields(
   | "lastQuoteCurrency"
   | "lastQuoteExchange"
   | "lastQuotePence"
+  | "lastQuoteSession"
 > & { lastCheckError?: undefined } {
   const exchange = quote.listingExchangeName || quote.exchangeName;
   return {
@@ -103,6 +106,8 @@ export function quoteAlertFields(
     ...(exchange ? { lastQuoteExchange: canonicalExchange(exchange) } : {}),
     // A London line in pence writes its levels in pence; a quote that is not clears it.
     lastQuotePence: isPenceQuotedLine(quote) || undefined,
+    // An after-hours print says so wherever the reading is shown, as `quote` names it beside Last.
+    lastQuoteSession: extendedPrintSession(quote, quote.price) ?? undefined,
     lastCheckError: undefined,
   };
 }
@@ -133,6 +138,25 @@ const MAX_TARGET_RATIO = 10;
 const priceText = (value: number) => value.toLocaleString("en-US", Math.abs(value) >= 1
   ? { maximumFractionDigits: 2 }
   : { maximumSignificantDigits: 4 });
+
+/**
+ * "GOLD is Gold.com, Inc.; for Gold, the future is GC=F (gloom alerts add
+ * GC=F below 3700).": a commodity's word typed bare that a security trades as
+ * (GOLD is Gold.com, WTI is W&T Offshore), with the future it may have meant,
+ * as `quote` says it. Null for any other symbol, a venue named, or a future.
+ */
+export function commodityFutureNote(
+  typed: string,
+  quote: Pick<Quote, "name" | "instrumentType">,
+  retry: ((symbol: string) => string | null) | null = null,
+): string | null {
+  const symbol = typed.trim().toUpperCase();
+  if (symbol.includes(":")) return null;
+  const contract = futuresContractByWord(symbol);
+  if (!contract || isFuturesInstrument(symbol, quote.instrumentType)) return null;
+  const command = retry?.(contract.symbol);
+  return `${symbol} is ${quote.name?.trim() || "a security"}; for ${contract.name}, the future is ${contract.symbol}${command ? ` (${command})` : ""}.`;
+}
 
 /**
  * Why a price target is refused: more than ten times the last price, or under

@@ -8,6 +8,7 @@ import {
   type AccountSubmitError,
 } from "../../account/auth-model";
 import { useEmailAuthAttempt } from "../../account/email-auth-attempt";
+import { markHeardFromDue } from "../../account/heard-from";
 
 const onboardingLog = debugLog.createLogger("onboarding");
 
@@ -66,8 +67,10 @@ export function useOnboardingAccount({
     },
     onSwitchToLogin: () => switchToAccountLogin(),
     onAttemptStart: () => setEditingField(false),
-    onSignedIn: (_user, outcome) => {
+    onSignedIn: (user, outcome) => {
       onboardingLog.info("Onboarding account step completed", { mode: outcome.mode });
+      // Asked where it heard about Gloom once setup closes, never inside it.
+      markHeardFromDue(user.id);
       resetAccountPassword();
       setAccountOutcome(outcome);
       setAccountSub("signed-in");
@@ -123,6 +126,8 @@ export function useOnboardingAccount({
     cancel();
     resetAccountPassword();
     onboardingLog.info("Onboarding account step completed", { mode: "qr" });
+    const accountId = apiClient.getCurrentUser()?.id;
+    if (accountId) markHeardFromDue(accountId);
     setAccountOutcome({ mode: "login", email });
     setAccountSub("signed-in");
     nextStep();

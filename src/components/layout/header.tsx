@@ -865,8 +865,10 @@ function HeaderHelpButton({ nativePaneChrome, onPress }: { nativePaneChrome: boo
 export function Header({
   onOpenHelp,
   onRestartForUpdate,
+  commandInputAvailable = true,
 }: {
   onOpenHelp?: () => void;
+  commandInputAvailable?: boolean;
   /** Applies a downloaded desktop update and relaunches; the header offers Restart only when it is given. */
   onRestartForUpdate?: () => void;
 }) {
@@ -893,7 +895,7 @@ export function Header({
   let updateStatusColumns = Math.max(
     0,
     prompt.updateColumns
-      - (onOpenHelp ? terminalButtonColumns(helpButtonProps()) + TERMINAL_HELP_PADDING_COLUMNS : 0)
+      - (commandInputAvailable && onOpenHelp ? terminalButtonColumns(helpButtonProps()) + TERMINAL_HELP_PADDING_COLUMNS : 0)
       - UPDATE_SLOT_PADDING_COLUMNS * (titleBarOverlay ? 2 : 1),
   );
   // Short of that, the closed prompt gives the status its empty room, down to
@@ -928,7 +930,7 @@ export function Header({
     dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
   }, [dispatch]);
 
-  const commandPrompt = (
+  const commandPrompt = commandInputAvailable ? (
     <HeaderCommandPrompt
       nativePaneChrome={nativePaneChrome}
       onOpen={openCommandBar}
@@ -936,7 +938,7 @@ export function Header({
       shortcutLabel={shortcutLabel}
       width={promptWidth}
     />
-  );
+  ) : <Box width={promptWidth} />;
   const marketSummary = prompt.marketColumns > 0
     ? <HeaderMarketSummary nativePaneChrome={nativePaneChrome} width={prompt.marketColumns} />
     : null;
@@ -982,7 +984,7 @@ export function Header({
             <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} status={updateStatus} />
           </Box>
         )}
-        {onOpenHelp ? <HeaderHelpButton nativePaneChrome onPress={onOpenHelp} /> : null}
+        {commandInputAvailable && onOpenHelp ? <HeaderHelpButton nativePaneChrome onPress={onOpenHelp} /> : null}
         {marketSummary}
         {showWindowControls ? <Box flexShrink={0} width={`${WINDOWS_CONTROL_GROUP_WIDTH_PX}px`} /> : null}
         {showWindowControls ? <WindowControls /> : null}
@@ -1006,7 +1008,7 @@ export function Header({
           <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} status={updateStatus} />
         </Box>
       )}
-      {onOpenHelp ? <HeaderHelpButton nativePaneChrome={nativePaneChrome} onPress={onOpenHelp} /> : null}
+      {commandInputAvailable && onOpenHelp ? <HeaderHelpButton nativePaneChrome={nativePaneChrome} onPress={onOpenHelp} /> : null}
       {marketSummary}
       {showWindowControls ? <WindowControls /> : null}
     </Box>

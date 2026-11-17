@@ -13,6 +13,7 @@ import { answerGeoFixture } from "../../../test-support/test-fixture-geo";
 import { noopRendererHost } from "../../../test-support/renderer-host";
 import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { UiHostProvider } from "../../../ui";
+import { DialogHostProvider } from "../../../ui/dialog";
 import { WorldVenueMapPane } from "./pane";
 
 const dom = createDomTestHarness({ withUi: false });
@@ -42,23 +43,33 @@ function serve() {
 
 const PANE_ID = "world-venue-map:desktop-test";
 
-function Pane({ settings }: { settings: Record<string, unknown> }) {
-  const [state, dispatch] = useReducer(appReducer, settings, (initial) => ({
-    ...createInitialState(createTestPaneConfig("/tmp/world-map-desktop-test", { paneId: "world-venue-map", instanceId: PANE_ID, settings: initial })),
-    focusedPaneId: PANE_ID,
-  }));
+/** The pane's saved state as of its last render, to read what the map kept. */
+let savedPaneState: Record<string, unknown> | undefined;
+const savedViewport = () => (savedPaneState?.pluginState as Record<string, Record<string, unknown>> | undefined)?.["market-overview"]?.["map:viewport"];
+
+function Pane({ settings, homeArea }: { settings: Record<string, unknown>; homeArea?: string }) {
+  const [state, dispatch] = useReducer(appReducer, settings, (initial) => {
+    const config = createTestPaneConfig("/tmp/world-map-desktop-test", { paneId: "world-venue-map", instanceId: PANE_ID, settings: initial });
+    if (homeArea) config.pluginConfig["market-overview"] = { mapHomeArea: homeArea };
+    return { ...createInitialState(config), focusedPaneId: PANE_ID };
+  });
+  savedPaneState = state.paneState[PANE_ID];
   return (
     <UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
       <WebInputHostProvider>
-        <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="market-overview" runtime={createTestPluginRuntime()} width={130} height={32} footerKeys>
-          {(body) => <WorldVenueMapPane paneId={PANE_ID} paneType="world-venue-map" width={body.width} height={body.height} focused />}
-        </TestPaneFrame>
+        <DialogHostProvider dialog={{ alert: async () => {}, prompt: async () => undefined }} isOpen={false}>
+          <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="market-overview" runtime={createTestPluginRuntime()} width={130} height={32} footerKeys>
+            {(body) => <WorldVenueMapPane paneId={PANE_ID} paneType="world-venue-map" width={body.width} height={body.height} focused />}
+          </TestPaneFrame>
+        </DialogHostProvider>
       </WebInputHostProvider>
     </UiHostProvider>
   );
 }
 
-const mount = (settings: Record<string, unknown>) => dom.render(<Pane settings={settings} />);
+/** Long enough for a resting view to be saved (the map waits a moment before it does). */
+const settled = () => act(async () => { await Bun.sleep(450); });
+const mount = (settings: Record<string, unknown>, homeArea?: string) => dom.render(<Pane settings={settings} homeArea={homeArea} />);
 
 /** A key as the desktop and the web report it, to the window the input host listens on. */
 async function press(key: string, init: { shiftKey?: boolean } = {}) {
@@ -85,6 +96,45 @@ const hints = (container: HTMLElement) => [...container.querySelectorAll('[data-
   .join(" ");
 
 describe("MAP on the desktop and the web", () => {
+  test("a place argument starts a zoomed map rather than the whole world", async () => {
+    serve();
+    const container = await mount({ layers: [], venues: true, place: "51.5,-0.1" });
+    await until(container, "City 0");
+    expect(container.querySelector('[data-gloom-role="world-venue-map"]')?.getAttribute("data-zoomed")).toBe("true");
+    const [scale] = basemap(container).slice(7, -1).split(" ").map(Number);
+    expect(scale).toBeGreaterThan(1);
+  });
+
+  test("a map that starts at the home area is not saved there until it moves", async () => {
+    serve();
+    const container = await mount({ layers: ["ships"], venues: false }, "51.5,-0.1");
+    await until(container, "Dover Strait");
+    expect(container.querySelector('[data-gloom-role="world-venue-map"]')?.getAttribute("data-zoomed")).toBe("true");
+    await settled();
+    expect(savedViewport()).toBeUndefined();
+    // Moving it makes the view the person's own, kept as any map's is.
+    await press("+");
+    await settled();
+    expect(savedViewport()).toMatchObject({ centerLongitude: expect.any(Number) });
+  });
+
+  test("the venue map starts at the home area without saving it either", async () => {
+    serve();
+    const container = await mount({ layers: [], venues: true }, "51.5,-0.1");
+    await until(container, "City 0");
+    expect(container.querySelector('[data-gloom-role="world-venue-map"]')?.getAttribute("data-zoomed")).toBe("true");
+    await settled();
+    expect(savedViewport()).toBeUndefined();
+  });
+
+  test("a place the map was made with is saved as its view, whatever the home area is", async () => {
+    serve();
+    const container = await mount({ layers: ["ships"], venues: false, place: "51.5,-0.1" }, "40,-74");
+    await until(container, "Dover Strait");
+    await settled();
+    expect(savedViewport()).toEqual({ zoom: 32, centerLongitude: -0.1, centerLatitude: 51.5 });
+  });
+
   test("< and > narrow and widen the sidebar from the keyboard without a footer hint", async () => {
     serve();
     const container = await mount({ layers: [], venues: true });

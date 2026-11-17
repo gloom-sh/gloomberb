@@ -1612,6 +1612,12 @@ export const zhCN: Record<string, string> = {
   "TICKERS": "标的",
   "Which tickers do you follow?": "你关注哪些标的？",
   "Pick up to 3 for your watchlist.": "最多选 3 个加入自选列表。",
+  // "Where did you hear about Gloom?", once, after an account signs up
+  "Where did you hear about Gloom?": "你是从哪里知道 Gloom 的？",
+  "AI assistant": "AI 助手",
+  "Friend or colleague": "朋友或同事",
+  "Article or newsletter": "文章或新闻通讯",
+  "Where?": "在哪里？",
   "Skip": "跳过",
   "Equities": "股票",
   "Futures & commodities": "期货与大宗商品",

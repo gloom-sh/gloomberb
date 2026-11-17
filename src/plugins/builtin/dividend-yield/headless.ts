@@ -8,7 +8,7 @@ import { fetchDividendData, requestDividendHistory, statedForwardRate, TOKEN_YIE
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
 import {
-  convertedFromText, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
+  convertedFromText, formatConvertedAmount, formatDividendYield, forwardEstimateText, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
 } from "./view";
 import { MISSING_VALUE, formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -211,7 +211,7 @@ export function projectDividendYieldHeadless(
   const priceStatus = dividendPriceStatus(data.price, data.priceAsOf, data.priceStale);
   // A regular payer's year with fewer payments than its cadence pays: the yield says how many it counts.
   const shortfall = trailingPaymentsText(metrics.trailingPayments, { cadence: true });
-  const errors = [data.historyError, data.summaryError, tax?.checkError].filter((error): error is string => !!error);
+  const errors = [data.historyError, data.summaryError, data.cashVerificationWarning, tax?.checkError].filter((error): error is string => !!error);
 
   // A monthly payer's history that ends early: its yields and last ex-date stop there, and each says so.
   const historyEnd = metrics.lapse?.historyEnds ? metrics.lapse.lastPaid : null;
@@ -226,7 +226,7 @@ export function projectDividendYieldHeadless(
   const datesAndCash = [
     dateEntry("Last ex-dividend", metrics.lastExDividendDate),
     dateEntry("Next ex-dividend", metrics.nextExDividendDate),
-    dateEntry("Next pay", metrics.nextPayDate),
+    metrics.nextPayDate ? dateEntry("Next pay", metrics.nextPayDate) : { label: "Next pay", value: null, formatted: "Unavailable" },
     ...(data.payments.length > 0 && metrics.trailingRate === 0
       ? [{ label: "Cash status", value: "No cash distributions reported in the past 12 months." }] : []),
   ];
@@ -252,15 +252,15 @@ export function projectDividendYieldHeadless(
           { label: forwardLabel, value: roundedRatio(metrics.forwardYield),
             formatted: forwardText
             ?? (metrics.forwardYield == null ? formatDividendYield(null)
-            : `${formatDividendYield(metrics.forwardYield)} (${metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS
-              : forwardDividendBasis(metrics.forwardRateAsOf, { payDate: forwardPayDate(metrics), declared: data.declared, currency })})`) },
+            : `${formatDividendYield(metrics.forwardYield)} (${forwardEstimateText(metrics) ?? (metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS
+              : forwardDividendBasis(metrics.forwardRateAsOf, { payDate: forwardPayDate(metrics), declared: data.declared, currency }))})`) },
           ...figures.map((figure) => ({
             label: figureLabel(figure),
             value: figure.value,
             formatted: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
           })),
           { label: "Trailing rate", value: metrics.trailingRate, formatted: cashRate(metrics.trailingRate) },
-          { label: "Forward rate", value: metrics.forwardRate, formatted: cashRate(metrics.forwardRate) },
+          { label: "Forward rate", value: metrics.forwardRate, formatted: `${cashRate(metrics.forwardRate)}${metrics.forwardEstimate ? ` (${forwardEstimateText(metrics)})` : ""}` },
           { label: "Payout (basis/date unstated)", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio) },
           growthEntry("1Y Cash Growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful),
           growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),
@@ -328,6 +328,10 @@ export function projectDividendYieldHeadless(
       growth1YNotMeaningful: metrics.growth1YNotMeaningful === true,
       growth3YNotMeaningful: metrics.growth3YNotMeaningful === true,
       forwardRateAsOf: metrics.forwardRateAsOf,
+      forwardRateEstimate: metrics.forwardEstimate ?? null,
+      nextPayDateStatus: metrics.nextPayDate ? "announced" : "unavailable",
+      declaredCashAsOf: data.declaredCashAsOf ?? null,
+      cashVerificationWarning: data.cashVerificationWarning ?? null,
       // Set when a monthly payer's history stops more than 40 days ago: its forward yield is withheld and its trailing yield counts the history to then.
       historyEnds: metrics.lapse?.historyEnds ? metrics.lapse.lastPaid : null,
       // "uneven": the year's regular payments differ too widely for one to be annualized, so the forward rate is their total.

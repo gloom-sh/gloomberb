@@ -2,7 +2,7 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import {
   assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, liveDomRowCount, missingActiveTabSelections, shotCutColumnsWarning, shotLoadedNothing,
-  shotShowsText, shotTableRows,
+  shotShowsText, shotTableRows, essentialFigureMismatches,
 } from "./screenshot-assessment";
 import { buildDesktopShotPayload } from "./screenshot-payload";
 import { chartSeriesEvidenceWithinRange, chartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
@@ -16,10 +16,19 @@ import { commoditiesEnergyModule } from "../../plugins/builtin/commodities-energ
 import { realizedVolSemanticEvidence } from "../../plugins/builtin/realized-vol/evidence";
 import { coneChartSeries, realizedChartSeries } from "../../plugins/builtin/realized-vol/chart-model";
 import { collectShotSymbols } from "./data";
-import { paneStateMarkers, type DesktopPaneShotPayload, type DesktopPaneShotRenderResult } from "../desktop-pane-shot";
+import { paneStateMarkers, shotStatusDateClipped, type DesktopPaneShotPayload, type DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
+
+test("a dropped essential figure is a screenshot gap even when its table holds the same value", () => {
+  const semanticUi = [{ id: "figures", role: "figure-layout", label: "Essential figures", actions: [],
+    metadata: { figures: [{ label: "Next ex", value: "2026-11-19" }], omitted: ["Next ex"] } }];
+  expect(essentialFigureMismatches({ semanticUi, visibleText: "Next ex 2026-11-19" })).toHaveLength(1);
+  semanticUi[0]!.metadata.omitted = [];
+  expect(essentialFigureMismatches({ semanticUi, visibleText: "Next ex 2026-11-19" })).toEqual([]);
+  expect(essentialFigureMismatches({ semanticUi, visibleText: "Next ex 2026-11…" })).toHaveLength(1);
+});
 import type { MarketContext } from "../types";
 import { createSnapshotDataProvider } from "../../market-data/snapshot-provider";
 import { volatilitySemanticEvidence } from "../../plugins/builtin/volatility/evidence";
@@ -48,7 +57,20 @@ import { debtMaturitiesModule } from "../../plugins/builtin/debt-maturities";
 import { debtMaturitiesHeadless } from "../../plugins/builtin/debt-maturities/headless";
 import { traceBondsModule } from "../../plugins/builtin/trace-bonds";
 import { traceBondsHeadless } from "../../plugins/builtin/trace-bonds/headless";
-import { deriveCaptureReport, formatFreshnessLine } from "./freshness";
+import { deriveCaptureReport, formatFreshnessLine, statusDateEvidence, statusLineVariants } from "./freshness";
+
+test("fitting may shorten status context, but not the as-of date or any source clock", () => {
+  const freshness = { source: "Gloom Cloud", status: "not-a-feed" as const, asOf: "2026-10-30", retrievedAt: "2026-11-17T06:00:00Z" };
+  const dated = { dates: "data" as const, variants: statusLineVariants(freshness), dateEvidence: statusDateEvidence(freshness) };
+  expect(shotStatusDateClipped(dated, "Fri 30 Oct 2026 · not a … settlement)")).toBe(false);
+  expect(shotStatusDateClipped(dated, "Fri 30 Oct … settlement)")).toBe(true);
+  const sources = { ...freshness, asOf: "2026-11-17T06:00:00Z", sources: [
+    { source: "Venue A", asOf: "2026-11-17T06:00:00Z" }, { source: "Venue B", asOf: "2026-11-17T05:45:00Z" },
+  ] };
+  const timed = { ...dated, variants: statusLineVariants(sources), dateEvidence: statusDateEvidence(sources) };
+  expect(shotStatusDateClipped(timed, "Tue 17 Nov 2026 · Venue A 06:00 · Venue B 05:45 UTC · …")).toBe(false);
+  expect(shotStatusDateClipped(timed, "Tue 17 Nov 2026 · Venue A … Venue B 05:45 UTC")).toBe(true);
+});
 import { futuresCurveHeadless } from "../../plugins/builtin/futures-curve/headless";
 import { curveFreshnessObservations, curveReportFreshness } from "../../plugins/builtin/futures-curve/model";
 import type { FuturesContract } from "../../api-client/futures-curve";
@@ -672,6 +694,10 @@ describe("a capture of a pane that marks no rows", () => {
   );
 
   // DIAG's prose and CORR's matrix were "not verifiable" for want of table rows, however much they showed.
+  test("an ellipsis in status content is not a clipped date; the renderer's dated-line evidence decides", () => {
+    expect(assess(diag, { contentFigures: 24, statusLine: "2026-11-17 06:00 UTC · Checking…" })).toMatchObject({ usable: true, complete: true });
+    expect(assess(diag, { contentFigures: 24, statusLine: "17 Nov … history", statusLineClipped: true })).toMatchObject({ usable: false, complete: false });
+  });
   test("is read by the figures its body shows: prose passes, a form's one hint or an empty state does not", () => {
     expect(assess(diag, { contentFigures: 24 })).toMatchObject({ usable: true, empty: false, unusableReason: null });
     expect(assess(diag, { contentFigures: 1 })).toMatchObject({ usable: false, empty: true });

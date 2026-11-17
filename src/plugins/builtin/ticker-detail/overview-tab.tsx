@@ -12,7 +12,7 @@ import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-
 import { bodyLineInk, FigureText, figureLineInk, useFigureCells } from "../../../components/ui/figure";
 import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
-import { useFxRateObservations, type TickerSnapshotState } from "../../../market-data/hooks";
+import { useFxRateObservations, useTickerChangeNote, type TickerSnapshotState } from "../../../market-data/hooks";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { priceSeriesUnit } from "../../../market-data/market/index-level";
 import {
@@ -288,9 +288,12 @@ function ResolvedOverviewTab({
   // A converted TTM block names what it was converted from, at the pane's rate and its time.
   const ttmNote = [shownFundamentals?.revenue, shownFundamentals?.netIncome, shownFundamentals?.freeCashFlow].some((value) => value != null)
     ? ttmConversionNote(shownFundamentals) : undefined;
+  // FB lists a fund now, and Meta trades as META: said for someone who typed FB meaning the company, as `quote FB` says it.
+  const changeNote = useTickerChangeNote(ticker.metadata.ticker, ticker, quote);
   usePaneNoticeFooter({
     registrationId: "overview-notices",
     notices: [
+      ...(changeNote ? [changeNote] : []),
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
       ...(runwayOfferingNote ? [runwayOfferingNote] : []),
       ...(runway?.trailingGap === "short-history" ? [`Runway TTM: ${SHORT_RUNWAY_HISTORY}.`] : []),
