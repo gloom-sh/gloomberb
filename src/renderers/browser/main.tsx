@@ -20,6 +20,9 @@ import {
 import { loadWebBundledPlugins } from "./bundled-plugins";
 import { BROWSER_DATA_DIR, hasSavedBrowserConfig, installBrowserConfigStore } from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
+import { installBrowserAppBadgeHost } from "./app-badge-host";
+import { isBrowserAppActive } from "./activity";
+import { setAppActive } from "../../state/app/activity";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
 import { initializeBrowserResearchActivity, recordResearchActivity } from "../../api-client/research-activity";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
@@ -101,6 +104,8 @@ async function boot(): Promise<void> {
   applyLanguageFromConfig(config);
   const externalPlugins = await bundledPlugins;
   const deepLinkBridge = createBrowserDeepLinkBridge();
+  installBrowserAppBadgeHost();
+  setAppActive(isBrowserAppActive());
   root.render(
     <DomErrorBoundary label="Browser renderer crashed" fallback={(error) => (
       <div className="gloom-fatal">

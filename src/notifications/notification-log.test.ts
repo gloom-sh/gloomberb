@@ -71,6 +71,35 @@ describe("missed notice log", () => {
     expect(unreadNotificationLogCount()).toBe(3);
   });
 
+  test("only the background browser receives a browser-only notice, and opening it clears the unread entry", () => {
+    let active = true;
+    let opened = 0;
+    const banners: AppNotificationRequest[] = [];
+    const renderToast = () => {};
+    const { notify } = createAppNotifier({
+      isAppActive: () => active,
+      renderToast,
+      desktop: null,
+      notifyInBackground: (request) => { banners.push(request); return true; },
+    });
+    const notice = { body: "Price alert fired", refId: "price:alert-1", action: { label: "Open", onClick: () => { opened += 1; } } };
+    expect(notify(notice)).toEqual({ toastVisible: true, desktopRequested: false });
+    active = false;
+    expect(notify({ body: "Layout copied", desktop: "always" }).desktopRequested).toBe(false);
+    expect(notify(notice).desktopRequested).toBe(true);
+    expect(banners).toHaveLength(1);
+    banners[0]?.action?.onClick();
+    expect(opened).toBe(1);
+    expect(unreadNotificationLogCount()).toBe(0);
+
+    const nativeBanners: AppNotificationRequest[] = [];
+    const desktop = { notify: (request: AppNotificationRequest) => { nativeBanners.push(request); } };
+    const native = createAppNotifier({ isAppActive: () => active, renderToast, desktop });
+    expect(native.notify({ body: "Browser only", browser: true }).desktopRequested).toBe(false);
+    expect(native.notify({ body: "Chat message", browser: true, desktop: "when-inactive" }).desktopRequested).toBe(true);
+    expect(nativeBanners.map((request) => request.body)).toEqual(["Chat message"]);
+  });
+
   test("lives in this device's state store, outside config and synced settings", () => {
     const storage = new MemoryStorage();
     appendNotificationLog({ body: "TSLA below 200.00 triggered at 199.80", refId: "price:early" }, 1_000);

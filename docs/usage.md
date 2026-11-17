@@ -2470,7 +2470,8 @@ A reply, a mention, a direct or group message, or a message in a channel whose n
 
 - **Phone:** a push about 15 seconds after the message unless you read it in that time.
 - **Email:** with chat emails on, the email for a message nothing else reached goes about two minutes after it, only when you have not read it.
-- Reading a channel on one device clears its unread count and the Dock badge on the others.
+- **Browser:** open Chat’s pane settings and turn on **Browser notifications**, then allow notifications when your browser asks. Chat and missed notices can show a banner while the tab is open but hidden or unfocused. Click a banner to return to Gloom and open the message or notice. You can turn this off in the same settings.
+- Reading a channel on one device clears its unread count, Dock badge and tab count on the others.
 
 ### Unread
 
@@ -2478,7 +2479,7 @@ The dim count in the status bar, everything unread that the chip does not name (
 
 Unread also keeps the price alerts, catalyst alerts, economic release prints and team notices whose toast you may have missed, newest first, the last 300. Opening one selects the price rule in ALRT, opens the catalyst or ECO, or goes where the team card's toast goes. This list is kept on this device only.
 
-**The Dock badge.** In the macOS desktop app the Dock icon counts people, not messages: each person who sent you an unread DM or group message, each person with an unread channel message that mentions you (`@username`) or replies to you, plus every missed notice not yet read. The status bar's chip names the newest of them. It reads `99+` above 99 and shows nothing at zero, signed out or with Gloom Cloud off.
+**The Dock badge and browser tab count.** The macOS Dock icon and browser tab title count people, not messages: each person who sent you an unread DM or group message, each person with an unread channel message that mentions you (`@username`) or replies to you, plus every missed notice not yet read. The status bar's chip names the newest of them. The count reads `99+` above 99 and shows nothing at zero, signed out or with Gloom Cloud off. The tab count works even with browser notifications off.
 
 ## Ask Gloom
 

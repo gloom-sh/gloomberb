@@ -44,6 +44,7 @@ import { clinicalTrialsPlugin } from "./builtin/clinical-trials";
 import { commentLettersPlugin } from "./builtin/comment-letters";
 import { openFdaPlugin } from "./builtin/openfda";
 import { gloomberbCloudPlugin } from "./builtin/cloud";
+import { browserChatSettings } from "../renderers/browser/notifications";
 import { changelogModule } from "./builtin/changelog";
 import { roadmapModule } from "./builtin/roadmap";
 import { chartComposerModule } from "./builtin/chart-composer";
@@ -298,7 +299,15 @@ const browserEarningsPlugin = composeBuiltinPlugin({
  * browser-safe public API are absent rather than registered behind stubs.
  */
 export const browserBuiltinPlugins: readonly GloomPlugin[] = [
-  gloomberbCloudPlugin,
+  {
+    ...gloomberbCloudPlugin,
+    panes: gloomberbCloudPlugin.panes?.map((pane) => pane.id === "chat"
+      ? Object.create(Object.getPrototypeOf(pane), {
+        ...Object.getOwnPropertyDescriptors(pane),
+        settings: { value: browserChatSettings, enumerable: true },
+      })
+      : pane),
+  },
   browserPortfolioPlugin,
   browserTickerCorePlugin,
   browserOptionsVolatilityPlugin,

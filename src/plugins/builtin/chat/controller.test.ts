@@ -9,6 +9,7 @@ import {
   type ChatStateResponse,
 } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
+import { createAppNotifier } from "../../../notifications/app-notifier";
 import { MemoryPluginPersistence as MemoryPersistence } from "../../../test-support/plugin-persistence";
 import { installTestWebSocket } from "../../../test-support/cloud-api";
 import type { AppNotificationRequest } from "../../../types/plugin";
@@ -1721,6 +1722,7 @@ describe("ChatController", () => {
       body: "@bob mentioned you: hey @ada",
       type: "info",
       desktop: "when-inactive",
+      browser: true,
     }]);
     expect(controller.getSnapshot().unreadMentionCount).toBe(1);
     expect(deliveredIds).toEqual([["n1"]]);
@@ -1768,7 +1770,7 @@ describe("ChatController", () => {
     expect(deliveredIds).toEqual([["n2"]]);
   });
 
-  test("holds a background banner and drops it when the message was read on another device meanwhile", async () => {
+  test("drops a browser banner when the message was seen on another device while it was waiting", async () => {
     const persistence = new MemoryPersistence();
     const controller = withoutBackgroundDelay(createController());
     let presentationCount = 0;
@@ -1776,10 +1778,15 @@ describe("ChatController", () => {
     const asked: string[][] = [];
 
     persistSession(persistence, { emailVerified: true });
-    controller.setNotifier(() => {
-      presentationCount += 1;
-      return { toastVisible: false, desktopRequested: true };
-    });
+    controller.setNotifier(createAppNotifier({
+      isAppActive: () => false,
+      renderToast() {},
+      desktop: null,
+      notifyInBackground: () => {
+        presentationCount += 1;
+        return true;
+      },
+    }).notify);
     apiClient.markChatNotificationsDelivered = async (ids) => {
       deliveredIds.push(ids);
       return { delivered: ids.length };
@@ -1800,6 +1807,13 @@ describe("ChatController", () => {
     expect(asked).toEqual([["n1"]]);
     expect(presentationCount).toBe(0);
     expect(deliveredIds).toEqual([["n1"]]);
+
+    apiClient.getUnseenChatNotificationIds = async (ids) => ids;
+    (controller as any).handleChatNotification(mentionNotification({ id: "n2", messageId: "m2" }));
+    await settleBackgroundAlerts();
+
+    expect(presentationCount).toBe(1);
+    expect(deliveredIds).toEqual([["n1"], ["n2"]]);
   });
 
   test("still raises a background banner when the server cannot say whether it was seen", async () => {
@@ -2052,6 +2066,7 @@ describe("ChatController", () => {
       body: "@bob replied to you: answering you",
       type: "info",
       desktop: "when-inactive",
+      browser: true,
     }]);
     expect(deliveredIds).toEqual([["n1"]]);
 
@@ -2207,6 +2222,7 @@ describe("ChatController", () => {
       body: "@bob: new option flow",
       type: "info",
       desktop: "when-inactive",
+      browser: true,
       action: expect.objectContaining({ label: "Open" }),
     }]);
     notifications[0]?.action?.onClick();
@@ -2264,6 +2280,7 @@ describe("ChatController", () => {
       body: "ping",
       type: "info",
       desktop: "when-inactive",
+      browser: true,
     }]);
   });
 
@@ -2382,6 +2399,7 @@ describe("ChatController", () => {
       body: "@bob replied to you: reply without channel notify",
       type: "info",
       desktop: "when-inactive",
+      browser: true,
     }]);
   });
 

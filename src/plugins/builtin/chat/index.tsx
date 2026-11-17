@@ -178,7 +178,6 @@ export const chatModule: PluginModule = {
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
     chatHandlePromptStore.attach(ctx.persistence);
-    // The desktop app's Dock badge counts the people who wrote to you or tagged you, plus the missed notices; other hosts have no badge.
     disposeUnreadBadge?.();
     const badgeHost = getAppBadgeHost();
     disposeUnreadBadge = badgeHost
