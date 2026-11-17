@@ -30,20 +30,21 @@ function snapshotContext(withList: boolean): MarketContext {
 /** The catalog of `plugins` as a fresh profile reads it, with the series they declare. */
 export async function buildCatalogSnapshot(plugins: GloomPlugin[]): Promise<CatalogSnapshot> {
   const context = snapshotContext(false);
+  // One plugin at a time, each torn down before the next is set up: setups leave state that a dispose undoes.
+  const owners = new Map<string, string>();
+  for (const plugin of plugins) {
+    const own = await createPaneCatalog(context, [plugin]);
+    try {
+      for (const id of own.paneTemplates.keys()) owners.set(`template:${id}`, plugin.id);
+      for (const id of own.panes.keys()) owners.set(`pane:${id}`, plugin.id);
+    } finally {
+      own.destroy();
+    }
+  }
   const registry = await createPaneCatalog(context, plugins);
   try {
     const bare = await buildPaneCatalogEntries(registry, context);
     const listed = await buildPaneCatalogEntries(registry, snapshotContext(true));
-    const owners = new Map<string, string>();
-    for (const plugin of plugins) {
-      const own = await createPaneCatalog(context, [plugin]);
-      try {
-        for (const id of own.paneTemplates.keys()) owners.set(`template:${id}`, plugin.id);
-        for (const id of own.panes.keys()) owners.set(`pane:${id}`, plugin.id);
-      } finally {
-        own.destroy();
-      }
-    }
     const entries = bare.map((entry, index): CatalogSnapshotEntry => {
       const { argExamples, ...rest } = entry;
       const pluginId = (entry.templateId ? owners.get(`template:${entry.templateId}`) : undefined) ?? owners.get(`pane:${entry.paneId}`);

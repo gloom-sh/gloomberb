@@ -63,34 +63,39 @@ test("the snapshot's series answer a search as the plugins' series do", () => {
   }
 });
 
-test("a function the snapshot gives to one plugin resolves there as it does among all of them", async () => {
+/** What resolving a word reads of a registry: the function it opens, the code it is shown as, its options, how its arguments parse. */
+function resolution(registry: Awaited<ReturnType<typeof createPaneCatalog>>, word: string) {
+  const found = findPaneFunction(registry, word);
+  return {
+    template: found?.template?.id,
+    pane: found?.pane?.id,
+    code: found?.pane ? paneFunctionCode(found.template, found.pane, registry) : undefined,
+    capability: found?.pane ? JSON.stringify(getPaneFunctionCapability(found.template, found.pane)) : undefined,
+    parsed: JSON.stringify(parsePaneFunctionArgsFor(registry, [word, "AAPL", "--limit", "5"])),
+  };
+}
+
+test("a function the snapshot gives to some plugins resolves there as it does among all of them", async () => {
   const context = { config: createDefaultConfig("/catalog-snapshot-test"), store: { loadAllTickers: async () => [] } } as unknown as MarketContext;
+  const { functions } = readCatalogSnapshot();
+  expect(Object.keys(functions).length).toBeGreaterThan(20);
+  for (const word of ["hds", "cn", "eqs"]) expect(functions[word], word).toBeDefined();
+  // Their setups leave state other plugins read (the FRED series cache, 13F persistence), so these run among all.
+  for (const word of ["g", "fa", "vix", "sec"]) expect(functions[word], word).toBeUndefined();
+  // A keyword, which only names a function loosely, is not sent to a plugin.
+  expect(functions["holdings"]).toBeUndefined();
+  // Registries are set up and torn down one at a time: a setup leaves state that its dispose undoes.
   const all = await createPaneCatalog(context, plugins);
-  const own = new Map<string, Awaited<ReturnType<typeof createPaneCatalog>>>();
-  try {
-    const { functions } = readCatalogSnapshot();
-    expect(Object.keys(functions).length).toBeGreaterThan(20);
-    for (const word of ["hds", "cn", "eqs"]) expect(functions[word], word).toBeDefined();
-    // Their setups leave state other plugins read (the FRED series cache, 13F persistence), so these run among all.
-    for (const word of ["g", "fa", "vix", "sec"]) expect(functions[word], word).toBeUndefined();
-    for (const [word, holders] of Object.entries(functions)) {
-      const key = holders.join("+");
-      if (!own.has(key)) own.set(key, await createPaneCatalog(context, holders.map((id) => loadBuiltinPlugin(id)!)));
-      const alone = own.get(key)!;
-      const found = findPaneFunction(all, word);
-      const foundAlone = findPaneFunction(alone, word);
-      expect(foundAlone?.template?.id, word).toBe(found?.template?.id);
-      expect(foundAlone?.pane?.id, word).toBe(found?.pane?.id);
-      expect(paneFunctionCode(foundAlone!.template, foundAlone!.pane!, alone), word).toBe(paneFunctionCode(found!.template, found!.pane!, all));
-      expect(JSON.stringify(getPaneFunctionCapability(foundAlone!.template, foundAlone!.pane!)), word)
-        .toBe(JSON.stringify(getPaneFunctionCapability(found!.template, found!.pane!)));
-      expect(JSON.stringify(parsePaneFunctionArgsFor(alone, [word, "AAPL", "--limit", "5"])), word)
-        .toBe(JSON.stringify(parsePaneFunctionArgsFor(all, [word, "AAPL", "--limit", "5"])));
+  const expected = Object.keys(functions).map((word) => [word, resolution(all, word)] as const);
+  all.destroy();
+  const groups = new Map<string, string[]>();
+  for (const [word, holders] of Object.entries(functions)) groups.set(holders.join("+"), [...groups.get(holders.join("+")) ?? [], word]);
+  for (const [key, words] of groups) {
+    const alone = await createPaneCatalog(context, key.split("+").map((id) => loadBuiltinPlugin(id)!));
+    try {
+      for (const word of words) expect(resolution(alone, word), word).toEqual(expected.find(([other]) => other === word)![1]);
+    } finally {
+      alone.destroy();
     }
-    // A keyword, which only names a function loosely, is not sent to a plugin.
-    expect(functions["holdings"]).toBeUndefined();
-  } finally {
-    all.destroy();
-    for (const registry of own.values()) registry.destroy();
   }
 }, 60_000);
