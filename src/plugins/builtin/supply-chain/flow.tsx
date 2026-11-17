@@ -13,7 +13,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useSelectionFill } from "../../../components/ui/selection-fill";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { fillOpaque, fillRect, parseHex } from "../../../components/chart/native/raster/primitives";
-import { counterpartyKind, counterpartyKindLabel, counterpartyLabel, disclosedValue, dollars, isRelatedParty, nativeValue, periodText, relationshipLabel, roleLabel, ROLE_COLORS, scopeWords, shareParts, fitShareBasis, type FlowBand, type ShareParts } from "./model";
+import { counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyLabelEnd, disclosedValue, dollars, isRelatedParty, nativeValue, periodText, relationshipLabel, roleLabel, ROLE_COLORS, scopeWords, shareParts, fitShareBasis, type FlowBand, type ShareParts } from "./model";
 import { entityTicker } from "./graph-model";
 import { flowChipLabel, flowGeometry, RELATED_LABEL_CELLS, ribbonY, type FlowRibbon, type PositionedNode } from "./flow-layout";
 import { evidenceDate, evidenceLabel, trustTier } from "./trust";
@@ -333,7 +333,8 @@ function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
     {/* The ticker shows only beside the whole name. On the desktop that is CSS: the row wraps, one line shows, and a ticker that does not fit goes to the hidden line. */}
     <Box flexDirection="row" height={1} overflow="hidden" style={desktop ? { flexWrap: "wrap" } : undefined}>
       {!desktop ? <Text fg={node.more ? colors.textMuted : accent}>▍</Text> : null}
-      <ClippedText fg={active && !desktop ? chosenText(titleColor) : titleColor} attributes={company ? TextAttributes.BOLD : 0} text={name} width={nameWidth} />
+      <ClippedText fg={active && !desktop ? chosenText(titleColor) : titleColor} attributes={company ? TextAttributes.BOLD : 0} text={name} width={nameWidth}
+        keepEnd={node.row && !node.more ? counterpartyLabelEnd(node.row) : null} />
       {ticker && (desktop || displayWidth(name) + displayWidth(ticker) + 1 <= inner)
         ? <Text fg={active && !desktop ? selectionFill.ink(colors.textDim) : colors.textDim} style={desktop ? { flex: "0 0 auto" } : undefined}>{` ${ticker}`}</Text> : null}
     </Box>
@@ -377,7 +378,7 @@ function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: Position
     flexDirection="column" paddingX={1} backgroundColor={desktop ? undefined : colors.panel} border={!desktop} borderColor={ROLE_COLORS[row.role]}
     style={desktop ? { ...TOOLTIP_SURFACE_STYLE, padding: "0 var(--gloom-space-sm)", zIndex: 20 } : undefined}
     data-gloom-role="supply-flow-tooltip">
-    <ClippedText fg={colors.textBright} attributes={TextAttributes.BOLD} text={counterpartyLabel(row)} width={tooltipWidth - 2} />
+    <ClippedText fg={colors.textBright} attributes={TextAttributes.BOLD} text={counterpartyLabel(row)} width={tooltipWidth - 2} keepEnd={counterpartyLabelEnd(row)} />
     {lines.map((line, index) => <ClippedText key={index} fg={index === 0 ? colors.text : colors.textDim} text={line} width={tooltipWidth - 2} />)}
   </Box>;
 }
