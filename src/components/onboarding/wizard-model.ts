@@ -7,6 +7,7 @@ import type { Quote } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { getManualPortfolioPosition } from "../../portfolio/mutations";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
+import { convertCurrency } from "../../utils/format";
 
 /**
  * Stages older builds persisted that the wizard no longer renders. A profile
@@ -128,9 +129,20 @@ export function getConnectableBrokerOptions(
   return options;
 }
 
-/** The manual portfolio onboarding writes into: the first one without a broker. */
-export function getOnboardingPortfolioId(config: AppConfig): string {
-  return config.portfolios.find((portfolio) => !portfolio.brokerInstanceId && !portfolio.brokerId)?.id ?? "main";
+/**
+ * The manual portfolio onboarding shows and writes into: the first one
+ * without a broker that already holds something, so a profile whose
+ * portfolios were built with the command line opens on its holdings, not on
+ * the empty default; else the first one without a broker.
+ */
+export function getOnboardingPortfolioId(config: AppConfig, tickers: Iterable<TickerRecord> = []): string {
+  const manual = config.portfolios.filter((portfolio) => !portfolio.brokerInstanceId && !portfolio.brokerId);
+  const held = new Set<string>();
+  for (const ticker of tickers) {
+    for (const id of ticker.metadata.portfolios) held.add(id);
+    for (const position of ticker.metadata.positions) if (position.shares !== 0) held.add(position.portfolio);
+  }
+  return (manual.find((portfolio) => held.has(portfolio.id)) ?? manual[0])?.id ?? "main";
 }
 
 export interface OnboardingPositionRow {
@@ -187,14 +199,26 @@ export function listOnboardingPositions(
 /**
  * The company the workspace opens on: the largest holding by value, then the
  * largest by share count when nothing is priced, then the first row added.
+ * With `usdPerUnit` rates the values compare in dollars, so 2,000 lira
+ * shares at TRY55 are not taken for more than 20 SPY at $520; a value in a
+ * currency without a rate then counts as unpriced.
  */
-export function pickLargestPosition(rows: readonly OnboardingPositionRow[]): OnboardingPositionRow | null {
+export function pickLargestPosition(
+  rows: readonly OnboardingPositionRow[],
+  usdPerUnit?: ReadonlyMap<string, number>,
+): OnboardingPositionRow | null {
   if (rows.length === 0) return null;
+  const valueOf = (row: OnboardingPositionRow) => {
+    if (row.value === null || !usdPerUnit) return row.value;
+    const usd = convertCurrency(row.value, row.currency, "USD", new Map(usdPerUnit));
+    return Number.isFinite(usd) ? usd : null;
+  };
   let best = rows[0]!;
   for (const row of rows.slice(1)) {
-    if ((row.value ?? -1) > (best.value ?? -1)) {
+    const [value, bestValue] = [valueOf(row), valueOf(best)];
+    if ((value ?? -1) > (bestValue ?? -1)) {
       best = row;
-    } else if (row.value === null && best.value === null && (row.shares ?? -1) > (best.shares ?? -1)) {
+    } else if (value === null && bestValue === null && (row.shares ?? -1) > (best.shares ?? -1)) {
       best = row;
     }
   }

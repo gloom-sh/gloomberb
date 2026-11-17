@@ -14,6 +14,7 @@ import { isFuturesTicker } from "../../portfolio/futures-positions";
 import { loadFuturesEntrySize } from "../../portfolio/futures-terms";
 import { ambiguousQuantityProblem } from "../../portfolio/position-quantity";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
+import { useFxRatesMap } from "../../market-data/hooks";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import { resolveTickerSearch, upsertTickerFromSearchResult, type ResolvedTickerSearch } from "../../tickers/search";
 import type { Quote } from "../../types/financials";
@@ -115,7 +116,7 @@ export function useOnboardingPositions({
   const stateRef = useAppStateRef();
   const tickers = useAppSelector((state) => state.tickers);
   const financials = useAppSelector((state) => state.financials);
-  const portfolioId = useAppSelector((state) => getOnboardingPortfolioId(state.config));
+  const portfolioId = useAppSelector((state) => getOnboardingPortfolioId(state.config, state.tickers.values()));
   const [draft, setDraft] = useState<PositionDraft>(EMPTY_DRAFT);
   const [fieldIdx, setFieldIdx] = useState(0);
   const [preview, setPreview] = useState<PositionPreview>({ status: "idle" });
@@ -141,6 +142,8 @@ export function useOnboardingPositions({
     ),
     [fetchedQuotes, financials, portfolioId, tickers],
   );
+  // Rows in several currencies (a book built elsewhere, US funds and Istanbul banks) compare in dollars.
+  const usdPerUnit = useFxRatesMap(positions.map((row) => row.currency));
 
   const resolveSymbol = useCallback(async (query: string) => {
     const resolved = await resolveTickerSearch({
@@ -413,6 +416,8 @@ export function useOnboardingPositions({
   return {
     portfolioId,
     positions,
+    /** USD per unit of each row's currency that has a rate, for comparing rows' values. */
+    usdPerUnit,
     draft,
     /** What a blank Currency saves: the listing's currency, else the portfolio's. */
     blankCurrency: (preview.status === "ready" && preview.currency ? preview.currency : fallbackCurrency).toUpperCase(),

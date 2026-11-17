@@ -4,6 +4,7 @@ import type { TickerRecord } from "../../types/ticker";
 import type { OnboardingProgress } from "../../types/config";
 import {
   getOnboardingProgress,
+  getOnboardingPortfolioId,
   listOnboardingPositions,
   pickLargestBrokerPosition,
   pickLargestPosition,
@@ -53,6 +54,25 @@ describe("onboarding positions", () => {
     expect(pickLargestPosition(rows)?.symbol).toBe("AAPL");
     expect(pickLargestPosition(rows.filter((row) => row.shares === null))?.symbol).toBe("NVDA");
     expect(pickLargestPosition([])).toBeNull();
+  });
+
+  // A profile built with the command line opened setup on the empty default portfolio, "Positions (0)" over 8 holdings,
+  // and its book of US funds and lira shares compared 2,000 AKBNK at TRY55 with 20 SPY at $520 as plain numbers.
+  test("setup opens on the manual portfolio that already holds something, and compares its rows in dollars", () => {
+    const config = createDefaultConfig("/tmp/onboarding");
+    config.portfolios = [...config.portfolios, { id: "istanbul", name: "Istanbul Book", currency: "USD" }];
+    const held = (symbol: string, shares: number, avgCost: number, currency: string) => createTestTicker(symbol, symbol, {
+      portfolios: ["istanbul"], positions: [{ portfolio: "istanbul", shares, avgCost, currency, broker: "manual" }],
+    });
+    const tickers = [held("SPY", 20, 520, "USD"), held("AKBNK", 2000, 55, "TRY")];
+    expect(getOnboardingPortfolioId(config)).toBe("main");
+    expect(getOnboardingPortfolioId(config, tickers)).toBe("istanbul");
+    // A holding in the default portfolio keeps setup there, the first that holds anything.
+    expect(getOnboardingPortfolioId(config, [...tickers, ticker("AAPL", 10)])).toBe("main");
+    const rows = listOnboardingPositions(tickers, "istanbul", () => null);
+    expect(pickLargestPosition(rows, new Map([["TRY", 0.0236]]))?.symbol).toBe("SPY");
+    // Without the lira's rate its value is not comparable: the dollar one is the largest known.
+    expect(pickLargestPosition(rows, new Map())?.symbol).toBe("SPY");
   });
 
   test("ranks broker imports by cost basis and ignores rows without a symbol", () => {

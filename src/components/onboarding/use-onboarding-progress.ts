@@ -229,7 +229,7 @@ export function useOnboardingWorkspace({
         .catch(logFailure("onboarding.positions", "Add position on Continue failed"));
       return;
     }
-    const largest = pickLargestPosition(positions.positions);
+    const largest = pickLargestPosition(positions.positions, positions.usdPerUnit);
     if (!largest) {
       positions.focusField(0);
       return;
