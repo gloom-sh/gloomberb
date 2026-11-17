@@ -35,7 +35,7 @@ import { collarStatItems, scenarioCollar } from "./collar";
 import { useAssetData } from "../../runtime";
 import { extendedSession, formatSpotTime } from "../options/model-spot";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
-import { buildScenario, currencyLabel, scenarioCurrency, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
+import { buildScenario, currencyLabel, scenarioCurrency, scenarioDateLabels, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
   type ScenarioControls, validatePosition } from "./model";
 import { EMPTY_SAVED_STRATEGIES, restoreSavedStrategies, type SavedScenarioStrategy } from "./state";
 import { useScenarioEvidence } from "./evidence";
@@ -385,7 +385,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       emptyStateTitle="No scenario values." getItemKey={(row) => `${row.landmark ?? "step"}:${row.spot}`}
       columns={[{ id: "spot", label: `Spot ${position?.currency ?? ""}`, width: 14, align: "right" }, { id: "move", label: "Move %", width: 10, align: "right" },
         { id: "mark", label: "", width: 10, align: "left" },
-        ...scenario.dates.map((date, i) => ({ id: String(i), label: dateLabel(date).slice(5), width: 13, align: "right" as const }))]}
+        ...scenarioDateLabels(scenario.dates).map((label, i) => ({ id: String(i), label: label.slice(5), width: 13, align: "right" as const }))]}
       renderCell={(row, column) => {
         const atSpot = row.move != null && Math.abs(row.move) < 1e-9;
         if (column.id === "spot") return { text: money(row.spot), color: row.landmark ? colors.warning : atSpot ? colors.textBright : colors.text };
@@ -413,8 +413,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         width={width}
         filters={[
           { id: "date", label: "Scenario date", controlRef: dateControl, value: String(scenario.controls.date),
-            options: [...new Set([...scenario.dates, scenario.controls.date])].sort((a, b) => a - b)
-              .map((date) => ({ value: String(date), label: `${dateLabel(date)} +${((date - scenario.position.asOf) / 86_400_000).toFixed(1)}d` })),
+            options: scenario.dates.map((date) => ({ value: String(date), label: `${dateLabel(date)} +${((date - scenario.position.asOf) / 86_400_000).toFixed(1)}d` })),
             onChange: (value: string) => setControls({ ...scenario.controls, date: Number(value) }) },
           // No shift reads as the "0" placeholder, so the field offers its reset only once there is a shift.
           { id: "vol", kind: "text", label: "Vol shift (pts)", width: 12, placeholder: "0", debounceMs: 0,
