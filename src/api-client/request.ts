@@ -30,11 +30,11 @@ export const DEFAULT_API_URL = "https://api.gloom.sh";
  * fails as the data service being unreachable, as a refused one does.
  */
 export const MARKET_REQUEST_TIMEOUT_MS = 10_000;
-const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = MARKET_REQUEST_TIMEOUT_MS;
+const DEFAULT_MARKET_READ_LIMIT_MS = 25_000;
 /**
  * A search, which a command and a keystroke wait on, gives up on a connection
  * that sends nothing back sooner. A slow search on a service that answers
- * (some take five seconds) still gets the full market deadline.
+ * (some take five seconds) still gets the full market read limit.
  */
 const SEARCH_ANSWER_TIMEOUT_MS = 4_000;
 /**
@@ -54,10 +54,9 @@ const DEFAULT_RESEARCH_REQUEST_TIMEOUT_MS = 45_000;
 const DEFAULT_SERVICE_REQUEST_LIMIT_MS = 120_000;
 const UPLOAD_REQUEST_LIMIT_MS = 300_000;
 /**
- * How long the check that the service answers at all waits. It runs this long
- * before a request's answer deadline, unless something answered meanwhile, so
- * one slow request on a service that answers is waited for and a dead
- * connection is not.
+ * How long each check that the service answers at all waits. When the answer
+ * deadline has room for two checks, one stuck connection isn't enough to
+ * declare an outage.
  */
 const SERVICE_PROBE_TIMEOUT_MS = 3_000;
 const SERVICE_PROBE_PATH = "/health";
@@ -74,6 +73,10 @@ const RESEARCH_MARKET_PATHS = new Set([
   "/market/dividends", "/market/short-interest", "/market/movers", "/market/trending",
   "/market/heatmap", "/market/earnings-calendar", "/market/search/batch",
 ]);
+
+export function marketReadLimitMs(pathname: string): number {
+  return RESEARCH_MARKET_PATHS.has(pathname) ? DEFAULT_RESEARCH_REQUEST_TIMEOUT_MS : DEFAULT_MARKET_READ_LIMIT_MS;
+}
 
 /**
  * A read cut off by a server restart is sent once more after a pause in this
@@ -116,9 +119,6 @@ function pause(ms: number, signal: AbortSignal | null | undefined): Promise<void
 interface RequestDeadline {
   answerMs: number;
   limitMs: number;
-  probeDuringOutage: boolean;
-  /** When to check that the service answers at all, if nothing has by then; null when the deadline is too short for it. */
-  probeAtMs: number | null;
 }
 /** Local status for "this runtime cannot stream", never returned by the server. */
 export const STREAMING_UNSUPPORTED_STATUS = 0;
@@ -378,7 +378,7 @@ export class CloudApiRequestTransport {
   private cookieSessionMode = false;
   private readonly fetchTransport: CloudApiFetchTransport | null;
   private readonly marketRequestTimeoutMs: number;
-  private readonly researchRequestTimeoutMs: number;
+  private readonly marketReadLimitOverride?: number;
   private readonly connectionHealth: ConnectionHealthRegistry;
   /** Answers received from the service, by any request: a request that sees this grow knows the connection works. */
   private answers = 0;
@@ -390,7 +390,7 @@ export class CloudApiRequestTransport {
   private connectionGeneration = cloudApiTransportGeneration;
   /** Requests waiting under a deadline: the check that the service answers runs only while one is. */
   private pending = 0;
-  private probe: AbortController | null = null;
+  private probe: { controller: AbortController; expiresAt: number } | null = null;
   /** The next check whether an unreachable service answers again, and how long after it the one after waits. */
   private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
   private recoveryDelayMs = RECOVERY_PROBE_FIRST_MS;
@@ -412,9 +412,8 @@ export class CloudApiRequestTransport {
     } = {},
   ) {
     this.fetchTransport = options.fetchTransport ?? null;
-    this.marketRequestTimeoutMs =
-      options.marketRequestTimeoutMs ?? DEFAULT_MARKET_REQUEST_TIMEOUT_MS;
-    this.researchRequestTimeoutMs = options.marketRequestTimeoutMs ?? DEFAULT_RESEARCH_REQUEST_TIMEOUT_MS;
+    this.marketRequestTimeoutMs = options.marketRequestTimeoutMs ?? MARKET_REQUEST_TIMEOUT_MS;
+    this.marketReadLimitOverride = options.marketRequestTimeoutMs;
     this.connectionHealth = options.connectionHealth ?? connectionHealth;
   }
 
@@ -534,31 +533,25 @@ export class CloudApiRequestTransport {
   }
 
   /**
-   * Every request's deadline. A market read or a search waits about ten
-   * seconds, research and requests outside market data longer. With nothing
-   * back from the service, a request gives up at ten seconds, a search at
-   * four, and any request at three after one went unanswered, until something
-   * answers again. Three seconds before that, a request still unanswered
-   * checks that the service answers at all, so one slow request on a working
-   * connection is waited for and a dead connection is not. The calendar's
-   * bounded retry must be able to make a fresh read even after a hung one.
+   * With nothing back from the service, a request gives up at ten seconds, a
+   * search at four, and any request at three once the service is unreachable.
+   * An unanswered request checks the service, twice if there's time. With an
+   * answer, a market read may take up to 25 seconds in all; research and
+   * requests outside market data get longer.
    */
   private deadlineFor(path: string, limitMs?: number): RequestDeadline {
     this.forgetOtherTransport();
     const pathname = path.split("?")[0]!;
-    const probeDuringOutage = pathname === "/cloud/ipo/calendar";
     const market = pathname.startsWith("/market/");
     const limit = limitMs ?? (!market ? DEFAULT_SERVICE_REQUEST_LIMIT_MS
-      : RESEARCH_MARKET_PATHS.has(pathname) ? this.researchRequestTimeoutMs : this.marketRequestTimeoutMs);
+      : this.marketReadLimitOverride ?? marketReadLimitMs(pathname));
     let answerMs = pathname === "/market/search"
       ? Math.min(this.marketRequestTimeoutMs, SEARCH_ANSWER_TIMEOUT_MS)
       : this.marketRequestTimeoutMs;
-    if (this.unreachable && !probeDuringOutage) answerMs = Math.min(answerMs, UNREACHABLE_REQUEST_TIMEOUT_MS);
+    if (this.unreachable) answerMs = Math.min(answerMs, UNREACHABLE_REQUEST_TIMEOUT_MS);
     return {
       answerMs,
       limitMs: Math.max(limit, answerMs),
-      probeDuringOutage,
-      probeAtMs: answerMs >= SERVICE_PROBE_TIMEOUT_MS ? answerMs - SERVICE_PROBE_TIMEOUT_MS : null,
     };
   }
 
@@ -595,7 +588,7 @@ export class CloudApiRequestTransport {
     };
     const timedOut = (ms: number) => failed(`${what} timed out after ${ms}ms`);
     const timers: Array<ReturnType<typeof setTimeout>> = [];
-    if (!deadline.probeDuringOutage && this.hungAt != null && Date.now() - this.hungAt < HUNG_FAIL_FAST_MS && !controller.signal.aborted) {
+    if (this.hungAt != null && Date.now() - this.hungAt < HUNG_FAIL_FAST_MS && !controller.signal.aborted) {
       callerSignal?.removeEventListener("abort", abortFromCaller);
       throw new DataServiceUnreachableError(failed(`${what} not sent: the last one got no answer`));
     }
@@ -608,10 +601,11 @@ export class CloudApiRequestTransport {
           controller.abort(error);
         };
         work.then(resolve, reject);
-        if (deadline.probeAtMs != null) {
+        for (const lead of [2 * SERVICE_PROBE_TIMEOUT_MS, SERVICE_PROBE_TIMEOUT_MS]) {
+          if (deadline.answerMs < lead) continue;
           timers.push(setTimeout(() => {
             if (!answered()) this.checkServiceAnswers();
-          }, deadline.probeAtMs));
+          }, deadline.answerMs - lead));
         }
         timers.push(setTimeout(() => {
           // The caller gave up first: its abort settles the request, and says nothing of the connection.
@@ -631,7 +625,7 @@ export class CloudApiRequestTransport {
       callerSignal?.removeEventListener("abort", abortFromCaller);
       this.pending -= 1;
       // Nothing waits on the check any more: it must not hold a command's process open.
-      if (this.pending === 0) this.probe?.abort();
+      if (this.pending === 0) this.probe?.controller.abort();
     }
   }
 
@@ -781,16 +775,17 @@ export class CloudApiRequestTransport {
    * when nothing waits on it any more.
    */
   private checkServiceAnswers(): void {
-    if (this.probe) return;
+    if (this.probe && this.probe.expiresAt > Date.now()) return;
+    this.probe?.controller.abort();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SERVICE_PROBE_TIMEOUT_MS);
     const done = () => {
       clearTimeout(timer);
-      if (this.probe === controller) this.probe = null;
+      if (this.probe?.controller === controller) this.probe = null;
     };
     // Done once given up on, even through a transport that ignores the abort.
     controller.signal.addEventListener("abort", done, { once: true });
-    this.probe = controller;
+    this.probe = { controller, expiresAt: Date.now() + SERVICE_PROBE_TIMEOUT_MS };
     (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${SERVICE_PROBE_PATH}`, { signal: controller.signal })
       .then(() => this.recordAnswer(), () => {
         // Intentional ignore: an unanswered check only leaves the request it guards to its own deadline.
