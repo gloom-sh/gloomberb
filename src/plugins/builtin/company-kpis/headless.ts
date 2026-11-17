@@ -10,6 +10,7 @@ import { companyQuery, fetchCompanyData, type CompanyDataset, type CompanyMode }
 import { allGuidance, allObservations, companyCellText, companyColumns, companyEmptyState, companyPreviewNote, guidanceIssueNote, KPI_COVERAGE_NOTE, kpiFreeLimitNote, QUIET_COLUMNS,
   type CompanyRow } from "./model";
 import type { KpiObservation } from "../../../api-client/company-kpis";
+import { currentKpiSeries } from "./latest";
 
 /** What the server takes as a metric; anything else is not a metric id and is not sent. */
 const METRIC_ID = /^[a-z0-9_]{1,80}$/;
@@ -108,7 +109,7 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
         const shown = rows.filter(keep);
         return { title, columns: reportColumns(mode, history, revisions, shown, observations), rows: shown.map((row) => ({ ...row })), ...(empty && first ? { empty } : {}) };
       };
-      const latest = ("series" in data ? data.series.map((series) => series.latest) : data.guidance).filter(keep);
+      const latest = ("series" in data ? currentKpiSeries(data.series).map((series) => series.latest) : data.guidance).filter(keep);
       const ignored = data.access === "preview" ? PRO_FILTERS.filter((key) => typeof args.options[key] === "string" && args.options[key] !== "") : [];
       const notes = [ageNote(data, latest, mode),
         ...("guidance" in data ? data.guidance.filter(keep).flatMap((row) => {
@@ -123,7 +124,7 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
       return { complete: !data.truncated, ...(nothingOnFile ? { empty: `${title} ${hint}` } : {}), errors: data.truncated ? [data.access === "preview" ? companyPreviewNote(data, mode === "guidance") : "Response limit reached; narrow the metric or date range"] : [],
         ...(notes.length ? { notes } : {}),
         sections: "series" in data ? [
-          section("Latest KPIs", data.series.map((series) => series.latest), { first: true }),
+          section("Latest KPIs", currentKpiSeries(data.series).map((series) => series.latest), { first: true }),
           section("KPI history", data.series.flatMap((series) => series.observations)),
           section("Revisions and conflicts", data.revisions, { revisions: true }),
         ] : [section("Latest disclosed guidance", data.guidance, { first: true }), section("Guidance history", data.history, { history: true })],
