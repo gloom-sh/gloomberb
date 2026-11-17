@@ -444,6 +444,7 @@ export function CorporateActionsView({
   // Only the statements and the trailing EPS are read, so the rows do not rebuild on price ticks.
   const { financials: tickerFinancials } = usePaneTicker();
   const quarterlyStatements = tickerFinancials?.quarterlyStatements;
+  const annualStatements = tickerFinancials?.annualStatements;
   const financialCurrency = tickerFinancials?.financialCurrency;
   const trailingEps = tickerFinancials?.fundamentals?.eps;
   const trailingEpsCurrency = tickerFinancials?.fundamentals?.epsCurrency;
@@ -454,11 +455,13 @@ export function CorporateActionsView({
   const financialsData = useMemo<EventFinancials | null>(
     () => (quarterlyStatements || financialCurrency || trailingEps != null ? {
       quarterlyStatements: quarterlyStatements ?? [],
+      // Their last end names the fiscal quarters (Q1 FY2027), as GUIDE and ERN name them.
+      annualStatements: annualStatements ?? [],
       financialCurrency,
       fundamentals: { eps: trailingEps, epsCurrency: trailingEpsCurrency, financialCurrency: fundamentalsCurrency, marketCapCurrency, trailingEpsSource },
       quote: quoteCurrency ? { currency: quoteCurrency } : null,
     } : null),
-    [financialCurrency, fundamentalsCurrency, marketCapCurrency, quarterlyStatements, quoteCurrency, trailingEps, trailingEpsCurrency, trailingEpsSource],
+    [annualStatements, financialCurrency, fundamentalsCurrency, marketCapCurrency, quarterlyStatements, quoteCurrency, trailingEps, trailingEpsCurrency, trailingEpsSource],
   );
   const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");
