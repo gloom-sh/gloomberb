@@ -585,6 +585,9 @@ const buildTargets = selectedTargets();
 mkdirSync(join(rootDir, "dist"), { recursive: true });
 console.log("Building the pane page...");
 await writeShotViewModule();
+// A failed step ends the process with process.exit, which skips the finally below, and a generator that fails
+// part way leaves part of the file: whichever way this ends, none stays in the checkout.
+process.on("exit", removeCatalogSnapshot);
 try {
   // Before the compile, which bundles it; see catalog-snapshot-file.ts.
   console.log("Writing the catalog snapshot...");
@@ -597,5 +600,4 @@ try {
   }
 } finally {
   removeShotViewModule();
-  removeCatalogSnapshot();
 }
