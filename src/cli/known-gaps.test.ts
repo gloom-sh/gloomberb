@@ -162,8 +162,7 @@ test("a search no ticker answers lists the functions that carry every word, so a
 
 test("the basis trade is found by its own words: the futures curve first, then the perpetual that pays its other leg", async () => {
   const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
-  // FUT's Vs Spot column shows the basis too, which the glossary's term for it names.
-  expect((await searchFunctionsForCli("basis trade", getLoadablePlugins(), context)).map((match) => match.token)).toEqual(["CTM", "PERP", "FUT"]);
+  expect((await searchFunctionsForCli("basis trade", getLoadablePlugins(), context)).map((match) => match.token)).toEqual(["CTM", "PERP"]);
   const registry = await createPaneCatalog(context, getLoadablePlugins());
   try {
     const entries = await buildPaneCatalogEntries(registry, context);

@@ -32,7 +32,7 @@ import {
   wrapText,
   type CliStatEntry,
 } from "../../utils/cli-output";
-import { glossaryFunctionsNamed, glossaryNamesOf, renderGlossaryEntries, type GlossaryLookup } from "../glossary";
+import { glossaryFunctionsNamed, glossaryNamesFunction, renderGlossaryEntries, type GlossaryLookup } from "../glossary";
 import { renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { typoDistance } from "../../utils/typo-distance";
 import { FUNCTION_HELP } from "./function-help";
@@ -432,9 +432,9 @@ export async function buildPaneCatalogEntries(
   return entries.sort((left, right) => left.token.localeCompare(right.token));
 }
 
-/** The names of the glossary terms a function shows, by its code or an alias the glossary names it by (DES for T). */
-function entryGlossaryNames(entry: Pick<PaneCatalogEntry, "token" | "shortcut" | "aliases">): string[] {
-  return [...new Set([entry.token, entry.shortcut, ...entry.aliases].filter((code): code is string => !!code).flatMap((code) => glossaryNamesOf(code)))];
+/** Whether the whole query names a glossary term the function shows (`VaR` for MARS), by its code or an alias (DES for T). */
+function namesShownTerm(entry: Pick<PaneCatalogEntry, "token" | "shortcut" | "aliases">, query: string): boolean {
+  return [entry.token, entry.shortcut, ...entry.aliases].some((code) => !!code && glossaryNamesFunction(code, query));
 }
 
 /** The phrase starting a word of the text, so "funding rate" finds "funding rates" but "rate" is not found in "separate". */
@@ -467,8 +467,7 @@ const PER_WORD_IS_KEYWORD = 3;
 function phraseBand(entry: PaneCatalogEntry, phrase: string): number {
   const lower = (values: Array<string | undefined>) => values
     .filter((value): value is string => !!value).map((value) => value.toLowerCase().replace(/\s+/g, " "));
-  const names = lower([entry.token, entry.label, entry.paneName, entry.shortcut, ...entry.aliases, ...entry.keywords, ...entry.capability.aliases,
-    ...entryGlossaryNames(entry)]);
+  const names = lower([entry.token, entry.label, entry.paneName, entry.shortcut, ...entry.aliases, ...entry.keywords, ...entry.capability.aliases]);
   if (names.some((name) => containsPhrase(name, phrase))) return PHRASE_IN_NAME_BAND;
   const descriptions = lower([entry.description, ...entry.capability.intents]);
   return descriptions.some((description) => containsPhrase(description, phrase)) ? PHRASE_IN_DESCRIPTION_BAND : 0;
@@ -498,8 +497,6 @@ function nameAndDescriptionFields(entry: PaneCatalogEntry): string[] {
     ...entry.keywords,
     ...entry.capability.aliases,
     ...entry.capability.intents,
-    // The terms the function shows (VaR, expected shortfall for MARS and PORT) name what it covers, as its keywords do.
-    ...entryGlossaryNames(entry),
     ...entry.capability.opens?.flatMap((opening) => opening.words) ?? [],
   ].filter((value): value is string => !!value).map((value) => value.toLowerCase());
 }
@@ -538,7 +535,15 @@ interface CatalogMatchScore {
   called: number;
 }
 
-function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogMatchScore {
+/** How catalog matches are scored; `glossary: false` leaves out the glossary terms a function shows, as search did before them. */
+interface CatalogScoring {
+  glossary?: boolean;
+}
+
+/** A query that is, whole, a term a function shows (`VaR`) outweighs it starting a word of a description (`variance`). */
+const SHOWN_TERM_SCORE = 20;
+
+function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string, { glossary = true }: CatalogScoring = {}): CatalogMatchScore {
   const terms = queryTerms(query);
   if (terms.length === 0) return { score: 1, terms: 0, named: 0, called: 0 };
   const none = { score: 0, terms: terms.length, named: 0, called: 0 };
@@ -568,7 +573,7 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   let score = containsPhrase(`${named} ${flags}`, wholeQuery) ? 12 : 0;
   // A query that is one of the function's own keywords ("hedge" for OSA) beats one found inside a
   // longer keyword ("hedge funds" for 13F).
-  const keywords = [entry.label, ...entry.keywords, ...entry.capability.aliases, ...entryGlossaryNames(entry)]
+  const keywords = [entry.label, ...entry.keywords, ...entry.capability.aliases]
     .filter((value): value is string => !!value).map((value) => value.toLowerCase().replace(/\s+/g, " "));
   if (keywords.includes(wholeQuery)) score += 4;
   let matchedTerms = 0;
@@ -604,6 +609,14 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
     matchedTerms += 1;
   }
 
+  // The whole query naming a term the function shows (`VaR`, `value at risk`, `expected shortfall` for MARS and PORT)
+  // names the function, every word of it found, where its own words do not already (`beta` is in PORT's keywords,
+  // `trade` in PF's description: those rank as they did). A word of a longer query, or a loose alias, names nothing.
+  if (glossary && matchedNamed < terms.length && namesShownTerm(entry, query)) {
+    score += SHOWN_TERM_SCORE;
+    matchedTerms = terms.length;
+    matchedNamed = terms.length;
+  }
   if (matchedTerms === 0) return none;
   // The whole query a value an option takes (GF's `operating margin` metric) is a name the function answers to.
   const valueNamed = terms.length > 1 && flagValues.has(normalizeLookupToken(wholeQuery));
@@ -638,9 +651,9 @@ function isClosestCatalogMatch(entry: PaneCatalogEntry, query: string): boolean 
   return scorePaneCatalogEntry(entry, query).called === 0;
 }
 
-function rankPaneCatalogEntries(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
+function rankPaneCatalogEntries(entries: PaneCatalogEntry[], query: string, scoring: CatalogScoring = {}): PaneCatalogEntry[] {
   return entries
-    .map((entry) => ({ entry, score: scorePaneCatalogEntry(entry, query).score }))
+    .map((entry) => ({ entry, score: scorePaneCatalogEntry(entry, query, scoring).score }))
     .filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score || left.entry.token.localeCompare(right.entry.token))
     .map(({ entry }) => entry);
@@ -665,23 +678,23 @@ function hasConsecutiveWordStarts(entry: PaneCatalogEntry, head: string, tail: s
  * Two words typed as one ("volsurf" for Volatility Surface) match the functions that carry both
  * words in a row, found by cutting the query into two word starts.
  */
-function fusedQueryMatches(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
+function fusedQueryMatches(entries: PaneCatalogEntry[], query: string, scoring: CatalogScoring): PaneCatalogEntry[] {
   const word = query.trim().toLowerCase();
   if (/\s/.test(word)) return [];
   for (let cut = FUSED_PART_MIN; cut <= word.length - FUSED_PART_MIN; cut += 1) {
     const [head, tail] = [word.slice(0, cut), word.slice(cut)];
     const split = `${head} ${tail}`;
-    const ranked = rankPaneCatalogEntries(entries, split);
-    const { shown, loose } = selectPaneCatalogMatches(ranked, split, ranked.length);
+    const ranked = rankPaneCatalogEntries(entries, split, scoring);
+    const { shown, loose } = selectPaneCatalogMatches(ranked, split, ranked.length, scoring);
     const written = loose ? [] : shown.filter((entry) => hasConsecutiveWordStarts(entry, head, tail));
     if (written.length > 0) return written;
   }
   return [];
 }
 
-export function filterPaneCatalogEntries(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
-  const ranked = rankPaneCatalogEntries(entries, query);
-  return ranked.length > 0 ? ranked : fusedQueryMatches(entries, query);
+export function filterPaneCatalogEntries(entries: PaneCatalogEntry[], query: string, scoring: CatalogScoring = {}): PaneCatalogEntry[] {
+  const ranked = rankPaneCatalogEntries(entries, query, scoring);
+  return ranked.length > 0 ? ranked : fusedQueryMatches(entries, query, scoring);
 }
 
 /** Whether two words differ by one letter: one added, dropped, changed, or two neighbours swapped. */
@@ -735,8 +748,13 @@ interface PaneCatalogSelection {
  * name or description; when none does, the few closest, so "year to date" does not list a hundred functions
  * that each have a date somewhere. `--all` (an infinite limit) lists every match.
  */
-export function selectPaneCatalogMatches(ranked: PaneCatalogEntry[], query: string, limit: number): PaneCatalogSelection {
-  const scored = ranked.map((entry) => ({ entry, ...scorePaneCatalogEntry(entry, query) }));
+export function selectPaneCatalogMatches(
+  ranked: PaneCatalogEntry[],
+  query: string,
+  limit: number,
+  scoring: CatalogScoring = {},
+): PaneCatalogSelection {
+  const scored = ranked.map((entry) => ({ entry, ...scorePaneCatalogEntry(entry, query, scoring) }));
   const every = (items: typeof scored) => items.map(({ entry }) => entry);
   const widened = !Number.isFinite(limit);
   const multiWord = (scored[0]?.terms ?? 0) > 1;

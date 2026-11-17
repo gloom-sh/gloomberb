@@ -5,7 +5,7 @@ import type {
   PaneTemplateDef,
   ShortcutArgError,
 } from "../../../types/plugin";
-import { glossaryNamesOf, glossaryTermsOf } from "../../../cli/glossary";
+import { glossaryNamesFunction } from "../../../cli/glossary";
 import { fuzzyFilter } from "../../../utils/fuzzy-search";
 import { discoveryOpening } from "../../../utils/lookup-token";
 import { summarizeError } from "../helpers";
@@ -216,11 +216,8 @@ export function buildPaneTemplateItem(options: {
     : null;
   const arg = options.createOptions?.arg;
   const aliases = options.template.shortcut?.aliases ?? [];
-  const codes = [options.template.shortcut?.prefix, ...aliases].filter((code): code is string => !!code);
   const searchText = [
     options.template.keywords?.join(" ") || "",
-    // The terms it shows read as keywords do (VaR for MARS), ahead of the other names they go by, which come with the discovery words.
-    ...codes.flatMap(glossaryTermsOf),
     displayLabel,
     options.template.label,
     options.template.paneId,
@@ -281,24 +278,36 @@ export function buildPaneTemplateItem(options: {
 /**
  * The words `gloom catalog` also finds a function by, beyond its keywords and
  * description: its headless discovery aliases, the words it is suggested for,
- * those that open one of its cases (CTM's "vix futures"), its intents, and
- * the names of the glossary terms it shows (VaR, value at risk, drawdown for
- * MARS). The bar's row carries them, so the same words find the same function.
+ * those that open one of its cases (CTM's "vix futures") and its intents. The
+ * bar's row carries them, so the same words find the same function.
  */
 function paneTemplateDiscoveryWords(template: PaneTemplateDef, registry: Pick<PluginRegistry, "panes">): string[] {
   const discovery = paneTemplateDiscovery(template, registry);
-  const terms = [template.shortcut?.prefix, ...template.shortcut?.aliases ?? []].flatMap((code) => code ? glossaryNamesOf(code) : []);
+  if (!discovery) return [];
   return [
-    ...discovery?.aliases ?? [],
-    ...discovery?.suggestFor ?? [],
-    ...discovery?.opens?.flatMap((opening) => opening.words) ?? [],
-    ...discovery?.intents ?? [],
-    ...terms,
+    ...discovery.aliases ?? [],
+    ...discovery.suggestFor ?? [],
+    ...discovery.opens?.flatMap((opening) => opening.words) ?? [],
+    ...discovery.intents ?? [],
   ];
 }
 
 function paneTemplateDiscovery(template: PaneTemplateDef, registry: Pick<PluginRegistry, "panes">) {
   return (template.headless ?? registry.panes?.get(template.paneId)?.headless)?.discovery;
+}
+
+/**
+ * A row found by a query that is, whole, a term its function shows (`var`,
+ * `value at risk` for MARS and PORT), as `catalog` finds it, where the row's
+ * own words do not carry the query already; those rank as they did. A word of
+ * a longer query, or a loose alias, finds nothing.
+ */
+function withShownTerm(item: ResultItem, template: PaneTemplateDef, query: string): ResultItem {
+  const codes = [template.shortcut?.prefix, ...template.shortcut?.aliases ?? []];
+  if (!codes.some((code) => !!code && glossaryNamesFunction(code, query))) return item;
+  const own = `${item.label} ${item.searchText ?? ""} ${item.detail} ${item.right ?? ""}`.toLowerCase();
+  if (query.toLowerCase().split(/\s+/).every((word) => own.includes(word))) return item;
+  return { ...item, searchText: `${query} ${item.searchText ?? ""}` };
 }
 
 export function buildPaneShortcutItems(options: {
@@ -334,7 +343,8 @@ export function buildPaneShortcutItems(options: {
           : options.createOptions,
         showShortcut: true,
       });
-      return opening && opening.argument && !item.disabled ? { ...item, name: opening.argument } : item;
+      const named = opening && opening.argument && !item.disabled ? { ...item, name: opening.argument } : item;
+      return query ? withShownTerm(named, template, query) : named;
     });
 
   return options.filterQuery

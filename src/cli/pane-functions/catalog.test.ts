@@ -12,7 +12,7 @@ import {
   paneFunctionCode, renderPaneCatalogReport, suggestedFunctionCodes, type PaneFunctionCatalog,
 } from "./catalog";
 import { GLOSSARY, lookupGlossary } from "../glossary";
-import { buildPaneTemplateItem } from "../../components/command-bar/pane-templates/items";
+import { buildPaneShortcutItems, buildPaneTemplateItem } from "../../components/command-bar/pane-templates/items";
 import type { PluginRegistry } from "../../plugins/registry";
 import { fuzzyFilter } from "../../utils/fuzzy-search";
 import { createPaneCatalog } from "./discovery";
@@ -213,9 +213,7 @@ test("a lone match found only through a word of its description is labelled the 
     const entries = await buildPaneCatalogEntries(registry, context);
     const searched = (query: string) => renderPaneCatalogReport(filterPaneCatalogEntries(entries, query), parsePaneCatalogArgs([query]))
       .replace(/\x1b\[[0-9;]*m/g, "");
-    expect(searched("purchasing")).toStartWith('Closest match for "purchasing": no function is named for it.\n\nECO  Economic Calendar');
-    // COT shows the money and asset managers' positions: two functions, a list rather than ECO's card.
-    expect(searched("managers")).toStartWith('Matches for "managers" (2)');
+    expect(searched("managers")).toStartWith('Closest match for "managers": no function is named for it.\n\nECO  Economic Calendar');
     expect(searched("vix")).toStartWith("VIX  VIX Curve");
   } finally {
     registry.destroy();
@@ -351,19 +349,30 @@ test("a risk term a function shows reaches it from catalog, fn's hint and the co
     expect(filterPaneCatalogEntries(entries, "drawdown").map((entry) => entry.token)).toEqual(expect.arrayContaining(["MARS", "PORT"]));
     expect(suggestedFunctionCodes(registry, "VAR").map((entry) => entry.code)).toEqual(["MARS", "PORT"]);
     expect(suggestedFunctionCodes(registry, "drawdown").map((entry) => entry.code)).toEqual(["MARS", "PORT"]);
-    // The command bar's rows carry the same words.
+    // The command bar finds them for the same words, as one of the rows it ranks.
     const templates = [...registry.paneTemplates.values()].filter((template) => template.shortcut?.prefix);
     const pluginRegistry = { getPaneTemplatePluginId: () => null, allPlugins: new Map(), panes: registry.panes } as unknown as PluginRegistry;
-    const rows = templates.map((template) => buildPaneTemplateItem({
-      template, pluginRegistry, runPaneTemplateShortcut: () => {}, shouldOpenTemplateConfig: () => false,
-      openPaneTemplateWorkflow: () => {}, openPaneTemplateDirect: () => {}, showShortcut: true,
-    }));
-    const found = (query: string) => fuzzyFilter(rows, query, (row) => `${row.label} ${row.searchText ?? ""} ${row.detail} ${row.right ?? ""}`, (row) => row.label)
-      .slice(0, 2).map((row) => row.right).sort();
-    for (const query of ["var", "value at risk", "expected shortfall", "stress test"]) expect(found(query), query).toEqual(["MARS", "PORT"]);
+    const found = (query: string) => fuzzyFilter(buildPaneShortcutItems({
+      templates, searchedQuery: query, registry: pluginRegistry,
+      createItem: (template, options) => buildPaneTemplateItem({
+        template, pluginRegistry, ...options, runPaneTemplateShortcut: () => {}, shouldOpenTemplateConfig: () => false,
+        openPaneTemplateWorkflow: () => {}, openPaneTemplateDirect: () => {},
+      }),
+    }), query, (row) => `${row.label} ${row.searchText ?? ""} ${row.detail} ${row.right ?? ""}`, (row) => row.label).map((row) => row.right);
+    for (const query of ["var", "value at risk", "expected shortfall", "stress test"]) expect(found(query).slice(0, 2).sort(), query).toEqual(["MARS", "PORT"]);
     // HP and RETURN show a drawdown too.
-    const listed = (query: string) => fuzzyFilter(rows, query, (row) => `${row.label} ${row.searchText ?? ""} ${row.detail} ${row.right ?? ""}`).map((row) => row.right);
-    expect(listed("max drawdown")).toEqual(expect.arrayContaining(["MARS", "PORT"]));
+    expect(found("drawdown")).toEqual(expect.arrayContaining(["MARS", "PORT"]));
+
+    // A word of a common search, or a loose alias of a term (basis points, implied fx, close), names no function: these
+    // list what they listed before the glossary counted.
+    for (const query of ["fx", "earnings", "basis", "chart", "close", "exposure", "basis points", "implied fx", "beta", "trade"]) {
+      expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token), query)
+        .toEqual(filterPaneCatalogEntries(entries, query, { glossary: false }).map((entry) => entry.token));
+    }
+    // Nor do they send fn's hint to a function: only a term, its abbreviation or a name for its subject does.
+    for (const query of ["fx", "earnings", "basis", "chart", "close", "exposure", "basis points"]) {
+      expect(suggestedFunctionCodes(registry, query).filter((entry) => ["MARS", "PORT", "QQ", "GC"].includes(entry.code)), query).toEqual([]);
+    }
   } finally {
     registry.destroy();
     channels.mockRestore();

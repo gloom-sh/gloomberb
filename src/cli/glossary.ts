@@ -14,6 +14,12 @@ export interface GlossaryEntry {
   short?: string;
   /** Other names a reader may look it up by: `stop-out` for the high yield. */
   aliases: readonly string[];
+  /**
+   * Other names for what the functions that show it cover, which find those
+   * functions as the term and its abbreviation do (`expected shortfall` for
+   * MARS and PORT); the aliases only look the term up. Looked up as aliases are.
+   */
+  finds?: readonly string[];
   /** The functions that show it, by the token `fn` takes. */
   functions: readonly string[];
   /**
@@ -468,21 +474,21 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "Under 0.1 PORT marks the factor a weak fit: the beta beside it is mostly noise, not an exposure.",
   },
   {
-    term: "Value at risk", short: "VaR", aliases: ["value-at-risk", "var 95%", "1d var", "historical var", "expected shortfall", "cvar", "tail loss",
-      "conditional var", "risk of loss"],
+    term: "Value at risk", short: "VaR", aliases: ["var 95%", "1d var", "historical var", "tail loss"],
+    finds: ["value-at-risk", "expected shortfall", "cvar", "conditional var"],
     functions: ["PORT", "MARS"], shown: ["VaR", "expected shortfall"],
     definition: "The loss a basket went beyond on only 5% of its last 60 trading days, as a share of its value and in money: a 1-day VaR 95% of 1.19% means "
       + "about one day in twenty lost more than that. Expected shortfall is the average loss on those worst days. Both read the past, not a limit on the next loss.",
   },
   {
-    term: "Max drawdown", aliases: ["drawdown", "drawdowns", "maximum drawdown", "mdd", "peak to trough", "peak-to-trough decline"],
+    term: "Max drawdown", aliases: ["drawdowns", "mdd", "peak to trough", "peak-to-trough decline"], finds: ["drawdown", "maximum drawdown"],
     functions: ["PORT", "MARS"], shown: ["max drawdown"],
     definition: "The largest fall from a high to a later low over the window, as a share of the high: a 60D max drawdown of -7.2% is the basket's "
       + "worst drop from any of its last 60 closes to a later one.",
   },
   {
-    term: "Stress test", aliases: ["stress", "stress tests", "stress testing", "scenario", "scenarios", "scenario analysis", "shock", "shocks",
-      "what if", "historical scenarios", "crash replay"],
+    term: "Stress test", aliases: ["stress", "scenario", "scenarios", "shock", "shocks", "what if", "historical scenarios", "crash replay"],
+    finds: ["stress tests", "stress testing", "scenario analysis"],
     functions: ["PORT", "MARS"], shown: ["stress", "Stress"],
     definition: "What the book would move by in a given shock: an index fall, a 10Y yield rise or a VIX jump read through the basket's past moves "
       + "with each, a currency or holding move repricing the lines it touches, and four past selloffs replayed on today's holdings at today's weights. "
@@ -1074,36 +1080,38 @@ function words(text: string): string[] {
 }
 
 function names(entry: GlossaryEntry): string[] {
-  return [entry.term, ...(entry.short ? [entry.short] : []), ...entry.aliases];
+  return [entry.term, ...(entry.short ? [entry.short] : []), ...entry.finds ?? [], ...entry.aliases];
 }
 
-let namesByFunction: ReadonlyMap<string, readonly string[]> | null = null;
+/** The names that find the functions showing a term: the term, its abbreviation and its `finds`, never a loose alias. */
+function findingNames(entry: GlossaryEntry): string[] {
+  return [entry.term, ...(entry.short ? [entry.short] : []), ...entry.finds ?? []];
+}
+
+let keysByFunction: ReadonlyMap<string, ReadonlySet<string>> | null = null;
 
 /**
- * Every name the terms a function shows go by (each term, its abbreviation
- * and its aliases), by the function's code: the words that find the function
- * as its own keywords do, so `VaR`, `value at risk` and `expected shortfall`
- * reach MARS and PORT in `catalog`, `fn`'s hint and the command bar.
+ * Whether a query is, whole, the name of a term a function shows (its term,
+ * abbreviation or `finds`, in any case and punctuation), by the function's
+ * code: `VaR`, `value at risk` and `expected shortfall` name MARS and PORT
+ * in `catalog`, `fn`'s hint and the command bar. A word of a longer query, or
+ * a loose alias (`close`, `exposure`), names nothing, so common searches list
+ * what they did.
  */
-export function glossaryNamesOf(code: string): readonly string[] {
-  namesByFunction ??= GLOSSARY.reduce((map, entry) => {
-    for (const fn of entry.functions) map.set(fn, [...map.get(fn) ?? [], ...names(entry)]);
+export function glossaryNamesFunction(code: string, query: string): boolean {
+  keysByFunction ??= GLOSSARY.reduce((map, entry) => {
+    for (const fn of entry.functions) map.set(fn, new Set([...map.get(fn) ?? [], ...findingNames(entry).map(lookupKey)]));
     return map;
-  }, new Map<string, string[]>());
-  return namesByFunction.get(code.toUpperCase()) ?? [];
+  }, new Map<string, Set<string>>());
+  const key = lookupKey(query);
+  return !!key && !!keysByFunction.get(code.toUpperCase())?.has(key);
 }
 
-/** The terms a function shows, each with its abbreviation (`Value at risk`, `VaR`), by the function's code: the names first read. */
-export function glossaryTermsOf(code: string): string[] {
-  const upper = code.toUpperCase();
-  return GLOSSARY.filter((entry) => entry.functions.includes(upper)).flatMap((entry) => [entry.term, ...entry.short ? [entry.short] : []]);
-}
-
-/** The functions that show the term a word names whole (`VaR`, `value-at-risk`: MARS and PORT), in glossary order. */
+/** The functions that show the term a query names whole (`VaR`, `value-at-risk`: PORT and MARS), in glossary order. */
 export function glossaryFunctionsNamed(query: string): string[] {
   const key = lookupKey(query);
   if (!key) return [];
-  return [...new Set(GLOSSARY.filter((entry) => names(entry).some((name) => lookupKey(name) === key)).flatMap((entry) => entry.functions))];
+  return [...new Set(GLOSSARY.filter((entry) => findingNames(entry).some((name) => lookupKey(name) === key)).flatMap((entry) => entry.functions))];
 }
 
 export interface GlossaryLookup {
@@ -1227,7 +1235,7 @@ export function glossaryRecord(entry: GlossaryEntry): Record<string, unknown> {
   return {
     term: entry.term,
     ...(entry.short ? { short: entry.short } : {}),
-    aliases: entry.aliases,
+    aliases: [...entry.finds ?? [], ...entry.aliases],
     functions: entry.functions,
     definition: entry.definition,
   };
