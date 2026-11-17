@@ -44,9 +44,11 @@ function serve(geo: "absent" | "fixture") {
   return requests;
 }
 
-async function mount(settings: Record<string, unknown>) {
+async function mount(settings: Record<string, unknown>, homeArea?: string) {
   const id = "world-venue-map:test";
-  const state = createInitialState(createTestPaneConfig("/tmp/world-map-test", { paneId: "world-venue-map", instanceId: id, settings }));
+  const config = createTestPaneConfig("/tmp/world-map-test", { paneId: "world-venue-map", instanceId: id, settings });
+  if (homeArea) config.pluginConfig["market-overview"] = { mapHomeArea: homeArea };
+  const state = createInitialState(config);
   await act(async () => {
     await tui.render(
       <TestPaneFrame state={state} paneId={id} pluginId="market-overview" runtime={createTestPluginRuntime()} width={110} height={30}>
@@ -64,6 +66,17 @@ describe("world map layers", () => {
     await tui.waitForFrameToContain("Suez Canal");
     expect(tui.frame()).not.toContain("Strait of Hormuz");
     expect(tui.frame()).not.toContain("zoom out");
+  });
+
+  test("a map with no place of its own starts at the home area, and a place it was made with wins", async () => {
+    serve("fixture");
+    await mount({ layers: ["ships"], venues: false }, "Suez Canal");
+    await tui.waitForFrameToContain("Suez Canal");
+    expect(tui.frame()).not.toContain("Strait of Hormuz");
+
+    await mount({ layers: ["ships"], venues: false, place: "Strait of Hormuz" }, "Suez Canal");
+    await tui.waitForFrameToContain("Strait of Hormuz");
+    expect(tui.frame()).not.toContain("Suez Canal");
   });
 
   test("a server without geo layers leaves even a preset as the quiet venue map", async () => {

@@ -3,6 +3,7 @@ import type { CliGlobalOptions } from "./options";
 import {
   cliPlainEnabled,
   cliStyles,
+  cliText,
   cliTerminalWidth,
   renderForFile,
   renderStats,
@@ -624,7 +625,7 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
     return withCsvFooter(csv, [...exportSourceLines(cited), ...cutNote, ...(renderOptions.exportNotes ?? []).map((note) => `note: ${note}`)]);
   }
   if (renderOptions.text) {
-    return renderOptions.text(result.data);
+    return cliText(renderOptions.text(result.data));
   }
   // The heading's lines, the summary and the notes are prose: each wraps to a narrow --width, as the source line does.
   const summary = wrapToTerminal(renderOptions.summary?.(result.data) ?? "");
@@ -745,12 +746,12 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   if (options.format !== "json" && !options.quiet) {
     // Each wraps to a narrow --width, as a note does.
     for (const warning of result.warnings ?? []) {
-      console.error(wrapToTerminal(`${cliStyles.warning("warning:")} ${hinted(warning)}`));
+      console.error(wrapToTerminal(`${cliStyles.warning("warning:")} ${hinted(cliText(warning))}`));
     }
   }
-  if (!options.quiet) for (const line of footer) console.error(line);
+  if (!options.quiet) for (const line of footer) console.error(cliText(line));
   if (options.format === "ndjson" && !options.quiet) {
-    for (const note of exportNdjsonNotes(result, options, renderOptions)) console.error(`note: ${note}`);
+    for (const note of exportNdjsonNotes(result, options, renderOptions)) console.error(cliText(`note: ${note}`));
   }
 }
 

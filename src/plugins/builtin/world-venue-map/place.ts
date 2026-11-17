@@ -1,6 +1,6 @@
 import type { CloudWorldVenuePayload } from "../../../api-client";
 import { getGeoEntities, loadGeoCatalog, type GeoBbox, type GeoRequest } from "../../../api-client/geo";
-import type { AppConfig } from "../../../types/config";
+import type { AppConfig, PaneInstanceConfig } from "../../../types/config";
 import { HOME_AREA_SETTING_KEY } from "./layers";
 import { savedWorldMapViewport } from "./model";
 import { logFailure } from "../../../utils/log-failure";
@@ -15,11 +15,31 @@ export interface MapPlace {
 export interface MapStart {
   place: MapPlace | null;
   note: string | null;
+  /** The place is the home area from the app's settings, not one the pane was made with. */
+  home?: true;
 }
 
 export function mapHomeArea(config: AppConfig): string {
   const value = config.pluginConfig?.["market-overview"]?.[HOME_AREA_SETTING_KEY];
   return typeof value === "string" ? value.trim() : "";
+}
+
+/**
+ * The pane as a share carries it, without a starting place that is the home
+ * area: maps made before the home area was read at render time stored it in
+ * their settings and, with a layer preset, in their title.
+ */
+export function paneWithoutHomeArea(pane: PaneInstanceConfig, homeArea: string): PaneInstanceConfig {
+  const place = pane.settings?.place;
+  const same = (left: string, right: string) => left.trim().toLowerCase() === right.trim().toLowerCase();
+  if (!homeArea.trim() || typeof place !== "string" || !same(place, homeArea)) return pane;
+  const { place: _place, ...settings } = pane.settings!;
+  const suffix = ` · ${place.trim()}`;
+  const title = pane.title?.trim();
+  const shortened = title && title.length > suffix.length && same(title.slice(-suffix.length), suffix)
+    ? title.slice(0, -suffix.length)
+    : pane.title;
+  return { ...pane, settings, ...(shortened === undefined ? {} : { title: shortened }) };
 }
 
 function normalize(value: string): string {
@@ -80,8 +100,10 @@ export function mapPlaceBbox(place: MapPlace): GeoBbox {
   return [west < -180 ? west + 360 : west, Math.max(-90, place.latitude - span), east > 180 ? east - 360 : east, Math.min(90, place.latitude + span)];
 }
 
-export function initialMapFocus(place: MapPlace | null, savedViewport: unknown) {
-  return place && !savedWorldMapViewport(savedViewport) ? { key: "initial-place", ...place, exact: true } : null;
+export function initialMapFocus(place: MapPlace | null, savedViewport: unknown, transient = false) {
+  return place && !savedWorldMapViewport(savedViewport)
+    ? { key: "initial-place", ...place, exact: true, ...(transient ? { transient: true } : {}) }
+    : null;
 }
 
 export function nearestPlaces<Row>(rows: readonly Row[], place: MapPlace | null, point: (row: Row) => { longitude: number; latitude: number }): Row[] {

@@ -18,7 +18,7 @@ import {
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
-import { useAsyncResource, usePaneSettingValue, usePluginPaneState } from "../../../public/react";
+import { useAppSelector, useAsyncResource, usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
@@ -32,7 +32,7 @@ import { filterWorldVenues, formatVenueLocalTime } from "./model";
 import { useGeoCatalog } from "./use-geo";
 import { SelectedVenueHeader } from "./venue-header";
 import { cloudGeoRequest } from "./client";
-import { initialMapFocus, nearestPlaces, resolveMapPlace, type MapStart } from "./place";
+import { initialMapFocus, mapHomeArea, nearestPlaces, resolveMapPlace, type MapStart } from "./place";
 import { useWorldMapEvidence } from "./evidence";
 
 export { WORLD_VENUE_MAP_PANE_ID } from "./ids";
@@ -57,8 +57,11 @@ function venueColumns(width: number): VenueColumn[] {
  * server without them leaves the venue map exactly as it was.
  */
 export function WorldVenueMapPane(props: PaneProps) {
-  const [placeSetting] = usePaneSettingValue<string>("place", "");
-  const [initialPlace] = useState(placeSetting);
+  const [placeSetting] = usePaneSettingValue<string | undefined>("place", undefined);
+  const homeArea = useAppSelector((state) => mapHomeArea(state.config));
+  // A map without a typed place starts at the home area; the pane never stores it.
+  const [initialPlace] = useState(placeSetting ?? homeArea);
+  const [startsAtHome] = useState(placeSetting === undefined);
   const [mapStart, setMapStart] = useState<MapStart | null>(() => initialPlace ? null : { place: null, note: null });
   useEffect(() => {
     if (!initialPlace) return;
@@ -68,12 +71,12 @@ export function WorldVenueMapPane(props: PaneProps) {
       request: cloudGeoRequest,
       signal: controller.signal,
     }).then((start) => {
-      if (!controller.signal.aborted) setMapStart(start);
+      if (!controller.signal.aborted) setMapStart(startsAtHome ? { ...start, home: true } : start);
     }, () => {
       if (!controller.signal.aborted) setMapStart({ place: null, note: "Place unavailable; showing world." });
     });
     return () => controller.abort();
-  }, [initialPlace]);
+  }, [initialPlace, startsAtHome]);
   const [layerSetting] = usePaneSettingValue<unknown>(LAYERS_SETTING_KEY, null);
   const [venuesSetting] = usePaneSettingValue<boolean | undefined>(VENUES_SETTING_KEY, undefined);
   const { catalog, settled } = useGeoCatalog();
@@ -150,7 +153,7 @@ function VenueMapView({ focused, width, height, start }: PaneProps & { start: Ma
   const { nativePaneChrome } = useUiCapabilities();
   const [storedSidebarWidth, setStoredSidebarWidth] = usePluginPaneState<number | null>("sidebarWidth", null);
   const [savedViewport, setSavedViewport] = usePluginPaneState<unknown>("map:viewport", null);
-  const [initialFocus] = useState(() => initialMapFocus(start.place, savedViewport));
+  const [initialFocus] = useState(() => initialMapFocus(start.place, savedViewport, start.home));
   const [draggedSidebarWidth, setDraggedSidebarWidth] = useState<number | null>(null);
   const horizontal = shouldShowPaneSidebar(data?.venues.length ?? 0, width, height);
   // Venue names need more room than a conversation list, so the width the pane

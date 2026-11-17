@@ -236,7 +236,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const [headerSubject, setHeaderSubject] = useState<"entity" | "venue">("entity");
   // Kept per pane, so docking, undocking, popping out or reloading reopens the map where it was.
   const [savedViewport, setSavedViewport] = usePluginPaneState<unknown>("map:viewport", null);
-  const [focus, setFocus] = useState<WorldMapFocus | null>(() => initialMapFocus(start.place, savedViewport));
+  const [focus, setFocus] = useState<WorldMapFocus | null>(() => initialMapFocus(start.place, savedViewport, start.home));
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const mapKeys = useMapKeyboard(searchFocused);
   const scrollRef = useRef<ScrollBoxRenderable>(null);

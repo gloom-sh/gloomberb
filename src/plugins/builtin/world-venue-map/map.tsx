@@ -45,6 +45,8 @@ export interface WorldMapFocus {
   zoom?: number;
   /** Exactly at `zoom`, out as well as in: a frame around a set of places. */
   exact?: boolean;
+  /** The pane starts here on its own, so the view is not kept in the pane until the map moves. */
+  transient?: boolean;
 }
 
 interface WorldVenueMapProps {
@@ -691,6 +693,12 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     const focus = props.focus;
     if (!focus || !sized || appliedFocusRef.current === focus.key) return;
     appliedFocusRef.current = focus.key;
+    if (focus.transient) {
+      const start = clampWorldMapViewport({ zoom: Math.max(1, focus.zoom ?? 1), centerLongitude: focus.longitude, centerLatitude: focus.latitude }, props.width, plotHeight, 1, maxZoom);
+      settledViewportRef.current = start;
+      setViewport(start);
+      return;
+    }
     setViewport((current) => {
       const zoom = focus.exact ? Math.max(1, focus.zoom ?? 1) : Math.max(current.zoom, focus.zoom ?? 1);
       if (zoom <= 1 && !focus.exact) return current;

@@ -1,3 +1,4 @@
+import { cliText } from "../utils/cli-output";
 import { csvDecimal, serializeCsv } from "../utils/csv";
 import { splitCsvFooter } from "./report-tables";
 
@@ -58,7 +59,7 @@ export function portableCsv(text: string, warnings: readonly string[] = [], extr
   let sectionKey = "section", notesKey = "export_notes";
   while (usedNames.has(sectionKey)) sectionKey = `_${sectionKey}`;
   while (usedNames.has(notesKey)) notesKey = `_${notesKey}`;
-  const notes = [...new Set([...footer, ...extraNotes.flatMap((note) => note.split(/\r\n?|\n/).filter(Boolean).map((line) => `note: ${line}`)), ...warnings.map((warning) => `warning: ${warning}`)].map((note) => note.replace(/\r\n?|\n/g, " | ")))].join(" | ");
+  const notes = [...new Set([...footer, ...extraNotes.flatMap((note) => note.split(/\r\n?|\n/).filter(Boolean).map((line) => `note: ${line}`)), ...warnings.map((warning) => `warning: ${warning}`)].map((note) => cliText(note.replace(/\r\n?|\n/g, " | "))))].join(" | ");
   const header = [...columns, ...tagged ? [sectionKey] : [], notesKey];
   const rows = tables.flatMap((table) => {
     const indices = columns.map((column) => table.columns.indexOf(column));
