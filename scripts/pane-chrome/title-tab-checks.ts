@@ -1,15 +1,24 @@
 import { click, evaluate, frames, mouse, type Cdp } from "./browser";
+import { FADE_PX } from "../../src/renderers/dom/host/overflow-fade-px";
 
 /**
  * Title-bar tabs: a pane's primary strip, drawn in its title bar on
  * the desktop and the web, is a row of raised boxes. The active tab is a box
  * with rounded top corners from just under the bar's top edge down over its
- * bottom rule, its top and sides in the rule's colour and its inside the
- * colour of what is under it, so it opens into the pane. Docked, floating and
- * popped out, every label sits on the title's centre line, and focus changes
- * colours, never weights or widths. Read from the pixels Chrome draws, so a
- * rule painted over the tab or a seam between the tab and the bar under it
- * fails. In-pane tab rows keep their underline.
+ * bottom rule and a pixel past it into the pane, its top and sides in the
+ * rule's colour and its inside the colour of what is under it, so it opens
+ * into the pane; the other tabs end on the rule. Docked, floating and popped
+ * out, every label sits on the title's centre line, and focus changes
+ * colours, never weights or widths. A strip wider than its pane scrolls and
+ * keeps the active tab whole and clear of the fades at its edges. Read from
+ * the pixels Chrome draws, so a rule painted over the tab or a seam between
+ * the tab and the bar under it fails. In-pane tab rows keep their underline.
+ *
+ * The pixel past the rule is for WebKit (the macOS app, Safari): it draws a
+ * strip that scrolls as a layer of its own, placed on a whole device pixel,
+ * so in a title bar a fraction of a pixel off the grid a tab that only
+ * reached the rule ended a device pixel above it. Chrome cannot show that;
+ * `title-tab-webkit.ts` checks it in the system WebKit.
  */
 
 interface TitleTabStep {
@@ -22,6 +31,9 @@ interface Box { left: number; right: number; top: number; bottom: number }
 interface Strip {
   header: Box;
   body: Box;
+  list: Box;
+  /** Tabs hidden past the start or the end, so that edge fades. */
+  hidden: { start: boolean; end: boolean };
   title: { centre: number; weight: string };
   tabs: Array<{ label: string; box: Box; centre: number; weight: string; colour: string; fill: string; line: string }>;
   active: number;
@@ -31,29 +43,39 @@ interface Strip {
   underline: string;
 }
 
+/** Which strip of a title bar: the pane's own tabs, or the panes stacked in its spot. */
+type StripRole = "pane-header-tabs" | "pane-stack-tabs";
+
 /** Centre lines may differ by subpixel rounding only. */
 const TOLERANCE = 0.5;
+/** How far the active tab reaches past the rule into the pane (pane/header.tsx). */
+const OVERHANG = 1;
 
 function fail(message: string, detail?: unknown): never {
   throw new Error(detail === undefined ? message : `${message}\n     ${JSON.stringify(detail)}`);
 }
 
-const STRIP = (paneId: string) => `(() => {
+const STRIP = (paneId: string, role: StripRole) => `(() => {
   const pane = document.querySelector('[data-gloom-role=pane-window][data-gloom-pane-id="${paneId}"], [data-gloom-role=detached-pane-window][data-gloom-pane-id="${paneId}"]');
   const header = pane?.querySelector("[data-gloom-role=pane-header]");
   const body = pane?.querySelector(":scope > [data-gloom-role=pane-body]");
-  const list = header?.querySelector("[data-gloom-role=tab-list]");
+  const list = header?.querySelector("[data-gloom-role=${role}] [data-gloom-role=tab-list]");
   if (!header || !body || !list) return null;
   const box = (element) => { const r = element.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
   const centre = (element) => { const r = element.getBoundingClientRect(); return r.top + r.height / 2; };
+  // A stack's tabs stand in for the title, whose line is the middle of the bar between its rules.
   const title = header.querySelector("[data-gloom-role=pane-title]");
+  const bar = getComputedStyle(header);
+  const line = title ? centre(title) : (header.getBoundingClientRect().top + parseFloat(bar.paddingTop) + header.getBoundingClientRect().bottom - parseFloat(bar.paddingBottom)) / 2;
   const tabs = [...list.querySelectorAll("[role=tab]")];
   const active = tabs.findIndex((tab) => tab.getAttribute("aria-selected") === "true");
   const style = getComputedStyle(tabs[active]);
   return {
     header: box(header),
     body: box(body),
-    title: { centre: centre(title), weight: getComputedStyle(title).fontWeight },
+    list: box(list),
+    hidden: { start: list.scrollLeft > 1, end: list.scrollLeft + list.clientWidth < list.scrollWidth - 1 },
+    title: { centre: line, weight: title ? getComputedStyle(title).fontWeight : "" },
     tabs: tabs.map((tab) => {
       const s = getComputedStyle(tab);
       return { label: tab.textContent.trim(), box: box(tab), centre: centre(tab.querySelector("[data-gloom-role=tab-label]")), weight: s.fontWeight, colour: s.color, fill: s.backgroundColor, line: s.borderTopColor };
@@ -68,8 +90,8 @@ const STRIP = (paneId: string) => `(() => {
   };
 })()`;
 
-async function readStrip(cdp: Cdp, paneId: string): Promise<Strip> {
-  return await evaluate<Strip | null>(cdp, STRIP(paneId)) ?? fail(`${paneId} has no title-bar tabs`);
+async function readStrip(cdp: Cdp, paneId: string, role: StripRole = "pane-header-tabs"): Promise<Strip> {
+  return await evaluate<Strip | null>(cdp, STRIP(paneId, role)) ?? fail(`${paneId} has no title-bar tabs (${role})`);
 }
 
 /** Device pixels at page points, read from one Chrome screenshot of the clip. */
@@ -94,11 +116,13 @@ async function pixels(cdp: Cdp, clip: Box, points: Array<{ x: number; y: number 
 const same = (a: number[], b: number[]) => a.every((value, index) => Math.abs(value - b[index]!) <= 2);
 
 /** The box, its lines and its labels, against the title bar it sits in. */
-async function checkBox(cdp: Cdp, paneId: string, where: string): Promise<Strip> {
-  const strip = await readStrip(cdp, paneId);
+async function checkBox(cdp: Cdp, paneId: string, where: string, role: StripRole = "pane-header-tabs"): Promise<Strip> {
+  const strip = await readStrip(cdp, paneId, role);
   const tab = strip.tabs[strip.active] ?? fail(`${where}: no active tab`);
   const { outline } = strip;
-  if (Math.abs(tab.box.bottom - strip.header.bottom) > TOLERANCE) fail(`${where}: the active tab does not reach the title bar's bottom edge, so its rule shows under it`, { tab: tab.box, header: strip.header });
+  if (Math.abs(tab.box.bottom - (strip.header.bottom + OVERHANG)) > TOLERANCE) fail(`${where}: the active tab does not reach ${OVERHANG}px past the title bar's bottom edge, so a strip WebKit draws a device pixel short shows the rule under it`, { tab: tab.box, header: strip.header });
+  const spilling = strip.tabs.find((entry, index) => index !== strip.active && Math.abs(entry.box.bottom - strip.header.bottom) > TOLERANCE);
+  if (spilling) fail(`${where}: "${spilling.label}" does not end on the title bar's bottom edge, so its hover fill leaves the bar`, { tab: spilling.box, header: strip.header });
   if (tab.box.top <= strip.header.top || tab.box.top - strip.header.top > 3) fail(`${where}: the active tab's box does not start just under the title bar's top edge`, { tab: tab.box, header: strip.header });
   if (outline.top !== 1 || outline.side !== 1 || outline.bottom !== 0) fail(`${where}: the active tab is not a box open at the bottom`, outline);
   if (outline.topRadius !== 6 || outline.bottomRadius !== 0) fail(`${where}: the active tab's corners are not the control radius on top and square at the bottom`, outline);
@@ -107,6 +131,10 @@ async function checkBox(cdp: Cdp, paneId: string, where: string): Promise<Strip>
   for (const entry of strip.tabs) {
     if (Math.abs(entry.centre - strip.title.centre) > TOLERANCE) fail(`${where}: "${entry.label}" is off the title's centre line`, { label: entry.centre, title: strip.title.centre });
   }
+  // A strip that scrolls fades the edges hiding tabs; the active one stays whole and clear of them.
+  const clearStart = strip.list.left + (strip.hidden.start ? FADE_PX : 0) - TOLERANCE;
+  const clearEnd = strip.list.right - (strip.hidden.end ? FADE_PX : 0) + TOLERANCE;
+  if (tab.box.left < clearStart || tab.box.right > clearEnd) fail(`${where}: the active tab is under the strip's fade or out of view, so the rule shows through the part that fades`, { tab: tab.box, list: strip.list, hidden: strip.hidden });
 
   // From the pixels: the rule beside the box, none under it, the box drawn in the rule's colour.
   const x = (tab.box.left + tab.box.right) / 2;
@@ -136,6 +164,22 @@ async function focusPane(cdp: Cdp, paneId: string): Promise<void> {
   await mouse(cdp, "mouseMoved", 1, 899, false);
   // Past the labels' colour transition.
   await frames(cdp, 12);
+}
+
+/** A research strip that scrolls: its box focused and not, and again after a press on a tab the end fade half hides. */
+async function checkScrollingStrip(cdp: Cdp, paneId: string, place: string, elsewhere: string): Promise<void> {
+  await focusPane(cdp, paneId);
+  const focused = await checkBox(cdp, paneId, `${place}, focused`);
+  if (!focused.hidden.start && !focused.hidden.end) fail(`${place}: the strip fits its pane, so nothing here scrolls`, focused.list);
+  const next = focused.tabs.find((tab) => tab.box.right > focused.list.right - FADE_PX && tab.box.left < focused.list.right - 4)
+    ?? fail(`${place}: no tab under the end fade to press`, focused.tabs.map((tab) => [tab.label, tab.box.left, tab.box.right]));
+  await click(cdp, { x: next.box.left + Math.min(8, (focused.list.right - next.box.left) / 2), y: (next.box.top + next.box.bottom) / 2 });
+  await mouse(cdp, "mouseMoved", 1, 899, false);
+  await frames(cdp, 12);
+  const pressed = await checkBox(cdp, paneId, `${place}, after pressing "${next.label}"`);
+  if (pressed.tabs[pressed.active]!.label !== next.label) fail(`${place}: pressing "${next.label}" did not choose it`, pressed.tabs[pressed.active]);
+  await focusPane(cdp, elsewhere);
+  await checkBox(cdp, paneId, `${place}, unfocused`);
 }
 
 export const titleTabSteps: TitleTabStep[] = [
@@ -190,6 +234,19 @@ export const titleTabSteps: TitleTabStep[] = [
       const fill = strip.tabs[strip.active]!.fill;
       const body = await evaluate<string>(cdp, `getComputedStyle(document.querySelector('[data-gloom-pane-id="board:dock"] > [data-gloom-role=pane-body]')).backgroundColor`);
       if (fill === body) fail("the active tab took the pane body's colour, not the query bar's under it", { tab: fill, body });
+    },
+  },
+  {
+    name: "title-bar tabs (a strip that scrolls, docked and floating, under a stack's tabs): the active tab is whole, clear of the fades and open into the pane",
+    scenario: "research",
+    async run(cdp) {
+      await checkScrollingStrip(cdp, "research:dock", "docked", "table:dock");
+      await checkScrollingStrip(cdp, "research:float", "floating", "table:dock");
+      await focusPane(cdp, "plain:s6");
+      const stack = await checkBox(cdp, "plain:s6", "a stack's tabs, focused", "pane-stack-tabs");
+      if (!stack.hidden.start && !stack.hidden.end) fail("the stack's tabs fit its window, so nothing here scrolls", stack.list);
+      await focusPane(cdp, "table:dock");
+      await checkBox(cdp, "plain:s6", "a stack's tabs, unfocused", "pane-stack-tabs");
     },
   },
   {
