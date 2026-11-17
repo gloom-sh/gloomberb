@@ -1,5 +1,5 @@
 import type { ChartResolution } from "../../../components/chart/core/types";
-import { chartBarSizeParts, isManualChartResolution, type ManualChartResolution } from "../../../time-series/resolution";
+import { chartBarSizeName, chartBarSizeParts, isManualChartResolution, type ManualChartResolution } from "../../../time-series/resolution";
 
 const RESOLUTION_LABELS: Record<ManualChartResolution | "auto", string> = {
   auto: "Auto",
@@ -14,21 +14,8 @@ const RESOLUTION_LABELS: Record<ManualChartResolution | "auto", string> = {
   "1mo": "M",
 };
 
-const RESOLUTION_NAMES: Record<ManualChartResolution, string> = {
-  "1m": "1-minute",
-  "5m": "5-minute",
-  "15m": "15-minute",
-  "30m": "30-minute",
-  "45m": "45-minute",
-  "1h": "hourly",
-  "1d": "daily",
-  "1wk": "weekly",
-  "1mo": "monthly",
-};
-
 // Months take MO beyond one (3MO), as 3M and 6M are ranges in the same bar.
 const BUILT_UNIT_LABELS = { m: "m", h: "h", d: "D", wk: "W", mo: "MO" } as const;
-const BUILT_UNIT_NAMES = { m: "minute", h: "hour", d: "day", wk: "week", mo: "month" } as const;
 
 /**
  * The one way chart intervals are labelled. Intraday reads in lowercase units
@@ -44,9 +31,7 @@ export function formatChartResolution(resolution: ChartResolution): string {
 
 export function describeChartResolution(resolution: ChartResolution): string {
   if (resolution === "auto") return "Choose an interval automatically for the active range.";
-  if (isManualChartResolution(resolution)) return `Use ${RESOLUTION_NAMES[resolution]} observations.`;
-  const parts = chartBarSizeParts(resolution);
-  return parts ? `Use ${parts.count}-${BUILT_UNIT_NAMES[parts.unit]} observations.` : `Use ${resolution} observations.`;
+  return `Use ${chartBarSizeName(resolution)} observations.`;
 }
 
 function calendarParts(date: Date, timeZone: string): { key: string; year: number; label: string } {

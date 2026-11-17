@@ -38,6 +38,7 @@ import {
 } from "../report-tables";
 import type { ExportIdentity } from "../export-source";
 import { observationDate } from "../../time-series/price-comparison";
+import { chartBarSizeParts } from "../../time-series/resolution";
 import type { ResolvedSeries } from "../../time-series/types";
 import { barLastSession } from "../../market-data/market/bar-period";
 import type { PaneFunctionReport } from "./report";
@@ -634,7 +635,10 @@ function trailingCells(trailing: HeadlessSeries["trailing"]): Record<string, str
 }
 
 function renderSeries(result: HeadlessSeriesResult): string[] {
-  const rows = result.series.map((series) => {
+  // Series served in different bars (a chart's 5-minute bars beside a series a source answered in daily ones) name theirs.
+  const barSizes = result.series.map((series) => (chartBarSizeParts(series.interval?.trim()) ? series.interval!.trim() : null));
+  const mixedBars = new Set(barSizes.filter(Boolean)).size > 1;
+  const rows = result.series.map((series, index) => {
     const latest = [...series.points].reverse().find((point) => (
       point.value != null || point.close != null
     ));
@@ -646,6 +650,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
       value: series.notMeaningful ? "N/M" : seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
       ...trailingCells(series.trailing),
+      ...(mixedBars ? { bars: barSizes[index] ?? MISSING_VALUE } : {}),
       points: observationCount(series),
     };
   });
@@ -658,6 +663,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
     { key: "value", header: "Value", align: "right" },
     ...(trailing ? TRAILING_COLUMNS : []),
     ...(rows.some((row) => row.unit) ? [{ key: "unit", header: "Unit" }] : []),
+    ...(mixedBars ? [{ key: "bars", header: "Bars" }] : []),
     // Beside the averages, the count of points is the first thing a narrow table drops.
     { key: "points", header: "Points", align: "right", ...(trailing ? { optional: true } : {}) },
   ];
