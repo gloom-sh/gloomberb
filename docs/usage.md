@@ -1169,7 +1169,7 @@ News panes refresh every two minutes while the app is visible (a hidden browser 
 
 Running `gloom` with no arguments launches the terminal UI. Normal commands run headless. Use `gloom launch-ui` when a script should explicitly open the UI.
 
-A command that changes your profile (`alerts add`, `config set`, `watchlist add`, `portfolio create`, `notes set`) can run while the app is open on the same profile. The app takes the change in within a few seconds, and neither the app nor the command writes over what the other saved: an alert added from the terminal is checked by the open app and is still there after the app's next save.
+A command that changes your profile (`alerts add`, `config set`, `watchlist add`, `portfolio create`, `notes set`) can run while the app is open on the same profile. The app takes the change in within a few seconds, and neither the app nor the command writes over what the other saved: an alert added from the terminal is checked by the open app and is still there after the app's next save. The same holds between the terminal app and the desktop app open on one profile, and a ticker one of them deletes (removing a broker profile's holdings) stays deleted in the other.
 
 ### Output and flags
 
