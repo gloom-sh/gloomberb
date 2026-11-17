@@ -24,9 +24,9 @@ interface RowFit {
   dismissKey: boolean;
 }
 
-/** What a chip says: the function and the ticker it opens on. */
+/** What a chip says: the function and the ticker it opens on, short as the command itself (`CALLS AAPL`). */
 function chipText(chip: ProWelcomeChip, short: boolean): string {
-  return `${short ? chip.fn.shortcut : t(chip.fn.label)} · ${chip.symbol}`;
+  return short ? `${chip.fn.shortcut} ${chip.symbol}` : `${t(chip.fn.label)} · ${chip.symbol}`;
 }
 
 /** The chip's lead square: the function's letter, as its pane's chip has. */
@@ -40,14 +40,15 @@ function terminalChipColumns(chip: ProWelcomeChip, short: boolean): number {
 }
 
 /**
- * What the terminal's one row has room for: the lead and Dismiss always; then
- * every function by its name, else by its mnemonic, else as many as fit;
- * then Dismiss's key; then the lead in full.
+ * What the terminal's one row has room for: a lead and Dismiss always; then
+ * every function by its name, else by its command, else as many as fit;
+ * then Dismiss's key; then the lead in full. A window too narrow for any
+ * function says the least lead and one command when one fits.
  */
 function fitTerminalRow(
   width: number,
   chips: readonly ProWelcomeChip[],
-  [fullLead, shortLead]: readonly [string, string],
+  [fullLead, shortLead, tinyLead]: readonly [string, string, string],
   dismissColumns: { withKey: number; bare: number },
 ): RowFit {
   const fit = (option: Omit<RowFit, "chips">): RowFit => {
@@ -67,9 +68,12 @@ function fitTerminalRow(
     fit({ lead: shortLead, short: false, dismissKey: true }),
     fit({ lead: shortLead, short: true, dismissKey: true }),
     fit({ lead: shortLead, short: true, dismissKey: false }),
+    fit({ lead: tinyLead, short: true, dismissKey: false }),
   ];
-  return options.find((option) => option.chips === chips.length)
-    ?? options.reduce((best, option) => (option.chips > best.chips ? option : best));
+  const whole = options.find((option) => option.chips === chips.length);
+  if (whole) return whole;
+  const most = options.reduce((best, option) => (option.chips > best.chips ? option : best));
+  return most.chips > 0 ? most : options.at(-1)!;
 }
 
 /**
@@ -96,6 +100,7 @@ export function ProWelcomeRow({ welcome }: { welcome: ProWelcome }) {
 
   const fullLead = t("Try Pro on your tickers");
   const shortLead = t("Try Pro");
+  const tinyLead = "Pro";
   const dismissButton = { label: "Dismiss", compact: true, shortcut: dismissKey || undefined } as const;
   const bareDismissButton = { label: "Dismiss", compact: true } as const;
   const wide = width >= NATIVE_FULL_COLUMNS;
@@ -105,7 +110,7 @@ export function ProWelcomeRow({ welcome }: { welcome: ProWelcome }) {
     : fitTerminalRow(
       width,
       chips,
-      [fullLead, shortLead],
+      [fullLead, shortLead, tinyLead],
       { withKey: terminalButtonColumns(dismissButton), bare: terminalButtonColumns(bareDismissButton) },
     );
 

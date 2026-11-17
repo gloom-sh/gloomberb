@@ -1200,7 +1200,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                       label={busy === "cancel" ? t("Cancelling...") : t("Cancel Pro")}
                       variant="danger"
                       active={activeField === "cancelProAction"}
-                      onPress={() => { void cancelPro(); }}
+                      onPress={() => { cancelPro().catch(logFailure("account-management.pane", "Cancel Pro failed")); }}
                       disabled={!!busy}
                     />
                   </Box>

@@ -3,6 +3,7 @@ import { useFieldRing, type FieldRing } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import type { ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { logFailure } from "../../../utils/log-failure";
 import type { AccountDraft, AccountFieldKey } from "./model";
 
 const SCOPE = "account-management:fields";
@@ -72,7 +73,7 @@ export function useAccountManagementKeyboard({
     passwordAction: openPasswordDialog,
     upgradeAction: openUpgrade,
     cancelTrialAction: () => { void endTrial(); },
-    cancelProAction: () => { void cancelPro(); },
+    cancelProAction: () => { cancelPro().catch(logFailure("account-management.keyboard", "Cancel Pro failed")); },
     inviteCopyAction: copyInvite,
     assistantsAction: openAssistants,
     deleteAccountAction: () => { void deleteAccount(); },

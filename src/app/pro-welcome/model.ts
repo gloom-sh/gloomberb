@@ -17,7 +17,7 @@ import { trackedListings } from "../since-last-visit/model";
 
 const DAY_MS = 86_400_000;
 /** Days after the first paid charge the row may show: day 0 (the charge) through this one. */
-export const PRO_WELCOME_LAST_DAY = 14;
+const PRO_WELCOME_LAST_DAY = 14;
 /** Fewer unopened functions than this and the row has nothing worth a row. */
 const MIN_FUNCTIONS = 2;
 const MAX_FUNCTIONS = 3;
@@ -36,7 +36,7 @@ export interface ProWelcomeFunction {
  * Pro's functions that open on a ticker, in the order the upgrade sheet
  * sells them: earnings calls, then options flow and X, then the rest.
  */
-export const PRO_WELCOME_FUNCTIONS: readonly ProWelcomeFunction[] = [
+const PRO_WELCOME_FUNCTIONS: readonly ProWelcomeFunction[] = [
   { templateId: "earnings-calls-pane", shortcut: "CALLS", label: "Earnings calls", kinds: ["equity"] },
   { templateId: "scanner-flow-pane", shortcut: "FLOW", label: "Options flow", kinds: ["equity", "fund"] },
   { templateId: "social-mentions-pane", shortcut: "BUZZ", label: "X mentions", kinds: ["equity", "fund", "crypto"] },

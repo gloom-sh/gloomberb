@@ -53,7 +53,7 @@ function priceWithPeriod(cents: number, interval: CloudKeptPrice["interval"]): s
 }
 
 /** The kept price against what a new subscriber pays, and what cancelling gives up. */
-export function keptPriceLines(kept: CloudKeptPrice): string[] {
+function keptPriceLines(kept: CloudKeptPrice): string[] {
   const list = priceWithPeriod(kept.listAmount, kept.interval);
   return [
     tf("Your price is {price}. New subscribers pay {list}.", { price: priceWithPeriod(kept.amount, kept.interval), list }),
@@ -62,7 +62,7 @@ export function keptPriceLines(kept: CloudKeptPrice): string[] {
 }
 
 /** The offer in gloom.sh's words: its opening line for the reason given, the offer, and its button. */
-export function offerCopy(offer: CloudRetentionOffer, reason: CloudCancelReason | undefined, date: string) {
+function offerCopy(offer: CloudRetentionOffer, reason: CloudCancelReason | undefined, date: string) {
   return {
     lines: [
       ...(reason ? [t(OPENING_LINES[reason])] : []),
@@ -114,6 +114,8 @@ export async function cancelProAfterSteps(
       confirmLabel: t("Continue"),
       cancelLabel: t("Keep Pro"),
       confirmVariant: "primary",
+      footer: t("Enter continue · Tab note · Esc keep Pro"),
+      wrapButtons: true,
       question: {
         label: "What made you decide to cancel? (optional)",
         choices: CANCEL_REASONS,
@@ -141,6 +143,7 @@ export async function cancelProAfterSteps(
         cancelLabel: t("Continue Cancellation"),
         confirmVariant: "primary",
         footer: t("Enter take the offer · n continue · Esc close"),
+        wrapButtons: true,
       });
       if (choice === null) return null;
       if (choice === "confirm") {
@@ -175,6 +178,8 @@ export async function cancelProAfterSteps(
       confirmLabel: t("Cancel Subscription"),
       cancelLabel: t("Keep My Subscription"),
       confirmVariant: "danger",
+      footer: t("y cancel · Enter or Esc keep Pro"),
+      wrapButtons: true,
       // Keeping is the primary answer, as on gloom.sh: a stray Enter keeps Pro.
       defaultAction: "cancel",
     });

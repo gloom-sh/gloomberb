@@ -4,7 +4,7 @@ import { colors } from "../../theme/colors";
 import { t, tf } from "../../i18n";
 import { type DialogApi, type PromptContext, useDialogKeyboard } from "../../ui/dialog";
 import type { InputRenderable } from "../../ui/host";
-import type { KeyEventLike } from "../../react/input";
+import { useViewport, type KeyEventLike } from "../../react/input";
 import { isPlainKey } from "../../utils/keyboard";
 import { Button, type ButtonVariant } from "./button";
 import { DialogActions } from "./dialog-actions";
@@ -85,6 +85,8 @@ export interface ConfirmDialogProps extends PromptContext<boolean> {
    * cancel button. See `confirmDialogChoice`.
    */
   escapeLeaves?: boolean;
+  /** Buttons that do not fit the dialog's width (long labels on a phone) wrap to another row. */
+  wrapButtons?: boolean;
 }
 
 export function ConfirmDialog({
@@ -106,9 +108,14 @@ export function ConfirmDialog({
   question,
   onAnswer,
   escapeLeaves = false,
+  wrapButtons = false,
 }: ConfirmDialogProps) {
   const enterCancels = defaultAction === "cancel";
   const desktop = useUiHost().kind === "desktop-web";
+  // The terminal's dialog box is the window less its border and padding: a
+  // narrow terminal wraps the words inside it rather than past its edge.
+  const viewport = useViewport();
+  const terminalWidth = Math.max(16, Math.min(width, viewport.width - 8));
   const openedAt = useRef(Date.now());
   const answer = useQuestionAnswer(question);
   const confirm = useCallback(() => {
@@ -191,12 +198,12 @@ export function ConfirmDialog({
       // The terminal's Cancel is its mouse close already: a second close in the title would only repeat it.
       onClose={desktop ? (escapeLeaves ? dismiss : onClose) : undefined}
     >
-      <Box flexDirection="column" {...(desktop ? { style: { width: fitDialogWidth(width) } } : { width })}>
+      <Box flexDirection="column" {...(desktop ? { style: { width: fitDialogWidth(width) } } : { width: terminalWidth })}>
         {renderBody(body)}
         {question && (
           <>
             <Box height={1} />
-            <QuestionFields question={question} answer={answer} width={width} disabled={busy} />
+            <QuestionFields question={question} answer={answer} width={terminalWidth} disabled={busy} />
           </>
         )}
         {status && (
@@ -208,6 +215,7 @@ export function ConfirmDialog({
         <Box height={1} />
         <DialogActions
           alignEnd={formButtons}
+          wrap={wrapButtons}
           hints={question && keys ? { keys: [{ key: "↑↓", label: "choose" }, ...noteKey ? [{ key: "Tab", label: "note" }] : []] } : undefined}
         >
           {formButtons ? cancelButton : confirmButton}
