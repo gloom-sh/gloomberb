@@ -78,10 +78,18 @@ export interface ConfirmDialogProps extends PromptContext<boolean> {
   question?: ConfirmDialogQuestion;
   /** With `question`: what it got, called as the dialog confirms. */
   onAnswer?: (answer: ConfirmDialogAnswer) => void;
+  /**
+   * For a confirm whose two buttons are both ways on, such as an offer's
+   * accept and continue: Esc and the desktop close button leave without
+   * either answer (the prompt resolves undefined) instead of pressing the
+   * cancel button. See `confirmDialogChoice`.
+   */
+  escapeLeaves?: boolean;
 }
 
 export function ConfirmDialog({
   resolve,
+  dismiss,
   title,
   body,
   confirmLabel,
@@ -97,6 +105,7 @@ export function ConfirmDialog({
   defaultAction = "confirm",
   question,
   onAnswer,
+  escapeLeaves = false,
 }: ConfirmDialogProps) {
   const enterCancels = defaultAction === "cancel";
   const desktop = useUiHost().kind === "desktop-web";
@@ -107,6 +116,7 @@ export function ConfirmDialog({
     resolve(true);
   }, [answer, onAnswer, question, resolve]);
   const cancel = useCallback(() => resolve(false), [resolve]);
+  const leave = escapeLeaves ? dismiss : cancel;
 
   // Every key, even with a field focused under the dialog: a confirm has
   // nothing to type into but its own note, so nothing below should take one.
@@ -120,7 +130,7 @@ export function ConfirmDialog({
     event.stopPropagation();
     if (event.name === "escape") {
       event.preventDefault();
-      cancel();
+      leave();
       return;
     }
     if (busy) {
@@ -162,20 +172,24 @@ export function ConfirmDialog({
       onPress={confirm}
     />
   );
-  const cancelButton = <Button label={cancelLabel} variant={enterCancels ? "primary" : "secondary"} disabled={busy} desktopShortcut={keys ? (enterCancels ? "Enter" : "Esc") : undefined} onPress={cancel} />;
+  // With Esc stepping out, `n` is the cancel button's key.
+  const cancelKey = enterCancels ? "Enter" : escapeLeaves ? "N" : "Esc";
+  const cancelButton = <Button label={cancelLabel} variant={enterCancels ? "primary" : "secondary"} disabled={busy} desktopShortcut={keys ? cancelKey : undefined} onPress={cancel} />;
   const noteKey = question?.notePlaceholder !== undefined;
   const keyLine = enterCancels
     ? noteKey
       ? tf("y {action} · Tab note · Enter or Esc {cancel}", { action: t(confirmLabel).toLowerCase(), cancel: t(cancelLabel).toLowerCase() })
       : tf("y {action} · Enter or Esc {cancel}", { action: t(confirmLabel).toLowerCase(), cancel: t(cancelLabel).toLowerCase() })
-    : tf("Enter {action} · Esc cancel", { action: t(confirmLabel).toLowerCase() });
+    : escapeLeaves
+      ? tf("Enter {action} · n {cancel} · Esc close", { action: t(confirmLabel).toLowerCase(), cancel: t(cancelLabel).toLowerCase() })
+      : tf("Enter {action} · Esc cancel", { action: t(confirmLabel).toLowerCase() });
   return (
     <DialogFrame
       title={title}
       footer={footer ?? keyLine}
       desktopFooter={null}
       // The terminal's Cancel is its mouse close already: a second close in the title would only repeat it.
-      onClose={desktop ? onClose : undefined}
+      onClose={desktop ? (escapeLeaves ? dismiss : onClose) : undefined}
     >
       <Box flexDirection="column" {...(desktop ? { style: { width: fitDialogWidth(width) } } : { width })}>
         {renderBody(body)}
@@ -408,6 +422,24 @@ export async function confirmDialogWithAnswer(
     content: (context) => <ConfirmDialog {...context} {...props} onAnswer={(next) => { answer = next; }} />,
   }).catch(logFailure("ui.confirm-dialog", "Open confirm dialog failed", false));
   return confirmed === true ? answer : null;
+}
+
+/**
+ * A confirm whose two buttons are both ways on (an offer's accept and its
+ * continue): "confirm" or "cancel" for the button pressed, null when the
+ * person stepped out instead (Esc, a click outside, the desktop close button,
+ * a failed dialog).
+ */
+export async function confirmDialogChoice(
+  dialog: DialogApi,
+  { closeOnClickOutside = true, ...props }: ConfirmDialogOptions,
+): Promise<"confirm" | "cancel" | null> {
+  const answer = await dialog.prompt<boolean>({
+    closeOnClickOutside,
+    content: (context) => <ConfirmDialog {...context} {...props} escapeLeaves />,
+  }).catch(logFailure("ui.confirm-dialog", "Open confirm dialog failed"));
+  if (answer === true) return "confirm";
+  return answer === false ? "cancel" : null;
 }
 
 function renderBody(body: ReactNode | string | string[]): ReactNode {

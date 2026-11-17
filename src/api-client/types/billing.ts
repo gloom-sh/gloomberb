@@ -38,12 +38,46 @@ interface CloudPricingTier {
 
 /** `/account/cloud`, reduced to the plan fields the apps read. */
 export interface CloudAccountPlan {
-  subscription?: { status: string | null };
+  /** The account's own Cloud subscription; Pro through a team is never here. */
+  subscription?: {
+    status: string | null;
+    /** Paid or trialing now. */
+    active?: boolean;
+    /** ISO end of the period paid for: the renewal, or the end once cancelled. */
+    currentPeriodEnd?: string | null;
+    /** A cancel is scheduled for the period end. */
+    cancelAtPeriodEnd?: boolean;
+  };
   effectivePlan?: "free" | "pro";
   /** Whether a checkout started now comes with the free trial attached. */
   trialAvailable?: boolean;
   /** The last charge failed; checkout opens the unpaid invoice instead. */
   paymentFailed?: boolean;
+  /** The team whose plan gives this account Pro, when its own plan does not. */
+  proTeam?: { id: string; name: string } | null;
+  /**
+   * ISO time the account first paid for Pro, while its own subscription is
+   * paid; null on a trial, through a team, or when unknown. Older servers
+   * leave it out.
+   */
+  firstChargeAt?: string | null;
+}
+
+/** The one save offer the cancel flow can make, as the server decides it. */
+export type CloudRetentionOffer = "trial_extension" | "discount";
+
+/** The subscriber's price when it is below what a new subscriber pays, in integer cents. */
+export interface CloudKeptPrice {
+  amount: number;
+  listAmount: number;
+  interval: "month" | "year";
+}
+
+/** What the cancel flow offers this subscription, read as it opens. */
+export interface CloudRetentionOfferAnswer {
+  offer: CloudRetentionOffer | null;
+  extendedTrialEndsAt: string | null;
+  keptPrice: CloudKeptPrice | null;
 }
 
 /** Moving a monthly Pro subscription to yearly billing, in integer cents. */

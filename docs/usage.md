@@ -903,6 +903,15 @@ When you open Gloom again after an hour or more, a strip under the header names 
 - **Where the prices are kept.** On this machine only, in Gloom's local state store, one set per signed-in account (and one signed out), so an account never sees another's. They are never synced or sent. Turning the strip off deletes them.
 - The strip shows in the main window only: not in popped-out panes, during setup or in presentation mode.
 
+#### Your first weeks with Pro
+
+For the first 14 days after your first Pro payment, a row under the header names two or three Pro functions you have not opened yet, each on one of your own tickers, as in `Try Pro on your tickers  Earnings calls · NVDA  Options flow · AAPL  X mentions · TSLA`. Click one to open it.
+
+- **Which functions.** Earnings calls (`CALLS`), options flow (`FLOW`), X mentions (`BUZZ`), hiring (`JOBS`), 8-K events (`EK`) and risk factors (`RISK`), in that order, leaving out any you ran from the command bar lately or have open in a layout. With fewer than two left, there is no row.
+- **Which tickers.** Your holdings, then your watchlists (lists shared with a team and imported portfolios aside), and with none of those the tickers you viewed most recently; each function gets one it has data for.
+- **Who sees it.** Only a paid Pro plan of your own: not during a trial and not with Pro through a team. The date of your first payment comes with your account's plan; which functions you opened is read from this machine and never sent.
+- **Dismiss**, or the notification dismiss key while no toast or since-last-visit strip is up, puts it away for good on this machine; the action key opens the first function. It shows in the main window only, not in presentation mode.
+
 **Run Setup Again** in the command bar opens setup at its first step, with your holdings listed and the desk tabs it made ticked. Picking the desks rebuilds Home and those tabs where they are, so no layout is copied: a desk you untick loses its tab, and your other layouts and your watchlist stay as they are. **Skip setup** (or `F10`) before then leaves your layouts as they were. The browser version has no setup, so it has no Run Setup Again.
 
 In `PF`, `a` adds a ticker to the open manual portfolio or watchlist and `d` removes the selected one after a confirm.
@@ -2285,6 +2294,8 @@ Signing out pauses sync and keeps unsynced edits for your next sign-in to the sa
 **Invite a friend.** `ACM` > Pro shows your invite link with **Copy**, and the panes you share carry it too. Each friend who starts paying for Pro through it earns you a free Pro month, up to three; the row counts them.
 
 **An unpaid Pro invoice.** `ACM` > Pro shows a Payment row when your personal subscription is past due, including when a team still gives you Pro. **Pay invoice** opens the current invoice in your browser to complete payment or use another card. A failed or unavailable payment page stays on that row instead of starting a new subscription. The row clears when your account refreshes after payment.
+
+**Cancel Pro.** While your own paid Pro plan renews, `ACM` > Pro has **Cancel Pro** beside Manage Pro. It asks what gloom.sh's cancel window asks, in the same steps: why you are cancelling (a reason and a note, both optional), the one offer your plan can still get when it has one, then a confirmation with the date Pro stays on to and, when you pay less than a new subscriber, the price you give up. Nothing changes until you confirm; Keep, Esc or Enter on the last step keeps Pro. Cancelling stops the renewal: Pro stays on to the end of the period you paid for, and the Plan line then says until when. A trial has **Cancel Trial** instead, and Pro through a team is the team's to cancel. The billing portal that Manage Pro opens updates your card, invoices and plan, and says where to cancel.
 
 **Switch to yearly billing.** When you pay for Pro monthly at the list price, `ACM` > Pro shows a Yearly row with the yearly price and what it saves against twelve monthly payments. **Review Yearly** shows the exact charge before anything is paid: the yearly price from today to your next yearly billing date, the credit for the rest of the month you already paid, any tax or account credit, the total due today and the renewal. Nothing is charged until you press **Pay … and Switch**; **Not Now** or Esc closes the review. Your billing date stays the same, so the first yearly charge covers today up to it and every renewal after is the full yearly price. If your bank asks to confirm the payment, or the card is declined, you stay on monthly billing and the row links to the invoice to finish it; an unpaid switch is dropped after about a day. The row is not shown for trials, teams, discounted or other prices, or a subscription set to cancel.
 

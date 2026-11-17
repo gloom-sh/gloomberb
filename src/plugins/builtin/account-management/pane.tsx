@@ -16,6 +16,7 @@ import {
 import { useAppSelector, usePaneAppConfig } from "../../../state/app/context";
 import { useViewport } from "../../../react/input";
 import { displayWidth } from "../../../utils/format";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
@@ -72,6 +73,7 @@ import {
 import { DeleteAccountPasswordDialog, PasswordChangeDialog } from "./password-dialog";
 import { deleteAccountConfirmingSession } from "./delete-account";
 import { endTrialAfterWarning } from "./trial-cancel";
+import { cancelProAfterSteps } from "./pro-cancel";
 import { CalendarAccountTab } from "./calendar-tab";
 import { InviteRow } from "./invite-row";
 import { PaymentRecoveryRow, usePaymentRecovery } from "./payment-recovery-row";
@@ -97,7 +99,7 @@ import { useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { resolvePlanAccess } from "../../../api-client/plan-access";
 import { usePluginPaneState } from "../../runtime";
 
-type AccountBusy = "profile" | "password" | "alerts" | "billing" | "trial" | "delete" | null;
+type AccountBusy = "profile" | "password" | "alerts" | "billing" | "trial" | "cancel" | "delete" | null;
 const ACCOUNT_TAB_DEFS: Array<{ label: string; value: AccountManagementTab }> = [
   { label: "Profile", value: "profile" },
   { label: "Emails", value: "emails" },
@@ -132,9 +134,10 @@ const ACCOUNT_TAB_FIELD_ORDER: Record<AccountManagementTab, AccountFieldKey[]> =
   ],
   // Its actions are footer hints; the tab owns its footer.
   calendar: [],
-  // Cancel Trial shows only while a trial runs, the yearly row while it has
-  // an action, Not Now while its review is open, the invite once it loaded.
-  pro: ["upgradeAction", "cancelTrialAction", "yearlyPlanAction", "yearlyPlanDismissAction", "inviteCopyAction"],
+  // Cancel Trial shows only while a trial runs, Cancel Pro while a paid plan
+  // renews, the yearly row while it has an action, Not Now while its review
+  // is open, the invite once it loaded.
+  pro: ["upgradeAction", "cancelTrialAction", "cancelProAction", "yearlyPlanAction", "yearlyPlanDismissAction", "inviteCopyAction"],
   // The Teams tab owns its own keyboard handling (a list, not form fields).
   teams: [],
   // Remote assistants allowed to drive this terminal; a list with its own footer.
@@ -290,23 +293,39 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     refreshAfterYearlySwitch,
     focusYearlyDismiss,
   );
+  // The account's own paid plan, renewing: gloom.sh's cancel window shows then
+  // too. A trial has Cancel Trial, Pro through a team is the team's to cancel,
+  // and a failed payment shows Pay Invoice in this place.
+  const ownSubscription = paymentRecovery.plan?.subscription;
+  const canCancelPro = planAccess.isPayingPro
+    && ownSubscription?.active === true
+    && ownSubscription.status !== "trialing"
+    && ownSubscription.cancelAtPeriodEnd !== true
+    && !paymentRecovery.visible;
   const fieldOrder = useMemo(() => ACCOUNT_TAB_FIELD_ORDER[activeTab].filter((field) => {
     if (field === "showLocalTime" || field === "showDesks") return chatCardSupported;
     if (field === "desks") return chatCardSupported && draft.showDesks;
     if (field === "cancelTrialAction") return planAccess.isTrialActive;
+    if (field === "cancelProAction") return canCancelPro;
     if (field === "yearlyPlanAction") return yearlyPlan.primary !== null;
     if (field === "yearlyPlanDismissAction") return yearlyPlan.reviewing;
     if (field === "inviteCopyAction") return invite !== null;
     return true;
-  }), [activeTab, chatCardSupported, draft.showDesks, invite, planAccess.isTrialActive, yearlyPlan.primary, yearlyPlan.reviewing]);
+  }), [activeTab, canCancelPro, chatCardSupported, draft.showDesks, invite, planAccess.isTrialActive, yearlyPlan.primary, yearlyPlan.reviewing]);
   const accountTabs = ACCOUNT_TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.label) }));
 
   const planPrice = useMemo(() => formatCloudMonthlyPrice(pricing), [language, pricing]);
   const trialOffer = useMemo(() => formatTrialOffer(pricing), [language, pricing]);
+  const cancelsOn = ownSubscription?.cancelAtPeriodEnd === true && ownSubscription.currentPeriodEnd
+    ? formatShortDate(ownSubscription.currentPeriodEnd, { fallback: "" })
+    : "";
   const planStatusLabel = useMemo(() => {
     const trialEnd = planAccess.isTrialActive ? formatTrialEnd(planAccess.trialEndsAt) : null;
-    return trialEnd ? tf("Pro trial — ends {date}", { date: trialEnd }) : formatPlan(profile?.plan);
-  }, [language, planAccess.isTrialActive, planAccess.trialEndsAt, profile?.plan]);
+    if (trialEnd) return tf("Pro trial — ends {date}", { date: trialEnd });
+    // A cancelled paid plan says when Pro stops, where Cancel Pro was.
+    if (planAccess.isPayingPro && cancelsOn) return tf("Pro until {date}", { date: cancelsOn });
+    return formatPlan(profile?.plan);
+  }, [cancelsOn, language, planAccess.isPayingPro, planAccess.isTrialActive, planAccess.trialEndsAt, profile?.plan]);
 
   const planStats = useMemo<StatItem[]>(() => {
     return [
@@ -837,6 +856,43 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     }
   }, [busy, dialog, planAccess]);
 
+  // gloom.sh's cancel window, step for step (pro-cancel.tsx): why, the offer
+  // the server has, then the confirmation with the date Pro stays on to.
+  const cancelPro = useCallback(async () => {
+    setActiveField("cancelProAction");
+    if (busy || !canCancelPro) return;
+    try {
+      const outcome = await cancelProAfterSteps(
+        dialog,
+        { currentPeriodEnd: ownSubscription?.currentPeriodEnd },
+        {
+          retentionOffer: (signal) => apiClient.getCloudRetentionOffer({ signal }),
+          acceptOffer: (feedback) => apiClient.acceptCloudRetentionOffer(feedback),
+          cancel: (feedback) => apiClient.cancelCloudSubscription(feedback),
+        },
+        {
+          onWorking: (text) => {
+            setBusy("cancel");
+            setMessage({ tone: "info", text });
+          },
+        },
+      );
+      if (!outcome) return;
+      setMessage({ tone: "success", text: outcome.message });
+      // The plan changed on the server: Cancel Pro and the plan line follow it.
+      await paymentRecovery.reload();
+      const nextProfile = await apiClient.getAccountProfile().catch(logFailure("account-management.pane", "Refresh cancelled account profile failed", null));
+      if (nextProfile) setProfile(nextProfile);
+    } catch (error) {
+      setMessage({
+        tone: "error",
+        text: error instanceof Error ? error.message : t("Cancel failed."),
+      });
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, canCancelPro, dialog, ownSubscription?.currentPeriodEnd, paymentRecovery.reload]);
+
   const renderer = useRendererHost();
   const copyInvite = useCallback(() => {
     setActiveField("inviteCopyAction");
@@ -863,6 +919,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     deleteAccount,
     draftRef,
     endTrial,
+    cancelPro,
     copyInvite,
     fieldOrder,
     // Behind the sign-in wall the fields are not there, and Enter is the wall's.
@@ -1133,6 +1190,17 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                       variant="danger"
                       active={activeField === "cancelTrialAction"}
                       onPress={() => { void endTrial(); }}
+                      disabled={!!busy}
+                    />
+                  </Box>
+                ) : null}
+                {canCancelPro || busy === "cancel" ? (
+                  <Box ref={fieldNodeRef("cancelProAction")} flexDirection="row">
+                    <Button
+                      label={busy === "cancel" ? t("Cancelling...") : t("Cancel Pro")}
+                      variant="danger"
+                      active={activeField === "cancelProAction"}
+                      onPress={() => { void cancelPro(); }}
                       disabled={!!busy}
                     />
                   </Box>

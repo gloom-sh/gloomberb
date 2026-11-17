@@ -35,6 +35,7 @@ export function useAccountManagementKeyboard({
   setDraftValue,
   deleteAccount,
   endTrial,
+  cancelPro,
   copyInvite,
   turnOffEmailAlerts,
   yearlyPlanAction,
@@ -57,6 +58,7 @@ export function useAccountManagementKeyboard({
   setDraftValue: <K extends keyof AccountDraft>(key: K, value: AccountDraft[K]) => void;
   deleteAccount: () => Promise<void>;
   endTrial: () => Promise<void>;
+  cancelPro: () => Promise<void>;
   copyInvite: () => void;
   turnOffEmailAlerts: () => Promise<void>;
   /** The yearly row's action: review, pay or open the invoice. */
@@ -70,6 +72,7 @@ export function useAccountManagementKeyboard({
     passwordAction: openPasswordDialog,
     upgradeAction: openUpgrade,
     cancelTrialAction: () => { void endTrial(); },
+    cancelProAction: () => { void cancelPro(); },
     inviteCopyAction: copyInvite,
     assistantsAction: openAssistants,
     deleteAccountAction: () => { void deleteAccount(); },
