@@ -95,6 +95,18 @@ function homeLineQuery(typed: string): string | null {
   return words.length >= 3 ? words.slice(1).join(" ") : null;
 }
 
+/** A word written as a ticker: capitals and digits, short, with a class or venue mark after a dot, dash, slash or colon. */
+const TICKER_WORD = /^\$?[A-Z0-9]{1,6}(?:[.\-/:][A-Z0-9]{1,6})*$/;
+
+/**
+ * Whether every word of a line is written as a ticker (`V MCO CPRT`, `0700 0005`), as a company's name, which has
+ * words longer than a ticker or in lower case (`Turk Hava Yollari`, `TURK HAVA YOLLARI`), is not.
+ */
+function wordsAreTickers(typed: string): boolean {
+  const words = typed.trim().split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.every((word) => TICKER_WORD.test(word));
+}
+
 /** A list entry with a space inside is a company's name, never a symbol: "Whirlpool Corporation". */
 export function isCompanyNameInput(input: string): boolean {
   return /\S\s+\S/.test(input.trim());
@@ -150,9 +162,11 @@ export async function findListingOfCompanyName(
   let results = answers.flatMap((answer) => Array.isArray(answer) ? answer : []);
   let listed = rankCompanyLines(name, results, options);
   // A company the answers list only abroad or by receipts (Türk Hava Yolları on Frankfurt and OTC) is searched again
-  // under its later words, which can list its home line: THYAO in Istanbul.
+  // under its later words, which can list its home line: THYAO in Istanbul. A line of tickers (`V MCO CPRT`) that
+  // search found nothing for names no company, abroad or at home, so a shorter line would find nothing either.
   const lead = listed.find((listing) => listing.namesCompany);
-  const again = !options.oneWord && (!lead || (!lead.home && lead.rank[3]! > 1)) ? homeLineQuery(name) : null;
+  const tickersOnly = results.length === 0 && wordsAreTickers(name);
+  const again = !options.oneWord && !tickersOnly && (!lead || (!lead.home && lead.rank[3]! > 1)) ? homeLineQuery(name) : null;
   if (again && !queries.includes(again)) {
     const more = await searchListings(dataProvider, again);
     if (Array.isArray(more) && more.length) {

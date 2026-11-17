@@ -71,8 +71,8 @@ test("each build job attests the files it uploads for publishing right before th
   for (const [job, { permissions, steps = [] }] of Object.entries(build.jobs)) {
     expect({ job, permissions }).toMatchObject({ job, permissions: { "id-token": "write", attestations: "write" } });
     const uploads = steps.flatMap((step, index) => (step.uses?.startsWith("actions/upload-artifact@") ? [{ step, index }] : []));
-    // The jobs that publish download gloomberb-* only; the build matrix names its assets gloomberb-*.
-    const published = uploads.filter(({ step }) => /^(gloomberb-|\$\{\{ matrix\.asset \}\}$)/.test(String(step.with?.name)));
+    // The jobs that publish download gloomberb-* and the catalog snapshot only; the build matrix names its assets gloomberb-*.
+    const published = uploads.filter(({ step }) => /^(gloomberb-|catalog-snapshot$|\$\{\{ matrix\.asset \}\}$)/.test(String(step.with?.name)));
     expect({ job, published: published.length }).toEqual({ job, published: 1 });
     const { step: upload, index } = published[0]!;
     const attest = steps[index - 1]!;
@@ -93,7 +93,21 @@ test("the jobs that publish download only the builds and check every file before
       .toEqual({ name, pattern: "gloomberb-*", checkIf: undefined });
     expect(download).toBeLessThan(checked);
     expect(checked).toBeLessThan(uploaded);
-    expect(steps.filter((step) => step.uses?.startsWith("actions/download-artifact@"))).toHaveLength(1);
+    // The release also takes the snapshot the npm package carries, a file of its own that no release asset or nightly
+    // file shares a folder with, matched to its attestation before anything is published to npm.
+    const downloads = steps.filter((step) => step.uses?.startsWith("actions/download-artifact@"));
+    expect(downloads.map((step) => step.with?.pattern ?? step.with?.name)).toEqual(name === "release" ? ["gloomberb-*", "catalog-snapshot"] : ["gloomberb-*"]);
+    if (name === "release") {
+      const snapshot = steps.indexOf(downloads[1]!);
+      const snapshotChecked = steps.findIndex((step) => step.run === "bun scripts/check-built-files.ts catalog-snapshot");
+      const copied = steps.findIndex((step) => step.run?.startsWith("cp catalog-snapshot/catalog-snapshot.json "));
+      const publishes = steps.flatMap((step, position) => (step.run?.includes("npm publish") ? [position] : []));
+      expect(publishes.length).toBeGreaterThan(0);
+      expect(steps[snapshotChecked]?.if).toBeUndefined();
+      expect(snapshot).toBeLessThan(snapshotChecked);
+      expect(snapshotChecked).toBeLessThan(copied);
+      for (const position of publishes) expect(copied).toBeLessThan(position);
+    }
   }
 });
 

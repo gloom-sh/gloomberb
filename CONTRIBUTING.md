@@ -172,6 +172,8 @@ gh attestation verify gloomberb-linux-x64.gz --repo gloom-sh/gloomberb \
   --signer-workflow gloom-sh/gloomberb/.github/workflows/build-release-assets.yml
 ```
 
+The npm package also carries `src/cli/pane-functions/catalog-snapshot.json`, which is not in git: what `gloom catalog` and `fn` read so they need not load every built-in plugin. The build workflow's `catalog-snapshot` job writes and attests it, and the release job copies it into the package once `check-built-files.ts` has matched it to that attestation, so the job that publishes still installs nothing. The standalone binaries and the desktop app's terminal write their own while they build (`scripts/build.ts`, `scripts/desktop-tui-bundle.ts`). Where the file is absent, a source checkout or the recovery publish below, the plugins are asked and print the same.
+
 To retry publishing `@gloom-sh/terminal` for an existing stable release, dispatch at that same tag, not at `main`:
 
 ```bash

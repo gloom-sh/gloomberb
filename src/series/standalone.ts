@@ -7,6 +7,11 @@ import { readSeriesFolder } from "./files";
 import { SeriesRegistry, seriesExpression, seriesNamedBy } from "./registry";
 import type { SeriesDefinition } from "./types";
 
+/** The plugins a series lookup reads: a list, or a function that gives it once a series is first asked for. */
+export type SeriesPlugins = readonly GloomPlugin[] | (() => readonly GloomPlugin[]);
+
+export const pluginsOf = (plugins: SeriesPlugins): readonly GloomPlugin[] => typeof plugins === "function" ? plugins() : plugins;
+
 /**
  * Charts the catalog's loaded series where no plugin runtime runs, such as a
  * `gloom fn G` report: the series plugins declare, and the files in the
@@ -14,13 +19,14 @@ import type { SeriesDefinition } from "./types";
  * need the app.
  */
 export function standaloneSeriesInvoker(
-  plugins: readonly GloomPlugin[],
+  plugins: SeriesPlugins,
   dataDir: string,
   disabledPlugins: readonly string[] = [],
 ): CapabilityInvoker {
   let registry: Promise<SeriesRegistry> | null = null;
   const build = async () => {
-    const built = new SeriesRegistry({ pluginHosts: (pluginId) => plugins.find((plugin) => plugin.id === pluginId)?.hosts });
+    const all = pluginsOf(plugins);
+    const built = new SeriesRegistry({ pluginHosts: (pluginId) => all.find((plugin) => plugin.id === pluginId)?.hosts });
     const register = (pluginId: string, definitions: readonly Parameters<SeriesRegistry["register"]>[1][]) => {
       for (const definition of definitions) {
         try {
@@ -30,7 +36,7 @@ export function standaloneSeriesInvoker(
         }
       }
     };
-    for (const plugin of plugins) {
+    for (const plugin of all) {
       if (!disabledPlugins.includes(plugin.id)) register(plugin.id, plugin.series ?? []);
     }
     register("user", await readSeriesFolder(dataDir));
@@ -56,14 +62,14 @@ export function standaloneSeriesInvoker(
  * the registry's `findByExpression` does.
  */
 export function standaloneSeriesCatalog(
-  plugins: readonly GloomPlugin[],
+  plugins: SeriesPlugins,
   disabledPlugins: readonly string[] = [],
 ): (expression: string) => SeriesDefinition | undefined {
   let byExpression: Map<string, SeriesDefinition> | null = null;
   return (expression) => {
     if (!byExpression) {
       byExpression = new Map();
-      for (const plugin of plugins) {
+      for (const plugin of pluginsOf(plugins)) {
         if (disabledPlugins.includes(plugin.id)) continue;
         for (const definition of plugin.series ?? []) {
           if (definition.input) continue;
@@ -78,9 +84,9 @@ export function standaloneSeriesCatalog(
 
 /** The catalog series a bare word is an alias of (`hashrate`), where no plugin runtime runs; see `seriesNamedBy`. */
 export function standaloneSeriesNamed(
-  plugins: readonly GloomPlugin[],
+  plugins: SeriesPlugins,
   disabledPlugins: readonly string[] = [],
 ): (word: string) => SeriesDefinition | undefined {
-  const definitions = () => plugins.filter((plugin) => !disabledPlugins.includes(plugin.id)).flatMap((plugin) => plugin.series ?? []);
+  const definitions = () => pluginsOf(plugins).filter((plugin) => !disabledPlugins.includes(plugin.id)).flatMap((plugin) => plugin.series ?? []);
   return (word) => seriesNamedBy(definitions(), word);
 }

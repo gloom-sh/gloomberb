@@ -2,7 +2,7 @@ import { logFailure } from "../../utils/log-failure";
 import { extname, isAbsolute, relative, resolve } from "path";
 import type { CliCommandContext, GloomPlugin, HeadlessArgumentExpansion } from "../../types/plugin";
 import type { MarketContext } from "../types";
-import { withMarketData } from "../context";
+import { withConfigData, withMarketData } from "../context";
 import { buildForFile, cliStyles, renderForFile, renderStats, type CliStatEntry } from "../../utils/cli-output";
 import {
   correctCatalogQuery,
@@ -17,8 +17,9 @@ import {
 } from "./catalog";
 import { createPaneCatalog } from "./discovery";
 import { getHeadlessPaneDefinition } from "./capabilities";
-import { catalogFredSeriesIds, findCatalogSeries } from "../series-search";
+import { catalogFredSeriesIds, findCatalogSeries, findSeriesFacts, type SeriesMatch } from "../series-search";
 import {
+  normalizeLookupToken,
   parsePaneCatalogArgs,
   parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
@@ -27,7 +28,7 @@ import {
   applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError,
   type PluginCodeStopFinder, type ResolvedPaneFunction,
 } from "./resolver";
-import { idleCliPlugins } from "../registry";
+import { idleCliPlugins, installedPluginCount } from "../registry";
 import { pluginSupportsTarget } from "../../plugins/plugin-export";
 import type { RegistryPlugin } from "../../plugins/marketplace/model";
 import type { AppResourceStorePort } from "../../core/app-service-ports";
@@ -38,7 +39,11 @@ import { renderDesktopShot } from "./screenshot-render";
 import { shotCutColumnsWarning, shotStatusIssues } from "./screenshot-assessment";
 import {
   buildPaneCatalogEntries,
+  exampleListName,
+  type PaneCatalogEntry,
 } from "./catalog";
+import { readCatalogSnapshot, snapshotEntries } from "./catalog-snapshot";
+import { loadBuiltinPlugin } from "../../plugins/catalog-lazy";
 import { incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 import {
@@ -81,11 +86,11 @@ async function withPaneRuntime<T>(
   return withMarketData(ctx, async (market) => {
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
     // `shot` draws a pane as the desktop app does, so it also opens the panes of plugins only the desktop app runs (Gloom Social).
-    const plugins = settings.command === "shot" ? [...ctx.plugins, ...desktopOnlyPlugins(ctx)] : ctx.plugins;
+    const plugins = settings.command === "shot" ? [...ctx.plugins, ...desktopOnlyPlugins(ctx)] : await pluginsOfFunction(ctx, context, args);
     const registry = await createPaneCatalog(context, plugins);
     try {
       let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
-      const resolution = { ...settings, seriesSources: ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
+      const resolution = { ...settings, seriesSources: () => ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
       let resolved = await resolvePaneFunction(registry, context, parsed, resolution);
       // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
       const expansion = await withPersistedCloudSession(context, () => expandResolvedArgument(resolved, context, parsed.arg));
@@ -98,6 +103,26 @@ async function withPaneRuntime<T>(
       registry.destroy();
     }
   });
+}
+
+/**
+ * The plugins `fn` resolves a function among. A coded function that reports data, of a built-in plugin, is
+ * opened by that plugin and the one that holds its pane (`catalog-snapshot.json`, where a build wrote it, says
+ * which), so the other plugins' code is not loaded to run it. Any other word, a source checkout without that
+ * file, and any command line with an installed or switched-off plugin, asks them all.
+ */
+async function pluginsOfFunction(ctx: CliCommandContext, context: MarketContext, args: string[]): Promise<GloomPlugin[]> {
+  if ((context.config.disabledPlugins ?? []).length > 0 || await installedPluginCount(ctx) > 0) return ctx.plugins;
+  let target: string;
+  try {
+    target = parsePaneFunctionArgs(args, ctx.cliOptions).target;
+  } catch {
+    // Intentional ignore: arguments that do not parse fail where they are parsed for the function.
+    return ctx.plugins;
+  }
+  const holders = target ? readCatalogSnapshot()?.functions[normalizeLookupToken(target)] : undefined;
+  const found = holders?.flatMap((id) => loadBuiltinPlugin(id) ?? []);
+  return found?.length ? found : ctx.plugins;
 }
 
 /** Installed plugins the command line does not run but the desktop app does, which `shot` draws as it does. */
@@ -720,52 +745,81 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
       ...parsed,
       limit: ctx.cliOptions.limit ?? parsed.limit,
     };
+    if (await listFromSnapshot(ctx, parsed, effectiveParsed)) return;
     await withMarketData(ctx, async (context) => {
       const registry = await createPaneCatalog(context, ctx.plugins);
       try {
         // The UI audits picture every pane the app opens, those the command line has nothing to show for too.
         const entries = await buildPaneCatalogEntries(registry, context, { appPanes: process.env[CATALOG_APP_PANES_ENV] === "1" });
-        const botSafeEntries = effectiveParsed.botSafeOnly
-          ? entries.filter((entry) => entry.capability.botSafe)
-          : entries;
-        // A topic no function covers is answered by its pointer, not by the loose matches its words find; so is a
-        // command of the app's own that no function is (FB, Send Feedback).
-        const pointer = topicPointer(parsed.query);
-        const appCommand = pointer || commandPointer(parsed.query) ? null : appCommandPointer(parsed.query);
-        const typed = pointer || appCommand ? [] : filterPaneCatalogEntries(botSafeEntries, parsed.query);
-        // Data no source carries yet is said once: in the text, else as the envelope's warning.
-        const gap = knownGapMessage(parsed.query);
-        // A word one letter off every function's ("fundng") is read as the one it is near, and the report says so; a
-        // word the catalog has its own answer for ("libor") is not a typo.
-        const corrected = pointer || gap || appCommand || typed.length ? null : correctCatalogQuery(botSafeEntries, parsed.query);
-        const correctedMatches = corrected ? filterPaneCatalogEntries(botSafeEntries, corrected) : [];
-        const readAs = corrected && correctedMatches.length ? corrected : null;
-        const filtered = readAs ? correctedMatches : typed;
-        const query = readAs ?? parsed.query;
-        // A search also finds the terms it names; text only, the JSON stays a list of functions.
-        const glossary = lookupGlossary(parsed.query);
-        // A setting or a report can be a command, not a function: "light theme" names `config themes` beside THEM,
-        // "drip" names `portfolio show --drip` beside DVD.
-        const setting = commandPointer(parsed.query) ?? appCommand;
-        const settingLeads = commandPointerLeads(parsed.query) || !!appCommand;
-        // The data catalog series the query names, which `fn G` charts.
-        const series = findCatalogSeries(ctx.plugins, parsed.query);
-        const listed = pointer
-          ? pointer.codes.flatMap((code) => entries.filter((entry) => entry.token === code))
-          : selectPaneCatalogMatches(filtered, query, effectiveParsed.limit).shown;
-        const readNote = readAs ? `No functions match "${parsed.query}"; showing "${readAs}".` : null;
-        ctx.printResult({
-          data: listed,
-          ...series.length || readAs ? { metadata: { ...series.length ? { series } : {}, ...readAs ? { query: readAs } : {} } } : {},
-          ...(gap || setting) && ctx.cliOptions.format !== "text" ? { warnings: [gap, setting].filter((note): note is string => !!note) } : {},
-        }, {
-          text: () => [readNote ? cliStyles.muted(readNote) : "", renderPaneCatalogReport(filtered, { ...effectiveParsed, query }, glossary, gap, series, setting, settingLeads)]
-            .filter(Boolean).join("\n\n"),
-        });
+        printCatalog(ctx, parsed, effectiveParsed, entries, findCatalogSeries(ctx.plugins, parsed.query));
       } finally {
         registry.destroy();
       }
     });
+  });
+}
+
+/**
+ * The catalog read from what the built-in plugins declare (`catalog-snapshot.json`, which a release build writes),
+ * where nothing else is installed, switched off or asked for: the plugins' code is not loaded to say what they
+ * are. False when it could not answer, with no snapshot among the reasons, and the plugins are asked instead.
+ */
+async function listFromSnapshot(
+  ctx: CliCommandContext,
+  parsed: ReturnType<typeof parsePaneCatalogArgs>,
+  effectiveParsed: ReturnType<typeof parsePaneCatalogArgs>,
+): Promise<boolean> {
+  const snapshot = readCatalogSnapshot();
+  if (!snapshot || process.env[CATALOG_APP_PANES_ENV] === "1" || await installedPluginCount(ctx) > 0) return false;
+  return withConfigData(ctx, async (context) => {
+    if ((context.config.disabledPlugins ?? []).length > 0) return false;
+    printCatalog(ctx, parsed, effectiveParsed, snapshotEntries(snapshot, await exampleListName(context)), findSeriesFacts(snapshot.series, parsed.query));
+    return true;
+  });
+}
+
+/** The report of the functions and series a `catalog` query finds. */
+function printCatalog(
+  ctx: CliCommandContext,
+  parsed: ReturnType<typeof parsePaneCatalogArgs>,
+  effectiveParsed: ReturnType<typeof parsePaneCatalogArgs>,
+  entries: PaneCatalogEntry[],
+  series: SeriesMatch[],
+): void {
+  const botSafeEntries = effectiveParsed.botSafeOnly
+    ? entries.filter((entry) => entry.capability.botSafe)
+    : entries;
+  // A topic no function covers is answered by its pointer, not by the loose matches its words find; so is a
+  // command of the app's own that no function is (FB, Send Feedback).
+  const pointer = topicPointer(parsed.query);
+  const appCommand = pointer || commandPointer(parsed.query) ? null : appCommandPointer(parsed.query);
+  const typed = pointer || appCommand ? [] : filterPaneCatalogEntries(botSafeEntries, parsed.query);
+  // Data no source carries yet is said once: in the text, else as the envelope's warning.
+  const gap = knownGapMessage(parsed.query);
+  // A word one letter off every function's ("fundng") is read as the one it is near, and the report says so; a
+  // word the catalog has its own answer for ("libor") is not a typo.
+  const corrected = pointer || gap || appCommand || typed.length ? null : correctCatalogQuery(botSafeEntries, parsed.query);
+  const correctedMatches = corrected ? filterPaneCatalogEntries(botSafeEntries, corrected) : [];
+  const readAs = corrected && correctedMatches.length ? corrected : null;
+  const filtered = readAs ? correctedMatches : typed;
+  const query = readAs ?? parsed.query;
+  // A search also finds the terms it names; text only, the JSON stays a list of functions.
+  const glossary = lookupGlossary(parsed.query);
+  // A setting or a report can be a command, not a function: "light theme" names `config themes` beside THEM,
+  // "drip" names `portfolio show --drip` beside DVD.
+  const setting = commandPointer(parsed.query) ?? appCommand;
+  const settingLeads = commandPointerLeads(parsed.query) || !!appCommand;
+  const listed = pointer
+    ? pointer.codes.flatMap((code) => entries.filter((entry) => entry.token === code))
+    : selectPaneCatalogMatches(filtered, query, effectiveParsed.limit).shown;
+  const readNote = readAs ? `No functions match "${parsed.query}"; showing "${readAs}".` : null;
+  ctx.printResult({
+    data: listed,
+    ...series.length || readAs ? { metadata: { ...series.length ? { series } : {}, ...readAs ? { query: readAs } : {} } } : {},
+    ...(gap || setting) && ctx.cliOptions.format !== "text" ? { warnings: [gap, setting].filter((note): note is string => !!note) } : {},
+  }, {
+    text: () => [readNote ? cliStyles.muted(readNote) : "", renderPaneCatalogReport(filtered, { ...effectiveParsed, query }, glossary, gap, series, setting, settingLeads)]
+      .filter(Boolean).join("\n\n"),
   });
 }
 

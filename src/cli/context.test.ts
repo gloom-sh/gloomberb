@@ -162,3 +162,19 @@ describe("CLI scoped contexts", () => {
     expect(destroys).toBe(1);
   });
 });
+
+describe("CLI market data", () => {
+  test("the data provider is told which symbols the shipped listings show to be US stocks, so a lookup of one asks for no perpetual contracts", async () => {
+    process.env.GLOOMBERB_HOME = await freshProfile();
+    const { GloomberbCloudProvider } = await import("../sources/gloomberb-cloud");
+    const { getLoadableDataPlugins } = await import("../plugins/catalog-data");
+    const dataPlugins = getLoadableDataPlugins();
+    const market = await initMarketData({ dataPlugins, plugins: () => [] });
+    market.persistence.close();
+    const providers = dataPlugins.flatMap((plugin) => plugin.capabilities ?? [])
+      .flatMap((capability) => "provider" in capability && capability.provider instanceof GloomberbCloudProvider ? [capability.provider] : []);
+    expect(providers.length).toBe(1);
+    expect(providers[0]!.knownUsStock?.("NVDA")).toBe(true);
+    expect(providers[0]!.knownUsStock?.("QWZXQ")).toBe(false);
+  });
+});

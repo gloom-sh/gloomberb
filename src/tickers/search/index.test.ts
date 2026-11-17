@@ -1737,6 +1737,43 @@ describe("ticker-search utilities", () => {
     });
   });
 
+  test("guesses a share class beside the symbol's own search, and not at all for a symbol known to be a US stock", async () => {
+    const lookup = (query: string, rows: Record<string, InstrumentSearchResult[]>, knownUsStock?: (symbol: string) => boolean) => {
+      const queries: string[] = [];
+      let release: () => void = () => {};
+      const answered = new Promise<void>((resolve) => { release = resolve; });
+      const done = searchTickerCandidates({
+        query,
+        tickers: new Map<string, TickerRecord>(),
+        dataProvider: createTestDataProvider({
+          id: "test",
+          search: async (asked) => { queries.push(asked); await answered; return rows[asked.toUpperCase()] ?? []; },
+          ...knownUsStock ? { knownUsStock } : {},
+        }),
+        totalLimit: 5,
+        includeOptionContracts: false,
+      });
+      // What was asked before any answer came back.
+      const askedTogether = () => new Promise<string[]>((resolve) => setTimeout(() => resolve([...queries]), 0));
+      return { askedTogether, finish: async () => { release(); await done; return queries; } };
+    };
+    const nvidia = { NVDA: [makeSearchResult("NVDA", "NVIDIA Corporation")] };
+    // A symbol a command line knows to be a US stock: NVD-A and NVD.A are not asked for.
+    const known = lookup("NVDA", nvidia, (symbol) => symbol === "NVDA");
+    expect(await known.askedTogether()).toEqual(["NVDA"]);
+    expect(await known.finish()).toEqual(["NVDA"]);
+    // Any other symbol is asked as it was before: the guesses go out with its own search, not after its answer.
+    const unknown = lookup("NVDA", nvidia);
+    expect(await unknown.askedTogether()).toEqual(expect.arrayContaining(["NVDA", "NVD-A", "NVD.A"]));
+    expect((await unknown.askedTogether()).length).toBe(3);
+    await unknown.finish();
+    // A code only a venue abroad lists is tried as a US share class at once, whether or not another symbol is known.
+    const abroad = lookup("BRKB", { BRKB: [makeSearchResult("BRKB", "Berkshire Hathaway", { exchange: "BMV" })] }, (symbol) => symbol === "NVDA");
+    expect(await abroad.askedTogether()).toEqual(expect.arrayContaining(["BRKB", "BRK-B", "BRK.B"]));
+    expect((await abroad.askedTogether()).length).toBe(3);
+    await abroad.finish();
+  });
+
   test("upserts ticker records from provider search results", async () => {
     const saved: TickerRecord[] = [];
     const repository = {

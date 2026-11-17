@@ -52,6 +52,8 @@ export interface CliCommandRegistry {
   config: AppConfig | null;
   /** The plugins that run here: loaded, switched on, and declaring the command line among their targets. */
   plugins: GloomPlugin[];
+  /** The ones of those that contribute data capabilities, which a command reading market data needs without the rest. */
+  readonly dataPlugins: GloomPlugin[];
   readonly idlePlugins: IdleCliPlugin[];
   externalPlugins: LoadedExternalPlugin[];
   /** Loads installed contributions when dispatch or application services need them. */
@@ -170,6 +172,10 @@ export function buildCliCommandRegistry({
         .filter((entry) => !entry.error && !entry.unsupportedTarget && !disabledPlugins.has(entry.plugin.id))
         .map((entry) => entry.plugin);
     },
+    get dataPlugins() {
+      const { getLoadableDataPlugins } = require("../plugins/catalog-data") as typeof import("../plugins/catalog-data");
+      return getLoadableDataPlugins(registry.externalPlugins).filter((plugin) => !disabledPlugins.has(plugin.id));
+    },
     get idlePlugins() {
       const { getPluginCatalog } = require("../plugins/catalog") as typeof import("../plugins/catalog");
       return getPluginCatalog(registry.externalPlugins).flatMap((entry): IdleCliPlugin[] => {
@@ -196,13 +202,23 @@ export function buildCliCommandRegistry({
 
 /** The idle plugins of each command's context, kept off the plugin API's context type. */
 const idlePluginsByContext = new WeakMap<CliCommandContext, () => IdleCliPlugin[]>();
+/** How many installed plugins a command's context found, loading them first, kept off the plugin API's context type too. */
+const installedPluginCountByContext = new WeakMap<CliCommandContext, () => Promise<number>>();
+
+/**
+ * How many installed plugins (loaded, failed or switched to other targets) a command has beside the built-in ones.
+ * A command that answers from what the built-in plugins declare may do so only when this is none.
+ */
+export async function installedPluginCount(ctx: CliCommandContext): Promise<number> {
+  return (await installedPluginCountByContext.get(ctx)?.()) ?? 0;
+}
 
 /** The installed plugins a command's context does not run (`IdleCliPlugin`); none for a context built without a registry. */
 export function idleCliPlugins(ctx: CliCommandContext): IdleCliPlugin[] {
   return idlePluginsByContext.get(ctx)?.() ?? [];
 }
 
-type ContextRegistry = Pick<CliCommandRegistry, "plugins" | "externalPlugins" | "ensureExternalPlugins"> & Partial<Pick<CliCommandRegistry, "idlePlugins">>;
+type ContextRegistry = Pick<CliCommandRegistry, "plugins" | "externalPlugins" | "ensureExternalPlugins"> & Partial<Pick<CliCommandRegistry, "idlePlugins" | "dataPlugins">>;
 
 export function createCliCommandContext(
   ownerId: string,
@@ -217,7 +233,7 @@ export function createCliCommandContext(
     initConfigData,
     initMarketData: async () => {
       await registry.ensureExternalPlugins?.();
-      return initMarketData({ plugins: registry.plugins });
+      return initMarketData({ plugins: () => registry.plugins, ...registry.dataPlugins ? { dataPlugins: registry.dataPlugins } : {} });
     },
     initServices: async () => {
       await registry.ensureExternalPlugins?.();
@@ -240,5 +256,9 @@ export function createCliCommandContext(
     log: debugLog.createLogger(ownerId === "core" ? "cli" : ownerId),
   };
   idlePluginsByContext.set(ctx, () => registry.idlePlugins ?? []);
+  installedPluginCountByContext.set(ctx, async () => {
+    await registry.ensureExternalPlugins?.();
+    return registry.externalPlugins.length;
+  });
   return ctx;
 }

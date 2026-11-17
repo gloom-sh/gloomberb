@@ -14,24 +14,22 @@ import { ipoCalendarPlugin } from "./builtin/ipo-calendar";
 import { clinicalTrialsPlugin } from "./builtin/clinical-trials";
 import { commentLettersPlugin } from "./builtin/comment-letters";
 import { openFdaPlugin } from "./builtin/openfda";
-import {
-  altDataPlugin,
-  applicationPlugin,
-  brokerPlugin,
-  creditPlugin,
-  cryptoPlugin,
-  earningsPlugin,
-  filingsPlugin,
-  futuresCommoditiesPlugin,
-  globalMarketsPlugin,
-  optionsVolatilityPlugin,
-  ownershipPlugin,
-  portfolioPlugin,
-  quantPlugin,
-  ratesMacroPlugin,
-  screenersPlugin,
-  tickerCorePlugin,
-} from "./builtin/composite-plugins";
+import { altDataPlugin } from "./builtin/composite/alt-data";
+import { applicationPlugin } from "./builtin/composite/application";
+import { brokerPlugin } from "./builtin/composite/broker";
+import { creditPlugin } from "./builtin/composite/credit";
+import { cryptoPlugin } from "./builtin/composite/crypto";
+import { earningsPlugin } from "./builtin/composite/earnings";
+import { filingsPlugin } from "./builtin/composite/filings";
+import { futuresCommoditiesPlugin } from "./builtin/composite/futures-commodities";
+import { globalMarketsPlugin } from "./builtin/composite/global-markets";
+import { optionsVolatilityPlugin } from "./builtin/composite/options-volatility";
+import { ownershipPlugin } from "./builtin/composite/ownership";
+import { portfolioPlugin } from "./builtin/composite/portfolio";
+import { quantPlugin } from "./builtin/composite/quant";
+import { ratesMacroPlugin } from "./builtin/composite/rates-macro";
+import { screenersPlugin } from "./builtin/composite/screeners";
+import { tickerCorePlugin } from "./builtin/composite/ticker-core";
 
 export const uiBuiltinPlugins: GloomPlugin[] = [
   gloomberbCloudPlugin,

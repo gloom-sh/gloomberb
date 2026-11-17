@@ -3,9 +3,10 @@ import { apiClient } from "../../api-client";
 import type { PerpBoardPayload, PerpBoardQuery, PerpBoardRow, PerpHistoryPayload, PerpHistoryQuery, PerpMarketPayload } from "../../api-client/perps";
 import { perpetualListing } from "../../tickers/perpetual-listing";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
+import type { InstrumentSearchResult } from "../../types/instrument";
 import { AssetDataRouter } from "../provider-router";
 import { GloomberbCloudProvider } from "./index";
-import { getPerpetualHistory, PERPETUAL_HISTORY_LOCKED, perpetualQuote, searchPerpetualMarkets, streamedPerpetualQuote } from "./perpetuals";
+import { getPerpetualHistory, PERPETUAL_HISTORY_LOCKED, PerpetualBoardCache, perpetualQuote, searchPerpetualMarkets, streamedPerpetualQuote } from "./perpetuals";
 
 /** Hyperliquid's Brent contract on its xyz dex, as Gloom Cloud served it on 2026-10-12. */
 function brent(patch: Partial<PerpBoardRow> = {}): PerpBoardRow {
@@ -67,7 +68,8 @@ describe("perpetual markets as listings", () => {
     // BRENTOIL holds the word; Binance's BZ is found as Brent crude oil. Larger open interest first.
     expect(results.map((result) => result.symbol)).toEqual(["BZUSDT:BINANCE", "XYZ-BRENTOIL:HYPERLIQUID"]);
     expect(results[0]).toMatchObject({ exchange: "BINANCE", type: "PERP", currency: "USDT", name: "Brent crude oil perpetual" });
-    expect(client.boards.map((query) => query.search)).toContain("BZ");
+    // A signed-out search is the preview board's rows that hold the word: one read of it serves the search and its alias.
+    expect(client.boards).toEqual([{}]);
     expect((await searchPerpetualMarkets("binance:BZUSDT", client)).map((result) => result.symbol)).toEqual(["BZUSDT:BINANCE"]);
     expect((await searchPerpetualMarkets("BZUSDT:BINANCE", client)).map((result) => result.symbol)).toEqual(["BZUSDT:BINANCE"]);
     expect(await searchPerpetualMarkets("SAN:EPA", client)).toEqual([]);
@@ -125,6 +127,121 @@ test("a batched search's perpetual markets are the ones each query's own search 
   expect(batched?.get("BRENT")?.map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE", "XYZ-BRENTOIL:HYPERLIQUID", "BRENT"]);
   expect(batched?.get("NONE")).toEqual([]);
   expect(searchesOfTheBoard).toBe(1);
+});
+
+test("a signed-out account reads the board once for every one-word search, and a signed-in account's searches go to the service", async () => {
+  const signedOut = fakeClient();
+  const boards = new PerpetualBoardCache();
+  expect((await searchPerpetualMarkets("brent", signedOut, boards)).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE", "XYZ-BRENTOIL:HYPERLIQUID"]);
+  expect((await searchPerpetualMarkets("bz", signedOut, boards)).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE"]);
+  expect(await searchPerpetualMarkets("nvda", signedOut, boards)).toEqual([]);
+  expect(signedOut.boards).toEqual([{}]);
+  // The board is kept by the cache a provider holds, not by the process: a cache of its own reads it again.
+  await searchPerpetualMarkets("bz", signedOut, new PerpetualBoardCache());
+  expect(signedOut.boards).toEqual([{}, {}]);
+  // Words the service reads as it likes are asked of it.
+  const phrase = fakeClient();
+  await searchPerpetualMarkets("brent oil", phrase);
+  expect(phrase.boards.map((query) => query.search)).toContain("brent oil");
+  // The whole board of a signed-in account is not read for one word.
+  const signedIn = { ...fakeClient(), hasSessionCredential: () => true };
+  expect((await searchPerpetualMarkets("bz", signedIn)).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE"]);
+  expect(signedIn.boards).toEqual([{ search: "bz" }]);
+});
+
+test("the board kept for searches is the one read for whoever is asking, in both directions of signing in and out", async () => {
+  // A signed-out account is shown a preview; the rows it leaves out are the ones a Pro account is shown.
+  const preview = [brent(), bz()];
+  const full = [...preview, brent({ marketId: "binance:NVDAUSDT", venue: "binance", dex: "", symbol: "NVDAUSDT", baseAsset: "NVDA", displayName: "NVDAUSDT" })];
+  let session: string | null = null;
+  const reads: Array<string | null> = [];
+  const client = {
+    ...fakeClient(),
+    hasSessionCredential: () => session !== null,
+    getSessionToken: () => session,
+    getCloudPerpsBoard: async () => { reads.push(session); return board(session ? full : preview); },
+  };
+  const boards = new PerpetualBoardCache();
+  const symbols = async () => (await boards.read(client)).rows.map((row) => row.baseAsset);
+  expect(await symbols()).toEqual(["BRENTOIL", "BZ"]);
+  expect(await symbols()).toEqual(["BRENTOIL", "BZ"]);
+  expect(reads).toEqual([null]);
+  // Signed in: the preview kept for the signed-out account is not what a search is answered from.
+  session = "token-a";
+  expect(await symbols()).toEqual(["BRENTOIL", "BZ", "NVDA"]);
+  expect(await symbols()).toEqual(["BRENTOIL", "BZ", "NVDA"]);
+  expect(reads).toEqual([null, "token-a"]);
+  // Signed out again: the full board kept for the account is not shown to one that is not.
+  session = null;
+  expect(await symbols()).toEqual(["BRENTOIL", "BZ"]);
+  expect(reads).toEqual([null, "token-a", null]);
+  // Another account has a board of its own.
+  session = "token-a";
+  await symbols();
+  session = "token-b";
+  await symbols();
+  expect(reads).toEqual([null, "token-a", null, "token-a", "token-b"]);
+});
+
+test("a provider's searches do not take a board from the other side of a sign-in", async () => {
+  let session: string | null = null;
+  const reads: Array<string | null> = [];
+  const hidden = brent({ marketId: "binance:NVDAUSDT", venue: "binance", dex: "", symbol: "NVDAUSDT", baseAsset: "NVDA", displayName: "NVDAUSDT" });
+  const rowsFor = () => session ? [brent(), bz(), hidden] : [brent(), bz()];
+  patch(apiClient, "hasSessionCredential", () => session !== null);
+  patch(apiClient, "getSessionToken", () => session);
+  patch(apiClient, "getCloudPerpsBoard", (async (query: PerpBoardQuery = {}) => {
+    reads.push(session);
+    const search = query.search?.toUpperCase() ?? "";
+    return board(rowsFor().filter((row) => `${row.symbol} ${row.baseAsset} ${row.displayName}`.toUpperCase().includes(search)));
+  }) as typeof apiClient.getCloudPerpsBoard);
+  patch(apiClient, "getCloudPerpsMarket", fakeClient().getCloudPerpsMarket as typeof apiClient.getCloudPerpsMarket);
+  const listing = (query: string) => ({ providerId: "gloomberb-cloud", symbol: query, name: `${query} Fund`, exchange: "NYSE", type: "ETF" });
+  patch(apiClient, "searchInstruments", (async (query: string) => [listing(query)]) as typeof apiClient.searchInstruments);
+  patch(apiClient, "searchInstrumentsBatch", (async (queries: readonly string[]) =>
+    new Map(queries.map((query) => [query, [listing(query)]]))) as unknown as typeof apiClient.searchInstrumentsBatch);
+  const provider = new GloomberbCloudProvider();
+  const contracts = async () => (await provider.searchBatch(["NVDA"]))?.get("NVDA")?.map((row) => row.symbol);
+  expect(await contracts()).toEqual(["NVDA"]);
+  session = "token-a";
+  expect(await contracts()).toEqual(["NVDAUSDT:BINANCE", "NVDA"]);
+  session = null;
+  expect(await contracts()).toEqual(["NVDA"]);
+  expect(reads).toEqual([null, "token-a", null]);
+});
+
+test("a lookup asks for perpetual markets beside the listings, and not at all for a symbol known to be a US stock", async () => {
+  const client = fakeClient([brent(), bz()].map((row) => row), [brent(), bz(), brent({ marketId: "binance:NVDAUSDT", venue: "binance", dex: "", symbol: "NVDAUSDT", baseAsset: "NVDA", displayName: "NVDAUSDT" })]);
+  patch(apiClient, "getCloudPerpsBoard", client.getCloudPerpsBoard as typeof apiClient.getCloudPerpsBoard);
+  patch(apiClient, "getCloudPerpsMarket", client.getCloudPerpsMarket as typeof apiClient.getCloudPerpsMarket);
+  const rows: Record<string, InstrumentSearchResult[]> = {
+    NVDA: [{ providerId: "gloomberb-cloud", symbol: "NVDA", name: "NVIDIA Corporation", exchange: "NASDAQ", type: "Common Stock" }],
+    BRENT: [{ providerId: "gloomberb-cloud", symbol: "BRENT", name: "Brent Fund", exchange: "NYSE", type: "ETF" }],
+  };
+  let release: () => void = () => {};
+  const listed = new Promise<void>((resolve) => { release = resolve; });
+  patch(apiClient, "searchInstruments", (async (query: string) => { await listed; return rows[query.toUpperCase()] ?? []; }) as typeof apiClient.searchInstruments);
+  const provider = new GloomberbCloudProvider();
+  provider.knownUsStock = (symbol) => symbol === "NVDA";
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  // A fund, a symbol nothing lists or a coin: the board is asked for with the listings, not after them.
+  const fund = provider.search("BRENT");
+  await tick();
+  expect(client.boards).toEqual([{}]);
+  // The stock NVDA: nothing is asked for beside its listings.
+  const stock = provider.search("NVDA");
+  await tick();
+  expect(client.boards).toEqual([{}]);
+  release();
+  expect((await fund).map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE", "XYZ-BRENTOIL:HYPERLIQUID", "BRENT"]);
+  expect((await stock).map((row) => row.symbol)).toEqual(["NVDA"]);
+  // The search a person types, and the command bar, keep the contracts for a stock; the board is read once.
+  expect((await provider.search("NVDA", { perpetuals: "always" })).map((row) => row.symbol)).toEqual(["NVDAUSDT:BINANCE", "NVDA"]);
+  expect((await provider.search("NVDA", { interactive: true })).map((row) => row.symbol)).toEqual(["NVDAUSDT:BINANCE", "NVDA"]);
+  expect(client.boards).toEqual([{}]);
+  // Without a command line's list of stocks, every lookup asks.
+  provider.knownUsStock = undefined;
+  expect((await provider.search("NVDA")).map((row) => row.symbol)).toEqual(["NVDAUSDT:BINANCE", "NVDA"]);
 });
 
 test("a streamed row that leaves out a figure it does not have still quotes, the figure read as none", () => {

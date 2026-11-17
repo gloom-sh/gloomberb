@@ -41,11 +41,43 @@ const isWord = (text: string, word: string) => new RegExp(`(^|[^a-z0-9])${escape
 /** A series whose name, tags and group have every word whole outranks any that has one only as the start of a longer word. */
 const WHOLE_WORDS_SCORE = 10;
 
+/** What a catalog search reads of a series: enough to rank and list it, none of the code that loads it. */
+export interface CatalogSeriesFact {
+  id: string;
+  name: string;
+  unit: string;
+  frequency: string;
+  publisher?: string;
+  tags?: readonly string[];
+  group?: string;
+  description?: string;
+  /** What `fn G` charts. */
+  expression: string;
+}
+
+/**
+ * The catalog series the plugins declare, as a search reads them. Series that ask for a ticker are left out; a
+ * search names data, not a field of every stock. A formula priced in one delivery month (a crack) charts by its
+ * id: its expression alone would mix months.
+ */
+export function catalogSeriesFacts(plugins: readonly SeriesSource[]): CatalogSeriesFact[] {
+  return plugins.flatMap((plugin) => plugin.series ?? []).flatMap((definition) => definition.input ? [] : [{
+    id: definition.id,
+    name: definition.name,
+    unit: definition.unit,
+    frequency: definition.frequency,
+    ...definition.publisher ? { publisher: definition.publisher } : {},
+    ...definition.tags ? { tags: definition.tags } : {},
+    ...definition.group ? { group: definition.group } : {},
+    ...definition.description ? { description: definition.description } : {},
+    expression: "rollsWith" in definition && definition.rollsWith ? definition.id : seriesExpression(definition),
+  }]);
+}
+
 /**
  * The plugins' catalog series whose words cover every word of the query: in
  * the name and tags only for `search`, also the description and publisher for
- * `catalog`. Series that ask for a ticker are left out; a search names data,
- * not a field of every stock. A query that is a series' id (`policy-rate:ch`),
+ * `catalog`. A query that is a series' id (`policy-rate:ch`),
  * what `fn G` charts (`CAP:policy-rate:ch`, `FRED:DFEDTARU`) or a FRED series
  * id (`DFEDTARU`) ranks it first, then one whose name, tags and group have
  * each word whole (`defi` is Total DeFi TVL's tag, before the "deficit" of the
@@ -58,14 +90,21 @@ export function findCatalogSeries(
   query: string,
   scope: "names" | "all" = "all",
 ): SeriesMatch[] {
+  return findSeriesFacts(catalogSeriesFacts(plugins), query, scope);
+}
+
+/** `findCatalogSeries` over series already read as facts. */
+export function findSeriesFacts(
+  facts: readonly CatalogSeriesFact[],
+  query: string,
+  scope: "names" | "all" = "all",
+): SeriesMatch[] {
   const words = query.toLowerCase().replace(/["']/g, "").split(/\s+/).filter(Boolean);
   if (words.length === 0 || words.join("").length < 3) return [];
   const phrase = words.join(" ");
   const ranked: Array<{ match: SeriesMatch; score: number; order: number }> = [];
-  for (const definition of plugins.flatMap((plugin) => plugin.series ?? [])) {
-    if (definition.input) continue;
-    // A formula priced in one delivery month (a crack) charts by its id: its expression alone would mix months.
-    const expression = "rollsWith" in definition && definition.rollsWith ? definition.id : seriesExpression(definition);
+  for (const definition of facts) {
+    const expression = definition.expression;
     const byId = words.length === 1
       && [definition.id, expression, fredSeriesIdOf(expression) ?? ""].some((id) => id.toLowerCase() === phrase);
     const name = definition.name.toLowerCase();

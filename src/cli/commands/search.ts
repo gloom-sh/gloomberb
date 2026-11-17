@@ -129,7 +129,7 @@ export async function searchCandidatesForCli({
       localLimit,
       // Every company's listing of a symbol several use (CAR's ASX line is past the first ten), cut after ordering.
       totalLimit: Math.max(totalLimit, LISTING_SEARCH_LIMIT),
-      searchContext: { limit: Math.max(totalLimit, LISTING_SEARCH_LIMIT) },
+      searchContext: { limit: Math.max(totalLimit, LISTING_SEARCH_LIMIT), perpetuals: "always" },
     });
     const symbol = trimmedQuery.toUpperCase();
     // A bare symbol search lists asks for the quote `quote SYM` reads, once, for its venue and its name:
