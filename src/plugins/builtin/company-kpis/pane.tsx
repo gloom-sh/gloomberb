@@ -28,6 +28,7 @@ import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { PricePoint } from "../../../types/financials";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
 import { logFailure } from "../../../utils/log-failure";
+import { currentKpiSeries } from "./latest";
 
 /** A locked placeholder, or with `note` the line above them saying what free shows and what Pro adds. */
 type Item = { id: string; row: CompanyRow } | { id: string; row: null; note?: string };
@@ -117,6 +118,8 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const guides = useMemo(() => guidance ? allGuidance(guidance) : [], [guidance]);
   const allRows = useMemo<CompanyRow[]>(() => [...observations, ...guides], [observations, guides]);
   const eligible = useMemo(() => allRows.filter((row) => metric === "all" || row.metricId === metric), [allRows, metric]);
+  // The table lists the series the company still reports (currentKpiSeries); the chart and evidence every figure.
+  const latestIds = useMemo(() => new Set(kpis ? currentKpiSeries(kpis.series).map((series) => series.latest.id) : []), [kpis]);
   const plotOptions = useMemo(() => mode === "kpis"
     ? [...new Map(eligible.filter((row) => !isGuidance(row)).map((row) => [`${row.seriesKey}:${row.period.kind}`, { value: `${row.seriesKey}:${row.period.kind}`, label: `${desktop ? seriesName(row) : seriesLabel(row)} · ${row.period.kind}` }])).values()]
     : [...new Map(eligible.filter(isGuidance).map((row) => [guideGroupKey(row), { value: guideGroupKey(row), label: `${desktop ? seriesName(row) : seriesLabel(row)} · ${row.period.label}` }])).values()], [eligible, mode, desktop]);
@@ -124,7 +127,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const rows = useMemo(() => {
     const values = eligible.filter((row) => tab === "chart" ? (isGuidance(row) ? guideGroupKey(row) : `${row.seriesKey}:${row.period.kind}`) === activePlot
       : tab === "history" ? isGuidance(row) && !!row.actual
-      : tab === "evidence" ? true : isGuidance(row) ? guidance?.guidance.some((current) => current.id === row.id) : kpis?.series.some((series) => series.latest.id === row.id));
+      : tab === "evidence" ? true : isGuidance(row) ? guidance?.guidance.some((current) => current.id === row.id) : latestIds.has(row.id));
     const key = (row: CompanyRow): string | number | null => {
       const guide = isGuidance(row) ? row : null;
       return sort.column === "metric" ? row.metric.name : sort.column === "value" ? guide ? guide.point ?? guide.low ?? guide.high : (row as KpiObservation).value
@@ -141,7 +144,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
       return x === null || y === null ? x === y ? a.id.localeCompare(b.id) : x === null ? 1 : -1
         : (x < y ? -1 : x > y ? 1 : a.metric.name.localeCompare(b.metric.name) || dimensionLabel(a.dimensions).localeCompare(dimensionLabel(b.dimensions)) || a.id.localeCompare(b.id)) * direction;
     });
-  }, [eligible, tab, activePlot, guidance, kpis, sort, observations, desktop]);
+  }, [eligible, tab, activePlot, guidance, latestIds, sort, observations, desktop]);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0];
   const openRow = allRows.find((row) => row.id === openId);
   const activeRow = openRow ?? selected;

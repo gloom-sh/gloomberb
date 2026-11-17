@@ -2,7 +2,7 @@
 
 `SPLC NVDA` (or `SUPPLY NVDA`) opens the supply chain for a ticker. Without an argument it uses the focused ticker. The pane follows linked tickers like other research functions. Free accounts receive three rows per role in each direction, including evidence; Pro receives the full stored dataset.
 
-The **Table** has two directions. **NVDA says** reads statements attributed to NVIDIA. **Names NVDA** reads other companies' statements and other sources naming NVIDIA. Role and direction are relative to the company in the pane title: suppliers flow in, customers flow out. A reverse percentage belongs to the reporting company. Cirrus Logic reporting Apple as 91% of revenue means 91% of Cirrus Logic's revenue, not Apple's.
+The **Table** has two directions. **NVDA says** reads statements attributed to NVIDIA. **Names NVDA** reads other companies' statements and other sources naming NVIDIA. Role and direction are relative to the company in the pane title: suppliers flow in, customers flow out. A reverse percentage belongs to the reporting company. Cirrus Logic reporting Apple as 91% of revenue means 91% of Cirrus Logic's revenue, not Apple's. A ticker reads as every function writes a listing, in the table, the flow, the graph and exports: a US listing bare, any other with its exchange (`STAN:LSE`, `0941:HKEX`, `600028:SSE`).
 
 A strip under the view switch names the company and counts its counterparties per role, each company once however many disclosures name it, without cohort groups or unconfirmed leads: the selected direction on the Table, both directions on Flow. A free preview adds how many disclosures it locks (`Customers 3 +8 locked`); some of them may name companies already shown.
 

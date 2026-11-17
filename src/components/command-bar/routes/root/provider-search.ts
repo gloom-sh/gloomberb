@@ -77,8 +77,9 @@ function buildInstantAnswer(options: {
   savedSymbolKeys: ReadonlySet<string>;
   buildTickerSearchResultItems: (candidates: TickerSearchCandidate[], query: string) => ResultItem[];
   localTickerSearchResultItems: (query?: string, options?: { category?: string; limit?: number }) => ResultItem[];
+  homeVenue?: string | null;
 }): InstantAnswer | null {
-  const { query, fromIndex, cached, tickers, savedSymbolKeys, buildTickerSearchResultItems, localTickerSearchResultItems } = options;
+  const { query, fromIndex, cached, tickers, savedSymbolKeys, buildTickerSearchResultItems, localTickerSearchResultItems, homeVenue } = options;
   const localItems = () => localTickerSearchResultItems(query, { limit: 6 });
   if (cached) {
     return { query, items: mergeTickerSearchResultItems(query, buildTickerSearchResultItems(withMajorCoinCandidate(query, cached, tickers), query), localItems()), fromIndex: false };
@@ -92,6 +93,7 @@ function buildInstantAnswer(options: {
     tickers,
     providerResults: known,
     totalLimit: LISTING_SEARCH_LIMIT,
+    homeVenue,
     ...QUICK_LOOK_TICKER_SEARCH_OPTIONS,
   }), tickers);
   if (candidates.length === 0) return null;
@@ -133,6 +135,8 @@ export function useRootProviderSearch(options: {
   categoryPriorities?: CommandBarCategoryPriorities;
   currentRoute: CommandBarRoute | null;
   dataProvider: DataProvider;
+  /** The venue of the user's own market, whose lines of the company a word names lead (`withHomeVenueLead`). */
+  homeVenue?: string | null;
   localTickerSearchResultItems: (query?: string, options?: { category?: string; limit?: number }) => ResultItem[];
   portfolios: AppState["config"]["portfolios"];
   readTickerSearchCache: (
@@ -177,6 +181,7 @@ export function useRootProviderSearch(options: {
     categoryPriorities,
     currentRoute,
     dataProvider,
+    homeVenue = null,
     localTickerSearchResultItems,
     portfolios,
     readTickerSearchCache,
@@ -218,11 +223,13 @@ export function useRootProviderSearch(options: {
       savedSymbolKeys,
       buildTickerSearchResultItems,
       localTickerSearchResultItems,
+      homeVenue,
     });
   // The index is read inside; its version says when what it knows changed.
   }, [
     buildTickerSearchResultItems,
     currentRoute,
+    homeVenue,
     listingIndexVersion,
     listingSuffix,
     localTickerSearchResultItems,
@@ -311,6 +318,7 @@ export function useRootProviderSearch(options: {
           },
           // The rows the CLI reads a symbol's listings from, so `CAR:` offers CAR Group on ASX (its eleventh).
           totalLimit: LISTING_SEARCH_LIMIT,
+          homeVenue,
           ...QUICK_LOOK_TICKER_SEARCH_OPTIONS,
         }));
         if (requestId !== rootSearchRequestIdRef.current) return;
@@ -339,6 +347,7 @@ export function useRootProviderSearch(options: {
     buildTickerSearchResultItems,
     currentRoute,
     dataProvider,
+    homeVenue,
     localTickerSearchResultItems,
     rootTickerSearchArg,
     searchBrokerId,

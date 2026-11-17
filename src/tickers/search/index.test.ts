@@ -1201,6 +1201,41 @@ describe("ticker-search utilities", () => {
       expect(build("BYD:NYSE", byd)[0]).toBe("BYD:NYSE");
       expect(build("Byd", byd).indexOf("1211:HKEX")).toBeGreaterThan(build("byd", byd).indexOf("1211:HKEX"));
     });
+
+    test("a desk whose market is Hong Kong gets the Hong Kong line of the company a word names first", () => {
+      const row = (symbol: string, name: string, exchange: string, overrides: Partial<InstrumentSearchResult> = {}) =>
+        makeSearchResult(symbol, name, { exchange, type: "Common Stock", ...overrides });
+      const inHongKong = (query: string, rows: InstrumentSearchResult[], homeVenue: string | null = "HKEX") =>
+        buildTickerSearchCandidates({ query, tickers: new Map<string, TickerRecord>(), providerResults: rows, totalLimit: 10, homeVenue })
+          .map((item) => `${item.symbol}:${item.exchangeLabel}`);
+      // The service's answers of 17 Nov 2026: an ETF, an unrelated trust and a receipt under the word.
+      const aia = [
+        row("AIA", "iShares Asia 50 ETF", "NASDAQ", { type: "ETF" }),
+        row("1299", "AIA Group Limited", "HKEX", { searchAliases: ["AIA"], homeListing: true }),
+        row("AIA", "Auckland International Airport Limited", "NZX"),
+        row("AAGIY", "AIA Group Limited", "PNK", { type: "Depositary Receipt" }),
+      ];
+      const mtr = [
+        row("MTR", "Mesa Royalty Trust", "NYSE", { type: "Trust" }),
+        row("0066", "MTR Corporation Limited", "HKEX", { searchAliases: ["MTR"], homeListing: true }),
+        row("MTR", "Mothercare plc", "FWB2"),
+      ];
+      const hsbc = [
+        row("HSBA", "HSBC Holdings plc", "LSE", { searchAliases: ["HSBC"], homeListing: true }),
+        row("HSBC", "HSBC Holdings, plc.", "NYSE", { type: "American Depositary Receipt" }),
+        row("0005", "HSBC Holdings plc", "HKEX", { searchAliases: ["HSBC"] }),
+      ];
+      expect(inHongKong("AIA", aia)[0]).toBe("1299:HKEX");
+      expect(inHongKong("MTR", mtr)[0]).toBe("0066:HKEX");
+      expect(inHongKong("HSBC", hsbc).slice(0, 3)).toEqual(["0005:HKEX", "HSBC:NYSE", "HSBA:LSE"]);
+      // A desk in New York, or none, keeps the US ticker first; a venue typed asks for that line.
+      expect(inHongKong("AIA", aia, "NYSE")[0]).toBe("AIA:NASDAQ");
+      expect(inHongKong("AIA", aia, null)[0]).toBe("AIA:NASDAQ");
+      expect(inHongKong("AIA:NASDAQ", aia)[0]).toBe("AIA:NASDAQ");
+      // A receipt or a line quoting shares listed elsewhere never leads for the market: only the company's own shares.
+      expect(inHongKong("AIA", [row("AIA", "iShares Asia 50 ETF", "NASDAQ", { type: "ETF" }),
+        row("AAGIY", "AIA Group Limited", "HKEX", { type: "Depositary Receipt", searchAliases: ["AIA"] })])[0]).toBe("AIA:NASDAQ");
+    });
   });
 
   describe("a renamed company's old name", () => {

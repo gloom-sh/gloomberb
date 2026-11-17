@@ -107,7 +107,8 @@ export function tableColumns(width: number, desktop: boolean, locked: boolean, v
   let columns: DataTableColumn[] = [
     name,
     { id: "evidence", label: "Evidence", width: 12, align: "left" },
-    ...(medium ? [{ id: "ticker", label: "Ticker", width: 8, align: "left" as const }] : []),
+    // A listing as every function writes it: 000063:SZSE whole.
+    ...(medium ? [{ id: "ticker", label: "Ticker", width: 11, align: "left" as const }] : []),
     { id: "role", label: "Role", width: 11, align: "left" },
     share,
     ...(valueWidth !== null ? [{ id: "usd", label: "Value", width: Math.max(medium ? 10 : 8, valueWidth), align: "right" as const }] : []),

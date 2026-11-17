@@ -19,6 +19,7 @@ import { isProviderResultItem } from "./search-providers";
 import { buildRootShortcutFeedback } from "./shortcut-feedback";
 import { commandShortcutQuery, type ShortcutIntent } from "./shortcuts";
 import { clampIndex } from "../../../../utils/math";
+import { homeMarketVenue, systemTimeZone } from "../../../../market-data/market/header-market";
 
 /** Written the way a symbol is: up to five letters and a share class (AAPL, nvda, BRK.B). */
 const SYMBOL_SHAPED_QUERY = /^[A-Za-z]{1,5}(?:[.\-/][A-Za-z]{1,2})?$/;
@@ -190,6 +191,9 @@ export function useCommandBarRootRuntime({
   const tickerSearchRouteQuery = currentRoute?.kind === "mode" && currentRoute.screen === "ticker-search"
     ? currentRoute.query
     : null;
+  // The market the header shows is the desk's own: search leads with its lines of the company a word names.
+  const headerMarket = state.config.headerMarket;
+  const homeVenue = useMemo(() => homeMarketVenue(headerMarket, systemTimeZone()), [headerMarket]);
 
   const {
     tickerSearchPending,
@@ -200,6 +204,7 @@ export function useCommandBarRootRuntime({
     buildTickerSearchResultItems,
     dataProvider,
     getTickers,
+    homeVenue,
     localTickerSearchResultItems,
     readTickerSearchCache,
     routeQuery: tickerSearchRouteQuery,
@@ -300,7 +305,8 @@ export function useCommandBarRootRuntime({
     if (rootTickerReading) return rootTickerReading.search;
     const trimmed = rootQuery.trim();
     const symbolQuery = symbolSearchQuery(trimmed);
-    if (symbolQuery.length < 2) return null;
+    // One letter is too little to be worth a search; one digit is a Hong Kong code as people type it (5 is HSBC's 0005).
+    if (symbolQuery.length < 2 && !/^\d$/.test(symbolQuery)) return null;
     const normalizedQuery = normalizeCommandTickerSearchText(symbolQuery);
     // The install row for "TV" is labelled TV, but it leads on purpose and
     // must not keep Grupo Televisa out of the list.
@@ -331,6 +337,7 @@ export function useCommandBarRootRuntime({
     categoryPriorities: providerCategoryPriorities,
     currentRoute,
     dataProvider,
+    homeVenue,
     localTickerSearchResultItems,
     portfolios: state.config.portfolios,
     readTickerSearchCache,

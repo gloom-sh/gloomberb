@@ -10,6 +10,7 @@ import {
   compareDepositaryPair, dollarPairLabel, formatPairRate, isReceiptSide, listingDepositaryPair, pairPriceInput, pairTimeText,
   premiumText, ratioCount, spotRateKind, type DepositaryPairComparison, type PairPriceInput, type PairSpotInput,
 } from "../../../../market-data/depositary-pair";
+import { AH_SPOT_LABEL, ahListingKey, type AhComparison } from "../../../../market-data/ah-pair";
 
 /** The DES tab a listing with a known receipt pair gets, and the function that opens DES on it. */
 export const ADR_PAIR_TAB_ID = "adr-vs-home";
@@ -112,7 +113,7 @@ export function adrPairFigures(comparison: DepositaryPairComparison): AdrPairFig
 }
 
 export interface AdrPairInputRow {
-  id: "home" | "receipt" | "spot";
+  id: "home" | "receipt" | "spot" | "h-share" | "a-share" | "ah-spot";
   listing: string;
   role: string;
   price: string;
@@ -165,5 +166,54 @@ export function adrPairInputRows(
       id: "spot" as const, listing: dollarPairLabel(home.currency), role: kind ? `Spot, ${kind}` : "Spot",
       price: formatPairRate(spot.rate), asOf: time(spot.observedAt), session: "", opens: null,
     }] : [],
+  ];
+}
+
+/**
+ * The figures an A+H company's two lines add: the H price over the A price at
+ * spot, the A price in Hong Kong dollars (to the decimals of `hQuote`, the H
+ * line's), and the spot rate it is read at.
+ */
+export function ahPairFigures(comparison: AhComparison, hQuote?: Quote | null): AdrPairFigure[] {
+  const { premiumPercent, aInHkd, spot } = comparison;
+  return [
+    {
+      id: "ah-premium", label: "H vs A",
+      value: premiumPercent == null ? MISSING_VALUE : premiumText(premiumPercent),
+      ...(premiumPercent == null ? {} : { detail: "at spot" }),
+    },
+    {
+      id: "ah-a-in-hkd", label: "A in HKD",
+      // To the H price's own decimals, which it is read beside.
+      value: aInHkd == null ? MISSING_VALUE
+        : formatMarketPriceWithCurrency(aInHkd, "HKD", { ...legPriceOptions(comparison.h, hQuote), currencyCode: true }),
+      ...(aInHkd == null ? {} : { detail: "A × spot" }),
+    },
+    { id: "ah-spot", label: `Spot ${AH_SPOT_LABEL}`, value: spot ? formatPairRate(spot.rate) : MISSING_VALUE },
+  ];
+}
+
+/**
+ * The A+H prices, each in its own currency and dated, and the spot rate,
+ * leaving out a line `listed` already holds (the H line that is a receipt's
+ * home line).
+ */
+export function ahPairInputRows(
+  comparison: AhComparison,
+  quotes: { h: Quote | null | undefined; a: Quote | null | undefined },
+  listed: readonly string[] = [],
+  now = Date.now(),
+): AdrPairInputRow[] {
+  const { h, a, spot } = comparison;
+  const time = (value: number | null) => value == null ? MISSING_VALUE : pairTimeText(value, now).replace(/ UTC$/, "");
+  const leg = (id: "h-share" | "a-share", role: string, input: PairPriceInput, quote: Quote | null | undefined): AdrPairInputRow => ({
+    id, listing: input.symbol, role,
+    price: formatMarketPriceWithCurrency(input.price, input.currency, { ...legPriceOptions(input, quote), currencyCode: true }),
+    asOf: time(input.observedAt), session: sessionText(input), opens: input.symbol,
+  });
+  return [
+    ...listed.some((key) => ahListingKey(key) === h.symbol) ? [] : [leg("h-share", "H share", h, quotes.h)],
+    leg("a-share", "A share", a, quotes.a),
+    ...spot ? [{ id: "ah-spot" as const, listing: AH_SPOT_LABEL, role: "Spot", price: formatPairRate(spot.rate), asOf: time(spot.observedAt), session: "", opens: null }] : [],
   ];
 }

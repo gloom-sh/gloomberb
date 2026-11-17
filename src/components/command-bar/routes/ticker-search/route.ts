@@ -17,6 +17,8 @@ export function useTickerSearchRouteResults(options: {
   buildTickerSearchResultItems: (candidates: TickerSearchCandidate[], query: string) => ResultItem[];
   dataProvider: DataProvider;
   getTickers: () => AppState["tickers"];
+  /** The venue of the user's own market, whose lines of the company a word names lead. */
+  homeVenue?: string | null;
   localTickerSearchResultItems: (query?: string, options?: { category?: string; limit?: number }) => ResultItem[];
   readTickerSearchCache: (
     query: string,
@@ -41,6 +43,7 @@ export function useTickerSearchRouteResults(options: {
     buildTickerSearchResultItems,
     dataProvider,
     getTickers,
+    homeVenue,
     localTickerSearchResultItems,
     readTickerSearchCache,
     routeQuery,
@@ -104,6 +107,7 @@ export function useTickerSearchRouteResults(options: {
           },
           // The rows the CLI's search reads, so CAR Group on ASX (CAR's eleventh row) is offered too.
           totalLimit: LISTING_SEARCH_LIMIT,
+          homeVenue,
           ...QUICK_LOOK_TICKER_SEARCH_OPTIONS,
         });
         if (requestId !== searchRequestIdRef.current) return;
@@ -137,6 +141,7 @@ export function useTickerSearchRouteResults(options: {
     buildTickerSearchResultItems,
     dataProvider,
     getTickers,
+    homeVenue,
     localTickerSearchResultItems,
     readTickerSearchCache,
     resetTickerSearchRoute,
