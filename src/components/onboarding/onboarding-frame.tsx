@@ -536,7 +536,8 @@ export function OnboardingChoiceList({
       onActivate={(_item, index) => onActivate(index)}
       surface="framed"
       rowGap={0}
-      rowHeight={2}
+      // Two lines where a choice says more under its name; one where none does.
+      rowHeight={items.some((item) => item.description) ? 2 : 1}
       selectOnHover
       renderRow={(item, state) => (
         <Box flexDirection="row" alignItems="center" width="100%" minWidth={0}>
