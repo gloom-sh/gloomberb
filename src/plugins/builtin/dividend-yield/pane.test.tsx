@@ -14,7 +14,6 @@ const realNow = Date.now;
 afterEach(() => {
   setHttpFetchTransport(null);
   Date.now = realNow;
-  setSystemTime();
 });
 
 /** Render the pane bound to `symbol` in its footer frame. */
@@ -42,8 +41,13 @@ async function frame() {
 test("an ex-dated unfixed sterling declaration keeps its row, estimate labels and fixing date at narrow width", async () => {
   setSystemTime(new Date("2026-11-17T06:00:00Z"));
   setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead() }));
-  await mountDividendPane("HSBA:LSE", 60);
-  const text = await frame();
+  let data: Awaited<ReturnType<typeof fetchDividendData>>;
+  try {
+    data = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
+  } finally {
+    setSystemTime();
+  }
+  const text = await renderLoaded(data, 60, 24);
   expect(text).toContain("2026-11-05");
   expect(text).toContain("estimated 7.5835p");
   expect(text).toContain("$0.10");

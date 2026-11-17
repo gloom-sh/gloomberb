@@ -12,7 +12,7 @@ export function declaredDividendCash(row: DeclaredDividendAction, currency?: str
   if (!estimate || estimate.declaredAmount == null) return { amount: cash };
   return {
     amount: `${formatDistributionAmount(estimate.declaredAmount, estimate.declaredCurrency)} ${estimate.declaredCurrency}`,
-    estimate: `${currency || "Cash"} estimated ${cash}; FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}`,
+    estimate: `${currency || "Cash"} estimated ${cash}; FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}${estimate.basis ? `; ${estimate.basis}` : ""}`,
   };
 }
 

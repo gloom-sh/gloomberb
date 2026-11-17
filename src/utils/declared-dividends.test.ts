@@ -23,5 +23,8 @@ test("a declared row stays apart from the paid history and leaves once that hist
     cashEstimate: { declaredCurrency: "USD", declaredAmount: 0.1, fixingDate: "2026-12-07", basis: "Reported cash estimate" } };
   const kept = declaredDividends({ dividends: [], declaredDividends: [estimate] }, new Date("2026-11-17"));
   expect(kept).toEqual([estimate]);
-  expect(declaredDividendCash(kept[0]!, "GBP")).toEqual({ amount: "$0.10 USD", estimate: "GBP estimated £0.075835; FX fixing 2026-12-07" });
+  const cash = declaredDividendCash(kept[0]!, "GBP");
+  expect(cash.amount).toBe("$0.10 USD");
+  expect(cash.estimate).toContain("GBP estimated £0.075835; FX fixing 2026-12-07");
+  expect(cash.estimate).toContain("Reported cash estimate");
 });

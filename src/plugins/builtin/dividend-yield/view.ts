@@ -25,7 +25,7 @@ export function forwardEstimateText(metrics: DividendMetrics): string | null {
 
 export function cashEstimateText(estimate: NonNullable<DividendMetrics["forwardEstimate"]>): string {
   const declared = estimate.declaredAmount == null ? estimate.declaredCurrency : `${estimate.declaredAmount} ${estimate.declaredCurrency}/share`;
-  return `estimated from ${declared}; FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}`;
+  return `estimated from ${declared}; FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}${estimate.basis ? `; ${estimate.basis}` : ""}`;
 }
 
 /** What a converted amount says beside it: `converted from USD`. */
