@@ -1,4 +1,5 @@
 import { setCloudApiFetchTransport } from "../../../api-client";
+import { marketReadLimitMs } from "../../../api-client/request";
 import {
   createProxyResponse,
   createProxyResponseHeaders,
@@ -11,7 +12,7 @@ import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { backendRequest, onBackendMessage } from "./backend-rpc";
 import { logFailure } from "../../../utils/log-failure";
 
-const CLOUD_MARKET_HTTP_TIMEOUT_MS = 10_000;
+const MARKET_FETCH_GRACE_MS = 1_000;
 /**
  * The view gives up on a feedback upload after 45 s (api-client/feedback.ts),
  * but aborting in the view does not stop the Bun process's fetch. Stop it a
@@ -59,7 +60,7 @@ async function electrobunCloudApiFetch(url: string, init?: RequestInit): Promise
   }
   const path = new URL(url).pathname;
   const timeoutMs = path.startsWith("/market/")
-    ? CLOUD_MARKET_HTTP_TIMEOUT_MS
+    ? marketReadLimitMs(path) + MARKET_FETCH_GRACE_MS
     : path === "/telemetry/attention"
       ? 5_000
     : path.endsWith("/feedback") && init?.method === "POST"

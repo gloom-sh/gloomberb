@@ -21,7 +21,7 @@ export const FX_CACHE_TTL_MS = 30 * 60_000;
 
 export function classifyError(error: unknown): { reasonCode: ProviderReasonCode; message: string } {
   const message = error instanceof Error ? error.message : String(error ?? "");
-  if (/timeout/i.test(message)) return { reasonCode: "TIMEOUT", message };
+  if (/timeout|timed out/i.test(message)) return { reasonCode: "TIMEOUT", message };
   if (/unsupported/i.test(message)) return { reasonCode: "UNSUPPORTED_RANGE", message };
   if (/mapping|symbol/i.test(message)) return { reasonCode: "BAD_MAPPING", message };
   if (/not found|no data|unavailable|delisted/i.test(message)) return { reasonCode: "NOT_FOUND", message };
