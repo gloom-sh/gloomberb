@@ -2231,7 +2231,7 @@ gloom portfolio show Retirement                    # --csv and --json keep raw n
 
 The terms in the table:
 
-- **Cash** is one amount in one currency, converted into the portfolio's currency. A broker portfolio whose account reports its cash shows that balance instead. Bare `CASH` names the cash line: `target set` takes it, while `portfolio add` and `position set` refuse it and point to `cash set` (the stock under that symbol is `CASH:NASDAQ`).
+- **Cash** is one amount in one currency, converted into the portfolio's currency. `cash set` replaces it, whatever currency it was in, and names the balance it replaced. A broker portfolio whose account reports its cash shows that balance instead. Bare `CASH` names the cash line: `target set` takes it, while `portfolio add` and `position set` refuse it and point to `cash set` (the stock under that symbol is `CASH:NASDAQ`).
 - **Weight** is a holding's net market value as a share of the total (every priced holding plus the cash). A holding without a price is left out of the total and the weights, shows `n/a`, and `portfolio show` says how many were left out.
 - **Targets** are percents of the same total, kept per ticker symbol and synced between your devices when signed in. They need not add up to 100% (`portfolio show` notes the sum and what is unallocated), and a target can name a ticker the portfolio does not hold yet (a manual portfolio adds it at 0%).
 - **Drift** is weight minus target in percentage points: `+2.3pp` is overweight.

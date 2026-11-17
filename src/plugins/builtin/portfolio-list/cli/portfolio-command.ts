@@ -551,8 +551,14 @@ async function setCashCommand(rest: string[], ctx: CliCommandContext) {
       // An amount of a currency reads by its units: 500,000 USD is half a million, 1,234 KWD could be either.
       const currency = parsed.currency ?? resolvePortfolioTotalsCurrency(portfolio, config.baseCurrency);
       const amount = parseAmountArg(parsed.amount, "Cash amount", currency);
-      await saveConfig(setPortfolioCash(config, portfolio.id, { amount, currency }));
-      console.log(cliStyles.success(`Set cash in "${portfolio.name}" to ${formatAllocationMoney(amount, currency)}.`));
+      const { config: next, replaced } = setPortfolioCash(config, portfolio.id, { amount, currency });
+      await saveConfig(next);
+      // A portfolio holds one balance: a TRY balance set over in USD is gone, and the line says so.
+      const replacing = replaced ? `, replacing ${formatAllocationMoney(replaced.amount, replaced.currency)}` : "";
+      console.log(cliStyles.success(`Set cash in "${portfolio.name}" to ${formatAllocationMoney(amount, currency)}${replacing}.`));
+      if (replaced && replaced.currency.toUpperCase() !== currency) {
+        console.log(cliStyles.warning(`A portfolio holds one cash balance, in one currency: the ${replaced.currency.toUpperCase()} balance is no longer counted.`));
+      }
       const account = findCachedPortfolioAccount(config, portfolio, persistence.resources);
       if (account && Number.isFinite(account.totalCashValue)) {
         console.log(cliStyles.warning(
@@ -1000,6 +1006,7 @@ const POSITION_HELP = {
     "A future's size is in contracts, at a price per unit of its contract (GC=F: per troy ounce); the contract size is read from its terms, as quote shows them.",
     "The cost is in the currency named after it (GBp or GBX for pence, gbp for pounds), else the listing's. A holding in another currency than the portfolio's (a US stock in a TRY portfolio) can be entered at its cost in the portfolio's currency (position set Lira BRK-B 10 20310 TRY), so P&L is in what was paid.",
     "Entered at its cost in its own currency, its P&L converts the cost at today's rate unless --date gives the purchase date, whose daily FX close is used, or --cost-fx gives the rate paid (portfolio currency per unit of the holding's: 32.15 TRY per USD); then the P&L carries the currency's move since. portfolio show names the holdings whose cost converts at today's rate.",
+    "cash set replaces the portfolio's cash: it holds one balance, in one currency, and the command names the balance it replaced.",
   ],
 };
 
