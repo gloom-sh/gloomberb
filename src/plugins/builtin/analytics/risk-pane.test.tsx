@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
+import type { CombinedPaneFooter } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
@@ -69,7 +70,7 @@ async function renderPane(
   width: number,
   height: number,
   settings: Record<string, unknown> = {},
-  { portfolio = MAIN, tickers = mainTickers(), runtime = createTestPluginRuntime() }: { portfolio?: Portfolio; tickers?: TickerRecord[]; runtime?: ReturnType<typeof createTestPluginRuntime> } = {},
+  { portfolio = MAIN, tickers = mainTickers(), runtime = createTestPluginRuntime(), onFooter }: { portfolio?: Portfolio; tickers?: TickerRecord[]; runtime?: ReturnType<typeof createTestPluginRuntime>; onFooter?: (footer: CombinedPaneFooter) => void } = {},
 ) {
   const config = createTestPaneConfig("/tmp/gloomberb-risk-pane-test", {
     paneId: "analytics", instanceId: PANE_ID, params: { portfolioId: portfolio.id }, settings: { analyticsView: "risk", ...settings },
@@ -83,7 +84,10 @@ async function renderPane(
     const dispatch = (action: AppAction) => setPaneState((current) => appReducer({ ...state, paneState: current }, action).paneState);
     return (
       <TestPaneFrame width={width} height={height} state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="analytics" runtime={runtime}>
-        {(body) => <PortfolioRiskPane paneId={PANE_ID} paneType="analytics" focused width={body.width} height={body.height} />}
+        {(body, footer) => {
+          onFooter?.(footer);
+          return <PortfolioRiskPane paneId={PANE_ID} paneType="analytics" focused width={body.width} height={body.height} />;
+        }}
       </TestPaneFrame>
     );
   }
@@ -171,6 +175,21 @@ test("manual Performance charts an estimated value rather than labelling it acco
   expect(frame).not.toContain("Performance needs this account");
   expect(frame).not.toContain("● TWR");
   expect(lines.findIndex((line) => line.includes("METRIC"))).toBeGreaterThan(lines.findIndex((line) => line.includes("● Estimated value")) + 6);
+});
+
+test("missing estimate closes remain warnings in captured Performance views", async () => {
+  cloud = {
+    ...usListings,
+    getCloudHistory: async (symbol: string, exchange: string) => {
+      const history = sessionHistory(symbol, exchange);
+      return { ...history, data: history.data!.filter((point) => symbol !== "AAPL" || !point.date.startsWith("2026-09-17")) };
+    },
+  };
+  let notes: readonly string[] = [];
+  await renderPane(100, 28, { riskView: "performance" }, {
+    onFooter: (footer) => { notes = footer.info.flatMap((segment) => segment.notes ?? []); },
+  });
+  expect(notes).toContain("Estimated value has gaps where daily closes or FX are missing.");
 });
 
 test("a broker account the basket only partly covers states its coverage, its tail method and source, and lists what is left out", async () => {

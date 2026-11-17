@@ -637,13 +637,13 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   // detail, a holding's or an option's failure its note under the table.
   const failures = [
     ...(model ? riskPaneWarnings(model) : []),
+    ...(view === "performance" ? model?.performanceEstimate?.warnings ?? [] : []),
     ...shocks.errors,
     ...(derived.error ? [derived.error] : []),
     ...(resource.error ? [resource.error] : []),
   ];
   const notices = [
     ...(model?.notes ?? []),
-    ...(view === "performance" ? model?.performanceEstimate?.warnings ?? [] : []),
     ...failures,
   ];
   // What the basket views cover of the book and leave out, unless the body already says why they show nothing.
