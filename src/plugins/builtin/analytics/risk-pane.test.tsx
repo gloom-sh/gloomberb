@@ -164,6 +164,15 @@ test("the performance tab charts the account TWR over its metrics", async () => 
   expect(lines.findIndex((line) => line.includes("METRIC"))).toBeGreaterThan(legend + 6);
 });
 
+test("manual Performance charts an estimated value rather than labelling it account returns", async () => {
+  const lines = (await renderPane(100, 28, { riskView: "performance" }))();
+  const frame = lines.join("\n");
+  expect(frame).toContain("● Estimated value $");
+  expect(frame).not.toContain("Performance needs this account");
+  expect(frame).not.toContain("● TWR");
+  expect(lines.findIndex((line) => line.includes("METRIC"))).toBeGreaterThan(lines.findIndex((line) => line.includes("● Estimated value")) + 6);
+});
+
 test("a broker account the basket only partly covers states its coverage, its tail method and source, and lists what is left out", async () => {
   cloud = brokerRiskClient(now);
   const coverage = "basket 365,500 USD = 78% of book; left out: EUR2 4%, TWD1 4%, 7 more 14%";

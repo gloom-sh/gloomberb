@@ -1,4 +1,4 @@
-import { MISSING_VALUE } from "../../../utils/format";
+import { MISSING_VALUE, formatCurrency } from "../../../utils/format";
 import {
   staticSeries,
   scalarPoint,
@@ -424,8 +424,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     [portfolio?.id, tickers],
   );
   const requests = useMemo(
-    () => (portfolio ? portfolioRiskRequests(localTickers, portfolio.id) : []),
-    [localTickers, portfolio?.id],
+    () => (portfolio ? portfolioRiskRequests(localTickers, portfolio.id, !(portfolio.brokerId || portfolio.brokerInstanceId || portfolio.brokerAccountId)) : []),
+    [localTickers, portfolio],
   );
   const session = useResearchCloudSession();
   const loader = useCallback(
@@ -643,6 +643,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   ];
   const notices = [
     ...(model?.notes ?? []),
+    ...(view === "performance" ? model?.performanceEstimate?.warnings ?? [] : []),
     ...failures,
   ];
   // What the basket views cover of the book and leave out, unless the body already says why they show nothing.
@@ -758,6 +759,15 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const chart = useMemo<ChartTableChart | null>(() => {
     if (!model) return null;
     if (view === "performance") {
+      if (model.performanceEstimate) return {
+        series: [staticSeries(
+          model.performanceEstimate.points.map((row) => scalarPoint(new Date(row.date), row.value)),
+          { id: "estimated-value", label: model.performanceEstimate.label, color: colors.positive, calendarSpaced: true },
+        )],
+        formatValue: (value: number) => formatCurrency(value, model.portfolio.currency),
+        formatAxisValue: formatPlainAxis,
+        remoteKind: "portfolio-risk-history",
+      };
       if (!model.performance) return null;
       return {
         series: [staticSeries(

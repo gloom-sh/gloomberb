@@ -12,6 +12,7 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import { StaticXAxisLabels } from "./axis-overlays";
 import { buildCompositeViewportTimeAxisLayout } from "./time-axis";
 import { noopRendererHost } from "../../../test-support/renderer-host";
+import { PriceAxisLabels } from "./price-axis-labels";
 
 function hostFor(kind: "opentui" | "desktop-web"): UiHost {
   return {
@@ -96,6 +97,23 @@ describe("StaticXAxisLabels", () => {
 type AxisProps = ComponentProps<typeof StaticXAxisLabels>;
 
 const tui = createOpenTuiTestHarness();
+
+test("terminal value axes keep colliding series observations in their own colours, ahead of the pointer's height", async () => {
+  const seriesTags = [
+    { seriesId: "value", seriesLabel: "Estimated value", side: "right" as const, value: 101.25, label: "101.25", color: "#00cc66", yRatio: 0.4, carried: false },
+    { seriesId: "other", seriesLabel: "Other", side: "right" as const, value: 101.26, label: "101.26", color: "#6699ff", yRatio: 0.401, carried: false },
+  ];
+  const props = { axisLabels: new Map<number, string>(), axisWidth: 8, axisSectionWidth: 8, side: "right" as const,
+    height: 6, cursorRow: 2, cursorLabel: "999.00", cursorColor: "#ffffff", seriesTags };
+  await tui.render(<Box width={20} height={8}><PriceAxisLabels {...props} /></Box>, { width: 20, height: 8 });
+  await act(async () => { await tui.setup().renderOnce(); });
+  expect(tui.frame()).toContain("101.25");
+  expect(tui.frame()).toContain("101.26");
+  expect(tui.frame()).not.toContain("999.00");
+  const html = renderToStaticMarkup(<UiHostProvider ui={hostFor("opentui")} renderer={noopRendererHost}><PriceAxisLabels {...props} /></UiHostProvider>);
+  expect(html).toContain("color:#00cc66");
+  expect(html).toContain("color:#6699ff");
+});
 
 /** Renders the axis in terminal cells and returns a frame reader per prop set. */
 async function renderTerminalAxis(initial: AxisProps) {
