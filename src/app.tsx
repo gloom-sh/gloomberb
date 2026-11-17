@@ -20,6 +20,7 @@ import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
+import { getOnboardingProgress } from "./components/onboarding/wizard-model";
 import { HeardFromQuestionHost } from "./account/heard-from-question";
 import { useRunSetupAgain } from "./components/onboarding/run-setup-again";
 import { CompanyPickerHost } from "./plugins/builtin/cloud/company-picker";
@@ -232,6 +233,10 @@ function AppInner({
   const appWideWorkElsewhere = isDetachedWindow || desktopWindowBridge?.primary === false;
   // Not while setup is already showing.
   const runSetupAgain = useRunSetupAgain(onboardingActive ? undefined : onRunSetupAgain);
+  // A setup card holds the keyboard over the whole window; the workspace coach
+  // after the cards floats over a live workspace, whose "Ctrl+P adds more"
+  // needs the command bar's prompt (and Help) where they always are.
+  const setupCardShown = onboardingActive && getOnboardingProgress(config).stage !== "research";
   const detachedPaneId = isDetachedWindow ? desktopWindowBridge.paneId ?? null : null;
   const focusDetachedPane = useMemo(() => {
     const focus = desktopWindowBridge?.kind === "main" ? desktopWindowBridge.focusDetachedPane : undefined;
@@ -576,8 +581,8 @@ function AppInner({
         <ThemedAppRoot>
           {chrome.header && (
             <Header
-              commandInputAvailable={!onboardingActive}
-              onOpenHelp={onboardingActive ? undefined : () => {
+              commandInputAvailable={!setupCardShown}
+              onOpenHelp={setupCardShown ? undefined : () => {
                 recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
                 pluginRegistry.showPane("help");
               }}

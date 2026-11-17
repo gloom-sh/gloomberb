@@ -577,13 +577,15 @@ export function CompanyPicker({
 /**
  * Mounted next to the onboarding. Opens once per session, when a brand-new
  * account is signed in with only the seeded lists and the onboarding is not
- * running.
+ * running. It waits for an open command bar to close: the card takes every
+ * key, so what the user was typing there would go nowhere.
  */
 export function CompanyPickerHost({ pluginRegistry }: { pluginRegistry: PluginRegistry }) {
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const toast = useToastHost();
   const onboardingDone = useAppSelector((state) => state.config.onboardingComplete && !state.config.onboardingProgress);
+  const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const [user, setUser] = useState<AuthUser | null>(() => apiClient.getCurrentUser());
   const [open, setOpen] = useState(false);
   const askedRef = useRef(false);
@@ -591,12 +593,12 @@ export function CompanyPickerHost({ pluginRegistry }: { pluginRegistry: PluginRe
   useEffect(() => apiClient.subscribeCurrentUser(() => setUser(apiClient.getCurrentUser())), []);
 
   useEffect(() => {
-    if (askedRef.current || !onboardingDone || !isNewAccount(user)) return;
+    if (askedRef.current || !onboardingDone || commandBarOpen || !isNewAccount(user)) return;
     const watchlistId = stateRef.current.config.watchlists[0]?.id;
     if (!needsCompanyPicks(stateRef.current.tickers.values(), watchlistId)) return;
     askedRef.current = true;
     setOpen(true);
-  }, [onboardingDone, stateRef, user]);
+  }, [commandBarOpen, onboardingDone, stateRef, user]);
 
   const searchCompanies = useCallback<SearchCompanies>(
     (query) => pluginRegistry.marketData.search(query),

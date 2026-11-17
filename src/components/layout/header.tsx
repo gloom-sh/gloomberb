@@ -930,7 +930,9 @@ export function Header({
     dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
   }, [dispatch]);
 
-  const commandPrompt = commandInputAvailable ? (
+  // An open bar always has its input, whatever opened it: without one, what
+  // the user types or pastes goes nowhere and Enter runs the first suggestion.
+  const commandPrompt = commandInputAvailable || commandBarOpen ? (
     <HeaderCommandPrompt
       nativePaneChrome={nativePaneChrome}
       onOpen={openCommandBar}
