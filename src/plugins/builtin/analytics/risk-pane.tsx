@@ -692,7 +692,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     focused,
     enabled: !openRow,
     // A capture's footer says what the basket leaves out and how it reads; of the warnings it prints only what failed.
-    captureText: failures.join(" · "),
+    captureNotes: failures,
   });
   usePaneFooter(
     "portfolio-risk",

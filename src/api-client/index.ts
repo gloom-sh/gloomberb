@@ -40,6 +40,8 @@ import type {
   AssistCommandResponse,
   AuthUser,
   CloudCancelFeedback,
+  CloudRetentionOffer,
+  CloudRetentionOfferAnswer,
   CloudSyncPushResponse,
   CloudYearlyPlanStatus,
   CloudYearlyResult,
@@ -78,6 +80,15 @@ const ASSIST_COMMAND_LIMIT = 150;
 export const ASSIST_ARG_OPTION_LIMIT = 128;
 /** The longest cancel note the server keeps, in UTF-16 units as its schema counts them. */
 export const CLOUD_CANCEL_COMMENT_MAX = 500;
+
+/** The reason and note a cancel step sends, the note trimmed to what the server keeps. */
+function cancelFeedbackBody(feedback: CloudCancelFeedback): CloudCancelFeedback {
+  const comment = feedback.comment === undefined ? undefined : sliceWholeCharacters(feedback.comment.trim(), CLOUD_CANCEL_COMMENT_MAX);
+  return {
+    ...(feedback.reason ? { reason: feedback.reason } : {}),
+    ...(comment ? { comment } : {}),
+  };
+}
 const ASSIST_ARG_OPTION_VALUE_MAX_LENGTH = 40;
 const ASSIST_ARG_OPTION_LABEL_MAX_LENGTH = 60;
 const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
@@ -688,15 +699,55 @@ class GloomApiClient {
    * reason and note, when given, go to the billing provider with the cancel.
    */
   async endCloudTrial(feedback: CloudCancelFeedback = {}): Promise<{ canceled: boolean; endedNow?: boolean }> {
-    const comment = feedback.comment === undefined ? undefined : sliceWholeCharacters(feedback.comment.trim(), CLOUD_CANCEL_COMMENT_MAX);
     return this.request<{ canceled: boolean; endedNow?: boolean }>("/stripe/subscription/cancel", {
       method: "POST",
-      body: JSON.stringify({
-        ...(feedback.reason ? { reason: feedback.reason } : {}),
-        ...(comment ? { comment } : {}),
-        endTrialNow: true,
-      }),
+      body: JSON.stringify({ ...cancelFeedbackBody(feedback), endTrialNow: true }),
     });
+  }
+
+  /**
+   * Stops a paid Pro plan from renewing: it keeps Pro to the end of the period
+   * it paid for. The same request gloom.sh's cancel window sends, the reason
+   * and note with it when given. Call it only once the person confirmed.
+   */
+  async cancelCloudSubscription(feedback: CloudCancelFeedback = {}): Promise<{ canceled: boolean; endedNow?: boolean }> {
+    return this.request<{ canceled: boolean; endedNow?: boolean }>("/stripe/subscription/cancel", {
+      method: "POST",
+      body: JSON.stringify(cancelFeedbackBody(feedback)),
+    });
+  }
+
+  /**
+   * The save offer and the kept price the cancel flow shows, read as it opens.
+   * The server counts this as the cancel flow starting.
+   */
+  async getCloudRetentionOffer(options?: { signal?: AbortSignal }): Promise<CloudRetentionOfferAnswer> {
+    const body = await this.request<Partial<CloudRetentionOfferAnswer> | null>("/stripe/subscription/retention-offer", {
+      method: "GET",
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
+    const offer = body?.offer === "discount" || body?.offer === "trial_extension" ? body.offer : null;
+    const kept = body?.keptPrice;
+    return {
+      offer,
+      extendedTrialEndsAt: typeof body?.extendedTrialEndsAt === "string" ? body.extendedTrialEndsAt : null,
+      keptPrice: kept && Number.isFinite(kept.amount) && Number.isFinite(kept.listAmount)
+        && (kept.interval === "month" || kept.interval === "year")
+        ? { amount: kept.amount, listAmount: kept.listAmount, interval: kept.interval }
+        : null,
+    };
+  }
+
+  /** Takes the save offer the cancel flow showed, with the reason and note picked. */
+  async acceptCloudRetentionOffer(feedback: CloudCancelFeedback = {}): Promise<{ offer: CloudRetentionOffer | null; extendedTrialEndsAt: string | null }> {
+    const body = await this.request<{ offer?: unknown; extendedTrialEndsAt?: unknown } | null>("/stripe/subscription/retention-offer", {
+      method: "POST",
+      body: JSON.stringify(cancelFeedbackBody(feedback)),
+    });
+    return {
+      offer: body?.offer === "discount" || body?.offer === "trial_extension" ? body.offer : null,
+      extendedTrialEndsAt: typeof body?.extendedTrialEndsAt === "string" ? body.extendedTrialEndsAt : null,
+    };
   }
 
   /**

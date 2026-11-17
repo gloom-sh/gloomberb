@@ -19,6 +19,7 @@ import { registerPaneDocsHandler } from "../docs/requests";
 import { isMoveDownShortcut, isMoveUpShortcut } from "../components/command-bar/keyboard-handlers";
 import { pressStarPromptKey } from "./star-prompt/runtime";
 import { pressSinceLastVisitKey } from "./since-last-visit/keys";
+import { pressProWelcomeKey } from "./pro-welcome/keys";
 import {
   copyActiveSelection,
   isCopyShortcut,
@@ -177,8 +178,9 @@ export function useAppGlobalShortcuts({
     }
 
     // Toasts float above everything, so their keys work over a dialog too.
-    // The since-last-visit strip, then the status bar's star line, answer
-    // the same keys once no toast does, but only over the workspace itself.
+    // The since-last-visit strip, then the Pro row under it, then the status
+    // bar's star line, answer the same keys once no toast does, but only over
+    // the workspace itself.
     if (action === "notification-action" || action === "notification-dismiss") {
       if (ranAlready(action)) return;
       const toastHandled = action === "notification-action"
@@ -190,7 +192,7 @@ export function useAppGlobalShortcuts({
         && !state.commandBarOpen
         && !state.inputCaptured
         && !isDetachedWindow
-        && (pressSinceLastVisitKey(kind) || pressStarPromptKey(kind))
+        && (pressSinceLastVisitKey(kind) || pressProWelcomeKey(kind) || pressStarPromptKey(kind))
       );
       if (handled) {
         event.preventDefault();

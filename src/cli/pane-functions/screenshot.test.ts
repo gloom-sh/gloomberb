@@ -16,7 +16,7 @@ import { commoditiesEnergyModule } from "../../plugins/builtin/commodities-energ
 import { realizedVolSemanticEvidence } from "../../plugins/builtin/realized-vol/evidence";
 import { coneChartSeries, realizedChartSeries } from "../../plugins/builtin/realized-vol/chart-model";
 import { collectShotSymbols } from "./data";
-import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
+import { paneStateMarkers, type DesktopPaneShotPayload, type DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
@@ -714,6 +714,44 @@ describe("a capture of a pane that marks no rows", () => {
     expect(filled).not.toHaveProperty("blankColumns");
     // Two rows are a short list's gaps, not a lost column.
     expect(assess(diag, { rows: [row(1, "—", "—"), row(2, "—", "—")] })).toMatchObject({ usable: true });
+  });
+
+  // ECO at 00:07Z on 17 Nov 2026 failed "ACTUAL blank in every row" with every listed release still to come.
+  test("a row still waiting on its value leaves its blank out; the rows that should have it still fail the column", () => {
+    const release = (index: number, actual: string, waiting: boolean) => ({
+      tableIndex: 0, rowIndex: index, selected: false,
+      cells: [
+        { columnId: "event", columnLabel: "EVENT", text: `Release ${index}` },
+        { columnId: "actual", columnLabel: "ACTUAL", text: actual, ...(waiting ? { mayBeBlank: true as const } : {}) },
+        { columnId: "prior", columnLabel: "PRIOR", text: "0.4%" },
+      ],
+    });
+    const upcoming = Array.from({ length: 6 }, (_, index) => release(index, "—", true));
+    expect(assess(diag, { rows: upcoming })).toMatchObject({ usable: true, unusableReason: null });
+    // Released rows with no figure fail the column, however many rows still wait on theirs.
+    const lost = [release(0, "—", false), release(1, "—", false), release(2, "—", false), ...upcoming];
+    expect(assess(diag, { rows: lost })).toMatchObject({ usable: false, blankColumns: ["ACTUAL"], unusableReason: "The ACTUAL column is blank in every row." });
+    expect(assess(diag, { rows: [release(0, "0.3%", false), release(1, "—", false), release(2, "—", false), ...upcoming] })).toMatchObject({ usable: true });
+    // As few released rows as a short list has are its gaps, as without waiting rows.
+    expect(assess(diag, { rows: [release(0, "—", false), release(1, "—", false), ...upcoming] })).toMatchObject({ usable: true });
+  });
+
+  // APPS read "Grossing and genre ranks are unavailable." in its footer as an error over its empty state, and INS's
+  // "…$21.24M A Form 4/A in this window is unreconciled, so the affected transaction totals are unavailable." over a full table.
+  test("a footer note is not the pane's state; the same words in its body are", () => {
+    const appsNote = "App Store official Apps charts provide top 100 free and paid apps; gaming charts are not verified. Grossing and genre… +4 more";
+    const apps = `APPS AAPL Table Chart AAPL has no mapped apps in the observed App Store and Google Play charts. ${appsNote}`;
+    expect(paneStateMarkers(apps, [appsNote])).toMatchObject({ error: [], loading: [] });
+    // Cut at a word, the note still names what is missing; whole, it would have matched.
+    const whole = "Grossing and genre ranks are unavailable.";
+    expect(paneStateMarkers(`APPS AAPL ${whole}`, [whole]).error).toEqual([]);
+    expect(paneStateMarkers(`APPS AAPL ${whole}`).error).toEqual([`APPS AAPL ${whole}`]);
+    const insNote = "A Form 4/A in this window is unreconciled, so the affected transaction totals are unavailable.";
+    expect(paneStateMarkers(`INS NVDA 20 Mar 2026 Mark A. Stevens Director SELL 121.7k $174.57 $21.24M ${insNote} Source: SEC EDGAR`, [insNote]).error).toEqual([]);
+    // A body that failed still reads as failed beside any note.
+    const rdcf = "RDCF DWSN Discount 9% reverse DCF unavailable. Free cash flow over the last twelve months is negative.";
+    expect(paneStateMarkers(`${rdcf} ${insNote}`, [insNote]).error).toEqual(["RDCF DWSN Discount 9% reverse DCF unavailable."]);
+    expect(paneStateMarkers(`HP AAPL Failed to fetch ${insNote}`, [insNote]).error).toEqual(["Failed to fetch"]);
   });
 
   // AUCT's after view at 720px lost +5D, +20D and the CUSIP past the table's edge unsaid. Nineteen other panes cut one

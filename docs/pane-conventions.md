@@ -261,7 +261,7 @@ the browser, which the command bar also lists (Download Desktop App).
 |---|---|---|
 | A pane action (add, edit, open source, sync, save search) | Footer hint | `usePaneFooter({ hints })` |
 | Changing status (loading, error, live/delayed, stale, updated 2m ago, saving) | Footer info | `usePaneStatusFooter`, `loadingErrorFooterInfo` |
-| A message about one row of a list (a broker profile, an account, an alert, a plugin, an order, a team member): its state, an action running on it, what that action came to | On that row: a short state in its status cell, the full reason in its detail. Never the footer, never a toast | [Row messages](#row-messages), `useRowNotes`, a settings action's `setRowNote` |
+| A message about one row of a list (a broker profile, an account, an alert, a plugin, an order, a team member, a name a screen could not price): its state, an action running on it, what that action came to | On that row: a short state in its status cell, the full reason in its detail. Never the footer, never a toast | [Row messages](#row-messages), `useRowNotes`, `RowNote`, a settings action's `setRowNote` |
 | Summary figures for the whole pane or an open detail (VWAP, spread, percentile, range) | Header zone, under the query bar | `StatGrid` |
 | A control that changes what the pane shows (range, window, scope, level) | Query bar, never a cycling footer hint | `QueryBar` |
 | Non-blocking data limitation (missing period, fallback dates, partial source) | One amber `⚠` in the footer, `!` or click opens details; once opened it is muted, and a new or changed warning is amber again | `usePaneNoticeFooter` |
@@ -309,11 +309,23 @@ the origin of a number. The one count the kit draws is the
 - Info is what changes. If a segment reads the same on every render of every
   instance, delete it.
 - Static pane captures print warning text instead of an icon that opens a
-  dialog: `usePaneNoticeFooter` supplies the notices through `captureText`.
-  Warnings remain visible with `--no-status` too. A pane whose footer already
-  says what its notices explain at length (what the numbers leave out, as
-  `capture` segments) passes the rest as `captureText`, so one footer row
-  stays readable; the dialog still lists every notice.
+  dialog, as one note line (`noteLineParts`): the first note, whole or cut
+  after its last whole word that fits, and how many more there are (`+3
+  more`), which the app opens from the ⚠. A note never cuts a word, and
+  neither does a status a narrow row shortens. Beside a capture's status
+  line the note keeps at least 60% of the row while it needs it; the status
+  line steps down to its shorter forms first, and as a last resort drops
+  whole words from its middle (`Newest filing Fri 6 Nov … (Form 4
+  filings)`). `usePaneNoticeFooter` supplies the notices (`notes`).
+  Warnings remain visible with `--no-status` too. A pane whose capture
+  segments already say what some notices explain at length (what its
+  numbers leave out) passes the rest as `captureNotes`; the dialog still
+  lists every notice.
+- A note is plain words for a reader: never a reason code (`node_limit`,
+  `UPSTREAM_ERROR`), a CLI flag (`--spot`) or a back-end term
+  (`quarantined`). Say what is missing and, where it helps, what to do in
+  the pane. A note about one row is that row's, not the footer's
+  ([Row messages](#row-messages)).
 - The footer sets info segments apart with a muted ` · ` (`PANE_FOOTER_SEPARATOR`),
   and an icon (`⚠`, `◷15m`) with one column, so two segments never read as one
   sentence. A pane neither adds its own `·` between segments nor starts one
@@ -420,6 +432,15 @@ each is that row's.
 - Only when the row is gone (removed, left the list) is what became of it a
   toast. A failure of the whole pane (its feed is down, it is signed out)
   goes in its footer.
+
+The same holds for what the data says about one row of a list of names
+(a screen, a comparison, a portfolio's holdings): a name the screen could
+not price, a peer whose fundamentals are stale, a holding whose evidence has
+gaps. The row says it in a few words (`no price` in its first column with
+room, `Estimated 3 gaps`, its symbol in the warning colour), and the whole
+reason goes in its detail or, for a table with none, under the table while
+the row is selected (`RowNote` as the table's `rootAfter`). The footer's
+notes are the pane's: what concerns every row. CSP, EXPO and RV do this.
 
 `useRowNotes` (`gloomberb/components`) keeps the notes: `setNote(key,
 note)` after an action, `noteFor(row)` in the status cell and the detail.

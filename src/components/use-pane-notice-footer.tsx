@@ -12,6 +12,7 @@ import { Prose } from "./ui/prose";
 import { logFailure } from "../utils/log-failure";
 import { markPaneNoticesSeen, usePaneNoticesSeen } from "./pane-notice-seen";
 import { withoutCryptoVenueCode } from "../utils/crypto-pair";
+import { readableStatus } from "../utils/reason-codes";
 
 export interface UsePaneNoticeFooterOptions {
   registrationId: string;
@@ -20,12 +21,12 @@ export interface UsePaneNoticeFooterOptions {
   title?: string;
   enabled?: boolean;
   /**
-   * What a static capture prints for the notices, which it prints all of
-   * otherwise: for a pane whose footer already says some of them (what its
-   * numbers leave out, as segments a capture keeps), the rest. Empty prints
-   * none; the dialog always lists every notice.
+   * The notes a picture of the pane prints as its note line, every notice
+   * otherwise: for a pane whose footer already says some of them in other
+   * words (what its numbers leave out, as segments a capture keeps), the
+   * rest. Empty prints none; the dialog always lists every notice.
    */
-  captureText?: string;
+  captureNotes?: readonly string[];
 }
 
 function NoticeDialog({ notices, title, dismiss, dialogId }: AlertContext & {
@@ -85,15 +86,18 @@ export function usePaneNoticeFooter({
   focused,
   title: rawTitle = "Data warnings",
   enabled = true,
-  captureText,
+  captureNotes,
 }: UsePaneNoticeFooterOptions): void {
   const dialog = useDialog();
   const dialogOpen = useDialogState((state) => state.isOpen);
   const scopeActive = usePaneFooterScopeActive();
   const title = t(rawTitle);
-  // Said as a reader takes it: a coin's pair without the internal code of the venue it is charted on.
-  const noticeKey = JSON.stringify([...new Set(notices.map((notice) => withoutCryptoVenueCode(notice.trim())).filter(Boolean))]);
+  // Said as a reader takes it: a coin's pair without the internal code of the venue it is charted on, and a
+  // source's reason code (UPSTREAM_ERROR) as what happened.
+  const noticeKey = JSON.stringify([...new Set(notices.map((notice) => readableStatus(withoutCryptoVenueCode(notice.trim()))).filter(Boolean))]);
   const currentNotices = useMemo<readonly string[]>(() => JSON.parse(noticeKey), [noticeKey]);
+  const capturedKey = captureNotes ? JSON.stringify(captureNotes.map((note) => readableStatus(note.trim())).filter(Boolean)) : null;
+  const capturedNotes = useMemo<readonly string[] | null>(() => (capturedKey ? JSON.parse(capturedKey) : null), [capturedKey]);
   const active = enabled && scopeActive && currentNotices.length > 0;
   const seen = usePaneNoticesSeen(currentNotices);
   const openingRef = useRef(false);
@@ -136,12 +140,12 @@ export function usePaneNoticeFooter({
     info: [{
       id: "data-warnings",
       icon: "warning",
-      captureText: captureText ?? currentNotices.join(" · "),
+      notes: capturedNotes ?? currentNotices,
       label: title,
       title: `${title} (!)`,
       shortcut: "!",
       parts: [{ text: "⚠", tone: seen ? "muted" : "warning" }],
       onPress: open,
     }],
-  } : null, [active, open, seen, title, currentNotices, captureText]);
+  } : null, [active, open, seen, title, currentNotices, capturedNotes]);
 }

@@ -6,8 +6,9 @@ import { isProviderQuoteUsableForCurrentSession } from "./financials";
 import { AssetDataRouter } from "./index";
 
 // A thinly traded listing can go an hour between trades while its venue
-// trades. Gloom Cloud's not-stale verdict on a delayed quote it just gave
-// stands in for the app's own age bound; every other quote keeps that bound.
+// trades. Gloom Cloud's not-stale verdict on a quote it just gave stands in
+// for the app's own age bound where the service bounds that age itself: any
+// quote in the US extended hours, a delayed one in the regular session.
 
 const at = (time: string) => Date.parse(time);
 const minutes = 60_000;
@@ -62,7 +63,11 @@ describe("a delayed quote's last trade age", () => {
       ["US after-hours, 3 h, a cache entry past its TTL", afterHours, usPost, false, false],
       ["US after-hours, 3 h, the service says stale", afterHours, { ...usPost, stale: true }, true, false],
       ["US after-hours, 3 h, another source", afterHours, { ...usPost, providerId: "other" }, true, false],
-      ["US after-hours, 3 h, real-time", afterHours, { ...usPost, dataSource: "live" }, true, false],
+      // The service bounds an extended-hours print's age real-time or delayed (GS, 16 Nov 2026).
+      ["US after-hours, 3 h, real-time", afterHours, { ...usPost, dataSource: "live" }, true, true],
+      ["US after-hours, 3 h, real-time, a cache entry past its TTL", afterHours, { ...usPost, dataSource: "live" }, false, false],
+      ["US after-hours, 3 h, real-time, the service says stale", afterHours, { ...usPost, dataSource: "live", stale: true }, true, false],
+      ["US after-hours, a source that says neither real-time nor delayed", afterHours, { ...usPost, dataSource: undefined }, true, false],
       ["US after-hours, an answer without the flag", afterHours, { ...usPost, stale: undefined }, true, false],
       ["US after-hours label without an after-hours price", afterHours, { ...usPost, postMarketPrice: undefined }, true, false],
       // 12:30 Hong Kong: over lunch the morning's last print stands for any source.
@@ -112,7 +117,8 @@ describe("a delayed quote's last trade age", () => {
     ["POST, print from yesterday's after-hours", evening, thinPost("2026-10-08T22:30:00Z"), true, false],
     ["POST, an answer without the flag", evening, thinPost("2026-10-09T18:30:00Z", { stale: undefined }), true, false],
     ["POST, the service says stale", evening, thinPost("2026-10-09T18:30:00Z", { stale: true }), true, false],
-    ["POST, real-time", evening, thinPost("2026-10-09T18:30:00Z", { dataSource: "live" }), true, false],
+    ["POST, real-time", evening, thinPost("2026-10-09T18:30:00Z", { dataSource: "live" }), true, true],
+    ["POST, real-time, print from yesterday's after-hours", evening, thinPost("2026-10-08T22:30:00Z", { dataSource: "live" }), true, false],
     ["POST, another source", evening, thinPost("2026-10-09T18:30:00Z", { providerId: "other" }), true, false],
     ["PRE, 3 h old pre-market print", morning, thinPre("2026-10-09T09:30:00Z"), true, true],
     ["PRE, 3 h old pre-market print, past the TTL", morning, thinPre("2026-10-09T09:30:00Z"), false, false],
@@ -121,7 +127,8 @@ describe("a delayed quote's last trade age", () => {
     ["PRE, print from yesterday's pre-market", morning, thinPre("2026-10-08T12:00:00Z"), true, false],
     ["PRE, the close two sessions back", morning, thinPre("2026-10-07T19:40:00Z"), true, false],
     ["PRE, pre-market print, an answer without the flag", morning, thinPre("2026-10-09T09:30:00Z", { stale: undefined }), true, false],
-    ["PRE, pre-market print, real-time", morning, thinPre("2026-10-09T09:30:00Z", { dataSource: "live" }), true, false],
+    ["PRE, pre-market print, real-time", morning, thinPre("2026-10-09T09:30:00Z", { dataSource: "live" }), true, true],
+    ["PRE, pre-market print, real-time, past the TTL", morning, thinPre("2026-10-09T09:30:00Z", { dataSource: "live" }), false, false],
     ["PRE, pre-market print, another source", morning, thinPre("2026-10-09T09:30:00Z", { providerId: "other" }), true, false],
     ["early close, 14:30, a 12:10 print", earlyClose, thinPost("2026-11-27T17:10:00Z"), true, true],
     ["early close, 14:30, a 12:10 print, past the TTL", earlyClose, thinPost("2026-11-27T17:10:00Z"), false, false],

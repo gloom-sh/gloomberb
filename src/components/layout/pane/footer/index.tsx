@@ -166,6 +166,8 @@ function SegmentView({ segment, focused }: { segment: PaneFooterSegment; focused
       onMouseDown={interactive ? startSegmentPress : undefined}
       onMouseUp={interactive ? finishSegmentPress : undefined}
       {...(interactive ? { "data-gloom-interactive": "true" } : {})}
+      // A capture reads the pane's state from its body: the notes about its data are not that state.
+      {...(!segment.icon && segment.notes?.length ? { "data-gloom-role": "pane-footer-notes" } : {})}
     >
       {[
         ...segment.parts.map((part, index) => (

@@ -15,7 +15,7 @@ export const peBandHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { ...DAILY_CLOSES, basis: "daily closes and reported EPS" },
   describe: (args) => `PEB ${args.symbols[0] ?? ""}`,
   discovery: { screenshotReadiness: "live-dom", limitations: [
-    "Weekly closes. EPS reported in another currency than a dollar price is converted at daily FX closes; other currency pairs are not computed.",
+    "Weekly closes; each EPS figure is priced at the close of the day it became known where daily closes reach. EPS reported in another currency than a dollar price is converted at daily FX closes; other currency pairs are not computed.",
   ] },
   options: [
     { key: "lookbackYears", type: "integer", minimum: 0, maximum: 30, defaultValue: 10, description: "Years of history; 0 for all on record" },
@@ -26,7 +26,7 @@ export const peBandHeadless: HeadlessPaneDefinition<"bundle"> = {
     ctx.signal.throwIfAborted();
     const lookbackYears = Number(args.options.lookbackYears ?? 10);
     const model = projectPeBand(inputs.financials, inputs.history, { symbol: instrument.symbol, lookbackYears, reports: inputs.reports,
-      fx: inputs.fx, fxError: inputs.fxError });
+      fx: inputs.fx, fxError: inputs.fxError, daily: inputs.daily });
     const current = model.current;
     const conversion = model.conversion;
     const pairQuote = (rate: number) => {

@@ -21,7 +21,7 @@ function inputs(priorEps: number): client.PeBandInputs {
     { date: "2024-12-31", eps: priorEps, currency: "USD", fieldAvailability: { eps: "2025-02-01" } },
     { date: "2025-12-31", eps: 2, currency: "USD", fieldAvailability: { eps: "2026-02-01" } },
   ], priceHistory: [], quote: { price: 30, currency: "USD" } as Quote },
-  history: ["2025-03-03", "2026-03-02"].map((date) => ({ date: new Date(date), close: 30 })),
+  history: ["2025-03-03", "2026-03-02"].map((date) => ({ date: new Date(date), close: 30 })), daily: [],
   reports: [], fx: new Map(), fxError: null, error: null, historyError: null, stale: false, fetchedAt: Date.now() };
 }
 

@@ -9,7 +9,7 @@ import {
 } from "./client";
 import { calendarDaysToExpiry, earningsBeforeExpiry, type CspEarnings } from "./csp";
 import {
-  cspTargetDate, loadScreenMarket, nearestListedExpiry, readCspScreenCriteria, readNumber, screenNames, supplied,
+  cspTargetDate, loadScreenMarket, nearestListedExpiry, readCspScreenCriteria, readNumber, ScreenNameError, screenNames, supplied,
   type CspScreen, type CspScreenCriteria, type CspScreenDependencies,
 } from "./csp-screen";
 import { seededLegQuotes } from "./hedge";
@@ -441,6 +441,8 @@ export interface StrategyScreenRow {
   wideSpread: boolean;
   /** Why the name has no trade. */
   note: string | null;
+  /** That reason as its row's few words (`no price`, `no chain`). */
+  state: string | null;
 }
 
 export interface StrategyScreen extends Omit<CspScreen, "rows" | "criteria"> {
@@ -489,7 +491,7 @@ async function screenStrategy(
     if (far == null) throw new Error(`No expiry listed after ${expiryIsoDate(near)} to buy`);
     const back = await loadScenarioMarket({ instrument, expiration: far, signal }, dependencies);
     if (!back.chain || back.warnings.includes("Options chain is stale")) {
-      throw new Error(back.missingExpiry ?? `No current ${expiryIsoDate(far)} chain to buy the calendar on`);
+      throw new ScreenNameError(back.missingExpiry ?? `No current ${expiryIsoDate(far)} chain to buy the calendar on`, "no chain");
     }
     // The bought contracts by the date they are listed on in the catalogue.
     const backExpiration = [...back.chain.calls, ...back.chain.puts][0]?.expiration ?? far;
@@ -505,10 +507,10 @@ export async function loadStrategyScreen(
   instruments: readonly InstrumentRef[], criteria: StrategyScreenCriteria, dependencies: CspScreenDependencies, signal?: AbortSignal,
 ): Promise<StrategyScreen> {
   const target = cspTargetDate(criteria, dependencies.scenario.now?.() ?? Date.now());
-  const screened = await screenNames(instruments, dependencies, signal, "No trade on this chain", async (instrument, earningsDate, scenario) =>
+  const screened = await screenNames(instruments, dependencies, signal, { fallback: "No trade on this chain", fallbackState: "no trade" }, async (instrument, earningsDate, scenario) =>
     screenStrategy(instrument, criteria, scenario, target, earningsDate, signal));
-  const rows = screened.names.map(({ symbol, ivRank, value, note }): Omit<StrategyScreenRow, "rank"> => ({
-    symbol, trade: value, ivRank, note,
+  const rows = screened.names.map(({ symbol, ivRank, value, note, state }): Omit<StrategyScreenRow, "rank"> => ({
+    symbol, trade: value, ivRank, note, state,
     wideSpread: value?.quote != null && value.quote.spreadOfMid * 100 > criteria.maxSpreadPercent }));
   return { rows: rankStrategyScreen(rows, criteria.strategy), criteria, missingRanks: screened.missingRanks,
     ivRankError: screened.ivRankError, freshness: screened.freshness };

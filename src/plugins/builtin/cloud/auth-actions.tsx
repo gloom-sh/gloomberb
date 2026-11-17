@@ -35,9 +35,14 @@ function openAuth(
 const RESEND_VERIFICATION = "Resend Verification Email";
 
 /**
- * The account actions as buttons: Log in and Sign up free, or the resend for
+ * The account actions as buttons: Sign up free and Log in, or the resend for
  * an unconfirmed address. One look for the wall and for the inline copy, so
  * the same action never reads as two different controls.
+ *
+ * Where both show, Sign up free leads and is the primary: most people who
+ * meet a wall have no account yet, and a Log in form is a dead end for them.
+ * Log in stays beside it. A surface that offers Log in alone (a saved login)
+ * keeps it as its primary.
  */
 function AuthButtons({ showSignup, needsVerification, onAuth, onResend, stopPropagation = false }: {
   showSignup: boolean;
@@ -50,8 +55,8 @@ function AuthButtons({ showSignup, needsVerification, onAuth, onResend, stopProp
   if (needsVerification) return <Button label={t(RESEND_VERIFICATION)} stopPropagation={stopPropagation} onPress={onResend} />;
   return (
     <>
-      <Button label={t("Log in")} variant="primary" stopPropagation={stopPropagation} onPress={() => onAuth("login")} />
-      {showSignup && <Button label={t("Sign up free")} variant="secondary" stopPropagation={stopPropagation} onPress={() => onAuth("signup")} />}
+      {showSignup && <Button label={t("Sign up free")} variant="primary" stopPropagation={stopPropagation} onPress={() => onAuth("signup")} />}
+      <Button label={t("Log in")} variant={showSignup ? "secondary" : "primary"} stopPropagation={stopPropagation} onPress={() => onAuth("login")} />
     </>
   );
 }
@@ -79,17 +84,17 @@ export function InlineAuthActions({ showSignup = true, needsVerification = false
   usePaneMenuItems(`inline-auth:${useId()}`, () => needsVerification
     ? [{ id: "resend-verification", label: t(RESEND_VERIFICATION), onSelect: resend }]
     : [
-      { id: "log-in", label: t("Log in"), onSelect: logIn },
       ...(showSignup ? [{ id: "sign-up", label: t("Sign up free"), onSelect: signUp }] : []),
+      { id: "log-in", label: t("Log in"), onSelect: logIn },
     ], [openCommandBar, needsVerification, showSignup]);
   if (variant === "plain") {
     return (
       <Box flexDirection="row">
-        <Button label={t("Log in")} variant="plain" compact stopPropagation onPress={logIn} />
         {showSignup && <>
-          <Text fg={colors.textDim}> / </Text>
           <Button label={t("Sign up free")} variant="plain" compact stopPropagation onPress={signUp} />
+          <Text fg={colors.textDim}> / </Text>
         </>}
+        <Button label={t("Log in")} variant="plain" compact stopPropagation onPress={logIn} />
       </Box>
     );
   }

@@ -399,7 +399,7 @@ function StatesFamily() {
       <Sample label="error" width={300}><EmptyState status="error" title="Prices unavailable." message="The feed answered 503." /></Sample>
       <Sample label="loading" width={300}><PaneStatusBody loading subject="prices" /></Sample>
       <Sample label="empty in a pane body" width={300}><PaneStatusBody empty emptyTitle="Nothing to show yet." /></Sample>
-      <Sample label="sign-in wall" width={300}><PaneStatusBody empty emptyTitle="Sign in to manage alerts." actions={<><Button variant="primary" label="Log in" onPress={noop} /><Button variant="secondary" label="Sign up free" onPress={noop} /></>} /></Sample>
+      <Sample label="sign-in wall" width={300}><PaneStatusBody empty emptyTitle="Sign in to manage alerts." actions={<><Button variant="primary" label="Sign up free" onPress={noop} /><Button variant="secondary" label="Log in" onPress={noop} /></>} /></Sample>
       <Sample label="locked row" width={300}><UpgradeLabel text="Upgrade for the full history" onPress={noop} /></Sample>
       <Sample label="notice: warning" width={300}><Notice>Quotes are 15 minutes delayed.</Notice></Sample>
       <Sample label="notice: error" width={300}><Notice tone="negative">The last refresh failed; showing 10:02.</Notice></Sample>

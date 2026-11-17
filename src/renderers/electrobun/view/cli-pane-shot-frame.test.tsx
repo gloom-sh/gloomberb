@@ -8,7 +8,7 @@ import { createDomUiHost } from "../../dom/dom-ui-host";
 import { WebInputHostProvider } from "../../dom/input-host";
 import { WebDialogHostProvider } from "../../dom/dialog-host";
 import { createDomTestHarness } from "../../dom/test-utils";
-import { PaneShotFrame } from "./cli-pane-shot-frame";
+import { middleEllipsis, PaneShotFrame } from "./cli-pane-shot-frame";
 import { nativePaneFooterRows, nativePaneHeaderRows } from "../../../components/layout/pane/sizing";
 import { noopRendererHost } from "../../../test-support/renderer-host";
 
@@ -71,7 +71,8 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(bodyHeight()).toBeCloseTo(withFooter);
 
   await act(async () => update({ warning: true, active: true, preserveStatus: true }));
-  expect(root.textContent).toContain("Source publication date unavailable.");
+  // Beside the status, the note takes what the row leaves it, cut after a whole word.
+  expect(root.textContent).toContain("Source publication…");
   expect(root.textContent).toContain("Loading a normal source");
   expect(root.querySelector('button[aria-label="Data warnings"]')).toBeNull();
 });
@@ -135,24 +136,52 @@ test("a capture with nothing to date gives the footer row back to the pane", asy
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
 });
 
-// MARS printed every left-out holding as a sentence in one row, cut mid-word, while its footer already said what was left out.
-test("a pane's capture text stands in for its notices in a capture, and an empty one prints none of them", async () => {
+test("a capture's notes are one line that says how many more there are, marked apart from the pane's own state", async () => {
   const ui = createDomUiHost();
-  let update: (captureText: string | undefined) => void = () => {};
-  function Notices({ captureText }: { captureText: string | undefined }) {
+  const notes = ["Some jurisdictions have no awards in the dataset yet.", "Historical coverage has windows that are not complete yet.",
+    "Some totals run past what one view can hold; narrow the date range or scope."];
+  function Noted() {
+    usePaneNoticeFooter({ registrationId: "noted", notices: notes, focused: true });
+    return <div>Awards</div>;
+  }
+  const root = await render(<UiHostProvider ui={ui} renderer={noopRendererHost}>
+    <WebInputHostProvider><WebDialogHostProvider>
+      <PaneShotFrame paneId="shot" title="Awards" width={120} height={24}>
+        {() => <PaneFooterScope active><Noted /></PaneFooterScope>}
+      </PaneShotFrame>
+    </WebDialogHostProvider></WebInputHostProvider>
+  </UiHostProvider>);
+  const line = root.querySelector('[data-gloom-role="pane-footer-notes"]');
+  expect(line?.textContent).toBe(`${notes[0]} +2 more`);
+  expect(root.querySelector('[data-gloom-role="pane-footer"]')?.textContent).not.toContain(notes[1]!);
+});
+
+test("a status line too long for the row loses whole words from its middle, never part of one", () => {
+  const line = "US trading day Mon 16 Nov 2026 close · 15 min delayed";
+  expect(middleEllipsis(line, line.length)).toBe(line);
+  expect(middleEllipsis(line, 36)).toBe("US trading day Mon … 15 min delayed");
+  // Not a whole word fits at either end: the characters it has room for.
+  expect(middleEllipsis("Supercalifragilistic", 8)).toBe("Supe…stic");
+});
+
+// MARS printed every left-out holding as a note while its footer already said what was left out.
+test("a pane's capture notes stand in for its notices in a capture, and empty ones print none of them", async () => {
+  const ui = createDomUiHost();
+  let update: (captureNotes: readonly string[] | undefined) => void = () => {};
+  function Notices({ captureNotes }: { captureNotes: readonly string[] | undefined }) {
     usePaneNoticeFooter({
-      registrationId: "shot-notice", focused: true, captureText,
+      registrationId: "shot-notice", focused: true, captureNotes,
       notices: ["BTC-USD (17.5% of the book) is excluded from the risk estimate: crypto is not covered by the equity basket.", "Closes failed for GARAN."],
     });
     usePaneFooter("shot-coverage", () => ({ info: [{ id: "coverage", capture: true, parts: [{ text: "73% of book; BTC-USD left out" }] }] }), []);
     return <div>Risk rows</div>;
   }
   function Harness() {
-    const [captureText, setCaptureText] = useState<string | undefined>("Closes failed for GARAN.");
-    update = setCaptureText;
+    const [captureNotes, setCaptureNotes] = useState<readonly string[] | undefined>(["Closes failed for GARAN."]);
+    update = setCaptureNotes;
     return <UiHostProvider ui={ui} renderer={noopRendererHost}>
       <WebInputHostProvider><WebDialogHostProvider>
-        <PaneShotFrame paneId="shot" title="Risk" width={60} height={24}>{() => <Notices captureText={captureText} />}</PaneShotFrame>
+        <PaneShotFrame paneId="shot" title="Risk" width={100} height={24}>{() => <Notices captureNotes={captureNotes} />}</PaneShotFrame>
       </WebDialogHostProvider></WebInputHostProvider>
     </UiHostProvider>;
   }
@@ -161,10 +190,11 @@ test("a pane's capture text stands in for its notices in a capture, and an empty
   expect(footer()).toContain("Closes failed for GARAN.");
   expect(footer()).toContain("73% of book; BTC-USD left out");
   expect(footer()).not.toContain("is excluded from the risk estimate");
-  await act(async () => update(""));
+  await act(async () => update([]));
   expect(footer()).toContain("73% of book; BTC-USD left out");
   expect(footer()).not.toContain("GARAN");
-  // Without one, every notice prints, as before.
+  // Without them, the notices print as the note line, as for any pane.
   await act(async () => update(undefined));
-  expect(footer()).toContain("is excluded from the risk estimate");
+  expect(footer()).toContain("BTC-USD (17.5% of the book) is excluded");
+  expect(footer()).toContain("+1 more");
 });
