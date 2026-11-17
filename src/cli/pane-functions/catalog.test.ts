@@ -159,7 +159,6 @@ test("a function's entry says Requires only for a sign-in or Pro, and names its 
       expect(entry(code), code).not.toContain("Requires");
       expect(entry(code), code).toMatch(/\nData +\S/);
     }
-    expect(entry("COT")).toContain("Data         Gloom Cloud CFTC history");
     // A sign-in stays a requirement, beside the data it opens.
     expect(entry("BUZZ")).toContain("Requires     Free Gloom sign-in\nData         Gloom Cloud X mention history");
     // A number option says its range before a value is refused for it (`--days must be at least 30`).

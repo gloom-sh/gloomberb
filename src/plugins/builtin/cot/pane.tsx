@@ -3,6 +3,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { ChartTableHeader, CompositeChart, DataTableStackView, spanDigits, DataTableView, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, type ChartTableChart, type DataTableColumn, type SelectControl } from "../../../components";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
+import { COMMODITIES_ENERGY_PANE_ID } from "../commodities-energy/view-state";
+import { useCommandValue } from "../shared/command-tab";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { ResolvedSeries } from "../../../time-series/types";
@@ -49,7 +51,8 @@ const cotDetailTitle = (name: string | undefined, code: string | null) => name ?
 
 export function CotPane(props: PaneProps) {
   const pane = usePaneInstance();
-  const [storedFamily, setFamily] = usePluginPaneState<CotFamily>("report", cotFamily(pane?.settings?.report));
+  const [storedFamily, setFamily] = useCommandValue<CotFamily>(COMMODITIES_ENERGY_PANE_ID, "report",
+    (params) => params.tab === "positioning" && params.cotReport ? cotFamily(params.cotReport) : null, cotFamily(pane?.settings?.report));
   const family = cotFamily(storedFamily);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: [...COT_FAMILIES], activeValue: family, onSelect: (value) => setFamily(value as CotFamily), focused: props.focused, dense: true });
   return <Box width={props.width} height={props.height} flexDirection="column">
@@ -62,10 +65,12 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const session = useResearchCloudSession();
   const [storedClass, setClass] = usePluginPaneState<CotClass>("class", COT_CLASSES[family][0]!.value);
   const traderClass = cotClass(family, storedClass);
-  const [selected, setSelected] = usePluginPaneState<string | null>("selected", initialCode);
+  const [selected, setSelected] = useCommandValue<string | null>(COMMODITIES_ENERGY_PANE_ID, "selected",
+    (params) => params.tab === "positioning" ? params.code ?? null : null, initialCode);
   // A closed detail is stored as "": pane state reads null as unset, so Back
   // would fall through to the deep-linked code and reopen it.
-  const [storedOpen, setOpen] = usePluginPaneState<string>("open", initialCode ?? "");
+  const [storedOpen, setOpen] = useCommandValue<string>(COMMODITIES_ENERGY_PANE_ID, "open",
+    (params) => params.tab === "positioning" ? params.code ?? null : null, initialCode ?? "");
   const open = storedOpen || null;
   const [storedScope, setScope] = usePluginPaneState<CotScope>("scope", "major");
   const scope = cotScope(storedScope);
@@ -111,7 +116,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   ] : [] }), [boardShown, focusSearch]);
   usePaneNoticeFooter({ registrationId: "cot:board-notices", focused, enabled: !open, notices: data?.gaps ?? [] });
   usePaneStatusFooter({ registrationId: "cot:board", enabled: !open, loading: resource.loading, error: resource.error,
-    info: data ? [{ id: "as-of", parts: [{ text: `CFTC ${cotPositionsText(positions)} · ${data.asOf ?? MISSING_VALUE} · contracts`, tone: "muted" }] }] : [] });
+    info: data ? [{ id: "as-of", parts: [{ text: `${cotPositionsText(positions)} · as of ${data.asOf ?? MISSING_VALUE} · contracts`, tone: "muted" }] }] : [] });
   // A class change reloads under the query bar, which stays.
   return <DataTableStackView<CotBoardRow> columns={BOARD_COLUMNS} items={rows} focused={focused && !searching}
     status={data ? undefined : { loading: resource.loading, error: resource.error, empty: !resource.loading && !resource.error, subject: "COT history" }}
@@ -127,7 +132,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
       return { text: row.reportDate, color: colors.textMuted };
     }}
     rootBefore={<QueryBar width={width}
-      search={{ value: query, onChange: setQuery, placeholder: "market or CFTC code", focused, ...searchProps }}
+      search={{ value: query, onChange: setQuery, placeholder: "market or COT code", focused, ...searchProps }}
       filters={[
         { id: "class", label: "Class", value: traderClass, options: COT_CLASSES[family], onChange: setClass, controlRef: control },
         { id: "scope", label: "Scope", value: scope, defaultValue: "major", options: [...COT_SCOPES], onChange: setScope, controlRef: scopeControl },
@@ -197,7 +202,7 @@ function CotDetail({ width, height, focused, code, family, positions, traderClas
   usePaneStatusFooter({ registrationId: "cot:detail", loading: resource.loading, error: resource.error,
     // The unit the net is counted in, as `fn COT` titles it: what one contract is, where the report says.
     // Futures and options combined says so; futures only reads as it always has.
-    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${positions === "combined" ? `${cotPositionsText(positions)} · ` : ""}${payload.asOf ?? MISSING_VALUE} · ${cotContractUnitText(payload.contract?.contractUnits) ?? "contracts"}${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
+    info: payload ? [{ id: "as-of", parts: [{ text: `${positions === "combined" ? `${cotPositionsText(positions)} · ` : ""}as of ${payload.asOf ?? MISSING_VALUE} · ${cotContractUnitText(payload.contract?.contractUnits) ?? "contracts"}${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
   return <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!payload && !payload.contract} subject="COT contract">
     {payload && data ? <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={height}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={payload.positions.length} chart={chart}

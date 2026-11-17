@@ -678,7 +678,7 @@
           },
           {
             "code": "COT",
-            "name": "CFTC Positioning",
+            "name": "Trader Positioning",
             "description": "Weekly futures positioning, changes, historical percentiles and cross-market extremes."
           },
           {

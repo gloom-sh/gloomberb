@@ -2,7 +2,7 @@ import { MISSING_VALUE } from "../../../utils/format";
 import type { CotClass, CotClassSummary, CotContractPayload, CotFamily, CotHistoryPoint } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCotBoard, fetchCotContract } from "./client";
-import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotFamily, cotInteger, cotMarketName, cotPositions, cotPositionsText, cotProxyFor, cotProxyNote, cotReleaseTime, cotRoot, cotScope, cotUnknownMarketMessage } from "./model";
+import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotDefaultFamily, cotFamily, cotInteger, cotMarketName, cotPositions, cotPositionsText, cotProxyFor, cotProxyNote, cotReleaseTime, cotRoot, cotScope, cotUnknownMarketMessage } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
@@ -19,13 +19,13 @@ const rank = (value: unknown) => typeof value === "number" ? value.toFixed(0) : 
  * the app's copy of the schedule): one time for the text, CSV and JSON, the
  * export's publication time and the metadata's `publishedAt` alike.
  */
-function cotPublishedAt(data: Pick<CotContractPayload, "asOf" | "publishedAt">): string | null {
-  return data.publishedAt ?? cotReleaseTime(data.asOf);
+function cotPublishedAt(data: Pick<CotContractPayload, "asOf" | "publishedAt" | "source">): string | null {
+  return data.publishedAt ?? (data.source === "CFTC" ? cotReleaseTime(data.asOf) : null);
 }
-/** Who published the report, cited by every export: the CFTC itself. */
+/** The CFTC's full publisher name for exports of its reports. */
 const COT_PUBLISHER = "Commodity Futures Trading Commission (CFTC)";
-function cotReleased(publishedAt: string | null) {
-  return { freshness: { publisher: COT_PUBLISHER, ...(publishedAt ? { publishedAt } : {}) } };
+function cotReleased(publishedAt: string | null, source: CotContractPayload["source"]) {
+  return { freshness: { source, publisher: source === "CFTC" ? COT_PUBLISHER : source, ...(publishedAt ? { publishedAt } : {}) } };
 }
 
 /** The pane's columns: percentiles as their rank value, net share of open interest to one decimal. */
@@ -104,15 +104,15 @@ function cotHistoryNote(data: CotContractPayload, since: string | null): string 
   const previous = data.reportFamily === "legacy" ? COT_CODES_BEFORE_1998[data.contract?.contractCode ?? ""] : undefined;
   return previous
     ? `Reports under CFTC code ${data.contract!.contractCode} start ${data.historyStart}, when the CFTC began counting this market in contracts; its earlier reports are under its previous code ${previous}, in thousands of bushels, and are not joined to these. --since ${since} lists from ${data.historyStart}.`
-    : `The CFTC's first report of this market in Gloom Cloud is ${data.historyStart}; --since ${since} lists from there.`;
+    : `The first report of this market in Gloom Cloud is ${data.historyStart}; --since ${since} lists from there.`;
 }
 
 export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
   // Tuesday positions published the Friday after; two weeks without a new report means one was missed.
-  freshness: { source: "CFTC", status: "not-a-feed", basis: "weekly report", maxAgeMinutes: 14 * 24 * 60 },
-  argument: { kind: "free-text", optional: true, placeholder: "code or name", description: "Futures root (KC), commodity name (coffee) or CFTC market code; omit for the extremes board." },
-  options: [{ key: "report", type: "enum", values: COT_FAMILIES.map(({ value }) => ({ value })), defaultValue: "legacy", description: "CFTC report: legacy, disaggregated, or tff (Traders in Financial Futures)." },
+  freshness: { source: "Commitments of Traders", status: "not-a-feed", basis: "weekly report", maxAgeMinutes: 14 * 24 * 60 },
+  argument: { kind: "free-text", optional: true, placeholder: "code or name", description: "Futures root (KC), commodity name (coffee, Brent, gasoil) or CFTC/ICE market code; omit for the extremes board." },
+  options: [{ key: "report", type: "enum", values: COT_FAMILIES.map(({ value }) => ({ value })), description: "Report: legacy (default), disaggregated (default for ICE Europe markets), or tff (Traders in Financial Futures)." },
     { key: "traderClass", type: "enum", values: TRADER_CLASSES.map((value) => ({ value })), description: "Trader class for the extremes board; defaults by report family.",
       pluginState: { pluginId: COMMODITIES_VIEW_STATE.cot, key: "class" } },
     { key: "positions", type: "enum", values: COT_POSITIONS.map(({ value }) => ({ value })), defaultValue: "futures-only", description: "Futures positions only, or futures and options combined, as in the pane.",
@@ -125,10 +125,10 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
     // Weekly reports come newest first, so --tail asks for the same newest n as --limit.
     { key: "limit", type: "integer", aliases: ["tail", "weeks", "rows"], minimum: 1, maximum: 2000, shot: REPORT_ROWS,
       description: "Newest weekly reports a market lists; every one by default." }],
-  discovery: { aliases: ["COT", "CFTC"], dataRequirements: ["Gloom Cloud CFTC history"], limitations: ["Positions aggregate all maturities; combined adds options, delta-adjusted.", "Legacy, disaggregated and TFF classes differ.", "Observation date is not publication date.", "Some markets have short or suppressed histories."] },
-  describe: "CFTC positioning",
+  discovery: { aliases: ["COT", "CFTC"], dataRequirements: ["Gloom Cloud CFTC and ICE Futures Europe history"], limitations: ["Positions aggregate all maturities; combined adds options, delta-adjusted.", "Legacy, disaggregated and TFF classes differ.", "Observation date is not publication date.", "Some markets have short or suppressed histories."] },
+  describe: "Commitments of Traders positioning",
   async load(args, ctx) {
-    const family = cotFamily(args.options.report);
+    const family = cotFamily(args.options.report ?? cotDefaultFamily(cotContractCode(args.argument)));
     const positions = cotPositions(args.options.positions);
     if (args.argument) {
       const code = cotContractCode(args.argument);
@@ -155,11 +155,11 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
         columns: weeklyColumns,
         // Each report's scheduled release, for an export read as of a past week; the text keeps to the positions.
         textColumns: weeklyColumns.filter((column) => column.key !== "released"),
-        rows: weeks.map((row) => ({ reportDate: row.reportDate, released: row.publishedAt ?? cotReleaseTime(row.reportDate), openInterest: row.openInterest,
+        rows: weeks.map((row) => ({ reportDate: row.reportDate, released: row.publishedAt ?? (code.startsWith("ICE") ? null : cotReleaseTime(row.reportDate)), openInterest: row.openInterest,
           ...Object.fromEntries(row.positions.map((position) => [`${camelClass(position.id)}Net`, position.net])) })) }],
       // "jet fuel" reads heating oil's positions, and says so.
       ...(proxy || historyNote ? { notes: [...(proxy ? [cotProxyNote(proxy)] : []), ...(historyNote ? [historyNote] : [])] } : {}),
-      errors: data.gaps, metadata: { ...data, publishedAt, complete: data.status === "available" }, ...cotReleased(publishedAt) };
+      errors: data.gaps, metadata: { ...data, publishedAt, complete: data.status === "available" }, ...cotReleased(publishedAt, data.source) };
     }
     const traderClass = cotClass(family, args.options.traderClass);
     if (args.options.traderClass && traderClass !== args.options.traderClass) throw new Error("Trader class does not belong to this report family");
@@ -173,6 +173,6 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...POSITION_COLUMNS.map((column) => column.key === "net" ? { ...column, textHeader: cotBoardNetHeader(family, traderClass) } : column),
         { key: "openInterest", header: "Open interest", align: "right", format: count }, { key: "reportDate", header: "As of" }],
       rows: rows.map((row) => ({ contractCode: row.contractCode, root: cotRoot(row.contractCode) ?? row.contractCode, marketName: cotMarketName(row.marketName), reportDate: row.reportDate, openInterest: row.openInterest, ...cotPositionRow(row.position) })) }],
-    errors: data.gaps, metadata: { ...data, scope, publishedAt, complete: data.status === "available" }, ...cotReleased(publishedAt) };
+    errors: data.gaps, metadata: { ...data, scope, publishedAt, complete: data.status === "available" }, ...cotReleased(publishedAt, data.source) };
   },
 };

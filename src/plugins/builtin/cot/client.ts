@@ -16,7 +16,7 @@ const number = (value: unknown) => value === null || typeof value === "number" &
 const count = (value: unknown) => value === null || typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 const code = (value: unknown) => typeof value === "string" && /^[0-9A-Z]{5}[0-9A-Z+]$/.test(value);
 function base(data: CotPayloadBase, family: CotFamily, positions: CotPositions) {
-  if (!data || data.source !== "CFTC" || data.scope !== positions || data.reportFamily !== family
+  if (!data || !["CFTC", "ICE Futures Europe", "CFTC / ICE Futures Europe"].includes(data.source) || data.scope !== positions || data.reportFamily !== family
     || !Array.isArray(data.gaps) || !data.gaps.every((gap) => typeof gap === "string")
     || !Array.isArray(data.classes) || data.classes.some((row) => !COT_CLASSES[family].some((option) => option.value === row.id))
     || data.asOf !== null && !date(data.asOf) || !Number.isFinite(Date.parse(data.generatedAt))
@@ -71,9 +71,8 @@ export async function fetchCotBoard(family: CotFamily, traderClass: CotClass, cl
   try { return validateCotBoard(await client.getCloudCotBoard(family, traderClass, positions), family, traderClass, positions); }
   catch (error) { throw unavailable(error); }
 }
-// Futures-only boards keep the key they always had, so a cached board still opens.
 const cotBoardKey = (family: CotFamily, traderClass: CotClass, positions: CotPositions) =>
-  positions === "combined" ? `${family}:${traderClass}:combined` : `${family}:${traderClass}`;
+  `${family}:${traderClass}${positions === "combined" ? ":combined" : ""}${family === "disaggregated" ? ":ice" : ""}`;
 const presentCotBoard = (payload: CotBoardPayload, stale: boolean, refreshError: string | null) => ({
   ...payload, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])],
   status: stale && payload.status === "available" ? "partial" as const : payload.status,
