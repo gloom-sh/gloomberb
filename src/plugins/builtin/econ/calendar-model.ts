@@ -530,6 +530,22 @@ export function figureGap(
   return releaseIn ? "none" : "awaiting";
 }
 
+/**
+ * Whether a row's ACTUAL is blank with no figure missing: the release is
+ * still to come (by its time, or by its day where it has none), or it prints
+ * no figure at all (a speech, a meeting, with neither forecast nor prior).
+ * A release past its time with a figure due is not: figureGap says it is
+ * awaited for a day, and its blank after that is a figure the source lost.
+ */
+export function actualMayBeBlank(
+  event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date" | "time" | "timeNote">,
+  now: number,
+): boolean {
+  if (event.actual?.trim()) return false;
+  if (!event.forecast?.trim() && !event.prior?.trim()) return true;
+  return now < event.date.getTime() + (hasNoReleaseTime(event) ? AWAITING_FIGURE_MS : 0);
+}
+
 /** What a release awaiting its figure says in place of it: "due 07:00 UTC, awaiting figure". */
 function awaitingFigureText(event: Pick<EconEvent, "date">): string {
   return `due ${timeLabel(event.date)} ${CALENDAR_TIME_ZONE_LABEL}, awaiting figure`;

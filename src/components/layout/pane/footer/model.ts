@@ -1,7 +1,7 @@
 import type { ContextMenuItem } from "../../../../types/context-menu";
 import { t, tf } from "../../../../i18n";
 import { type CompanyFrom, companyFromLabel } from "../../../../types/company-from";
-import { clipToDisplayWidth, displayWidth } from "../../../../utils/format";
+import { displayWidth } from "../../../../utils/format";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { readableStatus } from "../../../../utils/reason-codes";
 import { getShortcutHintWidth } from "../../../ui/shortcut-hint";
@@ -53,7 +53,14 @@ export interface PaneFooterSegment {
    * warning.
    */
   capture?: boolean;
-  captureText?: string;
+  /**
+   * The notes behind a warning icon (usePaneNoticeFooter), each in full. The
+   * icon opens them in the app. A picture of the pane cannot, so it draws a
+   * segment carrying `notes` and no icon as its one note line
+   * ({@link noteLineParts}): the first note, cut after a whole word when the
+   * row is short, and how many more there are.
+   */
+  notes?: readonly string[];
   /**
    * The segment only says how long ago the pane's data loaded (`5m ago`,
    * `fetched just now`), relative to the moment it is read: build it with
@@ -350,14 +357,16 @@ export function paneFooterInfoWidth(segments: readonly PaneFooterSegment[]): num
   return infoTextWidth(segments);
 }
 
+/** Cells a segment's parts take, a column between two as the footer draws them. */
+function partsWidth(parts: readonly PaneFooterPart[]): number {
+  return parts.reduce((sum, part, partIndex) => sum + (partIndex > 0 ? 1 : 0) + displayWidth(part.text), 0);
+}
+
 function infoTextWidth(segments: readonly PaneFooterSegment[]): number {
   if (segments.length === 0) return 0;
-  return segments.reduce((total, segment, index) => {
-    const text = segment.parts.reduce((sum, part, partIndex) => (
-      sum + (partIndex > 0 ? 1 : 0) + displayWidth(part.text)
-    ), 0);
-    return total + (index > 0 ? segmentGapWidth(segments[index - 1]!, segment) : 0) + text;
-  }, 0);
+  return segments.reduce((total, segment, index) => (
+    total + (index > 0 ? segmentGapWidth(segments[index - 1]!, segment) : 0) + partsWidth(segment.parts)
+  ), 0);
 }
 
 /** Segments with `variants` step down together, one variant at a time, until they fit or none is left. */
@@ -402,10 +411,75 @@ function trimTrailing(info: PaneFooterSegment[], width: number, keep: number, pa
     const segment = fitted[index]!;
     const own = infoTextWidth([segment]);
     const room = width - (infoTextWidth(fitted) - own) - (index === fitted.length - 1 ? 1 : 0);
-    if (room * 2 >= own) return [...fitted.slice(0, index), clipSegment(segment, room), ...fitted.slice(index + 1)];
+    const clipped = room * 2 >= own ? clipSegment(segment, room) : null;
+    if (clipped) return [...fitted.slice(0, index), clipped, ...fitted.slice(index + 1)];
     fitted = [...fitted.slice(0, index), ...fitted.slice(index + 1)];
   }
   return fitted;
+}
+
+/** A note line: a pane's notes said in words where nothing can open them (a pane picture), not behind its icon. */
+function isNoteLine(segment: PaneFooterSegment): boolean {
+  return !segment.icon && !!segment.notes?.length;
+}
+
+/**
+ * The most of a row a note line takes from the status beside it: the rest is
+ * the status's, so a capture's status line still says what its data is as of.
+ */
+const NOTE_LINE_SHARE = 0.6;
+
+/** Punctuation a cut note does not end on before its ellipsis: "unreconciled,…" reads "unreconciled…", "depth 1.…" "depth 1…". */
+const TRAILING_PUNCTUATION = /[\s,.;:·\-–—(]+$/u;
+
+/**
+ * `text` cut after its last whole word that fits `width` with an ellipsis,
+ * never inside a word; empty when not even its first word fits.
+ */
+export function cutAtWord(text: string, width: number): string {
+  if (displayWidth(text) <= width) return text;
+  const ellipsis = "…";
+  let best = "";
+  for (const match of text.matchAll(/\s+/g)) {
+    const head = text.slice(0, match.index).replace(TRAILING_PUNCTUATION, "");
+    if (!head) continue;
+    if (displayWidth(head) + displayWidth(ellipsis) > width) break;
+    best = head;
+  }
+  return best ? `${best}${ellipsis}` : "";
+}
+
+/**
+ * A pane's notes as one line `width` cells wide: the first note whole, or cut
+ * after a whole word with an ellipsis, then how many more there are (`+3
+ * more`), which the app opens from the footer's ⚠ (`!`). Where not even a
+ * word of it fits, the count of notes alone.
+ */
+export function noteLineParts(notes: readonly string[], width: number): PaneFooterPart[] {
+  const [first = "", ...rest] = notes;
+  const more = rest.length ? tf("+{count} more", { count: rest.length }) : "";
+  const tail: PaneFooterPart[] = more ? [{ text: more, tone: "label" }] : [];
+  const room = width - (more ? displayWidth(more) + 1 : 0);
+  const shown = cutAtWord(first, room);
+  if (shown) return [{ text: shown, tone: "warning" }, ...tail];
+  return [{ text: notes.length === 1 ? t("1 note") : tf("{count} notes", { count: notes.length }), tone: "warning" }];
+}
+
+/**
+ * Each note line in `info` at the room `width` leaves it: what the status
+ * beside it does not take, and at least NOTE_LINE_SHARE of the row while its
+ * first note needs that much, so a long status line gives way to its shorter
+ * forms before the note is cut.
+ */
+function fitNoteLines(info: PaneFooterSegment[], width: number): PaneFooterSegment[] {
+  if (!info.some(isNoteLine)) return info;
+  return info.map((segment, index) => {
+    if (!isNoteLine(segment)) return segment;
+    const notes = segment.notes!;
+    const others = infoTextWidth(info.map((other, at) => (at === index ? { ...other, parts: [] } : other)));
+    const room = Math.max(width - others, Math.floor(width * NOTE_LINE_SHARE));
+    return { ...segment, title: segment.title ?? notes.join("\n"), parts: noteLineParts(notes, room) };
+  });
 }
 
 /**
@@ -415,7 +489,8 @@ function trimTrailing(info: PaneFooterSegment[], width: number, keep: number, pa
  * the hints, the trailing status that still does not fit is then cut or left
  * out (trimTrailing). A status after every segment with shorter forms gives
  * way first, before any of them shortens: a pane puts what goes first last
- * (an update time after a note that explains the row in hand).
+ * (an update time after a note that explains the row in hand). A note line
+ * takes the room the rest leaves it (fitNoteLines).
  *
  * With no hints beside it (a pane picture's footer), the row clips the rest,
  * so a frame that fits its own status line sees it overflow.
@@ -429,6 +504,18 @@ export function fitPaneFooterInfo(
   if (infoTextWidth(info) > width && info.some((segment) => segment.age)) {
     return fitPaneFooterInfo(info.filter((segment) => !segment.age), width, { besideHints, terminal });
   }
+  if (info.some(isNoteLine)) {
+    // The rest fits beside the share a note line keeps; the note line then takes what they leave.
+    const held = info.map((segment): PaneFooterSegment => isNoteLine(segment) ? {
+      ...segment,
+      notes: undefined,
+      parts: [{ text: " ".repeat(Math.min(partsWidth(noteLineParts(segment.notes!, Number.POSITIVE_INFINITY)), Math.floor(width * NOTE_LINE_SHARE))),
+        tone: "warning" }],
+    } : segment);
+    const notesOf = new Map(info.filter(isNoteLine).map((segment) => [segment.id, segment.notes!]));
+    return fitNoteLines(fitPaneFooterInfo(held, width, { besideHints, terminal })
+      .map((segment) => notesOf.has(segment.id) ? { ...segment, notes: notesOf.get(segment.id) } : segment), width);
+  }
   if (!besideHints) return stepDownTogether(info, width);
   const lastWithVariants = info.findLastIndex((segment) => (segment.variants?.length ?? 0) > 0);
   if (lastWithVariants >= 0 && lastWithVariants < info.length - 1 && infoTextWidth(info) > width) {
@@ -438,10 +525,15 @@ export function fitPaneFooterInfo(
   return trimTrailing(stepDownTogether(info, width), width, 1, terminal);
 }
 
-/** A segment cut to `width` behind an ellipsis, each part keeping its tone; the full text stays as its title. */
-function clipSegment(segment: PaneFooterSegment, width: number): PaneFooterSegment {
+/**
+ * A segment cut after its last whole word that fits `width`, behind an
+ * ellipsis, each part keeping its tone; the full text stays as its title.
+ * Null when not even its first word fits: a word is never cut.
+ */
+function clipSegment(segment: PaneFooterSegment, width: number): PaneFooterSegment | null {
   const full = segment.parts.map((part) => part.text).join(" ");
-  const clipped = clipToDisplayWidth(full, width);
+  const clipped = cutAtWord(full, width);
+  if (!clipped) return null;
   if (clipped === full) return segment;
   const body = clipped.slice(0, -1);
   const parts: PaneFooterPart[] = [];
@@ -684,6 +776,9 @@ export function samePaneFooterRegistration(
         && segment.disabled === other.disabled
         && segment.savedCopyAt === other.savedCopyAt
         && segment.age === other.age
+        // The icon reads the same whatever its notes say; a picture of the pane prints them.
+        && (segment.notes ?? []).length === (other.notes ?? []).length
+        && (segment.notes ?? []).every((note, noteIndex) => note === other.notes![noteIndex])
         && sameFooterParts(segment.parts, other.parts)
         && (segment.variants?.length ?? 0) === (other.variants?.length ?? 0)
         && (segment.variants ?? []).every((variant, variantIndex) => sameFooterParts(variant, other.variants![variantIndex]!));

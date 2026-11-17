@@ -8,7 +8,7 @@ import { createDomUiHost } from "../../dom/dom-ui-host";
 import { WebInputHostProvider } from "../../dom/input-host";
 import { WebDialogHostProvider } from "../../dom/dialog-host";
 import { createDomTestHarness } from "../../dom/test-utils";
-import { PaneShotFrame } from "./cli-pane-shot-frame";
+import { middleEllipsis, PaneShotFrame } from "./cli-pane-shot-frame";
 import { nativePaneFooterRows, nativePaneHeaderRows } from "../../../components/layout/pane/sizing";
 import { noopRendererHost } from "../../../test-support/renderer-host";
 
@@ -71,7 +71,8 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(bodyHeight()).toBeCloseTo(withFooter);
 
   await act(async () => update({ warning: true, active: true, preserveStatus: true }));
-  expect(root.textContent).toContain("Source publication date unavailable.");
+  // Beside the status, the note takes what the row leaves it, cut after a whole word.
+  expect(root.textContent).toContain("Source publication…");
   expect(root.textContent).toContain("Loading a normal source");
   expect(root.querySelector('button[aria-label="Data warnings"]')).toBeNull();
 });
@@ -133,4 +134,32 @@ test("a capture with nothing to date gives the footer row back to the pane", asy
   await act(async () => { expect(await window.__GLOOM_CLI_SHOT_FIT_STATUS__?.([])).toBe(""); });
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
+});
+
+test("a capture's notes are one line that says how many more there are, marked apart from the pane's own state", async () => {
+  const ui = createDomUiHost();
+  const notes = ["Some jurisdictions have no awards in the dataset yet.", "Historical coverage has windows that are not complete yet.",
+    "Some totals run past what one view can hold; narrow the date range or scope."];
+  function Noted() {
+    usePaneNoticeFooter({ registrationId: "noted", notices: notes, focused: true });
+    return <div>Awards</div>;
+  }
+  const root = await render(<UiHostProvider ui={ui} renderer={noopRendererHost}>
+    <WebInputHostProvider><WebDialogHostProvider>
+      <PaneShotFrame paneId="shot" title="Awards" width={120} height={24}>
+        {() => <PaneFooterScope active><Noted /></PaneFooterScope>}
+      </PaneShotFrame>
+    </WebDialogHostProvider></WebInputHostProvider>
+  </UiHostProvider>);
+  const line = root.querySelector('[data-gloom-role="pane-footer-notes"]');
+  expect(line?.textContent).toBe(`${notes[0]} +2 more`);
+  expect(root.querySelector('[data-gloom-role="pane-footer"]')?.textContent).not.toContain(notes[1]!);
+});
+
+test("a status line too long for the row loses whole words from its middle, never part of one", () => {
+  const line = "US trading day Mon 16 Nov 2026 close · 15 min delayed";
+  expect(middleEllipsis(line, line.length)).toBe(line);
+  expect(middleEllipsis(line, 36)).toBe("US trading day Mon … 15 min delayed");
+  // Not a whole word fits at either end: the characters it has room for.
+  expect(middleEllipsis("Supercalifragilistic", 8)).toBe("Supe…stic");
 });

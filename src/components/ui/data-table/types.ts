@@ -62,6 +62,14 @@ export interface DataTableCell {
    * header: MCAP (USD).
    */
   valueUnit?: string;
+  /**
+   * This row has no value here yet, with nothing missing: it comes after an
+   * event the row is still waiting on (an economic release not yet out). The
+   * column-wide form is DataTableColumn.mayBeBlank; this one is for a column
+   * whose other rows must have the value. `shot --strict` counts a column
+   * blank in every other row as data the pane lost, and leaves this row out.
+   */
+  mayBeBlank?: boolean;
   content?: ReactNode;
   /**
    * The cells `content` takes to show whole in the terminal, where a table

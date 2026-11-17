@@ -43,7 +43,7 @@ test("the ranking is by yield at the bid: a wide spread is ranked and flagged, a
   const put = (bidAnnualizedYield: number | null, annualizedYield: number) =>
     ({ annualizedYield, quote: bidAnnualizedYield == null ? null : { bidAnnualizedYield } }) as unknown as CashSecuredPut;
   const row = (symbol: string, csp: CashSecuredPut | null, wideSpread = false): Omit<CspScreenRow, "rank"> =>
-    ({ symbol, csp, delta: null, ivRank: null, wideSpread, note: csp ? null : "Options chain unavailable" });
+    ({ symbol, csp, delta: null, ivRank: null, wideSpread, note: csp ? null : "Options chain unavailable", state: csp ? null : "no chain" });
   const ranked = rankCspScreen([
     row("KO", put(0.12, 0.13)),
     row("ZZZ", null),
@@ -129,6 +129,25 @@ test("the screen sells each name's put nearest the delta, reads it as OSA does, 
   expect(screen.missingRanks).toEqual(["BBB (fewer than 120 sessions)"]);
   // Six chain reads (each name's catalogue, then its expiry) share one Treasury curve.
   expect(curveRequests).toHaveLength(1);
+});
+
+// GS on 17 Nov 2026 read "A current underlying price or explicit --spot is required" in CSP's footer: a flag the screen has not got.
+test("a name with no current price says why in words, and its row's few words, never OSA's flag to type one", async () => {
+  const { provider, cloud } = screenSources();
+  const unpriced = { ...provider,
+    getQuote: async (symbol: string) => ({ ...(await provider.getQuote(symbol, "")), stale: symbol === "BBB" }),
+    getTickerFinancials: async (symbol: string) => {
+      const financials = await provider.getTickerFinancials(symbol, "");
+      return { ...financials, quote: { ...financials.quote!, stale: symbol === "BBB" } };
+    } } as DataProvider;
+  const scenario = { ...createScenarioDependencies(unpriced, cloud), now: () => now };
+  const screen = await loadCspScreen(["AAA", "BBB", "NOPE"].map((symbol) => ({ symbol })), readCspScreenCriteria({}),
+    { scenario, earnings: unpriced, ivApi: cloud as unknown as ImpliedVolatilityApi });
+  const bySymbol = new Map(screen.rows.map((row) => [row.symbol, row]));
+  expect([bySymbol.get("AAA")!.rank, bySymbol.get("AAA")!.state]).toEqual([1, null]);
+  expect(bySymbol.get("BBB")).toMatchObject({ rank: null, csp: null, note: "No current price for the underlying", state: "no price" });
+  expect(bySymbol.get("NOPE")).toMatchObject({ state: "no chain" });
+  expect(screen.rows.map((row) => row.note ?? "").join(" ")).not.toContain("--");
 });
 
 test("a name demand coverage could not take is just not ranked yet: the server's queue wording is not shown", async () => {

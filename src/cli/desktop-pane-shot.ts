@@ -127,7 +127,11 @@ export interface DesktopPaneShotBridge {
 }
 
 interface DesktopPaneShotRenderedCell {
-  /** The column can be blank in every row with nothing missing (DataTableColumn.mayBeBlank). */
+  /**
+   * The cell can be blank with nothing missing: its whole column can
+   * (DataTableColumn.mayBeBlank), or its row is still waiting on the value
+   * (DataTableCell.mayBeBlank).
+   */
   mayBeBlank?: true;
   columnId?: string;
   columnLabel: string;
@@ -816,6 +820,32 @@ const EMPTY_STATE_PATTERNS = [
   /\bNo (?:option contracts returned for )?expiry \d{4}-\d{2}-\d{2}(?:; (?:available|nearest others): \d{4}-\d{2}-\d{2}(?:, \d{4}-\d{2}-\d{2})*(?: \(\+\d+ more\))?|; the chain lists no expiries)?/gi,
 ];
 
+/**
+ * The text a capture reads the pane's state from: what it shows, less its
+ * footer's note line. A note says what the data shown leaves out ("Grossing
+ * and genre ranks are unavailable."), never that the pane failed: a full
+ * table under it is a usable pane, and an empty state under it is that state.
+ * Both texts come whitespace-collapsed, as the page reads them.
+ */
+function paneStateText(visibleText: string, footerNotes: readonly string[]): string {
+  return footerNotes.reduce((text, note) => {
+    const at = note ? text.lastIndexOf(note) : -1;
+    return at < 0 ? text : `${text.slice(0, at)} ${text.slice(at + note.length)}`;
+  }, visibleText).replace(/\s+/g, " ").trim();
+}
+
+/** The words that mark a capture's loading, error, empty and gated states, read from its text less its note line (paneStateText). */
+export function paneStateMarkers(visibleText: string, footerNotes: readonly string[] = []) {
+  const text = paneStateText(visibleText, footerNotes);
+  return {
+    loading: stateMarkers(text, LOADING_STATE_PATTERNS),
+    error: stateMarkers(text, ERROR_STATE_PATTERNS),
+    empty: stateMarkers(text, EMPTY_STATE_PATTERNS),
+    signIn: stateMarkers(text, SIGN_IN_WALL_PATTERNS).length > 0,
+    pro: stateMarkers(text, PRO_WALL_PATTERNS).length > 0,
+  };
+}
+
 function stateMarkers(text: string, patterns: RegExp[]): string[] {
   return [...new Set(patterns.flatMap((pattern) => (
     [...text.matchAll(pattern)].map((match) => match[0])
@@ -922,7 +952,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
               const exact = Number(cell.getAttribute("data-gloom-cell-value") || "NaN");
               return {
                 ...(typeof semanticColumn.id === "string" ? { columnId: semanticColumn.id } : {}),
-                ...(semanticColumn.mayBeBlank === true ? { mayBeBlank: true } : {}),
+                ...(semanticColumn.mayBeBlank === true || cell.getAttribute("data-gloom-cell-may-be-blank") === "true" ? { mayBeBlank: true } : {}),
                 columnLabel: typeof semanticColumn.label === "string"
                   ? semanticColumn.label
                   : headers[cellIndex] || (values.length === 1 ? "Row" : String(cellIndex + 1)),
@@ -979,6 +1009,9 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
           .map((footer) => normalize(footer.innerText || footer.textContent))
           .filter(Boolean)
           .join(" "),
+        footerNotes: [...root.querySelectorAll('[data-gloom-role="pane-footer-notes"]')]
+          .map((note) => normalize(note.innerText || note.textContent))
+          .filter(Boolean),
         visibleKeyValues: (${readVisibleKeyValues.toString()})(root),
         surfaces: [...root.querySelectorAll('[data-gloom-surface-renderer]')].filter(isVisible).map((element) => ({
           renderer: element.getAttribute("data-gloom-surface-renderer") || "",
@@ -1049,6 +1082,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
       value?: {
         visibleText?: string;
         footerText?: string;
+        footerNotes?: unknown;
         visibleKeyValues?: Array<{ label: string; text: string }>;
         surfaces?: DesktopPaneShotSurface[];
         error?: string;
@@ -1073,11 +1107,13 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
   const value = result.result?.value;
   if (value?.error) throw new Error(value.error);
   const visibleText = (value?.visibleText ?? "").replace(/\s+/g, " ").trim();
-  const loadingStateMarkers = stateMarkers(visibleText, LOADING_STATE_PATTERNS);
-  const errorStateMarkers = stateMarkers(visibleText, ERROR_STATE_PATTERNS);
-  const emptyStateMarkers = stateMarkers(visibleText, EMPTY_STATE_PATTERNS);
-  const accessGate: PaneAccessGate | null = value?.accessGate === "sign-in" || stateMarkers(visibleText, SIGN_IN_WALL_PATTERNS).length > 0 ? "sign-in"
-    : value?.accessGate === "pro" || stateMarkers(visibleText, PRO_WALL_PATTERNS).length > 0 ? "pro" : null;
+  const footerNotes = Array.isArray(value?.footerNotes) ? value.footerNotes.filter((note): note is string => typeof note === "string") : [];
+  const markers = paneStateMarkers(visibleText, footerNotes);
+  const loadingStateMarkers = markers.loading;
+  const errorStateMarkers = markers.error;
+  const emptyStateMarkers = markers.empty;
+  const accessGate: PaneAccessGate | null = value?.accessGate === "sign-in" || markers.signIn ? "sign-in"
+    : value?.accessGate === "pro" || markers.pro ? "pro" : null;
   const rows = Array.isArray(value?.rows) ? value.rows : [];
   const textShowsEllipsis = rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
   const truncationReasons = Array.isArray(value?.truncationReasons)

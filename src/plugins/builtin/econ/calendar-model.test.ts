@@ -21,6 +21,7 @@ import {
   resetEconCalendarPersistence,
   shortCalendarEnd,
   actualColor,
+  actualMayBeBlank,
   valueColumnWidth,
   matchesEventSearch,
   policyDecisionsNamed,
@@ -332,4 +333,19 @@ test("a bank's own names find its decision, and an empty search names the decisi
   expect(policyDecisionsNamed("banxico", "BR")).toEqual([]);
   expect(policyDecisionsNamed("banxico", "MX,BR")).toEqual([{ country: "MX", event: "Banxico Interest Rate Decision" }]);
   expect(policyDecisionsNamed("fomc", "G7")).toEqual([{ country: "US", event: "Fed Interest Rate Decision" }]);
+});
+
+// A capture failed ECO's ACTUAL column when every release listed was still to come (17 Nov 2026, 00:07 UTC).
+test("an ACTUAL is blank with nothing missing before the release or with no figure to print, not after a figure is due", () => {
+  const cpi = makeEvent("cpi");
+  const release = cpi.date.getTime();
+  expect(actualMayBeBlank(cpi, release - 60_000)).toBe(true);
+  expect(actualMayBeBlank(cpi, release + 60_000)).toBe(false);
+  expect(actualMayBeBlank({ ...cpi, actual: "0.3%" }, release - 60_000)).toBe(false);
+  // A speech has no figure to wait for, before or after it.
+  expect(actualMayBeBlank({ ...cpi, forecast: null, prior: null }, release + 60_000)).toBe(true);
+  // A bank that states no time has its whole day.
+  const day = { ...cpi, date: new Date("2026-05-24T00:00:00.000Z"), time: "", timeNote: "Time not announced." };
+  expect(actualMayBeBlank(day, Date.parse("2026-05-24T20:00:00Z"))).toBe(true);
+  expect(actualMayBeBlank(day, Date.parse("2026-05-25T01:00:00Z"))).toBe(false);
 });

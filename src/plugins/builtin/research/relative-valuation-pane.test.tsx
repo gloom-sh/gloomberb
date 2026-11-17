@@ -60,11 +60,18 @@ test("stale peer remains inspectable with contextual failure, excluded quote val
   await act(async () => { await tui.render(<Harness width={120} />, { width: 120, height: 16 }); });
   await settle();
   const frame = tui.frame();
-  expect(frame).toContain("Stale quotes: PLD");
-  expect(frame).toContain("MISSING: source unavailable");
+  // What concerns one peer is its row's, said under the table while it is selected; the footer is the comparison's.
+  expect(frame).not.toContain("stale");
+  expect(frame).not.toContain("source unavailable");
   expect(frame).toContain("PLD");
   expect(frame).toContain("$200.00");
   expect(frame).not.toContain("$135.75");
+  await act(async () => { tui.setup().mockInput.pressArrow("down"); });
+  await settle();
+  expect(tui.frame()).toContain("PLD: Its quote is stale.");
+  await act(async () => { await Bun.sleep(150); tui.setup().mockInput.pressArrow("down"); });
+  await settle();
+  expect(tui.frame()).toContain("MISSING: source unavailable.");
   await exportPaneTable(paneId, "rv-stale.csv");
   const csv = takeSavedTextFile()!.text;
   expect(csv).toContain("PLD,,,,,30.2");
@@ -73,8 +80,7 @@ test("stale peer remains inspectable with contextual failure, excluded quote val
   await settle();
   const recovered = tui.frame();
   expect(recovered).toContain("$135.75");
-  expect(recovered).not.toContain("Stale quotes:");
-  expect(recovered).toContain("MISSING: source unavailable");
+  expect(recovered).not.toContain("Its quote is stale");
 });
 
 test("stale fundamentals retain their disclosure and export provenance with a fresh quote, then clear on refresh", async () => {
@@ -87,12 +93,8 @@ test("stale fundamentals retain their disclosure and export provenance with a fr
   await tui.render(<Harness width={120} />, { width: 120, height: 16 });
   await settle();
   expect(tui.frame()).toContain("$135.75");
-  expect(tui.frame()).not.toContain("Fundamentals stale");
-  await act(async () => tui.setup().mockInput.pressKey("!"));
-  await settle();
-  expect(tui.frame()).toContain("PLD: Fundamentals stale");
-  await act(async () => tui.setup().mockInput.pressKey("escape"));
-  await settle();
+  // The selected peer's note, under the table.
+  expect(tui.frame()).toContain("PLD: Fundamentals stale: retained values may be out of date.");
   await exportPaneTable(paneId, "rv-stale-fundamentals.csv");
   const csv = takeSavedTextFile()!.text;
   expect(csv).toContain("PLD,Fundamentals retrieved,2026-09-11T23:52:16.139Z,Stale,true");
@@ -100,8 +102,6 @@ test("stale fundamentals retain their disclosure and export provenance with a fr
   expect(csv).toContain("PLD,Fundamentals stale");
   stale = false;
   await act(async () => tui.setup().mockInput.pressKey("r"));
-  await settle();
-  await act(async () => tui.setup().mockInput.pressKey("!"));
   await settle();
   expect(tui.frame()).not.toContain("Fundamentals stale");
   await exportPaneTable(paneId, "rv-fresh-fundamentals.csv");

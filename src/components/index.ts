@@ -138,7 +138,7 @@ export {
   DetailScrollBody, DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid, FieldLabel,
   fieldFrameStyle, fieldGridColumns, FRAMED_TEXTAREA_DESKTOP_STYLE, fieldGridRows, FigureList, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
   IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
-  MessageComposer, MultiSelectDialogButton, MultiSelectDialogContent, Notice, NumberField,
+  MessageComposer, MultiSelectDialogButton, MultiSelectDialogContent, Notice, NumberField, RowNote,
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
   QueryBar, RangeTrack, RatioBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
   Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, TextPromptDialog, unavailableText,

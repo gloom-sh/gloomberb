@@ -36,6 +36,7 @@ import {
   FILTER_CYCLE,
   attachEconCalendarPersistence,
   actualColor,
+  actualMayBeBlank,
   AWAITING_FIGURE_CELL,
   awaitsConsensus,
   figureGap,
@@ -506,6 +507,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         return {
           text: figureWithCurrency(ev.actual, ev.currency) ?? MISSING_VALUE,
           color: actualColor(ev.actual, ev.forecast),
+          // A release still to come, or one with no figure to print: its dash is no figure lost.
+          ...(actualMayBeBlank(ev, now) ? { mayBeBlank: true } : {}),
         };
       case "forecast":
         return { text: figureWithCurrency(ev.forecast, ev.currency) ?? MISSING_VALUE, color: colors.textDim };

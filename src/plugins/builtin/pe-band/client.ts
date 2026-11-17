@@ -16,6 +16,12 @@ import { reportDatesFrom, type ReportDate } from "./report-dates";
 export interface PeBandInputs {
   financials: TickerFinancials | null;
   history: PricePoint[];
+  /**
+   * Daily closes as far back as they are served (PE_BAND_DAILY_RANGE): what
+   * dates a weekly bar's close and prices a figure on the day it became
+   * known. Empty when they failed; the weekly bars stand alone then.
+   */
+  daily: PricePoint[];
   stale: boolean;
   /** Fundamentals failed: there is no EPS to price. */
   error: string | null;
@@ -33,6 +39,8 @@ export interface PeBandInputs {
 const CANCELLED = "P/E band load was cancelled";
 /** Weekly bars: daily history is only served to 5Y, and the band covers every year of statements on record. */
 const PE_BAND_HISTORY_RESOLUTION: ManualChartResolution = "1wk";
+/** Daily closes are served this far back: a figure known within it is priced at its own day's close. */
+const PE_BAND_DAILY_RANGE = "5Y";
 /** The most reports the server returns for one company: about ten years of quarters. */
 const REPORT_LIMIT = 40;
 /** Report dates only refine the figures' dates, so the pane does not wait longer than this for them. */
@@ -96,7 +104,7 @@ export async function loadPeBandInputs(
   const { instrument } = request;
   // Asked alongside the statements when the instrument names a US exchange; otherwise once the quote has said where it lists.
   const early = isUsListingExchange(instrument.exchange) ? loadReportDates(instrument.symbol, cloud) : null;
-  const [financials, chart] = await abortable(Promise.allSettled([
+  const [financials, chart, dailyChart] = await abortable(Promise.allSettled([
     marketData.getTickerFinancials(instrument.symbol, instrument.exchange ?? "", {
       brokerId: instrument.instrument?.brokerId ?? instrument.brokerId,
       brokerInstanceId: instrument.instrument?.brokerInstanceId ?? instrument.brokerInstanceId,
@@ -106,12 +114,15 @@ export async function loadPeBandInputs(
     }),
     coordinator.loadChart({ instrument, bufferRange: "ALL", granularity: "resolution", resolution: PE_BAND_HISTORY_RESOLUTION },
       { forceRefresh: request.forceRefresh }),
+    coordinator.loadChart({ instrument, bufferRange: PE_BAND_DAILY_RANGE, granularity: "resolution", resolution: "1d" },
+      { forceRefresh: request.forceRefresh }),
   ]), request.signal, CANCELLED).catch((error: unknown) => {
     throw request.signal?.aborted || (error instanceof Error && error.name === "AbortError") ? abortError(CANCELLED) : error;
   });
   const value = financials.status === "fulfilled" ? financials.value : null;
   const entry = chart.status === "fulfilled" ? chart.value : null;
   const history = entry ? resolveEntryValue(entry) ?? [] : [];
+  const daily = dailyChart.status === "fulfilled" && !dailyChart.value.error ? resolveEntryValue(dailyChart.value) ?? [] : [];
   const quote = value?.quote;
   const [reports, fx] = await abortable(Promise.all([
     early ?? (isUsListingExchange(quote?.listingExchangeName ?? quote?.exchangeName ?? quote?.fullExchangeName)
@@ -121,6 +132,7 @@ export async function loadPeBandInputs(
   return {
     financials: value,
     history,
+    daily,
     reports,
     fx: fx.fx,
     fxError: fx.error,

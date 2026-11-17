@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
   DataTableView,
+  RowNote,
   usePaneStatusFooter,
-  usePaneNoticeFooter,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -183,6 +183,17 @@ interface PeerSnapshot {
   error?: string;
 }
 
+/** What concerns one peer's row, each a sentence: why its figures failed or are old, and why its EV/Sales reads as it does. */
+function relativeRowNotes(row: RelativeRow): string[] {
+  return [
+    row.error ? `${row.error.replace(/\.$/, "")}.` : null,
+    row.quoteStale ? "Its quote is stale." : null,
+    row.fundamentalsProvenance?.stale ? `${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.` : null,
+    row.evSalesUnavailable ?? null,
+    row.evSalesNote ?? null,
+  ].filter((note): note is string => !!note);
+}
+
 function peerQuoteKey(symbol: string): string {
   return buildQuoteKey({ symbol: normalizeSymbol(symbol), exchange: "", instrument: null });
 }
@@ -342,23 +353,13 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     [comparableRows, order],
   );
 
-  const staleSymbols = rows.filter((row) => row.quoteStale).map((row) => row.symbol);
-  const rowErrors = rows.filter((row) => row.error).map((row) => `${row.symbol}: ${row.error}`);
-  const status = [error, peerError, ...rowErrors, staleSymbols.length ? `Stale quotes: ${staleSymbols.join(", ")}` : null,
-    missingFx ? "Market-cap FX unavailable" : null].filter(Boolean).join(" · ") || null;
-
-  usePaneNoticeFooter({
-    registrationId: "relative-valuation-notices",
-    notices: [
-      ...rows.filter((row) => row.fundamentalsProvenance?.stale)
-        .map((row) => `${row.symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.`),
-      ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
-      ...rows.flatMap((row) => row.evSalesNote ? [`${row.symbol}: ${row.evSalesNote}`] : []),
-    ],
-    focused,
-  });
+  // The footer says what concerns the whole comparison; what concerns one peer is on its row (its symbol
+  // in the warning colour) and, for the selected row, under the table (rowNote).
+  const status = [error, peerError, missingFx ? "Market-cap FX unavailable" : null].filter(Boolean).join(" · ") || null;
 
   useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
+  const selectedRow = sortedRows[selectedIdx];
+  const rowNote = selectedRow ? relativeRowNotes(selectedRow).join(" ") : "";
 
   const renderCell = useCallback((row: RelativeRow, column: RelativeColumn): DataTableCell => {
     switch (column.id) {
@@ -387,7 +388,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
         if (row.notMeaningful.forwardPE) return notMeaningfulCell();
         return { text: `${formatPriceEarnings(row.reportedMultiples.forwardPE)}${row.forwardPEPeriod ? ` ${row.forwardPEPeriod}` : ""}`, color: colors.text };
       case "evSales":
-        // A withdrawn EV says so, one at or below zero reads N/M as a P/E over a loss does; the footer says why.
+        // A withdrawn EV says so, one at or below zero reads N/M as a P/E over a loss does; the row's note says why.
         if (row.evSales == null && row.notMeaningful.evSales) return notMeaningfulCell();
         return row.evSales == null && row.evSalesUnavailable
           ? { text: "EV n/a", color: colors.textDim }
@@ -437,6 +438,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       onHeaderClick={handleHeaderClick}
       getItemKey={(row) => row.symbol}
       renderCell={renderCell}
+      rootAfter={rowNote ? <RowNote>{`${canonicalTickerKey(selectedRow!.symbol)}: ${rowNote}`}</RowNote> : undefined}
       selectedTextOverridesCellColor
       getExportMetadata={() => sortedRows.flatMap((row) => [
         [row.symbol, "Quote as of", parseDisplayDate(row.quoteAsOf)?.toISOString() ?? "unavailable", "Stale", String(row.quoteStale ?? "unknown")],
