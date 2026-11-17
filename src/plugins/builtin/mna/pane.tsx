@@ -56,6 +56,7 @@ import {
   termsLabel,
 } from "./model";
 import { formatFeedTime } from "../../../utils/datetime-format";
+import { createDataTableCsv } from "../../../components/data-table/export";
 import { logFailure } from "../../../utils/log-failure";
 
 const STATUS_OPTIONS: { value: MnaStatusFilter; label: string }[] = [
@@ -311,6 +312,11 @@ function MnaDealsView({ focused, width, height, symbol }: {
     () => mnaColumns(status, width, locked > 0 ? Math.min(lockedText.length + 3, Math.floor(width / 3)) : undefined),
     [locked, lockedText, status, width],
   );
+  // Export CSV keeps the columns an earlier export had where they were: AS OF, drawn beside the spread, comes last.
+  const exportColumns = useMemo(
+    () => [...columns.filter((column) => column.id !== "basis"), ...columns.filter((column) => column.id === "basis")],
+    [columns],
+  );
   const items = useMemo<Item[]>(() => [
     ...Array.from({ length: Math.min(MAX_LOCKED_ROWS, locked) }, (_, index) => ({ kind: "locked" as const, index })),
     ...sorted.map((deal) => ({ kind: "deal" as const, deal })),
@@ -481,6 +487,7 @@ function MnaDealsView({ focused, width, height, symbol }: {
         resetTo: { columnId: null, direction: "desc" },
       }))}
       renderCell={renderCell}
+      exportCsv={() => createDataTableCsv({ columns: exportColumns, items, renderCell })}
       scrollRef={scrollRef}
       onBodyScrollActivity={onScroll}
       resetScrollKey={paramsKey}

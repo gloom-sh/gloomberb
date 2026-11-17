@@ -3,7 +3,8 @@ import { act, useState } from "react";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import type { MnaDeal, MnaDealsPayload } from "../../../api-client/mna";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
@@ -128,6 +129,11 @@ test("a delayed list shows locked rows for the newest deals, terms, private targ
   expect(frame).toContain("€810.00M");
   expect(frame).toContain("Q1 27");
   expect(frame).toContain("[$]upgrade");
+  // AS OF is drawn beside the spread, but Export CSV keeps CLOSE and STAGE where an earlier export had them.
+  await exportPaneTable("mna:test", "mna.csv");
+  const header = takeSavedTextFile()!.text.split("\n")[0]!.split(",");
+  expect(header.findIndex((name) => /^as of/i.test(name))).toBe(header.length - 1);
+  expect(header.findIndex((name) => /^stage/i.test(name))).toBe(header.length - 2);
 });
 
 // The detail read "Spread 0.39%" from two trades 8.6 hours apart, beside a chart of Monday's closes, with nothing dating either.

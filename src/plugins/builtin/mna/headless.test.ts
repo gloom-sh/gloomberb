@@ -66,3 +66,16 @@ test("a company with no deal says so as the pane does, not that MA does not cove
   const result = await mnaHeadless.load(createTestHeadlessArgs({ rawArgument: "KO", argument: "KO", symbols: ["KO"], options: { status: "pending" } }), ctx);
   expect(result).toMatchObject({ empty: "No pending deals involving KO.", unavailableSymbols: [] });
 });
+
+// The spread columns were inserted before Stage, Close and Closed, moving them for a script reading the CSV by position.
+test("the CSV keeps an earlier export's columns where they were, the spread's and the outside date's after them", async () => {
+  const { headlessReportTables } = await import("../../../cli/pane-functions/headless");
+  const { renderReportCsv } = await import("../../../cli/report-tables");
+  const { result } = await load("ATH.TO");
+  const args = createTestHeadlessArgs({ rawArgument: "ATH.TO", argument: "ATH.TO", symbols: ["ATH.TO"] });
+  const header = renderReportCsv(headlessReportTables(mnaHeadless, result, args, "M&A", undefined, { complete: true, unavailableSymbols: [] })).split("\n")[0]!;
+  const columns = header.split(",");
+  expect(columns.slice(0, 9)).toEqual(["Announced", "Target", "Symbol", "Acquirer", "Terms", "Value", "Stage", "Close", "Closed"]);
+  const added = ["Spread", "As of", "Latest", "Latest as of", "Outside"].map((name) => columns.findIndex((column) => column.startsWith(name)));
+  expect(added.every((index) => index > columns.indexOf("Closed"))).toBe(true);
+});

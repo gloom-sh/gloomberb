@@ -39,26 +39,44 @@ function reportBasisText(basis: SpreadBasis): string {
   return basis.at == null ? MISSING_VALUE : printWhen(basis.at, basis.session, formatUtcTime);
 }
 
-const COLUMNS: HeadlessPaneColumn[] = [
-  { key: "announced", header: "Announced" },
-  { key: "target", header: "Target" },
-  { key: "targetSymbol", header: "Symbol" },
-  { key: "acquirer", header: "Acquirer" },
-  { key: "terms", header: "Terms" },
-  { key: "value", header: "Value", align: "right" },
-  // A pending listed deal's spread, at the prices `spreadAsOf` names; the latest trades' beside a close.
-  { key: "spread", header: "Spread", align: "right", format: percent },
-  { key: "spreadAsOf", header: "As of" },
-  { key: "latestSpread", header: "Latest", align: "right", format: (value, row) => typeof value === "number" ? `${percent(value)} (${text(row.latestAsOf)})` : MISSING_VALUE },
-  { key: "stage", header: "Stage" },
-  { key: "expectedClose", header: "Close", format: (value) => formatExpectedClose(text(value) || null) },
-  // The agreement's deadline as a filing states it, with the later one it moves to.
-  { key: "outsideDate", header: "Outside", format: (value) => {
+const ANNOUNCED: HeadlessPaneColumn = { key: "announced", header: "Announced" };
+const TARGET: HeadlessPaneColumn = { key: "target", header: "Target" };
+const SYMBOL: HeadlessPaneColumn = { key: "targetSymbol", header: "Symbol" };
+const ACQUIRER: HeadlessPaneColumn = { key: "acquirer", header: "Acquirer" };
+const TERMS: HeadlessPaneColumn = { key: "terms", header: "Terms" };
+const VALUE: HeadlessPaneColumn = { key: "value", header: "Value", align: "right" };
+const STAGE: HeadlessPaneColumn = { key: "stage", header: "Stage" };
+const CLOSE: HeadlessPaneColumn = { key: "expectedClose", header: "Close", format: (value) => formatExpectedClose(text(value) || null) };
+const CLOSED: HeadlessPaneColumn = { key: "closed", header: "Closed" };
+// A pending listed deal's spread, at the prices `spreadAsOf` names; the latest trades' beside a close.
+const SPREAD: HeadlessPaneColumn = { key: "spread", header: "Spread", align: "right", format: percent, exportLast: true };
+const SPREAD_AS_OF: HeadlessPaneColumn = { key: "spreadAsOf", header: "As of", exportLast: true };
+const LATEST: HeadlessPaneColumn = {
+  key: "latestSpread", header: "Latest", align: "right", format: percent, exportLast: true,
+  textFormat: (value, row) => typeof value === "number" ? `${percent(value)} (${text(row.latestAsOf)})` : MISSING_VALUE,
+};
+const LATEST_AS_OF: HeadlessPaneColumn = { key: "latestAsOf", header: "Latest as of", exportLast: true };
+// The agreement's deadline as a filing states it, with the later one it moves to.
+const OUTSIDE: HeadlessPaneColumn = {
+  key: "outsideDate", header: "Outside", exportLast: true,
+  format: (value) => {
     if (!value || typeof value !== "object") return MISSING_VALUE;
     const outside = outsideDateParts(value as MnaOutsideDate);
     return outside.extension ? `${outside.date}, ${outside.extension}` : outside.date;
-  } },
-  { key: "closed", header: "Closed" },
+  },
+};
+
+/**
+ * CSV and NDJSON keep the columns an earlier export had where they were; the
+ * spread's and the outside date's come after them (`exportLast`).
+ */
+const COLUMNS: HeadlessPaneColumn[] = [
+  ANNOUNCED, TARGET, SYMBOL, ACQUIRER, TERMS, VALUE, STAGE, CLOSE, CLOSED,
+  SPREAD, SPREAD_AS_OF, LATEST, LATEST_AS_OF, OUTSIDE,
+];
+/** The text report reads the spread beside the terms it prices, its latest trades' basis in its cell. */
+const TEXT_COLUMNS: HeadlessPaneColumn[] = [
+  ANNOUNCED, TARGET, SYMBOL, ACQUIRER, TERMS, VALUE, SPREAD, SPREAD_AS_OF, LATEST, STAGE, CLOSE, OUTSIDE, CLOSED,
 ];
 
 /** The quotes of the listings pending deals' spreads are priced at, by symbol; none when the batch fails or is not offered. */
@@ -164,6 +182,7 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       ...none,
       columns: COLUMNS,
+      textColumns: TEXT_COLUMNS,
       rows: payload.deals.map((deal) => ({
         id: deal.id,
         announced: deal.announced,
