@@ -489,12 +489,12 @@ describe("alertsPlugin command", () => {
       await alertsPlugin.setup?.(ctx as any);
       const command = commands.find((entry) => entry.id === "set-alert");
       await expect(command.execute({ shortcut: "XLK/SPY above 0.25" })).rejects.toThrow("Quoted XLK for a ratio.");
-      expect(quoted).toEqual(["XLK/SPY", "XLK"]);
-      // `alerts add` reads these as one listing each (BTC-USD, BRK-B): they keep their own answer.
-      for (const symbol of ["BTC/USD", "BRK/B"]) {
+      expect([quoted[0], quoted.at(-1)]).toEqual(["XLK/SPY", "XLK"]);
+      // Read as `alerts add` reads them, one listing each (BTC-USD, BRK-B), never a ratio.
+      for (const [symbol, listing] of [["BTC/USD", "BTC-USD"], ["BRK/B", "BRK-B"]] as const) {
         quoted.length = 0;
-        await expect(command.execute({ shortcut: `${symbol} above 500` })).rejects.toThrow(`Not a ticker: ${symbol}.`);
-        expect(quoted).toEqual([symbol]);
+        await expect(command.execute({ shortcut: `${symbol} above 500` })).rejects.toThrow(`Quoted ${listing} for a ratio.`);
+        expect(new Set(quoted)).toEqual(new Set([listing]));
       }
       // A pair the service could not answer for is not known to be no ticker.
       pairError = "The data service timed out.";

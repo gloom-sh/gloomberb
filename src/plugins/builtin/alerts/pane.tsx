@@ -116,7 +116,7 @@ function AlertDetail({ alert, scrollRef }: { alert: AlertRule; scrollRef: RefObj
         <KeyValueRow {...DETAIL_ROW} label="Listing" value={listingWithCurrency(alertListing(alert), alert.lastQuoteCurrency)} />
         {/* With no quote the reason above says why; the price and its distance wait for one. */}
         {basis ? <KeyValueRow {...DETAIL_ROW} label="Close date" value={alert.lastDailyClose ?? `Awaiting ${basis}`} /> : null}
-        {reason ? null : <KeyValueRow {...DETAIL_ROW} label={alert.move ? "Move" : "Current"} value={formatCurrentPrice(alert, 24)} />}
+        {reason ? null : <KeyValueRow {...DETAIL_ROW} label={alert.move ? "Move" : "Current"} value={formatCurrentPrice(alert, 24, { words: true })} />}
         {/* What a move is measured from, as the quote's change line names it. */}
         {!reason && alert.move ? <KeyValueRow {...DETAIL_ROW} label="From" value={moveBasisText(alert.lastMoveBasis).replace(/^vs /, "")} tone="muted" /> : null}
         {/* The two readings that place the quadrant, as RRG states them. */}

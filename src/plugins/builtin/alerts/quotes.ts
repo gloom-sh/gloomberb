@@ -1,7 +1,7 @@
 import type { DataProvider } from "../../../types/data-provider";
 import { chunked } from "../../../utils/concurrency";
 import type { Quote } from "../../../types/financials";
-import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { extendedPrintSession, getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { canonicalExchange } from "../../../utils/exchanges";
@@ -63,7 +63,7 @@ export async function resolveAlertQuotes(
 }
 
 /** A quote an alert may be judged on, at the price its active session shows; throws for a stale one or one with no price. */
-function alertQuote(quote: Quote, symbol: string): Quote {
+export function alertQuote(quote: Quote, symbol: string): Quote {
   // A last known price is not the price now: it must neither trigger an alert nor set its baseline.
   if (isQuoteStaleForCurrentSession(quote)) throw new Error(`The quote for "${symbol}" is stale.`);
   const display = getActiveQuoteDisplay(quote);
@@ -91,6 +91,7 @@ export function quoteAlertFields(
   | "lastQuoteCurrency"
   | "lastQuoteExchange"
   | "lastQuotePence"
+  | "lastQuoteSession"
 > & { lastCheckError?: undefined } {
   const exchange = quote.listingExchangeName || quote.exchangeName;
   return {
@@ -103,6 +104,8 @@ export function quoteAlertFields(
     ...(exchange ? { lastQuoteExchange: canonicalExchange(exchange) } : {}),
     // A London line in pence writes its levels in pence; a quote that is not clears it.
     lastQuotePence: isPenceQuotedLine(quote) || undefined,
+    // An after-hours print says so wherever the reading is shown, as `quote` names it beside Last.
+    lastQuoteSession: extendedPrintSession(quote, quote.price) ?? undefined,
     lastCheckError: undefined,
   };
 }

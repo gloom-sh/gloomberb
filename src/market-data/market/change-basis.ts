@@ -435,7 +435,8 @@ export function combinedChangeBasisLabel(bases: Iterable<QuoteChangeBasis | null
 }
 
 /** An extended session as a day's move names its print in words, where there is room: "after hours vs Tue 10 Nov close". */
-const EXTENDED_PRINT_WORDS: Record<ExtendedSession, string> = { PRE: "pre-market", POST: "after hours", OVERNIGHT: "overnight" };
+/** An extended session in a sentence: "the move after hours vs Tue 10 Nov close", "Last price 158.78 after hours". */
+export const EXTENDED_PRINT_WORDS: Record<ExtendedSession, string> = { PRE: "pre-market", POST: "after hours", OVERNIGHT: "overnight" };
 
 /**
  * The basis of a day's move summed over the prices a book is valued at, when

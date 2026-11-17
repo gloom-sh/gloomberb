@@ -4,6 +4,7 @@
 // off; every check and every re-arm for the next session stay in plugin resume
 // state, as IV levels' readings do.
 import type { QuoteChangeBasis } from "../../../market-data/market/change-basis";
+import type { ExtendedSession } from "../../../market-data/market/status";
 import type { QuoteDataSource } from "../../../types/financials";
 import type { AlertRule } from "./types";
 
@@ -23,6 +24,8 @@ export interface MoveCheck {
   currency?: string;
   exchange?: string;
   pence?: true;
+  /** The extended session the move's price is a print of (`AlertRule.lastQuoteSession`). */
+  print?: ExtendedSession;
   /** Why the last check had no quote. */
   error?: string;
   /** It went off, and waits for a later session to arm it again. */
@@ -36,6 +39,7 @@ const isText = (value: unknown): value is string => typeof value === "string" &&
 const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const BASIS_KINDS = new Set(["close", "settle", "previous close", "utc day", "24h"]);
 const SOURCES = new Set<QuoteDataSource>(["live", "delayed", "snapshot"]);
+const PRINTS = new Set<ExtendedSession>(["PRE", "POST", "OVERNIGHT"]);
 
 function readBasis(value: unknown): QuoteChangeBasis | undefined {
   if (!value || typeof value !== "object") return undefined;
@@ -64,6 +68,7 @@ export function readMoveChecks(value: unknown): Record<string, MoveCheck> {
       ...isText(check.currency) ? { currency: check.currency } : {},
       ...isText(check.exchange) ? { exchange: check.exchange } : {},
       ...check.pence === true ? { pence: true as const } : {},
+      ...PRINTS.has(check.print as ExtendedSession) ? { print: check.print as ExtendedSession } : {},
       ...isText(check.error) ? { error: check.error } : {},
       ...check.fired === true ? { fired: true as const } : {},
       ...isNumber(check.firedAt) ? { firedAt: check.firedAt } : {},
@@ -88,6 +93,7 @@ function moveCheckOf(alert: AlertRule): MoveCheck | null {
     ...alert.lastQuoteCurrency ? { currency: alert.lastQuoteCurrency } : {},
     ...alert.lastQuoteExchange ? { exchange: alert.lastQuoteExchange } : {},
     ...alert.lastQuotePence ? { pence: true as const } : {},
+    ...alert.lastQuoteSession ? { print: alert.lastQuoteSession } : {},
     ...alert.lastCheckError ? { error: alert.lastCheckError } : {},
     ...alert.status === "triggered" ? { fired: true as const, ...alert.triggeredAt ? { firedAt: alert.triggeredAt } : {} } : {},
     ...alert.moveSession ? { session: alert.moveSession } : {},
@@ -114,6 +120,7 @@ function withMoveCheck(alert: AlertRule, check: MoveCheck | undefined): AlertRul
     ...check.currency ? { lastQuoteCurrency: check.currency } : {},
     ...check.exchange ? { lastQuoteExchange: check.exchange } : {},
     ...check.pence ? { lastQuotePence: true } : {},
+    ...check.print ? { lastQuoteSession: check.print } : {},
     ...check.error ? { lastCheckError: check.error } : {},
     ...check.fired ? { status: "triggered" as const, ...check.firedAt ? { triggeredAt: check.firedAt } : {} } : {},
     ...check.session ? { moveSession: check.session } : {},

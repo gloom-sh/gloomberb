@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { t, tf } from "../../../i18n";
+import { AlertListingRefusal, resolveAlertListing } from "../../../cli/alert-listing";
 import { extendedSessionLineLabel, getLatestPrintDisplay, type SessionPriceDisplay } from "../../../market-data/market/status";
-import type { DataProvider } from "../../../types/data-provider";
+import type { ListingDeps } from "../../../tickers/listing-venues";
 import type { Quote } from "../../../types/financials";
 import { coerceFieldString } from "../helpers";
 import type {
@@ -45,9 +46,13 @@ function formatAlertWorkflowQuote(quote: Quote, print: SessionPriceDisplay): str
 }
 
 function summarizeAlertWorkflowQuoteError(symbol: string, error: unknown): string {
+  if (error instanceof AlertListingRefusal) return error.details ? `${error.reason} ${error.details}` : error.reason;
   if (error instanceof Error && error.message.trim()) return error.message;
   return tf('No quote found for "{symbol}".', { symbol });
 }
+
+/** How long typing rests before the symbol is read: a company's name is a search, not one quote. */
+const ALERT_WORKFLOW_READ_DELAY_MS = 250;
 
 function updateAlertWorkflowFieldDescriptions(
   fields: CommandBarWorkflowField[],
@@ -63,14 +68,17 @@ function updateAlertWorkflowFieldDescriptions(
 /**
  * Add Alert checks the symbol as it is typed, shows the quote under it and
  * fills the target from the current price until the user types their own. Run
- * by every form, which owns the values; it acts only in Add Alert's.
+ * by every form, which owns the values; it acts only in Add Alert's. The
+ * symbol is read as Add Alert and `alerts add` read it (`resolveAlertListing`):
+ * a company's name finds its listing, a listing that stopped trading says
+ * why it is refused, and a symbol its company left says where it went.
  */
 export function useAlertWorkflowQuoteSync({
-  dataProvider,
+  listingDeps,
   route,
   updateRoute,
 }: {
-  dataProvider: DataProvider;
+  listingDeps: ListingDeps;
   route: CommandBarWorkflowRoute;
   updateRoute: (updater: (route: CommandBarWorkflowRoute) => CommandBarWorkflowRoute) => void;
 }): void {
@@ -122,8 +130,8 @@ export function useAlertWorkflowQuoteSync({
       };
     });
 
-    void dataProvider.getQuote(alertWorkflowSymbol, "")
-      .then((quote) => {
+    const read = () => resolveAlertListing(alertWorkflowSymbol, null, listingDeps)
+      .then(({ quote, fate }) => {
         if (quoteRequestRef.current !== requestId) return;
         // An alert is judged on the latest print, extended hours included: the target starts there.
         const print = getLatestPrintDisplay(quote);
@@ -147,7 +155,8 @@ export function useAlertWorkflowQuoteSync({
             ...route,
             values: nextValues,
             fields: updateAlertWorkflowFieldDescriptions(route.fields, {
-              symbol: formatAlertWorkflowQuote(quote, print),
+              // What became of the symbol goes under its quote, which names the listing: FB is a fund now, and Meta trades as META.
+              symbol: [formatAlertWorkflowQuote(quote, print), ...fate].join("\n"),
               price: tf("Current price {price}; edit to set the target.", { price: formatAlertWorkflowCurrentPrice(print) }),
             }),
             payloadMeta: {
@@ -180,5 +189,7 @@ export function useAlertWorkflowQuoteSync({
           };
         });
       });
-  }, [alertWorkflowActive, alertWorkflowSymbol, dataProvider, updateRoute]);
+    const timer = setTimeout(() => { void read(); }, ALERT_WORKFLOW_READ_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [alertWorkflowActive, alertWorkflowSymbol, listingDeps, updateRoute]);
 }
