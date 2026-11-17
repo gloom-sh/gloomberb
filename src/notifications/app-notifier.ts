@@ -41,6 +41,7 @@ interface CreateAppNotifierOptions {
   isAppActive: () => boolean;
   renderToast: (notification: AppNotificationRequest) => void;
   desktop?: DesktopNotificationSink | null;
+  notifyInBackground?: (notification: AppNotificationRequest) => boolean;
 }
 
 function escapeAppleScriptString(value: string): string {
@@ -263,6 +264,7 @@ export function createAppNotifier({
   isAppActive,
   renderToast,
   desktop = typeof Bun !== "undefined" ? createDesktopNotifier() : null,
+  notifyInBackground,
 }: CreateAppNotifierOptions): AppNotifier {
   return {
     notify(request) {
@@ -297,6 +299,9 @@ export function createAppNotifier({
         (desktopMode === "when-inactive" && !appActive)
       ) {
         desktopRequested = desktop ? desktop.notify(notification) !== false : false;
+      }
+      if (!appActive && notifyInBackground && (notification.browser || logged)) {
+        desktopRequested = notifyInBackground(notification) || desktopRequested;
       }
 
       return {

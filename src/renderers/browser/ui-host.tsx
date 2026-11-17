@@ -2,6 +2,8 @@
 import type { RendererHost, UiHost } from "../../ui/host";
 import { safeExternalUrl } from "../../utils/external-url";
 import { createDomUiHost } from "../dom/dom-ui-host";
+import { subscribeBrowserAppActivity } from "./activity";
+import { browserNotifications } from "./notifications";
 
 export const browserUiHost: UiHost = createDomUiHost("browser", {
   nativePaneChrome: true,
@@ -16,6 +18,8 @@ export const browserRendererHost: RendererHost = {
   requestExit() {},
   canExit: false,
   notify() {},
+  notifyInBackground: browserNotifications.notify,
+  subscribeAppActivity: subscribeBrowserAppActivity,
   async openExternal(rawUrl) {
     const url = safeExternalUrl(rawUrl);
     if (!url) return;

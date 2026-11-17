@@ -9,7 +9,7 @@ import {
   useAppStateRef,
   type AppState,
 } from "./state/app/context";
-import { bindAppActivity, isAppVisible, subscribeAppVisibility, useAppActive, useAppVisible } from "./state/app/activity";
+import { bindAppActivity, isAppVisible, setAppActive, subscribeAppVisibility, useAppActive, useAppVisible } from "./state/app/activity";
 import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
 import { useAppChromeShown } from "./components/layout/presentation";
@@ -280,6 +280,7 @@ function AppInner({
       else toastId = toast.info(notification.body, options);
     },
     desktop: rendererHost.supportsNativeDesktopNotifications ? rendererHost : undefined,
+    notifyInBackground: rendererHost.notifyInBackground,
   }), [rendererHost, toast]);
   const notify = useCallback((body: string, options?: { type?: "info" | "success" | "error" }) => {
     pluginRegistry.notify({ body, ...options });
@@ -681,6 +682,7 @@ export function App({
   useAppLanguage();
   const externalPlugins = providedExternalPlugins ?? EMPTY_EXTERNAL_PLUGINS;
   const renderer = useNativeRenderer();
+  const rendererHost = useRendererHost();
   const effectiveInitialConfig = useMemo(() => {
     return resolveInitialAppConfig({
       initialConfig,
@@ -722,7 +724,7 @@ export function App({
 
   const showSetup = useCallback(() => setShowOnboarding(true), []);
 
-  useEffect(() => bindAppActivity(renderer), [renderer]);
+  useEffect(() => rendererHost.subscribeAppActivity?.(setAppActive) ?? bindAppActivity(renderer), [renderer, rendererHost]);
 
   const services = useMemo(() => {
     return measurePerf("startup.app.create-services", () => (

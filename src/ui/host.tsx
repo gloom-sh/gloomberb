@@ -779,6 +779,8 @@ export interface RendererHost {
   saveTextFile?(request: SaveTextFileRequest): Promise<string>;
   supportsNativeDesktopNotifications?: boolean;
   notify(notification: AppNotificationRequest): void;
+  notifyInBackground?(notification: AppNotificationRequest): boolean;
+  subscribeAppActivity?(listener: (active: boolean) => void): () => void;
   showContextMenu?(items: ContextMenuItem[]): Promise<boolean>;
   playTerminalMedia?(url: string, title?: string, options?: { muted?: boolean }): Promise<void>;
   /** Stop terminal playback started by `playTerminalMedia`. */
