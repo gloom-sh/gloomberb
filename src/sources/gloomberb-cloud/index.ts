@@ -47,7 +47,7 @@ import type { NewsArticle, NewsQuery } from "../../types/news-source";
 import { normalizeNewsFeed } from "../../news/news-model";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { exchangeLineCoinListing, isRoundTheClockCoin, withExchangeLinesAsCoinListings } from "../../utils/crypto-pair";
-import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
+import { canonicalExchange, canonicalTickerKey, isUsListingExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
 import { createProviderMiss, isRateLimited, ProviderBusyError, providerMissReason, StaleHistoryError } from "../provider-errors";
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
@@ -88,8 +88,11 @@ import {
   perpetualTarget,
   searchPerpetualMarkets,
   boardSearchesFrom,
+  perpetualBoardRequested,
+  readPerpetualBoard,
 } from "./perpetuals";
 import { predictionMarketListing } from "../../tickers/prediction-listing";
+import { classifyInstrumentKind } from "../../tickers/search/ranking";
 import { cleanListingName } from "../../tickers/company-name";
 import { settleWithin } from "../../utils/async-deadline";
 import { cloudSearchBatch, cloudTickerChangesBatch } from "./batched-lookups";
@@ -105,6 +108,18 @@ const QUOTE_BATCHES_IN_FLIGHT = 3;
 const PERPETUAL_SEARCH_WAIT_MS = 2_000;
 /** How long a batched search waits for the board it answers every query's perpetual markets from. */
 const PERPETUAL_BOARD_WAIT_MS = 5_000;
+/** A bare symbol a command looks up (AAPL, MCO), not a search the person typed to browse: `search` and the command bar keep the contracts. */
+function isSymbolLookup(query: string, context?: SearchRequestContext): boolean {
+  return !context?.interactive && context?.perpetuals !== "always" && /^[A-Za-z][A-Za-z0-9]{1,5}$/.test(query.trim());
+}
+
+/** Whether a search lists the symbol as a stock on a US exchange. */
+function listsUsStock(listings: readonly InstrumentSearchResult[], symbol: string): boolean {
+  const wanted = symbol.trim().toUpperCase();
+  return listings.some((listing) => listing.symbol.trim().toUpperCase() === wanted
+    && isUsListingExchange(listing.exchange) && classifyInstrumentKind(listing.type) === "equity");
+}
+
 const CLOUD_RESOLUTION_SUPPORT = normalizeChartResolutionSupport([
   { resolution: "1m", maxRange: "1W" },
   { resolution: "5m", maxRange: "1M" },
@@ -733,7 +748,12 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   async search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {
     // Perpetual markets are listings too, asked for beside the others. They are optional: a failed lookup leaves the
     // other results, and a keystroke waits for them only briefly once the listings are in, unless the query names one.
-    const pending = searchPerpetualMarkets(query).catch(logFailure("sources.gloomberb-cloud.index", "Searching perpetual markets failed", [] as InstrumentSearchResult[]));
+    const searchPerpetuals = () => searchPerpetualMarkets(query).catch(logFailure("sources.gloomberb-cloud.index", "Searching perpetual markets failed", [] as InstrumentSearchResult[]));
+    // A command looking up a symbol asks for the contracts only once the listings show the symbol is no stock: the
+    // answer for AAPL is a US stock, and the board it would have been checked against is a request for nothing.
+    // Once the board is read, checking it costs nothing, so that is asked at once.
+    const afterListings = isSymbolLookup(query, context) && !perpetualBoardRequested();
+    const pending = afterListings ? null : searchPerpetuals();
     // A crypto exchange's line of a coin pair, which no source quotes, is offered as the crypto venue's listing.
     const listings = await withCloudFallback(
       async () => withExchangeLinesAsCoinListings(withCleanNames(
@@ -743,7 +763,9 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       // Rate limited or overloaded: the search was not run, which is not a search that found nothing.
       throw isRetryableApiError(error) ? new ProviderBusyError("Cloud search is busy", { cause: error }) : error;
     });
-    const perpetuals = await settleWithin(pending, namesPerpetualMarket(query) || !context?.interactive ? PERPETUAL_SEARCH_WAIT_MS : 250) ?? [];
+    const wait = namesPerpetualMarket(query) || !context?.interactive ? PERPETUAL_SEARCH_WAIT_MS : 250;
+    const perpetuals = pending ? await settleWithin(pending, wait) ?? []
+      : listsUsStock(listings, query) ? [] : await settleWithin(searchPerpetuals(), wait) ?? [];
     // Ahead of the listings, so a contract found by its plain name ("brent" for BZUSDT:BINANCE) is not cut
     // behind every warrant that names it; an exact symbol still leads.
     return perpetuals.length ? [...perpetuals, ...listings] : listings;
@@ -860,7 +882,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     // on its own, which finds them then; a board that does not answer leaves them out, as a search does.
     const found = queries.filter((query) => answers.get(query)?.length);
     const board = found.length
-      ? await settleWithin(apiClient.getCloudPerpsBoard().catch(logFailure("sources.gloomberb-cloud.index", "Reading the perpetual board failed", null)), PERPETUAL_BOARD_WAIT_MS)
+      ? await settleWithin(readPerpetualBoard(apiClient).catch(logFailure("sources.gloomberb-cloud.index", "Reading the perpetual board failed", null)), PERPETUAL_BOARD_WAIT_MS)
       : null;
     if (!board) return answers;
     const client = boardSearchesFrom(board);

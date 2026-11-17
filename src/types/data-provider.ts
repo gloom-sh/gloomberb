@@ -232,6 +232,11 @@ export interface SearchRequestContext {
    */
   interactive?: boolean;
   /**
+   * `always` asks for perpetual markets beside the listings for every query. Without it, a command that looks up
+   * one bare symbol the listings show to be a US stock does not ask for them.
+   */
+  perpetuals?: "always";
+  /**
    * Rows to ask a catalogue for. Every listing of a symbol several companies
    * use (CAR: Avis, Carrefour, CAR Group) takes more than a keystroke's ten.
    */

@@ -1737,6 +1737,28 @@ describe("ticker-search utilities", () => {
     });
   });
 
+  test("guesses a share class only when the symbol lists on no US exchange", async () => {
+    const searched = async (query: string, rows: Record<string, InstrumentSearchResult[]>) => {
+      const queries: string[] = [];
+      await searchTickerCandidates({
+        query,
+        tickers: new Map<string, TickerRecord>(),
+        dataProvider: createTestDataProvider({
+          id: "test",
+          search: async (asked) => { queries.push(asked); return rows[asked.toUpperCase()] ?? []; },
+        }),
+        totalLimit: 5,
+        includeOptionContracts: false,
+      });
+      return queries;
+    };
+    // NVDA is Nvidia on Nasdaq: NVD-A and NVD.A are not asked for.
+    expect(await searched("NVDA", { NVDA: [makeSearchResult("NVDA", "NVIDIA Corporation")] })).toEqual(["NVDA"]);
+    // A code only a venue abroad lists is still tried as a US share class, once its own search is back.
+    const abroad = { BRKB: [makeSearchResult("BRKB", "Berkshire Hathaway", { exchange: "BMV" })] };
+    expect(await searched("BRKB", abroad)).toEqual(expect.arrayContaining(["BRKB", "BRK-B", "BRK.B"]));
+  });
+
   test("upserts ticker records from provider search results", async () => {
     const saved: TickerRecord[] = [];
     const repository = {

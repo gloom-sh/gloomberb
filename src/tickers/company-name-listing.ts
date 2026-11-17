@@ -150,9 +150,10 @@ export async function findListingOfCompanyName(
   let results = answers.flatMap((answer) => Array.isArray(answer) ? answer : []);
   let listed = rankCompanyLines(name, results, options);
   // A company the answers list only abroad or by receipts (Türk Hava Yolları on Frankfurt and OTC) is searched again
-  // under its later words, which can list its home line: THYAO in Istanbul.
+  // under its later words, which can list its home line: THYAO in Istanbul. Answers with no row at all name no
+  // company abroad either (a line of tickers, `V MCO CPRT`), so there is nothing a shorter name would find.
   const lead = listed.find((listing) => listing.namesCompany);
-  const again = !options.oneWord && (!lead || (!lead.home && lead.rank[3]! > 1)) ? homeLineQuery(name) : null;
+  const again = !options.oneWord && results.length > 0 && (!lead || (!lead.home && lead.rank[3]! > 1)) ? homeLineQuery(name) : null;
   if (again && !queries.includes(again)) {
     const more = await searchListings(dataProvider, again);
     if (Array.isArray(more) && more.length) {

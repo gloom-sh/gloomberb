@@ -337,6 +337,18 @@ test("a Turkish name, with its letters or without, is its company's Istanbul lin
   expect(await findListingOfCompanyName(istanbul, "Garanti", { oneWord: true })).toMatchObject({ symbol: "GARAN", exchange: "BIST" });
 });
 
+test("a line of tickers search finds no company for is asked once, never again without its first word", async () => {
+  const asked: string[] = [];
+  const empty = { search: async (query: string) => { asked.push(query.toUpperCase()); return []; } };
+  expect(await findListingOfCompanyName(empty, "V MCO CPRT")).toBeNull();
+  expect(asked).toEqual(["V MCO CPRT"]);
+  // Rows that name no company still try the later words, as they do for a name listed only abroad.
+  const asking: string[] = [];
+  const bonds = { search: async (query: string) => { asking.push(query.toUpperCase()); return query.toUpperCase() === "TURKIYE IS BANKASI" ? ISTANBUL["TURKIYE IS BANKASI"]!.map(row) : []; } };
+  expect(await findListingOfCompanyName(bonds, "Turkiye Is Bankasi")).toBeNull();
+  expect(asking).toEqual(["TURKIYE IS BANKASI", "IS BANKASI"]);
+});
+
 // Tue 10 Nov 2026: search sent the BIST 100-30 ahead of the BIST 100, `quote "BIST 100"` read the sub-index, and
 // `quote XU100` was "not a ticker" though search lists the index as XU100.IS.
 test("the BIST 100 is the index named so, not a sub-index whose name adds to it, by name and by its code", async () => {
