@@ -11,20 +11,33 @@ export interface TableWidthColumn {
 
 const TRAILING_COLUMN_GUTTER_WIDTH = 1;
 const HIDDEN_COLUMNS = Symbol("hidden table columns");
-type WithHiddenColumns = { [HIDDEN_COLUMNS]?: readonly string[] };
+type HiddenColumn = { id: string; label: string };
+type WithHiddenColumns = { [HIDDEN_COLUMNS]?: readonly HiddenColumn[] };
+
+function hiddenColumnEntries(columns: readonly TableWidthColumn[]): HiddenColumn[] {
+  return [...new Map(columns.flatMap((column: TableWidthColumn & WithHiddenColumns) => column[HIDDEN_COLUMNS] ?? [])
+    .map((column) => [column.id, column])).values()];
+}
 
 export function hiddenTableColumns(columns: readonly TableWidthColumn[]): string[] {
-  return [...new Set(columns.flatMap((column: TableWidthColumn & WithHiddenColumns) => column[HIDDEN_COLUMNS] ?? []))];
+  return hiddenColumnEntries(columns).map(({ label }) => label);
+}
+
+export function hiddenTableColumnRows(columns: readonly TableWidthColumn[], itemCount: number): number {
+  return itemCount > 0 && columns.some((column: TableWidthColumn & WithHiddenColumns) => column[HIDDEN_COLUMNS]?.length) ? 1 : 0;
 }
 
 export function hiddenTableColumnText(columns: readonly TableWidthColumn[]): string | null {
   const hidden = hiddenTableColumns(columns);
-  return hidden.length ? `${hidden.length} hidden · ${hidden.join(", ")}` : null;
+  if (!hidden.length) return null;
+  const labels = new Map<string, number>();
+  for (const label of hidden) labels.set(label, (labels.get(label) ?? 0) + 1);
+  return `${hidden.length} hidden · ${[...labels].map(([label, count]) => count > 1 ? `${label} ×${count}` : label).join(", ")}`;
 }
 
 export function markHiddenTableColumns<C extends TableWidthColumn & { id: string }>(original: readonly C[], shown: C[]): C[] {
-  const hidden = [...hiddenTableColumns(original), ...original.filter(({ id }) => !shown.some((column) => column.id === id))
-    .map((column) => column.label?.trim() || column.id)];
+  const hidden = [...hiddenColumnEntries(original), ...original.filter(({ id }) => !shown.some((column) => column.id === id))
+    .map(({ id, label }) => ({ id, label: label?.trim() || id }))];
   if (!shown[0] || !hidden.length) return shown;
   return [Object.assign({ ...shown[0] }, { [HIDDEN_COLUMNS]: hidden }), ...shown.slice(1)];
 }

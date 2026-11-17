@@ -48,7 +48,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
  * ASX is ASX's announcements page for NST, a TSX listing SEDAR+. Null for a
  * US venue and for a venue Gloom knows no page for.
  */
-export function exchangeAnnouncementsPage(symbol: string, exchange: string | null | undefined): ExchangeAnnouncementsPage | null {
+function exchangeAnnouncementsPage(symbol: string, exchange: string | null | undefined): ExchangeAnnouncementsPage | null {
   const page = PAGES[canonicalExchange(exchange ?? "")];
   const code = symbol.trim().toUpperCase();
   return page && code ? page(code) : null;

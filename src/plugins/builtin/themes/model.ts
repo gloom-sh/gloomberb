@@ -1,7 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { THEME_PERIODS, type ThemeAggregate, type ThemeMember, type ThemePeriod, type ThemeSummary } from "../../../api-client/themes";
 import type { DataTableColumn } from "../../../components";
-import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-layout";
+import { dropColumnsToFit, getTableWidth, TABLE_COLUMN_GAP } from "../../../components/ui/table-layout";
 import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { yearToDateBaseLabel } from "../../../market-data/market/year-to-date";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
@@ -176,15 +176,17 @@ export function themeColumns(width: number, rows: readonly ThemeSummary[], ytdBa
 /**
  * The member table at `width`. Price and 1D are the regular session's; a
  * PRE-MKT or AFTER-HRS column, named as BI and MOST name it, follows 1D for
- * each session in `extendedSessions`. A narrow pane shortens names and
- * keeps the longer windows available by scrolling the table.
+ * each session in `extendedSessions`. Longer windows give way first, then
+ * extended sessions; the name shortens when the daily columns need the room.
  */
 export function memberColumns(width: number, extendedSessions: readonly ExtendedSession[] = [], ytdBase: string | null = null): DataTableColumn[] {
   const extended = extendedSessions.map((session) => column(session === "PRE" ? "preMarket" : "afterHours", extendedSessionStateLabel(session), 9));
   const [day, ...windows] = THEME_PERIODS.map((period) => column(period, periodLabel(period, ytdBase, 0), Math.max(9, periodLabel(period, ytdBase, 0).length + HEADER_ROOM)));
-  const compactNameWidth = Math.max(8, Math.min(24, width - getTableWidth([column("symbol", "Ticker", 7, "left"), column("price", "Price $", 10), day!]) - 5));
-  const fitted = fitColumns([column("symbol", "Ticker", 7, "left"), column("name", "Name", compactNameWidth, "left"), column("price", "Price $", 10),
-    day!, ...extended, ...windows], width, []);
+  const symbol = column("symbol", "Ticker", 7, "left");
+  const price = column("price", "Price $", 10);
+  const nameWidth = Math.max(8, Math.min(24, width - getTableWidth([symbol, price, day!]) - TABLE_COLUMN_GAP));
+  const fitted = fitColumns([symbol, column("name", "Name", nameWidth, "left"), price, day!, ...extended, ...windows], width,
+    ["return3MPercent", "returnYtdPercent", "return1MPercent", "return1WPercent", "preMarket", "afterHours"]);
   const ytd = fitted.find((col) => col.id === "returnYtdPercent");
   if (ytd) ytd.label = periodLabel("returnYtdPercent", ytdBase, ytd.width - HEADER_ROOM);
   return fitted;

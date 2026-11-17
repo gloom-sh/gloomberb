@@ -62,12 +62,12 @@ const OVERFLOW_FADE_PX = 28;
  * rather than as a mask on it so the vertical scrollbar stays crisp. The
  * header band fades into the header colour and the rows into the table's.
  */
-function overflowFadeStyle(side: "left" | "right", offsetPx: number, bottomPx: number): CSSProperties {
+function overflowFadeStyle(side: "left" | "right", offsetPx: number, bottomPx: number, topPx: number): CSSProperties {
   const direction = side === "left" ? "to left" : "to right";
   const headerPx = tableHeaderPx();
   return {
     position: "absolute",
-    top: 0,
+    top: topPx,
     bottom: bottomPx,
     [side]: offsetPx,
     width: OVERFLOW_FADE_PX,
@@ -347,6 +347,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
 
   const overflowEdges = useHorizontalScrollEdges(bodyElementRef, [horizontalScrollEnabled]);
   const hiddenColumns = items.length ? hiddenTableColumnText(columns) : null;
+  const disclosureHeight = hiddenColumns ? headerPx : 0;
   // A frozen first column already covers what scrolls under it, so the left
   // fade starts past it and its gap.
   const [frozenEdgePx, setFrozenEdgePx] = useState(0);
@@ -400,7 +401,8 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
 
   return (
     <div data-gloom-role="data-table" style={rootStyle}>
-      {hiddenColumns ? <div style={{ paddingInline: horizontalPadding * WEB_CELL_WIDTH, color: CSS_TEXT_DIM,
+      {hiddenColumns ? <div style={{ flex: `0 0 ${disclosureHeight}px`, lineHeight: `${disclosureHeight}px`,
+        paddingInline: "var(--gloom-space-sm)", color: CSS_TEXT_DIM,
         backgroundColor: CSS_PANEL, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={hiddenColumns}>
         {hiddenColumns}
       </div> : null}
@@ -552,14 +554,14 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
         <div
           data-gloom-role="data-table-overflow-fade"
           data-gloom-edge="left"
-          style={overflowFadeStyle("left", frozenEdgePx, overflowEdges.scrollbarBottom)}
+          style={overflowFadeStyle("left", frozenEdgePx, overflowEdges.scrollbarBottom, disclosureHeight)}
         />
       ) : null}
       {horizontalScrollEnabled && overflowEdges.end ? (
         <div
           data-gloom-role="data-table-overflow-fade"
           data-gloom-edge="right"
-          style={overflowFadeStyle("right", overflowEdges.scrollbarRight, overflowEdges.scrollbarBottom)}
+          style={overflowFadeStyle("right", overflowEdges.scrollbarRight, overflowEdges.scrollbarBottom, disclosureHeight)}
         />
       ) : null}
       {horizontalScrollEnabled && overflowEdges.end && items.length ? (
@@ -572,7 +574,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
           const next = [...body.querySelectorAll<HTMLElement>('[data-gloom-role="data-table-header-cell"]')]
             .map((cell) => cell.getBoundingClientRect()).find((cell) => cell.right > visibleRight + 1 && cell.left > bounds.left + frozenEdgePx + 1);
           body.scrollLeft += next ? next.left - bounds.left - frozenEdgePx : body.clientWidth - frozenEdgePx;
-        }} style={{ position: "absolute", insetInlineEnd: overflowEdges.scrollbarRight, top: hiddenColumns ? WEB_CELL_HEIGHT : 0, zIndex: 4,
+        }} style={{ position: "absolute", insetInlineEnd: overflowEdges.scrollbarRight, top: disclosureHeight, zIndex: 4,
           cursor: "pointer", border: 0, height: headerPx, background: CSS_PANEL, color: CSS_TEXT_DIM, font: "inherit" }}>
           More
         </button>
