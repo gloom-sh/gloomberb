@@ -5,6 +5,8 @@ import type { ChartStripSpec } from "../../../components/chart-table/header";
 import { staticSeries } from "../../../components/chart/static/series";
 import { blendHex } from "../../../theme/color-utils";
 import type { ResolvedSeries } from "../../../time-series/types";
+import { FUTURES_SECTOR_LABELS, type FuturesSector } from "../../../market-data/futures-board";
+import { futuresSearchContracts } from "../futures/model";
 
 export const DOE_TABS: ReadonlyArray<{ value: DoeTab; label: string }> = [
   { value: "crude", label: "Crude" },
@@ -47,6 +49,32 @@ export function doeSeriesOption(input: string | undefined) {
   if (!typed) return null;
   return DOE_SERIES_OPTIONS.find((option) => [option.value, option.label, option.value.replace(/^gas-/, "")]
     .some((name) => squash(name) === typed)) ?? null;
+}
+
+/** Futures on something that is held in stock: their inventories would be a board of their own. */
+const PHYSICAL_SECTORS: ReadonlySet<FuturesSector> = new Set(["metals", "agriculture", "livestock"]);
+
+/**
+ * What the inventories board says when the futures search it opened from
+ * (`fn FUT HG --tab inventories`) names no energy contract: what it covers,
+ * and that the contract's stocks are not on it (a financial future has none).
+ * Null for an energy search, one that names nothing, or none at all.
+ */
+export function doeCoverageNote(query: string | null | undefined): string | null {
+  const typed = query?.trim();
+  if (!typed) return null;
+  const contracts = futuresSearchContracts(typed);
+  if (!contracts.length || contracts.some((contract) => contract.sector === "energy")) return null;
+  const covers = "This board covers US crude oil, petroleum product and natural gas inventories";
+  const [only] = contracts;
+  const named = contracts.length === 1 && only ? `${only.name} (${only.code})` : null;
+  const physical = contracts.filter((contract) => PHYSICAL_SECTORS.has(contract.sector));
+  if (physical.length === contracts.length) {
+    const sectors = [...new Set(contracts.map((contract) => FUTURES_SECTOR_LABELS[contract.sector].toLowerCase()))];
+    return `${covers}, not ${named ?? sectors.join(" or ")} stocks.`;
+  }
+  if (!physical.length) return `${covers}; ${named ? `${named} is a financial future` : "these are financial futures"} with none to report.`;
+  return `${covers}; none of the contracts searched for is on it.`;
 }
 
 export function doeTab(value: unknown): DoeTab {
