@@ -9,7 +9,7 @@ import { createAppServices } from "../core/app-services";
 import type { PluginCapability } from "../capabilities";
 import type { AppConfig } from "../types/config";
 import type { GloomPlugin } from "../types/plugin";
-import { standaloneSeriesCatalog, standaloneSeriesInvoker, standaloneSeriesNamed } from "../series/standalone";
+import { standaloneSeriesCatalog, standaloneSeriesInvoker, standaloneSeriesNamed, type SeriesPlugins } from "../series/standalone";
 import { setStandaloneSeriesCatalog } from "../series/standalone-catalog";
 import type { PluginRegistry } from "../plugins/registry";
 import type { LoadedExternalPlugin } from "../plugins/loader";
@@ -22,7 +22,10 @@ import type { ConfigContext, MarketContext } from "./types";
 export { withCliServices, withConfigData, withMarketData } from "./scoped-context";
 
 interface CliContextOptions {
-  plugins?: GloomPlugin[];
+  /** Every plugin that runs here. Read only once a series is looked up, so a command that never charts one loads none of them. */
+  plugins?: SeriesPlugins;
+  /** The plugins whose asset-data and news capabilities feed the data provider; every plugin when not given. */
+  dataPlugins?: GloomPlugin[];
 }
 
 interface CliServicesOptions {
@@ -41,7 +44,7 @@ export async function ensureCliServicesReady<T extends { ready: Promise<unknown>
   }
 }
 
-function resolveCliCapabilities(config: AppConfig, plugins: GloomPlugin[]): PluginCapability[] {
+function resolveCliCapabilities(config: AppConfig, plugins: readonly GloomPlugin[]): PluginCapability[] {
   const disabledPlugins = new Set(config.disabledPlugins ?? []);
   const disabledSources = new Set(config.disabledSources ?? []);
   return plugins
@@ -115,8 +118,8 @@ function applyPersistedCloudSession(context: Pick<MarketContext, "persistence">)
 export async function initMarketData(options: CliContextOptions = {}): Promise<MarketContext> {
   const context = await initConfigData();
   applyPersistedCloudSession(context);
-  const plugins = options.plugins ?? (require("../plugins/catalog") as typeof import("../plugins/catalog")).getLoadablePlugins();
-  const capabilities = resolveCliCapabilities(context.config, plugins);
+  const plugins: SeriesPlugins = options.plugins ?? (() => (require("../plugins/catalog") as typeof import("../plugins/catalog")).getLoadablePlugins());
+  const capabilities = resolveCliCapabilities(context.config, options.dataPlugins ?? (typeof plugins === "function" ? plugins() : plugins));
   const dataProvider = new AssetDataRouter(null, [], context.persistence.resources);
   const registryAdapter: Pick<PluginRegistry, "brokers" | "getEnabledCapabilities"> = {
     brokers: new Map(),

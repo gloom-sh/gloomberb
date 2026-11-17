@@ -366,7 +366,7 @@ function argExamples(
 }
 
 /** The first watchlist, else portfolio, that holds a symbol: the list a function's example names. Null when none does. */
-async function exampleListName(context: MarketContext): Promise<string | null> {
+export async function exampleListName(context: Pick<MarketContext, "config" | "store">): Promise<string | null> {
   const tickers = await Promise.resolve().then(() => context.store.loadAllTickers())
     .catch(logFailure("cli-catalog", "Read the lists for an example failed", [] as TickerRecord[]));
   const watchlist = context.config.watchlists.find((list) => tickers.some((ticker) => ticker.metadata.watchlists.includes(list.id)));

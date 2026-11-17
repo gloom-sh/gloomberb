@@ -68,6 +68,7 @@
     "docs:snapshot": "bun run scripts/update-docs-snapshot.ts",
     "listings:snapshot": "bun run scripts/update-major-listings.ts",
     "japanese-names:snapshot": "bun run scripts/update-japanese-names.ts",
+    "catalog:snapshot": "bun run scripts/update-cli-catalog-snapshot.ts",
     "plugins:manifest": "bun run scripts/generate-plugin-manifest.ts",
     "plugins:manifest:check": "bun run scripts/generate-plugin-manifest.ts --check",
     "plugins:registry:check": "bun run scripts/check-registry-plugins.ts",

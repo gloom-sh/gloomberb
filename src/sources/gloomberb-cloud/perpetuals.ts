@@ -225,7 +225,7 @@ export function readPerpetualBoard(client: PerpsClient = apiClient): Promise<Per
   const board = client.getCloudPerpsBoard({});
   const entry = { readAt: Date.now(), board };
   searchBoards.set(key, entry);
-  board.catch(() => {
+  void board.catch(() => {
     if (searchBoards.get(key) === entry) searchBoards.delete(key);
   });
   return board;
