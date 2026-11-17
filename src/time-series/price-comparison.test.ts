@@ -322,11 +322,14 @@ describe("normalized market price comparison", () => {
     };
     const data = { OLDER: weekdays("2026-10-20"), NEWER: weekdays("2026-10-19") };
     const chart: ChartSpec = { ...spec(), viewport: { range: "1M", resolution: "1d" } };
-    for (const intraday of [false, true]) {
+    for (const state of ["missing", "forming", "mixed"] as const) {
+      const intraday = state === "forming";
       const endDay = intraday ? "2026-10-20" : "2026-10-19";
+      const older = rows(data.OLDER);
+      if (state === "mixed") older.at(-1)!.partial = true;
       const result = await resolveChartSpecData(chart, {
-        ...sources({ OLDER: rows(data.OLDER), NEWER: rows(intraday ? data.OLDER : data.NEWER) }),
-        now: date("2026-10-20T18:00:00Z"),
+        ...sources({ OLDER: older, NEWER: rows(state === "missing" ? data.NEWER : data.OLDER) }),
+        now: date(state === "mixed" ? "2026-10-20T21:00:00Z" : "2026-10-20T18:00:00Z"),
       });
       const expected = { baseDay: "2026-09-18", endDay, intraday };
       expect(result.priceComparison?.legs).toEqual({ OLDER: expected, NEWER: expected });

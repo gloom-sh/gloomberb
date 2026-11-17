@@ -20,6 +20,7 @@ import {
   type MultiSelectRowAction,
 } from "../../../components/ui";
 import { CompositeChart } from "../../../components/chart/composite";
+import { useCaptureDatesData } from "../../../components/layout/pane/capture-status";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { useChartViewReset, useChartViewResetListener } from "../../../components/chart/core/view-reset";
 import { formatCompositeDatasetDate } from "../../../components/chart/composite/format";
@@ -1225,6 +1226,7 @@ function ChartComposerSurface({
   }, [spec.series, spec.viewport.dateWindow, viewport?.end]);
   const comparisonEnd = resolution.resolution === "1d" ? Object.values(resolution.priceComparison?.legs ?? {})[0] : undefined;
   const comparisonAsOf = comparisonEnd && `${periodDayText(comparisonEnd.endDay, new Date().getUTCFullYear())} ${comparisonEnd.intraday ? "partial" : "close"}`;
+  const captureDatesData = useCaptureDatesData();
 
   // A generic future (CL1) is a rolling series: its roll rule and adjustment are chart controls.
   const generic = useMemo(() => chartFuturesGeneric(spec), [spec]);
@@ -1329,7 +1331,8 @@ function ChartComposerSurface({
           options: resolutionOptions,
           onChange: (value: string) => setResolution(value as ChartResolution),
         } : undefined}
-        meta={[dateWindowLabel, comparisonAsOf].filter(Boolean).join(" · ") || undefined}
+        asOf={comparisonAsOf}
+        meta={[dateWindowLabel, captureDatesData && comparisonAsOf].filter(Boolean).join(" · ") || undefined}
       />
       <MultiSelectDialogButton
         ref={indicatorsDialogRef}
