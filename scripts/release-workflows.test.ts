@@ -94,7 +94,8 @@ test("the jobs that publish download only the builds and check every file before
     expect(download).toBeLessThan(checked);
     expect(checked).toBeLessThan(uploaded);
     // The release also takes the snapshot the npm package carries, a file of its own that no release asset or nightly
-    // file shares a folder with, matched to its attestation before anything is published to npm.
+    // file shares a folder with, matched to its attestation before anything is uploaded or published to npm: a
+    // snapshot that fails that leaves the draft a draft instead of a release with no package.
     const downloads = steps.filter((step) => step.uses?.startsWith("actions/download-artifact@"));
     expect(downloads.map((step) => step.with?.pattern ?? step.with?.name)).toEqual(name === "release" ? ["gloomberb-*", "catalog-snapshot"] : ["gloomberb-*"]);
     if (name === "release") {
@@ -105,6 +106,7 @@ test("the jobs that publish download only the builds and check every file before
       expect(publishes.length).toBeGreaterThan(0);
       expect(steps[snapshotChecked]?.if).toBeUndefined();
       expect(snapshot).toBeLessThan(snapshotChecked);
+      expect(snapshotChecked).toBeLessThan(uploaded);
       expect(snapshotChecked).toBeLessThan(copied);
       for (const position of publishes) expect(copied).toBeLessThan(position);
     }
