@@ -1,5 +1,5 @@
 import type { DividendMetrics, DividendPayment, GrowthPayments } from "./types";
-import { MISSING_VALUE, formatCurrency } from "../../../utils/format";
+import { MISSING_VALUE, formatCurrency, formatDistributionAmount } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
@@ -15,6 +15,11 @@ export function formatConvertedAmount(value: number | null | undefined, currency
   return unit && unit.divisor !== 1 && unit.currency === currency
     ? formatCurrency(value * unit.divisor, subUnit!, 6)
     : formatCurrency(value, currency, 8);
+}
+
+export function formatDividendRowAmount(row: Pick<DividendRow, "amount" | "currency" | "cashEstimate">, converted = false, subUnit?: string): string {
+  const cash = converted ? formatConvertedAmount(row.amount, row.currency, subUnit) : formatDistributionAmount(row.amount, row.currency);
+  return `${row.cashEstimate ? "estimated " : ""}${cash}`;
 }
 
 export function forwardEstimateText(metrics: DividendMetrics): string | null {

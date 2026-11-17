@@ -38,7 +38,7 @@ async function frame() {
   return tui.frame();
 }
 
-test("an ex-dated unfixed sterling declaration keeps its row, estimate labels and fixing date at narrow width", async () => {
+test.each([44, 60])("an ex-dated unfixed sterling declaration keeps its row, estimate labels and fixing date at %d columns", async (width) => {
   setSystemTime(new Date("2026-11-17T06:00:00Z"));
   setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead() }));
   let data: Awaited<ReturnType<typeof fetchDividendData>>;
@@ -47,10 +47,8 @@ test("an ex-dated unfixed sterling declaration keeps its row, estimate labels an
   } finally {
     setSystemTime();
   }
-  const text = await renderLoaded(data, 60, 24);
-  expect(text).toContain("2026-11-05");
-  expect(text).toContain("estimated 7.5835p");
-  expect(text).toContain("$0.10");
+  const text = await renderLoaded(data, width, 24);
+  expect(text.split("\n").find((line) => line.includes("2026-11-05"))).toMatch(/2026-11-05\s+estimated 7\.5835p\s+\$0\.10/);
   expect(text).toContain("2026-12-07");
   expect(text).toContain("2026-12-17");
 });

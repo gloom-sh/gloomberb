@@ -32,7 +32,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -165,7 +165,7 @@ function renderCell(
       return { text: row.exDate, color: colors.textDim };
     case "amount":
       return {
-        text: `${row.cashEstimate ? "estimated " : ""}${converted ? formatConvertedAmount(row.amount, row.currency, subUnit) : formatDistributionAmount(row.amount, row.currency)}`,
+        text: formatDividendRowAmount(row, converted, subUnit),
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
@@ -271,7 +271,9 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
   const rows = useMemo(() => toDividendRows(payments), [payments]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
-  const columns = useMemo(() => buildDividendColumns(rows), [rows]);
+  const convertedFrom = historyData?.convertedFrom;
+  const convertedSubUnit = historyData?.convertedSubUnit;
+  const columns = useMemo(() => buildDividendColumns(rows, !!convertedFrom, convertedSubUnit), [rows, convertedFrom, convertedSubUnit]);
   const chartPoints = useMemo(
     () => data?.historyAvailable === false ? [] : buildTrailingCashChartPoints(payments),
     [data?.historyAvailable, payments],
@@ -299,8 +301,6 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   });
   // The header row, plus the scrollbar row once the columns overflow the pane.
   const tableChromeRows = chartTableChromeRows(columns, width);
-  const convertedFrom = historyData?.convertedFrom;
-  const convertedSubUnit = historyData?.convertedSubUnit;
   const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, !!convertedFrom, convertedSubUnit),
     [convertedFrom, convertedSubUnit]);
   const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond, convertedFrom, convertedSubUnit) : [];
