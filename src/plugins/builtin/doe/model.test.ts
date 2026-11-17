@@ -219,7 +219,7 @@ describe("DOE figures", () => {
   });
 
   test("opened from a futures search on no energy contract, the board says what it covers and that those stocks are not on it", () => {
-    const covers = "This board covers US crude oil, petroleum product and natural gas inventories";
+    const covers = "Covers US oil and gas inventories only";
     // FUT HG opens the board searched for HG=F; a name, a group and a rates contract read the same way.
     expect(doeCoverageNote("HG=F")).toBe(`${covers}, not Copper (HG) stocks.`);
     expect(doeCoverageNote("copper")).toBe(`${covers}, not Copper (HG) stocks.`);

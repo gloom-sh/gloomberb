@@ -65,7 +65,7 @@ export function doeCoverageNote(query: string | null | undefined): string | null
   if (!typed) return null;
   const contracts = futuresSearchContracts(typed);
   if (!contracts.length || contracts.some((contract) => contract.sector === "energy")) return null;
-  const covers = "This board covers US crude oil, petroleum product and natural gas inventories";
+  const covers = "Covers US oil and gas inventories only";
   const [only] = contracts;
   const named = contracts.length === 1 && only ? `${only.name} (${only.code})` : null;
   const physical = contracts.filter((contract) => PHYSICAL_SECTORS.has(contract.sector));
@@ -74,7 +74,7 @@ export function doeCoverageNote(query: string | null | undefined): string | null
     return `${covers}, not ${named ?? sectors.join(" or ")} stocks.`;
   }
   if (!physical.length) return `${covers}; ${named ? `${named} is a financial future` : "these are financial futures"} with none to report.`;
-  return `${covers}; none of the contracts searched for is on it.`;
+  return `${covers}, not the contracts searched for.`;
 }
 
 export function doeTab(value: unknown): DoeTab {
