@@ -381,7 +381,7 @@ export function StatGrid({ items, width, columns: columnsProp, maxLines }: StatG
                 data-wide={item.wide ? "true" : undefined}
                 data-wrapped="true"
                 data-gloom-stat-id={item.id}
-      data-gloom-essential={item.essential !== false ? "true" : undefined}
+                data-gloom-essential={item.essential !== false ? "true" : undefined}
               >
                 <Text fg={colors.textDim} data-gloom-role="stat-grid-label">
                   {nativePaneChrome ? label : labelText(label, labelWidth)}
