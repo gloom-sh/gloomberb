@@ -165,6 +165,25 @@ interface ShotSymbolCapture {
   unread?: { symbol: string; reason: string };
   tape?: TapeCapture;
   chain?: [string, OptionsChain];
+  /** More than one cadence the pane reads for the row, each answering only its own requests. */
+  historyVariants?: NonNullable<SnapshotMarketData["historyVariants"]>;
+}
+
+/**
+ * PEB reads every week on record and, for the years they are served, the
+ * daily closes that price each figure on its day. Captured history answers
+ * every request, so the weekly bars would stand in for the daily ones and
+ * the capture read the week around each figure's day: each cadence is its
+ * own, under the listing the pane asks for. Without daily closes the weekly
+ * bars stand alone, as in the app.
+ */
+async function peBandHistoryVariants(
+  context: MarketContext, ticker: TickerRecord, exchange: string, weekly: TickerFinancials["priceHistory"],
+): Promise<NonNullable<SnapshotMarketData["historyVariants"]>> {
+  const target = { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange ?? "" };
+  const daily = await (context.dataProvider.getPriceHistoryForResolution?.(target.symbol, exchange, "5Y", "1d", toMarketDataContext(target))
+    ?? Promise.resolve([])).catch(logFailure("cli.pane-functions.screenshot-payload", "Read PEB daily closes for a capture failed", []));
+  return [{ target, resolution: "1wk", points: weekly ?? [] }, ...(daily.length ? [{ target, resolution: "1d" as const, points: daily }] : [])];
 }
 
 export async function buildDesktopShotPayload(
@@ -348,6 +367,7 @@ export async function buildDesktopShotPayload(
     if (resolved.pane.id === "time-sales") {
       capture.tape = [entry.instrument.symbol, exchange, await fetchTape(entry.instrument.symbol, exchange)];
     }
+    if (resolved.pane.id === "pe-band") capture.historyVariants = await peBandHistoryVariants(context, capture.ticker, exchange, data.priceHistory);
     if (includeOptionsChains && context.dataProvider.getOptionsChain) {
       // A future with no chain of its own is the pane's to explain (the listed alternative), not a failed shot.
       const chain = await context.dataProvider.getOptionsChain(entry.instrument.symbol, exchange, undefined,
@@ -425,6 +445,7 @@ export async function buildDesktopShotPayload(
       }
       if (capture.tape) tapeSnapshots.push(capture.tape);
       if (capture.chain) optionsChains.push(capture.chain);
+      if (capture.historyVariants?.length) historyVariants = [...historyVariants ?? [], ...capture.historyVariants];
     }
   }
   // PF over a period draws the report's P&L between the two closes: the page reads no history of its own.
