@@ -180,6 +180,7 @@ export interface DividendData {
   /** Source fetch time, not the last ex-date or this pane's cache-read time. */
   fetchedAt?: string;
   declaredCashAsOf?: string;
+  cashVerificationWarning?: string;
   stale?: boolean;
   priceAsOf?: string;
   priceStale?: boolean;
@@ -290,6 +291,7 @@ export async function fetchDividendData(
     providerId: actions?.providerId ?? "gloom", fetchedAt: [actions?.dividendsAsOf ?? actions?.fetchedAt, actions?.declaredCash?.fetchedAt]
       .filter((value): value is string => !!value && Number.isFinite(Date.parse(value))).sort()[0],
     declaredCashAsOf: actions?.declaredCash?.fetchedAt,
+    ...(actions?.declaredCash?.verification === "unavailable" ? { cashVerificationWarning: "Dividend cash is not issuer-verified; issuer confirmation is unavailable. Upstream history is shown." } : {}),
     stale: response.stale === true || response.data.stale === true || actions?.stale === true || actions?.declaredCash?.stale === true,
     notes: ["Cash yield excludes taxes and reinvestment. Unannounced future payments and tax components are not modeled."],
   };

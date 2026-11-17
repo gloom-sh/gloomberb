@@ -681,6 +681,10 @@ describe("a capture of a pane that marks no rows", () => {
   );
 
   // DIAG's prose and CORR's matrix were "not verifiable" for want of table rows, however much they showed.
+  test("an ellipsis in status content is not a clipped date; the renderer's dated-line evidence decides", () => {
+    expect(assess(diag, { contentFigures: 24, statusLine: "2026-11-17 06:00 UTC · Checking…" })).toMatchObject({ usable: true, complete: true });
+    expect(assess(diag, { contentFigures: 24, statusLine: "17 Nov … history", statusLineClipped: true })).toMatchObject({ usable: false, complete: false });
+  });
   test("is read by the figures its body shows: prose passes, a form's one hint or an empty state does not", () => {
     expect(assess(diag, { contentFigures: 24 })).toMatchObject({ usable: true, empty: false, unusableReason: null });
     expect(assess(diag, { contentFigures: 1 })).toMatchObject({ usable: false, empty: true });

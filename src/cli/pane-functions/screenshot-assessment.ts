@@ -140,7 +140,7 @@ export function assessPaneScreenshot(
     ? []
     : shotUnavailableSymbols(resolved, payload, render.semanticUi);
   const figureGaps = essentialFigureMismatches(render);
-  const complete = unavailableSymbols.length === 0 && figureGaps.length === 0 && !render.statusLine?.includes("…");
+  const complete = unavailableSymbols.length === 0 && figureGaps.length === 0 && !render.statusLineClipped;
   const expectedText = shotExpectedText(resolved, symbols, payload);
   const normalizedVisibleText = render.visibleText.toLowerCase();
   const missingExpectedText = expectedText.filter((value) => !shotShowsText(normalizedVisibleText, value));
@@ -158,7 +158,7 @@ export function assessPaneScreenshot(
     ...financialRatioRenderMismatches(resolved, payload, render),
     ...surfaceNotDrawnMismatches(render),
     ...figureGaps,
-    ...(render.statusLine?.includes("…") ? ["The as-of status line is clipped."] : []),
+    ...(render.statusLineClipped ? ["The as-of status line is clipped."] : []),
   ];
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0

@@ -12,11 +12,16 @@ const CHART = { minRows: CHART_MIN_ROWS };
 const FIGURE_ROWS_90 = statGridRows(FIGURES, 90);
 
 describe("chartTableLayout", () => {
-  test("figures are retained ahead of the chart unless explicitly optional", () => {
-    const figures = FIGURES.map(({ essential, ...item }) => item);
+  test("explicitly essential figures are retained ahead of the chart", () => {
+    const figures = FIGURES.map((item) => ({ ...item, essential: true }));
     const layout = chartTableLayout({ width: 40, height: 10, figures, tableRows: 250, chart: CHART });
     expect(layout.figures).toEqual(figures);
     expect(layout.mode).not.toBe("full");
+  });
+  test.each([9, 10, 12, 16])("optional figures preserve four table rows at height %i", (height) => {
+    const figures = Array.from({ length: 12 }, (_, index) => ({ label: `Metric ${index}`, value: "1234.56" }));
+    const layout = chartTableLayout({ width: 28, height, figures, tableRows: 250, chart: CHART });
+    expect(height - layout.figureRows - layout.chartRows - 1).toBeGreaterThanOrEqual(4);
   });
   test("essential dates survive optional figures and take room from the chart", () => {
     const figures: StatItem[] = [

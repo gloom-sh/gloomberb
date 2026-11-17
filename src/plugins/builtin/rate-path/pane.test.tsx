@@ -119,13 +119,12 @@ test("the selected meeting is the path's point", async () => {
 
 test("a short pane keeps its meetings: the path becomes a strip, then goes", async () => {
   spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue(payload());
-  let lines = await render(40, 16);
+  let lines = await render(40, 10);
   let header = lines.findIndex((line) => line.includes("MEETING"));
-  expect(lines.slice(0, header).join("\n")).toContain("Target range");
   expect(lines[header - 1]).toContain("● Implied EFFR");
   expect(lines[header - 1]).toContain("Oct '26 3.90%");
   expect(lines.slice(header + 1).filter((line) => /20\d\d-\d\d-\d\d/.test(line)).length).toBeGreaterThanOrEqual(4);
-  lines = await render(22, 16);
+  lines = await render(22, 10);
   header = lines.findIndex((line) => line.includes("MEETING"));
   expect(lines.join("\n")).not.toContain("●");
   expect(lines.slice(header + 1).filter((line) => /20\d\d-\d\d-\d\d/.test(line)).length).toBeGreaterThanOrEqual(4);

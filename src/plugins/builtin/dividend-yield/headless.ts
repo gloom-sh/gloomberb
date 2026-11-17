@@ -211,7 +211,7 @@ export function projectDividendYieldHeadless(
   const priceStatus = dividendPriceStatus(data.price, data.priceAsOf, data.priceStale);
   // A regular payer's year with fewer payments than its cadence pays: the yield says how many it counts.
   const shortfall = trailingPaymentsText(metrics.trailingPayments, { cadence: true });
-  const errors = [data.historyError, data.summaryError, tax?.checkError].filter((error): error is string => !!error);
+  const errors = [data.historyError, data.summaryError, data.cashVerificationWarning, tax?.checkError].filter((error): error is string => !!error);
 
   // A monthly payer's history that ends early: its yields and last ex-date stop there, and each says so.
   const historyEnd = metrics.lapse?.historyEnds ? metrics.lapse.lastPaid : null;
@@ -331,6 +331,7 @@ export function projectDividendYieldHeadless(
       forwardRateEstimate: metrics.forwardEstimate ?? null,
       nextPayDateStatus: metrics.nextPayDate ? "announced" : "unavailable",
       declaredCashAsOf: data.declaredCashAsOf ?? null,
+      cashVerificationWarning: data.cashVerificationWarning ?? null,
       // Set when a monthly payer's history stops more than 40 days ago: its forward yield is withheld and its trailing yield counts the history to then.
       historyEnds: metrics.lapse?.historyEnds ? metrics.lapse.lastPaid : null,
       // "uneven": the year's regular payments differ too widely for one to be annualized, so the forward rate is their total.

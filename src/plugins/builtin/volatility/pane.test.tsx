@@ -146,12 +146,11 @@ test("the selected tenor is the curve's point", async () => {
 });
 
 test("a short pane keeps every tenor and turns the curve into a strip, then drops it", async () => {
-  await renderPane(40, 11);
+  await renderPane(40, 10);
   let rows = lines();
-  expect(rows.join("\n")).toContain("Spread");
   expect(rows.some((line) => /^ ● IV % .*30D 14\.87/.test(line))).toBe(true);
   expect(tenorRows()).toHaveLength(5);
-  await renderPane(40, 9);
+  await renderPane(40, 7);
   rows = lines();
   expect(rows.some((line) => line.includes("●"))).toBe(false);
   expect(tenorRows().length).toBeGreaterThanOrEqual(4);

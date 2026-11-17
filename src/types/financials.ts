@@ -781,13 +781,15 @@ export interface DemergerAction {
   source?: string;
 }
 
-/** Paid rows as their company declared them, in `currency` (its major unit). */
+/** Declaration amounts (rows and announced.amount) are in the major unit of `currency`.
+ * announced.paidAmount uses the corporate-action history's currency/unit, like dividends. */
 export interface DeclaredCash {
   currency: string;
   rows: DividendAction[];
   announced?: { exDate: string; payDate: string; amount: number; paidAmount?: number; fixingDate?: string };
   fetchedAt?: string;
   stale?: boolean;
+  verification?: "unavailable";
 }
 
 export interface CompanyProfile {

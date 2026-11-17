@@ -25,6 +25,7 @@ export function statToneColor(tone: StatTone | undefined, colors: ThemeColors): 
  */
 export interface StatItem {
   id?: string;
+  /** Opt in only for figures that must survive ahead of table rows and pass screenshot certification. */
   essential?: boolean;
   label: string;
   value: string;
@@ -381,7 +382,7 @@ export function StatGrid({ items, width, columns: columnsProp, maxLines }: StatG
                 data-wide={item.wide ? "true" : undefined}
                 data-wrapped="true"
                 data-gloom-stat-id={item.id}
-                data-gloom-essential={item.essential !== false ? "true" : undefined}
+                data-gloom-essential={item.essential === true ? "true" : undefined}
               >
                 <Text fg={colors.textDim} data-gloom-role="stat-grid-label">
                   {nativePaneChrome ? label : labelText(label, labelWidth)}
@@ -436,7 +437,7 @@ export function StatGrid({ items, width, columns: columnsProp, maxLines }: StatG
                 data-gloom-role="stat-grid-cell"
                 data-wide={item.wide ? "true" : undefined}
                 data-gloom-stat-id={item.id}
-                data-gloom-essential={item.essential !== false ? "true" : undefined}
+                data-gloom-essential={item.essential === true ? "true" : undefined}
                 // The last cell of a short row takes the columns left over, so the
                 // band never ends in an empty cell.
                 style={nativePaneChrome && !item.wide && index === row.length - 1 && row.length < columns

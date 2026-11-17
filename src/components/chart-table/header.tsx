@@ -206,7 +206,7 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
   const { width, query, chart } = props;
   const colors = useThemeColors();
   const layout = useChartTableLayout(props);
-  const essential = props.figures?.filter((item) => item.essential !== false) ?? [];
+  const essential = props.figures?.filter((item) => item.essential === true) ?? [];
   useRemoteUiNode(essential.length ? {
     role: "figure-layout", label: "Essential figures",
     metadata: {

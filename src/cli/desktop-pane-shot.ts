@@ -225,6 +225,7 @@ export interface DesktopPaneShotRenderResult {
   semanticUi: RemoteUiNodeSnapshot[];
   /** The status line drawn in the capture's footer, as it fit the width. */
   statusLine?: string | null;
+  statusLineClipped?: boolean;
 }
 
 /**
@@ -677,6 +678,7 @@ async function capturePageScreenshot({
       await hideCutRows(session);
       rendered = await readRenderedPaneState(session);
       rendered.statusLine = statusText;
+      rendered.statusLineClipped = line?.dates != null && !line.variants.includes(statusText ?? "");
     }
     if (captureImage) {
       const screenshot = await session.send("Page.captureScreenshot", {

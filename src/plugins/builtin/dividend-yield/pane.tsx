@@ -259,6 +259,7 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
 
   const sourceWarnings = [
     ...(data?.stale ? [staleHistoryText(data.fetchedAt)] : []),
+    ...(data?.cashVerificationWarning ? [data.cashVerificationWarning] : []),
   ];
   usePaneNoticeFooter({
     registrationId: "dividend-yield-notices",

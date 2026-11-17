@@ -96,7 +96,7 @@ function figureRows(figures: readonly StatItem[], width: number, maxLines: numbe
 function fitFigures(figures: readonly StatItem[], width: number, maxRows: number, body: number): { figures: StatItem[]; maxLines: number } {
   const kept = [...figures];
   while (kept.length > 0 && figureRows(kept, width, maxRows) > maxRows) {
-    const optional = kept.findLastIndex((item) => item.essential === false);
+    const optional = kept.findLastIndex((item) => item.essential !== true);
     kept.splice(optional >= 0 ? optional : kept.length - 1, 1);
   }
   return { figures: kept, maxLines: maxRows > 1 ? Math.max(maxRows, Math.floor(body * WRAPPED_FIGURE_SHARE)) : maxRows };
@@ -114,7 +114,7 @@ function fitFigures(figures: readonly StatItem[], width: number, maxRows: number
  */
 export function chartTableLayout(input: ChartTableLayoutInput): ChartTableLayout {
   const body = Math.max(0, Math.floor(input.height) - (input.queryRows ?? 0));
-  const essential = (input.figures ?? []).filter((item) => item.essential !== false);
+  const essential = (input.figures ?? []).filter((item) => item.essential === true);
   const essentialRows = figureRows(essential, input.width, body);
   const figureCap = Math.max(essentialRows, body < SHORT_BODY_ROWS ? 1 : Math.max(1, Math.floor(body * FIGURE_SHARE)));
   const layout = layoutWithFigureRows(input, body, figureCap);
@@ -143,7 +143,9 @@ function layoutWithFigureRows(input: ChartTableLayoutInput, body: number, figure
   const tableFit = chrome + tableRows;
 
   // A table with no room for a single row after the figures gets the body back.
-  const figureBudget = Math.min(figureCap, Math.max(0, body - chrome - Math.min(tableRows, 1)));
+  const essentialRows = figureRows((input.figures ?? []).filter((item) => item.essential === true), width, body);
+  const figureBudget = Math.min(figureCap, Math.max(0, body - tableMin,
+    Math.min(Math.max(1, essentialRows), body - chrome - Math.min(tableRows, 1))));
   const { figures, maxLines: figureMaxLines } = figureBudget > 0 ? fitFigures(input.figures ?? [], width, figureBudget, body) : { figures: [], maxLines: 0 };
   const shownRows = figures.length ? figureRows(figures, width, figureMaxLines) : 0;
 

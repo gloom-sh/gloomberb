@@ -92,14 +92,14 @@ test("the settlements table drives the shares-short chart and keeps its rows in 
   frame = tui.frame();
   expect(frame).toContain("2026-02-28");
   expect(frame).toContain("● Shares short 13M");
+  // Ten rows: one row of figures, the strip, and the table keeps its rows.
   await act(async () => { resize(10); tui.setup().resize(88, 10); });
   await settleFrame(tui.setup(), 6);
   frame = tui.frame();
   const lines = frame.split("\n");
   const header = lines.findIndex((line) => line.includes("DATE"));
-  expect(header).toBe(3);
-  expect(lines.slice(0, 2).join("\n")).toContain("Days to cover");
-  expect(lines[2]).toMatch(/^ ● [⠀-⣿]/);
+  expect(header).toBe(2);
+  expect(lines[1]).toMatch(/^ ● [⠀-⣿]/);
   expect(lines.slice(header + 1).filter((line) => /\d{4}-\d{2}-\d{2}/.test(line)).length).toBeGreaterThanOrEqual(4);
   expect(frame).not.toContain("● Shares short");
 });
