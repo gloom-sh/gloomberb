@@ -12,6 +12,8 @@ interface IssuerListing {
   name: string;
   /** The company's primary line. */
   primary: boolean;
+  /** The shares one lot trades in, where the line's exchange states it (an HKEX or SGX line); absent elsewhere. */
+  boardLot?: number;
 }
 
 export interface IssuerListings {

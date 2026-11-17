@@ -160,6 +160,7 @@ export function buildOverviewStats({
   depositaryPair = null,
   ahPair = null,
   cedearRatio = null,
+  boardLot = null,
   today,
   dividend,
   bond = null,
@@ -187,6 +188,8 @@ export function buildOverviewStats({
   ahPair?: { other: string; side: "h" | "a"; premiumPercent: number | null; linked: boolean } | null;
   /** A Buenos Aires CEDEAR's ratio in its company's shares, as Gloom Cloud serves it. */
   cedearRatio?: CedearRatio | null;
+  /** The shares one lot of the listing trades in, as its exchange states it (an HKEX or SGX line). */
+  boardLot?: number | null;
   /** The listing's calendar day, YYYY-MM-DD; dates before it are left out. */
   today?: string;
   /** The history the dividend yield reads (useOverviewDividend): a trailing one is measured from its cash, a forward one stops with it; without it the yield stands. */
@@ -252,6 +255,10 @@ export function buildOverviewStats({
   }
   if (finite(fundamentals?.floatShares) && fundamentals.floatShares > 0) {
     stats.push({ label: "Float", value: formatCompact(fundamentals.floatShares), ...counted(fundamentals.floatSharesAsOf) });
+  }
+  // The shares one lot trades in, which an order on the venue is sized by.
+  if (boardLot != null && Number.isSafeInteger(boardLot) && boardLot > 0) {
+    stats.push({ label: "Board Lot", value: boardLot.toLocaleString("en-US"), detail: ["shares", "sh"] });
   }
   // A receipt says how many shares it holds and a home line which receipt holds it, both opening ADR vs Home.
   if (depositaryPair) {

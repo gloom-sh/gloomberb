@@ -51,6 +51,25 @@ export function ahListingKey(symbol: string, exchange?: string | null): string {
   return listingKey({ symbol: suffixed?.symbol ?? parsed.symbol, exchange: canonicalExchange(parsed.exchange ?? suffixed?.exchange ?? exchange ?? "") });
 }
 
+/** Venues whose own lists state a line's board lot, which the company universe serves with its listings. */
+const BOARD_LOT_VENUES: ReadonlySet<string> = new Set(["HKEX", "SGX"]);
+
+/** Whether a listing trades on a venue that states its board lot (`BOARD_LOT_VENUES`), so its company's listings are worth reading for it. */
+export function statesBoardLot(symbol: string | null | undefined, exchange?: string | null): boolean {
+  return !!symbol && BOARD_LOT_VENUES.has(parsePublicTickerKey(ahListingKey(symbol, exchange)).exchange ?? "");
+}
+
+/**
+ * The shares one lot of a listing trades in, as its company's listings carry
+ * it: 500 for Zijin Mining's 2899:HKEX, 400 for HSBC's 0005:HKEX. Null where
+ * the listing is not among them or its lot is not a positive whole number.
+ */
+export function listingBoardLot(issuer: Pick<IssuerListings, "listings"> | null | undefined, symbol: string, exchange?: string | null): number | null {
+  const key = ahListingKey(symbol, exchange);
+  const lot = issuer?.listings.find((line) => listingKey(line) === key)?.boardLot;
+  return typeof lot === "number" && Number.isSafeInteger(lot) && lot > 0 ? lot : null;
+}
+
 /** Which line of the pair a listing is (`ahListingKey`); null for neither. */
 export function ahPairSide(pair: AhPair, symbol: string, exchange?: string | null): "h" | "a" | null {
   const key = ahListingKey(symbol, exchange);

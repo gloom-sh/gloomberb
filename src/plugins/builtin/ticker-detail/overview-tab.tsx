@@ -122,6 +122,8 @@ interface OverviewTabProps {
   dividend?: OverviewDividendState;
   /** An A+H company's other line and how the two prices compare (useAhPair); none for any other listing. */
   ah?: AhPairState | null;
+  /** The shares one lot of an HKEX or SGX line trades in (useListingBoardLot); none elsewhere. */
+  boardLot?: number | null;
   /** Where the ticker's snapshot load stands (useTickerSnapshotState), for the state shown before anything of it is in. */
   snapshot?: TickerSnapshotState;
   /** The rates `fn DES --tax-rate` set (taxRatesFromSettings): a fund's tax-equivalent yield and muni/Treasury ratio follow its facts. */
@@ -162,7 +164,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({
-  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, ah = null, tax = null,
+  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, ah = null, boardLot = null, tax = null,
   chartScale: chartScaleChoice = "auto", onChartScaleChange,
 }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
@@ -450,6 +452,7 @@ function ResolvedOverviewTab({
     depositaryReceipt: sharesOutstandingInReceipts(quote, fundamentals, description),
     depositaryPair: depositaryPair ? { pair: depositaryPair, receiptSide: isReceiptSide(financials) } : null,
     cedearRatio: listingCedearRatio(financials),
+    boardLot,
     // Report and ex-dividend dates are the listing's calendar days.
     today: zonedDateKey(Date.now(), chartTimeZone ?? "America/New_York"),
     dividend,
