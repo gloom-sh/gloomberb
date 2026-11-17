@@ -3,9 +3,11 @@ import type { GloomPlugin } from "../../types/plugin";
 import { createDefaultConfig } from "../../types/config";
 import { catalogSeriesFacts } from "../series-search";
 import type { MarketContext } from "../types";
-import { buildPaneCatalogEntries } from "./catalog";
+import { getHeadlessPaneDefinition } from "./capabilities";
+import { buildPaneCatalogEntries, buildPaneFunctionLookup } from "./catalog";
 import type { CatalogSnapshot, CatalogSnapshotEntry } from "./catalog-snapshot";
 import { createPaneCatalog } from "./discovery";
+import { namesFunction } from "./resolver";
 
 const SENTINEL_LIST = { id: "catalog-snapshot-list", name: "Catalog Snapshot List" };
 
@@ -45,7 +47,17 @@ export async function buildCatalogSnapshot(plugins: GloomPlugin[]): Promise<Cata
         ...(listed[index]?.argExamples?.length ?? 0) > (argExamples?.length ?? 0) ? { listArgument: true as const } : {},
       };
     });
-    return { entries, series: catalogSeriesFacts(plugins) };
+    // A coded function that reports data is found by the words that name it; `fn` then loads only its plugin.
+    const order = new Map(plugins.map((plugin, index) => [plugin.id, index]));
+    const functions: Record<string, string[]> = {};
+    for (const [word, found] of buildPaneFunctionLookup(registry)) {
+      if (!("paneId" in found && "description" in found) || !found.shortcut?.prefix) continue;
+      const pane = registry.panes.get(found.paneId);
+      const holders = [...new Set([owners.get(`template:${found.id}`), owners.get(`pane:${found.paneId}`)])]
+        .filter((id): id is string => !!id).sort((a, b) => order.get(a)! - order.get(b)!);
+      if (pane && holders.length > 0 && getHeadlessPaneDefinition(found, pane) && namesFunction(found, pane, word)) functions[word] = holders;
+    }
+    return { entries, series: catalogSeriesFacts(plugins), functions: Object.fromEntries(Object.entries(functions).sort(([a], [b]) => a.localeCompare(b))) };
   } finally {
     registry.destroy();
   }
@@ -56,5 +68,6 @@ export const CATALOG_SNAPSHOT_PATH = join(import.meta.dir, "catalog-snapshot.jso
 /** One line to a function and to a series, so a change to one reads as a change to one line. */
 export function renderCatalogSnapshot(snapshot: CatalogSnapshot): string {
   const lines = (rows: readonly unknown[]) => rows.map((row) => `    ${JSON.stringify(row)}`).join(",\n");
-  return `{\n  "entries": [\n${lines(snapshot.entries)}\n  ],\n  "series": [\n${lines(snapshot.series)}\n  ]\n}\n`;
+  const functions = Object.entries(snapshot.functions).map(([word, holders]) => `    ${JSON.stringify(word)}: ${JSON.stringify(holders)}`).join(",\n");
+  return `{\n  "entries": [\n${lines(snapshot.entries)}\n  ],\n  "series": [\n${lines(snapshot.series)}\n  ],\n  "functions": {\n${functions}\n  }\n}\n`;
 }

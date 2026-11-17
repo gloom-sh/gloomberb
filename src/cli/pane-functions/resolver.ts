@@ -67,6 +67,9 @@ import {
   type PaneFunctionCapability,
 } from "./capabilities";
 
+/** Plugins whose series a name that opens nothing is pointed at, or a function that gives them when that name is met. */
+type SeriesSources = readonly SeriesSource[] | (() => readonly SeriesSource[]);
+
 export interface ResolvedPaneFunction {
   token: string;
   label: string;
@@ -207,7 +210,7 @@ function withKeywordNote(registry: PaneFunctionCatalog, parsed: ParsedPaneFuncti
 }
 
 /** Whether a word is the function's code, an alias or a name, rather than one of its keywords. */
-function namesFunction(template: PaneTemplateDef | undefined, pane: PaneDef, word: string): boolean {
+export function namesFunction(template: PaneTemplateDef | undefined, pane: PaneDef, word: string): boolean {
   const wanted = normalizeLookupToken(word);
   const headless = getHeadlessPaneDefinition(template, pane);
   const names = [template?.shortcut?.prefix, ...template?.shortcut?.aliases ?? [], template?.id, template?.label, pane.id, pane.name,
@@ -468,7 +471,7 @@ async function unknownPaneFunctionError(
   name: string,
   arg: string,
   command: "fn" | "shot",
-  seriesSources: readonly SeriesSource[] = [],
+  seriesSources: SeriesSources = [],
   pluginStop?: PluginCodeStopFinder,
 ): Promise<UnknownPaneFunctionError> {
   // NIM is one slip from NI, but a bank figure is in `fundamentals`, not in a function's statement lines.
@@ -494,7 +497,7 @@ async function unknownPaneFunctionError(
   // One code is run on the argument; the functions a word asks for are each.
   const runs = suggested.length > 0 ? suggested : near.length === 1 ? near : [];
   // A word no function is near that names data ("nikkei") points at the series `catalog` finds for it.
-  const series = closest.length === 0 && near.length === 0 ? findCatalogSeries(seriesSources, name).slice(0, UNKNOWN_NAME_SERIES_LIMIT) : [];
+  const series = closest.length === 0 && near.length === 0 ? findCatalogSeries(typeof seriesSources === "function" ? seriesSources() : seriesSources, name).slice(0, UNKNOWN_NAME_SERIES_LIMIT) : [];
   const seriesWidth = Math.max(0, ...series.map((match) => match.expression.length));
   return new UnknownPaneFunctionError(name, [
     // A function a word asks for, typed with no argument, shows the one it takes (`<ticker>`).
@@ -519,8 +522,8 @@ export async function resolvePaneFunction(
     /** `fn`: a `--limit` or `--tail` the function takes no option for picks the report's rows (`rowWindow`). */
     rowWindow?: boolean;
     command?: "fn" | "shot";
-    /** The plugins whose catalog series a name that opens nothing is pointed at. */
-    seriesSources?: readonly SeriesSource[];
+    /** The plugins whose catalog series a name that opens nothing is pointed at; a function, to ask for them only then. */
+    seriesSources?: SeriesSources;
     /** Why a name that opens nothing is a plugin's code (`pluginCodeStop`). */
     pluginStop?: PluginCodeStopFinder;
   } = {},

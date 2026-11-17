@@ -20,6 +20,12 @@ export interface CatalogSnapshotEntry extends Omit<PaneCatalogEntry, "argExample
 export interface CatalogSnapshot {
   entries: CatalogSnapshotEntry[];
   series: CatalogSeriesFact[];
+  /**
+   * The built-in plugins a function that reports data (`fn`) is among, in catalog order (its template's, and its
+   * pane's when another plugin holds that), by every word that names it (its code, an alias, its id), as the whole
+   * catalog settles them. A word that only matches a keyword is not here.
+   */
+  functions: Record<string, string[]>;
 }
 
 /** The catalog entries as the app builds them for a reader whose first list is `listName`. */

@@ -9,6 +9,10 @@ import { buildPaneCatalogEntries, exampleListName } from "./catalog";
 import { readCatalogSnapshot, snapshotEntries } from "./catalog-snapshot";
 import { buildCatalogSnapshot, CATALOG_SNAPSHOT_PATH, renderCatalogSnapshot } from "./catalog-snapshot-build";
 import { createPaneCatalog } from "./discovery";
+import { loadBuiltinPlugin } from "../../plugins/catalog-lazy";
+import { getPaneFunctionCapability } from "./capabilities";
+import { paneFunctionCode } from "./catalog";
+import { findPaneFunction, parsePaneFunctionArgsFor } from "./resolver";
 
 const plugins = getLoadablePlugins([]);
 
@@ -58,3 +62,32 @@ test("the snapshot's series answer a search as the plugins' series do", () => {
     expect(findSeriesFacts(readCatalogSnapshot().series, query), query).toEqual(findCatalogSeries(plugins, query));
   }
 });
+
+test("a function the snapshot gives to one plugin resolves there as it does among all of them", async () => {
+  const context = { config: createDefaultConfig("/catalog-snapshot-test"), store: { loadAllTickers: async () => [] } } as unknown as MarketContext;
+  const all = await createPaneCatalog(context, plugins);
+  const own = new Map<string, Awaited<ReturnType<typeof createPaneCatalog>>>();
+  try {
+    const { functions } = readCatalogSnapshot();
+    expect(Object.keys(functions).length).toBeGreaterThan(100);
+    for (const [word, holders] of Object.entries(functions)) {
+      const key = holders.join("+");
+      if (!own.has(key)) own.set(key, await createPaneCatalog(context, holders.map((id) => loadBuiltinPlugin(id)!)));
+      const alone = own.get(key)!;
+      const found = findPaneFunction(all, word);
+      const foundAlone = findPaneFunction(alone, word);
+      expect(foundAlone?.template?.id, word).toBe(found?.template?.id);
+      expect(foundAlone?.pane?.id, word).toBe(found?.pane?.id);
+      expect(paneFunctionCode(foundAlone!.template, foundAlone!.pane!, alone), word).toBe(paneFunctionCode(found!.template, found!.pane!, all));
+      expect(JSON.stringify(getPaneFunctionCapability(foundAlone!.template, foundAlone!.pane!)), word)
+        .toBe(JSON.stringify(getPaneFunctionCapability(found!.template, found!.pane!)));
+      expect(JSON.stringify(parsePaneFunctionArgsFor(alone, [word, "AAPL", "--limit", "5"])), word)
+        .toBe(JSON.stringify(parsePaneFunctionArgsFor(all, [word, "AAPL", "--limit", "5"])));
+    }
+    // A keyword, which only names a function loosely, is not sent to a plugin.
+    expect(functions["holdings"]).toBeUndefined();
+  } finally {
+    all.destroy();
+    for (const registry of own.values()) registry.destroy();
+  }
+}, 60_000);

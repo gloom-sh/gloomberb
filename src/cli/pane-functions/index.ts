@@ -19,6 +19,7 @@ import { createPaneCatalog } from "./discovery";
 import { getHeadlessPaneDefinition } from "./capabilities";
 import { catalogFredSeriesIds, findCatalogSeries, findSeriesFacts, type SeriesMatch } from "../series-search";
 import {
+  normalizeLookupToken,
   parsePaneCatalogArgs,
   parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
@@ -42,6 +43,7 @@ import {
   type PaneCatalogEntry,
 } from "./catalog";
 import { readCatalogSnapshot, snapshotEntries } from "./catalog-snapshot";
+import { loadBuiltinPlugin } from "../../plugins/catalog-lazy";
 import { incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 import {
@@ -84,11 +86,11 @@ async function withPaneRuntime<T>(
   return withMarketData(ctx, async (market) => {
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
     // `shot` draws a pane as the desktop app does, so it also opens the panes of plugins only the desktop app runs (Gloom Social).
-    const plugins = settings.command === "shot" ? [...ctx.plugins, ...desktopOnlyPlugins(ctx)] : ctx.plugins;
+    const plugins = settings.command === "shot" ? [...ctx.plugins, ...desktopOnlyPlugins(ctx)] : await pluginsOfFunction(ctx, context, args);
     const registry = await createPaneCatalog(context, plugins);
     try {
       let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
-      const resolution = { ...settings, seriesSources: ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
+      const resolution = { ...settings, seriesSources: () => ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
       let resolved = await resolvePaneFunction(registry, context, parsed, resolution);
       // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
       const expansion = await withPersistedCloudSession(context, () => expandResolvedArgument(resolved, context, parsed.arg));
@@ -101,6 +103,25 @@ async function withPaneRuntime<T>(
       registry.destroy();
     }
   });
+}
+
+/**
+ * The plugins `fn` resolves a function among. A coded function that reports data, of a built-in plugin, is
+ * opened by that plugin and the one that holds its pane (`catalog-snapshot.json` says which), so the other plugins'
+ * code is not loaded to run it. Any other word, and any command line with an installed or switched-off plugin, asks them all.
+ */
+async function pluginsOfFunction(ctx: CliCommandContext, context: MarketContext, args: string[]): Promise<GloomPlugin[]> {
+  if ((context.config.disabledPlugins ?? []).length > 0 || await installedPluginCount(ctx) > 0) return ctx.plugins;
+  let target: string;
+  try {
+    target = parsePaneFunctionArgs(args, ctx.cliOptions).target;
+  } catch {
+    // Intentional ignore: arguments that do not parse fail where they are parsed for the function.
+    return ctx.plugins;
+  }
+  const holders = target ? readCatalogSnapshot().functions[normalizeLookupToken(target)] : undefined;
+  const found = holders?.flatMap((id) => loadBuiltinPlugin(id) ?? []);
+  return found?.length ? found : ctx.plugins;
 }
 
 /** Installed plugins the command line does not run but the desktop app does, which `shot` draws as it does. */

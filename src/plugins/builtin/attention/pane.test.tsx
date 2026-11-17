@@ -10,7 +10,7 @@ import type { AttentionPayload } from "../../../api-client/attention";
 import { attentionCache } from "./client";
 import { AttentionPane } from "./pane";
 import { attentionFixture, attentionPreview } from "./test-fixture";
-import { altDataPlugin } from "../composite-plugins";
+import { altDataPlugin } from "../composite/alt-data";
 const tui = createOpenTuiTestHarness();
 afterEach(() => { apiClient.setSessionToken(null); setCloudApiFetchTransport(null); attentionCache.reset(); });
 async function mount(data: AttentionPayload, settings: Record<string, unknown> = {}, respond?: (url: string) => AttentionPayload) {
