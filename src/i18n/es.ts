@@ -1620,7 +1620,6 @@ export const es: Record<string, string> = {
   "AI assistant": "Asistente de IA",
   "Friend or colleague": "Un amigo o colega",
   "Article or newsletter": "Un artículo o newsletter",
-  "Enter answer · Esc skip": "Enter responder · Esc omitir",
   "Where?": "¿Dónde?",
   "Skip": "Omitir",
   "Equities": "Renta variable",

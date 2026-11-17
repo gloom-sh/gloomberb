@@ -1615,7 +1615,6 @@ export const ko: Record<string, string> = {
   "AI assistant": "AI 어시스턴트",
   "Friend or colleague": "친구 또는 동료",
   "Article or newsletter": "기사 또는 뉴스레터",
-  "Enter answer · Esc skip": "Enter 답변 · Esc 건너뛰기",
   "Where?": "어디서?",
   "Skip": "건너뛰기",
   "Equities": "주식",

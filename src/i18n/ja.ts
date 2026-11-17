@@ -1617,7 +1617,6 @@ export const ja: Record<string, string> = {
   "AI assistant": "AI アシスタント",
   "Friend or colleague": "友人・同僚",
   "Article or newsletter": "記事・ニュースレター",
-  "Enter answer · Esc skip": "Enter 回答 · Esc スキップ",
   "Where?": "どこで？",
   "Skip": "スキップ",
   "Equities": "株式",

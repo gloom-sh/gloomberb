@@ -1617,7 +1617,6 @@ export const zhTW: Record<string, string> = {
   "AI assistant": "AI 助理",
   "Friend or colleague": "朋友或同事",
   "Article or newsletter": "文章或電子報",
-  "Enter answer · Esc skip": "Enter 回答 · Esc 略過",
   "Where?": "在哪裡？",
   "Skip": "略過",
   "Equities": "股票",

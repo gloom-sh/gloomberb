@@ -55,8 +55,8 @@ export interface HeardFromQuestionDeps {
   reportShown(): Promise<void>;
   answer(answer: HeardFromAnswer, note?: string): Promise<void>;
   skip(): Promise<void>;
-  /** Shows the question and resolves with the choice. */
-  ask(): Promise<HeardFromChoice>;
+  /** Shows the question and resolves with the choice; `shown` is called once it is on screen. */
+  ask(shown: () => void): Promise<HeardFromChoice>;
 }
 
 export type HeardFromOutcome = "not-asked" | "answered" | "skipped";
@@ -75,10 +75,15 @@ export async function runHeardFromQuestion(deps: HeardFromQuestionDeps): Promise
     return "not-asked";
   }
   if (!state.ask) return "not-asked";
-  deps.reportShown().catch(logFailure("heard-from", "Reporting the question shown failed"));
+  let reported = false;
+  const shown = () => {
+    if (reported) return;
+    reported = true;
+    deps.reportShown().catch(logFailure("heard-from", "Reporting the question shown failed"));
+  };
   let choice: HeardFromChoice;
   try {
-    choice = await deps.ask();
+    choice = await deps.ask(shown);
   } catch (error) {
     logFailure("heard-from", "Showing the question failed")(error);
     return "not-asked";

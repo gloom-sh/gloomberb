@@ -3,6 +3,7 @@ import { act } from "react";
 import { apiClient, type AuthUser } from "../api-client";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { blockExternalNetwork } from "../test-support/network-guard";
+import { holdSetupCard } from "../components/onboarding/setup-cards";
 import { markHeardFromDue, takeHeardFromDue } from "./heard-from";
 import { HeardFromQuestionHost } from "./heard-from-question";
 
@@ -72,6 +73,24 @@ describe("the question in the app", () => {
     await press("a podcast", "enter");
     await tui.waitForFrameToExclude(TITLE);
     expect(calls).toEqual(["shown", "other: a podcast"]);
+  });
+
+  test("waits for the card already up (the companies to follow) to close", async () => {
+    const calls = signedInAs(true);
+    const release = holdSetupCard();
+    await tui.render(<HeardFromQuestionHost />, { width: 100, height: 40 });
+    await act(async () => markHeardFromDue("u1"));
+    await act(async () => {
+      await Bun.sleep(50);
+      await tui.setup().renderOnce();
+    });
+    expect(tui.frame()).not.toContain(TITLE);
+    expect(calls).toEqual([]);
+    await act(async () => release());
+    await tui.waitForFrameToContain(TITLE);
+    expect(calls).toEqual(["shown"]);
+    await press("escape");
+    await tui.waitForFrameToExclude(TITLE);
   });
 
   test("an account the service has settled is never shown it", async () => {

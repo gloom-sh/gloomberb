@@ -29,7 +29,9 @@ function deps({ state, choice = null, fail }: {
         if (fail === "writes") throw new Error("offline");
       },
       skip: write("skip"),
-      ask: async () => {
+      ask: async (shown: () => void) => {
+        shown();
+        shown();
         calls.push("asked");
         return choice;
       },

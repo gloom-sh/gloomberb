@@ -1617,7 +1617,6 @@ export const zhCN: Record<string, string> = {
   "AI assistant": "AI 助手",
   "Friend or colleague": "朋友或同事",
   "Article or newsletter": "文章或新闻通讯",
-  "Enter answer · Esc skip": "Enter 回答 · Esc 跳过",
   "Where?": "在哪里？",
   "Skip": "跳过",
   "Equities": "股票",
