@@ -1615,6 +1615,13 @@ export const es: Record<string, string> = {
   "TICKERS": "TICKERS",
   "Which tickers do you follow?": "¿Qué tickers sigues?",
   "Pick up to 3 for your watchlist.": "Elige hasta 3 para tu lista de seguimiento.",
+  // "Where did you hear about Gloom?", once, after an account signs up
+  "Where did you hear about Gloom?": "¿Dónde conociste Gloom?",
+  "AI assistant": "Asistente de IA",
+  "Friend or colleague": "Un amigo o colega",
+  "Article or newsletter": "Un artículo o newsletter",
+  "Enter answer · Esc skip": "Enter responder · Esc omitir",
+  "Where?": "¿Dónde?",
   "Skip": "Omitir",
   "Equities": "Renta variable",
   "Futures & commodities": "Futuros y materias primas",

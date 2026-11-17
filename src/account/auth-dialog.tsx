@@ -14,6 +14,7 @@ import { clickOutsideWhileClean } from "../ui/dialog-stack";
 import { AuthForm, authFormTitle } from "./auth-form";
 import type { AccountMode } from "./auth-model";
 import { CloudVerificationPanel } from "./verification-panel";
+import { markHeardFromDue } from "./heard-from";
 
 function AuthDialog({
   initialMode,
@@ -57,6 +58,8 @@ export interface AuthDialogRequest {
   /** What asked for it, under the title: the delayed mark says what is delayed and by how much. */
   reason?: string;
   onSignedIn?: (user: AuthUser) => void;
+  /** The sign-in goes on to a checkout: nothing else is asked before it. */
+  checkout?: boolean;
 }
 
 const authDialogListeners = new Set<(request: AuthDialogRequest) => void>();
@@ -106,7 +109,10 @@ export function AuthDialogHost() {
           ),
         })
         .then((user) => {
-          if (user) request.onSignedIn?.(user);
+          if (!user) return;
+          request.onSignedIn?.(user);
+          // Where it heard about Gloom, once the dialog and what follows it have closed.
+          if (!request.checkout) markHeardFromDue(user.id);
         })
         .finally(() => {
           openRef.current = false;

@@ -1610,6 +1610,13 @@ export const ko: Record<string, string> = {
   "TICKERS": "종목",
   "Which tickers do you follow?": "어떤 종목을 팔로우하시나요?",
   "Pick up to 3 for your watchlist.": "관심 목록에 넣을 종목을 최대 3개까지 고르세요.",
+  // "Where did you hear about Gloom?", once, after an account signs up
+  "Where did you hear about Gloom?": "Gloom을 어디서 알게 되셨나요?",
+  "AI assistant": "AI 어시스턴트",
+  "Friend or colleague": "친구 또는 동료",
+  "Article or newsletter": "기사 또는 뉴스레터",
+  "Enter answer · Esc skip": "Enter 답변 · Esc 건너뛰기",
+  "Where?": "어디서?",
   "Skip": "건너뛰기",
   "Equities": "주식",
   "Futures & commodities": "선물 및 원자재",

@@ -5,6 +5,7 @@ import { chatController } from "../plugins/builtin/chat/controller";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { blockExternalNetwork } from "../test-support/network-guard";
 import { AuthDialogHost, isAuthDialogOpen, requestAuthDialog } from "./auth-dialog";
+import { heardFromDueAccount, takeHeardFromDue } from "./heard-from";
 
 blockExternalNetwork();
 const tui = createOpenTuiTestHarness();
@@ -107,5 +108,49 @@ describe("sign-up dialog", () => {
     await clickClose("Confirm ana@example.com");
     await tui.waitForFrameToExclude("Confirm ana@example.com");
     expect(isAuthDialogOpen()).toBe(false);
+  });
+});
+
+// "Where did you hear about Gloom?" follows a sign-up from this dialog, never one on its way to a checkout.
+describe("the question after a sign-up", () => {
+  async function signUpThrough(request: Parameters<typeof requestAuthDialog>[0]) {
+    const user = { id: "u-new", email: "new@example.com", emailVerified: true } as AuthUser;
+    spies.push(
+      spyOn(apiClient, "signUp").mockResolvedValue(user),
+      spyOn(apiClient, "getCurrentUser").mockReturnValue(user),
+      spyOn(apiClient, "getSessionToken").mockReturnValue(null),
+      spyOn(apiClient, "getSession").mockResolvedValue(user),
+      spyOn(chatController, "refreshSession").mockResolvedValue(undefined as never),
+    );
+    await tui.render(<AuthDialogHost />, { width: 100, height: 40 });
+    await act(async () => {
+      expect(requestAuthDialog(request)).toBe(true);
+    });
+    await tui.waitForFrameToContain("Create your free Gloom Cloud account");
+    for (const step of [
+      () => tui.setup().mockInput.typeText("new@example.com"),
+      () => tui.setup().mockInput.pressTab(),
+      () => tui.setup().mockInput.typeText("correct horse battery"),
+      () => tui.setup().mockInput.pressEnter(),
+    ]) {
+      await act(async () => {
+        await step();
+        await tui.setup().renderOnce();
+      });
+    }
+    await tui.waitForFrameToExclude("Create your free Gloom Cloud account");
+  }
+
+  test("is due once the dialog closes on a new account", async () => {
+    let continued = false;
+    await signUpThrough({ mode: "signup", onSignedIn: () => { continued = true; } });
+    expect(continued).toBe(true);
+    expect(heardFromDueAccount()).toBe("u-new");
+    takeHeardFromDue("u-new");
+  });
+
+  test("is never due when the sign-up goes on to a checkout", async () => {
+    await signUpThrough({ mode: "signup", onSignedIn: () => {}, checkout: true });
+    expect(heardFromDueAccount()).toBeNull();
   });
 });

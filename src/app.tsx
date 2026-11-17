@@ -20,6 +20,7 @@ import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
+import { HeardFromQuestionHost } from "./account/heard-from-question";
 import { useRunSetupAgain } from "./components/onboarding/run-setup-again";
 import { CompanyPickerHost } from "./plugins/builtin/cloud/company-picker";
 import { TerminalRelayHost } from "./plugins/builtin/cloud/terminal-relay/host";
@@ -587,6 +588,7 @@ function AppInner({
           </TransientLayoutProvider>
           {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}
           {initialized && !onboardingActive && !signInGateActive ? <AttentionCountsNotice notify={notifyRequest} /> : null}
+          {initialized && !onboardingActive && !signInGateActive ? <HeardFromQuestionHost /> : null}
           <TerminalRelayHost device={remoteControlAdapter?.terminalDevice} />
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard

@@ -1612,6 +1612,13 @@ export const zhTW: Record<string, string> = {
   "TICKERS": "標的",
   "Which tickers do you follow?": "你關注哪些標的？",
   "Pick up to 3 for your watchlist.": "最多選 3 個加入自選清單。",
+  // "Where did you hear about Gloom?", once, after an account signs up
+  "Where did you hear about Gloom?": "你是從哪裡知道 Gloom 的？",
+  "AI assistant": "AI 助理",
+  "Friend or colleague": "朋友或同事",
+  "Article or newsletter": "文章或電子報",
+  "Enter answer · Esc skip": "Enter 回答 · Esc 略過",
+  "Where?": "在哪裡？",
   "Skip": "略過",
   "Equities": "股票",
   "Futures & commodities": "期貨與大宗商品",
