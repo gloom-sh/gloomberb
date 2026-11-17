@@ -128,7 +128,7 @@ import {
 } from "../../utils/exchange-announcements";
 import { dailyFxLeg, fxCloseOnDate, fxCloseOnOrBefore, loadDailyFxCloses, type FxCloseReading } from "../../market-data/fx-closes";
 import { zonedDateTimeParts } from "../../utils/zoned-date-time";
-import { declaredDividends } from "../../utils/declared-dividends";
+import { declaredDividendCash, declaredDividends } from "../../utils/declared-dividends";
 import {
   DEFAULT_LEAPS_CRITERIA, LEAPS_EXTRA_COLUMNS, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions,
 } from "./options-leaps";
@@ -1159,12 +1159,16 @@ function corporateActionRows(data: CorporateActionsData) {
       detail: currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount),
     })),
     // Declared and unpaid, at its ex-date beside the paid rows, never one of them.
-    ...declaredDividends(data).map((event) => ({
-      type: "dividend",
-      date: event.exDate,
-      detail: `declared ${event.special ? "special " : ""}${currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount)}`
-        + (event.payDate ? `, payable ${event.payDate}` : ""),
-    })),
+    ...declaredDividends(data).map((event) => {
+      const cash = declaredDividendCash(event, currency);
+      return {
+        type: "dividend",
+        date: event.exDate,
+        detail: `declared ${event.special ? "special " : ""}${currency || event.cashEstimate ? cash.amount : cleanDecimal(event.amount)}${cash.estimate ? `, ${cash.estimate}` : ""}`
+          + (event.payDate ? `, payable ${event.payDate}` : ""),
+        ...(event.cashEstimate ? { cashEstimate: event.cashEstimate } : {}),
+      };
+    }),
     // In share terms where the factor states them (11-for-10, 1 new share for every 10 held), else as its source writes it.
     ...data.splits.map((event) => ({
       type: "split",
