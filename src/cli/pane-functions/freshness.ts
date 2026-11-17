@@ -8,7 +8,7 @@ import type {
   HeadlessSeriesResult,
   HeadlessSnapshotResult,
 } from "../../types/plugin";
-import { localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/utc-time";
+import { formatUtcTime, localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/utc-time";
 import { timeZoneLabel, zonedDateTimeParts } from "../../utils/zoned-date-time";
 import { isRecord } from "../../utils/guards";
 import { latestRegularSessionClose, readIndexSession } from "../../market-data/market/freshness";
@@ -1361,6 +1361,9 @@ export function statusLineVariants(freshness: ReportFreshness, { source = false 
     ? [{}, ...details.map((detail) => ({ ...detail, date: "none" as const })), { ...shortest, date: "none", note: "none" }]
     : [...details, ...trailing];
   const lines = [...new Set(variants.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
+  if (freshness.status === "not-a-feed" && freshness.asOf?.includes("T") && !freshness.sources?.length && !freshness.oldest && !freshness.staleCount) {
+    lines.push(formatUtcTime(freshness.asOf));
+  }
   // A line that dates each source names them already.
   if (!source || freshness.sources?.length) return lines;
   const sourced = [...new Set(variants.map((detail) => [`Source: ${freshness.source}`, ...statusLineParts(freshness, detail)].join(" · ")))];

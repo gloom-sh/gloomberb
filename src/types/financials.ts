@@ -666,6 +666,8 @@ export interface AnalystResearchData {
 export interface DividendAction {
   exDate: string;
   amount: number;
+  payDate?: string;
+  recordDate?: string;
   /**
    * Who published the row when it is not the listing's own history: a fund's
    * sponsor, for a distribution the history lacks (iShares, SPDR, J.P. Morgan,
@@ -783,6 +785,9 @@ export interface DemergerAction {
 export interface DeclaredCash {
   currency: string;
   rows: DividendAction[];
+  announced?: { exDate: string; payDate: string; amount: number; paidAmount?: number; fixingDate?: string };
+  fetchedAt?: string;
+  stale?: boolean;
 }
 
 export interface CompanyProfile {

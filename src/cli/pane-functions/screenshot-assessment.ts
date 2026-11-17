@@ -139,7 +139,8 @@ export function assessPaneScreenshot(
   const unavailableSymbols = usesLiveDomEvidence
     ? []
     : shotUnavailableSymbols(resolved, payload, render.semanticUi);
-  const complete = unavailableSymbols.length === 0;
+  const figureGaps = essentialFigureMismatches(render);
+  const complete = unavailableSymbols.length === 0 && figureGaps.length === 0 && !render.statusLine?.includes("…");
   const expectedText = shotExpectedText(resolved, symbols, payload);
   const normalizedVisibleText = render.visibleText.toLowerCase();
   const missingExpectedText = expectedText.filter((value) => !shotShowsText(normalizedVisibleText, value));
@@ -156,6 +157,8 @@ export function assessPaneScreenshot(
     ...paneEvidenceMismatches(resolved, payload, render),
     ...financialRatioRenderMismatches(resolved, payload, render),
     ...surfaceNotDrawnMismatches(render),
+    ...figureGaps,
+    ...(render.statusLine?.includes("…") ? ["The as-of status line is clipped."] : []),
   ];
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
@@ -439,6 +442,19 @@ function plotsData(node: RemoteUiNodeSnapshot): boolean {
   const lists = [metadata.series, metadata.baseSeries, metadata.resolvedSeries].filter(Array.isArray);
   if (lists.length === 0) return true;
   return lists.some((list) => list.some((series) => isRecord(series) && typeof series.pointCount === "number" && series.pointCount > 0));
+}
+
+export function essentialFigureMismatches(render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "visibleText">): string[] {
+  return render.semanticUi.filter((node) => node.role === "figure-layout").flatMap((node) => {
+    const metadata = node.metadata;
+    if (!isRecord(metadata) || !Array.isArray(metadata.figures) || !Array.isArray(metadata.omitted)) return ["Essential figure evidence is unavailable."];
+    const omitted = metadata.omitted;
+    return metadata.figures.flatMap((figure) => {
+      if (!isRecord(figure) || typeof figure.label !== "string" || typeof figure.value !== "string") return ["Essential figure evidence is invalid."];
+      return omitted.includes(figure.label) || !shotShowsText(render.visibleText, figure.label) || !shotShowsText(render.visibleText, figure.value)
+        ? [`Essential figure is missing or clipped: ${figure.label}.`] : [];
+    });
+  });
 }
 
 /**

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import {
   assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, liveDomRowCount, missingActiveTabSelections, shotCutColumnsWarning, shotLoadedNothing,
-  shotShowsText, shotTableRows,
+  shotShowsText, shotTableRows, essentialFigureMismatches,
 } from "./screenshot-assessment";
 import { buildDesktopShotPayload } from "./screenshot-payload";
 import { chartSeriesEvidenceWithinRange, chartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
@@ -20,6 +20,15 @@ import { paneStateMarkers, type DesktopPaneShotPayload, type DesktopPaneShotRend
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
+
+test("a dropped essential figure is a screenshot gap even when its table holds the same value", () => {
+  const semanticUi = [{ id: "figures", role: "figure-layout", label: "Essential figures", actions: [],
+    metadata: { figures: [{ label: "Next ex", value: "2026-11-19" }], omitted: ["Next ex"] } }];
+  expect(essentialFigureMismatches({ semanticUi, visibleText: "Next ex 2026-11-19" })).toHaveLength(1);
+  semanticUi[0]!.metadata.omitted = [];
+  expect(essentialFigureMismatches({ semanticUi, visibleText: "Next ex 2026-11-19" })).toEqual([]);
+  expect(essentialFigureMismatches({ semanticUi, visibleText: "Next ex 2026-11…" })).toHaveLength(1);
+});
 import type { MarketContext } from "../types";
 import { createSnapshotDataProvider } from "../../market-data/snapshot-provider";
 import { volatilitySemanticEvidence } from "../../plugins/builtin/volatility/evidence";

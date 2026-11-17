@@ -10,6 +10,7 @@ import { PriceSparkline } from "../price-sparkline/view";
 import { StatGrid, type StatItem } from "../ui/stat-grid";
 import type { TableWidthColumn } from "../ui/table-layout";
 import { CHART_COMPACT_ROWS, chartTableChromeRows, chartTableLayout, type ChartTableLayout } from "./layout";
+import { useRemoteUiNode } from "../../remote/semantic-tree";
 
 const DAY_MS = 86_400_000;
 /** Daily series shorter than this still span two weeks, so the axis reads days, not hours. */
@@ -205,6 +206,14 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
   const { width, query, chart } = props;
   const colors = useThemeColors();
   const layout = useChartTableLayout(props);
+  const essential = props.figures?.filter((item) => item.essential !== false) ?? [];
+  useRemoteUiNode(essential.length ? {
+    role: "figure-layout", label: "Essential figures",
+    metadata: {
+      figures: essential.map(({ label, value }) => ({ label, value })),
+      omitted: essential.filter((item) => !layout.figures.includes(item)).map((item) => item.label),
+    },
+  } : null);
   const series = chart?.series;
   const viewport = useMemo(() => {
     if (chart?.viewport || !series?.length) return chart?.viewport;

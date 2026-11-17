@@ -712,15 +712,17 @@ the same way:
 
 | Pane body | Figures | Band | Table |
 |---|---|---|---|
-| Room for the chart (six rows: legend, four plot rows, axis) and the table's header plus four rows | up to a quarter of the body, trimmed from the end | the chart, 40% of what the figures leave, or all the rows a short table does not need | the rest; all its rows when they fit |
-| Less room, but the whole table fits with four rows to spare | up to a quarter of the body | a compact chart in the spare rows | all its rows |
-| Too short for either | one row | one row: `● label` sparkline value | the rest |
-| Shorter still, or narrower than 24 columns | one row | none | the rest |
+| Room for the chart (six rows: legend, four plot rows, axis) and the table's header plus four rows | required figures, optional figures up to a quarter of the body | the chart, 40% of what the figures leave, or all the rows a short table does not need | the rest; all its rows when they fit |
+| Less room, but the whole table fits with four rows to spare | required figures first | a compact chart in the spare rows | all its rows |
+| Too short for either | required figures before optional ones | one row: `● label` sparkline value | the rest |
+| Shorter still, or narrower than 24 columns | figures that fit above the table's header and one row | none | the rest |
 
-- The table keeps its header and four rows (all of them when it has fewer)
-  at every size; the chart gives way first, then the second row of figures.
-- Figures are listed most important first; the ones at the end go when rows
-  run short, and the strip leaves out what the remaining figures already say.
+- Figures are required by default. Only figures explicitly marked `essential: false`
+  may give way to the chart. Required dates and values take room from the chart
+  before the table, which keeps its header and at least one row.
+- Figures are listed most important first. When even required figures cannot fit,
+  captures report the missing figures and do not certify the picture complete.
+  The strip leaves out what the remaining figures already say.
 - A short table never leaves a blank band: the chart grows into its spare rows.
 - Custom charts (curves, scatters) pass their own `minRows` and a `strip`;
   content with a natural height (a few bars) passes `maxRows` and the table

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { buildDividendMetrics, fetchDividendData, repriceDividendMetrics, toDividendPayment } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment } from "./types";
@@ -10,7 +10,7 @@ import { chartResponse, marketTransport, summaryFields } from "./test-fixture";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 
-afterEach(() => setHttpFetchTransport(null));
+afterEach(() => { setHttpFetchTransport(null); setSystemTime(); });
 
 const now = new Date("2026-09-10T12:00:00Z");
 function payment(date: string, amount = 0.5, currency = "USD"): DividendPayment {
@@ -18,6 +18,36 @@ function payment(date: string, amount = 0.5, currency = "USD"): DividendPayment 
 }
 
 describe("cash distribution calculations", () => {
+  test("issuer-paid cash and an unfixed declared currency retain dates and estimated forward provenance", async () => {
+    setSystemTime(new Date("2026-11-17T06:00:00Z"));
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: {
+      currency: "GBP", trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
+      forwardAnnualDividendRate: 0.03941926, forwardRateAsOf: "2026-11-19", exDividendDate: null, dividendDate: null,
+    }, actions: {
+      symbol: "VOD", currency: "GBP", coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: [{ exDate: "2026-06-04", amount: 0.0201294, payDate: "2026-07-30" }, { exDate: "2025-11-20", amount: 0.0195116 }],
+      declaredCash: { currency: "EUR", rows: [{ exDate: "2026-06-04", amount: 0.023625 }],
+        announced: { exDate: "2026-11-19", payDate: "2027-02-03", amount: 0.02306, fixingDate: "2027-01-27" } },
+    } } }));
+    const data = await fetchDividendData("VOD", 1.177, "LSE", "GBP");
+    expect(data.payments[0]).toMatchObject({ amount: 0.0201294, paymentDate: new Date("2026-07-30"), declared: { amount: 0.023625, currency: "EUR" } });
+    expect(data.metrics).toMatchObject({ nextExDividendDate: new Date("2026-11-19"), nextPayDate: new Date("2027-02-03"),
+      forwardEstimate: { declaredAmount: 0.02306, declaredCurrency: "EUR", fixingDate: "2027-01-27" } });
+    const request = { rawArgument: "VOD:LSE", argument: "VOD:LSE", symbols: ["VOD:LSE"], options: {} };
+    const result = projectDividendYieldHeadless(data, request);
+    expect(result.metadata).toMatchObject({ forwardRateEstimate: { declaredCurrency: "EUR" }, nextPayDateStatus: "announced" });
+    const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
+    expect(text).toContain("£0.0201294");
+    expect(text).toContain("estimated from 0.02306 EUR/share; FX fixing 2027-01-27");
+    expect(text).toContain("2027-02-03");
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
+      symbol: "VOD", currency: "GBP", coverage: { dividends: "available" }, splits: [], earnings: [], dividends: [],
+      declaredCash: { currency: "EUR", rows: [], announced: { exDate: "2026-11-19", payDate: "2027-02-03", amount: 0.02306 } },
+    } } }));
+    const withoutSummary = await fetchDividendData("VOD", 1.177, "LSE", "GBP");
+    expect(withoutSummary.metrics.nextPayDate).toEqual(new Date("2027-02-03"));
+    expect(withoutSummary.summaryError).not.toContain("pay date");
+  });
   test("native income keeps the listing's ex-date when its session starts on the previous UTC date", async () => {
     const timestamp = Date.parse("2026-01-01T23:00:00Z") / 1000;
     setHttpFetchTransport(marketTransport(async (url) => {
@@ -204,7 +234,7 @@ describe("cash distribution calculations", () => {
     expect(buildDividendMetrics(hsba.filter((entry) => entry.amount !== 0.075079), stated, 13.654, { now: late }).forwardRate).toBe(0.296536);
   });
 
-  test("a London line of a dollar payer keeps its pence to two decimals beside each declared amount, and a kept history is dated", async () => {
+  test("a London line of a dollar payer retains paid pence precision beside each declared amount, and a kept history is dated", async () => {
     setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
       symbol: "BP", currency: "GBp", stale: true, fetchedAt: "2026-10-27T03:00:00.000Z", dividendsAsOf: "2026-10-20T02:31:00.000Z",
       coverage: { dividends: "available" }, splits: [], earnings: [],
@@ -225,10 +255,9 @@ describe("cash distribution calculations", () => {
     expect(history.columns?.map((column) => column.key)).toEqual(["exDate", "amount", "declared", "currency", "type"]);
     expect(history.rows?.[0]).toMatchObject({ amount: 0.064059, declared: 0.0867, declaredCurrency: "USD" });
     expect(result.metadata).toMatchObject({ convertedFrom: "USD" });
-    // Pence stay pence: 6.4059p reads 6.41p, never £0.06.
     const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, { rawArgument: "BP:LSE", argument: "BP:LSE", symbols: ["BP:LSE"], options: {} }, "DVD");
-    expect(text).toMatch(/2026-08-13 +6\.41p +\$0\.0867 +GBP/);
-    expect(text).toMatch(/Trailing rate +12\.59p \(converted from USD\)/);
+    expect(text).toMatch(/2026-08-13 +6\.4059p +\$0\.0867 +GBP/);
+    expect(text).toMatch(/Trailing rate +12\.5903p \(converted from USD\)/);
     expect(text).not.toContain("£0.06");
   });
 
@@ -255,7 +284,7 @@ describe("cash distribution calculations", () => {
       .toEqual(["exDate", "amount", "currency", "type"]);
   });
 
-  test("a rand line of a dollar payer rounds its cents to two decimals and says they are converted from USD, even with no declared row beside them", async () => {
+  test("a rand line of a dollar payer retains cash precision and says it is converted from USD, even with no declared row beside it", async () => {
     setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
       symbol: "S32", currency: "ZAc", fetchedAt: "2026-10-29T18:39:54.600Z", coverage: { dividends: "available" }, splits: [], earnings: [],
       dividends: [{ exDate: "2026-03-04", amount: 62.2114 }, { exDate: "2026-09-16", amount: 86.6087 }],
@@ -266,9 +295,9 @@ describe("cash distribution calculations", () => {
     const request = { rawArgument: "S32:JSE", argument: "S32:JSE", symbols: ["S32:JSE"], options: {} };
     const result = projectDividendYieldHeadless(data, request);
     const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
-    expect(text).toMatch(/Trailing rate +148\.82c \(converted from USD\)/);
+    expect(text).toMatch(/Trailing rate +148\.8201c \(converted from USD\)/);
     expect(text).toContain("Dividend history (amounts converted from USD)");
-    expect(text).toMatch(/2026-09-16 +86\.61c +ZAR +cash/);
+    expect(text).toMatch(/2026-09-16 +86\.6087c +ZAR +cash/);
     expect(text).not.toContain("0.866087");
     // The exports keep the amount as read.
     expect(result.sections[1]!.rows![0]).toMatchObject({ amount: 0.866087, currency: "ZAR" });

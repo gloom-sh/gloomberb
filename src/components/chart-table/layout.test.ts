@@ -3,15 +3,33 @@ import { statGridRows, type StatItem } from "../ui/stat-grid";
 import { CHART_MIN_ROWS, chartTableLayout } from "./layout";
 
 const FIGURES: StatItem[] = [
-  { id: "level", label: "5Y spread", value: "235bp", detail: "2026-09-25" },
-  { id: "change", label: "1M", value: "+13bp" },
-  { id: "range", label: "Range", value: "34 to 235bp", detail: "since 2025-02-24" },
+  { id: "level", label: "5Y spread", value: "235bp", detail: "2026-09-25", essential: false },
+  { id: "change", label: "1M", value: "+13bp", essential: false },
+  { id: "range", label: "Range", value: "34 to 235bp", detail: "since 2025-02-24", essential: false },
 ];
 const CHART = { minRows: CHART_MIN_ROWS };
 // At 90 columns the three figures pack into two StatGrid rows.
 const FIGURE_ROWS_90 = statGridRows(FIGURES, 90);
 
 describe("chartTableLayout", () => {
+  test("figures are retained ahead of the chart unless explicitly optional", () => {
+    const figures = FIGURES.map(({ essential, ...item }) => item);
+    const layout = chartTableLayout({ width: 40, height: 10, figures, tableRows: 250, chart: CHART });
+    expect(layout.figures).toEqual(figures);
+    expect(layout.mode).not.toBe("full");
+  });
+  test("essential dates survive optional figures and take room from the chart", () => {
+    const figures: StatItem[] = [
+      { label: "TTM yield", value: "3.33%", essential: true },
+      ...FIGURES,
+      { label: "Next ex", value: "2026-11-19", essential: true },
+      { label: "Next pay", value: "2027-02-03", essential: true },
+    ];
+    const layout = chartTableLayout({ width: 28, height: 10, figures, tableRows: 20, chart: CHART });
+    expect(layout.figures.filter((item) => item.essential)).toEqual(figures.filter((item) => item.essential));
+    expect(layout.figureRows).toBeGreaterThan(1);
+    expect(layout.mode).not.toBe("full");
+  });
   test("gives the chart 40% of a long table's pane", () => {
     const layout = chartTableLayout({ width: 90, height: 26, figures: FIGURES, tableRows: 250, chart: CHART });
     expect(FIGURE_ROWS_90).toBe(2);
@@ -95,7 +113,7 @@ describe("chartTableLayout", () => {
       { id: "next12", label: "Due next 12 months", value: "9.5%", detail: "41 pctl 10Y" },
       { id: "13w", label: "Next 13 weeks", value: "1.2%", detail: "since 2026-10-27 · 4 pctl 10Y" },
       { id: "as-of", label: "As of", value: "2025-12-31" },
-    ];
+    ].map((item) => ({ ...item, essential: false }));
     expect(statGridRows(debt, 43)).toBe(7);
     // A quarter of 20 rows is 5, the five a line each; a third is 6: the 10-Q wraps, the 13 weeks keep
     // one line, cut, and the As of stays (wrapping both would have cost it).
