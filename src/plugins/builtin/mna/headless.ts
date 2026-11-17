@@ -33,7 +33,7 @@ const percent = (value: unknown) => (typeof value === "number" ? formatPercentSh
  * its session when that is not the regular one, or how far apart two trades
  * are too far apart to be one moment's (`trades 8h apart`).
  */
-export function reportBasisText(basis: SpreadBasis): string {
+function reportBasisText(basis: SpreadBasis): string {
   if (basis.kind === "close") return closeBasisLabel(basis.session, Date.now(), { dated: true });
   if (legsApart(basis)) return `trades ${apartText(basis.apartMs!)} apart`;
   return basis.at == null ? MISSING_VALUE : printWhen(basis.at, basis.session, formatUtcTime);

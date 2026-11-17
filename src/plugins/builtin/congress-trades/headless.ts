@@ -122,7 +122,7 @@ function shotFilters(options: HeadlessPaneLoadArgs["options"], given: ReadonlySe
  * disclosures do not cover the ticker. Names the window read and the
  * command that reads the next one, or the year before after the last.
  */
-export function emptyFilingWindow(payload: CloudCongressHousePayload, args: HeadlessPaneLoadArgs): string {
+function emptyFilingWindow(payload: CloudCongressHousePayload, args: HeadlessPaneLoadArgs): string {
   const symbol = args.symbols[0];
   const from = payload.filingOffset ?? Number(args.options.filingOffset ?? 0);
   const window = payload.filingsScanned > 0

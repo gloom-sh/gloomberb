@@ -196,7 +196,7 @@ export function offerSeries(
 }
 
 /** Legs whose prints are further apart than this are not one moment's prices: the row flags them. */
-export const LEGS_APART_MS = 30 * 60_000;
+const LEGS_APART_MS = 30 * 60_000;
 
 /** The session a print was made in, as its venue's hours place it. */
 export type PrintSession = "regular" | "pre-market" | "after-hours" | "overnight";
@@ -254,7 +254,7 @@ function printTime(quote: Quote): number | null {
  * US listing), or before the next open (pre-market; overnight before 04:00
  * New York). Null for a venue with unknown hours.
  */
-export function printSession(quote: Pick<Quote, "listingExchangeName" | "exchangeName">, at: number): PrintSession | null {
+function printSession(quote: Pick<Quote, "listingExchangeName" | "exchangeName">, at: number): PrintSession | null {
   const exchange = quote.listingExchangeName || quote.exchangeName;
   const regular = isRegularSessionTime(exchange, at);
   if (regular === null) return null;
@@ -398,7 +398,7 @@ export function legsApart(basis: SpreadBasis): boolean {
 }
 
 /** A print's session when it is not the regular one (`pre-market`, `after-hours`, `overnight`); empty for the regular session. */
-export function extendedSessionWord(session: PrintSession | null): string {
+function extendedSessionWord(session: PrintSession | null): string {
   return session && session !== "regular" ? session : "";
 }
 
@@ -439,7 +439,7 @@ export function formatListDate(value: string, now = new Date()): string {
 }
 
 /** `4 May 2027`: a deadline's whole day, its year always, since it is usually next year's. */
-export function formatDeadline(value: string): string {
+function formatDeadline(value: string): string {
   const date = new Date(`${value}T00:00:00Z`);
   if (!Number.isFinite(date.getTime())) return value;
   return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
