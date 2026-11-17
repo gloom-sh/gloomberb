@@ -34,11 +34,18 @@ import {
   formatPrice,
   inQuoteCurrency,
   isElection,
+  legsApart,
   MISSING,
   offerSeries,
+  outsideDateParts,
+  printWhen,
+  spreadBasisLabel,
   stageLabel,
   termsLabel,
+  type SpreadLeg,
 } from "./model";
+import { formatFeedTime } from "../../../utils/datetime-format";
+import { quoteAgeText } from "../../../market-data/quotes/freshness";
 
 /** "ACV Auctions Inc. ← Copart, Inc.": the target, then who is buying it. */
 export function mnaDealTitle(deal: MnaDeal): string {
@@ -102,6 +109,29 @@ function useDealHistory(deal: MnaDeal | null, leg: "cash" | "stock" | null) {
   return history?.key === key ? history : null;
 }
 
+/** A print's time on the reader's clock: `04:24` today, `Mon 19:47` this week. */
+const printClock = (at: number) => formatFeedTime(at);
+
+/**
+ * A leg's latest print as its figure says it: when it traded, after its
+ * session when that is not the regular one, and how old it is
+ * (`pre-market 04:24 · 2h 50m old`); in a narrow cell the session and time,
+ * which are never dropped.
+ */
+function legFigure(entry: SpreadLeg, now: number): StatItem {
+  if (entry.at == null) return { id: `leg:${entry.symbol}`, label: entry.symbol, value: formatPrice(entry.price) };
+  const when = printWhen(entry.at, entry.session, printClock);
+  return {
+    id: `leg:${entry.symbol}`,
+    label: entry.symbol,
+    value: formatPrice(entry.price),
+    detail: `${when} · ${quoteAgeText(entry.at, now)}`,
+    detailVariants: [when],
+    // A row of its own, so its age is never what a narrow cell drops.
+    wide: true,
+  };
+}
+
 export function MnaDealDetail({ id, seed, focused, width, height }: {
   id: string;
   /** The list's copy, drawn while the full deal loads. */
@@ -153,13 +183,26 @@ export function MnaDealDetail({ id, seed, focused, width, height }: {
       const stock = deal.terms.exchangeRatio != null;
       const currency = targetQuote?.currency ?? null;
       items.push({ id: "offer", label: "Offer", value: formatPerShare(spread.offer, currency, 2), detail: stock ? terms : undefined });
+      // The spread says what its prices are: a session's closes, or two trades and when (or how far apart).
+      const basis = spreadBasisLabel(spread.basis, printClock);
       items.push({
         id: "spread",
         label: "Spread",
         value: formatPercentShort(spread.spread),
-        detail: formatPerShare(Math.abs(spread.offer - spread.price), currency, 2),
-        tone: spread.spread < 0 ? "warning" : undefined,
+        detail: `${formatPerShare(Math.abs(spread.offer - spread.price), currency, 2)} · ${basis}`,
+        detailVariants: [basis],
+        tone: spread.spread < 0 || legsApart(spread.basis) ? "warning" : undefined,
       });
+      // Beside a close, the spread at the trades since it (pre-market, after hours), with when or how far apart.
+      if (spread.latest) {
+        items.push({
+          id: "latest",
+          label: "Latest",
+          value: formatPercentShort(spread.latest.spread),
+          detail: spreadBasisLabel(spread.latest.basis, printClock),
+          tone: legsApart(spread.latest.basis) ? "warning" : undefined,
+        });
+      }
       if (spread.annualized != null) items.push({ id: "ann", label: "Ann.", value: formatPercentShort(spread.annualized) });
       if (unaffected && unaffected.close > 0 && (deal.terms.exchangeRatio == null || leg === "cash")) {
         items.push({
@@ -182,8 +225,23 @@ export function MnaDealDetail({ id, seed, focused, width, height }: {
       items.push({ id: "closed", label: deal.status === "completed" ? "Closed" : "Ended", value: deal.closed ? formatListDate(deal.closed) : MISSING });
     } else {
       items.push({ id: "close", label: "Close", value: formatExpectedClose(deal.expectedClose) });
+      // The agreement's deadline, with the later one it moves to and on what, and the filing it is read from.
+      if (deal.outsideDate) {
+        const outside = outsideDateParts(deal.outsideDate);
+        items.push({
+          id: "outside",
+          label: "Outside",
+          value: outside.date,
+          detail: [outside.extension, outside.source].filter(Boolean).join(" · "),
+          detailVariants: [outside.extension ?? outside.source, ""],
+          wide: true,
+        });
+      }
       if (spread) items.push({ id: "stage", label: "Stage", value: stageLabel(deal) });
     }
+    // Each leg's latest print: price, session and age.
+    const now = Date.now();
+    for (const entry of spread?.legs ?? []) items.push(legFigure(entry, now));
     return items;
   }, [deal, leg, spread, targetQuote?.currency, unaffected]);
 
@@ -193,20 +251,23 @@ export function MnaDealDetail({ id, seed, focused, width, height }: {
     const offer = leg === "stock"
       ? offerSeries(deal, history.ratio, days, leg, (close) => inQuoteCurrency(close, ratioQuote?.currency ?? null, targetQuote?.currency))
       : offerSeries(deal, history.ratio, days, leg);
+    // Daily closes, so the legend leads with the day its values are (`16 Nov`): the
+    // spread beside it says its own basis, and the two are read on the same day's terms.
+    const daily = (series: ReturnType<typeof staticSeries>) => ({ ...series, observationKind: "dataset" as const });
     const priced = [
-      staticSeries(
+      daily(staticSeries(
         history.target.map((point) => ({ date: point.date, observedAt: point.date, value: point.close })),
         { id: "target", label: deal.target.symbol, color: colors.text, calendarSpaced: true },
-      ),
+      )),
     ];
     if (offer.length >= 2) {
-      priced.push(staticSeries(
+      priced.push(daily(staticSeries(
         offer.map((row) => {
           const date = new Date(`${row.day}T00:00:00Z`);
           return { date, observedAt: date, value: row.value };
         }),
         { id: "offer", label: "Offer", color: colors.positive, calendarSpaced: true },
-      ));
+      )));
     }
     return priced;
   }, [colors.positive, colors.text, deal, history, leg, ratioQuote?.currency, targetQuote?.currency]);

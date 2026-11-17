@@ -3,6 +3,7 @@ import type { CloudCongressHousePayload } from "../../../api-client";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { createCongressHeadless } from "./headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 
 const payload: CloudCongressHousePayload = {
   asOf: "2026-09-04T12:00:00.000Z",
@@ -99,5 +100,23 @@ describe("congress headless model", () => {
       buyCount: 8,
     }]);
     expect(members.columns?.map((column) => column.key)).toContain("tradeCount");
+  });
+
+  // `fn CG SHLS` said "No data for SHLS: not covered by CG." for a window with no SHLS trade, where the pane says
+  // "No matching trades in this filing window.": an empty window is the window's answer, not missing coverage.
+  test("a ticker with no trades in the window says so, with the next window, and never that it is not covered", async () => {
+    const window = { ...payload, trades: [], members: [], filingsScanned: 60, filingCount: 812, hasMoreFilings: true, nextFilingOffset: 60 };
+    const headless = createCongressHeadless({ loadHouse: async () => window });
+    const asked = { ...args("trades"), argument: "SHLS", rawArgument: "SHLS", symbols: ["SHLS"] };
+    const result = await headless.load(asked, createTestHeadlessContext());
+    expect(result.unavailableSymbols).toEqual([]);
+    const text = renderHeadlessPaneText(headless, result, asked, "Congress Trades | Trades", undefined, "CG");
+    expect(text).toContain("No matching trades in SHLS in this filing window (2026 filings 1-60 of 812).");
+    expect(text).toContain("gloom fn CG SHLS --year 2026 --filingOffset 60");
+    expect(text).not.toContain("not covered");
+    // The year's last window points at the year before.
+    const lastWindow = createCongressHeadless({ loadHouse: async () => ({ ...window, hasMoreFilings: false, filingOffset: 780, filingsScanned: 32 }) });
+    expect((await lastWindow.load(asked, createTestHeadlessContext())).empty)
+      .toBe("No matching trades in SHLS in this filing window (2026 filings 781-812 of 812).\nThat was the year's last window; the year before: gloom fn CG SHLS --year 2025");
   });
 });
