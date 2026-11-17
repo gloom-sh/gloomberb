@@ -28,6 +28,7 @@ import {
   valuePortfolioAllocation,
   valuePortfolioPositions,
   costAtTodaysRateNotes,
+  unpricedCashNote,
   type CollectionMatch,
   type PortfolioValuation,
 } from "./cli/render";
@@ -39,6 +40,7 @@ import { EXTENDED_SESSION_LABELS, getCompletedRegularSessionDisplay, quoteHeadli
 import {
   BROKER_ACCOUNT_MISSING_NOTE,
   CASH_SYMBOL,
+  cashLineLabel,
   describeTargetSum,
   formatAllocationDrift,
   formatAllocationWeight,
@@ -261,23 +263,40 @@ function unavailableFigureErrors(
 const POSITION_LINE_KEYS = new Set(["symbol", "shares", "marketValue", "weight", "targetWeight", "drift", "tradeShares", "tradeValue"]);
 
 /**
- * The text report of a ticker held in several lots. Each lot weighs by its own
- * value, and a line under its lots gives the whole position: its shares, value,
- * weight, target, drift and trade, which no single lot owns. Null when no
- * ticker has several lots, so the report is the rows as they are. JSON and CSV
- * keep one row per lot.
+ * The text report of a ticker held in several lots, or of cash held in
+ * several currencies. Each lot weighs by its own value, and a line under its
+ * lots gives the whole position: its shares, value, weight, target, drift and
+ * trade, which no single lot owns. Each currency's cash (`CASH HKD`) weighs by
+ * its own value too, and the `CASH` line under them is the whole cash line,
+ * with its target. Null when there is neither, so the report is the rows as
+ * they are. JSON and CSV keep one row per lot and per currency.
  */
 function withPositionLines(
   rows: readonly HeadlessPaneRow[],
   columns: HeadlessPaneColumn[],
   positions: ReadonlyMap<string, PortfolioAllocation["rows"][number]>,
+  cash: PortfolioAllocation["cash"],
 ): { rows: HeadlessPaneRow[]; columns: HeadlessPaneColumn[] } | null {
   const lotted = (row: HeadlessPaneRow): row is HeadlessPaneRow & { lots: number } => typeof row.lots === "number";
-  if (!rows.some(lotted)) return null;
+  const cashPart = (row: HeadlessPaneRow): row is HeadlessPaneRow & { balances: number } => typeof row.balances === "number";
+  if (!rows.some(lotted) && !rows.some(cashPart)) return null;
   const lastLot = new Map<string, number>();
   rows.forEach((row, index) => { if (lotted(row)) lastLot.set(String(row.symbol), index); });
+  const lastCash = rows.findLastIndex(cashPart);
+  // What a line under several rows is called: AAPL (2 lots), or CASH under its currencies.
+  const lineLabel = (row: HeadlessPaneRow) => typeof row.positionLots === "number" ? `(${row.positionLots} lots)` : null;
+  const isLine = (row: HeadlessPaneRow) => typeof row.positionLots === "number" || row.cashLine === true;
   return {
     rows: rows.flatMap((row, index): HeadlessPaneRow[] => {
+      if (cashPart(row)) {
+        const part = { ...row, cashLabel: cashLineLabel(String(row.priceCurrency ?? ""), "", true), weight: row.balanceWeight,
+          targetWeight: null, drift: null, tradeShares: null, tradeValue: null };
+        if (!cash || index !== lastCash) return [part];
+        return [part, {
+          cashLine: true, symbol: CASH_SYMBOL, marketValue: cash.value, weight: cash.weight, targetWeight: cash.targetWeight,
+          drift: cash.drift, tradeShares: null, tradeValue: cash.tradeValue,
+        }];
+      }
       if (!lotted(row)) return [row];
       const symbol = String(row.symbol);
       const lot = { ...row, weight: row.lotWeight, targetWeight: null, drift: null, tradeShares: null, tradeValue: null };
@@ -292,9 +311,10 @@ function withPositionLines(
     columns: columns.map((column) => {
       const text = (value: unknown, row: HeadlessPaneRow) => (column.textFormat ?? column.format)?.(value, row) ?? textOf(value) ?? formatNumber(undefined);
       if (column.key === "symbol") {
-        return { ...column, textFormat: (value, row) => typeof row.positionLots === "number" ? `${text(value, row)} (${row.positionLots} lots)` : text(value, row) };
+        return { ...column, textFormat: (value, row) => typeof row.cashLabel === "string" ? row.cashLabel
+          : lineLabel(row) ? `${text(value, row)} ${lineLabel(row)}` : text(value, row) };
       }
-      return POSITION_LINE_KEYS.has(column.key) ? column : { ...column, textFormat: (value, row) => typeof row.positionLots === "number" ? "" : text(value, row) };
+      return POSITION_LINE_KEYS.has(column.key) ? column : { ...column, textFormat: (value, row) => isLine(row) ? "" : text(value, row) };
     }),
   };
 }
@@ -397,19 +417,41 @@ async function portfolioHoldings(
       };
     });
   const shown: HeadlessPaneRow[] = rows.slice(0, limit);
-  // The cash line follows the positions, whatever the limit.
+  // The cash line follows the positions, whatever the limit. Cash in several currencies is a row per currency, the whole
+  // line's weight, target, drift and trade on the first as a ticker's lots carry their position's; `balanceWeight` is each
+  // currency's own share.
   if (allocation.cash) {
-    shown.push({
-      symbol: CASH_SYMBOL,
-      name: cash?.source === "broker" ? "Cash (broker account)" : "Cash",
-      priceCurrency: cash?.currency ?? null,
-      marketValue: finite(allocation.cash.value),
-      weight: allocation.cash.weight,
-      targetWeight: allocation.cash.targetWeight,
-      drift: allocation.cash.drift,
-      tradeShares: null,
-      tradeValue: allocation.cash.tradeValue,
-    });
+    const name = cash?.source === "broker" ? "Cash (broker account)" : "Cash";
+    const line = allocation.cash;
+    const balances = cash && cash.balances.length > 1 ? cash.balances : null;
+    if (balances) {
+      balances.forEach((balance, index) => shown.push({
+        symbol: CASH_SYMBOL,
+        name,
+        priceCurrency: balance.currency,
+        cashAmount: balance.amount,
+        marketValue: finite(balance.value),
+        weight: index === 0 ? line.weight : null,
+        targetWeight: index === 0 ? line.targetWeight : null,
+        drift: index === 0 ? line.drift : null,
+        tradeShares: null,
+        tradeValue: index === 0 ? line.tradeValue : null,
+        balances: balances.length,
+        balanceWeight: balance.weight,
+      }));
+    } else {
+      shown.push({
+        symbol: CASH_SYMBOL,
+        name,
+        priceCurrency: cash?.currency ?? null,
+        marketValue: finite(line.value),
+        weight: line.weight,
+        targetWeight: line.targetWeight,
+        drift: line.drift,
+        tradeShares: null,
+        tradeValue: line.tradeValue,
+      });
+    }
   }
   const errors = unavailableFigureErrors(valuation);
   const broker = !!(target.portfolio.brokerId || target.portfolio.brokerInstanceId);
@@ -428,6 +470,7 @@ async function portfolioHoldings(
       : []),
     ...(targetNote ? [targetNote] : []),
     ...(target.portfolio.brokerInstanceId && !resolved.account ? [BROKER_ACCOUNT_MISSING_NOTE] : []),
+    ...[unpricedCashNote(allocation.unpricedCash, currency)].filter((line): line is string => !!line),
     ...costAtTodaysRateNotes(valuation, (symbols) => [...symbols].join(", ")),
   ];
 
@@ -438,7 +481,7 @@ async function portfolioHoldings(
     withExtendedColumns(withBookCurrency([...positionColumns, ...(showTargets ? TARGET_COLUMNS : []), VALUATION_TIME_COLUMN], currency), extendedSessions),
     tickers,
   );
-  const lotted = withPositionLines(shown, columns, allocationBySymbol);
+  const lotted = withPositionLines(shown, columns, allocationBySymbol, allocation.cash);
 
   return {
     // Dated by the prices the value uses, and the oldest of them in exports, with the basis in the closing line.
@@ -478,6 +521,8 @@ async function portfolioHoldings(
       ...(cash ? { cash } : {}),
       ...(showTargets ? { targetSum: allocation.targetSum } : {}),
       unpricedCount: allocation.unpriced.length,
+      // Only while a currency's cash has no rate into the portfolio's: left out of the total and weights as an unpriced holding is.
+      ...(allocation.unpricedCash.length > 0 ? { unpricedCashCurrencies: allocation.unpricedCash } : {}),
       ...(notices.length > 0 ? { notices } : {}),
     },
   };
@@ -663,7 +708,7 @@ async function watchlistHoldings(
 export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   description:
-    "Positions held in a portfolio, broker or manual: symbol, exchange, shares, average cost, last price, market value, unrealized P&L, weight of the total with cash (of the gross exposure for a book that holds a short) and when each row's price is from, largest first, then the cash line and totals. Values are at the latest print, extended hours included, or at the regular close with close. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
+    "Positions held in a portfolio, broker or manual: symbol, exchange, shares, average cost, last price, market value, unrealized P&L, weight of the total with cash (of the gross exposure for a book that holds a short) and when each row's price is from, largest first, then the cash line (a row per currency when it is held in several, the line's weight, target, drift and trade on the first) and totals. Values are at the latest print, extended hours included, or at the regular close with close. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
   discovery: {
     dataRequirements: ["Local portfolios, watchlists and synced broker positions; current quotes"],
     limitations: ["Unrealized P&L on current positions; excludes realized trades, distributions and cash flows."],

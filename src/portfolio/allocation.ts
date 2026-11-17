@@ -1,5 +1,6 @@
 import type { Portfolio, PortfolioCash } from "../types/ticker";
 import type { BrokerAccount } from "../types/trading";
+import { portfolioCashBalances } from "./cash-balances";
 import { currencyMinorDigits, getCurrencySymbol, resolveAssetDisplayKind } from "../market-data/market/format";
 import { MISSING_VALUE, formatNumber } from "../utils/format";
 import { parseTypedNumber } from "../utils/decimal-comma";
@@ -13,7 +14,8 @@ import { parseTypedNumber } from "../utils/decimal-comma";
  * at their net market value plus the cash line. A book that holds a short
  * weighs against its gross exposure instead (WeightBasis). A holding without
  * a price is left out of the total and the weights and is listed as
- * unpriced, never valued at zero.
+ * unpriced, never valued at zero; so is a currency's cash without a rate
+ * into the portfolio's currency.
  */
 
 /** The cash line's symbol in targets and reports. */
@@ -50,9 +52,33 @@ export interface AllocationFigures {
 
 type PortfolioAllocationRow = AllocationHolding & AllocationFigures;
 
+/** One currency of a portfolio's cash, valued in the portfolio's currency. */
+export interface AllocationCashBalance {
+  currency: string;
+  /** In `currency`. */
+  amount: number;
+  /**
+   * In the portfolio's currency; null without a rate to convert it, which
+   * leaves it out of the total and the weights as a holding without a price is.
+   */
+  value: number | null;
+}
+
+export interface PortfolioCashBalanceLine extends AllocationCashBalance {
+  /** Its own share of the weight base: null without a value, or against a hedged book's gross exposure. */
+  weight: number | null;
+}
+
+/**
+ * The cash line: all the portfolio's cash, whatever currencies it is in. Its
+ * target (`CASH`), drift and trade are the whole line's; each currency's
+ * balance has its own value and weight.
+ */
 export interface PortfolioCashLine extends AllocationFigures {
-  /** In the portfolio's currency. */
-  value: number;
+  /** All the cash in the portfolio's currency; null while a balance has no rate. */
+  value: number | null;
+  /** One per currency, largest first, those without a value last; none for a target without cash. */
+  balances: PortfolioCashBalanceLine[];
 }
 
 export interface PortfolioAllocation {
@@ -60,7 +86,7 @@ export interface PortfolioAllocation {
   rows: PortfolioAllocationRow[];
   /** Present when the portfolio has cash or a cash target. */
   cash: PortfolioCashLine | null;
-  /** Priced holdings plus cash; null when it cannot be valued. */
+  /** Priced holdings plus the cash that has a value; null when it cannot be valued. */
   total: number | null;
   /** What the weights are a share of. */
   weightBasis: WeightBasis;
@@ -68,6 +94,8 @@ export interface PortfolioAllocation {
   weightBase: number | null;
   /** Held symbols without a price, left out of the total and the weights. */
   unpriced: string[];
+  /** The currencies of cash without a rate into the portfolio's, left out of the total and the weights. */
+  unpricedCash: string[];
   /** The targets of the listed symbols and cash added up; null when none is set. */
   targetSum: number | null;
 }
@@ -167,26 +195,43 @@ export function allocationTotal(holdings: readonly AllocationHolding[], cashValu
   return Number.isFinite(total) ? total : null;
 }
 
+/**
+ * The cash the total counts, in the portfolio's currency: every balance with a
+ * value. Null without cash, so a book of holdings alone totals as before.
+ */
+export function pricedCashValue(balances: readonly Pick<AllocationCashBalance, "value">[] | null | undefined): number | null {
+  if (!balances?.length) return null;
+  return balances.reduce((sum, balance) => sum + (finite(balance.value) ? balance.value : 0), 0);
+}
+
 export function buildPortfolioAllocation({
   holdings,
-  cashValue,
+  cash = [],
   targets,
 }: {
   holdings: readonly AllocationHolding[];
-  /** The cash line in the portfolio's currency; NaN when it cannot be converted. */
-  cashValue?: number | null;
+  /** Each currency's cash, valued in the portfolio's currency (null without a rate). */
+  cash?: readonly AllocationCashBalance[] | null;
   targets?: Readonly<Record<string, number>>;
 }): PortfolioAllocation {
+  const balances = cash ?? [];
+  const cashValue = pricedCashValue(balances);
   const total = allocationTotal(holdings, cashValue);
   const base = allocationWeightBase(holdings, cashValue);
+  // Cash is no exposure: against a gross base it keeps its target but has no weight or trade.
+  const cashBase = base.basis === "gross" ? null : base.value;
   const rows = holdings.map((holding) => ({ ...holding, ...allocationFigures(holding, base.value, holdingTarget(targets, holding.symbol)) }));
   const cashTarget = targets?.[CASH_SYMBOL];
-  const cash = cashValue != null || finite(cashTarget)
+  // The whole line is unknown while one balance is: its weight and trade would leave that balance out.
+  const lineValue = balances.every((balance) => finite(balance.value)) ? cashValue ?? 0 : null;
+  const cashLine = balances.length > 0 || finite(cashTarget)
     ? {
-      value: cashValue ?? 0,
-      // Cash is no exposure: against a gross base it keeps its target but has no weight or trade.
-      ...allocationFigures({ held: true, marketValue: cashValue ?? 0, units: 0, unitPrice: null },
-        base.basis === "gross" ? null : base.value, cashTarget),
+      value: lineValue,
+      balances: balances
+        .map((balance) => ({ ...balance, weight: finite(balance.value) ? lotWeight(balance.value, cashBase) : null }))
+        .sort((left, right) => (finite(left.value) ? 0 : 1) - (finite(right.value) ? 0 : 1)
+          || Math.abs(right.value ?? 0) - Math.abs(left.value ?? 0)),
+      ...allocationFigures({ held: true, marketValue: lineValue, units: 0, unitPrice: null }, cashBase, cashTarget),
     }
     : null;
   let targetSum: number | null = null;
@@ -196,11 +241,12 @@ export function buildPortfolioAllocation({
   }
   return {
     rows,
-    cash,
+    cash: cashLine,
     total,
     weightBasis: base.basis,
     weightBase: base.value,
     unpriced: holdings.filter((holding) => holding.held && !finite(holding.marketValue)).map((holding) => holding.symbol),
+    unpricedCash: balances.filter((balance) => !finite(balance.value)).map((balance) => balance.currency),
     targetSum,
   };
 }
@@ -218,18 +264,32 @@ export function hasTargetWeights(portfolio: Pick<Portfolio, "targetWeights"> | n
   return !!portfolio?.targetWeights && Object.keys(portfolio.targetWeights).length > 0;
 }
 
+/** A portfolio's cash, in the currencies it is held in, and where it is from. */
+export interface ResolvedPortfolioCash {
+  /** Recorded with `portfolio cash set`, or reported by the broker account. */
+  source: "broker" | "manual";
+  /** One balance per currency: the broker account's total cash, or each currency entered by hand. */
+  balances: PortfolioCash[];
+}
+
 /**
- * The portfolio's cash in its own currency. A broker account that reports its
- * cash is used instead of an entry made by hand, so the two never add up.
+ * The portfolio's cash. A broker account that reports its cash is used
+ * instead of the balances entered by hand, so the two never add up.
  */
 export function resolvePortfolioCash(
-  portfolio: Pick<Portfolio, "cash"> | null | undefined,
+  portfolio: Pick<Portfolio, "cash" | "otherCash"> | null | undefined,
   account: Pick<BrokerAccount, "totalCashValue" | "currency"> | null | undefined,
-): (PortfolioCash & { source: "broker" | "manual" }) | null {
+): ResolvedPortfolioCash | null {
   if (account && finite(account.totalCashValue)) {
-    return { amount: account.totalCashValue, currency: account.currency?.trim().toUpperCase() ?? "", source: "broker" };
+    return { source: "broker", balances: [{ amount: account.totalCashValue, currency: account.currency?.trim().toUpperCase() ?? "" }] };
   }
-  return portfolio?.cash ? { ...portfolio.cash, source: "manual" } : null;
+  const balances = portfolioCashBalances(portfolio);
+  return balances.length > 0 ? { source: "manual", balances } : null;
+}
+
+/** What a cash row is called: `CASH`, or `CASH TRY` for a currency other than the portfolio's or one of several. */
+export function cashLineLabel(currency: string | null | undefined, portfolioCurrency: string, several = false): string {
+  return currency && (several || currency !== portfolioCurrency) ? `${CASH_SYMBOL} ${currency}` : CASH_SYMBOL;
 }
 
 /**

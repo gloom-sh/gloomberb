@@ -6,6 +6,7 @@ import { parseCollectionRef } from "../team/collections";
 import { findNamedCollection } from "./collection-name";
 import { isFuturesTicker } from "./futures-positions";
 import { manualPortfolioLots, mergeLotCostTerms, type LotCostFxConflict } from "./manual-lots";
+import { portfolioCashBalances, withPortfolioCashBalances } from "./cash-balances";
 
 export interface DeleteWatchlistResult {
   config: AppConfig;
@@ -226,35 +227,53 @@ function updatePortfolio(config: AppConfig, portfolioId: string, update: (portfo
 }
 
 /**
- * Records the cash held beside a portfolio's positions. A portfolio holds one
- * balance in one currency, so this replaces any earlier entry, in whatever
- * currency: `replaced` is that entry when it differs from the new one, for
- * the caller to say what went (250,000 TRY replaced by 1,200 USD), and null
- * when there was none or it was the same.
+ * Records the cash a portfolio holds in one currency, beside its positions and
+ * its cash in any other currency, which stay. `replaced` is that currency's
+ * earlier balance when it differs from the new one, for the caller to say
+ * what went (HK$38,000.00 replaced by HK$39,000.00), and null when there was
+ * none or it was the same. `balances` is all the cash after the change.
  */
 export function setPortfolioCash(
   config: AppConfig,
   portfolioId: string,
   cash: PortfolioCash,
-): { config: AppConfig; replaced: PortfolioCash | null } {
+): { config: AppConfig; replaced: PortfolioCash | null; balances: PortfolioCash[] } {
   const currency = cash.currency.trim().toUpperCase();
   if (!Number.isFinite(cash.amount)) throw new Error("Cash amount must be a valid number.");
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error(`"${cash.currency}" is not a currency code such as USD or EUR.`);
-  const before = config.portfolios.find((portfolio) => portfolio.id === portfolioId)?.cash;
-  const replaced = before && before.amount !== 0 && (before.amount !== cash.amount || before.currency.toUpperCase() !== currency)
-    ? { ...before } : null;
+  const before = portfolioCashBalances(config.portfolios.find((portfolio) => portfolio.id === portfolioId));
+  const previous = before.find((balance) => balance.currency === currency);
+  const replaced = previous && previous.amount !== 0 && previous.amount !== cash.amount ? { ...previous } : null;
+  // A currency held already keeps its place, so the first balance stays the one an older build reads.
+  const balances = previous
+    ? before.map((balance) => (balance.currency === currency ? { amount: cash.amount, currency } : balance))
+    : [...before, { amount: cash.amount, currency }];
   return {
-    config: updatePortfolio(config, portfolioId, (portfolio) => ({ ...portfolio, cash: { amount: cash.amount, currency } })),
+    config: updatePortfolio(config, portfolioId, (portfolio) => withPortfolioCashBalances(portfolio, balances)),
     replaced,
+    balances,
   };
 }
 
-export function clearPortfolioCash(config: AppConfig, portfolioId: string): { config: AppConfig; changed: boolean } {
-  const portfolio = config.portfolios.find((entry) => entry.id === portfolioId);
-  if (!portfolio?.cash) return { config, changed: false };
+/**
+ * Clears a portfolio's cash in one currency, or in every currency when none
+ * is given. `removed` is the balances cleared, empty when there was nothing
+ * to clear; `balances` is the cash left.
+ */
+export function clearPortfolioCash(
+  config: AppConfig,
+  portfolioId: string,
+  currency?: string,
+): { config: AppConfig; removed: PortfolioCash[]; balances: PortfolioCash[] } {
+  const wanted = currency?.trim().toUpperCase();
+  const before = portfolioCashBalances(config.portfolios.find((entry) => entry.id === portfolioId));
+  const removed = before.filter((balance) => wanted == null || balance.currency === wanted);
+  if (removed.length === 0) return { config, removed, balances: before };
+  const balances = before.filter((balance) => !removed.includes(balance));
   return {
-    config: updatePortfolio(config, portfolioId, ({ cash: _cash, ...rest }) => rest),
-    changed: true,
+    config: updatePortfolio(config, portfolioId, (portfolio) => withPortfolioCashBalances(portfolio, balances)),
+    removed,
+    balances,
   };
 }
 

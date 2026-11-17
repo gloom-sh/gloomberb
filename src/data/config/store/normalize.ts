@@ -25,6 +25,7 @@ import { encodeBuiltinDisabledPluginIds, expandBuiltinPluginGroups } from "../..
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
 import { normalizeWatchlistGroups } from "../../../portfolio/watchlist-groups";
+import { portfolioCashBalances, withPortfolioCashBalances } from "../../../portfolio/cash-balances";
 import { normalizeStoredBaseCurrency } from "../../../utils/base-currency";
 import { debugLog } from "../../../utils/debug-log";
 import { DEFAULT_THEME, themes } from "../../../theme/themes";
@@ -401,8 +402,9 @@ function sanitizePortfolios(value: unknown, fallback: Portfolio[]): Portfolio[] 
 
 /** Cash, target weights, the import source and a fixed currency the portfolio commands write; a malformed one is dropped. */
 function sanitizePortfolioAllocation(entry: Portfolio): Portfolio {
-  const { cash, targetWeights, importedFrom, fixedCurrency, ...portfolio } = entry;
-  const next: Portfolio = { ...portfolio };
+  const { cash, otherCash, targetWeights, importedFrom, fixedCurrency, ...portfolio } = entry;
+  // Each currency's balance once, the first in `cash` as an older build reads it.
+  const next: Portfolio = withPortfolioCashBalances(portfolio, portfolioCashBalances({ cash, otherCash }));
   if (fixedCurrency === true) next.fixedCurrency = true;
   if (isRecord(importedFrom) && importedFrom.kind === "13f"
     && [importedFrom.cik, importedFrom.name, importedFrom.period, importedFrom.filed].every((value) => typeof value === "string" && value)) {
@@ -413,10 +415,6 @@ function sanitizePortfolioAllocation(entry: Portfolio): Portfolio {
       !!symbol.trim() && typeof weight === "number" && Number.isFinite(weight) && weight > 0 && weight <= 1)) {
       next.importedFrom.weights = Object.fromEntries(weights) as Record<string, number>;
     }
-  }
-  if (isRecord(cash) && typeof cash.amount === "number" && Number.isFinite(cash.amount)
-    && typeof cash.currency === "string" && /^[A-Z]{3}$/.test(cash.currency)) {
-    next.cash = { amount: cash.amount, currency: cash.currency };
   }
   if (isRecord(targetWeights)) {
     const weights = Object.entries(targetWeights).filter((weight): weight is [string, number] =>

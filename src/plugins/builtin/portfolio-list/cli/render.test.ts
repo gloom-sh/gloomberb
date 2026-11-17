@@ -331,6 +331,71 @@ test("portfolio show weighs each lot of a ticker by its own value and gives its 
   expect(data[1]).toMatchObject({ weight: null, targetWeight: null, lots: 2 });
 });
 
+test("portfolio show gives each currency's cash its own row, the CASH target once on the line under them, and leaves a currency without a rate out", async () => {
+  const config = createDefaultConfig("/unused-cash-currencies");
+  config.portfolios = [{ id: "main", name: "Main", currency: "USD", cash: { amount: 40_000, currency: "HKD" },
+    otherCash: [{ amount: 1_000, currency: "USD" }], targetWeights: { CASH: 50 } }];
+  const held: TickerRecord = { metadata: { ...ticker.metadata, positions: [{ portfolio: "main", shares: 100, avgCost: 80, currency: "USD", broker: "manual" }] } };
+  // USD per unit: 8 HKD to the dollar, and no lira rate at all.
+  const dataProvider = createTestDataProvider({
+    getQuote: async () => quote,
+    getExchangeRate: async (code: string) => (code === "HKD" ? 0.125 : code === "USD" ? 1 : Number.NaN),
+  });
+  const dependencies = { config, store: { loadAllTickers: async () => [held] }, dataProvider };
+  const show = async () => {
+    const output: string[] = [];
+    const logger = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
+    try { await showCollection("Main", createTestCliContext(dependencies).context); } finally { logger.mockRestore(); }
+    return output.join("\n").replace(/\x1b\[[0-9;]*m/g, "").split("\n").map((line) => line.replace(/\s+/g, " ").trim());
+  };
+
+  // $9,000 of shares, HK$40,000 ($5,000) and $1,000: a $15,000 book with $6,000 of cash, 40% against its 50% target.
+  const lines = await show();
+  expect(lines.filter((line) => /^(CASH|TOTAL)/.test(line))).toEqual([
+    "CASH HKD $5,000 33.3% — — —",
+    "CASH USD $1,000 6.7% — — —",
+    "CASH $6,000 40.0% 50.0% -10.0pp +$1,500",
+    expect.stringMatching(/^TOTAL .*\$15,000 100\.0% 50\.0%/),
+  ]);
+
+  const json = createTestCliContext(dependencies, { format: "json" });
+  await showCollection("Main", json.context);
+  const { metadata } = json.printed[0]!.result;
+  expect(metadata).toMatchObject({ total: 15_000, complete: true,
+    cash: { amount: null, currency: null, source: "manual", value: 6_000, weight: 40, targetWeight: 50, drift: -10, tradeValue: 1_500 } });
+  expect((metadata!.cash as { balances: unknown[] }).balances).toEqual([
+    { amount: 40_000, currency: "HKD", value: 5_000, weight: (5_000 / 15_000) * 100 },
+    { amount: 1_000, currency: "USD", value: 1_000, weight: (1_000 / 15_000) * 100 },
+  ]);
+  // CSV rows add up to the total: a CASH row per currency, the line's target on the first as a position's is on its first lot.
+  const csv = createTestCliContext(dependencies, { format: "csv" });
+  await showCollection("Main", csv.context);
+  const printed = csv.printed[0]!;
+  const rows = printed.options!.rows!(printed.result.data) as Array<Record<string, unknown>>;
+  const cashRows = rows.filter((row) => row.symbol === "CASH");
+  expect(cashRows).toMatchObject([
+    { cashCurrency: "HKD", cashAmount: 40_000, marketValue: 5_000, weight: 40, targetWeight: 50, tradeValue: 1_500, balances: 2 },
+    { cashCurrency: "USD", cashAmount: 1_000, marketValue: 1_000, weight: null, targetWeight: null, tradeValue: null, balances: 2 },
+  ]);
+  const summed = rows.filter((row) => row.symbol !== "TOTAL").reduce((sum, row) => sum + (row.marketValue as number), 0);
+  expect(summed).toBe(15_000);
+
+  // 250,000 lira without a rate: left out of the total and the weights, named, never counted as $0 or as dollars.
+  config.portfolios[0]!.otherCash!.push({ amount: 250_000, currency: "TRY" });
+  const withLira = await show();
+  expect(withLira.filter((line) => /^(CASH|TOTAL)/.test(line))).toEqual([
+    "CASH HKD $5,000 33.3% — — —",
+    "CASH USD $1,000 6.7% — — —",
+    "CASH TRY n/a n/a — — —",
+    "CASH n/a n/a 50.0% n/a n/a",
+    expect.stringMatching(/^TOTAL .*\$15,000 100\.0% 50\.0%/),
+  ]);
+  expect(withLira).toContain("Total and weights exclude the TRY cash: no TRY/USD rate.");
+  const unpriced = createTestCliContext(dependencies, { format: "json" });
+  await showCollection("Main", unpriced.context);
+  expect(unpriced.printed[0]!.result.metadata).toMatchObject({ total: 15_000, complete: false, unpricedCashCurrencies: ["TRY"], cash: { value: null, weight: null } });
+});
+
 describe("a portfolio holding a hedge", () => {
   const config = createDefaultConfig("/unused-hedge");
   config.portfolios = [{ id: "hedge", name: "Hedge", currency: "USD" }];

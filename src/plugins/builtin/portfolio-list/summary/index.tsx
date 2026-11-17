@@ -282,7 +282,7 @@ export function buildPortfolioSummarySegments({
   /** The app's base currency: amounts are bare only when both are USD. */
   baseCurrency?: string;
   /** Cash entered by hand, in the totals currency, with the total it is weighed against. */
-  manualCash?: (PortfolioCashLine & { total: number | null }) | null;
+  manualCash?: (Pick<PortfolioCashLine, "value" | "weight" | "targetWeight" | "drift"> & { total: number | null }) | null;
 }): PortfolioSummarySegment[] {
   const money = (value: number | undefined, signed = false) => formatPortfolioAmount(value, currency, { signed, baseCurrency, named: otherCurrencies });
   if (!isPortfolioTab) {
@@ -356,7 +356,7 @@ export function buildPortfolioSummarySegments({
     const drift = formatAllocationDrift(manualCash.drift);
     candidates.push(createSummarySegment("cash", [
       { text: "Cash", tone: "label" },
-      { text: money(manualCash.value), tone: "value", bold: true },
+      { text: money(manualCash.value ?? Number.NaN), tone: "value", bold: true },
       ...(manualCash.weight != null ? [{ text: `(${formatAllocationWeight(manualCash.weight)})`, tone: "muted" as const }] : []),
       ...(manualCash.targetWeight != null && manualCash.drift != null
         ? [{ text: drift, tone: "muted" as const, color: /[1-9]/.test(drift) ? priceColor(manualCash.drift) : undefined }]

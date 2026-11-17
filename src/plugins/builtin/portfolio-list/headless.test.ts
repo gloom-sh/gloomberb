@@ -4,7 +4,7 @@ import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { createDefaultConfig } from "../../../types/config";
 import type { HeadlessPaneContext } from "../../../types/headless";
-import type { TickerRecord } from "../../../types/ticker";
+import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { createTestTicker } from "../../../test-support/ticker";
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
@@ -36,7 +36,9 @@ const tickers = [
 function context(
   held: readonly TickerRecord[] = tickers,
   quoted: Record<string, number> = prices,
-  manual: typeof MANUAL & { targetWeights?: Record<string, number> } = MANUAL,
+  manual: typeof MANUAL & Pick<Portfolio, "targetWeights" | "cash" | "otherCash"> = MANUAL,
+  /** USD per unit of each currency; 1 for any other. */
+  usdPer: Record<string, number> = {},
 ): HeadlessPaneContext {
   const config = {
     ...createDefaultConfig("/unused/pf-headless"),
@@ -51,6 +53,7 @@ function context(
         if (!quoted[symbol]) throw new Error(`No quote for ${symbol}`);
         return createTestQuote({ symbol, price: quoted[symbol], changePercent: 1.5 });
       },
+      getExchangeRate: async (code: string) => usdPer[code] ?? 1,
     }),
     resolvePortfolio: async (id: string) => {
       const portfolio = config.portfolios.find((entry) => entry.id === id);
@@ -225,6 +228,38 @@ test("a ticker held in several lots weighs each lot by its own value and gives i
     ]);
     // JSON and CSV keep one row per lot.
     expect(JSON.stringify(serializeHeadlessPaneResult(collectionHoldingsHeadless, result))).not.toContain("2 lots");
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+});
+
+test("cash in several currencies is a CASH row each, the CASH target once on the line under them, and a currency without a rate is left out and named", async () => {
+  const manual = { ...MANUAL, cash: { amount: 40_000, currency: "HKD" }, otherCash: [{ amount: 1_000, currency: "USD" }, { amount: 250_000, currency: "TRY" }],
+    targetWeights: { CASH: 50 } };
+  // $9,000 of AAPL, HK$40,000 at 8 to the dollar and $1,000; no lira rate.
+  const result = await collectionHoldingsHeadless.load(args(MANUAL.id), context([lots("AAPL", [45, 150])], { AAPL: 200 }, manual, { HKD: 0.125, TRY: Number.NaN }));
+
+  const cash = result.rows.filter((row) => row.symbol === "CASH");
+  // JSON keeps a row per currency, the whole line's figures on the first; the rows' values add up to the cash the total counts.
+  expect(cash).toMatchObject([
+    { priceCurrency: "HKD", cashAmount: 40_000, marketValue: 5_000, weight: null, targetWeight: 50, balances: 3 },
+    { priceCurrency: "USD", cashAmount: 1_000, marketValue: 1_000, weight: null, targetWeight: null, tradeValue: null, balances: 3 },
+    { priceCurrency: "TRY", cashAmount: 250_000, marketValue: null, balanceWeight: null, balances: 3 },
+  ]);
+  expect(cash[0]!.balanceWeight).toBeCloseTo((5_000 / 15_000) * 100, 10);
+  expect(result.metadata).toMatchObject({ totals: { total: 15_000, cash: null }, unpricedCashCurrencies: ["TRY"] });
+  expect(result.metadata?.notices).toContain("Total and weights exclude the TRY cash: no TRY/USD rate.");
+
+  setCliColorEnabledOverride(false);
+  try {
+    const text = renderHeadlessPaneText(collectionHoldingsHeadless, result, args(MANUAL.id), "PF").split("\n").map((line) => line.replace(/\s+/g, " ").trim());
+    expect(text.filter((line) => line.startsWith("CASH"))).toEqual([
+      "CASH HKD Cash — — — — HKD — 5,000 — 33.3% — — — — —",
+      "CASH USD Cash — — — — USD — 1,000 — 6.7% — — — — —",
+      "CASH TRY Cash — — — — TRY — — — — — — — — —",
+      // The whole line: unknown while the lira has no rate, its 50% target still shown.
+      "CASH — — — 50.0% — — —",
+    ]);
   } finally {
     setCliColorEnabledOverride(null);
   }

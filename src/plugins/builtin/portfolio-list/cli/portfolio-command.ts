@@ -15,7 +15,7 @@ import { futuresQuantityText, isFuturesTicker } from "../../../../portfolio/futu
 import { loadFuturesEntrySize } from "../../../../portfolio/futures-terms";
 import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext, CliCommandDef } from "../../../../types/plugin";
-import type { Portfolio, TickerRecord } from "../../../../types/ticker";
+import type { Portfolio, PortfolioCash, TickerRecord } from "../../../../types/ticker";
 import type { TickerRepository } from "../../../../data/ticker-repository";
 import type { ConfigContext, MarketContext } from "../../../../cli/types";
 import { canonicalTickerKey, parsePublicTickerKey } from "../../../../utils/exchanges";
@@ -53,6 +53,7 @@ import { importedFromText } from "../imported-from";
 import { importPositionsFileCommand, POSITIONS_IMPORT_HELP, POSITIONS_IMPORT_USAGE, type PositionsImportOptions } from "./import-positions";
 import { savedListingCoinNote } from "../../../../cli/commands/crypto-hints";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
+import { portfolioCashBalances } from "../../../../portfolio/cash-balances";
 import { ambiguousQuantityProblem } from "../../../../portfolio/position-quantity";
 import {
   CLI_COST_FX_WORDING, loadPurchaseDateCostFx, readCostFxRate, readPurchaseDate, resolvePositionCostFx, type CostFxHistoryClient,
@@ -86,7 +87,7 @@ const ADD_USAGE = "Usage: gloom portfolio add <portfolio> <symbols...> [--file <
 const CREATE_USAGE = "Usage: gloom portfolio create <name> [--currency <code>]";
 const POSITION_USAGE = "Usage: gloom portfolio position set <portfolio> <ticker> <shares|contracts> <avg-cost> [currency] [--date <purchase date> | --cost-fx <rate>]";
 const REMOVE_USAGE = "Usage: gloom portfolio remove <portfolio> <symbols...> [--file <path>]";
-const CASH_USAGE = "Usage: gloom portfolio cash set <portfolio> <amount> [currency] | portfolio cash clear <portfolio>";
+const CASH_USAGE = "Usage: gloom portfolio cash set <portfolio> <amount> [currency] | portfolio cash clear <portfolio> [currency]";
 const TARGET_USAGE = "Usage: gloom portfolio target set <portfolio> <symbol|CASH> <weight%> | target clear <portfolio> [symbol] | target show <portfolio>";
 const IMPORT_USAGE = "Usage: gloom portfolio import <file> [--name <portfolio>] [--merge | --replace] [--dry-run] | portfolio import --13f <CIK|fund name> [--top N] [--name <portfolio>] [--notional <amount>] [--replace]";
 const IMPORT_DEFAULT_TOP = 10;
@@ -479,7 +480,7 @@ async function setPositionCommand(
 function firstPositionCurrencyNote(portfolio: Portfolio, adopted: string): { text: string; warning: boolean } {
   const note = `"${portfolio.name}" now totals in ${adopted}, its first position's currency`;
   const held = [
-    portfolio.cash && portfolio.cash.amount !== 0 ? "cash" : null,
+    portfolioCashBalances(portfolio).some((balance) => balance.amount !== 0) ? "cash" : null,
     Object.keys(portfolio.targetWeights ?? {}).length > 0 ? "targets" : null,
   ].filter((part): part is string => part !== null);
   if (held.length === 0) return { text: `${note}.`, warning: false };
@@ -542,23 +543,36 @@ function parseCashArgs(rest: string[], portfolios: readonly Portfolio[]): { name
   return null;
 }
 
+/** Balances as a confirmation lists them: HK$39,000.00 and $1,200.00. */
+function cashBalancesText(balances: readonly PortfolioCash[]): string {
+  const amounts = balances.map((balance) => formatAllocationMoney(balance.amount, balance.currency));
+  return amounts.length <= 1 ? amounts.join("") : `${amounts.slice(0, -1).join(", ")} and ${amounts.at(-1)!}`;
+}
+
+/** The line that says what cash a portfolio holds after a change, once it holds more than one currency's; else null. */
+function cashHeldNote(portfolio: Portfolio, balances: readonly PortfolioCash[], totalsCurrency: string): string | null {
+  if (balances.length < 2) return null;
+  return `"${portfolio.name}" holds cash in ${balances.length} currencies, ${cashBalancesText(balances)}; reports convert each into ${totalsCurrency}.`;
+}
+
 async function setCashCommand(rest: string[], ctx: CliCommandContext) {
   await withConfigData(ctx, async ({ config, persistence }) => {
     const parsed = parseCashArgs(rest, config.portfolios);
     if (!parsed?.name) ctx.fail(CASH_USAGE);
     try {
       const portfolio = requirePortfolio(config, parsed.name);
+      const totalsCurrency = resolvePortfolioTotalsCurrency(portfolio, config.baseCurrency);
       // An amount of a currency reads by its units: 500,000 USD is half a million, 1,234 KWD could be either.
-      const currency = parsed.currency ?? resolvePortfolioTotalsCurrency(portfolio, config.baseCurrency);
+      const currency = parsed.currency ?? totalsCurrency;
       const amount = parseAmountArg(parsed.amount, "Cash amount", currency);
-      const { config: next, replaced } = setPortfolioCash(config, portfolio.id, { amount, currency });
+      const { config: next, replaced, balances } = setPortfolioCash(config, portfolio.id, { amount, currency });
       await saveConfig(next);
-      // A portfolio holds one balance: a TRY balance set over in USD is gone, and the line says so.
+      // Only this currency's balance changes: a portfolio holds one per currency, and the others stay.
       const replacing = replaced ? `, replacing ${formatAllocationMoney(replaced.amount, replaced.currency)}` : "";
-      console.log(cliStyles.success(`Set cash in "${portfolio.name}" to ${formatAllocationMoney(amount, currency)}${replacing}.`));
-      if (replaced && replaced.currency.toUpperCase() !== currency) {
-        console.log(cliStyles.warning(`A portfolio holds one cash balance, in one currency: the ${replaced.currency.toUpperCase()} balance is no longer counted.`));
-      }
+      const which = balances.length > 1 ? `${currency} cash` : "cash";
+      console.log(cliStyles.success(`Set ${which} in "${portfolio.name}" to ${formatAllocationMoney(amount, currency)}${replacing}.`));
+      const held = cashHeldNote(portfolio, balances, totalsCurrency);
+      if (held) console.log(cliStyles.muted(held));
       const account = findCachedPortfolioAccount(config, portfolio, persistence.resources);
       if (account && Number.isFinite(account.totalCashValue)) {
         console.log(cliStyles.warning(
@@ -571,17 +585,47 @@ async function setCashCommand(rest: string[], ctx: CliCommandContext) {
   });
 }
 
-async function clearCashCommand(name: string, ctx: CliCommandContext) {
+/**
+ * `<portfolio...> [currency]`: a last word that is a currency code, after
+ * words that name a portfolio, is the currency to clear; otherwise every word
+ * is the name (a portfolio called "Baht THB").
+ */
+function parseCashClearArgs(rest: string[], portfolios: readonly Portfolio[]): { name: string; currency?: string } {
+  const last = rest.at(-1);
+  if (rest.length >= 2 && last && CURRENCY_CODE.test(last)) {
+    const name = rest.slice(0, -1).join(" ");
+    if (findNamedCollection(portfolios, name)) return { name, currency: last.toUpperCase() };
+  }
+  return { name: rest.join(" ") };
+}
+
+async function clearCashCommand(rest: string[], ctx: CliCommandContext) {
   await withConfigData(ctx, async ({ config }) => {
+    const { name, currency } = parseCashClearArgs(rest, config.portfolios);
     try {
       const portfolio = requirePortfolio(config, name);
-      const result = clearPortfolioCash(config, portfolio.id);
-      if (!result.changed) {
-        console.log(cliStyles.warning(`"${portfolio.name}" has no cash recorded.`));
+      const totalsCurrency = resolvePortfolioTotalsCurrency(portfolio, config.baseCurrency);
+      const result = clearPortfolioCash(config, portfolio.id, currency);
+      if (result.removed.length === 0) {
+        const held = result.balances.length > 0 ? ` It holds ${result.balances.map((balance) => balance.currency).join(" and ")}.` : "";
+        console.log(cliStyles.warning(currency
+          ? `"${portfolio.name}" has no ${currency} cash recorded.${held}`
+          : `"${portfolio.name}" has no cash recorded.`));
         return;
       }
       await saveConfig(result.config);
-      console.log(cliStyles.success(`Cleared the cash in "${portfolio.name}".`));
+      // One currency of several names it and what stays; all of it names each balance that went once there were several.
+      if (currency) {
+        const left = result.balances.length > 0 ? `; ${cashBalancesText(result.balances)} ${result.balances.length === 1 ? "stays" : "stay"}` : "";
+        const what = result.balances.length > 0 ? `${currency} cash` : "cash";
+        console.log(cliStyles.success(`Cleared the ${what} in "${portfolio.name}" (${cashBalancesText(result.removed)})${left}.`));
+      } else {
+        console.log(cliStyles.success(result.removed.length > 1
+          ? `Cleared the cash in "${portfolio.name}": ${cashBalancesText(result.removed)}.`
+          : `Cleared the cash in "${portfolio.name}".`));
+      }
+      const held = cashHeldNote(portfolio, result.balances, totalsCurrency);
+      if (held) console.log(cliStyles.muted(held));
     } catch (error) {
       failPortfolioCommand(ctx, error, `Failed to clear the cash in "${name}".`);
     }
@@ -1006,7 +1050,7 @@ const POSITION_HELP = {
     "A future's size is in contracts, at a price per unit of its contract (GC=F: per troy ounce); the contract size is read from its terms, as quote shows them.",
     "The cost is in the currency named after it (GBp or GBX for pence, gbp for pounds), else the listing's. A holding in another currency than the portfolio's (a US stock in a TRY portfolio) can be entered at its cost in the portfolio's currency (position set Lira BRK-B 10 20310 TRY), so P&L is in what was paid.",
     "Entered at its cost in its own currency, its P&L converts the cost at today's rate unless --date gives the purchase date, whose daily FX close is used, or --cost-fx gives the rate paid (portfolio currency per unit of the holding's: 32.15 TRY per USD); then the P&L carries the currency's move since. portfolio show names the holdings whose cost converts at today's rate.",
-    "cash set replaces the portfolio's cash: it holds one balance, in one currency, and the command names the balance it replaced.",
+    "cash set sets the portfolio's cash in one currency, its own unless named, and keeps its cash in other currencies: HKD and USD can sit side by side, each converted into the portfolio's currency. It names the balance of that currency it replaced. cash clear <portfolio> <currency> clears one currency, cash clear <portfolio> all of it.",
   ],
 };
 
@@ -1046,7 +1090,7 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio remove <portfolio> <symbols...> [--file <path>]",
       "portfolio position set <portfolio> <symbol> <shares|contracts> <avg-cost> [currency] [--date <purchase date> | --cost-fx <rate>]",
       "portfolio cash set <portfolio> <amount> [currency]",
-      "portfolio cash clear <portfolio>",
+      "portfolio cash clear <portfolio> [currency]",
       "portfolio target set <portfolio> <symbol|CASH> <weight%>",
       "portfolio target clear <portfolio> [symbol|CASH]",
       "portfolio target show <portfolio>",
@@ -1087,6 +1131,8 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio position set Lira BRK-B 10 410 USD --date 2024-03-01",
       "portfolio position set Lira KO 40 62.50 USD --cost-fx 32.15",
       "portfolio cash set Research 25000 USD",
+      "portfolio cash set Research 195000 HKD",
+      "portfolio cash clear Research HKD",
       "portfolio target set Research ASML 12.5%",
       "portfolio target set Research CASH 10",
       "portfolio show Research --close",
@@ -1237,7 +1283,7 @@ export const portfolioCliCommand: CliCommandDef = {
         return;
       }
       if (subaction === "clear" && rest.length > 0) {
-        await clearCashCommand(rest.join(" "), ctx);
+        await clearCashCommand(rest, ctx);
         return;
       }
       ctx.fail(CASH_USAGE);

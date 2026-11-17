@@ -22,10 +22,11 @@ const ISO_CURRENCY = /^[A-Z]{3}$/;
 /**
  * The portfolio's cash by currency: the broker account's own balances when it
  * reports them per currency, else its total cash (in the portfolio's currency
- * when the account names none), else the amount entered with `portfolio cash set`.
+ * when the account names none), else each currency's balance entered with
+ * `portfolio cash set`.
  */
 export function riskCashLines(
-  portfolio: Pick<Portfolio, "cash" | "currency">,
+  portfolio: Pick<Portfolio, "cash" | "otherCash" | "currency">,
   account: Pick<BrokerAccount, "cashBalances" | "totalCashValue" | "currency"> | null | undefined,
 ): RiskCashLine[] {
   const byCurrency = new Map<string, number>();
@@ -36,11 +37,10 @@ export function riskCashLines(
     byCurrency.set(currency, (byCurrency.get(currency) ?? 0) + balance.quantity);
   }
   if (byCurrency.size) return [...byCurrency].map(([currency, amount]) => ({ currency, amount }));
-  const line = resolvePortfolioCash(portfolio, account);
-  const currency = (line?.currency.trim() || portfolio.currency || "").toUpperCase();
-  return line && ISO_CURRENCY.test(currency) && Number.isFinite(line.amount) && line.amount !== 0
-    ? [{ currency, amount: line.amount }]
-    : [];
+  return (resolvePortfolioCash(portfolio, account)?.balances ?? []).flatMap((line) => {
+    const currency = (line.currency.trim() || portfolio.currency || "").toUpperCase();
+    return ISO_CURRENCY.test(currency) && Number.isFinite(line.amount) && line.amount !== 0 ? [{ currency, amount: line.amount }] : [];
+  });
 }
 
 /** A currency's move against USD, in percent of its USD value: TRY -20 is the lira 20% weaker. */
