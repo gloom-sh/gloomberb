@@ -23,7 +23,7 @@ export const HEARD_FROM_ANSWERS = [
 export type HeardFromAnswer = (typeof HEARD_FROM_ANSWERS)[number];
 
 /** The longest "Other" note the service keeps, in characters. */
-export const HEARD_FROM_NOTE_MAX_LENGTH = 120;
+const HEARD_FROM_NOTE_MAX_LENGTH = 120;
 
 export interface HeardFromState {
   /** Show the question now. */
@@ -41,7 +41,7 @@ function parseHeardFromState(value: unknown): HeardFromState {
 }
 
 /** One line, trimmed, cut to what the service keeps (counted in characters, not UTF-16 units). */
-export function heardFromNote(text: string): string {
+function heardFromNote(text: string): string {
   return [...text.replace(/\s+/g, " ").trim()].slice(0, HEARD_FROM_NOTE_MAX_LENGTH).join("").trim();
 }
 

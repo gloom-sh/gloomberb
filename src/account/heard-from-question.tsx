@@ -28,7 +28,7 @@ const LABELS: Record<HeardFromAnswer, string> = {
 };
 const UNTRANSLATED: ReadonlySet<HeardFromAnswer> = new Set(["youtube", "tiktok", "instagram", "x", "reddit"]);
 
-export function heardFromChoiceLabel(answer: HeardFromAnswer): string {
+function heardFromChoiceLabel(answer: HeardFromAnswer): string {
   return UNTRANSLATED.has(answer) ? LABELS[answer] : t(LABELS[answer]);
 }
 
