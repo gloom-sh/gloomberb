@@ -108,4 +108,8 @@ test("broker-linked accounts never substitute an estimate and imported real hist
   expect(real.performanceEstimate).toBeNull();
   expect(real.performance?.twr).toBeCloseTo(0.2, 12);
   expect(real.rows.performance.map((row) => row.id)).toEqual(["twr", "mwr", "drawdown"]);
+  const broker = buildPortfolioRisk({ ...portfolio, brokerId: "broker", brokerAccountId: "account" }, tickers, market, evidence);
+  expect(broker.performance).toEqual(real.performance);
+  expect(broker.rows.performance).toEqual(real.rows.performance);
+  expect(broker.performanceEstimate).toBeNull();
 });

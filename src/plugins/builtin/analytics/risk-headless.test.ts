@@ -17,11 +17,13 @@ test("manual headless Performance and its compact report retain the estimate lab
     const args = { rawArgument: "manual", argument: "manual", symbols: [], options: { view: "performance" } };
     const result = await portfolioRiskHeadless.load(args, {
       config: { ...createDefaultConfig("/tmp/unused-risk-headless"), portfolios: [portfolio] },
-      signal: new AbortController().signal, apiClient: brokerRiskClient(now, []),
+      signal: new AbortController().signal, apiClient: { ...brokerRiskClient(now, []),
+        getCloudFredSeries: async () => { throw new Error("Factor inputs unavailable"); } },
       resolvePortfolio: async () => ({ portfolio, tickers: [ticker] }),
     } as unknown as HeadlessPaneContext);
     expect(result.sections[0]!.rows![0]!.label).toBe("Estimated value");
     expect(result.complete).toBe(true);
+    expect(result.errors).toEqual([]);
     const compact = portfolioRiskHeadless.compact!(result, args);
     expect(compact.sections[0]!.rows![0]!.label).toBe("Estimated value");
     expect(compact.metadata?.performanceEstimate).toMatchObject({ kind: "estimate", label: "Estimated value", currency: "USD", startDate: "2026-09-15" });

@@ -49,6 +49,7 @@ export function manualPortfolioValue(
     return { date, value: value != null && Number.isFinite(value) ? value : null };
   });
   if (points.some((point) => point.value == null)) warnings.add("Estimated value has gaps where daily closes or FX are missing.");
+  if (points.filter((point) => point.value != null).length < 2) warnings.add("Estimated value needs at least two available daily closes.");
   return {
     kind: "estimate" as const,
     label: "Estimated value",
