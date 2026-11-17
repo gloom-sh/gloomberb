@@ -757,6 +757,26 @@ export interface CorporateActionsData {
   dividendsAsOf?: string;
   splits: SplitAction[];
   earnings: EarningsAction[];
+  /** Businesses demerged out of the listing into companies of their own; absent where none is on record and from older servers. */
+  demergers?: DemergerAction[];
+}
+
+/**
+ * A business demerged out of a listing (Tata Motors' commercial vehicles into
+ * TMCV): the listing's price falls by that business's value on the ex-date,
+ * which is no market move.
+ */
+export interface DemergerAction {
+  /** The first session the listing traded without the business, YYYY-MM-DD. */
+  exDate: string;
+  recordDate?: string;
+  /** The company the business went to, as it lists, and the day it first traded (null until it lists). */
+  successor: { symbol: string; exchange?: string; name?: string; listedOn?: string | null };
+  /** What the business does: "commercial vehicles". */
+  business?: string;
+  /** Shares of the demerged company per share of the listing. */
+  ratio?: number;
+  source?: string;
 }
 
 /** Paid rows as their company declared them, in `currency` (its major unit). */

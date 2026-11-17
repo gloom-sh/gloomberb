@@ -75,7 +75,8 @@ test("preview keeps evidence-bearing rows, shows the standard upgrade, and narro
   data.says[0] = supplyRow("Known company", { nativeAmount: 315_813, nativeCurrency: "JPY", nativeScale: 1_000_000 });
   await mount(88, 20);
   const native = await tui.waitForFrameToContain("315,813 JPY million");
-  expect(native).toContain("2026-01-31");
+  // Dated by the newest disclosure shown, as its Published column says.
+  expect(native).toContain("as of 2026-02-25");
   expect(native).toContain("Upgrade to Pro");
   expect(native).toContain("Filing");
 });
@@ -164,9 +165,10 @@ test("narrow evidence wraps original quotes and glosses and scrolls to their end
     quoteGloss: "Samsung's principal customers include Alphabet, Apple, Deutsche Telekom, Hong Kong Techtronics and Supreme Electronics. Together they represented approximately 15% of total revenue." });
   setCloudApiFetchTransport(async () => Response.json(supplyPayload({ says: [row] })));
   await mount(80, 20);
-  await tui.waitForFrameToContain("2026-01-31");
+  // The rows under a short table already show the selected row's quote; the evidence opens with its way back.
+  expect(await tui.waitForFrameToContain("2026-02-25")).toContain("Original quote · Korean");
   await tui.emitKeypress({ name: "e" });
-  await tui.waitForFrameToContain("Original quote");
+  await tui.waitForFrameToContain("← Back");
   await tui.emitKeypress({ name: "end" });
   const frame = await tui.waitForFrameToContain(`Open ${row.form}`);
   expect(frame).toContain("15% 수준입니다.");
@@ -184,7 +186,7 @@ test("evidence preserves the reporting company and scope, then Enter drills into
   for (const width of [88, 160]) {
     await mount(width, 24);
     const table = await tui.waitForFrameToContain("315,813 JPY million");
-    expect(table).toContain("2026-01-31");
+    expect(table).toContain("2026-02-25");
     expect(table).toContain("22%");
     if (width === 160) expect(table).toContain("ORIGINS");
     await tui.destroy();
@@ -224,6 +226,23 @@ test("graph selection collapses a branch and recenters an unlisted company throu
   await tui.renderFrames(3);
   expect(requests.some(url => url.includes("id%3A2/graph"))).toBe(true);
   expect(requests.every(url => url.includes("/graph?") && url.includes("tiers=primary"))).toBe(true);
+});
+
+test("a graph read without the filing cutoff asked for warns in the footer; one that reads it does not", async () => {
+  const requests: string[] = [];
+  // The free preview answers the latest snapshot: its options carry no cutoff, and the fixture raises no other notice.
+  setCloudApiFetchTransport(async (input) => { requests.push(String(input)); return Response.json(graphPayload()); });
+  await mount(120, 24, "graph", "says", () => {}, { asOf: "2025-01-01" });
+  await tui.waitForFrameToContain("Private supplier");
+  expect(await tui.waitForFrameToContain("⚠")).toContain("[!]");
+  expect(requests.some((url) => url.includes("asOf=2025-01-01"))).toBe(true);
+  await tui.destroy();
+  graphCache.reset();
+  setCloudApiFetchTransport(async () => { const data = graphPayload(); return Response.json({ ...data, options: { ...data.options, asOf: "2025-01-01" } }); });
+  await mount(120, 24, "graph", "says", () => {}, { asOf: "2025-01-01" });
+  await tui.waitForFrameToContain("Private supplier");
+  await tui.renderFrames(3);
+  expect(tui.frame()).not.toContain("⚠");
 });
 
 test("path evidence preserves every hop and opens the filter form without losing the route", async () => {
@@ -316,5 +335,9 @@ test("receivables chart keeps earlier shares beside their basis and their eviden
   }
   await act(async () => { await tui.clickFrameText("Previous buyer"); });
   await tui.emitKeypress({ name: "e" });
-  expect(await tui.waitForFrameToContain("Previous buyer")).toContain("2026-01-31");
+  // The earlier share's evidence opens with its own period, not the current row's 31 Jul 2026.
+  const evidence = await tui.waitForFrameToContain("← Back");
+  expect(evidence).toContain("Previous buyer");
+  expect(evidence).toMatch(/Period\s+as of 31 Jan 2026|Period\s+31 Jan 2026/);
+  expect(evidence).not.toContain("31 Jul 2026");
 });

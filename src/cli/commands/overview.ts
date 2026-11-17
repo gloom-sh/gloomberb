@@ -108,6 +108,7 @@ import {
 } from "./fred-series";
 import { fredProvenance, fredPublicationTime, notOnFredSource } from "../../sources/gloomberb-cloud/fred-attribution";
 import { followsUsBondMarket, usBondMarketClosedNote } from "../../market-data/us-bond-market";
+import { commandWord } from "../../utils/shell-word";
 
 /** The Actual of a release its publisher could not compute; the notes say why. */
 const NOT_PUBLISHED_TEXT = "not published";
@@ -1091,10 +1092,15 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
     const right = rightListing!.key;
     // Same daily-return model as the CORR pane: price levels of two trending
     // assets correlate spuriously, often with the opposite sign.
+    // Each symbol's quote, read once: whether its line can have moved, and where its daily close is taken below.
+    const quotes = new Map([leftListing!, rightListing!].map((listing) => [listing, loadListingQuote(services.dataProvider, listing)] as const));
     const loadSeries = async (listing: CliListing) => {
+      // A symbol whose company moved is asked again under its new symbol, the other one kept.
+      const retry = (key: string) => `gloom correlation ${listing === leftListing ? `${key} ${commandWord(right)}` : `${commandWord(left)} ${key}`}`;
       const bars = await loadForListing(
         listing, services, ctx,
         () => loadCorrelationHistory(services.dataProvider, listing.request.symbol, listing.request.exchange, "1Y"),
+        undefined, { command: "correlation", noun: "history", retry, quote: quotes.get(listing)! },
       );
       return { ...buildCorrelationSeries(listing.key, bars), bars: bars.length };
     };
@@ -1109,7 +1115,7 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
         .map((series) => series.rollNote ? `${series.symbol}: ${series.rollNote}` : null),
     ].filter((note) => note != null);
     // A bare symbol names no exchange; its quote says where it lists, which sets when its daily close is taken.
-    const [leftQuote, rightQuote] = await Promise.all([leftListing!, rightListing!].map((listing) => loadListingQuote(services.dataProvider, listing)));
+    const [leftQuote, rightQuote] = await Promise.all([leftListing!, rightListing!].map((listing) => quotes.get(listing)!));
     const sessionNote = mixedSessionCloseNote(
       { symbol: leftListing!.symbol, exchange: listingIdentity(leftListing!, leftQuote).exchange, label: left },
       { symbol: rightListing!.symbol, exchange: listingIdentity(rightListing!, rightQuote).exchange, label: right },
