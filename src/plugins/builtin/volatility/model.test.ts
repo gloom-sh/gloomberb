@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { boardOrder, buildVolatilityData, volatilityCurveLookbacks, volatilityLookbackDate, withLiveVolatilityLevels, type VolatilityHistoryInput, type VolatilitySeriesInput } from "./model";
+import { boardOrder, buildVolatilityData, curvePointWarnings, volatilityCurveLookbacks, volatilityPaneWarnings, volatilityLookbackDate, withLiveVolatilityLevels, type VolatilityHistoryInput, type VolatilitySeriesInput } from "./model";
 
 function history(rows: Array<[string, number]>, source = "gloom"): VolatilityHistoryInput {
   return { source, history: rows.map(([date, close]) => ({ date: new Date(date), close })) };
@@ -203,4 +203,23 @@ describe("curve look-backs", () => {
       ["2026-09-18", { vix: 15, vix3m: 18 }], ["2026-08-25", { vix: 16, vix3m: 19 }]]);
     expect(volatilityCurveLookbacks(buildVolatilityData({}))).toEqual([]);
   });
+});
+
+// The board's footer listed every index's own warnings ("VIX9D: 1D change unavailable…"); they are their rows'.
+test("an index's or a curve point's warnings are its row's; the footer keeps the pane's", () => {
+  const data = buildVolatilityData({ history: {
+    vix: history([["2026-09-18", 18], ["2026-09-21", 20]]),
+    vix3m: history([["2026-09-18", 20], ["2026-09-21", 22]]),
+    vix9d: history([["2026-09-11", 15]]),
+  }, fred: { VIXCLS: fred([["2026-09-17", 10], ["2026-09-18", 0]]) } });
+  const vix9d = data.board.find((entry) => entry.id === "vix9d")!;
+  expect(vix9d.warnings.length).toBeGreaterThan(0);
+  const pane = volatilityPaneWarnings(data);
+  expect(pane.some((warning) => warning.startsWith(`${vix9d.label}: `))).toBe(false);
+  // A missing curve point is that point's row's note.
+  const missing = data.curve.points.find((point) => point.value == null)!;
+  expect(curvePointWarnings(data, missing.label)[0]).toStartWith("no close aligned to");
+  expect(pane.some((warning) => warning.startsWith(`${missing.label}: `))).toBe(false);
+  // A FRED series of the history tab is no row: its warning stays the pane's.
+  expect(pane).toContain("VIXCLS: Nonpositive or invalid closes rejected");
 });

@@ -85,6 +85,8 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
    */
   rootBefore?: ReactNode | ((board: { columns: readonly DataTableColumn[] }) => ReactNode);
   emptyTitle?: string;
+  /** What concerns one row (it has no figure, its figure is old), under the board while it is selected (DataTableView `rowNote`). */
+  rowNote?: (row: T) => string | null;
 }
 
 /**
@@ -152,7 +154,7 @@ function fitBoardColumns(candidates: DataTableColumn[], width: number, wordWidth
 export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height, focused,
   selectedId, onSelectedIdChange, openId, onOpenIdChange, renderDetail, changeLabel = "1D", valueWidth = 12,
   labelWidth = 18, labelHeader = "INSTRUMENT", labelDetailHeader = "DETAIL", labelDetailWidth = 22, valueLabel = "LEVEL", percentileLabel = "PCTL 1Y", asOfWidth = 10, signedChange = false, extraColumns,
-  rootBefore, emptyTitle = "No observations." }: MarketBoardStackProps<T>) {
+  rootBefore, emptyTitle = "No observations.", rowNote }: MarketBoardStackProps<T>) {
   const colors = useThemeColors();
   // A board of countries leads each name with its flag where one is drawn.
   const flagged = useUiCapabilities().nativePaneChrome === true && rows.some((row) => row.country !== undefined);
@@ -206,7 +208,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => {
       if (id !== "history") setSort((current) => nextHeaderSort(current, id));
     }} rootWidth={width} rootHeight={Math.max(3, height)} rootBefore={typeof rootBefore === "function" ? rootBefore({ columns }) : rootBefore}
-    freezeFirstColumn emptyStateTitle={emptyTitle} />;
+    freezeFirstColumn emptyStateTitle={emptyTitle} {...(rowNote ? { rowNote: (row: T) => rowNote(row) } : {})} />;
 }
 
 export interface StatChartDetailProps {

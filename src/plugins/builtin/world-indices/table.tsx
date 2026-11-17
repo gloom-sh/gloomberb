@@ -72,6 +72,18 @@ function isUnavailableInFeed(state: BoardQuoteState | undefined): boolean {
   return !!state && !state.quote && !state.loading && isFeedGap(state.error);
 }
 
+/** Why an index's quote failed to load (a timeout, an outage), not a gap in the feed; null while it has one or is loading. */
+function quoteFailure(state: BoardQuoteState | undefined): string | null {
+  return state && !state.quote && !state.loading && state.error && !isFeedGap(state.error) ? state.error : null;
+}
+
+/** The selected index's failure in full, under the table: its row says `no quote` (WorldIndicesPane `rowNote`). */
+export function worldIndexRowNote(row: WorldIndexTableRow, quotes: BoardQuoteMap): string | null {
+  if (row.type !== "row") return null;
+  const failure = quoteFailure(quotes.get(row.entry.symbol));
+  return failure ? `${row.entry.shortName}: ${failure}` : null;
+}
+
 export function renderWorldIndexCell(
   row: WorldIndexTableRow,
   column: WorldIndexColumn,
@@ -83,6 +95,7 @@ export function renderWorldIndexCell(
   const { entry } = row;
   // The figures are blank and the name cell says why, ahead of the name so a narrow pane clips the name, not the reason.
   const unavailable = isUnavailableInFeed(quotes.get(entry.symbol));
+  const failed = !!quoteFailure(quotes.get(entry.symbol));
   switch (column.id) {
     case "symbol":
       return {
@@ -93,6 +106,8 @@ export function renderWorldIndexCell(
     case "name":
       return unavailable
         ? { text: `${NOT_IN_FEED} · ${entry.name}`, color: colors.textDim }
+        // A quote that failed to load says so in a few words; its reason is under the table when selected.
+        : failed ? { text: `no quote · ${entry.name}`, color: colors.warning }
         : { text: entry.name };
     default:
       if (unavailable) return { text: "" };

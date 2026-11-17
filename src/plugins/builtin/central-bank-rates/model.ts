@@ -25,9 +25,15 @@ export function policyObservations(data: CentralBankRatesPayload): { asOf: strin
   return data.rows.filter((row) => row.status !== "unavailable").map((row) => ({ asOf: row.asOf, stale: row.status === "stale" }));
 }
 
+/** Why a bank's row has no rate, or an old one; the board says it under itself while the row is selected. */
+export function policyRowNote(row: CentralBankRow): string | null {
+  return row.status === "stale" ? `${row.label}: stale, latest observation ${row.asOf ?? "unknown"}${row.lagDays == null ? "" : ` (${row.lagDays} days old)`}.`
+    : row.status === "unavailable" ? `${row.label}: ${(row.unavailableReason ?? "unavailable").replaceAll("-", " ")}.` : null;
+}
+
+/** Every listed row's note, as the report lists them. */
 export function policyNotices(data: CentralBankRatesPayload): string[] {
-  return data.rows.filter((row) => !hasNoPolicyRate(row)).flatMap((row) => row.status === "stale" ? [`${row.label}: stale, latest observation ${row.asOf ?? "unknown"}${row.lagDays == null ? "" : ` (${row.lagDays} days old)`}.`]
-    : row.status === "unavailable" ? [`${row.label}: ${(row.unavailableReason ?? "unavailable").replaceAll("-", " ")}.`] : []);
+  return data.rows.filter((row) => !hasNoPolicyRate(row)).flatMap((row) => policyRowNote(row) ?? []);
 }
 export function policyHistory(row: CentralBankRow) {
   return row.history.filter((point) => (!row.percentile.windowStart || point.date >= row.percentile.windowStart)

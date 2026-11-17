@@ -435,9 +435,15 @@ The same holds for what the data says about one row of a list of names
 not price, a peer whose fundamentals are stale, a holding whose evidence has
 gaps. The row says it in a few words (`no price` in its first column with
 room, `Estimated 3 gaps`, its symbol in the warning colour), and the whole
-reason goes in its detail or, for a table with none, under the table while
-the row is selected (`RowNote` as the table's `rootAfter`). The footer's
-notes are the pane's: what concerns every row. CSP, EXPO and RV do this.
+reason goes in its detail or under the table while the row is selected
+(DataTableView's and MarketBoardStack's `rowNote`, drawn as `RowNote`). A
+pane that is no table says it where its selection is: a correlation cell's
+symbols under the matrix, a series' limitation above its chart. The
+footer's notes are the pane's: what concerns every row, and names with no
+row of their own (a ticker with no trades in the window). A payload that
+repeats its rows' notes among its own (EXPO's `AAPL: …`) is filtered before
+the footer. CSP, EXPO, RV, VIX, PORT, BI, RRG, BTMM, CBR, VAL, CORR, WEI,
+CAT and PF do this.
 
 `useRowNotes` (`gloomberb/components`) keeps the notes: `setNote(key,
 note)` after an action, `noteFor(row)` in the status cell and the detail.

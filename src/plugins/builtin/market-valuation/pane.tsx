@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import {
   DELAYED_SEGMENT,
-  PaneStatusBody, type DataTableCell,
+  PaneStatusBody, RowNote, type DataTableCell,
   type DataTableColumn,
   type PaneFooterSegment
 } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
+import { Box } from "../../../ui";
+import { wrapTextLines } from "../../../utils/text-wrap";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -102,6 +104,17 @@ function cellsFor(row: IndicatorRow): Record<ColumnId, DataTableCell> {
   };
 }
 
+/** The selected indicator, its own limitation (a stale or missing latest reading) said above its chart. */
+function SelectedIndicatorDetail({ view, note, width, height, focused }: {
+  view: IndicatorViewModel; note: string | null; width: number; height: number; focused?: boolean;
+}) {
+  const noteRows = note ? wrapTextLines(note, Math.max(1, width - 2)).length : 0;
+  return <Box flexDirection="column" width={width} height={height}>
+    <RowNote>{note}</RowNote>
+    <IndicatorDetail view={view} width={width} height={Math.max(1, height - noteRows)} focused={focused} />
+  </Box>;
+}
+
 export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const [indicatorId, setIndicatorId] = usePaneSettingValue<string>(
     "indicator",
@@ -137,15 +150,14 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const { selected } = list;
   const selectedView = selected?.view;
 
-  const basisErrors = new Set(INDICATORS.flatMap((indicator) => {
-    const reason = indicatorUnavailableReason(indicator);
-    return reason ? [`${indicator.label}: ${reason}`] : [];
-  }));
-  const sourceError = bundle?.errors.find((entry) => !basisErrors.has(entry));
-  const unavailableCount = bundle?.errors.filter((entry) => basisErrors.has(entry)).length ?? 0;
+  // The footer says what concerns the whole board: a failure no indicator owns, else how many cannot be read. An
+  // indicator's own reason is its row's ("Unavailable") and its detail's.
+  const ownedByRow = (entry: string) => rows.some(({ indicator }) => [indicator.label, ...indicatorSeries(indicator).map((def) => def.key)]
+    .some((prefix) => entry.startsWith(`${prefix}:`)));
+  const sourceError = bundle?.errors.find((entry) => !ownedByRow(entry));
+  const unavailableCount = rows.filter((row) => row.error && !row.view).length;
   const bodyError = resource.error ?? sourceError ?? null;
-  const error = bodyError ?? selected?.error
-    ?? (unavailableCount ? `${unavailableCount} unavailable` : null);
+  const error = bodyError ?? (unavailableCount ? `${unavailableCount} unavailable` : null);
   const footerInfo = useMemo<PaneFooterSegment[]>(() => {
     if (!selectedView) return [];
     const info: PaneFooterSegment[] = [
@@ -196,7 +208,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
       getRowId={indicatorKey}
       renderCell={renderIndicatorCell}
       emptyStateTitle={list.normalizedQuery ? "No indicator matches." : error ?? "No indicators."}
-      renderDetail={(size) => selectedView ? <IndicatorDetail view={selectedView} {...size} /> : (
+      renderDetail={(size) => selectedView ? <SelectedIndicatorDetail view={selectedView} note={selected.error} {...size} /> : (
         <PaneStatusBody
           error={selected.error ?? "No data."}
           errorTitle={`${selected.indicator.label} unavailable`}

@@ -3,6 +3,8 @@ import { expect, test } from "bun:test";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import {
   buildPortfolioRisk,
+  riskPaneWarnings,
+  riskRowWarnings,
   factorFitText,
   withoutFactorFit,
   portfolioRiskRequests,
@@ -674,4 +676,16 @@ test("a holding saved under its venue's code (ES3:XSES) is requested and labelle
   expect(portfolioRiskRequests([held], "book")[0]).toMatchObject({ symbol: "ES3", exchange: "SGX" });
   // The pane names it by the venue, as D05:SGX beside it.
   expect(listedSymbol(held, held.metadata.ticker, "US")).toBe("ES3:SGX");
+});
+
+// A holding's failed mark and an option's failed valuation read as the whole book's in the footer.
+test("a warning that names a holding or an option is its row's; the book's stay the footer's", () => {
+  const model = {
+    warnings: ["AAPL: quote is from another listing", "AAPL261120C00200000: no implied volatility", "Treasury yield: the source did not answer"],
+    holdings: [{ symbol: "AAPL" }, { symbol: "MSFT" }],
+    greeks: { rows: [{ symbol: "AAPL261120C00200000" }] },
+  } as unknown as Parameters<typeof riskPaneWarnings>[0];
+  expect(riskPaneWarnings(model)).toEqual(["Treasury yield: the source did not answer"]);
+  expect(riskRowWarnings(model, "AAPL")).toEqual(["quote is from another listing"]);
+  expect(riskRowWarnings(model, "MSFT")).toEqual([]);
 });

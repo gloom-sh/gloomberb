@@ -442,6 +442,23 @@ export function buildVolatilityTermHistory(inputs: VolatilityInputs): Volatility
   return termHistory([boardTermSource(spot, threeMonth), fredTermSource(fredHistory(inputs.fred))]);
 }
 
+/** What a curve point says of itself (`no close aligned to …`), from the curve's warnings that name it. */
+export function curvePointWarnings(data: Pick<VolatilityData, "curve">, label: string): string[] {
+  return data.curve.warnings.flatMap((warning) => warning.startsWith(`${label}: `) ? [warning.slice(label.length + 2)] : []);
+}
+
+/**
+ * The warnings that concern the whole pane, for its footer: the data's
+ * warnings less a board row's and a curve point's own, which their rows say.
+ */
+export function volatilityPaneWarnings(data: VolatilityData): string[] {
+  const rows = new Set([
+    ...data.board.flatMap((row) => row.warnings.map((warning) => `${row.label}: ${warning}`)),
+    ...data.curve.points.flatMap((point) => curvePointWarnings(data, point.label).map((warning) => `${point.label}: ${warning}`)),
+  ]);
+  return data.warnings.filter((warning) => !rows.has(warning));
+}
+
 /** Curve values share one date and source family; board rows keep their own dates. */
 export function buildVolatilityData(inputs: VolatilityInputs): VolatilityData {
   const fred = fredHistory(inputs.fred);
