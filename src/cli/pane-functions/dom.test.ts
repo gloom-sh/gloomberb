@@ -322,12 +322,12 @@ test("a pane behind the sign-in wall reports what it needs instead of the wall's
       errorStateDetected: true, errorStateMarkers: ["Sign in to"], emptyStateDetected: false, emptyStateMarkers: [],
     },
   } as unknown as PaneScreenshotResult)).text;
-  expect(await wall("DIAG MSTR Sign in to run the Equity Diagnostic. Log in \u21B5 Sign up free")).toBe([
+  expect(await wall("DIAG MSTR Sign in to run the Equity Diagnostic. Sign up free \u21B5 Log in")).toBe([
     "Equity Diagnostic", "", "DIAG MSTR Sign in to run the Equity Diagnostic. Requires a free Gloom sign-in: open the app (gloom) and log in or "
       + "sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.",
   ].join("\n"));
   // The key that presses the first button, as the theses wall draws it.
-  expect(await wall("THESIS Sign in to keep investment theses. Log in \u21A9 Sign up free")).toEndWith("keep investment theses. Requires a free Gloom sign-in: "
+  expect(await wall("THESIS Sign in to keep investment theses. Sign up free \u21A9 Log in")).toEndWith("keep investment theses. Requires a free Gloom sign-in: "
     + "open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.");
   // Signed in with an unconfirmed address, the wall asks for the email instead.
   expect(await wall("DIAG MSTR Verify your email to run the Equity Diagnostic. Resend Verification Email")).toEndWith(
@@ -357,7 +357,7 @@ test("a pane walled whole cites no source, and one that says how to reach it say
       errorStateDetected: true, errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [],
     },
   } as unknown as PaneScreenshotResult, context);
-  const signedOut = await walled("sign-in", "EK NEM Sign in to read 8-K filings. Log in \u21B5 Sign up free");
+  const signedOut = await walled("sign-in", "EK NEM Sign in to read 8-K filings. Sign up free \u21B5 Log in");
   expect(signedOut.data).toMatchObject({ locked: "sign-in", complete: false });
   expect(signedOut.data.freshness).toBeUndefined();
   expect(signedOut.data.reason).toContain("Free, with no sign-in: gloom fn SEC NEM lists NEM's recent filings");

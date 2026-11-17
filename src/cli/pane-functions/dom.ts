@@ -28,7 +28,7 @@ const DOM_EVERY_ROW =
 const DOM_WHOLE_PANE =
   "The pane was grown to fit the page it has open, so all of its text is returned.";
 
-/** The sign-in wall's buttons, which a rendered view reads as words, with the key that presses one: `Log in ↩ Sign up free`. */
+/** The sign-in wall's buttons, which a rendered view reads as words, with the key that presses one: `Sign up free ↩ Log in`. */
 const SIGN_IN_WALL_BUTTONS = /\s*\b(?:Log in|Sign up free|Resend Verification Email)(?:\s*[\u21A9\u21B5])?(?=\s|$)/g;
 
 /** Whether the wall asks for the account's email to be verified, not for a sign-in. */
