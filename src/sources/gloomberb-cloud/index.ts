@@ -530,11 +530,7 @@ function perpetualFinancials(quote: Quote): TickerFinancials {
 }
 
 export class GloomberbCloudProvider implements AssetDataProvider {
-  /**
-   * Says of a symbol that it is known, before any request, to be a stock on a US exchange. A lookup of one asks for
-   * no perpetual contracts: the board is a request nothing waits on, but one for nothing. Set by a command line;
-   * unset, every lookup asks.
-   */
+  /** See `AssetDataProvider.knownUsStock`; this provider asks for no perpetual contracts of such a symbol either. */
   knownUsStock?: (symbol: string) => boolean;
   private readonly perpetualBoards = new PerpetualBoardCache();
 

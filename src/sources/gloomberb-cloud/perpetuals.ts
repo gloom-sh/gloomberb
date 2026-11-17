@@ -24,7 +24,7 @@ import { GLOOMBERB_CLOUD_PROVIDER_ID } from "./normalizers";
  * its history is Pro, as in PERP.
  */
 
-type PerpsClient = Pick<typeof apiClient, "getCloudPerpsMarket" | "getCloudPerpsBoard" | "getCloudPerpsHistory"> & Partial<Pick<typeof apiClient, "hasSessionCredential">>;
+type PerpsClient = Pick<typeof apiClient, "getCloudPerpsMarket" | "getCloudPerpsBoard" | "getCloudPerpsHistory"> & Partial<Pick<typeof apiClient, "hasSessionCredential" | "getSessionToken">>;
 
 /** What the history of a perpetual says to a free account, as PERP's History tab does. */
 export const PERPETUAL_HISTORY_LOCKED = "Full history requires Gloom Pro.";
@@ -211,19 +211,27 @@ export function boardSearchesFrom(board: PerpBoardPayload, client: PerpsClient =
 /** How long the board a signed-out search reads stays in memory: a command lives for seconds, an open app for much longer. */
 const SEARCH_BOARD_TTL_MS = 5 * 60_000;
 
+/** Who a client is asking for: no one, the session it holds, or the browser's own cookie. The board differs between them. */
+function boardAudience(client: PerpsClient): string {
+  if (!client.hasSessionCredential?.()) return "signed-out";
+  return client.getSessionToken?.() ?? "cookie";
+}
+
 /**
- * The board without a search, read once while it is fresh. A signed-out account's search is the preview rows that
- * hold its word (`boardSearchesFrom`), so every search of a command costs this one request. A signed-in account's
- * board is the whole of it, which only a list's searches (`searchBatch`) read. A provider holds one, so a process
- * reads the board once however many symbols it looks up.
+ * The board without a search, read once while it is fresh and for whom it was read. A signed-out account's search is
+ * the preview rows that hold its word (`boardSearchesFrom`), so every search of a command costs this one request. A
+ * signed-in account's board is the whole of it, which only a list's searches (`searchBatch`) read. A provider holds
+ * one, so a process reads the board once however many symbols it looks up; signing in, out or into another account
+ * reads it again, since the rows a signed-out preview leaves out are the ones a Pro account is shown.
  */
 export class PerpetualBoardCache {
-  private kept: { readAt: number; board: Promise<PerpBoardPayload> } | null = null;
+  private kept: { readAt: number; audience: string; board: Promise<PerpBoardPayload> } | null = null;
 
   read(client: PerpsClient = apiClient): Promise<PerpBoardPayload> {
+    const audience = boardAudience(client);
     const kept = this.kept;
-    if (kept && Date.now() - kept.readAt < SEARCH_BOARD_TTL_MS) return kept.board;
-    const entry = { readAt: Date.now(), board: client.getCloudPerpsBoard({}) };
+    if (kept && kept.audience === audience && Date.now() - kept.readAt < SEARCH_BOARD_TTL_MS) return kept.board;
+    const entry = { readAt: Date.now(), audience, board: client.getCloudPerpsBoard({}) };
     this.kept = entry;
     void entry.board.catch(() => {
       if (this.kept === entry) this.kept = null;

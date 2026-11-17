@@ -149,6 +149,67 @@ test("a signed-out account reads the board once for every one-word search, and a
   expect(signedIn.boards).toEqual([{ search: "bz" }]);
 });
 
+test("the board kept for searches is the one read for whoever is asking, in both directions of signing in and out", async () => {
+  // A signed-out account is shown a preview; the rows it leaves out are the ones a Pro account is shown.
+  const preview = [brent(), bz()];
+  const full = [...preview, brent({ marketId: "binance:NVDAUSDT", venue: "binance", dex: "", symbol: "NVDAUSDT", baseAsset: "NVDA", displayName: "NVDAUSDT" })];
+  let session: string | null = null;
+  const reads: Array<string | null> = [];
+  const client = {
+    ...fakeClient(),
+    hasSessionCredential: () => session !== null,
+    getSessionToken: () => session,
+    getCloudPerpsBoard: async () => { reads.push(session); return board(session ? full : preview); },
+  };
+  const boards = new PerpetualBoardCache();
+  const symbols = async () => (await boards.read(client)).rows.map((row) => row.baseAsset);
+  expect(await symbols()).toEqual(["BRENTOIL", "BZ"]);
+  expect(await symbols()).toEqual(["BRENTOIL", "BZ"]);
+  expect(reads).toEqual([null]);
+  // Signed in: the preview kept for the signed-out account is not what a search is answered from.
+  session = "token-a";
+  expect(await symbols()).toEqual(["BRENTOIL", "BZ", "NVDA"]);
+  expect(await symbols()).toEqual(["BRENTOIL", "BZ", "NVDA"]);
+  expect(reads).toEqual([null, "token-a"]);
+  // Signed out again: the full board kept for the account is not shown to one that is not.
+  session = null;
+  expect(await symbols()).toEqual(["BRENTOIL", "BZ"]);
+  expect(reads).toEqual([null, "token-a", null]);
+  // Another account has a board of its own.
+  session = "token-a";
+  await symbols();
+  session = "token-b";
+  await symbols();
+  expect(reads).toEqual([null, "token-a", null, "token-a", "token-b"]);
+});
+
+test("a provider's searches do not take a board from the other side of a sign-in", async () => {
+  let session: string | null = null;
+  const reads: Array<string | null> = [];
+  const hidden = brent({ marketId: "binance:NVDAUSDT", venue: "binance", dex: "", symbol: "NVDAUSDT", baseAsset: "NVDA", displayName: "NVDAUSDT" });
+  const rowsFor = () => session ? [brent(), bz(), hidden] : [brent(), bz()];
+  patch(apiClient, "hasSessionCredential", () => session !== null);
+  patch(apiClient, "getSessionToken", () => session);
+  patch(apiClient, "getCloudPerpsBoard", (async (query: PerpBoardQuery = {}) => {
+    reads.push(session);
+    const search = query.search?.toUpperCase() ?? "";
+    return board(rowsFor().filter((row) => `${row.symbol} ${row.baseAsset} ${row.displayName}`.toUpperCase().includes(search)));
+  }) as typeof apiClient.getCloudPerpsBoard);
+  patch(apiClient, "getCloudPerpsMarket", fakeClient().getCloudPerpsMarket as typeof apiClient.getCloudPerpsMarket);
+  const listing = (query: string) => ({ providerId: "gloomberb-cloud", symbol: query, name: `${query} Fund`, exchange: "NYSE", type: "ETF" });
+  patch(apiClient, "searchInstruments", (async (query: string) => [listing(query)]) as typeof apiClient.searchInstruments);
+  patch(apiClient, "searchInstrumentsBatch", (async (queries: readonly string[]) =>
+    new Map(queries.map((query) => [query, [listing(query)]]))) as unknown as typeof apiClient.searchInstrumentsBatch);
+  const provider = new GloomberbCloudProvider();
+  const contracts = async () => (await provider.searchBatch(["NVDA"]))?.get("NVDA")?.map((row) => row.symbol);
+  expect(await contracts()).toEqual(["NVDA"]);
+  session = "token-a";
+  expect(await contracts()).toEqual(["NVDAUSDT:BINANCE", "NVDA"]);
+  session = null;
+  expect(await contracts()).toEqual(["NVDA"]);
+  expect(reads).toEqual([null, "token-a", null]);
+});
+
 test("a lookup asks for perpetual markets beside the listings, and not at all for a symbol known to be a US stock", async () => {
   const client = fakeClient([brent(), bz()].map((row) => row), [brent(), bz(), brent({ marketId: "binance:NVDAUSDT", venue: "binance", dex: "", symbol: "NVDAUSDT", baseAsset: "NVDA", displayName: "NVDAUSDT" })]);
   patch(apiClient, "getCloudPerpsBoard", client.getCloudPerpsBoard as typeof apiClient.getCloudPerpsBoard);

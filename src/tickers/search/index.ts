@@ -839,14 +839,10 @@ async function searchProviderResults(
       else logFailure("tickers-search", "Could not search ticker spelling")(error);
     }
   };
-  // A share class written without its mark (BRKB for BRK.B) is guessed at only when the symbol itself lists on no
-  // US exchange: NVDA is Nvidia, and NVD-A and NVD.A are two more searches for nothing.
-  const guesses = new Set(compactShareClassAliases(query));
-  const guessed = (searchQuery: string) => guesses.has(searchQuery);
-  await Promise.all(searchQueries.flatMap((searchQuery, index) => guessed(searchQuery) ? [] : [ask(searchQuery, index)]));
-  if (guesses.size > 0 && !answers.flat().some((result) => listsOnUsExchange(result, query))) {
-    await Promise.all(searchQueries.flatMap((searchQuery, index) => guessed(searchQuery) ? [ask(searchQuery, index)] : []));
-  }
+  // A share class written without its mark (BRKB for BRK.B) is guessed at beside the symbol's own search, unless the
+  // symbol is known to be a US stock: NVDA is Nvidia, and NVD-A and NVD.A are two more searches for nothing.
+  const notAsked = dataProvider.knownUsStock?.(query) ? new Set(compactShareClassAliases(query)) : new Set<string>();
+  await Promise.all(searchQueries.map((searchQuery, index) => notAsked.has(searchQuery) ? null : ask(searchQuery, index)));
 
   // Catalogues can omit exact market symbols or return a crypto pair from a
   // different venue. Verify the requested quote before accepting an alias.
@@ -971,12 +967,6 @@ function compactShareClassAliases(query: string): string[] {
   const base = normalized.slice(0, -1);
   if (base.length < 2) return [];
   return [`${base}-${shareClass}`, `${base}.${shareClass}`];
-}
-
-/** Whether a search row is the symbol typed, listed on a US exchange. */
-function listsOnUsExchange(result: InstrumentSearchResult, symbol: string): boolean {
-  return normalizeTickerSymbol(getSearchResultSymbol(result)) === normalizeTickerSymbol(symbol)
-    && (isUsListingExchange(result.exchange) || isUsListingExchange(result.primaryExchange));
 }
 
 function buildProviderSearchResultKey(result: InstrumentSearchResult): string {

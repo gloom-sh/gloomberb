@@ -378,6 +378,12 @@ export interface AssetDataProvider {
    * all, or when another source (a connected broker) adds rows of its own.
    */
   searchBatch?(queries: string[], options?: { limit?: number; signal?: AbortSignal }): Promise<Map<string, InstrumentSearchResult[]> | null>;
+  /**
+   * True of a symbol known, before any request, to be a stock on a US exchange. A lookup of one is not searched for
+   * its share-class spellings (NVDA as NVD-A) and asks for no perpetual contracts. Set by a command line that
+   * ships the listings; absent elsewhere, where every lookup asks.
+   */
+  knownUsStock?(symbol: string): boolean;
   getEarningsCalendar?(symbols: string[], context?: MarketDataRequestContext): Promise<EarningsEvent[]>;
   getSecFilingDocuments?(filing: SecFilingItem): Promise<SecFilingDocument[]>;
   getSecFilingContent?(filing: SecFilingItem): Promise<string | null>;
