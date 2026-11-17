@@ -17,7 +17,7 @@ import { useAppLanguage } from "../i18n/react";
 import { useShortcut } from "../react/input";
 import { Box, useUiCapabilities, type InputRenderable } from "../ui";
 import { useDialogState } from "../ui/dialog";
-import { useAppSelector } from "../state/app/context";
+import { useOptionalAppSelector } from "../state/app/context";
 import { isPlainKey } from "../utils/keyboard";
 import {
   type HeardFromChoice,
@@ -192,7 +192,7 @@ function currentAccountId(): string | null {
  */
 export function HeardFromQuestionHost() {
   const dialogOpen = useDialogState((state) => state.isOpen);
-  const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
+  const commandBarOpen = useOptionalAppSelector((state) => state.commandBarOpen, false);
   const cardOpen = useSyncExternalStore(subscribeSetupCards, setupCardOpen, setupCardOpen);
   const due = useSyncExternalStore(subscribeHeardFromDue, heardFromDueAccount, heardFromDueAccount);
   const account = useSyncExternalStore(
