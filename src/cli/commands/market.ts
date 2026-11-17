@@ -1,3 +1,4 @@
+import { splitShareTerms } from "../../market-data/split-terms";
 import { logFailure } from "../../utils/log-failure";
 import { isTransientFailure } from "../../api-client/errors";
 import { normalizeTickerSymbol } from "../../tickers/search/ranking";
@@ -19,6 +20,7 @@ import type {
   OptionsChain,
   PricePoint,
   Quote,
+  SplitAction,
   TickerFinancials,
 } from "../../types/financials";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, nearParCoinPriceDigits, penceFigure, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
@@ -1163,10 +1165,11 @@ function corporateActionRows(data: CorporateActionsData) {
       detail: `declared ${event.special ? "special " : ""}${currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount)}`
         + (event.payDate ? `, payable ${event.payDate}` : ""),
     })),
+    // In share terms where the factor states them (11-for-10, 1 new share for every 10 held), else as its source writes it.
     ...data.splits.map((event) => ({
       type: "split",
       date: event.date,
-      detail: event.description ?? `${event.fromFactor ?? ""}:${event.toFactor ?? ""}`,
+      detail: splitShareTerms(event) ?? event.description ?? `${event.toFactor ?? ""}:${event.fromFactor ?? ""}`,
     })),
     // A business demerged out of the listing: its price fell by that business's value on the day, no market move.
     ...(data.demergers ?? []).map((event) => ({
@@ -2214,8 +2217,13 @@ async function loadListingHistory(
   const closedDay = forming ? null : closedPeriodBarDay(served, venue);
   // A close that falls a fifth or more below the one before can be a business demerged out of the listing (TMPV's
   // commercial vehicles on 2025-10-14): its corporate actions say, and that bar is flagged rather than read as a crash.
-  const demerged = await listingDemergerFlags(forming?.rows ?? served, market, listing, instrumentType);
+  // One read of the listing's corporate actions serves both, asked only for a share or a fund.
+  const actions = shareActionsReader(market, listing, instrumentType);
+  const demerged = await listingDemergerFlags(forming?.rows ?? served, actions);
   const data = demerged.rows;
+  // NFLX's bars across its 10-for-1 split are in post-split shares, as META's FB-era bars say they were FB's. A long
+  // list skips the read, as it skips the other lookups.
+  const splitNote = lookups ? historySplitNote(listing.symbol, data, await actions.splits()) : null;
   const interval = data[0]?.interval ?? null;
   // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
   const intraday = data.some((row) => row.date.length > 10);
@@ -2278,6 +2286,7 @@ async function loadListingHistory(
     // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
     historyRollNote(listing.symbol, data, { mostTraded }) ?? [], historyThinNote(data) ?? [],
     historyDemergerNote(data, demerged.breaks, historyPrice(historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor))) ?? [],
+    splitNote ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
     await interventionWindowNote(interventions, interventionPair, data) ?? [],
   ].flat();
@@ -2292,22 +2301,53 @@ async function loadListingHistory(
 const DEMERGER_READ_WAIT_MS = 3_000;
 
 /**
- * A share's bars with the bar each demerger falls in flagged (withDemergerFlags), read only when a close falls a
- * fifth or more below the one before: a future, a pair or an index has no business to demerge. Fails soft.
+ * A listing's corporate actions, read at most once and only for a share or a fund: a future, a pair or an index has
+ * no business to split or demerge. `splits` reads them for the bars' splits; `demergers` only once a close has fallen
+ * a fifth or more (hasPriceBreak). Fails soft, and waits no longer than DEMERGER_READ_WAIT_MS.
  */
+function shareActionsReader(market: MarketContext, listing: CliListing, instrumentType: string | undefined) {
+  const kind = classifyInstrumentType(instrumentType ?? "");
+  const share = (kind === "equity" || kind === "fund" || !instrumentType)
+    && !isFuturesInstrument(listing.symbol, instrumentType ?? null) && !isCurrencyPairListing(listing.symbol, listing.request.exchange)
+    && typeof market.dataProvider.getCorporateActions === "function";
+  let read: Promise<CorporateActionsData | null> | null = null;
+  const actions = () => read ??= settleWithin(Promise.resolve().then(() => market.dataProvider.getCorporateActions!(listing.request.symbol, listing.request.exchange))
+    .catch(logFailure("cli.commands-market", "Read corporate actions for a history failed", null)), DEMERGER_READ_WAIT_MS)
+    .then((value) => value ?? null);
+  return {
+    share,
+    splits: async (): Promise<SplitAction[]> => share ? (await actions())?.splits ?? [] : [],
+    demergers: async (): Promise<DemergerAction[]> => share ? (await actions())?.demergers ?? [] : [],
+  };
+}
+
+/** A share's bars with the bar each demerger falls in flagged (withDemergerFlags), read only when a close falls a fifth or more below the one before. */
 async function listingDemergerFlags(
   rows: HistoryRow[],
-  market: MarketContext,
-  listing: CliListing,
-  instrumentType: string | undefined,
+  actions: ReturnType<typeof shareActionsReader>,
 ): Promise<{ rows: HistoryRow[]; breaks: Array<{ date: string; action: DemergerAction }> }> {
-  const kind = classifyInstrumentType(instrumentType ?? "");
-  const share = kind === "equity" || kind === "fund" || !instrumentType;
-  if (!share || isFuturesInstrument(listing.symbol, instrumentType ?? null) || isCurrencyPairListing(listing.symbol, listing.request.exchange)
-    || !hasPriceBreak(rows) || typeof market.dataProvider.getCorporateActions !== "function") return { rows, breaks: [] };
-  const actions = await settleWithin(Promise.resolve().then(() => market.dataProvider.getCorporateActions(listing.request.symbol, listing.request.exchange))
-    .catch(logFailure("cli.commands-market", "Read corporate actions for a price break failed", null)), DEMERGER_READ_WAIT_MS);
-  return withDemergerFlags(rows, actions?.demergers ?? []);
+  if (!actions.share || !hasPriceBreak(rows)) return { rows, breaks: [] };
+  return withDemergerFlags(rows, await actions.demergers());
+}
+
+/**
+ * "Splits in range: NFLX 10-for-1 on 2025-11-17; bars before it are split-adjusted.": the splits that took effect
+ * after the first bar shown and by the last, which the bars run across in post-split shares. Null with none, or for
+ * a factor no share count states (a spinoff's price adjustment, which the demerger note covers).
+ */
+function historySplitNote(symbol: string, rows: readonly HistoryRow[], splits: readonly SplitAction[]): string | null {
+  const first = rows[0]?.date.slice(0, 10);
+  const last = rows.at(-1)?.date.slice(0, 10);
+  if (!first || !last || first === last) return null;
+  const inside = splits
+    .filter((split) => /^\d{4}-\d{2}-\d{2}/.test(split.date) && split.date.slice(0, 10) > first && split.date.slice(0, 10) <= last)
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .flatMap((split) => {
+      const terms = splitShareTerms(split);
+      return terms ? [`${terms.split(",")[0]} on ${split.date.slice(0, 10)}`] : [];
+    });
+  if (inside.length === 0) return null;
+  return `Splits in range: ${symbol} ${inside.join(" and ")}; bars before ${inside.length === 1 ? "it" : "each"} are split-adjusted.`;
 }
 
 /**

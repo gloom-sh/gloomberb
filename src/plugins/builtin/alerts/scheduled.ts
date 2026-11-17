@@ -164,6 +164,11 @@ export function scheduledTriggerText(rule: Pick<ScheduledRule, "leadDays" | "tri
   return `${rule.leadDays} day${rule.leadDays === 1 ? "" : "s"} before${rule.prints ? " and when it prints" : ""}`;
 }
 
+/** Why an earnings alert is refused for a listing outside the US: 0700:HKEX, and D05, which is D05:SGX. */
+export function earningsUsOnlyMessage(listing: string): string {
+  return `Earnings alerts follow US listings, such as CRWV or AAPL:NASDAQ. ${listing} is not one.`;
+}
+
 /**
  * A new rule for `target`, alerting `lead` days before it or, for earnings,
  * once the results are out, with the event date the caller looked up. Throws
@@ -185,7 +190,7 @@ export function createScheduledAlert(
       : { version: 1, event: target.event, ...timing });
   if (!value) {
     throw new Error(target.kind === "earnings"
-      ? `Earnings alerts follow US listings, such as CRWV or AAPL:NASDAQ. ${target.exchange ? `${target.symbol}:${target.exchange}` : target.symbol} is not one.`
+      ? earningsUsOnlyMessage(target.exchange ? `${target.symbol}:${target.exchange}` : target.symbol)
       : target.kind === "release"
         ? `A calendar event alert takes the event's name, a two-letter country and 1 to ${MAX_LEAD_DAYS} days before.`
         : `Days before must be a whole number from 1 to ${MAX_LEAD_DAYS}.`);

@@ -7,7 +7,7 @@ import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec"
 import { normalizeTickerInput } from "../../tickers/search";
 import type { MarketContext } from "../types";
 import { argumentNamesTicker, cleanTickerInput } from "./options";
-import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import type { ResolvedPaneFunction } from "./resolver";
 import { toMarketDataContext } from "../../market-data/selectors";
 import { quoteMetadataFromQuote } from "../../market-data/quotes/metadata";
@@ -27,11 +27,23 @@ const SHOT_PRICE_HISTORY_RANGE = "5Y" as const;
 const FINANCIAL_ANALYSIS_PANE_ID = "financial-analysis";
 const FINANCIAL_ANALYSIS_TEMPLATE_ID = "financial-analysis-pane";
 
+/**
+ * The saved row of the listing a pane function was given. A listing named by
+ * its venue (0700:HKEX, or Z74 with --exchange SGX) that was saved under its
+ * bare symbol on that venue is that row, keyed as named: the pane looks its
+ * ticker up by the key it is bound to, and a row keyed 0700 would leave it
+ * with no ticker at all. A bare row saved on another venue is another listing.
+ */
 export async function loadStoredShotTicker(context: MarketContext, symbol: string): Promise<TickerRecord | null> {
   const normalized = cleanTickerInput(symbol);
-  const { symbol: bare } = parsePublicTickerKey(normalized);
-  return await context.store.loadTicker(normalized)
-    ?? (bare !== normalized ? await context.store.loadTicker(bare) : null);
+  const { symbol: bare, exchange } = parsePublicTickerKey(normalized);
+  const named = await context.store.loadTicker(normalized);
+  if (named || bare === normalized) return named;
+  const saved = await context.store.loadTicker(bare);
+  if (!saved) return null;
+  if (!exchange) return saved;
+  if (canonicalExchange(saved.metadata.exchange) !== canonicalExchange(exchange)) return null;
+  return { ...saved, metadata: { ...saved.metadata, ticker: normalized } };
 }
 
 /**

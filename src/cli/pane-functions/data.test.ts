@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { clipPriceHistoryToRange, createFallbackTicker } from "./data";
+import { clipPriceHistoryToRange, createFallbackTicker, loadStoredShotTicker } from "./data";
+import { createTestTicker } from "../../test-support/ticker";
 import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import type { QuoteMetadata } from "../../types/financials";
 import { mayBeUsEquityTicker } from "../../utils/sec";
@@ -54,4 +55,18 @@ describe("createFallbackTicker", () => {
     expect(ticker.metadata).toMatchObject({ exchange: "", currency: "" });
     expect(mayBeUsEquityTicker(ticker)).toBe(true);
   });
+});
+
+// `fn DES 0700:HKEX` and `shot T Z74 --exchange SGX` drew "No ticker selected." where 0700 and Z74 were saved bare:
+// the pane is bound to the key it was given and looks its ticker up by it.
+test("a listing named by its venue takes the bare row saved on that venue, keyed as named, and never one saved elsewhere", async () => {
+  const rows = new Map([
+    ["0700", createTestTicker("0700", "Tencent Holdings Limited", { exchange: "HKEX", currency: "HKD" })],
+    ["Z74", createTestTicker("Z74", "Singapore Telecommunications Limited", { exchange: "SGX", currency: "SGD" })],
+  ]);
+  const context = { store: { loadTicker: async (symbol: string) => rows.get(symbol) ?? null } } as unknown as MarketContext;
+  expect((await loadStoredShotTicker(context, "0700:HKEX"))?.metadata).toMatchObject({ ticker: "0700:HKEX", name: "Tencent Holdings Limited" });
+  expect((await loadStoredShotTicker(context, "Z74:SGX"))?.metadata.ticker).toBe("Z74:SGX");
+  expect((await loadStoredShotTicker(context, "0700"))?.metadata.ticker).toBe("0700");
+  expect(await loadStoredShotTicker(context, "Z74:LSE")).toBeNull();
 });

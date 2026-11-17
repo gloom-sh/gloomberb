@@ -5,6 +5,8 @@ import { extendedPrintSession, getActiveQuoteDisplay } from "../../../market-dat
 import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { canonicalExchange } from "../../../utils/exchanges";
+import { futuresContractByWord } from "../../../market-data/futures-board";
+import { isFuturesInstrument } from "../../../market-data/futures-contract";
 import { readMove } from "./move";
 import type { AlertRule } from "./types";
 
@@ -136,6 +138,25 @@ const MAX_TARGET_RATIO = 10;
 const priceText = (value: number) => value.toLocaleString("en-US", Math.abs(value) >= 1
   ? { maximumFractionDigits: 2 }
   : { maximumSignificantDigits: 4 });
+
+/**
+ * "GOLD is Gold.com, Inc.; for Gold, the future is GC=F (gloom alerts add
+ * GC=F below 3700).": a commodity's word typed bare that a security trades as
+ * (GOLD is Gold.com, WTI is W&T Offshore), with the future it may have meant,
+ * as `quote` says it. Null for any other symbol, a venue named, or a future.
+ */
+export function commodityFutureNote(
+  typed: string,
+  quote: Pick<Quote, "name" | "instrumentType">,
+  retry: ((symbol: string) => string | null) | null = null,
+): string | null {
+  const symbol = typed.trim().toUpperCase();
+  if (symbol.includes(":")) return null;
+  const contract = futuresContractByWord(symbol);
+  if (!contract || isFuturesInstrument(symbol, quote.instrumentType)) return null;
+  const command = retry?.(contract.symbol);
+  return `${symbol} is ${quote.name?.trim() || "a security"}; for ${contract.name}, the future is ${contract.symbol}${command ? ` (${command})` : ""}.`;
+}
 
 /**
  * Why a price target is refused: more than ten times the last price, or under

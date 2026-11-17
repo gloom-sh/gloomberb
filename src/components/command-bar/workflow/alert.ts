@@ -130,7 +130,7 @@ export function useAlertWorkflowQuoteSync({
       };
     });
 
-    const read = () => resolveAlertListing(alertWorkflowSymbol, null, listingDeps)
+    const read = () => void resolveAlertListing(alertWorkflowSymbol, null, listingDeps)
       .then(({ quote, fate }) => {
         if (quoteRequestRef.current !== requestId) return;
         // An alert is judged on the latest print, extended hours included: the target starts there.
@@ -189,7 +189,7 @@ export function useAlertWorkflowQuoteSync({
           };
         });
       });
-    const timer = setTimeout(() => { void read(); }, ALERT_WORKFLOW_READ_DELAY_MS);
+    const timer = setTimeout(read, ALERT_WORKFLOW_READ_DELAY_MS);
     return () => clearTimeout(timer);
   }, [alertWorkflowActive, alertWorkflowSymbol, listingDeps, updateRoute]);
 }

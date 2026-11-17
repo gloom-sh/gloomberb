@@ -178,6 +178,11 @@ test("an alert on a listing that stopped trading is refused with what to add ins
   expect(fund.stored.map((alert) => alert.symbol)).toEqual(["FB"]);
   expect(fund.printed!.result.warnings).toContain(
     "FB now lists ProShares S&P 500 Dynamic Buffer ETF; FB was Meta Platforms before, now META (changed 2022-06-09)");
+
+  // A bare symbol's earnings alert is read the same way: D05 is DBS on SGX, which earnings alerts do not follow, so it
+  // gets the line 0700:HKEX gets, never that the dates could not be loaded.
+  expect((await addAlert(["D05", "earnings"], undefined, { dataProvider })).error)
+    .toBe("Earnings alerts follow US listings, such as CRWV or AAPL:NASDAQ. D05:SGX is not one.");
 });
 
 test("a price alert says what delivers it, and the app is the one thing that always does", async () => {

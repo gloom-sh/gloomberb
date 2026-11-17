@@ -19,6 +19,7 @@ import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
 import { AlertListingRefusal, resolveAlertListing } from "../../../cli/alert-listing";
+import { earningsListingVenue } from "./earnings-listing";
 import { coinListingNotes, EXCHANGE_OPTION, listingReadNotes, requireListingArg, usListingsOnlyMessage, type ListingDeps } from "../../../cli/listing-arg";
 import { saveConfig } from "../../../data/config/store";
 import { resumeStateKey } from "../../registry/plugin-state";
@@ -57,7 +58,7 @@ import { alertKindLabel, fetchAlertHistory, ruleStateText, type AlertRuleState }
 import { apiClient } from "../../../api-client";
 import { IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
 import { isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
-import { farTargetMessage, levelInQuoteUnit } from "./quotes";
+import { commodityFutureNote, farTargetMessage, levelInQuoteUnit } from "./quotes";
 import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel } from "./research-builder";
 import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
@@ -967,6 +968,9 @@ export const alertsCliCommand: CliCommandDef = {
     // A bare coin ticker read as another listing (SOL, a stale company; BTC, the Grayscale trust) gets `quote`'s note
     // naming the coin's pair, before a metric alert names the venue it was read on.
     const coinNote = priced ? coinListingNotes(priced.listing, priced.quote)[0] ?? null : null;
+    // GOLD is Gold.com, whose price is no gold future's: `quote` names GC=F beside it, and so does the alert.
+    const futureNote = priced && listedSymbol && !exchangeOption && !coinNote
+      ? commodityFutureNote(listedSymbol, priced.quote, request?.kind === "price" ? alertRetry : null) : null;
     // What the alert reads now, which it is saved with, so lists and ALRT show it before the app has run.
     let reading: Partial<AlertRule> = {};
     // A daily rule whose close could not be read yet: why, which the add says beside when it is first checked.
@@ -1028,7 +1032,7 @@ export const alertsCliCommand: CliCommandDef = {
     if (request?.kind === "price" && priced) {
       // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
       // Against the price the alert is checked on, as Add Alert measures it.
-      const far = farTargetMessage(priced.listing.key, request.price, priced.quote.price, coinNote, isPenceQuotedLine(priced.quote));
+      const far = farTargetMessage(priced.listing.key, request.price, priced.quote.price, coinNote ?? futureNote, isPenceQuotedLine(priced.quote));
       if (far) ctx.fail(far);
     }
     // What a typed listing was read as (7203:TSE as 7203:JPX, MXN as MXN:FWB2), said beside what was added.
@@ -1037,7 +1041,7 @@ export const alertsCliCommand: CliCommandDef = {
       && !listedSymbol.includes(":") && !PAIR_SHAPE.test(listedSymbol)
       ? await withMarketData(ctx, (market) => sameNameSeriesNote(listedSymbol, priced, market.findCatalogSeriesNamed?.(listedSymbol), request))
       : null;
-    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...seriesNote ? [seriesNote] : [], ...benchmarkNotes, ...penceNote ? [penceNote] : []];
+    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...futureNote ? [futureNote] : [], ...seriesNote ? [seriesNote] : [], ...benchmarkNotes, ...penceNote ? [penceNote] : []];
     let newEventRule: EventAlertRule | null = null;
     let newResearchRule: EventAlertRule | null = null;
     if (research) {
@@ -1113,11 +1117,11 @@ export const alertsCliCommand: CliCommandDef = {
             read = listingReadNotes(listing);
             if (listing.exchange) return { kind: "earnings" as const, symbol: listing.symbol, exchange: listing.exchange };
             // A bare symbol is the listing `quote` reads it as: D05 and "Singtel" are on SGX, which earnings alerts do not follow.
-            const quoted = await withMarketData(ctx, (market) => requireAlertListing(earnings!.symbol, market));
-            read.push(...quoted.notes);
-            const venue = quoted.listing.exchange || canonicalExchange(quoted.quote.listingExchangeName || quoted.quote.exchangeName);
-            return venue && !isUsListingExchange(venue)
-              ? { kind: "earnings" as const, symbol: quoted.listing.symbol, exchange: venue }
+            const abroad = await withMarketData(ctx, (market) => earningsListingVenue(earnings!.symbol, market, { retry: alertRetry })
+              .catch((error: unknown) => error instanceof AlertListingRefusal ? ctx.fail(error.message, error.details) : Promise.reject(error)));
+            read.push(...abroad.notes);
+            return abroad.exchange
+              ? { kind: "earnings" as const, symbol: abroad.symbol, exchange: abroad.exchange }
               : { kind: "earnings" as const, symbol: listing.symbol, exchange: listing.exchange };
           });
       const lead = earnings?.results ? "results" as const : (macro ?? earnings!).leadDays;
