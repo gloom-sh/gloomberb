@@ -10,5 +10,7 @@ test("a bare MAP takes the layers it drew; layers asked for must be the ones dra
   const request = (layer?: string, arg = "") => ({ resolved: { options: layer ? { layer } : {}, createOptions: { arg } }, payload: {} }) as never;
   expect(worldMapScreenshotEvidence.mismatches(drawn, request())).toEqual([]);
   expect(worldMapScreenshotEvidence.mismatches(drawn, request("chokepoints"))).toEqual([]);
+  expect(worldMapScreenshotEvidence.mismatches(drawn, request(undefined, "chokepoints Suez Canal"))).toEqual([]);
+  expect(worldMapScreenshotEvidence.mismatches(drawn, request(undefined, "chokepoints 51.5,-0.1"))).toEqual([]);
   expect(worldMapScreenshotEvidence.mismatches(drawn, request(undefined, "ports"))).toEqual(["Map layers differ from the request"]);
 });

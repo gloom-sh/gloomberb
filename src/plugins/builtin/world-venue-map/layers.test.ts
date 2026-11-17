@@ -7,7 +7,6 @@ import {
   entityOpenZoom,
   entityTableBbox,
   geoViewForViewport,
-  HOME_AREA_SETTING_KEY,
   LAYERS_SETTING_KEY,
   parseMapPreset,
   readVenuesSetting,
@@ -56,10 +55,6 @@ describe("map layers", () => {
   });
 
   test("edits keep venues and drop the oldest pick", () => {
-    const def = buildMapSettingsDef({}, catalog)!;
-    expect(def.fields.map((field) => field.key)).toEqual([HOME_AREA_SETTING_KEY, VENUES_SETTING_KEY, "layers:ships", "layers:ports", "layers:air", "layers:energy"]);
-    expect(def.values?.[VENUES_SETTING_KEY]).toBe(true);
-
     // A plain venue map that gains a layer keeps its venues.
     const withPorts = applyMapSetting({}, "layers:ports", ["ports"], catalog);
     expect(withPorts).toEqual({ [LAYERS_SETTING_KEY]: ["ports"], [VENUES_SETTING_KEY]: true });

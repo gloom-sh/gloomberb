@@ -33,6 +33,7 @@ import { useGeoCatalog } from "./use-geo";
 import { SelectedVenueHeader } from "./venue-header";
 import { cloudGeoRequest } from "./client";
 import { initialMapFocus, nearestPlaces, resolveMapPlace, type MapStart } from "./place";
+import { useWorldMapEvidence } from "./evidence";
 
 export { WORLD_VENUE_MAP_PANE_ID } from "./ids";
 
@@ -112,6 +113,7 @@ function VenueMapView({ focused, width, height, start }: PaneProps & { start: Ma
 
   const venues = useMemo(() => nearestPlaces(filterWorldVenues(data?.venues ?? [], query), start.place,
     (venue) => venue), [data?.venues, query, start.place]);
+  useWorldMapEvidence([], [], venues.length, loading);
   useEffect(() => {
     if (selectedMic && venues.some((venue) => venue.mic === selectedMic)) return;
     setSelectedMic(venues[0]?.mic ?? null);
