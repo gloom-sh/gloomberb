@@ -69,7 +69,10 @@ test("a function the snapshot gives to one plugin resolves there as it does amon
   const own = new Map<string, Awaited<ReturnType<typeof createPaneCatalog>>>();
   try {
     const { functions } = readCatalogSnapshot();
-    expect(Object.keys(functions).length).toBeGreaterThan(100);
+    expect(Object.keys(functions).length).toBeGreaterThan(20);
+    for (const word of ["hds", "cn", "eqs"]) expect(functions[word], word).toBeDefined();
+    // Their setups leave state other plugins read (the FRED series cache, 13F persistence), so these run among all.
+    for (const word of ["g", "fa", "vix", "sec"]) expect(functions[word], word).toBeUndefined();
     for (const [word, holders] of Object.entries(functions)) {
       const key = holders.join("+");
       if (!own.has(key)) own.set(key, await createPaneCatalog(context, holders.map((id) => loadBuiltinPlugin(id)!)));

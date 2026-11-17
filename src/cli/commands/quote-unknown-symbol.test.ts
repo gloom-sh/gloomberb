@@ -84,7 +84,7 @@ test("a symbol nothing lists is answered from the requests that start together, 
   // The batch has not answered: the symbol's changes, its venues and its index form are out beside it.
   await settle();
   expect([...service.requests].sort()).toEqual([
-    "GET /cloud/perps/board QWZXQ", "GET /market/quote ^QWZXQ", "GET /market/search QWZXQ", "GET /market/ticker-changes QWZXQ", "POST /market/quotes/batch",
+    "GET /cloud/perps/board", "GET /market/quote ^QWZXQ", "GET /market/search QWZXQ", "GET /market/ticker-changes QWZXQ", "POST /market/quotes/batch",
   ].sort());
   const { warnings } = await run.finish();
   expect(withSearchHints(warnings.join("\n"), ["QWZXQ"])).toBe("Not a ticker: QWZXQ. Try `gloom search QWZXQ`.");
@@ -118,5 +118,6 @@ test("a symbol's index form does not wait for a venue search slower than the bat
   // The batch answered; the search has 250 ms to go, and the index form is already out.
   expect(service.requests).toContain("GET /market/quote ^QWZXW");
   await run.finish();
-  expect(service.requests).toHaveLength(5);
+  // The contracts are asked for once the search shows the symbol is no US stock, and the command was done before that.
+  expect(service.requests).toHaveLength(4);
 });

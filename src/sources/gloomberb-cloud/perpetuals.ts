@@ -1,4 +1,5 @@
 import { apiClient } from "../../api-client";
+import { logFailure } from "../../utils/log-failure";
 import type { PerpBoardPayload, PerpBoardRow, PerpMarketPayload } from "../../api-client/perps";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { PricePoint, Quote } from "../../types/financials";
@@ -250,7 +251,7 @@ function searchBoardClient(client: PerpsClient): PerpsClient {
       const { search, ...rest } = query;
       const word = search?.trim();
       if (!word || /\s/.test(word) || Object.values(rest).some((value) => value !== undefined)) return client.getCloudPerpsBoard(query);
-      const board = await readPerpetualBoard(client).catch(() => null);
+      const board = await readPerpetualBoard(client).catch(logFailure("sources.gloomberb-cloud.perpetuals", "Reading the perpetual board for a search failed", null));
       return board ? boardSearchesFrom(board, client).getCloudPerpsBoard({ search: word }) : client.getCloudPerpsBoard(query);
     },
   };

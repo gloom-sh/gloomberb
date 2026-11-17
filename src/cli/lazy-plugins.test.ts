@@ -49,7 +49,8 @@ test("catalog and the commands that read market data load none of the composite 
 
 test("fn loads the plugin that holds its function and no other", async () => {
   expect(await loadedPlugins(["fn", "HDS", "AAPL"])).toEqual(["ownership", "shared"]);
-  expect(await loadedPlugins(["fn", "SEC", "AAPL"])).toEqual(["filings", "shared"]);
-  // A word no function answers to asks them all.
+  expect(await loadedPlugins(["fn", "EQS"])).toEqual(["screeners"]);
+  // A function of a plugin whose setup other plugins rely on (the chart composer's FRED cache), and a word no function answers to, ask them all.
+  expect((await loadedPlugins(["fn", "SEC", "AAPL"])).length).toBeGreaterThan(10);
   expect((await loadedPlugins(["fn", "ZZZZ", "AAPL"])).length).toBeGreaterThan(10);
 }, 90_000);
