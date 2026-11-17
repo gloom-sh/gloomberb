@@ -7,7 +7,7 @@ import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition 
 import { withoutQuietColumns } from "../shared/research-cells";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { companyQuery, fetchCompanyData, type CompanyDataset, type CompanyMode } from "./client";
-import { allGuidance, allObservations, companyCellText, companyColumns, companyEmptyState, companyPreviewNote, KPI_COVERAGE_NOTE, kpiFreeLimitNote, QUIET_COLUMNS,
+import { allGuidance, allObservations, companyCellText, companyColumns, companyEmptyState, companyPreviewNote, guidanceIssueNote, KPI_COVERAGE_NOTE, kpiFreeLimitNote, QUIET_COLUMNS,
   type CompanyRow } from "./model";
 import type { KpiObservation } from "../../../api-client/company-kpis";
 
@@ -111,6 +111,10 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
       const latest = ("series" in data ? data.series.map((series) => series.latest) : data.guidance).filter(keep);
       const ignored = data.access === "preview" ? PRO_FILTERS.filter((key) => typeof args.options[key] === "string" && args.options[key] !== "") : [];
       const notes = [ageNote(data, latest, mode),
+        ...("guidance" in data ? data.guidance.filter(keep).flatMap((row) => {
+          const note = guidanceIssueNote(row, data.guidance);
+          return note ? [`${row.metric.name}: ${note}.`] : [];
+        }) : []),
         ignored.length ? `The free preview is fixed: ${ignored.map(optionFlag).join(", ")} ${ignored.length > 1 ? "need" : "needs"} Gloom Pro.` : null,
         ...companyDataNotes(data.companyFrom)].filter((note): note is string => !!note);
       // A company with nothing on file says so once, as the pane does, rather than "not covered".
@@ -122,7 +126,7 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
           section("Latest KPIs", data.series.map((series) => series.latest), { first: true }),
           section("KPI history", data.series.flatMap((series) => series.observations)),
           section("Revisions and conflicts", data.revisions, { revisions: true }),
-        ] : [section("Current guidance", data.guidance, { first: true }), section("Guidance history", data.history, { history: true })],
+        ] : [section("Latest disclosed guidance", data.guidance, { first: true }), section("Guidance history", data.history, { history: true })],
         metadata: { symbol: data.symbol, asOf: data.asOf, access: data.access, coverage: data.coverage, dictionary: data.dictionary,
           lockedRows: data.lockedRows, totalRows: data.totalRows, methodology: data.methodology } };
     },

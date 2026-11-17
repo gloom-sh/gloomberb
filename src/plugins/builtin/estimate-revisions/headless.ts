@@ -30,7 +30,7 @@ export const estimateRevisionsHeadless: HeadlessPaneDefinition<"bundle"> = {
   ],
   discovery: {
     aliases: ["EM", "GUID", "EEO"],
-    dataRequirements: ["Free Gloom sign-in", "Gloom Cloud analyst snapshots"],
+    dataRequirements: ["Verified Gloom sign-in", "Gloom Cloud analyst snapshots"],
     limitations: [
       "Actual collection days and provider backfills remain separate.",
       "Range dispersion is not standard deviation.",

@@ -3,6 +3,20 @@ import { describe, expect, test } from "bun:test";
 import type { AnalystResearchData } from "../../../types/financials";
 import { buildEventRows, eventSourceNotice, formatEventMetric, sourceErrorText, type EventFinancials } from "./event-model";
 import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
+import { fiscalPeriodText } from "../earnings/fiscal-quarter";
+
+test("a statement ending in the following month does not rename the earnings calendar's quarter", () => {
+  const rows = buildEventRows({ symbol: "TEST", dividends: [], splits: [], earnings: [
+    { date: "2025-11-19", fiscalPeriod: "2025-10", epsActual: 1.5 },
+    { date: "2026-11-18", fiscalPeriod: "2026-10", epsEstimate: 1.6 },
+  ] }, null, { quarterlyStatements: [{ date: "2025-11-01", eps: 1.5, totalRevenue: 100 }] }, "USD");
+  const earnings = rows.filter((row) => row.status === "Earnings").sort((left, right) => left.date.localeCompare(right.date));
+  expect(earnings.map((row) => row.period)).toEqual([fiscalPeriodText("2025-10"), fiscalPeriodText("2026-10")]);
+  expect(earnings[0]?.fiscalPeriodEnd).toBe("2025-11-01");
+  expect(earnings.map((row) => row.period)).toEqual(["Oct 2025", "Oct 2026"]);
+  expect(fiscalPeriodText("2026-10", { fiscalYear: 2027, fiscalQuarter: 3 })).toBe("Q3 FY2027");
+  expect(fiscalPeriodText(null)).toBe(MISSING_VALUE);
+});
 
 test("ADR reported EPS and company revenue keep their distinct currencies", () => {
   const rows = buildEventRows({ symbol: "TSM", currency: "USD", dividends: [], splits: [],

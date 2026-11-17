@@ -5,11 +5,18 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import { cachedCompanyData, companyKpisCache, fetchCompanyData, loadCompanyData, validateCompanyData } from "./client";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { allObservations, changeText, changeTone, companyColumns, companyEmptyState, directionLabel, directionTone, fiscalLabel, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
-  seriesOrder } from "./model";
+  seriesOrder, guidanceIssueNote } from "./model";
 import { guide, guidancePayload, kpisPayload, observation } from "./test-fixture";
 import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
 
 afterEach(() => { setCloudApiFetchTransport(null); companyKpisCache.reset(); });
+test("a newer outlook for another metric dates an older guide without claiming it was replaced", () => {
+  const older = guide({ issuedDate: "2026-05-20" });
+  const newer = guide({ id: "guide:newer", issuedDate: "2026-08-19", metric: { ...older.metric, id: "revenue", name: "Revenue" } });
+  expect(guidanceIssueNote(older, [older])).toBeNull();
+  expect(guidanceIssueNote(older, [newer, older])).toBe("Issued 2026-05-20; newer outlook 2026-08-19");
+  expect(guidanceIssueNote(newer, [older, newer])).toBeNull();
+});
 test("runtime boundary rejects nonfinite values, inverted ranges, unsafe evidence and mismatched series", () => {
   for (const overrides of [{ value: NaN }, { currency: null }, { confidence: 2 }, { evidence: [{ ...observation().evidence[0]!, url: "javascript:alert(1)" }] }, { period: { ...observation().period, start: "2026-12-31" } }]) {
     const data = kpisPayload(); data.series[0]!.observations = [observation(overrides)];
@@ -182,9 +189,16 @@ test("a guidance table fits its pane: the columns narrow, the metric keeps the r
   expect(fitCompanyColumns(tracker, 160)).toEqual(tracker);
   expect(fitCompanyColumns(tracker, 70).map((column) => column.id)).toEqual(["metric", "period", "value", "change"]);
   expect(fits(fitCompanyColumns(tracker, 70), 70)).toBe(true);
-  // Basis and scope name a row on the terminal, so a table they keep too wide scrolls rather than lose them.
-  const named = companyColumns(true, false, false);
-  expect(fitCompanyColumns(named, 60).map((column) => column.id)).toEqual(named.map((column) => column.id));
+  for (const width of [46, 52, 60]) {
+    for (const guidance of [true, false]) {
+      for (const historical of [true, false]) {
+        const columns = fitCompanyColumns(companyColumns(guidance, false, historical), width, historical);
+        expect(fits(columns, width)).toBe(true);
+        expect(columns.map((column) => column.id)).toContain("metric");
+        expect(columns.map((column) => column.id)).toContain("value");
+      }
+    }
+  }
 });
 
 test("an empty table says a company has nothing on file and names one that has, else what the selection lacks", () => {

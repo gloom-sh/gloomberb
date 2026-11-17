@@ -18,7 +18,7 @@ export type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
 const ALL_COLUMNS: HistoryColumn[] = [
   { id: "date", label: "DATE", width: 10, align: "left" },
   { id: "when", label: "WHEN", width: 4, align: "left" },
-  { id: "period", label: "QTR", width: 7, align: "left" },
+  { id: "period", label: "QTR", width: 8, align: "left" },
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
   { id: "analysts", label: "ESTS", width: 4, align: "right" },
   { id: "epsActual", label: "EPS ACT", width: 7, align: "right" },

@@ -244,6 +244,11 @@ test("a perp venue's name finds PERP first, and a function only Pro opens is mar
     expect(correctCatalogQuery(entries, "libor")).not.toBe("hibor");
     const plain = (args: string[]) => renderPaneCatalogReport(entries, parsePaneCatalogArgs(args)).replace(/\x1b\[[0-9;]*m/g, "");
     expect(plain(["CALLS"])).toContain("Report       ready · Pro\n");
+    for (const code of ["EM", "GUID"]) {
+      expect(plain([code])).toContain("Report       ready · Sign-in\n");
+      expect(plain([code])).toContain("Requires     Verified Gloom sign-in");
+      expect(plain([code])).not.toContain("ready · Pro");
+    }
     expect(plain(["earnings"])).toMatch(/\nCALLS +Earnings Calls +<ticker> +ready · Pro +Pro earnings/);
     // A free preview is no lock: PERP reads ready.
     expect(plain(["PERP"])).toContain("Report       ready\n");

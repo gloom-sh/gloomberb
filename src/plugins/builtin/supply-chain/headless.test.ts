@@ -63,7 +63,8 @@ describe("supply chain graph headless integration", () => {
       tiers: "structured,primary", "min-pct": "2.5", "min-confidence": "0.85", limit: "12", "as-of": "2025-12-31", ranking: "shortest" }, { strict: true });
     expect(graphOptions(capabilityPaneSettings(capability, options))).toEqual(graphOptions(options));
     const requests: string[] = [];
-    await supplyChainHeadless.load(args(options), context(graphPayload(), requests));
+    // A server that reads the cutoff answers it in its options.
+    await supplyChainHeadless.load(args(options), context({ ...graphPayload(), options: { ...graphPayload().options, asOf: "2025-12-31" } }, requests));
     const url = new URL(requests[0]!, "https://example.test");
     expect(url.pathname).toBe("/cloud/supply-chain/A/graph");
     expect(Object.fromEntries(url.searchParams)).toEqual({ depth: "3", direction: "upstream", roles: "supplier", sources: "xbrl,filing_text",
@@ -76,6 +77,9 @@ describe("supply chain graph headless integration", () => {
         .rejects.toThrow(invalid["as-of"] ? "Use a filing cutoff as YYYY-MM-DD" : "Invalid supply chain graph filters");
     }
     expect(requests).toHaveLength(1);
+    // The free preview reads the latest graph whatever the cutoff: said, never served as that day's.
+    await expect(supplyChainHeadless.load(args({ tab: "graph", "as-of": "2025-12-31" }), context(graphPayload(), requests)))
+      .rejects.toThrow("--as-of 2025-12-31 on the Graph tab needs Gloom Pro; the free preview reads the latest disclosures.");
   });
 
   test("reports retain every hop and exposure denominator without turning the rank into probability", async () => {

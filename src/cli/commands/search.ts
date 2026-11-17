@@ -898,6 +898,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     const bank = searchedCentralBank(trimmedQuery);
     // A query that names no ticker may name what a function does.
     const functions = await searchedFunctions(trimmedQuery, candidates, fate, dependencies.plugins, context);
+    if (!candidates.length && !fate.stopped && !series.length && !functions.length && !bank && !commandPointer(trimmedQuery)) process.exitCode = 1;
     if (dependencies.printResult) {
       const warnings = searchNotes(trimmedQuery, candidates, functions, fate);
       dependencies.printResult({

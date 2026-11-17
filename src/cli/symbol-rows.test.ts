@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
 import { summarizeSymbolRows, type SymbolRow } from "./symbol-rows";
 
 const added = (input: string, symbol: string, exchange: string): SymbolRow => ({
@@ -31,10 +31,13 @@ test("a bare symbol that reads as a future keeps the list's venue when it lists 
   };
   // A bare ES3, NQ1 or ES=F is a CME future, as the service reads it.
   const futures: Record<string, string> = { ES3: "E-Mini S&P 500 3rd generic", NQ1: "E-Mini Nasdaq 100 1st generic", "ES=F": "E-Mini S&P 500" };
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-  // How each venue answers: "yes", "busy", or after so many ms.
-  type Answer = "yes" | "busy" | number;
-  const run = async (symbols: string[], venues: { SGX: Answer; HKEX?: Answer }, venueWaitMs?: number) => {
+  // How each venue answers: "yes", "busy", or once the promise given resolves.
+  type Answer = "yes" | "busy" | Promise<void>;
+  // A turn of the event loop that no fake timer holds: every lookup that can answer without the clock answers.
+  const turns = async (count: number) => { for (let turn = 0; turn < count; turn++) await new Promise<void>((resolve) => setImmediate(resolve)); };
+  const run = async (symbols: string[], venues: { SGX: Answer; HKEX?: Answer }, { venueWaitMs, whileAsking, afterAdd }: {
+    venueWaitMs?: number; whileAsking?: () => Promise<void>; afterAdd?: () => Promise<void>;
+  } = {}) => {
     const persistence = new AppPersistence(":memory:");
     try {
       const store = new TickerRepository(persistence.tickers);
@@ -44,7 +47,7 @@ test("a bare symbol that reads as a future keeps the list's venue when it lists 
       const answer = async (venue: string | undefined) => {
         const how = venue === "SGX" ? venues.SGX : venue === "HKEX" ? venues.HKEX : "yes";
         if (how === "busy") throw new ProviderBusyError();
-        if (typeof how === "number") await sleep(how);
+        if (how instanceof Promise) await how;
       };
       const dataProvider = createTestDataProvider({
         search: async (query) => {
@@ -63,13 +66,15 @@ test("a bare symbol that reads as a future keeps the list's venue when it lists 
           return createTestQuote({ symbol: bare!, name: listing.name, currency: listing.currency, listingExchangeName: listing.exchange, instrumentType: listing.type });
         },
       });
-      const rows = await addSymbols({
+      const adding = addSymbols({
         symbols, exchange: undefined, store, dataProvider, venueWaitMs,
         add: (ticker) => ({ ticker: { ...ticker, metadata: { ...ticker.metadata, watchlists: [...new Set([...ticker.metadata.watchlists, "sg"])] } }, changed: true }),
         member: (ticker) => ticker.metadata.watchlists.includes("sg"),
       });
+      await whileAsking?.();
+      const rows = await adding;
       // A venue's lookup that finished after the add is saved nowhere.
-      await sleep(150);
+      await afterAdd?.();
       const saved = (await store.loadAllTickers()).map((ticker) => `${ticker.metadata.ticker}@${ticker.metadata.exchange}`).sort();
       return { rows: rows.map((row) => [row.input, row.status, row.listing ?? row.message]), saved };
     } finally {
@@ -85,10 +90,27 @@ test("a bare symbol that reads as a future keeps the list's venue when it lists 
   expect((await run(["ES3:CME", "NQ1", "ES=F"], { SGX: "busy" })).rows).toEqual([
     ["ES3:CME", "added", "ES3:CME"], ["NQ1", "added", "NQ1:CME"], ["ES=F", "added", "ES=F:CME"],
   ]);
-  // The venues are asked at once under one deadline: SGX answers late, HKEX in time that it has no ES3. The add asks,
-  // and SGX's late answer saves no record of its own.
-  const late = await run(["ES3"], { SGX: 80, HKEX: 10 }, 40);
-  expect(late.rows).toEqual([["ES3", "failed",
-    "ES3 may be ES3:SGX, on the list's venue, which did not answer, or the CME future ES3:CME; name the listing"]]);
-  expect(late.saved).toEqual(["0700:HKEX@HKEX", "D05:SGX@SGX"]);
+  // The venues are asked at once under one deadline: HKEX answers in time that it has no ES3, SGX only after the
+  // deadline has passed. The add asks, and SGX's late answer saves no record of its own. The clock is held, so how fast
+  // the machine is never decides which venue was in time.
+  jest.useFakeTimers();
+  try {
+    const sgx = Promise.withResolvers<void>();
+    const late = await run(["ES3"], { SGX: sgx.promise, HKEX: "yes" }, {
+      venueWaitMs: 40,
+      whileAsking: async () => {
+        await turns(50);
+        jest.advanceTimersByTime(40);
+      },
+      afterAdd: async () => {
+        sgx.resolve();
+        await turns(50);
+      },
+    });
+    expect(late.rows).toEqual([["ES3", "failed",
+      "ES3 may be ES3:SGX, on the list's venue, which did not answer, or the CME future ES3:CME; name the listing"]]);
+    expect(late.saved).toEqual(["0700:HKEX@HKEX", "D05:SGX@SGX"]);
+  } finally {
+    jest.useRealTimers();
+  }
 });

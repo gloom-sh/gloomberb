@@ -714,6 +714,7 @@ export function CorporateActionsView({
       columns={columns}
       items={rows}
       scrollToIndex={selectedIdx}
+      scrollToIndexAlign={variant === "earnings-estimates" ? "start" : undefined}
       scrollToIndexVersion={rows.length}
       sortColumnId={null}
       sortDirection="asc"

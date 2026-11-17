@@ -767,9 +767,23 @@ describe("OnboardingWizard", () => {
     await emitKeypress({ name: "f10" });
     // Review, 12 Nov 2026: skipping setup took F10 here and s on the next step; Skip is F10 on both.
     expect(await waitForFrame("What do you trade most?")).toMatch(/Skip\s+F10/);
-    await emitKeypress({ name: "f10" });
-    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
+    await pressEscape();
+    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "Esc skips the desks step");
     expect(capturedConfig?.onboardingProgress).toMatchObject({ desks: [] });
+    expect(completionCount).toBe(0);
+  });
+
+  test("Esc leaves an edited holding field before skipping an empty first-run portfolio", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-escape-"));
+    let completionCount = 0;
+    await tui.render(<WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry()} onComplete={() => { completionCount += 1; }} />, { width: 52, height: 40 });
+    await tui.setup().renderOnce();
+    await typeText("AAPL");
+    await pressEscape();
+    expect(capturedConfig?.onboardingProgress?.stage ?? "portfolio").toBe("portfolio");
+    await pressEscape();
+    await waitForFrame("What do you trade most?");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "desks", positionsImported: 0 });
     expect(completionCount).toBe(0);
   });
 
@@ -807,14 +821,18 @@ describe("OnboardingWizard", () => {
     expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "desks", tickerSymbol: "AAPL" });
   });
 
-  test("from Settings, F10 in the Ticker field leaves setup as before, and Skip shows no key there", async () => {
+  test.each(["f10", "escape"])("from Settings, %s leaves setup without changing holdings", async (key) => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-rerun-f10-"));
     let completionCount = 0;
     const config = { ...createDefaultConfig(tempDataDir), onboardingProgress: { version: 1 as const, stage: "portfolio" as const, rerun: true } };
     await tui.render(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} onComplete={() => { completionCount += 1; }} />, { width: 80, height: 30 });
     expect(await waitForFrame("What do you hold?")).toMatch(/Skip\s+Continue/);
-    await emitKeypress({ name: "f10" });
-    await waitUntil(() => completionCount === 1, "F10 to leave setup");
+    if (key === "escape") {
+      await pressEscape();
+      expect(completionCount).toBe(0);
+    }
+    await emitKeypress({ name: key });
+    await waitUntil(() => completionCount === 1, `${key} to leave setup`);
   });
 
   test("remote control reads the terminal card as the setup form, adds and removes a position through it, and sends the step", async () => {

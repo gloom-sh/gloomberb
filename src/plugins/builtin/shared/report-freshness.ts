@@ -8,7 +8,7 @@ import { indexLevelMarketState } from "../../../market-data/market/index-level";
 import { barSizeFromGap, medianBarGap } from "../../../time-series/bar-spacing";
 import { apiClient } from "../../../api-client";
 import { isPerpetualExchange } from "../../../tickers/perpetual-listing";
-import { CLOUD_NEWS_DELAY_HOURS, hasProAccess } from "../../../api-client/plan-rules";
+import { hasProAccess } from "../../../api-client/plan-rules";
 import { savedCopyMark } from "../../../data/saved-copies";
 
 /**
@@ -74,7 +74,7 @@ export const REFERENCE_DATA: HeadlessPaneFreshness = { status: "not-a-feed", bas
 export const REPORTED_DATA: HeadlessPaneFreshness = { status: "not-a-feed", basis: "reported data" };
 
 /** What a news list's as-of is: its newest story, not the time it was read. */
-export const NEWEST_STORY = "newest story";
+const NEWEST_STORY = "newest story";
 
 /** Gloom Cloud's delayed quotes run behind each venue by a lag the app knows (`delayedFeedLagMs`). */
 const CLOUD_QUOTE_PROVIDER_ID = "gloomberb-cloud";
@@ -163,6 +163,5 @@ export async function cloudRealtimeAccess(): Promise<boolean | null> {
 export function cloudNewsFreshness(realtime: boolean | null): HeadlessPaneFreshness {
   const stories: HeadlessPaneFreshness = { observedKey: "publishedAt", oldest: null, asOfLabel: NEWEST_STORY };
   if (realtime === true) return { ...stories, status: "live" };
-  if (realtime === false) return { ...stories, status: "delayed", delayMinutes: CLOUD_NEWS_DELAY_HOURS * 60 };
   return { ...stories, status: "not-a-feed", basis: "published stories" };
 }

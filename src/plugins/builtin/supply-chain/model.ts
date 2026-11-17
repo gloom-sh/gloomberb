@@ -25,11 +25,18 @@ export const counterpartyKind = (row: SupplyRow): CounterpartyKind =>
 
 const GENERIC_WORDS = /\b(And|Of|The|Based|End|Customers?|Suppliers?|Vendors?|Channel|Partners?|Undisclosed|Other|Carriers?|Networks?|Cellular|Distributors?|Retailers?)\b/g;
 
+/**
+ * The measure a filer spells into an undisclosed customer's member ("Revenue Customer 1", "A/R Customer A"), which
+ * the share beside it already names: the label keeps what tells the customers apart.
+ */
+const MEASURE_PREFIX = /^(?:revenues?|net sales|sales|a\/r|ar|accounts receivables?|receivables?|trade receivables?)\s+(?=(?:customer|client|supplier|vendor)\b)/i;
+
 /** The counterparty's name without the kind spelled into it; the kind travels as its own label. */
 export function counterpartyLabel(row: SupplyRow): string {
   const kind = counterpartyKind(row);
   if (kind === "company") return row.counterparty.name;
-  const name = counterpartyName(row).replace(/^Group: /, "").replace(/\s*\(undisclosed\)$/i, "");
+  const name = counterpartyName(row).replace(/^Group: /, "").replace(/\s*\(undisclosed\)$/i, "")
+    .replace(row.pctBasis ? MEASURE_PREFIX : /^$/, "");
   // Cohort labels arrive in title case from XBRL member names; generic words read lower case, names keep theirs.
   return name.replace(GENERIC_WORDS, (word) => word.toLowerCase()).replace(/^./, (first) => first.toUpperCase());
 }
@@ -56,6 +63,15 @@ export const counterpartyKindLabel = (row: SupplyRow, short = false) => {
 };
 /** The relationship in words: "Related-party supplier" for a related-party trade, else the role. */
 export const relationshipLabel = (row: Pick<SupplyRow, "role" | "relatedParty">) => isRelatedParty(row) ? `Related-party ${row.role}` : roleLabel(row.role);
+
+/**
+ * The end of a counterparty's label that tells it apart, which a narrow column keeps whole while it cuts what comes
+ * before: the letter or number of an undisclosed customer ("Customer 1", "Customer A"). Null for a company's name.
+ */
+export function counterpartyLabelEnd(row: SupplyRow): string | null {
+  if (counterpartyKind(row) !== "undisclosed") return null;
+  return / (?:\d{1,3}|[A-Z]|One|Two|Three|Four|Five|Six)$/i.exec(counterpartyLabel(row))?.[0] ?? null;
+}
 
 /** A filer's segment or product scope in plain words: "Compute And Networking Segment" reads "Compute & Networking". */
 export function scopeWords(scope: string): string {
@@ -107,6 +123,15 @@ export function shareParts(row: SupplyRow, focusId?: string | null, { includeRep
   if (row.sourceKind === "xbrl" && scope) {
     if (taggedDimension(row, "ProductOrService"))
       return shareWords(value, [`of ${reporter}total ${basis} (${lowerFirst(scope)} sales)${owed}`, `of ${reporter}total ${basis}`, `${reporter}${basis}`]);
+    // A segment tag says where the revenue comes from or whose revenue it is a share of; the filing's sentence says
+    // which (`pctScopeBasis`): NVDA's 16% is of total revenue, from Compute & Networking; RPM's 24% of Consumer's own.
+    if (row.pctScopeBasis === "total")
+      return shareWords(value, [`of ${reporter}total ${basis}, from ${scope}${owed}`, `of ${reporter}total ${basis}`, `${reporter}${basis}`]);
+    if (row.pctScopeBasis === "segment")
+      return shareWords(value, [`of ${reporter}${scope} ${basis}${owed}`, `of ${reporter}segment ${basis}`, `${reporter}segment ${basis}`]);
+    // A segment tag not yet read is said as a tag, never as the share's base.
+    if (taggedDimension(row, "BusinessSegments") || /segment/i.test(row.pctScope ?? ""))
+      return shareWords(value, [`of ${reporter}${basis}, tagged ${scope}${owed}`, `of ${reporter}${basis}`, `${reporter}${basis}`]);
     return shareWords(value, [`of ${reporter}${basis} (${scope})${owed}`, `${reporter}${basis}`]);
   }
   const scoped = `${scope ? `${scope} ` : ""}${basis}`;

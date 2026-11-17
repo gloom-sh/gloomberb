@@ -128,6 +128,14 @@ test("a KPI the server holds back from Free says why once, in KPIS's words; a Pr
   expect(pro.notes).toEqual(["1 of 1 row has no Backlog. Coverage follows available company disclosures; missing data is not zero."]);
 });
 
+test("a locked extra metric explains access even when the primary metric is available", async () => {
+  const free = screenFixture();
+  for (const row of free.rows) for (const field of KPI_FIELDS) delete (row.metrics as Partial<typeof row.metrics>)[field];
+  const result = await equityScreenerHeadless.load({ argument: undefined, options: { metric: "marketCap,kpiBacklog" } } as never,
+    { apiClient: { equityScreener: async () => structuredClone(free) } } as never);
+  expect(result.notes?.filter((note) => note.includes("Gloom Pro"))).toEqual(["Locked figures require Gloom Pro access."]);
+});
+
 test("a screen its currency emptied says the currency keeps only listings quoted in it, and gives the screen in USD", async () => {
   // A CAD screen of tobacco companies said "No data." though the USD one lists seven.
   const tobacco = { ...screenFixture(), rows: [] };
