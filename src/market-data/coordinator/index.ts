@@ -861,7 +861,9 @@ export class MarketDataCoordinator {
         delayMinutes: result?.delayMinutes,
         staleAt: result?.staleAt ?? null,
         error: classified ?? (!loading && empty ? { reasonCode: "NO_DATA", message: "No data available" } : null),
-        attempts: result ? [createAttempt(result.source, result.fetchedAt, error ? errorStatus(error) : empty ? "empty" : "success", classified?.reasonCode, classified?.message)] : [],
+        // A read that failed with nothing to show records the failure too, so its entry says whether asking again may answer.
+        attempts: result ? [createAttempt(result.source, result.fetchedAt, error ? errorStatus(error) : empty ? "empty" : "success", classified?.reasonCode, classified?.message)]
+          : error ? [createAttempt(this.dataProvider.id, Date.now(), errorStatus(error), classified?.reasonCode, classified?.message)] : [],
       });
     };
     const existing = this.cachedQueries.get(key);
