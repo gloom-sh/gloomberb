@@ -726,9 +726,10 @@ the same way:
 | Too short for either | required figures before optional ones | one row: `● label` sparkline value | the rest |
 | Shorter still, or narrower than 24 columns | figures that fit above the table's header and one row | none | the rest |
 
-- Figures are required by default. Only figures explicitly marked `essential: false`
-  may give way to the chart. Required dates and values take room from the chart
-  before the table, which keeps its header and at least one row.
+- Figures are optional by default. Only figures marked `essential: true` are
+  required: they take room from the chart before the table, which keeps its
+  header and at least one row. Optional figures never push the table below its
+  header and four rows.
 - Figures are listed most important first. When even required figures cannot fit,
   captures report the missing figures and do not certify the picture complete.
   The strip leaves out what the remaining figures already say.
