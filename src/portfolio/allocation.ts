@@ -64,7 +64,7 @@ export interface AllocationCashBalance {
   value: number | null;
 }
 
-export interface PortfolioCashBalanceLine extends AllocationCashBalance {
+interface PortfolioCashBalanceLine extends AllocationCashBalance {
   /** Its own share of the weight base: null without a value, or against a hedged book's gross exposure. */
   weight: number | null;
 }

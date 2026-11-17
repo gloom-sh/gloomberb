@@ -752,7 +752,7 @@ function totalWeight(allocation: Pick<PortfolioAllocation, "weightBasis" | "tota
 }
 
 /** One currency of a portfolio's cash, as `portfolio show` and `fn PF` report it. */
-export interface PortfolioCashBalanceReport {
+interface PortfolioCashBalanceReport {
   /** In `currency`. */
   amount: number;
   currency: string;
