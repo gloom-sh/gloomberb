@@ -1,17 +1,24 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { SupplyEntity } from "../../../api-client/supply-chain";
 import type { GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
-import { getListingSymbol } from "../../../sources/listing-symbols";
-import { isUsListingExchange, publicTickerKey } from "../../../utils/exchanges";
+import { hongKongListingCode, listingSuffixVenue } from "../../../sources/listing-symbols";
+import { canonicalExchange, canonicalTickerKey, isUsListingExchange, publicTickerKey } from "../../../utils/exchanges";
 
 export const entityKey = (entity: SupplyEntity) => entity.ticker ? publicTickerKey(entity.ticker, entity.exchange ?? undefined) : `id:${entity.id}`;
 /**
- * The ticker as shown and typed to open it: a US listing bare, any other with
- * its venue's suffix, so Standard Chartered reads STAN.L and never a bare STAN
- * that a US company could hold.
+ * The ticker as shown and typed to open it, as every other function writes a
+ * listing: a US listing bare, any other with its venue (`STAN:LSE`,
+ * `0941:HKEX`), never a bare STAN that a US company could hold. A ticker served
+ * with a vendor's venue suffix (`600028.SS`, `000063.SZ`) is read as its venue's
+ * listing (`600028:SSE`, `000063:SZSE`).
  */
-export const entityTicker = (entity: Pick<SupplyEntity, "ticker" | "exchange">) =>
-  entity.ticker && entity.exchange && !isUsListingExchange(entity.exchange) ? getListingSymbol(entity.ticker, entity.exchange) : entity.ticker;
+export const entityTicker = (entity: Pick<SupplyEntity, "ticker" | "exchange">): string | null => {
+  if (!entity.ticker) return entity.ticker;
+  const suffixed = listingSuffixVenue(entity.ticker, entity.exchange ?? undefined);
+  const symbol = suffixed?.symbol ?? entity.ticker;
+  const exchange = suffixed?.exchange ?? entity.exchange;
+  return exchange && !isUsListingExchange(exchange) ? canonicalTickerKey(hongKongListingCode(symbol, canonicalExchange(exchange)), exchange) : symbol;
+};
 export const entityLabel = (entity: SupplyEntity) => entityTicker(entity) ?? entity.name;
 /**
  * A trade link whose every disclosure is a related-party (connected) trade,

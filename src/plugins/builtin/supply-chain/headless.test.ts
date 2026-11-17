@@ -231,16 +231,18 @@ test("graph boundaries preserve global filing scale and provenance and reject un
 
 test("--view prints that view alone and says when it is empty; an earlier period's share prints apart, never as current", async () => {
   const zero = { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 };
-  // A listing outside the US prints with its venue's suffix, never as a bare ticker a US company could hold.
+  // A listing outside the US prints with its venue, as every function writes it, never as a bare ticker a US
+  // company could hold; one served with a vendor's suffix (600028.SS) reads as its venue's listing.
   const current = supplyRow("current", { sourceKind: "xbrl", period: "2025-12-31", periodMonths: 12, pctOfRevenue: 27, counterparty: { ...entity("current"), ticker: "STAN", exchange: "LSE" } });
+  const suffixed = supplyRow("suffixed", { sourceKind: "xbrl", period: "2025-12-31", periodMonths: 12, pctOfRevenue: 5, counterparty: { ...entity("suffixed"), ticker: "600028.SS", exchange: null } });
   const earlier = supplyRow("earlier", { sourceKind: "xbrl", period: "2023-12-31", periodMonths: 12, pctOfRevenue: 14 });
   const context = createTestHeadlessContext();
-  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [current], totalRows: 3, truncated: true, lockedRows: 1, access: "preview", previewRowsPerRole: 3,
-    counts: { says: { ...zero, customer: 2 }, names: zero }, earlier: { says: [earlier], names: [] }, earlierCounts: { says: { ...zero, customer: 1 }, names: zero } }) };
+  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [current, suffixed], totalRows: 4, truncated: true, lockedRows: 1, access: "preview", previewRowsPerRole: 3,
+    counts: { says: { ...zero, customer: 3 }, names: zero }, earlier: { says: [earlier], names: [] }, earlierCounts: { says: { ...zero, customer: 1 }, names: zero } }) };
   const load = (options: Record<string, string>) => supplyChainHeadless.load(createTestHeadlessArgs({ symbols: ["FOCUS"], options }), context);
   const both = await load({});
   expect(both.sections.map((section) => [section.title, section.rows?.map((row) => [row.counterparty, row.ticker, row.pct, row.period])])).toEqual([
-    ["FOCUS says", [["current", "STAN.L", 27, "2025-12-31"]]],
+    ["FOCUS says", [["current", "STAN:LSE", 27, "2025-12-31"], ["suffixed", "600028:SSE", 5, "2025-12-31"]]],
     ["FOCUS says | Earlier periods", [["earlier", "earlier", 14, "2023-12-31"]]],
   ]);
   const names = await load({ view: "names" });
