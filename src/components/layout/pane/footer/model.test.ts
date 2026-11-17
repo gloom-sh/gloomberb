@@ -52,6 +52,12 @@ describe("footer hint row", () => {
     const quote: PaneFooterSegment = { id: "quote", parts: [{ text: "quote" }, { text: "12h" }] };
     const trade: PaneFooterSegment = { id: "trade", parts: [{ text: "trade" }, { text: "12h" }] };
     expect(fitPaneFooterInfo([contract, quote, trade], 32).map((segment) => segment.id)).toEqual(["contract", "quote"]);
+    // A terminal pane not focused has no hints beside its status and trims it the same way, never mid-word
+    // ("historical, 60 daily returns · U"); a pane picture's row still overflows, for its status line to fit.
+    expect(fitPaneFooterInfo([contract, quote, trade], 32, { besideHints: false, terminal: true }).map((segment) => segment.id))
+      .toEqual(["contract", "quote"]);
+    expect(fitPaneFooterInfo([contract, quote, trade], 32, { besideHints: false }).map((segment) => segment.id))
+      .toEqual(["contract", "quote", "trade"]);
     const line: PaneFooterSegment = { id: "line", parts: [{ text: "Fri 9 Oct close" }, { text: "· 15 min delayed", tone: "muted" }] };
     const cut = fitPaneFooterInfo([contract, line], 48).at(-1)!;
     expect(cut.parts).toEqual([{ text: "Fri 9 Oct close" }, { text: "· 15 min…", tone: "muted" }]);

@@ -417,8 +417,10 @@ function trimTrailing(info: PaneFooterSegment[], width: number, keep: number, pa
  * way first, before any of them shortens: a pane puts what goes first last
  * (an update time after a note that explains the row in hand).
  *
- * With no hints beside it (a pane picture's footer), the row clips the rest,
- * so a frame that fits its own status line sees it overflow.
+ * With no hints beside it, a pane picture's footer clips the rest, so a
+ * frame that fits its own status line sees it overflow; the terminal's (a
+ * pane not focused) cuts or leaves out the trailing status as it does beside
+ * the hints, so no segment ends mid-word.
  */
 export function fitPaneFooterInfo(
   info: PaneFooterSegment[],
@@ -429,7 +431,7 @@ export function fitPaneFooterInfo(
   if (infoTextWidth(info) > width && info.some((segment) => segment.age)) {
     return fitPaneFooterInfo(info.filter((segment) => !segment.age), width, { besideHints, terminal });
   }
-  if (!besideHints) return stepDownTogether(info, width);
+  if (!besideHints && !terminal) return stepDownTogether(info, width);
   const lastWithVariants = info.findLastIndex((segment) => (segment.variants?.length ?? 0) > 0);
   if (lastWithVariants >= 0 && lastWithVariants < info.length - 1 && infoTextWidth(info) > width) {
     const trimmed = trimTrailing(info, width, lastWithVariants + 1, terminal);
