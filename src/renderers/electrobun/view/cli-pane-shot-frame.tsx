@@ -157,7 +157,9 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
   const datesData = statusLine && dates === "data";
   return <PaneFooterProvider>{(registeredFooter) => {
     const status: PaneFooterSegment[] = statusLine && statusText !== null ? [{ id: "shot-status", parts: [{ text: statusText, tone: "label" }] }] : [];
-    const info = registeredFooter.info.filter((segment) => (preserveStatus || segment.icon === "warning" || segment.capture)
+    // A warning whose pane prints nothing of it in a capture (`captureText` empty) leaves no empty segment.
+    const info = registeredFooter.info.filter((segment) => !(segment.icon === "warning" && segment.captureText === "")
+      && (preserveStatus || segment.icon === "warning" || segment.capture)
       && !(datesPaneData(segment) && (datesData || crowded))
       && !(segment.quoteStatus && statusLine && dates !== null))
       .map((segment): PaneFooterSegment => segment.icon === "warning" ? {

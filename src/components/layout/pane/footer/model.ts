@@ -684,6 +684,11 @@ export function samePaneFooterRegistration(
         && segment.disabled === other.disabled
         && segment.savedCopyAt === other.savedCopyAt
         && segment.age === other.age
+        // What a capture prints and keeps: notices that changed under the same icon print the new ones.
+        && segment.captureText === other.captureText
+        && segment.capture === other.capture
+        && segment.asOf === other.asOf
+        && segment.quoteStatus === other.quoteStatus
         && sameFooterParts(segment.parts, other.parts)
         && (segment.variants?.length ?? 0) === (other.variants?.length ?? 0)
         && (segment.variants ?? []).every((variant, variantIndex) => sameFooterParts(variant, other.variants![variantIndex]!));

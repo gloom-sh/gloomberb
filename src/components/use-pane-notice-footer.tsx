@@ -19,6 +19,13 @@ export interface UsePaneNoticeFooterOptions {
   focused: boolean;
   title?: string;
   enabled?: boolean;
+  /**
+   * What a static capture prints for the notices, which it prints all of
+   * otherwise: for a pane whose footer already says some of them (what its
+   * numbers leave out, as segments a capture keeps), the rest. Empty prints
+   * none; the dialog always lists every notice.
+   */
+  captureText?: string;
 }
 
 function NoticeDialog({ notices, title, dismiss, dialogId }: AlertContext & {
@@ -78,6 +85,7 @@ export function usePaneNoticeFooter({
   focused,
   title: rawTitle = "Data warnings",
   enabled = true,
+  captureText,
 }: UsePaneNoticeFooterOptions): void {
   const dialog = useDialog();
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -128,12 +136,12 @@ export function usePaneNoticeFooter({
     info: [{
       id: "data-warnings",
       icon: "warning",
-      captureText: currentNotices.join(" · "),
+      captureText: captureText ?? currentNotices.join(" · "),
       label: title,
       title: `${title} (!)`,
       shortcut: "!",
       parts: [{ text: "⚠", tone: seen ? "muted" : "warning" }],
       onPress: open,
     }],
-  } : null, [active, open, seen, title, currentNotices]);
+  } : null, [active, open, seen, title, currentNotices, captureText]);
 }

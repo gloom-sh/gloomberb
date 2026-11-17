@@ -8,6 +8,8 @@ import {
   portfolioRiskRequests,
   portfolioRiskTickers,
   riskCoverageLine,
+  riskCoverageParts,
+  riskReturnCalendar,
   riskCoverageNotices,
   riskCoverageShortfall,
   riskEvidence,
@@ -149,6 +151,18 @@ test("foreign listings with daily FX closes enter the basket in USD and the foot
   // Converted returns sit on the basket's calendar, so the estimates still have 60 matched sessions.
   expect(model.metrics.every((row) => row.value != null)).toBe(true);
   expect(model.rows.holdings.find((row) => row.label === "JPY1")?.detail).toContain("from JPY at daily FX");
+  // The returns are on US trading days, each market abroad carrying its last close over the ones it did not trade, and
+  // the tail rows' method says so.
+  expect(model.calendar).toBe("US trading days, other markets at their last close");
+  const tail = model.rows.risk.find((row) => row.id === "var")!;
+  expect(riskEvidence(tail)).toStartWith("historical, 1-day, 95%, 60 daily returns on US trading days, other markets at their last close; basket 453,560 USD");
+  // The pane's footer sets the coverage apart from the conversions, with shorter forms for a narrow row.
+  expect(riskCoverageParts(model.coverage)).toEqual({
+    text: "basket 453,560 USD = 97% of book; left out: UNQ1 2%, UNQ2 1%, UNQ3 under 1%",
+    short: "97% of book; left out: UNQ1 2%, UNQ2 1%, UNQ3 under 1%",
+    shortest: "97% of book; UNQ1, UNQ2, UNQ3 left out",
+    converted: "6 holdings converted from local currency",
+  });
   // Closes at another time than the US session read low against US holdings, and the pane says so.
   expect(model.notes).toContain(
     "Converted holdings are matched to the US close of the same date; where their market closes at another time, correlations and betas to US holdings read lower than they are.",
@@ -674,4 +688,15 @@ test("a holding saved under its venue's code (ES3:XSES) is requested and labelle
   expect(portfolioRiskRequests([held], "book")[0]).toMatchObject({ symbol: "ES3", exchange: "SGX" });
   // The pane names it by the venue, as D05:SGX beside it.
   expect(listedSymbol(held, held.metadata.ticker, "US")).toBe("ES3:SGX");
+});
+
+// A book of US funds and two Borsa Istanbul banks read its risk with no word of which days its returns were on.
+test("the days a basket's returns are on are named when it holds a market abroad, which carries its last close over US days", () => {
+  expect(riskReturnCalendar([{ exchange: "ARCA" }, { exchange: "NASDAQ" }, { exchange: "" }, { exchange: "CME" }])).toBeNull();
+  expect(riskReturnCalendar([{ exchange: "ARCA" }, { exchange: "BIST", convertedFrom: "TRY" }, { exchange: "BIST", convertedFrom: "TRY" }]))
+    .toBe("US trading days, BIST at its last close");
+  expect(riskReturnCalendar([{ exchange: "LSE" }, { exchange: "XETR" }])).toBe("US trading days, LSE and XETRA at their last close");
+  expect(riskReturnCalendar([{ exchange: "LSE" }, { exchange: "XETRA" }, { exchange: "JPX" }])).toBe("US trading days, other markets at their last close");
+  // A listing abroad saved without its venue still says the days, without naming one.
+  expect(riskReturnCalendar([{ exchange: "", convertedFrom: "TRY" }])).toBe("US trading days, other markets at their last close");
 });

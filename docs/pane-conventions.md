@@ -310,7 +310,10 @@ the origin of a number. The one count the kit draws is the
   instance, delete it.
 - Static pane captures print warning text instead of an icon that opens a
   dialog: `usePaneNoticeFooter` supplies the notices through `captureText`.
-  Warnings remain visible with `--no-status` too.
+  Warnings remain visible with `--no-status` too. A pane whose footer already
+  says what its notices explain at length (what the numbers leave out, as
+  `capture` segments) passes the rest as `captureText`, so one footer row
+  stays readable; the dialog still lists every notice.
 - The footer sets info segments apart with a muted ` · ` (`PANE_FOOTER_SEPARATOR`),
   and an icon (`⚠`, `◷15m`) with one column, so two segments never read as one
   sentence. A pane neither adds its own `·` between segments nor starts one

@@ -134,3 +134,37 @@ test("a capture with nothing to date gives the footer row back to the pane", asy
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
 });
+
+// MARS printed every left-out holding as a sentence in one row, cut mid-word, while its footer already said what was left out.
+test("a pane's capture text stands in for its notices in a capture, and an empty one prints none of them", async () => {
+  const ui = createDomUiHost();
+  let update: (captureText: string | undefined) => void = () => {};
+  function Notices({ captureText }: { captureText: string | undefined }) {
+    usePaneNoticeFooter({
+      registrationId: "shot-notice", focused: true, captureText,
+      notices: ["BTC-USD (17.5% of the book) is excluded from the risk estimate: crypto is not covered by the equity basket.", "Closes failed for GARAN."],
+    });
+    usePaneFooter("shot-coverage", () => ({ info: [{ id: "coverage", capture: true, parts: [{ text: "73% of book; BTC-USD left out" }] }] }), []);
+    return <div>Risk rows</div>;
+  }
+  function Harness() {
+    const [captureText, setCaptureText] = useState<string | undefined>("Closes failed for GARAN.");
+    update = setCaptureText;
+    return <UiHostProvider ui={ui} renderer={noopRendererHost}>
+      <WebInputHostProvider><WebDialogHostProvider>
+        <PaneShotFrame paneId="shot" title="Risk" width={60} height={24}>{() => <Notices captureText={captureText} />}</PaneShotFrame>
+      </WebDialogHostProvider></WebInputHostProvider>
+    </UiHostProvider>;
+  }
+  const root = await render(<Harness />);
+  const footer = () => root.querySelector('[data-gloom-role="pane-footer"]')?.textContent ?? "";
+  expect(footer()).toContain("Closes failed for GARAN.");
+  expect(footer()).toContain("73% of book; BTC-USD left out");
+  expect(footer()).not.toContain("is excluded from the risk estimate");
+  await act(async () => update(""));
+  expect(footer()).toContain("73% of book; BTC-USD left out");
+  expect(footer()).not.toContain("GARAN");
+  // Without one, every notice prints, as before.
+  await act(async () => update(undefined));
+  expect(footer()).toContain("is excluded from the risk estimate");
+});
