@@ -127,6 +127,28 @@ test("a code whose venue does not list the symbol says which venue the code is a
   expect(refusal?.details).toBe(BLOOMBERG_MARKETS.AB!.hint);
 });
 
+// A code on a market whose codes differ (MK, SP, AB) was refused as "not a ... code" when search listed nothing and the
+// quote failed, which is what an unreachable quote source looks like too.
+test("a code where Bloomberg's and the venue's codes differ is refused only on what search answered", async () => {
+  const quotes: string[] = [];
+  const unreachable = createTestDataProvider({
+    search: async () => { throw Object.assign(new Error("Service unavailable"), { status: 503 }); },
+    getQuote: async (symbol: string) => { quotes.push(symbol); throw new Error("fetch failed"); },
+  });
+  const silent = createTestDataProvider({
+    search: async () => [],
+    getQuote: async (symbol: string) => { quotes.push(symbol); throw new Error("fetch failed"); },
+  });
+  for (const dataProvider of [unreachable, silent]) {
+    const deps = { store: { loadTicker: async () => null, loadAllTickers: async () => [] }, dataProvider };
+    // The listing goes on to its own request, whose answer says what it finds.
+    expect(await resolveCliListing("MAY MK", undefined, deps)).toMatchObject({ key: "MAY:BURSAMY" });
+    expect(await resolveCliListing("ARAMCO AB", undefined, deps)).toMatchObject({ key: "ARAMCO:TADAWUL" });
+  }
+  // Nothing asked the quote to decide a refusal.
+  expect(quotes).toEqual([]);
+});
+
 test("a code that names several listings lists the others to try after the first", () => {
   // Bloomberg glues a Nordic class on (VOLVB); ABB and NOKIA end in a letter too, so the code as written goes first.
   expect(readTerminalListingCode("VOLVB SS")).toMatchObject({ key: "VOLVB:SFB", alternatives: [{ key: "VOLV.B:SFB" }] });

@@ -1856,7 +1856,9 @@ async function refuseUnknownMarketCode(typed: string, deps: ListingDeps): Promis
 async function checkTerminalCodeVenue(listing: ListingArg, market: string, deps: ListingDeps): Promise<void> {
   const hint = bloombergMarketHint(market);
   if (!hint && !isSearchOnlyVenue(listing.exchange)) return;
-  const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", null));
+  // Only what search answers refuses the code: a busy or unreachable search leaves the listing's own request to speak.
+  const venues = await listingVenues(listing.symbol, deps, { failTransient: true })
+    .catch(logFailure("cli.listing-arg", "Read listing venues failed", null));
   if (!venues) return;
   const there = venues.filter((venue) => venue.exchange === listing.exchange);
   const own = (venue: ListingVenue) => !venue.symbol || venue.symbol.toUpperCase() === listing.symbol.toUpperCase();
@@ -1868,10 +1870,8 @@ async function checkTerminalCodeVenue(listing: ListingArg, market: string, deps:
   if (line) {
     throw new ListingArgError(`${listing.symbol} is not a ${listing.exchange} code; did you mean ${line.symbol} ${market}${line.name ? ` (${line.name})` : ""}?`, hint!);
   }
-  if (venues.length === 0) {
-    if (!hint || await quotedOnVenue(listing, deps)) return;
-    throw new ListingArgError(`${listing.symbol} is not a ${listing.exchange} code.`, hint);
-  }
+  // Search lists the symbol nowhere: the request's own answer says what it finds, as it did before codes were checked.
+  if (venues.length === 0) return;
   throw new ListingArgError(await notTradedText(listing, venues, deps), hint ?? undefined);
 }
 
