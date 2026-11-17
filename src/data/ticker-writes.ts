@@ -71,6 +71,11 @@ export function hasPendingTickerWrites(repository: object): boolean {
   return (repositories.get(repository)?.pending.size ?? 0) > 0;
 }
 
+/** Whether a write of `symbol` is requested and not yet done. */
+export function hasPendingTickerWrite(repository: object, symbol: string): boolean {
+  return repositories.get(repository)?.tails.has(tickerKey(symbol)) ?? false;
+}
+
 /** Let save-await callers publish their edits before cleanup reads the current rows. */
 export async function settleTickerWrites(repository: object): Promise<void> {
   const writes = writesFor(repository);

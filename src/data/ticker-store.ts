@@ -38,6 +38,22 @@ export class TickerStore {
     return [...bySymbol.values()].sort((a, b) => (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0));
   }
 
+  /**
+   * A number that changes when another program (a `gloom` command) commits
+   * to the database, and only then: SQLite's `data_version`. Null when the
+   * database cannot be read just now.
+   */
+  changesElsewhere(): number | null {
+    try {
+      return this.access.run("read data version", () => (
+        this.db.query<{ data_version: number }, []>("PRAGMA data_version").get()?.data_version ?? null
+      ));
+    } catch {
+      // Intentional ignore: an unreadable database is asked again on the next look.
+      return null;
+    }
+  }
+
   get(symbol: string): string | null {
     const pending = this.pending.get(symbol);
     if (pending) return pending.metadata;
