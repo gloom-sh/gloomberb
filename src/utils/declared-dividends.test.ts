@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { declaredDividends } from "./declared-dividends";
+import { declaredDividendCash, declaredDividends } from "./declared-dividends";
 
 test("a declared row stays apart from the paid history and leaves once that history lists it, even from a cached payload", () => {
   const now = new Date("2026-10-13T17:00:00Z");
@@ -19,4 +19,9 @@ test("a declared row stays apart from the paid history and leaves once that hist
     .toEqual([declared[0]!, special]);
   // An older server sends no list.
   expect(declaredDividends({ dividends: actions.dividends }, now)).toEqual([]);
+  const estimate = { exDate: "2026-11-05", payDate: "2026-12-17", amount: 0.075835,
+    cashEstimate: { declaredCurrency: "USD", declaredAmount: 0.1, fixingDate: "2026-12-07", basis: "Reported cash estimate" } };
+  const kept = declaredDividends({ dividends: [], declaredDividends: [estimate] }, new Date("2026-11-17"));
+  expect(kept).toEqual([estimate]);
+  expect(declaredDividendCash(kept[0]!, "GBP")).toEqual({ amount: "$0.10 USD", estimate: "GBP estimated £0.075835; FX fixing 2026-12-07" });
 });

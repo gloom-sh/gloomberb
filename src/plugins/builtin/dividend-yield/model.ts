@@ -22,11 +22,11 @@ export const DEFAULT_SORT_PREFERENCE: DividendSortPreference = {
  * when the payments mix currencies; otherwise the amount's own symbol says it.
  * The source column shows only when a fund's sponsor gave a row its history lacks.
  */
-export function buildDividendColumns(rows: readonly Pick<DividendRow, "currency" | "declared" | "source">[] = []): DividendColumn[] {
+export function buildDividendColumns(rows: readonly Pick<DividendRow, "currency" | "declared" | "source" | "cashEstimate">[] = []): DividendColumn[] {
   const mixed = new Set(rows.map((row) => row.currency)).size > 1;
   return [
     { id: "exDate", label: "EX-DATE", width: 10, align: "left" },
-    { id: "amount", label: "AMOUNT", width: 12, align: "right" },
+    { id: "amount", label: "AMOUNT", width: rows.some((row) => row.cashEstimate) ? 22 : 12, align: "right" },
     ...(rows.some((row) => row.declared) ? [{ id: "declared" as const, label: "DECLARED", width: 10, align: "right" as const }] : []),
     ...(mixed ? [{ id: "currency" as const, label: "CCY", width: 6, align: "left" as const }] : []),
     ...(rows.some((row) => row.source) ? [{ id: "source" as const, label: "SOURCE", width: 12, align: "left" as const }] : []),

@@ -113,7 +113,7 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
   const fwdLabel = bond ? (short ? "Fwd dist" : "Fwd dist yld") : short ? "Fwd yld" : "Fwd yield";
   const sec = bond ? bondFigures(bond).find((figure) => figure.key === "secYield") : undefined;
   return [
-    { id: "ttm-yield", essential: true, label: ttmLabel, value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0),
+    { id: "ttm-yield", essential: true, label: ttmLabel, value: `${formatDividendYield(metrics.trailingYield)}${metrics.trailingEstimates?.length ? " estimated" : ""}`, color: priceColor(metrics.trailingYield ?? 0),
       ...(trailingNote ? { detail: trailingNote } : {}) },
     // Dated by the distribution it annualizes, or marked declared (with its stated amount) beside the next ex-date;
     // a dividend that stopped has none, dated by its last ex-date, and a monthly payer's history that ends says so.
@@ -122,7 +122,8 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
       ? { id: "forward-yield", essential: true, label: fwdLabel, value: lapseValue(metrics.lapse), ...(forwardNote ? { detail: forwardNote } : {}) }
       : { id: "forward-yield", essential: true, label: fwdLabel, value: `${formatDividendYield(metrics.forwardYield)}${metrics.forwardEstimate ? " estimated" : ""}`, color: priceColor(metrics.forwardYield ?? 0),
         ...(forwardNote ? { detail: forwardNote } : {}) },
-    ...(metrics.forwardEstimate ? [{ id: "forward-fx", essential: true, label: "FX basis", value: `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
+    ...(metrics.forwardEstimate ? [{ id: "forward-fx", essential: true, label: metrics.forwardEstimate.fixingDate ? "FX fixing" : "FX basis",
+      value: metrics.forwardEstimate.fixingDate ?? `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
     // The 30-day SEC yield as the fund's sponsor publishes it, dated.
     ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${sec.date}` } : {}) }] : []),
     { id: "ttm-rate", essential: false, label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency, !!convertedFrom, convertedSubUnit),
@@ -164,7 +165,7 @@ function renderCell(
       return { text: row.exDate, color: colors.textDim };
     case "amount":
       return {
-        text: converted ? formatConvertedAmount(row.amount, row.currency, subUnit) : formatDistributionAmount(row.amount, row.currency),
+        text: `${row.cashEstimate ? "estimated " : ""}${converted ? formatConvertedAmount(row.amount, row.currency, subUnit) : formatDistributionAmount(row.amount, row.currency)}`,
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };

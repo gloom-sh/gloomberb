@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { act, useState } from "react";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
@@ -7,13 +7,14 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { DividendYieldPane } from "./pane";
 import { fetchDividendData } from "./client";
-import { chartResponse, marketTransport } from "./test-fixture";
+import { chartResponse, hsbcIssuerDividendRead, marketTransport } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 const realNow = Date.now;
 afterEach(() => {
   setHttpFetchTransport(null);
   Date.now = realNow;
+  setSystemTime();
 });
 
 /** Render the pane bound to `symbol` in its footer frame. */
@@ -37,6 +38,18 @@ async function frame() {
   });
   return tui.frame();
 }
+
+test("an ex-dated unfixed sterling declaration keeps its row, estimate labels and fixing date at narrow width", async () => {
+  setSystemTime(new Date("2026-11-17T06:00:00Z"));
+  setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead() }));
+  await mountDividendPane("HSBA:LSE", 60);
+  const text = await frame();
+  expect(text).toContain("2026-11-05");
+  expect(text).toContain("estimated 7.5835p");
+  expect(text).toContain("$0.10");
+  expect(text).toContain("2026-12-07");
+  expect(text).toContain("2026-12-17");
+});
 
 test("summary failures retain cash and recover dated payment information through refresh", async () => {
   const day = Math.floor(Date.now() / 86400_000) * 86400;
