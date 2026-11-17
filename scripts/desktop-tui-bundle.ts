@@ -1,4 +1,5 @@
 import { join } from "path";
+import { removeCatalogSnapshot, writeCatalogSnapshot } from "./catalog-snapshot-file";
 
 const rootDir = join(import.meta.dir, "..");
 
@@ -31,20 +32,27 @@ const OPEN_TUI_NATIVE_PACKAGES = [
  * this, so the check cannot drift from what ships.
  */
 export function buildDesktopTuiBundle(outdir: string, options: { quiet?: boolean } = {}): number {
-  const build = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      "build",
-      join(rootDir, "src", "renderers", "electrobun", "bun", "tui-entry.ts"),
-      "--target=bun",
-      "--production",
-      "--splitting",
-      `--outdir=${outdir}`,
-      ...OPEN_TUI_NATIVE_PACKAGES.map((packageName) => `--external=${packageName}`),
-    ],
-    cwd: rootDir,
-    stdout: options.quiet ? "ignore" : "inherit",
-    stderr: "inherit",
-  });
-  return build.exitCode ?? 1;
+  // The bundle carries the catalog snapshot, as the standalone binary does (build.ts).
+  const written = writeCatalogSnapshot(options);
+  if (written !== 0) return written;
+  try {
+    const build = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        "build",
+        join(rootDir, "src", "renderers", "electrobun", "bun", "tui-entry.ts"),
+        "--target=bun",
+        "--production",
+        "--splitting",
+        `--outdir=${outdir}`,
+        ...OPEN_TUI_NATIVE_PACKAGES.map((packageName) => `--external=${packageName}`),
+      ],
+      cwd: rootDir,
+      stdout: options.quiet ? "ignore" : "inherit",
+      stderr: "inherit",
+    });
+    return build.exitCode ?? 1;
+  } finally {
+    removeCatalogSnapshot();
+  }
 }

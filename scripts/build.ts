@@ -10,6 +10,7 @@ import {
   SHOT_VIEW_SMOKE_COMMAND,
 } from "../src/cli/native-smoke";
 import { buildShotView, packShotView } from "../src/cli/desktop-pane-shot-view";
+import { removeCatalogSnapshot, writeCatalogSnapshot } from "./catalog-snapshot-file";
 import { detectLinuxLibc, type LinuxLibc } from "../src/utils/linux-libc";
 
 const rootDir = join(import.meta.dir, "..");
@@ -585,9 +586,16 @@ mkdirSync(join(rootDir, "dist"), { recursive: true });
 console.log("Building the pane page...");
 await writeShotViewModule();
 try {
+  // Before the compile, which bundles it; see catalog-snapshot-file.ts.
+  console.log("Writing the catalog snapshot...");
+  if (writeCatalogSnapshot() !== 0) {
+    console.error("Failed to write the catalog snapshot");
+    process.exit(1);
+  }
   for (const t of buildTargets) {
     await build(t);
   }
 } finally {
   removeShotViewModule();
+  removeCatalogSnapshot();
 }

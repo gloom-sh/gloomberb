@@ -44,3 +44,6 @@ paseo.json
 # Third-party agent skills restored from skills-lock.json (bunx skills experimental_install)
 .agents/skills/opentui/
 .hutch/
+
+# Written by the release builds (scripts/build.ts, the build workflow); `catalog` asks the plugins without it
+src/cli/pane-functions/catalog-snapshot.json

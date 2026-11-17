@@ -166,6 +166,22 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      # The npm package carries the catalog snapshot the build workflow wrote and attested, so `gloom catalog` and
+      # `fn` need not load every built-in plugin. Nothing is installed or generated in this job: the file is the one
+      # that run attested, under its name, as for the files above.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: catalog-snapshot
+          path: catalog-snapshot
+
+      - name: Check the catalog snapshot is the one built
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/check-built-files.ts catalog-snapshot
+
+      - name: Put the catalog snapshot in the package
+        run: cp catalog-snapshot/catalog-snapshot.json src/cli/pane-functions/catalog-snapshot.json
+
       - name: Install npm 11 (required for trusted publishing)
         run: npm install -g npm@11.21.2
 

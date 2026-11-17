@@ -6,7 +6,9 @@ import type { PaneCatalogEntry } from "./catalog";
  * What `catalog` lists for the built-in plugins, written down by `bun run catalog:snapshot`, so that a command which
  * only lists functions reads one file instead of loading every plugin's code to ask each what it is. It holds
  * the catalog as it reads on a fresh profile, and what a reader's own lists change in it is put back by
- * `snapshotEntries`. `catalog-snapshot.test.ts` fails when the file no longer matches the plugins.
+ * `snapshotEntries`. The file is not in git: the release builds write it (`scripts/build.ts` for a binary, the
+ * build workflow for the npm package), and where it is absent the plugins are asked. `catalog-snapshot.test.ts`
+ * fails when what the generator writes no longer matches the plugins.
  */
 export interface CatalogSnapshotEntry extends Omit<PaneCatalogEntry, "argExamples"> {
   /** The built-in plugin that holds the function. */
@@ -43,9 +45,18 @@ export function snapshotEntries(snapshot: CatalogSnapshot, listName: string | nu
   });
 }
 
-let read: CatalogSnapshot | undefined;
+let read: CatalogSnapshot | null | undefined;
 
-/** The snapshot file, read when first asked for. */
-export function readCatalogSnapshot(): CatalogSnapshot {
-  return read ??= require("./catalog-snapshot.json") as CatalogSnapshot;
+/** The snapshot file, read when first asked for; null where the build did not write one, and the plugins are asked. */
+export function readCatalogSnapshot(): CatalogSnapshot | null {
+  if (read !== undefined) return read;
+  try {
+    read = require("./catalog-snapshot.json") as CatalogSnapshot;
+  } catch (error) {
+    // Bun says "Cannot find module" from source and "Cannot require module" from a compiled binary; a file that is
+    // there and fails to read is not an absent one.
+    if (!/Cannot (find|require) module/.test(String((error as { message?: unknown } | null)?.message ?? error))) throw error;
+    read = null;
+  }
+  return read;
 }

@@ -107,8 +107,9 @@ async function withPaneRuntime<T>(
 
 /**
  * The plugins `fn` resolves a function among. A coded function that reports data, of a built-in plugin, is
- * opened by that plugin and the one that holds its pane (`catalog-snapshot.json` says which), so the other plugins'
- * code is not loaded to run it. Any other word, and any command line with an installed or switched-off plugin, asks them all.
+ * opened by that plugin and the one that holds its pane (`catalog-snapshot.json`, where a build wrote it, says
+ * which), so the other plugins' code is not loaded to run it. Any other word, a source checkout without that
+ * file, and any command line with an installed or switched-off plugin, asks them all.
  */
 async function pluginsOfFunction(ctx: CliCommandContext, context: MarketContext, args: string[]): Promise<GloomPlugin[]> {
   if ((context.config.disabledPlugins ?? []).length > 0 || await installedPluginCount(ctx) > 0) return ctx.plugins;
@@ -119,7 +120,7 @@ async function pluginsOfFunction(ctx: CliCommandContext, context: MarketContext,
     // Intentional ignore: arguments that do not parse fail where they are parsed for the function.
     return ctx.plugins;
   }
-  const holders = target ? readCatalogSnapshot().functions[normalizeLookupToken(target)] : undefined;
+  const holders = target ? readCatalogSnapshot()?.functions[normalizeLookupToken(target)] : undefined;
   const found = holders?.flatMap((id) => loadBuiltinPlugin(id) ?? []);
   return found?.length ? found : ctx.plugins;
 }
@@ -759,19 +760,19 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
 }
 
 /**
- * The catalog read from what the built-in plugins declare (`catalog-snapshot.json`), where nothing else is
- * installed, switched off or asked for: the plugins' code is not loaded to say what they are. False when it
- * could not answer, and the plugins are asked instead.
+ * The catalog read from what the built-in plugins declare (`catalog-snapshot.json`, which a release build writes),
+ * where nothing else is installed, switched off or asked for: the plugins' code is not loaded to say what they
+ * are. False when it could not answer, with no snapshot among the reasons, and the plugins are asked instead.
  */
 async function listFromSnapshot(
   ctx: CliCommandContext,
   parsed: ReturnType<typeof parsePaneCatalogArgs>,
   effectiveParsed: ReturnType<typeof parsePaneCatalogArgs>,
 ): Promise<boolean> {
-  if (process.env[CATALOG_APP_PANES_ENV] === "1" || await installedPluginCount(ctx) > 0) return false;
+  const snapshot = readCatalogSnapshot();
+  if (!snapshot || process.env[CATALOG_APP_PANES_ENV] === "1" || await installedPluginCount(ctx) > 0) return false;
   return withConfigData(ctx, async (context) => {
     if ((context.config.disabledPlugins ?? []).length > 0) return false;
-    const snapshot = await readCatalogSnapshot();
     printCatalog(ctx, parsed, effectiveParsed, snapshotEntries(snapshot, await exampleListName(context)), findSeriesFacts(snapshot.series, parsed.query));
     return true;
   });
