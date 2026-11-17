@@ -199,20 +199,22 @@ export function listOnboardingPositions(
 /**
  * The company the workspace opens on: the largest holding by value, then the
  * largest by share count when nothing is priced, then the first row added.
- * With `usdPerUnit` rates the values compare in dollars, so 2,000 lira
- * shares at TRY55 are not taken for more than 20 SPY at $520; a value in a
- * currency without a rate then counts as unpriced.
+ * Rows valued in more than one currency (US funds beside lira shares) compare
+ * in dollars when `usdPerUnit` holds a rate for every one of them, so 2,000
+ * shares at TRY55 are not taken for more than 20 SPY at $520; otherwise, and
+ * for rows in one currency, the values compare as they are.
  */
 export function pickLargestPosition(
   rows: readonly OnboardingPositionRow[],
   usdPerUnit?: ReadonlyMap<string, number>,
 ): OnboardingPositionRow | null {
   if (rows.length === 0) return null;
-  const valueOf = (row: OnboardingPositionRow) => {
-    if (row.value === null || !usdPerUnit) return row.value;
-    const usd = convertCurrency(row.value, row.currency, "USD", new Map(usdPerUnit));
-    return Number.isFinite(usd) ? usd : null;
-  };
+  const valued = rows.filter((row) => row.value !== null);
+  const inDollars = (row: OnboardingPositionRow) => convertCurrency(row.value!, row.currency, "USD", new Map(usdPerUnit));
+  const dollars = !!usdPerUnit
+    && new Set(valued.map((row) => resolveCurrencyUnit(row.currency).currency)).size > 1
+    && valued.every((row) => Number.isFinite(inDollars(row)));
+  const valueOf = (row: OnboardingPositionRow) => (dollars && row.value !== null ? inDollars(row) : row.value);
   let best = rows[0]!;
   for (const row of rows.slice(1)) {
     const [value, bestValue] = [valueOf(row), valueOf(best)];
