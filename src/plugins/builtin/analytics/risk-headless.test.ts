@@ -8,6 +8,32 @@ import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { BROKER_PORTFOLIO, brokerFixtureHoldings, brokerFixtureTickers, brokerRiskClient, now, sessionHistory } from "./risk-test-data";
 
+test("manual headless Performance and its compact report retain the estimate label and value history", async () => {
+  setSystemTime(now);
+  try {
+    const portfolio = { id: "manual", name: "Manual", currency: "USD" };
+    const ticker = createTestTicker("AAPL", "Apple", { exchange: "NASDAQ", portfolios: [portfolio.id],
+      positions: [{ portfolio: portfolio.id, shares: 10, broker: "manual", dateAcquired: "2026-09-15" }] });
+    const args = { rawArgument: "manual", argument: "manual", symbols: [], options: { view: "performance" } };
+    const result = await portfolioRiskHeadless.load(args, {
+      config: { ...createDefaultConfig("/tmp/unused-risk-headless"), portfolios: [portfolio] },
+      signal: new AbortController().signal, apiClient: { ...brokerRiskClient(now, []),
+        getCloudFredSeries: async () => { throw new Error("Factor inputs unavailable"); } },
+      resolvePortfolio: async () => ({ portfolio, tickers: [ticker] }),
+    } as unknown as HeadlessPaneContext);
+    expect(result.sections[0]!.rows![0]!.label).toBe("Estimated value");
+    expect(result.complete).toBe(true);
+    expect(result.errors).toEqual([]);
+    const compact = portfolioRiskHeadless.compact!(result, args);
+    expect(compact.sections[0]!.rows![0]!.label).toBe("Estimated value");
+    expect(compact.metadata?.performanceEstimate).toMatchObject({ kind: "estimate", label: "Estimated value", currency: "USD", startDate: "2026-09-15" });
+    expect(renderHeadlessPaneText(portfolioRiskHeadless, result, args, "PORT", deriveHeadlessFreshness(portfolioRiskHeadless, result)))
+      .toContain("Estimated value");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("local evidence reports keep account identity and work without market network access", async () => {
   const portfolio = { id: "local", name: "Local account", currency: "USD" };
   const evidence = { version: 1, portfolioId: portfolio.id, currency: "USD", source: "Illustrative ledger", performance: {
@@ -295,7 +321,7 @@ test("a hedged book's short enters the basket; with a future too large to leave,
     const full = await portfolioRiskHeadless.load(args, context([...equities, gold]));
     const text = renderHeadlessPaneText(portfolioRiskHeadless, full, args, "PORT", deriveHeadlessFreshness(portfolioRiskHeadless, full));
     expect(text.split("\n")[2]).toStartWith("Basket estimates unavailable: Qualifying holdings cover 0% of the holdings' value; basket estimates need 50%. Most of what is left out: Asset type is not covered by the equity basket");
-    expect(full.sections.map((section) => section.title)).toEqual(["holdings"]);
+    expect(full.sections.map((section) => section.title)).toEqual(["holdings", "performance"]);
     expect(text).toContain("GC=F (100.0% of the book) is excluded from the risk estimate: asset type is not covered by the equity basket.");
     expect(text).not.toContain("Short positions");
     expect(text).not.toContain("0 sessions");
@@ -304,10 +330,10 @@ test("a hedged book's short enters the basket; with a future too large to leave,
   }
 });
 
-test("each view with nothing to show says why in one line, and performance points to the book's P&L over a period", async () => {
+test("each view with nothing to show says why, and broker Performance without history points to period P&L", async () => {
   setSystemTime(now);
   try {
-    const book = { ...BROKER_PORTFOLIO, name: "Pension Book", brokerId: undefined, brokerInstanceId: undefined };
+    const book = { ...BROKER_PORTFOLIO, name: "Pension Book", brokerId: "broker", brokerInstanceId: "profile" };
     const context = {
       config: { ...createDefaultConfig("/unused/risk-headless"), portfolios: [book] },
       signal: new AbortController().signal,
@@ -317,7 +343,7 @@ test("each view with nothing to show says why in one line, and performance point
     const args = { rawArgument: book.id, argument: book.id, symbols: [], options: { view: "performance" } };
     const performance = await portfolioRiskHeadless.load(args, context);
     expect(performance.sections[0]).toMatchObject({ title: "performance", rows: [],
-      empty: "No account history (daily values and flows) to measure. For P&L over a period: gloom portfolio show 'Pension Book' --from <date>." });
+      empty: "No account history from its broker (daily values and flows) to measure. For P&L over a period: gloom portfolio show 'Pension Book' --from <date>." });
     // The text report prints the line where it printed "No data.".
     const text = renderHeadlessPaneText(portfolioRiskHeadless, performance, args, "PORT", deriveHeadlessFreshness(portfolioRiskHeadless, performance));
     expect(text).toContain("gloom portfolio show 'Pension Book' --from <date>");

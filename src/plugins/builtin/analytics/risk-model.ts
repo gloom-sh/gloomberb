@@ -1,4 +1,5 @@
 import { portfolioOptionGreeks } from "./risk-options";
+import { manualPortfolioValue } from "./manual-value";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { MISSING_VALUE, formatCurrency, formatNumber } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
@@ -411,6 +412,7 @@ const signedQuantity = (lots: TickerRecord["metadata"]["positions"]) =>
 export function portfolioRiskRequests(
   tickers: readonly TickerRecord[],
   portfolioId: string,
+  estimate = false,
 ): RiskHoldingRequest[] {
   return tickers.map((ticker) => {
     const lots = positions(ticker, portfolioId);
@@ -422,6 +424,7 @@ export function portfolioRiskRequests(
       : null;
     return {
       ...riskInstrumentOf(ticker),
+      ...(estimate ? { estimate: true, estimateStart: lots.map((lot) => lot.dateAcquired).filter((date): date is string => !!date).sort()[0] } : {}),
       quantity: signedQuantity(lots),
       currency,
       snapshotValue: snapshot,
@@ -1177,6 +1180,10 @@ export function buildPortfolioRisk(
   const performance = evidence?.performance
     ? calculateAccountPerformance(evidence.performance)
     : null;
+  const performanceEstimate = performance ? null : manualPortfolioValue(
+    portfolio, tickers, market,
+    cashHoldings.every((line) => line.value != null) ? cashHoldings.reduce((sum, line) => sum + line.value!, 0) : null,
+  );
   const attribution = evidence?.attribution
     ? calculateBrinson(evidence.attribution)
     : null;
@@ -1338,7 +1345,15 @@ export function buildPortfolioRisk(
           asOf: performance.endDate,
           detail: `${performance.startDate} to ${performance.endDate}; ${row.detail}`,
         }))
-      : [],
+      : performanceEstimate ? [{
+          id: "estimated-value",
+          label: performanceEstimate.label,
+          value: performanceEstimate.points.at(-1)?.value ?? null,
+          unit: portfolio.currency,
+          percentile: null,
+          asOf: performanceEstimate.points.at(-1)?.date ?? null,
+          detail: "Today's holdings at daily closes; cash held flat; not account performance",
+        }] : [],
     attribution: attribution
       ? attribution.rows.map((row) => ({
           id: row.sector,
@@ -1452,6 +1467,7 @@ export function buildPortfolioRisk(
     stresses,
     episodes,
     performance,
+    performanceEstimate,
     attribution,
     greeks,
     evidence,

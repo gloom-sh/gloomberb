@@ -37,7 +37,7 @@ interface PriceAxisLabelsProps {
   axisColor?: string;
   /** Anchors that stay put while the cursor moves, such as a measure start. */
   extraMarkers?: readonly PriceAxisMarker[];
-  /** Desktop/web observations, separate from a drawing tool's endpoint. */
+  /** Series observations, separate from a drawing tool's endpoint. */
   seriesTags?: readonly SeriesAxisTag[];
   measuredPixelHeight?: number;
   /** A value axis the pointer stretches and squeezes: a drag or the wheel on it, a double click back. */
@@ -218,18 +218,20 @@ export function PriceAxisLabels({
       data-gloom-side={side}
     >
       {Array.from({ length: height }, (_, row) => {
+        const seriesTag = fractionalViewport ? undefined : placedSeriesTags.find((tag) =>
+          Math.min(height - 1, Math.floor(tag.centerY / pixelHeight * height)) === row);
         const isCursorRow = !usePixelOverlay && cursorLabel !== null && cursorRow === row;
         const marker = usePixelOverlay || usePixelTicks
           ? undefined
           : extraMarkers?.find((entry) => entry.row === row);
-        const label = isCursorRow
+        const label = seriesTag?.label ?? (isCursorRow
           ? cursorLabel
-          : marker?.label ?? (usePixelTicks || (footButton && row === height - 1) ? null : axisLabels.get(row) ?? null);
+          : marker?.label ?? (usePixelTicks || (footButton && row === height - 1) ? null : axisLabels.get(row) ?? null));
         return (
           <AxisRow
             key={row}
             label={label}
-            fg={isCursorRow ? cursorColor : marker ? marker.color : axisColor}
+            fg={seriesTag?.color ?? (isCursorRow ? cursorColor : marker ? marker.color : axisColor)}
             side={side}
             axisWidth={axisWidth}
             axisSectionWidth={axisSectionWidth}
@@ -271,7 +273,7 @@ export function PriceAxisLabels({
           {axisPaddingWidth > 0 ? <Box width={axisPaddingWidth} /> : null}
         </Box>
       )) : null}
-      {seriesTags ? <SeriesAxisTags placed={placedSeriesTags} pixelHeight={pixelHeight} lanes={lanes} background={cursorBackgroundColor} /> : null}
+      {seriesTags && fractionalViewport ? <SeriesAxisTags placed={placedSeriesTags} pixelHeight={pixelHeight} lanes={lanes} background={cursorBackgroundColor} /> : null}
       {usePixelOverlay ? (
         <Box
           width={axisSectionWidth}

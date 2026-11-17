@@ -104,7 +104,7 @@ export function PanelPlotSurface({
   );
 }
 
-/** A value axis, with the cursor's value on it and, on the desktop, each series' value at the cursor. */
+/** A value axis, with the cursor's value and each series' observation at that time. */
 export function PanelValueAxis({
   view,
   formatAxisValue,
@@ -122,8 +122,8 @@ export function PanelValueAxis({
   // The pointer's value on the axes follows the level line it belongs to.
   const axisCursorYRatio = isDesktopWeb ? pointerCursorYRatio : activeCursorYRatio;
   const seriesTags = useMemo(
-    () => isDesktopWeb ? resolveSeriesAxisTags(panel, scene, formatAxisValue).filter((tag) => tag.side === side) : undefined,
-    [formatAxisValue, isDesktopWeb, panel, scene, side],
+    () => resolveSeriesAxisTags(panel, scene, formatAxisValue).filter((tag) => tag.side === side),
+    [formatAxisValue, panel, scene, side],
   );
   return (
     <PriceAxisLabels

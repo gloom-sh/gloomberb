@@ -2788,9 +2788,11 @@ The Correlation view draws the heat matrix `CORR` uses, largest holding first, w
 
 ### Performance and attribution evidence
 
-Performance, Brinson attribution and imported option Greeks use the versioned local JSON schema in [research data](research-data.md#local-account-evidence). The pane does not derive account cashflows from current holdings. Evidence stays private and must match the portfolio ID and currency.
+For a manual portfolio, Performance plots **Estimated value**: today's shares, signed for shorts and multiplied by their contract size, at split-adjusted daily closes from each lot's acquired date, plus cash held flat. A lot without an acquired date is assumed held from the start of the available daily history (normally the last 18 months). Foreign holdings use daily FX into the portfolio currency; cash is converted at the current rate and then held flat. Missing closes or FX leave gaps, not partial totals. This is an estimate of today's holdings, not historical account performance: past trades, dividends, fees, deposits and withdrawals are not reconstructed. `gloom fn PORT <portfolio> --view performance` and `gloom shot PORT <portfolio> --view performance` keep the **Estimated value** label too.
 
-Without it, each view says what it is missing: Performance the account's daily values and the money paid in and out, Attribution the sector weights and returns of the account and its benchmark, Greeks option positions. Where a broker would bring them (account history, option positions) and the portfolio has none linked, **Add Broker Account** opens the Brokers flow; **Import evidence** reads the JSON from the clipboard.
+Broker-linked portfolios keep their own history; they do not fall back to this estimate. Imported Performance evidence also takes precedence. Real Performance, Brinson attribution and imported option Greeks use the versioned local JSON schema in [research data](research-data.md#local-account-evidence). The pane does not derive account cashflows from current holdings. Evidence stays private and must match the portfolio ID and currency.
+
+Without it, a broker-linked Performance view says it needs the account's daily values and the money paid in and out; Attribution needs the sector weights and returns of the account and its benchmark, Greeks option positions. Where a broker would bring them (account history, option positions) and the portfolio has none linked, **Add Broker Account** opens the Brokers flow; **Import evidence** reads the JSON from the clipboard.
 
 ```sh
 gloom fn PORT main --json
