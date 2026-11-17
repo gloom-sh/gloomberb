@@ -58,7 +58,12 @@ calendar reports or recorded analyst actions), explicit no-coverage and closed-s
 states are distinct from passes and unexplained failures. A usable strict capture
 whose report is incomplete (for example a clipped long list) is **partial**, not
 a pass or a broken-pane assertion. Blank columns, loading,
-access gates and mismatches still fail. Timeout, invalid output and command errors
+access gates and mismatches still fail. A capture's state is read from the pane
+less its footer's note line: a note that says what the data leaves out
+("Grossing and genre ranks are unavailable.") is no error state. A column is
+blank when every row owed a value shows none: a row the pane marks as still
+waiting on it (ECO's ACTUAL before the release) is left out, and released rows
+with no figure still fail. Timeout, invalid output and command errors
 are separate findings. Exit 1 means a failure, missing review/input, or failed Pro
 preflight; skips and unsupported cases are always counted, never passes.
 
