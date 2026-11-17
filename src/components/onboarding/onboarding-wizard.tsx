@@ -301,7 +301,9 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     ? findPaneInstance(config.layout, focusedPaneId)
     : null;
   const helpFocused = focusedInstance?.paneId === "help";
-  const coachAside = useCoachStepsAside(config, stage);
+  // The command bar its "Ctrl+P adds more" opens is the card's own next step:
+  // the card steps aside while it is open, as for a pane opened after it.
+  const coachAside = useCoachStepsAside(config, stage) || (stage === "research" && commandBarOpen);
   const {
     offer, pricing, billingInterval, setBillingInterval, planAccess, primaryUpgradeAction, continueFree,
   } = useOnboardingUpgrade({

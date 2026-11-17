@@ -1893,6 +1893,35 @@ describe("OnboardingWizard", () => {
     await waitUntil(() => capturedConfig?.onboardingComplete === true, "the dismiss key finishes onboarding");
   });
 
+  // Ctrl+P, as the card says, opened the command bar under the card: what was typed there went nowhere,
+  // Enter ran the first suggestion, and Esc closed the bar with the card still up.
+  test("the research coach steps aside while the command bar is open, and leaves it the typing and Esc", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-coach-bar-"));
+    const reached: string[] = [];
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "research" as const, path: "manual" as const, portfolioId: "main", tickerSymbol: "AAPL" },
+    };
+    await tui.render(
+      <WizardHarness config={config} pluginRegistry={createPluginRegistry()} after={<KeyProbe seen={reached} />} />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+    await waitForFrame("Built around AAPL");
+
+    await act(async () => { capturedDispatch!({ type: "SET_COMMAND_BAR", open: true, query: "" }); });
+    await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
+    expect(tui.frame()).not.toContain("Built around AAPL");
+    await tui.emitKeypress({ name: "m", sequence: "m" }, { trackPropagation: true });
+    await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { trackPropagation: true });
+    expect(reached).toEqual(["m", "escape"]);
+    expect(capturedConfig?.onboardingComplete).not.toBe(true);
+
+    // Closed without opening anything: the card is back where it was.
+    await act(async () => { capturedDispatch!({ type: "SET_COMMAND_BAR", open: false }); });
+    await waitForFrame("Built around AAPL");
+  });
+
   // The card's Alt+Backspace ran in the field a pane had focused, finishing onboarding instead of deleting a word.
   test("in a pane's text field Alt+Backspace deletes a word while the card shows, and the card shows no keys there", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-coach-field-"));

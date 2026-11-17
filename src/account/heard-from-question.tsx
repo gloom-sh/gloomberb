@@ -17,6 +17,7 @@ import { useAppLanguage } from "../i18n/react";
 import { useShortcut } from "../react/input";
 import { Box, useUiCapabilities, type InputRenderable } from "../ui";
 import { useDialogState } from "../ui/dialog";
+import { useAppSelector } from "../state/app/context";
 import { isPlainKey } from "../utils/keyboard";
 import {
   type HeardFromChoice,
@@ -184,12 +185,14 @@ function currentAccountId(): string | null {
 
 /**
  * Asks the account marked due (account/heard-from.ts) once nothing else is
- * up: no dialog and no setup card ("Which companies do you follow?" goes
- * first). Mounted by the app only while setup and the sign-in gate are
- * closed, so the first run never shows it.
+ * up: no dialog, no setup card ("Which companies do you follow?" goes
+ * first) and no open command bar, whose typing the card would take. Mounted
+ * by the app only while setup and the sign-in gate are closed, so the first
+ * run never shows it.
  */
 export function HeardFromQuestionHost() {
   const dialogOpen = useDialogState((state) => state.isOpen);
+  const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const cardOpen = useSyncExternalStore(subscribeSetupCards, setupCardOpen, setupCardOpen);
   const due = useSyncExternalStore(subscribeHeardFromDue, heardFromDueAccount, heardFromDueAccount);
   const account = useSyncExternalStore(
@@ -204,7 +207,7 @@ export function HeardFromQuestionHost() {
 
   useEffect(() => {
     // Signed out, or another account since: the mark waits for its own account.
-    if (!due || due !== account || dialogOpen || cardOpen || busy.current) return;
+    if (!due || due !== account || dialogOpen || cardOpen || commandBarOpen || busy.current) return;
     if (!takeHeardFromDue(due)) return;
     busy.current = true;
     const finished = () => {
@@ -219,13 +222,13 @@ export function HeardFromQuestionHost() {
       skip: () => apiClient.skipHeardFrom(),
       ask: (shown) => new Promise<HeardFromChoice>((resolve) => setAsking({ shown, resolve })),
     }).then(finished, finished);
-  }, [account, cardOpen, dialogOpen, due]);
+  }, [account, cardOpen, commandBarOpen, dialogOpen, due]);
 
-  // The read takes a moment: a card or dialog that opened meanwhile (the
-  // companies to follow, after a sign-up) goes first.
+  // The read takes a moment: a card, dialog or command bar that opened
+  // meanwhile (the companies to follow, after a sign-up) goes first.
   useEffect(() => {
-    if (asking && !drawn && !dialogOpen && !cardOpen) setDrawn(true);
-  }, [asking, cardOpen, dialogOpen, drawn]);
+    if (asking && !drawn && !dialogOpen && !cardOpen && !commandBarOpen) setDrawn(true);
+  }, [asking, cardOpen, commandBarOpen, dialogOpen, drawn]);
 
   if (!asking || !drawn) return null;
   return <HeardFromCard onShown={asking.shown} onDone={asking.resolve} />;
