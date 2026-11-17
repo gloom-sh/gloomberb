@@ -5,6 +5,7 @@ import type {
   PaneTemplateDef,
   ShortcutArgError,
 } from "../../../types/plugin";
+import { glossaryNamesOf, glossaryTermsOf } from "../../../cli/glossary";
 import { fuzzyFilter } from "../../../utils/fuzzy-search";
 import { discoveryOpening } from "../../../utils/lookup-token";
 import { summarizeError } from "../helpers";
@@ -215,8 +216,11 @@ export function buildPaneTemplateItem(options: {
     : null;
   const arg = options.createOptions?.arg;
   const aliases = options.template.shortcut?.aliases ?? [];
+  const codes = [options.template.shortcut?.prefix, ...aliases].filter((code): code is string => !!code);
   const searchText = [
     options.template.keywords?.join(" ") || "",
+    // The terms it shows read as keywords do (VaR for MARS), ahead of the other names they go by, which come with the discovery words.
+    ...codes.flatMap(glossaryTermsOf),
     displayLabel,
     options.template.label,
     options.template.paneId,
@@ -277,17 +281,19 @@ export function buildPaneTemplateItem(options: {
 /**
  * The words `gloom catalog` also finds a function by, beyond its keywords and
  * description: its headless discovery aliases, the words it is suggested for,
- * those that open one of its cases (CTM's "vix futures") and its intents. The
- * bar's row carries them, so the same words find the same function.
+ * those that open one of its cases (CTM's "vix futures"), its intents, and
+ * the names of the glossary terms it shows (VaR, value at risk, drawdown for
+ * MARS). The bar's row carries them, so the same words find the same function.
  */
 function paneTemplateDiscoveryWords(template: PaneTemplateDef, registry: Pick<PluginRegistry, "panes">): string[] {
   const discovery = paneTemplateDiscovery(template, registry);
-  if (!discovery) return [];
+  const terms = [template.shortcut?.prefix, ...template.shortcut?.aliases ?? []].flatMap((code) => code ? glossaryNamesOf(code) : []);
   return [
-    ...discovery.aliases ?? [],
-    ...discovery.suggestFor ?? [],
-    ...discovery.opens?.flatMap((opening) => opening.words) ?? [],
-    ...discovery.intents ?? [],
+    ...discovery?.aliases ?? [],
+    ...discovery?.suggestFor ?? [],
+    ...discovery?.opens?.flatMap((opening) => opening.words) ?? [],
+    ...discovery?.intents ?? [],
+    ...terms,
   ];
 }
 

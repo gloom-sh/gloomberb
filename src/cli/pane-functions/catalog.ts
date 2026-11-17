@@ -32,7 +32,7 @@ import {
   wrapText,
   type CliStatEntry,
 } from "../../utils/cli-output";
-import { renderGlossaryEntries, type GlossaryLookup } from "../glossary";
+import { glossaryFunctionsNamed, glossaryNamesOf, renderGlossaryEntries, type GlossaryLookup } from "../glossary";
 import { renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { typoDistance } from "../../utils/typo-distance";
 import { FUNCTION_HELP } from "./function-help";
@@ -263,17 +263,21 @@ export function nearFunctionCodes(
 
 /**
  * The functions a word that is no code asks for (`IVOL`, `IV`: HIVG and
- * OVDV), as their `discovery.suggestFor` lists it, each by its code.
+ * OVDV), as their `discovery.suggestFor` lists it, or the glossary term it
+ * names is shown by (`VAR`, `drawdown`: MARS and PORT), each by its code.
  */
 export function suggestedFunctionCodes(registry: PaneFunctionCatalog, name: string): NearFunctionCode[] {
   const wanted = normalizeLookupToken(name);
   if (!wanted) return [];
+  const showing = new Set(glossaryFunctionsNamed(name));
   return [...registry.paneTemplates.values()].flatMap((template) => {
     if (template.listed === false) return [];
     const pane = registry.panes.get(template.paneId);
     const words = pane ? getHeadlessPaneDefinition(template, pane)?.discovery?.suggestFor ?? [] : [];
     const code = template.shortcut?.prefix;
-    return code && words.some((word) => normalizeLookupToken(word) === wanted) ? [{ code: code.toUpperCase(), label: template.label }] : [];
+    const shows = [code, ...template.shortcut?.aliases ?? []].some((candidate) => !!candidate && showing.has(candidate.toUpperCase()));
+    return code && (shows || words.some((word) => normalizeLookupToken(word) === wanted))
+      ? [{ code: code.toUpperCase(), label: template.label }] : [];
   }).sort((left, right) => left.code.localeCompare(right.code));
 }
 
@@ -426,6 +430,11 @@ export async function buildPaneCatalogEntries(
   return entries.sort((left, right) => left.token.localeCompare(right.token));
 }
 
+/** The names of the glossary terms a function shows, by its code or an alias the glossary names it by (DES for T). */
+function entryGlossaryNames(entry: Pick<PaneCatalogEntry, "token" | "shortcut" | "aliases">): string[] {
+  return [...new Set([entry.token, entry.shortcut, ...entry.aliases].filter((code): code is string => !!code).flatMap((code) => glossaryNamesOf(code)))];
+}
+
 /** The phrase starting a word of the text, so "funding rate" finds "funding rates" but "rate" is not found in "separate". */
 function containsPhrase(text: string, phrase: string): boolean {
   for (let at = text.indexOf(phrase); at >= 0; at = text.indexOf(phrase, at + 1)) {
@@ -456,7 +465,8 @@ const PER_WORD_IS_KEYWORD = 3;
 function phraseBand(entry: PaneCatalogEntry, phrase: string): number {
   const lower = (values: Array<string | undefined>) => values
     .filter((value): value is string => !!value).map((value) => value.toLowerCase().replace(/\s+/g, " "));
-  const names = lower([entry.token, entry.label, entry.paneName, entry.shortcut, ...entry.aliases, ...entry.keywords, ...entry.capability.aliases]);
+  const names = lower([entry.token, entry.label, entry.paneName, entry.shortcut, ...entry.aliases, ...entry.keywords, ...entry.capability.aliases,
+    ...entryGlossaryNames(entry)]);
   if (names.some((name) => containsPhrase(name, phrase))) return PHRASE_IN_NAME_BAND;
   const descriptions = lower([entry.description, ...entry.capability.intents]);
   return descriptions.some((description) => containsPhrase(description, phrase)) ? PHRASE_IN_DESCRIPTION_BAND : 0;
@@ -486,6 +496,8 @@ function nameAndDescriptionFields(entry: PaneCatalogEntry): string[] {
     ...entry.keywords,
     ...entry.capability.aliases,
     ...entry.capability.intents,
+    // The terms the function shows (VaR, expected shortfall for MARS and PORT) name what it covers, as its keywords do.
+    ...entryGlossaryNames(entry),
     ...entry.capability.opens?.flatMap((opening) => opening.words) ?? [],
   ].filter((value): value is string => !!value).map((value) => value.toLowerCase());
 }
@@ -554,7 +566,7 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   let score = containsPhrase(`${named} ${flags}`, wholeQuery) ? 12 : 0;
   // A query that is one of the function's own keywords ("hedge" for OSA) beats one found inside a
   // longer keyword ("hedge funds" for 13F).
-  const keywords = [entry.label, ...entry.keywords, ...entry.capability.aliases]
+  const keywords = [entry.label, ...entry.keywords, ...entry.capability.aliases, ...entryGlossaryNames(entry)]
     .filter((value): value is string => !!value).map((value) => value.toLowerCase().replace(/\s+/g, " "));
   if (keywords.includes(wholeQuery)) score += 4;
   let matchedTerms = 0;
