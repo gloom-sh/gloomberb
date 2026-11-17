@@ -27,6 +27,7 @@ import {
   buildTableGridTemplateColumns,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
+  hiddenTableColumnText,
   tableFreezesFirstColumn,
 } from "../../../components/ui/table-layout";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
@@ -345,6 +346,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   }, [bodyHorizontal.bar, headerHorizontal.bar, horizontalScrollEnabled]);
 
   const overflowEdges = useHorizontalScrollEdges(bodyElementRef, [horizontalScrollEnabled]);
+  const hiddenColumns = items.length ? hiddenTableColumnText(columns) : null;
   // A frozen first column already covers what scrolls under it, so the left
   // fade starts past it and its gap.
   const [frozenEdgePx, setFrozenEdgePx] = useState(0);
@@ -398,6 +400,10 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
 
   return (
     <div data-gloom-role="data-table" style={rootStyle}>
+      {hiddenColumns ? <div style={{ paddingInline: horizontalPadding * WEB_CELL_WIDTH, color: CSS_TEXT_DIM,
+        backgroundColor: CSS_PANEL, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={hiddenColumns}>
+        {hiddenColumns}
+      </div> : null}
       <div
         ref={bodyElementRef}
         data-gloom-role="data-table-body-scroll"
@@ -555,6 +561,21 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
           data-gloom-edge="right"
           style={overflowFadeStyle("right", overflowEdges.scrollbarRight, overflowEdges.scrollbarBottom)}
         />
+      ) : null}
+      {horizontalScrollEnabled && overflowEdges.end && items.length ? (
+        <button type="button" aria-label="Show more columns" onClick={() => {
+          const body = bodyElementRef.current;
+          if (!body) return;
+          focusPane();
+          const bounds = body.getBoundingClientRect();
+          const visibleRight = bounds.left + body.clientWidth;
+          const next = [...body.querySelectorAll<HTMLElement>('[data-gloom-role="data-table-header-cell"]')]
+            .map((cell) => cell.getBoundingClientRect()).find((cell) => cell.right > visibleRight + 1 && cell.left > bounds.left + frozenEdgePx + 1);
+          body.scrollLeft += next ? next.left - bounds.left - frozenEdgePx : body.clientWidth - frozenEdgePx;
+        }} style={{ position: "absolute", insetInlineEnd: overflowEdges.scrollbarRight, top: hiddenColumns ? WEB_CELL_HEIGHT : 0, zIndex: 4,
+          cursor: "pointer", border: 0, height: headerPx, background: CSS_PANEL, color: CSS_TEXT_DIM, font: "inherit" }}>
+          More
+        </button>
       ) : null}
     </div>
   );

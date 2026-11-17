@@ -77,6 +77,10 @@ export function listsExchangeAnnouncements(exchange: string | null | undefined):
  */
 const ROUTINE_RETURNS = new Set(["Next Day Disclosure Returns", "Monthly Returns"]);
 
+const ISSUER_RESULTS_PAGES: Readonly<Record<string, string>> = {
+  "RHM:XETRA": "https://www.rheinmetall.com/en/investor-relations/publications/financial-publications-and-presentations",
+};
+
 export function isRoutineReturn(item: { category?: string | null }): boolean {
   return item.category != null && ROUTINE_RETURNS.has(item.category);
 }
@@ -90,5 +94,6 @@ export function listingAnnouncementsPage(key: string, exchange?: string | null):
   const suffixed = parsed.exchange ? null : listingSuffixExchange(parsed.symbol);
   const venue = parsed.exchange || suffixed || exchange;
   const symbol = suffixed ? parsed.symbol.replace(/\.[A-Z]+$/i, "") : parsed.symbol;
-  return venue ? exchangeAnnouncementsPage(symbol, venue) : null;
+  const issuerPage = !listsExchangeAnnouncements(venue) && ISSUER_RESULTS_PAGES[`${symbol.toUpperCase()}:${canonicalExchange(venue ?? "")}`];
+  return issuerPage ? { name: "Company results", url: issuerPage } : venue ? exchangeAnnouncementsPage(symbol, venue) : null;
 }

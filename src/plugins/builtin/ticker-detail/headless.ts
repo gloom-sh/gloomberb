@@ -30,6 +30,7 @@ import { latestBalanceSheetDate, loadOfferingNote } from "./financials/offerings
 import { formatRunwayMonths, reportsShortTermTotal, runwayMethod } from "../../../utils/cash-runway";
 import { formatPerShareNumber } from "../../../utils/reported-money";
 import { logFailure } from "../../../utils/log-failure";
+import { loadStatementCurrency } from "../shared/statement-currency";
 import {
   RATIO_GAP_TEXT,
   findRatioTab,
@@ -126,10 +127,10 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
  * `--layout long` asks for it. Several tickers have no shared columns, so they are never laid out wide.
  */
 function financialReportLayout(symbols: readonly string[], options: HeadlessPaneOptionValues): "wide" | "long" {
-  if (options.layout === "wide" && symbols.length > 1) {
-    throw new Error(`--layout wide is one ticker's periods as columns; ${symbols.length} tickers have no shared columns. Leave --layout out for one long table, or run FA once per ticker.`);
+  if (options.layout === "wide" && (symbols.length > 1 || options.currency)) {
+    throw new Error("--layout wide shows one ticker in its reporting currency. Leave --layout out for converted figures or multiple tickers.");
   }
-  return options.layout === "long" || symbols.length > 1 ? "long" : "wide";
+  return options.layout === "long" || symbols.length > 1 || options.currency ? "long" : "wide";
 }
 
 /** How a figure of an FA row reads: the kind of number it is, which names its unit and draws it. */
@@ -243,6 +244,8 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
     symbol, data, rows: data.rows as unknown as WideRow[], columns: (data.metadata?.columns ?? []) as WideColumn[],
   }));
   const divisor = mostCommon(tables.flatMap(({ rows }) => rows.filter((row) => row.figure === "money").map((row) => row.divisor))) ?? 1;
+  const target = typeof options.currency === "string" ? options.currency : null;
+  const fx = target ? await loadStatementCurrency(target, tables.flatMap(({ columns }) => columns.flatMap(({ currency }) => currency ? [currency] : [])), ctx) : null;
   const rows = tables.flatMap(({ symbol, rows: wide, columns }) => {
     const said = new Set<string>();
     return wide.flatMap((row) => {
@@ -253,13 +256,19 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
       const rowDivisor = row.figure === "money" ? divisor : row.divisor;
       return columns.map((column, index) => {
         const cell = row.cells[index];
-        const value = typeof cell?.value === "number" && Number.isFinite(cell.value) ? cell.value : null;
+        const native = typeof cell?.value === "number" && Number.isFinite(cell.value) ? cell.value : null;
+        const monetary = row.figure === "money" || row.figure === "perShare";
+        const rate = fx && monetary ? fx.rates.get(column.currency ?? "") : 1;
+        const value = native != null && rate != null ? native * rate : null;
+        const nativeUnit = figureUnit(row.figure, column.currency, rowDivisor);
         return {
           ticker: symbol, period: column.period, periodEnd: column.periodEnd, metric,
           value: value == null ? null : longFigureValue(row.figure, value, rowDivisor),
-          unit: figureUnit(row.figure, column.currency, rowDivisor),
+          unit: figureUnit(row.figure, monetary && target ? target : column.currency, rowDivisor),
           formatted: value == null ? null : drawLongFigure(row.figure, value, rowDivisor),
-          gap: value == null ? cell?.gap ?? (cell?.formatted && cell.formatted !== MISSING_VALUE ? cell.formatted : null) : null,
+          gap: native != null && rate == null ? "No FX rate" : value == null ? cell?.gap ?? (cell?.formatted && cell.formatted !== MISSING_VALUE ? cell.formatted : null) : null,
+          ...(fx && monetary && native != null ? { nativeValue: longFigureValue(row.figure, native, rowDivisor), nativeUnit,
+            nativeFormatted: `${drawLongFigure(row.figure, native, rowDivisor)} ${nativeUnit}` } : {}),
         };
       });
     });
@@ -273,18 +282,21 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
   const ownNotes = tables.flatMap(({ symbol, data }) => (data.notes ?? []).filter((note) => !shared(note)).map((note) => `${symbol}: ${note}`));
   const empty = tables.filter(({ rows: wide }) => wide.length === 0);
   const first = tables[0]?.data.metadata ?? {};
+  const nativeColumn: HeadlessPaneColumn = { key: "nativeValue", header: "Native", align: "right", unitKey: "nativeUnit",
+    format: (_value, row) => String(row.nativeFormatted ?? "") };
   return {
     rows,
-    columns: LONG_FINANCIAL_COLUMNS,
-    textColumns: [...LONG_FINANCIAL_COLUMNS, { key: "unit", header: "Unit" }],
+    columns: fx ? [...LONG_FINANCIAL_COLUMNS, nativeColumn] : LONG_FINANCIAL_COLUMNS,
+    textColumns: [...LONG_FINANCIAL_COLUMNS, { key: "unit", header: "Unit" }, ...(fx ? [nativeColumn] : [])],
     rowUnitKey: "unit", rowSymbolKey: "ticker", rowAsOfKey: "periodEnd",
     interval: options.period === "quarterly" ? "quarterly" : "annual",
     unavailableSymbols: [...loaded.unavailableSymbols, ...empty.flatMap(({ data }) => data.unavailableSymbols ?? [])],
     errors: [...loaded.errors, ...tables.flatMap(({ symbol, data }) => (data.errors ?? []).map((error) => error.startsWith(symbol) ? error : `${symbol}: ${error}`))],
-    notes: [...new Set([...notes.filter(shared), ...ownNotes])],
+    notes: [...new Set([...notes.filter(shared), ...ownNotes, ...(fx?.note ? [fx.note] : []), ...fx?.failures ?? []])],
     metadata: {
       symbols, layout: "long", statement: first.statement ?? options.statement, statementLabel: first.statementLabel ?? null,
       period: options.period === "quarterly" ? "quarterly" : "annual",
+      ...(fx ? { currency: target, conversions: fx.conversions } : {}),
       notices: [...new Set(tables.flatMap(({ data }) => (data.metadata?.notices ?? []) as string[]))],
       limitations: [...new Set(tables.flatMap(({ data }) => (data.metadata?.limitations ?? []) as string[]))],
     },

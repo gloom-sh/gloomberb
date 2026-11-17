@@ -1091,7 +1091,32 @@ async function resolveChartSpecPass(
     }
   }));
 
-  const rawSeries = loaded.filter((entry): entry is ResolvedSeries => !!entry);
+  let rawSeries = loaded.filter((entry): entry is ResolvedSeries => !!entry);
+  const statementTarget = spec.viewport.currency;
+  if (statementTarget && sources.loadStatementCurrency) {
+    const statements = new Set(spec.series.filter(({ source }) => source.kind === "security" && source.fieldId.startsWith("fundamental.")).map(({ id }) => id));
+    const group = (series: ResolvedSeries) => /^(currency-total|per-share)(?::|$)/.exec(series.unitGroup)?.[1];
+    const nativeCurrency = (series: ResolvedSeries) => series.unitGroup.split(":")[1] ?? "";
+    const monetary = rawSeries.filter((series) => statements.has(series.id) && group(series) && series.points.length);
+    if (monetary.length) {
+      const { rates, note, rateNotes, failures } = await sources.loadStatementCurrency(statementTarget, monetary.map(nativeCurrency).filter(Boolean));
+      if (note) { coverageNotices.push(note); warnings.push(...rateNotes ?? [note]); }
+      warnings.push(...failures);
+      rawSeries = rawSeries.map((series) => {
+        const currency = nativeCurrency(series);
+        if (!monetary.includes(series) || currency === statementTarget) return series;
+        const rate = rates.get(currency);
+        return {
+          ...series, unit: group(series) === "per-share" ? `${statementTarget}/share` : statementTarget, unitGroup: `${group(series)}:${statementTarget}`,
+          ...(rate == null ? { warning: `No ${currency || "reporting currency"}/${statementTarget} rate` } : {}),
+          points: rate == null ? [] : series.points.map((point) => ({ ...point,
+            ...(point.value == null ? {} : { nativeAmount: { value: point.value, currency: series.unit } }),
+            value: point.value == null ? null : point.value * rate,
+          })),
+        };
+      });
+    }
+  }
   const marketTimelineSeries = primaryMarketSeries?.visible === false
     ? rawSeries.filter((entry) => entry.id === primaryMarketSeries.id)
     : [];

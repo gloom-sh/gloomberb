@@ -22,7 +22,7 @@ import {
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { isPermanentClientError } from "../../../api-client/errors";
-import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
+import { markHiddenTableColumns, TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAgeClock, useAutoRefresh } from "../../../react/auto-refresh";
 import { colors } from "../../../theme/colors";
@@ -80,13 +80,14 @@ const SORTABLE: Partial<Record<CalendarColumnId, CalendarSort["column"]>> = {
 function calendarColumns(width: number, { localClock }: { localClock: boolean }): CalendarColumn[] {
   const fixed = (list: CalendarColumn[]) =>
     list.reduce((sum, column) => sum + (column.id === "company" ? 0 : tableColumnWidth(column)) + TABLE_COLUMN_GAP, 2);
-  let columns = localClock ? ALL_COLUMNS : ALL_COLUMNS.filter((column) => column.id !== "local");
+  const original = localClock ? ALL_COLUMNS : ALL_COLUMNS.filter((column) => column.id !== "local");
+  let columns = original;
   for (const id of DROP_ORDER) {
     if (fixed(columns) + COMPANY_MIN_WIDTH <= width) break;
     columns = columns.filter((column) => column.id !== id);
   }
   const companyWidth = Math.max(COMPANY_MIN_WIDTH, width - fixed(columns));
-  return columns.map((column) => (column.id === "company" ? { ...column, width: companyWidth } : column));
+  return markHiddenTableColumns(original, columns.map((column) => (column.id === "company" ? { ...column, width: companyWidth } : column)));
 }
 
 function renderCalendarCell(row: CalendarRow, column: CalendarColumn, now: number): DataTableCell {

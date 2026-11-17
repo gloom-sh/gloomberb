@@ -2,7 +2,7 @@ import { memo, useEffect, useRef } from "react";
 import { Box, ScrollBox, Span, Text, useShortcutLabel, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
-import { MISSING_VALUE, displayWidth, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatPercentRaw, formatCompact } from "../../../utils/format";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import {
@@ -333,8 +333,11 @@ export function CompositeLegend({
     // What a futures price counts, beside its number as FUT prints it.
     const statedUnit = entry.points.length > 0 && !formatValue && entry.statedUnit ? ` ${entry.statedUnit}` : "";
     // A statement value names the fiscal period it reports, as FA's columns do.
+    const native = cursorValue?.point?.nativeAmount;
+    const statementEnd = native ? cursorValue?.point?.observedAt.toISOString().slice(0, 10) : undefined;
     const fiscalPeriod = withFiscalPeriods && cursorValue?.value != null ? cursorValue.point?.fiscalPeriod : undefined;
-    const valueTail = `${ownDate ? ` ${ownDate}` : ""}${fiscalPeriod ? ` ${fiscalPeriod}` : ""}${changeText}`;
+    const readDate = statementEnd ?? ownDate;
+    const valueTail = `${readDate ? ` ${readDate}` : ""}${fiscalPeriod && !statementEnd ? ` ${fiscalPeriod}` : ""}${native && withFiscalPeriods ? ` (${formatCompact(native.value)} ${native.currency})` : ""}${changeText}`;
     const readsRight = entry.points.length > 0 && entry.axis === "right" && leftPanels.has(entry.panelId);
     const axisNote = readsRight && withAxisNotes ? RIGHT_AXIS_NOTE : "";
     const valueText = entry.points.length === 0

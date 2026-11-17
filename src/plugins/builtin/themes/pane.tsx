@@ -14,7 +14,7 @@ import { useMembersMenu } from "../shared/members-menu";
 import { cachedMembers, cachedThemes, loadMembers, loadThemes } from "./client";
 import {
   aggregateText, boardYtdBase, coverageText, coverageWidth, DEFAULT_SORT, extendedMove, matchTheme, memberColumns, memberExtendedSessions, memberPrice, percent,
-  isLiveBoard, LIVE_BOARD_REFRESH_MS, SNAPSHOT_STALE_MS, snapshotFooterText, sortMembers, sortThemes, themeColumns, type ThemeSort,
+  isLiveBoard, LIVE_BOARD_REFRESH_MS, SNAPSHOT_STALE_MS, snapshotFooterText, sortMembers, sortThemes, themeColumns, THEME_LISTING_SCOPE, type ThemeSort,
 } from "./model";
 
 const LIVE_LEAD = "live · ";
@@ -155,7 +155,7 @@ export function ThemesBoard({ width, height, focused, tabStrip, tabRows = 0 }: T
       {data ? <DataTableStackView<ThemeSummary> columns={columns} items={rows} rootWidth={width} rootHeight={bodyHeight} focused={focused}
         selection={{ kind: "id", selectedId: selected, getId: (row) => row.id, onChange: setSelected }}
         getItemKey={(row) => row.id} onActivate={(row) => setOpened(row.id)}
-        detailOpen={!!opened} onBack={() => setOpened("")} detailTitle={theme?.name ?? opened}
+        detailOpen={!!opened} onBack={() => setOpened("")} detailTitle={theme ? `${theme.name} · ${THEME_LISTING_SCOPE}` : opened}
         detailContent={theme ? <Members key={theme.id} id={theme.id} width={width} height={Math.max(1, bodyHeight - 1)} focused={focused} />
           : <PaneStatusBody subject="theme" error="No matching theme. Return to the list to choose a basket." />}
         renderCell={renderCell} sortColumnId={sort.columnId} sortDirection={sort.direction}

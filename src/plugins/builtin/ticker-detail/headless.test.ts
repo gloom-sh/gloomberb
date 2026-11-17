@@ -967,3 +967,23 @@ test("FA of several tickers is one long table: a row per ticker, fiscal period a
   expect(lines.find((line) => line.startsWith("CPRT,FY2024,2024-07-31,ROE,"))).toStartWith("CPRT,FY2024,2024-07-31,ROE,,Value: needs prior period,CPRT,%,annual,Gloom Cloud,2024-07-31,");
   await expect(financialStatementsHeadless.load(args(["V", "CPRT"], { statement: "income", layout: "wide" }), memoContext())).rejects.toThrow("--layout wide");
 });
+
+test("FA converts reporting currencies without changing a company's fiscal date or percentage rows", async () => {
+  const context = createTestHeadlessContext({ marketData: createTestDataProvider({
+    getExchangeRate: async (currency) => ({ EUR: 1.2, SGD: 0.8 })[currency as "EUR" | "SGD"]!,
+    getTickerFinancials: async (symbol) => {
+      const usa = symbol === "LMT";
+      const currency = usa ? "USD" : "EUR";
+      const row = { date: usa ? "2026-09-27" : "2026-09-30", currency, totalRevenue: 100e6, operatingIncome: 10e6 };
+      return { financialCurrency: currency, annualStatements: [], quarterlyStatements: [row], fundamentals: {}, priceHistory: [] };
+    },
+  }) });
+  const result = await financialStatementsHeadless.load(args(["LMT", "RHM:XETRA"], { period: "quarterly", statement: "income", currency: "SGD" }), context);
+  const revenues = result.rows.filter((row) => row.metric === "Revenue");
+  expect(revenues).toMatchObject([
+    { periodEnd: "2026-09-27", value: 125, unit: "SGD mn", nativeValue: 100, nativeUnit: "USD mn" },
+    { periodEnd: "2026-09-30", formatted: "150.0", unit: "SGD mn", nativeValue: 100, nativeUnit: "EUR mn" },
+  ]);
+  expect(result.rows.filter((row) => row.metric === "Operating Margin").map((row) => [row.value, row.nativeValue])).toEqual([[10, undefined], [10, undefined]]);
+  expect(result.notes?.join("\n")).toMatch(/USD\/SGD 1.25.*UTC.*EUR\/SGD 1.5.*UTC/);
+});

@@ -10,6 +10,24 @@ export interface TableWidthColumn {
 }
 
 const TRAILING_COLUMN_GUTTER_WIDTH = 1;
+const HIDDEN_COLUMNS = Symbol("hidden table columns");
+type WithHiddenColumns = { [HIDDEN_COLUMNS]?: readonly string[] };
+
+export function hiddenTableColumns(columns: readonly TableWidthColumn[]): string[] {
+  return [...new Set(columns.flatMap((column: TableWidthColumn & WithHiddenColumns) => column[HIDDEN_COLUMNS] ?? []))];
+}
+
+export function hiddenTableColumnText(columns: readonly TableWidthColumn[]): string | null {
+  const hidden = hiddenTableColumns(columns);
+  return hidden.length ? `${hidden.length} hidden · ${hidden.join(", ")}` : null;
+}
+
+export function markHiddenTableColumns<C extends TableWidthColumn & { id: string }>(original: readonly C[], shown: C[]): C[] {
+  const hidden = [...hiddenTableColumns(original), ...original.filter(({ id }) => !shown.some((column) => column.id === id))
+    .map((column) => column.label?.trim() || column.id)];
+  if (!shown[0] || !hidden.length) return shown;
+  return [Object.assign({ ...shown[0] }, { [HIDDEN_COLUMNS]: hidden }), ...shown.slice(1)];
+}
 const WEB_CELL_UNIT = "var(--cell-w)";
 
 /** Space the sort indicator (" \u25b2") needs on top of the header label. */
@@ -136,7 +154,7 @@ export function dropColumnsToFit<C extends TableWidthColumn & { id: string }>(
     const ids = typeof step === "string" ? [step] : step;
     shown = shown.filter((column) => !ids.includes(column.id));
   }
-  return shown;
+  return markHiddenTableColumns(columns, shown);
 }
 
 /**

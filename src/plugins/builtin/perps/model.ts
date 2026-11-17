@@ -1,7 +1,7 @@
 import type { PerpBoardRow, PerpHistoryPayload, PerpLongShortRatio, PerpRankingsPayload } from "../../../api-client/perps";
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { getTableWidth, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { isUsListingExchange, publicTickerKey } from "../../../utils/exchanges";
 import { isRecord } from "../../../utils/guards";
@@ -286,7 +286,8 @@ export const RANKING_COLUMNS: PerpColumnId[] = ["market", "venue", "value", "ope
 
 /** The columns that fit the pane, the least read going first; before the last of them goes, a long market name gives up its tail. */
 function fitPerpColumns(ids: readonly PerpColumnId[], drops: readonly PerpColumnId[], width: number): DataTableColumn[] {
-  let kept = ids.map((id) => PERP_COLUMNS[id]);
+  const columns = ids.map((id) => PERP_COLUMNS[id]);
+  let kept = columns;
   const fits = () => getTableWidth(kept) <= width;
   for (const [index, drop] of drops.entries()) {
     if (fits()) break;
@@ -296,7 +297,7 @@ function fitPerpColumns(ids: readonly PerpColumnId[], drops: readonly PerpColumn
     }
     kept = kept.filter((column) => column.id !== drop);
   }
-  return kept;
+  return markHiddenTableColumns(columns, kept);
 }
 export const boardColumns = (width: number) => fitPerpColumns(BOARD_COLUMNS, BOARD_DROPS, width);
 export const compareColumns = (width: number) => fitPerpColumns(COMPARE_COLUMNS, COMPARE_DROPS, width);

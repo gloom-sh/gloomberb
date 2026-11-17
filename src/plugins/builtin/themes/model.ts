@@ -148,6 +148,7 @@ export function matchTheme(rows: readonly ThemeSummary[], input: string): ThemeS
 }
 
 const column = (id: string, label: string, width: number, align: "left" | "right" = "right"): DataTableColumn => ({ id, label, width, align });
+export const THEME_LISTING_SCOPE = "US-listed";
 /** Room a header has in its column: the sort indicator takes two cells. */
 const HEADER_ROOM = 2;
 /**
@@ -163,7 +164,7 @@ export function themeColumns(width: number, rows: readonly ThemeSummary[], ytdBa
   const label = (period: ThemePeriod, room: number) => periodLabel(period, ytdBase, room) + " ".repeat(suffixWidth(period));
   // The board always keeps room for `YTD vs 31 Dec`, so even a narrow one says what its YTD is measured against.
   const leastRoom = ytdBase ? `YTD vs ${ytdBase}`.length : 0;
-  const columns = [column("name", "Theme", 26, "left"), column("memberCount", "N", 3),
+  const columns = [column("name", `Theme · ${THEME_LISTING_SCOPE}`, 26, "left"), column("memberCount", "N", 3),
     ...THEME_PERIODS.map((period) => column(period, label(period, leastRoom), Math.max(metricWidth(period), label(period, leastRoom).length + HEADER_ROOM))),
     column("breadth", "Breadth" + " ".repeat(coverageWidth(rows.map((row) => row.breadth))), 7 + coverageWidth(rows.map((row) => row.breadth))),
     column("best", "Best 1D", 15), column("worst", "Worst 1D", 15)];
@@ -175,15 +176,15 @@ export function themeColumns(width: number, rows: readonly ThemeSummary[], ytdBa
 /**
  * The member table at `width`. Price and 1D are the regular session's; a
  * PRE-MKT or AFTER-HRS column, named as BI and MOST name it, follows 1D for
- * each session in `extendedSessions`. A narrow pane gives up the longer
- * windows first, then that column, then the name.
+ * each session in `extendedSessions`. A narrow pane shortens names and
+ * keeps the longer windows available by scrolling the table.
  */
 export function memberColumns(width: number, extendedSessions: readonly ExtendedSession[] = [], ytdBase: string | null = null): DataTableColumn[] {
   const extended = extendedSessions.map((session) => column(session === "PRE" ? "preMarket" : "afterHours", extendedSessionStateLabel(session), 9));
   const [day, ...windows] = THEME_PERIODS.map((period) => column(period, periodLabel(period, ytdBase, 0), Math.max(9, periodLabel(period, ytdBase, 0).length + HEADER_ROOM)));
-  const fitted = fitColumns([column("symbol", "Ticker", 7, "left"), column("name", "Name", 24, "left"), column("price", "Price $", 10),
-    day!, ...extended, ...windows], width,
-  ["return3MPercent", "returnYtdPercent", "return1MPercent", "return1WPercent", "preMarket", "afterHours", "name", "price"]);
+  const compactNameWidth = Math.max(8, Math.min(24, width - getTableWidth([column("symbol", "Ticker", 7, "left"), column("price", "Price $", 10), day!]) - 5));
+  const fitted = fitColumns([column("symbol", "Ticker", 7, "left"), column("name", "Name", compactNameWidth, "left"), column("price", "Price $", 10),
+    day!, ...extended, ...windows], width, []);
   const ytd = fitted.find((col) => col.id === "returnYtdPercent");
   if (ytd) ytd.label = periodLabel("returnYtdPercent", ytdBase, ytd.width - HEADER_ROOM);
   return fitted;
@@ -193,7 +194,7 @@ function fitColumns(columns: DataTableColumn[], width: number, drop: string[]): 
   const used = () => getTableWidth(columns);
   const name = columns.find((col) => col.id === "name") ?? columns[0]!;
   const spare = width - used();
-  name.width = Math.max(8, name.width + Math.min(spare, Math.max(0, 36 - name.width)));
+  name.width += Math.min(Math.max(0, spare), Math.max(0, 36 - name.width));
   name.flexGrow = 1;
   // Wide boards share room across the figures instead of separating every name
   // from its daily move with an almost pane-wide blank name column.

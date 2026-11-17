@@ -7,12 +7,21 @@ import {
   fitTableHeaderText,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
+  hiddenTableColumns,
   tableColumnStarts,
   tableColumnWidth,
   tableRevealLeft,
 } from "./table-layout";
 
 describe("table layout", () => {
+  test("keeps track of width-dropped columns through repeated fitting and column resizing", () => {
+    const columns = [{ id: "ticker", label: "Ticker", width: 8 }, { id: "week", label: "1W", width: 8 }, { id: "year", label: "YTD", width: 8 }];
+    const first = dropColumnsToFit(columns, 20, ["year"]);
+    const second = dropColumnsToFit(first.map((column) => ({ ...column, width: 9 })), 13, ["week"]);
+    expect(hiddenTableColumns(first)).toEqual(["YTD"]);
+    expect(hiddenTableColumns(second)).toEqual(["YTD", "1W"]);
+    expect(hiddenTableColumns(columns)).toEqual([]);
+  });
   test("detects only meaningful horizontal table overflow", () => {
     const tableWidth = getTableWidth([
       { width: 12 },

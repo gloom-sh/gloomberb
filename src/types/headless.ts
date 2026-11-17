@@ -704,6 +704,7 @@ export interface HeadlessBundleResult extends HeadlessPaneResultBase {
 
 export interface HeadlessSeriesPoint extends HeadlessPaneRow {
   date: string | number | Date;
+  nativeAmount?: { value: number; currency: string };
   value?: number | null;
   open?: number | null;
   high?: number | null;

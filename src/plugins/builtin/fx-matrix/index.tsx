@@ -11,7 +11,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { getTableWidth, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { createDataTableCsv } from "../../../components/data-table/export";
 import { ageFooterSegment, savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { CountryFlag } from "../../../components/ui/country-flag";
@@ -294,7 +294,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       })),
     ];
     const throughEighth = columns.slice(0, columns.length - Math.max(0, currencies.length - MOVE_FITS_BESIDE));
-    return getTableWidth(throughEighth) <= width - 1 ? columns : columns.filter((column) => column.id !== "move");
+    return getTableWidth(throughEighth) <= width - 1 ? columns : markHiddenTableColumns(columns, columns.filter((column) => column.id !== "move"));
   }, [amount != null, amountWidth, currencies, flagged, width]);
 
   const renderCell = useCallback((
