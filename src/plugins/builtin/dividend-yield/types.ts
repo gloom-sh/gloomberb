@@ -28,6 +28,7 @@ export interface DividendMetrics {
   forwardRate: number | null;
   /** The ex-date of the distribution the forward rate annualizes, YYYY-MM-DD; with `forwardBasis`, the latest of the year's payments. */
   forwardRateAsOf: string | null;
+  forwardEstimate?: { declaredCurrency: string; declaredAmount?: number; fixingDate?: string; basis: string };
   /** `uneven`: the year's regular payments differ widely, so the forward rate is their total rather than one annualized (unevenRegularPayments). */
   forwardBasis?: "uneven" | null;
   /** Set once the dividend has stopped (lapsedDividend), when there is no forward rate or yield. */

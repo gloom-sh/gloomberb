@@ -10,6 +10,23 @@ import { quotableSearchSymbol, search } from "./search";
 const originalExitCode = process.exitCode ?? 0;
 afterEach(() => { process.exitCode = originalExitCode; });
 
+test("a cross-symbol US line survives the company cut and an explicit limit reaches candidate selection", async () => {
+  const rows = [
+    { symbol: "ULVR", exchange: "LSE", homeListing: true },
+    ...Array.from({ length: 12 }, (_, index) => ({ symbol: `UNV${index}`, exchange: "XETRA" })),
+    { symbol: "UL", exchange: "NYSE" },
+  ].map((row) => ({ providerId: "test", name: "Unilever PLC", type: "Common Stock", currency: "USD", ...row }));
+  const dataProvider = createTestDataProvider({ search: async () => rows });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const read = async (limit?: number) => {
+    const printed: PrintedCliResult["result"][] = [];
+    await search("Unilever", { limit, initMarketData, printResult: (result) => { printed.push(result); } });
+    return printed[0]!.data as Array<{ symbol: string; exchange: string }>;
+  };
+  expect((await read()).slice(0, 2)).toMatchObject([{ symbol: "ULVR" }, { symbol: "UL", exchange: "NYSE" }]);
+  expect(await read(30)).toHaveLength(rows.length);
+});
+
 /**
  * A rate-limited catalogue printed "No matches found." and exited 0, which
  * reads as "this company does not exist" (Eagle Bulk, 2026-10-18), and so did

@@ -319,9 +319,10 @@ test("short dividend panes keep the yields and every payment row within reach", 
     metrics: { ...buildDividendMetrics(payments, null, 50), nextPayDate: new Date("2030-01-15T00:00:00Z") } }, 40, 9)).split("\n");
   // One row of figures, the strip, then the table with its header and rows.
   expect(lines[0]).toContain("7.32%");
-  expect(lines[1]).toContain("●");
-  expect(lines[2]).toContain("EX-DATE");
-  expect(lines[3]).toContain(latest);
+  expect(lines.join("\n")).toContain("Fwd yield");
+  expect(lines.join("\n")).toContain("2030-01-15");
+  expect(lines.join("\n")).toContain("EX-DATE");
+  expect(lines.join("\n")).toContain(latest);
   await tui.emitKeypress(Array.from({ length: 8 }, () => ({ name: "down" })), { trackPropagation: true });
   const moved = await frame();
   expect(moved.split("EX-DATE")[1]).not.toContain(latest);

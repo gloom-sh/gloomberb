@@ -1,6 +1,5 @@
-import type { DividendPayment, GrowthPayments } from "./types";
+import type { DividendMetrics, DividendPayment, GrowthPayments } from "./types";
 import { MISSING_VALUE, formatCurrency } from "../../../utils/format";
-import { currencyMinorDigits } from "../../../market-data/market/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
@@ -9,19 +8,19 @@ import { CADENCE_GRACE_DAYS, LATE_GRACE_DAYS, trailingCashAt, type TrailingPayme
 
 const DAY = 24 * 60 * 60 * 1000;
 
-/**
- * A cash amount the listing pays as a conversion of the currency its company
- * declares in (`DividendData.convertedFrom`), to two decimals of the unit its
- * source states it in: pence stay pence (BP's 6.4059p is `6.41p`, never
- * `£0.06`), and a major unit keeps its currency's decimals (`ZAR 0.87`, not
- * `ZAR 0.866087`), as the conversion gives it no more.
- */
 export function formatConvertedAmount(value: number | null | undefined, currency: string, subUnit?: string): string {
   if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const unit = subUnit ? resolveCurrencyUnit(subUnit) : null;
   return unit && unit.divisor !== 1 && unit.currency === currency
-    ? formatCurrency(value * unit.divisor, subUnit!, 2)
-    : formatCurrency(value, currency, currencyMinorDigits(currency));
+    ? formatCurrency(value * unit.divisor, subUnit!, 6)
+    : formatCurrency(value, currency, 8);
+}
+
+export function forwardEstimateText(metrics: DividendMetrics): string | null {
+  const estimate = metrics.forwardEstimate;
+  if (!estimate) return null;
+  const declared = estimate.declaredAmount == null ? estimate.declaredCurrency : `${estimate.declaredAmount} ${estimate.declaredCurrency}/share`;
+  return `estimated from ${declared}; FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}`;
 }
 
 /** What a converted amount says beside it: `converted from USD`. */

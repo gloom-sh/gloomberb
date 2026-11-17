@@ -114,6 +114,7 @@ export function createCoreCliCommands(
       execute: async (args, ctx) => {
         const query = args.join(" ");
         await search(query, {
+          limit: ctx.cliOptions.limit,
           initMarketData: ctx.initMarketData,
           fail: ctx.fail,
           plugins: ctx.plugins,

@@ -225,6 +225,7 @@ export interface DesktopPaneShotRenderResult {
   semanticUi: RemoteUiNodeSnapshot[];
   /** The status line drawn in the capture's footer, as it fit the width. */
   statusLine?: string | null;
+  statusLineClipped?: boolean;
 }
 
 /**
@@ -237,8 +238,16 @@ export interface DesktopPaneShotRenderResult {
 interface ShotStatusLineVariants {
   variants: readonly string[];
   dates?: "data" | "quotes" | null;
+  dateEvidence?: readonly (readonly string[])[];
 }
 type ShotStatusLine = (rendered: DesktopPaneShotRenderResult) => ShotStatusLineVariants | null | Promise<ShotStatusLineVariants | null>;
+
+export function shotStatusDateClipped(line: ShotStatusLineVariants | null, statusText: string | null): boolean {
+  if (line?.dates == null || line.variants.includes(statusText ?? "")) return false;
+  const normalize = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+  const shown = normalize(statusText ?? "");
+  return !line.dateEvidence?.some((parts) => parts.length > 0 && parts.every((part) => shown.includes(normalize(part))));
+}
 
 const SHOT_MODE_CSS = [
   "[data-gloom-role='composite-chart-toolbar']",
@@ -670,10 +679,14 @@ async function capturePageScreenshot({
     await waitForShotReady(session);
     if (fitRows) await growToFitRows(session, { widthPx, heightPx, deviceScaleFactor, ...fitRows });
     if (captureImage) await hideCutRows(session);
-    const rendered = await readRenderedPaneState(session);
+    let rendered = await readRenderedPaneState(session);
     if (captureImage && statusLine) {
       const line = await statusLine(rendered);
-      rendered.statusLine = (await fitShotStatusLine(session, line ?? { variants: [] })) || null;
+      const statusText = (await fitShotStatusLine(session, line ?? { variants: [] })) || null;
+      await hideCutRows(session);
+      rendered = await readRenderedPaneState(session);
+      rendered.statusLine = statusText;
+      rendered.statusLineClipped = shotStatusDateClipped(line, statusText);
     }
     if (captureImage) {
       const screenshot = await session.send("Page.captureScreenshot", {
@@ -868,6 +881,20 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
           && rect.left < window.innerWidth && rect.top < window.innerHeight;
       };
       const semanticTables = semanticUi.filter((node) => node && node.role === "table");
+      const clippedFigures = [...root.querySelectorAll('[data-gloom-essential="true"]')].flatMap((cell) => {
+        const bounds = cell.getBoundingClientRect();
+        const parts = [...cell.querySelectorAll('[data-gloom-role="stat-grid-label"], [data-gloom-role="stat-grid-value"]')];
+        const clipped = !isVisible(cell) || parts.some((part) => {
+          const rect = part.getBoundingClientRect();
+          return !isVisible(part) || part.scrollWidth > part.clientWidth + 1
+            || rect.left < bounds.left - 1 || rect.right > bounds.right + 1
+            || rect.top < bounds.top - 1 || rect.bottom > bounds.bottom + 1;
+        });
+        return clipped ? [cell.querySelector('[data-gloom-role="stat-grid-label"]')?.textContent?.trim()].filter(Boolean) : [];
+      });
+      for (const node of semanticUi.filter((node) => node.role === "figure-layout" && node.metadata)) {
+        node.metadata.omitted = [...(node.metadata.omitted ?? []), ...clippedFigures];
+      }
       const rows = [];
       const truncationReasons = new Set();
       const scrollReasons = (${scrollTruncationReasons.toString()});

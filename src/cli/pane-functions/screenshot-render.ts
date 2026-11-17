@@ -20,6 +20,7 @@ import {
   deriveCaptureReport,
   deriveHeadlessFreshness,
   deriveRenderedFreshness,
+  statusDateEvidence,
   type CaptureReport,
   type CaptureStatusLine,
   type ReportFreshness,
@@ -323,7 +324,8 @@ export async function renderDesktopShot({
         freshness = line.freshness;
         // A row whose read failed is marked on the picture, where its figures are missing.
         const unread = unreadRowsNote(shotPayload.unreadRows);
-        return { variants: unread ? line.variants.map((variant) => `${variant} · ${unread}`) : line.variants, dates: line.dates };
+        return { variants: unread ? line.variants.map((variant) => `${variant} · ${unread}`) : line.variants, dates: line.dates,
+          dateEvidence: statusDateEvidence(line.freshness) };
       },
     });
     covered = coverage && await settledWithin(coverage, SHOT_REPORT_WAIT_MS);

@@ -48,6 +48,7 @@ import { hasNonLatinLetters } from "../../utils/typed-text";
 import { isKanjiOnlyName, japaneseNameReadAs, readExactJapaneseName, readJapaneseName, type JapaneseNameListing } from "../../tickers/search/japanese-names";
 
 interface SearchCommandDependencies {
+  limit?: number;
   initMarketData?: () => Promise<MarketContext>;
   fail?: (message: string, details?: string) => never;
   printResult?: CliCommandContext["printResult"];
@@ -128,7 +129,7 @@ export async function searchCandidatesForCli({
       localLimit,
       // Every company's listing of a symbol several use (CAR's ASX line is past the first ten), cut after ordering.
       totalLimit: Math.max(totalLimit, LISTING_SEARCH_LIMIT),
-      searchContext: { limit: LISTING_SEARCH_LIMIT },
+      searchContext: { limit: Math.max(totalLimit, LISTING_SEARCH_LIMIT) },
     });
     const symbol = trimmedQuery.toUpperCase();
     // A bare symbol search lists asks for the quote `quote SYM` reads, once, for its venue and its name:
@@ -448,11 +449,10 @@ function withHomeListingPrimary(query: string, candidates: TickerSearchCandidate
 function withUsLineOfPrimary(candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
   const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
   if (!primary || primary.kind !== "search" || isUsListingExchange(candidateExchange(primary))) return candidates;
-  const symbol = primary.symbol.toUpperCase();
   const company = resolveSearchName(primary);
   const us = candidates.find((candidate) => candidate !== primary && candidate.kind === "search" && !candidate.contractKey
-    && candidate.category !== "Funds & Derivatives" && candidate.symbol.toUpperCase() === symbol
-    && isUsListingExchange(candidateExchange(candidate)) && sameCompany(resolveSearchName(candidate), company));
+    && candidate.category !== "Funds & Derivatives"
+    && isUsListingExchange(candidateExchange(candidate)) && sameCompanyName(resolveSearchName(candidate), company));
   if (!us) return candidates;
   const rest = candidates.filter((candidate) => candidate !== us);
   const at = rest.indexOf(primary) + 1;
@@ -904,6 +904,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
         query: index?.symbol ?? trimmedQuery,
         tickers,
         dataProvider,
+        totalLimit: dependencies.limit,
         ...quote ? { quote } : {},
       }).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult));
     // A name in kanji alone is the service's to read first (中電 is CLP in Hong Kong); a Tokyo company's whole name it

@@ -576,7 +576,8 @@ function AppInner({
         <ThemedAppRoot>
           {chrome.header && (
             <Header
-              onOpenHelp={() => {
+              commandInputAvailable={!onboardingActive}
+              onOpenHelp={onboardingActive ? undefined : () => {
                 recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
                 pluginRegistry.showPane("help");
               }}
