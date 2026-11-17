@@ -365,7 +365,7 @@ test("the text board's net column names the class it counts, and the export keep
   expect((await columns(["--report", "disaggregated"])).find((column) => column.key === "net")!.header).toBe("Net");
 });
 
-test("the API asks for a scope only when it is combined, so the default request is the one it always was", async () => {
+test("the API opts in to ICE only for disaggregated reports and keeps the existing scope and history parameters", async () => {
   const { CloudDataApi } = await import("../../../api-client/data");
   const paths: string[] = [];
   const client = new CloudDataApi((async (path: string) => { paths.push(path); return {}; }) as never);
@@ -373,11 +373,15 @@ test("the API asks for a scope only when it is combined, so the default request 
   await client.getCloudCotBoard("tff", "leveraged-funds", "combined");
   await client.getCloudCotContract("13874A", "tff");
   await client.getCloudCotContract("13874A", "tff", "combined");
+  await client.getCloudCotBoard("disaggregated", "managed-money");
+  await client.getCloudCotContract("ICE00B", "disaggregated", "combined", "2026-11-03");
   expect(paths).toEqual([
     "/cloud/cot/board?report=legacy&traderClass=noncommercial",
     "/cloud/cot/board?report=tff&traderClass=leveraged-funds&scope=combined",
     "/cloud/cot/contracts/13874A?report=tff",
     "/cloud/cot/contracts/13874A?report=tff&scope=combined",
+    "/cloud/cot/board?report=disaggregated&traderClass=managed-money&includeIce=true",
+    "/cloud/cot/contracts/ICE00B?report=disaggregated&scope=combined&since=2026-11-03&includeIce=true",
   ]);
 });
 

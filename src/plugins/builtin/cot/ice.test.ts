@@ -1,7 +1,7 @@
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import type { CotContractPayload } from "../../../api-client/cot";
-import { loadCotDetail } from "./client";
+import type { CotBoardPayload, CotContractPayload } from "../../../api-client/cot";
+import { cachedCotBoard, cotBoardCache, fetchCotBoard, fetchCotContract, loadCotBoard, loadCotDetail } from "./client";
 import { cotHeadless } from "./headless";
 import { cotModule } from "./index";
 import { cotContractCode, cotPriceMapping } from "./model";
@@ -18,6 +18,34 @@ function icePayload(code = "ICE00B"): CotContractPayload {
     contract: { contractCode: code, marketName: "ICE Brent Crude Futures - ICE Futures Europe", exchangeCode: "ICEU", commodityCode: "B", contractUnits: "CONTRACTS OF 1,000 BARRELS" },
     positions: [position], history: [{ reportDate: "2026-11-03", publishedAt: "2026-11-06T18:30:00.000Z", openInterest: 2433965, positions: [position] }] };
 }
+
+test("opted-in readers accept mixed and ICE replies as well as CFTC-only replies from older servers", async () => {
+  const { contract, history, openInterest, positions, sourceUrl, ...base } = icePayload();
+  const iceRow = { ...contract!, reportDate: history[0]!.reportDate, openInterest, position: positions[0]!, status: "available" as const };
+  const cftcRow = { ...iceRow, contractCode: "067411", marketName: "ICE WTI" };
+  const mixed: CotBoardPayload = { ...base, traderClass: "managed-money", rows: [cftcRow, iceRow], source: "CFTC / ICE Futures Europe" };
+  const cftc: CotBoardPayload = { ...mixed, rows: [cftcRow], source: "CFTC" };
+  for (const payload of [cftc, mixed]) {
+    expect(await fetchCotBoard("disaggregated", "managed-money", { getCloudCotBoard: async () => payload })).toEqual(payload);
+  }
+  const brent = icePayload();
+  const wti: CotContractPayload = { ...brent, contract: cftcRow, source: "CFTC" };
+  for (const payload of [brent, wti]) {
+    expect(await fetchCotContract(payload.contract!.contractCode, "disaggregated", { getCloudCotContract: async () => payload })).toEqual(payload);
+  }
+
+  const spy = spyOn(apiClient, "getCloudCotBoard").mockResolvedValue(mixed);
+  cotBoardCache.reset();
+  try {
+    await cotBoardCache.load("disaggregated:managed-money", async () => cftc);
+    expect(cachedCotBoard("disaggregated", "managed-money")).toBeNull();
+    expect(await loadCotBoard("disaggregated", "managed-money")).toEqual(mixed);
+    expect(cotBoardCache.get("disaggregated:managed-money")?.data).toEqual(cftc);
+  } finally {
+    cotBoardCache.reset();
+    spy.mockRestore();
+  }
+});
 
 test("ICE names open their own report in the pane and headless path, without replacing US commodity aliases", async () => {
   const markets = [["brent", "ICE00B"], ["gasoil", "ICE00G"], ["dubai", "ICEDBI"], ["ice cocoa", "ICE00C"],

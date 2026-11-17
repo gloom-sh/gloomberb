@@ -933,15 +933,17 @@ export class CloudDataApi {
     return this.request<CloudShillerPayload>(cloudShillerPath());
   }
 
-  /** Futures-only positions unless `positions` asks for futures and options combined; the default request is unchanged. */
+  /** Futures-only positions unless `positions` asks for futures and options combined. */
   async getCloudCotBoard(report: CotFamily, traderClass: CotClass, positions: CotPositions = "futures-only"): Promise<CotBoardPayload> {
     const query = new URLSearchParams({ report, traderClass, ...(positions === "combined" ? { scope: positions } : {}) });
+    if (report === "disaggregated") query.set("includeIce", "true");
     return this.request<CotBoardPayload>(`/cloud/cot/board?${query}`);
   }
 
   /** A market's report; `since` (YYYY-MM-DD) lists its history from that day instead of the last three years. */
   async getCloudCotContract(code: string, report: CotFamily, positions: CotPositions = "futures-only", since?: string): Promise<CotContractPayload> {
     const query = new URLSearchParams({ report, ...(positions === "combined" ? { scope: positions } : {}), ...(since ? { since } : {}) });
+    if (report === "disaggregated") query.set("includeIce", "true");
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${query}`);
   }
 

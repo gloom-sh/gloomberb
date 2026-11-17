@@ -71,9 +71,8 @@ export async function fetchCotBoard(family: CotFamily, traderClass: CotClass, cl
   try { return validateCotBoard(await client.getCloudCotBoard(family, traderClass, positions), family, traderClass, positions); }
   catch (error) { throw unavailable(error); }
 }
-// Futures-only boards keep the key they always had, so a cached board still opens.
 const cotBoardKey = (family: CotFamily, traderClass: CotClass, positions: CotPositions) =>
-  positions === "combined" ? `${family}:${traderClass}:combined` : `${family}:${traderClass}`;
+  `${family}:${traderClass}${positions === "combined" ? ":combined" : ""}${family === "disaggregated" ? ":ice" : ""}`;
 const presentCotBoard = (payload: CotBoardPayload, stale: boolean, refreshError: string | null) => ({
   ...payload, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])],
   status: stale && payload.status === "available" ? "partial" as const : payload.status,
