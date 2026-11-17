@@ -41,7 +41,7 @@ import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTermin
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
-import { withFundReceiptsAsFunds, withHomeListingLead, withNamedCompanyAfterUsLead } from "./home-listing";
+import { withFundReceiptsAsFunds, withHomeListingLead, withHomeVenueLead, withNamedCompanyAfterUsLead } from "./home-listing";
 import { answeredInFull, rememberSearchAnswer, withKnownListings } from "./listing-index";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
 import { delistingLabel, parseListingWithdrawal, withdrawalLabel } from "../../market-data/quotes/delisting";
@@ -284,6 +284,7 @@ export async function searchTickerCandidates({
   totalLimit = 8,
   includeOptionContracts = true,
   onPartial,
+  homeVenue,
 }: {
   query: string;
   tickers: ReadonlyMap<string, TickerRecord>;
@@ -292,6 +293,8 @@ export async function searchTickerCandidates({
   localLimit?: number;
   totalLimit?: number;
   includeOptionContracts?: boolean;
+  /** The venue of the user's own market, whose lines of the company a word names lead (`withHomeVenueLead`). */
+  homeVenue?: string | null;
   /** Called when a slower, richer source improves results already returned. */
   onPartial?: (candidates: TickerSearchCandidate[]) => void;
 }): Promise<TickerSearchCandidate[]> {
@@ -304,6 +307,7 @@ export async function searchTickerCandidates({
     totalLimit,
     // A search that hides contracts still shows them when asked: "AAPL OPT".
     includeOptionContracts: includeOptionContracts || parseAssetClassQuery(query)?.code === "OPT",
+    homeVenue,
   });
   const renamed = renamedListingFor(rawQuery);
   const [searched, renamedRow] = await Promise.all([
@@ -339,6 +343,7 @@ export function buildTickerSearchCandidates({
   localLimit = 6,
   totalLimit = 8,
   includeOptionContracts = true,
+  homeVenue,
 }: {
   query: string;
   tickers: ReadonlyMap<string, TickerRecord>;
@@ -346,6 +351,8 @@ export function buildTickerSearchCandidates({
   localLimit?: number;
   totalLimit?: number;
   includeOptionContracts?: boolean;
+  /** The venue of the user's own market (`homeMarketVenue`): its lines of the company a word names lead (`withHomeVenueLead`). */
+  homeVenue?: string | null;
 }): TickerSearchCandidate[] {
   const filteredProviderResults = includeOptionContracts
     ? providerResults
@@ -363,10 +370,10 @@ export function buildTickerSearchCandidates({
   );
   // A receipt on a fund is the fund's line, never a company's primary listing over it (HK01 on SET for the Tracker Fund).
   const providerItems = withFundReceiptsAsFunds(createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions));
-  const ranked = withNamedCompanyAfterUsLead(
+  const ranked = withHomeVenueLead(withNamedCompanyAfterUsLead(
     withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query),
     query,
-  );
+  ), query, homeVenue);
   return limitTickerSearchCandidates(companyListingsFirst(assignTickerSearchCategories(ranked, query), query), totalLimit, localLimit);
 }
 

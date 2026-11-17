@@ -267,6 +267,34 @@ export function withNamedCompanyAfterUsLead<T extends TickerSearchCandidate>(ite
   return [...items.slice(0, at), ...named, ...rest];
 }
 
+/**
+ * The lines the service marks with the word as typed (or whose code it is) on
+ * the user's own market, ahead of every other row but the saved ones: for a
+ * desk whose market is Hong Kong (the header's Hang Seng, the default of a
+ * machine in Hong Kong), "aia" is AIA Group's 1299 before the iShares Asia 50
+ * ETF's AIA, "mtr" MTR Corporation's 0066 before Mesa Royalty Trust, "hsbc"
+ * HSBC's 0005 before its London line and its New York receipt, "catl" CATL's
+ * 3750 before Catalyst Acquisition and its Shenzhen line. Only a company's own
+ * shares on that venue lead (no receipt, fund or line quoting shares listed
+ * elsewhere), behind the saved rows the list opens with, and only for a word
+ * typed without a venue: `AIA:NASDAQ` and
+ * `AIA US` ask for that line. A market in the US changes nothing: a US ticker
+ * already leads (`withNamedCompanyAfterUsLead`).
+ */
+export function withHomeVenueLead<T extends TickerSearchCandidate>(items: T[], query: string, homeVenue: string | null | undefined): T[] {
+  const venue = canonicalExchange(homeVenue ?? "");
+  if (!venue || isUsListingExchange(venue) || isQualifiedTickerQuery(query)) return items;
+  const typed = normalizeTickerSymbol(query);
+  const lead = items.filter((item) => isListedEquity(item) && item.instrumentClass === "equity" && !!item.result
+    && candidateExchange(item) === venue && listingDistance(item) === 0
+    && (namedByService(query, item.result) || normalizeTickerSymbol(item.symbol) === typed));
+  if (lead.length === 0) return items;
+  // Behind the saved rows the list opens with.
+  const rest = items.filter((item) => !lead.includes(item));
+  const at = rest.findIndex((item) => item.kind !== "ticker" && !item.saved);
+  return at < 0 ? [...rest, ...lead] : [...rest.slice(0, at), ...lead, ...rest.slice(at)];
+}
+
 /** `items` with `home` moved just ahead of `lead`. */
 function moveAhead<T>(items: readonly T[], home: T, lead: T): T[] {
   const rest = items.filter((item) => item !== home);

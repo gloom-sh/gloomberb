@@ -161,6 +161,38 @@ describe("provider rows in the root result model", () => {
 
     expect(orderListResults(items).map((item) => item.id)).toEqual(["template", chatRow("general", "#general").id]);
   });
+
+  test("a function's code typed alone that is a ticker too is offered as the ticker under the function", () => {
+    // CATL is Catalysts and Contemporary Amperex Technology's own name for itself.
+    const opened: Array<[string, string | undefined]> = [];
+    const catalysts = { ...paneRow, id: "pane-template:catalysts", label: "Catalysts" };
+    const intent = (argText: string) => ({
+      kind: "partial" as const,
+      source: "pane-template" as const,
+      prefix: "CATL",
+      label: "Catalysts",
+      description: "",
+      argKind: "ticker" as const,
+      argText,
+      completionQuery: null,
+      template: { id: "catalysts" } as unknown as PaneTemplateDef,
+    });
+    const build = (rootQuery: string, commands: Command[]) => buildRootResultModel(rootOptions({
+      rootQuery,
+      availableCommands: commands,
+      createPaneTemplateItem: () => catalysts,
+      openModeRoute: (screen, query) => { opened.push([screen, query]); },
+      rootShortcutIntent: intent(rootQuery.split(" ")[1] ?? ""),
+    })).items;
+    const des = { id: "security-description", prefix: "DES", name: "Security Description" } as Command;
+    const items = build("CATL", [des]);
+    expect(items.map((item) => item.id)).toEqual(["pane-template:catalysts", "ticker-code:CATL"]);
+    items[1]!.action?.();
+    expect(opened).toEqual([["ticker-search", "CATL"]]);
+    // With a ticker after it, or no security search to open, the code is the function alone.
+    expect(build("CATL 3750", [des]).map((item) => item.id)).toEqual(["pane-template:catalysts"]);
+    expect(build("CATL", []).map((item) => item.id)).toEqual(["pane-template:catalysts"]);
+  });
 });
 
 function chatRow(id: string, label: string, keywords: string[] = []): ResultItem {
