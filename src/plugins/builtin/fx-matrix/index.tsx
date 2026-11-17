@@ -43,7 +43,8 @@ import { fxMatrixSettings } from "./settings";
 import { createFxExportMetadata } from "./export";
 import { fxMatrixHeadless } from "./headless";
 import {
-  formatAmountFigure, formatFxBoardAmount, parseFxBoardAmount, parseFxBoardAmountEdit, readFxBoardAmount, storedFxBoardAmount, withAmountCurrencies,
+  formatAmountFigure, formatFxBoardAmount, parseFxBoardAmount, parseFxBoardAmountEdit, parseFxBoardCurrencies, readFxBoardAmount, storedFxBoardAmount,
+  withAmountCurrencies,
   type FxBoardAmount,
 } from "./amount";
 
@@ -454,9 +455,20 @@ function openFxBoard(context: PaneTemplateContext) {
  * `FXC 2,500,000 EUR`, `fx 2500000 EUR/USD`, `convert 100 eur to usd`: the
  * board open already takes the amount (one board, switched in place), with
  * the currencies it names added when it does not list them; with none open a
- * board opens on it. Without an amount the board opens as it is.
+ * board opens on it. `FXC TRY` and `FXC USD,TRY` add those currencies to the
+ * board the same way, its amount kept. Without either the board opens as it is.
  */
 function createFxBoardInstance(context: PaneTemplateContext, options?: PaneTemplateCreateOptions): PaneTemplateInstanceConfig {
+  const added = parseFxBoardCurrencies(options?.arg ?? "");
+  if (added) {
+    const open = openFxBoard(context);
+    const listed = resolveCurrencies(open?.settings?.currencies);
+    const amount = open?.settings?.amount;
+    return {
+      ...(open ? { instanceId: open.instanceId } : {}),
+      settings: { ...(typeof amount === "string" && amount ? { amount } : {}), currencies: [...listed, ...added.filter((code) => !listed.includes(code))] },
+    };
+  }
   const request = parseFxBoardAmount(options?.arg ?? "");
   if (!request || "error" in request) return {};
   const open = openFxBoard(context);
@@ -534,16 +546,22 @@ export const fxMatrixModule: PluginModule = {
       label: "FX Cross Rates",
       description: "Currency cross-rate matrix for major FX pairs, and an amount converted into each currency.",
       keywords: ["fx", "forex", "currency", "exchange", "rates", "cross", "matrix", "convert", "converter", "conversion", "calculator"],
-      // `FXC 2,500,000 EUR` opens the board on the amount, as `fx 2500000 EUR/USD` converts it (fxConvertRows).
+      // `FXC 2,500,000 EUR` opens the board on the amount, as `fx 2500000 EUR/USD` converts it (fxConvertRows);
+      // `FXC TRY` and `FXC USD,TRY` add those currencies to it.
       shortcut: {
         prefix: "FXC",
         argKind: "text",
-        argPlaceholder: "amount",
+        argPlaceholder: "amount or currencies",
         argOptional: true,
         openWithoutArg: true,
         argError: (arg) => {
+          if (parseFxBoardCurrencies(arg)) return null;
           const request = parseFxBoardAmount(arg);
-          return request && "error" in request ? { message: `${arg.trim()} is no amount to convert`, detail: request.error.replace(/\.$/, "") } : null;
+          if (!request || !("error" in request)) return null;
+          // Words with no figure were currencies to add: say which is not on the board.
+          return /\d/.test(arg)
+            ? { message: `${arg.trim()} is no amount to convert`, detail: request.error.replace(/\.$/, "") }
+            : { message: `${arg.trim()} is no currency on the board`, detail: "Type codes such as USD,TRY, or an amount such as 2,500,000 EUR" };
         },
       },
       createInstance: createFxBoardInstance,

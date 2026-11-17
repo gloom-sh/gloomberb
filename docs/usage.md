@@ -725,7 +725,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `BI` | S&P 500 sector performance |
 | `THEM [theme]` | Thematic baskets with equal-weight returns and breadth, and each theme's members (the Themes tab of `BI`) |
 | `MEMB <fund>` | ETF holdings with weights, member returns, daily contributions and index changes; `MEMB <stock>` lists the covered ETFs holding a stock (look-through) |
-| `FXC` | FX cross rates: the majors, or up to 45 currencies (`gloom fn FXC --currencies USD,ZAR,NGN`; `gloom catalog FXC` lists the codes) |
+| `FXC` | FX cross rates: the majors, or up to 45 currencies. `FXC TRY` or `FXC USD,TRY` in the command bar adds them to the board, as `gloom fn FXC TRY` does; `--currencies USD,ZAR,NGN` or the pane's settings choose the whole list (`gloom catalog FXC` lists the codes) |
 | `FNG` | Fear and greed market gauge |
 
 #### Market function notes
