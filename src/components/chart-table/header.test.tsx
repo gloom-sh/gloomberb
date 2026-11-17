@@ -86,14 +86,17 @@ describe("ChartTableHeader", () => {
     expect(lines[lines.length - (lines.at(-1) === "" ? 2 : 1)]).toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 
-  test("becomes a one-row strip that repeats nothing the figures say, then gives the rows back", async () => {
+  test("keeps required figures as the chart becomes a non-repeating strip, then gives its row back", async () => {
     let lines = await render(<Pane width={60} height={10} />, 60, 10);
-    expect(headerRow(lines)).toBe(2);
-    expect(lines[1]).toContain("●");
-    expect(lines[1]).not.toContain("5Y spread");
+    expect(headerRow(lines)).toBe(3);
+    expect(lines.slice(0, 2).join("\n")).toContain("Range");
+    expect(lines[2]).toContain("●");
+    expect(lines[2]).not.toContain("5Y spread");
     await tui.destroy();
     lines = await render(<Pane width={60} height={6} />, 60, 6);
-    expect(headerRow(lines)).toBe(1);
+    expect(headerRow(lines)).toBe(2);
+    expect(lines.slice(0, 2).join("\n")).toContain("Range");
+    expect(lines.join("\n")).not.toContain("●");
   });
 
   test("gives a short table's spare rows to the chart instead of a blank band", async () => {

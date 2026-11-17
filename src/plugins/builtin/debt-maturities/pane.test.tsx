@@ -108,16 +108,16 @@ test("the maturity wall is an inline bar column scaled to the dated years", asyn
 });
 
 test("a short or narrow maturity pane keeps the table's rows, and the chart shrinks to a strip", async () => {
-  const lines = await render(40, 10);
+  const lines = await render(40, 14);
   expect(lines.join("\n")).not.toContain("WALL");
-  // One row of figures, the strip, then the table's header and five buckets.
-  expect(lines[2]).toMatch(/^ ● Due next 12 months .*%/);
-  expect(lines[3]).toContain("MATURITY");
+  expect(lines.slice(0, 6).join("\n")).toContain("2025-06-30");
+  expect(lines[6]).toMatch(/^ ● [⠀-⣿]+\s*$/);
+  expect(lines[7]).toContain("MATURITY");
   expect(lines.filter((line) => /^ In(NextTwelve|Year)/.test(line))).toHaveLength(5);
   // The footer keeps which filing and its date; how long ago it loaded goes first, then the source's name, which the
   // hint and the column between them leave no room for at 40 columns (a wider pane names it, below).
-  expect(lines[9]).toContain("└10-K Mon 30 Jun 2025");
-  expect(lines[9]).not.toContain("just now");
+  expect(lines[13]).toContain("└10-K Mon 30 Jun 2025");
+  expect(lines[13]).not.toContain("just now");
 });
 
 test("the filing history names its bars and puts each year under its own bar", async () => {

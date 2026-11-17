@@ -75,16 +75,17 @@ test("the open-roles line sits beside the function bars and names what it plots"
 test("a short pane keeps the roles list: the band becomes a strip, then goes", async () => {
   let lines = await render(60, 12);
   let tabs = lines.findIndex((line) => line.includes("Roles  Locations"));
-  // One row of figures, the strip, the tabs, then the roles.
-  expect(tabs).toBe(2);
-  expect(lines[1]).toMatch(/^ ● [⠀-⣿]/);
+  expect(tabs).toBe(5);
+  expect(lines.slice(0, tabs).join("\n")).toContain("Contract");
+  expect(lines[4]).toMatch(/^ ● [⠀-⣿]/);
   expect(lines.filter((line) => /Role \d\d/.test(line)).length).toBeGreaterThanOrEqual(4);
   await tui.destroy();
   resetJobsCache();
 
-  lines = await render(22, 10);
+  lines = await render(22, 16);
   tabs = lines.findIndex((line) => line.includes("Roles"));
   expect(lines.join("\n")).not.toContain("●");
   expect(lines.filter((line) => /Role/.test(line)).length).toBeGreaterThanOrEqual(4);
-  expect(tabs).toBeLessThanOrEqual(1);
+  expect(lines.slice(0, tabs).join("\n")).toContain("Contract");
+  expect(tabs).toBe(8);
 });

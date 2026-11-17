@@ -81,7 +81,7 @@ async function render(width: number, height: number, tab = "curve", options: Ren
 
 test("a short curve tab lists the contracts once, and a tall one ends on the last contract", async () => {
   spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => payload());
-  const short = (await render(40, 10)).join("\n");
+  const short = (await render(40, 12)).join("\n");
   expect(short).not.toContain("TENOR");
   expect(short).toContain("CONTRACT");
   expect(short).toContain("ESU27.CME");
@@ -139,9 +139,9 @@ test("a short pane keeps the contracts and shrinks the curve to a strip, then dr
   // every line drawn keeps its name.
   expect(lines.slice(0, header).some((line) => /● Latest +● 1W ago +● 1M ago/.test(line))).toBe(true);
   expect(lines.slice(header + 1).filter((line) => /ES[HMUZ]\d\d\.CME/.test(line)).length).toBeGreaterThanOrEqual(4);
-  // Ten rows: the curve becomes one strip line and the table keeps its rows.
-  lines = await render(40, 11);
+  lines = await render(40, 12);
   header = lines.findIndex((line) => line.includes("CONTRACT"));
+  expect(lines.slice(0, header).join("\n")).toContain("ESH27-ESZ26");
   expect(lines[header - 1]).toContain("● Price");
   expect(lines[header - 1]).toContain("Dec 2026 6600.00");
   expect(lines.slice(header + 1).filter((line) => /ES[HMUZ]\d\d\.CME/.test(line)).length).toBeGreaterThanOrEqual(4);

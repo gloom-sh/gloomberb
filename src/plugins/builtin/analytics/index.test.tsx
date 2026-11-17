@@ -603,7 +603,7 @@ test("the overview draws the account history between its figures and the sector 
   const config = createAnalyticsConfig(BROKER_PORTFOLIO_ID);
   config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", label: "IBKR", enabled: true, config: {} }];
   const ticker = createSharedTicker();
-  for (const [width, height] of [[78, 28], [60, 9]] as const) {
+  for (const [width, height] of [[78, 28], [60, 14]] as const) {
     controlledCoordinator = new MarketDataCoordinator(createTestDataProvider({
       getPriceHistory: async () => [], getPriceHistoryForResolution: async () => [],
     }));
@@ -618,6 +618,7 @@ test("the overview draws the account history between its figures and the sector 
     const legend = lines.findIndex((line) => line.includes("● Value (USD)"));
     const header = lines.findIndex((line) => line.includes("SECTOR"));
     expect(legend).toBeGreaterThan(0);
+    expect(lines.slice(0, legend).join("\n")).toContain("Est. Beta");
     expect(lines[legend]).toContain(width === 78 ? "● Value (USD) 14.4k" : "● Value (USD) ");
     // The chart takes rows at the default size; in a short pane whose sector
     // rows fit whole it keeps a compact four rows instead of a strip over blank rows.

@@ -103,8 +103,9 @@ test("the selected period is the chart's cursor", async () => {
 });
 
 test("a short detail keeps the history rows and draws the chart as a strip", async () => {
-  const lines = await render(40, 10);
+  const lines = await render(40, 14);
   const header = lines.findIndex((line) => line.includes("PERIOD"));
+  expect(lines.slice(0, header).join("\n")).toContain("UNRATE");
   expect(lines[header - 1]).toMatch(/^ ● Unemployment Rate [⠀-⣿]+ 4\.10%/);
   expect(lines.slice(header + 1).filter((line) => /\d{4}-\d{2}-\d{2}/.test(line)).length).toBeGreaterThanOrEqual(4);
 });

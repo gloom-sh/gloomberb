@@ -142,21 +142,22 @@ test("the selected tenor is the curve's point, from the table and from the chart
 });
 
 test("a short pane keeps the tenors and turns the chart into a strip, then drops it", async () => {
-  await renderLatest(40, 12);
+  await renderLatest(40, 13);
   let rows = lines();
-  // The first spread keeps its row above the strip.
   expect(rows[2]).toMatch(/^ 2s10s \+40bp/);
-  expect(rows[3]).toMatch(/^ ● Par yield % .*1M 4\.00%/);
-  expect(rows[4]).toMatch(/TENOR/);
+  expect(rows[3]).toMatch(/^ 3m10y \+70bp/);
+  expect(rows[4]).toMatch(/^ 5s30s \+40bp/);
+  expect(rows[5]).toMatch(/^ ● Par yield % .*1M 4\.00%/);
+  expect(rows[6]).toMatch(/TENOR/);
   expect(rows.filter((line) => /^ \d+[MY] +\d\.\d\d%/.test(line)).length).toBeGreaterThanOrEqual(4);
   await tui.destroy();
   latestSpy?.mockRestore(); historySpy?.mockRestore();
-  await renderLatest(40, 8);
+  await renderLatest(40, 10);
   rows = lines();
-  // The chart goes first; the lead spread keeps its one row.
   expect(rows.some((line) => line.includes("●"))).toBe(false);
   expect(rows[2]).toMatch(/^ 2s10s \+40bp/);
-  expect(rows[3]).toMatch(/TENOR/);
+  expect(rows[4]).toMatch(/^ 5s30s \+40bp/);
+  expect(rows[5]).toMatch(/TENOR/);
   expect(rows.filter((line) => /^ \d+[MY] +\d\.\d\d%/.test(line))).toHaveLength(3);
 });
 
