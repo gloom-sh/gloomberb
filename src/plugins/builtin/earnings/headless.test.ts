@@ -8,6 +8,8 @@ import { createEarningsBoardHeadless, createEarningsHeadless } from "./headless"
 import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderReportCsv } from "../../../cli/report-tables";
+import { historyRows } from "./history-model";
+import { historyColumns, renderHistoryCell } from "./history-table";
 
 const today = newYorkToday();
 type HistoryReport = EarningsHistoryPayload["reports"][number];
@@ -565,4 +567,30 @@ test("a surprise against a loss estimate exports null with its NotMeaningful fla
     expect(row[surprise]).toBe("");
     expect(row.at(-1)).toContain("EPS surp: n/m");
   }
+});
+
+test("a reported quarter with no consensus on record says so in the text, the CSV status and the pane, never a bare blank", async () => {
+  // A quarter whose figure Gloom Cloud has and whose consensus no source does (NVIDIA's May 2026 report did not, before Gloom Cloud read the street's).
+  const withoutConsensus: EarningsHistoryPayload = { ...history, symbol: "NVDA", name: "NVIDIA Corporation", reports: [
+    report({ date: addDays(today, -60), fiscalPeriod: "2026-07", epsEstimate: 2.09, epsActual: 2.22, epsAnalysts: 12, epsBasis: "adjusted", dateStatus: "reported" }),
+    report({ date: addDays(today, -150), fiscalPeriod: "2026-04", epsActual: 2.39, epsBasis: "gaap", dateStatus: "reported" }),
+  ] };
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => withoutConsensus,
+    upcoming: async () => [],
+  });
+  const result = await definition.load(args, context);
+  expect(renderHeadlessPaneText(definition, result, args, "ERN")).toContain("no consensus");
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "ERN", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
+  const [header, ...lines] = csv.split("\n");
+  const columns = header!.split(",");
+  const [estimate, status] = [columns.indexOf("EPS est"), columns.indexOf("value_status")];
+  const row = lines.find((line) => line.includes(",2.39,"))!.split(",");
+  expect([row[estimate], row[status]]).toEqual(["", "EPS est: no consensus"]);
+  // Its neighbour, measured against its consensus, says nothing of the kind.
+  expect(lines.find((line) => line.includes(",2.22,"))!.split(",")[status]).toBe("");
+  const rows = historyRows(withoutConsensus, today, null);
+  const column = historyColumns(2000, rows).find((entry) => entry.id === "epsEstimate")!;
+  expect(rows.map((entry) => renderHistoryCell(entry, column).text)).toEqual(["2.09", "no est"]);
 });

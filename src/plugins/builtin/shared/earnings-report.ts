@@ -47,6 +47,20 @@ export function isProvisionalActual(row: { epsActual?: number | null; epsActualS
   return row.epsActual != null && row.epsActualSource === "press-release";
 }
 
+/**
+ * A reported quarter with an actual and no consensus on record says so where
+ * its estimate would be, so a blank surprise never reads as a lost figure.
+ */
+export const NO_CONSENSUS = "no consensus";
+
+/** NO_CONSENSUS where a column is narrow. */
+export const NO_CONSENSUS_SHORT = "no est";
+
+/** A beat stated without its estimate (`difference`) still had a consensus. */
+export function lacksConsensus(row: { epsActual?: number | null; epsEstimate?: number | null; difference?: number | null }): boolean {
+  return row.epsActual != null && row.epsEstimate == null && row.difference == null;
+}
+
 /** What a provisional figure is, in every report's metadata. */
 export const PROVISIONAL_NOTE = "A provisional EPS (or sales) figure is the company's own press release's, read from its results filing minutes after it is out, on the basis the consensus is measured on. The earnings calendar's figure replaces it, usually the next day.";
 
@@ -67,9 +81,9 @@ type EarningsRecord = CorporateActionsData["earnings"][number];
 
 /**
  * What follows an earnings row's EPS, one phrase per part. A reported row
- * names its basis, whether the figure is provisional, and its beat; a
- * pending one whether its date is announced, its analysts and an adjusted
- * estimate's basis.
+ * names its basis, whether the figure is provisional, and its beat, or that
+ * no consensus is on record for it; a pending one whether its date is
+ * announced, its analysts and an adjusted estimate's basis.
  */
 export function earningsDetailParts(earning: EarningsRecord): string[] {
   if (earning.epsActual == null) {
@@ -78,7 +92,8 @@ export function earningsDetailParts(earning: EarningsRecord): string[] {
       earningsEpsBasis(earning.epsBasis) === "adjusted" ? BASIS_TEXT.adjusted : null].filter((part): part is string => !!part);
   }
   return [BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))], isProvisionalActual(earning) ? "provisional" : null,
-    earning.difference == null ? null : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`]
+    lacksConsensus(earning) ? NO_CONSENSUS
+      : earning.difference == null ? null : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`]
     .filter((part): part is string => !!part);
 }
 

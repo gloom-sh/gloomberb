@@ -7,6 +7,7 @@ import {
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderReportCsv } from "../../../cli/report-tables";
+import { EXPORT_IDENTITY_COLUMNS, exportIdentityCells } from "../../../cli/export-source";
 
 const sources: EarningsEstimateSources = {
   currency: "USD",
@@ -118,4 +119,39 @@ test("EE reads a surprise against a loss estimate and growth off a year-ago loss
   const estimate = lines.find((line) => line.includes(",Q Est,"))!.split(",");
   expect(estimate[growth]).toBe("");
   expect(estimate[status]).toContain("YoY growth: n/m");
+});
+
+test("EE names Visa's quarters and years as GUIDE does, says which quarter has no consensus, and dates its export", async () => {
+  // Visa's fiscal year ends in September: its December 2026 quarter is Q1 FY2027, as its guidance names it.
+  const definition = createEarningsEstimatesHeadless({ loadSources: async () => ({
+    currency: "USD",
+    actions: { symbol: "V", currency: "USD", dividends: [], splits: [], fetchedAt: "2026-11-16T23:50:30.815Z",
+      earnings: [
+        { date: "2027-01-26", fiscalPeriod: "2026-12", epsEstimate: 3.63, epsAnalysts: 26 },
+        { date: "2026-10-27", fiscalPeriod: "2026-09", epsEstimate: 3.43, epsActual: 3.48, difference: 0.05, epsBasis: "adjusted" },
+        // A quarter Gloom Cloud has an actual for and no consensus.
+        { date: "2026-07-28", fiscalPeriod: "2026-06", epsActual: 3.32, epsBasis: "gaap" },
+      ] },
+    estimates: { symbol: "V", currency: "USD", recommendations: [], ratings: [], fetchedAt: "2026-11-16T22:42:15.571Z",
+      earningsEstimates: [
+        { date: "2026-12-31", period: "current_quarter", average: 3.63, analysts: 26 },
+        { date: "2027-09-30", period: "current_year", average: 15.03, analysts: 38 },
+      ],
+      revenueEstimates: [] },
+    financials: { annualStatements: [{ date: "2026-09-30" }, { date: "2025-09-30" }], quarterlyStatements: [], priceHistory: [] },
+  }) });
+  const request = args({ kind: "all" });
+  const result = await definition.load(request, context);
+  const period = (status: string, date: string) => result.rows.find((row) => row.status === status && row.date === date);
+  expect(period("Earnings", "2027-01-26")?.period).toBe("Q1 FY2027");
+  expect(period("Earnings", "2026-10-27")?.period).toBe("Q4 FY2026");
+  expect(period("Q Est", "2026-12-31")).toMatchObject({ period: "Q1 FY2027", detail: "cur qtr, 26 EPS analysts" });
+  expect(period("FY Est", "2027-09-30")).toMatchObject({ period: "FY2027", detail: "cur yr, 38 EPS analysts" });
+  expect(period("Earnings", "2026-07-28")?.detail).toBe("GAAP, no consensus");
+  // Dated by Gloom Cloud's newer read: the export's as_of, never blank.
+  const asOf = exportIdentityCells(deriveHeadlessFreshness(definition, result, Date.parse("2026-11-17T00:15:00Z")))[EXPORT_IDENTITY_COLUMNS.indexOf("as_of")];
+  expect(asOf).toBe("2026-11-16T23:50:30.815Z");
+  // Without a year on record a quarter keeps the month it ends in.
+  const bare = createEarningsEstimatesHeadless({ loadSources: async () => ({ ...sources }) });
+  expect((await bare.load(request, context)).rows.find((row) => row.status === "Earnings")?.period).toBe("—");
 });
