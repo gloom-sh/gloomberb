@@ -7,7 +7,9 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, type ScenarioLoaderDependencies } from "./client";
 import { daysToExpiryFrom, solveImpliedVolatility, valueOption } from "../shared/volatility";
 import { optionsScenarioHeadless } from "./headless";
-import { parseOptionExpiration } from "../../../utils/option-expiry";
+import { expirationOptionSeconds, parseOptionExpiration } from "../../../utils/option-expiry";
+import { noProviderError } from "../../../sources/provider-errors";
+import { OperationTimeoutError } from "../../../utils/async-deadline";
 import { buildScenario, optionExpirationClose } from "./model";
 import { scenarioHedgeBudget } from "./hedge";
 
@@ -134,6 +136,23 @@ describe("scenario market loader", () => {
     expect(lapsed.chain).toBeNull();
     expect(() => scenarioPositionFromSettings({ symbol: "COPX", strategy: "put" }, lapsed))
       .toThrow("Expiry 2026-10-23 for COPX expired on 23 Oct; nearest live: 30 Oct (--expiration 2026-10-30)");
+  });
+
+  test("a chain read the data service did not answer says to try again, apart from a chain no source lists", async () => {
+    // The router's answer when its one source timed out, read through the coordinator as the CLI and the pane read it.
+    const seed = async (failure?: Error) => {
+      const provider = { id: "scenario-test", getOptionsChain: async () => {
+        throw noProviderError("No options provider available for COPX", failure ? { failure } : {}, "COPX");
+      } } as unknown as DataProvider;
+      const coordinator = new MarketDataCoordinator(provider);
+      const market = await loadScenarioMarket({ instrument: { symbol: "COPX", exchange: "ARCA" }, expiration: expirationOptionSeconds("18.12.2026") },
+        dependencies({ loadOptions: coordinator.loadOptions.bind(coordinator), loadQuote: async () => ready({ ...quote, symbol: "COPX" }) }));
+      return () => scenarioPositionFromSettings({ symbol: "COPX", strategy: "put", spot: "60.5" }, market);
+    };
+    expect(expirationOptionSeconds("18.12.2026")).toBe(expiration);
+    expect(await seed(new OperationTimeoutError("Cloud market request timed out after 10000ms")))
+      .toThrow("Gloom's data service did not answer for the COPX options chain. Try again in a moment.");
+    expect(await seed()).toThrow("No options chain is listed for COPX.");
   });
 
   test("consumer cancellation does not wait for or cancel the shared chain request", async () => {

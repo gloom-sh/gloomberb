@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
+import { entryFailedTransiently, getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { InstrumentRef, OptionsRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
@@ -18,6 +18,9 @@ import { loadModelDividendYield, type ModelDividendYield } from "../../../market
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { extendedSession, modelSpotStamp, modelSpotStampVariants, type OptionModelSpot } from "../options/model-spot";
 import { errorMessage } from "../../../utils/errors";
+import { isTransientFailure } from "../../../api-client/errors";
+import { isTransientSourceFailure, serviceDidNotAnswerMessage } from "../../../sources/provider-errors";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../../utils/network-failure";
 import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 
 export interface ScenarioMarketSnapshot {
@@ -42,6 +45,11 @@ export interface ScenarioMarketSnapshot {
   warnings: string[];
   /** Why the requested expiry has no chain, naming the listed dates nearest it. */
   missingExpiry?: string;
+  /**
+   * Why the chain read failed: the data service did not answer, with when to
+   * ask again, or none is listed (`chainReadFailure`). Absent from older snapshots.
+   */
+  chainUnavailable?: string;
 }
 
 export interface ScenarioLoaderDependencies {
@@ -129,6 +137,7 @@ export async function loadScenarioMarket(
   });
   if (request.signal?.aborted) throw abortError(CANCELLED);
   if (!dividend) warnings.push("Dividend yield unavailable; supply an explicit assumption");
+  let chainRejection: unknown = chainResult.status === "rejected" ? chainResult.reason ?? new Error("Options chain read failed") : undefined;
   let chainEntry = entry(chainResult, "Options chain");
   let chain = chainEntry ? resolveEntryValue(chainEntry) : null;
   if (chain && !symbolMatches(chain.underlyingSymbol, symbol)) {
@@ -146,8 +155,9 @@ export async function loadScenarioMarket(
     && !chain.calls.length && !chain.puts.length ? listedExpiration : undefined);
   if (reload != null) {
     // Or a source that keys chains by its exact stamp answered the midnight request empty.
+    chainRejection = undefined;
     chainEntry = await abortable(dependencies.loadOptions({ instrument: request.instrument, expirationDate: reload }, options)
-      .catch((error: unknown) => { warnings.push(`Options chain: ${errorMessage(error)}`); return null; }), request.signal, CANCELLED);
+      .catch((error: unknown) => { warnings.push(`Options chain: ${errorMessage(error)}`); chainRejection = error ?? new Error("Options chain read failed"); return null; }), request.signal, CANCELLED);
     if (request.signal?.aborted) throw abortError(CANCELLED);
     if (chainEntry?.error) warnings.push(`Options chain: ${chainEntry.error.message}`);
     chain = chainEntry ? resolveEntryValue(chainEntry) : null;
@@ -165,6 +175,14 @@ export async function loadScenarioMarket(
     warnings.push(missingExpiry); chain = null;
   } else if (chain && (listedExpiration ?? liveDefault) != null && !onExpiry(chain, (listedExpiration ?? liveDefault)!)) {
     warnings.push("Selected expiration unavailable in the returned options chain"); chain = null;
+  }
+  // A read that failed says why: a service that did not answer is asked again, a chain none lists is not.
+  const chainUnavailable = !missingExpiry && (!chain || chainEntry?.error)
+    ? chainReadFailure(symbol, chainRejection, chainEntry, chain != null) : undefined;
+  if (chainUnavailable && chainUnavailable !== `No options chain is listed for ${symbol}.`) {
+    // The router's "No options provider available" of a read that timed out reads as no chain at all.
+    for (let index = warnings.length - 1; index >= 0; index -= 1) if (warnings[index]!.startsWith("Options chain: ")) warnings.splice(index, 1);
+    warnings.push(chainUnavailable);
   }
   if (!chain) warnings.push("Options chain unavailable");
   else if (chainEntry?.error || (chainEntry?.staleAt != null && chainEntry.staleAt <= now)) warnings.push("Options chain is stale");
@@ -186,7 +204,34 @@ export async function loadScenarioMarket(
     source: quoteCurrent ? quoteEntry?.source ?? quote!.providerId ?? null : null,
     underlyingQuote: quoteCurrent ? quote : null, rateAsOf: rate.asOf, warnings: [...new Set(warnings)],
     ...(missingExpiry ? { missingExpiry } : {}),
+    ...(chainUnavailable ? { chainUnavailable } : {}),
   };
+}
+
+/**
+ * Why a chain read that failed left no current chain: the data service could
+ * not be reached or did not answer in time, which asking again may get past
+ * and is said with that advice, or it answered with none it lists. `kept` is
+ * a chain an earlier read left, which only a failure worth retrying explains.
+ * Undefined when the read did not fail.
+ */
+function chainReadFailure(symbol: string, rejection: unknown, entry: QueryEntry<OptionsChain> | null, kept: boolean): string | undefined {
+  if (rejection === undefined && !entry?.error) return undefined;
+  const what = `the ${symbol} options chain`;
+  const message = rejection !== undefined ? errorMessage(rejection) : entry!.error!.message;
+  if (isNetworkFailure(rejection) || message === DATA_SERVICE_UNREACHABLE_MESSAGE || isNetworkFailure(message)) {
+    return `${DATA_SERVICE_UNREACHABLE_MESSAGE} for ${what}. Try again in a moment.`;
+  }
+  // A rate limit, or a read the service failed twice, already says when to ask again.
+  if (/\btry again\b/i.test(message)) return message;
+  const transient = rejection !== undefined ? isTransientFailure(rejection) || isTransientSourceFailure(rejection) : entryFailedTransiently(entry);
+  if (transient) return serviceDidNotAnswerMessage(what);
+  return kept ? undefined : `No options chain is listed for ${symbol}.`;
+}
+
+/** What a strategy seed says when the market holds no current chain to seed it from. */
+function seedChainError(market: Pick<ScenarioMarketSnapshot, "missingExpiry" | "chainUnavailable"> | null | undefined): Error {
+  return new Error(market?.missingExpiry ?? market?.chainUnavailable ?? "A current options chain is required to seed a strategy");
 }
 
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -309,9 +354,7 @@ export function scenarioPositionFromSettings(
   let shareEntry: number | null | undefined;
   if (!legs.length && supplied(settings.strategy)) {
     if (!isScenarioStrategy(settings.strategy)) throw new Error("strategy must be vertical, straddle, put, csp or collar");
-    if (!market?.chain || market.warnings.includes("Options chain is stale")) {
-      throw new Error(market?.missingExpiry ?? "A current options chain is required to seed a strategy");
-    }
+    if (!market?.chain || market.warnings.includes("Options chain is stale")) throw seedChainError(market);
     if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
     // Leg IVs are solved at the market's own spot and time, never at a what-if override.
     const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate, dividendYield: dividendYield ?? 0 } : null;
@@ -583,9 +626,7 @@ export function seedScreenPosition(
   pick: (quoted: QuotedChain, pricing: StrategyPricing, unusable: UnusableChainText) => ScreenSeed,
   merged?: OptionsChain,
 ): ScenarioPosition {
-  if (!market.chain || market.warnings.includes("Options chain is stale")) {
-    throw new Error(market.missingExpiry ?? "A current options chain is required to seed a strategy");
-  }
+  if (!market.chain || market.warnings.includes("Options chain is stale")) throw seedChainError(market);
   const chain = merged ?? market.chain;
   if (market.spot == null) throw new Error("A current underlying price is required");
   if (market.rate == null) throw new Error("Choosing legs by delta needs the Treasury rate");

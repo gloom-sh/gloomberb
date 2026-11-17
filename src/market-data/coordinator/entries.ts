@@ -1,5 +1,6 @@
 import { hasUsablePriceHistory } from "../../utils/price-history";
 import { isTransientFailure } from "../../api-client/errors";
+import { isTransientSourceFailure } from "../../sources/provider-errors";
 import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
 import { hasFreshQuoteForCurrentSession, isQuoteStaleForCurrentSession } from "../quotes/freshness";
 import type { InstrumentRef } from "../request-types";
@@ -30,11 +31,12 @@ export function classifyError(error: unknown): { reasonCode: ProviderReasonCode;
 /**
  * How a load that threw is recorded: `retryable_error` for a failure asking
  * again may get past (no connection, a timeout, 429, a 5xx:
- * `isTransientFailure`), whose kept data is then a saved copy
- * (`savedCopyEntryAt`), and `fatal_error` for any other.
+ * `isTransientFailure`), including the router's answer that no source served
+ * it because one timed out (`isTransientSourceFailure`), whose kept data is
+ * then a saved copy (`savedCopyEntryAt`), and `fatal_error` for any other.
  */
 export function errorStatus(error: unknown): "retryable_error" | "fatal_error" {
-  return isTransientFailure(error) ? "retryable_error" : "fatal_error";
+  return isTransientFailure(error) || isTransientSourceFailure(error) ? "retryable_error" : "fatal_error";
 }
 
 /**

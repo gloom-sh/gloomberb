@@ -1125,8 +1125,17 @@ export function resolveEntryValue<T>(entry: QueryEntry<T>): T | null {
  */
 export function savedCopyEntryAt<T>(entry: QueryEntry<T> | null | undefined): number | null {
   if (!entry?.error || entry.fetchedAt == null || !resolveEntryData(entry)) return null;
+  return entryFailedTransiently(entry) ? entry.fetchedAt : null;
+}
+
+/**
+ * Whether `entry`'s last load failed for a reason asking again may get past:
+ * no connection, a timeout, 429 or a 5xx (a `retryable_error` attempt), as
+ * opposed to an answer that there is nothing or a refusal.
+ */
+export function entryFailedTransiently<T>(entry: QueryEntry<T> | null | undefined): boolean {
+  if (!entry?.error) return false;
   const { reasonCode, message } = entry.error;
-  const transient = entry.attempts.at(-1)?.status === "retryable_error"
+  return entry.attempts.at(-1)?.status === "retryable_error"
     || reasonCode === "TIMEOUT" || message === DATA_SERVICE_UNREACHABLE_MESSAGE || isNetworkFailure(message);
-  return transient ? entry.fetchedAt : null;
 }
