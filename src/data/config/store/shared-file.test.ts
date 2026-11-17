@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, readFile, rm } from "fs/promises";
+import { mkdtemp, readdir, readFile, rm, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { initDataDir, saveConfig, watchExternalConfigChanges } from "./index";
-import type { AppConfig } from "../../../types/config";
+import { createDefaultConfig, type AppConfig } from "../../../types/config";
 
 const tempDirs: string[] = [];
 const originalHome = process.env.GLOOMBERB_HOME;
@@ -68,5 +68,38 @@ describe("config.json shared with another program", () => {
     } finally {
       stop();
     }
+  });
+
+  test("a lock a program left behind when it stopped is taken over, and the save takes and frees its own", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-shared-config-"));
+    tempDirs.push(dataDir);
+    process.env.GLOOMBERB_HOME = dataDir;
+    const lock = join(dataDir, "config.json.lock");
+    await writeFile(lock, "4242:1:stopped");
+    const longAgo = new Date(Date.now() - 60_000);
+    await utimes(lock, longAgo, longAgo);
+
+    const startedAt = Date.now();
+    await saveConfig({ ...createDefaultConfig(dataDir), theme: "nord" });
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
+    expect((JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as AppConfig).theme).toBe("nord");
+    expect((await readdir(dataDir)).filter((name) => name.startsWith("config.json."))).toEqual([]);
+  });
+
+  test("a lock another program holds is waited on for two seconds at most, and left to it", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-shared-config-"));
+    tempDirs.push(dataDir);
+    process.env.GLOOMBERB_HOME = dataDir;
+    const lock = join(dataDir, "config.json.lock");
+    await writeFile(lock, "4242:1:holding");
+
+    const startedAt = Date.now();
+    await saveConfig({ ...createDefaultConfig(dataDir), theme: "nord" });
+    const waited = Date.now() - startedAt;
+    expect(waited).toBeGreaterThanOrEqual(1_900);
+    expect(waited).toBeLessThan(5_000);
+    // The save went ahead, and the lock it never took is still the other program's.
+    expect((JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as AppConfig).theme).toBe("nord");
+    expect(await readFile(lock, "utf-8")).toBe("4242:1:holding");
   });
 });

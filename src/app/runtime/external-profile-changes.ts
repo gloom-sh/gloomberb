@@ -5,14 +5,18 @@ import { hasPendingTickerWrite, hasPendingTickerWrites } from "../../data/ticker
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
+import type { TickerRecord } from "../../types/ticker";
 import { logFailure } from "../../utils/log-failure";
 
 /** How often the ticker rows are looked at for another program's write: a cheap question to SQLite. */
 const TICKER_ROWS_LOOK_MS = 2_000;
 
 type TickerRowsPort = AppTickerRepositoryPort & {
-  /** Changes when another program commits to the database; absent where the rows live elsewhere. */
-  changesElsewhere?(): number | null;
+  /**
+   * Changes when another program commits to the database; absent where no
+   * one can say. The desktop app's windows ask the process that holds it.
+   */
+  changesElsewhere?(): number | null | Promise<number | null>;
 };
 
 /**
@@ -29,13 +33,16 @@ export function useExternalProfileChanges({
   stateRef,
   pluginRegistry,
   tickerRepository,
+  lookEveryMs = TICKER_ROWS_LOOK_MS,
 }: {
   enabled: boolean;
   dataDir: string;
   dispatch: Dispatch<AppAction>;
   stateRef: { current: AppState };
-  pluginRegistry: PluginRegistry;
+  pluginRegistry: Pick<PluginRegistry, "events">;
   tickerRepository: TickerRowsPort;
+  /** How often the ticker rows are looked at; tests look sooner. */
+  lookEveryMs?: number;
 }): void {
   useEffect(() => {
     if (!enabled) return;
@@ -51,48 +58,69 @@ export function useExternalProfileChanges({
   useEffect(() => {
     const changesElsewhere = tickerRepository.changesElsewhere?.bind(tickerRepository);
     if (!enabled || !changesElsewhere) return;
-    let taken = changesElsewhere();
+    let stopped = false;
+    // The database's version and its rows as last read: a row gone from them since was deleted elsewhere.
+    let taken: number | null = null;
+    let stored: Set<string> | null = null;
     let reading = false;
     const look = async () => {
-      const version = changesElsewhere();
-      // The app's own writes still on their way would read as someone else's: wait for them.
-      if (version === null || version === taken || hasPendingTickerWrites(tickerRepository)) return;
       reading = true;
       try {
-        await takeStoredTickerRows(tickerRepository, stateRef, dispatch);
+        const version = await changesElsewhere();
+        // The app's own writes still on their way would read as someone else's: wait for them.
+        if (stopped || version === null || (stored && version === taken) || hasPendingTickerWrites(tickerRepository)) return;
+        const rows = await tickerRepository.loadAllTickers();
+        if (stopped) return;
+        if (stored) takeStoredTickerRows(rows, stored, tickerRepository, stateRef, dispatch);
+        stored = new Set(rows.map((row) => row.metadata.ticker));
         taken = version;
       } finally {
         reading = false;
       }
     };
-    const timer = setInterval(() => {
+    const lookNow = () => {
       if (!reading) look().catch(logFailure("app.external-profile-changes", "Reading ticker rows another program wrote failed"));
-    }, TICKER_ROWS_LOOK_MS);
+    };
+    lookNow();
+    const timer = setInterval(lookNow, lookEveryMs);
     (timer as { unref?: () => void }).unref?.();
-    return () => clearInterval(timer);
-  }, [dispatch, enabled, stateRef, tickerRepository]);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [dispatch, enabled, lookEveryMs, stateRef, tickerRepository]);
 }
 
 /**
- * Replaces the app's copy of each row the database holds differently. Rows
- * only the app holds stay, and so does one the app is saving: its save folds
- * the other program's change in.
+ * Replaces the app's copy of each row the database holds differently, and
+ * drops each row another program deleted since the last read (`before`), so
+ * no later save of the app's copy brings it back. Rows only the app holds
+ * stay, and so does one the app is saving: its save folds the other
+ * program's change in.
  */
-async function takeStoredTickerRows(
+function takeStoredTickerRows(
+  rows: readonly TickerRecord[],
+  before: ReadonlySet<string>,
   tickerRepository: AppTickerRepositoryPort,
   stateRef: { current: AppState },
   dispatch: Dispatch<AppAction>,
-): Promise<void> {
-  const rows = await tickerRepository.loadAllTickers();
+): void {
   const current = stateRef.current.tickers;
-  let next: Map<string, (typeof rows)[number]> | null = null;
+  let next: Map<string, TickerRecord> | null = null;
+  const present = new Set<string>();
   for (const row of rows) {
     const symbol = row.metadata.ticker;
+    present.add(symbol);
     if (hasPendingTickerWrite(tickerRepository, symbol)) continue;
     const held = current.get(symbol);
     if (held && serializeJson(held.metadata) === serializeJson(row.metadata)) continue;
     next ??= new Map(current);
     next.set(symbol, row);
+  }
+  for (const symbol of before) {
+    if (present.has(symbol) || !current.has(symbol) || hasPendingTickerWrite(tickerRepository, symbol)) continue;
+    next ??= new Map(current);
+    next.delete(symbol);
   }
   if (next) dispatch({ type: "SET_TICKERS", tickers: next });
 }

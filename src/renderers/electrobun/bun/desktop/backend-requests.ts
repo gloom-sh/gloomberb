@@ -67,6 +67,8 @@ export async function handleDesktopBackendRequest(
       return null;
     case "ticker.loadAll":
       return backend.requireServices().tickerRepository.loadAllTickers();
+    case "ticker.changesElsewhere":
+      return backend.requireServices().tickerRepository.changesElsewhere?.() ?? null;
     case "ticker.load":
       return backend.requireServices().tickerRepository.loadTicker(request.payload.symbol);
     case "ticker.save":

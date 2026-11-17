@@ -12,6 +12,21 @@ interface PendingTicker {
   metadata: string | null;
 }
 
+/**
+ * A row to save that was built on an earlier copy of it, so what it writes is
+ * only known once the write lands: `resolve` gets the row as stored at that
+ * moment (null when there is none) and returns what to write, or null to
+ * leave the row as it is. It can run more than once (a write the lock held up
+ * runs again), so it has no effects of its own; `landed` hears what was
+ * written, null for nothing. `preview` is what reads see while it waits.
+ */
+export interface ResolvedTickerRow {
+  symbol: string;
+  preview: unknown;
+  resolve: (stored: string | null) => unknown;
+  landed?: (written: string | null) => void;
+}
+
 export class TickerStore {
   /** Writes queued behind another program's lock, by symbol, read back until they land. */
   private readonly pending = new Map<string, PendingTicker>();
@@ -54,6 +69,11 @@ export class TickerStore {
     }
   }
 
+  /** Whether a write of `symbol` waits behind another program's lock: reads see it, the database does not yet. */
+  isQueued(symbol: string): boolean {
+    return this.pending.has(symbol);
+  }
+
   get(symbol: string): string | null {
     const pending = this.pending.get(symbol);
     if (pending) return pending.metadata;
@@ -87,6 +107,37 @@ export class TickerStore {
         this.db.transaction(() => {
           for (const row of rows) statement.run(row.symbol, row.metadata, now);
         })();
+      },
+    );
+  }
+
+  /**
+   * Saves rows whose content depends on the row stored when the write lands
+   * (`ResolvedTickerRow`): each is read, resolved and written in one
+   * immediate transaction, so another program's commit can never fall between
+   * the read and the write, whether the write lands now or later, behind
+   * another program's lock.
+   */
+  saveResolved(rows: readonly ResolvedTickerRow[]): void {
+    if (rows.length === 0) return;
+    this.write(
+      rows.length === 1 ? "save ticker" : "save tickers",
+      rows.map((row) => [row.symbol, { metadata: serializeJson(row.preview) }]),
+      () => {
+        const read = this.db.query<{ metadata: string }, [string]>("SELECT metadata FROM tickers WHERE symbol = ?");
+        const insert = this.db.query(
+          `INSERT OR REPLACE INTO tickers (symbol, metadata, updated_at)
+           VALUES (?, ?, ?)`,
+        );
+        const now = Date.now();
+        const written = this.db.transaction(() => rows.map((row) => {
+          const next = row.resolve(read.get(row.symbol)?.metadata ?? null);
+          if (next == null) return null;
+          const metadata = serializeJson(next);
+          insert.run(row.symbol, metadata, now);
+          return metadata;
+        })).immediate();
+        rows.forEach((row, index) => row.landed?.(written[index] ?? null));
       },
     );
   }

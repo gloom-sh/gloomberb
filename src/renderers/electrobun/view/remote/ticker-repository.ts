@@ -7,6 +7,11 @@ export class RemoteTickerRepository {
     return backendRequest("ticker.loadAll");
   }
 
+  /** Changes when another program (a `gloom` command, the terminal app) commits to the profile's database. */
+  changesElsewhere(): Promise<number | null> {
+    return backendRequest("ticker.changesElsewhere");
+  }
+
   async loadTicker(symbol: string): Promise<TickerRecord | null> {
     return backendRequest("ticker.load", { symbol });
   }

@@ -272,6 +272,8 @@ interface DesktopBackendRequestMap {
   /** Installs the staged update and relaunches. Sent only when the user presses Restart. */
   "update.apply": { request: null; response: null };
   "ticker.loadAll": { request: null; response: TickerRecord[] };
+  /** Changes when another program commits to the database (`TickerStore.changesElsewhere`). */
+  "ticker.changesElsewhere": { request: null; response: number | null };
   "ticker.load": { request: { symbol: string }; response: TickerRecord | null };
   "ticker.save": { request: { ticker: TickerRecord }; response: null };
   "ticker.delete": { request: { symbol: string }; response: null };
