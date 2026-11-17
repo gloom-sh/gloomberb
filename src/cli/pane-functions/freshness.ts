@@ -1371,6 +1371,19 @@ export function statusLineVariants(freshness: ReportFreshness, { source = false 
   return [...sourced, ...lines.filter((line) => line.length < floor)];
 }
 
+export function statusDateEvidence(freshness: ReportFreshness): string[][] {
+  if (!freshness.asOf) return [];
+  if (freshness.sources?.length) return [
+    sourcesAsOfParts(freshness, freshness.sources, false),
+    sourcesAsOfParts(freshness, freshness.sources, true),
+  ];
+  return [
+    [asOfText(freshness, true, false)],
+    [asOfText(freshness, true, false, true)],
+    [formatUtcTime(freshness.asOf)],
+  ];
+}
+
 /** A capture's status line: the facts it states (its `freshness` in JSON) and its text, longest first. */
 export interface CaptureStatusLine {
   freshness: ReportFreshness;

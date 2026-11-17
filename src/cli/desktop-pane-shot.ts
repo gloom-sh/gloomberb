@@ -238,8 +238,16 @@ export interface DesktopPaneShotRenderResult {
 interface ShotStatusLineVariants {
   variants: readonly string[];
   dates?: "data" | "quotes" | null;
+  dateEvidence?: readonly (readonly string[])[];
 }
 type ShotStatusLine = (rendered: DesktopPaneShotRenderResult) => ShotStatusLineVariants | null | Promise<ShotStatusLineVariants | null>;
+
+export function shotStatusDateClipped(line: ShotStatusLineVariants | null, statusText: string | null): boolean {
+  if (line?.dates == null || line.variants.includes(statusText ?? "")) return false;
+  const normalize = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+  const shown = normalize(statusText ?? "");
+  return !line.dateEvidence?.some((parts) => parts.length > 0 && parts.every((part) => shown.includes(normalize(part))));
+}
 
 const SHOT_MODE_CSS = [
   "[data-gloom-role='composite-chart-toolbar']",
@@ -678,7 +686,7 @@ async function capturePageScreenshot({
       await hideCutRows(session);
       rendered = await readRenderedPaneState(session);
       rendered.statusLine = statusText;
-      rendered.statusLineClipped = line?.dates != null && !line.variants.includes(statusText ?? "");
+      rendered.statusLineClipped = shotStatusDateClipped(line, statusText);
     }
     if (captureImage) {
       const screenshot = await session.send("Page.captureScreenshot", {

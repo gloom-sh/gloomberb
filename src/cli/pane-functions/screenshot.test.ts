@@ -16,7 +16,7 @@ import { commoditiesEnergyModule } from "../../plugins/builtin/commodities-energ
 import { realizedVolSemanticEvidence } from "../../plugins/builtin/realized-vol/evidence";
 import { coneChartSeries, realizedChartSeries } from "../../plugins/builtin/realized-vol/chart-model";
 import { collectShotSymbols } from "./data";
-import { paneStateMarkers, type DesktopPaneShotPayload, type DesktopPaneShotRenderResult } from "../desktop-pane-shot";
+import { paneStateMarkers, shotStatusDateClipped, type DesktopPaneShotPayload, type DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
@@ -57,7 +57,20 @@ import { debtMaturitiesModule } from "../../plugins/builtin/debt-maturities";
 import { debtMaturitiesHeadless } from "../../plugins/builtin/debt-maturities/headless";
 import { traceBondsModule } from "../../plugins/builtin/trace-bonds";
 import { traceBondsHeadless } from "../../plugins/builtin/trace-bonds/headless";
-import { deriveCaptureReport, formatFreshnessLine } from "./freshness";
+import { deriveCaptureReport, formatFreshnessLine, statusDateEvidence, statusLineVariants } from "./freshness";
+
+test("fitting may shorten status context, but not the as-of date or any source clock", () => {
+  const freshness = { source: "Gloom Cloud", status: "not-a-feed" as const, asOf: "2026-10-30", retrievedAt: "2026-11-17T06:00:00Z" };
+  const dated = { dates: "data" as const, variants: statusLineVariants(freshness), dateEvidence: statusDateEvidence(freshness) };
+  expect(shotStatusDateClipped(dated, "Fri 30 Oct 2026 · not a … settlement)")).toBe(false);
+  expect(shotStatusDateClipped(dated, "Fri 30 Oct … settlement)")).toBe(true);
+  const sources = { ...freshness, asOf: "2026-11-17T06:00:00Z", sources: [
+    { source: "Venue A", asOf: "2026-11-17T06:00:00Z" }, { source: "Venue B", asOf: "2026-11-17T05:45:00Z" },
+  ] };
+  const timed = { ...dated, variants: statusLineVariants(sources), dateEvidence: statusDateEvidence(sources) };
+  expect(shotStatusDateClipped(timed, "Tue 17 Nov 2026 · Venue A 06:00 · Venue B 05:45 UTC · …")).toBe(false);
+  expect(shotStatusDateClipped(timed, "Tue 17 Nov 2026 · Venue A … Venue B 05:45 UTC")).toBe(true);
+});
 import { futuresCurveHeadless } from "../../plugins/builtin/futures-curve/headless";
 import { curveFreshnessObservations, curveReportFreshness } from "../../plugins/builtin/futures-curve/model";
 import type { FuturesContract } from "../../api-client/futures-curve";
