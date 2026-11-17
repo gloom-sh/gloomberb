@@ -70,6 +70,13 @@ describe("the question in the app", () => {
     await tui.waitForFrameToContain(TITLE);
     await press(...Array.from({ length: 9 }, () => "down"), "enter");
     await tui.waitForFrameToContain("Send");
+    // Esc in the note goes back to the list, it does not skip.
+    await press("escape");
+    await tui.waitForFrameToContain("Skip");
+    expect(tui.frame()).toContain(TITLE);
+    expect(calls).toEqual(["shown"]);
+    await press("enter");
+    await tui.waitForFrameToContain("Send");
     await press("a podcast", "enter");
     await tui.waitForFrameToExclude(TITLE);
     expect(calls).toEqual(["shown", "other: a podcast"]);

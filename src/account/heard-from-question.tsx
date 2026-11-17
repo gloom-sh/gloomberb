@@ -52,8 +52,8 @@ function choiceLabel(answer: HeardFromAnswer): string {
  * "Where did you hear about Gloom?" on the card the app's other one-question
  * steps use. One row is one answer: a click, or Enter on the highlighted
  * row. Other opens a short note under the list, sent with Enter (empty is
- * fine). Esc, or Skip, skips; from the note, Esc goes back to the list. The
- * card holds the keyboard while it is up, as setup does.
+ * fine). Esc, or Skip, skips; from the note, Esc (Back) goes back to the
+ * list. The card holds the keyboard while it is up, as setup does.
  */
 function HeardFromCard({ onShown, onDone }: {
   onShown: () => void;
@@ -160,7 +160,13 @@ function HeardFromCard({ onShown, onDone }: {
       ) : null}
       {desktop ? null : <Box height={1} />}
       <OnboardingActions>
-        <OnboardingButton label="Skip" variant="ghost" shortcut="Esc" onPress={() => done(null)} />
+        {/* From the note, Esc goes back to the list; from the list, it skips. */}
+        <OnboardingButton
+          label={noteOpen ? "Back" : "Skip"}
+          variant="ghost"
+          shortcut="Esc"
+          onPress={() => (noteOpen ? setNoteOpen(false) : done(null))}
+        />
         <OnboardingButton
           label={noteOpen ? "Send" : "Continue"}
           variant="primary"
