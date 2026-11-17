@@ -2,7 +2,7 @@ import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import type { MnaDeal } from "../../../api-client/mna";
 import type { Quote } from "../../../types/financials";
-import { dealSpread, dealsSymbol, electionLeg, expectedCloseDate, formatDealValue, formatPercentShort, inQuoteCurrency, offerSeries, stageLabel, termsLabel } from "./model";
+import { dealSpread, dealsSymbol, electionLeg, expectedCloseDate, formatDealValue, formatPercentShort, inQuoteCurrency, legsApart, offerSeries, spreadBasisLabel, stageLabel, termsLabel } from "./model";
 
 const NOW = Date.parse("2026-09-27T12:00:00Z");
 
@@ -176,3 +176,56 @@ test("deals are asked for by the symbol they are filed under: the quote symbol a
   expect(dealsSymbol(null)).toBe("");
   expect(dealsSymbol("  ")).toBe("");
 });
+
+/**
+ * SHLS for 1.6931 ARRY, read at 12:14 UTC on Tuesday 17 November 2026, New
+ * York's pre-market: SHLS last traded at 04:24 New York that morning, ARRY at
+ * 19:47 the evening before. Their two prints gave +0.39%; Monday's closes,
+ * 8.02 and 4.67, give -1.41%.
+ */
+const SHLS_ARRY = {
+  now: Date.parse("2026-11-17T12:14:00Z"),
+  deal: deal(
+    { target: { name: "Shoals Technologies Group, Inc.", symbol: "SHLS", country: "US" }, acquirer: { name: "ARRAY Technologies", symbol: "ARRY", country: "US" }, expectedClose: null },
+    { consideration: "stock", cashPerShare: null, exchangeRatio: 1.6931, ratioSymbol: "ARRY", currency: null },
+  ),
+  quote: (symbol: string, price: number, at: string, close: number, overrides: Partial<Quote> = {}) => ({
+    symbol, price, currency: "USD", exchangeName: "NASDAQ", marketState: "PRE", lastTradeTime: Date.parse(at), lastUpdated: Date.parse(at),
+    regularClose: close, regularCloseSessionDate: "2026-11-16", ...overrides,
+  } as Quote),
+};
+
+// The spread was the latest prints, 8.6 hours apart, with nothing saying so.
+test("out of the regular session a spread is the legs' matched closes, with the latest prints and how far apart beside it", () => {
+  const { now, deal: shls, quote: q } = SHLS_ARRY;
+  const spread = dealSpread(shls, q("SHLS", 7.91, "2026-11-17T09:24:49Z", 8.02), q("ARRY", 4.69, "2026-11-17T00:47:51Z", 4.67), now)!;
+  expect(spread.basis).toEqual({ kind: "close", session: "2026-11-16" });
+  expect(spread.spread).toBeCloseTo(-0.014118, 5);
+  expect(spread.offer).toBeCloseTo(7.9068, 4);
+  const clock = (at: number) => new Date(at).toISOString().slice(11, 16);
+  expect(spreadBasisLabel(spread.basis, clock, now)).toBe("Mon close");
+  expect(formatPercentShort(spread.latest!.spread)).toBe("0.39%");
+  expect(spread.latest!.basis).toMatchObject({ apartMs: Date.parse("2026-11-17T09:24:49Z") - Date.parse("2026-11-17T00:47:51Z"), session: "after-hours" });
+  expect(spreadBasisLabel(spread.latest!.basis, clock, now)).toBe("8h apart");
+  expect(spread.legs.map((entry) => [entry.symbol, entry.price, entry.session])).toEqual([["SHLS", 7.91, "pre-market"], ["ARRY", 4.69, "after-hours"]]);
+
+  // Closes of two sessions are not one moment's either: the latest prints stand, flagged.
+  const unmatched = dealSpread(shls, q("SHLS", 7.91, "2026-11-17T09:24:49Z", 8.02), q("ARRY", 4.69, "2026-11-17T00:47:51Z", 4.6, { regularCloseSessionDate: "2026-11-13" }), now)!;
+  expect(unmatched.basis.kind).toBe("last");
+  expect(legsApart(unmatched.basis)).toBe(true);
+  expect(unmatched.latest).toBeNull();
+});
+
+test("in the regular session a spread is the last trades, timed by the older one, flagged once they are half an hour apart", () => {
+  const { deal: shls, quote: q } = SHLS_ARRY;
+  const now = Date.parse("2026-11-17T15:43:00Z");
+  const open = { marketState: "REGULAR" as const, regularClose: undefined, regularCloseSessionDate: undefined };
+  const clock = (at: number) => new Date(at).toISOString().slice(11, 16);
+  const together = dealSpread(shls, q("SHLS", 7.95, "2026-11-17T15:42:30Z", 8.02, open), q("ARRY", 4.70, "2026-11-17T15:42:10Z", 4.67, open), now)!;
+  expect(together.basis).toMatchObject({ kind: "last", at: Date.parse("2026-11-17T15:42:10Z"), apartMs: 20_000, session: "regular" });
+  expect(spreadBasisLabel(together.basis, clock, now)).toBe("15:42");
+  expect(together.latest).toBeNull();
+  const stale = dealSpread(shls, q("SHLS", 7.95, "2026-11-17T15:42:30Z", 8.02, open), q("ARRY", 4.70, "2026-11-17T14:40:00Z", 4.67, open), now)!;
+  expect(spreadBasisLabel(stale.basis, clock, now)).toBe("1h apart");
+});
+

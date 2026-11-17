@@ -1,11 +1,43 @@
-import type { MnaDealsParams, MnaRegionFilter, MnaStatusFilter, MnaTargetFilter } from "../../../api-client/mna";
-import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
+import type { MnaDeal, MnaDealsParams, MnaOutsideDate, MnaRegionFilter, MnaStatusFilter, MnaTargetFilter } from "../../../api-client/mna";
+import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/plugin";
+import type { Quote } from "../../../types/financials";
 import { fetchMnaDeals } from "./client";
 import { companyDataNotes } from "../../../types/company-from";
-import { dealsSymbol, formatDealValue, formatExpectedClose, stageLabel, termsLabel } from "./model";
+import {
+  apartText,
+  closeBasisLabel,
+  dealSpread,
+  dealsSymbol,
+  formatDealValue,
+  formatExpectedClose,
+  formatPercentShort,
+  legsApart,
+  outsideDateParts,
+  printWhen,
+  stageLabel,
+  termsLabel,
+  type DealSpread,
+  type SpreadBasis,
+} from "./model";
 import { REPORT_ROWS } from "../shared/headless-options";
+import { formatUtcTime } from "../../../utils/utc-time";
+import { MISSING_VALUE } from "../../../utils/format";
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
+
+const percent = (value: unknown) => (typeof value === "number" ? formatPercentShort(value) : MISSING_VALUE);
+
+/**
+ * What a spread's prices are, as the report says it: a session's closes
+ * dated in full (`Mon 16 Nov close`), or the older trade's time in UTC after
+ * its session when that is not the regular one, or how far apart two trades
+ * are too far apart to be one moment's (`trades 8h apart`).
+ */
+export function reportBasisText(basis: SpreadBasis): string {
+  if (basis.kind === "close") return closeBasisLabel(basis.session, Date.now(), { dated: true });
+  if (legsApart(basis)) return `trades ${apartText(basis.apartMs!)} apart`;
+  return basis.at == null ? MISSING_VALUE : printWhen(basis.at, basis.session, formatUtcTime);
+}
 
 const COLUMNS: HeadlessPaneColumn[] = [
   { key: "announced", header: "Announced" },
@@ -14,10 +46,53 @@ const COLUMNS: HeadlessPaneColumn[] = [
   { key: "acquirer", header: "Acquirer" },
   { key: "terms", header: "Terms" },
   { key: "value", header: "Value", align: "right" },
+  // A pending listed deal's spread, at the prices `spreadAsOf` names; the latest trades' beside a close.
+  { key: "spread", header: "Spread", align: "right", format: percent },
+  { key: "spreadAsOf", header: "As of" },
+  { key: "latestSpread", header: "Latest", align: "right", format: (value, row) => typeof value === "number" ? `${percent(value)} (${text(row.latestAsOf)})` : MISSING_VALUE },
   { key: "stage", header: "Stage" },
   { key: "expectedClose", header: "Close", format: (value) => formatExpectedClose(text(value) || null) },
+  // The agreement's deadline as a filing states it, with the later one it moves to.
+  { key: "outsideDate", header: "Outside", format: (value) => {
+    if (!value || typeof value !== "object") return MISSING_VALUE;
+    const outside = outsideDateParts(value as MnaOutsideDate);
+    return outside.extension ? `${outside.date}, ${outside.extension}` : outside.date;
+  } },
   { key: "closed", header: "Closed" },
 ];
+
+/** The quotes of the listings pending deals' spreads are priced at, by symbol; none when the batch fails or is not offered. */
+async function legQuotes(deals: readonly MnaDeal[], ctx: HeadlessPaneContext): Promise<Map<string, Quote>> {
+  const symbols = new Set<string>();
+  for (const deal of deals) {
+    if (deal.status !== "pending" || !deal.target.symbol) continue;
+    symbols.add(deal.target.symbol);
+    if (deal.terms.exchangeRatio != null && deal.terms.ratioSymbol) symbols.add(deal.terms.ratioSymbol);
+  }
+  const provider = ctx.marketData;
+  if (!provider?.getQuotesBatch || symbols.size === 0) return new Map();
+  try {
+    const results = await provider.getQuotesBatch([...symbols].map((symbol) => ({ symbol, exchange: "" })), { forceRefresh: ctx.refresh, signal: ctx.signal });
+    return new Map(results.flatMap((result) => result.quote ? [[result.target.symbol, result.quote] as const] : []));
+  } catch {
+    // Intentional ignore: the deals still list without spreads when the quotes do not come.
+    return new Map();
+  }
+}
+
+/** A row's spread fields: the spread and its basis, the latest trades' beside a close, and each leg's print. */
+function spreadFields(spread: DealSpread | null): Record<string, unknown> {
+  if (!spread) return { spread: null, spreadAsOf: null, latestSpread: null, latestAsOf: null, legs: [] };
+  return {
+    spread: spread.spread,
+    spreadAsOf: reportBasisText(spread.basis),
+    spreadBasis: spread.basis,
+    offerValue: spread.offer,
+    latestSpread: spread.latest?.spread ?? null,
+    latestAsOf: spread.latest ? reportBasisText(spread.latest.basis) : null,
+    legs: spread.legs.map((entry) => ({ symbol: entry.symbol, price: entry.price, at: entry.at == null ? null : new Date(entry.at).toISOString(), session: entry.session })),
+  };
+}
 
 /**
  * What a company's empty deal list says: the pane's "No deals involving X.",
@@ -43,7 +118,7 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
     dataRequirements: ["Gloom Cloud M&A deals read from news stories, press releases and SEC filings"],
     limitations: [
       "Free accounts see deals 7 days after they were first reported.",
-      "Spreads need live quotes and are drawn by the pane, not listed here.",
+      "A spread is at the legs' closes of one session while a venue is out of its regular session, at their last trades in it; As of says which, and Latest gives the trades since a close.",
       "A private or non-US deal completes only when a story reports it.",
     ],
   },
@@ -79,6 +154,9 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
       limit: Number(args.options.limit ?? 50),
     };
     const payload = await fetchMnaDeals(params, ctx.apiClient);
+    const quotes = await legQuotes(payload.deals, ctx);
+    const spreadOf = (deal: MnaDeal) => quotes.size === 0 || !deal.target.symbol ? null
+      : dealSpread(deal, quotes.get(deal.target.symbol) ?? null, deal.terms.ratioSymbol ? quotes.get(deal.terms.ratioSymbol) ?? null : null);
     // No deal involving a company is the list's answer for it, as the pane says, never a company MA does not cover.
     const none = payload.deals.length === 0 && symbol
       ? { empty: emptyDealsText(filed || symbol, params), unavailableSymbols: [] }
@@ -105,8 +183,10 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
         value: formatDealValue(deal.value, deal.valueCurrency),
         valueUsd: deal.valueUsd,
         expectedClose: deal.expectedClose,
+        outsideDate: deal.outsideDate ?? null,
         closed: deal.closed,
         headline: deal.headline,
+        ...spreadFields(spreadOf(deal)),
       })),
       errors: payload.lockedDeals > 0 ? [`${payload.lockedDeals} deals from the last ${payload.delayDays} days need Gloom Pro`] : [],
       ...(payload.companyFrom ? { notes: companyDataNotes(payload.companyFrom) } : {}),

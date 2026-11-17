@@ -67,7 +67,7 @@ afterEach(() => {
 /** The ticker the pane is linked to: its key, and the venue the saved ticker names. */
 interface Listing { key: string; exchange: string }
 
-async function mount(width = 130, height = 10, listing?: Listing, as: "pane" | "tab" = "pane") {
+async function mount(width = 130, height = 10, listing?: Listing, as: "pane" | "tab" = "pane", quote?: (symbol: string) => Quote) {
   mnaDealsCache.attach(new MemoryPluginPersistence());
   mnaDealCache.attach(new MemoryPluginPersistence());
   const paneId = "mna:test";
@@ -78,7 +78,7 @@ async function mount(width = 130, height = 10, listing?: Listing, as: "pane" | "
   }));
   if (listing) state.tickers.set(listing.key, createTestTicker(listing.key, listing.key, { exchange: listing.exchange }));
   const provider = createTestDataProvider({
-    getQuote: async (symbol) => ({ symbol, price: 10.46, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now() } as Quote),
+    getQuote: async (symbol) => quote?.(symbol) ?? ({ symbol, price: 10.46, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now() } as Quote),
   });
   const runtime = createTestPluginRuntime({ getMarketData: () => provider as never });
   function Harness() {
@@ -130,12 +130,14 @@ test("a delayed list shows locked rows for the newest deals, terms, private targ
   expect(frame).toContain("[$]upgrade");
 });
 
-test("Enter opens a deal's timeline under its two names", async () => {
+// The detail read "Spread 0.39%" from two trades 8.6 hours apart, beside a chart of Monday's closes, with nothing dating either.
+test("Enter opens a deal's timeline under its two names, its spread at the session's close with the latest trade beside it", async () => {
+  const outsideDate = { date: "2027-05-04", extendedTo: "2027-11-04", extension: "if only antitrust approvals remain", source: { form: "8-K", filed: "2026-11-04", url: "https://www.sec.gov/b" } };
   setCloudApiFetchTransport(async (input) => {
     const url = String(input);
     if (url.includes("/cloud/mna/deals/acv")) {
       return Response.json({
-        deal: delayed.deals[0],
+        deal: { ...delayed.deals[0], outsideDate },
         access: "full",
         events: [
           { id: "2", date: "2026-09-17", kind: "tender", title: "Tender offer launched", source: "SC TO-T", url: "https://www.sec.gov/a" },
@@ -145,7 +147,14 @@ test("Enter opens a deal's timeline under its two names", async () => {
     }
     return Response.json({ ...delayed, access: "full", delayDays: 0, lockedDeals: 0 });
   });
-  await mount(130, 16);
+  // New York's pre-market: a trade this morning, and the close of the session before.
+  const session = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const premarket = (symbol: string) => ({
+    symbol, price: 10.4, currency: "USD", change: 0, changePercent: 0, exchangeName: "NASDAQ", marketState: "PRE",
+    lastUpdated: Date.parse("2026-11-17T09:24:49Z"), lastTradeTime: Date.parse("2026-11-17T09:24:49Z"),
+    regularClose: 10.46, regularCloseSessionDate: session,
+  } as Quote);
+  await mount(130, 20, undefined, "pane", premarket);
   await act(async () => tui.setup().mockInput.pressEnter());
   for (let i = 0; i < 6; i++) await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -153,6 +162,11 @@ test("Enter opens a deal's timeline under its two names", async () => {
   });
   const frame = tui.frame();
   expect(frame).toContain("ACV Auctions Inc. ← Copart, Inc.");
+  // 10.50 against the 10.46 close, said to be the close; the trade since it beside it, and the leg's own print.
+  expect(frame).toMatch(/Spread +0\.38% +(\$0\.04 · )?\w{3} close/);
+  expect(frame).toMatch(/Latest +0\.96% +pre-market \d\d:\d\d/);
+  expect(frame).toMatch(/ACVA +10\.40 +pre-market \d\d:\d\d/);
+  expect(frame).toMatch(/Outside +4 May 2027 +to 4 Nov 2027 if only antitrust approvals remain · 8-K 4 Nov 2026/);
   expect(frame).toContain("Tender offer launched");
   expect(frame).toContain("SC TO-T");
   expect(frame).toContain("[o]pen source");

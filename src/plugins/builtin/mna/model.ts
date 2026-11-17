@@ -1,7 +1,9 @@
-import type { MnaDeal, MnaStatus, MnaTerms } from "../../../api-client/mna";
+import type { MnaDeal, MnaOutsideDate, MnaStatus, MnaTerms } from "../../../api-client/mna";
 import type { Quote } from "../../../types/financials";
 import { getListingSymbol } from "../../../sources/listing-symbols";
-import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { isRegularSessionTime, latestRegularSessionClose } from "../../../market-data/market/freshness";
+import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
+import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { nonUsSecListingVenue } from "../../../utils/sec";
 
@@ -114,8 +116,7 @@ function cashLeg(terms: MnaTerms, targetQuote: Quote | null): number | null {
   return terms.cashPerShare == null ? null : inQuoteCurrency(terms.cashPerShare, terms.currency, targetQuote?.currency);
 }
 
-function stockLeg(terms: MnaTerms, targetQuote: Quote | null, ratioQuote: Quote | null): number | null {
-  const price = ratioQuote?.price;
+function stockLeg(terms: MnaTerms, targetQuote: Quote | null, ratioQuote: Quote | null, price = ratioQuote?.price): number | null {
   if (terms.exchangeRatio == null || !terms.ratioSymbol || price == null || !Number.isFinite(price) || price <= 0) return null;
   const leg = inQuoteCurrency(price, ratioQuote?.currency ?? null, targetQuote?.currency);
   return leg == null ? null : terms.exchangeRatio * leg;
@@ -138,20 +139,27 @@ export function electionLeg(terms: MnaTerms, targetQuote: Quote | null): "cash" 
  * without its listing, or cash in another currency. An election is one leg,
  * the one {@link electionLeg} picks.
  */
-function offerValue(deal: MnaDeal, targetQuote: Quote | null, ratioQuote: Quote | null): number | null {
+function offerValue(deal: MnaDeal, targetQuote: Quote | null, ratioQuote: Quote | null, ratioPrice = ratioQuote?.price): number | null {
   const { terms } = deal;
   if (terms.cashPerShare == null && terms.exchangeRatio == null) return null;
   let total: number | null;
   if (isElection(terms)) {
     total = electionLeg(terms, targetQuote) === "cash"
       ? cashLeg(terms, targetQuote)
-      : stockLeg(terms, targetQuote, ratioQuote);
+      : stockLeg(terms, targetQuote, ratioQuote, ratioPrice);
   } else {
     const cash = terms.cashPerShare == null ? 0 : cashLeg(terms, targetQuote);
-    const stock = terms.exchangeRatio == null ? 0 : stockLeg(terms, targetQuote, ratioQuote);
+    const stock = terms.exchangeRatio == null ? 0 : stockLeg(terms, targetQuote, ratioQuote, ratioPrice);
     total = cash == null || stock == null ? null : cash + stock;
   }
   return total != null && total > 0 ? total : null;
+}
+
+/** Whether the offer moves with the paying listing's price: a share leg it is priced at. */
+function pricedByRatio(deal: MnaDeal, targetQuote: Quote | null): boolean {
+  const { terms } = deal;
+  if (terms.exchangeRatio == null || !terms.ratioSymbol) return false;
+  return !isElection(terms) || electionLeg(terms, targetQuote) === "stock";
 }
 
 /**
@@ -187,6 +195,34 @@ export function offerSeries(
   return out;
 }
 
+/** Legs whose prints are further apart than this are not one moment's prices: the row flags them. */
+export const LEGS_APART_MS = 30 * 60_000;
+
+/** The session a print was made in, as its venue's hours place it. */
+export type PrintSession = "regular" | "pre-market" | "after-hours" | "overnight";
+
+/** One leg's latest print: the target's, or the listing a ratio pays in. */
+export interface SpreadLeg {
+  symbol: string;
+  /** In the leg's own quote currency. */
+  price: number;
+  /** When it traded (epoch ms); null when the quote does not say. */
+  at: number | null;
+  session: PrintSession | null;
+}
+
+/**
+ * What a spread's two prices are. `close`: each leg's official close of one
+ * regular session (`session`, the venues' local date), which is how it is
+ * priced whenever a leg's venue is out of its regular session. `last`: the
+ * legs' last trades, in the regular session or when no matching closes are
+ * known; `at` is the older trade's time, `apartMs` how far apart the two
+ * trades are (null without both times; 0 for one leg).
+ */
+export type SpreadBasis =
+  | { kind: "close"; session: string }
+  | { kind: "last"; at: number | null; apartMs: number | null; session: PrintSession | null };
+
 export interface DealSpread {
   offer: number;
   price: number;
@@ -194,6 +230,66 @@ export interface DealSpread {
   spread: number;
   /** Simple annualized spread to the expected close; null past it or without a date. */
   annualized: number | null;
+  /** Which prices the offer and the spread are at. */
+  basis: SpreadBasis;
+  /**
+   * The spread at the legs' latest prints, beside a close basis whose legs
+   * have traded since that close (pre-market, after hours): its own basis
+   * says when they traded and how far apart. Null otherwise.
+   */
+  latest: { offer: number; price: number; spread: number; basis: Extract<SpreadBasis, { kind: "last" }> } | null;
+  /** Each leg's latest print, the target first. */
+  legs: SpreadLeg[];
+}
+
+/** When a quote's price traded: its last trade, else its last update. */
+function printTime(quote: Quote): number | null {
+  const at = quote.lastTradeTime ?? quote.lastUpdated;
+  return typeof at === "number" && Number.isFinite(at) && at > 0 ? at : null;
+}
+
+/**
+ * The session `at` falls in on the quote's venue: its regular hours, else
+ * after its close that day (after hours; overnight from 20:00 New York for a
+ * US listing), or before the next open (pre-market; overnight before 04:00
+ * New York). Null for a venue with unknown hours.
+ */
+export function printSession(quote: Pick<Quote, "listingExchangeName" | "exchangeName">, at: number): PrintSession | null {
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  const regular = isRegularSessionTime(exchange, at);
+  if (regular === null) return null;
+  if (regular) return "regular";
+  const close = latestRegularSessionClose(exchange, at);
+  if (!close) return null;
+  const local = zonedDateTimeParts(at, close.timeZone);
+  const date = `${local.year}-${String(local.month).padStart(2, "0")}-${String(local.day).padStart(2, "0")}`;
+  const minutes = local.hour * 60 + local.minute;
+  const us = isUsListingExchange(canonicalExchange(exchange));
+  if (us && (minutes >= 20 * 60 || minutes < 4 * 60)) return "overnight";
+  return date === close.date ? "after-hours" : "pre-market";
+}
+
+function leg(quote: Quote): SpreadLeg | null {
+  const price = quote.price;
+  if (price == null || !Number.isFinite(price) || price <= 0) return null;
+  const at = printTime(quote);
+  return { symbol: quote.symbol, price, at, session: at == null ? null : printSession(quote, at) };
+}
+
+/** The last-trade basis of these legs: the older trade, and how far apart the two are. */
+function lastBasis(legs: readonly SpreadLeg[]): Extract<SpreadBasis, { kind: "last" }> {
+  const times = legs.map((entry) => entry.at);
+  if (times.some((at) => at == null)) return { kind: "last", at: null, apartMs: null, session: null };
+  const known = times as number[];
+  const at = Math.min(...known);
+  return { kind: "last", at, apartMs: Math.max(...known) - at, session: legs[known.indexOf(at)]!.session };
+}
+
+/** The close a quote reports of a completed regular session, with that session's date. */
+function sessionClose(quote: Quote): { price: number; session: string } | null {
+  const price = quote.regularClose;
+  const session = quote.regularCloseSessionDate;
+  return price != null && Number.isFinite(price) && price > 0 && session ? { price, session } : null;
 }
 
 /** Last day of a "Q1 2027", "H2 2026" or "2026" close; a full date passes through. */
@@ -241,18 +337,91 @@ export function dealSpread(
   ratioQuote: Quote | null,
   now = Date.now(),
 ): DealSpread | null {
-  if (deal.status !== "pending" || !deal.target.symbol) return null;
-  const price = targetQuote?.price;
-  if (price == null || !Number.isFinite(price) || price <= 0) return null;
-  const offer = offerValue(deal, targetQuote, ratioQuote);
-  if (offer == null) return null;
-  const spread = offer / price - 1;
+  if (deal.status !== "pending" || !deal.target.symbol || !targetQuote) return null;
+  const target = leg(targetQuote);
+  if (!target) return null;
+  const ratio = pricedByRatio(deal, targetQuote) ? (ratioQuote ? leg(ratioQuote) : null) : null;
+  const latestOffer = offerValue(deal, targetQuote, ratioQuote);
+  if (latestOffer == null) return null;
+  const legs = ratio ? [target, ratio] : [target];
+  const quotes = ratio ? [targetQuote, ratioQuote!] : [targetQuote];
+  const latest = { offer: latestOffer, price: target.price, spread: latestOffer / target.price - 1, basis: lastBasis(legs) };
+
+  // Out of the regular session, the legs' closes of one session: the latest
+  // prints of a pre-market or an evening are hours apart and thinly traded.
+  const outOfSession = quotes.some((quote) => quote.marketState != null && quote.marketState !== "REGULAR");
+  const closes = quotes.map(sessionClose);
+  const matched = outOfSession && closes.every((close) => close && close.session === closes[0]!.session);
+  let priced: Pick<DealSpread, "offer" | "price" | "spread" | "basis" | "latest">;
+  if (matched) {
+    const offer = offerValue(deal, targetQuote, ratioQuote, ratio ? closes[1]!.price : undefined);
+    if (offer == null) return null;
+    const price = closes[0]!.price;
+    // The latest prints are worth showing beside the close once a leg has traded since it.
+    const traded = legs.some((entry, index) => entry.price !== closes[index]!.price);
+    priced = { offer, price, spread: offer / price - 1, basis: { kind: "close", session: closes[0]!.session }, latest: traded ? latest : null };
+  } else {
+    priced = { ...latest, latest: null };
+  }
   const close = expectedCloseDate(deal.expectedClose);
   const days = close ? (close.getTime() - now) / MS_PER_DAY : null;
-  const annualized = !deal.terms.partial && spread > 0 && days != null && days >= 1
-    ? spread * 365 / days
+  const annualized = !deal.terms.partial && priced.spread > 0 && days != null && days >= 1
+    ? priced.spread * 365 / days
     : null;
-  return { offer, price, spread, annualized };
+  return { ...priced, annualized, legs };
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** `Mon close` within the week, `6 Nov close` before it; `Mon 16 Nov close` dated in full. */
+export function closeBasisLabel(session: string, now = Date.now(), { dated = false }: { dated?: boolean } = {}): string {
+  const day = new Date(`${session}T00:00:00Z`);
+  if (!Number.isFinite(day.getTime())) return "close";
+  const weekday = WEEKDAYS[day.getUTCDay()]!;
+  const date = `${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]}`;
+  if (dated) return `${weekday} ${date} close`;
+  return (now - day.getTime()) / MS_PER_DAY < 6 ? `${weekday} close` : `${date} close`;
+}
+
+/** How far apart two prints are, in the larger unit that says it: `45m`, `8h`, `3d`. */
+export function apartText(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 48 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+}
+
+/** Whether a basis is two trades far enough apart that the spread is no one moment's. */
+export function legsApart(basis: SpreadBasis): boolean {
+  return basis.kind === "last" && basis.apartMs != null && basis.apartMs > LEGS_APART_MS;
+}
+
+/** A print's session when it is not the regular one (`pre-market`, `after-hours`, `overnight`); empty for the regular session. */
+export function extendedSessionWord(session: PrintSession | null): string {
+  return session && session !== "regular" ? session : "";
+}
+
+/** A print's time, after its session when that is not the regular one: `pre-market 04:24`, `15:42`. */
+export function printWhen(at: number, session: PrintSession | null, clock: (at: number) => string): string {
+  const word = extendedSessionWord(session);
+  return word ? `${word} ${clock(at)}` : clock(at);
+}
+
+/**
+ * The basis as the detail's figures say it: `Mon close`; the older trade's
+ * time (`clock`), after its session when that is not the regular one
+ * (`pre-market 04:24`); `8h apart` for trades too far apart to be one
+ * moment's. With `timed: false`, as the narrow AS OF cell says it, a trade
+ * outside the regular session is its session alone (`pre-market`): the
+ * detail times it. MISSING when the trades are not timed.
+ */
+export function spreadBasisLabel(basis: SpreadBasis, clock: (at: number) => string, now = Date.now(), { timed = true }: { timed?: boolean } = {}): string {
+  if (basis.kind === "close") return closeBasisLabel(basis.session, now);
+  if (legsApart(basis)) return `${apartText(basis.apartMs!)} apart`;
+  if (basis.at == null) return MISSING;
+  const word = extendedSessionWord(basis.session);
+  return word && !timed ? word : printWhen(basis.at, basis.session, clock);
 }
 
 /** Target name for a table cell: the symbol when listed, else the name. */
@@ -267,6 +436,25 @@ export function formatListDate(value: string, now = new Date()): string {
   if (!Number.isFinite(date.getTime())) return MISSING;
   const month = date.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
   return date.getUTCFullYear() === now.getUTCFullYear() ? `${date.getUTCDate()} ${month}` : `${month} ${date.getUTCFullYear()}`;
+}
+
+/** `4 May 2027`: a deadline's whole day, its year always, since it is usually next year's. */
+export function formatDeadline(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return value;
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
+/**
+ * An outside date in its parts: the date (`4 May 2027`), the later one it
+ * moves to and on what (`to 4 Nov 2027 if only antitrust approvals remain`),
+ * and the filing it is read from (`8-K 4 Nov 2026`).
+ */
+export function outsideDateParts(outside: MnaOutsideDate): { date: string; extension: string | null; source: string } {
+  const extension = outside.extendedTo
+    ? `to ${formatDeadline(outside.extendedTo)}${outside.extension ? ` ${outside.extension}` : ""}`
+    : null;
+  return { date: formatDeadline(outside.date), extension, source: `${outside.source.form} ${formatDeadline(outside.source.filed)}` };
 }
 
 /** 0.0038 is "0.38%", -0.049 is "-4.9%": tight arb spreads keep two decimals. */
