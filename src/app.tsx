@@ -79,6 +79,8 @@ import { reportTelemetryConfig } from "./telemetry/live-config";
 import { AttentionCountsNotice } from "./app/attention-notice";
 import { useSinceLastVisit } from "./app/since-last-visit/use-since-last-visit";
 import { SinceLastVisitStrip } from "./app/since-last-visit/strip";
+import { useProWelcome } from "./app/pro-welcome/use-pro-welcome";
+import { ProWelcomeRow } from "./app/pro-welcome/row";
 import { recordFunctionOpen } from "./telemetry/usage-counts";
 import { logFailure } from "./utils/log-failure";
 
@@ -498,6 +500,15 @@ function AppInner({
     notify: notifyRequest,
   });
   const showSinceLastVisit = !!sinceLastVisit.recap && state.config.presentationMode !== true;
+  // A new Pro payer's first two weeks: Pro functions they have not opened, on
+  // their own tickers. Its own row under the strip, never part of it.
+  const proWelcome = useProWelcome({
+    active: !appWideWorkElsewhere && !onboardingActive && !signInGateActive,
+    pluginState: pluginRegistry.persistence.pluginState,
+    pluginRegistry,
+    pluginsReady,
+  });
+  const showProWelcome = !!proWelcome.chips && state.config.presentationMode !== true;
 
   const chrome = useAppChromeShown();
   const keybindingHost = useUiHost().kind === "opentui" ? "terminal" : "desktop";
@@ -561,6 +572,7 @@ function AppInner({
             />
           )}
           {showSinceLastVisit ? <SinceLastVisitStrip strip={sinceLastVisit} /> : null}
+          {showProWelcome ? <ProWelcomeRow welcome={proWelcome} /> : null}
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}
@@ -569,7 +581,7 @@ function AppInner({
               desktopWindowBridge={desktopWindowBridge}
               desktopDockPreview={desktopDockPreview}
               commandBarNativeOccluder={commandBarNativeOccluder}
-              topBandRows={showSinceLastVisit ? 1 : 0}
+              topBandRows={(showSinceLastVisit ? 1 : 0) + (showProWelcome ? 1 : 0)}
             />
             <StatusBar />
           </TransientLayoutProvider>

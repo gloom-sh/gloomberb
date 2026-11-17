@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type Ref } from "react";
-import { apiClient } from "../../../api-client";
+import { apiClient, type CloudAccountPlan } from "../../../api-client";
 import { Button, FieldLabel } from "../../../components";
 import { t } from "../../../i18n";
 import { colors } from "../../../theme/colors";
 import { Box, Text, useRendererHost, type BoxRenderable } from "../../../ui";
 
+/**
+ * The Pro tab's read of the account's own subscription (`/account/cloud`): the
+ * payment row while a charge failed, and the plan the cancel action reads.
+ */
 export function usePaymentRecovery(enabled: boolean, sessionMarker: string) {
   const renderer = useRendererHost();
-  const [status, setStatus] = useState<string | null>(null);
+  const [plan, setPlan] = useState<CloudAccountPlan | null>(null);
+  const status = plan?.subscription?.status ?? null;
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -21,7 +26,7 @@ export function usePaymentRecovery(enabled: boolean, sessionMarker: string) {
     const sequence = ++refreshSequence.current;
     try {
       const plan = await apiClient.getCloudAccountPlan();
-      if (generation.current === current && refreshSequence.current === sequence) setStatus(plan.subscription?.status ?? null);
+      if (generation.current === current && refreshSequence.current === sequence) setPlan(plan);
     } catch {
       if (generation.current === current && refreshSequence.current === sequence) setMessage(t("Could not refresh your account. Try again."));
     } finally {
@@ -31,7 +36,7 @@ export function usePaymentRecovery(enabled: boolean, sessionMarker: string) {
 
   useEffect(() => {
     const current = ++generation.current;
-    setStatus(null);
+    setPlan(null);
     setMessage(null);
     setBusy(false);
     setLoaded(false);
@@ -72,7 +77,9 @@ export function usePaymentRecovery(enabled: boolean, sessionMarker: string) {
     void pay().catch(() => setMessage(t("Could not open invoice payment. Try again.")));
   }, [pay]);
 
-  return { visible, busy, message, pay: openPayment, checking: enabled && !loaded };
+  const reload = useCallback(() => refresh(generation.current), [refresh]);
+
+  return { visible, busy, message, pay: openPayment, checking: enabled && !loaded, plan, reload };
 }
 
 export function PaymentRecoveryRow({ active, busy, message, labelWidth, nodeRef, onPay, onFocus }: {

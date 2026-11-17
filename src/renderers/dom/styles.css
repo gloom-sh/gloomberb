@@ -319,8 +319,9 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="status-bar"] span {
   line-height: var(--cell-h);
 }
-/* The returning-user strip under the header: one row of shell chrome, ruled off from the layout. */
-[data-gloom-role="since-last-visit"] {
+/* The returning-user strip and the new Pro payer's row under the header: one row of shell chrome each, ruled off from the layout. */
+[data-gloom-role="since-last-visit"],
+[data-gloom-role="pro-welcome"] {
   flex: none;
   align-items: center;
   border-bottom: 1px solid var(--gloom-hairline);

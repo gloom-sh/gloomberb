@@ -4,7 +4,8 @@ import { t, tf } from "../i18n";
 
 const DEFAULT_TRIAL_DAYS = 7;
 
-function formatUsdCents(cents: number): string {
+/** Whole dollars when exact, else cents: $70, $56.50. */
+export function formatUsdCents(cents: number): string {
   const dollars = cents / 100;
   return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
 }
