@@ -79,10 +79,18 @@ export interface Portfolio {
   /** Set on paper portfolios shared with a team; the server holds the items. */
   teamId?: string;
   /**
-   * Cash held beside the positions, entered by hand. A broker account that
-   * reports its own cash is shown instead of this.
+   * Cash held beside the positions, entered by hand: the first balance, in one
+   * currency. A broker account that reports its own cash is shown instead of
+   * this. Builds before several currencies read only this one.
    */
   cash?: PortfolioCash;
+  /**
+   * The cash entered by hand in other currencies than `cash`'s, one balance
+   * per currency, never `cash`'s own: read them with `portfolioCashBalances`
+   * (portfolio/cash-balances.ts), which counts each once. Absent while the
+   * portfolio holds cash in one currency at most.
+   */
+  otherCash?: PortfolioCash[];
   /**
    * Target weights in percent of the total value, cash included, or of the
    * gross exposure in a book that holds a short (allocation.ts WeightBasis),

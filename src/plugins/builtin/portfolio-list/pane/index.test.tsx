@@ -18,7 +18,7 @@ import {
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../../../types/broker";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { Quote, TickerFinancials } from "../../../../types/financials";
-import type { TickerRecord } from "../../../../types/ticker";
+import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
@@ -725,10 +725,13 @@ describe("PortfolioListPane cash and margin UI", () => {
    * Main Portfolio, $10,000: AAPL $2,600 and SPY $6,400 held, $1,000 cash, targets AAPL 20%, SPY 70%, CASH 10%,
    * and a quote pane following PF. `cashHolding` adds a stock whose symbol is CASH.
    */
-  async function renderTargetBook(notifications: Array<{ type?: string; body: string }>, { cashHolding = false } = {}) {
+  async function renderTargetBook(
+    notifications: Array<{ type?: string; body: string }>,
+    { cashHolding = false, cash = { cash: { amount: 1000, currency: "USD" } } }: { cashHolding?: boolean; cash?: Pick<Portfolio, "cash" | "otherCash"> } = {},
+  ) {
     const config = createManualCollectionConfig("main");
     config.portfolios = config.portfolios.map((portfolio) => portfolio.id === "main"
-      ? { ...portfolio, cash: { amount: 1000, currency: "USD" }, targetWeights: { AAPL: 20, SPY: 70, CASH: 10 } }
+      ? { ...portfolio, ...cash, targetWeights: { AAPL: 20, SPY: 70, CASH: 10 } }
       : portfolio);
     config.layout.instances.push({ instanceId: FOLLOWER_PANE_ID, paneId: "quote-monitor", binding: { kind: "follow", sourceInstanceId: TEST_PANE_ID } });
     const held = (symbol: string, shares: number) => makeTicker({
@@ -836,6 +839,34 @@ describe("PortfolioListPane cash and margin UI", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
     expect(paneState()?.cursorSummaryRow).toBe("cash");
     expect(resolveTickerForPane(harnessState!, FOLLOWER_PANE_ID)).toBe("AAPL");
+  });
+
+  test("cash in several currencies is a row each, and the CASH line under them takes the cursor and the one cash target", async () => {
+    // $500 and HK$4,000 at 8 to the dollar: the same $1,000 of cash, at its 10% target.
+    sharedCoordinator = new MarketDataCoordinator(createTestDataProvider({ getExchangeRate: async (currency) => (currency === "HKD" ? 0.125 : 1) }));
+    setSharedMarketDataCoordinator(sharedCoordinator);
+    const notifications: Array<{ type?: string; body: string }> = [];
+    await renderTargetBook(notifications, { cash: { cash: { amount: 500, currency: "USD" }, otherCash: [{ amount: 4_000, currency: "HKD" }] } });
+    await tui.waitForFrameToContain("CASH HKD");
+    const line = (label: string) => tui.frame().split("\n").find((row) => row.trimStart().startsWith(label)) ?? "";
+    // Each currency has its own value and weight; the target, drift and trade are the whole line's, counted once in TOTAL.
+    expect(line("CASH HKD")).toMatch(/^ CASH HKD +5\.0% +500\.00\s/);
+    expect(line("CASH USD")).toMatch(/^ CASH USD +5\.0% +500\.00\s/);
+    const rows = tui.frame().split("\n");
+    expect(rows.find((row) => /^ CASH +\d/.test(row))).toMatch(/^ CASH +10\.0% +10\.0% +0\.0pp +0\.00 +1\.0k\s/);
+    // In that order: the currencies, the whole line, then TOTAL.
+    expect(rows.filter((row) => /^ (CASH|TOTAL)/.test(row)).map((row) => row.trim().split(/ {2,}/)[0])).toEqual(["CASH USD", "CASH HKD", "CASH", "TOTAL"]);
+    expect(line("TOTAL")).toMatch(/^ TOTAL +100\.0% +100\.0% +0\.0pp +0\.00\s*$/);
+    // j from the last holding passes the currencies' rows to the CASH line, which t sets the cash target on.
+    await act(async () => {
+      await tui.setup().mockMouse.click(4, tui.frame().split("\n").findIndex((row) => row.trimStart().startsWith("● AAPL")));
+      await tui.setup().renderOnce();
+    });
+    await pressTargetKey("j");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
+    expect(harnessState?.paneState[TEST_PANE_ID]?.cursorSummaryRow).toBe("cash");
+    await pressTargetKey("t");
+    expect(tui.frame()).toContain("Cash in Main Portfolio: weight 10.0%, target 10.0%.");
   });
 
   test("a holding whose symbol is CASH takes no target, and t says why", async () => {

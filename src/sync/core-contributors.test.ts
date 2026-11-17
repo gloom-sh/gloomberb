@@ -7,6 +7,8 @@ import { removePane, removeUnavailablePaneTypes, restoreHiddenPanes } from "../l
 import type { PricePoint } from "../types/financials";
 import type { TickerPosition, TickerRecord } from "../types/ticker";
 import { mergeSuffixedListings } from "../portfolio/suffixed-listings";
+import { clearPortfolioCash, setPortfolioCash } from "../portfolio/mutations";
+import { portfolioCashBalances } from "../portfolio/cash-balances";
 import {
   __syncContributorInternalsForTests,
   coreCollectionsSyncContributor,
@@ -461,6 +463,75 @@ describe("core sync contributors", () => {
     // A build that sends groups and sends none: the list's last group was removed there.
     const removed = mergeConfigPayload(config, { ...older, watchlistsCarryGroups: true }, config, lastSynced);
     expect(removed?.watchlists).toEqual([{ id: "growth", name: "Growth stocks" }, { id: "plain", name: "Plain" }]);
+  });
+
+  test("cash in several currencies reaches the account's other devices, and a balance cleared on one is cleared on the others", async () => {
+    const { collectCoreConfigPayload, collectCoreCollectionsPayload, mergeConfigPayload } = __syncContributorInternalsForTests;
+    let elsewhere = createDefaultConfig("/tmp/gloomberb-sync-other-cash-elsewhere");
+    elsewhere.portfolios = [{ id: "hk", name: "HK Book", currency: "USD" }];
+    elsewhere = setPortfolioCash(elsewhere, "hk", { amount: 390_000, currency: "HKD" }).config;
+    elsewhere = setPortfolioCash(elsewhere, "hk", { amount: 1_200, currency: "USD" }).config;
+    const pushed = collectCoreConfigPayload(elsewhere) as Record<string, unknown>;
+    // The first balance stays where a build before several currencies reads it, and only there.
+    expect(pushed).toMatchObject({
+      portfoliosCarryOtherCash: true,
+      portfolios: [{ id: "hk", cash: { amount: 390_000, currency: "HKD" }, otherCash: [{ amount: 1_200, currency: "USD" }] }],
+    });
+    expect(collectCoreCollectionsPayload(elsewhere, new Map(), new Map(), new Map(), {}))
+      .toMatchObject({ portfoliosCarryOtherCash: true, portfolios: pushed.portfolios });
+
+    // A device holding the book from before, in one currency, takes both.
+    const config = createDefaultConfig("/tmp/gloomberb-sync-other-cash-here");
+    config.portfolios = [{ id: "hk", name: "HK Book", currency: "USD", cash: { amount: 390_000, currency: "HKD" } }];
+    const merged = mergeConfigPayload(config, pushed, config, collectCoreConfigPayload(config))!;
+    expect(merged.portfolios).toEqual(elsewhere.portfolios);
+    expect(portfolioCashBalances(merged.portfolios[0])).toEqual([{ amount: 390_000, currency: "HKD" }, { amount: 1_200, currency: "USD" }]);
+
+    // Cleared there, one currency and then the rest: the pull clears them here, and nothing brings them back.
+    const lastSynced = collectCoreConfigPayload(merged);
+    const oneCleared = clearPortfolioCash(elsewhere, "hk", "USD").config;
+    const afterOne = mergeConfigPayload(merged, collectCoreConfigPayload(oneCleared), merged, lastSynced)!;
+    expect(afterOne.portfolios[0]).toEqual({ id: "hk", name: "HK Book", currency: "USD", cash: { amount: 390_000, currency: "HKD" } });
+    const allCleared = clearPortfolioCash(elsewhere, "hk").config;
+    const afterAll = mergeConfigPayload(merged, collectCoreConfigPayload(allCleared), merged, lastSynced)!;
+    expect(afterAll.portfolios[0]).toEqual({ id: "hk", name: "HK Book", currency: "USD" });
+  });
+
+  test("a pull from a build that sends no other currencies keeps them here, and a balance it set in one of them counts once", async () => {
+    const { collectCoreConfigPayload, mergeConfigPayload } = __syncContributorInternalsForTests;
+    const config = createDefaultConfig("/tmp/gloomberb-sync-other-cash-older");
+    config.portfolios = [{
+      id: "hk", name: "HK Book", currency: "USD",
+      cash: { amount: 390_000, currency: "HKD" },
+      otherCash: [{ amount: 1_200, currency: "USD" }, { amount: 250_000, currency: "TRY" }],
+    }];
+    const lastSynced = collectCoreConfigPayload(config) as Record<string, unknown>;
+    // What an older build pushes: its portfolios carry `cash` alone, and the payload no marker.
+    const olderPush = (portfolio: Record<string, unknown>) => {
+      const payload: Record<string, unknown> = { ...lastSynced, portfolios: [portfolio] };
+      delete payload.portfoliosCarryOtherCash;
+      return payload;
+    };
+    const base = { id: "hk", name: "HK Book", currency: "USD" };
+
+    // It renamed the book: the HKD it saw and the two balances it never did all stay, and go back out marked.
+    const renamed = mergeConfigPayload(config, olderPush({ ...base, name: "Hong Kong", cash: { amount: 390_000, currency: "HKD" } }), config, lastSynced)!;
+    expect(portfolioCashBalances(renamed.portfolios[0]).map((balance) => balance.currency)).toEqual(["HKD", "USD", "TRY"]);
+    expect(collectCoreConfigPayload(renamed)).toMatchObject({ portfoliosCarryOtherCash: true, portfolios: [{ name: "Hong Kong", otherCash: config.portfolios[0]!.otherCash }] });
+
+    // It set its one balance to $5,000, replacing the HKD as that build does: USD is $5,000 once, not $5,000 and $1,200.
+    const replaced = mergeConfigPayload(config, olderPush({ ...base, cash: { amount: 5_000, currency: "USD" } }), config, lastSynced)!;
+    expect(portfolioCashBalances(replaced.portfolios[0])).toEqual([{ amount: 5_000, currency: "USD" }, { amount: 250_000, currency: "TRY" }]);
+    expect(replaced.portfolios[0]).toMatchObject({ cash: { amount: 5_000, currency: "USD" }, otherCash: [{ amount: 250_000, currency: "TRY" }] });
+
+    // It cleared the cash it saw: the HKD goes, and the first balance left takes its place.
+    const cleared = mergeConfigPayload(config, olderPush(base), config, lastSynced)!;
+    expect(cleared.portfolios[0]).toEqual({ ...base, cash: { amount: 1_200, currency: "USD" }, otherCash: [{ amount: 250_000, currency: "TRY" }] });
+
+    // A portfolio saved before several currencies needs no migration: it reads its one balance as before.
+    const fresh = createDefaultConfig("/tmp/gloomberb-sync-other-cash-fresh");
+    const legacy = olderPush({ ...base, cash: { amount: 390_000, currency: "HKD" } });
+    expect(mergeConfigPayload(fresh, legacy)!.portfolios).toEqual([{ ...base, cash: { amount: 390_000, currency: "HKD" } }]);
   });
 
   test("does not reintroduce older unlinked broker portfolios from cloud", () => {

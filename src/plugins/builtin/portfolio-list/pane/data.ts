@@ -192,12 +192,12 @@ export function buildTrackedCurrencies(
   financialsMap: Map<string, TickerFinancials>,
   accountState: ResolvedPortfolioAccountState | null,
   baseCurrency: string,
-  /** The currency of cash entered by hand. */
-  cashCurrency?: string,
+  /** The currencies of cash entered by hand. */
+  cashCurrencies?: readonly (string | null | undefined)[],
 ): string[] {
   const currencies = new Set<string>([baseCurrency]);
   if (accountState?.account.currency) currencies.add(accountState.account.currency);
-  if (cashCurrency) currencies.add(cashCurrency);
+  for (const currency of cashCurrencies ?? []) if (currency) currencies.add(currency);
 
   for (const ticker of tickers) {
     if (ticker.metadata.currency) {

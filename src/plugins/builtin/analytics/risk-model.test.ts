@@ -420,6 +420,25 @@ test("currency and price shocks reprice each line of the book, cash included, an
   expect(lira.lines[1]!.shocks).toEqual(["EUR +5% vs USD", "TRY -20% vs USD"]);
   expect(lira.percent).toBeCloseTo(5_800 / 25_600 * 100, 10);
 });
+test("cash entered by hand in several currencies is left out one currency at a time, and an FX shift moves each balance in its own currency", () => {
+  // HK$800 ($100 at 8 to the dollar), $220 and 4,400 lira ($110), with $330 of SPY: a $760 book.
+  const book: Portfolio = { ...portfolio, cash: { amount: 800, currency: "HKD" },
+    otherCash: [{ amount: 220, currency: "USD" }, { amount: 4_400, currency: "TRY" }] };
+  expect(riskCashLines(book, null)).toEqual([{ currency: "HKD", amount: 800 }, { currency: "USD", amount: 220 }, { currency: "TRY", amount: 4_400 }]);
+  const snapshot = { ...market(), fxRates: { TRY: 0.025, HKD: 0.125 } };
+  // Left out, the cash comes from the portfolio's own balances.
+  const model = buildPortfolioRisk(book, [holding("SPY", 3)], snapshot, null,
+    { equity: -10, rates: 100, volatility: 10, fx: [{ currency: "TRY", percent: -20 }, { currency: "HKD", percent: 5 }] });
+  expect(model.coverage).toMatchObject({ marketValue: 760, cashValue: 430 });
+  expect(riskCoverageLine(model.coverage)).toBe("basket 330 USD = 43% of book; left out: USD cash 29%, TRY cash 15%, HKD cash 13%");
+  // The lira takes a fifth off its $110 and the Hong Kong dollar adds 5% to its $100; the dollars stay: -$17 on the book.
+  const rows = model.rows.stress.filter((row) => row.id.startsWith("shock:"));
+  expect(rows.map((row) => [row.label, row.value, row.amount])).toEqual([
+    ["TRY cash", expect.closeTo(-20, 10), expect.closeTo(-22, 10)],
+    ["HKD cash", expect.closeTo(5, 10), expect.closeTo(5, 10)],
+    ["Book total", expect.closeTo(-17 / 760 * 100, 10), expect.closeTo(-17, 10)],
+  ]);
+});
 test("a short enters the basket at its signed weight, not left out", () => {
   // $330 of SPY long and $110 of IWM short: weights of +75% and -25% of the $440 gross, every dollar covered.
   const model = buildPortfolioRisk(portfolio, [holding("SPY", 3), holding("IWM", -1)], market());

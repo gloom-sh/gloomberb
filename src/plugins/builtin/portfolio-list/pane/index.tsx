@@ -125,7 +125,9 @@ import {
   buildPortfolioAllocation,
   CASH_SYMBOL,
   hasTargetWeights,
+  pricedCashValue,
   resolvePortfolioCash,
+  type AllocationCashBalance,
 } from "../../../../portfolio/allocation";
 import { allocationSummaryRows, CASH_ROW_KEY } from "../allocation-rows";
 import { useTargetWeightActions, type TargetRow } from "./target-weights";
@@ -306,13 +308,14 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     [columns],
   );
 
-  // The broker account's cash when it reports one, else the cash entered by hand.
+  // The broker account's cash when it reports one, else each currency's cash entered by hand.
   const cashLine = useMemo(
     () => isPortfolioTab ? resolvePortfolioCash(currentPortfolio, accountState?.account) : null,
     [accountState, currentPortfolio, isPortfolioTab],
   );
   const trackedCurrencies = useMemo(
-    () => buildTrackedCurrencies(tickers, financialsMap, accountState, totalsCurrency, cashLine?.source === "manual" ? cashLine.currency : undefined),
+    () => buildTrackedCurrencies(tickers, financialsMap, accountState, totalsCurrency,
+      cashLine?.source === "manual" ? cashLine.balances.map((balance) => balance.currency) : undefined),
     [accountState, cashLine, financialsMap, tickers, totalsCurrency],
   );
   const exchangeRates = useFxRatesMap(trackedCurrencies);
@@ -327,9 +330,14 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     (value: number) => convertCurrency(value, accountCurrency, totalsCurrency, exchangeRates),
     [accountCurrency, exchangeRates, totalsCurrency],
   );
-  const cashValue = cashLine == null ? null
-    : cashLine.source === "broker" ? convertAccountValue(cashLine.amount)
-      : convertCurrency(cashLine.amount, cashLine.currency, totalsCurrency, exchangeRates);
+  // Each balance in the totals currency; one without a rate has no value and stays out of the total, as an unpriced holding does.
+  const cashBalances = useMemo((): AllocationCashBalance[] => (cashLine?.balances ?? []).map(({ amount, currency }) => {
+    const value = cashLine?.source === "broker" ? convertAccountValue(amount) : convertCurrency(amount, currency, totalsCurrency, exchangeRates);
+    return { amount, currency, value: Number.isFinite(value) ? value : null };
+  }), [cashLine, convertAccountValue, exchangeRates, totalsCurrency]);
+  // The cash the total counts, and the whole cash line, unknown while a balance has no rate.
+  const cashValue = pricedCashValue(cashBalances);
+  const cashLineValue = cashBalances.every((balance) => balance.value != null) ? cashValue : null;
   // Only weights divide by the total: skip the walk when nothing shows one.
   const needsWeightTotal = isPortfolioTab
     && (viewMode === "grid" || columns.some((column) => ALLOCATION_COLUMN_IDS.has(column.id)));
@@ -513,11 +521,11 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     if (!isPortfolioTab || accountState || (cashLine == null && portfolioTargets?.[CASH_SYMBOL] == null)) return null;
     const allocation = buildPortfolioAllocation({
       holdings: portfolioSummaryTotals.allocationHoldings ?? [],
-      cashValue: cashValue ?? (cashLine ? Number.NaN : null),
+      cash: cashBalances,
       targets: portfolioTargets,
     });
     return allocation.cash ? { ...allocation.cash, total: allocation.total } : null;
-  }, [accountState, cashLine, cashValue, isPortfolioTab, portfolioSummaryTotals, portfolioTargets]);
+  }, [accountState, cashBalances, cashLine, isPortfolioTab, portfolioSummaryTotals, portfolioTargets]);
   // Under the holdings of a book with cash entered by hand or targets, its CASH and TOTAL rows, as
   // `portfolio show` prints them: cash takes a target and a trade like a holding, so the trades add up.
   const showsAllocationRows = isPortfolioTab && viewMode === "table" && !paneSettings.hideCash
@@ -526,11 +534,11 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     if (!showsAllocationRows) return undefined;
     const allocation = buildPortfolioAllocation({
       holdings: portfolioSummaryTotals.allocationHoldings ?? [],
-      cashValue: cashValue ?? (cashLine ? Number.NaN : null),
+      cash: cashBalances,
       targets: portfolioTargets,
     });
-    return allocationSummaryRows(allocation, { cashCurrency: cashLine?.currency, currency: totalsCurrency });
-  }, [cashLine, cashValue, portfolioSummaryTotals, portfolioTargets, showsAllocationRows, totalsCurrency]);
+    return allocationSummaryRows(allocation, { currency: totalsCurrency });
+  }, [cashBalances, portfolioSummaryTotals, portfolioTargets, showsAllocationRows, totalsCurrency]);
   const cashRowShown = !!allocationRows?.some((row) => row.id === "cash");
   const summarySegments = useMemo(() => buildPortfolioSummarySegments({
     totals: portfolioSummaryTotals,
@@ -833,14 +841,14 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const targetRow = useMemo<TargetRow | null>(() => {
     if (!isPortfolioTab || !currentPortfolio) return null;
     if (cursorSymbol === CASH_ROW_KEY) {
-      return cashRowShown ? { cash: true, symbol: CASH_SYMBOL, label: "Cash", weight: cashWeight(cashValue, portfolioWeightBase, portfolioWeightBasis) } : null;
+      return cashRowShown ? { cash: true, symbol: CASH_SYMBOL, label: "Cash", weight: cashWeight(cashLineValue, portfolioWeightBase, portfolioWeightBasis) } : null;
     }
     if (!selectedTicker) return null;
     const symbol = selectedTicker.metadata.ticker;
     const holding = weightHoldings?.find((entry) => entry.symbol === symbol);
     const weight = holding ? allocationFigures(holding, portfolioWeightBase, null).weight : null;
     return { cash: false, symbol, label: symbol, weight };
-  }, [cashRowShown, cashValue, currentPortfolio, cursorSymbol, isPortfolioTab, portfolioWeightBase, portfolioWeightBasis, selectedTicker, weightHoldings]);
+  }, [cashLineValue, cashRowShown, currentPortfolio, cursorSymbol, isPortfolioTab, portfolioWeightBase, portfolioWeightBasis, selectedTicker, weightHoldings]);
   const listedSymbols = useMemo(() => new Set(collectionTickers.map((ticker) => ticker.metadata.ticker)), [collectionTickers]);
   useTargetWeightActions({ portfolio: currentPortfolio, row: targetRow, listedSymbols, enabled: focused && viewMode === "table" && !quickAddFocused });
 

@@ -2,6 +2,7 @@ import type { AppConfig, BrokerInstanceConfig } from "../types/config";
 import type { Portfolio, TickerPosition, Watchlist } from "../types/ticker";
 import { isRecord } from "../utils/guards";
 import { normalizeWatchlistGroups } from "../portfolio/watchlist-groups";
+import { portfolioCashBalances, withKeptOtherCash } from "../portfolio/cash-balances";
 
 const SENSITIVE_KEY_PATTERN = /(token|secret|password|credential|private|api[_-]?key|access[_-]?key|refresh[_-]?key|session|cookie|dataDir|path|directory|localPath)/i;
 
@@ -57,6 +58,7 @@ export function withLocalPluginSecrets(
 }
 
 export function sanitizePortfolio(portfolio: Portfolio): Portfolio {
+  const [cash, ...otherCash] = portfolioCashBalances(portfolio);
   return {
     id: portfolio.id,
     name: portfolio.name,
@@ -66,8 +68,10 @@ export function sanitizePortfolio(portfolio: Portfolio): Portfolio {
     brokerId: portfolio.brokerId,
     lastSyncedAt: portfolio.lastSyncedAt,
     // Cash and targets are the user's own entries: a pulled portfolio without
-    // them would erase them on this device.
-    ...(portfolio.cash ? { cash: { ...portfolio.cash } } : {}),
+    // them would erase them on this device. `cash` is the first balance, as an
+    // older build reads it, and `otherCash` the other currencies'.
+    ...(cash ? { cash } : {}),
+    ...(otherCash.length > 0 ? { otherCash } : {}),
     ...(portfolio.targetWeights ? { targetWeights: { ...portfolio.targetWeights } } : {}),
     ...(portfolio.importedFrom ? {
       importedFrom: {
@@ -76,6 +80,26 @@ export function sanitizePortfolio(portfolio: Portfolio): Portfolio {
       },
     } : {}),
   };
+}
+
+/**
+ * Set on every payload this build pushes with portfolios: they carry their
+ * cash in other currencies (`otherCash`), so one without it holds cash in one
+ * currency at most. An older build strips `otherCash` from every push, and
+ * its portfolios taken as they came would erase those balances here and then
+ * everywhere this device pushes to.
+ */
+export const PORTFOLIOS_CARRY_OTHER_CASH = "portfoliosCarryOtherCash";
+
+/**
+ * Pulled portfolios, each one an older build pushed (no
+ * `PORTFOLIOS_CARRY_OTHER_CASH`) keeping the other currencies' cash it holds
+ * here (`withKeptOtherCash`); a build that sends them is taken as it came, so
+ * a balance cleared there is cleared here.
+ */
+export function withLocalOtherCash(pulled: unknown[], local: readonly Portfolio[], carriesOtherCash: boolean): Portfolio[] {
+  if (carriesOtherCash) return pulled as Portfolio[];
+  return pulled.map((entry) => withKeptOtherCash(entry, isRecord(entry) ? local.find((portfolio) => portfolio.id === entry.id) : null) as Portfolio);
 }
 
 /**

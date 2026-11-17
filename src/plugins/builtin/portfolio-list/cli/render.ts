@@ -77,6 +77,7 @@ import type { BrokerAccount } from "../../../../types/trading";
 import {
   BROKER_ACCOUNT_MISSING_NOTE,
   CASH_SYMBOL,
+  cashLineLabel,
   buildPortfolioAllocation,
   describeTargetSum,
   formatAllocationDrift,
@@ -750,20 +751,36 @@ function totalWeight(allocation: Pick<PortfolioAllocation, "weightBasis" | "tota
   return allocation.weightBasis === "total" && allocation.total != null && allocation.total > 0 ? 100 : null;
 }
 
-/** A portfolio's cash line, as `portfolio show` and `fn PF` report it. */
-export interface PortfolioCashReport {
-  /** In the cash's own currency. */
+/** One currency of a portfolio's cash, as `portfolio show` and `fn PF` report it. */
+interface PortfolioCashBalanceReport {
+  /** In `currency`. */
   amount: number;
   currency: string;
+  /** In the portfolio's currency; null when the rate is unavailable, which leaves it out of the total. */
+  value: number | null;
+  /** Its own share of the weight base; null without a value or against a hedged book's gross exposure. */
+  weight: number | null;
+}
+
+/** A portfolio's cash line, as `portfolio show` and `fn PF` report it. */
+export interface PortfolioCashReport {
+  /**
+   * The cash in its own currency when it is held in one; null for cash held in
+   * several, whose `balances` give each.
+   */
+  amount: number | null;
+  currency: string | null;
   /** Recorded with `portfolio cash set`, or reported by the broker account. */
   source: "manual" | "broker";
-  /** In the portfolio's currency; null when the rate is unavailable. */
+  /** All of it in the portfolio's currency; null when a rate is unavailable. */
   value: number | null;
+  /** One per currency, largest first. */
+  balances: PortfolioCashBalanceReport[];
 }
 
 /**
  * Weights, targets and trades for a valued portfolio, with its cash: the
- * broker account's when it reports one, else the amount entered by hand.
+ * broker account's when it reports one, else each currency entered by hand.
  */
 export async function valuePortfolioAllocation({
   valuation,
@@ -776,15 +793,33 @@ export async function valuePortfolioAllocation({
   account?: BrokerAccount | null;
   toBase: (value: number, fromCurrency: string) => Promise<number>;
 }): Promise<{ allocation: PortfolioAllocation; cash: PortfolioCashReport | null }> {
-  const line = resolvePortfolioCash(portfolio, account);
-  const value = line && line.currency ? await toBase(line.amount, line.currency) : null;
-  const cash = line ? { amount: line.amount, currency: line.currency, source: line.source, value: value != null && Number.isFinite(value) ? value : null } : null;
-  const allocation = buildPortfolioAllocation({
-    holdings: valuation.holdings,
-    cashValue: cash ? cash.value ?? Number.NaN : null,
-    targets: portfolio.targetWeights,
-  });
-  return { allocation, cash };
+  const resolved = resolvePortfolioCash(portfolio, account);
+  const balances = resolved ? await Promise.all(resolved.balances.map(async ({ amount, currency }) => {
+    const value = currency ? await toBase(amount, currency) : null;
+    return { amount, currency, value: value != null && Number.isFinite(value) ? value : null };
+  })) : [];
+  const allocation = buildPortfolioAllocation({ holdings: valuation.holdings, cash: balances, targets: portfolio.targetWeights });
+  if (!resolved || !allocation.cash) return { allocation, cash: null };
+  const sorted = allocation.cash.balances.map(({ amount, currency, value, weight }) => ({ amount, currency, value, weight }));
+  const one = sorted.length === 1 ? sorted[0]! : null;
+  return {
+    allocation,
+    cash: { amount: one?.amount ?? null, currency: one?.currency ?? null, source: resolved.source, value: allocation.cash.value, balances: sorted },
+  };
+}
+
+/**
+ * The note for cash left out of the total, as an unpriced holding is: `Total
+ * and weights exclude the TRY cash: no TRY/USD rate.` Null when every balance
+ * has a value.
+ */
+export function unpricedCashNote(currencies: readonly string[], portfolioCurrency: string): string | null {
+  if (currencies.length === 0) return null;
+  const named = currencies.filter(Boolean);
+  if (named.length === 0) return "Total and weights exclude the cash: its currency is unknown.";
+  const list = named.length === 1 ? named[0]! : `${named.slice(0, -1).join(", ")} and ${named.at(-1)!}`;
+  const rates = named.map((code) => `${code}/${portfolioCurrency}`).join(" or ");
+  return `Total and weights exclude the ${list} cash: no ${rates} rate.`;
 }
 
 /** Colors a signed figure only when its text shows a nonzero digit. */
@@ -1138,17 +1173,16 @@ async function showCollectionWithMarketData(
     // The value's move from the closes before, totalled under Chg and said with its base under the table: at the close
     // that is Last times the shares; at the latest print, an after-hours print included, as Value is.
     const dayMove = portfolioDayMove(valuation);
-    const cashExport = cash && allocation.cash ? {
-      ...cash,
+    // The whole cash line, whatever currencies it is in; a target without cash is a line of nothing.
+    const cashExport = allocation.cash ? {
+      ...(cash ?? { amount: 0, currency, source: "manual" as const, value: 0, balances: [] }),
       weight: allocation.cash.weight,
       targetWeight: allocation.cash.targetWeight,
       drift: allocation.cash.drift,
       tradeValue: allocation.cash.tradeValue,
-    } : allocation.cash ? {
-      amount: 0, currency, source: "manual" as const, value: 0,
-      weight: allocation.cash.weight, targetWeight: allocation.cash.targetWeight,
-      drift: allocation.cash.drift, tradeValue: allocation.cash.tradeValue,
     } : null;
+    // Cash in several currencies is a row per currency, as a ticker held in several lots is a row per lot.
+    const cashBalances = cashExport && cashExport.balances.length > 1 ? cashExport.balances : null;
 
     // `--drip`: each holding with a known income and a price, its lots netted: a long reinvests, a short owes.
     const dripNotProjected = new Set<string>();
@@ -1210,8 +1244,14 @@ async function showCollectionWithMarketData(
     if (structured) {
       // CSV and NDJSON read the cash and the total as rows; JSON keeps them in the metadata.
       const extraRows: Record<string, unknown>[] = [
-        ...(cashExport ? [{ symbol: CASH_SYMBOL, marketValue: cashExport.value, baseCurrency: currency, weight: cashExport.weight,
-          targetWeight: cashExport.targetWeight, drift: cashExport.drift, tradeShares: null, tradeValue: cashExport.tradeValue }] : []),
+        // Several currencies: a CASH row each, the whole line's weight, target, drift and trade on the first as a ticker's
+        // lots carry their position's; `balanceWeight` is each currency's own share.
+        ...(cashBalances ? cashBalances.map((balance, index) => ({ symbol: CASH_SYMBOL, marketValue: balance.value, baseCurrency: currency,
+          weight: index === 0 ? cashExport!.weight : null, targetWeight: index === 0 ? cashExport!.targetWeight : null,
+          drift: index === 0 ? cashExport!.drift : null, tradeShares: null, tradeValue: index === 0 ? cashExport!.tradeValue : null,
+          cashCurrency: balance.currency, cashAmount: balance.amount, balances: cashBalances.length, balanceWeight: balance.weight }))
+          : cashExport ? [{ symbol: CASH_SYMBOL, marketValue: cashExport.value, baseCurrency: currency, weight: cashExport.weight,
+            targetWeight: cashExport.targetWeight, drift: cashExport.drift, tradeShares: null, tradeValue: cashExport.tradeValue }] : []),
         { symbol: "TOTAL", marketValue: allocation.total, unrealizedPnl: totalPnlValue, baseCurrency: currency,
           weight: totalWeight(allocation), targetWeight: allocation.targetSum, valuationBasis: basis,
           annualIncome: totalIncome, incomeYield: portfolioYield },
@@ -1225,13 +1265,16 @@ async function showCollectionWithMarketData(
         dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null, dayChangeBasis: dayMove?.basis ?? null,
         dayChangeFx: dayMove?.fx ?? null,
         unpricedCount: allocation.unpriced.length, unpricedSymbols: allocation.unpriced,
+        // Only while a currency's cash has no rate into the portfolio's: left out of the total and weights as an unpriced holding is.
+        ...(allocation.unpricedCash.length > 0 ? { unpricedCashCurrencies: allocation.unpricedCash } : {}),
         totalUnrealizedPnl: totalPnlValue,
         annualIncome: totalIncome, knownAnnualIncome: income.knownIncome, portfolioYield,
         incomeComplete: income.gaps.size === 0, incomeUnavailable,
         incomeBasis: "Trailing twelve-month dividends per share times shares held, in the portfolio's currency; a short owes the dividend, so its income is negative. Portfolio yield is the total over the invested value without cash: the priced holdings' net value (exposure.net), or for a book that holds a short its gross exposure (weightBase), as its weights are; annualIncome is null when any holding's income is unknown, and knownAnnualIncome sums the holdings that have one.",
         // Each rate a holding in another currency was converted at, dated, and whether it is stale.
         fxRates: toBase.conversions().filter((conversion) => conversion.currency !== conversion.baseCurrency).map(fxRateRecord),
-        complete: unavailablePnl.size === 0 && unavailableCost.size === 0 && unavailableMarketValue.size === 0 && income.gaps.size === 0,
+        complete: unavailablePnl.size === 0 && unavailableCost.size === 0 && unavailableMarketValue.size === 0 && income.gaps.size === 0
+          && allocation.unpricedCash.length === 0,
         unavailableSymbols: [...new Set([...unavailablePnl, ...unavailableCost, ...unavailableMarketValue])],
         unavailableCostSymbols: [...unavailableCost], brokerPnlSymbols: [...brokerPnlSymbols],
         // The priced holdings' market value: longs, shorts (negative), net and gross. Cash and unpriced holdings are not in it.
@@ -1327,11 +1370,14 @@ async function showCollectionWithMarketData(
         ...allocationCells(whole, { unpriced: wholeValue == null, units: symbolUnits, assetCategory: ticker.metadata.assetCategory }),
         ...(showIncome ? ["", ""] : []), "", ""]];
     });
-    if (cashExport) {
-      const label = cashExport.currency && cashExport.currency !== currency ? `${CASH_SYMBOL} ${cashExport.currency}` : CASH_SYMBOL;
-      rows.push([label, "", "", ...extendedSessions.map(() => ""), "", "", cashExport.value == null ? NOT_AVAILABLE : wholeMoney(cashExport.value),
-        ...allocationCells(cashExport, { unpriced: cashExport.value == null }), ...(showIncome ? ["", ""] : []), "", ""]);
+    const cashRow = (label: string, value: number | null, figures: Parameters<typeof allocationCells>[0]) => [label, "", "", ...extendedSessions.map(() => ""), "", "",
+      value == null ? NOT_AVAILABLE : wholeMoney(value), ...allocationCells(figures, { unpriced: value == null }), ...(showIncome ? ["", ""] : []), "", ""];
+    // Each currency's cash weighs by its own value; the target, drift and trade belong to the whole cash line under them.
+    for (const balance of cashBalances ?? []) {
+      rows.push(cashRow(cashLineLabel(balance.currency, currency, true), balance.value,
+        { weight: balance.weight, targetWeight: null, drift: null, tradeValue: null }));
     }
+    if (cashExport) rows.push(cashRow(cashBalances ? CASH_SYMBOL : cashLineLabel(cashExport.currency, currency), cashExport.value, cashExport));
     const total = allocation.total;
     const totalChange = dayMove?.changePercent != null ? colorBySign(formatPercentRaw(dayMove.changePercent), dayMove.change) : "—";
     rows.push([
@@ -1381,7 +1427,7 @@ async function showCollectionWithMarketData(
     // TOTAL's yield says what it divides: a hedged book's gross exposure, or, with cash in the book, the holdings alone.
     if (showIncome && portfolioYield != null && yieldBase != null && hedged) {
       notes.push(cliStyles.muted(`TOTAL yield is income over the gross exposure of ${wholeMoney(yieldBase)}, as the book holds a short; cash excluded.`));
-    } else if (showIncome && portfolioYield != null && yieldBase != null && cashExport?.value) {
+    } else if (showIncome && portfolioYield != null && yieldBase != null && cashExport?.balances.some((balance) => balance.value)) {
       notes.push(cliStyles.muted(`TOTAL yield is income over the invested ${wholeMoney(yieldBase)}, cash excluded.`));
     }
     const weightNote = weightBasisLine(allocation, currency);
@@ -1397,11 +1443,8 @@ async function showCollectionWithMarketData(
     }
     if (cashExport?.source === "broker") notes.push(cliStyles.muted("Cash is the broker account's balance as of its last sync."));
     if (matchedPortfolio.brokerInstanceId && !account) notes.push(cliStyles.warning(BROKER_ACCOUNT_MISSING_NOTE));
-    if (cashExport && cashExport.value == null) {
-      notes.push(cliStyles.warning(cashExport.currency
-        ? `No ${cashExport.currency}/${currency} rate for the cash, so the total and weights are unavailable.`
-        : "The cash's currency is unknown, so the total and weights are unavailable."));
-    }
+    const unpricedCash = unpricedCashNote(allocation.unpricedCash, currency);
+    if (unpricedCash) notes.push(cliStyles.warning(unpricedCash));
     const targetNote = describeTargetSum(allocation.targetSum, allocation.weightBasis);
     if (targetNote) notes.push(cliStyles.muted(targetNote));
     if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${named(brokerPnlSymbols)} is the broker's last snapshot.`));
