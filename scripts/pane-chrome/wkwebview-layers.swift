@@ -31,6 +31,9 @@ func fail(_ message: String) -> Never {
 
 let app = NSApplication.shared
 app.setActivationPolicy(.prohibited)
+// No App Nap: an app with no window on screen is throttled, and WebKit then
+// lets go of the page's layers.
+let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "Drawing a page")
 
 // Far off every screen, so nothing shows; ordered in, so WebKit draws it.
 let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: size.width, height: size.height),
@@ -44,6 +47,13 @@ let override = NSSelectorFromString("_setOverrideDeviceScaleFactor:")
 guard web.responds(to: override) else { fail("This WebKit cannot draw at another device scale.") }
 typealias SetScale = @convention(c) (AnyObject, Selector, CGFloat) -> Void
 unsafeBitCast(web.method(for: override), to: SetScale.self)(web, override, CGFloat(scale))
+// Off screen, the window reads as hidden, and WebKit stops drawing a hidden
+// page and lets go of its layers (`_setWindowOcclusionDetectionEnabled:`).
+let occlusion = NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")
+if web.responds(to: occlusion) {
+  typealias SetFlag = @convention(c) (AnyObject, Selector, Bool) -> Void
+  unsafeBitCast(web.method(for: occlusion), to: SetFlag.self)(web, occlusion, false)
+}
 window.orderFrontRegardless()
 web.load(URLRequest(url: url))
 
