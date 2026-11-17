@@ -108,11 +108,19 @@ describe("sign-up dialog", () => {
     await clickClose("Confirm ana@example.com");
     await tui.waitForFrameToExclude("Confirm ana@example.com");
     expect(isAuthDialogOpen()).toBe(false);
+    // The account exists: closing before confirming still asks where it heard about Gloom.
+    expect(heardFromDueAccount()).toBe("u1");
+    takeHeardFromDue("u1");
   });
 });
 
 // "Where did you hear about Gloom?" follows a sign-up from this dialog, never one on its way to a checkout.
 describe("the question after a sign-up", () => {
+  afterEach(() => {
+    const due = heardFromDueAccount();
+    if (due) takeHeardFromDue(due);
+  });
+
   async function signUpThrough(request: Parameters<typeof requestAuthDialog>[0]) {
     const user = { id: "u-new", email: "new@example.com", emailVerified: true } as AuthUser;
     spies.push(
@@ -146,7 +154,6 @@ describe("the question after a sign-up", () => {
     await signUpThrough({ mode: "signup", onSignedIn: () => { continued = true; } });
     expect(continued).toBe(true);
     expect(heardFromDueAccount()).toBe("u-new");
-    takeHeardFromDue("u-new");
   });
 
   test("is never due when the sign-up goes on to a checkout", async () => {
