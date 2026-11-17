@@ -115,7 +115,7 @@ export function useOnboardingPositions({
   const stateRef = useAppStateRef();
   const tickers = useAppSelector((state) => state.tickers);
   const financials = useAppSelector((state) => state.financials);
-  const portfolioId = useAppSelector((state) => getOnboardingPortfolioId(state.config));
+  const portfolioId = useAppSelector((state) => getOnboardingPortfolioId(state.config, state.tickers.values()));
   const [draft, setDraft] = useState<PositionDraft>(EMPTY_DRAFT);
   const [fieldIdx, setFieldIdx] = useState(0);
   const [preview, setPreview] = useState<PositionPreview>({ status: "idle" });

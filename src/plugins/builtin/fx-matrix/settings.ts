@@ -117,8 +117,13 @@ export const FX_MATRIX_REPORT_OPTIONS: readonly PaneReportOptionDef[] = [{
   normalize: parseCurrenciesOption,
 }];
 
-/** A report of the default board says it is only the majors, and how to choose others. */
-export function fxMatrixReportNotices(settings: Readonly<Record<string, unknown>>): string[] {
-  if (settings.currencies != null) return [];
-  return [`Showing the ${MAJOR_CURRENCIES.length} majors. Choose others with --currencies USD,ZAR,NGN; gloom catalog FXC lists all ${FX_CURRENCIES.length}.`];
+/**
+ * A report of the default board says it is only the majors, and how to add
+ * others: by code after FXC, as the app's command bar takes them too, or a
+ * whole list with --currencies.
+ */
+export function fxMatrixReportNotices(settings: Readonly<Record<string, unknown>>, currencies: readonly string[] = MAJOR_CURRENCIES): string[] {
+  if (settings.currencies != null || currencies.length !== MAJOR_CURRENCIES.length || currencies.some((code, index) => code !== MAJOR_CURRENCIES[index])) return [];
+  return [`Showing the ${MAJOR_CURRENCIES.length} majors. Add others with fn FXC TRY (FXC TRY in the app), or choose them with --currencies USD,ZAR,NGN; `
+    + `gloom catalog FXC lists all ${FX_CURRENCIES.length}.`];
 }

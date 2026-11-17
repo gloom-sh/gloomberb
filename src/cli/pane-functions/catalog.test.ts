@@ -9,9 +9,12 @@ import type { MarketContext } from "../types";
 import type { PaneTemplateDef } from "../../types/plugin";
 import {
   buildPaneCatalogEntries, buildTemplateContext, correctCatalogQuery, filterPaneCatalogEntries, findFunctionCode, functionsForQuestion, limitationSentence,
-  paneFunctionCode, renderPaneCatalogReport, type PaneFunctionCatalog,
+  paneFunctionCode, renderPaneCatalogReport, suggestedFunctionCodes, type PaneFunctionCatalog,
 } from "./catalog";
-import { lookupGlossary } from "../glossary";
+import { GLOSSARY, lookupGlossary } from "../glossary";
+import { buildPaneShortcutItems, buildPaneTemplateItem } from "../../components/command-bar/pane-templates/items";
+import type { PluginRegistry } from "../../plugins/registry";
+import { fuzzyFilter } from "../../utils/fuzzy-search";
 import { createPaneCatalog } from "./discovery";
 import { parsePaneCatalogArgs } from "./options";
 import { parseViewSpec } from "../../plugins/builtin/custom-view/view-spec";
@@ -327,6 +330,54 @@ test("a memo's figures find FA with the tab that shows them, and an option's val
     expect(searched("operating margin").replace(/\s+/g, " ")).toContain("gloom fn GF <tickers> --metric operatingMargin");
     // An EQS preset is found by its value, which only the option's list named.
     expect(searched("compounders")).toStartWith('"compounders": gloom fn EQS --preset compounders\n\nEQS  Equity Screener');
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
+  }
+});
+
+// `fn VAR my` offered VAL, `catalog VAR` left MARS and PORT out and the command bar found nothing for "value at risk":
+// the glossary knew VaR was PORT's, and nothing looked there.
+test("a risk term a function shows reaches it from catalog, fn's hint and the command bar, as the glossary names it", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    // Every function a glossary term names is one the catalog lists, so a term never points nowhere.
+    const tokens = new Set(entries.flatMap((entry) => [entry.token, ...entry.aliases]));
+    for (const entry of GLOSSARY) for (const code of entry.functions) expect(tokens.has(code), `${entry.term}: ${code}`).toBe(true);
+    const leading = (query: string) => filterPaneCatalogEntries(entries, query).slice(0, 2).map((entry) => entry.token).sort();
+    for (const query of ["VAR", "value at risk", "expected shortfall", "cvar", "stress test"]) expect(leading(query), query).toEqual(["MARS", "PORT"]);
+    expect(filterPaneCatalogEntries(entries, "drawdown").map((entry) => entry.token)).toEqual(expect.arrayContaining(["MARS", "PORT"]));
+    expect(suggestedFunctionCodes(registry, "VAR").map((entry) => entry.code)).toEqual(["MARS", "PORT"]);
+    expect(suggestedFunctionCodes(registry, "drawdown").map((entry) => entry.code)).toEqual(["MARS", "PORT"]);
+    // The command bar finds them for the same words, as one of the rows it ranks.
+    const templates = [...registry.paneTemplates.values()].filter((template) => template.shortcut?.prefix);
+    const pluginRegistry = { getPaneTemplatePluginId: () => null, allPlugins: new Map(), panes: registry.panes } as unknown as PluginRegistry;
+    const found = (query: string) => fuzzyFilter(buildPaneShortcutItems({
+      templates, searchedQuery: query, registry: pluginRegistry,
+      createItem: (template, options) => buildPaneTemplateItem({
+        template, pluginRegistry, ...options, runPaneTemplateShortcut: () => {}, shouldOpenTemplateConfig: () => false,
+        openPaneTemplateWorkflow: () => {}, openPaneTemplateDirect: () => {},
+      }),
+    }), query, (row) => `${row.label} ${row.searchText ?? ""} ${row.detail} ${row.right ?? ""}`, (row) => row.label).map((row) => row.right);
+    for (const query of ["var", "value at risk", "expected shortfall", "stress test"]) expect(found(query).slice(0, 2).sort(), query).toEqual(["MARS", "PORT"]);
+    // HP and RETURN show a drawdown too.
+    expect(found("drawdown")).toEqual(expect.arrayContaining(["MARS", "PORT"]));
+
+    // A word of a common search, or a loose alias of a term (basis points, implied fx, close), names no function: these
+    // list what they listed before the glossary counted.
+    for (const query of ["fx", "earnings", "basis", "chart", "close", "exposure", "basis points", "implied fx", "beta", "trade"]) {
+      expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token), query)
+        .toEqual(filterPaneCatalogEntries(entries, query, { glossary: false }).map((entry) => entry.token));
+    }
+    // Nor do they send fn's hint to a function: only a term, its abbreviation or a name for its subject does.
+    for (const query of ["fx", "earnings", "basis", "chart", "close", "exposure", "basis points"]) {
+      expect(suggestedFunctionCodes(registry, query).filter((entry) => ["MARS", "PORT", "QQ", "GC"].includes(entry.code)), query).toEqual([]);
+    }
   } finally {
     registry.destroy();
     channels.mockRestore();

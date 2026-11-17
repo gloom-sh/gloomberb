@@ -725,7 +725,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `BI` | S&P 500 sector performance |
 | `THEM [theme]` | Thematic baskets with equal-weight returns and breadth, and each theme's members (the Themes tab of `BI`) |
 | `MEMB <fund>` | ETF holdings with weights, member returns, daily contributions and index changes; `MEMB <stock>` lists the covered ETFs holding a stock (look-through) |
-| `FXC` | FX cross rates: the majors, or up to 45 currencies (`gloom fn FXC --currencies USD,ZAR,NGN`; `gloom catalog FXC` lists the codes) |
+| `FXC` | FX cross rates: the majors, or up to 45 currencies. `FXC TRY` or `FXC USD,TRY` in the command bar adds them to the board, as `gloom fn FXC TRY` does; `--currencies USD,ZAR,NGN` or the pane's settings choose the whole list (`gloom catalog FXC` lists the codes) |
 | `FNG` | Fear and greed market gauge |
 
 #### Market function notes
@@ -1828,6 +1828,7 @@ A company's listings are the ones Gloom Cloud groups under one issuer (share cla
 **Searching the catalog**
 
 - `gloom catalog <query>` also finds a function by a value one of its options takes, and says the command: `catalog compounders` is `gloom fn EQS --preset compounders`, `catalog "operating margin"` names `gloom fn FA <ticker> --statement profitability` and `gloom fn GF <tickers> --metric operatingMargin`. `roic`, `return on invested capital`, `capex` and `free cash flow` find FA.
+- A query that is, whole, a glossary term, its abbreviation or a name for what it covers finds the functions that show it, where their own words do not: `catalog VaR`, `catalog "value at risk"`, `catalog "expected shortfall"` and `catalog "stress test"` list MARS and PORT first, `gloom fn VAR` suggests them, and so does the app's command bar. A word of a longer query, or another name a term is looked up by, finds no function.
 - A plain `gloom catalog <query>` names the terms it matches under the functions. Beside a term the query names, the related ones hold its words whole: `catalog float` relates no floating rate note. A multi-word query lists the functions that carry every word in their name or description, or the few closest when none does (`--all` lists every match).
 - A topic no function covers, such as `catalog "defense budget"`, says so and names the nearest functions. `catalog "borrow fee"`, `catalog utilization` and `catalog locate` say that borrow data is not available and name `SI`, `SIW` and `SIV`.
 - A `search` that finds no ticker lists the functions that carry every word of the query instead (`search "target weights rebalance"` names `PF`).
@@ -2240,7 +2241,7 @@ gloom portfolio show Retirement                    # --csv and --json keep raw n
 
 The terms in the table:
 
-- **Cash** is one amount in one currency, converted into the portfolio's currency. A broker portfolio whose account reports its cash shows that balance instead. Bare `CASH` names the cash line: `target set` takes it, while `portfolio add` and `position set` refuse it and point to `cash set` (the stock under that symbol is `CASH:NASDAQ`).
+- **Cash** is one amount in one currency, converted into the portfolio's currency. `cash set` replaces it, whatever currency it was in, and names the balance it replaced. A broker portfolio whose account reports its cash shows that balance instead. Bare `CASH` names the cash line: `target set` takes it, while `portfolio add` and `position set` refuse it and point to `cash set` (the stock under that symbol is `CASH:NASDAQ`).
 - **Weight** is a holding's net market value as a share of the total (every priced holding plus the cash). A holding without a price is left out of the total and the weights, shows `n/a`, and `portfolio show` says how many were left out.
 - **Targets** are percents of the same total, kept per ticker symbol and synced between your devices when signed in. They need not add up to 100% (`portfolio show` notes the sum and what is unallocated), and a target can name a ticker the portfolio does not hold yet (a manual portfolio adds it at 0%).
 - **Drift** is weight minus target in percentage points: `+2.3pp` is overweight.

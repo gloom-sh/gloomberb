@@ -209,3 +209,18 @@ test("below the coverage minimum Stress keeps its currency and price shocks, whi
   expect(lines.at(-1)).toContain("Index, 10Y, VIX and episode scenarios: qualifying holdings cover 5% of the holdings' value; basket estimates need 50%");
   expect(lines.at(-1)).not.toContain("daily closes");
 });
+
+// MARS showed METRIC, VALUE and PCTL 1Y beside an empty gap, its rows' date only in a footer a narrow pane cut, and the
+// footer's coverage and method ran into one segment a narrow row left out whole.
+test("every row keeps its date where the pane has room, and a narrow footer keeps what the numbers leave out", async () => {
+  cloud = brokerRiskClient(now);
+  const wide = (await renderPane(78, 28, {}, { portfolio: BROKER_PORTFOLIO, tickers: brokerFixtureTickers() }))();
+  const header = wide.find((line) => line.includes("METRIC"))!;
+  expect(header).toContain("AS OF");
+  expect(wide.find((line) => line.trimStart().startsWith("1D VaR 95% (60D)"))).toContain("2026-09-21");
+  // The default floating size: the coverage in its shortest form, whole, before the hints.
+  expect(wide.at(-1)).toContain("78% of book; EUR2, TWD1, 7 more left out");
+  // Too narrow for the date beside the figures, the rows leave it out.
+  const narrow = (await renderPane(56, 20, {}, { portfolio: BROKER_PORTFOLIO, tickers: brokerFixtureTickers() }))();
+  expect(narrow.find((line) => line.includes("METRIC"))).not.toContain("AS OF");
+});

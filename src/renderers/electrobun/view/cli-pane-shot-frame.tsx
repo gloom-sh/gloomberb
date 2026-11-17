@@ -185,7 +185,9 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
   const datesData = statusLine && dates === "data";
   return <PaneFooterProvider>{(registeredFooter) => {
     const status: PaneFooterSegment[] = statusLine && statusText !== null ? [{ id: "shot-status", parts: [{ text: statusText, tone: "label" }] }] : [];
-    const info = registeredFooter.info.filter((segment) => (preserveStatus || segment.icon === "warning" || segment.capture)
+    // A warning whose pane gives a picture no notes to print (`captureNotes` empty) leaves no segment.
+    const info = registeredFooter.info.filter((segment) => !(segment.icon === "warning" && segment.notes?.length === 0)
+      && (preserveStatus || segment.icon === "warning" || segment.capture)
       && !(datesPaneData(segment) && (datesData || crowded))
       && !(segment.quoteStatus && statusLine && dates !== null))
       // Nothing opens a picture's ⚠: its notes are the footer's one note line (noteLineParts).

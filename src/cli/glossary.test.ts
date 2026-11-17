@@ -316,4 +316,9 @@ test("PORT's risk words are found by the names a reader types, R² with or witho
     .toEqual([["Beta"], ["R²"], ["R²"], ["R²"], ["R²"], ["Value at risk"], ["Value at risk"], ["Value at risk"], ["HHI"], ["HHI"]]);
   const report = "Metric  Value  Evidence\n1D VaR 95% (60D)  1.19%  historical\nMarket (SPY)  0.54 beta  60 sessions\nHHI  0.20  4.9 effective holdings\nFactor  Value  R²";
   expect(terms(reportGlossary("PORT", report))).toEqual(["Beta", "R²", "Value at risk", "HHI"]);
+  // MARS opens the same report on its risk view: `fn MARS --explain` said it showed no terms.
+  const risk = "risk\n60D max drawdown  -7.23%\n1D VaR 95% (60D)  1.90%\n60D tracking error  7.83%\n\nstress\nIndex -10%  -9.96%";
+  expect(terms(reportGlossary("MARS", risk))).toEqual(["Value at risk", "Max drawdown", "Stress test", "Tracking error"]);
+  expect(["drawdown", "max drawdown", "stress test", "scenarios", "active risk"].map(exact))
+    .toEqual([["Max drawdown"], ["Max drawdown"], ["Stress test"], ["Stress test"], ["Tracking error"]]);
 });

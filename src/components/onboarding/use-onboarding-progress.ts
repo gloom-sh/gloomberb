@@ -31,8 +31,11 @@ import {
   pickLargestPosition,
   withOnboardingProgress,
   type BrokerOption,
+  type OnboardingPositionRow,
 } from "./wizard-model";
 import { logFailure } from "../../utils/log-failure";
+import { getSharedMarketDataCoordinator, resolveEntryValue } from "../../market-data/coordinator";
+import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { useViewport } from "../../react/input";
 
 const onboardingLog = debugLog.createLogger("onboarding");
@@ -40,6 +43,24 @@ const onboardingLog = debugLog.createLogger("onboarding");
 function saveFailureMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message || t("Unable to save onboarding progress.");
+}
+
+/**
+ * The dollar rates the app already holds for the currencies the rows are
+ * valued in, read from the market data cache: setup asks for no rate of its
+ * own. Empty for rows all in one currency, which compare as they are.
+ */
+function heldUsdRates(rows: readonly OnboardingPositionRow[]): Map<string, number> {
+  const currencies = new Set(rows.flatMap((row) => (row.value === null ? [] : [resolveCurrencyUnit(row.currency).currency])));
+  const rates = new Map<string, number>();
+  if (currencies.size < 2) return rates;
+  const coordinator = getSharedMarketDataCoordinator();
+  for (const currency of currencies) {
+    const entry = currency === "USD" ? null : coordinator?.getFxEntry(currency);
+    const rate = entry ? resolveEntryValue(entry) : null;
+    if (rate != null && rate > 0) rates.set(currency, rate);
+  }
+  return rates;
 }
 
 export function useOnboardingProgress({
@@ -229,7 +250,7 @@ export function useOnboardingWorkspace({
         .catch(logFailure("onboarding.positions", "Add position on Continue failed"));
       return;
     }
-    const largest = pickLargestPosition(positions.positions);
+    const largest = pickLargestPosition(positions.positions, heldUsdRates(positions.positions));
     if (!largest) {
       positions.focusField(0);
       return;

@@ -163,3 +163,38 @@ test("a status line too long for the row loses whole words from its middle, neve
   // Not a whole word fits at either end: the characters it has room for.
   expect(middleEllipsis("Supercalifragilistic", 8)).toBe("Supe…stic");
 });
+
+// MARS printed every left-out holding as a note while its footer already said what was left out.
+test("a pane's capture notes stand in for its notices in a capture, and empty ones print none of them", async () => {
+  const ui = createDomUiHost();
+  let update: (captureNotes: readonly string[] | undefined) => void = () => {};
+  function Notices({ captureNotes }: { captureNotes: readonly string[] | undefined }) {
+    usePaneNoticeFooter({
+      registrationId: "shot-notice", focused: true, captureNotes,
+      notices: ["BTC-USD (17.5% of the book) is excluded from the risk estimate: crypto is not covered by the equity basket.", "Closes failed for GARAN."],
+    });
+    usePaneFooter("shot-coverage", () => ({ info: [{ id: "coverage", capture: true, parts: [{ text: "73% of book; BTC-USD left out" }] }] }), []);
+    return <div>Risk rows</div>;
+  }
+  function Harness() {
+    const [captureNotes, setCaptureNotes] = useState<readonly string[] | undefined>(["Closes failed for GARAN."]);
+    update = setCaptureNotes;
+    return <UiHostProvider ui={ui} renderer={noopRendererHost}>
+      <WebInputHostProvider><WebDialogHostProvider>
+        <PaneShotFrame paneId="shot" title="Risk" width={100} height={24}>{() => <Notices captureNotes={captureNotes} />}</PaneShotFrame>
+      </WebDialogHostProvider></WebInputHostProvider>
+    </UiHostProvider>;
+  }
+  const root = await render(<Harness />);
+  const footer = () => root.querySelector('[data-gloom-role="pane-footer"]')?.textContent ?? "";
+  expect(footer()).toContain("Closes failed for GARAN.");
+  expect(footer()).toContain("73% of book; BTC-USD left out");
+  expect(footer()).not.toContain("is excluded from the risk estimate");
+  await act(async () => update([]));
+  expect(footer()).toContain("73% of book; BTC-USD left out");
+  expect(footer()).not.toContain("GARAN");
+  // Without them, the notices print as the note line, as for any pane.
+  await act(async () => update(undefined));
+  expect(footer()).toContain("BTC-USD (17.5% of the book) is excluded");
+  expect(footer()).toContain("+1 more");
+});

@@ -4,6 +4,7 @@ import type { TickerRecord } from "../../types/ticker";
 import type { OnboardingProgress } from "../../types/config";
 import {
   getOnboardingProgress,
+  getOnboardingPortfolioId,
   listOnboardingPositions,
   pickLargestBrokerPosition,
   pickLargestPosition,
@@ -53,6 +54,37 @@ describe("onboarding positions", () => {
     expect(pickLargestPosition(rows)?.symbol).toBe("AAPL");
     expect(pickLargestPosition(rows.filter((row) => row.shares === null))?.symbol).toBe("NVDA");
     expect(pickLargestPosition([])).toBeNull();
+  });
+
+  // A profile built with the command line opened setup on the empty default portfolio, "Positions (0)" over 8 holdings,
+  // and its book of US funds and lira shares compared 2,000 AKBNK at TRY55 with 20 SPY at $520 as plain numbers.
+  test("setup opens on the manual portfolio that already holds something, and compares rows in two currencies in dollars", () => {
+    const config = createDefaultConfig("/tmp/onboarding");
+    config.portfolios = [...config.portfolios, { id: "istanbul", name: "Istanbul Book", currency: "USD" }];
+    const held = (symbol: string, shares: number, avgCost: number, currency: string) => createTestTicker(symbol, symbol, {
+      portfolios: ["istanbul"], positions: [{ portfolio: "istanbul", shares, avgCost, currency, broker: "manual" }],
+    });
+    const tickers = [held("SPY", 20, 520, "USD"), held("AKBNK", 2000, 55, "TRY")];
+    expect(getOnboardingPortfolioId(config)).toBe("main");
+    expect(getOnboardingPortfolioId(config, tickers)).toBe("istanbul");
+    // A holding in the default portfolio keeps setup there, the first that holds anything.
+    expect(getOnboardingPortfolioId(config, [...tickers, ticker("AAPL", 10)])).toBe("main");
+    const rows = listOnboardingPositions(tickers, "istanbul", () => null);
+    expect(pickLargestPosition(rows, new Map([["TRY", 0.0236]]))?.symbol).toBe("SPY");
+    // Without the lira's rate the values compare as they are, as setup always compared them.
+    expect(pickLargestPosition(rows, new Map())?.symbol).toBe("AKBNK");
+  });
+
+  // Every row in one currency, its rate not loaded (offline, or setup asked for none): the pick is the one it always was,
+  // by value, never by share count for values that could not convert.
+  test("rows in one currency other than the dollar compare as they are, with or without its rate", () => {
+    const pounds = (symbol: string, shares: number, avgCost: number) => createTestTicker(symbol, symbol, {
+      portfolios: ["main"], positions: [{ portfolio: "main", shares, avgCost, currency: "GBP", broker: "manual" }],
+    });
+    const rows = listOnboardingPositions([pounds("SHEL", 10, 2000), pounds("LLOY", 100, 50)], "main", () => null);
+    expect(pickLargestPosition(rows)?.symbol).toBe("SHEL");
+    expect(pickLargestPosition(rows, new Map())?.symbol).toBe("SHEL");
+    expect(pickLargestPosition(rows, new Map([["GBP", 1.25]]))?.symbol).toBe("SHEL");
   });
 
   test("ranks broker imports by cost basis and ignores rows without a symbol", () => {

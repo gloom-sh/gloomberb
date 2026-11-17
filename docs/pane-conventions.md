@@ -317,7 +317,10 @@ the origin of a number. The one count the kit draws is the
   line steps down to its shorter forms first, and as a last resort drops
   whole words from its middle (`Newest filing Fri 6 Nov … (Form 4
   filings)`). `usePaneNoticeFooter` supplies the notices (`notes`).
-  Warnings remain visible with `--no-status` too.
+  Warnings remain visible with `--no-status` too. A pane whose capture
+  segments already say what some notices explain at length (what its
+  numbers leave out) passes the rest as `captureNotes`; the dialog still
+  lists every notice.
 - A note is plain words for a reader: never a reason code (`node_limit`,
   `UPSTREAM_ERROR`), a CLI flag (`--spot`) or a back-end term
   (`quarantined`). Say what is missing and, where it helps, what to do in

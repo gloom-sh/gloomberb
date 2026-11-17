@@ -248,6 +248,20 @@ describe("CLI portfolio commands", () => {
     expect(elsewhere.stderr).toContain("--currency is an option of portfolio create, not portfolio cash.");
   });
 
+  // A TRY balance set over in USD was gone with only "Set cash ... to $1,200.00." to say so.
+  test("cash set names the balance it replaces, and says a balance in another currency is no longer counted", async () => {
+    const { dataDir } = await createCliFixture({ portfolios: [{ id: "istanbul", name: "Istanbul Book", currency: "USD" }], watchlists: [] });
+    const first = await captureConsole(() => runCli(["portfolio", "cash", "set", "Istanbul Book", "250.000,00", "try"]));
+    expect(first.stdout).not.toContain("replacing");
+    const second = await captureConsole(() => runCli(["portfolio", "cash", "set", "Istanbul Book", "1.200", "usd"]));
+    expect(second.stdout).toContain('Set cash in "Istanbul Book" to $1,200.00, replacing TRY250,000.00.');
+    expect(second.stdout).toContain("the TRY balance is no longer counted");
+    expect((await loadConfig(dataDir)).portfolios[0]!.cash).toEqual({ amount: 1200, currency: "USD" });
+    // The same balance again replaces nothing.
+    const again = await captureConsole(() => runCli(["portfolio", "cash", "set", "Istanbul Book", "1200", "USD"]));
+    expect(again.stdout).not.toContain("replacing");
+  });
+
   test("rejects duplicate manual portfolio names", async () => {
     await createCliFixture({
       portfolios: [{ id: "research", name: "Research", currency: "USD" }],

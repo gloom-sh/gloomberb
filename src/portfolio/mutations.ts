@@ -225,12 +225,28 @@ function updatePortfolio(config: AppConfig, portfolioId: string, update: (portfo
   };
 }
 
-/** Records the cash held beside a portfolio's positions, replacing any earlier entry. */
-export function setPortfolioCash(config: AppConfig, portfolioId: string, cash: PortfolioCash): AppConfig {
+/**
+ * Records the cash held beside a portfolio's positions. A portfolio holds one
+ * balance in one currency, so this replaces any earlier entry, in whatever
+ * currency: `replaced` is that entry when it differs from the new one, for
+ * the caller to say what went (250,000 TRY replaced by 1,200 USD), and null
+ * when there was none or it was the same.
+ */
+export function setPortfolioCash(
+  config: AppConfig,
+  portfolioId: string,
+  cash: PortfolioCash,
+): { config: AppConfig; replaced: PortfolioCash | null } {
   const currency = cash.currency.trim().toUpperCase();
   if (!Number.isFinite(cash.amount)) throw new Error("Cash amount must be a valid number.");
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error(`"${cash.currency}" is not a currency code such as USD or EUR.`);
-  return updatePortfolio(config, portfolioId, (portfolio) => ({ ...portfolio, cash: { amount: cash.amount, currency } }));
+  const before = config.portfolios.find((portfolio) => portfolio.id === portfolioId)?.cash;
+  const replaced = before && before.amount !== 0 && (before.amount !== cash.amount || before.currency.toUpperCase() !== currency)
+    ? { ...before } : null;
+  return {
+    config: updatePortfolio(config, portfolioId, (portfolio) => ({ ...portfolio, cash: { amount: cash.amount, currency } })),
+    replaced,
+  };
 }
 
 export function clearPortfolioCash(config: AppConfig, portfolioId: string): { config: AppConfig; changed: boolean } {

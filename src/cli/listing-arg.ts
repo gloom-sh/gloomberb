@@ -293,9 +293,38 @@ async function companyLineOn(symbol: string, exchange: string, venues: readonly 
 }
 
 /** "PRU does not trade on HKEX. Prudential plc trades on HKEX as 2378:HKEX. PRU trades on: LSE, NYSE." */
-async function notTradedText(listing: Pick<ListingArg, "symbol" | "exchange">, venues: readonly ListingVenue[], deps: ListingDeps): Promise<string> {
+async function notTradedText(
+  listing: Pick<ListingArg, "symbol" | "exchange"> & { typed?: string },
+  venues: readonly ListingVenue[],
+  deps: ListingDeps,
+): Promise<string> {
   const companyLine = await companyLineOn(listing.symbol, listing.exchange, venues, deps);
-  return `${listing.symbol} does not trade on ${listing.exchange}.${companyLine}${tradesOn(listing.symbol, venues)}`;
+  return marketCodeNotTradedText(listing, venues, companyLine)
+    ?? `${listing.symbol} does not trade on ${listing.exchange}.${companyLine}${tradesOn(listing.symbol, venues)}`;
+}
+
+/**
+ * "IS is Bloomberg's code for NSE, where AKBNK does not trade. Did you mean
+ * AKBNK TI (AKBNK:BIST)?" for a listing typed as a Bloomberg code (`AKBNK IS`,
+ * read as AKBNK on NSE) whose symbol trades elsewhere: the code says which
+ * venue it named, and each venue the symbol is on is written the way it was
+ * typed, so the next try is one step. Null for a listing not typed so.
+ */
+function marketCodeNotTradedText(
+  listing: Pick<ListingArg, "symbol" | "exchange"> & { typed?: string },
+  venues: readonly ListingVenue[],
+  companyLine: string,
+): string | null {
+  const code = listing.typed ? readTerminalListingCode(listing.typed) : null;
+  if (!code?.market || code.exchange !== listing.exchange || venues.length === 0) return null;
+  const symbol = code.symbol;
+  const choices = [...new Set(venues.map((venue) => {
+    const key = `${venue.symbol ?? symbol}:${venue.exchange}`;
+    const written = bloombergCodeOf(venue.symbol ?? symbol, venue.exchange);
+    return written ? `${written} (${key})` : key;
+  }))].slice(0, 3);
+  const meant = choices.length > 1 ? `${choices.slice(0, -1).join(", ")} or ${choices.at(-1)}` : choices[0]!;
+  return `${code.market} is Bloomberg's code for ${listing.exchange}, where ${symbol} does not trade.${companyLine} Did you mean ${meant}?`;
 }
 
 /** "Toronto Stock Exchange (TSX) or Tokyo Stock Exchange (JPX)". */
@@ -381,7 +410,7 @@ async function checkListingExchange(listing: ListingArg, deps: ListingDeps): Pro
  * failure stands. It searches, so ask only after a request came back empty.
  */
 export async function notTradedMessage(
-  listing: Pick<ListingArg, "symbol" | "exchange">,
+  listing: Pick<ListingArg, "symbol" | "exchange"> & { typed?: string },
   deps: ListingDeps,
 ): Promise<string | null> {
   if (!listing.exchange) return null;
@@ -408,7 +437,7 @@ function withdrawnListingMessage(listing: Pick<ListingArg, "symbol" | "exchange"
 
 /** Fails the command with `notTradedMessage`; returns when the symbol does trade there. */
 export async function failIfNotTraded(
-  listing: Pick<ListingArg, "symbol" | "exchange">,
+  listing: Pick<ListingArg, "symbol" | "exchange"> & { typed?: string },
   deps: ListingDeps,
   ctx: Pick<CliCommandContext, "fail">,
 ): Promise<void> {
@@ -1866,9 +1895,31 @@ async function refuseUnknownMarketCode(typed: string, deps: ListingDeps): Promis
 async function checkTerminalCodeVenue(listing: ListingArg, market: string, deps: ListingDeps): Promise<void> {
   const hint = bloombergMarketHint(market);
   if (!hint && !isSearchOnlyVenue(listing.exchange)) return;
-  const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
-  if (venues.length === 0 || venues.some((venue) => venue.exchange === listing.exchange)) return;
+  // Only what search answers refuses the code: a busy or unreachable search leaves the listing's own request to speak.
+  const venues = await listingVenues(listing.symbol, deps, { failTransient: true })
+    .catch(logFailure("cli.listing-arg", "Read listing venues failed", null));
+  if (!venues) return;
+  const there = venues.filter((venue) => venue.exchange === listing.exchange);
+  const own = (venue: ListingVenue) => !venue.symbol || venue.symbol.toUpperCase() === listing.symbol.toUpperCase();
+  if (there.some(own) || (there.length > 0 && !hint)) return;
+  // Where the codes differ, Bloomberg's ticker can name the company search lists there under the venue's code
+  // (ARAMCO AB is Saudi Aramco, 2222 on Tadawul): say which one to type.
+  const listed = there.find((venue) => !own(venue));
+  const line = !hint ? null : listed ? { symbol: listed.symbol!, name: listed.name.trim() } : await venueLineNamed(listing, deps);
+  if (line) {
+    throw new ListingArgError(`${listing.symbol} is not a ${listing.exchange} code; did you mean ${line.symbol} ${market}${line.name ? ` (${line.name})` : ""}?`, hint!);
+  }
+  // Search lists the symbol nowhere: the request's own answer says what it finds, as it did before codes were checked.
+  if (venues.length === 0) return;
   throw new ListingArgError(await notTradedText(listing, venues, deps), hint ?? undefined);
+}
+
+/** The one line search lists on the listing's venue for its symbol read as a name (ARAMCO: 2222 on TADAWUL); null for none or several. */
+async function venueLineNamed(listing: ListingArg, deps: ListingDeps): Promise<{ symbol: string; name: string } | null> {
+  const found = await deps.dataProvider.search(listing.symbol).catch(logFailure("cli.listing-arg", "Search a code's company failed", []));
+  const lines = found.filter((result) => canonicalExchange(result.exchange || result.primaryExchange) === listing.exchange);
+  const symbols = [...new Set(lines.map((result) => parsePublicTickerKey(result.symbol).symbol))];
+  return symbols.length === 1 && symbols[0] !== listing.symbol.toUpperCase() ? { symbol: symbols[0]!, name: lines[0]!.name.trim() } : null;
 }
 
 /**
