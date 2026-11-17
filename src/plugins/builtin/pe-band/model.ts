@@ -205,7 +205,7 @@ function closesOf(history: readonly PricePoint[]): Array<{ date: Date; close: nu
  * takes the date of the last daily close before the next bar; elsewhere it
  * keeps its own.
  */
-export function closingSessions<T extends { date: Date }>(weekly: readonly T[], daily: readonly { date: Date }[]): T[] {
+function closingSessions<T extends { date: Date }>(weekly: readonly T[], daily: readonly { date: Date }[]): T[] {
   let at = 0;
   return weekly.map((bar, index) => {
     const from = bar.date.getTime();
