@@ -285,11 +285,14 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
       <Box
         flexGrow={1}
         backgroundColor={colors.bg}
-        overflow="hidden"
         style={{
           display: "grid",
           gridTemplateColumns: `repeat(${desktopColumns}, minmax(0, 1fr))`,
-          gridAutoRows: "minmax(66px, 1fr)",
+          // The rows share the board, each at least as tall as its cards' lines: a board too short for every card
+          // scrolls rather than draw a card's lines over one another.
+          gridAutoRows: "minmax(min-content, 1fr)",
+          overflowX: "hidden",
+          overflowY: "auto",
           alignItems: "stretch",
           alignContent: "stretch",
           width: "100%",
