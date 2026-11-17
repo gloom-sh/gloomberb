@@ -85,6 +85,15 @@ const hints = (container: HTMLElement) => [...container.querySelectorAll('[data-
   .join(" ");
 
 describe("MAP on the desktop and the web", () => {
+  test("a place argument starts a zoomed map rather than the whole world", async () => {
+    serve();
+    const container = await mount({ layers: [], venues: true, place: "51.5,-0.1" });
+    await until(container, "City 0");
+    expect(container.querySelector('[data-gloom-role="world-venue-map"]')?.getAttribute("data-zoomed")).toBe("true");
+    const [scale] = basemap(container).slice(7, -1).split(" ").map(Number);
+    expect(scale).toBeGreaterThan(1);
+  });
+
   test("< and > narrow and widen the sidebar from the keyboard without a footer hint", async () => {
     serve();
     const container = await mount({ layers: [], venues: true });

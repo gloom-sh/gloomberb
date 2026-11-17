@@ -7,6 +7,7 @@ import {
   entityOpenZoom,
   entityTableBbox,
   geoViewForViewport,
+  HOME_AREA_SETTING_KEY,
   LAYERS_SETTING_KEY,
   parseMapPreset,
   readVenuesSetting,
@@ -54,12 +55,9 @@ describe("map layers", () => {
     expect(resolveActiveLayers(["ships"], null)).toEqual([]);
   });
 
-  test("the picker only exists with a catalog, and edits keep venues and drop the oldest pick", () => {
-    expect(buildMapSettingsDef({}, null)).toBeUndefined();
-    expect(buildMapSettingsDef({}, [])).toBeUndefined();
-
+  test("edits keep venues and drop the oldest pick", () => {
     const def = buildMapSettingsDef({}, catalog)!;
-    expect(def.fields.map((field) => field.key)).toEqual([VENUES_SETTING_KEY, "layers:ships", "layers:ports", "layers:air", "layers:energy"]);
+    expect(def.fields.map((field) => field.key)).toEqual([HOME_AREA_SETTING_KEY, VENUES_SETTING_KEY, "layers:ships", "layers:ports", "layers:air", "layers:energy"]);
     expect(def.values?.[VENUES_SETTING_KEY]).toBe(true);
 
     // A plain venue map that gains a layer keeps its venues.
@@ -72,6 +70,15 @@ describe("map layers", () => {
     expect(capped[LAYERS_SETTING_KEY]).toEqual(["pipelines", "oil-gas-fields", "terminals", "airports"]);
     // Unticking a layer removes only that one.
     expect(applyMapSetting(capped, "layers:energy", ["terminals"], catalog)[LAYERS_SETTING_KEY]).toEqual(["terminals", "airports"]);
+  });
+
+  test("arguments stop reading layers at a place and preserve coordinate commas and multiword names", () => {
+    expect(parseMapPreset("ships Sydney")).toEqual({ layers: ["ships"], venues: false, place: "Sydney" });
+    expect(parseMapPreset("air 51.5, -0.1")).toEqual({ layers: ["air"], venues: false, place: "51.5, -0.1" });
+    expect(parseMapPreset("ports,air venues New York")).toEqual({ layers: ["ports", "air"], venues: true, place: "New York" });
+    expect(parseMapPreset("France")).toEqual({ layers: [], venues: true, place: "France" });
+    expect(parseMapPreset("tankers-live Strait of Hormuz", catalog)).toEqual({ layers: ["tankers-live"], venues: false, place: "Strait of Hormuz" });
+    expect(parseMapPreset("ships Atlantis")).toEqual({ layers: ["ships"], venues: false, place: "Atlantis" });
   });
 
   test("the view covers the world until zoomed, then a rounded box", () => {

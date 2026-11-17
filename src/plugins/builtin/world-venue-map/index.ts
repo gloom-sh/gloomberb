@@ -12,6 +12,7 @@ import { contextGeoRequest, mapHeadless } from "./headless";
 import { buildMapSettingsDef, groupTitle, MAP_PRESET_OPTIONS, parseMapPreset } from "./layers";
 import { WORLD_VENUE_MAP_PANE_ID, WorldVenueMapPane } from "./pane";
 import { mapFollowsTicker } from "./scope";
+import { mapHomeArea } from "./place";
 
 const chartComposerHeadless = chartHeadless("chart-composer-pane");
 
@@ -54,8 +55,7 @@ export const worldVenueMapModule: PluginModule = {
       // Linked to a list, a map with the app's own layers (facilities) shows the selected company's.
       shareItem: { ticker: true, argument: true },
       tickerFollower: mapFollowsTicker,
-      // The layer picker comes from the server's catalog; without one the pane keeps its old settings.
-      settings: (context) => buildMapSettingsDef(context.settings, peekGeoCatalog()?.layers) ?? { fields: [] },
+      settings: (context) => buildMapSettingsDef(context.settings, peekGeoCatalog()?.layers),
     },
   ],
   paneTemplates: [
@@ -67,19 +67,20 @@ export const worldVenueMapModule: PluginModule = {
       keywords: ["world", "map", "globe", "countries", "venue", "venues", "exchange", "mic", "market hours", "open markets", "ships", "ship", "vessels", "vessel", "shipping", "ais", "ports", "port", "chokepoints", "pipelines", "airports", "energy", "facilities", "data centers", "fabs", "layers"],
       shortcut: {
         prefix: "MAP",
-        argPlaceholder: "layers",
+        argPlaceholder: "layers [place or lat,lon]",
         argKind: "text",
         argOptional: true,
         argOptions: () => MAP_PRESET_OPTIONS,
       },
       headless: mapHeadless,
-      createInstance: (_context, options) => {
-        const preset = parseMapPreset(options?.arg ?? options?.values?.layers);
-        if (!preset) return { placement: "floating" };
+      createInstance: (context, options) => {
+        const preset = parseMapPreset(options?.arg ?? options?.values?.layers, peekGeoCatalog()?.layers);
+        const place = preset?.place ?? mapHomeArea(context.config);
+        if (!preset) return { placement: "floating", ...(place ? { settings: { place } } : {}) };
         return {
-          title: preset.layers.length ? `Map · ${preset.layers.map(groupTitle).join(", ")}` : "Map · Venues",
+          title: `${preset.layers.length ? `Map · ${preset.layers.map(groupTitle).join(", ")}` : "Map · Venues"}${place ? ` · ${place}` : ""}`,
           placement: "floating",
-          settings: { layers: preset.layers, venues: preset.venues },
+          settings: { layers: preset.layers, venues: preset.venues, ...(place ? { place } : {}) },
         };
       },
     },

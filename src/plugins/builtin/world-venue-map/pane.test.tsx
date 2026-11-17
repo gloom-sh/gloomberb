@@ -58,6 +58,14 @@ async function mount(settings: Record<string, unknown>) {
 }
 
 describe("world map layers", () => {
+  test("a place leaves the terminal map world-wide and narrows its entity table", async () => {
+    serve("fixture");
+    await mount({ layers: ["ships"], venues: false, place: "Suez Canal" });
+    await tui.waitForFrameToContain("Suez Canal");
+    expect(tui.frame()).not.toContain("Strait of Hormuz");
+    expect(tui.frame()).not.toContain("zoom out");
+  });
+
   test("a server without geo layers leaves even a preset as the quiet venue map", async () => {
     const requests = serve("absent");
     await mount({ layers: ["ships"], venues: false });

@@ -10,6 +10,10 @@
 | `MAP ports` | Ports with weekly calls and trade |
 | `MAP energy` | Pipelines, oil and gas fields and LNG terminals, all in the United States (the footer dates the terminals' capacity list); a search elsewhere says so |
 | `MAP air` | Airports, and flights where they are switched on |
+| `MAP ships Sydney` | Ships and chokepoints around Sydney |
+| `MAP air 51.5,-0.1` | Air traffic around latitude 51.5, longitude -0.1 |
+
+Put a place after the layers. Coordinates are latitude,longitude; names come from the app's countries, venue cities and layer search (including ports, airports and chokepoints), with no outside geocoder. An unknown place opens the world and says so in the footer. In pane settings, **Home area** sets where new maps without a place start; blank means world. An open desktop or web map keeps its own saved pan and zoom. The terminal always draws the whole world, with nearby entities listed first; `gloom fn MAP ships Sydney` and `gloom shot MAP ships Sydney` use the same area.
 
 ## Layers
 
