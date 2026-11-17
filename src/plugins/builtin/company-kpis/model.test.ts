@@ -48,6 +48,16 @@ test("changes preserve frequency, currency, basis, zero denominators and percent
   expect(changeTone(current, null)).toBe("muted");
   // A rate's change in points stays a number across zero.
   expect(observationChange({ ...current, value: 2, unit: "percent" }, [{ ...previous, value: -1, unit: "percent" }])).toEqual({ value: 3, unit: "pp" });
+  // Only the period just before counts: with the two quarters between missing, Q3 FY2025 is no prior change for Q2 FY2026.
+  const older = { ...previous, period: { ...previous.period, start: "2025-07-01", end: "2025-09-30", fiscalYear: 2025, fiscalQuarter: 3 } };
+  expect(observationChange(current, [older]).value).toBeNull();
+  expect(observationChange(current, [older, previous]).value).toBe(25);
+  const fiscalOnly = (item: typeof current) => ({ ...item, period: { ...item.period, start: null, end: null } });
+  expect(observationChange(fiscalOnly(current), [fiscalOnly(older)]).value).toBeNull();
+  expect(observationChange(fiscalOnly(current), [fiscalOnly(previous)]).value).toBe(25);
+  const year = (fiscalYear: number, value: number) => observation({ id: `fy${fiscalYear}`, value, period: { start: `${fiscalYear}-01-01`, end: `${fiscalYear}-12-31`, kind: "year", fiscalYear, fiscalQuarter: null, label: `FY${fiscalYear}` } });
+  expect(observationChange(year(2025, 120), [year(2024, 100)]).value).toBe(20);
+  expect(observationChange(year(2025, 120), [year(2023, 100)]).value).toBeNull();
 });
 
 test("chart projection excludes conflicts, revisions and missing dates without combining fiscal frequencies", () => {

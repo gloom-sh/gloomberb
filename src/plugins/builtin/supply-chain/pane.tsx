@@ -31,7 +31,7 @@ import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
 import { entityTicker } from "./graph-model";
 import {
-  cellText, counterpartyKind, disclosureText, isTaggedFact, counterpartyKindLabel, counterpartyLabel, counterpartyLabelEnd, counterpartyName, disclosedValue, earlierRows, fitShareBasis, focusCompanyLabel, focusCompanyName, receivablesConcentration, lockedDisclosures, nativeValue, percentage, relationshipLabel, ROLE_COLORS, roleLabel,
+  cellText, counterpartyKind, disclosureText, isTaggedFact, counterpartyKindLabel, counterpartyLabel, counterpartyLabelEnd, counterpartyName, disclosedValue, earlierRows, fitShareBasis, focusCompanyLabel, focusCompanyName, receivablesConcentration, lockedDisclosures, nativeValue, percentage, relationshipLabel, ROLE_COLORS, openingSupplyView, rowRoleLabel,
   periodDate, shareParts, sortRows, supplyEmptyText, supplyPreviewNote, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
@@ -161,9 +161,13 @@ export function tableColumns(width: number, desktop: boolean, locked: boolean, v
  * disclosures a free preview locks: the strip that heads the table and the flow.
  */
 function supplyFigures(data: SupplyChainPayload, views: readonly ("says" | "names")[], options: Required<SupplyOptions>, company: string | null): StatItem[] {
+  // Investee rows that all run into the company are its investors (rowRoleLabel).
+  const stakes = views.flatMap((view) => data[view].filter((row) => row.role === "investee"));
+  const investors = stakes.length > 0 && stakes.every((row) => row.direction === "in");
   return [
     ...(data.entity && company ? [{ id: "company", label: "Company", value: company }] : []),
-    ...supplyRoleCounts(data, views, options).map(({ role, counterparties, locked }) => ({ id: role, label: ROLE_PLURALS[role], value: String(counterparties),
+    ...supplyRoleCounts(data, views, options).map(({ role, counterparties, locked }) => ({ id: role,
+      label: role === "investee" && investors ? "Investors" : ROLE_PLURALS[role], value: String(counterparties),
       color: ROLE_COLORS[role], detail: locked ? `+${locked} locked` : undefined })),
   ];
 }
@@ -239,9 +243,9 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
     initialData: () => symbol ? cachedSupplyChain(symbol, accessKey, read) : null, clearOnError: isAccessDenied,
   });
   const data = resource.data?.payload ?? null;
-  const [openingView] = usePaneSettingValue("view", "says");
+  const [openingView] = usePaneSettingValue("view", "");
   const [savedView, setView] = usePluginPaneState<string>("supply:view", openingView);
-  const view = savedView === "names" ? "names" : "says";
+  const view = savedView === "names" || savedView === "says" ? savedView : data ? openingSupplyView(data, options) : "says";
   const tooSmall = width < 70 || height < 13;
   const tab = graphTab ? savedTab : savedTab === "flow" && !tooSmall ? "flow" : "table";
   const [sort, setSort] = usePluginPaneState<SupplySort>("supply:sort", { column: "pct", direction: "desc" });
@@ -365,7 +369,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
       // The text a copy or export reads names a related party; the cell draws the role beside the name's chip.
       case "role": return { text: relationshipLabel(row), content: <Box flexDirection="row" height={1} overflow="hidden">
         <Text fg={ROLE_COLORS[row.role]}>●</Text>
-        <Text fg={ink ?? ROLE_COLORS[row.role]}>{` ${roleLabel(row.role)}`}</Text>
+        <Text fg={ink ?? ROLE_COLORS[row.role]}>{` ${rowRoleLabel(row)}`}</Text>
       </Box> };
       case "pct": return { text: percentage(row) === MISSING_VALUE ? "" : `${shareParts(row, focusId)?.value ?? ""} ${shareParts(row, focusId)?.basis ?? ""}`.trim(), value: row.pctOfRevenue,
         content: <ShareCell row={row} focusId={focusId} width={column.width} layout={shareColumn} selected={state.selected} /> };

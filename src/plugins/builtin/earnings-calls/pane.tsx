@@ -278,6 +278,10 @@ function CallsListView({
   });
 
   const [calls, setCalls] = useState<CloudEarningsCallPayload[]>(initialShelf?.calls ?? []);
+  // The binding the shelf was read for. A dual-listed company's calls carry its
+  // home line's ticker (CALLS 1088:HKEX lists 601088:SSE's), so a call on this
+  // binding's shelf is its own whatever ticker it carries.
+  const [shelfTicker, setShelfTicker] = useState(() => symbol ? symbol.toUpperCase() : null);
   const [listStatus, setListStatus] = useState<"idle" | "loading" | "loaded" | "error">(initialShelf ? "loaded" : "idle");
   const [listError, setListError] = useState<{ message: string; status?: number } | null>(null);
   const [stale, setStale] = useState(initialShelf?.stale === true);
@@ -345,6 +349,7 @@ function CallsListView({
         .then((result) => {
           if (request !== listRequestVersion.current) return;
           setCalls(result.calls);
+          setShelfTicker(ticker);
           setNextOffset(result.calls.length);
           setHasMore(result.sourceLimitReached === true);
           setStale(result.stale);
@@ -416,6 +421,7 @@ function CallsListView({
     firstShelfLoadRef.current = false;
     const held = cachedEarningsCalls(ticker, { limit: CALL_PAGE_SIZE, exchange: listingVenue, name: listingName });
     setCalls(held?.calls ?? []);
+    setShelfTicker(ticker);
     setHasMore(held?.sourceLimitReached === true);
     setLoadingMore(false);
     setNextOffset(held?.calls.length ?? 0);
@@ -660,7 +666,7 @@ function CallsListView({
     if (!detailOpen || !selectedCallId || selectedUpcoming || !access.emailVerified || !access.hasProAccess) return;
     // A binding change clears selection in an effect; do not start a request
     // for that previous selection during the same render's effect pass.
-    if (ticker && selected?.ticker.toUpperCase() !== ticker) return;
+    if (ticker && selected?.ticker.toUpperCase() !== ticker && shelfTicker !== ticker) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     setTranscriptError(null);
@@ -705,7 +711,7 @@ function CallsListView({
     };
     // The call's identity is what matters; list refreshes must not restart this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailOpen, selectedCallId, selectedUpcoming, ticker, access.emailVerified, access.hasProAccess]);
+  }, [detailOpen, selectedCallId, selectedUpcoming, ticker, shelfTicker, access.emailVerified, access.hasProAccess]);
 
   const scrollTranscriptBy = useCallback((delta: number) => {
     if (transcriptScrollRef.current) scrollByLines(transcriptScrollRef.current, delta);
