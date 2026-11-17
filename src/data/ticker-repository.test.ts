@@ -36,7 +36,7 @@ describe("ticker rows shared with another program", () => {
     }
   });
 
-  test("a row another program deletes stays deleted when the app saves its copy, until the app reads that it is gone", async () => {
+  test("a row another program deletes stays deleted when the app saves its copy, until the app has taken in that it is gone", async () => {
     const persistence = new AppPersistence(":memory:");
     try {
       // The terminal app, and the desktop app beside it removing a broker profile's rows.
@@ -52,8 +52,13 @@ describe("ticker rows shared with another program", () => {
       await app.saveTicker({ metadata: { ...appCopy!.metadata, tags: ["core"] } });
       expect(await other.loadTicker("Z74")).toBeNull();
 
-      // Once it has read that the row is gone, adding the ticker again is a new row.
+      // A read of every row finds it gone and still holds the copy: a save of it stays dropped.
       expect(await app.loadAllTickers()).toEqual([]);
+      await app.saveTicker(appCopy!);
+      expect(await other.loadTicker("Z74")).toBeNull();
+      // Once the app has taken that in, adding the ticker again is a new row.
+      expect(app.takeRowsDeletedElsewhere()).toEqual(["Z74"]);
+      expect(app.takeRowsDeletedElsewhere()).toEqual([]);
       await app.saveTicker(createTestTicker("Z74", "Singtel", { exchange: "SGX", portfolios: ["main"] }));
       expect((await other.loadTicker("Z74"))!.metadata).toMatchObject({ portfolios: ["main"], watchlists: [] });
     } finally {

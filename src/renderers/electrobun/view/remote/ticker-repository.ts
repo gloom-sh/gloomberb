@@ -12,6 +12,11 @@ export class RemoteTickerRepository {
     return backendRequest("ticker.changesElsewhere");
   }
 
+  /** The rows another program deleted that the backend held, for this window to drop from what it shows. */
+  takeRowsDeletedElsewhere(): Promise<string[]> {
+    return backendRequest("ticker.takeDeletedElsewhere");
+  }
+
   async loadTicker(symbol: string): Promise<TickerRecord | null> {
     return backendRequest("ticker.load", { symbol });
   }

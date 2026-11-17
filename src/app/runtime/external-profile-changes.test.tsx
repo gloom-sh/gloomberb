@@ -3,7 +3,9 @@ import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { appReducer, createInitialState } from "../../core/state/app/state";
+import { AppPersistence } from "../../data/app-persistence";
 import { initDataDir } from "../../data/config/store";
+import { TickerRepository } from "../../data/ticker-repository";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import type { AppAction, AppState } from "../../state/app/context";
 import { createTestTicker } from "../../test-support/ticker";
@@ -92,6 +94,49 @@ describe("useExternalProfileChanges", () => {
       expect(tickers.get("AAPL")!.metadata.watchlists).toEqual(["watchlist", "cli"]);
       expect(tickers.has("LOCAL")).toBe(true);
       tui.destroy();
+    }
+  });
+
+  // The app's own commits move no `data_version` of its own: a row it added since its last look was never in the
+  // rows that look read, and another program deleting it must still be taken in, or the app's next save of what
+  // it holds writes it back.
+  test("a row the app added since its last look that another program deletes is dropped, and the app's next save leaves it deleted", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gloomberb-external-rows-"));
+    tempDirs.push(dir);
+    const path = join(dir, "profile.db");
+    const app = new AppPersistence(path, { interactive: true });
+    const desktop = new AppPersistence(path);
+    try {
+      const repository = new TickerRepository(app.tickers);
+      const aapl = createTestTicker("AAPL", "Apple", { watchlists: ["watchlist"] });
+      await repository.saveTicker(aapl);
+      const store = appStore({ ...createInitialState(createDefaultConfig(":memory:")), tickers: new Map([["AAPL", aapl]]) });
+      await tui.render(<Harness enabled dataDir=":memory:" dispatch={store.dispatch} stateRef={store.stateRef}
+        pluginRegistry={store.pluginRegistry} tickerRepository={repository} lookEveryMs={20} />);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // The app adds Z74, and the looks after it see no change.
+      const z74 = createTestTicker("Z74", "Singtel", { exchange: "SGX", watchlists: ["watchlist"] });
+      await repository.saveTicker(z74);
+      store.dispatch({ type: "UPDATE_TICKER", ticker: z74 });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // The desktop app, open on the same profile, deletes it.
+      const other = new TickerRepository(desktop.tickers);
+      await other.loadAllTickers();
+      await other.deleteTicker("Z74");
+      await waitFor(() => !store.stateRef.current.tickers.has("Z74"));
+
+      // The app's next save of what it holds, an edit of AAPL among it, leaves Z74 deleted.
+      const edited = { metadata: { ...aapl.metadata, tags: ["core"] } };
+      store.dispatch({ type: "UPDATE_TICKER", ticker: edited });
+      await repository.saveTickers([...store.stateRef.current.tickers.values()]);
+      expect(await other.loadTicker("Z74")).toBeNull();
+      expect((await other.loadTicker("AAPL"))!.metadata.tags).toEqual(["core"]);
+    } finally {
+      tui.destroy();
+      desktop.close();
+      app.close();
     }
   });
 

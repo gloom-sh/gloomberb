@@ -69,6 +69,8 @@ export async function handleDesktopBackendRequest(
       return backend.requireServices().tickerRepository.loadAllTickers();
     case "ticker.changesElsewhere":
       return backend.requireServices().tickerRepository.changesElsewhere?.() ?? null;
+    case "ticker.takeDeletedElsewhere":
+      return backend.requireServices().tickerRepository.takeRowsDeletedElsewhere?.() ?? [];
     case "ticker.load":
       return backend.requireServices().tickerRepository.loadTicker(request.payload.symbol);
     case "ticker.save":

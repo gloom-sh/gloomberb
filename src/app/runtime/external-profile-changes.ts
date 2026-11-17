@@ -17,6 +17,12 @@ type TickerRowsPort = AppTickerRepositoryPort & {
    * one can say. The desktop app's windows ask the process that holds it.
    */
   changesElsewhere?(): number | null | Promise<number | null>;
+  /**
+   * The rows the repository held a copy of that a read found deleted by
+   * another program (`TickerRepository.takeRowsDeletedElsewhere`), whoever
+   * wrote them last: rows the app added itself since its last look included.
+   */
+  takeRowsDeletedElsewhere?(): string[] | Promise<string[]>;
 };
 
 /**
@@ -57,9 +63,12 @@ export function useExternalProfileChanges({
 
   useEffect(() => {
     const changesElsewhere = tickerRepository.changesElsewhere?.bind(tickerRepository);
+    const takeDeleted = tickerRepository.takeRowsDeletedElsewhere?.bind(tickerRepository);
     if (!enabled || !changesElsewhere) return;
     let stopped = false;
-    // The database's version and its rows as last read: a row gone from them since was deleted elsewhere.
+    // The database's version and its rows as last read. Without the repository's own account of the rows deleted
+    // elsewhere, a row gone from the last read's is one; the app's own commits move no version, so that misses a
+    // row the app added since.
     let taken: number | null = null;
     let stored: Set<string> | null = null;
     let reading = false;
@@ -70,9 +79,12 @@ export function useExternalProfileChanges({
         // The app's own writes still on their way would read as someone else's: wait for them.
         if (stopped || version === null || (stored && version === taken) || hasPendingTickerWrites(tickerRepository)) return;
         const rows = await tickerRepository.loadAllTickers();
+        const present = new Set(rows.map((row) => row.metadata.ticker));
+        const deleted = takeDeleted ? await takeDeleted() : [...stored ?? []].filter((symbol) => !present.has(symbol));
         if (stopped) return;
-        if (stored) takeStoredTickerRows(rows, stored, tickerRepository, stateRef, dispatch);
-        stored = new Set(rows.map((row) => row.metadata.ticker));
+        // The first look is the rows as the app starts with them; only rows deleted since are taken in then.
+        takeStoredTickerRows(stored ? rows : [], deleted, tickerRepository, stateRef, dispatch);
+        stored = present;
         taken = version;
       } finally {
         reading = false;
@@ -93,32 +105,29 @@ export function useExternalProfileChanges({
 
 /**
  * Replaces the app's copy of each row the database holds differently, and
- * drops each row another program deleted since the last read (`before`), so
- * no later save of the app's copy brings it back. Rows only the app holds
- * stay, and so does one the app is saving: its save folds the other
- * program's change in.
+ * drops each row another program deleted (`deleted`), so no later save of
+ * the app's copy brings it back. Rows only the app holds stay, and so does
+ * one the app is saving: its save folds the other program's change in.
  */
 function takeStoredTickerRows(
   rows: readonly TickerRecord[],
-  before: ReadonlySet<string>,
+  deleted: readonly string[],
   tickerRepository: AppTickerRepositoryPort,
   stateRef: { current: AppState },
   dispatch: Dispatch<AppAction>,
 ): void {
   const current = stateRef.current.tickers;
   let next: Map<string, TickerRecord> | null = null;
-  const present = new Set<string>();
   for (const row of rows) {
     const symbol = row.metadata.ticker;
-    present.add(symbol);
     if (hasPendingTickerWrite(tickerRepository, symbol)) continue;
     const held = current.get(symbol);
     if (held && serializeJson(held.metadata) === serializeJson(row.metadata)) continue;
     next ??= new Map(current);
     next.set(symbol, row);
   }
-  for (const symbol of before) {
-    if (present.has(symbol) || !current.has(symbol) || hasPendingTickerWrite(tickerRepository, symbol)) continue;
+  for (const symbol of deleted) {
+    if (!current.has(symbol)) continue;
     next ??= new Map(current);
     next.delete(symbol);
   }
