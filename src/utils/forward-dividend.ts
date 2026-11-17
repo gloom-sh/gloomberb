@@ -1,6 +1,5 @@
 import type { CorporateActionsData, DeclaredDividendAction, Fundamentals } from "../types/financials";
-import { declaredDividends } from "./declared-dividends";
-import { formatDistributionAmount } from "./format";
+import { declaredDividendCash, declaredDividends } from "./declared-dividends";
 
 /**
  * What a forward dividend yield is everywhere it shows (fundamentals, DVD,
@@ -47,7 +46,9 @@ interface DeclaredBasisOptions {
 /** The declared row on the rate's ex-date, as `$0.98`, with its pay date; null when none is stated. */
 function statedDeclaration(exDate: string, options: DeclaredBasisOptions): { amount: string; payDate: string | null } | null {
   const row = options.currency ? options.declared?.find((declared) => declared.exDate === exDate) : undefined;
-  return row ? { amount: formatDistributionAmount(row.amount, options.currency!), payDate: isoDay(row.payDate) } : null;
+  if (!row) return null;
+  const cash = declaredDividendCash(row, options.currency);
+  return { amount: `${cash.amount}${cash.estimate ? ` (${cash.estimate})` : ""}`, payDate: isoDay(row.payDate) };
 }
 
 /**

@@ -17,7 +17,7 @@ import {
 } from "../../../utils/format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
-import { declaredDividends } from "../../../utils/declared-dividends";
+import { declaredDividendCash, declaredDividends } from "../../../utils/declared-dividends";
 import { fiscalPeriodText, fiscalQuarterInYear, fiscalQuarterText, fiscalYearText } from "../earnings/fiscal-quarter";
 import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { isReasonCode, readableStatus } from "../../../utils/reason-codes";
@@ -480,14 +480,15 @@ export function buildEventRows(
 
   // Declared and unpaid: its own row at its ex-date, apart from the paid distributions above.
   for (const dividend of declaredDividends(data)) {
+    const cash = declaredDividendCash(dividend, data?.currency ?? currency);
     rows.push({
       id: `div-declared:${dividend.exDate}`,
       date: dividend.exDate,
       status: "Dividend",
       period: MISSING_VALUE,
       // A one-off beside the regular payments says so: "Declared special, payable 2026-11-25".
-      detail: `Declared${dividend.special ? " special" : ""}${dividend.payDate ? `, payable ${dividend.payDate}` : ""}`,
-      value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
+      detail: `Declared${dividend.special ? " special" : ""}${cash.estimate ? `, ${cash.estimate}` : ""}${dividend.payDate ? `, payable ${dividend.payDate}` : ""}`,
+      value: cash.amount,
       tone: "positive",
     });
   }

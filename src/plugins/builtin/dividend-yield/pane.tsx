@@ -32,7 +32,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -113,7 +113,7 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
   const fwdLabel = bond ? (short ? "Fwd dist" : "Fwd dist yld") : short ? "Fwd yld" : "Fwd yield";
   const sec = bond ? bondFigures(bond).find((figure) => figure.key === "secYield") : undefined;
   return [
-    { id: "ttm-yield", essential: true, label: ttmLabel, value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0),
+    { id: "ttm-yield", essential: true, label: ttmLabel, value: `${formatDividendYield(metrics.trailingYield)}${metrics.trailingEstimates?.length ? " estimated" : ""}`, color: priceColor(metrics.trailingYield ?? 0),
       ...(trailingNote ? { detail: trailingNote } : {}) },
     // Dated by the distribution it annualizes, or marked declared (with its stated amount) beside the next ex-date;
     // a dividend that stopped has none, dated by its last ex-date, and a monthly payer's history that ends says so.
@@ -122,7 +122,8 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
       ? { id: "forward-yield", essential: true, label: fwdLabel, value: lapseValue(metrics.lapse), ...(forwardNote ? { detail: forwardNote } : {}) }
       : { id: "forward-yield", essential: true, label: fwdLabel, value: `${formatDividendYield(metrics.forwardYield)}${metrics.forwardEstimate ? " estimated" : ""}`, color: priceColor(metrics.forwardYield ?? 0),
         ...(forwardNote ? { detail: forwardNote } : {}) },
-    ...(metrics.forwardEstimate ? [{ id: "forward-fx", essential: true, label: "FX basis", value: `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
+    ...(metrics.forwardEstimate ? [{ id: "forward-fx", essential: true, label: metrics.forwardEstimate.fixingDate ? "FX fixing" : "FX basis",
+      value: metrics.forwardEstimate.fixingDate ?? `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
     // The 30-day SEC yield as the fund's sponsor publishes it, dated.
     ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${sec.date}` } : {}) }] : []),
     { id: "ttm-rate", essential: false, label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency, !!convertedFrom, convertedSubUnit),
@@ -164,7 +165,7 @@ function renderCell(
       return { text: row.exDate, color: colors.textDim };
     case "amount":
       return {
-        text: converted ? formatConvertedAmount(row.amount, row.currency, subUnit) : formatDistributionAmount(row.amount, row.currency),
+        text: formatDividendRowAmount(row, converted, subUnit),
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
@@ -270,7 +271,9 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
   const rows = useMemo(() => toDividendRows(payments), [payments]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
-  const columns = useMemo(() => buildDividendColumns(rows), [rows]);
+  const convertedFrom = historyData?.convertedFrom;
+  const convertedSubUnit = historyData?.convertedSubUnit;
+  const columns = useMemo(() => buildDividendColumns(rows, !!convertedFrom, convertedSubUnit), [rows, convertedFrom, convertedSubUnit]);
   const chartPoints = useMemo(
     () => data?.historyAvailable === false ? [] : buildTrailingCashChartPoints(payments),
     [data?.historyAvailable, payments],
@@ -298,8 +301,6 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   });
   // The header row, plus the scrollbar row once the columns overflow the pane.
   const tableChromeRows = chartTableChromeRows(columns, width);
-  const convertedFrom = historyData?.convertedFrom;
-  const convertedSubUnit = historyData?.convertedSubUnit;
   const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, !!convertedFrom, convertedSubUnit),
     [convertedFrom, convertedSubUnit]);
   const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond, convertedFrom, convertedSubUnit) : [];

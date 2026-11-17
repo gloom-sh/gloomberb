@@ -6,7 +6,7 @@ import type { DividendSummary } from "../../../api-client/market-discovery";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { createDividendYieldHeadless, projectDividendYieldHeadless } from "./headless";
-import { chartResponse, marketTransport, summaryFields } from "./test-fixture";
+import { chartResponse, hsbcIssuerDividendRead, marketTransport, summaryFields } from "./test-fixture";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 
@@ -18,6 +18,53 @@ function payment(date: string, amount = 0.5, currency = "USD"): DividendPayment 
 }
 
 describe("cash distribution calculations", () => {
+  test.each(["GBP", "GBp"])("%s HSBC ex-dated unfixed cash supersedes last November and dates both estimated rates", async (currency) => {
+    setSystemTime(new Date("2026-11-17T06:00:00Z"));
+    let fixedCash: number | undefined;
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead(currency, fixedCash) }));
+    const data = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
+    expect(data.payments).toHaveLength(5);
+    expect(data.payments[0]).toMatchObject({ exDate: new Date("2026-11-05"), amount: 0.075835,
+      paymentDate: new Date("2026-12-17"), declared: { amount: 0.1, currency: "USD" },
+      cashEstimate: { declaredCurrency: "USD", declaredAmount: 0.1, fixingDate: "2026-12-07" } });
+    const expected = 0.075835 + 0.074134 + 0.074489 + 0.333016;
+    expect(data.metrics.trailingRate).toBeCloseTo(expected, 10);
+    expect(data.metrics.forwardRate).toBeCloseTo(expected, 10);
+    expect(data.metrics.trailingYield).toBeCloseTo(expected / 13.38, 10);
+    expect(data.metrics.forwardYield).toBeCloseTo(expected / 13.38, 10);
+    expect(data.metrics).toMatchObject({ forwardBasis: "uneven", forwardRateAsOf: "2026-11-05",
+      forwardEstimate: { declaredAmount: 0.1, fixingDate: "2026-12-07" },
+      trailingEstimates: [{ declaredAmount: 0.1, fixingDate: "2026-12-07" }] });
+    const request = { rawArgument: "HSBA:LSE", argument: "HSBA:LSE", symbols: ["HSBA:LSE"], options: { limit: "3" } };
+    const result = projectDividendYieldHeadless(data, request);
+    expect(result.metadata).toMatchObject({ forwardRateAsOf: "2026-11-05", declaredDividends: [{ exDate: "2026-11-05" }],
+      trailingRateEstimates: [{ fixingDate: "2026-12-07" }] });
+    const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
+    expect(text).toContain(currency === "GBp" ? "estimated 7.5835p" : "estimated £0.075835");
+    expect(text).toContain("$0.10");
+    expect(text).toContain("estimated from 0.1 USD/share; FX fixing 2026-12-07");
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: { ...hsbcIssuerDividendRead(currency), summary: null } }));
+    const noSummary = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
+    expect(noSummary.metrics.forwardRate).toBeCloseTo(expected, 10);
+    expect(noSummary.metrics.forwardEstimate?.fixingDate).toBe("2026-12-07");
+    expect(noSummary.summaryError).not.toContain("no forward rate");
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead(currency, fixedCash) }));
+    setSystemTime(new Date("2026-11-04T06:00:00Z"));
+    const beforeEx = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
+    expect(beforeEx.payments).toHaveLength(4);
+    expect(beforeEx.metrics.trailingEstimates).toBeUndefined();
+    setSystemTime(new Date("2026-11-05T12:00:00Z"));
+    const justEx = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
+    expect(justEx.metrics.trailingRate).toBeCloseTo(expected, 10);
+    setSystemTime(new Date("2026-12-07T12:00:00Z"));
+    fixedCash = 0.076;
+    const fixed = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
+    expect(fixed.payments).toHaveLength(5);
+    expect(fixed.payments[0]?.cashEstimate).toBeUndefined();
+    expect(fixed.metrics.forwardEstimate).toBeUndefined();
+    expect(fixed.metrics.trailingEstimates).toBeUndefined();
+    expect(fixed.metrics.trailingRate).toBeCloseTo(expected - 0.075835 + 0.076, 10);
+  });
   test.each(["GBP", "GBp"])("%s history and an unfixed declaration retain units, dates and forward provenance", async (currency) => {
     const divisor = currency === "GBp" ? 100 : 1;
     setSystemTime(new Date("2026-11-17T06:00:00Z"));

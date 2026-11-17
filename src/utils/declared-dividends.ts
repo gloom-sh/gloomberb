@@ -1,9 +1,20 @@
 import type { CorporateActionsData, DeclaredDividendAction } from "../types/financials";
+import { formatDistributionAmount } from "./format";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** A paid row this close to a declared one is that distribution, dated a day apart. */
 const SAME_DISTRIBUTION_DAYS = 3;
 const DAY_MS = 86_400_000;
+
+export function declaredDividendCash(row: DeclaredDividendAction, currency?: string | null): { amount: string; estimate?: string } {
+  const cash = currency ? formatDistributionAmount(row.amount, currency) : String(row.amount);
+  const estimate = row.cashEstimate;
+  if (!estimate || estimate.declaredAmount == null) return { amount: cash };
+  return {
+    amount: `${formatDistributionAmount(estimate.declaredAmount, estimate.declaredCurrency)} ${estimate.declaredCurrency}`,
+    estimate: `${currency || "Cash"} estimated ${cash}; FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}${estimate.basis ? `; ${estimate.basis}` : ""}`,
+  };
+}
 
 function isoDate(value: unknown): string | undefined {
   return typeof value === "string" && ISO_DATE.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) ? value : undefined;
@@ -34,6 +45,7 @@ export function declaredDividends(
     const at = Date.parse(`${exDate}T00:00:00Z`);
     if (paid.some((time) => Math.abs(time - at) <= SAME_DISTRIBUTION_DAYS * DAY_MS)) return [];
     return [{ exDate, amount: row.amount, ...declarationDate ? { declarationDate } : {},
-      ...recordDate ? { recordDate } : {}, ...payDate ? { payDate } : {}, ...row.special === true ? { special: true as const } : {} }];
+      ...recordDate ? { recordDate } : {}, ...payDate ? { payDate } : {}, ...row.special === true ? { special: true as const } : {},
+      ...row.cashEstimate ? { cashEstimate: row.cashEstimate } : {} }];
   }).sort((left, right) => left.exDate.localeCompare(right.exDate));
 }

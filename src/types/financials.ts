@@ -678,18 +678,27 @@ export interface DividendAction {
 
 /**
  * A distribution the issuer has declared and not yet paid, as the source
- * states it. Kept apart from the paid `dividends`: no history, yield or growth
- * figure takes it.
+ * states it. Kept apart from paid `dividends`; issuer-confirmed declarations
+ * enter ex-date-based cash figures once ex-dated, with any conversion estimate.
  */
 export interface DeclaredDividendAction {
   exDate: string;
   /** Per share, in the listing's dividend currency (`currency`). */
   amount: number;
+  cashEstimate?: DividendCashEstimate;
   declarationDate?: string;
   recordDate?: string;
   payDate?: string;
   /** A one-off beside the regular payments (AIOK's $3.50), as the server marks it. */
   special?: true;
+}
+
+/** declaredAmount is in declaredCurrency's major unit; the enclosing amount keeps the history's currency/unit. */
+export interface DividendCashEstimate {
+  declaredCurrency: string;
+  declaredAmount?: number;
+  fixingDate?: string;
+  basis: string;
 }
 
 export interface SplitAction {
