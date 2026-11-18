@@ -65,7 +65,7 @@ test("exports stale quote dates and rejected endpoints with the matching reason"
   const result = await headless.load(args("sectors"), {} as HeadlessPaneContext);
   expect(result.unavailableSymbols).toContain("XLK");
   expect(result.errors).toContain("XLK: stale quote from 2026-09-09.");
-  expect(result.errors).toContain("XLK: 1Y: inconsistent OHLC at return endpoint.");
+  expect(result.errors).toContain("XLK: 1Y: contradictory prices at the return's start or end.");
   expect(result.errors?.some((error) => error.includes("history does not cover"))).toBe(false);
   expect(result.rows.find((row) => row.etf === "XLK")).toMatchObject({ lastReportedPrice: 117,
     quoteSessionDate: "2026-09-09", returnIntegrity: { "1Y": integrity } });

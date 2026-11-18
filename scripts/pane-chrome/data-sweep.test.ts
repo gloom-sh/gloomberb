@@ -151,6 +151,7 @@ test("reviewed source empty states remain findings, while mixed faults and unkno
     ["KPIS", "KPIs for DWSN are not yet available. Try KPIS AAPL.", "no-coverage"],
     ["HIRE", "No current role evidence has been captured yet.", "no-coverage"],
     ["JOBS", "No careers system found for PLPC. Gloom reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards.", "no-coverage"],
+    ["JOBS", "Looking for 1910:HKEX's careers system. Roles show here once it is read, usually within a few minutes. This pane checks again on its own.", "expected-empty"],
     ["LITI", "No cases linked to AAPL. US court dockets are not collected yet, so only agency and regulator actions show.", "no-coverage"],
     ["MA", "No deals involving 7203.T.", "expected-empty"],
     ["RIPL", "None of the 4 disclosed customers and suppliers of AAPL reports from 2026-11-14 to 2026-12-14 (the next 30 days).", "expected-empty"],

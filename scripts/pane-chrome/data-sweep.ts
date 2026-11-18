@@ -225,6 +225,8 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
       ANR: /^No upgrades, downgrades or target changes on record for /m,
       HALT: /^No trading halts reported\./m,
       ERN: /^No reports on the calendar /m,
+      // A company nobody had asked about: the server looks for its careers system, the pane fills in when it is read.
+      JOBS: /^Looking for \S+'s careers system\./m,
     };
     if (!expected && expectedEmpty[token]?.test(said)) expected = "expected-empty";
   }

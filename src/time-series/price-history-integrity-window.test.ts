@@ -51,10 +51,10 @@ test("rejected requested comparison endpoints remain exported and incomplete whi
       expect(result.series.every((entry) => entry.points[0]!.value === 0)).toBe(true);
       expect(result.priceComparison?.start).toBe(Date.parse(edge === 0 ? "2026-09-09" : "2026-09-08"));
       expect(result.priceComparison?.end).toBe(Date.parse(edge === 0 ? "2026-09-10" : "2026-09-09"));
-      expect(result.warnings.some((warning) => warning.includes("inconsistent OHLC"))).toBe(true);
+      expect(result.warnings.some((warning) => warning.includes("contradictory prices"))).toBe(true);
     }
     expect((model.metadata!.summaries as Array<{ return: number | null }>).every((summary) => summary.return !== null)).toBe(true);
-    expect((model.metadata!.notices as string[]).some((notice) => notice.includes("inconsistent OHLC"))).toBe(true);
+    expect((model.metadata!.notices as string[]).some((notice) => notice.includes("contradictory prices"))).toBe(true);
   }
 });
 
@@ -68,7 +68,7 @@ test("integrity metadata excludes unrelated corruption in the loaded navigation 
   expect(model.complete).not.toBe(false);
   expect(model.chart.priceHistoryIntegrity).toBeUndefined();
   expect(model.metadata!.priceHistoryIntegrity).toBeUndefined();
-  expect(model.chart.warnings.some((warning) => warning.includes("inconsistent OHLC"))).toBe(false);
+  expect(model.chart.warnings.some((warning) => warning.includes("contradictory prices"))).toBe(false);
 });
 
 test("date-only integrity selection uses local market sessions while explicit and panned timestamps stay exact", async () => {
@@ -88,7 +88,7 @@ test("date-only integrity selection uses local market sessions while explicit an
   const exact = { start: new Date("2026-01-08T00:00:00Z"), end: new Date("2026-01-10T23:59:59.999Z") };
   const panned = await resolveChartSpecData(spec, sources, new ChartResolveCache(), { requestViewport: exact });
   expect(panned.priceHistoryIntegrity).toBeUndefined();
-  expect(panned.warnings.some((warning) => warning.includes("inconsistent OHLC"))).toBe(false);
+  expect(panned.warnings.some((warning) => warning.includes("contradictory prices"))).toBe(false);
   spec.viewport.dateWindow = { start: exact.start.toISOString(), end: exact.end.toISOString() };
   expect((await resolveChartSpecData(spec, sources)).priceHistoryIntegrity).toBeUndefined();
 });
@@ -116,7 +116,7 @@ test("observation-count windows exclude older corrupt rows while retaining a rej
   for (const result of [model.chart, seeded]) {
     expect(result.series.every((entry) => entry.points.length === 2)).toBe(true);
     expect(result.priceHistoryIntegrity).toBeUndefined();
-    expect(result.warnings.some((warning) => warning.includes("inconsistent OHLC"))).toBe(false);
+    expect(result.warnings.some((warning) => warning.includes("contradictory prices"))).toBe(false);
   }
   histories.A[3] = row("2026-09-10", 12, true);
   const rejected = await loadChartPaneModel(spec, { marketData: provider(histories) } as HeadlessPaneContext);
@@ -135,5 +135,5 @@ test("a hidden source used only to retain the chart timeline does not report unr
   expect(model.chart.timelineSeries?.[0]?.points.some((point) => point.provenance?.priceHistoryIntegrity)).toBe(true);
   expect(model.chart.priceHistoryIntegrity).toBeUndefined();
   expect(model.complete).not.toBe(false);
-  expect(model.chart.warnings.some((warning) => warning.includes("inconsistent OHLC"))).toBe(false);
+  expect(model.chart.warnings.some((warning) => warning.includes("contradictory prices"))).toBe(false);
 });
