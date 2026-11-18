@@ -1,22 +1,10 @@
 import type { ResourceRecordSink } from "./memory-resource-store";
-import { resourceRecordKey } from "./memory-resource-store";
+import { resourceRecordKey, WARM_RESOURCE_BUDGET } from "./memory-resource-store";
 import type { CachedResourceRecord, ResourceCacheKey } from "./resource-store";
 import { logFailure } from "../utils/log-failure";
 import { createPersistScheduler } from "../state/persist-scheduler";
 
-/**
- * Saved copies for the renderers that keep their caches in memory: the
- * desktop view (its Bun process holds the cache database) and the web app
- * (the browser's IndexedDB). Every record is written through as it changes;
- * a launch starts from the records read most recently, as many as fit this
- * budget, so the panes that were open open on their saved copies at once.
- * What does not fit is fetched again, as a cold start would.
- */
-export const WARM_RESOURCE_BUDGET = {
-  /** Payload bytes, as the cache database counts them. */
-  maxBytes: 8 * 1024 * 1024,
-  maxRows: 2_000,
-} as const;
+export { WARM_RESOURCE_BUDGET };
 
 /** One write to a durable store: what changed since the last, newest wins per record. */
 export interface ResourceSyncBatch {

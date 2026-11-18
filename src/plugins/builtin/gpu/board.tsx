@@ -8,6 +8,7 @@ import {
 } from "../../../components";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
 import { useAsyncResource } from "../../../public/react";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PricePoint } from "../../../types/financials";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
@@ -53,7 +54,10 @@ export function GpuVariantChips({ row, width, selected = false }: { row: Pick<Gp
 function useHeadlineHistory(rows: readonly GpuBoardRow[], model: string): Map<string, PricePoint[]> {
   const ids = useMemo(() => gpuSparklineSeries(rows, model).join("\n"), [rows, model]);
   const loader = useCallback((force: boolean) => loadGpuHistoryGroup(ids.split("\n"), force), [ids]);
-  const resource = useAsyncResource(ids ? loader : null, { initialData: () => getCachedGpuHistoryGroup(ids.split("\n")), clearOnError: isAccessDenied });
+  const scope = useCloudDisplayScope();
+  const resource = useAsyncResource(ids && scope ? loader : null, {
+    initialData: () => getCachedGpuHistoryGroup(ids.split("\n")), clearOnError: isAccessDenied, keepPreviousData: scope,
+  });
   return useMemo(() => resource.data ? new Map(ids.split("\n").map((id, index) => {
     const points = (resource.data!.histories[index]?.payload.points ?? [])
       .filter((point) => `${point.source}:${point.skuKey}` === id)

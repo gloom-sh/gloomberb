@@ -6,6 +6,7 @@ import { instrumentFromTicker } from "../../../market-data/request-types";
 import { fxVolatilityNote } from "../../../market-data/options-alternatives";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginAppActions } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -58,7 +59,10 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
   }, [instrumentKey]);
   // An FX pair has no implied volatility history: the pane says what stands in, and asks for nothing.
   const fxNote = symbol ? fxVolatilityNote(symbol, ticker?.metadata.exchange) : null;
-  const resource = useAsyncResource(instrument && !fxNote ? loader : null, { savedCopy: { key: ["iv-history", instrumentKey] } });
+  const scope = useCloudDisplayScope();
+  const resource = useAsyncResource(scope && instrument && !fxNote ? loader : null, {
+    savedCopy: scope && !instrument?.instrument ? { key: ["iv-history", scope, instrumentKey] } : null,
+  });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const model = useMemo(() => resource.data

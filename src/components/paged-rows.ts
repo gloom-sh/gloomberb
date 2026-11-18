@@ -139,11 +139,12 @@ export function usePagedRows<P extends RowPage<unknown>>(
   let view = state;
   if (state.owner !== loadPage || (state.ownerKey ?? null) !== savedId) {
     const sameQuestion = savedId !== null && state.ownerKey === savedId;
-    const retainAsPlaceholder = !!loadPage && keepPreviousRows && savedId === null && state.ownerKey == null;
+    const opening = sameQuestion ? state : open();
+    const retainAsPlaceholder = !!loadPage && keepPreviousRows && !sameQuestion && state.pages.length > 0 && opening.pages.length === 0;
     view = sameQuestion || retainAsPlaceholder
       ? { ...state, owner: loadPage, ownerKey: savedId, hasMore: false, loading: true, loadingMore: false, error: null, moreError: null,
-        placeholder: retainAsPlaceholder ? true : undefined }
-      : open();
+        placeholder: retainAsPlaceholder ? true : state.placeholder }
+      : opening;
     setState(view);
   }
   const firstRequest = useRef<AbortController | null>(null);
@@ -210,7 +211,7 @@ export function usePagedRows<P extends RowPage<unknown>>(
 
   useEffect(() => {
     let active = true;
-    const frame = view.savedAt != null ? afterSavedCopyFrame() : undefined;
+    const frame = view.savedAt != null && !view.placeholder ? afterSavedCopyFrame() : undefined;
     if (frame) {
       void frame.then(() => {
         if (active && !firstRequest.current) load(false);

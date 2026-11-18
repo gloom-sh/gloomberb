@@ -83,7 +83,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const control = useRef<SelectControl>(null);
   const scopeControl = useRef<SelectControl>(null);
   const positionsControl = useRef<SelectControl>(null);
-  const loader = useCallback((force: boolean) => loadCotBoard(family, traderClass, force, positions), [family, traderClass, positions, session.requestKey]);
+  const loader = useCallback((force: boolean) => loadCotBoard(family, traderClass, force, positions), [family, traderClass, positions, session.requestKey, session.displayScope]);
   const resource = useAsyncResource(loader, { initialData: () => cachedCotBoard(family, traderClass, positions), clearOnError: isAccessDenied });
   const data = resource.data?.traderClass === traderClass && resource.data.scope === positions ? resource.data : null;
   const rows = useMemo(() => {
@@ -169,10 +169,10 @@ function CotChart({ series, width, height }: { series: ResolvedSeries[]; width: 
 function CotDetail({ width, height, focused, code, family, positions, traderClass, onClassChange }: Pick<PaneProps, "width" | "height" | "focused"> & { code: string; family: CotFamily; positions: CotPositions; traderClass: CotClass; onClassChange: (value: CotClass) => void }) {
   const colors = useThemeColors();
   const session = useResearchCloudSession();
-  const loader = useCallback(() => loadCotDetail(code, family, undefined, positions), [code, family, positions, session.requestKey]);
+  const loader = useCallback(() => loadCotDetail(code, family, undefined, positions), [code, family, positions, session.requestKey, session.displayScope]);
   const resource = useAsyncResource(loader, {
     clearOnError: isAccessDenied,
-    savedCopy: { key: ["cot-detail", session.requestKey, family, code, positions] },
+    savedCopy: session.displayScope ? { key: ["cot-detail", session.displayScope, family, code, positions] } : null,
   });
   // The front price's unit joins the legend once the contract terms answer, or
   // the catalog's after a short wait: the chart draws without waiting for it.

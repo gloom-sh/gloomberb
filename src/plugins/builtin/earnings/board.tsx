@@ -252,7 +252,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   }, [calendar, dataProvider, highlightedReport.data, market, named, owned, perTicker, query, queryKey, range, fund, today]);
   const resource = useAsyncResource(highlightedReport.loading ? null : loader, {
     keepPreviousData: true,
-    savedCopy: { key: ["earnings-board", queryKey, accessKey] },
+    savedCopy: session.displayScope ? { key: ["earnings-board", queryKey, accessKey] } : null,
     initialData: () => {
       const holdings = fund ? cachedMembers(fund.etf) : null;
       if (fund && !holdings) return null;

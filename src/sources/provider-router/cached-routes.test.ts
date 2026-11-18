@@ -1,4 +1,6 @@
 import { describe, expect, setSystemTime, test } from "bun:test";
+import { apiClient } from "../../api-client";
+import { GLOOMBERB_CLOUD_PROVIDER_ID } from "../gloomberb-cloud/normalizers";
 import { AppPersistence } from "../../data/app-persistence";
 import { MarketDataCoordinator } from "../../market-data/coordinator";
 import { buildArticleSummaryKey } from "../../market-data/selectors";
@@ -11,6 +13,56 @@ import { attachTestRegistry, brokerInstance, createBrokerConfig } from "./test-s
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("shared cached market queries", () => {
+  test("a Cloud cache seed is not returned for another plan or account", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const pro = { id: "cache-fixture-one", email: "one@example.com", emailVerified: true, plan: "pro" as const };
+    const args = ["AAPL", "NASDAQ"] as const;
+    const provider = createTestDataProvider({ id: GLOOMBERB_CLOUD_PROVIDER_ID,
+      getCorporateActions: async () => ({ symbol: "AAPL", dividends: [], splits: [], earnings: [] }),
+    });
+    const open = () => new AssetDataRouter(provider, [], persistence.resources).getCachedQuery("getCorporateActions", [...args]);
+    try {
+      apiClient.setSessionToken("isolated-cache-fixture");
+      apiClient.restoreCachedUser(pro);
+      await open().load();
+      expect(open().getSnapshot().result?.value.symbol).toBe("AAPL");
+      apiClient.restoreCachedUser({ ...pro, plan: "free" });
+      expect(open().getSnapshot().result).toBeNull();
+      apiClient.restoreCachedUser({ ...pro, id: "cache-fixture-two" });
+      expect(open().getSnapshot().result).toBeNull();
+      apiClient.setSessionToken(null);
+      expect(open().getSnapshot().result).toBeNull();
+    } finally {
+      apiClient.setSessionToken(null);
+      persistence.close();
+    }
+  });
+
+  test("a late Cloud answer cannot seed a query after its account changes", async () => {
+    const pro = { id: "late-cloud-fixture", email: "one@example.com", emailVerified: true, plan: "pro" as const };
+    const value = { symbol: "AAPL", dividends: [], splits: [], earnings: [] };
+    const reply = Promise.withResolvers<typeof value>();
+    const started = Promise.withResolvers<void>();
+    const provider = createTestDataProvider({ id: GLOOMBERB_CLOUD_PROVIDER_ID, getCorporateActions: () => {
+      started.resolve();
+      return reply.promise;
+    } });
+    const router = new AssetDataRouter(provider, []);
+    try {
+      apiClient.setSessionToken("isolated-cache-fixture");
+      apiClient.restoreCachedUser(pro);
+      const query = router.getCachedQuery("getCorporateActions", ["AAPL", "NASDAQ"]);
+      const request = query.load();
+      await started.promise;
+      apiClient.restoreCachedUser({ ...pro, id: "new-cloud-fixture" });
+      reply.resolve(value);
+      await expect(request).rejects.toThrow();
+      expect(query.getSnapshot().result).toBeNull();
+    } finally {
+      apiClient.setSessionToken(null);
+    }
+  });
+
   test("USD identity works offline without fetching or expiring from its undated static cache", async () => {
     let calls = 0;
     const provider = createTestDataProvider({ id: "offline", getExchangeRate: async () => { calls++; throw new Error("offline"); } });

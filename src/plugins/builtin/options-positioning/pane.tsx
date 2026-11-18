@@ -232,6 +232,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     [symbol, requestedExpiry, scope],
   );
   const openInterestLoad = useAsyncResource<CloudResource<OpenInterestPayload>>(openInterestLoader, {
+    keepPreviousData: scope,
     initialData: () => scope ? readOpenInterest(scope, symbol, requestedExpiry) : null,
   });
   const openInterest = { ...openInterestLoad, data: openInterestLoad.data?.payload ?? null };
@@ -266,6 +267,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   );
   const gammaReady = (tab === "gex" && (!!data || gammaExpiry === ALL_EXPIRIES)) || (tab === "expiries" && hasGamma);
   const gammaLoad = useAsyncResource<CloudResource<GammaPayload>>(gammaReady ? gammaLoader : null, {
+    keepPreviousData: scope,
     initialData: () => scope ? readGamma(scope, symbol, gammaScope === ALL_EXPIRIES ? null : gammaScope) : null,
   });
   const gamma = { ...gammaLoad, data: gammaLoad.data?.payload ?? null };

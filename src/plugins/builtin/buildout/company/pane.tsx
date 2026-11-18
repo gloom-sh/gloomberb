@@ -146,6 +146,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
 
   const loader = useMemo(() => (symbol ? () => fetchCompanyProfile(symbol) : null), [scope, symbol]);
   const profile = useAsyncResource(loader, {
+    keepPreviousData: scope,
     savedCopy: publicAccess ? { key: ["buildout-company", "anonymous", symbol, exchange] } : null,
   });
   const company = profile.data;

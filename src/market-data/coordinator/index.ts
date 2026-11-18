@@ -8,7 +8,7 @@ import type { ChartRequest, InstrumentRef, OptionsRequest, SecFilingsRequest } f
 import { QueryStore, type QueryStoreRetention } from "../query-store";
 import type { QueryEntry } from "../result-types";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
-import type { CachedQueryHandle } from "../../data/cached-query";
+import { cachedValueSavedAt, type CachedQueryHandle } from "../../data/cached-query";
 import {
   buildArticleSummaryKey,
   buildChartKey,
@@ -876,6 +876,7 @@ export class MarketDataCoordinator {
         lastGoodData: value ?? (method === "getExchangeRate" ? null : current.lastGoodData),
         source: result?.source ?? null,
         fetchedAt: result?.fetchedAt ?? null,
+        savedCopyAt: cachedValueSavedAt(result) ?? undefined,
         responseSequence: result?.responseSequence,
         asOf: result?.asOf,
         delayMinutes: result?.delayMinutes,

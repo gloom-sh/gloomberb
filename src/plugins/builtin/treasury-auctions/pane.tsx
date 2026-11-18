@@ -335,6 +335,7 @@ function UsAuctionsView({
     [loadWindow],
   );
   const resource = useAsyncResource(loadAuctions, {
+    keepPreviousData: true,
     savedCopy: { key: ["treasury-auctions", "us", view, historyDays] },
   });
   const auctions = resource.data?.auctions ?? NO_AUCTIONS;

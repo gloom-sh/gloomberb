@@ -90,6 +90,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
     [companyName, linkedBonds, needle, pro],
   );
   const { data, loading, error, updatedAt, load, reload } = useAsyncResource(request, {
+    keepPreviousData: scope,
     savedCopy: scope !== null ? { key: ["trace-tape", scope, needle] } : null,
   });
   const answered = data != null && (data.query?.text ?? "") === (parseBondQuery(needle)?.text ?? "");

@@ -54,8 +54,7 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
   const [selected, setSelected] = usePluginPaneState<string | null>("equitySelected", "NVDA");
   const { quotes, refresh } = useQuoteBoard(SYMBOLS, { liveStreaming: false, selectedSymbol: selected });
   const loader = useCallback(async () => {
-    if (!provider) throw new Error("Equity history is not available.");
-    return loadGpuEquityHistory(provider);
+    return loadGpuEquityHistory(provider!);
   }, [provider]);
   const history = useAsyncResource(displayScope === null ? null : loader, {
     savedCopy: { key: ["gpu-equity-history", displayScope, "1M", SYMBOLS] },
@@ -69,12 +68,13 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
     items: rows.filter((row) => (group.roles as readonly string[]).includes(row.role)) })), (row) => row.symbol), [rows]);
   const historyMap = useMemo(() => new Map(history.data?.map((entry) => [entry.symbol, entry]) ?? []), [history.data]);
   const ends = [...new Set(history.data?.flatMap((entry) => entry.asOf ? [entry.asOf] : []) ?? [])].sort();
+  const historyError = history.error ?? (!provider && !history.data ? "Equity history is not available." : null);
   const quoteDelay = useQuoteDelayFooter(boardQuotes(quotes), "gpu-equities-delay");
   usePaneFooter("gpu:equity-status", () => ({ info: [...quoteBoardFooterInfo(quoteBoardStatus(quotes)),
     ...(ends.length === 1 ? [{ id: "five-asof", parts: [{ text: `5D closes through ${ends[0]}`, tone: "muted" as const }] }] : []),
     ...(quoteDelay ? [quoteDelay] : [])] }), [quotes, quoteDelay, ends.join(",")]);
   usePaneNoticeFooter({ registrationId: "gpu:equity-notices", focused,
-    notices: [...(history.error ? [history.error] : []), ...(history.data?.flatMap((entry) => entry.error ? [entry.error] : []) ?? [])] });
+    notices: [...(historyError ? [historyError] : []), ...(history.data?.flatMap((entry) => entry.error ? [entry.error] : []) ?? [])] });
   const dataRef = useRef({ quotes, historyMap });
   dataRef.current = { quotes, historyMap };
   const medium = width >= 100;

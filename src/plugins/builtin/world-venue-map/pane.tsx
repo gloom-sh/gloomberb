@@ -95,8 +95,11 @@ export function WorldVenueMapPane(props: PaneProps) {
 }
 
 function VenueMapView({ focused, width, height, start }: PaneProps & { start: MapStart }) {
+  const scope = useCloudDisplayScope();
   // A background refresh keeps the venues on screen, so loading only shows before the first answer.
-  const { data, loading, error, load } = useAsyncResource(loadWorldVenues, { savedCopy: { key: ["world-venues"] } });
+  const { data, loading, error, load } = useAsyncResource(scope ? loadWorldVenues : null, {
+    savedCopy: scope ? { key: ["world-venues", scope] } : null,
+  });
   const [query, setQuery] = useState("");
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const mapKeys = useMapKeyboard(searchFocused);

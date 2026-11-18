@@ -1,6 +1,6 @@
 import type { QuoteIntradayBar } from "../types/financials";
 import { nextResponseSequence } from "./response-sequence";
-import { servedFromSavedCopy } from "./saved-copies";
+import { markSavedCopy, savedCopyAt, servedFromSavedCopy } from "./saved-copies";
 
 /** A value's age belongs to its source, not to the consumer that last read it. */
 export interface CachedValue<T> {
@@ -35,6 +35,23 @@ export interface CachedQueryHandle<T> {
   load(options?: { force?: boolean; background?: boolean; replace?: boolean }): Promise<CachedValue<T>>;
 }
 
+export function cachedValueSavedAt(result: CachedValue<unknown> | null | undefined): number | null {
+  if (!result) return null;
+  return result.fallbackOnly || result.refreshError !== undefined || result.expiresAt <= Date.now()
+    ? result.fetchedAt : savedCopyAt(result.value);
+}
+
+/** Read a cache seed without losing the age that an async pane uses in its footer. */
+export function cachedValueForDisplay<T>(result: CachedValue<T> | null | undefined): T | null {
+  if (!result) return null;
+  const savedAt = cachedValueSavedAt(result);
+  return savedAt === null ? result.value : markDisplayedValue(result.value, savedAt);
+}
+
+function markDisplayedValue<T>(value: T, savedAt: number): T {
+  return value && typeof value === "object" && savedCopyAt(value) !== savedAt ? markSavedCopy(value, savedAt) : value;
+}
+
 /** Owns freshness, concurrent requests, stale fallback, and refresh notification. */
 export class CachedQuery<T> implements CachedQueryHandle<T> {
   private state: CachedQueryState<T>;
@@ -51,7 +68,7 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
     acceptResult?: (result: CachedValue<T>) => boolean;
   }) {
     const result = options.read(true);
-    this.fallbackOnly = result !== null && (result.fallbackOnly === true || result.expiresAt < Date.now());
+    this.fallbackOnly = result !== null && (result.fallbackOnly === true || result.expiresAt <= Date.now());
     this.state = { result, loading: false, error: null };
   }
 
@@ -108,7 +125,8 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
       }, (error: unknown) => {
         const fallback = this.usable(cached ?? previous) ?? this.usable(this.options.read(true));
         // A command that shows it says it is the saved copy (`servedFromSavedCopy`).
-        const retained = fallback ? { ...fallback, value: servedFromSavedCopy(fallback.value, fallback.fetchedAt), refreshError: error } : null;
+        const retained = fallback ? { ...fallback,
+          value: markDisplayedValue(servedFromSavedCopy(fallback.value, fallback.fetchedAt), fallback.fetchedAt), refreshError: error } : null;
         if (generation === this.generation) {
           this.fallbackOnly = cached === null && retained !== null;
           this.publish({ result: retained, loading: false, error });

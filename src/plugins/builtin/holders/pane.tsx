@@ -16,6 +16,7 @@ import {
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
+import { cachedValueForDisplay } from "../../../data/cached-query";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useShortcut } from "../../../react/input";
 import { colors, priceColor } from "../../../theme/colors";
@@ -121,8 +122,9 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     });
   } : null, [dataProvider, exchange, savedCurrency, symbol]);
   const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, {
-    initialData: () => symbol && dataProvider?.getCachedQuery
-      ? dataProvider.getCachedQuery("getHolders", [symbol, exchange]).getSnapshot().result?.value ?? null
+    keepPreviousData: scope,
+    initialData: () => scope && symbol && dataProvider?.getCachedQuery
+      ? cachedValueForDisplay(dataProvider.getCachedQuery("getHolders", [symbol, exchange]).getSnapshot().result)
       : null,
     savedCopy: scope && dataProvider && symbol ? { key: ["holders", scope, dataProvider.id, symbol, exchange] } : null,
   });

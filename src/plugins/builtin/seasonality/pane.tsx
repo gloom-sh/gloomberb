@@ -8,6 +8,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { blendHex } from "../../../theme/color-utils";
 import { resolveHeatCellColors } from "../../../theme/heat-colors";
@@ -150,16 +151,17 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
   // Weekdays reads daily closes, the other tabs monthly ones; only the open tab's cadence is fetched.
   const cadence = view === "weekdays" ? "daily" : "monthly";
   const controller = useRef<AbortController | null>(null);
+  const scope = useCloudDisplayScope();
   const loader = useCallback(async (force: boolean) => {
     controller.current?.abort();
     controller.current = new AbortController();
     const snapshot = await loadSeasonalityHistory({ instrument: instrument!, cadence, forceRefresh: force, signal: controller.current.signal });
     if (!snapshot.history.length && snapshot.error) throw new Error(snapshot.error);
     return snapshot;
-  }, [instrumentKey, cadence]);
-  const history = useAsyncResource(instrument ? loader : null, {
+  }, [instrumentKey, cadence, scope]);
+  const history = useAsyncResource(scope && instrument ? loader : null, {
     initialData: () => instrument ? cachedSeasonalityHistory({ instrument, cadence }) : null,
-    savedCopy: { key: ["seasonality", instrumentKey, cadence] },
+    savedCopy: scope && !instrument?.instrument ? { key: ["seasonality", scope, instrumentKey, cadence] } : null,
   });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(history.updatedAt, history.load);

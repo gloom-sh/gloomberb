@@ -10,6 +10,7 @@ import {
 } from "../../../components";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState, useTickers } from "../../../public/react";
 import { colors } from "../../../theme/colors";
@@ -79,7 +80,11 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
     return loadShortWatch(key.split(","), { signal: current.signal, forceRefresh: force });
   }, [key]);
   useEffect(() => () => controller.current?.abort(), [loader]);
-  const resource = useAsyncResource(key ? loader : null, { keepPreviousData: true, savedCopy: { key: ["short-watch", key] } });
+  const access = useCloudDisplayScope();
+  const resource = useAsyncResource(access && key ? loader : null, {
+    keepPreviousData: access,
+    savedCopy: access ? { key: ["short-watch", access, key] } : null,
+  });
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(resource.reload, { focused });
 

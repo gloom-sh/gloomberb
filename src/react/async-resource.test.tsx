@@ -6,6 +6,8 @@ import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudCon
 import { MemoryResourceStore } from "../data/memory-resource-store";
 import { setSavedCopyFrameGate, setSavedCopyStore, writeSavedCopy } from "../data/pane-saved-copies";
 import { Text } from "../ui";
+import { apiClient } from "../api-client";
+import { useCloudDisplayScope } from "../api-client/plan-access";
 
 type Loader = ((force: boolean) => Promise<string>) | null;
 const tui = createOpenTuiTestHarness({ width: 20, height: 5 });
@@ -151,6 +153,63 @@ test("a saved result renders before the live request has its inputs", async () =
     expect(tui.frame()).toContain("Live surface");
     expect(forces).toEqual([true]);
   } finally {
+    setSavedCopyStore(previous);
+  }
+});
+
+test("a deferred cache miss stays idle, even on manual refresh", async () => {
+  let requests = 0;
+  const loader = async () => { requests += 1; return "Unexpected result"; };
+  function Probe() {
+    resource = useAsyncResource(loader, { savedCopy: { key: ["deferred-miss"] }, deferLoad: true });
+    return null;
+  }
+  await tui.render(<Probe />);
+  await act(async () => { await resource.reloadAndWait(); });
+  expect(resource).toMatchObject({ data: null, loading: false, refreshing: false, status: "idle" });
+  expect(requests).toBe(0);
+});
+
+test("listing changes prefer an exact saved copy, then same-access previous data, never another scope", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const answer = Promise.withResolvers<string>();
+  const loader = () => answer.promise;
+  const pro = { id: "fixture-first", email: "first@example.com", emailVerified: true, plan: "pro" as const };
+  let changeListing!: (value: string) => void;
+  function Probe() {
+    const [listing, setListing] = useState("SPY:ARCX");
+    changeListing = setListing;
+    const scope = useCloudDisplayScope();
+    resource = useAsyncResource(scope ? loader : null, {
+      keepPreviousData: scope,
+      savedCopy: scope ? { key: ["test-history", scope, listing] } : null,
+    });
+    return null;
+  }
+  try {
+    apiClient.setSessionToken("isolated-snapshot-fixture");
+    apiClient.restoreCachedUser(pro);
+    const scope = JSON.stringify([pro.id, true, true]);
+    writeSavedCopy({ key: ["test-history", scope, "SPY:ARCX"] }, "Saved SPY");
+    writeSavedCopy({ key: ["test-history", scope, "QQQ:XNAS"] }, "Saved QQQ");
+    writeSavedCopy({ key: ["test-history", "QQQ:XNAS"] }, "Legacy unscoped data");
+    await tui.render(<Probe />);
+    expect(resource.data).toBe("Saved SPY");
+    await act(async () => { changeListing("QQQ:XNAS"); });
+    expect(resource.data).toBe("Saved QQQ");
+    await act(async () => { changeListing("QQQ:XNYS"); });
+    expect(resource.data).toBe("Saved QQQ");
+    await act(async () => { apiClient.restoreCachedUser({ ...pro, plan: "free" }); });
+    expect(resource.data).toBeNull();
+    await act(async () => { apiClient.restoreCachedUser(pro); });
+    await act(async () => { changeListing("QQQ:XNAS"); });
+    expect(resource.data).toBe("Saved QQQ");
+    await act(async () => { apiClient.restoreCachedUser({ ...pro, id: "fixture-second" }); });
+    expect(resource.data).toBeNull();
+    await act(async () => { apiClient.setSessionToken(null); });
+    expect(resource.data).toBeNull();
+  } finally {
+    apiClient.setSessionToken(null);
     setSavedCopyStore(previous);
   }
 });

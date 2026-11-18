@@ -258,6 +258,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   }, [symbols]);
   // Fundamentals come from one batched snapshot; prices stream on top of it.
   const peerSnapshot = useAsyncResource(symbols.length > 0 ? loadPeers : null, {
+    keepPreviousData: scope,
     savedCopy: scope && dataProvider ? { key: ["relative-valuation", scope, dataProvider.id, symbols] } : null,
     deferLoad: pickingPeers,
   });

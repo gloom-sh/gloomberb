@@ -2,6 +2,7 @@ import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, PaneStatusBody, Prose, QueryBar, usePaneFooter, usePaneNoticeFooter, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { usePaneCollection, usePaneSettingValue, usePluginAppActions, useTickers } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
@@ -75,7 +76,10 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       } });
     return payload;
   }, [key]);
-  const resource = useAsyncResource(universe.instruments.length ? loader : null, { savedCopy: { key: ["iv-screen", key] } });
+  const access = useCloudDisplayScope();
+  const resource = useAsyncResource(access && universe.instruments.length ? loader : null, {
+    savedCopy: access ? { key: ["iv-screen", access, key] } : null,
+  });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const [sort, setSort] = useState<{ columnId: SortId; direction: SortDirection }>({ columnId: "percentile", direction: "desc" });

@@ -16,6 +16,7 @@ import { createDataTableCsv } from "../../../components/data-table/export";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { colors } from "../../../theme/colors";
 import { Box, TextAttributes } from "../../../ui";
 import { isKnownNonUsEquityTicker } from "../../../utils/sec";
@@ -54,7 +55,11 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
 
   const skipNonUs = isKnownNonUsEquityTicker(ticker);
   const request = useCallback(() => loadShortInterestWithFloat(symbol!), [symbol]);
-  const resource = useAsyncResource(symbol && !skipNonUs ? request : null, { clearOnError: true, savedCopy: { key: ["short-interest", symbol] } });
+  const scope = useCloudDisplayScope();
+  const resource = useAsyncResource(scope && symbol && !skipNonUs ? request : null, {
+    clearOnError: true,
+    savedCopy: scope ? { key: ["short-interest", scope, symbol, ticker?.metadata.exchange] } : null,
+  });
   const { error, updatedAt, reload: refresh } = resource;
   const records = resource.data?.records ?? EMPTY_RECORDS;
   const latestSettlements = resource.data?.source === "gloom" && records.length > 0;

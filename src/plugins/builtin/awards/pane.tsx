@@ -137,7 +137,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     };
   }, [filter, accessKey, snapshot]);
   // The list's own range, not the date it works out to today, so tomorrow's launch still opens on today's copy.
-  const paged = usePagedRows(loader, { getId: rowId, savedCopy: snapshot ? null : { key: ["awards", { ...filter, from: range === "all" ? filter.from : range }, accessKey] } });
+  const paged = usePagedRows(loader, { getId: rowId, savedCopy: snapshot || !session.displayScope ? null : { key: ["awards", { ...filter, from: range === "all" ? filter.from : range }, accessKey] } });
   const loaded = paged.pages[0], data = loaded?.payload;
   useAwardAlerts(data, JSON.stringify([filter, accessKey]), setOpen);
   const failed = paged.error ?? paged.moreError;

@@ -42,6 +42,9 @@ export function servedFromSavedCopy<T>(value: T, savedAt: number): T {
 }
 
 export function markSavedCopy<T extends object>(value: T, savedAt: number): T {
+  if (Array.isArray(value) && Number.isFinite(savedAt)) {
+    return Object.defineProperty(value.slice(), SAVED_AT, { value: savedAt }) as T;
+  }
   return Number.isFinite(savedAt) ? mark(value, savedAt, false) : value;
 }
 

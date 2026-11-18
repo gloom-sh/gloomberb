@@ -10,6 +10,13 @@ import { packJson, unpackJson } from "./packed-json";
 import { logFailure } from "../utils/log-failure";
 
 const DEFAULT_RESOURCE_SCHEMA_VERSION = 1;
+const encoder = new TextEncoder();
+
+export const WARM_RESOURCE_BUDGET = { maxBytes: 8 * 1024 * 1024, maxRows: 2_000 };
+
+function jsonBytes(value: unknown): number {
+  return encoder.encode(serializeJson(value)).byteLength;
+}
 
 export type PackedResourceRecord = Omit<CachedResourceRecord, "value"> & { valueJson: string };
 export type WarmResourceRecord = CachedResourceRecord | PackedResourceRecord;
@@ -48,17 +55,45 @@ function isStale(record: CachedResourceRecord): boolean {
 
 export class MemoryResourceStore {
   private readonly records = new Map<string, CachedResourceRecord>();
+  private bytes = 0;
+
+  constructor(private readonly budget: Readonly<typeof WARM_RESOURCE_BUDGET> = WARM_RESOURCE_BUDGET) {}
+
+  private forget(key: string): void {
+    const record = this.records.get(key);
+    if (!record) return;
+    this.bytes -= record.sizeBytes;
+    this.records.delete(key);
+  }
+
+  private remember(record: CachedResourceRecord): void {
+    const key = buildMapKey(record);
+    this.forget(key);
+    if (record.sizeBytes > this.budget.maxBytes) return;
+    this.records.set(key, record);
+    this.bytes += record.sizeBytes;
+    while (this.records.size > this.budget.maxRows || this.bytes > this.budget.maxBytes) {
+      const oldest = this.records.keys().next();
+      if (oldest.done) break;
+      this.forget(oldest.value);
+    }
+  }
 
   get<T>(key: ResourceCacheKey, options: GetResourceOptions = {}): CachedResourceRecord<T> | null {
-    const record = this.records.get(buildMapKey(key)) as CachedResourceRecord<T> | undefined;
+    const id = buildMapKey(key);
+    const record = this.records.get(id) as CachedResourceRecord<T> | undefined;
     if (!record) return null;
     if (!options.allowExpired && isExpired(record)) return null;
     if (options.schemaVersion != null && record.schemaVersion !== options.schemaVersion) {
       this.delete(key);
       return null;
     }
-    if (options.touch !== false && (options.touchIntervalMs == null || Date.now() - record.lastAccessedAt >= options.touchIntervalMs)) {
-      record.lastAccessedAt = Date.now();
+    if (options.touch !== false) {
+      this.records.delete(id);
+      this.records.set(id, record);
+      if (options.touchIntervalMs == null || Date.now() - record.lastAccessedAt >= options.touchIntervalMs) {
+        record.lastAccessedAt = Date.now();
+      }
     }
     record.stale = isStale(record);
     record.expired = isExpired(record);
@@ -80,9 +115,10 @@ export class MemoryResourceStore {
       return true;
     });
     return records
-      .sort((left, right) => right.lastAccessedAt - left.lastAccessedAt)
+      .sort((left, right) => left.lastAccessedAt - right.lastAccessedAt)
       .map((record) => this.get<T>(record, options))
-      .filter((record): record is CachedResourceRecord<T> => record != null);
+      .filter((record): record is CachedResourceRecord<T> => record != null)
+      .reverse();
   }
 
   set<T>(
@@ -104,16 +140,16 @@ export class MemoryResourceStore {
       staleAt: now + options.cachePolicy.staleMs,
       expiresAt: now + options.cachePolicy.expireMs,
       lastAccessedAt: now,
-      sizeBytes: 0,
+      sizeBytes: jsonBytes(value),
       stale: false,
       expired: false,
     };
-    this.records.set(buildMapKey(record), record);
+    this.remember(record);
     return record;
   }
 
   delete(key: ResourceCacheKey): void {
-    this.records.delete(buildMapKey(key));
+    this.forget(buildMapKey(key));
   }
 
   /** Puts back a record saved elsewhere, with its own times. */
@@ -122,7 +158,7 @@ export class MemoryResourceStore {
       const { valueJson, ...metadata } = record;
       const packed = record.namespace.startsWith("plugin:") ? packJson(valueJson) : valueJson;
       let decoded: WeakRef<object> | undefined;
-      const restored = { ...metadata, get value() {
+      const restored = { ...metadata, sizeBytes: metadata.sizeBytes || encoder.encode(valueJson).byteLength, get value() {
         const current = decoded?.deref();
         if (current) return current;
         try {
@@ -134,10 +170,10 @@ export class MemoryResourceStore {
           return null;
         }
       } };
-      this.records.set(buildMapKey(restored), restored);
+      this.remember(restored);
       return;
     }
-    this.records.set(buildMapKey(record), { ...record });
+    this.remember({ ...record, sizeBytes: record.sizeBytes || jsonBytes(record.value) });
   }
 }
 
@@ -169,9 +205,10 @@ export class WriteThroughResourceStore extends MemoryResourceStore {
     saved: readonly WarmResourceRecord[],
     private readonly sink: ResourceRecordSink,
     private readonly durable: (key: ResourceCacheKey) => boolean,
+    budget?: Readonly<typeof WARM_RESOURCE_BUDGET>,
   ) {
-    super();
-    for (const record of saved) {
+    super(budget);
+    for (const record of [...saved].sort((left, right) => left.lastAccessedAt - right.lastAccessedAt)) {
       if (durable(record)) this.restore("valueJson" in record ? record : packWarmResource(record));
     }
   }

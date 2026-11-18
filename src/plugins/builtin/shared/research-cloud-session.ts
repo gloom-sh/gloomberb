@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { cloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
 
 export const CLOUD_SESSION_REQUIRED = "Gloom Cloud requires signup and email verification";
 
@@ -11,8 +11,10 @@ export function isCloudSessionRequired(error: string | null | undefined): boolea
 /** A session change must retry an already-open research pane's denied request. */
 export function useResearchCloudSession() {
   const access = usePlanAccess();
+  const displayScope = cloudDisplayScope();
   return {
-    requestKey: JSON.stringify([apiClient.getCurrentUser()?.id ?? null, access.emailVerified]),
+    requestKey: JSON.stringify([apiClient.getCurrentUser()?.id ?? (displayScope === null ? "" : null), access.emailVerified]),
+    displayScope,
     needsVerification: access.signedIn && !access.emailVerified,
   };
 }

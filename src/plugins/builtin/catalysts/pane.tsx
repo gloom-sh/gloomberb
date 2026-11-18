@@ -74,7 +74,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     const data = result.payload;
     return { ...result, rows: data.events, nextOffset: data.offset + data.events.length, hasMore: !snapshot && data.access?.pro !== false && data.events.length > 0 && data.offset + data.events.length < data.total };
   }, [snapshot, query, accessKey]);
-  const resource = usePagedRows(loader, { getId: (event) => event.id, savedCopy: snapshot ? null : { key: ["catalysts", query, accessKey] } });
+  const resource = usePagedRows(loader, { getId: (event) => event.id, savedCopy: snapshot || !session.displayScope ? null : { key: ["catalysts", query, accessKey] } });
   const page = resource.pages[0];
   const data = page?.payload;
   const error = resource.error ?? resource.moreError;

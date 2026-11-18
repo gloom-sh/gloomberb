@@ -13,6 +13,7 @@ interface ResourceState<T> {
   error: string | null;
   updatedAt: number | null;
   savedAt: number | null;
+  placeholder?: boolean;
 }
 
 /**
@@ -37,9 +38,11 @@ export function useAsyncResource<T>(
     /**
      * Leave the previous loader's data on screen, loading, until the new
      * loader answers, and through its failure as a failed refresh does.
-     * Without it a new loader starts from no data. Null still clears.
+     * A matching saved copy wins. Use a stable, non-secret access identity
+     * instead of true when data must not carry over across account or plan
+     * changes. A null loader still clears.
      */
-    keepPreviousData?: boolean;
+    keepPreviousData?: boolean | string | null;
     /**
      * The key what this loader answers is saved under: everything the answer
      * depends on, so a copy is only ever shown for the same question.
@@ -54,22 +57,23 @@ export function useAsyncResource<T>(
   const savedId = requestedKey ? `${savedCopyId(requestedKey)}#${requestedKey.version ?? 1}` : null;
   const savedKey = useMemo(() => requestedKey, [savedId]);
   const deferLoad = options.deferLoad === true;
-  const open = (): ResourceState<T> & { owner: typeof loader; ownerKey: string | null } => {
+  const retainWithin = options.keepPreviousData || null;
+  const open = (): ResourceState<T> & { owner: typeof loader; ownerKey: string | null; retainWithin: typeof retainWithin } => {
     const saved = savedKey ? readSavedCopy<T>(savedKey) : null;
     const data = loader ? saved?.value ?? options.initialData?.() ?? null : null;
     const savedAt = saved?.fetchedAt ?? savedCopyAt(data);
-    return { owner: loader, ownerKey: savedId, data, savedAt, updatedAt: savedAt, loading: !!loader, error: null };
+    return { owner: loader, ownerKey: savedId, retainWithin, data, savedAt, updatedAt: savedAt, loading: !!loader, error: null };
   };
   // `ownerKey`: the saved-copy key of the question the data answers. A new
   // loader for the same key (a session restored, a callback remade) asks the
   // same question, so the data stays while it loads.
   const [state, setState] = useState(open);
   let view = state;
-  if (state.owner !== loader || state.ownerKey !== savedId) {
-    const sameQuestion = savedId !== null && state.ownerKey === savedId;
+  if (state.owner !== loader || state.ownerKey !== savedId || state.retainWithin !== retainWithin) {
+    const sameQuestion = savedId !== null && state.ownerKey === savedId && state.retainWithin === retainWithin;
     view = sameQuestion ? { ...state, owner: loader, loading: true, error: null } : open();
-    if (loader && options.keepPreviousData && savedId === null && state.ownerKey === null && view.data === null) {
-      view = { ...state, owner: loader, loading: true, error: null };
+    if (loader && retainWithin !== null && state.retainWithin === retainWithin && state.data !== null && view.data === null) {
+      view = { ...state, owner: loader, ownerKey: savedId, loading: true, error: null, placeholder: true };
     }
     setState(view);
   }
@@ -85,30 +89,31 @@ export function useAsyncResource<T>(
     const currentGeneration = ++generation.current;
     if (deferLoad) return;
     if (!loader) {
-      setState({ owner: loader, ownerKey: null, data: null, loading: false, error: null, updatedAt: null, savedAt: null });
       return;
     }
     // The key of the question this load answers.
     const key = savedKey;
     const keyId = savedId;
-    const opening = currentView.current.savedAt !== null;
+    const isCurrent = () => generation.current === currentGeneration && currentView.current.owner === loader
+      && currentView.current.ownerKey === keyId && currentView.current.retainWithin === retainWithin;
+    const opening = currentView.current.savedAt !== null && !currentView.current.placeholder;
     setState((current) => current.owner === loader && current.ownerKey === keyId && (!current.loading || current.error !== null)
       ? { ...current, loading: true, error: null } : current);
     try {
       const data = await loader(force);
-      if (generation.current === currentGeneration) {
+      if (isCurrent()) {
         const savedAt = savedCopyAt(data);
         const updatedAt = savedAt ?? Date.now();
         const current = currentView.current;
         setState({
-          owner: loader, ownerKey: keyId, loading: false, error: null, updatedAt, savedAt,
-          data: key && opening && savedAt === null && current.owner === loader && current.ownerKey === keyId
+          owner: loader, ownerKey: keyId, retainWithin, loading: false, error: null, updatedAt, savedAt,
+          data: key && opening && savedAt === null && savedCopyAt(current.data) === null
             ? reuseSavedData(current.data, data) : data,
         });
         if (key && savedAt === null && (shouldSaveRef.current?.(data) ?? true)) writeSavedCopy(key, data, updatedAt);
       }
     } catch (error) {
-      if (generation.current === currentGeneration) {
+      if (isCurrent()) {
         const clearOnError = clearOnErrorRef.current;
         const discardData = (typeof clearOnError === "function" ? clearOnError(error) : clearOnError) || (key !== null && isPermanentClientError(error));
         const discardSaved = !isTransientFailure(error);
@@ -128,7 +133,7 @@ export function useAsyncResource<T>(
         });
       }
     }
-  }, [deferLoad, loader, savedId, savedKey]);
+  }, [deferLoad, loader, retainWithin, savedId, savedKey]);
   // A load nobody waits on: its failures end in `error`, and anything else
   // that escapes is logged.
   const load = useCallback((force = false) => {
@@ -137,18 +142,21 @@ export function useAsyncResource<T>(
 
   const reload = useCallback(() => load(true), [load]);
   const reloadAndWait = useCallback(() => settle(true), [settle]);
-  const { data, loading, error, updatedAt, savedAt } = view;
-  useSavedCopyFooter(savedAt, loading);
+  const { data, error, updatedAt, savedAt } = view;
+  const loading = view.loading && !deferLoad;
+  useSavedCopyFooter(savedAt, loading || deferLoad);
   useEffect(() => {
-    const frame = savedAt !== null ? afterSavedCopyFrame() : undefined;
+    if (deferLoad || !loader) return;
+    const restored = savedAt !== null && !view.placeholder;
+    const frame = restored ? afterSavedCopyFrame() : undefined;
     const openingGeneration = generation.current;
     if (frame) {
       void frame.then(() => {
         if (generation.current === openingGeneration) load(true);
       }).catch(logFailure("react.async-resource", "Refresh after the saved copy failed"));
-    } else load(savedAt !== null);
+    } else load(restored);
     return () => { generation.current += 1; };
-  }, [load]);
+  }, [deferLoad, load, loader]);
 
   // A load that failed is asked again once the data service (or the desktop
   // bridge) answers after an outage, so a pane recovers by itself instead of
