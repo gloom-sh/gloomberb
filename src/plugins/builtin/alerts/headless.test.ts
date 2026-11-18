@@ -11,6 +11,8 @@ import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
 import { EVENT_ALERTS_KEY, IV_LEVEL_ALERTS_KEY } from "./events";
 import { appendFiredAlert, FIRED_LOG_KEY } from "./fired-log";
 import { alertsHeadless } from "./headless";
+import { alertReadingText } from "./format";
+import type { AlertRule } from "./types";
 import { IV_LEVEL_CHECKS_KEY } from "./iv-level";
 import { createResearchAlert } from "./research-builder";
 import { createScheduledAlert } from "./scheduled";
@@ -131,6 +133,24 @@ test("Prices exports the quote's own time and feed apart from the check time, an
   const text = renderHeadlessPaneText(alertsHeadless, result, args, "ALRT");
   expect(text).toMatch(/State\s+Symbol\s+Measure\s+Current\s+Target\s+Away\s+Trigger\s+Quote\s+Alerted/);
   expect(text).not.toContain("Quote source");
+});
+
+test("a reading off an after-hours print is labelled as alerts list labels it, in the export's Reading and the text table", async () => {
+  // MSFT added by name on 2026-11-18 after the close: `alerts list` read "508.17 USD after hours as of 2026-11-18T21:03Z".
+  const quotedAt = Date.UTC(2026, 10, 18, 21, 3);
+  const after = { ...createAlert("MSFT", "above", 900, "NASDAQ"), lastCheckedPrice: 508.17, lastCheckedAt: quotedAt, lastQuoteUpdatedAt: quotedAt,
+    lastQuoteSource: "delayed", lastQuoteCurrency: "USD", lastQuoteSession: "POST" };
+  const regular = { ...createAlert("AAPL", "above", 400, "NASDAQ"), lastCheckedPrice: 352.19, lastCheckedAt: quotedAt, lastQuoteUpdatedAt: quotedAt,
+    lastQuoteSource: "delayed", lastQuoteCurrency: "USD" };
+  expect(alertReadingText(after as AlertRule)).toBe("508.17 USD after hours as of 2026-11-18T21:03Z");
+  const args = createTestHeadlessArgs({ options: { tab: "prices" } });
+  const result = await alertsHeadless.load(args, contextWith([after, regular], []));
+  const table = headlessReportTables(alertsHeadless, result, args, "ALRT", deriveHeadlessFreshness(alertsHeadless, result), { complete: true, unavailableSymbols: [] }).tables[0]!;
+  const reading = (row: number) => table.rows[row]![table.columns.indexOf("Reading")];
+  expect(reading(0)).toBe("508.17 after hours");
+  // A regular session's price says nothing more than its figure.
+  expect(reading(1) ?? "").toBe("");
+  expect(renderHeadlessPaneText(alertsHeadless, result, args, "ALRT")).toMatch(/MSFT\S*\s+Price\s+AH 508\.17\s+900\.00/);
 });
 
 test("History lists this app's fired alerts with no sign-in, and merges Gloom Cloud's deliveries in, newest first", async () => {
