@@ -47,6 +47,8 @@ import {
   buildMoverColumns,
   buildMoverRows,
   buildPostingColumns,
+  PENDING_JOBS_MESSAGE,
+  pendingJobsTitle,
   buildPostingRows,
   buildShareBars,
   changeTone,
@@ -562,11 +564,14 @@ function CompanyPanel({
   }
   if (!data) return null;
   if (data.kind === "pending") {
+    // An answer, not a load: the server is looking, which takes minutes, so the pane says so at once and fills in
+    // when the poll above brings the roles. A spinner here stood for minutes and read as a pane that never loaded.
     return (
       <PaneStatusBody
-        loading
-        align="center"
-        loadingLabel={`Looking for ${symbol}'s careers system. First read lands within a few minutes.`}
+        empty
+        emptyTitle={pendingJobsTitle(symbol)}
+        emptyMessage={PENDING_JOBS_MESSAGE}
+        retry={{ onRetry: reloadAndWait, pending: loading, label: "Check now", pendingLabel: "Checking...", unchanged: "Still looking." }}
       />
     );
   }

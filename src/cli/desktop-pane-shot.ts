@@ -20,7 +20,7 @@ import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../uti
 import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { countContentFigures } from "./content-figures";
 import { readVisibleKeyValues } from "./visible-key-values";
-import { scrollTruncationReasons } from "./scroll-truncation";
+import { rowViewportVisibility, scrollTruncationReasons } from "./scroll-truncation";
 import {
   SHOT_API_PROXY_PREFIX,
   SHOT_API_SOCKET_PATH,
@@ -31,6 +31,13 @@ import {
   type ShotMarketSocketCall,
 } from "./desktop-pane-shot-routes";
 import { SHOT_REQUEST_REFUSED } from "../api-client/errors";
+import {
+  dataServiceAnswerCount, dataServiceReachEpoch, dataServiceUnreachable, isProxyRefusal, MARKET_REQUEST_TIMEOUT_MS, noteDataServiceReach,
+  SHOT_SERVICE_UNREACHABLE_HEADER, UNREACHABLE_REQUEST_TIMEOUT_MS,
+} from "../api-client/request";
+import type { FuturesContractTermsPayload } from "../api-client/futures-curve";
+import { rememberFuturesContractTerms, savedFuturesContractTerms } from "../market-data/futures-contract";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../utils/network-failure";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import { isShotApiRequestAllowed, isShotSessionPath } from "./desktop-pane-shot-api-policy";
 import { renderElectrobunViewHtml } from "../renderers/dom/build-assets";
@@ -110,6 +117,47 @@ export interface DesktopPaneShotPayload {
 export interface DesktopPaneShotApiProxy {
   baseUrl: string;
   sessionToken: string | null;
+  /**
+   * Called with when a copy was saved (ms) each time the proxy answers a
+   * read the data service did not answer from a copy saved earlier, so the
+   * report dates what it shows as saved (`SHOT_SAVED_COPY_READS`).
+   */
+  onSavedCopy?: (savedAt: number) => void;
+}
+
+/**
+ * The reads the proxy keeps a copy of and answers from it when the data
+ * service does not answer: a futures symbol's contract terms, which a pane's
+ * settle line and Contract block are drawn from beside the bridged quote's
+ * saved copy. Offline, DES GC=F kept the saved price and lost both.
+ */
+const SHOT_SAVED_COPY_READS: ReadonlyArray<{
+  path: RegExp;
+  save(key: string, body: unknown): void;
+  read(key: string): { value: unknown; savedAt: number } | null;
+}> = [{
+  path: /^\/cloud\/futures\/contract\/([^/?#]+)$/,
+  save: (symbol, body) => rememberFuturesContractTerms(symbol, body as FuturesContractTermsPayload),
+  read: (symbol) => {
+    const saved = savedFuturesContractTerms(symbol);
+    return saved && { value: saved.terms, savedAt: saved.savedAt };
+  },
+}];
+
+/** The kept read a GET path is, with its key (the symbol), or null. */
+function savedCopyRead(method: string, path: string): { read: typeof SHOT_SAVED_COPY_READS[number]; key: string } | null {
+  if (method !== "GET") return null;
+  for (const read of SHOT_SAVED_COPY_READS) {
+    const match = read.path.exec(path);
+    if (!match?.[1]) continue;
+    try {
+      return { read, key: decodeURIComponent(match[1]) };
+    } catch {
+      // Intentional ignore: a symbol whose percent-encoding is malformed names no kept copy, so the read goes out as sent.
+      return null;
+    }
+  }
+  return null;
 }
 
 /**
@@ -389,6 +437,9 @@ export function serveShotPage(
   bridge: DesktopPaneShotBridge | null,
 ): ShotServer {
   const secret = randomBytes(32).toString("hex");
+  // Every read the page has the proxy make ends when the capture does, answered or not: a read through a proxy that
+  // never answers must not hold the command's process open after its report is printed.
+  const upstream = new AbortController();
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -402,7 +453,8 @@ export function serveShotPage(
         return server.upgrade(request, { data: undefined }) ? undefined : new Response("Expected a WebSocket upgrade", { status: 426 });
       }
       if (url.pathname.startsWith(`${SHOT_API_PROXY_PREFIX}/`)) {
-        return proxyShotApiRequest(request, url, apiProxy);
+        // Also given up when the page stops waiting for it.
+        return proxyShotApiRequest(request, url, apiProxy, AbortSignal.any([request.signal, upstream.signal]));
       }
       if (url.pathname === SHOT_MARKET_BRIDGE_PATH || url.pathname === SHOT_HTTP_BRIDGE_PATH) {
         if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
@@ -413,13 +465,16 @@ export function serveShotPage(
     },
     websocket: {
       message(socket, message) {
-        void answerShotApiCall(String(message), apiProxy, bridge).then((reply) => replyOverShotSocket(socket, reply));
+        void answerShotApiCall(String(message), apiProxy, bridge, upstream.signal).then((reply) => replyOverShotSocket(socket, reply));
       },
     },
   });
   return {
     url: `http://127.0.0.1:${server.port}/${secret}/`,
-    stop: () => server.stop(true),
+    stop: () => {
+      upstream.abort();
+      return server.stop(true);
+    },
   };
 }
 
@@ -443,6 +498,7 @@ export async function answerShotApiCall(
   message: string,
   apiProxy: DesktopPaneShotApiProxy,
   bridge: DesktopPaneShotBridge | null = null,
+  signal?: AbortSignal,
 ): Promise<string> {
   let id = 0;
   try {
@@ -455,7 +511,7 @@ export async function answerShotApiCall(
       if (typeof call.path !== "string" || !call.path.startsWith("/") || call.path.startsWith("//")) throw new Error("Not an API path.");
       const url = new URL(`${SHOT_API_PROXY_PREFIX}${call.path}`, "http://127.0.0.1");
       const sent = new Headers(Array.isArray(call.headers) ? call.headers : []);
-      response = await proxyShotApiRequest(new Request(url, { headers: sent }), url, apiProxy);
+      response = await proxyShotApiRequest(new Request(url, { headers: sent }), url, apiProxy, signal);
     }
     const body = Buffer.from(await response.arrayBuffer()).toString("base64");
     const headers: Array<[string, string]> = [];
@@ -562,7 +618,10 @@ async function proxyShotApiRequest(
   request: Request,
   requestUrl: URL,
   apiProxy: DesktopPaneShotApiProxy,
+  signal?: AbortSignal,
 ): Promise<Response> {
+  // The command this read is for, which records what it came to.
+  const epoch = dataServiceReachEpoch();
   const baseUrl = new URL(apiProxy.baseUrl);
   const basePath = baseUrl.pathname.replace(/\/+$/, "");
   let path = requestUrl.pathname.slice(SHOT_API_PROXY_PREFIX.length) || "/";
@@ -584,13 +643,51 @@ async function proxyShotApiRequest(
   target.pathname = `${basePath}${path}`;
   target.search = requestUrl.search;
   target.hash = "";
+  const kept = requestUrl.search ? null : savedCopyRead(method, path);
+  // Not reached: a kept read answers from its saved copy, dated as saved; any other is told the service was not reached.
+  const savedAnswer = () => {
+    const saved = kept?.read.read(kept.key);
+    if (!saved) return null;
+    noteDataServiceReach(false, epoch);
+    apiProxy.onSavedCopy?.(saved.savedAt);
+    return Response.json(saved.value, { headers: { "Cache-Control": "no-store" } });
+  };
+  const unreachable = () => savedAnswer() ?? shotApiUnreachable(epoch);
+  // Once a read of this command went unanswered, a kept read is its saved copy at once: the page, which knows the
+  // service is down too, waits no longer for it than the proxy would for the network.
+  if (kept && dataServiceUnreachable()) {
+    const saved = savedAnswer();
+    if (saved) return saved;
+  }
+  // As the client's own requests wait (`deadlineFor`): ten seconds for the service to answer anything, three once a
+  // read of this command went unanswered. A hung connection was otherwise held until the page gave up, or to the end.
+  const answerMs = dataServiceUnreachable() ? UNREACHABLE_REQUEST_TIMEOUT_MS : MARKET_REQUEST_TIMEOUT_MS;
+  const answersAtStart = dataServiceAnswerCount();
+  const cut = new AbortController();
+  const abortFromPage = () => cut.abort(signal?.reason);
+  if (signal?.aborted) abortFromPage();
+  else signal?.addEventListener("abort", abortFromPage, { once: true });
+  let cutOff = false;
+  const deadline = setTimeout(function giveUp() {
+    // Another read answered meanwhile: the service is up and this one is slow, not cut off.
+    if (dataServiceAnswerCount() > answersAtStart) return;
+    cutOff = true;
+    cut.abort(new Error("The data service sent nothing back"));
+  }, answerMs);
 
   try {
     let body = method === "GET" || method === "HEAD" ? undefined : new Uint8Array(await request.arrayBuffer());
     for (let followed = 0; ; followed += 1) {
-      const response = await fetch(target, { method, headers, body, redirect: "manual" });
+      const response = await fetch(target, { method, headers, body, redirect: "manual", signal: cut.signal });
+      clearTimeout(deadline);
+      // The proxy in HTTPS_PROXY refusing to reach the service answers for it: the page is told the service was not reached.
+      if (isProxyRefusal(target.href, response)) {
+        await response.body?.cancel().catch(() => { /* Intentional ignore: the refusal's own body is never read. */ });
+        return unreachable();
+      }
+      noteDataServiceReach(true, epoch);
       const location = SHOT_API_REDIRECT_STATUSES.has(response.status) ? response.headers.get("location") : null;
-      if (location === null) return await shotApiResponse(response, path);
+      if (location === null) return kept && response.ok ? await keptResponse(response, kept) : await shotApiResponse(response, path);
       await response.body?.cancel().catch(() => { /* Intentional ignore: a redirect's own body is never read, only dropped. */ });
       if (followed >= SHOT_API_MAX_REDIRECTS) return shotApiError("Cloud API redirected too many times.", 502);
       const next = new URL(location, target);
@@ -607,10 +704,42 @@ async function proxyShotApiRequest(
       if (!inApi || !isShotApiRequestAllowed(method, path)) return shotApiError("Cloud API redirected the request elsewhere.", 502);
       target = next;
     }
-  } catch {
-    // Intentional ignore: the page is told the read failed, as a dropped connection tells fetch.
+  } catch (error) {
+    // A read that never reached the service (no connection, a refused proxy, nothing back by its deadline) is said
+    // as one, in the words every command uses; any other failure is told as a dropped connection tells fetch.
+    if (cutOff || isNetworkFailure(error)) return unreachable();
     return shotApiError("Cloud API request failed.", 502);
+  } finally {
+    clearTimeout(deadline);
+    signal?.removeEventListener("abort", abortFromPage);
   }
+}
+
+/** A kept read's answer as the page gets it, its copy saved for a later run the service does not answer. */
+async function keptResponse(response: Response, kept: NonNullable<ReturnType<typeof savedCopyRead>>): Promise<Response> {
+  const text = await response.text();
+  try {
+    kept.read.save(kept.key, JSON.parse(text));
+  } catch {
+    // Intentional ignore: an answer that is not the terms' JSON is passed on as it came, and kept nowhere.
+  }
+  const headers = new Headers(response.headers);
+  for (const name of SHOT_API_DROPPED_RESPONSE_HEADERS) headers.delete(name);
+  headers.set("Cache-Control", "no-store");
+  return new Response(text, { status: response.status, statusText: response.statusText, headers });
+}
+
+/**
+ * The page's answer for a read the proxy could not get to the data service:
+ * the page's request reads it as the service being unreachable
+ * (SHOT_SERVICE_UNREACHABLE_HEADER), as it would a refused connection of its own.
+ */
+function shotApiUnreachable(epoch: number): Response {
+  noteDataServiceReach(false, epoch);
+  return Response.json({ error: DATA_SERVICE_UNREACHABLE_MESSAGE }, {
+    status: 502,
+    headers: { "Cache-Control": "no-store", [SHOT_SERVICE_UNREACHABLE_HEADER]: "1" },
+  });
 }
 
 /**
@@ -741,16 +870,27 @@ async function growToFitRows(session: CdpPage, size: {
 }
 
 /**
- * An image ends on a whole row: a row its list's scroll box cuts at the
- * bottom edge is hidden, and so is one wholly outside the box, which the
- * box already clips but the row count would read. A row with no whole row
- * above it stays, cut, rather than leave the list blank. The live pane keeps
- * its partly visible last row, as every scrolling list reads.
+ * A capture draws whole rows beneath the sticky header and above the bottom
+ * edge. It also draws the table's vertical scrollbar when rows scroll past
+ * those edges. The live table keeps smooth scrolling and its partial rows.
  */
 async function hideCutRows(session: CdpPage): Promise<void> {
   await session.send("Runtime.evaluate", {
     expression: `(() => {
       const root = document.getElementById("root") || document.body;
+      const visibilityOf = (${rowViewportVisibility.toString()});
+      const bodyRole = 'data-table-body-scroll';
+      for (const body of root.querySelectorAll('[data-gloom-role="' + bodyRole + '"]')) {
+        const showsOverflow = body.clientHeight > 0 && body.scrollHeight > body.clientHeight + 1
+          && body.getAttribute('data-gloom-scrollbar-y') === 'visible'
+          && /auto|scroll/.test(getComputedStyle(body).overflowY);
+        if (showsOverflow) {
+          body.style.scrollbarWidth = 'auto';
+          body.style.scrollbarColor = 'auto';
+          body.setAttribute('data-gloom-scrollbar-active', 'true');
+        }
+        body.toggleAttribute('data-gloom-shot-table-overflow', showsOverflow);
+      }
       const rows = [...root.querySelectorAll(
         '[data-gloom-role="data-table-row"], [data-gloom-role="data-table-section-header"], [data-gloom-role="desktop-list-row"], [data-gloom-row="true"]',
       )];
@@ -758,28 +898,36 @@ async function hideCutRows(session: CdpPage): Promise<void> {
         const style = getComputedStyle(element);
         return /(auto|scroll|hidden|clip)/.test(style.overflowY) && element.clientHeight > 0;
       };
-      const wholeAbove = new Map();
+      const viewports = new Map();
+      const wholeRows = new Set();
       const cut = [];
       for (const row of rows) {
+        if (row.hasAttribute('data-gloom-shot-cut-row')) {
+          row.style.removeProperty('visibility');
+          row.removeAttribute('data-gloom-shot-cut-row');
+        }
         let box = row.parentElement;
         while (box && box !== root && !clips(box)) box = box.parentElement;
         if (!box || box === root) continue;
-        const area = box.getBoundingClientRect();
-        // The box's visible height: a horizontal scrollbar takes its own rows.
-        const bottom = area.top + box.clientTop + box.clientHeight;
+        if (!viewports.has(box)) {
+          const area = box.getBoundingClientRect();
+          const top = area.top + box.clientTop;
+          const header = box.getAttribute('data-gloom-role') === bodyRole
+            ? box.querySelector('[data-gloom-role="data-table-header-row"]') : null;
+          viewports.set(box, { top: Math.max(top, header?.getBoundingClientRect().bottom ?? top), bottom: top + box.clientHeight });
+        }
+        const viewport = viewports.get(box);
         const rect = row.getBoundingClientRect();
         if (rect.height <= 0) continue;
-        if (rect.bottom <= area.top + 1 || rect.top >= bottom - 1) {
-          cut.push(row);
-        } else if (rect.top >= area.top - 1 && rect.bottom <= bottom + 1) {
-          wholeAbove.set(box, true);
-        } else if (rect.bottom > bottom + 1) {
-          cut.push({ row, box });
-        }
+        const visibility = visibilityOf(rect.top, rect.bottom, viewport.top, viewport.bottom);
+        if (visibility === 'whole') wholeRows.add(box);
+        else cut.push({ row, box, visibility });
       }
-      for (const entry of cut) {
-        if (entry instanceof Element) entry.style.visibility = "hidden";
-        else if (wholeAbove.get(entry.box)) entry.row.style.visibility = "hidden";
+      for (const { row, box, visibility } of cut) {
+        if (visibility === 'outside' || wholeRows.has(box)) {
+          row.style.visibility = 'hidden';
+          row.setAttribute('data-gloom-shot-cut-row', '');
+        }
       }
     })()`,
     returnByValue: true,
@@ -909,20 +1057,24 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
       const managesRows = (element) => element.getAttribute("data-gloom-role") === "data-table-body-scroll";
       const markScrollTruncation = (element) => {
         if (!(element instanceof HTMLElement) || !isVisible(element)) return;
-        const reasons = scrollReasons({
+        const metrics = {
           scrollTop: element.scrollTop,
           scrollHeight: element.scrollHeight,
           clientHeight: element.clientHeight,
           scrollLeft: element.scrollLeft,
           scrollWidth: element.scrollWidth,
           clientWidth: element.clientWidth,
-          // A scroll box draws its scrollbar by default and its content is all in the page, so its
-          // measures say what is cut; only a table's body holds rows it has not drawn.
-          scrollbarY: managesRows(element) && element.getAttribute("data-gloom-scrollbar-y") === "visible",
+          // A table's vertical spacer includes virtual rows. Its scrollbar
+          // attribute allows a bar, but does not prove that a bar is drawn.
+          scrollbarY: false,
           scrollbarX: managesRows(element) && element.getAttribute("data-gloom-scrollbar-x") === "visible",
-        });
-        reasons.forEach((reason) => truncationReasons.add(reason));
-        if (!inReportedTable(element)) reasons.forEach((reason) => reportTruncationReasons.add(reason));
+        };
+        const table = element.closest('[data-gloom-role="data-table"]');
+        const total = semanticTables[visibleTables.indexOf(table)]?.metadata?.rowCount;
+        const rowCountAnnouncesCut = typeof total === 'number' && total > [...element.querySelectorAll('[data-gloom-role="data-table-row"]')].filter(isVisible).length;
+        const rowsAnnounced = managesRows(element) && (element.hasAttribute('data-gloom-shot-table-overflow') || rowCountAnnouncesCut);
+        scrollReasons(metrics, rowsAnnounced).forEach((reason) => truncationReasons.add(reason));
+        if (!inReportedTable(element)) scrollReasons(metrics).forEach((reason) => reportTruncationReasons.add(reason));
       };
       [...root.querySelectorAll(
         '[data-gloom-scrollbar-x="visible"], [data-gloom-scrollbar-y="visible"], [data-gloom-role="data-table-body-scroll"]',

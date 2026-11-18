@@ -237,8 +237,10 @@ test("a broker's index code is the index, and a cashtag stays the stock it names
   persistences.push(persistence);
   const store = new TickerRepository(persistence.tickers);
   const quoted: string[] = [];
-  // No source lists VIX; MOVE is Corvex, AAPL Apple, and a quote for MID times out.
+  // No source lists VIX; MOVE is Corvex, AAPL Apple, and a quote for MID times out. The shipped listings know AAPL as a
+  // US stock, as the command line's provider says.
   const dataProvider = createTestDataProvider({
+    knownUsStock: (symbol) => symbol === "AAPL",
     getQuote: async (symbol) => {
       quoted.push(symbol);
       if (symbol === "VIX") throw new Error("No provider available for VIX");

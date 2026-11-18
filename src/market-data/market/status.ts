@@ -487,12 +487,23 @@ function preMarketCloseAwaitingPrint(quote: Quote | null | undefined): { date: s
 
 /**
  * When the price a quote's headline shows was observed: the regular close a
- * pre-market with no trade yet still stands at (preMarketCloseAwaitingPrint),
- * otherwise the quote's last update. What an Updated cell and a report's
- * as-of date the quote by.
+ * pre-market with no trade yet still stands at (preMarketCloseAwaitingPrint);
+ * a completed session's close stamped after the venue closed, with no
+ * extended print beside it, at that close (regularSessionCloseOn), as `fn
+ * ADR` and `fx` date it (GGAL.BA's 4,857.50 read 20:59 UTC in `quote` and
+ * 20:10 in `fn ADR`, its close on BYMA's calendar); otherwise the quote's last
+ * update. What an Updated cell and a report's as-of date the quote by.
  */
 export function quoteHeadlineTime(quote: Quote): number {
-  return preMarketCloseAwaitingPrint(quote)?.closedAt ?? quote.lastUpdated;
+  const awaiting = preMarketCloseAwaitingPrint(quote);
+  if (awaiting) return awaiting.closedAt;
+  // A closed market's quote only: in a pre-market or after-hours session the last update can be a print.
+  const date = quote.marketState === "CLOSED" && !quote.delisting ? regularSessionDisplayDate(quote) : null;
+  if (date && Number.isFinite(quote.lastUpdated) && !getExtendedSessionDisplay(quote)) {
+    const closedAt = regularSessionCloseOn(quote.listingExchangeName || quote.exchangeName, date);
+    if (closedAt != null && quote.lastUpdated > closedAt) return closedAt;
+  }
+  return quote.lastUpdated;
 }
 
 /**

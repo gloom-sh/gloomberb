@@ -27,7 +27,10 @@ function isIsolatedOhlcOutlier(
     return false;
   }
 
-  return [point.open, point.high, point.low].some((value) => (
+  const tradedWick = (point.volume ?? 0) > 0
+    && point.open != null && point.high != null && point.low != null
+    && point.high >= Math.max(point.open, point.close) && point.low <= Math.min(point.open, point.close);
+  return (tradedWick ? [point.open] : [point.open, point.high, point.low]).some((value) => (
     typeof value === "number"
     && Number.isFinite(value)
     && relativeDifference(value, point.close) > ISOLATED_OHLC_OUTLIER_RATIO

@@ -37,6 +37,7 @@ import { expandResolvedArgument } from "./headless";
 import { defaultScreenshotPath, shotSizeWarnings } from "./screenshot-payload";
 import { renderDesktopShot } from "./screenshot-render";
 import { shotCutColumnsWarning, shotStatusIssues } from "./screenshot-assessment";
+import { PANE_SWEEP_EVIDENCE_PATH } from "./screenshot-types";
 import {
   buildPaneCatalogEntries,
   exampleListName,
@@ -51,6 +52,7 @@ import {
 } from "../listing-arg";
 import { notATickerStop } from "../company-name-hint";
 import { CLI_ERROR_CODE, failUnreachable, failWithError, isCliFailure, isSourceUnavailableAnswer, unreachableError } from "../errors";
+import { dataServiceUnreachable, forgetDataServiceReach } from "../../api-client/request";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { appCommandPointer, knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
@@ -346,6 +348,41 @@ function tablesHoldValues(tables: CliReportTables): boolean {
   });
 }
 
+/** Whether a report's tables show a figure: a cell outside the label column with a digit in it (not a dash). */
+function tablesHoldFigures(tables: CliReportTables): boolean {
+  return tables.tables.some((table) => {
+    const skipped = new Set(table.columns.flatMap((header, index) => index === 0 || header === "status" || header === "value_status" ? [index] : []));
+    return table.rows.some((row) => row.some((cell, index) => !skipped.has(index) && /\d/.test(String(cell ?? ""))));
+  });
+}
+
+/**
+ * Whether a report holds nothing because its reads failed: empty with a
+ * failure said, every row failing to reach the data service (WEI's twenty
+ * indices each "couldn't reach"), or every row's listing without data and no
+ * figure anywhere (BI's sectors, all dashes). Never one behind a wall, whose
+ * note is its answer, one with nothing asked yet ("Select a ticker."), or one
+ * with a figure from a read that did answer (VIX's term structure beside
+ * quotes it has none of).
+ */
+export function reportHasNoData(data: {
+  empty: boolean; rowCount: number; unavailableSymbols: readonly string[]; errors?: readonly string[]; locked?: unknown;
+}, tables?: CliReportTables): boolean {
+  if (data.locked) return false;
+  const errors = data.errors ?? [];
+  if (data.unavailableSymbols.length === 0 && errors.length === 0) return false;
+  if (data.empty) return true;
+  if (data.rowCount === 0) return false;
+  const unreached = errors.filter((error) => error.includes(DATA_SERVICE_UNREACHABLE_MESSAGE)).length;
+  if (unreached >= data.rowCount) return true;
+  return data.unavailableSymbols.length >= data.rowCount && !!tables && !tablesHoldFigures(tables);
+}
+
+/** A report with nothing in it because the data service went unanswered: no answer, not "no data" dated now. */
+function reportFailedUnreached(data: Parameters<typeof reportHasNoData>[0], tables: CliReportTables): boolean {
+  return reportHasNoData(data, tables) && dataServiceUnreachable();
+}
+
 /**
  * Why `fn` fails a report it printed, or null when the report has data. It
  * fails when it is empty (a pane behind a wall reads nothing), when it has no
@@ -449,6 +486,9 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         if (listing) await failUnchosenListing(listing, context, ctx, { ...moved, noun: "data" }, error);
         throw error;
       }).finally(progress.stop);
+      // A report with nothing in it while the data service went unanswered is no answer, not "No data" dated now:
+      // it fails as `search` and `quote` do (G, CMP, WEI and CHOKE printed empty tables and "retrieved" at the run).
+      if (reportFailedUnreached(report.data, report.tables)) failUnreachable();
       // A company's name typed where its ticker goes (`fn RDCF Palantir`) found nothing: the answer is `quote`'s,
       // "Not a ticker: PALANTIR. Did you mean PLTR (Palantir Technologies Inc.)?", not an empty report. A source that
       // could not answer for the word (a timeout) says nothing of it, but when search finds the company it is that.
@@ -558,18 +598,37 @@ const SHOT_PROGRESS_AFTER_MS = 3_000;
 const FN_PROGRESS_AFTER_MS = 5_000;
 
 /**
- * One line on standard error when a capture or report is slow: "Still loading
- * the data for PORT izmir." while its data is read, "Still drawing PORT
- * izmir." once a capture's page draws it. Nothing for a quick one, or with --quiet.
+ * One line on a terminal's standard error while a capture or report is slow:
+ * "Still loading the data for PORT izmir." while its data is read, "Still
+ * drawing PORT izmir." once a capture's page draws it. It is progress, not
+ * part of the answer: the line is cleared once the work ends, so a finished
+ * report never starts with it, and standard error that is not a terminal (a
+ * file, a pipe, a script reading it) never gets it. Nothing for a quick one,
+ * or with --quiet.
  */
-function progressNotice(ctx: Pick<CliCommandContext, "cliOptions">, label: string, afterMs = SHOT_PROGRESS_AFTER_MS): { drawing(): void; stop(): void } {
-  if (ctx.cliOptions.quiet) return { drawing: () => {}, stop: () => {} };
+export function progressNotice(
+  ctx: Pick<CliCommandContext, "cliOptions">,
+  label: string,
+  afterMs = SHOT_PROGRESS_AFTER_MS,
+  stream: Pick<NodeJS.WriteStream, "isTTY" | "write"> = process.stderr,
+): { drawing(): void; stop(): void } {
+  if (ctx.cliOptions.quiet || !stream.isTTY) return { drawing: () => {}, stop: () => {} };
   let drawing = false;
+  let shown = false;
   const timer = setTimeout(() => {
-    console.error(cliStyles.muted(drawing ? `Still drawing ${label}.` : `Still loading the data for ${label}.`));
+    // No newline: the line stays the cursor's until it is cleared.
+    stream.write(cliStyles.muted(drawing ? `Still drawing ${label}.` : `Still loading the data for ${label}.`));
+    shown = true;
   }, afterMs);
   (timer as { unref?: () => void }).unref?.();
-  return { drawing: () => { drawing = true; }, stop: () => clearTimeout(timer) };
+  return {
+    drawing: () => { drawing = true; },
+    stop: () => {
+      clearTimeout(timer);
+      if (shown) stream.write("\r\x1b[2K");
+      shown = false;
+    },
+  };
 }
 
 export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) {
@@ -608,7 +667,9 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
         ? resolve(process.cwd(), ensurePngExtension(parsed.outputPath))
         : defaultScreenshotPath(resolved, parsed.arg);
       const progress = progressNotice(ctx, [resolved.token, parsed.arg].filter(Boolean).join(" "));
-      const onlyUsable = parsed.strict === true || parsed.requireBotSafe === true;
+      const sweepEvidence = parsed.strict === true && ctx.cliOptions.format === "json" && !!parsed.outputPath
+        && process.env[PANE_SWEEP_EVIDENCE_PATH] === outputPath;
+      const onlyUsable = parsed.requireBotSafe === true || (parsed.strict === true && !sweepEvidence);
       const result = await renderDesktopShot({
         resolved,
         context,
@@ -825,6 +886,8 @@ function printCatalog(
 }
 
 async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void>) {
+  // Whether the data service answered is this command's to say, never a request made before it.
+  forgetDataServiceReach();
   try {
     await run();
   } catch (error) {
@@ -835,6 +898,9 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
     if (isSourceUnavailableAnswer(error)) throw error;
     // A listing it cannot use says what to type instead; a name that opens nothing, what is close to it.
     if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details || undefined);
+    // Whatever a pane made of a request that never reached the data service ("News sources unavailable.", "No ticker
+    // match found", a bare ECONNREFUSED), nothing answered since: said as every command says it, with what to check.
+    if (dataServiceUnreachable()) failUnreachable();
     const message = error instanceof Error ? error.message : String(error);
     // Nothing answered: said as every command says it, with what to check.
     if (message.includes(DATA_SERVICE_UNREACHABLE_MESSAGE)) failUnreachable(message);

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { scrollTruncationReasons, type ScrollBoxMetrics } from "./scroll-truncation";
+import { rowViewportVisibility, scrollTruncationReasons, type ScrollBoxMetrics } from "./scroll-truncation";
 
 const box = (overrides: Partial<ScrollBoxMetrics>): ScrollBoxMetrics => ({
   scrollTop: 0, scrollHeight: 400, clientHeight: 400,
@@ -29,4 +29,18 @@ test("a drawn scrollbar counts as overflow even when the measures fit, and a pix
 test("runs from its own source, as the screenshot runner evaluates it in the page", () => {
   const inPage = new Function(`return (${scrollTruncationReasons.toString()});`)() as typeof scrollTruncationReasons;
   expect(inPage(box({ scrollHeight: 1000, scrollTop: 300 }))).toEqual(["rows above and below the rendered viewport are cut"]);
+});
+
+test("an announced table scroll does not hide a real cut on the other axis", () => {
+  const scrolled = box({ scrollHeight: 1000, scrollTop: 300, scrollWidth: 1200 });
+  expect(scrollTruncationReasons(scrolled, true)).toEqual(["columns right of the rendered viewport are cut"]);
+  expect(scrollTruncationReasons(scrolled)).toContain("rows above and below the rendered viewport are cut");
+});
+
+test("marks the sliver under the sticky header as partial, not a visible whole row", () => {
+  const belowStickyHeader = 63;
+  expect(rowViewportVisibility(55, 73, belowStickyHeader, 400)).toBe("partial");
+  expect(rowViewportVisibility(37, 55, belowStickyHeader, 400)).toBe("outside");
+  expect(rowViewportVisibility(73, 91, belowStickyHeader, 400)).toBe("whole");
+  expect(rowViewportVisibility(397, 415, belowStickyHeader, 400)).toBe("partial");
 });

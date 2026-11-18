@@ -758,6 +758,22 @@ describe("GloomberbCloudProvider", () => {
     expect(history).toHaveLength(3);
   });
 
+  test("keeps a traded wick on a thin listing rather than rejecting its minute history", async () => {
+    apiClient.ensureVerifiedSession = async () => verifiedUser;
+    apiClient.getCloudHistory = async () => ({
+      status: "success",
+      data: [
+        { date: "2026-11-17T15:16:00Z", close: 1.72 },
+        { date: "2026-11-17T15:17:00Z", open: 1.72, high: 1.79, low: 1.72, close: 1.72, volume: 936 },
+        { date: "2026-11-17T15:18:00Z", close: 1.71 },
+      ],
+    });
+
+    const history = await new GloomberbCloudProvider().getPriceHistoryForResolution("DWSN", "NASDAQ", "1W", "1m");
+    expect(history).toHaveLength(3);
+    expect(history[1]).toMatchObject({ high: 1.79, close: 1.72, volume: 936 });
+  });
+
   test("generic managed attribution cannot bypass malformed intraday history validation", async () => {
     apiClient.ensureVerifiedSession = async () => verifiedUser;
     apiClient.getCloudHistory = async () => ({

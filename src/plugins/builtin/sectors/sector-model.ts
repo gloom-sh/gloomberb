@@ -328,7 +328,7 @@ export function sectorRowIssues(row: SectorRow): string[] {
   if (row.quoteIssue) issues.push(row.quoteIssue);
   else if (row.quoteUnavailable) issues.push("quote unavailable");
   for (const range of ["1M", "1Y"] as const) {
-    if (row.returnIntegrity?.[range]) issues.push(`${range}: inconsistent OHLC at return endpoint`);
+    if (row.returnIntegrity?.[range]) issues.push(`${range}: contradictory prices at the return's start or end`);
     else if (row[range === "1M" ? "return1M" : "return1Y"] == null) issues.push(`${range}: history does not cover the shared window`);
   }
   return issues;

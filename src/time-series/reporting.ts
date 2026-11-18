@@ -112,7 +112,7 @@ export function summarizeResolvedSeries(series: ResolvedSeries) {
       startValue: null, endValue: null, return: null,
       unit: series.rawUnit ?? series.unit,
       pointCount: series.points.length,
-      unavailableReason: inconsistentOhlc ? "Inconsistent OHLC history in the selected observations."
+      unavailableReason: inconsistentOhlc ? "Contradictory prices in the selected bars."
         : "Invalid valuation price in the selected observations.",
     };
   }

@@ -98,3 +98,32 @@ test("a failed load says it tried again once the same failure is back, though th
   expect(frame).not.toContain("No careers system");
   expect(frame).not.toContain("Checked");
 });
+
+// A company nobody had asked about: the server looks for minutes, and a spinner
+// stood all that time, so a first open read as a pane that never loaded.
+test("a company the server is still looking for is answered at once, and fills in when asked again", async () => {
+  const id = "jobs:SIVE";
+  const state = createInitialState(createTestPaneConfig("/tmp/gloom-jobs-pending", { instanceId: id, paneId: "jobs", binding: { kind: "fixed", symbol: "SIVE" } }));
+  state.tickers.set("SIVE", createTestTicker("SIVE", "Sivers Semiconductors"));
+  const runtime = createTestPluginRuntime();
+  function Harness() {
+    const [paneState, setPaneState] = useState(state.paneState);
+    state.paneState = paneState;
+    return <TestPaneFrame footerKeys width={90} height={12} state={state} dispatch={(action) => setPaneState(appReducer(state, action).paneState)} paneId={id} pluginId="jobs" runtime={runtime}>
+      {(body) => <JobsPane width={body.width} height={body.height} focused />}
+    </TestPaneFrame>;
+  }
+  await act(async () => { await tui.render(<Harness />, { width: 90, height: 12 }); });
+  await settle();
+  answers.shift()!.resolve({ status: "pending", ticker: "SIVE", queued: true, message: "Looking for this company's careers system." } as CloudJobsResponse);
+  const frame = await tui.waitForFrameToContain("Looking for SIVE's careers system.");
+  expect(frame).toContain("Roles show here once it is read");
+  expect(frame).toContain("Check now  Enter");
+  expect(frame).not.toContain("Loading SIVE hiring");
+
+  await pressEnter();
+  await settle();
+  expect(tui.frame()).toContain("Checking...  Enter");
+  answers.shift()!.reject(uncovered());
+  expect(await tui.waitForFrameToContain("No careers system found for SIVE.")).not.toContain("Looking for SIVE");
+});

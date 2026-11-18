@@ -11,7 +11,7 @@ import type { ChartPaneModel } from "../../plugins/builtin/chart-composer/headle
 import { buildHeadlessPaneLoadArgs, loadResolvedHeadlessPaneModel, type LoadedHeadlessPaneModel } from "./headless";
 import { resolve } from "path";
 import type { PaneRuntimeState } from "../../core/state/app/state";
-import { CHART_COMPOSER_PANE_ID, type AppConfig } from "../../types/config";
+import { CHART_COMPOSER_PANE_ID, TICKER_RESEARCH_PANE_ID, type AppConfig } from "../../types/config";
 import type { OptionsChain, PricePoint, TickerFinancials } from "../../types/financials";
 import type { InstrumentRef } from "../../market-data/request-types";
 import { fetchHistoryResult } from "../../sources/history-result";
@@ -37,6 +37,7 @@ import { collectExternalPluginBundles } from "../../renderers/electrobun/bun/ext
 import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail/settings";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { HISTORY_DEFAULT_RANGE } from "../../plugins/builtin/ticker-detail/data-panes/history-bars";
+import { priceReturnDailyWindow } from "../../market-data/performance";
 import { findCollection } from "../../plugins/builtin/portfolio-list/cli/render";
 import { peekCachedBrokerAccounts } from "../../plugins/builtin/portfolio-list/cached-account";
 import { paneScreenshotEvidenceHook } from "./screenshot-evidence";
@@ -171,18 +172,26 @@ interface ShotSymbolCapture {
 
 /**
  * PEB reads every week on record and, for the years they are served, the
- * daily closes that price each figure on its day. Captured history answers
- * every request, so the weekly bars would stand in for the daily ones and
- * the capture read the week around each figure's day: each cadence is its
- * own, under the listing the pane asks for. Without daily closes the weekly
- * bars stand alone, as in the app.
+ * daily closes that price each figure on its day; DES's overview charts the
+ * weeks and measures its Price Return strip on five years of daily closes.
+ * Captured history answers every request, so the weekly bars would stand in
+ * for the daily ones and the capture read the week around each figure's day
+ * (or each period's start): each cadence is its own, under the listing the
+ * pane asks for. Without daily closes the weekly bars stand alone, as in the app.
  */
-async function peBandHistoryVariants(
+async function weeklyAndDailyHistoryVariants(
   context: MarketContext, ticker: TickerRecord, exchange: string, weekly: TickerFinancials["priceHistory"],
+  /** DES's window (priceReturnDailyWindow), which it asks for by its dates; PEB's is the 5Y range. */
+  window?: { start: Date; end: Date },
 ): Promise<NonNullable<SnapshotMarketData["historyVariants"]>> {
   const target = { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange ?? "" };
-  const daily = await (context.dataProvider.getPriceHistoryForResolution?.(target.symbol, exchange, "5Y", "1d", toMarketDataContext(target))
-    ?? Promise.resolve([])).catch(logFailure("cli.pane-functions.screenshot-payload", "Read PEB daily closes for a capture failed", []));
+  const provider = context.dataProvider;
+  const read = window
+    ? provider.getDetailedPriceHistoryWithMetadata?.(target.symbol, exchange, window.start, window.end, "1d", toMarketDataContext(target))
+      .then((result) => result.points)
+      ?? provider.getDetailedPriceHistory?.(target.symbol, exchange, window.start, window.end, "1d", toMarketDataContext(target))
+    : provider.getPriceHistoryForResolution?.(target.symbol, exchange, "5Y", "1d", toMarketDataContext(target));
+  const daily = await (read ?? Promise.resolve([])).catch(logFailure("cli.pane-functions.screenshot-payload", "Read daily closes for a capture failed", []));
   return [{ target, resolution: "1wk", points: weekly ?? [] }, ...(daily.length ? [{ target, resolution: "1d" as const, points: daily }] : [])];
 }
 
@@ -367,7 +376,12 @@ export async function buildDesktopShotPayload(
     if (resolved.pane.id === "time-sales") {
       capture.tape = [entry.instrument.symbol, exchange, await fetchTape(entry.instrument.symbol, exchange)];
     }
-    if (resolved.pane.id === "pe-band") capture.historyVariants = await peBandHistoryVariants(context, capture.ticker, exchange, data.priceHistory);
+    // DES (the research pane's overview, not its financials or the ADR pair) measures returns on daily closes.
+    const overview = resolved.pane.id === TICKER_RESEARCH_PANE_ID && resolved.template?.id !== "adr-pair-pane" && !isFinancialAnalysisFunction(resolved);
+    if (resolved.pane.id === "pe-band" || overview) {
+      capture.historyVariants = await weeklyAndDailyHistoryVariants(context, capture.ticker, exchange, data.priceHistory,
+        overview ? priceReturnDailyWindow() : undefined);
+    }
     if (includeOptionsChains && context.dataProvider.getOptionsChain) {
       // A future with no chain of its own is the pane's to explain (the listed alternative), not a failed shot.
       const chain = await context.dataProvider.getOptionsChain(entry.instrument.symbol, exchange, undefined,

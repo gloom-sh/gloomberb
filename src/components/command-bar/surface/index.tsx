@@ -531,6 +531,7 @@ export function CommandBar({
     activateListSelection,
     runRootQuery,
     setActiveListQuery,
+    typedTickerRow,
   } = useCommandBarSelectionRuntime({
     activeTickerSymbol,
     promptTickerSymbol,
@@ -682,7 +683,9 @@ export function CommandBar({
   const addingListing = !currentRoute && state.commandBarLaunchRequest?.kind === "add-listing" && !!listingChoiceQuery(rootQuery);
   const plainTickerSearch = currentRoute?.kind === "mode" && currentRoute.screen === "ticker-search" && !currentRoute.payload?.action;
   const enterChangesFocusedPane = !!resolveTickerEnterTarget(state.config.layout, state.focusedPaneId, pluginRegistry.panes, "des");
-  const selectedRow = visibleListState?.results[visibleListState.selectedIdx];
+  // Nothing is highlighted while DES's search is out, and Enter runs the ticker typed.
+  const selectedRow = visibleListState?.results[visibleListState.selectedIdx]
+    ?? (visibleListState?.kind === "root" ? typedTickerRow : null);
   const selectionKeyHints = themePickerActive || addingListing || plainTickerSearch
     ? null
     : resolveSelectionKeyHints(selectedRow, enterChangesFocusedPane);

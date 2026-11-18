@@ -2,6 +2,7 @@ import type { AppPersistence } from "../data/app-persistence";
 import { ApiRequestError, wasAskedTwice } from "../api-client/errors";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "./options";
 import { serializeCliError, type CliErrorObject } from "./result";
+import { unreachableHint } from "./unreachable";
 import { cliStyles, cliTerminalWidth, wrapText } from "../utils/cli-output";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import { isProviderBusy, isSourceFailure, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE, serviceDidNotAnswerMessage } from "../sources/provider-errors";
@@ -18,14 +19,7 @@ const SERVICE_UNREACHABLE_CODE = "service_unreachable";
 /** The code of a command whose data no source could serve just now, one having failed rather than had none. */
 const SOURCE_UNAVAILABLE_CODE = "source_unavailable";
 
-/** What to check when nothing answered: the connection, and the proxy when one is set. */
-function unreachableHint(): string {
-  const env = typeof process === "undefined" ? {} : process.env;
-  const proxy = ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"].find((name) => env[name]?.trim());
-  return proxy
-    ? `Check the internet connection and the proxy in ${proxy}, then try again.`
-    : "Check the internet connection, then try again.";
-}
+
 
 /**
  * An answer of the data service that a source it reads failed and nothing it
@@ -141,7 +135,7 @@ function cliErrorObject(error: unknown): CliErrorObject {
   }
   // A listing read the data service failed to answer twice: said in Gloom's words. Any other 5xx keeps the server's.
   if (wasAskedTwice(error)) {
-    return { code: SOURCE_UNAVAILABLE_CODE, message: serviceDidNotAnswerMessage(), retryable: true };
+    return { code: SOURCE_UNAVAILABLE_CODE, message: serviceDidNotAnswerMessage(undefined, error), retryable: true };
   }
   // Gloom Cloud refused what was asked (an unknown series, a bad date): the input was wrong, not the program.
   if (error instanceof ApiRequestError && error.status === 400) {

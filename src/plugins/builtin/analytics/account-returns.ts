@@ -99,7 +99,7 @@ export function buildAccountRiskRows({
       label: "Beta (SPY)",
       value: beta == null ? MISSING_VALUE : formatNumber(beta, 2),
       detail: benchmarkIntegrity
-        ? "SPY benchmark: inconsistent OHLC history"
+        ? "SPY benchmark: contradictory prices in its history"
         : beta == null ? "Insufficient overlap with SPY" : `Account · ${sampleWindow(betaSample)}`,
     },
     { id: "volatility", label: "Volatility", value: volatility == null ? MISSING_VALUE : formatReturn(volatility).replace("+", ""), detail },

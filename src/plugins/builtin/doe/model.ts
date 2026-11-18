@@ -67,7 +67,9 @@ export function doeCoverageNote(query: string | null | undefined): string | null
   if (!contracts.length || contracts.some((contract) => contract.sector === "energy")) return null;
   const covers = "Covers US oil and gas inventories only";
   const [only] = contracts;
-  const named = contracts.length === 1 && only ? `${only.name} (${only.code})` : null;
+  // A name a full-size contract and its micro share (copper: HG and MHG) names the one called that.
+  const contract = contracts.length === 1 ? only : contracts.find((entry) => entry.name.toLowerCase() === typed.toLowerCase());
+  const named = contract ? `${contract.name} (${contract.code})` : null;
   const physical = contracts.filter((contract) => PHYSICAL_SECTORS.has(contract.sector));
   if (physical.length === contracts.length) {
     const sectors = [...new Set(contracts.map((contract) => FUTURES_SECTOR_LABELS[contract.sector].toLowerCase()))];

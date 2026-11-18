@@ -84,6 +84,7 @@ import { createBaseConverter } from "../base-converter";
 import { loadStatementFilings } from "../statement-filings";
 import { loadBankFigures } from "../bank-section";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
+import { commandWord } from "../../utils/shell-word";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { currencyCodeLabel, currencyUnitLabel, resolveCurrencyUnit } from "../../utils/currency-units";
 import { fxRateDigits, quotedFxPair } from "../../utils/currency-pair";
@@ -994,9 +995,11 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       dayRange: quote?.low != null && quote.high != null
         ? indexPoints ? `${price(quote.low)}-${price(quote.high)}` : formatPriceRange(quote.low, quote.high, quote.currency, options, "-")
         : "",
-      // An index's 0 is volume nobody counts, and its level has no currency.
+      // An index's 0 is volume nobody counts.
       volume: reportedQuoteVolume(quote),
-      currency: indexPoints ? "" : quote?.currency ?? "",
+      // The currency the service gives, an index's too (^MERV's ARS, ^N225's JPY), whether the row is current or
+      // stale: its level stays in points, and the export's currency_or_unit says so.
+      currency: quote?.currency ?? "",
       providerId: quote?.providerId ?? "",
       source: quote?.dataSource ?? quote?.providerId ?? "",
       feed: quoteFeedState(quote, now),
@@ -1281,11 +1284,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     }
     // With several symbols, --exchange is for the ones that name no exchange of their own, and one that names no
     // listing (EQT:NYSE:US) is named in a line while the others are quoted.
-    // A word that names a company is read once its quote says no listing trades as it (answerQuote).
+    // A word that names a company, and a code no source quotes, are read once its quote says no listing trades as it (answerQuote).
     const resolvedListings = await Promise.all(symbols.filter((symbol) => !notASymbolError(symbol)).map(async (symbol) => {
-      if (symbols.length === 1) return { symbol, listing: await requireCliListing(symbol, exchange, market, ctx, { companyWord: false }) };
+      if (symbols.length === 1) return { symbol, listing: await requireCliListing(symbol, exchange, market, ctx, { companyWord: false, listingAbroad: false }) };
       try {
-        return { symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: false }) };
+        return { symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: false, listingAbroad: false }) };
       } catch (error) {
         if (error instanceof ListingArgError) return { symbol, error };
         throw error;
@@ -1511,12 +1514,12 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ),
     }, {
       rows: quoteRows,
-      // An index row's Cur is blank, its level having no currency; the export names what it is in instead.
+      // An index row's Cur is the index's currency, but its level is in points (or a yield in percent): the export names that.
       exportIdentity: (row) => ({
         symbolOrSeries: row.symbol,
         // A pair's rate is its quote currency per base: JPY per USD, as `history` and `fx` export it.
-        currencyOrUnit: (row.currency && pairExportUnit(row.symbol, row.currency))
-          || row.currency || (row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : isIndexLevel(row.instrumentType) ? INDEX_POINTS_EXPORT_UNIT : null),
+        currencyOrUnit: isIndexLevel(row.instrumentType) ? row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : INDEX_POINTS_EXPORT_UNIT
+          : (row.currency && pairExportUnit(row.symbol, row.currency)) || row.currency || (row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : null),
         // Each row as of its own price (^TNX's 19:59 beside ^VIX's 21:15), as Updated says; a row with none is blank.
         asOf: row.updatedAt || null,
         // Beside a coin priced by one exchange's own trade, which is cited to that exchange, each row names its own.
@@ -1805,6 +1808,23 @@ function financialsOptionHint(flag: string, args: readonly string[]): string | n
   const symbol = financialsSymbolArg(args) ?? "<symbol>";
   return `financials lists fiscal years. For quarters: gloom fn GF ${symbol} --period quarterly --periods 40 (one metric at a time), `
     + `or gloom fn FA ${symbol} --period quarterly (the statements).`;
+}
+
+/**
+ * What `financials` says when it has no fiscal year to list, in place of a
+ * bare "No results.": a listing with quarters but no full year reported
+ * (O8A:FWB2) names its latest quarter and the command that lists them, as
+ * `financials --quarterly` points to it; one whose years carry only balance
+ * sheet figures points at those; one with nothing says so.
+ */
+function noFiscalYearsNote(key: string, financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">): string {
+  const symbol = commandWord(key);
+  if (financials.annualStatements.length > 0) {
+    return `No fiscal-year revenue, income or EPS on record for ${key}. Its balance sheets: gloom fn FA ${symbol} --statement balance`;
+  }
+  const quarter = latestFinancialPeriod(financials.quarterlyStatements, (row) => row.date)?.date;
+  if (!quarter) return `No fiscal-year or quarterly statements on record for ${key}.`;
+  return `No fiscal-year statements on record for ${key}; its quarterly statements run to ${quarter}: gloom fn FA ${symbol} --period quarterly`;
 }
 
 function historyOptionHint(flag: string, args: readonly string[]): string | null {
@@ -2875,7 +2895,7 @@ async function runHistoryList(
       // A catalog series is no listing: it is read as a series below.
       if (catalogSeriesId(symbol)) return { typed: symbol, listing: null, error: null };
       try {
-        const listing = await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: lookups && typedList });
+        const listing = await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: lookups && typedList, listingAbroad: lookups });
         return { typed: symbol, listing };
       } catch (error) {
         return { typed: symbol, listing: null, error };
@@ -3208,11 +3228,14 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     const older = await hasOlderStatements(() => market.dataProvider.getTickerFinancials(listing.request.symbol, listing.request.exchange,
       { statementHistory: "extended" }), "annual", dates);
     const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", dates, listing.key, older)];
+    // No year to list says why, and where its quarters are, rather than "No results.".
+    const empty = rows.length === 0 ? noFiscalYearsNote(listing.key, financials) : null;
+    const notes = empty ? [...historyNotes, empty] : historyNotes;
     // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
     const tables = tabular
       ? selectTables({
         tables: [exportRowsTable("Annual statements", STATEMENT_COLUMNS, rows)],
-        footer: reportFooterLines({ freshness, notes: historyNotes }),
+        footer: reportFooterLines({ freshness, notes }),
       })
       : undefined;
     ctx.printResult({
@@ -3224,7 +3247,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         quarterlyStatements: financials.quarterlyStatements.length,
         fundamentals: exportedFundamentals(financials.fundamentals),
         profile: financials.profile,
-        ...(historyNotes.length > 0 ? { notes: historyNotes } : {}),
+        ...(notes.length > 0 ? { notes } : {}),
       },
       freshness,
       ...(choice.length > 0 ? { warnings: choice } : {}),
@@ -3232,7 +3255,9 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       heading: listingHeading(identity),
       rows: () => rows,
       columns: STATEMENT_COLUMNS,
-      ...(historyNotes.length > 0 ? { footnote: historyNotes.join("\n"), exportNotes: historyNotes } : {}),
+      ...(empty ? { empty } : {}),
+      ...(historyNotes.length > 0 ? { footnote: historyNotes.join("\n") } : {}),
+      ...(notes.length > 0 ? { exportNotes: notes } : {}),
       ...(tables && ctx.cliOptions.format === "csv" ? { tables } : {}),
       // Annual statements in the company's reporting currency.
       exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: rows.find((row) => row.currency)?.currency ?? null, interval: "annual" },
@@ -4828,7 +4853,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
   await withCliServices(ctx, async (services) => {
     const symbols = await readSymbols(entries, services.dataProvider);
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
-      symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1, companyWord: symbols.length <= MAX_CHOICE_LOOKUPS },
+      symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1, companyWord: symbols.length <= MAX_CHOICE_LOOKUPS, listingAbroad: symbols.length <= MAX_CHOICE_LOOKUPS },
     )));
     const keys = listings.map((listing) => listing.key);
     // Each bare symbol's venues cost a search, so a long list (a portfolio check, not a lookup) names none.

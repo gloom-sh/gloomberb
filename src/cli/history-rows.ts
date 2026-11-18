@@ -304,8 +304,8 @@ export function historyBarValues(point: PricePoint, monthly: boolean): ReturnTyp
 
 /**
  * What HP says of its bars whose prices contradict each other: one left
- * blank whole as every price view says it ("1 inconsistent OHLC bar is
- * unavailable"), a month that keeps its close as `history` says it
+ * blank whole as every price view says it ("1 bar has contradictory prices;
+ * left blank."), a month that keeps its close as `history` says it
  * (historyFlagNote, with no daily bars read). Undefined when none.
  */
 export function priceTableIntegrityNotice(rows: readonly { flag?: string | null; close: number | null; integrity?: unknown }[]): string | undefined {

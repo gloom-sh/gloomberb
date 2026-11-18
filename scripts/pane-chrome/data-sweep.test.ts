@@ -4,7 +4,7 @@ import { createDefaultConfig } from "../../src/types/config";
 import { buildPaneCatalogEntries, type PaneCatalogEntry } from "../../src/cli/pane-functions/catalog";
 import { createPaneCatalog } from "../../src/cli/pane-functions/discovery";
 import type { MarketContext } from "../../src/cli/types";
-import { assessCapture, exampleArgs, planSweep, runCommand, selectCases, type CommandResult } from "./data-sweep";
+import { assessCapture, captureEvidence, exampleArgs, planSweep, runCommand, selectCases, type CommandResult } from "./data-sweep";
 
 const entry = (changes: Partial<PaneCatalogEntry> = {}): PaneCatalogEntry => ({
   token: "ANR", paneId: "analyst-research", label: "Analysts", description: "", paneName: "Analysts", aliases: [], keywords: [], defaultSettings: {},
@@ -84,9 +84,21 @@ test("strict failures preserve exact state wording, visible codes and every blan
     expect(assessCapture(capture({}, render), "ANR").status).toBe("failure");
   }
   expect(assessCapture(capture({ complete: false, usable: false }), "ANR").status).toBe("failure");
-  expect(assessCapture(capture({ complete: false }, { truncationReasons: ["rows below the rendered viewport are cut"] }), "AWARDS"))
+  expect(assessCapture(capture({}, { truncationReasons: ["rows below the rendered viewport are cut"] }), "AWARDS"))
     .toMatchObject({ status: "partial", reason: "rows below the rendered viewport are cut" });
+  expect(assessCapture(capture({ complete: false, gaps: "no data for XYZ" }, { truncationReasons: [] }), "AWARDS"))
+    .toMatchObject({ status: "partial", reason: "no data for XYZ" });
   expect(assessCapture(capture({}, {}, 2), "ANR").status).toBe("failure");
+});
+
+test("a missing evidence image does not replace a reviewed strict state", async () => {
+  const wording = "AAPL has no mapped apps in the observed App Store and Google Play charts.";
+  const result = capture({ usable: false, empty: true, rowCount: 0 }, { stateText: { empty: [wording] } }, 2);
+  expect(await captureEvidence(result, "APPS", "0012.png", new Blob())).toMatchObject({
+    status: "no-coverage", stateText: { empty: [wording] }, evidenceError: "Strict report has no rendered PNG",
+  });
+  const image = new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])]);
+  expect(await captureEvidence(result, "APPS", "0012.png", image)).toMatchObject({ status: "no-coverage", png: "0012.png" });
 });
 
 test("unrecognized visible and state-only codes cannot pass even a usable or partial capture", () => {
@@ -139,6 +151,7 @@ test("reviewed source empty states remain findings, while mixed faults and unkno
     ["KPIS", "KPIs for DWSN are not yet available. Try KPIS AAPL.", "no-coverage"],
     ["HIRE", "No current role evidence has been captured yet.", "no-coverage"],
     ["JOBS", "No careers system found for PLPC. Gloom reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards.", "no-coverage"],
+    ["JOBS", "Looking for 1910:HKEX's careers system. Roles show here once it is read, usually within a few minutes. This pane checks again on its own.", "expected-empty"],
     ["LITI", "No cases linked to AAPL. US court dockets are not collected yet, so only agency and regulator actions show.", "no-coverage"],
     ["MA", "No deals involving 7203.T.", "expected-empty"],
     ["RIPL", "None of the 4 disclosed customers and suppliers of AAPL reports from 2026-11-14 to 2026-12-14 (the next 30 days).", "expected-empty"],
@@ -239,7 +252,7 @@ test("explicit no-coverage and closed-session lists are separate, never hide unr
 });
 
 test("timeouts, invalid output and CLI errors cannot be mistaken for empty data", async () => {
-  const stderr = 'Still drawing CALLS DWSN.\n' + JSON.stringify({ ok: false, error: { code: "cli_error", message: "Timed out waiting for the desktop pane screenshot renderer." } });
+  const stderr = 'Still loading the data for CALLS DWSN.\nStill drawing CALLS DWSN.\n' + JSON.stringify({ ok: false, error: { code: "cli_error", message: "Timed out waiting for the desktop pane screenshot renderer." } });
   expect(assessCapture({ ...capture(), stdout: "", stderr, exitCode: 1 }, "CALLS"))
     .toMatchObject({ status: "command-error", reasonCodes: ["cli_error"], reason: "Timed out waiting for the desktop pane screenshot renderer." });
   for (const changes of [{ stdout: "malformed" }, { exitCode: 0 }, { stderr: `${stderr}\ntrailing noise` }, { stderr: `Unexpected warning\n${stderr}` }, { stderr: capture().stdout }]) {

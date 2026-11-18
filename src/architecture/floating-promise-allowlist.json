@@ -19,7 +19,7 @@
   "src/app/star-prompt/status-line.tsx": ["void:rendererHost.openExternal()"],
   "src/brokers/signed-in/sign-in.ts": ["void:this.run()"],
   "src/cli/desktop-pane-shot-browser.ts": ["statement:child.stdin.write()","void:drain().then()","void:exited.then()","void:messageText().then()"],
-  "src/cli/desktop-pane-shot.ts": ["callback:server.stop()","void:answerShotApiCall().then()"],
+  "src/cli/desktop-pane-shot.ts": ["void:answerShotApiCall().then()"],
   "src/cli/pane-functions/index.ts": ["void:cliOutputWritten().then()"],
   "src/components/command-bar/assist/runtime.ts": ["void:function()"],
   "src/components/command-bar/commands/collection.ts": ["void:startTickerChangeLookup().settle().then()"],

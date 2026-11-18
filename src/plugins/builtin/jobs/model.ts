@@ -51,6 +51,12 @@ const SENIORITY_SHORT: Record<string, string> = {
   executive: "Exec",
 };
 
+/** What JOBS says while the server looks for a company's careers system: a first read takes minutes, not a load. */
+export function pendingJobsTitle(symbol: string): string {
+  return `Looking for ${symbol}'s careers system.`;
+}
+export const PENDING_JOBS_MESSAGE = "Roles show here once it is read, usually within a few minutes. This pane checks again on its own.";
+
 export function functionLabel(id: string | null | undefined): string {
   if (!id) return "Unclassified";
   return FUNCTION_LABELS[id] ?? id;

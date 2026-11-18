@@ -44,10 +44,12 @@ export interface PriceHistoryResult {
    */
   nonPositiveCloseDates?: string[];
   /**
-   * The router answered an intraday request from a saved copy that stops short
-   * of the venue's latest session: a refetch failed, the app is offline or the
-   * source answered bars still behind. Never stored with a copy. Absent for a
-   * current copy, whatever its last bar, and for a source's own answer.
+   * The router answered from a saved copy that stops short of the venue's
+   * latest session (a refetch failed, the app is offline or the source
+   * answered bars still behind), or from a source's own answer that stops
+   * there because no source had the present (the service's stored series while
+   * its source refuses). Never stored with a copy. Absent for a current copy,
+   * whatever its last bar, and for a source's current answer.
    */
   savedCopyBehind?: true;
   /**

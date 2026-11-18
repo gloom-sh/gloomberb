@@ -444,6 +444,14 @@ export interface Fundamentals extends DepositaryReceiptFacts {
    * home line, per receipt), `cpo` (a CPO line's company, per CPO).
    */
   trailingEpsBasis?: "statements" | "home" | "cpo";
+  /**
+   * `YYYY-MM-DD`, the last day of the twelve months `revenue`, `netIncome` and
+   * `profitMargin` are: the statements' trailing window (Financials' TTM)
+   * when they are its figures. Absent when Gloom Cloud cannot tie them to one.
+   */
+  trailingPeriodEnd?: string;
+  /** `statements`: the trailing revenue, net income and margin are the statements' window, in place of figures on no twelve months the EPS is on. */
+  trailingIncomeBasis?: "statements";
   /** Provider-reported issuer market cap; marketCapCurrency identifies its units when known. */
   marketCap?: number;
   marketCapCurrency?: string;

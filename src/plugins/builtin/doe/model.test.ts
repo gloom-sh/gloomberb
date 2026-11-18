@@ -223,6 +223,11 @@ describe("DOE figures", () => {
     // FUT HG opens the board searched for HG=F; a name, a group and a rates contract read the same way.
     expect(doeCoverageNote("HG=F")).toBe(`${covers}, not Copper (HG) stocks.`);
     expect(doeCoverageNote("copper")).toBe(`${covers}, not Copper (HG) stocks.`);
+    // A micro metal names itself, and a name it shares with its full-size contract names that one.
+    expect(doeCoverageNote("MGC=F")).toBe(`${covers}, not Micro Gold (MGC) stocks.`);
+    expect(doeCoverageNote("SIL=F")).toBe(`${covers}, not Micro Silver (SIL) stocks.`);
+    expect(doeCoverageNote("MHG=F")).toBe(`${covers}, not Micro Copper (MHG) stocks.`);
+    expect(doeCoverageNote("silver")).toBe(`${covers}, not Silver (SI) stocks.`);
     expect(doeCoverageNote("grains")).toBe(`${covers}, not agriculture stocks.`);
     expect(doeCoverageNote("ZN=F")).toBe(`${covers}; 10-Year T-Note (ZN) is a financial future with none to report.`);
     // An energy search, a search that names nothing, and no search at all are the board's own subject.

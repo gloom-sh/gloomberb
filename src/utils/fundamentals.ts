@@ -523,6 +523,46 @@ export function ttmConversionNote(fundamentals: Pick<Fundamentals, "financialCur
 }
 
 /**
+ * "TTM figures: the twelve months to 2026-06-30.": which twelve months the
+ * trailing revenue, net income and margin are, as Financials' TTM column
+ * names them. Undefined when Gloom Cloud does not say.
+ */
+export function trailingPeriodNote(fundamentals: Pick<Fundamentals, "trailingPeriodEnd"> | null | undefined): string | undefined {
+  const end = fundamentals?.trailingPeriodEnd;
+  return end && ISO_DAY.test(end) ? `TTM figures: the twelve months to ${end}.` : undefined;
+}
+
+/** A rate as US dollars per unit of a currency, and when it was read (epoch ms), as the app's rates are held. */
+interface UsdRateObservation {
+  rate: number;
+  asOf: number | null;
+}
+
+/**
+ * "USD figures at USD/ARS 1552.24, as of 2026-11-18 06:25 UTC.": the rate a
+ * figure shown in `baseCurrency` beside its own currency's (a market cap
+ * 7.80T ARS, 5.03B USD) was converted at, as markets quote the pair, and when
+ * it was read, as the TTM conversion note and `ticker` say theirs. Undefined
+ * for the same currency or without both rates.
+ */
+export function baseCurrencyFiguresNote(
+  currency: string | null | undefined,
+  baseCurrency: string,
+  rates: ReadonlyMap<string, UsdRateObservation>,
+): string | undefined {
+  const from = currency?.trim().toUpperCase();
+  const into = baseCurrency.trim().toUpperCase();
+  if (!from || !into || from === into) return undefined;
+  const leg = (code: string): UsdRateObservation | undefined => code === "USD" ? { rate: 1, asOf: null } : rates.get(code);
+  const source = leg(from), target = leg(into);
+  if (!source || !target || !usableRate(source.rate) || !usableRate(target.rate)) return undefined;
+  const quoted = quotedFxPair(from, into, source.rate / target.rate);
+  const times = [source.asOf, target.asOf].filter((time): time is number => time != null && Number.isFinite(time));
+  const time = times.length > 0 ? formatUtcTime(new Date(Math.min(...times))) : "";
+  return `${into} figures at ${quoted.pair} ${formatFxRate(quoted.rate)}${time ? `, as of ${time}` : ""}.`;
+}
+
+/**
  * "EPS (TTM) in USD, converted from CLP at report-date rates.": an EPS in another currency than the trailing amounts
  * beside it. Undefined when they share one.
  */

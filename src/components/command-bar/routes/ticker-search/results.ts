@@ -436,6 +436,11 @@ function venueMatchesSuffix(item: ResultItem, suffix: string): boolean {
   return targets.some((value) => venues.includes(canonicalExchange(value)));
 }
 
+/** Whether a row is the listing typed with its venue: BAE Systems' BA on LSE for `BA:LSE`, never Boeing's BA on NYSE. */
+export function isNamedListingRow(item: ResultItem, listing: { symbol: string; suffix: string }): boolean {
+  return isExactTickerResultMatch(item, listing.symbol) && venueMatchesSuffix(item, listing.suffix);
+}
+
 /** On the currency venue a pair's code is the pair: EURUSD's CCY row is EURUSD=X. */
 function isCurrencyVenuePair(item: ResultItem, symbol: string): boolean {
   const pair = currencyPairCode(symbol, "CCY");

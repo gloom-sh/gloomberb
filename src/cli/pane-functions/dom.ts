@@ -15,7 +15,8 @@ import { resolvePersistedCloudSessionToken } from "./cloud-session";
 import type { PaneScreenshotResult } from "./screenshot-types";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
-import { declaredReportFreshness, renderedReportFailure, renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
+import { declaredReportFreshness, renderedLoadError, renderedReportFailure, renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, DataServiceUnreachableError } from "../../utils/network-failure";
 
 const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
@@ -238,6 +239,9 @@ function renderedFailureReason(
   result: PaneScreenshotResult,
   rows: DesktopPaneShotRenderedRow[],
 ): string | null {
+  // Rows the pane kept from an earlier load, which it could not refresh (renderedLoadFailure has the bare pane's).
+  const loadError = renderedLoadError(result.render.semanticUi ?? []);
+  if (loadError) return `The rendered pane could not refresh: ${loadError}`;
   if (result.render.loadingStateDetected) return "The rendered pane was still loading.";
   if (result.render.errorStateDetected) {
     const marker = result.render.errorStateMarkers[0];
@@ -322,11 +326,15 @@ export async function buildDomPaneReportFromRender(
   if (failureReason && rows.length > 0) textLines.push("", failureReason);
   // A pane that knows its feed dates the report; the footer and cell times fill in the rest.
   const declared = { ...declaredReportFreshness(resolved), ...renderedReportFreshness(result.render.semanticUi ?? []) };
-  const freshness = deriveRenderedFreshness(declared, {
+  const derived = deriveRenderedFreshness(declared, {
     footerText: result.render.footerText ?? "",
     cellTimes: rows.flatMap((row) => row.cells.flatMap((cell) => cell.instant ?? [])),
     observed: renderedReportObservations(result.render.semanticUi ?? []),
   });
+  // Drawn from copies saved earlier, its refresh having failed: dated as saved, never as delayed at the copy's time.
+  const freshness = derived && result.savedCopyAt != null && !derived.savedAt
+    ? { ...derived, savedAt: new Date(result.savedCopyAt).toISOString() }
+    : derived;
 
   const complete = failureReason === null && !truncated;
   // Each table published its rows and nothing else was cut: the report is the whole view.
@@ -447,6 +455,24 @@ class RenderedReportFailure extends Error {
 }
 
 /**
+ * The failure a rendered pane with nothing to show stands for: the load its
+ * status footer says failed (`pane-load-error`), else the error state its
+ * body draws. Such a report has no data, so it is no report: it fails as the
+ * plain commands do, a request that never reached the data service in their
+ * words ("Gloom couldn't reach its data service", and what to check), never
+ * the empty body ("No events") dated as if it had been read. ECO printed "No
+ * events" and "retrieved" at the time of the run through a proxy that refused
+ * every connection. Null for a pane that drew rows, a wall, or no failure.
+ */
+function renderedLoadFailure(render: PaneScreenshotResult["render"]): Error | null {
+  if ((render.reportRows ?? render.rows).length > 0 || render.accessGate) return null;
+  const message = renderedLoadError(render.semanticUi ?? []) ?? render.stateText?.error?.[0] ?? null;
+  if (!message) return null;
+  if (message.includes(DATA_SERVICE_UNREACHABLE_MESSAGE)) return new DataServiceUnreachableError(new Error(message));
+  return new RenderedReportFailure(message);
+}
+
+/**
  * The report of a pane the sign-in wall covers whole (`PaneDef.signInWall`)
  * when there is no session: its lock note, as the rendered wall reports it,
  * without waiting for the wall to render. Null with a session, or for any
@@ -524,6 +550,8 @@ export async function buildDomFunctionReport(
   // No header and no partial view: the error alone, and a failed exit, as the plain command gives.
   const failure = renderedReportFailure(result.render.semanticUi ?? []);
   if (failure) throw new RenderedReportFailure(failure.message, failure.details);
+  const loadFailure = renderedLoadFailure(result.render);
+  if (loadFailure) throw loadFailure;
   // The capture's refusal drawn in the pane's place (chat, a team's) is not its content: say why there is none.
   if (result.refused && result.unusableReason) throw new RenderedReportFailure(result.unusableReason);
   try {

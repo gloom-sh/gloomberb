@@ -14,12 +14,13 @@ import {
   formatSalaryRange,
   formatShare,
   functionLabel,
+  pendingJobsTitle,
 } from "./model";
 
 function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: "denied" }>, roleLimit: number): HeadlessBundleResult {
   if (state.kind === "pending") {
     return {
-      sections: [{ title: "Hiring", entries: [{ label: "Status", value: "pending", formatted: state.message }] }],
+      sections: [{ title: "Hiring", entries: [{ label: "Status", value: "pending", formatted: `${pendingJobsTitle(symbol)} A first read usually lands within a few minutes; ask again then.` }] }],
       metadata: { symbol, status: "pending" },
     };
   }

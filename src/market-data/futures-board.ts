@@ -131,6 +131,10 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "GC=F", code: "GC", name: "Gold", sector: "metals", venue: "CMX", tick: 0.1, unit: "USD / troy oz" },
   { symbol: "SI=F", code: "SI", name: "Silver", sector: "metals", venue: "CMX", tick: 0.005, unit: "USD / troy oz" },
   { symbol: "HG=F", code: "HG", name: "Copper", sector: "metals", venue: "CMX", tick: 0.0005, unit: "USD / lb" },
+  // COMEX's micro metals, each settled daily at its full-size contract's settlement for the month.
+  { symbol: "MGC=F", code: "MGC", name: "Micro Gold", sector: "metals", venue: "CMX", tick: 0.1, unit: "USD / troy oz" },
+  { symbol: "SIL=F", code: "SIL", name: "Micro Silver", sector: "metals", venue: "CMX", tick: 0.005, unit: "USD / troy oz" },
+  { symbol: "MHG=F", code: "MHG", name: "Micro Copper", sector: "metals", venue: "CMX", tick: 0.0005, unit: "USD / lb" },
   { symbol: "ALI=F", code: "ALI", name: "Aluminum", sector: "metals", venue: "CMX", tick: 0.25, unit: "USD / metric ton" },
   { symbol: "PL=F", code: "PL", name: "Platinum", sector: "metals", venue: "NYM", tick: 0.1, unit: "USD / troy oz" },
   { symbol: "PA=F", code: "PA", name: "Palladium", sector: "metals", venue: "NYM", tick: 0.1, unit: "USD / troy oz" },

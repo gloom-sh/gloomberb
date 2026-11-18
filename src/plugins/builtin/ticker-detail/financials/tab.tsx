@@ -28,7 +28,8 @@ import {
   collectDefaultCollapsedGroupIds,
   collectGroupIds,
   financialCellParts,
-  financialColumnLabel,
+  financialColumnPeriod,
+  financialFiscalHeader,
   formatFinancialCell,
   formatFinancialCellValue,
   financialStatementCurrency,
@@ -111,7 +112,7 @@ function financialColumnHeader(
   yearEndMonth: number | null,
   sharedCurrency: string | undefined,
 ): string {
-  const header = financialColumnLabel(statement, kind, yearEndMonth);
+  const header = financialFiscalHeader(statement, kind, yearEndMonth);
   return !sharedCurrency && statement.currency ? `${header} ${statement.currency}` : header;
 }
 
@@ -350,15 +351,15 @@ export function ResolvedFinancialsTab({
   // The annual balance sheet leads with a newer quarter-end position.
   const periodHeaders = useMemo(() => displayStatements.map((statement) => financialColumnHeader(
     statement,
-    isAnnual && (statement.date === "TTM" || annualDates.has(statement.date)) ? "annual" : "quarterly",
+    financialColumnPeriod(statement, resolvedPeriod, annualDates),
     yearEndMonth,
     comparisonCurrency,
-  )), [annualDates, comparisonCurrency, displayStatements, isAnnual, yearEndMonth]);
+  )), [annualDates, comparisonCurrency, displayStatements, resolvedPeriod, yearEndMonth]);
   // In the terminal a period is as wide as its widest value and growth, so each pair sits as far from the next
   // as from its own growth and more periods fit. The ratio tabs keep the statement columns' width. Every line of
   // the statement counts, a collapsed group's too, so opening or closing one leaves the periods where they are.
   const periodWidth = useMemo(() => {
-    if (nativePaneChrome || ratioTab) return FINANCIAL_COL_W;
+    if (nativePaneChrome || ratioTab) return Math.max(FINANCIAL_COL_W, financialPeriodWidth([], periodHeaders));
     const everyRow = shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, NO_COLLAPSED_GROUPS)).rows;
     const values = [...everyRow, ...rows].flatMap((row) => displayStatements.map((statement) => (
       formatFinancialCellValue(row, statement)
@@ -370,7 +371,7 @@ export function ResolvedFinancialsTab({
       id: "metric",
       kind: "metric",
       label: metricHeader,
-      width: financialLabelWidth(width),
+      width: financialLabelWidth(width, periodWidth),
       align: "left",
     },
     ...displayStatements.map((statement, index): FinancialTableColumn => ({
@@ -525,8 +526,6 @@ export function ResolvedFinancialsTab({
     );
   }
 
-  const asOf = periodEnd ? `as of ${periodEnd}` : undefined;
-  // The as-of is the bar's own segment, which keeps its place when the pane is narrow; the context after it gives way.
   const queryBar = (meta: string) => (
     <QueryBar
       width={Math.max(1, width - 2)}
@@ -553,7 +552,6 @@ export function ResolvedFinancialsTab({
         ],
         onChange: (value: string) => setPeriod(value as FinancialPeriod),
       }}
-      asOf={asOf}
       meta={meta || undefined}
     />
   );

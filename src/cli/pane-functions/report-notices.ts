@@ -54,6 +54,16 @@ export function renderedReportFailure(semanticUi: readonly RemoteUiNodeSnapshot[
   return details ? { message, details } : { message };
 }
 
+/**
+ * The load a rendered pane says failed, from the `pane-load-error` node its
+ * status footer publishes (usePaneStatusFooter): the error the footer shows.
+ * Null when the pane loaded, or is loading.
+ */
+export function renderedLoadError(semanticUi: readonly RemoteUiNodeSnapshot[]): string | null {
+  const message = semanticUi.find((node) => node.role === "pane-load-error")?.metadata?.message;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
+}
+
 const FRESHNESS_STATUSES: readonly HeadlessFreshnessStatus[] = ["live", "delayed", "stale", "not-a-feed"];
 
 /** The `sources` a pane publishes: each a name and a time. */
