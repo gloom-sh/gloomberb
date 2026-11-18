@@ -158,9 +158,10 @@ test("every FUT board root opens a curve, as a typed code or an =F symbol; the c
   }
   expect(requested).toEqual(FUTURES_CONTRACTS.map((row) => row.code));
   // Zoom, KC wheat's, live cattle's, lean hogs' and aluminum's codes are listed securities too, as are those of a sector ETF
-  // (XAR), Goldmoney (XAU), Sensient (SXT) and the micros listed abroad: under the cursor they open the curve only as the
-  // future's symbol, while a typed argument always means the future.
-  const securities = ["ZM", "KE", "LE", "HE", "ALI", "EMD", "RS1", "MES", "MYM", "M2K", "SXT", "SXI", "SOX", "XAU", "XAR", "RX", "MCL", "MNG", "HH"];
+  // (XAR), Goldmoney (XAU), Sensient (SXT), the micros listed abroad and the micro metals' ETFs (MGC, SIL): under the cursor
+  // they open the curve only as the future's symbol, while a typed argument always means the future.
+  const securities = ["ZM", "KE", "LE", "HE", "ALI", "EMD", "RS1", "MES", "MYM", "M2K", "SXT", "SXI", "SOX", "XAU", "XAR", "RX", "MCL", "MNG", "HH",
+    "MGC", "SIL", "MHG"];
   for (const row of FUTURES_CONTRACTS) {
     expect(curveRootForTicker(row.symbol)).toBe(row.code);
     expect(curveRootForTicker(row.code.toLowerCase())).toBe(securities.includes(row.code) ? null : row.code);

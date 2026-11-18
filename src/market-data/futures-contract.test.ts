@@ -259,13 +259,13 @@ test("a futures price unit is asked once per symbol at a time, and a failed ask 
   try {
     // Copper's terms timing out still read as its unit, the catalog's, never a bare USD (G HG=F on a slow cold start).
     expect(await loadFuturesPriceUnit("HG=F", failing)).toBe("USD / lb");
-    // A future the board does not list has no catalog unit; its terms are asked again a minute later.
-    expect(await loadFuturesPriceUnit("MGC=F", failing)).toBeNull();
-    const micro = async () => ({ ...gold, symbol: "MGC=F", spec: { ...gold.spec!, unit: "USD / troy oz" } });
+    // A future the board does not list (E-mini gold) has no catalog unit; its terms are asked again a minute later.
+    expect(await loadFuturesPriceUnit("QO=F", failing)).toBeNull();
+    const mini = async () => ({ ...gold, symbol: "QO=F", spec: { ...gold.spec!, unit: "USD / troy oz" } });
     setSystemTime(now + 30_000);
-    expect(await loadFuturesPriceUnit("MGC=F", micro)).toBeNull();
+    expect(await loadFuturesPriceUnit("QO=F", mini)).toBeNull();
     setSystemTime(now + 61_000);
-    expect(await loadFuturesPriceUnit("MGC=F", micro)).toBe("USD / troy oz");
+    expect(await loadFuturesPriceUnit("QO=F", mini)).toBe("USD / troy oz");
   } finally {
     setSystemTime();
     resetFuturesPriceUnits();
