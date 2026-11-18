@@ -23,7 +23,7 @@ function stem(word: string): string {
 }
 
 function words(text: string): string[] {
-  return text.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
+  return text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
     .split(/[^a-z0-9]+/).filter(Boolean);
 }
 
