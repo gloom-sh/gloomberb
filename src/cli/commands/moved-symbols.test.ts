@@ -105,6 +105,8 @@ test("a read of a symbol that trades costs no change lookup and no second quote;
   const counted = () => {
     const counts = { quote: 0, changes: 0 };
     const provider = source(async (symbol) => { counts.changes++; return CHANGES[symbol] ?? null; }, {
+      // The shipped listings know both as US stocks, as the command line's provider says.
+      knownUsStock: (symbol) => symbol === "AAPL" || symbol === "META",
       getHolders: async (symbol) => ({ symbol, holders: [{ name: "Vanguard Group", shares: 1, value: 1, percentHeld: 0.1, reportDate: "2026-09-30", ownerType: "institution" }] }) as never,
       getSecFilings: async () => [{ form: "10-Q", filingDate: "2026-10-30", accessionNumber: "0000320193-26-000001", filingUrl: "https://www.sec.gov/x" }] as never,
     });

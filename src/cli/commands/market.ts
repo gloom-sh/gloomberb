@@ -1281,11 +1281,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     }
     // With several symbols, --exchange is for the ones that name no exchange of their own, and one that names no
     // listing (EQT:NYSE:US) is named in a line while the others are quoted.
-    // A word that names a company is read once its quote says no listing trades as it (answerQuote).
+    // A word that names a company, and a code no source quotes, are read once its quote says no listing trades as it (answerQuote).
     const resolvedListings = await Promise.all(symbols.filter((symbol) => !notASymbolError(symbol)).map(async (symbol) => {
-      if (symbols.length === 1) return { symbol, listing: await requireCliListing(symbol, exchange, market, ctx, { companyWord: false }) };
+      if (symbols.length === 1) return { symbol, listing: await requireCliListing(symbol, exchange, market, ctx, { companyWord: false, listingAbroad: false }) };
       try {
-        return { symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: false }) };
+        return { symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: false, listingAbroad: false }) };
       } catch (error) {
         if (error instanceof ListingArgError) return { symbol, error };
         throw error;
@@ -2875,7 +2875,7 @@ async function runHistoryList(
       // A catalog series is no listing: it is read as a series below.
       if (catalogSeriesId(symbol)) return { typed: symbol, listing: null, error: null };
       try {
-        const listing = await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: lookups && typedList });
+        const listing = await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: lookups && typedList, listingAbroad: lookups });
         return { typed: symbol, listing };
       } catch (error) {
         return { typed: symbol, listing: null, error };
@@ -4828,7 +4828,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
   await withCliServices(ctx, async (services) => {
     const symbols = await readSymbols(entries, services.dataProvider);
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
-      symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1, companyWord: symbols.length <= MAX_CHOICE_LOOKUPS },
+      symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1, companyWord: symbols.length <= MAX_CHOICE_LOOKUPS, listingAbroad: symbols.length <= MAX_CHOICE_LOOKUPS },
     )));
     const keys = listings.map((listing) => listing.key);
     // Each bare symbol's venues cost a search, so a long list (a portfolio check, not a lookup) names none.
