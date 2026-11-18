@@ -5,7 +5,7 @@ import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils
 import {
   appTtmRate, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel,
   enterpriseValueReconciliationNote,
-  epsConversionNote, financialEnterpriseValue, fundamentalsCurrency, isFinancialEnterpriseValueReason, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
+  epsConversionNote, financialEnterpriseValue, fundamentalsCurrency, isFinancialEnterpriseValueReason, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, trailingPeriodNote, ttmAtAppRate, ttmConversionNote,
   withFinancialEnterpriseValue,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
@@ -1006,6 +1006,8 @@ function fundamentalsNotes(
     ? marketCapBasisNote(viewMarketCapitalization(priced.quote, fundamentals, regularSessionValuationPrice(priced.quote)))
     : undefined;
   const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
+  // Which twelve months the revenue, net income and margin are, as Financials' TTM column names them.
+  const period = shown("Revenue (TTM)") || shown("Net Income (TTM)") ? trailingPeriodNote(fundamentals) : undefined;
   const eps = metrics.some((metric) => metricName(metric.label) === "EPS (TTM)" && metric.text !== "—") ? epsConversionNote(fundamentals) : undefined;
   const epsSource = trailingEpsSourceNote(fundamentals, { eps: shown("EPS (TTM)"), pe: shown("P/E (TTM)") });
   const priceEarnings = metrics.some((metric) => metricName(metric.label) === "P/E (TTM)" && typeof metric.value === "number")
@@ -1021,7 +1023,7 @@ function fundamentalsNotes(
     : undefined;
   // A cap Gloom Cloud withheld says why, as RV and EQS do.
   const withheld = withheldMarketCap(fundamentals)?.note;
-  return [withheld, shareBasis, enterpriseValue, conversion, eps, epsSource, priceEarnings, withdrawnMultiplesNote(fundamentals, metrics),
+  return [withheld, shareBasis, enterpriseValue, conversion, period, eps, epsSource, priceEarnings, withdrawnMultiplesNote(fundamentals, metrics),
     unsourcedCurrencyNote(metrics)]
     .filter((note): note is string => !!note);
 }

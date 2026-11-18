@@ -81,6 +81,7 @@ import { usePaneStatusFooter } from "../../../components/layout/pane/status-foot
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { tableColumnWidth } from "../../../components/ui/table-layout";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { readableStatus } from "../../../utils/reason-codes";
 
 const IMPACT_LABELS: Record<ImpactFilter, string> = {
   all: "All",
@@ -589,7 +590,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
           <EmptyState title={filterEmptyTitle} actions={<Button label="Show all" compact onPress={showAllEvents} />} />
         </Box>
       ) : undefined}
-      emptyStateTitle={loading ? "Loading economic events..." : listedAfter ?? "No events"}
+      // A load that failed with nothing to list says why, never that there are no events.
+      emptyStateTitle={loading ? "Loading economic events..." : events.length === 0 && error ? readableStatus(error) : listedAfter ?? "No events"}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}
     />

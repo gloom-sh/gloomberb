@@ -96,6 +96,99 @@ function isRepeatableRead(method: string, path: string): boolean {
   return method === "GET" || method === "HEAD" || (method === "POST" && path.startsWith("/market/"));
 }
 
+/**
+ * Set by the local relay a CLI capture's page reads the data service through
+ * (`gloom fn`, `gloom shot`) on its answer for a read it could not get to the
+ * service at all: the page reads it as the service being unreachable.
+ */
+export const SHOT_SERVICE_UNREACHABLE_HEADER = "X-Gloom-Service-Unreachable";
+
+/** What the last request to the data service in this process came to: answered, or not reached at all. */
+let lastServiceReach: "answered" | "unreachable" | null = null;
+/** Counts the commands that forgot the state: a request sent before one began says nothing of it. */
+let reachEpoch = 0;
+
+/** The current command's count (forgetDataServiceReach), which a request takes when it is sent. */
+export function dataServiceReachEpoch(): number {
+  return reachEpoch;
+}
+
+/**
+ * Whether the data service was unreachable when this process last asked it:
+ * a request went unanswered (no connection, a refused proxy, a hung one) and
+ * nothing has answered since. A command whose output came out empty then says
+ * so, rather than that there is no data (`gloom fn`).
+ */
+export function dataServiceUnreachable(): boolean {
+  return lastServiceReach === "unreachable";
+}
+
+/**
+ * Records what a request came to: answered, or not reached. `epoch` is the
+ * count it was sent under (dataServiceReachEpoch): one sent before the
+ * current command began, still out when it did, records nothing.
+ */
+export function noteDataServiceReach(answered: boolean, epoch = reachEpoch): void {
+  if (epoch !== reachEpoch) return;
+  lastServiceReach = answered ? "answered" : "unreachable";
+}
+
+/** Forgets what the last request came to, so a command reads only its own (`gloom fn` and `shot` start with it). */
+export function forgetDataServiceReach(): void {
+  lastServiceReach = null;
+  reachEpoch += 1;
+}
+
+/** The statuses a proxy answers with when it will not, or cannot, reach the server for a request. */
+const PROXY_REFUSAL_STATUSES = new Set([407, 502, 503, 504]);
+
+/** The variables a proxy is read from: the process's, or a test's own. */
+type ProxyEnvironment = Readonly<Record<string, string | undefined>>;
+
+function processEnvironment(): ProxyEnvironment | null {
+  return typeof process === "undefined" ? null : process.env;
+}
+
+/** The proxy the runtime sends a request for `url` through, from the environment as Bun reads it; null for none. */
+function environmentProxy(url: string, env: ProxyEnvironment | null): string | null {
+  if (!env) return null;
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    // Intentional ignore: a URL that does not parse is sent through no proxy the environment names.
+    return null;
+  }
+  const names = target.protocol === "https:" ? ["HTTPS_PROXY", "https_proxy"] : ["HTTP_PROXY", "http_proxy"];
+  const proxy = [...names, "ALL_PROXY", "all_proxy"].map((name) => env[name]?.trim()).find(Boolean);
+  if (!proxy) return null;
+  const bypass = (env.NO_PROXY ?? env.no_proxy ?? "").split(",").map((entry) => entry.trim().toLowerCase()).filter(Boolean);
+  const host = target.hostname.toLowerCase();
+  return bypass.some((entry) => entry === "*" || host === entry.replace(/^\./, "") || host.endsWith(entry.startsWith(".") ? entry : `.${entry}`))
+    ? null : proxy;
+}
+
+/**
+ * Whether an answer is a proxy's own, not the service's: what Bun 1.3 hands
+ * back when the proxy in HTTPS_PROXY refuses to open a tunnel (a 502 with
+ * "Bad Gateway" from the proxy; later Bun throws ERR_PROXY_TUNNEL instead).
+ * The data service was never reached, so it reads as unreachable, never as
+ * the service being busy ("Search is busy"). Told by a proxy being set for the
+ * URL, a status a proxy refuses with, and a body that is not the JSON every
+ * answer of the service carries.
+ */
+export function isProxyRefusal(
+  url: string,
+  response: Pick<Response, "status" | "headers">,
+  env: ProxyEnvironment | null = processEnvironment(),
+): boolean {
+  if (!PROXY_REFUSAL_STATUSES.has(response.status)) return false;
+  // A capture's relay that could not reach the service either.
+  if (response.headers.get(SHOT_SERVICE_UNREACHABLE_HEADER) === "1") return true;
+  if (!environmentProxy(url, env)) return false;
+  return !/\bjson\b/i.test(response.headers.get("Content-Type") ?? "");
+}
+
 /** Waits `ms`, or rejects with the signal's reason once it aborts. */
 function pause(ms: number, signal: AbortSignal | null | undefined): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -377,6 +470,7 @@ export class CloudApiRequestTransport {
   private websocketToken: string | null = null;
   private cookieSessionMode = false;
   private readonly fetchTransport: CloudApiFetchTransport | null;
+  private readonly proxyEnvironment: ProxyEnvironment | undefined;
   private readonly marketRequestTimeoutMs: number;
   private readonly marketReadLimitOverride?: number;
   private readonly connectionHealth: ConnectionHealthRegistry;
@@ -409,9 +503,12 @@ export class CloudApiRequestTransport {
       fetchTransport?: CloudApiFetchTransport;
       marketRequestTimeoutMs?: number;
       connectionHealth?: ConnectionHealthRegistry;
+      /** The variables the proxy is read from (isProxyRefusal); the process's by default. */
+      proxyEnvironment?: ProxyEnvironment;
     } = {},
   ) {
     this.fetchTransport = options.fetchTransport ?? null;
+    this.proxyEnvironment = options.proxyEnvironment;
     this.marketRequestTimeoutMs = options.marketRequestTimeoutMs ?? MARKET_REQUEST_TIMEOUT_MS;
     this.marketReadLimitOverride = options.marketRequestTimeoutMs;
     this.connectionHealth = options.connectionHealth ?? connectionHealth;
@@ -504,7 +601,7 @@ export class CloudApiRequestTransport {
       GLOOM_CLOUD_HTTP_CONNECTION_ID,
       operation,
       async () => {
-        const response = await this.reachService(() => streamFetch(`${this.baseUrl}${path}`, {
+        const response = await this.reachService(`${this.baseUrl}${path}`, () => streamFetch(`${this.baseUrl}${path}`, {
           ...options,
           headers,
           credentials: "include",
@@ -579,6 +676,7 @@ export class CloudApiRequestTransport {
     const answersAtStart = this.answers;
     const answered = () => this.answers > answersAtStart;
     const generation = cloudApiTransportGeneration;
+    const epoch = reachEpoch;
     const what = path.startsWith("/market/") ? "Cloud market request" : "Cloud request";
     // The endpoint stays out of the message, which reports and panes print; the debug log's line names it.
     const endpoint = path.split("?")[0]!;
@@ -611,7 +709,7 @@ export class CloudApiRequestTransport {
           // The caller gave up first: its abort settles the request, and says nothing of the connection.
           if (callerSignal?.aborted) return;
           if (!answered()) {
-            if (!isBackgroundRequest(path)) this.recordNoAnswer(generation, true);
+            if (!isBackgroundRequest(path)) this.recordNoAnswer(generation, true, epoch);
             fail(new DataServiceUnreachableError(timedOut(deadline.answerMs)));
           } else if (deadline.limitMs > deadline.answerMs) {
             timers.push(setTimeout(() => fail(timedOut(deadline.limitMs)), deadline.limitMs - deadline.answerMs));
@@ -637,23 +735,29 @@ export class CloudApiRequestTransport {
    * A caller's abort stays an abort. An answer of any status says the
    * connection works, for the deadlines of the requests beside it.
    */
-  private async reachService<R>(
+  private async reachService<R extends Pick<Response, "status" | "headers">>(
+    url: string,
     fetch: () => Promise<R>,
     signal: AbortSignal | null | undefined,
     background = false,
   ): Promise<R> {
     const generation = cloudApiTransportGeneration;
+    const epoch = reachEpoch;
     let response: R;
     try {
       response = await fetch();
+      // The proxy's refusal to reach the service, which Bun 1.3 gives back as an answer, is none of the service's.
+      if (isProxyRefusal(url, response, this.proxyEnvironment ?? processEnvironment())) {
+        throw new DataServiceUnreachableError(new Error(`Proxy refused to open a tunnel: ${response.status}`));
+      }
     } catch (error) {
       if (signal?.aborted) throw error;
       const failure = asDataServiceFailure(error);
       // Background traffic that never got out says nothing of the service (`isBackgroundRequest`).
-      if (failure instanceof DataServiceUnreachableError && !background) this.recordNoAnswer(generation, false);
+      if (failure instanceof DataServiceUnreachableError && !background) this.recordNoAnswer(generation, false, epoch);
       throw failure;
     }
-    this.recordAnswer();
+    this.recordAnswer(epoch);
     return response;
   }
 
@@ -665,7 +769,8 @@ export class CloudApiRequestTransport {
   }
 
   /** Something came back from the service: the connection works. */
-  private recordAnswer(): void {
+  private recordAnswer(epoch?: number): void {
+    noteDataServiceReach(true, epoch);
     this.answers += 1;
     this.markReachable();
   }
@@ -704,8 +809,9 @@ export class CloudApiRequestTransport {
    * refused, or `hung` with nothing back by its deadline. Once another
    * transport is installed, what one sent on the last says nothing of it.
    */
-  private recordNoAnswer(generation: number, hung: boolean): void {
+  private recordNoAnswer(generation: number, hung: boolean, epoch?: number): void {
     if (!this.fetchTransport && generation !== cloudApiTransportGeneration) return;
+    noteDataServiceReach(false, epoch);
     if (hung) this.hungAt = Date.now();
     if (this.unreachable) {
       // A chain of checks stopped by `dispose` starts again.
@@ -744,8 +850,10 @@ export class CloudApiRequestTransport {
     this.recoveryProbe = controller;
     const giveUp = setTimeout(() => controller.abort(), SERVICE_PROBE_TIMEOUT_MS);
     (giveUp as { unref?: () => void }).unref?.();
-    (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${SERVICE_PROBE_PATH}`, { signal: controller.signal })
-      .then(() => this.recordAnswer(), () => {
+    const url = `${this.baseUrl}${SERVICE_PROBE_PATH}`;
+    (this.fetchTransport ?? cloudApiFetchTransport)(url, { signal: controller.signal })
+      // A proxy that refuses to reach the service answers for it: still unreachable.
+      .then((response) => { if (!isProxyRefusal(url, response, this.proxyEnvironment ?? processEnvironment())) this.recordAnswer(); }, () => {
         // Intentional ignore: still unreachable; the next check is scheduled below.
       })
       .finally(() => {
@@ -786,8 +894,9 @@ export class CloudApiRequestTransport {
     // Done once given up on, even through a transport that ignores the abort.
     controller.signal.addEventListener("abort", done, { once: true });
     this.probe = { controller, expiresAt: Date.now() + SERVICE_PROBE_TIMEOUT_MS };
-    (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${SERVICE_PROBE_PATH}`, { signal: controller.signal })
-      .then(() => this.recordAnswer(), () => {
+    const url = `${this.baseUrl}${SERVICE_PROBE_PATH}`;
+    (this.fetchTransport ?? cloudApiFetchTransport)(url, { signal: controller.signal })
+      .then((response) => { if (!isProxyRefusal(url, response, this.proxyEnvironment ?? processEnvironment())) this.recordAnswer(); }, () => {
         // Intentional ignore: an unanswered check only leaves the request it guards to its own deadline.
       })
       .finally(done);
@@ -871,6 +980,7 @@ export class CloudApiRequestTransport {
       });
       // Inside the reach check: a read that gets through on its second try was answered, not an outage.
       const response = await this.reachService(
+        url,
         () => (repeatable ? sendAgainIfCutOff(sendOnce, signal) : sendOnce()),
         signal,
         isBackgroundRequest(path),

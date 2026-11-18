@@ -7,7 +7,7 @@ import { captureConsole } from "../../test-support/console";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig } from "../../types/config";
-import { reportFailure, runPaneFunction } from ".";
+import { reportFailure, reportHasNoData, runPaneFunction } from ".";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { serializeCliResult } from "../result";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "../options";
@@ -229,4 +229,23 @@ test("fn --output refuses a folder, writes nothing for a report with no data and
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
+});
+
+// Through a proxy that refused every connection, WEI printed twenty rows of dashes and exited 0, and CMP, G and CHOKE
+// printed empty tables with "retrieved" at the time of the run. What a report holds nothing of because its reads failed.
+test("a report holds nothing when every row failed, never when it sits behind a wall or has nothing asked yet", () => {
+  const report = { empty: false, rowCount: 20, unavailableSymbols: [] as string[], errors: Array.from({ length: 20 }, (_, index) => `I${index}: Gloom couldn't reach its data service`) };
+  expect(reportHasNoData(report)).toBe(true);
+  // One row with a figure is data.
+  expect(reportHasNoData({ ...report, errors: report.errors.slice(1) })).toBe(false);
+  expect(reportHasNoData({ empty: true, rowCount: 0, unavailableSymbols: ["AAPL", "MSFT"], errors: ["AAPL: Requested 1d price history is unavailable for AAPL."] })).toBe(true);
+  // A wall's note, and "Select a ticker.", are answers of their own.
+  expect(reportHasNoData({ empty: true, rowCount: 0, unavailableSymbols: [], locked: "sign-in" })).toBe(false);
+  expect(reportHasNoData({ empty: true, rowCount: 0, unavailableSymbols: [] })).toBe(false);
+  // Every listing without a quote: nothing when no figure shows (BI's sectors, all dashes), a report when a read
+  // that did answer shows one (VIX's term structure beside quotes it has none of).
+  const listings = { empty: false, rowCount: 2, unavailableSymbols: ["XLK", "XLV", "XLF"], errors: ["XLK: quote unavailable."] };
+  const table = (rows: (string | number)[][]) => ({ tables: [{ title: "t", columns: ["Name", "Last", "1M"], rows }], footer: [] });
+  expect(reportHasNoData(listings, table([["Technology", "", ""], ["Healthcare", "", ""]]))).toBe(true);
+  expect(reportHasNoData(listings, table([["3M / 30D", 1.07, ""], ["Healthcare", "", ""]]))).toBe(false);
 });

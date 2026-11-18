@@ -449,3 +449,19 @@ describe("a pre-market nothing has traded in yet", () => {
     expect(quoteHeadlineTime(afterThanksgiving)).toBe(Date.parse("2026-11-27T18:00:00Z"));
   });
 });
+
+// GGAL.BA's 4,857.50 close of Tue 17 Nov 2026 read 20:59 UTC in `quote` and 20:10 in `fn ADR` and `fx`, which date a
+// closed session's price at its close on the venue's calendar: the headline is dated so everywhere.
+test("a closed market's close stamped after the venue closed is dated at that close, as every route dates it", () => {
+  const close = {
+    symbol: "GGAL", price: 4857.5, currency: "ARS", change: 115, changePercent: 2.42, previousClose: 4742.5,
+    changeSessionDate: "2026-11-17", marketState: "CLOSED", lastUpdated: Date.parse("2026-11-17T20:59:00Z"),
+    listingExchangeName: "BYMA", exchangeName: "BYMA",
+  } as Quote;
+  expect(new Date(quoteHeadlineTime(close)).toISOString()).toBe("2026-11-17T20:10:00.000Z");
+  // One stamped inside the session keeps its own time; so does an open market's, and an after-hours print's.
+  const intraday = Date.parse("2026-11-17T18:30:00Z");
+  expect(quoteHeadlineTime({ ...close, lastUpdated: intraday })).toBe(intraday);
+  expect(quoteHeadlineTime({ ...close, marketState: "REGULAR" })).toBe(close.lastUpdated);
+  expect(quoteHeadlineTime({ ...close, marketState: "POST" })).toBe(close.lastUpdated);
+});

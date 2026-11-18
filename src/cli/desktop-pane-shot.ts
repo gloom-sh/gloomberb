@@ -31,6 +31,8 @@ import {
   type ShotMarketSocketCall,
 } from "./desktop-pane-shot-routes";
 import { SHOT_REQUEST_REFUSED } from "../api-client/errors";
+import { dataServiceReachEpoch, isProxyRefusal, noteDataServiceReach, SHOT_SERVICE_UNREACHABLE_HEADER } from "../api-client/request";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../utils/network-failure";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import { isShotApiRequestAllowed, isShotSessionPath } from "./desktop-pane-shot-api-policy";
 import { renderElectrobunViewHtml } from "../renderers/dom/build-assets";
@@ -389,6 +391,9 @@ export function serveShotPage(
   bridge: DesktopPaneShotBridge | null,
 ): ShotServer {
   const secret = randomBytes(32).toString("hex");
+  // Every read the page has the proxy make ends when the capture does, answered or not: a read through a proxy that
+  // never answers must not hold the command's process open after its report is printed.
+  const upstream = new AbortController();
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -402,7 +407,8 @@ export function serveShotPage(
         return server.upgrade(request, { data: undefined }) ? undefined : new Response("Expected a WebSocket upgrade", { status: 426 });
       }
       if (url.pathname.startsWith(`${SHOT_API_PROXY_PREFIX}/`)) {
-        return proxyShotApiRequest(request, url, apiProxy);
+        // Also given up when the page stops waiting for it.
+        return proxyShotApiRequest(request, url, apiProxy, AbortSignal.any([request.signal, upstream.signal]));
       }
       if (url.pathname === SHOT_MARKET_BRIDGE_PATH || url.pathname === SHOT_HTTP_BRIDGE_PATH) {
         if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
@@ -413,13 +419,16 @@ export function serveShotPage(
     },
     websocket: {
       message(socket, message) {
-        void answerShotApiCall(String(message), apiProxy, bridge).then((reply) => replyOverShotSocket(socket, reply));
+        void answerShotApiCall(String(message), apiProxy, bridge, upstream.signal).then((reply) => replyOverShotSocket(socket, reply));
       },
     },
   });
   return {
     url: `http://127.0.0.1:${server.port}/${secret}/`,
-    stop: () => server.stop(true),
+    stop: () => {
+      upstream.abort();
+      return server.stop(true);
+    },
   };
 }
 
@@ -443,6 +452,7 @@ export async function answerShotApiCall(
   message: string,
   apiProxy: DesktopPaneShotApiProxy,
   bridge: DesktopPaneShotBridge | null = null,
+  signal?: AbortSignal,
 ): Promise<string> {
   let id = 0;
   try {
@@ -455,7 +465,7 @@ export async function answerShotApiCall(
       if (typeof call.path !== "string" || !call.path.startsWith("/") || call.path.startsWith("//")) throw new Error("Not an API path.");
       const url = new URL(`${SHOT_API_PROXY_PREFIX}${call.path}`, "http://127.0.0.1");
       const sent = new Headers(Array.isArray(call.headers) ? call.headers : []);
-      response = await proxyShotApiRequest(new Request(url, { headers: sent }), url, apiProxy);
+      response = await proxyShotApiRequest(new Request(url, { headers: sent }), url, apiProxy, signal);
     }
     const body = Buffer.from(await response.arrayBuffer()).toString("base64");
     const headers: Array<[string, string]> = [];
@@ -562,7 +572,10 @@ async function proxyShotApiRequest(
   request: Request,
   requestUrl: URL,
   apiProxy: DesktopPaneShotApiProxy,
+  signal?: AbortSignal,
 ): Promise<Response> {
+  // The command this read is for, which records what it came to.
+  const epoch = dataServiceReachEpoch();
   const baseUrl = new URL(apiProxy.baseUrl);
   const basePath = baseUrl.pathname.replace(/\/+$/, "");
   let path = requestUrl.pathname.slice(SHOT_API_PROXY_PREFIX.length) || "/";
@@ -588,7 +601,13 @@ async function proxyShotApiRequest(
   try {
     let body = method === "GET" || method === "HEAD" ? undefined : new Uint8Array(await request.arrayBuffer());
     for (let followed = 0; ; followed += 1) {
-      const response = await fetch(target, { method, headers, body, redirect: "manual" });
+      const response = await fetch(target, { method, headers, body, redirect: "manual", ...(signal ? { signal } : {}) });
+      // The proxy in HTTPS_PROXY refusing to reach the service answers for it: the page is told the service was not reached.
+      if (isProxyRefusal(target.href, response)) {
+        await response.body?.cancel().catch(() => { /* Intentional ignore: the refusal's own body is never read. */ });
+        return shotApiUnreachable(epoch);
+      }
+      noteDataServiceReach(true, epoch);
       const location = SHOT_API_REDIRECT_STATUSES.has(response.status) ? response.headers.get("location") : null;
       if (location === null) return await shotApiResponse(response, path);
       await response.body?.cancel().catch(() => { /* Intentional ignore: a redirect's own body is never read, only dropped. */ });
@@ -607,10 +626,25 @@ async function proxyShotApiRequest(
       if (!inApi || !isShotApiRequestAllowed(method, path)) return shotApiError("Cloud API redirected the request elsewhere.", 502);
       target = next;
     }
-  } catch {
-    // Intentional ignore: the page is told the read failed, as a dropped connection tells fetch.
+  } catch (error) {
+    // A read that never reached the service (no connection, a refused proxy) is said as one, in the words every
+    // command uses; any other failure is told as a dropped connection tells fetch.
+    if (isNetworkFailure(error)) return shotApiUnreachable(epoch);
     return shotApiError("Cloud API request failed.", 502);
   }
+}
+
+/**
+ * The page's answer for a read the proxy could not get to the data service:
+ * the page's request reads it as the service being unreachable
+ * (SHOT_SERVICE_UNREACHABLE_HEADER), as it would a refused connection of its own.
+ */
+function shotApiUnreachable(epoch: number): Response {
+  noteDataServiceReach(false, epoch);
+  return Response.json({ error: DATA_SERVICE_UNREACHABLE_MESSAGE }, {
+    status: 502,
+    headers: { "Cache-Control": "no-store", [SHOT_SERVICE_UNREACHABLE_HEADER]: "1" },
+  });
 }
 
 /**

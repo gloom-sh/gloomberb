@@ -8,6 +8,7 @@ import {
   isNoProviderMessage,
   isNoSourceAnswer,
   isSourceFailure,
+  isTransientServiceFailure,
   noProviderError,
   noteProviderAnswer,
   noteProviderMiss,
@@ -139,4 +140,16 @@ test("only a source's answer that it has nothing for a listing it knows is an em
   expect(isNoDataAnswer(noProviderError("No provider available", { notFound: true }, "MULN"))).toBe(false);
   expect(isNoDataAnswer(new Error("UPSTREAM_ERROR"))).toBe(false);
   expect(isNoDataAnswer(noProviderError("No provider available", { failure: new Error("UPSTREAM_ERROR") }))).toBe(false);
+});
+
+// ^MERV while BYMA's host did not answer: the service answered TIMEOUT for its source, which `quote` and `history`
+// said as no provider for the symbol.
+test("a source the data service timed out on is said as a timeout, never as no source for the symbol", () => {
+  const timedOut = markAskedTwice(sourceDidNotAnswer("TIMEOUT"));
+  const error = noProviderError("No history provider available for ^MERV", { failure: timedOut }, "^MERV");
+  expect(error.message).toBe("Gloom's data service did not answer for ^MERV. Its source timed out; try again in a moment.");
+  expect(isTransientServiceFailure(error)).toBe(true);
+  // Any other failure the service answered twice stays as it was.
+  expect(noProviderError("No quote provider available for X", { failure: markAskedTwice(sourceDidNotAnswer("UPSTREAM_ERROR")) }, "X").message)
+    .toBe("Gloom's data service did not answer for X. Try again in a moment.");
 });

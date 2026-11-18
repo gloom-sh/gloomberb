@@ -471,15 +471,18 @@ describe("CloudApiRequestTransport reads cut off by a server restart", () => {
   const answer = (status: number, body: string, headers: Record<string, string> = {}) =>
     ({ ok: status < 400, status, headers: new Headers(headers), text: async () => body }) as Response;
 
-  function transportAnswering(...answers: Array<() => Response>) {
+  function transportAnswering(...answers: Array<(() => Response) | Record<string, string>>) {
     const asked: string[] = [];
     const health = new ConnectionHealthRegistry();
     registerGloomCloudConnectionSources(health);
+    // A leading record is the variables the transport reads a proxy from.
+    const proxyEnvironment = typeof answers[0] === "object" ? answers.shift() as Record<string, string> : undefined;
     const transport = new CloudApiRequestTransport({
       connectionHealth: health,
+      ...(proxyEnvironment ? { proxyEnvironment } : {}),
       fetchTransport: async (url, init) => {
         asked.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
-        const next = answers.shift();
+        const next = answers.shift() as (() => Response) | undefined;
         if (!next) throw new Error("asked once too often");
         return next();
       },
@@ -532,6 +535,27 @@ describe("CloudApiRequestTransport reads cut off by a server restart", () => {
     const upstream = transportAnswering(() => answer(502, JSON.stringify({ message: "The feed did not answer" }), { "Content-Type": "application/json" }));
     await expect(upstream.transport.request("/news/rss")).rejects.toMatchObject({ status: 502 });
     expect(upstream.asked).toEqual(["GET /news/rss"]);
+  });
+
+  test("a proxy that refuses to reach the service is no answer of the service's: the service is unreachable", async () => {
+    spyOn(Math, "random").mockReturnValue(0);
+    // The proxy is read from the transport's own variables: setting the process's would send every later fetch in
+    // this test run through a proxy that is not there.
+    const proxied = { HTTPS_PROXY: "http://127.0.0.1:7392" };
+    // What Bun 1.3 hands back when the proxy answers CONNECT with a 502: its own status and body, no JSON. A 502
+    // that is not JSON is asked again once, as a server going away is.
+    const refusal = () => answer(502, "Bad Gateway", { "Content-Length": "11", Connection: "close" });
+    const refused = transportAnswering(proxied, refusal, refusal);
+    const error = await refused.transport.request("/market/search?q=galicia").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(DataServiceUnreachableError);
+    expect(refused.health.unreachableSince("gloom-cloud-http")).not.toBeNull();
+    refused.transport.dispose();
+    // Through the same proxy, the service's own 502 is its answer.
+    const upstream = transportAnswering(proxied, () => answer(502, JSON.stringify({ message: "The feed did not answer" }), { "Content-Type": "application/json" }));
+    await expect(upstream.transport.request("/news/rss")).rejects.toMatchObject({ status: 502 });
+    // Without a proxy set, a 502 is the service's, as it always was.
+    const direct = transportAnswering({}, () => answer(502, "Bad Gateway"), () => answer(502, "Bad Gateway"));
+    await expect(direct.transport.request("/theses")).rejects.toBeInstanceOf(ApiRequestError);
   });
 
   test("a timeout is not asked again, and a caller who gives up during the pause stops it", async () => {
