@@ -30,6 +30,8 @@ import {
 import {
   CHART_DRAWINGS_SETTING_KEY,
   parseChartDrawings,
+  parseSharedChartDrawings,
+  shareableChartDrawings,
   type ChartDrawing,
 } from "../../../components/chart/composite/tools";
 import {
@@ -191,10 +193,20 @@ function pinChartSpecListings(spec: ChartSpec, tickers: ReadonlyMap<string, Tick
   return changed ? { ...spec, series } : spec;
 }
 
+/** The pane with only the drawings a link carries: the newest that fit, none this build cannot read. */
+function withShareableDrawings(pane: PaneInstanceConfig): PaneInstanceConfig {
+  const saved = pane.settings?.[CHART_DRAWINGS_SETTING_KEY];
+  if (saved === undefined) return pane;
+  const { [CHART_DRAWINGS_SETTING_KEY]: _saved, ...settings } = pane.settings!;
+  const drawings = shareableChartDrawings(parseChartDrawings(saved));
+  return { ...pane, settings: drawings.length > 0 ? { ...settings, [CHART_DRAWINGS_SETTING_KEY]: drawings } : settings };
+}
+
 function prepareChartPaneForShare(
-  pane: PaneInstanceConfig,
+  saved: PaneInstanceConfig,
   { tickers, pinnedTime }: { tickers: ReadonlyMap<string, TickerRecord>; pinnedTime?: number },
 ): PaneInstanceConfig {
+  const pane = withShareableDrawings(saved);
   // A crosshair pinned in the sender's tab travels with the link, so it opens
   // on that moment. A moment the pane still holds from a link it was opened
   // from is never passed on, whatever else the pane holds.
@@ -333,7 +345,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
       const sharedData = isRecord(options?.shareData) ? options.shareData : null;
       const sharedSpec = parseChartSpec(sharedData?.chartSpec ?? options?.shareData);
       if (sharedSpec) {
-        const drawings = parseChartDrawings(sharedData?.chartDrawings);
+        const drawings = parseSharedChartDrawings(sharedData?.chartDrawings) ?? [];
         const viewport = parseChartInteractionViewport(sharedData?.chartInteractionViewport);
         return instanceFor(sharedSpec, "G", {
           ...(drawings.length > 0 ? { drawings } : {}),
@@ -349,7 +361,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
         if (!spec) return null;
         if (spec.series.some((series) => series.source.kind === "security"
           && (series.source.instrument.instrument || series.source.instrument.brokerId || series.source.instrument.brokerInstanceId))) return null;
-        const drawings = parseChartDrawings(pane.settings?.[CHART_DRAWINGS_SETTING_KEY]);
+        const drawings = shareableChartDrawings(parseChartDrawings(pane.settings?.[CHART_DRAWINGS_SETTING_KEY]));
         const viewport = parseChartInteractionViewport(
           pane.settings?.[CHART_INTERACTION_VIEWPORT_SETTING_KEY],
         );
@@ -370,8 +382,8 @@ const chartComposerTemplates: PaneTemplateDef[] = [
         ].includes(key))) return null;
         const spec = parseChartSpec(data.chartSpec);
         if (!spec) return null;
-        const drawings = parseChartDrawings(data.chartDrawings);
-        if (data.chartDrawings !== undefined && (!Array.isArray(data.chartDrawings) || (data.chartDrawings.length > 0 && drawings.length === 0))) return null;
+        const drawings = data.chartDrawings === undefined ? [] : parseSharedChartDrawings(data.chartDrawings);
+        if (!drawings) return null;
         const viewport = data.chartInteractionViewport === undefined
           ? null
           : parseChartInteractionViewport(data.chartInteractionViewport);
