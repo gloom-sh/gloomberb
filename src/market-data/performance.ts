@@ -280,8 +280,10 @@ export function buildPriceReturnFields(
   const interval = barInterval(history);
   const days = interval ? sessions.map((day) => barCloseDay(day, interval, venue)) : sessions;
   // A headline older than the bars (a quote that stopped while history went on) is not the end: the newest close is.
-  const lastDay = days.at(-1);
-  const final = end && (lastDay === undefined || end.day >= lastDay) ? end : null;
+  // Held against the newest bar's session, not the day its period closes: a weekly bar dated Monday 9 Nov closes on
+  // Friday 13 Nov, after Wednesday's headline, which is still newer than the bar's Monday.
+  const lastSession = sessions.at(-1);
+  const final = end && (lastSession === undefined || end.day >= lastSession) ? end : null;
   return horizons.map((horizon) => ({
     id: horizon.id,
     label: horizon.label,

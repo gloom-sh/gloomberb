@@ -260,8 +260,9 @@ function mapCloudPriceHistory(
     && requestedStart.getTime() < Date.parse(coverageStart)) throw new HistoryCoverageError(coverageStart);
   // The server marks a cached copy it could not refresh in time. Bars that
   // reach the venue's latest settled session still answer, and the router's
-  // own current-window check applies to them as to any other copy. Older bars,
-  // or a stale answer without bars, are a miss.
+  // own current-window check applies to them as to any other copy. Older bars
+  // are a miss that carries them, shown as behind when no source has the
+  // present; a stale answer without bars is a miss.
   const stale = isStaleCloudResponse(response);
   if (stale && response.status !== "success" && response.status !== "partial") {
     throw new StaleHistoryError(`Cloud chart data is stale for ${ticker}`);
@@ -288,9 +289,6 @@ function mapCloudPriceHistory(
       `Cloud chart data is unavailable for ${ticker}`,
     ).map((point) => mapPricePoint(point, divisor, exchange, coin)),
   );
-  if (stale && !reachesLatestSettledSession(points, Date.now(), { symbol: ticker, exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
-    throw new StaleHistoryError(`Cloud chart data is stale for ${ticker}`);
-  }
   const intraday = /^\d+(min|h)$/i.test(interval);
   // Daily bars answering an intraday range: the listing has no intraday bars.
   const dailyBars = intraday && response.servedResolution === "1day";
@@ -315,7 +313,7 @@ function mapCloudPriceHistory(
   // Sessions of daily bars the answer left out for a close at or below zero.
   const nonPositiveCloseDates = resolution === "1d" ? cloudNonPositiveCloseDates(response.omittedSessions) : undefined;
   const delisting = parseListingDelisting(response.delisting);
-  return {
+  const result: PriceHistoryResult = {
     points,
     resolution,
     ...(delisting ? { delisting } : {}),
@@ -325,6 +323,10 @@ function mapCloudPriceHistory(
     ...(coverageNote ? { coverageNote } : {}),
     ...(extendedHours ? { extendedHours: true } : {}),
   };
+  if (stale && !reachesLatestSettledSession(points, Date.now(), { symbol: ticker, exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
+    throw new StaleHistoryError(`Cloud chart data is stale for ${ticker}`, result);
+  }
+  return result;
 }
 
 /**

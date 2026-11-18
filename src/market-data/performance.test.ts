@@ -147,6 +147,25 @@ test("each horizon runs from the daily close on its start date to the headline c
   expect(buildPriceReturnFields(weekly, "NASDAQ", [horizon("1Y")], end)[0]).toMatchObject({ baseDay: "2025-11-14" });
 });
 
+// The week dated Monday 9 Nov closes on Friday 13 Nov, after Wednesday's headline. That close is the week so far
+// as the bars were read (29.4), not the headline's 28.1: the headline is the end, being newer than the week's Monday.
+test("weekly bars end at a headline from inside their newest week, not at that week's close", () => {
+  const weekly = [point("2025-11-03", 53), point("2025-11-10", 52), point("2025-11-17", 49.5), point("2025-11-24", 48),
+    point("2026-10-05", 32), point("2026-10-12", 31.5), point("2026-10-19", 31), point("2026-10-26", 30.8),
+    point("2026-11-02", 30), point("2026-11-09", 29.4)];
+  const end = { day: "2026-11-11", close: 28.1 };
+  const [oneYear, oneMonth] = buildPriceReturnFields(weekly, "NASDAQ", [horizon("1Y"), horizon("1M")], end);
+  // 1Y from Tue 11 Nov 2025: the week dated 3 Nov closed on Friday 7 Nov.
+  expect(oneYear).toMatchObject({ baseDay: "2025-11-07" });
+  expect(oneYear?.value).toBeCloseTo(28.1 / 53 - 1, 12);
+  // 1M from Sun 11 Oct 2026: the week dated 5 Oct closed on Friday 9 Oct.
+  expect(oneMonth).toMatchObject({ baseDay: "2026-10-09" });
+  expect(oneMonth?.value).toBeCloseTo(28.1 / 32 - 1, 12);
+  // A headline from before the newest week's Monday is older than the bars: the newest close is the end.
+  const [behind] = buildPriceReturnFields(weekly, "NASDAQ", [horizon("1Y")], { day: "2026-11-06", close: 30.5 });
+  expect(behind?.value).toBeCloseTo(29.4 / 53 - 1, 12);
+});
+
 test("a headline older than the bars is not the end: the newest close is, as before a quote was given", () => {
   const daily = [point("2026-01-02", 100), point("2026-02-02", 104), point("2026-03-02", 110)];
   const fields = buildPriceReturnFields(daily, undefined, [horizon("1M")], { day: "2026-01-02", close: 105.25 });
