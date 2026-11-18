@@ -1815,7 +1815,7 @@ function financialsOptionHint(flag: string, args: readonly string[]): string | n
  * `financials --quarterly` points to it; one whose years carry only balance
  * sheet figures points at those; one with nothing says so.
  */
-export function noFiscalYearsNote(key: string, financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">): string {
+function noFiscalYearsNote(key: string, financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">): string {
   const symbol = commandWord(key);
   if (financials.annualStatements.length > 0) {
     return `No fiscal-year revenue, income or EPS on record for ${key}. Its balance sheets: gloom fn FA ${symbol} --statement balance`;
