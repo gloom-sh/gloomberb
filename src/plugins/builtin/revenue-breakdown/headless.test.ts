@@ -76,8 +76,8 @@ test("reported periods have filed dates and links, not quarter or TTM labels", a
   const result = await revenueBreakdownHeadless.load(args, createTestHeadlessContext({
     apiClient: { getCloudRevenueBreakdown: async () => hk } as never,
   }));
-  expect(result.sections[0]?.columns.map((column) => column.header)).toEqual(["Segment", "FY 2025", "H1 2026", "Share"]);
-  expect(result.sections[1]?.rows[0]).toMatchObject({ filed: "2026-03-18", filing: `${url}#page=33` });
+  expect(result.sections[0]?.columns?.map((column) => column.header)).toEqual(["Segment", "FY 2025", "H1 2026", "Share"]);
+  expect(result.sections[1]?.rows?.[0]).toMatchObject({ filed: "2026-03-18", filing: `${url}#page=33` });
   expect(deriveHeadlessFreshness(revenueBreakdownHeadless, result).source).toBe("Company filings");
   expect(revenueColumns(hk, "trend").map((column) => column.label)).toEqual(["Segment", "FY 2025", "H1 2026", "% Total"]);
 });
