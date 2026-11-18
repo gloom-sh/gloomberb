@@ -3,6 +3,8 @@ import { describe, expect, it } from "bun:test";
 import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
 import { MarketDataCoordinator, savedCopyEntryAt } from "./index";
 import { ApiRequestError } from "../../api-client/errors";
+import { MemoryResourceStore } from "../../data/memory-resource-store";
+import { setSavedCopyStore } from "../../data/pane-saved-copies";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { PricePoint, Quote } from "../../types/financials";
@@ -48,6 +50,32 @@ function createProvider(overrides: Partial<DataProvider> = {}): DataProvider {
 }
 
 describe("MarketDataCoordinator", () => {
+  it("replaces a quote opened from disk on the first refresh without waiting for the saved quote to expire", async () => {
+    const previous = setSavedCopyStore(new MemoryResourceStore());
+    const instrument = { symbol: "AAPL", exchange: "NASDAQ" };
+    const initial = new MarketDataCoordinator(createProvider());
+    const refreshed = Promise.withResolvers<Quote>();
+    let requests = 0;
+    const reopened = new MarketDataCoordinator(createProvider({ getQuote: () => { requests++; return refreshed.promise; } }));
+    try {
+      const first = await initial.loadQuote(instrument);
+      const saved = reopened.getQuoteEntry(instrument);
+      expect(saved.data?.price).toBe(100);
+      expect(savedCopyEntryAt(saved)).toBe(first.fetchedAt);
+      const load = reopened.loadQuote(instrument);
+      expect(reopened.getQuoteEntry(instrument).lastGoodData?.price).toBe(100);
+      refreshed.resolve({ ...first.data!, price: 102, lastUpdated: first.data!.lastUpdated + 1 });
+      await load;
+      expect(requests).toBe(1);
+      expect(reopened.getQuoteEntry(instrument).data?.price).toBe(102);
+      expect(savedCopyEntryAt(reopened.getQuoteEntry(instrument))).toBeNull();
+    } finally {
+      initial.destroy();
+      reopened.destroy();
+      setSavedCopyStore(previous);
+    }
+  });
+
   it("builds a ticker snapshot from the centralized stores", async () => {
     const provider = createProvider({
       getTickerFinancials: async () => createTestFinancials({

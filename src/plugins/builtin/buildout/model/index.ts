@@ -1,5 +1,5 @@
 import { apiClient } from "../../../../api-client";
-import { isShotRequestRefused, SHOT_UNAVAILABLE } from "../../../../api-client/errors";
+import { ApiRequestError, isShotRequestRefused, SHOT_UNAVAILABLE } from "../../../../api-client/errors";
 import { createTtlCache } from "../../../../data/ttl-cache";
 import { httpFetch } from "../../../../utils/http-transport";
 import { logFailure } from "../../../../utils/log-failure";
@@ -62,7 +62,7 @@ export async function buildoutApi<T>(path: string, token: string | null, init: R
       // Intentional ignore: the failed request still throws its status when the error body is unreadable.
       return "";
     });
-    throw new Error(body || `${BUILDOUT_NAME} request failed (${response.status})`);
+    throw new ApiRequestError(body || `${BUILDOUT_NAME} request failed (${response.status})`, response.status);
   }
   return response.json() as Promise<T>;
 }

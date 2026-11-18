@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import type { LiveScanPayload, LiveScanWireDefinition } from "../../../api-client/live-scan";
 import { LiveScanPoller, nextLiveScanPoll, type LiveScanFeedState } from "./live-feed";
+import { ApiRequestError } from "../../../api-client/errors";
+import { MemoryResourceStore } from "../../../data/memory-resource-store";
+import { readSavedCopy, setSavedCopyStore } from "../../../data/pane-saved-copies";
 
 const NOW = Date.UTC(2026, 9, 26, 18, 0, 0);
 const definition = (percent: number): LiveScanWireDefinition => ({
@@ -87,6 +90,36 @@ test("a new scan drops the old answer, aborts its request and ignores it if it l
   requests[1]!.resolve(payload({ matched: 3 }));
   await flush();
   expect(last().payload?.matched).toBe(3);
+});
+
+test("a scanner reopens its last matches, retains them while the scanner starts, and drops them on refusal", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const first = harness();
+  const restarted = harness();
+  const savedKey = { key: ["live-scan", "verified", "scan"] };
+  try {
+    first.poller.setScan(definition(2), "scan", savedKey);
+    first.poller.setEnabled(true);
+    first.requests[0]!.resolve(payload({ matched: 4 }));
+    await flush();
+
+    restarted.poller.setScan(definition(2), "scan", savedKey, readSavedCopy(savedKey));
+    restarted.poller.setEnabled(true);
+    expect(restarted.last()).toMatchObject({ payload: { matched: 4 }, loading: false, savedAt: NOW });
+    restarted.requests[0]!.resolve(payload({ status: "starting", matched: 0 }));
+    await flush();
+    expect(restarted.last().payload?.matched).toBe(4);
+
+    restarted.fire();
+    restarted.requests[1]!.reject(new ApiRequestError("Access ended", 403));
+    await flush();
+    expect(restarted.last().payload).toBeNull();
+    expect(readSavedCopy(savedKey)).toBeNull();
+  } finally {
+    first.poller.dispose();
+    restarted.poller.dispose();
+    setSavedCopyStore(previous);
+  }
 });
 
 test("stopping keeps what is on screen and asks nothing until started again", async () => {

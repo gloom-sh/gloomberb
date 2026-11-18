@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { ApiRequestError } from "../../../api-client/errors";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
 import type { TickerRecord } from "../../../types/ticker";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -71,10 +72,11 @@ export function useTickerRequest<T>(
   exchange: string,
   savedAs?: readonly unknown[],
 ) {
+  const scope = useCloudDisplayScope();
   const request = useCallback((force: boolean) => loader(symbol!, exchange, force), [exchange, loader, symbol]);
   const { data, loading, error, reload } = useAsyncResource(symbol ? request : null, {
     clearOnError: discardDeniedResearch,
-    savedCopy: savedAs && symbol ? { key: [...savedAs, symbol, exchange] } : null,
+    savedCopy: savedAs && symbol && scope ? { key: [...savedAs, scope, symbol, exchange] } : null,
   });
   return { data, loading, error: symbol ? error : "No ticker selected", reload };
 }

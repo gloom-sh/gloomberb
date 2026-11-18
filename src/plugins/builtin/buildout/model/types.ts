@@ -274,10 +274,11 @@ export type BuildoutLoadState =
     token: string | null;
     lists: BuildoutList[];
     /** The companies of one list: `listSlug`, or none yet. */
-    companies: BuildoutPagedState<BuildoutCompany> & { blurredCompanyCount: number; listSlug: string | null };
+    companies: BuildoutPagedState<BuildoutCompany> & { blurredCompanyCount: number; listSlug: string | null; savedAt?: number };
     sites: BuildoutPagedState<BuildoutSite>;
     intel: BuildoutPagedState<BuildoutUpdate>;
     loadedAt: number;
+    savedAt?: number;
     /** A refresh in flight keeps the loaded data on screen. */
     refreshing?: boolean;
     /** The failure of the last refresh, while the previous data stays. */

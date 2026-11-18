@@ -18,6 +18,8 @@ import {
 import { statGridWithin } from "../../../../components/ui/stat-grid";
 import { dropColumnsToFit } from "../../../../components/ui/table-layout";
 import { useAsyncResource, usePaneSettingValue, usePluginAppActions } from "../../../../public/react";
+import { apiClient } from "../../../../api-client";
+import { useCloudDisplayScope } from "../../../../api-client/plan-access";
 import { usePaneStateValue } from "../../../../state/app/context";
 import { usePaneTickerIdentity } from "../../../../state/hooks/pane-ticker";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
@@ -131,7 +133,10 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
   const rendererHost = useRendererHost();
   const { createPaneFromTemplate } = usePluginAppActions();
   const openDescription = useOpenDescription();
-  const { symbol } = usePaneTickerIdentity();
+  const { symbol, ticker } = usePaneTickerIdentity();
+  const scope = useCloudDisplayScope();
+  const publicAccess = !apiClient.isSignedIn();
+  const exchange = ticker?.metadata.exchange ?? "";
   const [settingTab] = usePaneSettingValue<unknown>("tab", undefined);
   const [tab, setTab] = usePaneStateValue<CompanyTab>("tab", isCompanyTab(settingTab) ? settingTab : "flow");
   const [siteIndex, setSiteIndex] = useState(0);
@@ -139,16 +144,19 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
   const [signalIndex, setSignalIndex] = useState(0);
   const [openSignal, setOpenSignal] = useState<BuildoutUpdate | null>(null);
 
-  const loader = useMemo(() => (symbol ? () => fetchCompanyProfile(symbol) : null), [symbol]);
-  const profile = useAsyncResource(loader, { keepPreviousData: true, savedCopy: { key: ["buildout-company", symbol] } });
-  // The last company stays while the next loads; one the dataset does not have says so.
+  const loader = useMemo(() => (symbol ? () => fetchCompanyProfile(symbol) : null), [scope, symbol]);
+  const profile = useAsyncResource(loader, {
+    savedCopy: publicAccess ? { key: ["buildout-company", "anonymous", symbol, exchange] } : null,
+  });
   const company = profile.data;
   const missing = !!symbol && !company && !profile.loading && !profile.error;
   const signalsLoader = useMemo(
     () => (company?.id && tab === "signals" ? () => fetchCompanySignals(company.id) : null),
-    [company?.id, tab],
+    [company?.id, scope, tab],
   );
-  const signals = useAsyncResource(signalsLoader, { savedCopy: { key: ["buildout-company-signals", company?.id] } });
+  const signals = useAsyncResource(signalsLoader, {
+    savedCopy: publicAccess ? { key: ["buildout-company-signals", "anonymous", company?.id] } : null,
+  });
 
   const openRelation = useCallback((relation: BuildoutRelation) => {
     if (relation.ticker) openDescription(relation.ticker);

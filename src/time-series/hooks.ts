@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo } from "react";
 import { apiClient } from "../api-client";
-import { usePlanAccess } from "../api-client/plan-access";
+import { useCloudDisplayScope } from "../api-client/plan-access";
 import { loadCachedFredSeries } from "../sources/gloomberb-cloud/fred-series";
 import { instrumentFromTicker } from "../market-data/request-types";
 import { useAssetData, useCapabilityInvoker } from "../plugins/runtime";
@@ -74,8 +74,7 @@ export function useResolvedChartSpec(
   const snapshot = useContext(ChartSnapshotContext);
   const dataProvider = useAssetData();
   const capabilityInvoker = useCapabilityInvoker();
-  const access = usePlanAccess();
-  const savedCopyScope = JSON.stringify([apiClient.getCurrentUser()?.id ?? null, access.emailVerified, access.hasProAccess]);
+  const savedCopyScope = useCloudDisplayScope();
   const tickers = useAppSelector((state) => state.tickers);
   const hydratedSpec = useMemo(
     () => hydrateChartSpecInstruments(spec, tickers),

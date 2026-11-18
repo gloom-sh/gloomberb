@@ -1,6 +1,6 @@
 import type { QueryEntry } from "./result-types";
 import { createIdleEntry } from "./result-types";
-import { readSavedCopy, writeSavedCopy } from "../data/pane-saved-copies";
+import { deleteSavedCopy, readSavedCopy, writeSavedCopy } from "../data/pane-saved-copies";
 
 /** How many entries a store keeps once nothing is watching them. */
 export interface QueryStoreRetention {
@@ -29,7 +29,7 @@ export interface QueryStoreOptions<T> extends QueryStoreRetention {
    * a key nothing has loaded yet this run starts from its copy, of any age, as
    * `data` in a ready entry. Freshness checks still require a new answer.
    */
-  savedCopies?: { name: string; version?: number; writeIntervalMs?: number; mark?: (value: T, at: number) => T };
+  savedCopies?: { name: string; scope: () => string | null; version?: number; writeIntervalMs?: number; mark?: (value: T, at: number) => T };
 }
 
 /** What a saved copy keeps of an entry: its data and where and when it came from. */
@@ -37,6 +37,7 @@ type SavedEntry<T> = Pick<QueryEntry<T>, "data" | "history" | "source" | "asOf" 
 
 export class QueryStore<T> {
   private readonly entries = new Map<string, QueryEntry<T>>();
+  private readonly hydratedScopes = new Map<string, string>();
   /** Stored keys no pane is watching, least recently used first. */
   private readonly unwatched = new Set<string>();
 
@@ -47,9 +48,19 @@ export class QueryStore<T> {
 
   get(key: string): QueryEntry<T> {
     const entry = this.entries.get(key);
-    if (entry) return entry;
-    const saved = this.readSaved(key);
+    const hydratedScope = this.hydratedScopes.get(key);
+    if (entry && hydratedScope === undefined) return entry;
+    const scope = this.options.savedCopies?.scope() ?? null;
+    if (entry && hydratedScope === scope) return entry;
+    if (hydratedScope !== undefined) {
+      this.entries.delete(key);
+      this.unwatched.delete(key);
+      this.hydratedScopes.delete(key);
+    }
+    if (scope === null) return createIdleEntry<T>();
+    const saved = this.readSaved(key, scope);
     if (!saved) return createIdleEntry<T>();
+    this.hydratedScopes.set(key, scope);
     // Kept as the key's entry, without a change event: reading it is not news.
     return this.store(key, saved);
   }
@@ -66,14 +77,14 @@ export class QueryStore<T> {
     return next;
   }
 
-  private savedKey(key: string) {
+  private savedKey(key: string, scope: string) {
     const saved = this.options.savedCopies!;
-    return { key: [saved.name, key], version: saved.version };
+    return { key: [saved.name, scope, key], version: saved.version };
   }
 
-  private readSaved(key: string): QueryEntry<T> | null {
+  private readSaved(key: string, scope: string): QueryEntry<T> | null {
     if (!this.options.savedCopies) return null;
-    const copy = readSavedCopy<SavedEntry<T>>(this.savedKey(key));
+    const copy = readSavedCopy<SavedEntry<T>>(this.savedKey(key, scope));
     if (!copy?.value || copy.value.data == null) return null;
     const { data, ...from } = copy.value;
     const value = this.options.savedCopies.mark?.(data, copy.fetchedAt) ?? data;
@@ -81,9 +92,20 @@ export class QueryStore<T> {
   }
 
   private save(key: string, entry: QueryEntry<T>): void {
-    if (!this.options.savedCopies || entry.phase !== "ready" || entry.savedCopyAt != null || entry.error || entry.data == null) return;
+    const cache = this.options.savedCopies;
+    if (!cache || entry.savedCopyAt != null || (entry.phase !== "ready" && entry.phase !== "error")) return;
+    const scope = cache.scope();
+    const hydratedScope = this.hydratedScopes.get(key);
+    if (scope === null || (hydratedScope !== undefined && hydratedScope !== scope)) return;
+    const savedKey = this.savedKey(key, scope);
+    if (entry.phase === "error" && entry.data == null && entry.lastGoodData == null) {
+      deleteSavedCopy(savedKey);
+      return;
+    }
+    if (entry.phase !== "ready" || entry.error || entry.data == null) return;
+    this.hydratedScopes.delete(key);
     const { data, history, source, asOf, delayMinutes } = entry;
-    writeSavedCopy(this.savedKey(key), { data, history, source, asOf, delayMinutes }, entry.fetchedAt ?? Date.now(), this.options.savedCopies.writeIntervalMs);
+    writeSavedCopy(savedKey, { data, history, source, asOf, delayMinutes }, entry.fetchedAt ?? Date.now(), cache.writeIntervalMs);
   }
 
   /** A pane started watching `key`, so it is kept until released. */
@@ -125,6 +147,7 @@ export class QueryStore<T> {
       if (this.unwatched.size <= limit) return;
       this.unwatched.delete(oldest);
       this.entries.delete(oldest);
+      this.hydratedScopes.delete(oldest);
       this.options.onEvict?.(oldest);
     }
   }

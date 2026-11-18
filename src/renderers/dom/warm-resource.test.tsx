@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { createDomTestHarness } from "./test-utils";
 import { useAsyncResource } from "../../react/async-resource";
 import { MemoryResourceStore } from "../../data/memory-resource-store";
@@ -48,4 +48,28 @@ test("a cached initial resource keeps its retrieval time until revalidation refu
   expect(refreshes).toEqual([true]);
   await act(async () => { pending.reject(new ApiRequestError("Sign in again", 401)); });
   expect(pane.textContent).toBe("Sign in again");
+});
+
+test("a resolved listing renders its own initial copy before the new loader's mount effect", async () => {
+  const unresolved = Promise.withResolvers<{ label: string }>();
+  const pending = Promise.withResolvers<{ label: string }>();
+  const loadUnresolved = () => unresolved.promise;
+  const loadListing = () => pending.promise;
+  const drawn: string[] = [];
+  let resolveListing = () => {};
+  function Pane() {
+    const [resolved, setResolved] = useState(false);
+    resolveListing = () => setResolved(true);
+    const state = useAsyncResource(resolved ? loadListing : loadUnresolved, {
+      initialData: () => resolved ? markSavedCopy({ label: "Exact listing" }, Date.UTC(2023, 0, 1)) : null,
+    });
+    const label = state.loading ? "Loading" : state.data?.label ?? "Empty";
+    if (resolved) drawn.push(label);
+    return <div>{label}</div>;
+  }
+  const pane = await dom.render(<Pane />);
+  expect(pane.textContent).toBe("Loading");
+  await act(async () => { resolveListing(); });
+  expect(pane.textContent).toBe("Exact listing");
+  expect(drawn.every((value) => value === "Exact listing")).toBe(true);
 });

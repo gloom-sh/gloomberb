@@ -1,4 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
+import { cloudDisplayScope } from "../../api-client/plan-access";
 import { createConcurrencyLimiter } from "../../utils/concurrency";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, SecFilingDocument, SecFilingItem } from "../../types/data-provider";
 import type { CorporateActionsData, OptionsChain, PricePoint, Quote, TickerFinancials } from "../../types/financials";
@@ -232,13 +233,17 @@ export class MarketDataCoordinator {
 
   // The answers panes open on after a restart are kept as saved copies: quotes,
   // snapshots, price histories, option chains and filing lists.
+  private readonly displayScope = () => {
+    const access = cloudDisplayScope();
+    return access == null ? null : JSON.stringify([this.dataProvider.id, access]);
+  };
   private readonly quoteStore = new QueryStore<Quote>((key) => this.events.bump(key), {
-    savedCopies: { name: "quote", writeIntervalMs: 30_000, mark: quoteServedFromSavedCopy },
+    savedCopies: { name: "quote", scope: this.displayScope, writeIntervalMs: 30_000, mark: quoteServedFromSavedCopy },
   });
-  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), { ...this.retainedSnapshots, savedCopies: { name: "snapshot" } });
-  private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), { ...this.retained, savedCopies: { name: "chart" } });
-  private readonly optionsStore = new QueryStore<OptionsChain>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "options" } });
-  private readonly secFilingsStore = new QueryStore<SecFilingItem[]>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "sec-filings" } });
+  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), { ...this.retainedSnapshots, savedCopies: { name: "snapshot", scope: this.displayScope } });
+  private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), { ...this.retained, savedCopies: { name: "chart", scope: this.displayScope } });
+  private readonly optionsStore = new QueryStore<OptionsChain>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "options", scope: this.displayScope } });
+  private readonly secFilingsStore = new QueryStore<SecFilingItem[]>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "sec-filings", scope: this.displayScope } });
   private readonly secDocumentsStore = new QueryStore<SecFilingDocument[]>((key) => this.events.bump(key), this.retainedCachedQueries);
   private readonly secContentStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retainedCachedQueries);
   private readonly articleSummaryStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retainedCachedQueries);
@@ -1134,8 +1139,8 @@ export function resolveEntryValue<T>(entry: QueryEntry<T>): T | null {
  * stays the error it is.
  */
 export function savedCopyEntryAt<T>(entry: QueryEntry<T> | null | undefined): number | null {
-  if (!entry?.error || entry.fetchedAt == null || !resolveEntryData(entry)) return null;
-  return entryFailedTransiently(entry) ? entry.fetchedAt : null;
+  if (!entry || resolveEntryData(entry) == null) return null;
+  return entry.savedCopyAt ?? (entryFailedTransiently(entry) ? entry.fetchedAt : null);
 }
 
 /**

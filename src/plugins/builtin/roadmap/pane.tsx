@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { apiClient } from "../../../api-client";
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import type { RoadmapItem, RoadmapVote } from "../../../api-client/roadmap";
 import {
   buildSectionedRows,
@@ -102,15 +102,17 @@ function RoadmapDetail({ item, failure, width, scrollRef }: {
 
 function RoadmapView({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
-  const client = useContext(RoadmapClientContext) ?? apiClient;
-  const access = usePlanAccess();
+  const override = useContext(RoadmapClientContext);
+  const client = override ?? apiClient;
   // A sign-in, a sign-out or a new plan asks again: the votes and the right to
   // cast one are the account's. The new loader starts from no list, so the
   // last account's marks and vote hint go at once, not when (or if) the new
   // read lands. A refresh of the same session keeps its list.
-  const sessionKey = JSON.stringify([apiClient.getCurrentUser()?.id ?? null, access.emailVerified, access.hasProAccess]);
+  const sessionKey = useCloudDisplayScope();
   const loader = useCallback((_force: boolean) => client.getRoadmap(), [client, sessionKey]);
-  const resource = useAsyncResource(loader);
+  const resource = useAsyncResource(loader, {
+    savedCopy: !override && sessionKey ? { key: ["roadmap", sessionKey] } : null,
+  });
   const sessionRef = useRef(sessionKey);
   sessionRef.current = sessionKey;
   const payload = resource.data;

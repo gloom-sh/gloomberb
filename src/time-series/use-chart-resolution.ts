@@ -45,7 +45,7 @@ export interface UseChartResolutionResult extends ChartResolutionResult {
 export interface UseChartResolutionOptions {
   snapshot?: ChartResolutionResult | null;
   /** Account and access scope for the chart's saved observations. */
-  savedCopyScope?: string;
+  savedCopyScope?: string | null;
   /**
    * Minimum spacing between live redraws. Live updates otherwise follow the
    * shared quote cadence; terminals pass LIVE_CHART_TERMINAL_FRAME_MS.
@@ -224,8 +224,10 @@ export function useChartResolution(
   const snapshot = options.snapshot;
   const coordinator = getSharedMarketDataCoordinator();
   const specKey = JSON.stringify([options.savedCopyScope, spec]);
-  const savedKey = !snapshot && options.savedCopyScope && spec.series.every(({ source }) => source.kind !== "capability")
-    ? { key: ["chart-resolution", specKey] } : null;
+  const savedKey = !snapshot && options.savedCopyScope && spec.series.every(({ source }) => source.kind !== "capability"
+    && (source.kind !== "security" || !source.instrument.instrument))
+    ? { key: ["chart-resolution", specKey, options.requestViewport?.start, options.requestViewport?.end,
+      options.autoViewport?.start, options.autoViewport?.end] } : null;
   const seedResult = () => {
     const now = sources.now ?? new Date();
     // The first paint prices a formula's legs in one month as the settled chart does, from the next months it read.

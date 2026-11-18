@@ -170,7 +170,10 @@ function CotDetail({ width, height, focused, code, family, positions, traderClas
   const colors = useThemeColors();
   const session = useResearchCloudSession();
   const loader = useCallback(() => loadCotDetail(code, family, undefined, positions), [code, family, positions, session.requestKey]);
-  const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });
+  const resource = useAsyncResource(loader, {
+    clearOnError: isAccessDenied,
+    savedCopy: { key: ["cot-detail", session.requestKey, family, code, positions] },
+  });
   // The front price's unit joins the legend once the contract terms answer, or
   // the catalog's after a short wait: the chart draws without waiting for it.
   const unitLoader = useCallback(() => loadCotPriceUnit(code), [code]);

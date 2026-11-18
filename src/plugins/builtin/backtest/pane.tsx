@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, type ReactNode } from "react";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import {
   Button,
   ChartTableHeader,
@@ -100,10 +101,13 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   const strategyControl = useRef<SelectControl>(null);
   const instrument = instrumentFromTicker(ticker, symbol);
   const instrumentKey = JSON.stringify(instrument);
+  const scope = useCloudDisplayScope();
   const wholeHistory = lookbackYears(lookback) == null;
   const loader = useCallback((force: boolean) => loadBacktestHistory(instrument!, { forceRefresh: force, wholeHistory }),
     [instrumentKey, wholeHistory]);
-  const history = useAsyncResource(instrument ? loader : null, { savedCopy: { key: ["backtest-history", instrumentKey, wholeHistory] } });
+  const history = useAsyncResource(instrument ? loader : null, {
+    savedCopy: scope && !instrument?.instrument ? { key: ["backtest-history", scope, instrumentKey, wholeHistory] } : null,
+  });
   useAutoRefresh(history.updatedAt, history.load);
 
   const rules = useMemo(() => readRules(preset, entryText, exitText), [preset, entryText, exitText]);

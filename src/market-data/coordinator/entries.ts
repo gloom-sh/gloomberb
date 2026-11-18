@@ -1,5 +1,6 @@
 import { hasUsablePriceHistory } from "../../utils/price-history";
 import { isTransientFailure } from "../../api-client/errors";
+import { savedCopyAt } from "../../data/saved-copies";
 import { isTransientSourceFailure } from "../../sources/provider-errors";
 import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
 import { hasFreshQuoteForCurrentSession, isQuoteStaleForCurrentSession } from "../quotes/freshness";
@@ -181,6 +182,10 @@ export function readyQuoteEntry(
   if (held) {
     return readyEntry(current, held, current.source ?? source, attempts, { keepLastGoodOnEmpty: true });
   }
+  const savedAt = savedCopyAt(quote);
+  if (savedAt != null) {
+    return { ...readyEntry(current, quote, source, attempts), fetchedAt: savedAt, savedCopyAt: savedAt, staleAt: 0 };
+  }
   if (isQuoteStaleForCurrentSession(quote)) {
     const keepFreshQuote = hasFreshQuoteForCurrentSession([current.data, current.lastGoodData]);
     // A request answers with a stale quote only when no source has a current
@@ -195,10 +200,14 @@ export function readyQuoteEntry(
 }
 
 export function errorEntry<T>(current: QueryEntry<T>, attempt: ProviderAttempt): QueryEntry<T> {
+  const discard = current.savedCopyAt != null && (attempt.status === "fatal_error" || attempt.status === "empty");
+  const data = discard ? null : current.lastGoodData;
   return {
     ...current,
-    phase: current.lastGoodData ? "ready" : "error",
-    data: current.lastGoodData,
+    phase: data ? "ready" : "error",
+    data,
+    lastGoodData: data,
+    ...(discard ? { savedCopyAt: undefined, fetchedAt: null, staleAt: null } : {}),
     error: {
       reasonCode: attempt.reasonCode ?? "UPSTREAM_ERROR",
       message: attempt.message ?? EMPTY_MESSAGE,
