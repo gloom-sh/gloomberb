@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { GpuBoardRow } from "../../../api-client/gpu";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import {
   buildSectionedRows, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, renderSectionedRowHeader, usePaneFooter, usePaneNoticeFooter,
   type DataTableCell, type DataTableColumn, type SectionedRow,
@@ -47,6 +48,7 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
   pending?: boolean;
 }) {
   const colors = useThemeColors();
+  const displayScope = useCloudDisplayScope();
   const provider = useAssetData();
   const { pinTicker } = usePluginTickerActions();
   const [selected, setSelected] = usePluginPaneState<string | null>("equitySelected", "NVDA");
@@ -55,7 +57,11 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
     if (!provider) throw new Error("Equity history is not available.");
     return loadGpuEquityHistory(provider);
   }, [provider]);
-  const history = useAsyncResource(loader);
+  const history = useAsyncResource(displayScope === null ? null : loader, {
+    savedCopy: { key: ["gpu-equity-history", displayScope, "1M", SYMBOLS] },
+    deferLoad: !provider,
+    shouldSave: (data) => data.some((row) => row.history.length > 0),
+  });
   useAutoRefresh(history.updatedAt, history.load);
   usePaneRefreshKey(() => { reloadBoard(); refresh(); history.reload(); }, { focused });
   const rows = useMemo(() => gpuEquityRows(board, model || "H100", locked), [board, model, locked]);

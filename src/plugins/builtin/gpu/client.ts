@@ -1,17 +1,66 @@
-import { resolvePlanAccess } from "../../../api-client/plan-rules";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
 import { sourceDidNotAnswer } from "../../../api-client/errors";
 import { apiClient } from "../../../api-client";
 import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery, GpuObservation, GpuSettle } from "../../../api-client/gpu";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { markSavedCopy, oldestSavedCopyAt } from "../../../data/saved-copies";
 import type { DataProvider } from "../../../types/data-provider";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { cachedCloudResource, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
 import { equityFiveDayReturn, GPU_EQUITIES, gpuPreviewRows, type GpuPreviewRow } from "./model";
 
 export const GPU_NOT_AVAILABLE = "GPU rental prices are not available yet.";
-const cacheOptions = { source: "gloom-cloud", schemaVersion: 3, policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 } };
-export const gpuBoardCache = createPluginCache<GpuBoardPayload>({ ...cacheOptions, kind: "gpu-board" });
-export const gpuHistoryCache = createPluginCache<GpuHistoryPayload>({ ...cacheOptions, kind: "gpu-history" });
-export const gpuEventsCache = createPluginCache<GpuEventsPayload>({ ...cacheOptions, kind: "gpu-events" });
+const cacheOptions = { source: "gloom-cloud", schemaVersion: 4, policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 } };
+export const gpuBoardCache = createPluginCache<GpuBoardPayload>({ ...cacheOptions, kind: "gpu-board", encode: boardForDisplay });
+export const gpuHistoryCache = createPluginCache<GpuHistoryPayload>({ ...cacheOptions, kind: "gpu-history", encode: historyForDisplay });
+export const gpuEventsCache = createPluginCache<GpuEventsPayload>({ ...cacheOptions, kind: "gpu-events", encode: eventsForDisplay });
+
+function pick<T extends object, K extends keyof T>(value: T, keys: readonly K[]): Pick<T, K> {
+  return Object.fromEntries(keys.flatMap((key) => Object.hasOwn(value, key) ? [[key, value[key]]] : [])) as Pick<T, K>;
+}
+
+function publicEvidenceUrl(value: string | null | undefined) {
+  if (value == null) return value;
+  const url = URL.parse(value);
+  return url && !url.username && !url.password && !url.search && !url.hash ? value : null;
+}
+
+function evidenceForDisplay(value: Pick<GpuObservation, "provenance" | "provenanceLabel" | "sourceUrl" | "evidenceUrl">) {
+  return { ...pick(value, ["provenance", "provenanceLabel"]), sourceUrl: publicEvidenceUrl(value.sourceUrl), evidenceUrl: publicEvidenceUrl(value.evidenceUrl) };
+}
+
+function observationForDisplay(value: GpuObservation): GpuObservation {
+  return {
+    ...pick(value, ["source", "skuKey", "provider", "providerClass", "region", "gpuModel", "gpuCount", "formFactor", "memoryGb",
+      "basis", "pricePerGpuHr", "priceNodeHr", "currency", "availability", "observedAt", "effectiveAt"]),
+    ...evidenceForDisplay(value),
+    ...(value.stats && { stats: pick(value.stats, ["n", "min", "max", "p25", "p75", "constituents", "rawMedian", "chainFactor", "constituentPrices"]) }),
+  };
+}
+
+function displayAccess(access: GpuBoardPayload["access"]) {
+  return access && pick(access, ["tier", "preview", "locked"]);
+}
+
+function boardForDisplay(value: GpuBoardPayload): GpuBoardPayload {
+  return { ...pick(value, ["generatedAt", "status", "asOf", "stale", "gaps"]), access: displayAccess(value.access),
+    rows: value.rows.map((row) => ({ ...observationForDisplay(row), ...pick(row,
+      ["id", "label", "sourceLabel", "change1d", "change7d", "change30d", "stale", "lastError"]) })),
+    settles: value.settles?.map((settle) => pick(settle, ["id", "date", "settleAt", "gpuModel", "formFactor", "memoryGb", "label", "status",
+      "pricePerGpuHr", "currency", "kind", "corrects", "publishedAt", "change1d", "change7d", "change30d"])),
+  };
+}
+
+function historyForDisplay(value: GpuHistoryPayload): GpuHistoryPayload {
+  return { generatedAt: value.generatedAt, access: displayAccess(value.access), points: value.points.map(observationForDisplay),
+    effectivePoints: value.effectivePoints.map(observationForDisplay) };
+}
+
+function eventsForDisplay(value: GpuEventsPayload): GpuEventsPayload {
+  return { generatedAt: value.generatedAt, access: displayAccess(value.access), events: value.events.map((event) => ({
+    ...pick(event, ["id", "origin", "kind", "oldAvailability", "newAvailability", "source", "skuKey", "provider", "gpuModel", "formFactor", "memoryGb",
+      "basis", "observedAt", "effectiveAt", "oldPrice", "newPrice", "changePct", "oldMembers", "newMembers"]), ...evidenceForDisplay(event),
+  })) };
+}
 
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -30,11 +79,7 @@ const validEvidence = (row: Record<string, any>) => provenance(row.provenance) &
   && [row.evidenceUrl, row.sourceUrl].every((value) => value === undefined || value === null || typeof value === "string" && /^https?:\/\//.test(value));
 
 /** Account and plan transitions must never reuse a full-history cache as a free preview. */
-export function gpuCacheScope(): string {
-  const user = apiClient.getCurrentUser();
-  const access = resolvePlanAccess(user);
-  return JSON.stringify([user?.id ?? null, access.emailVerified, access.hasProAccess]);
-}
+export const gpuCacheScope = cloudDisplayScope;
 const scopedKey = (key: string) => `${gpuCacheScope()}:${key}`;
 
 function validObservation(row: unknown): row is GpuObservation {
@@ -127,8 +172,11 @@ export async function fetchGpuEvents(gpuModel?: string, client: Pick<GpuApi, "ge
 }
 
 export const getCachedGpuBoard = () => cachedCloudResource(gpuBoardCache, scopedKey("board"), validateBoard);
+export const getCachedGpuHistory = (seriesId: string) => cachedCloudResource(gpuHistoryCache, scopedKey(`series:${seriesId}`), validateHistory);
+export const getCachedGpuReferences = () => cachedCloudResource(gpuHistoryCache, scopedKey("reference-catalog"), validateHistory);
+export const getCachedGpuEvents = (gpuModel?: string) => cachedCloudResource(gpuEventsCache, scopedKey(gpuModel ?? "all"), validateEvents);
 export const loadGpuBoard = (force = false) => loadCloudResource(gpuBoardCache, scopedKey("board"), () => fetchGpuBoard(), { force, validate: validateBoard });
-export const loadGpuHistory = (seriesId: string, force = false) => loadCloudResource(gpuHistoryCache, scopedKey(seriesId),
+export const loadGpuHistory = (seriesId: string, force = false) => loadCloudResource(gpuHistoryCache, scopedKey(`series:${seriesId}`),
   () => fetchGpuHistory({ seriesId, limit: 10_000 }), { force, validate: validateHistory });
 export const loadGpuReferences = (force = false) => loadCloudResource(gpuHistoryCache, scopedKey("reference-catalog"),
   () => fetchGpuHistory({ basis: "reference", limit: 10_000 }), { force, validate: validateHistory });
@@ -145,11 +193,34 @@ export async function fetchGpuModelPreviews(models: readonly string[], client: P
   const previews = await Promise.all(models.map((gpuModel) => fetchGpuHistory({ gpuModel, limit: 10 }, client)));
   return previews.flatMap((payload) => gpuPreviewRows(payload.points));
 }
-export const loadGpuModelPreviews = async (models: readonly string[], force = false): Promise<GpuPreviewRow[]> => {
+function combineGpuResources<T, R extends object>(resources: CloudResource<T>[], data: R): R {
+  const savedAt = oldestSavedCopyAt(resources);
+  return savedAt === null ? data : markSavedCopy(data, savedAt);
+}
+
+function previewRows(previews: CloudResource<GpuHistoryPayload>[]) {
+  return combineGpuResources(previews, { rows: previews.flatMap((preview) => gpuPreviewRows(preview.payload.points)) });
+}
+
+export function getCachedGpuModelPreviews(models: readonly string[]) {
+  const previews = models.map((gpuModel) => cachedCloudResource(gpuHistoryCache, scopedKey(`preview:${gpuModel}`), validateHistory));
+  return previews.every((preview) => preview !== null) ? previewRows(previews) : null;
+}
+
+export const loadGpuModelPreviews = async (models: readonly string[], force = false) => {
   const previews = await Promise.all(models.map((gpuModel) => loadCloudResource(gpuHistoryCache, scopedKey(`preview:${gpuModel}`),
     () => fetchGpuHistory({ gpuModel, limit: 10 }), { force, validate: validateHistory })));
-  return previews.flatMap((preview) => gpuPreviewRows(preview.payload.points));
+  return previewRows(previews);
 };
+export async function loadGpuHistoryGroup(ids: readonly string[], force: boolean) {
+  const histories = await Promise.all(ids.map((id) => loadGpuHistory(id, force)));
+  return combineGpuResources(histories, { histories });
+}
+
+export function getCachedGpuHistoryGroup(ids: readonly string[]) {
+  const histories = ids.map(getCachedGpuHistory);
+  return histories.every((history) => history !== null) ? combineGpuResources(histories, { histories }) : null;
+}
 export const loadGpuEvents = (gpuModel?: string, force = false) => loadCloudResource(gpuEventsCache, scopedKey(gpuModel ?? "all"),
   () => fetchGpuEvents(gpuModel), { force, validate: validateEvents });
 

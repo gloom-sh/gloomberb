@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { splitDelayedStatus, Button, ChoiceDialog, confirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
   usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
@@ -53,6 +54,7 @@ const money = (value: number | null) => value == null || !Number.isFinite(value)
 
 export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
+  const displayScope = useCloudDisplayScope();
   const dialog = useDialog();
   const { notify } = usePluginAppActions();
   const { symbol, ticker } = usePaneTicker();
@@ -93,7 +95,10 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   }, [underlying, exchange, expiration, brokerInstrument]);
   // Fully specified calculations and screenshot snapshots never need a quote refresh.
   const needsMarket = !frozen && (!["spot", "rate", "dividendYield"].every((key) => settings[key] != null && settings[key] !== "") || detail === "chain");
-  const resource = useAsyncResource(underlying && needsMarket ? loadMarket : null);
+  const resource = useAsyncResource(underlying && needsMarket && displayScope !== null ? loadMarket : null, {
+    savedCopy: displayScope === null || brokerInstrument ? null : { key: ["scenario-market", displayScope, underlying, exchange, expiration] },
+    shouldSave: (market) => market.spot !== null || market.chain !== null,
+  });
   useEffect(() => () => controller.current?.abort(), [loadMarket]);
   const rawMarket = frozenMarket ?? resource.data;
   const market = rawMarket?.symbol === underlying ? rawMarket : null;
@@ -166,7 +171,9 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const earningsLoader = useCallback(() => loadNextEarningsDate(assetData, underlying), [assetData, underlying]);
   // A screenshot keeps the date its report read.
   const frozenEarnings = Object.hasOwn(settings, "scenarioEarningsDate");
-  const earnings = useAsyncResource(cspStrategy && underlying && !frozenEarnings ? earningsLoader : null);
+  const earnings = useAsyncResource(cspStrategy && underlying && !frozenEarnings && displayScope !== null ? earningsLoader : null, {
+    savedCopy: displayScope === null ? null : { key: ["scenario-earnings", displayScope, underlying, exchange] },
+  });
   const earningsDate = frozenEarnings ? settings.scenarioEarningsDate as string | null : earnings.data;
   // A position following the market is at the live print, which the footer names with its feed.
   const spotBasis = scenario && !live ? scenarioSpotBasis(settings, scenario.position, market) : null;

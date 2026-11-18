@@ -44,6 +44,7 @@ export function useAsyncResource<T>(
      * depends on, so a copy is only ever shown for the same question.
      */
     savedCopy?: SavedCopyKey | null;
+    shouldSave?: (data: T) => boolean;
     /** The request is identified, but its live inputs are not ready yet. */
     deferLoad?: boolean;
   } = {},
@@ -75,6 +76,8 @@ export function useAsyncResource<T>(
   // Read at failure time so an inline predicate cannot recreate load and refetch every render.
   const clearOnErrorRef = useRef(options.clearOnError ?? false);
   clearOnErrorRef.current = options.clearOnError ?? false;
+  const shouldSaveRef = useRef(options.shouldSave);
+  shouldSaveRef.current = options.shouldSave;
   const savedAtRef = useRef(view.savedAt);
   savedAtRef.current = view.savedAt;
   const settle = useCallback(async (force: boolean) => {
@@ -95,7 +98,7 @@ export function useAsyncResource<T>(
         const savedAt = savedCopyAt(data);
         const updatedAt = savedAt ?? Date.now();
         setState({ owner: loader, ownerKey: keyId, data, loading: false, error: null, updatedAt, savedAt });
-        if (key && savedAt === null) writeSavedCopy(key, data, updatedAt);
+        if (key && savedAt === null && (shouldSaveRef.current?.(data) ?? true)) writeSavedCopy(key, data, updatedAt);
       }
     } catch (error) {
       if (generation.current === currentGeneration) {

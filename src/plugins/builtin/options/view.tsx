@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { usePaneAppConfig, usePaneSettingValue, usePaneTicker, useUpdatePaneSettings } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
@@ -89,7 +90,7 @@ import {
   formatModelSpotPrice, modelSpotExtendedPrint, modelSpotLabel, modelSpotStamp, modelSpotStampVariants, optionModelSpot,
   type OptionModelSpot,
 } from "./model-spot";
-import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, statedOpenInterestAsOf } from "./open-interest-as-of";
+import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, readListedOpenInterest, statedOpenInterestAsOf } from "./open-interest-as-of";
 import { useAsyncResource } from "../../../react/async-resource";
 import {
   ALL_STRIKES,
@@ -614,8 +615,13 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const statedOpenInterest = useMemo(() => strikeChain ? statedOpenInterestAsOf(strikeChain) : undefined, [strikeChain]);
   const listedExpiry = selectedExpiration == null || !effectiveTicker || !strikeChain || statedOpenInterest
     ? null : expiryIsoDate(selectedExpiration);
-  const listedLoader = useCallback(() => loadListedOpenInterest(effectiveTicker, listedExpiry!), [effectiveTicker, listedExpiry]);
-  const listedOpenInterest = useAsyncResource(listedExpiry ? listedLoader : null);
+  const listedScope = useCloudDisplayScope();
+  const listedTicker = canonicalTickerKey(effectiveTicker, effectiveExchange);
+  const listedLoader = useCallback((force: boolean) => listedScope === null || !listedExpiry ? Promise.resolve(null)
+    : loadListedOpenInterest(listedTicker, listedExpiry, { force }), [listedScope, listedTicker, listedExpiry]);
+  const listedOpenInterest = useAsyncResource(listedExpiry && listedScope !== null ? listedLoader : null, {
+    initialData: () => listedExpiry && listedScope !== null ? readListedOpenInterest(listedScope, listedTicker, listedExpiry) : null,
+  });
   const openInterestAsOf = useMemo(() => statedOpenInterest
     ?? (strikeChain && listedOpenInterest.data ? chainOpenInterestAsOf(strikeChain, listedOpenInterest.data) : null),
   [statedOpenInterest, strikeChain, listedOpenInterest.data]);
