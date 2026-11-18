@@ -108,6 +108,14 @@ export function formatRatio(value: number | null | undefined): string {
 export function formatLevel(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? MISSING_VALUE : formatModelSpotPrice(value);
 }
+
+/**
+ * Add Alert filled in for a price alert crossing the gamma flip as GEX shows it (the Flip figure's price, its
+ * grouping left out): a fixed level on the listing's quotes, which stays put when the flip moves.
+ */
+export function flipAlertValues(symbol: string, flip: number): Record<string, string> {
+  return { kind: "price", symbol, condition: "crosses", price: formatLevel(flip).replaceAll(",", "") };
+}
 /**
  * The spot of a positioning answer as the options panes stamp theirs: the
  * regular session's close when the server says so (a cash index outside its
