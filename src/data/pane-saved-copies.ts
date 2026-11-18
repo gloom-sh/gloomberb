@@ -92,8 +92,8 @@ function decode(value: unknown): unknown {
 export function readSavedCopy<T>(key: SavedCopyKey): SavedCopy<T> | null {
   if (!store) return null;
   try {
-    const record = store.get<unknown>(resourceKey(savedCopyId(key)), { schemaVersion: key.version ?? 1, allowExpired: true });
-    return record ? { value: decode(record.value) as T, fetchedAt: record.fetchedAt } : null;
+    const record = store.get<string>(resourceKey(savedCopyId(key)), { schemaVersion: key.version ?? 1, allowExpired: true });
+    return record ? { value: decode(JSON.parse(record.value)) as T, fetchedAt: record.fetchedAt } : null;
   } catch (error) {
     logFailure("data.pane-saved-copies", "Reading a saved copy failed")(error);
     return null;
@@ -117,7 +117,7 @@ export function writeSavedCopy(key: SavedCopyKey, value: unknown, fetchedAt = Da
   const now = Date.now();
   if (last !== undefined && now - last >= 0 && now - last < writeIntervalMs) return;
   try {
-    store.set(resourceKey(id), encode(value), { schemaVersion: key.version ?? 1, cachePolicy: { staleMs: 0, expireMs: RETAIN_UNTIL - fetchedAt }, fetchedAt });
+    store.set(resourceKey(id), JSON.stringify(encode(value)), { schemaVersion: key.version ?? 1, cachePolicy: { staleMs: 0, expireMs: RETAIN_UNTIL - fetchedAt }, fetchedAt });
     if (writes) {
       writes.delete(id);
       writes.set(id, now);

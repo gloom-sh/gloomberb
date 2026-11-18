@@ -20,7 +20,7 @@ export function createBrowserAppServices({ config, plugins, externalPlugins }: A
   const cloudProvider = createGloomberbCloudProvider();
   const persistence = new JsonPersistence(localStorage, {
     keepResource: isBrokerAccountSnapshotKey,
-    durable: resources && { saved: resources.records, sink: resources.sink },
+    durable: resources && { saved: resources.records.splice(0), sink: resources.sink },
   });
   const dataProvider = new AssetDataRouter(null, [cloudProvider]);
   const cloudNews = createGloomberbCloudCapabilities(cloudProvider).find(

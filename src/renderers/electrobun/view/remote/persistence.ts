@@ -173,7 +173,7 @@ export class RemotePersistence {
     { label: "desktop-view-persistence" },
   );
   readonly resources = new WriteThroughResourceStore(
-    getElectrobunBackendInitSnapshot()?.savedResources ?? [],
+    getElectrobunBackendInitSnapshot()?.savedResources?.splice(0) ?? [],
     this.resourceSink,
     isViewResourceKey,
   );
