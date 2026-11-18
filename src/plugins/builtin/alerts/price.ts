@@ -18,7 +18,7 @@ const DOLLAR_TAIL = /\s*USD$/i;
  * `757.75 USD`), and whether it had one: a dollar price is written the US way,
  * so a comma in it groups thousands.
  */
-export function withoutDollarMark(text: string): { text: string; dollars: boolean } {
+function withoutDollarMark(text: string): { text: string; dollars: boolean } {
   const trimmed = text.trim();
   const bare = trimmed.replace(DOLLAR_LEAD, "").replace(DOLLAR_TAIL, "");
   return { text: bare, dollars: bare !== trimmed };

@@ -27,7 +27,7 @@ const SIDE_WORDS: Readonly<Record<string, "C" | "P">> = { C: "C", CALL: "C", CAL
 const two = (value: number) => String(value).padStart(2, "0");
 
 /** The OCC symbol of a contract: `SPY261119C00680000`. */
-export function occContractSymbol(root: string, year: number, month: number, day: number, side: "C" | "P", strike: number): string {
+function occContractSymbol(root: string, year: number, month: number, day: number, side: "C" | "P", strike: number): string {
   return `${root}${two(year % 100)}${two(month)}${two(day)}${side}${String(Math.round(strike * 1000)).padStart(8, "0")}`;
 }
 
