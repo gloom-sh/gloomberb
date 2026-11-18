@@ -37,6 +37,7 @@ import { expandResolvedArgument } from "./headless";
 import { defaultScreenshotPath, shotSizeWarnings } from "./screenshot-payload";
 import { renderDesktopShot } from "./screenshot-render";
 import { shotCutColumnsWarning, shotStatusIssues } from "./screenshot-assessment";
+import { PANE_SWEEP_EVIDENCE_PATH } from "./screenshot-types";
 import {
   buildPaneCatalogEntries,
   exampleListName,
@@ -608,7 +609,9 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
         ? resolve(process.cwd(), ensurePngExtension(parsed.outputPath))
         : defaultScreenshotPath(resolved, parsed.arg);
       const progress = progressNotice(ctx, [resolved.token, parsed.arg].filter(Boolean).join(" "));
-      const onlyUsable = parsed.strict === true || parsed.requireBotSafe === true;
+      const sweepEvidence = parsed.strict === true && ctx.cliOptions.format === "json" && !!parsed.outputPath
+        && process.env[PANE_SWEEP_EVIDENCE_PATH] === outputPath;
+      const onlyUsable = parsed.requireBotSafe === true || (parsed.strict === true && !sweepEvidence);
       const result = await renderDesktopShot({
         resolved,
         context,

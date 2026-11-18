@@ -20,7 +20,7 @@ export interface ScrollBoxMetrics {
  * centred on the money is cut above and below, a list at its top only below.
  * Self-contained so the screenshot runner can evaluate it in the browser.
  */
-export function scrollTruncationReasons(box: ScrollBoxMetrics): string[] {
+export function scrollTruncationReasons(box: ScrollBoxMetrics, rowsAnnounced = false): string[] {
   const reasons: string[] = [];
   const cut = (offset: number, content: number, viewport: number, flagged: boolean, noun: string, sides: readonly [string, string, string, string]) => {
     if (!flagged && !(content > viewport + 1)) return;
@@ -32,7 +32,12 @@ export function scrollTruncationReasons(box: ScrollBoxMetrics): string[] {
       ? `${noun} ${before && after ? sides[2] : before ? sides[0] : sides[1]} the rendered viewport are cut`
       : `${noun} ${sides[3]} the rendered viewport may be cut`);
   };
-  cut(box.scrollTop, box.scrollHeight, box.clientHeight, box.scrollbarY, "rows", ["above", "below", "above and below", "above or below"]);
+  if (!rowsAnnounced) cut(box.scrollTop, box.scrollHeight, box.clientHeight, box.scrollbarY, "rows", ["above", "below", "above and below", "above or below"]);
   cut(box.scrollLeft, box.scrollWidth, box.clientWidth, box.scrollbarX, "columns", ["left of", "right of", "left and right of", "left or right of"]);
   return reasons;
+}
+
+export function rowViewportVisibility(top: number, bottom: number, viewportTop: number, viewportBottom: number): "outside" | "partial" | "whole" {
+  if (bottom <= viewportTop + 1 || top >= viewportBottom - 1) return "outside";
+  return top >= viewportTop - 1 && bottom <= viewportBottom + 1 ? "whole" : "partial";
 }

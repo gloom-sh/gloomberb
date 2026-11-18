@@ -20,7 +20,7 @@ import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../uti
 import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { countContentFigures } from "./content-figures";
 import { readVisibleKeyValues } from "./visible-key-values";
-import { scrollTruncationReasons } from "./scroll-truncation";
+import { rowViewportVisibility, scrollTruncationReasons } from "./scroll-truncation";
 import {
   SHOT_API_PROXY_PREFIX,
   SHOT_API_SOCKET_PATH,
@@ -741,16 +741,27 @@ async function growToFitRows(session: CdpPage, size: {
 }
 
 /**
- * An image ends on a whole row: a row its list's scroll box cuts at the
- * bottom edge is hidden, and so is one wholly outside the box, which the
- * box already clips but the row count would read. A row with no whole row
- * above it stays, cut, rather than leave the list blank. The live pane keeps
- * its partly visible last row, as every scrolling list reads.
+ * A capture draws whole rows beneath the sticky header and above the bottom
+ * edge. It also draws the table's vertical scrollbar when rows scroll past
+ * those edges. The live table keeps smooth scrolling and its partial rows.
  */
 async function hideCutRows(session: CdpPage): Promise<void> {
   await session.send("Runtime.evaluate", {
     expression: `(() => {
       const root = document.getElementById("root") || document.body;
+      const visibilityOf = (${rowViewportVisibility.toString()});
+      const bodyRole = 'data-table-body-scroll';
+      for (const body of root.querySelectorAll('[data-gloom-role="' + bodyRole + '"]')) {
+        const showsOverflow = body.clientHeight > 0 && body.scrollHeight > body.clientHeight + 1
+          && body.getAttribute('data-gloom-scrollbar-y') === 'visible'
+          && /auto|scroll/.test(getComputedStyle(body).overflowY);
+        if (showsOverflow) {
+          body.style.scrollbarWidth = 'auto';
+          body.style.scrollbarColor = 'auto';
+          body.setAttribute('data-gloom-scrollbar-active', 'true');
+        }
+        body.toggleAttribute('data-gloom-shot-table-overflow', showsOverflow);
+      }
       const rows = [...root.querySelectorAll(
         '[data-gloom-role="data-table-row"], [data-gloom-role="data-table-section-header"], [data-gloom-role="desktop-list-row"], [data-gloom-row="true"]',
       )];
@@ -758,28 +769,36 @@ async function hideCutRows(session: CdpPage): Promise<void> {
         const style = getComputedStyle(element);
         return /(auto|scroll|hidden|clip)/.test(style.overflowY) && element.clientHeight > 0;
       };
-      const wholeAbove = new Map();
+      const viewports = new Map();
+      const wholeRows = new Set();
       const cut = [];
       for (const row of rows) {
+        if (row.hasAttribute('data-gloom-shot-cut-row')) {
+          row.style.removeProperty('visibility');
+          row.removeAttribute('data-gloom-shot-cut-row');
+        }
         let box = row.parentElement;
         while (box && box !== root && !clips(box)) box = box.parentElement;
         if (!box || box === root) continue;
-        const area = box.getBoundingClientRect();
-        // The box's visible height: a horizontal scrollbar takes its own rows.
-        const bottom = area.top + box.clientTop + box.clientHeight;
+        if (!viewports.has(box)) {
+          const area = box.getBoundingClientRect();
+          const top = area.top + box.clientTop;
+          const header = box.getAttribute('data-gloom-role') === bodyRole
+            ? box.querySelector('[data-gloom-role="data-table-header-row"]') : null;
+          viewports.set(box, { top: Math.max(top, header?.getBoundingClientRect().bottom ?? top), bottom: top + box.clientHeight });
+        }
+        const viewport = viewports.get(box);
         const rect = row.getBoundingClientRect();
         if (rect.height <= 0) continue;
-        if (rect.bottom <= area.top + 1 || rect.top >= bottom - 1) {
-          cut.push(row);
-        } else if (rect.top >= area.top - 1 && rect.bottom <= bottom + 1) {
-          wholeAbove.set(box, true);
-        } else if (rect.bottom > bottom + 1) {
-          cut.push({ row, box });
-        }
+        const visibility = visibilityOf(rect.top, rect.bottom, viewport.top, viewport.bottom);
+        if (visibility === 'whole') wholeRows.add(box);
+        else cut.push({ row, box, visibility });
       }
-      for (const entry of cut) {
-        if (entry instanceof Element) entry.style.visibility = "hidden";
-        else if (wholeAbove.get(entry.box)) entry.row.style.visibility = "hidden";
+      for (const { row, box, visibility } of cut) {
+        if (visibility === 'outside' || wholeRows.has(box)) {
+          row.style.visibility = 'hidden';
+          row.setAttribute('data-gloom-shot-cut-row', '');
+        }
       }
     })()`,
     returnByValue: true,
@@ -909,20 +928,24 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
       const managesRows = (element) => element.getAttribute("data-gloom-role") === "data-table-body-scroll";
       const markScrollTruncation = (element) => {
         if (!(element instanceof HTMLElement) || !isVisible(element)) return;
-        const reasons = scrollReasons({
+        const metrics = {
           scrollTop: element.scrollTop,
           scrollHeight: element.scrollHeight,
           clientHeight: element.clientHeight,
           scrollLeft: element.scrollLeft,
           scrollWidth: element.scrollWidth,
           clientWidth: element.clientWidth,
-          // A scroll box draws its scrollbar by default and its content is all in the page, so its
-          // measures say what is cut; only a table's body holds rows it has not drawn.
-          scrollbarY: managesRows(element) && element.getAttribute("data-gloom-scrollbar-y") === "visible",
+          // A table's vertical spacer includes virtual rows. Its scrollbar
+          // attribute allows a bar, but does not prove that a bar is drawn.
+          scrollbarY: false,
           scrollbarX: managesRows(element) && element.getAttribute("data-gloom-scrollbar-x") === "visible",
-        });
-        reasons.forEach((reason) => truncationReasons.add(reason));
-        if (!inReportedTable(element)) reasons.forEach((reason) => reportTruncationReasons.add(reason));
+        };
+        const table = element.closest('[data-gloom-role="data-table"]');
+        const total = semanticTables[visibleTables.indexOf(table)]?.metadata?.rowCount;
+        const rowCountAnnouncesCut = typeof total === 'number' && total > [...element.querySelectorAll('[data-gloom-role="data-table-row"]')].filter(isVisible).length;
+        const rowsAnnounced = managesRows(element) && (element.hasAttribute('data-gloom-shot-table-overflow') || rowCountAnnouncesCut);
+        scrollReasons(metrics, rowsAnnounced).forEach((reason) => truncationReasons.add(reason));
+        if (!inReportedTable(element)) scrollReasons(metrics).forEach((reason) => reportTruncationReasons.add(reason));
       };
       [...root.querySelectorAll(
         '[data-gloom-scrollbar-x="visible"], [data-gloom-scrollbar-y="visible"], [data-gloom-role="data-table-body-scroll"]',
