@@ -124,7 +124,7 @@ export class Cdp {
 
 export interface Browser {
   cdp: Cdp;
-  close(): Promise<void>;
+  close(signal?: "SIGKILL"): Promise<void>;
 }
 
 /** Chrome itself, for `gpu`: the headless shell has no GPU compositing. */
@@ -192,9 +192,9 @@ export async function launchBrowser(
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
     return {
       cdp,
-      async close() {
+      async close(signal) {
         cdp.close();
-        proc.kill();
+        proc.kill(signal);
         await proc.exited;
         await removeProfile();
       },

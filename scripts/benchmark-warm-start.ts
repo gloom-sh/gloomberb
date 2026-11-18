@@ -301,9 +301,8 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
       try {
         await picture;
         if (standIn) await standIn.stopBackend();
-        await browser.cdp.send("Page.crash", {}, 500).catch(() => {});
       } finally {
-        await browser.close();
+        await browser.close("SIGKILL");
         server.onProbe(null);
       }
     },
