@@ -90,7 +90,8 @@ test("gamma's time and its quotes' read apart before the open, and an index outs
 test("Alert at this flip fills in a price alert crossing the flip at the price the Flip figure shows", () => {
   // An index's flip prints grouped to the cent; the alert reads the same level, never 6 for "6,712.35".
   const values = flipAlertValues("^SPX", 6712.346);
-  expect(values).toEqual({ kind: "price", symbol: "^SPX", condition: "crosses", price: "6712.35" });
+  // The form says under Target Price that the level is fixed, not the flip's.
+  expect(values).toEqual({ kind: "price", symbol: "^SPX", condition: "crosses", price: "6712.35", priceNote: "Fixed price: it does not follow the flip." });
   expect(parseAlertCommandValues(values)).toEqual({ symbol: "^SPX", condition: "crosses", price: 6712.35 });
   expect(parseAlertCommandValues(flipAlertValues("SPY", 712.5))).toEqual({ symbol: "SPY", condition: "crosses", price: 712.5 });
 });

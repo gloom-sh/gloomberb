@@ -375,6 +375,24 @@ describe("form modal", () => {
     expect(frame().split("\n").some((line) => /^\W*180\W*$/.test(line))).toBe(true);
   });
 
+  // GEX's Alert at this flip: the title of its footer hint was the only place that said the level does not move.
+  test("a pane that fills in Add Alert keeps its target and adds its own line under Target Price", async () => {
+    const dataProvider = createTestDataProvider({ getQuote: async (symbol) => createTestQuote({ symbol, price: 728.02, name: "SPDR S&P 500" }) });
+    await renderForm((registry) => registerCommand(registry, {
+      id: "set-alert",
+      label: "Add Alert",
+      wizard: [
+        { key: "symbol", label: "Symbol", type: "text" },
+        { key: "condition", label: "Condition", type: "select", options: [{ label: "Crosses", value: "crosses" }] },
+        { key: "price", label: "Target Price", type: "number" },
+      ],
+    }), { kind: "plugin-command", commandId: "set-alert",
+      values: { symbol: "SPY", condition: "crosses", price: "757.35", priceNote: "Fixed price: it does not follow the flip." } }, { dataProvider });
+    await waitForForm("Current price 728.02; edit to set the target.");
+    await waitForFrameToContain("Fixed price: it does not follow the flip.");
+    expect(frame().split("\n").some((line) => /^\W*757\.35\W*$/.test(line))).toBe(true);
+  });
+
   test("remote control sees each field and sets a select without opening it", async () => {
     const remoteRegistry = createRemoteUiRegistry();
     const submitted: unknown[] = [];
