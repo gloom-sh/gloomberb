@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { act, useState } from "react";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import type { MnaDeal, MnaDealsPayload } from "../../../api-client/mna";
@@ -60,6 +60,7 @@ const delayed: MnaDealsPayload = {
 
 const tui = createOpenTuiTestHarness();
 afterEach(() => {
+  setSystemTime();
   setCloudApiFetchTransport(null);
   mnaDealsCache.reset();
   mnaDealCache.reset();
@@ -153,12 +154,14 @@ test("Enter opens a deal's timeline under its two names, its spread at the sessi
     }
     return Response.json({ ...delayed, access: "full", delayDays: 0, lockedDeals: 0 });
   });
-  // New York's pre-market: a trade this morning, and the close of the session before.
-  const session = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  // New York's pre-market: a trade this morning, and the close of the session before. The clock stands at
+  // the trade, so it is today's and reads a bare time, whatever day and zone this runs on.
+  const trade = Date.parse("2026-11-17T09:24:49Z");
+  setSystemTime(new Date(trade));
   const premarket = (symbol: string) => ({
     symbol, price: 10.4, currency: "USD", change: 0, changePercent: 0, exchangeName: "NASDAQ", marketState: "PRE",
-    lastUpdated: Date.parse("2026-11-17T09:24:49Z"), lastTradeTime: Date.parse("2026-11-17T09:24:49Z"),
-    regularClose: 10.46, regularCloseSessionDate: session,
+    lastUpdated: trade, lastTradeTime: trade,
+    regularClose: 10.46, regularCloseSessionDate: "2026-11-16",
   } as Quote);
   await mount(130, 20, undefined, "pane", premarket);
   await act(async () => tui.setup().mockInput.pressEnter());
@@ -169,7 +172,7 @@ test("Enter opens a deal's timeline under its two names, its spread at the sessi
   const frame = tui.frame();
   expect(frame).toContain("ACV Auctions Inc. ← Copart, Inc.");
   // 10.50 against the 10.46 close, said to be the close; the trade since it beside it, and the leg's own print.
-  expect(frame).toMatch(/Spread +0\.38% +(\$0\.04 · )?\w{3} close/);
+  expect(frame).toMatch(/Spread +0\.38% +(\$0\.04 · )?Mon close/);
   expect(frame).toMatch(/Latest +0\.96% +pre-market \d\d:\d\d/);
   expect(frame).toMatch(/ACVA +10\.40 +pre-market \d\d:\d\d/);
   expect(frame).toMatch(/Outside +4 May 2027 +to 4 Nov 2027 if only antitrust approvals remain · 8-K 4 Nov 2026/);
