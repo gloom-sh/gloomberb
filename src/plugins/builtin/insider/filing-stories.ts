@@ -1,0 +1,99 @@
+import { useEffect, useState } from "react";
+import { apiClient } from "../../../api-client";
+import type { CloudInsiderFilingStoriesResponse } from "../../../api-client";
+import { shortStoryId } from "../../../news/story-id";
+import { formatShortDate } from "../../../utils/datetime-format";
+import { logFailure } from "../../../utils/log-failure";
+
+/*
+ * The stories that report a Form 4, as Gloom Cloud matches them: the filing's
+ * owner named in a story about its company's insiders trading, in the months
+ * after its trades, the filing among the ones the story's own page lists. What
+ * an INS or SEC row names to go from the filing to the news and back.
+ */
+
+export interface FilingStory {
+  id: string;
+  headline: string;
+  /** When the story was first published, ISO. */
+  publishedAt: string;
+  publisher: string;
+}
+
+type StoriesClient = Pick<typeof apiClient, "getCloudInsiderFilingStories">;
+
+const ACCESSION = /^\d{10}-\d{2}-\d{6}$/;
+/** As many filings as Gloom Cloud reads in one request: a page of SEC or INS rows. */
+const BATCH = 40;
+const TTL_MS = 5 * 60_000;
+const cache = new Map<string, { at: number; stories: FilingStory[] }>();
+
+function storiesOf(item: CloudInsiderFilingStoriesResponse["items"][number]): FilingStory[] {
+  return (item.stories ?? []).flatMap((story) => (
+    story?.id && story.headline
+      ? [{ id: story.id, headline: story.headline, publishedAt: story.firstPublishedAt, publisher: story.primaryPublisher ?? "" }]
+      : []
+  ));
+}
+
+/**
+ * The stories reporting each filing, by accession number, from a short-lived
+ * cache where it has them. A filing Gloom Cloud could not be asked about is
+ * left out of the map: no stories said is not "none".
+ */
+export async function loadFilingStories(
+  accessions: readonly string[],
+  client: StoriesClient = apiClient,
+  now = Date.now(),
+): Promise<Map<string, FilingStory[]>> {
+  const result = new Map<string, FilingStory[]>();
+  const wanted: string[] = [];
+  for (const accession of new Set(accessions)) {
+    if (!ACCESSION.test(accession)) continue;
+    const hit = cache.get(accession);
+    if (hit && now - hit.at < TTL_MS) result.set(accession, hit.stories);
+    else wanted.push(accession);
+  }
+  for (let start = 0; start < wanted.length; start += BATCH) {
+    const batch = wanted.slice(start, start + BATCH);
+    const response = await client.getCloudInsiderFilingStories(batch);
+    for (const item of response.items ?? []) {
+      if (!batch.includes(item.accession)) continue;
+      const stories = storiesOf(item);
+      cache.set(item.accession, { at: now, stories });
+      result.set(item.accession, stories);
+    }
+  }
+  return result;
+}
+
+/** The stories reporting one filing, read once it is open; none while they load or when they cannot be read. */
+export function useFilingStories(accession: string | null | undefined): FilingStory[] {
+  const [state, setState] = useState<{ accession: string; stories: FilingStory[] } | null>(null);
+  useEffect(() => {
+    if (!accession || !ACCESSION.test(accession)) return;
+    let active = true;
+    void loadFilingStories([accession])
+      .then((found) => {
+        if (active) setState({ accession, stories: found.get(accession) ?? [] });
+      })
+      .catch(logFailure("insider.filing-stories", "Read the stories reporting a filing failed"));
+    return () => { active = false; };
+  }, [accession]);
+  return state && state.accession === accession ? state.stories : [];
+}
+
+/** `7 Oct 2026 · Quartz`: when and where a story was first published. */
+export function filingStorySource(story: FilingStory): string {
+  const day = story.publishedAt ? formatShortDate(story.publishedAt, { utc: true, fallback: "" }) : "";
+  return [day, story.publisher].filter(Boolean).join(" · ");
+}
+
+/**
+ * A story as a report's note names it, with the id `fn story` opens it by:
+ * `Story 3224efb6 (7 Oct 2026 · Quartz): Q3 2026 insider stock sales: ...`.
+ */
+export function filingStoryNote(story: FilingStory): string {
+  const source = filingStorySource(story);
+  return `Story ${shortStoryId(story.id)}${source ? ` (${source})` : ""}: ${story.headline}`;
+}

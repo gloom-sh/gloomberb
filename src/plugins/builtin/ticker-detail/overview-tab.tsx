@@ -17,14 +17,19 @@ import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormat
 import { priceSeriesUnit } from "../../../market-data/market/index-level";
 import {
   exchangeShortName,
+  extendedPrintTime,
   extendedSessionLineLabel,
   getExtendedSessionDisplay,
   getRegularSessionDisplay,
+  headlineCloseDate,
   quoteSessionColor,
   quoteSessionLabel,
 } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
-import { changeBasisLabel, changeBasisNote, futuresQuoteFromSettle, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
+import { changeBasisLabel, changeBasisNote, closeDayLabel, futuresQuoteFromSettle, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
+import { asOfClock } from "../../../market-data/quotes/time";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { quoteObservation } from "../shared/report-freshness";
 import {
   fitFuturesContractLines, futuresContractLines, isFuturesInstrument, futuresPricePer, usdPerMmbtu, usdPerMmbtuText,
   type FuturesContractLine,
@@ -182,6 +187,13 @@ function ResolvedOverviewTab({
 
   const quote = financials?.quote;
   const quoteDelayMinutes = useDelayedMarkMinutes(quote);
+  // `fn DES` and a capture are dated by the quote the header shows, as `quote` dates it: its last print,
+  // its delay and its session, the time it was read after them.
+  useRemoteUiNode(quote ? {
+    role: "report-freshness",
+    label: "Quote freshness",
+    getMetadata: () => ({ observations: [quoteObservation(quote, Date.now())] }),
+  } : null);
   const fundamentals = financials?.fundamentals;
   const capitalization = liveMarketCapitalization(quote, fundamentals);
   const profile = financials?.profile;
@@ -331,7 +343,13 @@ function ResolvedOverviewTab({
   const quoteChangeText = sessionQuote && !delisted ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
   const quotePercentText = sessionQuote && !delisted ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
   const changeBasis = delisted ? null : quoteChangeBasis(movedQuote, { terms: contractTerms });
-  const changeBasisText = changeBasis ? changeBasisLabel(changeBasis) : "";
+  // Once the session is over the headline is its close, dated apart from the extended print below it:
+  // "Tue 17 Nov close · vs Mon 16 Nov close". A future's settle is dated on its own line.
+  const closeDate = contractTerms ? null : headlineCloseDate(movedQuote);
+  const changeBasisText = [
+    closeDate ? closeDayLabel(closeDate) : "",
+    changeBasis ? changeBasisLabel(changeBasis) : "",
+  ].filter(Boolean).join(" \u00b7 ");
   // The days the venue was closed since that close, under the move: "HKEX closed Mon 19 Oct, holiday".
   const changeBasisNoteText = changeBasisNote(changeBasis);
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
@@ -381,7 +399,11 @@ function ResolvedOverviewTab({
     : "";
   // The extended session's line keeps its label and price whole on a narrow pane: the move gives
   // way to its percent, then goes, rather than wrapping a figure across two lines ("(+0." / "08%)").
-  const extendedLabelText = extendedQuote ? `${extendedSessionLineLabel(extendedQuote, t)}:` : "";
+  // The extended print says when it was observed (After-Hours 00:10 UTC), as the close above says its day.
+  const extendedTime = extendedQuote ? extendedPrintTime(quote) : null;
+  const extendedLabelText = extendedQuote
+    ? `${extendedSessionLineLabel(extendedQuote, t)}${extendedTime != null ? ` ${asOfClock(Math.min(extendedTime, Date.now()))}` : ""}:`
+    : "";
   const extendedPriceText = extendedQuote ? formatMarketPriceWithCurrency(extendedQuote.price, quote?.currency, moneyOptions) : "";
   const extendedMoveText = extendedQuote
     ? [

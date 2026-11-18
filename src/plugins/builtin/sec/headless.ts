@@ -12,6 +12,7 @@ import { hasFundFactsAbroad, US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import type { SecFilingItem } from "../../../types/data-provider";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
+import { filingStoryNote, loadFilingStories, type FilingStory } from "../insider/filing-stories";
 import { logFailure } from "../../../utils/log-failure";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
@@ -48,9 +49,50 @@ const hasItems = (rows: readonly HeadlessPaneRow[]) => rows.some((row) => typeof
 /** A current report's press release exhibit, printed only when some row has one; exports keep it with the filing's link. */
 const PRESS_RELEASE_COLUMN: HeadlessPaneColumn = { key: "pressReleaseUrl", header: "Press release" };
 
+/** The stories that report a Form 4, under its row, as INS prints them under its lines; JSON has them as `stories`. */
+const STORIES_NOTE_COLUMN: HeadlessPaneColumn = {
+  key: "storiesNote", header: "Stories", underRow: true, format: (value) => typeof value === "string" ? value : "",
+};
+
 function secTextColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneColumn[] {
   const columns = hasItems(rows) ? SEC_COLUMNS : SEC_COLUMNS.filter((column) => column.key !== "items");
-  return rows.some((row) => typeof row.pressReleaseUrl === "string" && row.pressReleaseUrl) ? [...columns, PRESS_RELEASE_COLUMN] : columns;
+  const withRelease = rows.some((row) => typeof row.pressReleaseUrl === "string" && row.pressReleaseUrl) ? [...columns, PRESS_RELEASE_COLUMN] : columns;
+  return rows.some((row) => typeof row.storiesNote === "string" && row.storiesNote) ? [...withRelease, STORIES_NOTE_COLUMN] : withRelease;
+}
+
+const INSIDER_FORM = /^4(?:\/A)?$/i;
+
+/**
+ * The Form 4 rows with the stories that report them: `stories` on the row, and
+ * a note under it that names each (`fn story <id>` opens one). The other rows,
+ * and every row when Gloom Cloud cannot be asked, as they were, with a note
+ * saying why.
+ */
+async function withFilingStories(
+  rows: HeadlessPaneRow[],
+  ctx: HeadlessPaneContext,
+  dependencies: SecHeadlessDependencies,
+): Promise<{ rows: HeadlessPaneRow[]; note: string | null }> {
+  const accessions = rows
+    .filter((row) => typeof row.form === "string" && INSIDER_FORM.test(row.form.trim()))
+    .map((row) => row.accessionNumber)
+    .filter((value): value is string => typeof value === "string");
+  const load = dependencies.loadFilingStories;
+  if (!load || accessions.length === 0) return { rows, note: null };
+  let found: Map<string, FilingStory[]>;
+  try {
+    found = await load(accessions, ctx);
+  } catch (error) {
+    return { rows, note: `The stories reporting its Form 4s could not be read: ${errorMessage(error)}` };
+  }
+  return {
+    note: null,
+    rows: rows.map((row) => {
+      const stories = typeof row.accessionNumber === "string" ? found.get(row.accessionNumber) : undefined;
+      if (!stories) return row;
+      return { ...row, stories: stories.map((story) => ({ ...story })), ...(stories.length ? { storiesNote: stories.map(filingStoryNote).join("\n") } : {}) };
+    }),
+  };
 }
 
 /**
@@ -74,10 +116,13 @@ export interface SecHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<SecFilingItem[]>;
+  /** The stories reporting each Form 4, by accession number (Gloom Cloud's match); none asked when absent. */
+  loadFilingStories?(accessions: readonly string[], ctx: HeadlessPaneContext): Promise<Map<string, FilingStory[]>>;
 }
 
 const defaultDependencies: SecHeadlessDependencies = {
   loadFilings: (symbol, limit, _args, ctx) => loadSecFilings(ctx.marketData, symbol, limit),
+  loadFilingStories: (accessions, ctx) => loadFilingStories(accessions, ctx.apiClient),
 };
 
 /**
@@ -140,14 +185,15 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       // A form filter searches every filing listed for the issuer and keeps the supplements it names; without
       // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
       const { filings, hidden } = await loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true });
-      const note = hidden && hiddenFilingsNote(hidden);
-      const rows = buildSecFilingRows(filings);
+      const hiddenNote = hidden && hiddenFilingsNote(hidden);
+      const { rows, note: storiesNote } = await withFilingStories(buildSecFilingRows(filings), ctx, dependencies);
+      const notes = [...(hiddenNote ? [hiddenNote] : []), ...(storiesNote ? [storiesNote] : [])];
       // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.
       const page = !form && filings.length === 0 ? listingAnnouncementsPage(symbol) : null;
       return {
         rows,
         textColumns: secTextColumns(rows),
-        ...(note || filings[0]?.companyFrom ? { notes: [...(note ? [note] : []), ...companyDataNotes(filings[0]?.companyFrom)] } : {}),
+        ...(notes.length || filings[0]?.companyFrom ? { notes: [...notes, ...companyDataNotes(filings[0]?.companyFrom)] } : {}),
         ...(form ? { empty: `No ${form} filings found for ${symbol}.` }
           : page ? { empty: `${symbol} files no SEC reports. ${page.name}: ${page.url}` } : {}),
         metadata: {

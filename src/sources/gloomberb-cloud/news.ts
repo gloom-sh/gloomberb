@@ -2,6 +2,7 @@ import { normalizeNewsFeed } from "../../news/news-model";
 import { readableNewsSource } from "../../news/source-label";
 import { collectNewsDisplayTickers } from "../../news/ticker-symbols";
 import type { NewsAccess, NewsArticle, NewsQuery, NewsStoryItem } from "../../types/news-source";
+import type { NewsInsiderFiling } from "../../news/types";
 import { CLOUD_NEWS_DELAY_HOURS } from "../../api-client/plan-rules";
 import type {
   apiClient,
@@ -82,6 +83,39 @@ function mapCloudNewsStoryItem(
   };
 }
 
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const ACCESSION = /^\d{10}-\d{2}-\d{6}$/;
+const positive = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
+
+/** The Form 4s a story reports, each one whole: a filing a field of which does not read is left out. */
+function insiderFilings(payload: CloudNewsPayload["insiderFilings"]): NewsInsiderFiling[] {
+  if (!Array.isArray(payload)) return [];
+  return payload.flatMap((filing): NewsInsiderFiling[] => {
+    if (!filing || !ACCESSION.test(filing.accession) || !filing.insider?.trim()) return [];
+    if (!ISO_DAY.test(filing.firstTradeDate) || !ISO_DAY.test(filing.lastTradeDate) || !ISO_DAY.test(filing.filedOn)) return [];
+    if (!positive(filing.shares) || !positive(filing.value) || !positive(filing.weightedPrice) || !Number.isInteger(filing.lines)) return [];
+    if (filing.side !== "sale" && filing.side !== "purchase") return [];
+    return [{
+      accession: filing.accession,
+      form: filing.form || "4",
+      filedOn: filing.filedOn,
+      issuerName: filing.issuerName?.trim() || null,
+      ticker: filing.ticker?.trim().toUpperCase() || null,
+      insider: filing.insider.trim(),
+      title: filing.title?.trim() || null,
+      side: filing.side,
+      firstTradeDate: filing.firstTradeDate,
+      lastTradeDate: filing.lastTradeDate,
+      lines: filing.lines,
+      shares: filing.shares,
+      value: filing.value,
+      weightedPrice: filing.weightedPrice,
+      rule10b51: typeof filing.rule10b51 === "boolean" ? filing.rule10b51 : null,
+      url: /^https:\/\/www\.sec\.gov\//.test(filing.url) ? filing.url : "",
+    }];
+  });
+}
+
 /** A folded row's notices, when the service says how many (two or more) and since when. */
 function routineNotices(payload: CloudNewsPayload["routine"]): NewsArticle["routine"] | null {
   if (!payload || !Number.isInteger(payload.notices) || payload.notices < 2) return null;
@@ -133,6 +167,7 @@ export function mapCloudNewsArticle(
     sourceCount: item.sourceCount,
     items: item.items?.map(mapCloudNewsStoryItem) ?? [],
     ...(routineNotices(item.routine) ? { routine: routineNotices(item.routine)! } : {}),
+    ...(item.insiderFilings ? { insiderFilings: insiderFilings(item.insiderFilings) } : {}),
   };
 }
 

@@ -63,6 +63,8 @@ import { REPORT_ROWS } from "../shared/headless-options";
 import { mapWithConcurrency } from "../../../utils/concurrency";
 import { describeCollections, findNamedCollection, readWatchlistArgument, watchlistMemberSymbol } from "../../../portfolio/collection-name";
 import type { FxHistoryClient } from "../../../market-data/fx-closes";
+import { errorMessage } from "../../../utils/errors";
+import { filingStoryNote, loadFilingStories, type FilingStory } from "./filing-stories";
 
 const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "form", header: "Form" },
@@ -319,7 +321,7 @@ function signalQuery(options: HeadlessPaneLoadArgs["options"]): InsiderSignalsQu
 /** What a Form 4/A says about itself, for its last row in the report. */
 function amendmentNote(entry: ParsedInsiderFiling): string {
   const original = entry.disclosure?.originalFilingDate;
-  return [original ? `Original filed ${original}` : "", ...buildInsiderDisclosureText(entry).split("\n")].filter(Boolean).join("\n");
+  return [original ? `Original filed ${original}` : "", ...buildInsiderDisclosureText(entry, { byLine: false }).split("\n")].filter(Boolean).join("\n");
 }
 
 export interface InsiderHeadlessDependencies {
@@ -333,6 +335,8 @@ export interface InsiderHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<InsiderFilingsLoad>;
+  /** The stories reporting each filing, by accession number (Gloom Cloud's match); the report's API client unless a test stands in. */
+  loadFilingStories?(accessions: readonly string[], ctx: HeadlessPaneContext): Promise<Map<string, FilingStory[]>>;
 }
 
 const defaultDependencies: InsiderHeadlessDependencies = {
@@ -351,7 +355,45 @@ const defaultDependencies: InsiderHeadlessDependencies = {
     limit,
     signal: ctx.signal,
   }),
+  loadFilingStories: (accessions, ctx) => loadFilingStories(accessions, ctx.apiClient),
 };
+
+/**
+ * Each filing's rows with the stories that report it (`stories`, on every row
+ * of the filing), and their notes under the filing's last row after any
+ * amendment's: back from the Form 4 to the news, `fn story <id>` opening one.
+ * When Gloom Cloud cannot be asked, the rows say nothing of stories and the
+ * report says why.
+ */
+async function withFilingStories(
+  rows: HeadlessPaneRow[],
+  ctx: HeadlessPaneContext,
+  dependencies: InsiderHeadlessDependencies,
+): Promise<{ rows: HeadlessPaneRow[]; note: string | null }> {
+  const accessions = [...new Set(rows.map((row) => row.accessionNumber).filter((value): value is string => typeof value === "string"))];
+  const load = dependencies.loadFilingStories;
+  if (!load || accessions.length === 0) return { rows, note: null };
+  let found: Map<string, FilingStory[]>;
+  try {
+    found = await load(accessions, ctx);
+  } catch (error) {
+    return { rows, note: `The stories reporting these filings could not be read: ${errorMessage(error)}` };
+  }
+  return {
+    note: null,
+    rows: rows.map((row, index) => {
+      const stories = typeof row.accessionNumber === "string" ? found.get(row.accessionNumber) : undefined;
+      if (!stories) return row;
+      const last = rows[index + 1]?.accessionNumber !== row.accessionNumber;
+      const notes = last ? [typeof row.note === "string" ? row.note : "", ...stories.map(filingStoryNote)].filter(Boolean) : [];
+      return {
+        ...row,
+        stories: stories.map((story) => ({ ...story })),
+        ...(last && notes.length ? { note: notes.join("\n") } : {}),
+      };
+    }),
+  };
+}
 
 /**
  * "CAR Group (ASX) files no SEC reports." for a listing abroad the SEC lists
@@ -394,6 +436,8 @@ interface TickerTrades {
   rows: HeadlessPaneRow[];
   empty: string | null;
   errors: string[];
+  /** Why the rows say nothing of the stories that report them. */
+  notes?: string[];
   metadata: Record<string, unknown>;
 }
 
@@ -417,14 +461,16 @@ async function readTickerTrades(
     .filter((row) => row.status !== "parsed" && row.status !== "disclosure")
     .map((row) => row.accessionNumber))];
   // A filing's lines sit together, so its note goes once, under the last of them.
-  const rows: HeadlessPaneRow[] = buildInsiderRows(filtered, parsed).map((row, index) => {
+  const built: HeadlessPaneRow[] = buildInsiderRows(filtered, parsed).map((row, index) => {
     const entry = filtered[index]!;
     const last = filtered[index + 1]?.filing.accessionNumber !== entry.filing.accessionNumber;
     return isAmendedInsiderFiling(entry) && last ? { ...row, note: amendmentNote(entry) || null } : row;
   });
+  const { rows, note: storiesNote } = await withFilingStories(built, ctx, dependencies);
   return {
     rows,
     empty,
+    ...(storiesNote ? { notes: [storiesNote] } : {}),
     errors: [
       ...incomplete.map((accessionNumber) => `${accessionNumber}: Form 4 transactions are unavailable or incomplete.`),
       ...amendments.map((scope) => `${scope.accessionNumber}: Form 4/A is unreconciled; affected transaction totals are unavailable.`),
@@ -454,7 +500,7 @@ async function tickerTrades(
   const based = await withInsiderBaseValues(read.rows, ctx.config.baseCurrency, dependencies.fxHistory ?? ctx.apiClient);
   return {
     ...(based.columns ? { columns: withMoneyColumns(based.columns) } : {}),
-    ...(based.note ? { notes: [based.note] } : {}),
+    ...(based.note || read.notes?.length ? { notes: [...(based.note ? [based.note] : []), ...(read.notes ?? [])] } : {}),
     rows: based.rows,
     // Nothing at all: the company has no Form 4 of its own, which is the whole answer.
     ...(read.empty ? { empty: read.empty, unavailableSymbols: [] } : {}),

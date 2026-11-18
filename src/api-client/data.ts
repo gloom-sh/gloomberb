@@ -166,6 +166,7 @@ import type {
   CloudMarketScreenerCategory,
   CloudMarketScreenerPayload,
   CloudMoverSession,
+  CloudInsiderFilingStoriesResponse,
   CloudNewsListResponse,
   CloudNewsPayload,
   CloudSavedSearch,
@@ -1722,6 +1723,13 @@ export class CloudDataApi {
   async getCloudNewsStory(storyId: string): Promise<CloudNewsPayload> {
     return this.request<CloudNewsPayload>(
       `/news/${encodeURIComponent(storyId)}`,
+    );
+  }
+
+  /** The stories that report each Form 4, by accession number: the match a story's own filings come from, run the other way. */
+  async getCloudInsiderFilingStories(accessions: readonly string[]): Promise<CloudInsiderFilingStoriesResponse> {
+    return this.request<CloudInsiderFilingStoriesResponse>(
+      `/news/insider-filing-stories?${new URLSearchParams({ accessions: accessions.join(",") })}`,
     );
   }
 

@@ -1147,6 +1147,8 @@ interface StatusLineDetail {
   basis?: "none";
   /** Leave out how current a feed is (`15 min delayed`, `live`, `not a live feed`), which the pane shows another way; stale stays. */
   feed?: "none";
+  /** Leave out when a list dated by its newest entry was read (`retrieved Wed 18 Nov 2026 00:22 UTC`). */
+  retrieved?: "none";
 }
 
 /**
@@ -1165,7 +1167,7 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
       : (freshness.unreached || freshness.savedAt) && !freshness.asOf ? []
       : [asOfText(freshness, detail.asOf === "short", local, undated)]),
     // A list dated by its newest filing says when it was read as well.
-    ...(freshness.retrievedToo && freshness.asOf && !freshness.savedAt ? [`retrieved ${timeText(freshness.retrievedAt, local)}`] : []),
+    ...(freshness.retrievedToo && freshness.asOf && !freshness.savedAt && detail.retrieved !== "none" ? [`retrieved ${timeText(freshness.retrievedAt, local)}`] : []),
     ...(freshness.schedule && detail.schedule !== "none"
       ? [typeof detail.schedule === "number" ? freshness.scheduleVariants?.[detail.schedule] ?? freshness.schedule : freshness.schedule] : []),
     ...(freshness.oldestAgeMinutes != null ? [`oldest ${ageText(freshness.oldestAgeMinutes)}`] : []),
@@ -1357,12 +1359,17 @@ export function statusLineVariants(freshness: ReportFreshness, { source = false 
     ...(freshness.note ? [{ ...shortest, note: "none" as const }] : []),
     ...(freshness.schedule ? [...shorterSchedules(freshness, { ...shortest, note: "none" }), { ...shortest, note: "none" as const, schedule: "none" as const }] : []),
   ];
+  // A list dated by its newest entry and by when it was read gives up the reading first, then what its data is,
+  // and keeps its label to the last: `Newest filing Fri 6 Nov 2026`, never a bare date that reads as now.
+  const unread: StatusLineDetail[] = freshness.retrievedToo
+    ? [{ ...shortest, basis: "none" }, { ...shortest, basis: "none", retrieved: "none" }, { ...shortest, feed: "none", retrieved: "none" }]
+    : [];
   const variants: StatusLineDetail[] = freshness.sources?.length
     ? [{}, ...details.map((detail) => ({ ...detail, date: "none" as const })), { ...shortest, date: "none", note: "none" }]
-    : [...details, ...trailing];
+    : [...details, ...trailing, ...unread];
   const lines = [...new Set(variants.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
   if (freshness.status === "not-a-feed" && freshness.asOf?.includes("T") && !freshness.sources?.length && !freshness.oldest && !freshness.staleCount) {
-    lines.push(formatUtcTime(freshness.asOf));
+    lines.push(narrowestAsOf(freshness, freshness.asOf));
   }
   // A line that dates each source names them already.
   if (!source || freshness.sources?.length) return lines;
@@ -1381,7 +1388,19 @@ export function statusDateEvidence(freshness: ReportFreshness): string[][] {
     [asOfText(freshness, true, false)],
     [asOfText(freshness, true, false, true)],
     [formatUtcTime(freshness.asOf)],
+    [narrowestAsOf(freshness, freshness.asOf)],
   ];
+}
+
+/**
+ * The narrowest status line of data that is no feed: its as-of in UTC, a day
+ * alone where `asOfAsDay` reads it as one (a filing's date, not its midnight),
+ * named by its label when it has one (`Newest filing 2026-11-06`).
+ */
+function narrowestAsOf(freshness: ReportFreshness, asOf: string): string {
+  const time = asOfAsDay(freshness, parseReportTime(asOf));
+  const text = formatUtcTime(time ?? asOf);
+  return freshness.asOfLabel ? capitalize(`${freshness.asOfLabel} ${text}`) : text;
 }
 
 /** A capture's status line: the facts it states (its `freshness` in JSON) and its text, longest first. */

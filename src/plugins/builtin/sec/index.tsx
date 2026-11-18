@@ -7,7 +7,7 @@ import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import { logFailure } from "../../../utils/log-failure";
 import { instrumentFromTicker } from "../../../market-data/request-types";
-import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
+import { useDebouncedPluginPaneState, usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
@@ -27,6 +27,7 @@ import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-a
 import { listingAnnouncementsPage, type ExchangeAnnouncementsPage } from "../../../utils/exchange-announcements";
 import { form4TradeText, isOtherIssuerForm4, pricingSupplementTest } from "../../../utils/sec-filings";
 import { formatInsiderName } from "../insider/display";
+import { filingStorySource, useFilingStories, type FilingStory } from "../insider/filing-stories";
 import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
@@ -176,6 +177,8 @@ function toFeedItems(
   loadingDocuments: boolean,
   documentsError: string | null,
   contentErrors: Map<string, string>,
+  /** The stories that report the open filing, a Form 4, each a fact that opens it. */
+  openStories: { accession: string; stories: readonly FilingStory[]; open: (story: FilingStory) => void } | null = null,
 ): FeedDataTableItem[] {
   // A Form 144 names its seller freely; the insider forms read beside it say which way round.
   const knownOwners = filings.flatMap((filing) => ownerNames(filing.form, contentCache.get(filing.accessionNumber)));
@@ -231,6 +234,13 @@ function toFeedItems(
       ...(acceptedAt ? [{ label: "SEC-reported acceptance", value: acceptedAt }] : []),
       ...(items ? [{ label: "Items", value: items }] : []),
       { label: "Accession", value: filing.accessionNumber },
+      ...(openStories?.accession === filing.accessionNumber
+        ? openStories.stories.map((story) => ({
+          label: "Story",
+          value: `${story.headline} (${filingStorySource(story)})`,
+          link: { label: `Open story: ${story.headline}`, onOpen: () => openStories.open(story) },
+        }))
+        : []),
     ];
 
     return {
@@ -383,6 +393,15 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const openFiling = openItemId
     ? filings.find((filing) => filing.accessionNumber === openItemId) ?? null
     : null;
+  // An open Form 4 names the stories that report it, each opening in a pane: back from the filing to the news.
+  const openInsiderAccession = openFiling && /^4(?:\/A)?$/i.test(openFiling.form.trim()) ? openFiling.accessionNumber : null;
+  const openFilingStories = useFilingStories(openInsiderAccession);
+  const { createPaneFromTemplate } = usePluginAppActions();
+  const storyLinks = useMemo(() => (openInsiderAccession && openFilingStories.length > 0 ? {
+    accession: openInsiderAccession,
+    stories: openFilingStories,
+    open: (story: FilingStory) => createPaneFromTemplate("news-story-pane", { arg: story.id, values: { title: story.headline } }),
+  } : null), [createPaneFromTemplate, openFilingStories, openInsiderAccession]);
   const documentsEntry = useSecFilingDocuments(openFiling ?? null);
   const openDocuments = useResolvedEntryValue(documentsEntry) ?? [];
   const documentsError = documentsEntry?.error && documentsEntry.error.reasonCode !== "NO_DATA" ? documentsEntry.error.message : null;
@@ -626,6 +645,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
         loadingDocuments,
         documentsError,
         contentErrors,
+        storyLinks,
       )}
       selectedIdx={selectedIdx}
       onSelect={setSelectedIdx}

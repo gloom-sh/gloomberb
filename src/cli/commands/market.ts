@@ -25,12 +25,15 @@ import type {
 } from "../../types/financials";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, nearParCoinPriceDigits, penceFigure, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { INDEX_POINTS_EXPORT_UNIT, indexBarVolume, isIndexLevel, reportedQuoteVolume, YIELD_INDEX_EXPORT_UNIT } from "../../market-data/market/index-level";
-import { changeBasisJson, changeBasisLabel, changeBasisNote, futuresQuoteFromSettle, printPredatesChangeBasis, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import { changeBasisJson, changeBasisLabel, changeBasisNote, closeDayLabel, futuresQuoteFromSettle, printPredatesChangeBasis, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import { asOfClock } from "../../market-data/quotes/time";
 import {
   EXTENDED_SESSION_LABELS,
+  extendedPrintTime,
   getExtendedSessionDisplay,
   getQuoteSessionFields,
   getRegularSessionDisplay,
+  headlineCloseDate,
   quoteHeadlineTime,
   quoteSessionLabel,
   quoteSessionStateLabel,
@@ -697,9 +700,10 @@ function extendedColumn(session: ExtendedSession) {
     header: EXTENDED_SESSION_LABELS[session],
     align: "right" as const,
     value: (row: QuoteRow) => row.extendedSession === session ? exportFigure(row.rawExtendedPrice) : null,
+    // Beside a close, the print says when it was observed (`$161.72 +4.02% 00:10 UTC`), Updated dating the close.
     format: (_value: unknown, row: QuoteRow) => (
       row.extendedSession === session && row.extendedPrice
-        ? [price(row), formatChangePercentCell(row.extendedChangePercent)].join(" ").trim()
+        ? [price(row), formatChangePercentCell(row.extendedChangePercent), row.extendedAt ? cliStyles.muted(row.extendedAt) : ""].join(" ").trim()
         : ""
     ),
   };
@@ -954,6 +958,10 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     const per = display.price != null ? futuresPricePer(result.futuresContract, quote?.currency) : "";
     const previousClose = display.price != null && display.change != null ? display.price - display.change : quote?.previousClose;
     const last = price(display.price);
+    // A completed session's close shown beside a later extended print: two prices, two times.
+    const closeDate = extended && !result.futuresContract && !quote?.nominalPrice && !quote?.dailyClose ? headlineCloseDate(quote) : null;
+    const printedAt = closeDate ? extendedPrintTime(quote) : null;
+    const closeBesidePrint = closeDate && printedAt != null ? { date: closeDate, printedAt } : null;
     return {
       symbol: quoteRowSymbol(result),
       name: quote?.name || result.listing?.name || "",
@@ -1005,6 +1013,9 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       ...quote?.nominalPrice ? { nominalLabel: nominalSessionLabel(quote) ?? undefined } : {},
       // A price with no live quote behind it, the close of the latest daily bar, names that session.
       ...quote?.dailyClose ? { nominalLabel: dailyCloseSessionLabel(quote) ?? undefined } : {},
+      // Last as a completed session's close beside an extended print: Updated names the close's day (Tue 17 Nov
+      // close), the print its own time, so neither price reads as the other's. JSON keeps updatedAt as it was.
+      ...closeBesidePrint ? { nominalLabel: closeDayLabel(closeBesidePrint.date, now), extendedAt: asOfClock(Math.min(closeBesidePrint.printedAt, now), now) } : {},
     };
   });
 }
