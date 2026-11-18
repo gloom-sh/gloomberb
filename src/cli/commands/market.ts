@@ -84,6 +84,7 @@ import { createBaseConverter } from "../base-converter";
 import { loadStatementFilings } from "../statement-filings";
 import { loadBankFigures } from "../bank-section";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
+import { commandWord } from "../../utils/shell-word";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { currencyCodeLabel, currencyUnitLabel, resolveCurrencyUnit } from "../../utils/currency-units";
 import { fxRateDigits, quotedFxPair } from "../../utils/currency-pair";
@@ -1809,6 +1810,23 @@ function financialsOptionHint(flag: string, args: readonly string[]): string | n
     + `or gloom fn FA ${symbol} --period quarterly (the statements).`;
 }
 
+/**
+ * What `financials` says when it has no fiscal year to list, in place of a
+ * bare "No results.": a listing with quarters but no full year reported
+ * (O8A:FWB2) names its latest quarter and the command that lists them, as
+ * `financials --quarterly` points to it; one whose years carry only balance
+ * sheet figures points at those; one with nothing says so.
+ */
+function noFiscalYearsNote(key: string, financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">): string {
+  const symbol = commandWord(key);
+  if (financials.annualStatements.length > 0) {
+    return `No fiscal-year revenue, income or EPS on record for ${key}. Its balance sheets: gloom fn FA ${symbol} --statement balance`;
+  }
+  const quarter = latestFinancialPeriod(financials.quarterlyStatements, (row) => row.date)?.date;
+  if (!quarter) return `No fiscal-year or quarterly statements on record for ${key}.`;
+  return `No fiscal-year statements on record for ${key}; its quarterly statements run to ${quarter}: gloom fn FA ${symbol} --period quarterly`;
+}
+
 function historyOptionHint(flag: string, args: readonly string[]): string | null {
   if (DATE_WINDOW_OPTIONS.has(flag)) {
     return `history takes dates as --from and --to (or --start and --end), each a year or a date (--from 2007 --to 2009), or a --range: ${HISTORY_RANGES.join(", ")}.`;
@@ -3210,11 +3228,14 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     const older = await hasOlderStatements(() => market.dataProvider.getTickerFinancials(listing.request.symbol, listing.request.exchange,
       { statementHistory: "extended" }), "annual", dates);
     const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", dates, listing.key, older)];
+    // No year to list says why, and where its quarters are, rather than "No results.".
+    const empty = rows.length === 0 ? noFiscalYearsNote(listing.key, financials) : null;
+    const notes = empty ? [...historyNotes, empty] : historyNotes;
     // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
     const tables = tabular
       ? selectTables({
         tables: [exportRowsTable("Annual statements", STATEMENT_COLUMNS, rows)],
-        footer: reportFooterLines({ freshness, notes: historyNotes }),
+        footer: reportFooterLines({ freshness, notes }),
       })
       : undefined;
     ctx.printResult({
@@ -3226,7 +3247,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         quarterlyStatements: financials.quarterlyStatements.length,
         fundamentals: exportedFundamentals(financials.fundamentals),
         profile: financials.profile,
-        ...(historyNotes.length > 0 ? { notes: historyNotes } : {}),
+        ...(notes.length > 0 ? { notes } : {}),
       },
       freshness,
       ...(choice.length > 0 ? { warnings: choice } : {}),
@@ -3234,7 +3255,9 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       heading: listingHeading(identity),
       rows: () => rows,
       columns: STATEMENT_COLUMNS,
-      ...(historyNotes.length > 0 ? { footnote: historyNotes.join("\n"), exportNotes: historyNotes } : {}),
+      ...(empty ? { empty } : {}),
+      ...(historyNotes.length > 0 ? { footnote: historyNotes.join("\n") } : {}),
+      ...(notes.length > 0 ? { exportNotes: notes } : {}),
       ...(tables && ctx.cliOptions.format === "csv" ? { tables } : {}),
       // Annual statements in the company's reporting currency.
       exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: rows.find((row) => row.currency)?.currency ?? null, interval: "annual" },

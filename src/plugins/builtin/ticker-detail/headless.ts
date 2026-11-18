@@ -465,8 +465,9 @@ function reportOlderStatements(ctx: HeadlessContext, symbol: string, period: "an
 /**
  * Why a statements report has no rows, and what to read instead: a listing
  * with years but no quarters names its years, and says so of a company that
- * reports half-yearly (Qantas on ASX). Null when it has years and quarters,
- * whatever this table lacks.
+ * reports half-yearly (Qantas on ASX); one with quarters but no full year
+ * reported (O8A:FWB2) names its quarters. Null when it has years and
+ * quarters, whatever this table lacks.
  */
 async function missingPeriodsError(
   ctx: HeadlessContext,
@@ -477,12 +478,15 @@ async function missingPeriodsError(
   statement: unknown,
 ): Promise<string | null> {
   const hasYears = financials.annualStatements.length > 0;
+  const tab = typeof statement === "string" && statement && statement !== "income" ? ` --statement ${statement}` : "";
+  if (period === "annual" && !hasRequestedStatements && financials.quarterlyStatements.length > 0) {
+    return `${symbol}: No annual financial statement coverage. For its quarters: gloom fn FA ${symbol} --period quarterly${tab}`;
+  }
   if (period === "annual" || !hasYears) return hasRequestedStatements ? null : `${symbol}: No ${period} financial statement coverage.`;
   const exchange = await resolveHeadlessInstrument(ctx, symbol).then(({ exchange }) => canonicalExchange(exchange ?? ""))
     .catch(logFailure("ticker-detail.headless", "Resolving the listing of a statements report failed", ""));
   const halfYearly = reportsHalfYearly(exchange, financials.quarterlyStatements, financials.annualStatements);
   if (hasRequestedStatements && !halfYearly) return null;
-  const tab = typeof statement === "string" && statement && statement !== "income" ? ` --statement ${statement}` : "";
   const years = `For its years: gloom fn FA ${symbol} --period annual${tab}`;
   return halfYearly ? `${symbol} reports half-yearly, not quarterly. ${years}` : `${symbol}: No quarterly financial statement coverage. ${years}`;
 }
