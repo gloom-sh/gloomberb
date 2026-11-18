@@ -166,7 +166,8 @@ function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFil
     const window = `trades since ${since}`;
     const coverage = `${window}, ${figures.filings} ${figures.filings === 1 ? "filing" : "filings"} loaded`;
     const join = (...parts: string[]) => parts.filter(Boolean).join(" \u00b7 ");
-    items[items.length - 1] = { ...last, detail: join(detail, coverage), detailVariants: [join(detail, window), detail] };
+    // Narrower, the window keeps its first day longest: what "90d" is from.
+    items[items.length - 1] = { ...last, detail: join(detail, coverage), detailVariants: [join(detail, window), join(detail, `since ${since}`), detail] };
   }
   return items;
 }
