@@ -303,7 +303,7 @@ async function answerNamedListing(
   datesChangeBasis: boolean,
 ): Promise<QuoteAnswer | null> {
   // A listing on a venue the app cannot read is no answer: the word keeps its own.
-  const resolved = await resolveCliListing(named.key, null, market).catch((error: unknown) => {
+  const resolved = await resolveCliListing(named.key, null, market, { listingAbroad: false }).catch((error: unknown) => {
     if (error instanceof ListingArgError) return null;
     throw error;
   });

@@ -1193,7 +1193,8 @@ export async function readBareListing(
   /** `successor`: also say what became of the company that had the symbol, looked up beside its quote. */
   { refresh = false, successor = false }: { refresh?: boolean; successor?: boolean } = {},
 ): Promise<ReadListing | NotATicker | null> {
-  const listing = await resolveCliListing(symbol, null, deps);
+  // Read on its listings below, beside its own quote, as `quote` reads it.
+  const listing = await resolveCliListing(symbol, null, deps, { listingAbroad: false });
   // A code the resolver read as another listing (NDX as ^NDX:NIM, the Nasdaq-100) is that listing, saying so.
   if (listing.exchange) {
     return listing.readAs ? { symbol: listing.symbol, exchange: listing.exchange, name: null, coinNote: null, readAs: listing.readAs } : null;
@@ -1647,6 +1648,12 @@ export async function resolveCliListing(
      * `quote` reads names after its own quote request, and turns it off.
      */
     companyWord?: boolean;
+    /**
+     * Read a bare symbol no source quotes on the listing `quote` reads it on (`readBareListingAbroad`): O8A
+     * is O8A:FWB2. On by default; `quote` reads it after its own quote request, and turns it off, as does a
+     * lookup that searches for the listing itself (`resolveCliTicker`).
+     */
+    listingAbroad?: boolean;
   } = {},
 ): Promise<CliListing> {
   // "JPM US Equity" is Bloomberg's code for JPM; "Putnam US Equity", whose root is no US ticker, is a name.
@@ -1748,7 +1755,7 @@ export async function resolveCliListing(
   // A code nothing could read stays the venue it is saved on.
   const savedExchange = canonicalExchange(saved?.metadata.exchange);
   if (listing.sharedCode && savedExchange) listing = { symbol: listing.symbol, exchange: savedExchange, key: `${listing.symbol}:${savedExchange}` };
-  return {
+  const resolved: CliListing = {
     ...listing,
     saved,
     typed: typed.trim(),
@@ -1756,6 +1763,42 @@ export async function resolveCliListing(
       ? { symbol: listing.key, exchange: listing.exchange }
       : { symbol: listing.symbol, exchange: saved?.metadata.exchange ?? "" },
   };
+  // A bare code no source quotes (O8A, listed in Frankfurt alone) is the listing `quote` reads it on, for every command.
+  const readElse = pair || named || index || rooted || company || hongKong || terminal || dotted || suffixed || venueRow;
+  const abroad = options.listingAbroad === false || readElse || listing.exchange || saved ? null : await readBareListingAbroad(resolved, deps);
+  return abroad ?? resolved;
+}
+
+/** A listing's code typed bare: letters and digits alone (O8A, 2222, SXR8), with no venue, suffix, pair or index mark. */
+const BARE_LISTING_CODE = /^[A-Z0-9]{1,10}$/;
+
+/**
+ * A bare code no source quotes, read on the listing `quote` reads it on, so
+ * every command asks that listing for its data and names it: O8A, which
+ * Pelican Aqua lists in Frankfurt alone, is O8A:FWB2, saying "O8A -> FWB2",
+ * where the data service answers "Not a ticker" for the bare code. As in
+ * `quote`, a word the service marks as a company's name is that company
+ * first (`serviceNamedCompany`). Null, so the symbol stays as typed, for a
+ * code with a quote of its own, whatever venue the service reads it on (AAPL;
+ * SXR8, which it reads on Xetra), for one the shipped listings know as a US
+ * stock, which costs no request, for a code several companies list (2222),
+ * which a command asks about once its own request fails, and when the quote
+ * or the search cannot answer.
+ */
+async function readBareListingAbroad(listing: CliListing, deps: ListingDeps): Promise<CliListing | null> {
+  if (!BARE_LISTING_CODE.test(listing.symbol) || deps.dataProvider.knownUsStock?.(listing.symbol)) return null;
+  const own = await loadListingQuoteAnswer(deps.dataProvider, listing);
+  // Only a source's answer that nothing lists the code: one that failed (a timeout, a refusal) says nothing of it.
+  if (own.quote || !isNoSourceAnswer(own.error)) return null;
+  try {
+    const named = listing.typed ? await serviceNamedCompany(listing.typed, deps) : null;
+    if (named) return { ...await resolveNamedListing(named, deps), typed: listing.typed };
+    const other = await quoteBareListing(listing, deps, { command: "quote", noun: "a quote" });
+    if (other?.kind !== "quoted") return null;
+    return { ...other.listing, typed: listing.typed, readAs: [listing.readAs, other.note].filter(Boolean).join(" ") };
+  } catch (error) {
+    return logFailure("cli.listing-arg", "Read a bare code on its listing abroad failed", null)(error);
+  }
 }
 
 /**
@@ -2062,7 +2105,8 @@ export async function joinCompanyNameWords<T extends { typed: string; listing: P
 
 /** The listing a company's name was read as (`named`), resolved as its key is, still saying what it was read as. */
 export async function resolveNamedListing(named: ListingArg, deps: ListingDeps): Promise<CliListing> {
-  const resolved = await resolveCliListing(named.key, null, deps);
+  // The name chose the listing: its key is never read again on another one.
+  const resolved = await resolveCliListing(named.key, null, deps, { listingAbroad: false });
   return {
     ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {},
     ...named.readFromName ? { readFromName: named.readFromName } : {}, ...named.venueFromSearch ? { venueFromSearch: named.venueFromSearch } : {},
@@ -2318,7 +2362,7 @@ export async function requireCliListing(
   exchangeOption: string | null | undefined,
   deps: ListingDeps,
   ctx: Pick<CliCommandContext, "fail">,
-  options: { ownExchangeWins?: boolean; venueSuffix?: boolean; companyWord?: boolean } = {},
+  options: { ownExchangeWins?: boolean; venueSuffix?: boolean; companyWord?: boolean; listingAbroad?: boolean } = {},
 ): Promise<CliListing> {
   try {
     return await resolveCliListing(raw, exchangeOption, deps, options);
