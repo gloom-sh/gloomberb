@@ -876,6 +876,8 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
         height={1}
         backgroundColor={colors.panel}
         scrollX={showHorizontalScrollbar}
+        scrollY={false}
+        verticalScrollbarOptions={{ visible: false }}
         focusable={false}
         onSizeChange={measureContentWidth}
       >
