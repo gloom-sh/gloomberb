@@ -248,7 +248,7 @@ export class MarketDataCoordinator {
   private readonly secContentStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retainedCachedQueries);
   private readonly articleSummaryStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retainedCachedQueries);
   private readonly retainedStores: ReadonlyArray<Pick<QueryStore<unknown>, "watch" | "release">> = [
-    this.snapshotStore, this.chartStore, this.optionsStore, this.secFilingsStore,
+    this.quoteStore, this.snapshotStore, this.chartStore, this.optionsStore, this.secFilingsStore,
     this.secDocumentsStore, this.secContentStore, this.articleSummaryStore,
   ];
   private readonly liveFxRates = new Map<string, { rate: number; observedAt: number; receivedAt: number }>();
