@@ -36,6 +36,49 @@ export interface CloudNewsStoryItemPayload {
   hasArticleText?: boolean;
 }
 
+/**
+ * A Form 4 a story about insiders trading reports, as Gloom Cloud matched it:
+ * the filing's lines of the side the story reports, by an insider it names,
+ * dated in the period it names, summed.
+ */
+export interface CloudStoryInsiderFilingPayload {
+  accession: string;
+  form: string;
+  /** YYYY-MM-DD. */
+  filedOn: string;
+  issuerCik: string;
+  issuerName: string | null;
+  ticker: string | null;
+  /** The reporting owner as filed: "STEVENS MARK A". */
+  insider: string;
+  title: string | null;
+  side: "sale" | "purchase";
+  firstTradeDate: string;
+  lastTradeDate: string;
+  lines: number;
+  shares: number;
+  value: number;
+  /** value / shares: the share-weighted average of the lines' prices. */
+  weightedPrice: number;
+  /** Under a Rule 10b5-1 plan: true, false, or null when the stored filing does not say. */
+  rule10b51: boolean | null;
+  /** The filing's index page on SEC EDGAR. */
+  url: string;
+}
+
+/** A story that reports a Form 4, as the filing's row names it. */
+export interface CloudInsiderFilingStoryPayload {
+  id: string;
+  headline: string;
+  firstPublishedAt: string;
+  lastPublishedAt: string;
+  primaryPublisher: string;
+}
+
+export interface CloudInsiderFilingStoriesResponse {
+  items: Array<{ accession: string; stories: CloudInsiderFilingStoryPayload[] }>;
+}
+
 export interface CloudNewsPayload {
   id: string;
   headline: string;
@@ -74,6 +117,8 @@ export interface CloudNewsPayload {
   entities: CloudNewsEntityPayload[];
   tickerLinks: CloudNewsTickerLinkPayload[];
   items?: CloudNewsStoryItemPayload[];
+  /** A story about insiders trading: the Form 4s it reports. Absent from other stories and older servers. */
+  insiderFilings?: CloudStoryInsiderFilingPayload[];
   /**
    * The routine notices this story stands for in a company's feed, its own first: a buy-back's daily
    * "Transaction in own shares", the monthly total voting rights. Absent from servers that list each one.

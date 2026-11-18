@@ -9,7 +9,7 @@ import {
 } from "./model";
 
 const description =
-  "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches and keyword alerts.";
+  "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches; free with a Gloom account, alerts on new hits are Pro.";
 
 function queryFromOptions(options?: PaneTemplateCreateOptions): string {
   return (options?.arg ?? options?.values?.query ?? "").trim();
@@ -37,6 +37,8 @@ export const researchSearchPlugin: GloomPlugin = {
     {
       id: RESEARCH_SEARCH_PANE_ID,
       reportFreshness: { status: "not-a-feed", basis: "search results" },
+      // Searching needs an account, not a plan: the catalog marks it Sign-in, not Pro.
+      reportRequirements: ["Free Gloom sign-in"],
       name: "Research Search",
       icon: "RS",
       shareItem: { open: true },

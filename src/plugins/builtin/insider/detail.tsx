@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
-import { DetailScrollBody, KeyValueRow, Prose } from "../../../components";
+import { ActionRow, DetailScrollBody, KeyValueRow, Prose } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import {
@@ -10,9 +10,13 @@ import {
 } from "../sec/filing-display";
 import { isAmendedInsiderFiling } from "./amendments";
 import type { InsiderReportingOwner } from "./insider-data";
-import { buildInsiderDisclosureText, insiderDisplayName, isInsiderDisclosureOnly } from "./model";
+import { OTHER_FILING_NOTES_LABEL, buildInsiderDisclosureText, insiderDisplayName, isInsiderDisclosureOnly } from "./model";
 import type { InsiderTableRow } from "./table-model";
 import { insiderToneColor } from "./table";
+import { filingStorySource, type FilingStory } from "./filing-stories";
+
+/** Heads the stories that report the transaction's filing, under its notes. */
+const STORIES_LABEL = "Stories reporting this filing";
 
 /** Every role an owner filed: the officer title, plus Director and 10% owner when the boxes add them. */
 function ownerRoles(owner: InsiderReportingOwner): string {
@@ -81,8 +85,20 @@ function detailText(row: InsiderTableRow): string {
 
 const FIELD_LABEL_WIDTH = 20;
 
-/** One Form 4 line read in full: who, the filing, every field, then remarks and footnotes. */
-export function InsiderDetail({ row, width, scrollRef }: { row: InsiderTableRow; width: number; scrollRef: RefObject<ScrollBoxRenderable | null> }) {
+/** The heading over another line's notes reads muted, as the filing's own lines above the fields do. */
+const textColor = (line: string) => (line === OTHER_FILING_NOTES_LABEL ? colors.textMuted : colors.text);
+
+/**
+ * One Form 4 line read in full: who, the filing, every field, then remarks and
+ * footnotes, and the stories that report the filing, each opening in a pane.
+ */
+export function InsiderDetail({ row, width, scrollRef, stories = [], onOpenStory }: {
+  row: InsiderTableRow;
+  width: number;
+  scrollRef: RefObject<ScrollBoxRenderable | null>;
+  stories?: readonly FilingStory[];
+  onOpenStory?: (story: FilingStory) => void;
+}) {
   const textWidth = Math.max(width - 2, 12);
   const fields = detailFields(row);
   const text = detailText(row);
@@ -114,13 +130,26 @@ export function InsiderDetail({ row, width, scrollRef }: { row: InsiderTableRow;
         {text && <Box height={1} />}
         {nativePaneChrome
           ? text.split("\n").map((line, index) => (line.trim()
-            ? <Prose key={`text-${index}`} text={line} width={textWidth} color={colors.text} figures={false} />
+            ? <Prose key={`text-${index}`} text={line} width={textWidth} color={textColor(line)} figures={false} />
             : <Text key={`text-${index}`}>{" "}</Text>))
-          : text.split("\n").flatMap((line) => wrapTextLines(line, textWidth)).map((line, index) => (
+          : text.split("\n").flatMap((line) => wrapTextLines(line, textWidth).map((wrapped) => ({ wrapped, color: textColor(line) }))).map(({ wrapped, color }, index) => (
             <Box key={`text-${index}`} height={1}>
-              <Text fg={colors.text}>{line}</Text>
+              <Text fg={color}>{wrapped}</Text>
             </Box>
           ))}
+        {stories.length > 0 && (
+          <>
+            <Box height={1} />
+            <Box height={nativePaneChrome ? undefined : 1}>
+              <Text fg={colors.textMuted}>{STORIES_LABEL}</Text>
+            </Box>
+            {stories.map((story) => (
+              <ActionRow key={story.id} label={story.headline} onPress={() => onOpenStory?.(story)}>
+                <Text fg={colors.textDim}>{filingStorySource(story)}</Text>
+              </ActionRow>
+            ))}
+          </>
+        )}
       </Box>
     </DetailScrollBody>
   );

@@ -4,7 +4,7 @@ import type { MarketNewsItem, NewsStoryItem } from "../../../../../types/news-so
 import { colors } from "../../../../../theme/colors";
 import { ArticleReader } from "../../../../../components/reader/article-reader";
 import type { ArticleBlock } from "../../../../../components/reader/article-text";
-import { ChoiceDialog, ExternalLinkText } from "../../../../../components/ui";
+import { ActionRow, ChoiceDialog, ExternalLinkText } from "../../../../../components/ui";
 import { usePaneFooter } from "../../../../../components/layout/pane/footer";
 import { t } from "../../../../../i18n";
 import { useOptionalDialog, type PromptContext } from "../../../../../ui/dialog";
@@ -13,13 +13,25 @@ import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useInlineTickers } from "../../../../../state/hooks/inline-tickers";
 import { truncateToDisplayWidth } from "../../../../../utils/format";
 import { wrapTextLines } from "../../../../../utils/text-wrap";
-import { formatDetailDate, formatDetailTime } from "../../../../../utils/datetime-format";
+import { formatDetailDate, formatDetailTime, formatShortDate } from "../../../../../utils/datetime-format";
 import { logFailure } from "../../../../../utils/log-failure";
 import { mergeNewsArticle, newsArticleRevision } from "../../../../../news/news-model";
-import { usePluginPaneState } from "../../../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../../../runtime";
 import { formatNewsCategory } from "../categories";
 import { shareItemExcerpt } from "../../../../../shares/item";
 import { usePaneShareItem } from "../../../../../shares/pane-item";
+import type { NewsInsiderFiling } from "../../../../../news/types";
+import {
+  groupInsiderFilings,
+  insiderFilingSummary,
+  insiderGroupHeading,
+  insiderGroupTotal,
+  rankStoryCoverage,
+  type InsiderFilingGroup,
+} from "./story-evidence";
+
+/** INS opens on one insider's lines of a company: the rows a story's filings are. */
+const INSIDER_TEMPLATE_ID = "insider-pane";
 
 function hasStoryItems(article: MarketNewsItem | null): boolean {
   return (article?.items?.length ?? 0) > 0;
@@ -156,10 +168,9 @@ function storyItemDate(value: Date | string): Date {
   return Number.isNaN(date.getTime()) ? new Date(0) : date;
 }
 
-function sortStoryItems(items: readonly NewsStoryItem[] | undefined): NewsStoryItem[] {
-  return [...(items ?? [])].sort((a, b) => (
-    storyItemDate(b.publishedAt).getTime() - storyItemDate(a.publishedAt).getTime()
-  ));
+/** When the newest of a story's outlets published. */
+function newestItemTime(items: readonly NewsStoryItem[]): number {
+  return items.reduce((newest, entry) => Math.max(newest, storyItemDate(entry.publishedAt).getTime()), 0);
 }
 
 const NATIVE_STRETCH_STYLE = { minWidth: 0 };
@@ -239,6 +250,56 @@ function NewsStoryTimelineItemView({
   );
 }
 
+/**
+ * One filing a story reports: its accession, a link to the filing as filed,
+ * and what its lines add up to.
+ */
+function StoryFilingView({ filing, width, nativePaneChrome }: { filing: NewsInsiderFiling; width: number; nativePaneChrome: boolean }) {
+  const filed = `filed ${formatShortDate(`${filing.filedOn}T00:00:00Z`, { utc: true })}`;
+  const label = `Form ${filing.form} ${filing.accession}`;
+  return (
+    <Box flexDirection="column" width={nativePaneChrome ? "100%" : width} style={nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined}>
+      <Box height={nativePaneChrome ? undefined : 1} flexDirection="row" flexWrap={nativePaneChrome ? "wrap" : undefined} gap={nativePaneChrome ? 1 : undefined}>
+        {filing.url
+          ? <ExternalLinkText url={filing.url} label={label} color={colors.textBright} />
+          : <Text fg={colors.textBright}>{label}</Text>}
+        <Text fg={colors.textDim}>{nativePaneChrome ? filed : `  ${filed}`}</Text>
+      </Box>
+      <Box flexDirection="column" paddingLeft={2} width={nativePaneChrome ? "100%" : undefined} style={nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined}>
+        <TextLines text={insiderFilingSummary(filing)} width={Math.max(10, width - 2)} color={colors.text} nativePaneChrome={nativePaneChrome} />
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * The Form 4s a story about insiders trading reports, each insider's together:
+ * who and where (a row that opens their lines in INS), what they add up to
+ * when there are several, then each filing.
+ */
+function StoryFilingsView({ groups, width, nativePaneChrome, onOpen }: {
+  groups: readonly InsiderFilingGroup[];
+  width: number;
+  nativePaneChrome: boolean;
+  onOpen: (group: InsiderFilingGroup) => void;
+}) {
+  return (
+    <Box flexDirection="column" gap={1} width={nativePaneChrome ? "100%" : width} style={nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined}>
+      {groups.map((group) => (
+        <Box key={group.key} flexDirection="column">
+          <ActionRow label={insiderGroupHeading(group)} onPress={() => onOpen(group)} />
+          {group.filings.length > 1
+            ? <TextLines text={insiderGroupTotal(group)} width={width} color={colors.textDim} nativePaneChrome={nativePaneChrome} />
+            : null}
+          {group.filings.map((filing) => (
+            <StoryFilingView key={filing.accession} filing={filing} width={width} nativePaneChrome={nativePaneChrome} />
+          ))}
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 export function NewsDetailView({ item, focused, width, showTitle = true }: {
   item: MarketNewsItem;
   focused: boolean;
@@ -255,14 +316,16 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
   );
   const tickerTexts = useMemo(() => tickers.map((ticker) => `$${ticker}`), [tickers]);
   const { catalog } = useInlineTickers(tickerTexts, { badgeQuotes: true });
-  const timelineItems = useMemo(() => sortStoryItems(item.items), [item.items]);
+  // The outlets that tell the story first, a wider post the story took in after them.
+  const timelineItems = useMemo(() => rankStoryCoverage(item.items, item), [item]);
+  const filingGroups = useMemo(() => groupInsiderFilings(item.insiderFilings ?? []), [item.insiderFilings]);
   const categoryLabels = useMemo(
     () => item.categories.map(formatNewsCategory).filter(Boolean).join(" \u00b7 "),
     [item.categories],
   );
   const lastUpdatedAt = new Date(Math.max(
     storyItemDate(item.publishedAt).getTime(),
-    storyItemDate(timelineItems[0]?.publishedAt ?? item.publishedAt).getTime(),
+    newestItemTime(timelineItems),
   ));
 
   // The badges and outlet links, for the keyboard: [t]icker opens a mentioned
@@ -297,6 +360,37 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
       if (url) void rendererHost.openExternal(url);
     }).catch(logFailure("news.detail-view", "Choose news coverage failed"));
   }, [coverage, dialog, rendererHost]);
+  // A filing's insider opens their lines in INS: the rows the story's numbers come from.
+  const { createPaneFromTemplate } = usePluginAppActions();
+  const openFilingRows = useCallback((group: InsiderFilingGroup) => {
+    if (!group.ticker) return;
+    createPaneFromTemplate(INSIDER_TEMPLATE_ID, { symbol: group.ticker, values: { insider: group.insider } });
+  }, [createPaneFromTemplate]);
+  const openableGroups = useMemo(() => filingGroups.filter((group) => group.ticker), [filingGroups]);
+  const chooseFilings = useCallback(() => {
+    if (openableGroups.length === 1) {
+      openFilingRows(openableGroups[0]!);
+      return;
+    }
+    if (!dialog || openableGroups.length === 0) return;
+    void dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (ctx: PromptContext<string>) => (
+        <ChoiceDialog
+          {...ctx}
+          title={t("Filings")}
+          choices={openableGroups.map((group, index) => ({
+            id: String(index),
+            label: insiderGroupHeading(group),
+            description: insiderGroupTotal(group),
+          }))}
+        />
+      ),
+    }).then((choice) => {
+      const group = choice ? openableGroups[Number(choice)] : undefined;
+      if (group) openFilingRows(group);
+    }).catch(logFailure("news.detail-view", "Choose story filing failed"));
+  }, [dialog, openFilingRows, openableGroups]);
   usePaneFooter("news-detail:story", () => ({
     order: -1,
     hints: [
@@ -306,8 +400,11 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
       ...(hasOtherCoverage && dialog
         ? [{ id: "sources", key: "s", label: "ources", onPress: chooseSource }]
         : []),
+      ...(openableGroups.length > 0
+        ? [{ id: "filings", key: "f", label: "ilings", title: "Open Filing Rows", onPress: chooseFilings }]
+        : []),
     ],
-  }), [chooseSource, dialog, hasOtherCoverage, openTickerChoice, openableTickers]);
+  }), [chooseFilings, chooseSource, dialog, hasOtherCoverage, openTickerChoice, openableGroups.length, openableTickers]);
 
   // One outlet's own headline is the story's: the timeline is worth its rows
   // once a second outlet has written about it.
@@ -325,6 +422,17 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
       focused={focused}
       width={width}
       height={0}
+      sections={filingGroups.length > 0 ? [{
+        label: "Filings",
+        content: (
+          <StoryFilingsView
+            groups={filingGroups}
+            width={coverageWidth}
+            nativePaneChrome={nativePaneChrome === true}
+            onOpen={openFilingRows}
+          />
+        ),
+      }] : undefined}
       childrenLabel={showTimeline ? "Coverage" : undefined}
     >
       {showTimeline && (

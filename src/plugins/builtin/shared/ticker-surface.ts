@@ -28,7 +28,7 @@ export interface TickerSurfacePaneTemplateOptions {
     symbol: string,
     context: PaneTemplateContext,
     options: PaneTemplateCreateOptions | undefined,
-  ) => Record<string, unknown>;
+  ) => Record<string, unknown> | undefined;
   canCreate?: (
     context: PaneTemplateContext,
     options: PaneTemplateCreateOptions | undefined,

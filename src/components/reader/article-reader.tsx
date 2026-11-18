@@ -65,6 +65,12 @@ export interface ArticleReaderProps {
   height: number;
   onNext?: (() => void) | null;
   onPrevious?: (() => void) | null;
+  /**
+   * Labelled parts after the text and before `children`, each under its own
+   * label as `children` is under `childrenLabel`: a story's filings before its
+   * coverage. Empty parts are left out.
+   */
+  sections?: ReadonlyArray<{ label: string; content: ReactNode }>;
   /** After the text, such as a story's coverage by other outlets, under `childrenLabel`. */
   children?: ReactNode;
   childrenLabel?: string;
@@ -192,6 +198,7 @@ function ArticleReaderView({
   height,
   onNext,
   onPrevious,
+  sections = [],
   children,
   childrenLabel,
 }: ArticleReaderProps) {
@@ -402,14 +409,14 @@ function ArticleReaderView({
           </ActionRow>
         </Box>
       ) : null}
-      {children ? (
-        <Box flexDirection="column" style={desktop ? { marginTop: !childrenLabel && (lead || blocks.length > 0) ? "0.8em" : 0 } : undefined}>
-          {childrenLabel ? <ReaderText text={readerLabel(childrenLabel)} geometry={geometry} color={labelColor} variant="label" /> : null}
+      {[...sections.filter((section) => section.content), ...(children ? [{ label: childrenLabel, content: children }] : [])].map((section, index) => (
+        <Box key={`${section.label ?? ""}:${index}`} flexDirection="column" style={desktop ? { marginTop: !section.label && (lead || blocks.length > 0) ? "0.8em" : 0 } : undefined}>
+          {section.label ? <ReaderText text={readerLabel(section.label)} geometry={geometry} color={labelColor} variant="label" /> : null}
           <Box flexDirection="column" style={desktop ? { fontSize: READER_APP_FONT, lineHeight: "normal" } : undefined}>
-            {children}
+            {section.content}
           </Box>
         </Box>
-      ) : null}
+      ))}
     </Box>
   );
 

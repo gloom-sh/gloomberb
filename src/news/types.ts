@@ -23,6 +23,32 @@ export interface NewsStoryItem {
   hasArticleText?: boolean;
 }
 
+/**
+ * A Form 4 a story about insiders trading reports: one filing's lines of the
+ * side the story reports, by an insider it names, dated in the period it names,
+ * summed as filed.
+ */
+export interface NewsInsiderFiling {
+  accession: string;
+  form: string;
+  /** YYYY-MM-DD. */
+  filedOn: string;
+  issuerName: string | null;
+  ticker: string | null;
+  /** The reporting owner as filed: "STEVENS MARK A". */
+  insider: string;
+  title: string | null;
+  side: "sale" | "purchase";
+  firstTradeDate: string;
+  lastTradeDate: string;
+  lines: number;
+  shares: number;
+  value: number;
+  weightedPrice: number;
+  rule10b51: boolean | null;
+  url: string;
+}
+
 export interface NewsArticle {
   id: string;
   title: string;
@@ -44,6 +70,8 @@ export interface NewsArticle {
   items?: NewsStoryItem[];
   /** The routine notices the story stands for in a company's feed (a buy-back's daily notices), its own included. */
   routine?: NewsRoutineNotices;
+  /** A story about insiders trading: the Form 4s it reports, as Gloom Cloud matched them. */
+  insiderFilings?: NewsInsiderFiling[];
   /**
    * The text this story was found by, when it stands in for a coin pair's feed
    * no story is filed under: the stories that mention "bitcoin" for BTC-USD.

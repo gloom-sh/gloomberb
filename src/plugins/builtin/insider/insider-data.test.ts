@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseForm4Xml } from "./insider-data";
-import { buildInsiderRows, buildInsiderSummary, parseInsiderFiling, securityClassKey } from "./model";
+import { OTHER_FILING_NOTES_LABEL, buildInsiderDisclosureText, buildInsiderRows, buildInsiderSummary, buildInsiderSummaryFigures, parseInsiderFiling, securityClassKey } from "./model";
+import { buildInsiderTransactionDetailBody } from "../sec/filing-display";
 import type { SecFilingItem } from "../../../types/data-provider";
 
 const owner = `<reportingOwner><reportingOwnerId><rptOwnerName>OWNER &amp; CO</rptOwnerName><rptOwnerCik>123</rptOwnerCik></reportingOwnerId><reportingOwnerRelationship><officerTitle>CEO</officerTitle></reportingOwnerRelationship></reportingOwner>`;
@@ -54,7 +55,7 @@ describe("Form 4 transaction parsing", () => {
     expect(parseForm4Xml(`<ownershipDocument>${director}${transaction("S", "Common Stock", "10", "5")}</ownershipDocument>`)[0]?.rule10b51).toBeUndefined();
     const exit = parseInsiderFiling(filing, `<ownershipDocument>${owner}<remarks>No longer subject to Section 16.</remarks></ownershipDocument>`);
     expect(buildInsiderRows(exit)[0]).toMatchObject({ status: "disclosure", remarks: "No longer subject to Section 16." });
-    expect(buildInsiderSummary(exit, new Date("2026-09-10").getTime())).toBe("Loaded filings, last 90 days: no parsed non-derivative buys/sales.");
+    expect(buildInsiderSummary(exit, new Date("2026-09-10").getTime())).toBe("1 loaded filing, trades dated 2026-06-12 to 2026-09-10: no parsed non-derivative buys/sales.");
   });
 
   test("summary excludes exercises and gifts, separates securities, and exposes missing sale prices", () => {
@@ -65,7 +66,7 @@ describe("Form 4 transaction parsing", () => {
       ${transaction("S", "Class A", "6000", "1", "2025-01-01")}
       </ownershipDocument>`;
     const summary = buildInsiderSummary(parseInsiderFiling(filing, xml), new Date("2026-09-10").getTime());
-    expect(summary).toBe("Loaded filings, last 90 days: Class A: Sold 125 shares (value unavailable) | Class B: Sold 50 shares (1,000.00 USD)");
+    expect(summary).toBe("1 loaded filing, trades dated 2026-06-12 to 2026-09-10: Class A: Sold 125 shares (value unavailable) | Class B: Sold 50 shares (1,000.00 USD)");
   });
 
   test("summary totals every spelling of one class together, under the spelling most of its shares were filed as", () => {
@@ -74,9 +75,50 @@ describe("Form 4 transaction parsing", () => {
       ${transaction("S", "COMMON STOCK, $0.001 PAR VALUE", "20", "10")}${transaction("S", "Common Stock, par value $.01 per share", "1", "10")}
       </ownershipDocument>`;
     expect(buildInsiderSummary(parseInsiderFiling(filing, xml), new Date("2026-09-10").getTime()))
-      .toBe("Loaded filings, last 90 days: Common Stock: Sold 4.3k shares (43,210.00 USD)");
+      .toBe("1 loaded filing, trades dated 2026-06-12 to 2026-09-10: Common Stock: Sold 4.3k shares (43,210.00 USD)");
     const keys = (titles: string[]) => new Set(titles.map(securityClassKey)).size;
     expect(keys(["Class A Common Stock", "Common Stock, Class A", "class a common stock ($.0001 par value)"])).toBe(1);
     expect(keys(["Class A Common Stock", "Class B Common Stock", "Common Stock", "Series A Preferred Stock", "Series B Preferred Stock"])).toBe(5);
+  });
+
+  test("a line's detail reads its price as filed and its own notes first, before the filing's other lines' notes", () => {
+    // A CFO's tax withholding (F1) and 10b5-1 sale at a weighted average (F3, F4) on one Form 4, as NVDA's filed 2026-09-18.
+    const line = (code: string, price: string, notes: string[]) => `<nonDerivativeTransaction>
+      <securityTitle><value>Common</value></securityTitle>
+      <transactionDate><value>2026-09-17</value></transactionDate>
+      <transactionCoding><transactionCode>${code}</transactionCode></transactionCoding>
+      <transactionAmounts><transactionShares><value>1356000</value></transactionShares><transactionPricePerShare><value>${price}</value>${notes.map((id) => `<footnoteId id="${id}"/>`).join("")}</transactionPricePerShare><transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode></transactionAmounts>
+      <postTransactionAmounts><sharesOwnedFollowingTransaction><value>800021</value><footnoteId id="F2"/></sharesOwnedFollowingTransaction></postTransactionAmounts>
+      <ownershipNature><directOrIndirectOwnership><value>D</value></directOrIndirectOwnership></ownershipNature>
+    </nonDerivativeTransaction>`;
+    const xml = `<ownershipDocument>${owner}<aff10b5One>1</aff10b5One><nonDerivativeTable>
+      ${line("F", "212.17", ["F1"])}${line("S", "219.7219", ["F3", "F4"])}
+      </nonDerivativeTable><footnotes>
+      <footnote id="F1">Shares withheld to satisfy taxes.</footnote>
+      <footnote id="F2">Includes shares from vested units.</footnote>
+      <footnote id="F3">Effected under a Rule 10b5-1 trading plan.</footnote>
+      <footnote id="F4">Weighted average sales price; sold from $219.42 to $219.865.</footnote>
+      </footnotes><remarks>Exhibit 24, power of attorney.</remarks></ownershipDocument>`;
+    const [tax, sale] = parseInsiderFiling(filing, xml);
+    expect(buildInsiderTransactionDetailBody(sale!.transaction!)).toContain("Price/Share: $219.7219");
+    expect(buildInsiderTransactionDetailBody(tax!.transaction!)).toContain("Price/Share: $212.17");
+    expect(buildInsiderDisclosureText(sale!).split("\n\n")).toEqual([
+      "F3: Effected under a Rule 10b5-1 trading plan.",
+      "F4: Weighted average sales price; sold from $219.42 to $219.865.",
+      "F2: Includes shares from vested units.",
+      "Remarks: Exhibit 24, power of attorney.",
+      OTHER_FILING_NOTES_LABEL,
+      "F1: Shares withheld to satisfy taxes.",
+    ]);
+    // The filing as a whole (a 4/A's note under its rows) keeps the remarks first and every note in order.
+    expect(buildInsiderDisclosureText(sale!, { byLine: false }).split("\n\n")[0]).toBe("Remarks: Exhibit 24, power of attorney.");
+  });
+
+  test("the 90-day totals say the trade dates they count and how many loaded filings they read", () => {
+    const xml = `<ownershipDocument>${owner}${transaction("S", "Common Stock", "100", "10", "2026-06-12")}${transaction("S", "Common Stock", "7", "10", "2026-06-11")}</ownershipDocument>`;
+    // 90 days before 2026-09-10 12:00 UTC is 2026-06-12 12:00: a trade dated 12 Jun (its midnight) is before it, 13 Jun the first day in.
+    const figures = buildInsiderSummaryFigures(parseInsiderFiling(filing, xml), Date.parse("2026-09-10T12:00:00Z"));
+    expect(figures).toMatchObject({ window: { from: "2026-06-13", to: "2026-09-10" }, filings: 1, totals: [] });
+    expect(buildInsiderSummaryFigures(parseInsiderFiling(filing, xml), Date.parse("2026-09-10T00:00:00Z"))?.totals[0]).toMatchObject({ shares: 100 });
   });
 });
