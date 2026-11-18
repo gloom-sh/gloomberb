@@ -175,8 +175,48 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
 
-      - name: Install the pinned WebKit build and system libraries
-        run: bun node_modules/playwright-core/cli.js install --with-deps webkit
+      - id: playwright
+        name: Read the pinned Playwright version
+        run: |
+          version="$(node -p 'require("playwright-core/package.json").version')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the pinned Playwright browser files
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-ubuntu-24.04-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install WebKit system libraries (apt)
+        timeout-minutes: 5
+        run: |
+          mirror_list=/etc/apt/apt-mirrors.txt
+          if [[ -f "$mirror_list" ]] && grep -q 'us-east-2\.ec2\.archive\.ubuntu\.com' "$mirror_list"; then
+            echo "Using Ubuntu's primary archive instead of the slow regional mirror."
+            sudo -n sed -Ei 's|https?://us-east-2\.ec2\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|' "$mirror_list"
+          fi
+
+          bun_path="$(command -v bun)"
+          for attempt in 1 2; do
+            sudo -n timeout -k 10s 120s "$bun_path" "$PWD/node_modules/playwright-core/cli.js" install-deps webkit && exit 0
+            status=$?
+            if [[ "$attempt" == 1 ]]; then
+              echo "::warning::WebKit apt dependencies failed to install (exit $status); retrying once."
+            fi
+          done
+          echo "::error::WebKit apt dependencies failed to install after two attempts (last exit $status)."
+          exit "$status"
+
+      - name: Install the pinned WebKit build
+        timeout-minutes: 3
+        env:
+          DEBUG: pw:install
+        run: |
+          timeout -k 10s 150s bun node_modules/playwright-core/cli.js install webkit || {
+            status=$?
+            echo "::error::Playwright WebKit browser install failed (exit $status)."
+            exit "$status"
+          }
 
       - name: Paint chat through mount and channel transitions in three panes
         run: |
