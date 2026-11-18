@@ -24,8 +24,8 @@ export interface FilingStory {
 type StoriesClient = Pick<typeof apiClient, "getCloudInsiderFilingStories">;
 
 const ACCESSION = /^\d{10}-\d{2}-\d{6}$/;
-/** As many filings as Gloom Cloud reads in one request: a page of SEC or INS rows. */
-const BATCH = 40;
+/** As many filings as Gloom Cloud reads in one request; a longer list is asked in several. */
+const BATCH = 20;
 /** A filing's stories, by accession, for a few minutes: an INS or SEC pane asks again as its rows redraw. */
 const cache = createTtlCache<FilingStory[]>({ ttlMs: 5 * 60_000, maxEntries: 500 });
 
