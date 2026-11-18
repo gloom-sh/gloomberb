@@ -33,9 +33,9 @@ const publicCompanies = (slug: string) => ({ key: ["buildout", "anonymous", "com
 
 function openingBoard(publicAccess: boolean, activeTab: BuildoutTabId, openedListSlug: string | null, themeSlug: string | null): BuildoutLoadState {
   if (!publicAccess) return { status: "loading" };
-  const lists = readSavedCopy<BuildoutReady["lists"]>(PUBLIC_LISTS);
-  const sites = readSavedCopy<BuildoutReady["sites"]>(PUBLIC_SITES);
-  const intel = readSavedCopy<BuildoutReady["intel"]>(PUBLIC_INTEL);
+  const lists = activeTab === "themes" || activeTab === "companies" ? readSavedCopy<BuildoutReady["lists"]>(PUBLIC_LISTS) : null;
+  const sites = activeTab === "sites" ? readSavedCopy<BuildoutReady["sites"]>(PUBLIC_SITES) : null;
+  const intel = activeTab === "intel" ? readSavedCopy<BuildoutReady["intel"]>(PUBLIC_INTEL) : null;
   const saved = activeTab === "sites" ? sites : activeTab === "intel" ? intel : lists;
   if (!saved) return { status: "loading" };
   const list = activeTab === "themes" ? resolveBoardTheme(boardThemes(lists?.value ?? []), themeSlug)
@@ -76,13 +76,15 @@ export function useBuildoutDataRuntime({
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
   const loadingPageKeysRef = useRef<Set<string>>(new Set());
-  const [owner, setOwner] = useState(scope);
+  const [owner, setOwner] = useState({ scope, tab: activeTab });
   const [current, setState] = useState<BuildoutLoadState>(() => openingBoard(publicAccess, activeTab, selectedListSlug, themeSlug));
-  if (owner !== scope) {
-    setOwner(scope);
-    setState(openingBoard(publicAccess, activeTab, selectedListSlug, themeSlug));
+  if (owner.scope !== scope || owner.tab !== activeTab) {
+    setOwner({ scope, tab: activeTab });
+    if (owner.scope !== scope || current.status === "loading" || (current.status === "ready" && current.savedAt != null)) {
+      setState(openingBoard(publicAccess, activeTab, selectedListSlug, themeSlug));
+    }
   }
-  const state: BuildoutLoadState = owner === scope ? current : { status: "loading" };
+  const state: BuildoutLoadState = owner.scope === scope ? current : { status: "loading" };
   const openedList = state.status === "ready" ? state.lists.find((entry) => entry.slug === selectedListSlug) ?? null : null;
   const boardList = state.status === "ready" && activeTab === "themes" ? resolveBoardTheme(boardThemes(state.lists), themeSlug) : openedList;
   const savedCompanies = state.status === "ready" && boardList?.slug === state.companies.listSlug ? state.companies : null;

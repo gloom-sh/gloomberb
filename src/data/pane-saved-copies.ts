@@ -1,4 +1,6 @@
+import { gzipSync, gunzipSync } from "fflate";
 import type { AppResourceStorePort } from "../core/app-service-ports";
+import { decodeBase64, encodeBase64 } from "../utils/http-proxy-response";
 import { logFailure } from "../utils/log-failure";
 import { WARM_RESOURCE_BUDGET } from "./durable-resources";
 
@@ -123,12 +125,36 @@ function decodeSnapshot(value: unknown): unknown {
   return decode(value);
 }
 
+const COMPRESSED = "gzip:";
+const MIN_COMPRESSED_LENGTH = 16 * 1024;
+const MAX_INFLATED_LENGTH = 32 * 1024 * 1024;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function packSnapshot(value: unknown): string {
+  const json = JSON.stringify(encodeSnapshot(value));
+  if (json.length < MIN_COMPRESSED_LENGTH || json.length > MAX_INFLATED_LENGTH) return json;
+  const bytes = encoder.encode(json);
+  if (bytes.length > MAX_INFLATED_LENGTH) return json;
+  const packed = COMPRESSED + encodeBase64(gzipSync(bytes, { level: 1, mtime: 0 }));
+  return packed.length < json.length ? packed : json;
+}
+
+function unpackSnapshot(value: string): unknown {
+  if (!value.startsWith(COMPRESSED)) return decodeSnapshot(JSON.parse(value));
+  const bytes = decodeBase64(value.slice(COMPRESSED.length));
+  if (!bytes || bytes.length < 18) throw new NotPlainData();
+  const length = new DataView(bytes.buffer, bytes.byteOffset + bytes.length - 4, 4).getUint32(0, true);
+  if (length > MAX_INFLATED_LENGTH) throw new NotPlainData();
+  return decodeSnapshot(JSON.parse(decoder.decode(gunzipSync(bytes))));
+}
+
 /** The copy saved under `key`, of any age; null when there is none, or it is of another version. */
 export function readSavedCopy<T>(key: SavedCopyKey): SavedCopy<T> | null {
   if (!store) return null;
   try {
     const record = store.get<string>(resourceKey(savedCopyId(key)), { schemaVersion: key.version ?? 1, allowExpired: true });
-    return record ? { value: decodeSnapshot(JSON.parse(record.value)) as T, fetchedAt: record.fetchedAt } : null;
+    return record ? { value: unpackSnapshot(record.value) as T, fetchedAt: record.fetchedAt } : null;
   } catch (error) {
     logFailure("data.pane-saved-copies", "Reading a saved copy failed")(error);
     return null;
@@ -152,7 +178,7 @@ export function writeSavedCopy(key: SavedCopyKey, value: unknown, fetchedAt = Da
   const now = Date.now();
   if (last !== undefined && now - last >= 0 && now - last < writeIntervalMs) return;
   try {
-    store.set(resourceKey(id), JSON.stringify(encodeSnapshot(value)), { schemaVersion: key.version ?? 1, cachePolicy: { staleMs: 0, expireMs: RETAIN_UNTIL - fetchedAt }, fetchedAt });
+    store.set(resourceKey(id), packSnapshot(value), { schemaVersion: key.version ?? 1, cachePolicy: { staleMs: 0, expireMs: RETAIN_UNTIL - fetchedAt }, fetchedAt });
     if (writes) {
       writes.delete(id);
       writes.set(id, now);

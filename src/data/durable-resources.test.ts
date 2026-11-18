@@ -18,7 +18,7 @@ test("view writes reach SQLite without a shutdown flush and reopen with their or
   const store = new WriteThroughResourceStore([], sink, () => true);
   const previous = setSavedCopyStore(store);
   const key = { key: ["prices", "XYZ", "NYSE"], version: 2 };
-  const last = new Map([["XYZ", { price: 7, asOf: new Date("2022-01-03T20:00:00Z") }]]);
+  const last = new Map([["XYZ", { price: 7, asOf: new Date("2022-01-03T20:00:00Z"), history: "歷史".repeat(9_000) }]]);
   const fetchedAt = Date.UTC(2022, 0, 3, 20, 1);
   try {
     writeSavedCopy(key, new Map([["XYZ", { price: 3, asOf: new Date(0) }]]), fetchedAt - 10);
