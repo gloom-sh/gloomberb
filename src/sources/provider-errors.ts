@@ -137,8 +137,15 @@ export function isNoProviderMessage(message: string): boolean {
  * data, since asked again in a moment it may. "for SYMBOL" closes the first
  * sentence, so a table's note can name several symbols in front of it.
  */
-export function serviceDidNotAnswerMessage(symbol?: string): string {
-  return `Gloom's data service did not answer${symbol ? ` for ${symbol}` : ""}. Try again in a moment.`;
+export function serviceDidNotAnswerMessage(symbol?: string, failure?: unknown): string {
+  // A source the service reads that took too long (TIMEOUT) is said as a timeout, never as no source for the symbol.
+  const then = serviceSourceTimedOut(failure) ? "Its source timed out; try again in a moment." : "Try again in a moment.";
+  return `Gloom's data service did not answer${symbol ? ` for ${symbol}` : ""}. ${then}`;
+}
+
+/** Whether the data service answered that the source it reads timed out (reason TIMEOUT), asked twice. */
+function serviceSourceTimedOut(failure: unknown): boolean {
+  return failure instanceof Error && failure.message.trim() === "TIMEOUT";
 }
 
 /** The router's generic answer that no provider served a request, holding the failure behind it when a provider failed rather than missed. */
@@ -165,7 +172,7 @@ export function noProviderError(message: string, note: ProviderMissNote | undefi
     return note!.failure instanceof DataServiceUnreachableError ? note!.failure : new DataServiceUnreachableError(note!.failure);
   }
   if (note?.failure instanceof OperationTimeoutError) return new NoProviderError(note.failure.message, note.failure);
-  if (wasAskedTwice(note?.failure)) return new NoProviderError(serviceDidNotAnswerMessage(symbol), note!.failure);
+  if (wasAskedTwice(note?.failure)) return new NoProviderError(serviceDidNotAnswerMessage(symbol, note!.failure), note!.failure);
   if (note?.failure instanceof ApiRequestError && note.failure.status === 429) {
     return new NoProviderError(rateLimitedMessage(symbol, note.failure.retryAfterMs), note.failure);
   }

@@ -27,6 +27,8 @@ export class DataServiceUnreachableError extends Error {
 const NO_CONNECTION_CODES = new Set([
   "ConnectionRefused",
   "FailedToOpenSocket",
+  // Bun 1.4's refusal of a proxy to open a tunnel to the server (Bun 1.3 hands back the proxy's 502 instead).
+  "ERR_PROXY_TUNNEL",
   "ECONNREFUSED",
   "ENOTFOUND",
   "EAI_AGAIN",

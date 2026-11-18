@@ -12,7 +12,7 @@ import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-
 import { bodyLineInk, FigureText, figureLineInk, useFigureCells } from "../../../components/ui/figure";
 import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
-import { useFxRateObservations, useTickerChangeNote, type TickerSnapshotState } from "../../../market-data/hooks";
+import { useChartQueries, useFxRateObservations, useResolvedEntryValue, useTickerChangeNote, type TickerSnapshotState } from "../../../market-data/hooks";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { priceSeriesUnit } from "../../../market-data/market/index-level";
 import {
@@ -25,7 +25,9 @@ import {
   quoteSessionColor,
   quoteSessionLabel,
 } from "../../../market-data/market/status";
-import { appendQuoteToPriceReturnHistory, buildPriceReturnFields, priceReturnIntegrityNotice } from "../../../market-data/performance";
+import { buildPriceReturnFields, headlinePriceReturnEnd, priceReturnDailyWindow, priceReturnIntegrityNotice } from "../../../market-data/performance";
+import type { ChartRequest } from "../../../market-data/request-types";
+import { buildChartKey } from "../../../market-data/selectors";
 import { changeBasisLabel, changeBasisNote, closeDayLabel, futuresQuoteFromSettle, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
 import { asOfClock } from "../../../market-data/quotes/time";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -44,7 +46,8 @@ import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import {
-  appTtmRate, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate, ttmConversionNote, withFinancialEnterpriseValue,
+  appTtmRate, baseCurrencyFiguresNote, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate,
+  ttmConversionNote, withFinancialEnterpriseValue,
 } from "../../../utils/fundamentals";
 import { servedRatesNotMeaningful } from "../../../utils/served-rates";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
@@ -269,6 +272,16 @@ function ResolvedOverviewTab({
   const unknownHistoryBasis = hasUnknownBondHistoryBasis(quote, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType);
   const historyQuote = unknownHistoryBasis ? undefined : quote;
   const chartHistory = appendLiveQuotePoint(financials?.priceHistory ?? [], historyQuote);
+  // Five years of daily closes, which the Price Return strip measures each horizon on: the chart's bars are weekly.
+  const returnInstrument = useMemo(() => instrumentFromTicker(ticker), [ticker]);
+  const returnWindowDay = new Date().toISOString().slice(0, 10);
+  const dailyReturnsRequest = useMemo<ChartRequest | null>(() => {
+    if (!returnInstrument || unknownHistoryBasis) return null;
+    const { start, end } = priceReturnDailyWindow(Date.parse(`${returnWindowDay}T12:00:00Z`));
+    return { instrument: returnInstrument, bufferRange: "5Y", granularity: "detail", barSize: "1d", startDate: start, endDate: end };
+  }, [returnInstrument, returnWindowDay, unknownHistoryBasis]);
+  const dailyReturnEntries = useChartQueries(dailyReturnsRequest ? [dailyReturnsRequest] : []);
+  const dailyReturnBars = useResolvedEntryValue(dailyReturnsRequest ? dailyReturnEntries.get(buildChartKey(dailyReturnsRequest)) ?? null : null);
   const chartDelta = (chartHistory.at(-1)?.close ?? 0) - (chartHistory[0]?.close ?? 0);
   const chartTimeZone = resolveExchangeTimeZone(
     ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName,
@@ -283,10 +296,14 @@ function ResolvedOverviewTab({
     panelId: "price",
     timeBasis: chartTimeZone ? { kind: "market", timeZone: chartTimeZone } : undefined,
   });
-  // Bars and the quote are dated on the listing's clock.
+  // Each horizon runs from the daily close on its start date to the headline's close, as CMP and `history` measure
+  // it; the chart's weekly bars stand in until the daily ones are in. Bars and the quote are dated on the listing's clock.
+  const returnVenue = ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
   const performanceFields = buildPriceReturnFields(
-    appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], historyQuote),
-    ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined,
+    dailyReturnBars?.length ? dailyReturnBars : financials?.priceHistory ?? [],
+    returnVenue,
+    undefined,
+    historyQuote ? headlinePriceReturnEnd(historyQuote, returnVenue) : null,
   );
   // Years of history from a few dollars to hundreds read on a log axis, the Chart tab's own, so the early ones do not lie flat.
   const autoChartScale = autoOverviewChartScale(priceSeries.points, { rate: isYieldIndexSymbol(ticker.metadata.ticker) });
@@ -310,6 +327,8 @@ function ResolvedOverviewTab({
   // A converted TTM block names what it was converted from, at the pane's rate and its time.
   const ttmNote = [shownFundamentals?.revenue, shownFundamentals?.netIncome, shownFundamentals?.freeCashFlow].some((value) => value != null)
     ? ttmConversionNote(shownFundamentals) : undefined;
+  // A cap shown in the base currency too (7.80T ARS, 5.03B USD) says at what rate, and when it was read.
+  const capRateNote = capitalization ? baseCurrencyFiguresNote(capitalization.currency, baseCurrency, fxObservations) : undefined;
   // FB lists a fund now, and Meta trades as META: said for someone who typed FB meaning the company, as `quote FB` says it.
   const changeNote = useTickerChangeNote(ticker.metadata.ticker, ticker, quote);
   const returnIntegrityNotice = priceReturnIntegrityNotice(performanceFields);
@@ -326,6 +345,7 @@ function ResolvedOverviewTab({
       ...(hiddenOnLog > 0 ? [logScaleHiddenWarning(priceSeries.label, hiddenOnLog)] : []),
       ...(enterpriseValueNote ? [enterpriseValueNote] : []),
       ...(ttmNote ? [ttmNote] : []),
+      ...(capRateNote ? [capRateNote] : []),
       ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live
         ? [`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`] : []),
     ],

@@ -2,7 +2,8 @@ import type { PricePoint, Quote } from "../types/financials";
 import { CONTRADICTORY_PRICES, pricePointCloseCopied, pricePointIntegrity } from "../utils/price-history-integrity";
 import { calendarMonthsBefore } from "../utils/calendar-date";
 import { formatShortDate } from "../utils/datetime-format";
-import { barSessionDay, isReturnPeriod, periodBaseDay, periodBaseIndex } from "./market/period-return";
+import { barCloseDay, barSessionDay, isReturnPeriod, periodBaseDay, periodBaseIndex } from "./market/period-return";
+import { getRegularSessionDisplay, headlineCloseDate } from "./market/status";
 
 export interface PriceReturnHorizon {
   id: string;
@@ -18,6 +19,28 @@ export interface PriceReturnField {
   unavailableReason?: "inconsistent-ohlc";
   /** With `inconsistent-ohlc`: the session day of the end bar (the base or the latest) whose prices contradict each other. */
   inconsistentDay?: string;
+  /** The day of the close the return is measured from, `YYYY-MM-DD`: the last close on or before the period's start date. */
+  baseDay?: string;
+}
+
+const DAILY_WINDOW_LEAD_DAYS = 21;
+
+/**
+ * The daily closes a Price Return strip is measured on: five years and the
+ * three weeks before them, so 5Y has the close on its start date (a "5Y"
+ * range starts the day after it), to the end of today in UTC, so a day keeps
+ * one request.
+ */
+export function priceReturnDailyWindow(now = Date.now()): { start: Date; end: Date } {
+  const today = new Date(Math.floor(now / 86_400_000) * 86_400_000);
+  const start = new Date(Date.UTC(today.getUTCFullYear() - 5, today.getUTCMonth(), today.getUTCDate() - DAILY_WINDOW_LEAD_DAYS));
+  return { start, end: new Date(today.getTime() + 86_400_000) };
+}
+
+/** The price a strip's returns run to, and the session day it is from. */
+export interface PriceReturnEnd {
+  day: string;
+  close: number;
 }
 
 export const PRICE_RETURN_HORIZONS: PriceReturnHorizon[] = [
@@ -103,14 +126,32 @@ function isInconsistent(point: PricePoint): boolean {
   return inconsistent;
 }
 
+/**
+ * The price a quote's returns run to: its headline, the regular session's
+ * price, which stops at the close, never an after-hours or pre-market print
+ * (GGAL's 1Y ran to the 29.08 after-hours print beside its 28.53 close). Dated
+ * by the session that close is from, or while it trades by the quote's time
+ * on the venue's clock. Null without a price.
+ */
+export function headlinePriceReturnEnd(quote: Quote | null | undefined, venue?: string): PriceReturnEnd | null {
+  const close = getRegularSessionDisplay(quote)?.price;
+  if (!quote || close == null || !Number.isFinite(close)) return null;
+  // A time that is no date (a source's unknown timestamp) dates nothing.
+  const timed = Number.isFinite(new Date(quote.lastUpdated).getTime());
+  const day = headlineCloseDate(quote) ?? (timed ? barSessionDay(quote.lastUpdated, venue) : null);
+  return day ? { day, close } : null;
+}
+
 export function appendQuoteToPriceReturnHistory(
   points: readonly PricePoint[],
-  quote: Pick<Quote, "price" | "lastUpdated"> | null | undefined,
+  quote: Quote | null | undefined,
 ): readonly PricePoint[] {
   const history = normalizePriceReturnHistory(points);
   if (!quote || !Number.isFinite(quote.price) || !Number.isFinite(quote.lastUpdated)) {
     return history;
   }
+  // The headline price, never an extended-hours print.
+  const price = getRegularSessionDisplay(quote)?.price ?? quote.price;
 
   const quoteDate = new Date(quote.lastUpdated);
   if (!Number.isFinite(quoteDate.getTime())) return history;
@@ -122,7 +163,7 @@ export function appendQuoteToPriceReturnHistory(
     ...history,
     {
       date: quoteDate,
-      close: quote.price,
+      close: price,
     },
   ];
   normalizedArrays.add(withQuote);
@@ -142,46 +183,64 @@ export function computePriceReturnForHorizon(
   horizon: PriceReturnHorizon,
   venue?: string,
 ): number | null {
-  return priceReturnForHorizon(points, horizon, venue).value;
+  return buildPriceReturnFields(points, venue, [horizon])[0]?.value ?? null;
 }
 
-function priceReturnForHorizon(
-  points: readonly PricePoint[],
-  horizon: PriceReturnHorizon,
-  venue: string | undefined,
-): Pick<PriceReturnField, "value" | "unavailableReason"> {
-  const history = normalizePriceReturnHistory(points);
-  return priceReturnFromHistory(history, sessionDays(history, venue), horizon);
+const DAY_MS = 86_400_000;
+
+/**
+ * The bar size of a history read as returns: weekly or monthly bars close on
+ * the last day of their period (barCloseDay), which a period's base is held
+ * against, not the Monday they are dated by. Undefined for daily bars, and for
+ * a short or irregular history, which is read by its dates.
+ */
+function barInterval(history: readonly PricePoint[]): "1wk" | "1mo" | undefined {
+  if (history.length < 4) return undefined;
+  const gaps = history.slice(1).map((point, index) => (point.date.getTime() - history[index]!.date.getTime()) / DAY_MS);
+  // Most bars a week or a month apart, a holiday's week or a quote appended to them aside; a sparse history is read as dated.
+  const share = (low: number, high: number) => gaps.filter((gap) => gap >= low && gap <= high).length / gaps.length;
+  return share(5, 9) >= 0.8 ? "1wk" : share(26, 33) >= 0.8 ? "1mo" : undefined;
 }
 
-/** `history` normalized, `days` its bars' session days. */
+/**
+ * `history` normalized, `days` the day each bar's close is from. A period
+ * runs from the last close on or before its start date (periodBaseDay of the
+ * end's day, as every period return is measured) to `end`, the headline's
+ * price when given, else the newest close. No gap limit: the overview's
+ * history can be sparse, and its base is whatever close it holds on or
+ * before then.
+ */
 function priceReturnFromHistory(
   history: readonly PricePoint[],
   days: readonly string[],
   horizon: PriceReturnHorizon,
-): Pick<PriceReturnField, "value" | "unavailableReason" | "inconsistentDay"> {
+  end: PriceReturnEnd | null,
+): Pick<PriceReturnField, "value" | "unavailableReason" | "inconsistentDay" | "baseDay"> {
   const inconsistentAt = (index: number) => ({ value: null, unavailableReason: "inconsistent-ohlc" as const, inconsistentDay: days[index]! });
-  if (history.length < 2) {
+  const last = history.at(-1);
+  const final = end ?? (last ? { day: days.at(-1)!, close: last.close } : null);
+  if (!final || history.length < (end ? 1 : 2)) {
     const index = history.findIndex(isInconsistent);
     return index < 0 ? { value: null } : inconsistentAt(index);
   }
-
-  const latest = history.at(-1)!;
   // The close on or before the same date a horizon earlier, as every period return is measured. No gap
   // limit: the overview's history can be sparse, and its base is whatever close it holds on or before then.
   // Each bar and the quote by its session day: a JPX bar stamped 00:00 JST, or a quote after a New York close, is not the UTC date's.
-  const baseDay = horizonBaseDay(days.at(-1)!, horizon);
-  const baseIndex = periodBaseIndex(days, baseDay, Number.POSITIVE_INFINITY);
+  const baseDay = horizonBaseDay(final.day, horizon);
+  // The end's own close is never its base.
+  const before = end ? days.length : days.length - 1;
+  const baseIndex = periodBaseIndex(days.slice(0, before), baseDay, Number.POSITIVE_INFINITY);
   const baseline = baseIndex < 0 ? null : history[baseIndex]!;
 
-  // A price return reads two closes, the base's and the latest's. A bar between them whose prices contradict each
+  // A price return reads two closes, the base's and the end's. A bar between them whose prices contradict each
   // other changes neither, so only an end bar's contradiction leaves the return blank (as the sector board reads its
-  // returns): 3698:HKEX's 3Y and 5Y read blank for one bad bar inside the five years before.
-  if (isInconsistent(latest)) return inconsistentAt(history.length - 1);
+  // returns): 3698:HKEX's 3Y and 5Y read blank for one bad bar inside the five years before. A headline price given
+  // as the end is no bar.
+  if (!end && isInconsistent(last!)) return inconsistentAt(history.length - 1);
   if (baseline && isInconsistent(baseline)) return inconsistentAt(baseIndex);
   if (!baseline || !Number.isFinite(baseline.close) || baseline.close === 0) return { value: null };
-  if (!Number.isFinite(latest.close)) return { value: null };
-  return { value: (latest.close - baseline.close) / baseline.close };
+  if (!Number.isFinite(final.close)) return { value: null };
+  return { value: (final.close - baseline.close) / baseline.close, baseDay: days[baseIndex]! };
 }
 
 /** "1M", "1M and 3M", "1M, 3M and 1Y". */
@@ -202,17 +261,27 @@ export function priceReturnIntegrityNotice(fields: readonly PriceReturnField[]):
   return `${listed(blank.map((field) => field.label))} ${blank.length === 1 ? "return" : "returns"} left blank: ${CONTRADICTORY_PRICES}${on}.`;
 }
 
+/**
+ * Each horizon's return over `points`, from the close on or before its start
+ * date to `end` (headlinePriceReturnEnd), else to the newest close. Daily
+ * bars give each base the close of that day; weekly or monthly ones the last
+ * close of a period ending on or before it. Each field names its base close's
+ * day.
+ */
 export function buildPriceReturnFields(
   points: readonly PricePoint[],
   venue?: string,
   horizons: readonly PriceReturnHorizon[] = PRICE_RETURN_HORIZONS,
+  end?: PriceReturnEnd | null,
 ): PriceReturnField[] {
   // Normalized and dated once for every horizon.
   const history = normalizePriceReturnHistory(points);
-  const days = sessionDays(history, venue);
+  const sessions = sessionDays(history, venue);
+  const interval = barInterval(history);
+  const days = interval ? sessions.map((day) => barCloseDay(day, interval, venue)) : sessions;
   return horizons.map((horizon) => ({
     id: horizon.id,
     label: horizon.label,
-    ...priceReturnFromHistory(history, days, horizon),
+    ...priceReturnFromHistory(history, days, horizon, end ?? null),
   }));
 }

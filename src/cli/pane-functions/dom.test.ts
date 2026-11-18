@@ -15,6 +15,7 @@ import { renderReportCsv } from "../report-tables";
 import { formatFreshnessLine } from "./freshness";
 import { reportFailure } from ".";
 import * as paneCatalog from "./catalog";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, DataServiceUnreachableError, isNetworkFailure } from "../../utils/network-failure";
 
 // The status line names the year only when it is not the current one.
 beforeAll(() => setSystemTime(new Date("2026-10-10T12:00:00Z")));
@@ -501,3 +502,45 @@ function askgFunction() {
   const context = { persistence: { pluginState: { get: () => null } }, config: {}, dataProvider: {} } as unknown as MarketContext;
   return { resolved, context };
 }
+
+// `fn ECO AR` through a proxy that refused every connection printed "No events" and "retrieved" at the time of the
+// run: the load error only reached the pane's footer. A report of a pane with nothing to show stands for its failure.
+test("a pane whose load failed with nothing to show fails as the plain commands do, never its empty body dated", async () => {
+  const resolved = { token: "ECO", label: "Economic Calendar", pane: { id: "econ-calendar", reportFreshness: { status: "not-a-feed", basis: "calendar" } },
+    capability: { id: "econ-calendar-pane" }, options: {}, instance: { settings: {} } } as unknown as ResolvedPaneFunction;
+  const context = { persistence: { pluginState: { get: () => null } }, config: {}, dataProvider: {} } as unknown as MarketContext;
+  const shown = (render: Partial<DesktopPaneShotRenderResult>) => spyOn(screenshotRender, "renderDesktopShot").mockImplementation(async () => ({
+    symbols: [],
+    render: { visibleText: "", rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false,
+      errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [], semanticUi: [], ...render },
+  }) as unknown as PaneScreenshotResult);
+  const loadError = (message: string) => [{ id: "ui:1", role: "pane-load-error", label: "Load failed", metadata: { message } }];
+
+  // The footer's error, published by the status footer: no connection is said in the words `search` and `quote` use.
+  let render = shown({ visibleText: "UTC IMPACT COUNTRY EVENT No events", emptyStateDetected: true, emptyStateMarkers: ["No events"],
+    semanticUi: loadError(DATA_SERVICE_UNREACHABLE_MESSAGE) } as Partial<DesktopPaneShotRenderResult>);
+  try {
+    const failed = await buildDomFunctionReport(resolved, context, "AR").catch((error: unknown) => error);
+    expect(failed).toBeInstanceOf(DataServiceUnreachableError);
+    expect(isNetworkFailure(failed)).toBe(true);
+  } finally {
+    render.mockRestore();
+  }
+  // An error state the body draws, any other failure: its words, and no report.
+  render = shown({ visibleText: "Calendar unavailable. TIMEOUT", errorStateDetected: true, stateText: { error: ["Calendar unavailable. TIMEOUT"] } });
+  try {
+    await expect(buildDomFunctionReport(resolved, context, "")).rejects.toThrow("Calendar unavailable. TIMEOUT");
+  } finally {
+    render.mockRestore();
+  }
+  // Rows beside the failure are a report, which says it could not refresh them.
+  render = shown({ visibleText: "13:30 HIGH US Core PPI", semanticUi: loadError(DATA_SERVICE_UNREACHABLE_MESSAGE),
+    rows: [{ tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "EVENT", text: "Core PPI m/m" }] }] } as Partial<DesktopPaneShotRenderResult>);
+  try {
+    const report = await buildDomFunctionReport(resolved, context, "");
+    expect(report.data).toMatchObject({ rowCount: 1, complete: false, reason: `The rendered pane could not refresh: ${DATA_SERVICE_UNREACHABLE_MESSAGE}` });
+    expect(report.text).toContain(`The rendered pane could not refresh: ${DATA_SERVICE_UNREACHABLE_MESSAGE}`);
+  } finally {
+    render.mockRestore();
+  }
+});

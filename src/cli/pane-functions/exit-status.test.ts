@@ -7,7 +7,7 @@ import { captureConsole } from "../../test-support/console";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig } from "../../types/config";
-import { reportFailure, runPaneFunction } from ".";
+import { reportFailure, reportHasNoData, runPaneFunction } from ".";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { serializeCliResult } from "../result";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "../options";
@@ -229,4 +229,17 @@ test("fn --output refuses a folder, writes nothing for a report with no data and
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
+});
+
+// Through a proxy that refused every connection, WEI printed twenty rows of dashes and exited 0, and CMP, G and CHOKE
+// printed empty tables with "retrieved" at the time of the run. What a report holds nothing of because its reads failed.
+test("a report holds nothing when every row failed, never when it sits behind a wall or has nothing asked yet", () => {
+  const report = { empty: false, rowCount: 20, unavailableSymbols: [] as string[], errors: Array.from({ length: 20 }, (_, index) => `I${index}: Gloom couldn't reach its data service`) };
+  expect(reportHasNoData(report)).toBe(true);
+  // One row with a figure is data.
+  expect(reportHasNoData({ ...report, errors: report.errors.slice(1) })).toBe(false);
+  expect(reportHasNoData({ empty: true, rowCount: 0, unavailableSymbols: ["AAPL", "MSFT"], errors: ["AAPL: Requested 1d price history is unavailable for AAPL."] })).toBe(true);
+  // A wall's note, and "Select a ticker.", are answers of their own.
+  expect(reportHasNoData({ empty: true, rowCount: 0, unavailableSymbols: [], locked: "sign-in" })).toBe(false);
+  expect(reportHasNoData({ empty: true, rowCount: 0, unavailableSymbols: [] })).toBe(false);
 });

@@ -534,6 +534,32 @@ describe("CloudApiRequestTransport reads cut off by a server restart", () => {
     expect(upstream.asked).toEqual(["GET /news/rss"]);
   });
 
+  test("a proxy that refuses to reach the service is no answer of the service's: the service is unreachable", async () => {
+    spyOn(Math, "random").mockReturnValue(0);
+    const proxy = process.env.HTTPS_PROXY;
+    process.env.HTTPS_PROXY = "http://127.0.0.1:7392";
+    try {
+      // What Bun 1.3 hands back when the proxy answers CONNECT with a 502: its own status and body, no JSON. A 502
+      // that is not JSON is asked again once, as a server going away is.
+      const proxied = () => answer(502, "Bad Gateway", { "Content-Length": "11", Connection: "close" });
+      const refused = transportAnswering(proxied, proxied);
+      const error = await refused.transport.request("/market/search?q=galicia").catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(DataServiceUnreachableError);
+      expect(refused.health.unreachableSince("gloom-cloud-http")).not.toBeNull();
+      refused.transport.dispose();
+      // Through the same proxy, the service's own 502 is its answer.
+      const upstream = transportAnswering(() => answer(502, JSON.stringify({ message: "The feed did not answer" }), { "Content-Type": "application/json" }));
+      await expect(upstream.transport.request("/news/rss")).rejects.toMatchObject({ status: 502 });
+      // Without a proxy set, a 502 is the service's, as it always was.
+      delete process.env.HTTPS_PROXY;
+      const direct = transportAnswering(() => answer(502, "Bad Gateway"), () => answer(502, "Bad Gateway"));
+      await expect(direct.transport.request("/theses")).rejects.toBeInstanceOf(ApiRequestError);
+    } finally {
+      if (proxy === undefined) delete process.env.HTTPS_PROXY;
+      else process.env.HTTPS_PROXY = proxy;
+    }
+  });
+
   test("a timeout is not asked again, and a caller who gives up during the pause stops it", async () => {
     const timedOut = transportAnswering(() => { throw new DOMException("The operation timed out.", "TimeoutError"); });
     await expect(timedOut.transport.request("/teams")).rejects.toThrow();

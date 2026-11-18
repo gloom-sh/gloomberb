@@ -141,7 +141,7 @@ function cliErrorObject(error: unknown): CliErrorObject {
   }
   // A listing read the data service failed to answer twice: said in Gloom's words. Any other 5xx keeps the server's.
   if (wasAskedTwice(error)) {
-    return { code: SOURCE_UNAVAILABLE_CODE, message: serviceDidNotAnswerMessage(), retryable: true };
+    return { code: SOURCE_UNAVAILABLE_CODE, message: serviceDidNotAnswerMessage(undefined, error), retryable: true };
   }
   // Gloom Cloud refused what was asked (an unknown series, a bad date): the input was wrong, not the program.
   if (error instanceof ApiRequestError && error.status === 400) {
