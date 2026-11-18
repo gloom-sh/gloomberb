@@ -153,6 +153,7 @@ function savedCopyRead(method: string, path: string): { read: typeof SHOT_SAVED_
     try {
       return { read, key: decodeURIComponent(match[1]) };
     } catch {
+      // Intentional ignore: a symbol whose percent-encoding is malformed names no kept copy, so the read goes out as sent.
       return null;
     }
   }
