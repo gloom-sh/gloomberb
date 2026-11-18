@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
@@ -481,6 +481,8 @@ describe("alertsPlugin command", () => {
   });
 
   test("SA adds a move from the previous close in the app, with its first reading kept on the device", async () => {
+    // Tuesday 17 Nov 2026 in New York's session: the quote below is that session's, not a stale one.
+    setSystemTime(new Date("2026-11-17T18:00:00Z"));
     const store = new Map<string, unknown>();
     const resume = new Map<string, unknown>();
     const commands: any[] = [];
@@ -515,6 +517,7 @@ describe("alertsPlugin command", () => {
       await expect(command.execute({ shortcut: "QQQ moves 5%" })).rejects.toThrow(`QQQ:NASDAQ moves 5.00% from the previous close already exists (alert ${move!.id}). Nothing was added.`);
     } finally {
       alertsPlugin.dispose?.();
+      setSystemTime();
     }
   });
 
