@@ -75,6 +75,8 @@ export function usePlotGestures({
   renderer,
   plotSize,
   plotAspect,
+  cellWidthPx,
+  cellHeightPx,
   plotSpanFactor,
   setToolDrag,
   levelDomain,
@@ -96,6 +98,8 @@ export function usePlotGestures({
   renderer: ReturnType<typeof useNativeRenderer>;
   plotSize: MeasuredCellSize;
   plotAspect: number;
+  cellWidthPx: number;
+  cellHeightPx: number;
   plotSpanFactor: number;
   setToolDrag: Dispatch<SetStateAction<ChartToolDrag | null>>;
   levelDomain: CompositeAxisDomain | null;
@@ -358,14 +362,17 @@ export function usePlotGestures({
     }
     setToolDrag(null);
     if (isDrawingTool(drag.kind)) {
-      const drawing = resolveDrawingFromDrag(scene, panel, drag, drawColor, nextDrawingId());
+      const drawing = resolveDrawingFromDrag(scene, panel, drag, drawColor, nextDrawingId(), {
+        width: plotSize.width * cellWidthPx,
+        height: plotSize.height * cellHeightPx,
+      });
       if (drawing) onDraw(drawing);
       return;
     }
     if (drag.kind !== "zoom") return;
     const range = resolveZoomBoxRange(scene, drag, frame.minimumSpanMs);
     if (range) onSetViewport(range);
-  }, [drawColor, frame.minimumSpanMs, levels, onDraw, onSetViewport, panel, scene]);
+  }, [cellHeightPx, cellWidthPx, drawColor, frame.minimumSpanMs, levels, onDraw, onSetViewport, panel, plotSize.height, plotSize.width, scene]);
   const resetDrag = useCallback(() => {
     const drag = dragRef.current;
     if (drag?.kind === "pan") {

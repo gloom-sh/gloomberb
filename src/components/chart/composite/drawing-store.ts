@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import { usePaneSettingValue } from "../../../state/app/context";
-import { CHART_DRAWINGS_SETTING_KEY, parseChartDrawings, type ChartDrawing } from "./tools";
+import { CHART_DRAWINGS_SETTING_KEY, readSavedChartDrawings, type ChartDrawing, type SavedChartDrawings } from "./tools";
 
 let nextDrawingSequence = 1;
 
+/** Drawings are saved with the pane, so, like levels, their ids must not repeat across sessions. */
 export function nextDrawingId(): string {
-  return `drawing:${nextDrawingSequence++}`;
+  return `drawing:${Date.now().toString(36)}-${(nextDrawingSequence++).toString(36)}`;
 }
 
 /** Levels are stored with the account, so their ids must not repeat across sessions. */
@@ -36,19 +37,19 @@ export function ChartDrawingStore({
     NO_DRAWINGS,
     paneInstanceId,
   );
-  const restoredRef = useRef<readonly ChartDrawing[] | null>(null);
+  const restoredRef = useRef<SavedChartDrawings | null>(null);
   if (restoredRef.current === null) {
-    restoredRef.current = parseChartDrawings(stored);
+    restoredRef.current = readSavedChartDrawings(stored);
   }
   // What the settings hold, so removing the last drawing is told even when the
   // pane opened with none: it is not "nothing to say" but "the stored one is gone".
-  const writtenRef = useRef<readonly ChartDrawing[]>(restoredRef.current);
+  const writtenRef = useRef<readonly ChartDrawing[]>(restoredRef.current.drawings);
   const pendingRef = useRef<readonly ChartDrawing[] | null>(null);
   const setStoredRef = useRef(setStored);
   setStoredRef.current = setStored;
 
   useEffect(() => {
-    const restored = restoredRef.current;
+    const restored = restoredRef.current?.drawings;
     if (restored && restored.length > 0) onRestore(restored);
     // Restoring once on mount: later writes must not scroll back in time.
   }, []);
@@ -56,7 +57,10 @@ export function ChartDrawingStore({
   const write = useCallback((next: readonly ChartDrawing[]) => {
     pendingRef.current = null;
     writtenRef.current = next;
-    setStoredRef.current(next);
+    // Saved entries this build cannot read ride along, so the next edit never
+    // writes away a drawing a newer build made.
+    const unreadable = restoredRef.current?.unreadable ?? [];
+    setStoredRef.current(unreadable.length > 0 ? [...next, ...unreadable as ChartDrawing[]] : next);
   }, []);
 
   useEffect(() => {

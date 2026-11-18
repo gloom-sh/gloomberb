@@ -128,6 +128,54 @@ describe("chart pane sharing", () => {
     }
   });
 
+  test("a chart with more drawings than a link carries shares the newest that fit, never none", () => {
+    const registry = {
+      panes: new Map(chartComposerModule.panes!.map((pane) => [pane.id, pane])),
+      paneTemplates: new Map(),
+    } as unknown as PluginRegistry;
+    const template = chartComposerModule.paneTemplates?.find((entry) => entry.id === "chart-composer-pane")!;
+    const line = (index: number) => ({
+      id: `line-${index}`, panelId: "main", color: "#f5a524",
+      points: [{ time: 1_779_000_000_000 + index * 86_400_000, value: 182.4 }, { time: 1_780_000_000_000, value: 205.8 }],
+    });
+    // Freehand strokes saved before strokes were simplified: a point per pointer move.
+    const stroke = (index: number) => ({
+      id: `pencil-${index}`, panelId: "main", color: "#4c9aff",
+      points: Array.from({ length: 1_500 }, (_, point) => ({ time: 1_779_000_000_000 + point * 60_000, value: 182.4 + Math.sin(point / 40) / 3 })),
+    });
+    const sharedFrom = (drawings: unknown[]) => {
+      const pane = {
+        instanceId: "chart-composer:1",
+        paneId: "chart-composer",
+        title: "G AAPL",
+        settings: { [CHART_SPEC_SETTING_KEY]: buildPriceChartPreset("AAPL"), [CHART_DRAWINGS_SETTING_KEY]: drawings },
+      };
+      const payload = buildPaneSharePayload(registry, pane, {}, "AAPL", new Map());
+      if (payload?.data.version !== 2) throw new Error("expected a portable pane share");
+      const snapshot = template.publicShare!.serialize({ pane, paneState: {} });
+      return {
+        link: parseChartDrawings(payload.data.layout.layout.instances[0]!.settings?.[CHART_DRAWINGS_SETTING_KEY]),
+        snapshot: snapshot!.data,
+      };
+    };
+
+    const lines = Array.from({ length: 140 }, (_, index) => line(index));
+    const many = sharedFrom(lines);
+    expect(many.link).toEqual(lines.slice(-100));
+    expect(many.snapshot.chartDrawings).toEqual(lines.slice(-100));
+    // What a link carries opens on a build that still holds a link to the caps.
+    expect(template.publicShare!.restore(many.snapshot)).not.toBeNull();
+    expect(template.publicShare!.restore({ ...many.snapshot, chartDrawings: lines })).toBeNull();
+
+    // Past the points a link carries, and past what fits in one: the newest that fit, the rest of the chart intact.
+    const strokes = [stroke(1), stroke(2), stroke(3), stroke(4), line(1)];
+    const dense = sharedFrom(strokes);
+    expect(dense.link.at(-1)).toEqual(line(1));
+    expect(dense.link.length).toBeGreaterThan(1);
+    expect(dense.link).toEqual(strokes.filter((entry) => dense.link.some(({ id }) => id === entry.id)));
+    expect(dense.snapshot.chartDrawings).toEqual(dense.link);
+  });
+
   test("round-trips chart setup, drawings, and the panned viewport", async () => {
     const template = chartComposerModule.paneTemplates?.find((entry) => entry.id === "chart-composer-pane");
     const spec = buildPriceChartPreset("AAPL");

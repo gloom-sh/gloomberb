@@ -633,7 +633,7 @@ Ctrl with the scroll wheel and a trackpad pinch on desktop and web zoom time aro
 - **Shapes:** besides the trend line (`Shift+D`) and freehand (`Shift+P`), `Shift+J` places a horizontal ray from a clicked price to the right edge, `Shift+B` drags a rectangle, and `Shift+F` drags a Fib retracement whose 0, 23.6, 38.2, 50, 61.8, 78.6 and 100% levels are labelled with their prices on desktop and web. Each is anchored to prices and times like the other drawings, and a build from before these tools shows them as plain lines.
 - **Legend:** `Shift+L`, Collapse Legend in the pane menu, or the chevron in the legend's left margin folds it to the first series and a count (`+5`). A folded series still draws.
 
-These are kept with the pane.
+These are kept with the pane, every drawing however many. A freehand stroke keeps only the points its shape needs, within half a pixel of where the pointer went. A share link carries the newest drawings that fit in one, up to 100 of them and 5,000 points.
 
 #### Intraday sessions
 

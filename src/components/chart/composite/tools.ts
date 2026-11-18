@@ -11,6 +11,7 @@ import type {
   CompositePanelScene,
 } from "./types";
 import { clamp } from "../../../utils/math";
+import { isRecord } from "../../../utils/guards";
 
 /** Pointer tools that take the drag away from panning while one is picked. */
 export type ChartToolKind = "measure" | "zoom" | "line" | "pencil" | "level" | "rect" | "fib" | "ray";
@@ -36,52 +37,127 @@ export interface ChartDrawing {
 }
 
 export const CHART_DRAWINGS_SETTING_KEY = "chartDrawings";
+
+// What a public link to a chart carries, and what a link it receives is held
+// to. A pane's own saved drawings have no cap: they are the person's work.
 const MAX_SHARED_CHART_DRAWINGS = 100;
 const MAX_SHARED_DRAWING_POINTS = 5_000;
+// A shared pane fits in 128 KB; a chart's setup takes a KB or two of the rest.
+const MAX_SHARED_DRAWING_BYTES = 96 * 1024;
 
+const MAX_DRAWING_ID_LENGTH = 160;
+const DRAWING_KEYS: ReadonlySet<string> = new Set(["id", "panelId", "points", "color"]);
+
+/** One saved drawing, or null when this build cannot read it. */
+function parseChartDrawing(entry: unknown): ChartDrawing | null {
+  if (!isRecord(entry) || !Object.keys(entry).every((key) => DRAWING_KEYS.has(key))) return null;
+  if (
+    typeof entry.id !== "string"
+    || entry.id.length === 0
+    || entry.id.length > MAX_DRAWING_ID_LENGTH
+    || typeof entry.panelId !== "string"
+    || entry.panelId.length === 0
+    || entry.panelId.length > 120
+    || typeof entry.color !== "string"
+    || !/^#[0-9a-f]{6}$/i.test(entry.color)
+    || !Array.isArray(entry.points)
+    || entry.points.length < 2
+  ) return null;
+  const points: ChartDrawingPoint[] = [];
+  for (const point of entry.points) {
+    if (
+      !isRecord(point)
+      || !Object.keys(point).every((key) => key === "time" || key === "value")
+      || typeof point.time !== "number"
+      || !Number.isFinite(point.time)
+      || typeof point.value !== "number"
+      || !Number.isFinite(point.value)
+    ) return null;
+    points.push({ time: point.time, value: point.value });
+  }
+  return { id: entry.id, panelId: entry.panelId, points, color: entry.color };
+}
+
+/** `id` with a mark that no drawing in `taken` has; the shape prefix stays first. */
+function unusedDrawingId(id: string, taken: ReadonlySet<string>): string {
+  const base = id.slice(0, MAX_DRAWING_ID_LENGTH - 8);
+  for (let copy = 2; ; copy += 1) {
+    const candidate = `${base}~${copy}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+export interface SavedChartDrawings {
+  drawings: ChartDrawing[];
+  /** Entries this build cannot read, as they were, so writing the list back keeps them. */
+  unreadable: unknown[];
+}
+
+/**
+ * A pane's own saved drawings. An entry this build cannot read (damaged, or
+ * written by a newer build) is set aside on its own and every other one
+ * restores. Older builds reused ids across restarts, so two drawings can share
+ * one; the later gets an id of its own, or removing one would take both.
+ */
+export function readSavedChartDrawings(value: unknown): SavedChartDrawings {
+  const saved: SavedChartDrawings = { drawings: [], unreadable: [] };
+  if (!Array.isArray(value)) return saved;
+  const ids = new Set<string>();
+  for (const entry of value) {
+    const drawing = parseChartDrawing(entry);
+    if (!drawing) {
+      saved.unreadable.push(entry);
+      continue;
+    }
+    const id = ids.has(drawing.id) ? unusedDrawingId(drawing.id, ids) : drawing.id;
+    ids.add(id);
+    saved.drawings.push(id === drawing.id ? drawing : { ...drawing, id });
+  }
+  return saved;
+}
+
+/** Every drawing of a pane's own saved list that this build can read. */
 export function parseChartDrawings(value: unknown): ChartDrawing[] {
-  if (!Array.isArray(value) || value.length > MAX_SHARED_CHART_DRAWINGS) return [];
+  return readSavedChartDrawings(value).drawings;
+}
+
+/**
+ * The drawings a received public link carries: all of them readable and
+ * within what a link carries, else null.
+ */
+export function parseSharedChartDrawings(value: unknown): ChartDrawing[] | null {
+  if (!Array.isArray(value) || value.length > MAX_SHARED_CHART_DRAWINGS) return null;
   let pointCount = 0;
   const drawings: ChartDrawing[] = [];
   for (const entry of value) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
-    const drawing = entry as Record<string, unknown>;
-    if (!Object.keys(drawing).every((key) => ["id", "panelId", "points", "color"].includes(key))) return [];
-    if (
-      typeof drawing.id !== "string"
-      || drawing.id.length === 0
-      || drawing.id.length > 160
-      || typeof drawing.panelId !== "string"
-      || drawing.panelId.length === 0
-      || drawing.panelId.length > 120
-      || typeof drawing.color !== "string"
-      || !/^#[0-9a-f]{6}$/i.test(drawing.color)
-      || !Array.isArray(drawing.points)
-      || drawing.points.length < 2
-    ) return [];
-    pointCount += drawing.points.length;
-    if (pointCount > MAX_SHARED_DRAWING_POINTS) return [];
-    const points: ChartDrawingPoint[] = [];
-    for (const point of drawing.points) {
-      if (!point || typeof point !== "object" || Array.isArray(point)) return [];
-      const raw = point as Record<string, unknown>;
-      if (
-        !Object.keys(raw).every((key) => key === "time" || key === "value")
-        || typeof raw.time !== "number"
-        || !Number.isFinite(raw.time)
-        || typeof raw.value !== "number"
-        || !Number.isFinite(raw.value)
-      ) return [];
-      points.push({ time: raw.time, value: raw.value });
-    }
-    drawings.push({
-      id: drawing.id,
-      panelId: drawing.panelId,
-      points,
-      color: drawing.color,
-    });
+    pointCount += isRecord(entry) && Array.isArray(entry.points) ? entry.points.length : 0;
+    const drawing = pointCount > MAX_SHARED_DRAWING_POINTS ? null : parseChartDrawing(entry);
+    if (!drawing) return null;
+    drawings.push(drawing);
   }
   return drawings;
+}
+
+const utf8 = new TextEncoder();
+
+/**
+ * What of a pane's drawings a public link carries: the newest that fit in one,
+ * in their order. A chart with more shares its latest work, not nothing, and
+ * every build opens the link with its drawings.
+ */
+export function shareableChartDrawings(drawings: readonly ChartDrawing[]): ChartDrawing[] {
+  const kept: ChartDrawing[] = [];
+  let points = 0;
+  let bytes = 2;
+  for (let index = drawings.length - 1; index >= 0 && kept.length < MAX_SHARED_CHART_DRAWINGS; index -= 1) {
+    const drawing = drawings[index]!;
+    const size = utf8.encode(JSON.stringify(drawing)).byteLength + 1;
+    if (points + drawing.points.length > MAX_SHARED_DRAWING_POINTS || bytes + size > MAX_SHARED_DRAWING_BYTES) continue;
+    kept.push(drawing);
+    points += drawing.points.length;
+    bytes += size;
+  }
+  return kept.reverse();
 }
 
 /**
@@ -149,13 +225,62 @@ function drawingPointFrom(
     : { time: unprojectCompositeTimestamp(scene.timeScale, xRatio), value };
 }
 
-/** Data anchors for a finished drag, so a drawing survives pan and zoom. */
+/** The plot's size in pixels, which a freehand stroke is simplified against. */
+interface PlotPixelSize {
+  width: number;
+  height: number;
+}
+
+/**
+ * How far, in plot pixels, a saved freehand stroke may stray from the trail
+ * the pointer drew: under one, so the stroke looks the same once let go.
+ */
+const STROKE_TOLERANCE_PX = 0.5;
+
+/**
+ * The pointer's trail with only the points its shape needs: every point it had
+ * stays within `STROKE_TOLERANCE_PX` of the line through the ones kept
+ * (Ramer-Douglas-Peucker). The pointer reports every move, so a slow or long
+ * stroke would otherwise save thousands of points along the same line.
+ */
+function simplifyStroke<T extends { xRatio: number; yRatio: number }>(path: readonly T[], plot: PlotPixelSize): T[] {
+  if (path.length <= 2 || !(plot.width > 0 && plot.height > 0)) return [...path];
+  const pixels = path.map((point) => ({ x: point.xRatio * plot.width, y: point.yRatio * plot.height }));
+  const keep = new Uint8Array(path.length);
+  keep[0] = 1;
+  keep[path.length - 1] = 1;
+  // A stack, not recursion: a long stroke is thousands of points deep.
+  const spans: Array<[number, number]> = [[0, path.length - 1]];
+  while (spans.length > 0) {
+    const [first, last] = spans.pop()!;
+    let farthest = -1;
+    let distance = STROKE_TOLERANCE_PX;
+    for (let index = first + 1; index < last; index += 1) {
+      // To the segment, not its line: a stroke that doubles back keeps its turn.
+      const next = distanceToSegment(pixels[index]!, pixels[first]!, pixels[last]!);
+      if (next > distance) {
+        distance = next;
+        farthest = index;
+      }
+    }
+    if (farthest < 0) continue;
+    keep[farthest] = 1;
+    spans.push([first, farthest], [farthest, last]);
+  }
+  return path.filter((_, index) => keep[index] === 1);
+}
+
+/**
+ * Data anchors for a finished drag, so a drawing survives pan and zoom. Given
+ * the plot's pixel size, a freehand stroke keeps only the points its shape needs.
+ */
 export function resolveDrawingFromDrag(
   scene: Pick<CompositeChartScene, "timeScale">,
   panel: CompositePanelScene,
   drag: ChartToolDrag,
   color: string,
   id: string,
+  plot?: PlotPixelSize,
 ): ChartDrawing | null {
   const domain = resolveMeasureAxisDomain(panel);
   // A ray needs only its price, so a click places one.
@@ -169,7 +294,7 @@ export function resolveDrawingFromDrag(
     return start && end ? { id: shapedDrawingId(drag.kind, id), panelId: panel.id, points: [start, end], color } : null;
   }
   const source = drag.kind === "pencil" && drag.path.length > 1
-    ? drag.path
+    ? plot ? simplifyStroke(drag.path, plot) : drag.path
     : [
       { xRatio: drag.startXRatio, yRatio: drag.startYRatio },
       { xRatio: drag.endXRatio, yRatio: drag.endYRatio },

@@ -251,6 +251,73 @@ describe("chart drawings", () => {
     }, "up", { scene: zoomed, panel, items: [drawing] });
     expect(rezoomed.pixels[(5 * 21 + 10) * 4 + 3]!).toBeGreaterThan(0);
   });
+
+  it("saves a freehand stroke with only the points its shape needs, drawn within half a pixel of the trail", () => {
+    const scene = calendarScene(10 * DAY);
+    const plot = { width: 800, height: 400 };
+    // A slow stroke: the pointer reports every pixel it crosses. It runs
+    // right, doubles back over itself, and holds still at its end.
+    const trail = [
+      ...Array.from({ length: 600 }, (_, x) => ({ xRatio: (100 + x) / 800, yRatio: (200 + 80 * Math.sin(x / 60)) / 400 })),
+      ...Array.from({ length: 300 }, (_, x) => ({ xRatio: (699 - x) / 800, yRatio: (200 + 80 * Math.sin((599 - x) / 60)) / 400 })),
+      ...Array.from({ length: 50 }, () => ({ xRatio: 400 / 800, yRatio: (200 + 80 * Math.sin(300 / 60)) / 400 })),
+    ];
+    const drag = {
+      kind: "pencil" as const,
+      startXRatio: trail[0]!.xRatio,
+      startYRatio: trail[0]!.yRatio,
+      endXRatio: trail.at(-1)!.xRatio,
+      endYRatio: trail.at(-1)!.yRatio,
+      path: trail,
+    };
+    const drawing = resolveDrawingFromDrag(scene, panel, drag, "#ffcc00", "d1", plot)!;
+    expect(drawing.points.length).toBeLessThan(trail.length / 10);
+
+    const [vector] = buildChartToolVectors({
+      scene, panel, drawings: [drawing], selectedId: null, drag: null,
+      colors: { positive: "#00ff00", negative: "#ff0000", zoom: "#8888ff", draw: "#ffcc00" }, direction: "up",
+    });
+    const line = vector!.points.map((point) => ({ x: point.x * plot.width, y: point.y * plot.height }));
+    const offLine = (x: number, y: number) => Math.min(...line.slice(1).map((end, index) => {
+      const start = line[index]!;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const t = Math.max(0, Math.min(1, ((x - start.x) * dx + (y - start.y) * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(x - start.x - t * dx, y - start.y - t * dy);
+    }));
+    for (const point of trail) expect(offLine(point.xRatio * plot.width, point.yRatio * plot.height)).toBeLessThanOrEqual(0.5 + 1e-6);
+    // The turn where the stroke doubles back is kept, not cut across.
+    expect(Math.max(...line.map(({ x }) => x))).toBeCloseTo(699, 0);
+    expect(line.at(-1)!.x).toBeCloseTo(400, 6);
+  });
+});
+
+describe("restoring saved drawings", () => {
+  const line = (id: string) => ({
+    id, panelId: "main", color: "#f5a524",
+    points: [{ time: START, value: 100 }, { time: START + DAY, value: 110 }],
+  });
+
+  it("skips only an entry it cannot read, and keeps the list's order", () => {
+    expect(parseChartDrawings([
+      line("a"),
+      { ...line("bad-colour"), color: "red" },
+      { ...line("one-point"), points: [{ time: START, value: 1 }] },
+      { ...line("bad-point"), points: [{ time: START, value: 1 }, { time: "soon", value: 2 }] },
+      null,
+      line("b"),
+    ])).toEqual([line("a"), line("b")]);
+    expect(parseChartDrawings({ drawings: [line("a")] })).toEqual([]);
+  });
+
+  it("parts two drawings an older build saved under one id, so removing one leaves the other", () => {
+    const restored = parseChartDrawings([line("drawing:1"), line("fib:drawing:1"), line("drawing:1"), line("fib:drawing:1")]);
+    expect(restored.map(({ id }) => id).slice(0, 2)).toEqual(["drawing:1", "fib:drawing:1"]);
+    expect(new Set(restored.map(({ id }) => id)).size).toBe(4);
+    // Each keeps its shape, and reads back as it is.
+    expect(restored.map(chartDrawingShape)).toEqual(["line", "fib", "line", "fib"]);
+    expect(parseChartDrawings(JSON.parse(JSON.stringify(restored)))).toEqual(restored);
+  });
 });
 
 describe("shaped drawings", () => {
