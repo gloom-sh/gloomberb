@@ -132,11 +132,14 @@ export function allGuidance(data: GuidancePayload): KpiGuidance[] {
 /**
  * How far back the period just before is, for the kinds that repeat: in fiscal
  * quarters, and in days between period ends (52- and 53-week calendars included).
+ * A year to date repeats a year later: the nine months to September against
+ * the nine months to September before, never against the same year's half.
  */
 const PERIOD_STEP: Partial<Record<KpiObservation["period"]["kind"], { quarters: number; days: readonly [number, number] }>> = {
   quarter: { quarters: 1, days: [80, 100] },
   half: { quarters: 2, days: [170, 195] },
   year: { quarters: 4, days: [350, 380] },
+  ytd: { quarters: 4, days: [350, 380] },
 };
 const DAY_MS = 86_400_000;
 /**
@@ -145,6 +148,10 @@ const DAY_MS = 86_400_000;
  * before it and a year against the year before, never against an older one
  * when that period is missing: Tencent's Q2 2026 revenue over its Q3 2025 one
  * read +6.19% as if quarter on quarter, where the quarter before gave +4%.
+ * A year to date is set against the same window a year earlier: nine months
+ * against the half of the same year read +52.73% for an insurer whose nine
+ * months grew 0.9%. A balance is set against the balance before it; a period
+ * of another kind ("other") against none, its window being unknown.
  */
 export function observationChange(row: KpiObservation, observations: KpiObservation[]): { value: number | null; unit: string; notMeaningful?: true } {
   const fiscalOrder = (item: KpiObservation) => item.period.fiscalYear !== null && (item.period.kind === "year" || item.period.fiscalQuarter !== null)
@@ -153,7 +160,7 @@ export function observationChange(row: KpiObservation, observations: KpiObservat
     : fiscalOrder(other) !== null && fiscalOrder(row) !== null && fiscalOrder(other)! < fiscalOrder(row)!;
   const step = PERIOD_STEP[row.period.kind];
   const adjacent = (other: KpiObservation) => {
-    if (!step) return true;
+    if (!step) return row.period.kind === "instant";
     if (other.period.end && row.period.end) {
       const days = (Date.parse(row.period.end) - Date.parse(other.period.end)) / DAY_MS;
       return days >= step.days[0] && days <= step.days[1];
@@ -161,8 +168,12 @@ export function observationChange(row: KpiObservation, observations: KpiObservat
     const [from, to] = [fiscalOrder(other), fiscalOrder(row)];
     return from !== null && to !== null && to - from === step.quarters;
   };
+  // A year to date's prior is the same window a year earlier, as long by its dates when both state them.
+  const days = (item: KpiObservation) => item.period.start && item.period.end ? (Date.parse(item.period.end) - Date.parse(item.period.start)) / DAY_MS : null;
+  const sameWindow = (other: KpiObservation) => row.period.kind !== "ytd" || adjacent(other)
+    && (days(row) === null || days(other) === null || Math.abs(days(row)! - days(other)!) <= 10);
   const prior = observations.filter((other) => other.id !== row.id && other.current && !other.conflict && !other.contested && exactObservation(other) && other.seriesKey === row.seriesKey
-    && other.period.kind === row.period.kind && previousPeriod(other)).sort((a, b) => periodOrder(b).localeCompare(periodOrder(a)))[0];
+    && other.period.kind === row.period.kind && previousPeriod(other) && sameWindow(other)).sort((a, b) => periodOrder(b).localeCompare(periodOrder(a)))[0];
   if (!prior || !adjacent(prior) || (row.conflict || row.contested) || !exactObservation(row)) return { value: null, unit: "" };
   if (row.unit === "percent") return { value: row.value - prior.value, unit: "pp" };
   if (row.unit === "basis_points") return { value: row.value - prior.value, unit: "bp" };
