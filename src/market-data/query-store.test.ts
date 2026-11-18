@@ -22,6 +22,24 @@ function retainedKeys(store: QueryStore<string>, keys: string[]): string[] {
 }
 
 describe("QueryStore retention", () => {
+  it("releases a decoded snapshot when its last pane leaves without deleting the saved record", () => {
+    const previous = setSavedCopyStore(new MemoryResourceStore());
+    const options = { savedCopies: { name: "watched", scope: () => "public" } };
+    try {
+      new QueryStore<string>(() => {}, options).set("chart", ready("saved"));
+      const reopened = new QueryStore<string>(() => {}, options);
+      const firstCopy = reopened.get("chart");
+      expect(firstCopy.data).toBe("saved");
+      reopened.release("chart");
+      expect(reopened.size).toBe(0);
+      const nextCopy = reopened.get("chart");
+      expect(nextCopy).toEqual(firstCopy);
+      expect(nextCopy).not.toBe(firstCopy);
+    } finally {
+      setSavedCopyStore(previous);
+    }
+  });
+
   it("saves a prefetched answer when a pane starts observing it, not before", () => {
     const previous = setSavedCopyStore(new MemoryResourceStore());
     const watched = new Set<string>();

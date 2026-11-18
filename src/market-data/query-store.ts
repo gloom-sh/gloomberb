@@ -118,8 +118,14 @@ export class QueryStore<T> {
     if (entry && this.options.savedCopies?.observedOnly) this.save(key, entry);
   }
 
-  /** The last pane watching `key` let go: it is now the most recently used entry. */
+  /** The last pane let go. Keep live results in the LRU, but leave restored copies on disk. */
   release(key: string): void {
+    if (this.hydratedScopes.delete(key)) {
+      this.entries.delete(key);
+      this.unwatched.delete(key);
+      this.options.onEvict?.(key);
+      return;
+    }
     if (this.entries.has(key)) this.retain(key);
   }
 
