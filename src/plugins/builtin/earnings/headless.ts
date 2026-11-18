@@ -19,7 +19,7 @@ import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL 
 import { historyRows, periodText } from "./history-model";
 import { fiscalPeriodText, fiscalQuarterText } from "./fiscal-quarter";
 import { loadNoEarningsText } from "./no-earnings";
-import { EPS_BASIS_NOTE, epsBasisName, lacksConsensus, NO_CONSENSUS, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
+import { ACTUAL_PENDING, actualPending, EPS_BASIS_NOTE, epsBasisName, lacksConsensus, NO_CONSENSUS, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
 import { lastReportOnRecord, listingDay, noNextReportText } from "../shared/earnings-calendar";
 import { commandWord } from "../../../utils/shell-word";
 import { listingAbroadVenue } from "../../../utils/sec";
@@ -71,7 +71,8 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "currency", header: "Ccy" },
   { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
-  { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
+  // A report out with no actual yet says so (exports: in the status column), never a bare blank.
+  { key: "epsActual", header: "EPS act", align: right, format: (value, row) => actualPending({ epsActual: num(value), dateStatus: typeof row.dateStatus === "string" ? row.dateStatus : null }) ? ACTUAL_PENDING : epsText(num(value)) },
   BASIS_COLUMN,
   surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
@@ -100,7 +101,8 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   // A reported quarter with no consensus on record says so (exports: in the status column), never a bare blank.
   { key: "epsEstimate", header: "EPS est", align: right, format: (value, row) => lacksConsensus({ epsActual: num(row.epsActual), epsEstimate: num(value) }) ? NO_CONSENSUS : epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
-  { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
+  // A report out with no actual yet says so (exports: in the status column), never a bare blank.
+  { key: "epsActual", header: "EPS act", align: right, format: (value, row) => actualPending({ epsActual: num(value), dateStatus: typeof row.dateStatus === "string" ? row.dateStatus : null }) ? ACTUAL_PENDING : epsText(num(value)) },
   BASIS_COLUMN,
   surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },

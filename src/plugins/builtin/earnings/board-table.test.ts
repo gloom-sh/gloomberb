@@ -54,6 +54,16 @@ describe("EVTS rows", () => {
     expect(cell(TRV, "basis").text).toBe("adj");
   });
 
+  test("a report out with no actual yet says pending, and keeps EPS ACT on a narrow board", () => {
+    // Disney this morning: out before the open, the calendar's figure due tomorrow, its release unproven.
+    const DIS = boardReport(calendarReport({ symbol: "DIS", reportedAt: `${TODAY}T10:45:00.000Z`, epsEstimate: 1.06, epsAnalysts: 17, dateStatus: "reported" }), new Map());
+    expect(cell(DIS, "epsActual")).toEqual({ text: "pending", color: colors.textDim });
+    // Still to come, it waits with a dash.
+    expect(cell(LADR, "epsActual").text).toBe(MISSING_VALUE);
+    expect(boardHasActuals([row(LADR), row(DIS)])).toBe(true);
+    expect(boardColumns(88, { actuals: true }).map((entry) => entry.id)).toContain("epsActual");
+  });
+
   test("MOVE is the move on a report out today, beside the implied move", () => {
     expect(cell(TRV, "move", { move: () => 0.0123 })).toEqual({ text: "+1.2%", color: colors.positive });
     expect(cell(TRV, "move", { move: () => "loading" })).toEqual({ text: "…", color: colors.textDim });

@@ -594,3 +594,28 @@ test("a reported quarter with no consensus on record says so in the text, the CS
   const column = historyColumns(2000, rows).find((entry) => entry.id === "epsEstimate")!;
   expect(rows.map((entry) => renderHistoryCell(entry, column).text)).toEqual(["2.09", "no est"]);
 });
+
+test("a report out with no actual yet says pending in the text, the CSV status and the pane, as the board does", async () => {
+  // NVIDIA the evening it reported: out after the close, the calendar's figure due the next day, its release unproven.
+  const out: EarningsHistoryPayload = { ...history, symbol: "NVDA", name: "NVIDIA Corporation", reports: [
+    report({ date: today, fiscalPeriod: "2026-10", epsEstimate: 2.49, epsAnalysts: 14, epsBasis: "adjusted", dateStatus: "reported", reportedAt: `${today}T21:20:00.000Z` }),
+    report({ date: addDays(today, -83), fiscalPeriod: "2026-07", epsEstimate: 2.09, epsActual: 2.22, epsAnalysts: 12, epsBasis: "adjusted", dateStatus: "reported" }),
+  ] };
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => out,
+    upcoming: async () => [],
+  });
+  const result = await definition.load(args, context);
+  expect(renderHeadlessPaneText(definition, result, args, "ERN")).toContain("pending");
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "ERN", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
+  const [header, ...lines] = csv.split("\n");
+  const columns = header!.split(",");
+  const [actual, status] = [columns.indexOf("EPS act"), columns.indexOf("value_status")];
+  const pending = lines.find((line) => line.startsWith(today))!.split(",");
+  expect([pending[actual], pending[status]]).toEqual(["", "EPS act: pending"]);
+  expect(lines.find((line) => line.includes(",2.22,"))!.split(",")[status]).toBe("");
+  const rows = historyRows(out, today, null);
+  const column = historyColumns(2000, rows).find((entry) => entry.id === "epsActual")!;
+  expect(rows.map((entry) => renderHistoryCell(entry, column).text)).toEqual(["pending", "2.22"]);
+});

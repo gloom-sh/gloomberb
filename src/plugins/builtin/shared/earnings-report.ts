@@ -53,6 +53,17 @@ export function isProvisionalActual(row: { epsActual?: number | null; epsActualS
  */
 export const NO_CONSENSUS = "no consensus";
 
+/**
+ * A report that is out with no actual yet (the calendar fills it the next
+ * day, a press release only when it proves the figure) says so where its
+ * actual would be, one word everywhere: ERN, the board, EE's detail.
+ */
+export const ACTUAL_PENDING = "pending";
+
+export function actualPending(row: { epsActual?: number | null; dateStatus?: string | null }): boolean {
+  return row.epsActual == null && row.dateStatus === "reported";
+}
+
 /** NO_CONSENSUS where a column is narrow. */
 export const NO_CONSENSUS_SHORT = "no est";
 
@@ -82,13 +93,14 @@ type EarningsRecord = CorporateActionsData["earnings"][number];
 /**
  * What follows an earnings row's EPS, one phrase per part. A reported row
  * names its basis, whether the figure is provisional, and its beat, or that
- * no consensus is on record for it; a pending one whether its date is
- * announced, its analysts and an adjusted estimate's basis.
+ * no consensus is on record for it; one out with no actual yet that it is
+ * pending; one still to come whether its date is announced; and both their
+ * analysts and an adjusted estimate's basis.
  */
 export function earningsDetailParts(earning: EarningsRecord): string[] {
   if (earning.epsActual == null) {
     const status = earningsDateStatus(earning.dateStatus);
-    return [status === "reported" ? null : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
+    return [status === "reported" ? ACTUAL_PENDING : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
       earningsEpsBasis(earning.epsBasis) === "adjusted" ? BASIS_TEXT.adjusted : null].filter((part): part is string => !!part);
   }
   return [BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))], isProvisionalActual(earning) ? "provisional" : null,

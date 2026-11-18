@@ -6,7 +6,7 @@ import { colors } from "../../../theme/colors";
 import { notMeaningfulCell } from "../../../components/ui/not-meaningful";
 import { isNotMeaningful } from "../../../utils/growth";
 import { TextAttributes } from "../../../ui";
-import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
+import { ACTUAL_PENDING, actualPending, epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
 import type { BoardReport, BoardRow, BoardSort } from "./board-model";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL, weekday, type Surprise } from "./format";
 
@@ -70,9 +70,12 @@ export const SORTABLE: Partial<Record<BoardColumnId, BoardSort["column"]>> = {
   symbol: "symbol", cap: "cap", implied: "implied", average: "average",
 };
 
-/** Whether any report on the board has an actual: the narrow board then keeps EPS ACT and EPS SURP (boardColumns). */
+/**
+ * Whether any report on the board is out, with its actual or still pending: the narrow board then keeps EPS ACT and
+ * EPS SURP (boardColumns), so a report out today says its actual is pending rather than dropping the column.
+ */
 export function boardHasActuals(rows: readonly BoardRow[]): boolean {
-  return rows.some((row) => row.kind === "report" && row.report.epsActual != null);
+  return rows.some((row) => row.kind === "report" && (row.report.epsActual != null || actualPending(row.report)));
 }
 
 /**
@@ -172,7 +175,8 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn, context: Boa
     case "analysts":
       return { text: report.epsAnalysts == null ? MISSING_VALUE : String(report.epsAnalysts), color: dim };
     case "epsActual":
-      // The company's press release's figure reads quieter until the calendar's replaces it.
+      // A report out with no actual yet says so; the company's press release's figure reads quieter until the calendar's replaces it.
+      if (actualPending(report)) return { text: ACTUAL_PENDING, color: dim };
       return { text: epsText(report.epsActual), color: report.epsActual == null ? dim : report.provisional ? colors.textMuted : colors.text };
     case "basis":
       return !showsEpsBasis(report)

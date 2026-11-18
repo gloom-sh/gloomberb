@@ -155,3 +155,12 @@ test("EE names Visa's quarters and years as GUIDE does, says which quarter has n
   const bare = createEarningsEstimatesHeadless({ loadSources: async () => ({ ...sources }) });
   expect((await bare.load(request, context)).rows.find((row) => row.status === "Earnings")?.period).toBe("—");
 });
+
+test("EE says a report out with no actual yet is pending, as ERN and the board do", async () => {
+  const definition = createEarningsEstimatesHeadless({ loadSources: async () => ({
+    ...sources,
+    actions: { ...sources.actions!, earnings: [{ date: "2026-11-17", fiscalPeriod: "2026-10", epsEstimate: 2.49, epsAnalysts: 14, dateStatus: "reported" }] },
+  }) });
+  const result = await definition.load(args({ kind: "all" }), context);
+  expect(result.rows.find((row) => row.status === "Earnings")?.detail).toBe("pending, 14 analysts");
+});

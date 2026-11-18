@@ -6,7 +6,7 @@ import { notMeaningfulCell } from "../../../components/ui/not-meaningful";
 import { isNotMeaningful } from "../../../utils/growth";
 import { TextAttributes } from "../../../ui";
 import { datedYear, epsText, impliedText, moneyText, signedPercent, TIMING_LABEL, type Surprise } from "./format";
-import { epsBasisShort, lacksConsensus, NO_CONSENSUS_SHORT, showsEpsBasis } from "../shared/earnings-report";
+import { ACTUAL_PENDING, actualPending, epsBasisShort, lacksConsensus, NO_CONSENSUS_SHORT, showsEpsBasis } from "../shared/earnings-report";
 import { periodText, type HistoryRow } from "./history-model";
 
 type HistoryColumnId =
@@ -122,7 +122,8 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
     case "analysts":
       return { text: row.epsAnalysts == null ? MISSING_VALUE : String(row.epsAnalysts), color: dim };
     case "epsActual":
-      // The company's press release's figure reads quieter until the calendar's replaces it.
+      // A report out with no actual yet says so; the company's press release's figure reads quieter until the calendar's replaces it.
+      if (actualPending(row)) return { text: ACTUAL_PENDING, color: dim };
       return { text: inCurrency(epsText(row.epsActual), row), color: row.provisional ? colors.textMuted : colors.text };
     case "basis":
       // A listing abroad's basic EPS is not the statements' diluted figure: it says what it is.
