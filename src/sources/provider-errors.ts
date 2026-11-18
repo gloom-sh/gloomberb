@@ -1,4 +1,5 @@
 import { DataServiceUnreachableError, isNetworkFailure } from "../utils/network-failure";
+import { OperationTimeoutError } from "../utils/async-deadline";
 import { ApiRequestError, isTransientFailure, wasAskedTwice } from "../api-client/errors";
 
 // Registered, so a miss raised by another copy of this module (a plugin that
@@ -154,7 +155,8 @@ class NoProviderError extends Error {
  * the data service, and a listing read the data service failed to answer twice
  * (`wasAskedTwice`, `serviceDidNotAnswerMessage`), each of which says that
  * rather than that no source has the symbol; any other failure, a 5xx on a read
- * that is not asked again among them, keeps the generic message.
+ * that is not asked again among them, keeps the generic message. A timeout
+ * on a working connection is kept in its own words as well.
  */
 export function noProviderError(message: string, note: ProviderMissNote | undefined, symbol?: string): Error {
   if (note?.reason) return createProviderMiss(note.reason, note.reason);
@@ -162,6 +164,7 @@ export function noProviderError(message: string, note: ProviderMissNote | undefi
   if (isNetworkFailure(note?.failure)) {
     return note!.failure instanceof DataServiceUnreachableError ? note!.failure : new DataServiceUnreachableError(note!.failure);
   }
+  if (note?.failure instanceof OperationTimeoutError) return new NoProviderError(note.failure.message, note.failure);
   if (wasAskedTwice(note?.failure)) return new NoProviderError(serviceDidNotAnswerMessage(symbol), note!.failure);
   if (note?.failure instanceof ApiRequestError && note.failure.status === 429) {
     return new NoProviderError(rateLimitedMessage(symbol, note.failure.retryAfterMs), note.failure);

@@ -10,6 +10,7 @@ import {
   setCloudApiFetchTransport,
 } from "./request";
 import { DataServiceUnreachableError, isNetworkFailure } from "../utils/network-failure";
+import { OperationTimeoutError } from "../utils/async-deadline";
 import { debugLog } from "../utils/debug-log";
 
 function responseWithBody(body: () => Promise<string>): Response {
@@ -109,10 +110,48 @@ describe("CloudApiRequestTransport market deadlines", () => {
     for (let index = 0; index < 10; index += 1) await Promise.resolve();
   };
 
-  test("a slow service that answers keeps research waiting to its own limit, while a quote stops at ten seconds", async () => {
+  test("a cold market read that takes twelve seconds can finish when the service answers health", async () => {
     jest.useFakeTimers();
-    const signals = new Map<string, AbortSignal>();
+    const paths: string[] = [];
+    const transport = new CloudApiRequestTransport({ fetchTransport: async (url) => {
+      const pathname = new URL(url).pathname;
+      paths.push(pathname);
+      if (pathname === "/health") return Response.json({ ok: true });
+      return new Promise<Response>((resolve) => setTimeout(() => resolve(Response.json({ prices: [42] })), 12_000));
+    } });
+    const read = transport.request("/market/history?symbol=LMT").catch((error: unknown) => error);
+    jest.advanceTimersByTime(4_000);
+    await flush();
+    jest.advanceTimersByTime(8_000);
+    expect(await read).toEqual({ prices: [42] });
+    expect(paths).toEqual(["/market/history", "/health"]);
+  });
+
+  test("a stalled health check gets a second chance within the same answer deadline", async () => {
+    jest.useFakeTimers();
+    const probes: AbortSignal[] = [];
     const transport = new CloudApiRequestTransport({ fetchTransport: async (url, init) => {
+      if (new URL(url).pathname !== "/health") {
+        return new Promise<Response>((resolve) => setTimeout(() => resolve(Response.json({ deals: [] })), 12_000));
+      }
+      probes.push(init!.signal!);
+      return probes.length === 1 ? new Promise<Response>(() => {}) : Response.json({ ok: true });
+    } });
+    const read = transport.request("/cloud/ipo/calendar").catch((error: unknown) => error);
+    jest.advanceTimersByTime(7_000);
+    await flush();
+    jest.advanceTimersByTime(5_000);
+    expect(await read).toEqual({ deals: [] });
+    expect(probes).toHaveLength(2);
+    expect(probes[0]?.aborted).toBe(true);
+  });
+
+  test("a read that never finishes on a reachable service times out without recording an outage", async () => {
+    jest.useFakeTimers();
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const signals = new Map<string, AbortSignal>();
+    const transport = new CloudApiRequestTransport({ connectionHealth: health, fetchTransport: async (url, init) => {
       const path = new URL(url).pathname;
       // The check that the service answers at all gets an answer; the reads themselves are slow.
       if (path === "/health") return responseWithBody(async () => "{}");
@@ -121,15 +160,19 @@ describe("CloudApiRequestTransport market deadlines", () => {
     } });
     const quote = transport.request("/market/quote?symbol=AAPL").catch(error => error);
     const research = transport.request("/market/dividends?symbol=AAPL").catch(error => error);
-    jest.advanceTimersByTime(7_000);
+    jest.advanceTimersByTime(4_000);
     await flush();
-    jest.advanceTimersByTime(3_000);
+    jest.advanceTimersByTime(6_000);
+    expect(signals.get("/market/quote")?.aborted).toBe(false);
+    jest.advanceTimersByTime(15_000);
     expect(signals.get("/market/quote")?.aborted).toBe(true);
     expect(signals.get("/market/dividends")?.aborted).toBe(false);
     const slowQuote = await quote;
-    expect(slowQuote.message).toContain("10000ms");
+    expect(slowQuote).toBeInstanceOf(OperationTimeoutError);
+    expect(slowQuote.message).toBe("Cloud market request timed out after 25000ms");
     expect(isNetworkFailure(slowQuote)).toBe(false);
-    jest.advanceTimersByTime(35_000);
+    expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
+    jest.advanceTimersByTime(20_000);
     expect(signals.get("/market/dividends")?.aborted).toBe(true);
     expect((await research).message).toContain("45000ms");
   });
@@ -139,9 +182,11 @@ describe("CloudApiRequestTransport market deadlines", () => {
   // refused connection would have said "couldn't reach".
   test("a request nothing answers fails as the data service being unreachable, and the next one does not wait it out again", async () => {
     jest.useFakeTimers();
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
     const asked: string[] = [];
     const signals = new Map<string, AbortSignal>();
-    const transport = new CloudApiRequestTransport({ fetchTransport: async (url, init) => {
+    const transport = new CloudApiRequestTransport({ connectionHealth: health, fetchTransport: async (url, init) => {
       const path = new URL(url).pathname;
       asked.push(path);
       signals.set(path, init!.signal!);
@@ -161,10 +206,13 @@ describe("CloudApiRequestTransport market deadlines", () => {
     }
     expect(signals.get("/market/quote")?.aborted).toBe(true);
     expect(signals.get("/market/dividends")?.aborted).toBe(true);
+    expect(health.unreachableSince("gloom-cloud-http")).not.toBeNull();
 
     asked.length = 0;
     await expect(transport.request("/market/financials?symbol=AAPL")).rejects.toBeInstanceOf(DataServiceUnreachableError);
+    await expect(transport.request("/cloud/ipo/calendar")).rejects.toBeInstanceOf(DataServiceUnreachableError);
     expect(asked).toEqual([]);
+    transport.dispose();
   });
 
   // After an outage nothing asked again for what had failed, and nothing said
@@ -355,22 +403,6 @@ describe("CloudApiRequestTransport market deadlines", () => {
     const error = await transport.request("/market/earnings-calendar?symbols=AAPL").catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(DataServiceUnreachableError);
     expect(String((error as Error).cause)).toContain("timed out after 10ms");
-  });
-
-  test("a retry of the IPO calendar reaches the service after an unanswered read", async () => {
-    let reads = 0;
-    const transport = new CloudApiRequestTransport({
-      marketRequestTimeoutMs: 10,
-      fetchTransport: async () => ++reads === 1 ? new Promise<Response>(() => {}) : Response.json({ deals: [] }),
-    });
-    try {
-      await expect(transport.request("/cloud/ipo/calendar")).rejects.toBeInstanceOf(DataServiceUnreachableError);
-      await expect(transport.request("/market/quote?symbol=AAPL")).rejects.toBeInstanceOf(DataServiceUnreachableError);
-      expect(await transport.request("/cloud/ipo/calendar")).toEqual({ deals: [] });
-      expect(reads).toBe(2);
-    } finally {
-      transport.dispose();
-    }
   });
 
   test("aborts when response headers never arrive", async () => {
