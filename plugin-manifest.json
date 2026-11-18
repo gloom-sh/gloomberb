@@ -1413,7 +1413,7 @@
     {
       "id": "research-search",
       "name": "Research Search",
-      "description": "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches and keyword alerts.",
+      "description": "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches; free with a Gloom account, alerts on new hits are Pro.",
       "tagline": "Search calls, wires and filings.",
       "categories": [
         "research",
@@ -1436,8 +1436,7 @@
           {
             "code": "SRCH",
             "name": "Research Search",
-            "description": "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches and keyword alerts.",
-            "access": "pro"
+            "description": "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches; free with a Gloom account, alerts on new hits are Pro."
           }
         ]
       },

@@ -4,6 +4,7 @@ import type { CloudInsiderFilingStoriesResponse } from "../../../api-client";
 import { shortStoryId } from "../../../news/story-id";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { logFailure } from "../../../utils/log-failure";
+import { createTtlCache } from "../../../data/ttl-cache";
 
 /*
  * The stories that report a Form 4, as Gloom Cloud matches them: the filing's
@@ -25,8 +26,8 @@ type StoriesClient = Pick<typeof apiClient, "getCloudInsiderFilingStories">;
 const ACCESSION = /^\d{10}-\d{2}-\d{6}$/;
 /** As many filings as Gloom Cloud reads in one request: a page of SEC or INS rows. */
 const BATCH = 40;
-const TTL_MS = 5 * 60_000;
-const cache = new Map<string, { at: number; stories: FilingStory[] }>();
+/** A filing's stories, by accession, for a few minutes: an INS or SEC pane asks again as its rows redraw. */
+const cache = createTtlCache<FilingStory[]>({ ttlMs: 5 * 60_000, maxEntries: 500 });
 
 function storiesOf(item: CloudInsiderFilingStoriesResponse["items"][number]): FilingStory[] {
   return (item.stories ?? []).flatMap((story) => (
@@ -44,14 +45,14 @@ function storiesOf(item: CloudInsiderFilingStoriesResponse["items"][number]): Fi
 export async function loadFilingStories(
   accessions: readonly string[],
   client: StoriesClient = apiClient,
-  now = Date.now(),
 ): Promise<Map<string, FilingStory[]>> {
   const result = new Map<string, FilingStory[]>();
   const wanted: string[] = [];
+  // Asked in batches, one request for a page of rows, so each accession is kept as its answer arrives.
   for (const accession of new Set(accessions)) {
     if (!ACCESSION.test(accession)) continue;
-    const hit = cache.get(accession);
-    if (hit && now - hit.at < TTL_MS) result.set(accession, hit.stories);
+    const hit = cache.peek(accession);
+    if (hit) result.set(accession, hit);
     else wanted.push(accession);
   }
   for (let start = 0; start < wanted.length; start += BATCH) {
@@ -60,7 +61,7 @@ export async function loadFilingStories(
     for (const item of response.items ?? []) {
       if (!batch.includes(item.accession)) continue;
       const stories = storiesOf(item);
-      cache.set(item.accession, { at: now, stories });
+      cache.set(item.accession, stories);
       result.set(item.accession, stories);
     }
   }
