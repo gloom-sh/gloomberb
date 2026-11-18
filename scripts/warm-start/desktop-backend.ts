@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync } from "fs";
+import { existsSync } from "fs";
 import { homedir, hostname } from "os";
 import { join } from "path";
 import { heapStats } from "bun:jsc";
@@ -20,7 +20,6 @@ import { installWarmStartNetwork, warmStartNetworkFromEnv } from "./network";
 const app = process.env.WARM_DESKTOP_APP!;
 const viewDir = process.env.WARM_DESKTOP_VIEW!;
 const port = Number(process.env.WARM_DESKTOP_PORT);
-const probeOut = process.env.WARM_START_PROBE_OUT;
 const counts = { kept: 0, fetched: 0, refused: 0, streamed: 0 };
 const network = warmStartNetworkFromEnv();
 if (network) installWarmStartNetwork({ ...network, log: (event) => { counts[event] += 1; } });
@@ -131,11 +130,7 @@ const server = Bun.serve({
   async fetch(request, bun) {
     const url = new URL(request.url);
     if (url.pathname === "/__desktop-rpc" && bun.upgrade(request, { data: undefined })) return undefined as unknown as Response;
-    if (url.pathname === "/__warm-probe") {
-      const text = await request.text();
-      if (probeOut) appendFileSync(probeOut, `${text.replace(/}$/, `,"network":${JSON.stringify(counts)}}`)}\n`);
-      return new Response("", { headers: { "access-control-allow-origin": "*" } });
-    }
+    if (url.pathname === "/__warm-requests") return Response.json(counts);
     if (url.pathname === "/health") return Response.json({ status: "ok" });
     if (url.pathname === "/__warm-heap") {
       Bun.gc(true);

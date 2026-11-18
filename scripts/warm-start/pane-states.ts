@@ -13,6 +13,7 @@
  * behind content is fine.
  */
 export type PaneShownState = "blank" | "loading" | "empty" | "error" | "content";
+export interface ProbeEntry { at: number; frame: number; panes: Record<string, PaneShownState> }
 
 /** One pane's state changes over a launch: ms since the launch, and the frame they were seen on. */
 export interface PaneTimeline {
@@ -22,8 +23,8 @@ export interface PaneTimeline {
 
 const LOADING_TEXT = /^\s*(?:Loading|Fetching)\b/;
 
-/** The page probe: reads every frame and posts each change to `endpoint` as `{ at, frame, panes: {id: state} }`. */
-export function domProbeSource(endpoint: string): string {
+/** The page probe reports frame changes out of band from the app's HTTP requests. */
+export function domProbeSource(binding: string): string {
   return `(() => {
   if (window.__gloomWarmProbe) return;
   window.__gloomWarmProbe = true;
@@ -63,7 +64,7 @@ export function domProbeSource(endpoint: string): string {
     }
     if (any) {
       const body = JSON.stringify({ at: performance.timeOrigin + performance.now(), frame, panes: changed });
-      fetch(${JSON.stringify(endpoint)}, { method: "POST", body, keepalive: true, mode: "no-cors" }).catch(() => {});
+      window[${JSON.stringify(binding)}](body);
     }
     requestAnimationFrame(tick);
   };

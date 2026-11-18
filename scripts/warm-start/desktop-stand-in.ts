@@ -1,16 +1,13 @@
-import { existsSync, readFileSync } from "fs";
 import { mkdir, rm, writeFile } from "fs/promises";
 import { join, relative } from "path";
 import { testAppEnv } from "../test-app-env";
-import type { ProbeEntry } from "./web-server";
 
 export interface DesktopStandIn {
   origin: string;
   pagePath: string;
   /** Starts the Bun side for one launch, with the slow network's extra time. */
   restart(delayMs: number): Promise<void>;
-  onProbe(listener: ((entry: ProbeEntry) => void) | null): void;
-  requests(): Record<string, number>;
+  requests(): Promise<Record<string, number>>;
   /** Ends the Bun side, as quitting the app does. */
   stopBackend(): Promise<void>;
   stop(): Promise<void>;
@@ -27,32 +24,9 @@ export async function startDesktopStandIn({ checkout, app, home, viewDir, networ
   await buildView(app, join(checkout, "scripts/warm-start/desktop-electroview.ts"), viewDir);
   // One port per profile: the page's storage belongs to its origin.
   const port = 41_000 + Number(BigInt(Bun.hash(home)) % 2000n);
-  const probeFile = join(home, "probe.jsonl");
   let child: ReturnType<typeof Bun.spawn> | null = null;
-  let listener: ((entry: ProbeEntry) => void) | null = null;
-  let read = 0;
-  let requests: Record<string, number> = {};
-  let polling: ReturnType<typeof setInterval> | null = null;
-
-  const poll = () => {
-    if (!existsSync(probeFile)) return;
-    const text = readFileSync(probeFile, "utf8");
-    const end = text.lastIndexOf("\n") + 1;
-    for (const line of text.slice(read, end).split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        const entry = JSON.parse(line) as ProbeEntry & { network?: Record<string, number> };
-        if (entry.network) requests = entry.network;
-        listener?.(entry);
-      } catch { /* Intentional ignore: a report cut short is dropped. */ }
-    }
-    read = end;
-  };
 
   const stopBackend = async () => {
-    if (polling) clearInterval(polling);
-    polling = null;
-    poll();
     if (!child) return;
     child.kill("SIGKILL");
     await child.exited;
@@ -64,9 +38,6 @@ export async function startDesktopStandIn({ checkout, app, home, viewDir, networ
     pagePath: "/",
     async restart(delayMs) {
       await stopBackend();
-      await rm(probeFile, { force: true });
-      read = 0;
-      requests = {};
       child = Bun.spawn(["bun", join(checkout, "scripts/warm-start/desktop-backend.ts")], {
         cwd: app,
         env: testAppEnv({
@@ -74,7 +45,6 @@ export async function startDesktopStandIn({ checkout, app, home, viewDir, networ
           WARM_DESKTOP_APP: app,
           WARM_DESKTOP_VIEW: viewDir,
           WARM_DESKTOP_PORT: String(port),
-          WARM_START_PROBE_OUT: probeFile,
           WARM_START_NET_DIR: networkDir,
           WARM_START_NET_DELAY_MS: String(delayMs),
         }),
@@ -91,10 +61,11 @@ export async function startDesktopStandIn({ checkout, app, home, viewDir, networ
         text += new TextDecoder().decode(value);
       }
       void (async () => { while (!(await reader.read()).done) { /* drain */ } })().catch(() => {});
-      polling = setInterval(poll, 100);
     },
-    onProbe(next) { listener = next; },
-    requests: () => requests,
+    async requests() {
+      const response = await fetch(`http://127.0.0.1:${port}/__warm-requests`, { signal: AbortSignal.timeout(3_000) }).catch(() => null);
+      return response?.ok ? await response.json() as Record<string, number> : {};
+    },
     stopBackend,
     async stop() { await stopBackend(); },
   };

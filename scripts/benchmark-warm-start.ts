@@ -9,7 +9,7 @@ import { evaluate, launchBrowser, sleep } from "./pane-chrome/browser";
 import { routeDirectReads } from "./pane-chrome/web-app";
 import { median, positiveInteger, runTmux, shellQuote, takeOption, writeFreshInstallConfig } from "./tui-benchmark-harness";
 import type { WarmStartPlan } from "./warm-start/plan";
-import { domProbeSource, type PaneShownState, type PaneTimeline } from "./warm-start/pane-states";
+import { domProbeSource, type PaneShownState, type PaneTimeline, type ProbeEntry } from "./warm-start/pane-states";
 import { installWarmStartNetwork } from "./warm-start/network";
 import { startWarmStartWebServer, type WarmStartWebServer } from "./warm-start/web-server";
 import { startDesktopStandIn, type DesktopStandIn } from "./warm-start/desktop-stand-in";
@@ -59,6 +59,7 @@ const perLayout = positiveInteger(takeOption(args, "--per-layout"), 16, "per-lay
 const build = args.includes("--build");
 const capture = args.includes("--capture");
 const metrics = args.includes("--metrics");
+const cold = args.includes("--cold");
 /** The harness's own checkout, for its scripts. */
 const checkout = resolve(join(import.meta.dir, ".."));
 /** The checkout whose app is launched: `--app`, for a before run of the base while this branch changes. */
@@ -151,7 +152,7 @@ interface Launch {
   /** Each pane's states so far. */
   timeline(): Map<string, PaneTimeline>;
   launchedAt: number;
-  requests(): Record<string, number> | undefined;
+  requests(): Record<string, number> | undefined | Promise<Record<string, number>>;
   heapBytes(): Promise<number | undefined>;
   cacheFootprint?(): Promise<CacheFootprint>;
   quit(): Promise<void>;
@@ -294,13 +295,17 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
   const takePicture = (file: string) => browser.cdp.send("Page.captureScreenshot", { format: "png" }, 3_000).then(async ({ data }) => {
     await writeFile(file, Buffer.from(data, "base64"));
   }).catch((error) => { console.error("Could not capture a benchmark screenshot:", error); });
-  server.onProbe((entry) => {
+  const binding = "__gloomWarmFrame";
+  browser.cdp.on("Runtime.bindingCalled", ({ name, payload }) => {
+    if (name !== binding) return;
+    const entry = JSON.parse(payload) as ProbeEntry;
     record(timelines, entry.at - launchedAt, entry.frame, entry.panes);
     if (screenshot && network !== "fill" && !picture && Object.values(entry.panes).some((state) => state !== "blank")) picture = takePicture(screenshot);
   });
   try {
     await routeDirectReads(browser.cdp, { read: (_key, load) => load() });
-    await browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: domProbeSource(`${origin}/__warm-probe`) });
+    await browser.cdp.send("Runtime.addBinding", { name: binding });
+    await browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: domProbeSource(binding) });
     await browser.cdp.send("Page.navigate", { url: `${origin}${path}` });
   } catch (error) {
     await browser.close();
@@ -360,7 +365,6 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
         if (standIn) await standIn.stopBackend();
       } finally {
         await browser.close("SIGKILL");
-        server.onProbe(null);
       }
     },
   };
@@ -509,7 +513,7 @@ async function main(): Promise<void> {
       const once = async (network: Network | "fill", run: number) => {
         if (interrupted.signal.aborted || (network !== "fill" && done(network, run))) return;
         await rm(profile, { recursive: true, force: true });
-        if (network === "fill") {
+        if (network === "fill" || cold) {
           await mkdir(profile, { recursive: true });
           await writeLaunchConfig(base, layouts, layout);
         } else {
@@ -520,19 +524,21 @@ async function main(): Promise<void> {
         const started = await launch(network, screenshot);
         let heapBytes: number | undefined;
         let cache: CacheFootprint | undefined;
+        let requests: Record<string, number> | undefined;
         try {
           await settle(started, expected, network, filledPanes);
           if (metrics && !interrupted.signal.aborted) {
             heapBytes = await started.heapBytes().catch(() => undefined);
             cache = await started.cacheFootprint?.().catch(() => undefined);
           }
+          requests = await started.requests();
         } finally {
           await started.quit();
         }
         if (interrupted.signal.aborted) return;
         if (metrics && target !== "web") cache = sqliteFootprint();
         const entry: RunRecord = { layout, network, run, launchedAt: started.launchedAt, panes: [...started.timeline().values()],
-          requests: started.requests(), heapBytes, cache, cacheKiB: metrics ? await cacheKiB() : undefined };
+          requests, heapBytes, cache, cacheKiB: metrics ? await cacheKiB() : undefined };
         if (network === "fill") {
           filledPanes = new Set(entry.panes.filter((pane) => pane.states.at(-1)?.state === "content").map((pane) => pane.paneId));
           await rm(filledProfile, { recursive: true, force: true });
