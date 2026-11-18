@@ -31,7 +31,7 @@ import {
   followLatestMarketObservation,
   latestSessionView,
 } from "./chart-bounds";
-import { emptyFinancials, chartCalculationSeriesIds, baseSecuritySeries } from "./base-series";
+import { emptyFinancials, chartCalculationSeriesIds, baseSecuritySeries, withPriorClose } from "./base-series";
 import {
   resolvePriceHistoryIntegrity,
   assignAxes,
@@ -106,7 +106,7 @@ export function seedChartResolutionResult(
   const primary = series[0]!;
   if (sessionView?.priorClose != null && primary.transform === "raw"
     && primary.unitGroup.startsWith("price") && primary.unitGroup !== "price:unknown") {
-    series[0] = { ...primary, priorClose: sessionView.priorClose };
+    series[0] = withPriorClose(primary, sessionView.priorClose);
   }
   const resolutionSupport = support.length === series.length ? intersectChartResolutionSupport(support) : [];
   const priceComparison = resolvePriceComparison(spec, series, bounds, resolution, spec.viewport.dateWindow,

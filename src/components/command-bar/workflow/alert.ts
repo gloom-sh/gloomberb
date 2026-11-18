@@ -54,13 +54,21 @@ function summarizeAlertWorkflowQuoteError(symbol: string, error: unknown): strin
 /** How long typing rests before the symbol is read: a company's name is a search, not one quote. */
 const ALERT_WORKFLOW_READ_DELAY_MS = 250;
 
+/**
+ * The fields with their lines under Symbol and Target Price. A pane that fills
+ * the form in can add its own line under Target Price (`priceNote` in its
+ * values: GEX's flip alert says the level is fixed), kept below the price's.
+ */
 function updateAlertWorkflowFieldDescriptions(
   fields: CommandBarWorkflowField[],
   descriptions: Partial<Record<"symbol" | "price", string | undefined>>,
+  values: Record<string, CommandBarFieldValue>,
 ): CommandBarWorkflowField[] {
+  const priceNote = coerceFieldString(values.priceNote).trim();
   return fields.map((field) => {
     if (field.id !== "symbol" && field.id !== "price") return field;
-    const description = descriptions[field.id];
+    const own = descriptions[field.id];
+    const description = field.id === "price" && priceNote ? [own, priceNote].filter(Boolean).join("\n") : own;
     return field.description === description ? field : { ...field, description };
   });
 }
@@ -102,7 +110,7 @@ export function useAlertWorkflowQuoteSync({
           fields: updateAlertWorkflowFieldDescriptions(route.fields, {
             symbol: "Enter a symbol to validate it.",
             price: "Target fills from the current price after the symbol resolves.",
-          }),
+          }, route.values),
           payloadMeta: {
             ...(route.payloadMeta ?? {}),
             alertQuoteSymbol: "",
@@ -121,7 +129,7 @@ export function useAlertWorkflowQuoteSync({
         fields: updateAlertWorkflowFieldDescriptions(route.fields, {
           symbol: tf("Checking {symbol}...", { symbol: alertWorkflowSymbol }),
           price: "Target fills from the current price after the symbol resolves.",
-        }),
+        }, route.values),
         payloadMeta: {
           ...(route.payloadMeta ?? {}),
           alertQuoteSymbol: alertWorkflowSymbol,
@@ -158,7 +166,7 @@ export function useAlertWorkflowQuoteSync({
               // What became of the symbol goes under its quote, which names the listing: FB is a fund now, and Meta trades as META.
               symbol: [formatAlertWorkflowQuote(quote, print), ...fate].join("\n"),
               price: tf("Current price {price}; edit to set the target.", { price: formatAlertWorkflowCurrentPrice(print) }),
-            }),
+            }, nextValues),
             payloadMeta: {
               ...(route.payloadMeta ?? {}),
               alertQuoteSymbol: alertWorkflowSymbol,
@@ -179,7 +187,7 @@ export function useAlertWorkflowQuoteSync({
             fields: updateAlertWorkflowFieldDescriptions(route.fields, {
               symbol: message,
               price: undefined,
-            }),
+            }, route.values),
             payloadMeta: {
               ...(route.payloadMeta ?? {}),
               alertQuoteSymbol: alertWorkflowSymbol,

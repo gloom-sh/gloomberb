@@ -26,7 +26,8 @@ import {
   updateEventAlerts,
   type EventAlertRule,
 } from "./events";
-import { ruleState, ruleTarget } from "./event-rows";
+import { ruleState, ruleTarget, type RuleState } from "./event-rows";
+import { checksProRules, proRuleStatus } from "./pro-rules";
 import { relativeTime } from "./format";
 import { alertKindLabel, fetchAlertHistory, ruleStateText } from "./history";
 import { isResearchAlertKind } from "./research-rules";
@@ -42,14 +43,14 @@ import { alertTarget, alertViewHints, eventRuleSubject, useOpenAlertTarget } fro
 import { FIRED_LOG_KEY } from "./fired-log";
 import { withAlertChange } from "./alert-log";
 
-const columnsFor = (width: number, lastCheck: boolean, needsSignIn: boolean): DataTableColumn[] => [
+const columnsFor = (width: number, lastCheck: boolean, waiting: RuleState | null): DataTableColumn[] => [
   { id: "kind", label: "Event", width: 15, align: "left" },
   { id: "target", label: "Following", width: 28, flexGrow: 1, align: "left" },
   ...(lastCheck && width >= 96
     ? [{ id: "last", label: "Last check", width: 34, align: "left" as const }]
     : []),
-  // Wide enough to say "Needs sign-in" only when a row does.
-  { id: "status", label: "State", width: needsSignIn ? 13 : 8, align: "left" },
+  // Wide enough to say "Needs sign-in" or "Needs Pro" only when a row does.
+  { id: "status", label: "State", width: Math.max(8, waiting?.length ?? 0), align: "left" },
   { id: "created", label: "Since", width: 10, align: "left" },
 ];
 
@@ -108,7 +109,10 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const access = usePlanAccess();
   // A saved session counts before its account has loaded, so a signed-in start does not flash "Needs sign-in".
   const signedIn = access.signedIn || !!apiClient.getSessionToken();
-  const needsSignIn = !signedIn && rules.some((rule) => ruleState(rule, now, false) === "Needs sign-in");
+  // Options flow and an IV spike are checked only with Pro: a free account, signed in or not, waits on Pro.
+  const pro = checksProRules(signedIn, apiClient.getCurrentUser());
+  const shownStates = new Set(rules.map((rule) => ruleState(rule, now, signedIn, pro)));
+  const waiting: RuleState | null = shownStates.has("Needs sign-in") ? "Needs sign-in" : shownStates.has("Needs Pro") ? "Needs Pro" : null;
   const openTarget = useOpenAlertTarget();
   const selectedTarget = useMemo(() => selectedRule ? alertTarget(eventRuleSubject(selectedRule)) : null, [selectedRule]);
   const session = useResearchCloudSession();
@@ -120,7 +124,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     [history.data],
   );
   // An IV level is read by this app, so its last reading needs no session.
-  const columns = columnsFor(width, (hasResearch && !!history.data) || rules.some((rule) => rule.kind === "iv_level"), needsSignIn);
+  const columns = columnsFor(width, (hasResearch && !!history.data) || rules.some((rule) => rule.kind === "iv_level"), waiting);
   const add = useCallback(
     () => openPluginCommandWorkflow("set-event-alert"),
     [openPluginCommandWorkflow],
@@ -167,6 +171,8 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const status =
     error ??
     (selectedRule?.kind === "catalyst" ? catalystStatus : null) ??
+    // A Pro rule nothing checks says so while it is selected, and what is free beside it.
+    (selectedRule && ruleState(selectedRule, now, signedIn, pro) === "Needs Pro" ? proRuleStatus(selectedRule) : null) ??
     sync.error ??
     (sync.phase === "disabled"
       ? "Cloud sync disabled"
@@ -227,9 +233,9 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
         // An IV level that could not be read says so on its own row: No data in State, the reason in Last check.
         const check = rule.kind === "iv_level" ? checks[rule.id] : undefined;
         const unread = rule.kind === "iv_level" && rule.status === "active" && !rule.triggeredAt && check?.value === null;
-        const state = ruleState(rule, now, signedIn);
-        // A rule nothing checks while signed out says so in its State, in the warning tone.
-        const waiting = state === "Needs sign-in" && column.id === "status";
+        const state = ruleState(rule, now, signedIn, pro);
+        // A rule nothing checks while signed out, or without Pro, says so in its State, in the warning tone.
+        const waits = (state === "Needs sign-in" || state === "Needs Pro") && column.id === "status";
         return {
           text:
             column.id === "kind"
@@ -249,7 +255,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
             ? colors.selectedText
             : unread && (column.id === "status" || column.id === "last")
               ? colors.negative
-              : waiting
+              : waits
                 ? colors.warning
               : rule.status === "paused"
                 ? colors.textMuted

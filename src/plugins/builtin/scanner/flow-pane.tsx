@@ -372,7 +372,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
   }, [setCursorSymbol]);
 
   if (feed.denied) {
-    return <ScannerDeniedState reason={feed.deniedReason} placement="flow-wall" width={width} height={height} />;
+    return <ScannerDeniedState scanner="flow" reason={feed.deniedReason} placement="flow-wall" width={width} height={height} />;
   }
 
   const queryBar = (

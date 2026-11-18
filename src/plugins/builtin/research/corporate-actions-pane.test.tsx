@@ -3,10 +3,10 @@ import { act, useState } from "react";
 import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import type { AnalystResearchData, CorporateActionsData } from "../../../types/financials";
+import type { AnalystResearchData, CorporateActionsData, TickerFinancials } from "../../../types/financials";
 import { Box } from "../../../ui";
 import { buildEventColumns, buildEventDetail, CorporateActionsView, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -60,7 +60,8 @@ async function frame() {
   await act(async () => { await tui.setup().renderOnce(); });
 }
 
-async function render(actions: CorporateActionsData, variant: "corporate-actions" | "earnings-estimates", width = 80, estimates?: AnalystResearchData | Promise<AnalystResearchData>) {
+async function render(actions: CorporateActionsData, variant: "corporate-actions" | "earnings-estimates", width = 80, estimates?: AnalystResearchData | Promise<AnalystResearchData>,
+  financials?: TickerFinancials) {
   const paneId = `${variant}:TEST`;
   const config = createTestPaneConfig("/tmp/gloom-corporate-actions-pane-test", {
     instanceId: paneId, paneId: variant, binding: { kind: "fixed", symbol: "TEST" },
@@ -68,6 +69,7 @@ async function render(actions: CorporateActionsData, variant: "corporate-actions
   const state = createInitialState(config);
   state.focusedPaneId = paneId;
   state.tickers = new Map([["TEST", createTestTicker("TEST", "Test", { exchange: "ASX", currency: "AUD" })]]);
+  if (financials) state.financials = new Map([["TEST", financials]]);
   const provider = createTestDataProvider({
     getCorporateActions: async () => actions,
     getAnalystResearch: async () => estimates ?? ({ symbol: "TEST", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] }),
@@ -117,6 +119,24 @@ test("EE keeps surprise visible with annual and quarterly estimates and never as
   expect(csv).toContain("?,Currency unstated");
   expect(csv).toContain("1.50 ?");
   expect(csv).toContain("1000000000");
+});
+
+/** DES SPY's Events tab listed a feed's EPS rows as the fund's earnings, which `fn EVT SPY` left out: the pane never passed the listing's type. */
+test("a fund's events are its distributions alone, without earnings, estimates or their columns", async () => {
+  const actions: CorporateActionsData = { symbol: "TEST", currency: "USD", splits: [], dividends: [{ exDate: "2026-09-18", amount: 1.889 }],
+    earnings: [{ date: "2026-04-30", epsActual: 2.68, epsEstimate: 2.03, currency: "USD" }] };
+  const estimates: AnalystResearchData = { symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [],
+    earningsEstimates: [{ date: "2027-03-31", period: "next quarter", average: 4, growth: 0.25, currency: "USD" }] };
+  // The quote's type is all the pane knows the fund by: it has no statements or trailing EPS to build rows from.
+  await render(actions, "corporate-actions", 120, estimates, createTestFinancials({ quote: createTestQuote({ symbol: "TEST", instrumentType: "ETF" }) }));
+  const fund = tui.frame();
+  expect(fund).toContain("$1.889");
+  for (const text of ["Earnings", "+32.02%", "Q Est", "Q EPS", "PERIOD", "No analyst estimates"]) expect(fund).not.toContain(text);
+  await tui.destroy();
+  // The same feed under a stock is its earnings.
+  await render(actions, "corporate-actions", 120, estimates, createTestFinancials({ quote: createTestQuote({ symbol: "TEST", instrumentType: "EQUITY" }) }));
+  expect(tui.frame()).toContain("Earnings");
+  expect(tui.frame()).toContain("Q EPS");
 });
 
 /** Review, 12 Nov 2026: AAPL's events led with a 2028 estimate, the newest date, above everything that had happened. */

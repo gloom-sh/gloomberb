@@ -19,10 +19,14 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type PaneFooterSegment,
+  type PaneHint,
   type QueryBarFilter,
   type StatItem,
 } from "../../../components";
 import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
+import { openFormModal } from "../../../components/form-modal";
+import { getSharedRegistry } from "../../registry/shared";
+import { usePluginAppActions } from "../../runtime";
 import type { CloudResource } from "../shared/cloud-resource";
 import { formatCompactAxis } from "../../../components/chart-table";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -69,6 +73,7 @@ import {
   formatDistance,
   formatGamma,
   formatLevel,
+  flipAlertValues,
   gammaTimesFigure,
   positioningSpotDetail,
   formatPayout,
@@ -326,12 +331,28 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const activeResource = tab === "gex" ? gamma : openInterest;
   // Expiries' Net GEX column loads beside the open interest it sits with.
   const columnGamma = tab === "expiries" && gammaReady ? gamma : null;
+  // Alert at this flip: Add Alert filled in with a price alert crossing the flip shown, a fixed price on the
+  // reader's quotes that the app checks, which stays put when dealer positioning moves the flip.
+  const { notify } = usePluginAppActions();
+  const flip = tab === "gex" ? gamma.data?.flip ?? null : null;
+  const alertsOn = getSharedRegistry()?.commands.has("set-alert") === true;
+  const flipHint = useMemo<PaneHint | null>(() => {
+    if (flip == null || !Number.isFinite(flip) || !alertsOn) return null;
+    const level = formatLevel(flip);
+    return {
+      id: "flip-alert", key: "a", label: "lert at flip",
+      title: `Alert at this flip: a price alert when your quote crosses ${level}, checked while Gloom runs. A fixed price; it stays at ${level} when dealer positioning moves the flip.`,
+      onPress: () => {
+        if (!openFormModal({ kind: "plugin-command", commandId: "set-alert", values: flipAlertValues(symbol, flip) })) notify({ body: "Open this from the main window.", type: "info" });
+      },
+    };
+  }, [alertsOn, flip, notify, symbol]);
   usePaneStatusFooter({
     registrationId: "options-positioning",
     loading: activeResource.loading || !!columnGamma?.loading,
     error: activeResource.data ? activeResource.error ?? columnGamma?.error ?? null : null,
     info,
-    hints: upgradeHint ? [upgradeHint] : undefined,
+    hints: upgradeHint || flipHint ? [...upgradeHint ? [upgradeHint] : [], ...flipHint ? [flipHint] : []] : undefined,
   });
   const notices = useMemo(() => [
     ...(data?.warnings ?? []),

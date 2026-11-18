@@ -15,6 +15,8 @@ import { localTimeSuffix } from "../../../utils/utc-time";
 import { resolvePersistedCloudSessionToken } from "../../../cli/pane-functions/cloud-session";
 import type { ConfigContext } from "../../../cli/types";
 import { checkedWhenSignedIn, NEEDS_SIGN_IN, needsSignInNote } from "./event-rows";
+import { checkedOnlyWithPro, checksProRules, NEEDS_PRO, needsProNote, savedWithoutProNote } from "./pro-rules";
+import { OCC_CONTRACT, occContractExample, occFormText, parseLooseOptionContract, resolveLooseOptionContract, type LooseOptionContract } from "./option-contract";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
@@ -57,7 +59,7 @@ import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertSt
 import { alertKindLabel, fetchAlertHistory, ruleStateText, type AlertRuleState } from "./history";
 import { apiClient } from "../../../api-client";
 import { IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
-import { isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
+import { isDollarMark, isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
 import { commodityFutureNote, farTargetMessage, levelInQuoteUnit } from "./quotes";
 import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel } from "./research-builder";
@@ -127,8 +129,11 @@ export type AlertAddRequest =
   | { kind: "flow"; symbol: string | null; premium: number; side: "any" | "calls" | "puts"; print: "any" | "sweep" | "block" }
   /** The symbol's 30-day ATM IV (`atm`, in %) or 25-delta risk reversal (`rr`, in vol points) above or below a level, checked by the running app. */
   | { kind: "iv_level"; symbol: string; metric: IvLevelMetric; direction: "above" | "below"; level: number }
-  /** One OCC contract's IV rising by `points`. */
-  | { kind: "iv_spike"; contract: string; points: number }
+  /**
+   * One OCC contract's IV rising by `points`. A contract typed loosely (`SPY 680C 11/19`) carries what it was
+   * read as (`loose`), for the chain to name the one listed contract it is before the rule is made.
+   */
+  | { kind: "iv_spike"; contract: string; points: number; loose?: LooseOptionContract }
   /** The rest of what Add Event Alert offers: 52-week range, unusual volume, filings, insiders, short interest and more. */
   | RuleAddRequest;
 
@@ -274,6 +279,8 @@ export function parseAlertAddArgs(
   if (country !== undefined) throw new Error(COUNTRY_RULE);
   if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not price alerts.");
   if (third === undefined) throw new Error(ADD_USAGE);
+  // A dollar mark the shell split from its price (`$ 757.75`, `757.75 USD`) is part of it.
+  if (rest.length === 1 && (isDollarMark(third) || isDollarMark(rest[0]!))) return parseAlertAddArgs([first, second, `${third} ${rest[0]}`], days, exchange, country, benchmark, watchlist);
   const retype = (price: number) => retypeCommand(first, condition, price, exchange);
   // `81 000` without quotes arrives as 81 and a stray 000; neither reading is taken for granted.
   const spaced = rest.length > 0 && LEADING_GROUP.test(third) ? parsePastedNumber([third, ...rest].join(" ")) : null;
@@ -290,8 +297,16 @@ export function parseAlertAddArgs(
     ...(thousandsDot ? { thousandsDot: { ...thousandsDot, text: third.trim() } } : {}) };
 }
 
-const OCC_CONTRACT = /^(?:O:)?[A-Z.]{1,6}\d{6}[CP]\d{8}$/i;
 const LEVEL_DIRECTIONS = ["above", "below"] as const;
+
+/** An IV spike's rise in vol points, with the unit or without it (`5`, `5 pts`), refused with its range when it does not read. */
+function readSpikePoints(typed: string, contract: string): number {
+  const value = typed && !/%/.test(typed) ? parseIvLevel(typed) : Number.NaN;
+  if (!Number.isFinite(value) || value < 0.1 || value > 100) {
+    throw new Error(`An IV spike is a rise of 0.1 to 100 vol points: gloom alerts add ${/\s/.test(contract) ? `"${contract}"` : contract} iv spike 5.`);
+  }
+  return value;
+}
 
 /** A level typed for an IV level rule, with its unit or without (`50`, `50%`, `-5.5 pts`), refused with its unit and range when it does not read. */
 function readLevel(metric: IvLevelMetric, typed: string | undefined, symbol: string): number {
@@ -321,6 +336,21 @@ function parseResearchAddArgs(args: readonly string[]): ResearchAddRequest | nul
   const word = (value: string | undefined) => value?.toLowerCase() ?? "";
   const isCondition = (value: string | undefined) => (CONDITIONS as readonly string[]).includes(word(value)) || word(value) === "earnings";
   const lead = word(first);
+  // `<contract> iv spike <points>`, the contract typed as OCC writes it or loosely, over one word or several
+  // (`SPY 680C 11/19`, `SPY241119C680`), read against the listed chain once the command runs.
+  const spikeAt = args.findIndex((arg, index) => index > 0 && word(arg) === "iv" && word(args[index + 1]) === "spike");
+  if (spikeAt > 0 && !(spikeAt === 1 && OCC_CONTRACT.test(first.trim()))) {
+    const typed = args.slice(0, spikeAt).join(" ").trim();
+    const points = readSpikePoints(args.slice(spikeAt + 2).join(" "), typed);
+    if (OCC_CONTRACT.test(typed.replace(/\s+/g, ""))) return { kind: "iv_spike", contract: typed.replace(/\s+/g, "").toUpperCase(), points };
+    const loose = parseLooseOptionContract(typed);
+    if (!loose) {
+      // A ticker alone has an IV level to follow, not one contract's spike.
+      const level = /^[A-Z.^=:-]+$/i.test(typed) ? ` For ${typed.toUpperCase()}'s 30-day ATM IV, add a level: gloom alerts add ${typed.toUpperCase()} iv above 50.` : "";
+      throw new Error(`"${typed}" is not an option contract. ${occFormText(occContractExample())}: gloom alerts add ${occContractExample()} iv spike 5.${level}`);
+    }
+    return { kind: "iv_spike", contract: typed, points, loose };
+  }
   const [symbol, kind, tail] = (lead === "news" || lead === "flow") && !isCondition(second)
     ? [null, lead, args.slice(1)] as const
     : [first, word(second), args.slice(2)] as const;
@@ -350,13 +380,7 @@ function parseResearchAddArgs(args: readonly string[]): ResearchAddRequest | nul
     if (kind !== "iv" || word(third) !== "spike") {
       throw new Error(`An option contract takes an IV spike in vol points: gloom alerts add ${symbol.toUpperCase()} iv spike 5. For a level, name the underlying: alerts add ${symbol.replace(/^O:/i, "").match(/^[A-Z.]+/i)![0]!.toUpperCase()} iv above 50.`);
     }
-    // Vol points, with the unit or without it: `5`, `5 pts`.
-    const typed = rest.join(" ");
-    const value = typed && !/%/.test(typed) ? parseIvLevel(typed) : Number.NaN;
-    if (!Number.isFinite(value) || value < 0.1 || value > 100) {
-      throw new Error(`An IV spike is a rise of 0.1 to 100 vol points: gloom alerts add ${symbol.toUpperCase()} iv spike 5.`);
-    }
-    return { kind: "iv_spike", contract: symbol.toUpperCase(), points: value };
+    return { kind: "iv_spike", contract: symbol.toUpperCase(), points: readSpikePoints(rest.join(" "), symbol.toUpperCase()) };
   }
   const metric: IvLevelMetric = kind === "iv" ? "atm" : "rr";
   const direction = word(third);
@@ -551,12 +575,16 @@ function priceRow(alert: AlertRule): AlertListRow {
 
 function eventRow(
   rule: EventAlertRule, now: number, eventDate: string | null | undefined, check?: IvLevelCheck, cloud?: CloudRuleStates, signedIn = true,
+  pro = signedIn,
 ): AlertListRow {
   const scheduled = readScheduledRule(rule);
   if (!scheduled) {
     const triggered = rule.status === "active" && rule.triggeredAt ? "triggered" : rule.status;
-    // Signed out, nothing checks a rule only a signed-in account gets checked: it waits on a sign-in, not on its event.
-    const status = triggered === "active" && !signedIn && checkedWhenSignedIn(rule) ? NEEDS_SIGN_IN : triggered;
+    // Without Pro, nothing checks options flow or an IV spike, signed in or not: it waits on Pro. Signed out,
+    // nothing checks any other rule only a signed-in account gets checked: it waits on a sign-in, not on its event.
+    const status = triggered !== "active" ? triggered
+      : !pro && checkedOnlyWithPro(rule) ? NEEDS_PRO
+      : !signedIn && checkedWhenSignedIn(rule) ? NEEDS_SIGN_IN : triggered;
     // An IV level is read by this app, so its last reading is this device's; Gloom Cloud reads the rest.
     const state = cloud?.states.get(rule.id);
     const reading = rule.kind === "iv_level" ? {
@@ -1044,6 +1072,17 @@ export const alertsCliCommand: CliCommandDef = {
     let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...futureNote ? [futureNote] : [], ...seriesNote ? [seriesNote] : [], ...benchmarkNotes, ...penceNote ? [penceNote] : []];
     let newEventRule: EventAlertRule | null = null;
     let newResearchRule: EventAlertRule | null = null;
+    // A contract typed loosely is the one listed contract it names, read from the chain; one past its expiry is
+    // kept as typed, for the rule to refuse it as expired.
+    if (research?.kind === "iv_spike" && research.loose) {
+      const { loose, contract: typedContract } = research;
+      const resolved = await withMarketData(ctx, (market) => resolveLooseOptionContract(typedContract, loose, (expiration) => {
+        if (!market.dataProvider.getOptionsChain) throw new Error(`Option chains cannot be read here to find ${typedContract}.`);
+        return market.dataProvider.getOptionsChain(loose.root, "", expiration);
+      }, now)).catch(failWith);
+      research.contract = resolved.contract;
+      if (resolved.readAs) read = [...read, resolved.readAs];
+    }
     if (research) {
       const typed = priceListing?.exchange ? canonicalExchange(priceListing.exchange) : "";
       const { kind, values } = researchFormValues(
@@ -1164,11 +1203,15 @@ export const alertsCliCommand: CliCommandDef = {
       const [{ dates, warnings }, cloud] = await Promise.all([listEventDates(events.rules, now, lookup), cloudRuleStates(events.rules, session)]);
       const rows = [
         ...alerts.map(priceRow),
-        ...events.rules.map((rule) => eventRow(rule, now, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id], cloud, !!session)),
+        ...events.rules.map((rule) => eventRow(rule, now, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id], cloud, !!session,
+          checksProRules(!!session, apiClient.getCurrentUser()))),
       ];
       const waiting = rows.filter((row) => row.status === NEEDS_SIGN_IN).length;
+      // The Pro note `alerts add` prints, once for the list: options flow and IV spikes are checked only with Pro.
+      const proRules = events.rules.filter(checkedOnlyWithPro);
       const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings, ...cloud.warning ? [cloud.warning] : [],
-        ...waiting ? [needsSignInNote(waiting)] : []];
+        ...waiting ? [needsSignInNote(waiting)] : [],
+        ...proRules.length ? [needsProNote(proRules, rows.filter((row) => row.status === NEEDS_PRO).length)] : []];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
         rows: (data) => data.map(textRow),
         textColumns: [
@@ -1342,11 +1385,15 @@ export const alertsCliCommand: CliCommandDef = {
         record("created", rule);
         const delivery = research ? researchDelivery(research.kind) : ruleDelivery(formRule!.event);
         // Saved signed out, it waits on a sign-in, and `alerts list` and ALRT say so until there is one.
-        const needsSignIn = checkedWhenSignedIn(rule) && !savedSession(config);
-        const signIn = needsSignIn
+        // Options flow and an IV spike wait on Pro, which a free sign-in does not bring.
+        const session = savedSession(config);
+        const needsPro = checkedOnlyWithPro(rule) && !checksProRules(!!session, apiClient.getCurrentUser());
+        const needsSignIn = !needsPro && checkedWhenSignedIn(rule) && !session;
+        const signIn = needsPro ? savedWithoutProNote(rule) : needsSignIn
           ? " It needs sign-in: nothing checks it while you are signed out. Open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up)."
           : "";
-        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule, ...needsSignIn ? { status: NEEDS_SIGN_IN } : {} },
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule,
+          ...needsPro ? { status: NEEDS_PRO } : needsSignIn ? { status: NEEDS_SIGN_IN } : {} },
           ...(read.length > 0 ? { warnings: read } : {}) }, {
           text: (data) => `Added alert ${data.alert.id}: ${alertKindLabel(rule.kind)} ${eventAlertTarget(rule)} (${delivery}).${signIn}${dryRunNote(data.dryRun)}`,
         });

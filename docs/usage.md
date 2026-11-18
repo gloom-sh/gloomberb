@@ -494,6 +494,8 @@ gloom fn 13F 0001067983 --compare SPY                 # a fund against an ETF's 
 
 `G`, `GP`, `GIP`, `CMP`, `GF` and `GE` open the same chart composer with different starting presets.
 
+On a one-day chart the legend prints the last bar's price with that bar's move from the prior close the chart draws as its dotted line (the quote's previous close, or the last bar of the session before): `$654.41 -0.39%` beside a `$656.95` line, never a quote's move read a moment apart from the bars. Without that line it measures from the close the quote's change is from.
+
 #### The data catalog
 
 `CAT` opens the data catalog: every series a chart can draw, so you can graph one without typing the expression.
@@ -852,7 +854,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `PF [portfolio or watchlist]` | Portfolio and watchlist workspace. With a name or id, in any case, it opens that portfolio or watchlist |
 | `PORT` | Portfolio risk and sector exposure |
 | `ALRT` | Price, filing, news, earnings and market event alerts, with delivery history |
-| `SA <symbol condition price>` | Create a price alert |
+| `SA <symbol condition price>` | Create a price alert, or a move from the previous close (`SA QQQ moves 5%`) |
 | `AI <prompt>` | AI screener ([BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai)) |
 | `AGENT` | Local AI research workspace ([BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai)) |
 | `CHAT [channel]` | Gloom Cloud chat |
@@ -1004,7 +1006,9 @@ gloom alerts add BRK.B filing 13F          # the 13F of the company's own filer,
 
 These rules, except an IV level and an earnings, CPI, FOMC or calendar date, are checked only for a signed-in account. One added while signed out is saved and reads `needs sign-in` in `gloom alerts list` and its CSV and **Needs sign-in** in **Events** and `fn ALRT --tab events`, with one line on how to sign in, until a session is saved.
 
-A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere, and an IV level also takes `BTC-USD` and `ETH-USD`. A news rule on a coin points to a keyword alert, which reads every story, on the words typed when they name the coin (`alerts add BTC-USD news bitcoin ETF` points to `gloom alerts add news "bitcoin ETF"`), else on its name: `gloom alerts add news bitcoin`. An IV spike's contract must be live: one past its expiry is refused (`Not a live contract: IBIT200101C00045000 expired on 2020-01-01.`). `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
+Options flow and IV spike alerts are checked only for an account with Pro, and **Add Event Alert** marks them (Pro). Without Pro, signed out or on a free plan, one is saved and reads `needs Pro` in `gloom alerts list` and **Needs Pro** in **Events** and `fn ALRT --tab events`, with one line saying what is free: `Free: OMON chain, price and move alerts.` (an IV spike's starts with IV level alerts). `alerts list` repeats the Pro note `alerts add` prints for them.
+
+A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere, and an IV level also takes `BTC-USD` and `ETH-USD`. A news rule on a coin points to a keyword alert, which reads every story, on the words typed when they name the coin (`alerts add BTC-USD news bitcoin ETF` points to `gloom alerts add news "bitcoin ETF"`), else on its name: `gloom alerts add news bitcoin`. An IV spike's contract may be typed as OCC writes it or as traders do (`SPY 680C 11/19`, `SPY Nov 19 680 call`, `SPY261119C680`): one that names exactly one listed contract is read as it (`Read "SPY 680C 11/19" as SPY261119C00680000`), a date without a year being the next listed one; one that names none is refused with the OCC form and a listed contract to copy. The contract must be live: one past its expiry is refused (`Not a live contract: IBIT200101C00045000 expired on 2020-01-01.`). `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
 
 `v` (view, also in the footer and the pane menu) opens what the selected row follows, on **Prices**, **Events** and **History**:
 
@@ -1028,7 +1032,7 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - Several symbols in one command (`alerts add HSBA.L BARC.L down 3%`), or `--watchlist <name>` for every listing of a watchlist (`alerts add --watchlist Book up 3%`), make one alert per listing, up to 500. Repeats and a rule already set are added once, and one summary counts them by venue, names a symbol that is the same listing as another in the command (`Same listing as 7203:JPX in this command: 7203.T`) and each symbol that could not be quoted. ALRT's **History** keeps the add as one entry.
 - With the app open, the app alerts you. With it closed, signed in with Cloud sync, a move alert reaches your phone and that day's market email. Either way it goes off once a session, never twice for the same one.
 - Cloud sync carries the rules to your other devices, in a list of their own, with the latest session each went off in. Each device keeps its own readings of them, so a check never changes the synced list. The running app asks for their quotes a hundred listings at a time.
-- **Levels** and `fn ALRT` show them with **Move** as the measure, the move as the reading, and in the detail the close it is from. **Edit** takes the move form (`GBPUSD=X moves 0.5%`); a price level or a move in place of the other is a new alert, made with `alerts add`. The command bar's `SA` takes levels, and points a move to `alerts add`.
+- **Levels** and `fn ALRT` show them with **Move** as the measure, the move as the reading, and in the detail the close it is from. **Edit** takes the move form (`GBPUSD=X moves 0.5%`); a price level or a move in place of the other is a new alert. The command bar's `SA` adds either (`SA QQQ moves 5%`, `SA QQQ above 700`), and **Add Alert** has **Move from previous close** beside **Price**.
 
 **Price alerts** are checked by the running app on every price tick, and it notifies you there. Signed in with Cloud sync on, an alert the app has synced also reaches you with the app closed:
 
@@ -1046,7 +1050,7 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - Commands never check alerts. Only the app does: a command such as `gloom doctor`, `gloom fn` or `gloom shot` loads the plugins without checking any, so none goes off, or is logged in **History**, from a command.
 - Prices are written at the instrument's precision, with thousands separators, everywhere (**Levels**, `fn ALRT`, `alerts list`, **History**, the toast): `74,481.45`, a pair as `quote` prints it (`1.33750`), yen with no decimals, a London line in the pence its quote shows (`70.00p`). A level there is typed in pence (`alerts add VOD.L below 70p`), and a bare `70` on a line quoted in pence is read as pence when 70 pounds would be ten times its price, saying so. Pence on a line not quoted in them is refused (`AAPL trades in USD; pence (p) only apply to London prices`), and the alert log names a level the same way.
 - An alert is kept once per listing, shown with its venue: `7203.T`, `7203 JP` and `7203:JPX` are one alert, `7203:JPX`, and adding it again under another of them names the alert there is.
-- A price reads the same in `alerts add`, the `SA` shortcut and the **Add Alert** form: `81000`, `81,000.50`, `1.350,5` and `81k` or `1.5m` (a thousand and a million). A comma before exactly three digits (`81,000`) could be thousands or a decimal comma, so it names both readings and adds nothing; text that is no number is refused with the format to type (`type 81000 or 81k`).
+- A price reads the same in `alerts add`, the `SA` shortcut and the **Add Alert** form: `81000`, `81,000.50`, `1.350,5`, `1 000.50` and `81k` or `1.5m` (a thousand and a million), with a dollar sign or code or without (`$757.75`, `$ 757.75`, `757.75 USD`). A comma before exactly three digits (`81,000`) could be thousands or a decimal comma, so it names both readings and adds nothing; a dollar price is written the US way, so `$81,000` is 81000. Text that is no number is refused with the format to type (`type 81000 or 81k`).
 - If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloom alerts list` show the read error, and event alerts stay usable.
 - On **Levels**, Enter opens an alert in full: its state, the listing it is checked on with its currency, the price and how far it is from the level, when its quote was checked, and when it was created (ISO, UTC). An alert that could not get a quote shows that in red on its row, and its detail says why. An alert no check has read yet says `not checked yet`. A pane wide enough for every column adds **Since**, the day each alert was made, as **Events** lists its rules. `m` re-arms an alert that went off.
 - `gloom alerts add` saves an alert with the price it read, so **Levels** and `alerts list` show it before the app has run, and prints that price. An `above` or `below` level the price is already past goes off at the next check, and the add says so: `Last price 342.65, already above 250.00, so it goes off at the next check.` (`crosses` waits for the next move through the level.) Adding the same rule on the same listing again names the existing alert and adds nothing; `gloom alerts rearm` on an alert that has not gone off says it is already active.
@@ -1729,6 +1733,7 @@ The line under the table names the spot and time they are valued at and the open
 - `--strikes 10` keeps 10 either side of the money. `--strikes 0.70-0.90` (or `--delta 0.70-0.90`) keeps the strikes whose call or put delta is in the band. `--strikes all`, the default, keeps every strike.
 - `--columns bid,ask,spread,delta,openInterest,extrinsicPerYear` picks the fields mirrored around the strike. `costOfSpot` adds the put's midpoint as a percent of spot on the put side ([method](research-data.md#omon-strike-window-and-carry)).
 - `gloom shot OMON` takes the same options, and its result names the rows cut above or below the view.
+- While the chain shows open interest, the footer keeps its date (`OI as of Mon 16 Nov`, `OI 11-16` in a narrow pane) and the image prints it; the spot the Greeks are valued at and the contract under the cursor give way first.
 - The report and the image name the expiry with its days left (`Expiry 2028-01-21 (469d)`, `data.metadata.expiry` in `--json`), and the report ends with the chain's as-of and delay in the same words as `options`.
 
 ### Adding and removing symbols

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   chartWindow,
   expiryAxis,
+  flipAlertValues,
   formatDistance,
   formatGammaTimes,
   formatPositioningSpot,
@@ -12,6 +13,7 @@ import {
   strikeAxis,
   strikeChartOpenInterest,
 } from "./model";
+import { parseAlertCommandValues } from "../alerts/command";
 
 const rows = (entries: Array<[number, number]>) => entries.map(([strike, weight]) => ({ strike, weight }));
 const weight = (row: { weight: number }) => row.weight;
@@ -83,4 +85,13 @@ test("gamma's time and its quotes' read apart before the open, and an index outs
   expect(positioningSpotDetail(7722.6, "2026-10-26T20:00:00.000Z", undefined, "close").detail).toBe("close Mon 26 Oct");
   expect(formatPositioningSpot(7722.6, "2026-10-26T20:00:00.000Z", undefined, "close")).toBe("7,722.60 close Mon 26 Oct");
   expect(positioningSpotDetail(770.1, "2026-10-26T20:43:00.000Z").detail).toBe("after hours Mon 26 Oct 20:43 UTC");
+});
+
+test("Alert at this flip fills in a price alert crossing the flip at the price the Flip figure shows", () => {
+  // An index's flip prints grouped to the cent; the alert reads the same level, never 6 for "6,712.35".
+  const values = flipAlertValues("^SPX", 6712.346);
+  // The form says under Target Price that the level is fixed, not the flip's.
+  expect(values).toEqual({ kind: "price", symbol: "^SPX", condition: "crosses", price: "6712.35", priceNote: "Fixed price: it does not follow the flip." });
+  expect(parseAlertCommandValues(values)).toEqual({ symbol: "^SPX", condition: "crosses", price: 6712.35 });
+  expect(parseAlertCommandValues(flipAlertValues("SPY", 712.5))).toEqual({ symbol: "SPY", condition: "crosses", price: 712.5 });
 });

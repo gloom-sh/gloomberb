@@ -5,7 +5,7 @@ import { planMoveAlerts, uniqueInputs, MAX_BULK_ALERTS } from "./cli-move";
 import { judgeMove, moveReached } from "./move";
 import { readLevelAlertStores, saveAlerts, writeLevelAlertStores } from "./storage";
 import { deserializeAlerts, editAlert, evaluateAlert, serializeAlerts } from "./alert-engine";
-import { parseAlertEdit, parseAlertShortcutValues } from "./command";
+import { parseAlertCommandValues, parseAlertEdit, parseAlertShortcutValues } from "./command";
 import { moveChecksOf, readMoveChecks, withMoveChecks } from "./move-checks";
 import { moveQuoteFields } from "./quotes";
 import type { AlertRule } from "./types";
@@ -170,5 +170,14 @@ test("a move rule is edited as a move, and refused as a price level; a price ale
   expect(parseAlertEdit(move, "GBPUSD=X down 1")).toEqual({ symbol: "GBPUSD=X", condition: "below", price: 1, move: true });
   expect(() => parseAlertEdit(move, "GBPUSD=X above 1.35")).toThrow("A price level is its own alert: gloom alerts add GBPUSD=X above 1.35.");
   expect(() => parseAlertEdit({ symbol: "AAPL" }, "AAPL up 3%")).toThrow("A move is its own alert: gloom alerts add AAPL up 3%.");
-  expect(() => parseAlertShortcutValues("GBPUSD=X moves 0.5%")).toThrow("Add a move alert with gloom alerts add GBPUSD=X moves 0.5%.");
+});
+
+/** `SA Qqq moves 5%` only pointed to `gloom alerts add`: SA adds a move as Add Alert adds a price level. */
+test("SA reads a move as alerts add takes it, into Add Alert's move kind", () => {
+  expect(parseAlertShortcutValues("Qqq moves 5%")).toEqual({ symbol: "QQQ", kind: "move", "move:condition": "crosses", "move:percent": "5" });
+  expect(parseAlertShortcutValues("HSBA:LSE down 3")).toMatchObject({ kind: "move", "move:condition": "below", "move:percent": "3" });
+  expect(parseAlertCommandValues(parseAlertShortcutValues("QQQ up 2.5%"))).toEqual({ symbol: "QQQ", condition: "above", price: 2.5, move: true });
+  // Typed in the form, with its percent still to come, nothing is added yet.
+  expect(parseAlertCommandValues({ kind: "move", symbol: "QQQ", "move:condition": "below" })).toBeNull();
+  expect(() => parseAlertShortcutValues("QQQ moves 0%")).toThrow('A move is a percent from the previous close, above 0 and up to 100, not "0%".');
 });

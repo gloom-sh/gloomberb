@@ -54,6 +54,13 @@ export interface PaneFooterSegment {
    */
   capture?: boolean;
   /**
+   * The pane's figures cannot be read without the segment: the session OMON's
+   * open interest counts are from. A row too narrow shortens it to its last
+   * variant and leaves out the segments around it first, as it does beside a
+   * warning, so it never goes while those figures show.
+   */
+  holdsPlace?: boolean;
+  /**
    * The notes behind a warning icon (usePaneNoticeFooter), each in full. The
    * icon opens them in the app. A picture of the pane cannot, so it draws a
    * segment carrying `notes` and no icon as its one note line
@@ -388,9 +395,9 @@ function stepDownTogether(info: PaneFooterSegment[], width: number): PaneFooterS
   return fitted;
 }
 
-/** A warning, an icon or a pressable segment, which a row too narrow never cuts or leaves out. */
+/** A warning, an icon, a pressable segment or one marked `holdsPlace`, which a row too narrow never cuts or leaves out. */
 function holdsItsPlace(segment: PaneFooterSegment): boolean {
-  return !!segment.icon || !!segment.onPress || segment.parts.some((part) => part.tone === "warning" || part.tone === "negative");
+  return !!segment.icon || !!segment.onPress || !!segment.holdsPlace || segment.parts.some((part) => part.tone === "warning" || part.tone === "negative");
 }
 
 /**
@@ -780,6 +787,7 @@ export function samePaneFooterRegistration(
         && segment.disabled === other.disabled
         && segment.savedCopyAt === other.savedCopyAt
         && segment.age === other.age
+        && !!segment.capture === !!other.capture && !!segment.holdsPlace === !!other.holdsPlace
         // The icon reads the same whatever its notes say; a picture of the pane prints them.
         && (segment.notes ?? []).length === (other.notes ?? []).length
         && (segment.notes ?? []).every((note, noteIndex) => note === other.notes![noteIndex])
