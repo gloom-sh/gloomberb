@@ -103,10 +103,12 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   const instrumentKey = JSON.stringify(instrument);
   const scope = useCloudDisplayScope();
   const wholeHistory = lookbackYears(lookback) == null;
-  const loader = useCallback((force: boolean) => loadBacktestHistory(instrument!, { forceRefresh: force, wholeHistory }),
-    [instrumentKey, wholeHistory]);
+  const loader = useCallback(async (force: boolean) => {
+    const { fetchedAt: _fetchedAt, ...history } = await loadBacktestHistory(instrument!, { forceRefresh: force, wholeHistory });
+    return history;
+  }, [instrumentKey, wholeHistory]);
   const history = useAsyncResource(instrument ? loader : null, {
-    savedCopy: scope && !instrument?.instrument ? { key: ["backtest-history", scope, instrumentKey, wholeHistory] } : null,
+    savedCopy: scope && !instrument?.instrument ? { version: 2, key: ["backtest-history", scope, instrumentKey, wholeHistory] } : null,
   });
   useAutoRefresh(history.updatedAt, history.load);
 
@@ -138,8 +140,9 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
 
   const series = useMemo(() => {
     if (!result) return [];
+    const dates = result.equity.map((row) => new Date(row.date));
     const points = (pick: (row: HistoryBacktestResult["equity"][number]) => number) =>
-      result.equity.map((row) => scalarPoint(new Date(row.date), pick(row)));
+      result.equity.map((row, index) => scalarPoint(dates[index]!, pick(row)));
     // Buy-and-hold first so the strategy line draws on top where they coincide.
     return [
       staticSeries(points((row) => row.benchmark), { id: "benchmark", label: "Buy & hold", color: colors.textMuted, calendarSpaced: true }),

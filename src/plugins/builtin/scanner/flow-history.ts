@@ -58,13 +58,14 @@ export function useFlowHistory(
   const key = JSON.stringify([identity, query]);
   const savedKey = useMemo(() => cacheScope && enabled && load === loadRecordedPrints ? { key: ["scanner-flow-prints", cacheScope, key] } : null,
     [cacheScope, enabled, key, load]);
-  const opening = useMemo(() => {
+  const owner = enabled ? JSON.stringify([cacheScope, key]) : "";
+  const open = () => {
     const saved = savedKey ? readSavedCopy<ScannerFlowHistoryPage>(savedKey) : null;
-    return saved ? { ...emptyHistory(key), ...saved.value, savedAt: saved.fetchedAt } : emptyHistory(key);
-  }, [key, savedKey]);
-  const owner = enabled ? key : "";
-  const [state, setState] = useState<FlowHistoryState>(opening);
-  const current = enabled && state.key === owner ? state : opening;
+    return saved ? { ...emptyHistory(owner), ...saved.value, savedAt: saved.fetchedAt } : emptyHistory(owner);
+  };
+  const [state, setState] = useState<FlowHistoryState>(open);
+  const current = state.key === owner ? state : open();
+  if (current !== state) setState(current);
   const inFlight = useRef<AbortController | null>(null);
 
   // Pages for the previous filters are dropped along with their request.
@@ -86,18 +87,18 @@ export function useFlowHistory(
         const events = mergeFlowRows(refresh ? [] : current.events, page.events);
         const hasMore = page.hasMore && page.events.length > 0;
         if (savedKey) writeSavedCopy(savedKey, events.length ? { events, hasMore } : null);
-        setState({ key, events, hasMore, loading: false, error: null });
+        setState({ key: owner, events, hasMore, loading: false, error: null });
       },
       (error: unknown) => {
         if (controller.signal.aborted) return;
         inFlight.current = null;
         const discard = !!savedKey && isPermanentClientError(error);
         if (discard) deleteSavedCopy(savedKey);
-        setState({ ...(discard ? emptyHistory(key) : current), loading: false,
+        setState({ ...(discard ? emptyHistory(owner) : current), loading: false,
           error: error instanceof Error ? error.message : String(error) });
       },
     );
-  }, [key, load, oldestLive, query, savedKey]);
+  }, [load, oldestLive, owner, query, savedKey]);
 
   useEffect(() => {
     if (enabled && current.savedAt != null && !current.error && !inFlight.current) requestPage(current, true);
@@ -111,8 +112,8 @@ export function useFlowHistory(
   }, [current, enabled, requestPage]);
 
   const retry = useCallback(() => {
-    setState((previous) => previous.key === key ? { ...previous, error: null } : previous);
-  }, [key]);
+    setState((previous) => previous.key === owner ? { ...previous, error: null } : previous);
+  }, [owner]);
 
   return { ...current, loadMore, retry };
 }

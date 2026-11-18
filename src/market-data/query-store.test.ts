@@ -28,6 +28,8 @@ describe("QueryStore retention", () => {
     try {
       new QueryStore<string>(() => {}, options).set("chart", ready("saved"));
       const reopened = new QueryStore<string>(() => {}, options);
+      expect(reopened.hasSaved("chart")).toBe(true);
+      expect(reopened.size).toBe(0);
       const firstCopy = reopened.get("chart");
       expect(firstCopy.data).toBe("saved");
       reopened.release("chart");

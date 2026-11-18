@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSavedCopyFooter } from "./layout/pane/footer/registration";
-import { deleteSavedCopy, readSavedCopy, savedCopyId, writeSavedCopy, type SavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
+import { afterSavedCopyFrame, deleteSavedCopy, readSavedCopy, savedCopyId, writeSavedCopy, type SavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
 import { isPermanentClientError } from "../api-client/errors";
 import { logFailure } from "../utils/log-failure";
 
@@ -168,6 +168,7 @@ export function usePagedRows<P extends RowPage<unknown>>(
     const key = savedKey;
     const keyId = savedId;
     setState((current) => current.owner === loadPage && (current.ownerKey ?? null) === keyId
+      && (!current.loading || current.loadingMore || current.error !== null || current.moreError !== null)
       ? { ...current, loading: true, loadingMore: false, error: null, moreError: null }
       : current);
     try {
@@ -208,8 +209,15 @@ export function usePagedRows<P extends RowPage<unknown>>(
   }, [fetchFirst]);
 
   useEffect(() => {
-    load(false);
+    let active = true;
+    const frame = view.savedAt != null ? afterSavedCopyFrame() : undefined;
+    if (frame) {
+      void frame.then(() => {
+        if (active && !firstRequest.current) load(false);
+      }).catch(logFailure("components.paged-rows", "Refresh after the saved page failed"));
+    } else load(false);
     return () => {
+      active = false;
       firstRequest.current?.abort();
       firstRequest.current = null;
       moreRequest.current?.abort();

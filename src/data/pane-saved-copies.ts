@@ -1,8 +1,7 @@
-import { gzipSync, gunzipSync } from "fflate";
 import type { AppResourceStorePort } from "../core/app-service-ports";
-import { decodeBase64, encodeBase64 } from "../utils/http-proxy-response";
 import { logFailure } from "../utils/log-failure";
 import { WARM_RESOURCE_BUDGET } from "./durable-resources";
+import { packJson, unpackJson } from "./packed-json";
 
 /**
  * What a pane last loaded, kept so the next launch opens on it at once and
@@ -38,12 +37,22 @@ const KIND = "loaded";
 const RETAIN_UNTIL = Number.MAX_SAFE_INTEGER;
 
 let store: AppResourceStorePort | null = null;
+let savedCopyFrame: (() => Promise<void>) | null = null;
 
 /** Host wiring: the app's resource store, or null when the app closes. */
 export function setSavedCopyStore(next: AppResourceStorePort | null): AppResourceStorePort | null {
   const previous = store;
   store = next;
   return previous;
+}
+
+/** Lets a renderer paint its first saved result before starting the refresh. */
+export function setSavedCopyFrameGate(gate: (() => Promise<void>) | null): void {
+  savedCopyFrame = gate;
+}
+
+export function afterSavedCopyFrame(): Promise<void> | undefined {
+  return savedCopyFrame?.();
 }
 
 export function savedCopyId(key: SavedCopyKey): string {
@@ -125,28 +134,10 @@ function decodeSnapshot(value: unknown): unknown {
   return decode(value);
 }
 
-const COMPRESSED = "gzip:";
-const MIN_COMPRESSED_LENGTH = 16 * 1024;
-const MAX_INFLATED_LENGTH = 32 * 1024 * 1024;
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
-function packSnapshot(value: unknown): string {
-  const json = JSON.stringify(encodeSnapshot(value));
-  if (json.length < MIN_COMPRESSED_LENGTH || json.length > MAX_INFLATED_LENGTH) return json;
-  const bytes = encoder.encode(json);
-  if (bytes.length > MAX_INFLATED_LENGTH) return json;
-  const packed = COMPRESSED + encodeBase64(gzipSync(bytes, { level: 1, mtime: 0 }));
-  return packed.length < json.length ? packed : json;
-}
-
 function unpackSnapshot(value: string): unknown {
-  if (!value.startsWith(COMPRESSED)) return decodeSnapshot(JSON.parse(value));
-  const bytes = decodeBase64(value.slice(COMPRESSED.length));
-  if (!bytes || bytes.length < 18) throw new NotPlainData();
-  const length = new DataView(bytes.buffer, bytes.byteOffset + bytes.length - 4, 4).getUint32(0, true);
-  if (length > MAX_INFLATED_LENGTH) throw new NotPlainData();
-  return decodeSnapshot(JSON.parse(decoder.decode(gunzipSync(bytes))));
+  const json = unpackJson(value);
+  const parsed: unknown = JSON.parse(json);
+  return json.includes(`"${MARK}"`) ? decodeSnapshot(parsed) : parsed;
 }
 
 /** The copy saved under `key`, of any age; null when there is none, or it is of another version. */
@@ -158,6 +149,15 @@ export function readSavedCopy<T>(key: SavedCopyKey): SavedCopy<T> | null {
   } catch (error) {
     logFailure("data.pane-saved-copies", "Reading a saved copy failed")(error);
     return null;
+  }
+}
+
+export function hasSavedCopy(key: SavedCopyKey): boolean {
+  try {
+    return store?.get(resourceKey(savedCopyId(key)), { schemaVersion: key.version ?? 1, allowExpired: true, touch: false }) != null;
+  } catch (error) {
+    logFailure("data.pane-saved-copies", "Checking for a saved copy failed")(error);
+    return false;
   }
 }
 
@@ -178,7 +178,7 @@ export function writeSavedCopy(key: SavedCopyKey, value: unknown, fetchedAt = Da
   const now = Date.now();
   if (last !== undefined && now - last >= 0 && now - last < writeIntervalMs) return;
   try {
-    store.set(resourceKey(id), packSnapshot(value), { schemaVersion: key.version ?? 1, cachePolicy: { staleMs: 0, expireMs: RETAIN_UNTIL - fetchedAt }, fetchedAt });
+    store.set(resourceKey(id), packJson(JSON.stringify(encodeSnapshot(value))), { schemaVersion: key.version ?? 1, cachePolicy: { staleMs: 0, expireMs: RETAIN_UNTIL - fetchedAt }, fetchedAt });
     if (writes) {
       writes.delete(id);
       writes.set(id, now);

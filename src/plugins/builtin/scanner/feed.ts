@@ -29,7 +29,6 @@ const INITIAL_STATE = { payload: null, denied: false, deniedReason: null } as co
 function useScannerFeed<T extends ScannerPayload>(scanner: "hilo" | "flow"): ScannerFeedState<T> & { identity: string; cacheScope: string | null } {
   const scope = useCloudDisplayScope();
   const identity = JSON.stringify([scanner, scope]);
-  const [current, setState] = useState<{ identity: string; client: unknown; state: ScannerFeedState<T> } | null>(null);
   // A hidden app drops the subscription like every other stream; the last
   // payload stays on screen until the server resends on return.
   const appVisible = useAppVisible();
@@ -37,10 +36,15 @@ function useScannerFeed<T extends ScannerPayload>(scanner: "hilo" | "flow"): Sca
   const client = override ?? apiClient;
   const cacheScope = override ? null : scope;
   const key = useMemo(() => cacheScope ? { key: ["scanner-feed", scanner, cacheScope] } : null, [cacheScope, scanner]);
-  const saved = useMemo(() => key ? readSavedCopy<T>(key) : null, [key]);
-  const state: ScannerFeedState<T> = current?.identity === identity && current.client === client ? current.state : saved
-    ? { ...INITIAL_STATE, payload: saved.value, savedAt: saved.fetchedAt }
-    : INITIAL_STATE;
+  const open = () => {
+    const saved = key ? readSavedCopy<T>(key) : null;
+    const state: ScannerFeedState<T> = saved ? { ...INITIAL_STATE, payload: saved.value, savedAt: saved.fetchedAt } : INITIAL_STATE;
+    return { identity, client, state };
+  };
+  const [current, setState] = useState(open);
+  const view = current.identity === identity && current.client === client ? current : open();
+  if (view !== current) setState(view);
+  const { state } = view;
 
   useEffect(() => {
     if (!appVisible || (!override && !scope)) return;

@@ -6,6 +6,8 @@ import type {
   SetResourceOptions,
 } from "./resource-store";
 import { safeParseJson, serializeJson } from "./sqlite/json";
+import { packJson, unpackJson } from "./packed-json";
+import { logFailure } from "../utils/log-failure";
 
 const DEFAULT_RESOURCE_SCHEMA_VERSION = 1;
 
@@ -118,13 +120,19 @@ export class MemoryResourceStore {
   protected restore(record: WarmResourceRecord): void {
     if ("valueJson" in record) {
       const { valueJson, ...metadata } = record;
+      const packed = record.namespace.startsWith("plugin:") ? packJson(valueJson) : valueJson;
       let decoded: WeakRef<object> | undefined;
       const restored = { ...metadata, get value() {
         const current = decoded?.deref();
         if (current) return current;
-        const data = safeParseJson<object>(valueJson);
-        if (data && typeof data === "object") decoded = new WeakRef(data);
-        return data;
+        try {
+          const data = safeParseJson<object>(unpackJson(packed));
+          if (data && typeof data === "object") decoded = new WeakRef(data);
+          return data;
+        } catch (error) {
+          logFailure("data.memory-resource-store", "Reading a packed resource failed")(error);
+          return null;
+        }
       } };
       this.records.set(buildMapKey(restored), restored);
       return;

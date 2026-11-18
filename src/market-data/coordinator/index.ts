@@ -478,8 +478,15 @@ export class MarketDataCoordinator {
 
   prefetchTicker(instrument: InstrumentRef | null | undefined): void {
     if (!instrument) return;
-    void this.loadSnapshot(instrument).catch(logFailure("market-data.coordinator.index", "Loading a financial snapshot failed"));
-    void this.loadChart(createBaselineChartRequest(instrument)).catch(logFailure("market-data.coordinator.index", "Loading chart data failed"));
+    const snapshotKey = buildSnapshotKey(instrument);
+    if (this.events.hasKeyListeners(snapshotKey) || !this.snapshotStore.hasSaved(snapshotKey)) {
+      void this.loadSnapshot(instrument).catch(logFailure("market-data.coordinator.index", "Loading a financial snapshot failed"));
+    }
+    const chartRequest = createBaselineChartRequest(instrument);
+    const chartKey = buildChartKey(chartRequest);
+    if (this.events.hasKeyListeners(chartKey) || !this.chartStore.hasSaved(chartKey)) {
+      void this.loadChart(chartRequest).catch(logFailure("market-data.coordinator.index", "Loading chart data failed"));
+    }
   }
 
   /**
@@ -490,11 +497,11 @@ export class MarketDataCoordinator {
    */
   warmTickerGaps(instrument: InstrumentRef | null | undefined): void {
     if (!instrument) return;
-    if (resolveEntryData(this.getSnapshotEntry(instrument)) == null) {
+    if (!this.snapshotStore.hasSaved(buildSnapshotKey(instrument)) && resolveEntryData(this.getSnapshotEntry(instrument)) == null) {
       void this.loadSnapshot(instrument).catch(logFailure("market-data.coordinator.index", "Loading a financial snapshot failed"));
     }
     const chartRequest = createBaselineChartRequest(instrument);
-    if (resolveEntryData(this.getChartEntry(chartRequest)) == null) {
+    if (!this.chartStore.hasSaved(buildChartKey(chartRequest)) && resolveEntryData(this.getChartEntry(chartRequest)) == null) {
       void this.loadChart(chartRequest).catch(logFailure("market-data.coordinator.index", "Loading chart data failed"));
     }
   }

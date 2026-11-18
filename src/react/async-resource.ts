@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connectionHealth, recoversDataRequests } from "../core/connection-health";
 import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 import { isPermanentClientError, isTransientFailure } from "../api-client/errors";
-import { deleteSavedCopy, readSavedCopy, savedCopyId, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
+import { afterSavedCopyFrame, deleteSavedCopy, readSavedCopy, savedCopyId, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
 import { savedCopyAt } from "../data/saved-copies";
+import { reuseSavedData } from "../data/reuse-saved-data";
 import { logFailure } from "../utils/log-failure";
 
 interface ResourceState<T> {
@@ -78,8 +79,8 @@ export function useAsyncResource<T>(
   clearOnErrorRef.current = options.clearOnError ?? false;
   const shouldSaveRef = useRef(options.shouldSave);
   shouldSaveRef.current = options.shouldSave;
-  const savedAtRef = useRef(view.savedAt);
-  savedAtRef.current = view.savedAt;
+  const currentView = useRef(view);
+  currentView.current = view;
   const settle = useCallback(async (force: boolean) => {
     const currentGeneration = ++generation.current;
     if (deferLoad) return;
@@ -90,14 +91,20 @@ export function useAsyncResource<T>(
     // The key of the question this load answers.
     const key = savedKey;
     const keyId = savedId;
-    const opening = savedAtRef.current !== null;
-    setState((current) => current.owner === loader && current.ownerKey === keyId ? { ...current, loading: true, error: null } : current);
+    const opening = currentView.current.savedAt !== null;
+    setState((current) => current.owner === loader && current.ownerKey === keyId && (!current.loading || current.error !== null)
+      ? { ...current, loading: true, error: null } : current);
     try {
       const data = await loader(force);
       if (generation.current === currentGeneration) {
         const savedAt = savedCopyAt(data);
         const updatedAt = savedAt ?? Date.now();
-        setState({ owner: loader, ownerKey: keyId, data, loading: false, error: null, updatedAt, savedAt });
+        const current = currentView.current;
+        setState({
+          owner: loader, ownerKey: keyId, loading: false, error: null, updatedAt, savedAt,
+          data: key && opening && savedAt === null && current.owner === loader && current.ownerKey === keyId
+            ? reuseSavedData(current.data, data) : data,
+        });
         if (key && savedAt === null && (shouldSaveRef.current?.(data) ?? true)) writeSavedCopy(key, data, updatedAt);
       }
     } catch (error) {
@@ -133,7 +140,13 @@ export function useAsyncResource<T>(
   const { data, loading, error, updatedAt, savedAt } = view;
   useSavedCopyFooter(savedAt, loading);
   useEffect(() => {
-    load(savedAt !== null);
+    const frame = savedAt !== null ? afterSavedCopyFrame() : undefined;
+    const openingGeneration = generation.current;
+    if (frame) {
+      void frame.then(() => {
+        if (generation.current === openingGeneration) load(true);
+      }).catch(logFailure("react.async-resource", "Refresh after the saved copy failed"));
+    } else load(savedAt !== null);
     return () => { generation.current += 1; };
   }, [load]);
 

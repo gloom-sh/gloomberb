@@ -175,7 +175,7 @@ export function useLiveScanFeed(
   const scope = useCloudDisplayScope();
   const identity = JSON.stringify([scope, key]);
   const savedKey = useMemo(() => !override && key && scope ? { key: ["live-scan", identity] } : null, [identity, key, override, scope]);
-  const opening = useMemo(() => savedKey ? readSavedCopy<LiveScanPayload>(savedKey) : null, [savedKey]);
+  const opening = useMemo(() => ({ copy: savedKey ? readSavedCopy<LiveScanPayload>(savedKey) : null }), [savedKey]);
   const [latest, setLatest] = useState<{ owner: LiveScanPoller; state: LiveScanFeedState } | null>(null);
   const poller = useMemo(() => {
     const owner = new LiveScanPoller(client, (state) => setLatest({ owner, state }));
@@ -183,13 +183,14 @@ export function useLiveScanFeed(
   }, [client, identity]);
   useEffect(() => () => poller.dispose(), [poller]);
   useEffect(() => {
-    poller.setScan(definition, identity, savedKey, opening);
+    poller.setScan(definition, identity, savedKey, opening.copy);
+    opening.copy = null;
   }, [poller, identity, opening, savedKey]);
   useEffect(() => {
     poller.setEnabled(enabled);
   }, [poller, enabled]);
-  const state = latest?.owner === poller ? latest.state : opening
-    ? { payload: opening.value, error: null, loading: false, savedAt: opening.fetchedAt }
+  const state = latest?.owner === poller ? latest.state : opening.copy
+    ? { payload: opening.copy.value, error: null, loading: false, savedAt: opening.copy.fetchedAt }
     : { payload: null, error: null, loading: !!definition && enabled };
   useSavedCopyFooter(state.savedAt, enabled && state.error === null);
   return { ...state, identity, reload: () => poller.reload() };

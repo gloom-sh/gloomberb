@@ -4,7 +4,7 @@ import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { useAsyncResource } from "./async-resource";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../core/connection-health";
 import { MemoryResourceStore } from "../data/memory-resource-store";
-import { setSavedCopyStore, writeSavedCopy } from "../data/pane-saved-copies";
+import { setSavedCopyFrameGate, setSavedCopyStore, writeSavedCopy } from "../data/pane-saved-copies";
 import { Text } from "../ui";
 
 type Loader = ((force: boolean) => Promise<string>) | null;
@@ -43,11 +43,13 @@ test("only the newest request may publish data or an error", async () => {
   expect(resource).toMatchObject({ data: "new", loading: false, error: null });
 });
 
-test("terminal draws the saved result on mount while the loader is still pending", async () => {
+test("terminal draws the saved result before starting its background refresh", async () => {
   const previous = setSavedCopyStore(new MemoryResourceStore());
   const savedCopy = { key: ["board", "NYSE"] };
   const pending = Promise.withResolvers<string>();
-  const loader = () => pending.promise;
+  const drawn = Promise.withResolvers<void>();
+  const loads: boolean[] = [];
+  const loader = (force: boolean) => { loads.push(force); return pending.promise; };
   const rendered: string[] = [];
   function Pane() {
     const view = useAsyncResource(loader, { savedCopy });
@@ -56,14 +58,46 @@ test("terminal draws the saved result on mount while the loader is still pending
     return <Text>{text}</Text>;
   }
   try {
+    setSavedCopyFrameGate(() => drawn.promise);
     writeSavedCopy(savedCopy, "Old rows", Date.UTC(2023, 0, 1));
     await tui.render(<Pane />);
     await act(async () => { await tui.setup().renderOnce(); });
     expect(tui.frame()).toContain("Old rows");
+    expect(loads).toEqual([]);
+    await act(async () => { drawn.resolve(); });
+    expect(loads).toEqual([true]);
     await act(async () => { pending.resolve("New rows"); });
     await act(async () => { await tui.setup().renderOnce(); });
     expect(tui.frame()).toContain("New rows");
     expect(rendered).not.toContain("Loading");
+  } finally {
+    setSavedCopyFrameGate(null);
+    setSavedCopyStore(previous);
+  }
+});
+
+test("an unchanged refresh keeps the display data stable without keeping the saved age", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const savedCopy = { key: ["history", "NYSE", "public"] };
+  const live = { rows: [{ date: new Date("2026-01-01"), value: 42 }] };
+  const pending = Promise.withResolvers<typeof live>();
+  const loader = () => pending.promise;
+  let view: ReturnType<typeof useAsyncResource<typeof live>> | undefined;
+  function Pane() {
+    view = useAsyncResource(loader, { savedCopy });
+    return null;
+  }
+  try {
+    const fetchedAt = Date.UTC(2026, 0, 1);
+    writeSavedCopy(savedCopy, live, fetchedAt);
+    await tui.render(<Pane />);
+    const opening = view?.data;
+    expect(opening).toEqual(live);
+    expect(view?.savedAt).toBe(fetchedAt);
+    await act(async () => { pending.resolve(live); });
+    expect(view?.data).toBe(opening);
+    expect(view?.savedAt).toBeNull();
+    expect(view?.updatedAt).toBeGreaterThan(fetchedAt);
   } finally {
     setSavedCopyStore(previous);
   }

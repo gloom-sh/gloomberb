@@ -1,5 +1,6 @@
 import { logFailure } from "../utils/log-failure";
-import { readSavedCopy, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
+import { afterSavedCopyFrame, readSavedCopy, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
+import { reuseSavedData } from "../data/reuse-saved-data";
 import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { resolveChartSpecData } from "./resolve";
@@ -88,7 +89,8 @@ function hasRenderableData(result: ChartResolutionResult): boolean {
 
 function saveChartResolution(key: SavedCopyKey | null, result: ChartResolutionResult): void {
   if (key && hasRenderableData(result) && result.savedAt == null && result.errors.length === 0) {
-    writeSavedCopy(key, result, Date.now(), TAIL_RECONCILE_MIN_SPACING_MS);
+    const { bufferedSeries: _buffer, ...visible } = result;
+    if (hasRenderableData(visible)) writeSavedCopy(key, visible, Date.now(), TAIL_RECONCILE_MIN_SPACING_MS);
   }
 }
 
@@ -232,7 +234,7 @@ export function useChartResolution(
   const specKey = JSON.stringify([options.savedCopyScope, spec]);
   const savedKey = !snapshot && options.savedCopyScope && spec.series.every(({ source }) => source.kind !== "capability"
     && (source.kind !== "security" || !source.instrument.instrument))
-    ? { key: ["chart-resolution", specKey, options.requestViewport?.start, options.requestViewport?.end,
+    ? { version: 2, key: ["chart-resolution", specKey, options.requestViewport?.start, options.requestViewport?.end,
       options.autoViewport?.start, options.autoViewport?.end, options.autoViewport ? options.targetPointCount : null] } : null;
   const seedResult = () => {
     const now = sources.now ?? new Date();
@@ -273,6 +275,8 @@ export function useChartResolution(
   const displayed = hasRenderableData(result) ? result : (seeded ?? result);
   const resultRef = useRef(displayed);
   resultRef.current = displayed;
+  const stateKey = state.key;
+  const stateSavedAt = state.savedAt;
   const [revision, setRevision] = useState(0);
   // Bumped when a chart painted with the placeholder interval list and the
   // real one has since landed. Unlike a reload it keeps the cache, so the
@@ -542,36 +546,39 @@ export function useChartResolution(
     cacheIdentityRef.current = { spec, sources, revision };
     const cache = resolveCacheRef.current;
     const dataRevision = cache.revision;
-    const current = resultRef.current;
-    const backgroundRefresh = state.key === specKey && hasRenderableData(current) && !current.loading && (!isExplicitReload || state.savedAt != null);
+    const opening = resultRef.current;
+    const backgroundRefresh = stateKey === specKey && hasRenderableData(opening) && !opening.loading && (!isExplicitReload || stateSavedAt != null);
     if (!backgroundRefresh) {
-      setState({ key: specKey, result: { ...current, loading: true, errors: [] } });
+      setState({ key: specKey, result: { ...opening, loading: true, errors: [] } });
     }
     resolvedQuoteVersionRef.current = liveQuoteVersionRef.current;
-    resolveChartSpecData(
+    const resolve = () => resolveChartSpecData(
       spec,
       withQuoteOverrides(sources, liveQuoteOverridesRef.current, liveSinceRef.current),
       cache,
       resolveOptions,
-    )
+    );
+    const frame = stateSavedAt != null ? afterSavedCopyFrame() : undefined;
+    (frame ? frame.then(() => generationRef.current === generation ? resolve() : EMPTY_RESULT) : resolve())
       .then((next) => {
         if (generationRef.current !== generation) return;
         if (backgroundRefresh && !hasRenderableData(next)) {
-          if (state.savedAt != null) setState({ key: specKey, savedAt: state.savedAt, result: { ...current, errors: next.errors, warnings: next.warnings } });
+          setState((current) => current.key === specKey && current.savedAt != null
+            ? { ...current, result: { ...current.result, errors: next.errors, warnings: next.warnings } } : current);
           return;
         }
-        if (cache.revision === dataRevision) resultRevisionsRef.current.set(next, { cache, revision: dataRevision });
         saveChartResolution(savedKey, next);
-        setState({ key: specKey, result: next });
+        const series = stateSavedAt != null && !next.bufferedSeries ? reuseSavedData(resultRef.current.series, next.series) : next.series;
+        const result = series === next.series ? next : { ...next, series };
+        if (cache.revision === dataRevision) resultRevisionsRef.current.set(result, { cache, revision: dataRevision });
+        setState({ key: specKey, result });
       })
       .catch((error) => {
         if (generationRef.current !== generation) return;
-        if (backgroundRefresh && state.savedAt == null) return;
-        setState({ key: specKey, savedAt: state.savedAt, result: {
+        setState((current) => current.key !== specKey || (backgroundRefresh && current.savedAt == null) ? current : {
           ...current,
-          loading: false,
-          errors: [error instanceof Error ? error.message : String(error)],
-        } });
+          result: { ...current.result, loading: false, errors: [error instanceof Error ? error.message : String(error)] },
+        });
       });
     return () => {
       if (generationRef.current === generation) generationRef.current += 1;

@@ -52,8 +52,10 @@ export function PaneFooterProvider({
 
   const register = useCallback((registrationId: string, registration: PaneFooterRegistration | null) => {
     setRegistrations((current) => {
+      const hasContent = registration && ((registration.info?.length ?? 0) > 0 || (registration.hints?.length ?? 0) > 0 || (registration.menu?.length ?? 0) > 0 || (registration.keys?.length ?? 0) > 0);
+      if (hasContent ? current.get(registrationId) === registration : !current.has(registrationId)) return current;
       const next = new Map(current);
-      if (registration && ((registration.info?.length ?? 0) > 0 || (registration.hints?.length ?? 0) > 0 || (registration.menu?.length ?? 0) > 0 || (registration.keys?.length ?? 0) > 0)) {
+      if (hasContent) {
         next.set(registrationId, registration);
       } else {
         next.delete(registrationId);

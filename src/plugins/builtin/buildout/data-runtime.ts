@@ -27,9 +27,9 @@ const THEME_SETTLE_MS = 180;
 
 type BuildoutReady = Extract<BuildoutLoadState, { status: "ready" }>;
 const PUBLIC_LISTS = { key: ["buildout", "anonymous", "lists"] };
-const PUBLIC_SITES = { key: ["buildout", "anonymous", "sites", PAGE_SIZE, 0] };
+const PUBLIC_SITES = { key: ["buildout", "anonymous", "sites", PAGE_SIZE, 0], version: 2 };
 const PUBLIC_INTEL = { key: ["buildout", "anonymous", "intel", PAGE_SIZE, 0] };
-const publicCompanies = (slug: string) => ({ key: ["buildout", "anonymous", "companies", slug, PAGE_SIZE, 0] });
+const publicCompanies = (slug: string) => ({ key: ["buildout", "anonymous", "companies", slug, PAGE_SIZE, 0], version: 2 });
 
 function openingBoard(publicAccess: boolean, activeTab: BuildoutTabId, openedListSlug: string | null, themeSlug: string | null): BuildoutLoadState {
   if (!publicAccess) return { status: "loading" };
@@ -103,8 +103,8 @@ export function useBuildoutDataRuntime({
       loadingPageKeysRef.current = new Set();
       // A refresh keeps what is loaded; only the first load replaces the body.
       setState((current) => current.status === "ready"
-        ? { ...current, refreshing: true, refreshError: null }
-        : { status: "loading" });
+        ? current.refreshing && !current.refreshError ? current : { ...current, refreshing: true, refreshError: null }
+        : current.status === "loading" ? current : { status: "loading" });
 
       // A refresh the user pressed asks for access again: a plan bought or ended since shows at once.
       const token = await getBuildoutProToken({ fresh: refreshVersion > 0 });
@@ -113,7 +113,7 @@ export function useBuildoutDataRuntime({
         const loadedAt = Date.now();
         if (publicAccess && data.access === "free") {
           writeSavedCopy(PUBLIC_LISTS, data.lists, loadedAt);
-          writeSavedCopy(PUBLIC_SITES, { ...data.sites, items: data.sites.items.map((site) => ({ ...site, siteMetadata: null })) }, loadedAt);
+          writeSavedCopy(PUBLIC_SITES, { ...data.sites, items: data.sites.items.map((site) => ({ ...site, siteMetadata: null, researchReport: null })) }, loadedAt);
           writeSavedCopy(PUBLIC_INTEL, data.intel, loadedAt);
         }
         if (refreshVersion > 0) onBeforeLoad();
@@ -169,7 +169,8 @@ export function useBuildoutDataRuntime({
       if (scopeRef.current !== scope || loadingPageKeysRef.current !== requests) return;
       if (publicAccess && offset === 0) {
         const pageCopy: BuildoutReady["companies"] = {
-          items: page.items, offset: page.items.length, hasMore: page.items.length >= PAGE_SIZE,
+          items: page.items.map((company) => ({ ...company, researchReport: null })),
+          offset: page.items.length, hasMore: page.items.length >= PAGE_SIZE,
           loadingMore: false, error: null, blurredCompanyCount: page.blurredCompanyCount, listSlug: list.slug,
         };
         writeSavedCopy(savedKey, pageCopy);

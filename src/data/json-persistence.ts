@@ -30,22 +30,23 @@ export class JsonPersistence implements AppPersistencePort {
     this.sessionData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.session, {}, (value): value is Sessions => isRecord(value));
     this.resourceData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.resources, {}, (value): value is SavedResources => isRecord(value));
     const saved = Object.values(this.resourceData.get()).filter((record) => isRecord(record) && typeof record.kind === "string");
+    const sink = durable?.sink;
     this.resources = new WriteThroughResourceStore([...(durable?.saved ?? []), ...saved], {
       set: (record) => {
         if (keepResource(record)) this.resourceData.set({ ...this.resourceData.get(), [resourceRecordKey(record)]: record });
-        else durable?.sink.set(record);
+        else sink?.set(record);
       },
       delete: (key) => {
         if (!keepResource(key)) {
-          durable?.sink.delete(key);
+          sink?.delete(key);
           return;
         }
         const next = { ...this.resourceData.get() };
         delete next[resourceRecordKey(key)];
         this.resourceData.set(next);
       },
-      touch: durable?.sink.touch ? (key, at) => { if (!keepResource(key)) durable.sink.touch?.(key, at); } : undefined,
-    }, (key) => !!durable || keepResource(key));
+      touch: sink?.touch ? (key, at) => { if (!keepResource(key)) sink.touch?.(key, at); } : undefined,
+    }, (key) => !!sink || keepResource(key));
   }
 
   readonly pluginState = {

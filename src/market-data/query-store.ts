@@ -1,6 +1,6 @@
 import type { QueryEntry } from "./result-types";
 import { createIdleEntry } from "./result-types";
-import { deleteSavedCopy, readSavedCopy, writeSavedCopy } from "../data/pane-saved-copies";
+import { deleteSavedCopy, hasSavedCopy, readSavedCopy, writeSavedCopy } from "../data/pane-saved-copies";
 
 /** How many entries a store keeps once nothing is watching them. */
 export interface QueryStoreRetention {
@@ -46,6 +46,11 @@ export class QueryStore<T> {
     private readonly onChange: (key: string) => void,
     private readonly options: QueryStoreOptions<T> = {},
   ) {}
+
+  hasSaved(key: string): boolean {
+    const scope = this.options.savedCopies?.scope() ?? null;
+    return scope !== null && hasSavedCopy(this.savedKey(key, scope));
+  }
 
   get(key: string): QueryEntry<T> {
     const entry = this.entries.get(key);
