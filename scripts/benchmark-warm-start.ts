@@ -1,0 +1,411 @@
+import { existsSync } from "fs";
+import { mkdir, readFile, rm, writeFile } from "fs/promises";
+import { homedir } from "os";
+import { join, resolve } from "path";
+import type { AppConfig, DockLayoutNode, SavedLayout } from "../src/types/config";
+import { testAppEnv } from "./test-app-env";
+import { launchBrowser, sleep, type Browser } from "./pane-chrome/browser";
+import { median, positiveInteger, runTmux, shellQuote, takeOption, writeFreshInstallConfig } from "./tui-benchmark-harness";
+import type { WarmStartPlan } from "./warm-start/plan";
+import { domProbeSource, type PaneShownState, type PaneTimeline } from "./warm-start/pane-states";
+import { startWarmStartWebServer, type WarmStartWebServer } from "./warm-start/web-server";
+import { startDesktopStandIn, type DesktopStandIn } from "./warm-start/desktop-stand-in";
+
+/**
+ *   bun scripts/benchmark-warm-start.ts <tui|web|desktop> [--runs 5] [--network normal,slow]
+ *     [--layouts 1,2] [--label before] [--app <checkout>] [--root <dir>] [--out <dir>]
+ *
+ * A warm restart, pane by pane. One pane of every type the catalog lists
+ * (scripts/warm-start/plan.ts) is laid out in layouts of 16; for each layout
+ * the app is launched once to fill its caches and quit, then launched again
+ * `--runs` times per network. Every frame, each pane's body is read as blank,
+ * loading, empty, error or content (scripts/warm-start/pane-states.ts), and
+ * the report gives per pane and renderer:
+ *
+ * - first content: ms from launch to the first frame with content (p50, worst),
+ *   and the frames between the pane's own first frame and that one;
+ * - loading shown: in how many runs the pane showed a loading or empty state
+ *   at any point although the fill launch left it with content to keep.
+ *
+ * Renderers: `tui` the terminal in tmux; `web` the web build (`--build` runs
+ * `bun run web:build`) in headless Chromium, served the way the Worker serves
+ * it; `desktop` the desktop view in headless Chromium against a stand-in for
+ * the desktop's Bun process that keeps its data in the same SQLite cache
+ * (scripts/warm-start/desktop-stand-in.ts). The network is
+ * scripts/warm-start/network.ts: each read goes out once and is replayed
+ * after the time it took; `slow` adds 5 s to every answer.
+ *
+ * Profiles live under `--root` (default ~/.cache/gloom-smoke/warm-start); the
+ * replayed reads are shared by every renderer and label so a before and an
+ * after run see the same answers.
+ */
+
+type Target = "tui" | "web" | "desktop";
+type Network = "normal" | "slow";
+
+const args = process.argv.slice(2);
+const target = args[0] as Target;
+if (!["tui", "web", "desktop"].includes(target)) throw new Error("Usage: benchmark-warm-start.ts <tui|web|desktop> [--runs 5] [--network normal,slow]");
+const runs = positiveInteger(takeOption(args, "--runs"), 5, "runs");
+const networks = (takeOption(args, "--network") ?? "normal,slow").split(",") as Network[];
+const label = takeOption(args, "--label") ?? "run";
+const root = resolve(takeOption(args, "--root") ?? join(homedir(), ".cache", "gloom-smoke", "warm-start"));
+const outDir = resolve(takeOption(args, "--out") ?? join(root, "results"));
+const perLayout = positiveInteger(takeOption(args, "--per-layout"), 16, "per-layout");
+const build = args.includes("--build");
+/** The harness's own checkout, for its scripts. */
+const checkout = resolve(join(import.meta.dir, ".."));
+/** The checkout whose app is launched: `--app`, for a before run of the base while this branch changes. */
+const app = resolve(takeOption(args, "--app") ?? checkout);
+const SLOW_MS = 5_000;
+const WIDTH = { tui: 256, view: 2048 };
+const HEIGHT = { tui: 80, view: 1280 };
+
+const profile = join(root, `${target}-${label}`);
+const networkDir = join(root, "network");
+
+interface RunRecord {
+  layout: number;
+  network: Network | "fill";
+  run: number;
+  launchedAt: number;
+  panes: PaneTimeline[];
+  requests?: Record<string, number>;
+}
+
+function grid(ids: string[]): DockLayoutNode {
+  const columns = Math.ceil(Math.sqrt(ids.length));
+  const rows: string[][] = [];
+  for (let index = 0; index < ids.length; index += columns) rows.push(ids.slice(index, index + columns));
+  const row = (cells: string[]): DockLayoutNode => cells.length === 1
+    ? { kind: "pane", instanceId: cells[0]! }
+    : { kind: "split", axis: "horizontal", ratio: 1 / cells.length, first: { kind: "pane", instanceId: cells[0]! }, second: row(cells.slice(1)) };
+  const stack = (lines: string[][]): DockLayoutNode => lines.length === 1
+    ? row(lines[0]!)
+    : { kind: "split", axis: "vertical", ratio: 1 / lines.length, first: row(lines[0]!), second: stack(lines.slice(1)) };
+  return stack(rows);
+}
+
+async function loadPlan(): Promise<WarmStartPlan> {
+  const file = join(root, "plan.json");
+  if (!existsSync(file)) {
+    const planHome = join(root, "plan-profile");
+    await writeFreshInstallConfig(planHome);
+    const child = Bun.spawn(["bun", join(checkout, "scripts/warm-start/plan.ts"), "--out", file], {
+      cwd: checkout, env: testAppEnv({ GLOOMBERB_HOME: planHome }), stdout: "inherit", stderr: "inherit",
+    });
+    if (await child.exited !== 0) throw new Error("Planning the layouts failed");
+    await rm(planHome, { recursive: true, force: true });
+  }
+  return JSON.parse(await readFile(file, "utf8")) as WarmStartPlan;
+}
+
+function layoutsOf(plan: WarmStartPlan): SavedLayout[] {
+  const layouts: SavedLayout[] = [];
+  for (let index = 0; index < plan.panes.length; index += perLayout) {
+    const panes = plan.panes.slice(index, index + perLayout);
+    layouts.push({
+      name: `Warm ${layouts.length + 1}`,
+      layout: { dockRoot: grid(panes.map((pane) => pane.instance.instanceId)), instances: panes.map((pane) => pane.instance), floating: [], detached: [] },
+      paneState: {},
+    });
+  }
+  return layouts;
+}
+
+/** The config every launch starts from: the plan's layouts, the one measured in front. */
+function configFor(base: AppConfig, layouts: SavedLayout[], active: number): AppConfig {
+  return {
+    ...base,
+    layouts,
+    activeLayoutIndex: active,
+    layout: structuredClone(layouts[active]!.layout),
+    onboardingComplete: true,
+    onboardingProgress: undefined,
+    // A banner or a prompt drawn over the panes is not what is measured.
+    telemetry: { ...base.telemetry, crashReports: false, usageCounts: false },
+  } as AppConfig;
+}
+
+interface Launch {
+  /** Each pane's states so far. */
+  timeline(): Map<string, PaneTimeline>;
+  launchedAt: number;
+  requests(): Record<string, number> | undefined;
+  quit(): Promise<void>;
+}
+
+/** Waits until every pane has been in a settled state (content, empty or error) for a while, or the time runs out. */
+async function settle(launch: Launch, expected: number, network: Network | "fill"): Promise<void> {
+  const minimum = network === "fill" ? 15_000 : network === "slow" ? SLOW_MS + 7_000 : 7_000;
+  const limit = network === "fill" ? 90_000 : network === "slow" ? 45_000 : 35_000;
+  const started = Date.now();
+  let stableSince = Date.now();
+  let signature = "";
+  while (Date.now() - started < limit) {
+    await sleep(250);
+    const timelines = [...launch.timeline().values()];
+    const current = timelines.map((timeline) => `${timeline.paneId}=${timeline.states.at(-1)?.state}`).sort().join(",");
+    if (current !== signature) {
+      signature = current;
+      stableSince = Date.now();
+    }
+    const settled = timelines.length >= expected
+      && timelines.every((timeline) => ["content", "empty", "error"].includes(timeline.states.at(-1)?.state ?? ""));
+    if (settled && Date.now() - started >= minimum && Date.now() - stableSince >= 3_000) return;
+  }
+}
+
+function record(timelines: Map<string, PaneTimeline>, at: number, frame: number, panes: Record<string, PaneShownState>): void {
+  for (const [paneId, state] of Object.entries(panes)) {
+    const timeline = timelines.get(paneId) ?? { paneId, states: [] };
+    timeline.states.push({ at, frame, state });
+    timelines.set(paneId, timeline);
+  }
+}
+
+// ---------------------------------------------------------------- terminal
+
+async function launchTui(network: Network | "fill"): Promise<Launch> {
+  const session = `gloom-warm-${process.pid}`;
+  const probeFile = join(profile, "probe.jsonl");
+  await rm(probeFile, { force: true });
+  await runTmux(["kill-session", "-t", session], false);
+  const env = [
+    `GLOOMBERB_HOME=${shellQuote(profile)}`,
+    `WARM_START_PROBE_OUT=${shellQuote(probeFile)}`,
+    `WARM_START_NET_DIR=${shellQuote(networkDir)}`,
+    `WARM_START_NET_DELAY_MS=${network === "slow" ? SLOW_MS : 0}`,
+    `BUN_RUNTIME_TRANSPILER_CACHE_PATH=${shellQuote(join(root, "transpiler"))}`,
+  ].join(" ");
+  const launchedAt = Date.now();
+  await runTmux([
+    "new-session", "-d", "-s", session, "-x", String(WIDTH.tui), "-y", String(HEIGHT.tui), "-c", app,
+    `env ${env} bun --preload ${shellQuote(join(checkout, "scripts/warm-start/tui-preload.ts"))} ${shellQuote(join(app, "src/cli/entry.ts"))} 2>>${shellQuote(join(profile, "stderr.log"))}`,
+  ]);
+  let timelines = new Map<string, PaneTimeline>();
+  let requests: Record<string, number> | undefined;
+  // The whole file each time: it is small, and a line still being written is skipped until it ends.
+  const poll = async () => {
+    if (!existsSync(probeFile)) return;
+    const next = new Map<string, PaneTimeline>();
+    for (const line of (await readFile(probeFile, "utf8")).split("\n")) {
+      let entry: { at: number; frame: number; panes?: Record<string, PaneShownState>; network?: Record<string, number> };
+      try { entry = JSON.parse(line); } catch { continue; }
+      if (entry.panes) record(next, entry.at - launchedAt, entry.frame, entry.panes);
+      if (entry.network) requests = entry.network;
+    }
+    timelines = next;
+  };
+  let polling = true;
+  const loop = (async () => { while (polling) { await poll().catch(() => {}); await sleep(100); } })();
+  return {
+    launchedAt,
+    timeline: () => timelines,
+    requests: () => requests,
+    async quit() {
+      // Ctrl+C quits the way the quit key does (the renderer's exit flushes what is pending); Q types into a focused field.
+      await runTmux(["send-keys", "-t", session, "C-c"], false);
+      const deadline = Date.now() + 8_000;
+      while (Date.now() < deadline) {
+        const alive = Bun.spawnSync(["tmux", "has-session", "-t", session]).exitCode === 0;
+        if (!alive) break;
+        await sleep(200);
+      }
+      await runTmux(["kill-session", "-t", session], false);
+      await sleep(300);
+      polling = false;
+      await loop;
+      await poll().catch(() => {});
+    },
+  };
+}
+
+// ---------------------------------------------------------------- web and desktop
+
+let webServer: WarmStartWebServer | null = null;
+let standIn: DesktopStandIn | null = null;
+
+async function launchView(network: Network | "fill"): Promise<Launch> {
+  const timelines = new Map<string, PaneTimeline>();
+  const delayMs = network === "slow" ? SLOW_MS : 0;
+  let origin: string;
+  let path = "/";
+  if (target === "web") {
+    webServer ??= await startWarmStartWebServer({ webRoot: join(app, "dist", "web"), networkDir });
+    webServer.setDelay(delayMs);
+    origin = webServer.origin;
+  } else {
+    standIn ??= await startDesktopStandIn({ checkout, app, home: profile, networkDir });
+    await standIn.restart(delayMs);
+    origin = standIn.origin;
+    path = standIn.pagePath;
+  }
+  const server = (webServer ?? standIn)!;
+  const launchedAt = Date.now();
+  server.onProbe((entry) => record(timelines, entry.at - launchedAt, entry.frame, entry.panes));
+  const browser: Browser = await launchBrowser(`warm-${target}`, WIDTH.view, HEIGHT.view, { profileDir: join(profile, "chrome") });
+  await browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: domProbeSource(`${origin}/__warm-probe`) });
+  await browser.cdp.send("Page.navigate", { url: `${origin}${path}` });
+  return {
+    launchedAt,
+    timeline: () => timelines,
+    requests: () => server.requests(),
+    async quit() {
+      // The page saves what it holds back on pagehide, as a closed tab does.
+      await browser.cdp.send("Page.navigate", { url: `${origin}/health` }).catch(() => {});
+      await sleep(1_500);
+      await browser.close();
+      server.onProbe(null);
+      if (standIn) await standIn.stopBackend();
+    },
+  };
+}
+
+// ---------------------------------------------------------------- runs
+
+async function prepareProfile(plan: WarmStartPlan): Promise<{ base: AppConfig; layouts: SavedLayout[] }> {
+  const layouts = layoutsOf(plan);
+  if (!existsSync(join(profile, "config.json"))) {
+    await rm(profile, { recursive: true, force: true });
+    await writeFreshInstallConfig(profile);
+  }
+  const base = JSON.parse(await readFile(join(profile, "base-config.json"), "utf8").catch(() => readFile(join(profile, "config.json"), "utf8"))) as AppConfig;
+  await writeFile(join(profile, "base-config.json"), JSON.stringify(base, null, 2));
+  return { base, layouts };
+}
+
+async function writeLaunchConfig(base: AppConfig, layouts: SavedLayout[], active: number): Promise<void> {
+  const config = configFor(base, layouts, active);
+  if (target === "tui" || target === "desktop") {
+    await writeFile(join(profile, "config.json"), `${JSON.stringify(config, null, 2)}\n`);
+    return;
+  }
+  webServer ??= await startWarmStartWebServer({ webRoot: join(app, "dist", "web"), networkDir });
+  // The web app reads its config from local storage: written from a page of the same origin that is not the app.
+  const browser = await launchBrowser("warm-web-seed", 800, 600, { profileDir: join(profile, "chrome") });
+  try {
+    await browser.cdp.send("Page.navigate", { url: `${webServer.origin}/health` });
+    await sleep(500);
+    const webConfig = { ...config, dataDir: "browser://local" };
+    await browser.cdp.send("Runtime.evaluate", {
+      expression: `localStorage.setItem("gloomberb.web.config.v1", ${JSON.stringify(JSON.stringify(webConfig))}); true`,
+      returnByValue: true,
+    });
+    await sleep(300);
+  } finally {
+    await browser.close();
+  }
+}
+
+function summarize(records: RunRecord[], fills: Map<number, RunRecord>, plan: WarmStartPlan) {
+  const rows: Array<Record<string, unknown>> = [];
+  for (const pane of plan.panes) {
+    const id = pane.instance.instanceId;
+    const layout = Math.floor(plan.panes.indexOf(pane) / perLayout);
+    const fill = fills.get(layout)?.panes.find((timeline) => timeline.paneId === id);
+    const filled = fill?.states.some((state) => state.state === "content") ?? false;
+    const filledLast = fill?.states.at(-1)?.state ?? "missing";
+    for (const network of networks) {
+      const mine = records.filter((entry) => entry.layout === layout && entry.network === network);
+      const firstContent: number[] = [];
+      const frames: number[] = [];
+      let loadingRuns = 0;
+      let missing = 0;
+      for (const entry of mine) {
+        const timeline = entry.panes.find((candidate) => candidate.paneId === id);
+        if (!timeline || timeline.states.length === 0) { missing += 1; continue; }
+        const content = timeline.states.find((state) => state.state === "content");
+        if (content) {
+          firstContent.push(content.at);
+          frames.push(content.frame - timeline.states[0]!.frame);
+        }
+        if (filled && timeline.states.some((state) => state.state === "loading" || state.state === "empty")) loadingRuns += 1;
+      }
+      rows.push({
+        token: pane.token, paneId: pane.paneId, network, filled, filledLast,
+        runs: mine.length, missing,
+        firstContentP50: firstContent.length ? Math.round(median(firstContent)) : null,
+        firstContentWorst: firstContent.length ? Math.round(Math.max(...firstContent)) : null,
+        contentRuns: firstContent.length,
+        framesToContentWorst: frames.length ? Math.max(...frames) : null,
+        loadingRuns,
+      });
+    }
+  }
+  return rows;
+}
+
+function markdown(rows: Array<Record<string, any>>): string {
+  const lines: string[] = [];
+  for (const network of networks) {
+    const mine = rows.filter((row) => row.network === network);
+    const kept = mine.filter((row) => row.filled);
+    const showing = kept.filter((row) => row.loadingRuns > 0);
+    lines.push(`### ${target}, ${network} network, ${label}`, "");
+    lines.push(`${kept.length} of ${mine.length} panes had content to keep after the fill launch; ${showing.length} of them showed a loading or empty state on a warm restart.`, "");
+    lines.push("| pane | first content p50 | worst | frames to content (worst) | runs showing loading |", "|---|---|---|---|---|");
+    for (const row of mine) {
+      const cell = (value: unknown, unit = "") => value == null ? "-" : `${value}${unit}`;
+      lines.push(`| ${row.token} (${row.paneId})${row.filled ? "" : ` (fill: ${row.filledLast})`} | ${cell(row.firstContentP50, " ms")} | ${cell(row.firstContentWorst, " ms")} | ${cell(row.framesToContentWorst)} | ${row.filled ? `${row.loadingRuns} of ${row.runs}` : "-"} |`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+async function main(): Promise<void> {
+  await mkdir(root, { recursive: true });
+  await mkdir(outDir, { recursive: true });
+  if (target === "web" && (build || !existsSync(join(app, "dist", "web", "index.html")))) {
+    const child = Bun.spawn(["bun", "run", "web:build"], { cwd: app, stdout: "ignore", stderr: "inherit" });
+    if (await child.exited !== 0) throw new Error("web:build failed");
+  }
+  const plan = await loadPlan();
+  const { base, layouts } = await prepareProfile(plan);
+  const only = takeOption(args, "--layouts")?.split(",").map((value) => Number(value) - 1);
+  const chosen = layouts.map((_, index) => index).filter((index) => !only || only.includes(index));
+  const results = join(outDir, `${target}-${label}.json`);
+  const saved = existsSync(results) ? JSON.parse(await readFile(results, "utf8")) as { records: RunRecord[]; fills: RunRecord[] } : { records: [], fills: [] };
+  const launch = target === "tui" ? launchTui : launchView;
+
+  try {
+    for (const layout of chosen) {
+      const expected = layouts[layout]!.layout.instances.length;
+      const done = (network: Network | "fill", run: number) => (network === "fill" ? saved.fills : saved.records)
+        .some((entry) => entry.layout === layout && entry.network === network && entry.run === run);
+      const once = async (network: Network | "fill", run: number) => {
+        if (done(network, run)) return;
+        await writeLaunchConfig(base, layouts, layout);
+        const started = await launch(network);
+        try {
+          await settle(started, expected, network);
+        } finally {
+          await started.quit();
+        }
+        const entry: RunRecord = { layout, network, run, launchedAt: started.launchedAt, panes: [...started.timeline().values()], requests: started.requests() };
+        (network === "fill" ? saved.fills : saved.records).push(entry);
+        await writeFile(results, JSON.stringify(saved));
+        const loading = entry.panes.filter((pane) => pane.states.some((state) => state.state === "loading")).length;
+        console.error(`${target} ${label} layout ${layout + 1} ${network} ${run}: ${entry.panes.length} panes, ${loading} showed loading, requests ${JSON.stringify(entry.requests ?? {})}`);
+      };
+      await once("fill", 1);
+      for (let run = 1; run <= runs; run += 1) {
+        for (const network of networks) await once(network, run);
+      }
+    }
+  } finally {
+    webServer?.stop();
+    await standIn?.stop();
+  }
+
+  const fills = new Map(saved.fills.map((entry) => [entry.layout, entry]));
+  const rows = summarize(saved.records, fills, plan);
+  const text = markdown(rows);
+  await writeFile(join(outDir, `${target}-${label}.md`), text);
+  await writeFile(join(outDir, `${target}-${label}-rows.json`), JSON.stringify(rows, null, 2));
+  console.log(text);
+}
+
+await main();
+process.exit(process.exitCode ?? 0);

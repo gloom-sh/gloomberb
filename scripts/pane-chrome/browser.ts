@@ -140,9 +140,19 @@ function gpuChromeExecutable(): string {
  * Chrome in its new headless mode with its GPU instead (CHROME_PATH, or the
  * installed Chrome), for frame timing close to a real window's.
  */
-export async function launchBrowser(name: string, width: number, height: number, { gpu = false }: { gpu?: boolean } = {}): Promise<Browser> {
+export async function launchBrowser(
+  name: string,
+  width: number,
+  height: number,
+  { gpu = false, profileDir }: {
+    gpu?: boolean;
+    /** A profile kept between launches (its storage and cache), for a warm restart; a fresh one deleted at close otherwise. */
+    profileDir?: string;
+  } = {},
+): Promise<Browser> {
   const executable = gpu ? gpuChromeExecutable() : await chromeExecutable();
-  const profile = cacheDir("profiles", `${name}-${process.pid}-${Date.now()}`);
+  const profile = profileDir ?? cacheDir("profiles", `${name}-${process.pid}-${Date.now()}`);
+  const removeProfile = () => profileDir ? Promise.resolve() : rm(profile, { recursive: true, force: true });
   await mkdir(profile, { recursive: true });
   const proc = Bun.spawn([
     executable,
@@ -186,13 +196,13 @@ export async function launchBrowser(name: string, width: number, height: number,
         cdp.close();
         proc.kill();
         await proc.exited;
-        await rm(profile, { recursive: true, force: true });
+        await removeProfile();
       },
     };
   } catch (error) {
     proc.kill();
     await proc.exited;
-    await rm(profile, { recursive: true, force: true });
+    await removeProfile();
     throw error;
   }
 }
