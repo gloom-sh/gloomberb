@@ -176,7 +176,7 @@ export function AlertsPane(props: PaneProps) {
 const NO_MOVE_CHECKS = {};
 
 /** Where price rules run when nothing carries them off this device: this app, while it runs. */
-export const RULES_ON_DEVICE = "On this device · keep Gloom running";
+const RULES_ON_DEVICE = "On this device · keep Gloom running";
 
 /**
  * Whether the price rules stay on this device: signed out, an account not
