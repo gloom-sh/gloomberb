@@ -75,6 +75,29 @@ test("signed out, an event alert only a signed-in account gets checked reads Nee
   expect(signedIn.notes).toBeUndefined();
 });
 
+/** Options flow read "Needs sign-in" signed out, though a free sign-in would not arm it either. */
+test("an options flow alert reads Needs Pro without an account that has Pro, signed out or on a free plan", async () => {
+  const flow = createResearchAlert("options_flow", { "options_flow:symbol": "QQQ", "options_flow:exchange": "US", "options_flow:threshold": "1000000" });
+  const filing = createResearchAlert("filing_type", { "filing_type:symbol": "WHR", "filing_type:exchange": "US", "filing_type:form": "8-K" });
+  const ctx = contextWith([], [flow, filing]);
+  const read = async (apiClient: Partial<HeadlessPaneApiClient>) => {
+    const result = await alertsHeadless.load(createTestHeadlessArgs({ options: { tab: "events" } }), { ...ctx, apiClient: apiClient as HeadlessPaneApiClient });
+    return { states: Object.fromEntries(result.rows.map((row) => [row.kind, row.state])), notes: result.notes ?? [] };
+  };
+  const signedOut = await read({ getSessionToken: () => null });
+  expect(signedOut.states).toEqual({ options_flow: "Needs Pro", filing_type: "Needs sign-in" });
+  expect(signedOut.notes[1]).toStartWith("1 event alert needs Gloom Cloud Pro: options flow alerts are saved, but checked only for a signed-in account with Pro.");
+  expect(signedOut.notes[1]).toContain("OMON's option chain");
+
+  const free = await read({ getSessionToken: () => "session-token", getCurrentUser: () => ({ emailVerified: true, plan: "free", effectivePlan: "free" }) as never });
+  expect(free.states).toEqual({ options_flow: "Needs Pro", filing_type: "Active" });
+  expect(free.notes).toEqual([expect.stringMatching(/^1 event alert needs Gloom Cloud Pro/)]);
+
+  const pro = await read({ getSessionToken: () => "session-token", getCurrentUser: () => ({ emailVerified: true, plan: "pro", effectivePlan: "pro" }) as never });
+  expect(pro.states).toEqual({ options_flow: "Active", filing_type: "Active" });
+  expect(pro.notes).toEqual([expect.stringMatching(/^Options flow alerts are checked only for an account with Gloom Cloud Pro/)]);
+});
+
 test("a saved event list that does not read is reported, not shown as no alerts", async () => {
   const ctx = contextWith([], []);
   ctx.config.pluginConfig[ALERTS_PLUGIN_ID]![EVENT_ALERTS_KEY] = "{";

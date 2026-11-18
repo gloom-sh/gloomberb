@@ -9,6 +9,8 @@ import { alertChangeEntry, createFiredAlertRecorder, firedAlertTime, quoteSource
 import { checkIvLevelAlertsNow, startIvLevelAlerts } from "./iv-level";
 import { logFailure } from "../../../utils/log-failure";
 import { RESEARCH_FORM_KINDS, RESEARCH_LABELS, researchWizardFields, createResearchAlert } from "./research-builder";
+import { checkedOnlyWithPro, checksProRules, savedWithoutProNote } from "./pro-rules";
+import { apiClient } from "../../../api-client";
 import { newYorkToday } from "../earnings/board-model";
 import { checkScheduledEventAlertsNow, startScheduledEventAlerts } from "./scheduled-check";
 import { scheduledEventSources } from "./scheduled-sources";
@@ -379,7 +381,9 @@ export const alertsPlugin: GloomPlugin = {
           type: "select",
           // Earnings first, as the command describes itself: an alert anyone can add for any US listing.
           defaultValue: "earnings_date",
-          options: [...RESEARCH_FORM_KINDS.map((value) => ({ value, label: RESEARCH_LABELS[value] })), ...EVENT_ALERT_TEMPLATES.map((entry) => ({ label: entry.label, value: entry.id }))],
+          // Options flow and IV spikes are checked only with Pro, and say so before one is chosen.
+          options: [...RESEARCH_FORM_KINDS.map((value) => ({ value, label: checkedOnlyWithPro({ kind: value }) ? `${RESEARCH_LABELS[value]} (Pro)` : RESEARCH_LABELS[value] })),
+            ...EVENT_ALERT_TEMPLATES.map((entry) => ({ label: entry.label, value: entry.id }))],
         },
         ...EVENT_ALERT_TEMPLATES.filter((entry) => entry.field != null).map((entry) => ({
           key: entry.id,
@@ -437,7 +441,10 @@ export const alertsPlugin: GloomPlugin = {
         const key = eventAlertStoreKey(rule);
         await ctx.configState.set(key, updateEventAlerts(ctx.configState.get<string>(key), (rules) => [...rules, rule]));
         recordFired(alertChangeEntry("created", alertLogRule(rule)));
-        ctx.notify({ body: "Event alert saved.", type: "success" });
+        // Saved without Pro, a Pro rule waits on it, as its form said and its row reads (Needs Pro).
+        const signedIn = !!apiClient.getSessionToken() || !!apiClient.getCurrentUser();
+        const waitsOnPro = checkedOnlyWithPro(rule) && !checksProRules(signedIn, apiClient.getCurrentUser());
+        ctx.notify({ body: `Event alert saved.${waitsOnPro ? savedWithoutProNote(rule) : ""}`, type: "success" });
         if (scheduled) checkScheduledEventAlertsNow();
         if (rule.kind === "iv_level") checkIvLevelAlertsNow();
       },

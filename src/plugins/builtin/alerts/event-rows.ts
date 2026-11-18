@@ -1,6 +1,7 @@
 import { eventAlertTarget, releaseTimeOn, type EventAlertRule } from "./events";
 import { timeZoneCity, zonedClock } from "../../../utils/utc-time";
 import { readScheduledRule, scheduledAlertStatus, scheduledToday } from "./scheduled";
+import { checkedOnlyWithPro } from "./pro-rules";
 
 /**
  * Earnings, macro and calendar event rules name the event day they wait for,
@@ -40,16 +41,21 @@ export function needsSignInNote(count: number): string {
     + "Open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up).";
 }
 
+/** The words a rule's state is written in on the Events tab. */
+export type RuleState = "Active" | "Paused" | "Alerted" | "Needs sign-in" | "Needs Pro";
+
 /**
  * The state word the Events tab shows: a scheduled rule is Alerted once it has gone off for its coming
- * event, an IV level once its level was reached, until it is re-armed. Signed out, a waiting rule only a
- * signed-in account gets checked needs sign-in.
+ * event, an IV level once its level was reached, until it is re-armed. A waiting Pro rule (options flow, an
+ * IV spike) needs Pro without an account that has it (`pro`), signed out too: a free sign-in would not
+ * arm it. Signed out, any other waiting rule only a signed-in account gets checked needs sign-in.
  */
-export function ruleState(rule: EventAlertRule, now: number = Date.now(), signedIn = true): "Active" | "Paused" | "Alerted" | "Needs sign-in" {
+export function ruleState(rule: EventAlertRule, now: number = Date.now(), signedIn = true, pro = signedIn): RuleState {
   const scheduled = readScheduledRule(rule);
   const status = scheduled ? scheduledAlertStatus(rule, scheduled.leadDays, scheduledToday(scheduled.target, now), scheduled.trigger)
     : rule.status === "active" && rule.kind === "iv_level" && rule.triggeredAt ? "triggered" : rule.status;
   if (status === "paused") return "Paused";
   if (status === "triggered") return "Alerted";
+  if (!pro && checkedOnlyWithPro(rule)) return "Needs Pro";
   return !signedIn && checkedWhenSignedIn(rule) ? "Needs sign-in" : "Active";
 }

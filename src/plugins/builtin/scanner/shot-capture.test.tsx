@@ -37,7 +37,12 @@ async function renderCaptured(pane: "hilo" | "flow", captures: ScannerCapture[])
 
 // The shot page's own socket is refused by the server, so a scanner pane that asked it never drew anything.
 test("a captured refusal draws the sign-in wall and a captured payload draws its rows, without opening the socket", async () => {
-  expect(await renderCaptured("flow", [["flow", { type: "denied", reason: "auth_required" }]])).toContain("Sign in to stream the market scanners.");
+  // Signed out, FLOW asks for a sign-in but names the Pro lock a free account would still meet, and what is free.
+  const wall = await renderCaptured("flow", [["flow", { type: "denied", reason: "auth_required" }]]);
+  expect(wall).toContain("Sign in to stream options flow with Gloom Cloud Pro.");
+  expect(wall).toContain("A free account does not include options flow.");
+  expect(wall).toContain("OMON's option chain");
+  expect(await renderCaptured("hilo", [["hilo", { type: "denied", reason: "auth_required" }]])).toContain("Sign in to stream the market scanners.");
 
   const frame = await renderCaptured("hilo", [["hilo", { type: "data", payload: {
     status: "live", access: "realtime", delayMinutes: 0, asOf: Date.now(),

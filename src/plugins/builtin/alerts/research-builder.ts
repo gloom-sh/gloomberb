@@ -2,6 +2,7 @@ import type { GloomPlugin } from "../../../types/plugin";
 import { DEFAULT_LEAD_DAYS, isResearchAlertKind, MACRO_ALERT_EVENTS, normalizeResearchRule, readResearchRule, RESEARCH_ALERT_FORMS, type IvLevelMetric, type MacroAlertEvent, type ResearchAlertKind } from "./research-rules";
 import type { EventAlertRule } from "./events";
 import { isLiveOptionExpiry, parseOptionExpiration } from "../../../utils/option-expiry";
+import { PRO_RULE_FORM_NOTE } from "./pro-rules";
 
 /** What a macro event is called in a rule, a list and a notification. */
 export const MACRO_EVENT_NAMES: Record<MacroAlertEvent, string> = { cpi: "CPI release", fomc: "FOMC decision" };
@@ -68,6 +69,9 @@ export const researchWizardFields: Field[] = RESEARCH_FORM_KINDS.flatMap(kind =>
   }
   if (kind === "iv_level") fields.push({key:"threshold",label:"Level (IV %, RR vol pts)",type:"number",placeholder:"35",required:true});
   if (kind === "unusual_volume" || kind === "short_interest_change" || kind === "iv_spike") fields.push({key:"threshold",label:kind === "unusual_volume" ? "Volume / prior 20-session average" : kind === "iv_spike" ? "IV rise (percentage points)" : "Settlement change (%)",type:"number",defaultValue:kind === "unusual_volume" ? "2" : kind === "iv_spike" ? "5" : "10"});
+  // A Pro kind says so under its first field, before anything is saved: a free account saves it, and nothing checks it.
+  const proNote = PRO_RULE_FORM_NOTE[kind];
+  if (proNote && fields[0]) fields[0] = { ...fields[0], body: [proNote] };
   return fields.map(field => ({...field, key:`${kind}:${field.key}`, dependsOn: kind === "earnings_date" && field.key === "leadDays"
     // The lead time is for an alert before the date, not one waiting for results.
     ? [{key:"event",value:kind}, {key:"earnings_date:when",value:"before"}]

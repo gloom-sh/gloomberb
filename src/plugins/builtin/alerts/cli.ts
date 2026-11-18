@@ -15,6 +15,7 @@ import { localTimeSuffix } from "../../../utils/utc-time";
 import { resolvePersistedCloudSessionToken } from "../../../cli/pane-functions/cloud-session";
 import type { ConfigContext } from "../../../cli/types";
 import { checkedWhenSignedIn, NEEDS_SIGN_IN, needsSignInNote } from "./event-rows";
+import { checkedOnlyWithPro, checksProRules, NEEDS_PRO, needsProNote, savedWithoutProNote } from "./pro-rules";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
@@ -551,12 +552,16 @@ function priceRow(alert: AlertRule): AlertListRow {
 
 function eventRow(
   rule: EventAlertRule, now: number, eventDate: string | null | undefined, check?: IvLevelCheck, cloud?: CloudRuleStates, signedIn = true,
+  pro = signedIn,
 ): AlertListRow {
   const scheduled = readScheduledRule(rule);
   if (!scheduled) {
     const triggered = rule.status === "active" && rule.triggeredAt ? "triggered" : rule.status;
-    // Signed out, nothing checks a rule only a signed-in account gets checked: it waits on a sign-in, not on its event.
-    const status = triggered === "active" && !signedIn && checkedWhenSignedIn(rule) ? NEEDS_SIGN_IN : triggered;
+    // Without Pro, nothing checks options flow or an IV spike, signed in or not: it waits on Pro. Signed out,
+    // nothing checks any other rule only a signed-in account gets checked: it waits on a sign-in, not on its event.
+    const status = triggered !== "active" ? triggered
+      : !pro && checkedOnlyWithPro(rule) ? NEEDS_PRO
+      : !signedIn && checkedWhenSignedIn(rule) ? NEEDS_SIGN_IN : triggered;
     // An IV level is read by this app, so its last reading is this device's; Gloom Cloud reads the rest.
     const state = cloud?.states.get(rule.id);
     const reading = rule.kind === "iv_level" ? {
@@ -1164,11 +1169,15 @@ export const alertsCliCommand: CliCommandDef = {
       const [{ dates, warnings }, cloud] = await Promise.all([listEventDates(events.rules, now, lookup), cloudRuleStates(events.rules, session)]);
       const rows = [
         ...alerts.map(priceRow),
-        ...events.rules.map((rule) => eventRow(rule, now, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id], cloud, !!session)),
+        ...events.rules.map((rule) => eventRow(rule, now, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id], cloud, !!session,
+          checksProRules(!!session, apiClient.getCurrentUser()))),
       ];
       const waiting = rows.filter((row) => row.status === NEEDS_SIGN_IN).length;
+      // The Pro note `alerts add` prints, once for the list: options flow and IV spikes are checked only with Pro.
+      const proRules = events.rules.filter(checkedOnlyWithPro);
       const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings, ...cloud.warning ? [cloud.warning] : [],
-        ...waiting ? [needsSignInNote(waiting)] : []];
+        ...waiting ? [needsSignInNote(waiting)] : [],
+        ...proRules.length ? [needsProNote(proRules, rows.filter((row) => row.status === NEEDS_PRO).length)] : []];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
         rows: (data) => data.map(textRow),
         textColumns: [
@@ -1342,11 +1351,15 @@ export const alertsCliCommand: CliCommandDef = {
         record("created", rule);
         const delivery = research ? researchDelivery(research.kind) : ruleDelivery(formRule!.event);
         // Saved signed out, it waits on a sign-in, and `alerts list` and ALRT say so until there is one.
-        const needsSignIn = checkedWhenSignedIn(rule) && !savedSession(config);
-        const signIn = needsSignIn
+        // Options flow and an IV spike wait on Pro, which a free sign-in does not bring.
+        const session = savedSession(config);
+        const needsPro = checkedOnlyWithPro(rule) && !checksProRules(!!session, apiClient.getCurrentUser());
+        const needsSignIn = !needsPro && checkedWhenSignedIn(rule) && !session;
+        const signIn = needsPro ? savedWithoutProNote(rule) : needsSignIn
           ? " It needs sign-in: nothing checks it while you are signed out. Open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up)."
           : "";
-        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule, ...needsSignIn ? { status: NEEDS_SIGN_IN } : {} },
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule,
+          ...needsPro ? { status: NEEDS_PRO } : needsSignIn ? { status: NEEDS_SIGN_IN } : {} },
           ...(read.length > 0 ? { warnings: read } : {}) }, {
           text: (data) => `Added alert ${data.alert.id}: ${alertKindLabel(rule.kind)} ${eventAlertTarget(rule)} (${delivery}).${signIn}${dryRunNote(data.dryRun)}`,
         });
