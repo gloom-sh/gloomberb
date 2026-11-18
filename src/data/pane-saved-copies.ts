@@ -105,11 +105,13 @@ function decodeSnapshot(value: unknown): unknown {
   const references: unknown[] = [];
   const decode = (entry: unknown): unknown => {
     if (!entry || typeof entry !== "object") return entry;
-    if (MARK in entry) {
+    if (Object.hasOwn(entry, MARK)) {
       const marked = entry as Encoded;
       if (marked[MARK] === "number") return Number(marked.value);
       if (marked[MARK] === "ref") {
-        const reference = references[marked.value as number];
+        const index = marked.value;
+        if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= references.length) throw new NotPlainData();
+        const reference = references[index];
         if (reference === undefined) throw new NotPlainData();
         return reference;
       }

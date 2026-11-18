@@ -157,10 +157,11 @@ interface Launch {
   quit(): Promise<void>;
 }
 
-/** Waits until every pane has been in a settled state (content, empty or error) for a while, or the time runs out. */
+/** Waits for a settled frame or a quiet replay window; panes left loading are still recorded. */
 async function settle(launch: Launch, expected: number, network: Network | "fill", filledPanes?: ReadonlySet<string>): Promise<void> {
   const minimum = network === "fill" ? 15_000 : network === "slow" ? SLOW_MS + 7_000 : 7_000;
   const limit = network === "fill" ? 90_000 : network === "slow" ? 45_000 : 35_000;
+  const quietWindow = network === "fill" ? 12_000 : network === "slow" ? SLOW_MS + 3_000 : 5_000;
   const started = Date.now();
   let stableSince = Date.now();
   let signature = "";
@@ -172,9 +173,10 @@ async function settle(launch: Launch, expected: number, network: Network | "fill
       signature = current;
       stableSince = Date.now();
     }
-    const settled = timelines.length >= expected && timelines.every((timeline) =>
+    const settled = timelines.every((timeline) =>
       (filledPanes && !filledPanes.has(timeline.paneId)) || ["content", "empty", "error"].includes(timeline.states.at(-1)?.state ?? ""));
-    if (settled && Date.now() - started >= minimum && Date.now() - stableSince >= 3_000) return;
+    if (timelines.length >= expected && Date.now() - started >= minimum
+      && Date.now() - stableSince >= (settled ? 3_000 : quietWindow)) return;
   }
 }
 
