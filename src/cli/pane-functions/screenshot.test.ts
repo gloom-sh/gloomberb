@@ -149,8 +149,12 @@ test("calculator screenshot evidence must match the requested inputs, not just a
     rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
     emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues, semanticUi: nodes(),
   }, "", "/tmp/ovme-shot-test.png");
-  expect(assess(["AAPL"])).toMatchObject({ semanticMismatch: false, empty: false, render: { missingExpectedText: [] } });
+  const read = assess(["AAPL"]);
+  expect(read).toMatchObject({ semanticMismatch: false, empty: false, render: { missingExpectedText: [] } });
   expect(assess().render.missingExpectedText).toContain("AAPL");
+  // A field's value is read for the check alone: the result, and so its JSON and print, never carries one.
+  expect(read.render).not.toHaveProperty("fieldValues");
+  expect(JSON.stringify(read)).not.toContain("fieldValues");
 });
 
 // Regression: an overview without fundamentals reported its "-" grid as rows.
