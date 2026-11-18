@@ -20,8 +20,10 @@ function pick<T extends object, K extends keyof T>(value: T, keys: readonly K[])
 
 function publicEvidenceUrl(value: string | null | undefined) {
   if (value == null) return value;
-  const url = URL.parse(value);
-  return url && !url.username && !url.password && !url.search && !url.hash ? value : null;
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password && !url.search && !url.hash ? value : null;
+  } catch { return null; }
 }
 
 function evidenceForDisplay(value: Pick<GpuObservation, "provenance" | "provenanceLabel" | "sourceUrl" | "evidenceUrl">) {
@@ -80,7 +82,18 @@ const validEvidence = (row: Record<string, any>) => provenance(row.provenance) &
 
 /** Account and plan transitions must never reuse a full-history cache as a free preview. */
 export const gpuCacheScope = cloudDisplayScope;
-const scopedKey = (key: string) => `${gpuCacheScope()}:${key}`;
+
+function readGpuResource<T>(cache: ReturnType<typeof createPluginCache<T>>, key: string, validate: (data: T) => T) {
+  const scope = gpuCacheScope();
+  return scope === null ? null : cachedCloudResource(cache, `${scope}:${key}`, validate);
+}
+
+function loadGpuResource<T>(cache: ReturnType<typeof createPluginCache<T>>, key: string,
+  fetch: () => Promise<T>, force: boolean, validate: (data: T) => T): Promise<CloudResource<T>> {
+  const scope = gpuCacheScope();
+  return scope === null ? fetch().then((payload) => ({ payload, stale: false, refreshError: null }))
+    : loadCloudResource(cache, `${scope}:${key}`, fetch, { force, validate });
+}
 
 function validObservation(row: unknown): row is GpuObservation {
   if (!record(row)) return false;
@@ -171,15 +184,15 @@ export async function fetchGpuEvents(gpuModel?: string, client: Pick<GpuApi, "ge
   return validateEvents(await client.getCloudGpuEvents(gpuModel));
 }
 
-export const getCachedGpuBoard = () => cachedCloudResource(gpuBoardCache, scopedKey("board"), validateBoard);
-export const getCachedGpuHistory = (seriesId: string) => cachedCloudResource(gpuHistoryCache, scopedKey(`series:${seriesId}`), validateHistory);
-export const getCachedGpuReferences = () => cachedCloudResource(gpuHistoryCache, scopedKey("reference-catalog"), validateHistory);
-export const getCachedGpuEvents = (gpuModel?: string) => cachedCloudResource(gpuEventsCache, scopedKey(gpuModel ?? "all"), validateEvents);
-export const loadGpuBoard = (force = false) => loadCloudResource(gpuBoardCache, scopedKey("board"), () => fetchGpuBoard(), { force, validate: validateBoard });
-export const loadGpuHistory = (seriesId: string, force = false) => loadCloudResource(gpuHistoryCache, scopedKey(`series:${seriesId}`),
-  () => fetchGpuHistory({ seriesId, limit: 10_000 }), { force, validate: validateHistory });
-export const loadGpuReferences = (force = false) => loadCloudResource(gpuHistoryCache, scopedKey("reference-catalog"),
-  () => fetchGpuHistory({ basis: "reference", limit: 10_000 }), { force, validate: validateHistory });
+export const getCachedGpuBoard = () => readGpuResource(gpuBoardCache, "board", validateBoard);
+export const getCachedGpuHistory = (seriesId: string) => readGpuResource(gpuHistoryCache, `series:${seriesId}`, validateHistory);
+export const getCachedGpuReferences = () => readGpuResource(gpuHistoryCache, "reference-catalog", validateHistory);
+export const getCachedGpuEvents = (gpuModel?: string) => readGpuResource(gpuEventsCache, gpuModel ?? "all", validateEvents);
+export const loadGpuBoard = (force = false) => loadGpuResource(gpuBoardCache, "board", () => fetchGpuBoard(), force, validateBoard);
+export const loadGpuHistory = (seriesId: string, force = false) => loadGpuResource(gpuHistoryCache, `series:${seriesId}`,
+  () => fetchGpuHistory({ seriesId, limit: 10_000 }), force, validateHistory);
+export const loadGpuReferences = (force = false) => loadGpuResource(gpuHistoryCache, "reference-catalog",
+  () => fetchGpuHistory({ basis: "reference", limit: 10_000 }), force, validateHistory);
 /**
  * The free board is three rows of one GPU. The rows it leaves out for the
  * GPUs a reader asks about come from each GPU's own free preview, the latest
@@ -203,13 +216,13 @@ function previewRows(previews: CloudResource<GpuHistoryPayload>[]) {
 }
 
 export function getCachedGpuModelPreviews(models: readonly string[]) {
-  const previews = models.map((gpuModel) => cachedCloudResource(gpuHistoryCache, scopedKey(`preview:${gpuModel}`), validateHistory));
+  const previews = models.map((gpuModel) => readGpuResource(gpuHistoryCache, `preview:${gpuModel}`, validateHistory));
   return previews.every((preview) => preview !== null) ? previewRows(previews) : null;
 }
 
 export const loadGpuModelPreviews = async (models: readonly string[], force = false) => {
-  const previews = await Promise.all(models.map((gpuModel) => loadCloudResource(gpuHistoryCache, scopedKey(`preview:${gpuModel}`),
-    () => fetchGpuHistory({ gpuModel, limit: 10 }), { force, validate: validateHistory })));
+  const previews = await Promise.all(models.map((gpuModel) => loadGpuResource(gpuHistoryCache, `preview:${gpuModel}`,
+    () => fetchGpuHistory({ gpuModel, limit: 10 }), force, validateHistory)));
   return previewRows(previews);
 };
 export async function loadGpuHistoryGroup(ids: readonly string[], force: boolean) {
@@ -221,8 +234,8 @@ export function getCachedGpuHistoryGroup(ids: readonly string[]) {
   const histories = ids.map(getCachedGpuHistory);
   return histories.every((history) => history !== null) ? combineGpuResources(histories, { histories }) : null;
 }
-export const loadGpuEvents = (gpuModel?: string, force = false) => loadCloudResource(gpuEventsCache, scopedKey(gpuModel ?? "all"),
-  () => fetchGpuEvents(gpuModel), { force, validate: validateEvents });
+export const loadGpuEvents = (gpuModel?: string, force = false) => loadGpuResource(gpuEventsCache, gpuModel ?? "all",
+  () => fetchGpuEvents(gpuModel), force, validateEvents);
 
 /** Six daily closes, independently dated from the current quote, and the month they come from. Missing data stays unavailable. */
 export async function loadGpuEquityHistory(provider: Pick<DataProvider, "getPriceHistory">) {

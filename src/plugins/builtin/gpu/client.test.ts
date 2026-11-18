@@ -154,9 +154,11 @@ test("a reopened GPU detail restores only the exact series and access, without c
     user.mockReturnValue({ ...full, id: "another-account" });
     expect(getCachedGpuHistory(series)).toBeNull();
     user.mockReturnValue(null);
+    await loadGpuHistory(series);
     expect(getCachedGpuHistory(series)).toBeNull();
+    expect(gpuHistoryCache.get(`null:series:${series}`)).toBeNull();
     signedIn.mockReturnValue(false);
     expect(getCachedGpuHistory(series)).toBeNull();
-    expect(network).toHaveBeenCalledTimes(1);
+    expect(network).toHaveBeenCalledTimes(2);
   } finally { gpuHistoryCache.reset(); network.mockRestore(); user.mockRestore(); signedIn.mockRestore(); }
 });
