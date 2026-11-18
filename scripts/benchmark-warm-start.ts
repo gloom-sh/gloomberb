@@ -16,7 +16,8 @@ import { startDesktopStandIn, type DesktopStandIn } from "./warm-start/desktop-s
 
 /**
  *   bun scripts/benchmark-warm-start.ts <tui|web|desktop> [--runs 5] [--network normal,slow]
- *     [--layouts 1,2] [--label before] [--app <checkout>] [--root <dir>] [--out <dir>] [--metrics]
+ *     [--layouts 1,2] [--label before] [--app <checkout>] [--root <dir>] [--out <dir>]
+ *     [--metrics] [--heap-snapshot] [--settle-ms 18000]
  *
  * A warm restart, pane by pane. One pane of every type the catalog lists
  * (scripts/warm-start/plan.ts) is laid out in layouts of 16; for each layout
@@ -58,7 +59,10 @@ const outDir = resolve(takeOption(args, "--out") ?? join(root, "results"));
 const perLayout = positiveInteger(takeOption(args, "--per-layout"), 16, "per-layout");
 const build = args.includes("--build");
 const capture = args.includes("--capture");
-const metrics = args.includes("--metrics");
+const heapSnapshot = args.includes("--heap-snapshot");
+const metrics = args.includes("--metrics") || heapSnapshot;
+const settleOption = takeOption(args, "--settle-ms");
+const settleMs = settleOption ? positiveInteger(settleOption, 18_000, "settle-ms") : 0;
 const cold = args.includes("--cold");
 /** The harness's own checkout, for its scripts. */
 const checkout = resolve(join(import.meta.dir, ".."));
@@ -88,6 +92,7 @@ interface RunRecord {
   panes: PaneTimeline[];
   requests?: Record<string, number>;
   heapBytes?: number;
+  backendHeapBytes?: number;
   cacheKiB?: number;
   cache?: CacheFootprint;
 }
@@ -153,7 +158,7 @@ interface Launch {
   timeline(): Map<string, PaneTimeline>;
   launchedAt: number;
   requests(): Record<string, number> | undefined | Promise<Record<string, number>>;
-  heapBytes(): Promise<number | undefined>;
+  heap(snapshot?: string): Promise<{ heapBytes: number; backendHeapBytes?: number }>;
   cacheFootprint?(): Promise<CacheFootprint>;
   quit(): Promise<void>;
 }
@@ -176,7 +181,7 @@ async function settle(launch: Launch, expected: number, network: Network | "fill
     }
     const settled = timelines.every((timeline) =>
       (filledPanes && !filledPanes.has(timeline.paneId)) || ["content", "empty", "error"].includes(timeline.states.at(-1)?.state ?? ""));
-    if (timelines.length >= expected && Date.now() - started >= minimum
+    if (timelines.length >= expected && Date.now() - started >= minimum && Date.now() - launch.launchedAt >= settleMs
       && Date.now() - stableSince >= (settled ? 3_000 : quietWindow)) return;
   }
 }
@@ -204,12 +209,13 @@ async function launchTui(network: Network | "fill"): Promise<Launch> {
     `WARM_START_NET_DELAY_MS=${network === "slow" ? SLOW_MS : 0}`,
     `WARM_START_REPLAY_ONLY=${process.env.WARM_START_REPLAY_ONLY === "1" ? 1 : 0}`,
     `WARM_START_METRICS=${metrics ? 1 : 0}`,
+    `GLOOMBERB_PERF_TRACE=${shellQuote(process.env.GLOOMBERB_PERF_TRACE ?? "")}`,
     `BUN_RUNTIME_TRANSPILER_CACHE_PATH=${shellQuote(join(root, "transpiler"))}`,
   ].join(" ");
   const launchedAt = Date.now();
   await runTmux([
     "new-session", "-d", "-s", session, "-x", String(WIDTH.tui), "-y", String(HEIGHT.tui), "-c", app,
-    `exec env ${env} bun --preload ${shellQuote(join(checkout, "scripts/warm-start/tui-preload.ts"))} ${shellQuote(join(app, "src/cli/entry.ts"))} 2>>${shellQuote(join(profile, "stderr.log"))}`,
+    `exec env ${env} ${shellQuote(process.execPath)} --preload ${shellQuote(join(checkout, "scripts/warm-start/tui-preload.ts"))} ${shellQuote(join(app, "src/cli/entry.ts"))} 2>${shellQuote(join(profile, "stderr.log"))}`,
   ]);
   let timelines = new Map<string, PaneTimeline>();
   let requests: Record<string, number> | undefined;
@@ -231,18 +237,18 @@ async function launchTui(network: Network | "fill"): Promise<Launch> {
     launchedAt,
     timeline: () => timelines,
     requests: () => requests,
-    async heapBytes() {
+    async heap(snapshot) {
       const trigger = join(profile, "collect-heap");
       const result = join(profile, "heap-bytes");
       await rm(result, { force: true });
-      await writeFile(trigger, "");
-      for (let attempt = 0; attempt < 50; attempt += 1) {
+      await writeFile(trigger, snapshot ?? "");
+      const deadline = Date.now() + (snapshot ? 45_000 : 5_000);
+      while (!interrupted.signal.aborted && Date.now() < deadline) {
         const sample = await readFile(result, "utf8").catch(() => "");
-        if (sample) return Number(sample);
-        if (interrupted.signal.aborted) break;
+        if (sample) return { heapBytes: Number(sample) };
         await sleep(50);
       }
-      return undefined;
+      throw new Error("The terminal did not respond to the heap request");
     },
     async quit() {
       const panePid = Number(Bun.spawnSync(["tmux", "display-message", "-p", "-t", `=${session}:`, "#{pane_pid}"]).stdout.toString());
@@ -315,13 +321,30 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
     launchedAt,
     timeline: () => timelines,
     requests: () => server.requests(),
-    async heapBytes() {
+    async heap(snapshot) {
       await browser.cdp.send("HeapProfiler.collectGarbage", {}, 3_000);
       const { usedSize } = await browser.cdp.send<{ usedSize: number }>("Runtime.getHeapUsage", {}, 3_000);
-      if (!standIn) return usedSize;
-      const response = await fetch(`${origin}/__warm-heap`, { signal: AbortSignal.timeout(3_000) });
-      if (!response.ok) return undefined;
-      return usedSize + Number(await response.text());
+      let backendHeapBytes: number | undefined;
+      if (standIn) {
+        const response = await fetch(`${origin}/__warm-heap`, { signal: AbortSignal.timeout(3_000) });
+        if (!response.ok) throw new Error(`Desktop heap request failed: ${response.status}`);
+        backendHeapBytes = Number(await response.text());
+      }
+      if (snapshot) {
+        const writer = Bun.file(`${snapshot}.heapsnapshot`).writer();
+        browser.cdp.on("HeapProfiler.addHeapSnapshotChunk", ({ chunk }) => { writer.write(chunk); });
+        try {
+          await browser.cdp.send("HeapProfiler.takeHeapSnapshot", {}, 60_000);
+        } finally {
+          await writer.end();
+        }
+        if (standIn) {
+          const response = await fetch(`${origin}/__warm-heap-snapshot`, { signal: AbortSignal.timeout(45_000) });
+          if (!response.ok) throw new Error(`Desktop heap snapshot failed: ${response.status}`);
+          await Bun.write(`${snapshot}-backend.heapsnapshot`, response);
+        }
+      }
+      return { heapBytes: usedSize + (backendHeapBytes ?? 0), backendHeapBytes };
     },
     ...(target === "web" ? { cacheFootprint: () => evaluate<CacheFootprint>(browser.cdp, `(async () => {
       const name = "gloomberb-cache";
@@ -522,13 +545,18 @@ async function main(): Promise<void> {
         const screenshot = capture && run === 1
           ? join(outDir, `${target}-${label}-${network}-layout-${layout + 1}.png`) : undefined;
         const started = await launch(network, screenshot);
-        let heapBytes: number | undefined;
+        let heap: { heapBytes: number; backendHeapBytes?: number } | undefined;
         let cache: CacheFootprint | undefined;
         let requests: Record<string, number> | undefined;
         try {
           await settle(started, expected, network, filledPanes);
           if (metrics && !interrupted.signal.aborted) {
-            heapBytes = await started.heapBytes().catch(() => undefined);
+            const snapshot = heapSnapshot && network !== "fill" && run === 1
+              ? join(outDir, `${target}-${label}-${network}-layout-${layout + 1}`) : undefined;
+            heap = await started.heap(snapshot).catch((error) => {
+              console.error(error);
+              return undefined;
+            });
             cache = await started.cacheFootprint?.().catch(() => undefined);
           }
           requests = await started.requests();
@@ -538,7 +566,7 @@ async function main(): Promise<void> {
         if (interrupted.signal.aborted) return;
         if (metrics && target !== "web") cache = sqliteFootprint();
         const entry: RunRecord = { layout, network, run, launchedAt: started.launchedAt, panes: [...started.timeline().values()],
-          requests, heapBytes, cache, cacheKiB: metrics ? await cacheKiB() : undefined };
+          requests, ...heap, cache, cacheKiB: metrics ? await cacheKiB() : undefined };
         if (network === "fill") {
           filledPanes = new Set(entry.panes.filter((pane) => pane.states.at(-1)?.state === "content").map((pane) => pane.paneId));
           await rm(filledProfile, { recursive: true, force: true });

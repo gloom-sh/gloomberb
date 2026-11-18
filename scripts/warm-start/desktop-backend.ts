@@ -136,6 +136,7 @@ const server = Bun.serve({
       Bun.gc(true);
       return new Response(String(heapStats().heapSize));
     }
+    if (url.pathname === "/__warm-heap-snapshot") return new Response(Bun.generateHeapSnapshot("v8", "arraybuffer"));
     const file = Bun.file(join(viewDir, url.pathname === "/" ? "index.html" : url.pathname.slice(1)));
     if (!url.pathname.includes("..") && await file.exists()) return new Response(file, { headers: { "cache-control": "no-cache" } });
     return new Response("Not found", { status: 404 });

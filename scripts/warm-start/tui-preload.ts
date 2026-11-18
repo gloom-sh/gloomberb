@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, unlinkSync, writeFileSync } from "fs";
+import { appendFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { heapStats } from "bun:jsc";
 import { dirname, join } from "path";
 import { CliRenderer } from "@opentui/core";
@@ -11,15 +11,16 @@ import { terminalPaneStates, type PaneShownState } from "./pane-states";
  * each pane whose state changed to `WARM_START_PROBE_OUT` as one JSON line,
  * `{ at, frame, panes }`, with `at` in ms since the epoch.
  */
+const out = process.env.WARM_START_PROBE_OUT;
 const network = warmStartNetworkFromEnv();
 const counts = { kept: 0, fetched: 0, refused: 0, streamed: 0 };
 const networkLog = process.env.WARM_START_NET_LOG;
 if (network) installWarmStartNetwork({ ...network, log: (event, url) => {
   counts[event] += 1;
+  if (out) appendFileSync(out, `${JSON.stringify({ at: Date.now(), network: counts })}\n`);
   if (networkLog) appendFileSync(networkLog, `${Date.now()} ${event} ${url}\n`);
 } });
 
-const out = process.env.WARM_START_PROBE_OUT;
 if (out) {
   writeFileSync(out, "");
   const home = dirname(out);
@@ -28,9 +29,12 @@ if (out) {
   if (process.env.WARM_START_METRICS === "1") {
     setInterval(() => {
       if (!existsSync(trigger)) return;
+      const snapshot = readFileSync(trigger, "utf8");
       unlinkSync(trigger);
       Bun.gc(true);
-      writeFileSync(result, String(heapStats().heapSize));
+      const bytes = heapStats().heapSize;
+      if (snapshot) writeFileSync(`${snapshot}.heapsnapshot`, new Uint8Array(Bun.generateHeapSnapshot("v8", "arraybuffer")));
+      writeFileSync(result, String(bytes));
     }, 100).unref();
   }
   const last = new Map<string, PaneShownState>();
