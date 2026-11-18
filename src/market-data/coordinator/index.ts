@@ -1028,7 +1028,7 @@ export class MarketDataCoordinator {
     // A tick merged onto a saved copy is the stream's answer, not the saved copy.
     const storedQuote = withSavedCopyMarkOf(receivedAt == null ? resolvedQuote : { ...resolvedQuote, receivedAt }, quote);
     const currentQuote = current.data ?? current.lastGoodData;
-    if (areStreamQuotesEquivalent(currentQuote, storedQuote)) {
+    if (current.savedCopyAt == null && areStreamQuotesEquivalent(currentQuote, storedQuote)) {
       const previousReceipt = currentQuote?.receivedAt;
       if (receivedAt == null || (previousReceipt != null && receivedAt - previousReceipt < STREAM_RECEIPT_REFRESH_MS)) return;
     }
