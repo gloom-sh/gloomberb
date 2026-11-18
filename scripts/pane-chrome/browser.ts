@@ -162,6 +162,7 @@ export async function launchBrowser(
     ...(gpu ? ["--enable-gpu", "--ignore-gpu-blocklist"] : ["--disable-gpu"]),
     "--hide-scrollbars",
     "--mute-audio",
+    "--use-mock-keychain",
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-extensions",

@@ -285,14 +285,18 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
   }
   const server = (webServer ?? standIn)!;
   const browser = await launchBrowser(`warm-${target}`, WIDTH.view, HEIGHT.view, { profileDir: join(profile, "chrome") });
+  const exceptions = new Map<string, number>();
+  browser.cdp.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
+    const name = exceptionDetails?.exception?.className ?? "Unknown";
+    exceptions.set(name, (exceptions.get(name) ?? 0) + 1);
+  });
   let picture: Promise<void> | undefined;
+  const takePicture = (file: string) => browser.cdp.send("Page.captureScreenshot", { format: "png" }, 3_000).then(async ({ data }) => {
+    await writeFile(file, Buffer.from(data, "base64"));
+  }).catch((error) => { console.error("Could not capture a benchmark screenshot:", error); });
   server.onProbe((entry) => {
     record(timelines, entry.at - launchedAt, entry.frame, entry.panes);
-    if (screenshot && !picture && Object.values(entry.panes).some((state) => state !== "blank")) {
-      picture = browser.cdp.send("Page.captureScreenshot", { format: "png" }, 3_000).then(async ({ data }) => {
-        await writeFile(screenshot, Buffer.from(data, "base64"));
-      }).catch((error) => { console.error("Could not capture a restart screenshot:", error); });
-    }
+    if (screenshot && network !== "fill" && !picture && Object.values(entry.panes).some((state) => state !== "blank")) picture = takePicture(screenshot);
   });
   try {
     await routeDirectReads(browser.cdp, { read: (_key, load) => load() });
@@ -343,6 +347,8 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
     async quit() {
       try {
         await picture;
+        if (screenshot && network === "fill" && timelines.size) await takePicture(screenshot);
+        if (timelines.size === 0 && exceptions.size) console.error("Page did not mount; uncaught exceptions:", Object.fromEntries(exceptions));
         if (standIn) await standIn.stopBackend();
       } finally {
         await browser.close("SIGKILL");
@@ -501,7 +507,7 @@ async function main(): Promise<void> {
         } else {
           await cp(filledProfile, profile, { recursive: true, verbatimSymlinks: true });
         }
-        const screenshot = capture && network !== "fill" && run === 1
+        const screenshot = capture && run === 1
           ? join(outDir, `${target}-${label}-${network}-layout-${layout + 1}.png`) : undefined;
         const started = await launch(network, screenshot);
         let heapBytes: number | undefined;
