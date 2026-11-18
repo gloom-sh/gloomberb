@@ -492,7 +492,12 @@ export function CorporateActionsView({
     error: actionsError,
     reload: reloadActions,
   } = useTickerRequest<CorporateActionsData>(actionsLoader, symbol, exchange, ["corporate-actions", cloudSession.requestKey]);
-  const { data: calendarEvent, reload: reloadCalendar } = useTickerRequest(calendarLoader, symbol, exchange, ["corporate-actions-calendar"]);
+  const {
+    data: calendarEvent,
+    loading: calendarLoading,
+    error: calendarError,
+    reload: reloadCalendar,
+  } = useTickerRequest(calendarLoader, symbol, exchange, ["corporate-actions-calendar"]);
   // The listing's own day, as `earnings` reads a report date: SIE:XETRA's has passed once Berlin's day has.
   const today = listingDay(exchange);
   const actionsData = useMemo(
@@ -557,12 +562,14 @@ export function CorporateActionsView({
   const rowBackground = useCallback((row: EventRow) => (
     row.date > today ? futureRowBackground : undefined
   ), [futureRowBackground, today]);
-  const loading = actionsLoading || analystLoading;
+  const loading = actionsLoading || analystLoading || (calendarLoading && !!recordedActions);
   const authWall = !loading && !actionsData && !analystData && (isCloudSessionRequired(actionsError) || isCloudSessionRequired(analystError));
   // Parallel requests fail with the same message ("No ticker selected"), so the
   // footer must report each distinct reason once.
   const error = [...new Set([actionsError, analystError].filter((value): value is string => !!value && !isCloudSessionRequired(value)))]
     .join(" | ") || null;
+  const loadError = error ?? (sourceNotice?.failed ? sourceNotice.text : null)
+    ?? (recordedActions && !rows.length ? calendarError : null);
   const reload = useCallback(() => {
     reloadActions();
     reloadAnalyst();
@@ -690,7 +697,8 @@ export function CorporateActionsView({
   usePaneStatusFooter({
     registrationId: footerPaneId,
     loading,
-    error: error ?? (sourceNotice?.failed ? sourceNotice.text : null),
+    error: loadError,
+    emptyResult: !!actionsData && !rows.length && !sourceNotice,
   });
 
   usePaneNoticeFooter({
@@ -741,9 +749,9 @@ export function CorporateActionsView({
       ]}
       selectedTextOverridesCellColor
       getRowBackgroundColor={rowBackground}
-      emptyStateTitle={loading
-        ? (variant === "earnings-estimates" ? "Loading earnings estimates..." : "Loading events...")
-        : error ?? sourceNotice?.text ?? (variant === "earnings-estimates" ? "No earnings estimates" : "No events")}
+      status={{ loading: loading && !rows.length, error: !loading && !rows.length ? loadError : null,
+        subject: variant === "earnings-estimates" ? "earnings estimates" : "events" }}
+      emptyStateTitle={sourceNotice?.text ?? (variant === "earnings-estimates" ? "No earnings estimates" : "No events")}
     />
   );
 }

@@ -12,6 +12,7 @@ import {
 import type { ChartSeriesSpec, ChartSpec, SeriesPeriod } from "../../../time-series/types";
 import { yearToDateBaseDay } from "../../../market-data/market/year-to-date";
 import { readPriceWindow } from "../../../utils/price-window";
+import { comparisonPresetResolution } from "./chart-spec";
 
 const PRICE_CAPABILITIES = new Set(["price-chart", "intraday-price-chart", "price-comparison"]);
 
@@ -73,7 +74,8 @@ export function applyChartComposerCapabilityOptions(
   const range = capabilityId === "intraday-price-chart" && typeof options.session === "string"
     ? "1D"
     : selectedRange;
-  const resolution = chartResolution(options);
+  const resolution = chartResolution(options)
+    ?? (capabilityId === "price-comparison" ? comparisonPresetResolution(range ?? next.viewport.range) : null);
   if (range || resolution) {
     next = {
       ...next,
@@ -95,7 +97,7 @@ export function applyChartComposerCapabilityOptions(
     } } };
   }
 
-  if (capabilityId === "price-chart" && options.extendedHours === true) {
+  if ((capabilityId === "price-chart" || capabilityId === "price-comparison") && options.extendedHours === true) {
     next = { ...next, viewport: { ...next.viewport, extendedHours: true } };
   }
 

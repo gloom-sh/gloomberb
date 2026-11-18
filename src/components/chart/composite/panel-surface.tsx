@@ -153,7 +153,7 @@ export function CompositePanelSurface({
     panel, scene, frame, viewport, armedTool, drawings, drawColor, levels, plotWidth,
     onActivate, onPointerPress, onPickTime, onPickPrice, onSelectDrawing, onEditDrawing, onDraw, onSelectLevel,
     onPanViewport, onSetViewport, onSetValueScale, onDragActiveChange, onToggleMaximized,
-    isDesktopWeb, renderer, plotSize, plotAspect, plotSpanFactor, setToolDrag,
+    isDesktopWeb, renderer, plotSize, plotAspect, cellWidthPx, cellHeightPx, plotSpanFactor, setToolDrag,
     levelDomain, projectedLevels, levelDraftRef, setLevelDraft,
     plotPointer, pointerRatios, updateCursor, stopCoast, startCoast,
   });

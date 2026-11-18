@@ -81,7 +81,6 @@ import { usePaneStatusFooter } from "../../../components/layout/pane/status-foot
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { tableColumnWidth } from "../../../components/ui/table-layout";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
-import { readableStatus } from "../../../utils/reason-codes";
 
 const IMPACT_LABELS: Record<ImpactFilter, string> = {
   all: "All",
@@ -112,7 +111,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   useEffect(() => subscribeCalendar(() => setCacheVersion((version) => version + 1)), []);
   const cached = useMemo(() => getCalendarCache(), [cacheVersion]);
   const shown = cached && (!calendar.data || cached.fetchedAt > calendar.data.fetchedAt) ? cached : calendar.data;
-  const { loading } = calendar;
+  const loading = calendar.loading || (!shown && !calendar.error);
   const events = shown?.data ?? NO_EVENTS;
   const stale = shown?.stale ?? false;
   const fetchedAt = shown?.fetchedAt ?? null;
@@ -424,6 +423,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     registrationId: "econ-calendar",
     loading,
     error,
+    emptyResult: !!shown && !rows.length && !detailEvent,
     info: calendarStatus,
   });
   // The filter keys step through the choices; Shift steps back. The pane menu
@@ -585,13 +585,13 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
       selectedTextOverridesCellColor
+      status={{ loading: loading && !rows.length, error: !loading && !events.length ? error : null, subject: "economic events" }}
       emptyContent={filterEmptyTitle ? (
         <Box width="100%" paddingX={1} paddingY={1}>
           <EmptyState title={filterEmptyTitle} actions={<Button label="Show all" compact onPress={showAllEvents} />} />
         </Box>
       ) : undefined}
-      // A load that failed with nothing to list says why, never that there are no events.
-      emptyStateTitle={loading ? "Loading economic events..." : events.length === 0 && error ? readableStatus(error) : listedAfter ?? "No events"}
+      emptyStateTitle={listedAfter ?? "No events"}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}
     />
