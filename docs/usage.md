@@ -519,6 +519,8 @@ Series are separated by commas, and tickers separated by spaces are a list too: 
 
 `CMP` and normalized price overlays measure every line to the last shared observation. Daily comparisons name the ending session above the plot. They use a forming daily bar only when every line has one for that session; otherwise they end together on an earlier shared close. A preset measures back from that common endpoint, using each listing's close on or before the baseline date.
 
+The `CMP` 1D preset uses intraday bars from the latest session, as `GP` does. Returns start at the first shared bar and end at the last shared bar. For US listings, use Extended hours (or `--extended-hours` in `fn` and `shot`) to include pre-market and after-hours bars. The 1W preset still compares daily closes.
+
 A formula adds and subtracts series, each times a number, and charts the result in the Formula panel. The number goes on either side of its series (`HO=F*42`), and only the whole formula, in brackets, is divided or multiplied by a number or a series:
 
 ```text

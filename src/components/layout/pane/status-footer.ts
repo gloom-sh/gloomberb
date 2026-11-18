@@ -84,12 +84,14 @@ export function usePaneStatusFooter({
   registrationId,
   loading = false,
   error,
+  emptyResult = false,
   stale = false,
   info = EMPTY_STATUS_INFO,
   hints,
   enabled = true,
 }: PaneStatusInfoOptions & {
   registrationId: string;
+  emptyResult?: boolean;
   hints?: PaneHint[];
   enabled?: boolean;
 }) {
@@ -98,6 +100,10 @@ export function usePaneStatusFooter({
     [error, info, loading, stale],
   );
   usePaneLoadErrorNode(loading, error, enabled);
+  useRemoteUiNode(enabled && emptyResult && !loading && !error ? {
+    role: "pane-empty-result",
+    label: "No results",
+  } : null);
   usePaneFooter(
     registrationId,
     () => enabled && (statusInfo.length > 0 || (hints?.length ?? 0) > 0)
