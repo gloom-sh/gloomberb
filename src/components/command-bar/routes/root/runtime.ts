@@ -28,6 +28,12 @@ const LISTING_NUMBER_QUERY = /^\d{3,6}$/;
 /** Written the way Singapore codes them, letters and digits in capitals: D05, C6L, A17U. */
 const LISTING_CODE_QUERY = /^(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,4}$/;
 
+/** A ticker written as one, in capitals (BA, BRK.B, 0700, D05, GC=F, ^GSPC): what the resolver reads as typed. */
+export function writtenAsSymbol(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed === trimmed.toUpperCase() && /^\^?[A-Z0-9][A-Z0-9=.\-/]*$/.test(trimmed);
+}
+
 /**
  * Text that asks for a symbol rather than a local row: symbol-shaped, and in
  * capitals or in no row's name, or a listing's number or code. `nvda` matches
@@ -355,9 +361,11 @@ export function useCommandBarRootRuntime({
   // letters match locally (a pane whose example names AAPL), not the symbol,
   // so none of them is highlighted and Enter waits for the answer, as it would
   // get had the symbol been typed slowly. Lower case found in a row's name
-  // (`upd`, `list`) is that row and runs at once.
-  const rootSymbolAnswerPending = !rootResultsCurrent && rootPlainTickerSearchArg !== null
-    && (rootTickerReading !== null || rootListingChoice !== null || readsAsSymbol(rootPlainTickerSearchArg, answeredRootResults));
+  // (`upd`, `list`) is that row and runs at once. DES's rows before its answer
+  // are saved tickers the letters match (`DES BA:LSE` finds Berkshire's BRK.B),
+  // never the listing typed: none is highlighted, and Enter runs the text.
+  const rootSymbolAnswerPending = !rootResultsCurrent && (rootSecurityDescriptionArg !== null || (rootPlainTickerSearchArg !== null
+    && (rootTickerReading !== null || rootListingChoice !== null || readsAsSymbol(rootPlainTickerSearchArg, answeredRootResults))));
   // Nor does the AI hold a place for itself meanwhile: its Thinking row would
   // lead the list until the symbol's rows came in above it.
   const orderedRootResults = useMemo(

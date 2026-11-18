@@ -2,8 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import { createTestTicker } from "../../../test-support/ticker";
 import type { InstrumentSearchResult } from "../../../types/instrument";
 import type { PluginRegistry } from "../../../plugins/registry";
+import type { PaneTemplateCreateOptions, PaneTemplateDef } from "../../../types/plugin";
+import type { TickerRecord } from "../../../types/ticker";
+import { LISTING_SEARCH_LIMIT } from "../../../tickers/search";
+import { ProviderBusyError } from "../../../sources/provider-errors";
 import { CommandBarHarness } from "./test-harness";
 
 const tui = createOpenTuiTestHarness();
@@ -144,5 +149,127 @@ describe("Enter right after typing a symbol", () => {
     const { opened, searches } = await typeAndEnter("Exposure", 25);
     expect(opened).toEqual(["pane:exposure-pane"]);
     expect(searches).toBe(0);
+  });
+});
+
+// A listing typed into a function and entered while the bar's search is out
+// (about 280 ms after the last key), with saved tickers the letters match on
+// screen as stand-ins. A venue named runs on that listing at once; a bare
+// symbol runs as typed or waits. No row the user did not pick ever runs.
+describe("Enter on a typed listing while its search is out", () => {
+  const boeing: InstrumentSearchResult = { providerId: "test", symbol: "BA", name: "The Boeing Company", exchange: "NYSE", currency: "USD", type: "EQUITY" };
+  const bae: InstrumentSearchResult = { providerId: "test", symbol: "BA", name: "BAE Systems plc", exchange: "LSE", currency: "GBP", type: "EQUITY" };
+  const berkshire = createTestTicker("BRK.B", "Berkshire Hathaway Inc.", { exchange: "NYSE" });
+  const savedBoeing = createTestTicker("BA", "The Boeing Company", { exchange: "NYSE" });
+
+  async function typeAndEnter(text: string, saved: TickerRecord, search: "held" | "busy" = "held") {
+    const opened: string[] = [];
+    const panes: PaneTemplateCreateOptions[] = [];
+    const records: TickerRecord[] = [];
+    const { promise: held, resolve: release } = Promise.withResolvers<void>();
+    await tui.render(<CommandBarHarness
+      query=""
+      live
+      extraTickers={[saved]}
+      onAction={(action) => { if (action.type === "UPDATE_TICKER") records.push(action.ticker); }}
+      configurePluginRegistry={(registry) => {
+        registry.pinTicker = (key) => { opened.push(key); };
+        (registry.paneTemplates as Map<string, PaneTemplateDef>).set("graph-pane", {
+          id: "graph-pane", paneId: "quote-monitor", label: "Price Graph", description: "Chart a ticker",
+          shortcut: { prefix: "GP", argKind: "ticker" },
+        });
+        registry.createPaneFromTemplateAsync = async (_id, options) => { panes.push(options ?? {}); };
+      }}
+      dataProvider={createTestDataProvider({
+        // The bar's own search is out (or busy); resolving the typed text still answers.
+        search: async (_query, context) => {
+          if (context?.limit === LISTING_SEARCH_LIMIT) {
+            if (search === "busy") throw new ProviderBusyError("Search is busy");
+            await held;
+          }
+          return [boeing, bae];
+        },
+        getQuote: async (symbol) => createTestQuote({ symbol, name: "The Boeing Company", listingExchangeName: "NYSE", currency: "USD" }),
+      })}
+    />, { width: 110, height: 28 });
+    for (const key of text) {
+      await act(async () => { await tui.setup().mockInput.typeText(key); });
+      await act(async () => { await Bun.sleep(20); });
+    }
+    await act(async () => { await Bun.sleep(search === "busy" ? 400 : 280); });
+    await tui.setup().renderOnce();
+    const frameAtEnter = tui.frame();
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
+    return { opened, panes, records, release, frameAtEnter };
+  }
+
+  const listingOf = (records: TickerRecord[], key: string) => records.findLast((record) => record.metadata.ticker === key)?.metadata;
+
+  test.each([
+    ["DES BA:LSE", "BRK.B", "held"],
+    ["DES BA:LSE", "BA", "held"],
+    ["DES BA:LSE", "BA", "busy"],
+    ["DES BA LN", "BA", "held"],
+    ["T BA:LSE", "BRK.B", "held"],
+  ] as const)("%s opens BAE Systems on LSE at once, with %s saved and search %s", async (text, savedKey, search) => {
+    const saved = savedKey === "BA" ? savedBoeing : berkshire;
+    const { opened, records, release, frameAtEnter } = await typeAndEnter(text, saved, search);
+    try {
+      if (!text.endsWith(" LN")) expect(frameAtEnter).toContain(saved.metadata.name);
+      await tui.waitForFrameToContain("bar:closed");
+      expect(opened).toHaveLength(1);
+      expect(listingOf(records, opened[0]!)).toMatchObject({ exchange: "LSE", name: "BAE Systems plc" });
+    } finally {
+      release();
+    }
+  });
+
+  test("a function that opens a pane takes the listing typed", async () => {
+    const { panes, opened, release } = await typeAndEnter("GP BA:LSE", berkshire);
+    try {
+      await tui.waitForFrameToContain("bar:closed");
+      expect(opened).toEqual([]);
+      expect(panes).toHaveLength(1);
+      expect(panes[0]?.ticker?.metadata).toMatchObject({ exchange: "LSE", name: "BAE Systems plc" });
+    } finally {
+      release();
+    }
+  });
+
+  test("a bare symbol runs as typed: DES BA opens the listing quote reads, never the saved BRK.B", async () => {
+    const { opened, records, release } = await typeAndEnter("DES BA", berkshire);
+    try {
+      await tui.waitForFrameToContain("bar:closed");
+      expect(opened).toEqual(["BA"]);
+      expect(listingOf(records, "BA")).toMatchObject({ exchange: "NYSE", name: "The Boeing Company" });
+    } finally {
+      release();
+    }
+  });
+
+  test("a name waits for search to read it: DES boeing opens the answer's first listing", async () => {
+    const { opened, records, release } = await typeAndEnter("DES boeing", berkshire);
+    try {
+      expect(tui.frame()).toContain("bar:open");
+      expect(opened).toEqual([]);
+    } finally {
+      release();
+    }
+    await tui.waitForFrameToContain("bar:closed");
+    expect(opened).toEqual(["BA"]);
+    expect(listingOf(records, "BA")).toMatchObject({ exchange: "NYSE", name: "The Boeing Company" });
+  });
+
+  test.each([["BA", "NYSE"], ["BA:LSE", "LSE"]] as const)("%s alone waits for the answer, then opens its listing on %s", async (text, exchange) => {
+    const { opened, records, release } = await typeAndEnter(text, berkshire);
+    try {
+      expect(tui.frame()).toContain("bar:open");
+      expect(opened).toEqual([]);
+    } finally {
+      release();
+    }
+    await tui.waitForFrameToContain("bar:closed");
+    expect(opened).toEqual(["BA"]);
+    expect(listingOf(records, "BA")).toMatchObject({ exchange });
   });
 });

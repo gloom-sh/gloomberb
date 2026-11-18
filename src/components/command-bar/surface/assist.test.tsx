@@ -585,10 +585,12 @@ describe("CommandBar search report", () => {
     }]);
     await closeAndSettle();
 
-    // Untouched Enter on "DES MSFT" opens the highlighted listing, the saved MSFT row, and reports that row.
+    // Untouched Enter on "DES MSFT" once its search answers opens the highlighted listing, the saved MSFT row,
+    // and reports that row.
     reports.length = 0;
     await tui.render(<CommandBarHarness query="DES MSFT" />, { width: 100, height: 20 });
     await tui.setup().renderOnce();
+    await tui.waitForFrameToExclude("Searching");
     await tui.emitKeypress({ name: "return", sequence: "\r" });
     await waitForReports(reports);
     expect(reports[0]?.choice).toMatchObject({ kind: "ticker", label: "MSFT", rank: 0 });
