@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type {
   ScannerFlowPayload,
@@ -9,49 +9,66 @@ import type { PaneFooterSegment } from "../../../components";
 import { tf } from "../../../i18n";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
-import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
+import { CLOUD_QUOTE_DELAY_MINUTES, useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAppVisible } from "../../../state/app/activity";
 import { ScannerClientContext } from "../shared/scanner-capture";
 import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
+import { useSavedCopyFooter } from "../../../components/layout/pane/footer/registration";
+import { deleteSavedCopy, readSavedCopy, writeSavedCopy } from "../../../data/pane-saved-copies";
 
 export interface ScannerFeedState<T extends Pick<ScannerPayload, "status" | "access" | "delayMinutes">> {
   payload: T | null;
   /** True once the server refused the subscription (not signed in, or not Pro). */
   denied: boolean;
   deniedReason: string | null;
+  savedAt?: number;
 }
 
 const INITIAL_STATE = { payload: null, denied: false, deniedReason: null } as const;
 
-function useScannerFeed<T extends ScannerPayload>(scanner: "hilo" | "flow"): ScannerFeedState<T> {
-  const [state, setState] = useState<ScannerFeedState<T>>(INITIAL_STATE);
+function useScannerFeed<T extends ScannerPayload>(scanner: "hilo" | "flow"): ScannerFeedState<T> & { identity: string; cacheScope: string | null } {
+  const scope = useCloudDisplayScope();
+  const identity = JSON.stringify([scanner, scope]);
+  const [current, setState] = useState<{ identity: string; client: unknown; state: ScannerFeedState<T> } | null>(null);
   // A hidden app drops the subscription like every other stream; the last
   // payload stays on screen until the server resends on return.
   const appVisible = useAppVisible();
-  const client = useContext(ScannerClientContext) ?? apiClient;
-  const subscribedScannerRef = useRef(scanner);
+  const override = useContext(ScannerClientContext);
+  const client = override ?? apiClient;
+  const cacheScope = override ? null : scope;
+  const key = useMemo(() => cacheScope ? { key: ["scanner-feed", scanner, cacheScope] } : null, [cacheScope, scanner]);
+  const saved = useMemo(() => key ? readSavedCopy<T>(key) : null, [key]);
+  const state: ScannerFeedState<T> = current?.identity === identity && current.client === client ? current.state : saved
+    ? { ...INITIAL_STATE, payload: saved.value, savedAt: saved.fetchedAt }
+    : INITIAL_STATE;
 
   useEffect(() => {
-    if (subscribedScannerRef.current !== scanner) {
-      subscribedScannerRef.current = scanner;
-      setState(INITIAL_STATE);
-    }
-    if (!appVisible) return;
-    return client.subscribeScanner(scanner, (event) => {
-      setState(event.type === "denied"
-        ? { payload: null, denied: true, deniedReason: event.reason }
-        : { payload: event.payload as unknown as T, denied: false, deniedReason: null });
+    if (!appVisible || (!override && !scope)) return;
+    let active = true;
+    const unsubscribe = client.subscribeScanner(scanner, (event) => {
+      if (!active) return;
+      if (event.type === "denied") {
+        if (key) deleteSavedCopy(key);
+        setState({ identity, client, state: { ...INITIAL_STATE, denied: true, deniedReason: event.reason } });
+        return;
+      }
+      const payload = event.payload as T;
+      if (payload.status === "starting") return;
+      if (key) writeSavedCopy(key, payload, Date.now(), 30_000);
+      setState({ identity, client, state: { ...INITIAL_STATE, payload } });
     });
-  }, [appVisible, client, scanner]);
+    return () => { active = false; unsubscribe(); };
+  }, [appVisible, client, identity, key, override, scanner, scope]);
 
-  return state;
+  useSavedCopyFooter(state.savedAt, appVisible);
+  return { ...state, identity, cacheScope };
 }
 
 export function useHiloFeed(): ScannerFeedState<ScannerHiloPayload> {
   return useScannerFeed<ScannerHiloPayload>("hilo");
 }
 
-export function useFlowFeed(): ScannerFeedState<ScannerFlowPayload> {
+export function useFlowFeed() {
   return useScannerFeed<ScannerFlowPayload>("flow");
 }
 
@@ -88,7 +105,7 @@ export function useScannerStatusFooter(
     }
     const status = state.payload?.status;
     // The feed connects in the background; nothing to report until it answers.
-    if (!status || status === "starting") return [];
+    if (!status || status === "starting" || state.savedAt != null) return [];
     if (status === "live") {
       return [{ id: "scanner-status", parts: [{ text: "live", tone: "positive" as const }] }];
     }
@@ -96,7 +113,7 @@ export function useScannerStatusFooter(
       return [{ id: "scanner-status", parts: [{ text: "market closed", tone: "muted" as const }] }];
     }
     return [{ id: "scanner-status", parts: [{ text: "degraded", tone: "warning" as const }] }];
-  }, [state.denied, state.deniedReason, state.payload?.status]);
+  }, [state.denied, state.deniedReason, state.payload?.status, state.savedAt]);
 
   // The upgrade segment carries the delay for free accounts; a delayed feed reaching Pro still says so.
   const delayMinutes = state.payload?.access === "delayed" ? state.payload.delayMinutes || CLOUD_QUOTE_DELAY_MINUTES : null;

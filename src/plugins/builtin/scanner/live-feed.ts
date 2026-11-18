@@ -131,7 +131,7 @@ export class LiveScanPoller {
     this.client.getLiveScan(definition, controller.signal).then(
       (payload) => {
         if (generation !== this.generation) return;
-        if (payload.status === "live" || payload.status === "closed") {
+        if (payload.status === "live" || payload.status === "closed" || (payload.status === "degraded" && payload.takenAt != null)) {
           if (this.savedKey) writeSavedCopy(this.savedKey, payload, this.now(), MIN_POLL_MS);
           this.emit({ payload, error: null, loading: false });
         } else if (this.state.savedAt == null) {
@@ -169,7 +169,7 @@ export function useLiveScanFeed(
   definition: LiveScanWireDefinition | null,
   key: string,
   enabled: boolean,
-): LiveScanFeedState & { reload: () => void } {
+): LiveScanFeedState & { identity: string; reload: () => void } {
   const override = useContext(LiveScanClientContext);
   const client = override ?? apiClient;
   const scope = useCloudDisplayScope();
@@ -192,5 +192,5 @@ export function useLiveScanFeed(
     ? { payload: opening.value, error: null, loading: false, savedAt: opening.fetchedAt }
     : { payload: null, error: null, loading: !!definition && enabled };
   useSavedCopyFooter(state.savedAt, enabled && state.error === null);
-  return { ...state, reload: () => poller.reload() };
+  return { ...state, identity, reload: () => poller.reload() };
 }

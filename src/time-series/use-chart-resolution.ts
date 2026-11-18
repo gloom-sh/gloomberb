@@ -1,5 +1,5 @@
 import { logFailure } from "../utils/log-failure";
-import { readSavedCopy, writeSavedCopy } from "../data/pane-saved-copies";
+import { readSavedCopy, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
 import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { resolveChartSpecData } from "./resolve";
@@ -84,6 +84,12 @@ const EMPTY_RESULT: ChartResolutionResult = {
 
 function hasRenderableData(result: ChartResolutionResult): boolean {
   return (result.bufferedSeries ?? result.series).some((series) => series.points.length > 0);
+}
+
+function saveChartResolution(key: SavedCopyKey | null, result: ChartResolutionResult): void {
+  if (key && hasRenderableData(result) && result.savedAt == null && result.errors.length === 0) {
+    writeSavedCopy(key, result, Date.now(), TAIL_RECONCILE_MIN_SPACING_MS);
+  }
 }
 
 function seedWindowIsCurrent(spec: ChartSpec, now: number, options: ChartResolveOptions): boolean {
@@ -227,7 +233,7 @@ export function useChartResolution(
   const savedKey = !snapshot && options.savedCopyScope && spec.series.every(({ source }) => source.kind !== "capability"
     && (source.kind !== "security" || !source.instrument.instrument))
     ? { key: ["chart-resolution", specKey, options.requestViewport?.start, options.requestViewport?.end,
-      options.autoViewport?.start, options.autoViewport?.end] } : null;
+      options.autoViewport?.start, options.autoViewport?.end, options.autoViewport ? options.targetPointCount : null] } : null;
   const seedResult = () => {
     const now = sources.now ?? new Date();
     // The first paint prices a formula's legs in one month as the settled chart does, from the next months it read.
@@ -318,8 +324,8 @@ export function useChartResolution(
     currentResolution,
     onResolutionSupportSettled,
   };
-  const latestRequestRef = useRef({ spec, specKey, sources, options: resolveOptions });
-  latestRequestRef.current = { spec, specKey, sources, options: resolveOptions };
+  const latestRequestRef = useRef({ spec, specKey, sources, savedKey, options: resolveOptions });
+  latestRequestRef.current = { spec, specKey, sources, savedKey, options: resolveOptions };
   const reload = useCallback(() => setRevision((current) => current + 1), []);
 
   // A chart that failed is loaded again once the data service, or the desktop
@@ -391,6 +397,7 @@ export function useChartResolution(
           request.options,
         );
         if (!current()) return;
+        saveChartResolution(request.savedKey, next);
         const requestKey = request.specKey;
         // A pass that brought in no source data changed at most the newest points.
         const settled = cache.revision === dataRevision;
@@ -404,7 +411,7 @@ export function useChartResolution(
             && !hasRenderableData(next)) return state;
           const shown = revisions.get(state.result);
           const edge = settled && shown?.cache === cache && shown.revision === dataRevision ? LIVE_COMPARE_EDGE_POINTS : undefined;
-          if (!sameChartResolution(state.result, next, edge)) return { key: requestKey, result: next };
+          if (state.savedAt != null || !sameChartResolution(state.result, next, edge)) return { key: requestKey, result: next };
           if (settled) revisions.set(state.result, { cache, revision: dataRevision });
           return state;
         });
@@ -554,7 +561,7 @@ export function useChartResolution(
           return;
         }
         if (cache.revision === dataRevision) resultRevisionsRef.current.set(next, { cache, revision: dataRevision });
-        if (savedKey && hasRenderableData(next) && next.savedAt == null && next.errors.length === 0) writeSavedCopy(savedKey, next);
+        saveChartResolution(savedKey, next);
         setState({ key: specKey, result: next });
       })
       .catch((error) => {

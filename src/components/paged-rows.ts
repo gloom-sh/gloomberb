@@ -25,7 +25,7 @@ export type PageLoader<P> = (request: PageRequest) => Promise<P>;
 /** The row type of a page, so callers write only the loader and get typed rows. */
 type PageRow<P> = P extends RowPage<infer T> ? T : never;
 
-export interface PagedRowsOptions<T> {
+export interface PagedRowsOptions<T, P = RowPage<T>> {
   /** Drops rows a later page repeats, as when new items land between two requests. */
   getId?: (row: T) => string;
   /**
@@ -40,6 +40,7 @@ export interface PagedRowsOptions<T> {
    * load keeps it as a failed reload does (data/pane-saved-copies.ts).
    */
   savedCopy?: SavedCopyKey | null;
+  snapshotPage?: (page: P) => P;
 }
 
 export interface PagedRows<T, P> {
@@ -123,7 +124,7 @@ function appendRows<T>(current: T[], next: T[], getId: ((row: T) => string) | un
  */
 export function usePagedRows<P extends RowPage<unknown>>(
   loadPage: PageLoader<P> | null,
-  options: PagedRowsOptions<PageRow<P>> = {},
+  options: PagedRowsOptions<PageRow<P>, P> = {},
 ): PagedRows<PageRow<P>, P> {
   type T = PageRow<P>;
   const keepPreviousRows = options.keepPreviousRows === true;
@@ -138,6 +139,8 @@ export function usePagedRows<P extends RowPage<unknown>>(
   // Read when a page lands so an inline getter cannot restart the list.
   const getIdRef = useRef(options.getId);
   getIdRef.current = options.getId;
+  const snapshotPageRef = useRef(options.snapshotPage);
+  snapshotPageRef.current = options.snapshotPage;
 
   const fetchFirst = useCallback(async (force: boolean) => {
     firstRequest.current?.abort();
@@ -161,7 +164,7 @@ export function usePagedRows<P extends RowPage<unknown>>(
       const page = await loadPage({ offset: 0, signal: controller.signal, force });
       if (firstRequest.current !== controller) return;
       firstRequest.current = null;
-      if (key) writeSavedCopy(key, page.rows.length > 0 ? page : null);
+      if (key) writeSavedCopy(key, page.rows.length > 0 ? (snapshotPageRef.current?.(page) ?? page) : null);
       setState({
         owner: loadPage,
         ownerKey: keyId,

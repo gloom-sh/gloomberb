@@ -132,6 +132,7 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
       void readBareListing(symbol, deps, { command: "G", noun: "a quote", retry: null })
         // A symbol no listing carries is left to the chart's own request, which says so, unless the catalog names a series by it.
         .then((listing) => {
+          if (!listing && saved.has(key)) return;
           const result: SeriesListing = listing && !("notATicker" in listing)
             ? { status: "read", symbol: listing.symbol, exchange: listing.exchange, name: listing.name }
             : { status: "read", symbol, exchange: "", name: null, ...listing ? { notATicker: true as const } : {} };
