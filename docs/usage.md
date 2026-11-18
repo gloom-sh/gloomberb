@@ -494,6 +494,8 @@ gloom fn 13F 0001067983 --compare SPY                 # a fund against an ETF's 
 
 `G`, `GP`, `GIP`, `CMP`, `GF` and `GE` open the same chart composer with different starting presets.
 
+On a one-day chart the legend prints the last bar's price with its move from the close the quote measures from (the regular session's, or with **Extended hours** the latest print's), both from that bar: `$654.41 -0.39%` against a 656.95 close, never a quote's move read a moment apart from the bars.
+
 #### The data catalog
 
 `CAT` opens the data catalog: every series a chart can draw, so you can graph one without typing the expression.
