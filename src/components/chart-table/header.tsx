@@ -76,7 +76,7 @@ export interface ChartTableHeaderProps {
   height: number;
   /** Body rows the table holds. */
   tableRows: number;
-  /** Table header rows, plus one when its columns overflow into a scrollbar. */
+  /** Rows occupied by the table header, disclosure and scrollbars. */
   tableChromeRows?: number;
   /** The table's columns, to count its scrollbar row when `tableChromeRows` is not given. */
   tableColumns?: readonly TableWidthColumn[];
@@ -181,7 +181,7 @@ export function useChartTableLayout(props: ChartTableHeaderProps): ChartTableLay
     figures: props.figures,
     tableRows: props.tableRows,
     tableChromeRows: props.tableChromeRows
-      ?? (props.tableColumns ? chartTableChromeRows(props.tableColumns, props.width) : undefined),
+      ?? (props.tableColumns ? chartTableChromeRows(props.tableColumns, props.width, props.tableRows) : undefined),
     chart: hasChart
       ? {
         minRows: chart.minRows,

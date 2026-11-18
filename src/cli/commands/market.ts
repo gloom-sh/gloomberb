@@ -124,7 +124,7 @@ import { apiClient } from "../../api-client";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../api-client/plan-rules";
 import type { ExchangeAnnouncementsPayload } from "../../api-client/exchange-announcements";
 import {
-  exchangeAnnouncementsPage, exchangeAnnouncementsPublisher, isRoutineReturn, listsExchangeAnnouncements, type ExchangeAnnouncementsPage,
+  listingAnnouncementsPage, exchangeAnnouncementsPublisher, isRoutineReturn, listsExchangeAnnouncements, type ExchangeAnnouncementsPage,
 } from "../../utils/exchange-announcements";
 import { dailyFxLeg, fxCloseOnDate, fxCloseOnOrBefore, loadDailyFxCloses, type FxCloseReading } from "../../market-data/fx-closes";
 import { zonedDateTimeParts } from "../../utils/zoned-date-time";
@@ -3576,7 +3576,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const quotePromise = loadListingQuote(market.dataProvider, listing);
     const identity = nonUsSecListingVenue(symbol, exchange) ? listingIdentity(listing, await quotePromise) : null;
     // Where a listing abroad publishes its announcements, whatever the SEC holds for it.
-    const page = identity ? exchangeAnnouncementsPage(identity.symbol, identity.exchange) : null;
+    const page = identity ? listingAnnouncementsPage(identity.symbol, identity.exchange) : null;
     const pageLine = page ? `${page.name}: ${page.url}` : null;
     try {
       const context = identity?.name ? { listingName: identity.name } : undefined;

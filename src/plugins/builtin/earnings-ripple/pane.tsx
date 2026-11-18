@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
   type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { getTableWidth, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState, useTickers } from "../../../public/react";
 import type { PaneProps } from "../../../types/plugin";
@@ -91,7 +91,7 @@ function secondHopLayout(width: number, rows: readonly SecondHopRow[]) {
     add();
     if (room() < 0) undo();
   }
-  return { columns: columns(), firstHopWidth };
+  return { columns: markHiddenTableColumns(SECOND_HOP_COLUMNS, columns()), firstHopWidth };
 }
 
 const move = (row: RippleRow | SecondHopRow): DataTableCell =>

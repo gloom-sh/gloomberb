@@ -27,6 +27,7 @@ import {
   buildTableGridTemplateColumns,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
+  hiddenTableColumnText,
   tableFreezesFirstColumn,
 } from "../../../components/ui/table-layout";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
@@ -61,12 +62,12 @@ const OVERFLOW_FADE_PX = 28;
  * rather than as a mask on it so the vertical scrollbar stays crisp. The
  * header band fades into the header colour and the rows into the table's.
  */
-function overflowFadeStyle(side: "left" | "right", offsetPx: number, bottomPx: number): CSSProperties {
+function overflowFadeStyle(side: "left" | "right", offsetPx: number, bottomPx: number, topPx: number): CSSProperties {
   const direction = side === "left" ? "to left" : "to right";
   const headerPx = tableHeaderPx();
   return {
     position: "absolute",
-    top: 0,
+    top: topPx,
     bottom: bottomPx,
     [side]: offsetPx,
     width: OVERFLOW_FADE_PX,
@@ -345,6 +346,8 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   }, [bodyHorizontal.bar, headerHorizontal.bar, horizontalScrollEnabled]);
 
   const overflowEdges = useHorizontalScrollEdges(bodyElementRef, [horizontalScrollEnabled]);
+  const hiddenColumns = items.length ? hiddenTableColumnText(columns) : null;
+  const disclosureHeight = hiddenColumns ? headerPx : 0;
   // A frozen first column already covers what scrolls under it, so the left
   // fade starts past it and its gap.
   const [frozenEdgePx, setFrozenEdgePx] = useState(0);
@@ -398,6 +401,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
 
   return (
     <div data-gloom-role="data-table" style={rootStyle}>
+      {hiddenColumns ? <div style={{ flex: `0 0 ${disclosureHeight}px`, lineHeight: `${disclosureHeight}px`,
+        paddingInline: "var(--gloom-space-sm)", color: CSS_TEXT_DIM,
+        backgroundColor: CSS_PANEL, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={hiddenColumns}>
+        {hiddenColumns}
+      </div> : null}
       <div
         ref={bodyElementRef}
         data-gloom-role="data-table-body-scroll"
@@ -546,15 +554,30 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
         <div
           data-gloom-role="data-table-overflow-fade"
           data-gloom-edge="left"
-          style={overflowFadeStyle("left", frozenEdgePx, overflowEdges.scrollbarBottom)}
+          style={overflowFadeStyle("left", frozenEdgePx, overflowEdges.scrollbarBottom, disclosureHeight)}
         />
       ) : null}
       {horizontalScrollEnabled && overflowEdges.end ? (
         <div
           data-gloom-role="data-table-overflow-fade"
           data-gloom-edge="right"
-          style={overflowFadeStyle("right", overflowEdges.scrollbarRight, overflowEdges.scrollbarBottom)}
+          style={overflowFadeStyle("right", overflowEdges.scrollbarRight, overflowEdges.scrollbarBottom, disclosureHeight)}
         />
+      ) : null}
+      {horizontalScrollEnabled && overflowEdges.end && items.length ? (
+        <button type="button" aria-label="Show more columns" onClick={() => {
+          const body = bodyElementRef.current;
+          if (!body) return;
+          focusPane();
+          const bounds = body.getBoundingClientRect();
+          const visibleRight = bounds.left + body.clientWidth;
+          const next = [...body.querySelectorAll<HTMLElement>('[data-gloom-role="data-table-header-cell"]')]
+            .map((cell) => cell.getBoundingClientRect()).find((cell) => cell.right > visibleRight + 1 && cell.left > bounds.left + frozenEdgePx + 1);
+          body.scrollLeft += next ? next.left - bounds.left - frozenEdgePx : body.clientWidth - frozenEdgePx;
+        }} style={{ position: "absolute", insetInlineEnd: overflowEdges.scrollbarRight, top: disclosureHeight, zIndex: 4,
+          cursor: "pointer", border: 0, height: headerPx, background: CSS_PANEL, color: CSS_TEXT_DIM, font: "inherit" }}>
+          More
+        </button>
       ) : null}
     </div>
   );

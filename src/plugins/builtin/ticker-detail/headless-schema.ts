@@ -6,6 +6,7 @@ import { RETURN_INTERVAL_VALUES, RETURN_RANGES } from "./data-panes/returns-mode
 import { PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP } from "../../../utils/price-window";
 import type { HeadlessPaneOptionDef } from "../../../types/headless";
 import { QUOTE_MONITOR_MAX_TICKERS } from "../../../tickers/list";
+import { STATEMENT_CURRENCY_OPTION } from "../shared/statement-currency";
 
 /** The most tickers one FA report reads: each is a full statements load. */
 const FINANCIAL_REPORT_MAX_TICKERS = 10;
@@ -30,6 +31,7 @@ export const paneSchemas = {
     },
     options: [
       FINANCIAL_PERIOD_OPTION,
+      { ...STATEMENT_CURRENCY_OPTION, shot: { reportOnly: "compares converted statement rows; GF charts converted figures" } },
       {
         key: "statement",
         description: "Statement or ratio tab to display.",

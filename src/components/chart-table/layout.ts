@@ -1,5 +1,5 @@
 import { statGridRows, type StatItem } from "../ui/stat-grid";
-import { getTableWidth, hasMeaningfulTableHorizontalOverflow, type TableWidthColumn } from "../ui/table-layout";
+import { getTableWidth, hasMeaningfulTableHorizontalOverflow, hiddenTableColumnRows, type TableWidthColumn } from "../ui/table-layout";
 
 /** Drop optional columns in priority order, using the same widths as the table. */
 export function fitChartTableColumns<C extends TableWidthColumn & { id: string }>(
@@ -34,12 +34,11 @@ const FIGURE_SHARE = 0.25;
 const WRAPPED_FIGURE_SHARE = 1 / 3;
 
 /**
- * The rows a kit table spends outside its body: the header, plus a horizontal
- * scrollbar when its columns are wider than the pane (less the vertical
- * scrollbar's column).
+ * The rows a kit table spends outside its body: the header, a hidden-column
+ * disclosure, and a horizontal scrollbar when its columns are wider than the pane.
  */
-export function chartTableChromeRows(columns: readonly TableWidthColumn[], width: number): number {
-  return hasMeaningfulTableHorizontalOverflow(getTableWidth(columns), width - 1) ? 2 : 1;
+export function chartTableChromeRows(columns: readonly TableWidthColumn[], width: number, tableRows = 1): number {
+  return 1 + hiddenTableColumnRows(columns, tableRows) + Number(hasMeaningfulTableHorizontalOverflow(getTableWidth(columns), width - 1));
 }
 
 /**

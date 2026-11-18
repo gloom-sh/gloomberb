@@ -4,7 +4,7 @@ import { ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, format
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
-import { dropColumnsToFit } from "../../../components/ui/table-layout";
+import { dropColumnsToFit, hiddenTableColumnRows } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
@@ -184,8 +184,9 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, result?.savedAt, data, asOf, observationTime, observationBasis, cycleTab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const contentHeight = Math.max(5, height - tabRows);
+  const boardColumns = useMemo(() => dropColumnsToFit(BOARD_COLUMNS, width - 1, BOARD_DROP_ORDER), [width]);
   // The board needs only its rows; the selected index history takes the rest.
-  const boardHeight = Math.max(5, Math.min(rows.length + 2, Math.floor(contentHeight * 0.62)));
+  const boardHeight = Math.max(5, Math.min(rows.length + 2 + hiddenTableColumnRows(boardColumns, rows.length), Math.floor(contentHeight * 0.62)));
   const curve = data?.curve;
   // The week- and month-back curves come from the histories the board already loaded.
   const lookbacks = useMemo(() => data ? volatilityCurveLookbacks(data) : [], [data]);
@@ -208,7 +209,6 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     { id: "spread", label: "Spread", value: `${number(curve.slope, true)} pts` },
   ] : [];
   const ready = !!data && (data.board.some((row) => row.value != null) || data.fred.metrics.some((metric) => metric.value != null));
-  const boardColumns = useMemo(() => dropColumnsToFit(BOARD_COLUMNS, width - 1, BOARD_DROP_ORDER), [width]);
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     {tabStrip}
     <PaneStatusBody subject="volatility" loading={resource.loading && !ready} error={!ready ? resource.error ?? result?.errors[0] ?? null : null} empty={!resource.loading && !ready}>

@@ -16,6 +16,7 @@ import {
   type StatItem,
 } from "../../../../components";
 import { statGridWithin } from "../../../../components/ui/stat-grid";
+import { dropColumnsToFit } from "../../../../components/ui/table-layout";
 import { useAsyncResource, usePaneSettingValue, usePluginAppActions } from "../../../../public/react";
 import { usePaneStateValue } from "../../../../state/app/context";
 import { usePaneTickerIdentity } from "../../../../state/hooks/pane-ticker";
@@ -80,17 +81,6 @@ const SIGNAL_COLUMNS: BuildoutColumn[] = [
   { id: "headline", label: "Title", width: 40, align: "left", flexGrow: 4 },
   { id: "companies", label: "Also", width: 16, align: "left" },
 ];
-
-/** Columns that fit `width`, the flexible ones first to give way after the fixed tail. */
-function fitColumns<C extends DataTableColumn>(columns: readonly C[], width: number, dropOrder: readonly string[]): C[] {
-  let kept = [...columns];
-  for (const id of dropOrder) {
-    const total = kept.reduce((sum, column) => sum + column.width + 1, 0);
-    if (total <= width) break;
-    kept = kept.filter((column) => column.id !== id);
-  }
-  return kept;
-}
 
 function headerItems(profile: BuildoutCompanyProfile): StatItem[] {
   const count = (role: BuildoutRelation["role"]) => profile.relations.filter((relation) => relation.role === role).length;
@@ -233,7 +223,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
           </ScrollBox>
         );
   } else if (tab === "sites") {
-    const columns = fitColumns(SITE_COLUMNS, width - 1, ["place", "type", "mw"]);
+    const columns = dropColumnsToFit(SITE_COLUMNS, width - 1, ["place", "type", "mw"]);
     body = (
       <DataTableStackView<BuildoutCompanySite, SiteColumn>
         focused={focused}
@@ -253,7 +243,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
       />
     );
   } else if (tab === "hiring") {
-    const columns = fitColumns(HIRING_COLUMNS, width - 1, ["site", "family", "change"]);
+    const columns = dropColumnsToFit(HIRING_COLUMNS, width - 1, ["site", "family", "change"]);
     body = company.hiring.segments.length ? (
       <DataTableStackView<BuildoutHiringSegment, HiringColumn>
         focused={focused}
@@ -298,7 +288,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
         )}
         rootWidth={width}
         rootHeight={bodyHeight}
-        columns={fitColumns(SIGNAL_COLUMNS, width - 1, ["companies"])}
+        columns={dropColumnsToFit(SIGNAL_COLUMNS, width - 1, ["companies"])}
         sortColumnId={null}
         sortDirection="asc"
         items={signalRows}

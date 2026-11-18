@@ -1,6 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { CatalystEvent, CatalystFilters, CatalystResponse, CatalystType } from "../../../api-client/catalysts";
 import type { DataTableColumn, TableSection } from "../../../components";
+import { markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { humanLabel, type StateTone } from "../shared/research-cells";
 
@@ -90,7 +91,7 @@ function fitColumns(columns: FitColumn[], width: number): DataTableColumn[] {
   if (over > 0) kept = kept.map((column) => column.id === "basis" ? { ...column, width: Math.max(column.min ?? column.width, column.width - over) } : column);
   if (tableNeed(kept) > width) kept = kept.map((column) => ({ ...column, width: column.min ?? column.width }));
   for (const id of ["basis", "parties"]) drop(id);
-  return kept.map(({ min: _min, ...column }) => column);
+  return markHiddenTableColumns(columns, kept.map(({ min: _min, ...column }) => column));
 }
 
 /** The date basis column as wide as its longest label on screen ("Primary completion (actual)"), never narrower than its heading. */

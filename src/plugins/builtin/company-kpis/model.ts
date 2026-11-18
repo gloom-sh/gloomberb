@@ -1,7 +1,7 @@
 import type { GuidancePayload, KpiGuidance, KpiObservation, KpiSeries, KpiUnit, KpisPayload } from "../../../api-client/company-kpis";
 import type { DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
-import { getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
+import { getTableWidth, markHiddenTableColumns, tableColumnWidth } from "../../../components/ui/table-layout";
 import type { CompositeChartXAxis } from "../../../components/chart/composite/types";
 import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 import { growthRate, isNotMeaningful, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE } from "../../../utils/growth";
@@ -303,9 +303,9 @@ export function fitCompanyColumns(columns: readonly DataTableColumn[], width: nu
   for (const drop of [null, ...(history ? ["change", "issued"] : ["issued", "change"]), "scope", "basis", "trend", "period", "outcome", "actual"]) {
     if (drop) shown = shown.filter((column) => column.id !== drop);
     const fitted = attempt(shown);
-    if (fitted) return fitted;
+    if (fitted) return markHiddenTableColumns(columns, fitted);
   }
-  return narrow(shown);
+  return markHiddenTableColumns(columns, narrow(shown));
 }
 
 export function guidanceIssueNote(row: KpiGuidance, rows: readonly KpiGuidance[]): string | null {
@@ -314,7 +314,7 @@ export function guidanceIssueNote(row: KpiGuidance, rows: readonly KpiGuidance[]
 }
 
 /** Companies to point an empty pane at, one that has data and one for when the pane is for the first. */
-const EXAMPLE_COMPANIES: Record<CompanyMode, readonly string[]> = { guidance: ["WMT", "DAL"], kpis: ["AAPL", "NVDA"] };
+const GUIDANCE_EXAMPLE_COMPANIES = ["WMT", "DAL"] as const;
 
 /**
  * What an empty table says. A company with nothing on file for the function reads as
@@ -323,10 +323,11 @@ const EXAMPLE_COMPANIES: Record<CompanyMode, readonly string[]> = { guidance: ["
  */
 export function companyEmptyState(mode: CompanyMode, symbol: string, view: { tab: string; hasRows: boolean }, surface: "cli" | "pane" = "pane"): { title: string; hint?: string } {
   if (view.hasRows) return { title: view.tab === "history" ? "Actuals have not been matched to these guidance periods yet." : "No disclosed observations for this selection yet." };
-  const examples = EXAMPLE_COMPANIES[mode];
+  if (mode === "kpis") return { title: `No KPIs on file for ${symbol} yet.` };
+  const examples = GUIDANCE_EXAMPLE_COMPANIES;
   const example = examples.find((candidate) => candidate !== symbol.trim().toUpperCase()) ?? examples[0]!;
-  const command = `${mode === "kpis" ? "KPIS" : "GUIDE"} ${example}`;
-  return { title: mode === "kpis" ? `KPIs for ${symbol} are not yet available.` : `Guidance for ${symbol} is not yet available.`, hint: `Try ${surface === "cli" ? `\`fn ${command}\`` : command}.` };
+  const command = `GUIDE ${example}`;
+  return { title: `Guidance for ${symbol} is not yet available.`, hint: `Try ${surface === "cli" ? `\`fn ${command}\`` : command}.` };
 }
 
 /** What a missing KPI means, as KPIS states it among its limitations and EQS beside a KPI column with gaps. */

@@ -104,7 +104,7 @@ export function applyChartComposerCapabilityOptions(
   }
 
   // --currency USD: every leg converted into it at each day's FX close.
-  if (capabilityId === "price-comparison" && typeof options.currency === "string" && /^[A-Z]{3}$/.test(options.currency)) {
+  if ((capabilityId === "price-comparison" || capabilityId === "fundamental-series") && typeof options.currency === "string" && /^[A-Z]{3}$/.test(options.currency)) {
     next = { ...next, viewport: { ...next.viewport, currency: options.currency } };
   }
 

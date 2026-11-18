@@ -108,6 +108,8 @@ test("filings reads a venue suffix and, for a company abroad that files nothing 
     "GUBRF.IS": { venue: "BIST", name: "Gübre Fabrikalari Türk Anonim Sirketi" },
     "GUBRF:BIST": { venue: "BIST", name: "Gübre Fabrikalari Türk Anonim Sirketi" },
     "9992:HKEX": { venue: "HKEX", name: "Pop Mart International Group Limited" },
+    "RHM.DE": { venue: "XETRA", name: "Rheinmetall AG" },
+    "RHM:XETRA": { venue: "XETRA", name: "Rheinmetall AG" },
   };
   const asked: string[] = [];
   const original = apiClient.getCloudExchangeAnnouncements;
@@ -170,6 +172,10 @@ test("filings reads a venue suffix and, for a company abroad that files nothing 
     const gubrf = await run("GUBRF.IS", "text");
     expect(gubrf.warnings).toContain("Read GUBRF.IS as GUBRF:BIST.");
     expect(gubrf.text).toContain("(BIST) files no SEC reports.\nKAP disclosures: https://www.kap.org.tr/en/bildirim-sorgu");
+    const rheinmetall = await run("RHM.DE", "text");
+    expect(rheinmetall.text).toContain("Company results: https://www.rheinmetall.com/en/investor-relations/publications/financial-publications-and-presentations");
+    expect(rheinmetall.text).not.toContain("unternehmensregister.de");
+    expect(asked).toHaveLength(3);
 
     // HKEX: a daily buyback return would bury the results, so routine returns stay out and are counted; HKEX flags
     // nothing price sensitive, and the page is HKEXnews' search with the company filled in.

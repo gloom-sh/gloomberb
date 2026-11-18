@@ -140,7 +140,7 @@ export function assessPaneScreenshot(
     ? []
     : shotUnavailableSymbols(resolved, payload, render.semanticUi);
   const figureGaps = essentialFigureMismatches(render);
-  const complete = unavailableSymbols.length === 0 && figureGaps.length === 0 && !render.statusLineClipped;
+  const complete = unavailableSymbols.length === 0 && figureGaps.length === 0;
   const expectedText = shotExpectedText(resolved, symbols, payload);
   const normalizedVisibleText = render.visibleText.toLowerCase();
   const missingExpectedText = expectedText.filter((value) => !shotShowsText(normalizedVisibleText, value));
@@ -158,7 +158,6 @@ export function assessPaneScreenshot(
     ...financialRatioRenderMismatches(resolved, payload, render),
     ...surfaceNotDrawnMismatches(render),
     ...figureGaps,
-    ...(render.statusLineClipped ? ["The as-of status line is clipped."] : []),
   ];
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
@@ -203,6 +202,7 @@ export function assessPaneScreenshot(
   const tableRows = shotTableRows(resolved, render);
   const notices = [
     ...renderedReportNotices(render.semanticUi ?? []).notices,
+    ...(render.statusLineClipped ? ["The as-of status line is clipped."] : []),
     ...unquotedHoldingsNotice(resolved, payload),
     ...(render.surfaces?.some((surface) => surface.renderer === "software")
       ? ["The 3D surface was drawn by the software renderer: this browser has no WebGL."] : []),
