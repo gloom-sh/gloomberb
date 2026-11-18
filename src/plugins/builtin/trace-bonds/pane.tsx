@@ -15,7 +15,7 @@ import {
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { apiClient } from "../../../api-client";
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { useCloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneInstance } from "../../../state/app/context";
@@ -76,6 +76,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   const companyName = useCallback((ticker: string) => quotedCompanyName(marketData, ticker), [marketData]);
   const access = usePlanAccess();
   const pro = access.hasProAccess;
+  const scope = useCloudDisplayScope();
   // Before its name, its company's bonds as Gloom Cloud links them: Gloom Pro, and without it the name alone, as before.
   const linkedBonds = useCallback(async (ticker: string) => {
     const listing = await quotedIssuerListing(marketData, ticker);
@@ -88,8 +89,9 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
     () => fetchBondTape(needle, { companyName, ...(pro ? { linkedBonds } : {}) }),
     [companyName, linkedBonds, needle, pro],
   );
-  const { data, loading, error, updatedAt, load, reload } = useAsyncResource(request, { keepPreviousData: true });
-  // The last answer stays loaded while the next query runs, and through its failure; its rows never stand in for it.
+  const { data, loading, error, updatedAt, load, reload } = useAsyncResource(request, {
+    savedCopy: scope !== null ? { key: ["trace-tape", scope, needle] } : null,
+  });
   const answered = data != null && (data.query?.text ?? "") === (parseBondQuery(needle)?.text ?? "");
   const bonds = answered ? data.bonds : NO_BONDS;
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
@@ -143,7 +145,9 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   }, [asked, pro]);
   const detailCusip = detailOpen && selectedBond?.cusip ? selectedBond.cusip : null;
   const historyRequest = useCallback(() => loadStoredBond(detailCusip!, apiClient), [detailCusip]);
-  const history = useAsyncResource(detailCusip && pro ? historyRequest : null);
+  const history = useAsyncResource(detailCusip && pro ? historyRequest : null, {
+    savedCopy: pro && scope !== null ? { key: ["trace-history", scope, detailCusip] } : null,
+  });
   // Without Pro, refused or failed: the detail says why in place of the prints.
   const historyRefusal = !pro ? PRO_HISTORY_TEXT
     : history.data?.refusal ?? (history.error && !history.data ? unavailableText("Kept price history") : null);
