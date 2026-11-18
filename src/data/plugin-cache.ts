@@ -58,6 +58,7 @@ export function createPluginCache<T, Stored = T>(options: {
       staleAt: record.stale ? Math.min(record.staleAt, Date.now() - 1) : record.staleAt,
       expiresAt: record.expiresAt,
       source: options.source,
+      ...(record.fallbackOnly ? { fallbackOnly: true } : {}),
     };
   };
   /**

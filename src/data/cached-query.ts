@@ -10,6 +10,7 @@ export interface CachedValue<T> {
   responseSequence?: number;
   staleAt: number;
   expiresAt: number;
+  fallbackOnly?: true;
   source: string;
   /** Source observation time, when supplied; fetchedAt remains retrieval time. */
   asOf?: number;
@@ -50,7 +51,7 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
     acceptResult?: (result: CachedValue<T>) => boolean;
   }) {
     const result = options.read(true);
-    this.fallbackOnly = result !== null && result.expiresAt < Date.now();
+    this.fallbackOnly = result !== null && (result.fallbackOnly === true || result.expiresAt < Date.now());
     this.state = { result, loading: false, error: null };
   }
 
