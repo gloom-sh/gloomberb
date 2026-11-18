@@ -11,6 +11,7 @@ export interface PluginCacheResult<T> {
   refreshError?: string;
   error?: unknown;
   source: "cache" | "network" | "stale-fallback";
+  fromEarlierRun?: true;
 }
 
 /**
@@ -103,9 +104,13 @@ export function createPluginCache<T, Stored = T>(options: {
       };
     },
     get(key: string, { allowExpired = false } = {}): PluginCacheResult<T> | null {
-      const cached = read(key, allowExpired) ?? queries.get(key)?.getSnapshot().result;
+      const current = queries.get(key)?.getSnapshot().result;
+      const cached = read(key, allowExpired) ?? current;
       if (!cached || (!allowExpired && cached.expiresAt <= Date.now())) return null;
-      return { data: cached.value, fetchedAt: cached.fetchedAt, stale: cached.staleAt <= Date.now(), source: "cache" };
+      return {
+        data: cached.value, fetchedAt: cached.fetchedAt, stale: cached.staleAt <= Date.now(), source: "cache",
+        ...(current?.responseSequence == null ? { fromEarlierRun: true } : {}),
+      };
     },
     async load(key: string, loader: () => Promise<T>, { force = false, replace = false } = {}): Promise<PluginCacheResult<T>> {
       const query = queryFor(key);

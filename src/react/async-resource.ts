@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connectionHealth, recoversDataRequests } from "../core/connection-health";
 import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 import { isPermanentClientError, isTransientFailure } from "../api-client/errors";
-import { deleteSavedCopy, readSavedCopy, savedCopyId, writeSavedCopy, type SavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
+import { deleteSavedCopy, readSavedCopy, savedCopyId, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
 import { savedCopyAt } from "../data/saved-copies";
 import { logFailure } from "../utils/log-failure";
 
@@ -49,24 +49,31 @@ export function useAsyncResource<T>(
   const requestedKey = loader ? options.savedCopy ?? null : null;
   const savedId = requestedKey ? `${savedCopyId(requestedKey)}#${requestedKey.version ?? 1}` : null;
   const savedKey = useMemo(() => requestedKey, [savedId]);
-  // Read once per key: the copy a new question opens on, synchronously, so its first frame has it.
-  const saved = useMemo<SavedCopy<T> | null>(() => (savedKey ? readSavedCopy<T>(savedKey) : null), [savedId]);
-  const initial = useMemo(() => {
+  const open = (): ResourceState<T> & { owner: typeof loader; ownerKey: string | null } => {
+    const saved = savedKey ? readSavedCopy<T>(savedKey) : null;
     const data = loader ? saved?.value ?? options.initialData?.() ?? null : null;
     const savedAt = saved?.fetchedAt ?? savedCopyAt(data);
-    return { data, savedAt, updatedAt: savedAt, loading: !!loader, error: null };
-  }, [loader, saved]);
+    return { owner: loader, ownerKey: savedId, data, savedAt, updatedAt: savedAt, loading: !!loader, error: null };
+  };
   // `ownerKey`: the saved-copy key of the question the data answers. A new
   // loader for the same key (a session restored, a callback remade) asks the
   // same question, so the data stays while it loads.
-  const [state, setState] = useState<ResourceState<T> & { owner: typeof loader; ownerKey: string | null }>(
-    () => ({ ...initial, owner: loader, ownerKey: savedId }),
-  );
+  const [state, setState] = useState(open);
+  let view = state;
+  if (state.owner !== loader || state.ownerKey !== savedId) {
+    const sameQuestion = savedId !== null && state.ownerKey === savedId;
+    view = sameQuestion ? { ...state, owner: loader, loading: true, error: null } : open();
+    if (loader && options.keepPreviousData && savedId === null && state.ownerKey === null && view.data === null) {
+      view = { ...state, owner: loader, loading: true, error: null };
+    }
+    setState(view);
+  }
   const generation = useRef(0);
   // Read at failure time so an inline predicate cannot recreate load and refetch every render.
   const clearOnErrorRef = useRef(options.clearOnError ?? false);
   clearOnErrorRef.current = options.clearOnError ?? false;
-  const keepPreviousData = options.keepPreviousData === true;
+  const savedAtRef = useRef(view.savedAt);
+  savedAtRef.current = view.savedAt;
   const settle = useCallback(async (force: boolean) => {
     const currentGeneration = ++generation.current;
     if (!loader) {
@@ -76,12 +83,8 @@ export function useAsyncResource<T>(
     // The key of the question this load answers.
     const key = savedKey;
     const keyId = savedId;
-    const opening = saved;
-    setState((current) => (current.owner === loader && current.ownerKey === keyId)
-      || (keepPreviousData && keyId === null && current.ownerKey === null && initial.data === null)
-      || (keyId !== null && current.ownerKey === keyId)
-      ? { ...current, owner: loader, ownerKey: keyId, loading: true, error: null }
-      : { ...initial, owner: loader, ownerKey: keyId });
+    const opening = savedAtRef.current !== null;
+    setState((current) => current.owner === loader && current.ownerKey === keyId ? { ...current, loading: true, error: null } : current);
     try {
       const data = await loader(force);
       if (generation.current === currentGeneration) {
@@ -111,7 +114,7 @@ export function useAsyncResource<T>(
         });
       }
     }
-  }, [initial, keepPreviousData, loader, savedId, savedKey, saved]);
+  }, [loader, savedId, savedKey]);
   // A load nobody waits on: its failures end in `error`, and anything else
   // that escapes is logged.
   const load = useCallback((force = false) => {
@@ -120,13 +123,7 @@ export function useAsyncResource<T>(
 
   const reload = useCallback(() => load(true), [load]);
   const reloadAndWait = useCallback(() => settle(true), [settle]);
-  // Hide a previous resource during the render before the new loader's effect
-  // runs, as well as throughout a failed request for the new security: the
-  // new question's saved copy, if it has one, shows instead.
-  const { data, loading, error, updatedAt, savedAt } = state.owner === loader && state.ownerKey === savedId ? state
-    : ((keepPreviousData && savedId === null && state.ownerKey === null && initial.data === null)
-      || (savedId !== null && state.ownerKey === savedId)) && loader ? { ...state, loading: true, error: null }
-      : initial;
+  const { data, loading, error, updatedAt, savedAt } = view;
   useSavedCopyFooter(savedAt, loading);
   useEffect(() => {
     load(savedAt !== null);

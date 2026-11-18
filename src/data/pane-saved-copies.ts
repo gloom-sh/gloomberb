@@ -53,39 +53,72 @@ function resourceKey(id: string) {
 }
 
 const MARK = "__gloomSaved";
-type Encoded = { [MARK]: "date" | "map" | "set" | "number"; value: unknown };
+type Encoded = { [MARK]: "date" | "map" | "set" | "number" | "ref" | "object"; value: unknown };
 
 class NotPlainData extends Error {}
 
-function encode(value: unknown): unknown {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number") return Number.isFinite(value) ? value : { [MARK]: "number", value: String(value) } satisfies Encoded;
-  if (value === undefined) return undefined;
+function encodeObject(value: object, encode: (value: unknown) => unknown): unknown {
   if (value instanceof Date) return { [MARK]: "date", value: value.getTime() } satisfies Encoded;
   if (value instanceof Map) return { [MARK]: "map", value: [...value].map(([key, entry]) => [encode(key), encode(entry)]) } satisfies Encoded;
   if (value instanceof Set) return { [MARK]: "set", value: [...value].map(encode) } satisfies Encoded;
   if (Array.isArray(value)) return value.map((entry) => entry === undefined ? null : encode(entry));
-  if (typeof value === "object") {
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) throw new NotPlainData();
-    const entries = Object.entries(value).filter(([, entry]) => entry !== undefined).map(([key, entry]) => [key, encode(entry)]);
-    return Object.hasOwn(value, MARK) ? { [MARK]: "object", value: entries } : Object.fromEntries(entries);
-  }
-  throw new NotPlainData();
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) throw new NotPlainData();
+  const entries = Object.entries(value).filter(([, entry]) => entry !== undefined).map(([key, entry]) => [key, encode(entry)]);
+  return Object.hasOwn(value, MARK) ? { [MARK]: "object", value: entries } satisfies Encoded : Object.fromEntries(entries);
 }
 
-function decode(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(decode);
-  if (!value || typeof value !== "object") return value;
+function encodeSnapshot(value: unknown): unknown {
+  const references = new Map<object, number>();
+  const encode = (entry: unknown): unknown => {
+    if (entry == null || typeof entry === "string" || typeof entry === "boolean") return entry;
+    if (typeof entry === "number") return Number.isFinite(entry) ? entry : { [MARK]: "number", value: String(entry) } satisfies Encoded;
+    if (typeof entry !== "object") throw new NotPlainData();
+    const ref = references.get(entry);
+    if (ref != null) {
+      if (ref < 0) throw new NotPlainData();
+      return { [MARK]: "ref", value: ref } satisfies Encoded;
+    }
+    const ordinal = references.size;
+    references.set(entry, -1);
+    const encoded = encodeObject(entry, encode);
+    references.set(entry, ordinal);
+    return encoded;
+  };
+  return encode(value);
+}
+
+function decodeObject(value: object, decode: (value: unknown) => unknown): unknown {
   const record = value as Record<string, unknown>;
   switch (record[MARK]) {
     case "date": return new Date(record.value as number);
     case "map": return new Map((record.value as Array<[unknown, unknown]>).map(([key, entry]) => [decode(key), decode(entry)]));
     case "set": return new Set((record.value as unknown[]).map(decode));
-    case "number": return Number(record.value);
     case "object": return Object.fromEntries((record.value as Array<[string, unknown]>).map(([key, entry]) => [key, decode(entry)]));
-    default: return Object.fromEntries(Object.entries(record).map(([key, entry]) => [key, decode(entry)]));
+    default:
+      for (const key of Object.keys(record)) record[key] = decode(record[key]);
+      return record;
   }
+}
+
+function decodeSnapshot(value: unknown): unknown {
+  const references: unknown[] = [];
+  const decode = (entry: unknown): unknown => {
+    if (!entry || typeof entry !== "object") return entry;
+    if (MARK in entry) {
+      const marked = entry as Encoded;
+      if (marked[MARK] === "number") return Number(marked.value);
+      if (marked[MARK] === "ref") {
+        const reference = references[marked.value as number];
+        if (reference === undefined) throw new NotPlainData();
+        return reference;
+      }
+    }
+    const ordinal = references.length;
+    references.push(undefined);
+    return references[ordinal] = decodeObject(entry, decode);
+  };
+  return decode(value);
 }
 
 /** The copy saved under `key`, of any age; null when there is none, or it is of another version. */
@@ -93,7 +126,7 @@ export function readSavedCopy<T>(key: SavedCopyKey): SavedCopy<T> | null {
   if (!store) return null;
   try {
     const record = store.get<string>(resourceKey(savedCopyId(key)), { schemaVersion: key.version ?? 1, allowExpired: true });
-    return record ? { value: decode(JSON.parse(record.value)) as T, fetchedAt: record.fetchedAt } : null;
+    return record ? { value: decodeSnapshot(JSON.parse(record.value)) as T, fetchedAt: record.fetchedAt } : null;
   } catch (error) {
     logFailure("data.pane-saved-copies", "Reading a saved copy failed")(error);
     return null;
@@ -117,7 +150,7 @@ export function writeSavedCopy(key: SavedCopyKey, value: unknown, fetchedAt = Da
   const now = Date.now();
   if (last !== undefined && now - last >= 0 && now - last < writeIntervalMs) return;
   try {
-    store.set(resourceKey(id), JSON.stringify(encode(value)), { schemaVersion: key.version ?? 1, cachePolicy: { staleMs: 0, expireMs: RETAIN_UNTIL - fetchedAt }, fetchedAt });
+    store.set(resourceKey(id), JSON.stringify(encodeSnapshot(value)), { schemaVersion: key.version ?? 1, cachePolicy: { staleMs: 0, expireMs: RETAIN_UNTIL - fetchedAt }, fetchedAt });
     if (writes) {
       writes.delete(id);
       writes.set(id, now);

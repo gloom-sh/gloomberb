@@ -29,7 +29,7 @@ export interface QueryStoreOptions<T> extends QueryStoreRetention {
    * a key nothing has loaded yet this run starts from its copy, of any age, as
    * `data` in a ready entry. Freshness checks still require a new answer.
    */
-  savedCopies?: { name: string; scope: () => string | null; version?: number; writeIntervalMs?: number; mark?: (value: T, at: number) => T };
+  savedCopies?: { name: string; scope: () => string | null; version?: number; writeIntervalMs?: number; observedOnly?: boolean; mark?: (value: T, at: number) => T };
 }
 
 /** What a saved copy keeps of an entry: its data and where and when it came from. */
@@ -104,6 +104,7 @@ export class QueryStore<T> {
     }
     if (entry.phase !== "ready" || entry.error || entry.data == null) return;
     this.hydratedScopes.delete(key);
+    if (cache.observedOnly && !this.options.isWatched?.(key)) return;
     const { data, history, source, asOf, delayMinutes } = entry;
     writeSavedCopy(savedKey, { data, history, source, asOf, delayMinutes }, entry.fetchedAt ?? Date.now(), cache.writeIntervalMs);
   }
@@ -111,6 +112,8 @@ export class QueryStore<T> {
   /** A pane started watching `key`, so it is kept until released. */
   watch(key: string): void {
     this.unwatched.delete(key);
+    const entry = this.entries.get(key);
+    if (entry && this.options.savedCopies?.observedOnly) this.save(key, entry);
   }
 
   /** The last pane watching `key` let go: it is now the most recently used entry. */

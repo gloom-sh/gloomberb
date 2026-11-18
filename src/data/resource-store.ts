@@ -507,21 +507,24 @@ export class ResourceStore {
     if (namespacePrefixes.length === 0) return [];
     this.flushTouches();
     const where = namespacePrefixes.map(() => "instr(namespace, ?) = 1").join(" OR ");
-    const rows = this.access.readCache("list recent cached resources", () => (
-      this.db
-        .query<ResourceCacheRow, Array<string | number>>(
-          `WITH recent AS (
-             SELECT rowid AS id, last_accessed_at, size_bytes FROM resource_cache
-             WHERE (${where}) AND size_bytes <= ?
-             ORDER BY last_accessed_at DESC, rowid DESC LIMIT ?
-           ), sized AS (
-             SELECT id, SUM(size_bytes) OVER (ORDER BY last_accessed_at DESC, id DESC) AS bytes FROM recent
-           )
-           SELECT resource_cache.* FROM sized JOIN resource_cache ON resource_cache.rowid = sized.id
-           WHERE sized.bytes <= ? ORDER BY resource_cache.last_accessed_at DESC, sized.id DESC`,
-        )
-        .all(...namespacePrefixes, budget.maxBytes, budget.maxRows, budget.maxBytes)
-    )) ?? [];
+    const rows = this.access.readCache("list recent cached resources", this.db.transaction(() => {
+      const candidates = this.db.query<{ id: number; size_bytes: number }, Array<string | number>>(
+        `SELECT rowid AS id, size_bytes FROM resource_cache WHERE (${where}) AND size_bytes <= ?
+         ORDER BY last_accessed_at DESC, rowid DESC`,
+      ).all(...namespacePrefixes, budget.maxBytes);
+      const byId = this.db.query<ResourceCacheRow, [number]>("SELECT * FROM resource_cache WHERE rowid = ?");
+      const selected: ResourceCacheRow[] = [];
+      let remaining = budget.maxBytes;
+      for (const candidate of candidates) {
+        if (selected.length >= budget.maxRows) break;
+        if (candidate.size_bytes > remaining) continue;
+        const row = byId.get(candidate.id);
+        if (!row || row.size_bytes > remaining) continue;
+        remaining -= row.size_bytes;
+        selected.push(row);
+      }
+      return selected;
+    })) ?? [];
     return rows.flatMap((row) => this.toCachedResource<T>(row) ?? []);
   }
 

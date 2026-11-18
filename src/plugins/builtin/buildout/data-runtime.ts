@@ -26,17 +26,24 @@ import { boardThemes, resolveBoardTheme } from "./pane/themes";
 const THEME_SETTLE_MS = 180;
 
 type BuildoutReady = Extract<BuildoutLoadState, { status: "ready" }>;
-type PublicBoard = Pick<BuildoutReady, "lists" | "sites" | "intel">;
-const PUBLIC_BOARD = { key: ["buildout", "anonymous", "board", PAGE_SIZE] };
-const publicCompanies = (slug: string) => ({ key: ["buildout", "anonymous", "companies", slug, PAGE_SIZE] });
+const PUBLIC_LISTS = { key: ["buildout", "anonymous", "lists"] };
+const PUBLIC_SITES = { key: ["buildout", "anonymous", "sites", PAGE_SIZE, 0] };
+const PUBLIC_INTEL = { key: ["buildout", "anonymous", "intel", PAGE_SIZE, 0] };
+const publicCompanies = (slug: string) => ({ key: ["buildout", "anonymous", "companies", slug, PAGE_SIZE, 0] });
 
-function openingBoard(publicAccess: boolean, activeTab: BuildoutTabId, openedList: BuildoutList | null, themeSlug: string | null): BuildoutLoadState {
-  const saved = publicAccess ? readSavedCopy<PublicBoard>(PUBLIC_BOARD) : null;
+function openingBoard(publicAccess: boolean, activeTab: BuildoutTabId, openedListSlug: string | null, themeSlug: string | null): BuildoutLoadState {
+  if (!publicAccess) return { status: "loading" };
+  const lists = readSavedCopy<BuildoutReady["lists"]>(PUBLIC_LISTS);
+  const sites = readSavedCopy<BuildoutReady["sites"]>(PUBLIC_SITES);
+  const intel = readSavedCopy<BuildoutReady["intel"]>(PUBLIC_INTEL);
+  const saved = activeTab === "sites" ? sites : activeTab === "intel" ? intel : lists;
   if (!saved) return { status: "loading" };
-  const list = activeTab === "themes" ? resolveBoardTheme(boardThemes(saved.value.lists), themeSlug) : openedList;
+  const list = activeTab === "themes" ? resolveBoardTheme(boardThemes(lists?.value ?? []), themeSlug)
+    : lists?.value.find((entry) => entry.slug === openedListSlug);
   const companyPage = list && readSavedCopy<BuildoutReady["companies"]>(publicCompanies(list.slug));
   return {
-    status: "ready", access: "free", token: null, ...saved.value,
+    status: "ready", access: "free", token: null, lists: lists?.value ?? [],
+    sites: sites?.value ?? emptyPage(true), intel: intel?.value ?? emptyPage(true),
     companies: companyPage ? { ...companyPage.value, savedAt: companyPage.fetchedAt } : { ...emptyPage<BuildoutCompany>(), blurredCompanyCount: 0, listSlug: null },
     loadedAt: saved.fetchedAt, savedAt: saved.fetchedAt, refreshing: true,
   };
@@ -45,7 +52,7 @@ function openingBoard(publicAccess: boolean, activeTab: BuildoutTabId, openedLis
 interface UseBuildoutDataRuntimeOptions {
   activeTab: BuildoutTabId;
   onBeforeLoad: () => void;
-  selectedList: BuildoutList | null;
+  selectedListSlug: string | null;
   /** The theme the Themes board is on, as the pane saved it. */
   themeSlug: string | null;
 }
@@ -53,7 +60,7 @@ interface UseBuildoutDataRuntimeOptions {
 export function useBuildoutDataRuntime({
   activeTab,
   onBeforeLoad,
-  selectedList: openedList,
+  selectedListSlug,
   themeSlug,
 }: UseBuildoutDataRuntimeOptions): {
   loadCompanies: (list: BuildoutList, offset: number, append: boolean) => void;
@@ -70,12 +77,13 @@ export function useBuildoutDataRuntime({
   scopeRef.current = scope;
   const loadingPageKeysRef = useRef<Set<string>>(new Set());
   const [owner, setOwner] = useState(scope);
-  const [current, setState] = useState<BuildoutLoadState>(() => openingBoard(publicAccess, activeTab, openedList, themeSlug));
+  const [current, setState] = useState<BuildoutLoadState>(() => openingBoard(publicAccess, activeTab, selectedListSlug, themeSlug));
   if (owner !== scope) {
     setOwner(scope);
-    setState(openingBoard(publicAccess, activeTab, openedList, themeSlug));
+    setState(openingBoard(publicAccess, activeTab, selectedListSlug, themeSlug));
   }
   const state: BuildoutLoadState = owner === scope ? current : { status: "loading" };
+  const openedList = state.status === "ready" ? state.lists.find((entry) => entry.slug === selectedListSlug) ?? null : null;
   const boardList = state.status === "ready" && activeTab === "themes" ? resolveBoardTheme(boardThemes(state.lists), themeSlug) : openedList;
   const savedCompanies = state.status === "ready" && boardList?.slug === state.companies.listSlug ? state.companies : null;
   useSavedCopyFooter(state.status === "ready" ? state.savedAt ?? savedCompanies?.savedAt : null,
@@ -102,8 +110,9 @@ export function useBuildoutDataRuntime({
       if (!cancelled && scopeRef.current === scope) {
         const loadedAt = Date.now();
         if (publicAccess && data.access === "free") {
-          const board: PublicBoard = { lists: data.lists, sites: data.sites, intel: data.intel };
-          writeSavedCopy(PUBLIC_BOARD, board, loadedAt);
+          writeSavedCopy(PUBLIC_LISTS, data.lists, loadedAt);
+          writeSavedCopy(PUBLIC_SITES, { ...data.sites, items: data.sites.items.map((site) => ({ ...site, siteMetadata: null })) }, loadedAt);
+          writeSavedCopy(PUBLIC_INTEL, data.intel, loadedAt);
         }
         if (refreshVersion > 0) onBeforeLoad();
         setState((previous) => ({
@@ -120,7 +129,7 @@ export function useBuildoutDataRuntime({
       if (cancelled || scopeRef.current !== scope) return;
       const message = error instanceof Error ? error.message : String(error);
       if (isPermanentClientError(error)) {
-        if (publicAccess) deleteSavedCopy(PUBLIC_BOARD);
+        if (publicAccess) for (const key of [PUBLIC_LISTS, PUBLIC_SITES, PUBLIC_INTEL]) deleteSavedCopy(key);
         setState({ status: "error", message });
         return;
       }

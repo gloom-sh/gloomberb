@@ -240,8 +240,8 @@ export class MarketDataCoordinator {
   private readonly quoteStore = new QueryStore<Quote>((key) => this.events.bump(key), {
     savedCopies: { name: "quote", scope: this.displayScope, writeIntervalMs: 30_000, mark: quoteServedFromSavedCopy },
   });
-  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), { ...this.retainedSnapshots, savedCopies: { name: "snapshot", scope: this.displayScope } });
-  private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), { ...this.retained, savedCopies: { name: "chart", scope: this.displayScope } });
+  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), { ...this.retainedSnapshots, savedCopies: { name: "snapshot", scope: this.displayScope, observedOnly: true } });
+  private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), { ...this.retained, savedCopies: { name: "chart", scope: this.displayScope, observedOnly: true } });
   private readonly optionsStore = new QueryStore<OptionsChain>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "options", scope: this.displayScope } });
   private readonly secFilingsStore = new QueryStore<SecFilingItem[]>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "sec-filings", scope: this.displayScope } });
   private readonly secDocumentsStore = new QueryStore<SecFilingDocument[]>((key) => this.events.bump(key), this.retainedCachedQueries);

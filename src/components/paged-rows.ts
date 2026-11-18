@@ -69,6 +69,7 @@ interface PagedState<T, P> {
   /** The saved-copy key of the question they answer: a new loader for the same key keeps them while it loads. */
   ownerKey?: string | null;
   savedAt?: number;
+  placeholder?: true;
   pages: P[];
   rows: T[];
   nextOffset: number;
@@ -131,9 +132,20 @@ export function usePagedRows<P extends RowPage<unknown>>(
   const requestedKey = loadPage ? options.savedCopy ?? null : null;
   const savedId = requestedKey ? `${savedCopyId(requestedKey)}#${requestedKey.version ?? 1}` : null;
   const savedKey = useMemo(() => requestedKey, [savedId]);
-  // The first page a new question opens on, read synchronously so its first frame has it.
-  const saved = useMemo(() => (savedKey ? readSavedCopy<P>(savedKey) : null), [savedId]);
-  const [state, setState] = useState<PagedState<T, P>>(() => (loadPage ? { ...openingState<T, P>(loadPage, saved), ownerKey: savedId } : emptyState(loadPage, false)));
+  const open = (): PagedState<T, P> => loadPage
+    ? { ...openingState<T, P>(loadPage, savedKey ? readSavedCopy<P>(savedKey) : null), ownerKey: savedId }
+    : emptyState(null, false);
+  const [state, setState] = useState(open);
+  let view = state;
+  if (state.owner !== loadPage || (state.ownerKey ?? null) !== savedId) {
+    const sameQuestion = savedId !== null && state.ownerKey === savedId;
+    const retainAsPlaceholder = !!loadPage && keepPreviousRows && savedId === null && state.ownerKey == null;
+    view = sameQuestion || retainAsPlaceholder
+      ? { ...state, owner: loadPage, ownerKey: savedId, hasMore: false, loading: true, loadingMore: false, error: null, moreError: null,
+        placeholder: retainAsPlaceholder ? true : undefined }
+      : open();
+    setState(view);
+  }
   const firstRequest = useRef<AbortController | null>(null);
   const moreRequest = useRef<AbortController | null>(null);
   // Read when a page lands so an inline getter cannot restart the list.
@@ -155,11 +167,9 @@ export function usePagedRows<P extends RowPage<unknown>>(
     firstRequest.current = controller;
     const key = savedKey;
     const keyId = savedId;
-    const opening = saved;
-    setState((current) => (current.owner === loadPage && current.ownerKey === keyId) || (keyId !== null && current.ownerKey === keyId)
-      ? { ...current, owner: loadPage, loading: true, loadingMore: false, error: null, moreError: null }
-      : keepPreviousRows && !opening ? { ...current, loading: true, loadingMore: false, error: null, moreError: null }
-      : { ...openingState<T, P>(loadPage, opening), ownerKey: keyId });
+    setState((current) => current.owner === loadPage && (current.ownerKey ?? null) === keyId
+      ? { ...current, loading: true, loadingMore: false, error: null, moreError: null }
+      : current);
     try {
       const page = await loadPage({ offset: 0, signal: controller.signal, force });
       if (firstRequest.current !== controller) return;
@@ -183,13 +193,14 @@ export function usePagedRows<P extends RowPage<unknown>>(
       const discard = key !== null && isPermanentClientError(cause);
       if (discard) deleteSavedCopy(key);
       setState((current) => ({
-        ...(!discard && current.owner === loadPage && current.ownerKey === keyId ? current : { ...emptyState<T, P>(loadPage, false), ownerKey: keyId }),
+        ...(!discard && !current.placeholder && current.owner === loadPage && (current.ownerKey ?? null) === keyId
+          ? current : { ...emptyState<T, P>(loadPage, false), ownerKey: keyId }),
         hasMore: false,
         loading: false,
         error: toError(cause),
       }));
     }
-  }, [keepPreviousRows, loadPage, savedId, savedKey, saved]);
+  }, [loadPage, savedId, savedKey]);
   // A load nobody waits on: its failures end in `error`, and anything else
   // that escapes is logged.
   const load = useCallback((force: boolean) => {
@@ -206,14 +217,13 @@ export function usePagedRows<P extends RowPage<unknown>>(
     };
   }, [load]);
 
-  const owned = state.owner === loadPage && (state.ownerKey ?? null) === savedId;
   const loadMore = useCallback(() => {
     // The refs, not this render's state, say whether a request is in flight:
     // a reload and a scroll in the same tick must not page the list being replaced.
-    if (!loadPage || !owned || !state.hasMore || firstRequest.current || moreRequest.current) return;
+    if (!loadPage || !view.hasMore || view.loading || firstRequest.current || moreRequest.current) return;
     const controller = new AbortController();
     moreRequest.current = controller;
-    const offset = state.nextOffset;
+    const offset = view.nextOffset;
     setState((current) => ({ ...current, loadingMore: true, moreError: null }));
     (async () => {
       try {
@@ -234,19 +244,11 @@ export function usePagedRows<P extends RowPage<unknown>>(
         setState((current) => ({ ...current, loadingMore: false, moreError: toError(cause) }));
       }
     })().catch(logFailure("components.paged-rows", "Next page load failed"));
-  }, [loadPage, owned, state.hasMore, state.nextOffset]);
+  }, [loadPage, view.hasMore, view.loading, view.nextOffset]);
 
   const reload = useCallback(() => load(true), [load]);
 
-  // Before a new loader's effect runs, and while its first page loads, the
-  // previous list is either hidden or (with keepPreviousRows) shown but inert.
-  const view = owned ? state
-    : !loadPage ? emptyState<T, P>(null, false)
-      : (keepPreviousRows && !saved) || (savedId !== null && state.ownerKey === savedId) ? { ...state, hasMore: false, loading: true, loadingMore: false, error: null, moreError: null }
-        : openingState<T, P>(loadPage, saved);
-  // Rows kept from a previous loader are a placeholder, not this loader's answer.
-  const status = !owned && loadPage && view.savedAt == null ? "loading"
-    : view.error ? "error" : view.pages.length > 0 ? "loaded" : view.loading ? "loading" : "idle";
+  const status = view.error ? "error" : view.placeholder ? "loading" : view.pages.length > 0 ? "loaded" : view.loading ? "loading" : "idle";
   useSavedCopyFooter(view.savedAt, view.loading);
   return {
     rows: view.rows,

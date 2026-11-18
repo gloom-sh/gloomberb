@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { createTempDbPath, removeTempDbFiles } from "../test-support/temp-db";
 import { AppPersistence } from "./app-persistence";
 import { applyResourceSync, createBatchedResourceSink } from "./durable-resources";
-import { WriteThroughResourceStore } from "./memory-resource-store";
+import { MemoryResourceStore, WriteThroughResourceStore } from "./memory-resource-store";
 import { readSavedCopy, setSavedCopyStore, writeSavedCopy } from "./pane-saved-copies";
 
 afterEach(removeTempDbFiles);
@@ -38,5 +38,38 @@ test("view writes reach SQLite without a shutdown flush and reopen with their or
     setSavedCopyStore(previous);
     await sink.flush();
     persistence.close();
+  }
+});
+
+test("a large record cannot hide smaller saved copies that still fit in the view bootstrap", () => {
+  const persistence = new AppPersistence(createTempDbPath("warm-resource-budget"));
+  const options = { cachePolicy: { staleMs: 0, expireMs: 1 } };
+  const write = (entityKey: string, length: number) => persistence.resources.set({ namespace: "pane:test", kind: "data", entityKey }, "x".repeat(length), options);
+  try {
+    write("small", 10);
+    write("large", 90);
+    write("newest", 30);
+    const saved = persistence.resources.listRecent(["pane:"], { maxRows: 2, maxBytes: 100 });
+    expect(saved.map((record) => record.entityKey)).toEqual(["newest", "small"]);
+  } finally {
+    persistence.close();
+  }
+});
+
+test("pane snapshots share repeated chart data and do not serialize callbacks", () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const key = { key: ["test-chart"] };
+  const points = [{ date: new Date(0), value: Number.NaN }];
+  const chart = { visible: points, buffered: points, tags: new Set([points]), other: { __gloomSaved: "ref", value: null } };
+  try {
+    writeSavedCopy(key, chart);
+    const restored = readSavedCopy<typeof chart>(key)?.value;
+    expect(restored).toEqual(chart);
+    expect(restored?.visible).toBe(restored?.buffered);
+    expect(restored?.tags.has(restored.visible)).toBe(true);
+    writeSavedCopy(key, { run: () => "not display data" });
+    expect(readSavedCopy<typeof chart>(key)?.value).toEqual(chart);
+  } finally {
+    setSavedCopyStore(previous);
   }
 });

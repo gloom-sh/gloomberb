@@ -99,7 +99,6 @@
   "src/plugins/builtin/buildout/pane/index.tsx": ["void:chooseOpenTarget()","void:rendererHost.openExternal()","void:toggleFavorite()"],
   "src/plugins/builtin/catalysts/detail.tsx": ["void:host.openExternal()","void:host.openExternal()"],
   "src/plugins/builtin/catalysts/pane.tsx": ["callback:openUpgrade()"],
-  "src/plugins/builtin/changelog/index.tsx": ["void:load()","void:load()"],
   "src/plugins/builtin/chart-composer/data-catalog-pane.tsx": ["callback:chartSelected()","void:retry()"],
   "src/plugins/builtin/chart-composer/pane.tsx": ["void:alertAtLevel()","void:currentActionsRef.current.openResolutionPicker()","void:currentActionsRef.current.openSeriesEditor()","void:openResolutionPicker()","void:openSeriesEditor()"],
   "src/plugins/builtin/chart-composer/quick-add.tsx": ["void:retry()"],

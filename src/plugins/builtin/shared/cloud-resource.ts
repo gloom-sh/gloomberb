@@ -30,7 +30,8 @@ export function cachedCloudResource<T>(
   const cached = cache.get(key, { allowExpired: true });
   if (!cached) return null;
   try {
-    return markSavedCopy({ payload: validate(cached.data), stale: false, refreshError: null }, cached.fetchedAt);
+    const result = { payload: validate(cached.data), stale: false, refreshError: null };
+    return cached.fromEarlierRun || cached.stale ? markSavedCopy(result, cached.fetchedAt) : result;
   } catch (error) {
     return logFailure("shared.cloud-resource", "Validate cached cloud payload failed", null)(error);
   }
