@@ -122,7 +122,7 @@ import {
   type PairStudySelection,
 } from "./studies";
 import { buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
-import type { ChartInteractionViewport } from "./chart-spec";
+import { comparisonPresetResolution, type ChartInteractionViewport } from "./chart-spec";
 import {
   CHART_FORMULA_OPTIONS,
   CHART_BAR_SIZE_PRESETS,
@@ -964,14 +964,18 @@ function ChartComposerSurface({
   /** The range the bar shows as selected; a fixed window or a period count leaves a range to pick. */
   const rangeReselects = !spec.viewport.dateWindow && spec.viewport.maxPoints === undefined;
   const setRange = useCallback((range: TimeRange) => {
+    const current = spec.viewport;
+    const changesSession = range === "1D" ? current.resolution === "1d"
+      : current.range === "1D" && current.resolution === "auto";
+    const resolution = changesSession && priceComparisonSeriesIds(spec) ? comparisonPresetResolution(range) : current.resolution;
     // The range already showing: a view moved off it goes back to it, as `0` does.
-    if (rangeReselects && range === spec.viewport.range) {
+    if (rangeReselects && range === current.range && resolution === current.resolution) {
       resetChartView();
       return;
     }
     setSpec({
       ...spec,
-      viewport: { ...spec.viewport, range, dateWindow: undefined, maxPoints: undefined },
+      viewport: { ...current, range, resolution, dateWindow: undefined, maxPoints: undefined },
     });
   }, [rangeReselects, resetChartView, setSpec, spec]);
   const setResolution = useCallback((next: ChartResolution) => {
