@@ -110,6 +110,7 @@ export type PaneScreenshotDataEvidence =
   | PaneScreenshotEvidence;
 
 export interface PaneScreenshotReadinessSignals {
+  confirmedEmpty?: boolean;
   /**
    * A surface to operate rather than data to read (Layouts, Brokers): its rows
    * and an empty-state marker inside it say nothing of whether it rendered.

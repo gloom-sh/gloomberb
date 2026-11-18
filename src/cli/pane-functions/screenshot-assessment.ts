@@ -61,7 +61,7 @@ export function shotShowsText(visibleText: string, value: string): boolean {
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
   return !signals.refused
     && !signals.blankColumns?.length
-    && (signals.interactive || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
+    && (signals.interactive || signals.confirmedEmpty || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
     && !signals.loadingStateDetected
     && !signals.errorStateDetected
     && signals.complete
@@ -185,6 +185,8 @@ export function assessPaneScreenshot(
     interactive,
     rowCount,
     contentShown,
+    confirmedEmpty: rowCount === 0 && render.emptyStateDetected && !render.accessGate
+      && (render.semanticUi ?? []).some((node) => node.role === "pane-empty-result"),
     refused,
     loadingStateDetected: render.loadingStateDetected,
     errorStateDetected: render.errorStateDetected,
