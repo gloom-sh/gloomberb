@@ -494,7 +494,7 @@ gloom fn 13F 0001067983 --compare SPY                 # a fund against an ETF's 
 
 `G`, `GP`, `GIP`, `CMP`, `GF` and `GE` open the same chart composer with different starting presets.
 
-On a one-day chart the legend prints the last bar's price with its move from the close the quote measures from (the regular session's, or with **Extended hours** the latest print's), both from that bar: `$654.41 -0.39%` against a 656.95 close, never a quote's move read a moment apart from the bars.
+On a one-day chart the legend prints the last bar's price with that bar's move from the prior close the chart draws as its dotted line (the quote's previous close, or the last bar of the session before): `$654.41 -0.39%` beside a `$656.95` line, never a quote's move read a moment apart from the bars. Without that line it measures from the close the quote's change is from.
 
 #### The data catalog
 

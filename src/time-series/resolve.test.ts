@@ -3020,8 +3020,11 @@ describe("one-day charts show the latest session", () => {
     // As `quote` heads Last: the session's +2%, the after-hours print beside it.
     expect(await legend(false)).toBeCloseTo(2, 8);
     expect(await legend(true)).toBeCloseTo(-1, 8);
-    // A quote that has moved on from the last bar (324.06, -1.8%) still measures from its close: the bar's own -1%.
+    // A quote that has moved on from the last bar (324.06, -1.8%), or whose change lags its price, still prints the
+    // last bar's move from the prior close the chart draws: -1%.
     quote = { ...quote, price: 324.06, change: -5.94, changePercent: -1.8 };
+    expect(await legend(true)).toBeCloseTo(-1, 8);
+    quote = { ...quote, price: 327.45, change: -3.3, changePercent: -1 };
     expect(await legend(true)).toBeCloseTo(-1, 8);
   });
 

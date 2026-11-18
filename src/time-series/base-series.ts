@@ -131,6 +131,12 @@ function quotedInstrumentLabel(
   return index && quoted && !source.instrument.instrument ? source.instrument.symbol.trim() : instrumentLabel(source);
 }
 
+/** A bar's move from `reference`, in percent; undefined when either is not a price. */
+function barMovePercent(bar: TimeSeriesPoint | undefined, reference: number): number | undefined {
+  const close = bar?.close ?? bar?.value;
+  return reference > 0 && typeof close === "number" && Number.isFinite(close) ? (close / reference - 1) * 100 : undefined;
+}
+
 /**
  * A bar's move from the close a quote's change is measured from (its price less
  * its change), in percent; the quote's own percent when the quote states no
@@ -138,9 +144,19 @@ function quotedInstrumentLabel(
  */
 function barChangePercent(bar: TimeSeriesPoint | undefined, display: { price: number; change?: number; changePercent?: number }): number | undefined {
   const reference = typeof display.change === "number" && Number.isFinite(display.change) ? display.price - display.change : Number.NaN;
-  const close = bar?.close ?? bar?.value;
-  if (!(reference > 0) || typeof close !== "number" || !Number.isFinite(close)) return display.changePercent;
-  return (close / reference - 1) * 100;
+  return barMovePercent(bar, reference) ?? display.changePercent;
+}
+
+/**
+ * A one-day chart's price series with the prior close it draws as its
+ * reference line. The legend's move is then the last bar's from that line,
+ * the price and the move read off the chart itself, as a reader checks them
+ * (`$654.41 -0.39%` beside a 656.95 line); a series with no move to show (no
+ * quote stated one) keeps none.
+ */
+export function withPriorClose(series: ResolvedSeries, priorClose: number): ResolvedSeries {
+  const move = series.latestChangePercent === undefined ? undefined : barMovePercent(series.points.at(-1), priorClose);
+  return { ...series, priorClose, ...move !== undefined ? { latestChangePercent: move } : {} };
 }
 
 export function baseSecuritySeries(

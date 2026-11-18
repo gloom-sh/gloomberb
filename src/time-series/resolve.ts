@@ -135,6 +135,7 @@ import {
   latestQuote,
   mergeHistory,
   baseSecuritySeries,
+  withPriorClose,
   baseEconomicSeries,
   baseCapabilitySeries,
   staleFredWarning,
@@ -1156,7 +1157,7 @@ async function resolveChartSpecPass(
   if (sessionView?.priorClose != null && primaryRaw?.transform === "raw"
     && primaryRaw.unitGroup.startsWith("price") && primaryRaw.unitGroup !== "price:unknown") {
     const index = rawSeries.indexOf(primaryRaw);
-    rawSeries[index] = { ...primaryRaw, priorClose: sessionView.priorClose };
+    rawSeries[index] = withPriorClose(primaryRaw, sessionView.priorClose);
   }
   const servedCadences = new Set(rawSeries.filter((entry) => entry.observationKind === "market" && entry.points.length > 0)
     .map((entry) => entry.historyResolution));
