@@ -22,15 +22,17 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { CPI_NOT_AVAILABLE, getCachedCpiBoard, loadCpiBoard } from "./client";
 import {
   CPI_TABLE_ORDER,
   cpiChartSeries,
   cpiChartStrip,
-  cpiHeaderLine,
   cpiHeadlineYearGapLine,
   cpiMonthDate,
+  cpiNextRelease,
+  cpiReleaseStamp,
   cpiRowLabel,
   cpiRows,
   cpiTimeAxis,
@@ -43,8 +45,7 @@ import {
 
 // The figures share the width a wide pane adds with the names, so they do not
 // huddle at the right edge; in the terminal the name column takes it all.
-const COLUMNS: DataTableColumn[] = [
-  { id: "name", label: "Component", width: 22, align: "left", flexGrow: 4 },
+const FIGURE_COLUMNS: DataTableColumn[] = [
   { id: "weight", label: "Wgt", width: 6, align: "right", flexGrow: 1 },
   { id: "change", label: "M/M", width: 7, align: "right", flexGrow: 1 },
   { id: "annualized3m", label: "3M Ann", width: 7, align: "right", flexGrow: 1 },
@@ -53,6 +54,24 @@ const COLUMNS: DataTableColumn[] = [
   { id: "contribution", label: "M/M Pts", width: 8, align: "right", flexGrow: 1 },
   { id: "contributionYoy", label: "Y/Y Pts", width: 8, align: "right", flexGrow: 1, omitWhenEmpty: true },
 ];
+/** The names' widest, and the narrowest they are cut to before the figures scroll. */
+const NAME_WIDTH = 22;
+const NAME_MIN_WIDTH = 10;
+
+/**
+ * The columns at a pane's width: the name takes the room the figures leave, up
+ * to its full width, and is cut before a figure scrolls out of view, as the
+ * sector and index boards size theirs. The Y/Y points count only when a row has
+ * them, since the column is left out while none does.
+ */
+function cpiColumns(width: number, yoyPoints: boolean): DataTableColumn[] {
+  const figures = yoyPoints ? FIGURE_COLUMNS : FIGURE_COLUMNS.filter((column) => column.id !== "contributionYoy");
+  const room = width - getTableWidth(figures) - 1;
+  return [
+    { id: "name", label: "Component", width: Math.max(NAME_MIN_WIDTH, Math.min(NAME_WIDTH, room)), align: "left", flexGrow: 4 },
+    ...FIGURE_COLUMNS,
+  ];
+}
 const PANELS = [{ id: "main" }];
 /** Legend, four plot rows and the time axis; the read under them takes its own rows. */
 const CHART_ROWS_ABOVE_READ = 6;
@@ -92,7 +111,10 @@ function CpiBoard({ payload, initialRow, width, height, focused }: {
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   const headline = payload.rows.find((row) => row.code === "SA0") ?? null;
   const series = useMemo(() => selected ? cpiChartSeries(selected, headline, colors) : [], [selected, headline, colors]);
-  const meta = cpiHeaderLine(payload.release);
+  // The release stays whole in a narrow pane; when the next one is due gives way first.
+  const stamp = cpiReleaseStamp(payload.release);
+  const next = cpiNextRelease(payload.release);
+  const columns = useMemo(() => cpiColumns(width, rows.some((row) => row.contributionYoy != null)), [rows, width]);
   // Room for the longest read at this width, so the chart does not give way to the strip as the selection moves.
   const readRows = useChartReadRows(rows.map((row) => row.read), width);
   const chart: ChartTableChart | null = selected ? {
@@ -109,9 +131,9 @@ function CpiBoard({ payload, initialRow, width, height, focused }: {
     text, value, color: value == null || Number(text) === 0 ? colors.textDim : priceColor(value, colors),
   });
   return (
-    <DataTableView<CpiRow> columns={COLUMNS} items={rows} focused={focused} rootWidth={width} rootHeight={height}
-      rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={COLUMNS}
-        query={meta ? <QueryBar width={width} meta={meta} /> : undefined} chart={chart} />}
+    <DataTableView<CpiRow> columns={columns} items={rows} focused={focused} rootWidth={width} rootHeight={height}
+      rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns}
+        query={stamp ? <QueryBar width={width} asOf={stamp} meta={next} /> : undefined} chart={chart} />}
       selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (row) => row.id, onChange: setSelectedId }}
       onActivate={(row) => setSelectedId(row.id)} getItemKey={(row) => row.id}
       sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={onHeaderClick}

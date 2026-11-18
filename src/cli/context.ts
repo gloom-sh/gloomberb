@@ -19,6 +19,11 @@ import { isKnownUsStock } from "./known-us-stocks";
 import { resolvePersistedCloudSessionToken } from "./pane-functions/cloud-session";
 import { cloudStatementReportSources } from "./statement-filings";
 import type { ConfigContext, MarketContext } from "./types";
+import { attachFuturesTermsPersistence } from "../market-data/futures-contract";
+import { createCommandPluginPersistence } from "./saved-copy-persistence";
+
+/** Where a command keeps the futures terms it read, beside the app's other saved copies. */
+const FUTURES_TERMS_NAMESPACE = "market:futures-terms";
 
 export { withCliServices, withConfigData, withMarketData } from "./scoped-context";
 
@@ -119,6 +124,8 @@ function applyPersistedCloudSession(context: Pick<MarketContext, "persistence">)
 export async function initMarketData(options: CliContextOptions = {}): Promise<MarketContext> {
   const context = await initConfigData();
   applyPersistedCloudSession(context);
+  // The futures terms a command reads are kept in the profile, so a later run the service cannot answer still has them.
+  attachFuturesTermsPersistence(createCommandPluginPersistence(context.persistence.resources, FUTURES_TERMS_NAMESPACE));
   const plugins: SeriesPlugins = options.plugins ?? (() => (require("../plugins/catalog") as typeof import("../plugins/catalog")).getLoadablePlugins());
   const capabilities = resolveCliCapabilities(context.config, options.dataPlugins ?? (typeof plugins === "function" ? plugins() : plugins));
   // A lookup of a symbol the shipped listings show to be a US stock asks for no perpetual contracts.
@@ -159,6 +166,7 @@ export async function initCliServices(options: CliServicesOptions = {}) {
   services.providerRouter.setBackgroundRevalidation(false);
   await ensureCliServicesReady(services);
   applyPersistedCloudSession(services);
+  attachFuturesTermsPersistence(createCommandPluginPersistence(services.persistence.resources, FUTURES_TERMS_NAMESPACE));
   return {
     config,
     dataDir,

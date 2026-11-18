@@ -20,6 +20,9 @@ import { portableCsv } from "./csv-export";
 import { logFailure } from "../utils/log-failure";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 import { formatFreshnessLine, withSavedCopy, type ReportFreshness } from "./pane-functions/freshness";
+import { savedCopyShownAt } from "../data/saved-copies";
+import { dataServiceUnreachable } from "../api-client/request";
+import { savedCopyUnreachableWarning } from "./unreachable";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import {
   exportJsonValue,
@@ -716,6 +719,19 @@ function withHintedCells<T>(result: CliResult<T>, hinted: (text: string) => stri
   return changed ? { ...result, data: data as T } : result;
 }
 
+/**
+ * A result shown from saved copies while the data service went unanswered,
+ * with the warning that says so (`savedCopyUnreachableWarning`); any other as it is.
+ */
+export function withUnreachedSavedCopyWarning<T>(result: CliResult<T>): CliResult<T> {
+  if (!dataServiceUnreachable()) return result;
+  const cited = result.freshness ?? result.exportFreshness;
+  const saved = cited ? withSavedCopy(cited, result.data).savedAt != null : savedCopyShownAt(result.data) != null;
+  if (!saved) return result;
+  const warning = savedCopyUnreachableWarning();
+  return result.warnings?.includes(warning) ? result : { ...result, warnings: [...result.warnings ?? [], warning] };
+}
+
 export function printCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(
   result: CliResult<T>,
   options: CliGlobalOptions,
@@ -724,6 +740,7 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   isFredSeries?: FredSeriesCheck,
 ): void {
   if (options.quiet && options.format === "text") return;
+  result = withUnreachedSavedCopyWarning(result);
   // JSON keeps the router's own words; everything else is for a person, so a "Not a ticker" gets its hint.
   const hinted = (text: string) => options.format === "json" ? text : withSearchHints(text, args, isFredSeries);
   // A CSV's status cell is where its row says why, so it gets the hint the warning line has: a cell ends in a comma,

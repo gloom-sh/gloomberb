@@ -326,11 +326,15 @@ export async function buildDomPaneReportFromRender(
   if (failureReason && rows.length > 0) textLines.push("", failureReason);
   // A pane that knows its feed dates the report; the footer and cell times fill in the rest.
   const declared = { ...declaredReportFreshness(resolved), ...renderedReportFreshness(result.render.semanticUi ?? []) };
-  const freshness = deriveRenderedFreshness(declared, {
+  const derived = deriveRenderedFreshness(declared, {
     footerText: result.render.footerText ?? "",
     cellTimes: rows.flatMap((row) => row.cells.flatMap((cell) => cell.instant ?? [])),
     observed: renderedReportObservations(result.render.semanticUi ?? []),
   });
+  // Drawn from copies saved earlier, its refresh having failed: dated as saved, never as delayed at the copy's time.
+  const freshness = derived && result.savedCopyAt != null && !derived.savedAt
+    ? { ...derived, savedAt: new Date(result.savedCopyAt).toISOString() }
+    : derived;
 
   const complete = failureReason === null && !truncated;
   // Each table published its rows and nothing else was cut: the report is the whole view.

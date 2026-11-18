@@ -2,7 +2,7 @@ import type { CloudWorldVenuePayload } from "../../../api-client";
 import { colors } from "../../../theme/colors";
 import { CountryFlagLead } from "../../../components/ui/country-flag";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
-import { formatVenueCountdown, formatVenueLocalTime, venueRemainingSeconds } from "./model";
+import { formatVenueCountdown, formatVenueLocalTime, venueRemainingSeconds, venueSession } from "./model";
 
 export function SelectedVenueHeader({
   venue,
@@ -18,7 +18,9 @@ export function SelectedVenueHeader({
   const desktop = useUiCapabilities().nativePaneChrome === true;
   if (!venue) return <Box height={2} />;
   const remaining = formatVenueCountdown(venueRemainingSeconds(venue, checkedAt, now));
-  const state = venue.isOpen ? "OPEN" : "CLOSED";
+  // A holiday, or a US venue's pre-market and after-hours, says so: "closed" alone read as nothing trading.
+  const session = venueSession(venue);
+  const state = session.toUpperCase();
   const transition = remaining ? `${venue.isOpen ? "closes" : "opens"} ${remaining}` : "";
   const place = (
     <Text fg={colors.textMuted}>
@@ -29,7 +31,7 @@ export function SelectedVenueHeader({
     <Box flexDirection="column" height={2} width={width} paddingX={1}>
       <Box flexDirection="row" justifyContent="space-between" width="100%">
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{venue.mic}</Text>
-        <Text fg={venue.isOpen ? colors.positive : colors.textDim}>{state}</Text>
+        <Text fg={venue.isOpen ? colors.positive : session === "pre-market" || session === "after-hours" ? colors.warning : colors.textDim}>{state}</Text>
       </Box>
       {desktop ? (
         // The desktop and the web lead the venue's place with its country's flag.

@@ -4,6 +4,7 @@ import { loadResolvedHeadlessPaneModel, reportCoverage, reportGaps, type LoadedH
 import { createOutputFolder, writeOutputFile } from "../output-file";
 import type { Quote } from "../../types/financials";
 import { isRecord } from "../../utils/guards";
+import { savedCopyAt, savedCopyShownAt } from "../../data/saved-copies";
 import {
   prepareDesktopPaneShotView,
   renderDesktopPaneScreenshot,
@@ -43,7 +44,7 @@ export function shotHasStatusLine(resolved: Pick<ResolvedPaneFunction, "pane" | 
 }
 
 /** The bridge, keeping every quote it serves the page: what a pane that loads its own quotes (WEI) shows. */
-function recordBridgedQuotes(bridge: DesktopPaneShotBridge): { bridge: DesktopPaneShotBridge; quotes: Quote[] } {
+function recordBridgedQuotes(bridge: DesktopPaneShotBridge, onSavedCopy?: (savedAt: number) => void): { bridge: DesktopPaneShotBridge; quotes: Quote[] } {
   const quotes: Quote[] = [];
   const keep = (value: unknown) => {
     if (isRecord(value) && typeof value.symbol === "string" && typeof value.price === "number") quotes.push(value as unknown as Quote);
@@ -54,6 +55,9 @@ function recordBridgedQuotes(bridge: DesktopPaneShotBridge): { bridge: DesktopPa
       ...bridge,
       async marketData(operation, args) {
         const result = await bridge.marketData(operation, args);
+        // The page gets the answer as JSON, which drops its saved-copy mark: the report keeps when it was saved.
+        const savedAt = savedCopyAt(result) ?? savedCopyShownAt(result);
+        if (savedAt != null) onSavedCopy?.(savedAt);
         if (operation === "getQuote") keep(result);
         if (operation === "getQuotesBatch" && Array.isArray(result)) {
           for (const entry of result) keep(isRecord(entry) ? entry.quote : null);
@@ -260,7 +264,10 @@ export async function renderDesktopShot({
 }): Promise<PaneScreenshotResult & { saved: boolean }> {
   prepareDesktopPaneShotView();
   if (captureImage) await createOutputFolder(outputPath);
-  const apiProxy = resolveDesktopShotApiProxy(context);
+  // The copies saved earlier the page drew from, where the data service did not answer.
+  const savedCopies: number[] = [];
+  const onSavedCopy = (savedAt: number) => { savedCopies.push(savedAt); };
+  const apiProxy = { ...resolveDesktopShotApiProxy(context), onSavedCopy };
   const previousSessionToken = apiClient.getSessionToken();
   let payload: DesktopPaneShotPayload;
   let render: DesktopPaneShotRenderResult;
@@ -310,7 +317,7 @@ export async function renderDesktopShot({
     const report = payload.statusLine ? reportShotFreshness(resolved, loadModel) : undefined;
     // The same load says whether the report is complete, with or without a status line.
     coverage = captureImage ? reportShotCoverage(resolved, loadModel) : undefined;
-    const recorded = recordBridgedQuotes(createDesktopShotBridge(context));
+    const recorded = recordBridgedQuotes(createDesktopShotBridge(context), onSavedCopy);
     const shotPayload = payload;
     ({ image, ...render } = await renderDesktopPaneScreenshot(payload, apiProxy, {
       captureImage,
@@ -342,7 +349,8 @@ export async function renderDesktopShot({
   const save = image && (!onlyUsable || assessed.usable) ? image : undefined;
   if (save) await writeOutputFile(outputPath, save);
   const unreadRows = payload.unreadRows?.length ? { unreadRows: payload.unreadRows, ...(payload.unreadReasons ? { unreadReasons: payload.unreadReasons } : {}) } : {};
-  return { ...assessed, ...unreadRows, saved: save !== undefined, ...(freshness ? { freshness } : {}) };
+  return { ...assessed, ...unreadRows, saved: save !== undefined, ...(freshness ? { freshness } : {}),
+    ...(savedCopies.length > 0 ? { savedCopyAt: Math.min(...savedCopies) } : {}) };
 }
 
 /** "FRC did not load": a list's rows whose read failed, as the capture's status line marks them. */

@@ -9,7 +9,7 @@ import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, H
 import { formatUtcDayTime } from "../../../utils/utc-time";
 import { REFERENCE_DATA } from "../shared/report-freshness";
 import { columnValue, formatGeoValue, isChangeColumn, layerCoverageNote, parseLayerTokens, parseMapPreset, plainGeoValue, resolveActiveLayers, tickerLinkKey } from "./layers";
-import { filterWorldVenues, formatVenueLocalTime } from "./model";
+import { filterWorldVenues, formatVenueLocalTime, venueSession } from "./model";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 import { mapHomeArea, mapPlaceBbox, nearestPlaces, resolveMapPlace, type MapStart } from "./place";
 
@@ -46,7 +46,8 @@ const VENUE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "name", header: "Venue" },
   { key: "city", header: "City" },
   { key: "country", header: "Country" },
-  { key: "open", header: "Open", format: (value) => (value ? "open" : "closed") },
+  // The state by the exchange's calendar: a holiday, or a US venue's pre-market and after-hours around its core session.
+  { key: "session", header: "Session" },
   { key: "localTime", header: "Local" },
 ];
 
@@ -61,6 +62,7 @@ async function venueRows(context: HeadlessPaneContext, query: string, start: Map
       name: venue.title,
       city: venue.city,
       country: venue.country,
+      session: venueSession(venue),
       open: venue.isOpen,
       localTime: formatVenueLocalTime(venue.timezone, now),
       lon: venue.longitude,

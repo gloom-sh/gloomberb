@@ -31,7 +31,12 @@ import {
   type ShotMarketSocketCall,
 } from "./desktop-pane-shot-routes";
 import { SHOT_REQUEST_REFUSED } from "../api-client/errors";
-import { dataServiceReachEpoch, isProxyRefusal, noteDataServiceReach, SHOT_SERVICE_UNREACHABLE_HEADER } from "../api-client/request";
+import {
+  dataServiceAnswerCount, dataServiceReachEpoch, dataServiceUnreachable, isProxyRefusal, MARKET_REQUEST_TIMEOUT_MS, noteDataServiceReach,
+  SHOT_SERVICE_UNREACHABLE_HEADER, UNREACHABLE_REQUEST_TIMEOUT_MS,
+} from "../api-client/request";
+import type { FuturesContractTermsPayload } from "../api-client/futures-curve";
+import { rememberFuturesContractTerms, savedFuturesContractTerms } from "../market-data/futures-contract";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../utils/network-failure";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import { isShotApiRequestAllowed, isShotSessionPath } from "./desktop-pane-shot-api-policy";
@@ -112,6 +117,47 @@ export interface DesktopPaneShotPayload {
 export interface DesktopPaneShotApiProxy {
   baseUrl: string;
   sessionToken: string | null;
+  /**
+   * Called with when a copy was saved (ms) each time the proxy answers a
+   * read the data service did not answer from a copy saved earlier, so the
+   * report dates what it shows as saved (`SHOT_SAVED_COPY_READS`).
+   */
+  onSavedCopy?: (savedAt: number) => void;
+}
+
+/**
+ * The reads the proxy keeps a copy of and answers from it when the data
+ * service does not answer: a futures symbol's contract terms, which a pane's
+ * settle line and Contract block are drawn from beside the bridged quote's
+ * saved copy. Offline, DES GC=F kept the saved price and lost both.
+ */
+const SHOT_SAVED_COPY_READS: ReadonlyArray<{
+  path: RegExp;
+  save(key: string, body: unknown): void;
+  read(key: string): { value: unknown; savedAt: number } | null;
+}> = [{
+  path: /^\/cloud\/futures\/contract\/([^/?#]+)$/,
+  save: (symbol, body) => rememberFuturesContractTerms(symbol, body as FuturesContractTermsPayload),
+  read: (symbol) => {
+    const saved = savedFuturesContractTerms(symbol);
+    return saved && { value: saved.terms, savedAt: saved.savedAt };
+  },
+}];
+
+/** The kept read a GET path is, with its key (the symbol), or null. */
+function savedCopyRead(method: string, path: string): { read: typeof SHOT_SAVED_COPY_READS[number]; key: string } | null {
+  if (method !== "GET") return null;
+  for (const read of SHOT_SAVED_COPY_READS) {
+    const match = read.path.exec(path);
+    if (!match?.[1]) continue;
+    try {
+      return { read, key: decodeURIComponent(match[1]) };
+    } catch {
+      // Intentional ignore: a symbol whose percent-encoding is malformed names no kept copy, so the read goes out as sent.
+      return null;
+    }
+  }
+  return null;
 }
 
 /**
@@ -597,19 +643,51 @@ async function proxyShotApiRequest(
   target.pathname = `${basePath}${path}`;
   target.search = requestUrl.search;
   target.hash = "";
+  const kept = requestUrl.search ? null : savedCopyRead(method, path);
+  // Not reached: a kept read answers from its saved copy, dated as saved; any other is told the service was not reached.
+  const savedAnswer = () => {
+    const saved = kept?.read.read(kept.key);
+    if (!saved) return null;
+    noteDataServiceReach(false, epoch);
+    apiProxy.onSavedCopy?.(saved.savedAt);
+    return Response.json(saved.value, { headers: { "Cache-Control": "no-store" } });
+  };
+  const unreachable = () => savedAnswer() ?? shotApiUnreachable(epoch);
+  // Once a read of this command went unanswered, a kept read is its saved copy at once: the page, which knows the
+  // service is down too, waits no longer for it than the proxy would for the network.
+  if (kept && dataServiceUnreachable()) {
+    const saved = savedAnswer();
+    if (saved) return saved;
+  }
+  // As the client's own requests wait (`deadlineFor`): ten seconds for the service to answer anything, three once a
+  // read of this command went unanswered. A hung connection was otherwise held until the page gave up, or to the end.
+  const answerMs = dataServiceUnreachable() ? UNREACHABLE_REQUEST_TIMEOUT_MS : MARKET_REQUEST_TIMEOUT_MS;
+  const answersAtStart = dataServiceAnswerCount();
+  const cut = new AbortController();
+  const abortFromPage = () => cut.abort(signal?.reason);
+  if (signal?.aborted) abortFromPage();
+  else signal?.addEventListener("abort", abortFromPage, { once: true });
+  let cutOff = false;
+  const deadline = setTimeout(function giveUp() {
+    // Another read answered meanwhile: the service is up and this one is slow, not cut off.
+    if (dataServiceAnswerCount() > answersAtStart) return;
+    cutOff = true;
+    cut.abort(new Error("The data service sent nothing back"));
+  }, answerMs);
 
   try {
     let body = method === "GET" || method === "HEAD" ? undefined : new Uint8Array(await request.arrayBuffer());
     for (let followed = 0; ; followed += 1) {
-      const response = await fetch(target, { method, headers, body, redirect: "manual", ...(signal ? { signal } : {}) });
+      const response = await fetch(target, { method, headers, body, redirect: "manual", signal: cut.signal });
+      clearTimeout(deadline);
       // The proxy in HTTPS_PROXY refusing to reach the service answers for it: the page is told the service was not reached.
       if (isProxyRefusal(target.href, response)) {
         await response.body?.cancel().catch(() => { /* Intentional ignore: the refusal's own body is never read. */ });
-        return shotApiUnreachable(epoch);
+        return unreachable();
       }
       noteDataServiceReach(true, epoch);
       const location = SHOT_API_REDIRECT_STATUSES.has(response.status) ? response.headers.get("location") : null;
-      if (location === null) return await shotApiResponse(response, path);
+      if (location === null) return kept && response.ok ? await keptResponse(response, kept) : await shotApiResponse(response, path);
       await response.body?.cancel().catch(() => { /* Intentional ignore: a redirect's own body is never read, only dropped. */ });
       if (followed >= SHOT_API_MAX_REDIRECTS) return shotApiError("Cloud API redirected too many times.", 502);
       const next = new URL(location, target);
@@ -627,11 +705,28 @@ async function proxyShotApiRequest(
       target = next;
     }
   } catch (error) {
-    // A read that never reached the service (no connection, a refused proxy) is said as one, in the words every
-    // command uses; any other failure is told as a dropped connection tells fetch.
-    if (isNetworkFailure(error)) return shotApiUnreachable(epoch);
+    // A read that never reached the service (no connection, a refused proxy, nothing back by its deadline) is said
+    // as one, in the words every command uses; any other failure is told as a dropped connection tells fetch.
+    if (cutOff || isNetworkFailure(error)) return unreachable();
     return shotApiError("Cloud API request failed.", 502);
+  } finally {
+    clearTimeout(deadline);
+    signal?.removeEventListener("abort", abortFromPage);
   }
+}
+
+/** A kept read's answer as the page gets it, its copy saved for a later run the service does not answer. */
+async function keptResponse(response: Response, kept: NonNullable<ReturnType<typeof savedCopyRead>>): Promise<Response> {
+  const text = await response.text();
+  try {
+    kept.read.save(kept.key, JSON.parse(text));
+  } catch {
+    // Intentional ignore: an answer that is not the terms' JSON is passed on as it came, and kept nowhere.
+  }
+  const headers = new Headers(response.headers);
+  for (const name of SHOT_API_DROPPED_RESPONSE_HEADERS) headers.delete(name);
+  headers.set("Cache-Control", "no-store");
+  return new Response(text, { status: response.status, statusText: response.statusText, headers });
 }
 
 /**

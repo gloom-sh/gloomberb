@@ -544,3 +544,26 @@ test("a pane whose load failed with nothing to show fails as the plain commands 
     render.mockRestore();
   }
 });
+
+test("a view the page drew from copies saved earlier is dated as saved, never as delayed at the copy's time", async () => {
+  // DES GC=F offline: the bridged quote and the proxied contract terms were saved copies, the oldest saved at 09:10.
+  const resolved = {
+    token: "FXC", label: "FX Cross Rates", options: {}, capability: { id: "fx-matrix-pane" }, pane: { id: "fx-matrix" },
+  } as unknown as ResolvedPaneFunction;
+  const screenshot = {
+    symbols: [],
+    savedCopyAt: Date.parse("2026-10-10T09:10:00Z"),
+    render: {
+      visibleText: "", footerText: "",
+      rows: [{ tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "EUR", text: "1.1206" }] }],
+      semanticUi: [{ id: "ui:1", role: "report-freshness", actions: [], metadata: { status: "delayed", delayMinutes: 15, asOf: "2026-10-09T20:59:00.000Z" } }],
+      truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
+      emptyStateDetected: false, emptyStateMarkers: [],
+    },
+  } as unknown as PaneScreenshotResult;
+  const report = await buildDomPaneReportFromRender(resolved, screenshot);
+  expect(report.data.freshness).toMatchObject({ savedAt: "2026-10-10T09:10:00.000Z" });
+  const line = formatFreshnessLine(report.data.freshness!);
+  expect(line).toContain("couldn't refresh; saved copy from 09:10 UTC");
+  expect(line).not.toContain("15 min delayed");
+});

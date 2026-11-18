@@ -100,7 +100,7 @@ describe("buildFuturesRows search", () => {
 
   test("matches contract code, name, and listed symbol case-insensitively", () => {
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "gc" })))
-      .toEqual(["header:metals", "GC=F"]);
+      .toEqual(["header:metals", "GC=F", "MGC=F"]);
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "crude" })))
       .toEqual(["header:energy", "CL=F", "BZ=F", "QM=F", "MCL=F"]);
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "6J=f" })))
@@ -137,7 +137,7 @@ describe("buildFuturesRows search", () => {
 
   test("drops a sector header when every contract in it is filtered out", () => {
     const rows = buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "copper" });
-    expect(rowIds(rows)).toEqual(["header:metals", "HG=F"]);
+    expect(rowIds(rows)).toEqual(["header:metals", "HG=F", "MHG=F"]);
   });
 
   test("a query matching nothing yields no rows at all, not bare headers", () => {
@@ -179,7 +179,7 @@ describe("buildFuturesRows collapse", () => {
       query: "gold",
       collapsed: new Set(["metals"]),
     });
-    expect(rowIds(rows)).toEqual(["header:metals", "GC=F"]);
+    expect(rowIds(rows)).toEqual(["header:metals", "GC=F", "MGC=F"]);
   });
 
   test("clearing the search restores the collapsed state, whitespace included", () => {
@@ -202,6 +202,9 @@ describe("futures sorting", () => {
       "MCL=F": { price: 95 },
       "MNG=F": { price: 3.2 },
       "GC=F": { price: 4451 },
+      "MGC=F": { price: 4452 },
+      "SIL=F": { price: 52 },
+      "MHG=F": { price: 5.1 },
     });
     const rows = buildFuturesRows(
       contractsBySector,
@@ -209,7 +212,8 @@ describe("futures sorting", () => {
       quotes,
       { query: "micro" },
     );
-    expect(rowIds(rows)).toEqual(["header:equity-index", "MYM=F", "MNQ=F", "MES=F", "M2K=F", "header:energy", "MCL=F", "MNG=F"]);
+    expect(rowIds(rows)).toEqual(["header:equity-index", "MYM=F", "MNQ=F", "MES=F", "M2K=F", "header:energy", "MCL=F", "MNG=F",
+      "header:metals", "MGC=F", "SIL=F", "MHG=F"]);
   });
 
   test("the keyboard cycle reaches every state a header click can, and wraps", () => {

@@ -5,6 +5,7 @@ import { classifyInstrumentType } from "../tickers/instrument-kind";
 import type { Quote } from "../types/financials";
 import { parsePublicTickerKey } from "../utils/exchanges";
 import { logFailure } from "../utils/log-failure";
+import { createPluginCache, savedCopyForTransientFailure } from "../data/plugin-cache";
 import { futuresBoardContract, futuresContractByCode, type FuturesContract } from "./futures-board";
 import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "./market/format";
 import { previousPublishedSession } from "./market/freshness";
@@ -463,6 +464,37 @@ export function validateFuturesContractTerms(data: FuturesContractTermsPayload):
   return invalid.length ? { ...data, ...Object.fromEntries(invalid.map(([key]) => [key, null])) } : data;
 }
 
+/**
+ * A futures symbol's terms as last read, kept where the profile keeps saved
+ * copies once a command or the app attaches it. Every read asks the service
+ * again (a contract rolls, its settlement moves each session); a read the
+ * service could not answer is answered from the copy, which a command dates
+ * as saved (`servedFromSavedCopy`). Offline, DES GC=F and `quote GC=F` kept
+ * the saved price but lost the settle, the Contract block and the unit.
+ */
+const savedTerms = createPluginCache<FuturesContractTermsPayload>({
+  kind: "futures-contract-terms",
+  source: "gloom-cloud",
+  policy: { staleMs: 0, expireMs: 14 * 86_400_000 },
+});
+
+/** Where the terms read are saved for a later read the service cannot answer: a command's profile, or the app's. */
+export const attachFuturesTermsPersistence = savedTerms.attach;
+
+const savedTermsKey = (symbol: string) => parsePublicTickerKey(symbol).symbol.trim().toUpperCase();
+
+/** Keeps terms read on another path (a capture's page asking through its proxy) as `loadFuturesContractTerms` keeps its own. */
+export function rememberFuturesContractTerms(symbol: string, terms: FuturesContractTermsPayload): void {
+  void savedTerms.load(savedTermsKey(symbol), async () => validateFuturesContractTerms(terms), { force: true })
+    .catch(logFailure("market-data.futures-contract", "Saving futures contract terms failed"));
+}
+
+/** The terms saved for a symbol, and when (ms), however old; null when none were. */
+export function savedFuturesContractTerms(symbol: string): { terms: FuturesContractTermsPayload; savedAt: number } | null {
+  const saved = savedTerms.get(savedTermsKey(symbol), { allowExpired: true });
+  return saved ? { terms: saved.data, savedAt: saved.fetchedAt } : null;
+}
+
 /** A futures symbol's contract, terms and latest confirmed settlement; throws when the server has none for it. */
 export async function loadFuturesContractTerms(
   symbol: string,
@@ -471,7 +503,11 @@ export async function loadFuturesContractTerms(
   options: { batch?: boolean } = {},
 ): Promise<FuturesContractTermsPayload> {
   // The terms are the contract's wherever it is listed: GC=F:CMX asks for GC=F.
-  return validateFuturesContractTerms(await client.getCloudFuturesContract(parsePublicTickerKey(symbol).symbol, options));
+  const read = async () => validateFuturesContractTerms(await client.getCloudFuturesContract(parsePublicTickerKey(symbol).symbol, options));
+  // A board's rows, read in batches every minute, and a caller's own client are not kept: one symbol's read is.
+  if (options.batch || client !== apiClient) return read();
+  // A failure asking again may get past (no connection, a timeout) is answered from the saved copy; a refusal is not.
+  return savedCopyForTransientFailure(await savedTerms.load(savedTermsKey(symbol), read, { force: true })).data;
 }
 
 /**
