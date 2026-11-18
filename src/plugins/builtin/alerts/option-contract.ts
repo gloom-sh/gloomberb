@@ -135,7 +135,8 @@ function listedSymbol(contract: OptionContract, built: string): string {
  * it was read as. A year left out is the next listed expiry on that day. A
  * contract past its expiry is returned as typed, for the rule to refuse it as
  * expired; one that names no listed contract throws, with the OCC form and a
- * listed contract to copy.
+ * listed contract to copy, and one that names several (SPX and SPXW on one
+ * expiry) throws naming each, never picking one.
  */
 export async function resolveLooseOptionContract(
   typed: string,
@@ -157,12 +158,16 @@ export async function resolveLooseOptionContract(
   };
   const expiry = live.find(sameDay);
   const contracts = expiry == null ? [] : (await readChain(expiry))[side === "C" ? "calls" : "puts"];
-  const match = contracts.find((entry) => Math.abs(entry.strike - strike) < 1e-6);
-  if (expiry != null && match) {
-    const date = new Date(expiry * 1000);
-    const symbol = listedSymbol(match, occContractSymbol(root, date.getUTCFullYear(), month, day, side, strike));
-    return { contract: symbol, readAs: `Read "${typed.trim()}" as ${symbol} (${optionContractName(symbol) ?? symbol}).` };
+  // Every contract the day lists at that strike and side, once each: two roots can list one (SPX and SPXW).
+  const expiryDate = expiry == null ? null : new Date(expiry * 1000);
+  const matches = expiryDate == null ? [] : [...new Set(contracts.filter((entry) => Math.abs(entry.strike - strike) < 1e-6)
+    .map((entry) => listedSymbol(entry, occContractSymbol(root, expiryDate.getUTCFullYear(), month, day, side, strike))))];
+  if (matches.length > 1) {
+    throw new Error(`"${typed.trim()}" (${describe(contract)}) matches ${matches.length} listed contracts: ${matches.join(", ")}. `
+      + "An IV spike follows one: name it by its OCC symbol.");
   }
+  const [symbol] = matches;
+  if (symbol) return { contract: symbol, readAs: `Read "${typed.trim()}" as ${symbol} (${optionContractName(symbol) ?? symbol}).` };
   // A listed contract to copy: the typed strike's nearest on the typed day's expiry, else on the live expiry nearest that day.
   const typedDay = contract.year != null ? Date.UTC(contract.year, month - 1, day) / 1000 : nextDay(month, day, now);
   const exampleExpiry = expiry ?? live.reduce<number | undefined>((best, stamp) =>

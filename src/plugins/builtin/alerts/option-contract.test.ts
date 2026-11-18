@@ -58,6 +58,17 @@ test("a loose contract is the one listed contract it names, the next listed day 
   expect((await resolveLooseOptionContract("SPX 6800C 11/20", parseLooseOptionContract("SPX 6800C 11/20")!, spx, NOW)).contract).toBe("SPXW261120C06800000");
 });
 
+/** The match took the first listed contract at the strike, side and day: on SPX's monthly expiry that is SPX or SPXW, whichever came first. */
+test("a loose contract that two listed contracts match is refused, naming each to copy", async () => {
+  const monthly = (["SPX", "SPXW"] as const).map((root): OptionContract => ({
+    contractSymbol: `${root}261218C06800000`, strike: 6800, currency: "USD", lastPrice: 1, change: 0, percentChange: 0,
+    bid: 1, ask: 1.1, impliedVolatility: 0.2, inTheMoney: false, expiration: stamp("2026-12-18"), lastTradeDate: 0,
+  }));
+  const both: ChainReader = async (expiration) => ({ expirationDates: [stamp("2026-12-18")], calls: expiration == null ? [] : monthly, puts: [] });
+  await expect(resolveLooseOptionContract("SPX 6800C 12/18", parseLooseOptionContract("SPX 6800C 12/18")!, both, NOW)).rejects
+    .toThrow('"SPX 6800C 12/18" (SPX Dec 18 $6800 Call) matches 2 listed contracts: SPX261218C06800000, SPXW261218C06800000. An IV spike follows one: name it by its OCC symbol.');
+});
+
 test("alerts add takes the contract of an IV spike in one word or several, and names the OCC form for one it cannot read", () => {
   expect(parseAlertAddArgs(["SPY 680C 11/19", "iv", "spike", "5"], undefined)).toMatchObject({ kind: "iv_spike", contract: "SPY 680C 11/19", points: 5,
     loose: { root: "SPY", month: 11, day: 19, side: "C", strike: 680 } });
