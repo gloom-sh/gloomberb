@@ -18,6 +18,7 @@ import { createManualFrameDriver, DataFrameScheduler } from "../../../market-dat
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
+import { apiClient } from "../../../api-client";
 
 const TEST_PANE_ID = "alerts:test";
 
@@ -131,6 +132,23 @@ describe("AlertsPane", () => {
     expect(frame).toContain("TARGET");
     expect(frame).toContain("200");
     expect(frame).toContain("[a]dd alert");
+  });
+
+  test("says once, above the rules, that they run on this device while nothing syncs them", async () => {
+    const line = "On this device · keep Gloom running";
+    await tui.render(<AlertsHarness width={110} height={8} alerts={[makeAlert("alert-aapl", "AAPL", "above", 200)]} />, { width: 110, height: 8 });
+    await renderSettled();
+    expect(tui.frame().split("\n").filter((row) => row.includes(line))).toHaveLength(1);
+    // A verified account with Cloud sync carries the rules: nothing is said.
+    const user = spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "alerts-synced", emailVerified: true, plan: "free" } as any);
+    try {
+      await tui.render(<AlertsHarness width={110} height={8} alerts={[makeAlert("alert-aapl", "AAPL", "above", 200)]} />, { width: 110, height: 8 });
+      await renderSettled();
+      expect(tui.frame()).not.toContain(line);
+      expect(tui.frame()).toContain("AAPL");
+    } finally {
+      user.mockRestore();
+    }
   });
 
   test("Current writes a price as Target does, separators kept from 100,000 up, and a coin pair without its venue", async () => {

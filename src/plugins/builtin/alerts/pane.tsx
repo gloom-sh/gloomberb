@@ -4,7 +4,7 @@ import { metricAvailabilityError } from "./metric-data";
 import { relativeAlertText } from "./metric-command";
 import { levelAlertStoreKey, readLevelAlertStores } from "./storage";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
-import { Button, DetailScrollBody, KeyValueRow, Notice, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
+import { Button, DetailScrollBody, KeyValueRow, Notice, PaneStatusBody, PaneFooterScope, QueryBar, usePaneTabs } from "../../../components";
 import { usePluginPaneState, usePluginState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
@@ -58,6 +58,9 @@ import { alertInstrument, streamedAlertQuote, syncAlertQuoteStream } from "./liv
 import { moveQuoteFields, quoteAlertFields } from "./quotes";
 import { clearPriceAlertFocus, getPriceAlertFocus, subscribePriceAlertFocus } from "./focus";
 import { alertTarget, alertViewHints, priceRuleSubject, useOpenAlertTarget } from "./targets";
+import { useCloudSyncStatus } from "../../../sync/react";
+import { usePlanAccess } from "../../../api-client/plan-access";
+import { apiClient } from "../../../api-client";
 
 type AlertColumnId =
   | "status"
@@ -172,6 +175,22 @@ export function AlertsPane(props: PaneProps) {
 /** No readings yet, one object for every render: a fresh `{}` each time would read as a change. */
 const NO_MOVE_CHECKS = {};
 
+/** Where price rules run when nothing carries them off this device: this app, while it runs. */
+export const RULES_ON_DEVICE = "On this device · keep Gloom running";
+
+/**
+ * Whether the price rules stay on this device: signed out, an account not
+ * verified yet, or Cloud sync off, so no Gloom Cloud check or phone alert
+ * stands behind them. A saved session counts before its account has loaded,
+ * as on Events, so a signed-in start does not flash the line.
+ */
+function useRulesOnDevice(): boolean {
+  const access = usePlanAccess();
+  const sync = useCloudSyncStatus();
+  const signedIn = access.signedIn || !!apiClient.getSessionToken();
+  return !signedIn || (access.signedIn && !access.emailVerified) || (sync.phase === "disabled" && sync.transportId === null);
+}
+
 function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const [alertsJson, setAlertsJson] = usePluginConfigState<unknown>(ALERTS_KEY, "[]");
   const [metricsJson, setMetricsJson] = usePluginConfigState<unknown>(METRIC_ALERTS_KEY, "[]");
@@ -196,6 +215,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     : key === MOVE_ALERTS_KEY ? movesJson : relativeJson),
   [alertsJson, metricsJson, movesJson, relativeJson]);
   const storeError = stores.error;
+  const onDevice = useRulesOnDevice();
 
   const { alerts, rows } = useMemo(() => {
     const parsed = withMoveChecks(stores.alerts, readMoveChecks(savedMoveChecks));
@@ -492,6 +512,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={height}
       rootBackgroundColor={colors.bg}
+      // Where the rules run, said once while only this app checks them; nothing while Cloud sync carries them.
+      rootBefore={onDevice ? <QueryBar width={width} meta={RULES_ON_DEVICE} /> : undefined}
       columns={columns}
       items={displayRows}
       sortColumnId={null}
