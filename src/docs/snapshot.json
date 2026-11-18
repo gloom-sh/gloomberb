@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-11-12",
+ "updatedAt": "2026-11-18",
  "categories": [
   {
    "id": "research",
@@ -566,10 +566,10 @@
    "code": "SRCH",
    "name": "Research search",
    "description": "Search calls, wires, filings",
-   "detail": "Full-text search across earnings call transcripts, news wires, and SEC filings, with the matching passage inline. Save a search to get alerted on new hits.",
+   "detail": "Full-text search across earnings call transcripts, news wires, and SEC filings, with the matching passage inline. Free with an account; alerts on a saved search's new hits are Pro.",
    "category": "research",
    "arg": "data center capex",
-   "access": "pro",
+   "access": "cloud",
    "shot": "https://gloom.sh/screenshots/fn/SRCH.png",
    "lesson": "/academy/special-datasets/research-search"
   },
@@ -860,9 +860,9 @@
   },
   {
    "code": "COT",
-   "name": "CFTC positioning",
+   "name": "Commitments of Traders positioning",
    "description": "Commitments of Traders",
-   "detail": "Weekly CFTC Commitments of Traders: net positioning by trader class, the weekly change, and one- and three-year percentiles. Pass a root like CL to chart it under the front-month price. CFTC opens it too.",
+   "detail": "Weekly CFTC and ICE Futures Europe Commitments of Traders (Brent, gasoil and more): net positioning by trader class, the weekly change, and one- and three-year percentiles. Pass a root like CL to chart it under the front-month price. CFTC opens it too.",
    "category": "markets",
    "arg": "CL",
    "shot": "https://gloom.sh/screenshots/fn/COT.png",
@@ -2675,6 +2675,10 @@
     "portfolio",
     "currency",
     "TRY",
+    "cash",
+    "HKD",
+    "SGD",
+    "cash in several currencies",
     "cost FX",
     "real return",
     "inflation",
@@ -2696,7 +2700,7 @@
     "E*TRADE",
     "Merrill"
    ],
-   "updatedAt": "2026-11-07",
+   "updatedAt": "2026-11-18",
    "blocks": [
     {
      "type": "heading",
@@ -2738,6 +2742,23 @@
       "**USD**: the ratio of the BLS index at those two months, not seasonally adjusted (FRED's `CPIAUCNS`), as a period's inflation is quoted. A month the BLS did not publish reads the month before it.",
       "**TRY**: the central bank's table gives TurkStat's changes rather than the index, so the figure is chained from the end month back. Each whole year takes TurkStat's year-on-year change, and each month left over takes its monthly change. Every change is applied as one plus the change, and the factors are multiplied. A twelve-month period is TurkStat's published annual rate: October 2025 to October 2026 reads 29.77%. A month without its change leaves the period without a real return."
      ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Cash in several currencies"
+    },
+    {
+     "type": "paragraph",
+     "text": "A portfolio holds one cash balance per currency, each converted into the portfolio's currency: Hong Kong or Singapore dollars beside US dollars, or lira beside dollars."
+    },
+    {
+     "type": "code",
+     "code": "gloom portfolio cash set Core 390000 HKD    # beside the 2,000 USD, which stays\ngloom portfolio cash set Core 2500 USD      # sets the dollars alone\ngloom portfolio cash clear Core HKD         # one currency; cash clear Core clears them all"
+    },
+    {
+     "type": "paragraph",
+     "text": "`PF` and `portfolio show` give each currency a row (`CASH HKD`, `CASH USD`) with its value in the portfolio's currency and its weight, then a `CASH` row with all of it. A `CASH` target is for all the cash together, on that row. A currency without an exchange rate is left out of the total and the weights and named under the table, never counted as zero."
     },
     {
      "type": "heading",
@@ -5948,7 +5969,7 @@
     "functions",
     "screenshots"
    ],
-   "updatedAt": "2026-11-08",
+   "updatedAt": "2026-11-18",
    "blocks": [
     {
      "type": "paragraph",
@@ -6162,8 +6183,8 @@
        "From a broker's positions CSV (`-` reads standard input)"
       ],
       [
-       "`portfolio cash set <portfolio> <amount> [currency]`, `portfolio cash clear <portfolio>`",
-       "The cash line, counted in the total and the weights"
+       "`portfolio cash set <portfolio> <amount> [currency]`, `portfolio cash clear <portfolio> [currency]`",
+       "Cash, one balance per currency, counted in the total and the weights; `set` keeps the other currencies"
       ],
       [
        "`portfolio target set <portfolio> <symbol|CASH> <weight%>`",
@@ -7961,7 +7982,7 @@
       "**Alternative data:** GPU rental prices, supply chain, hiring postings and momentum, social mentions, app attention, power and grid, perpetuals, catalysts and litigation, congressional trades, operating exposure.",
       "**Filings and company text:** KPIs and guidance, executive pay, risk factors, 8-K events, transcripts, credit documents, debt maturities, revenue breakdown, SEC filings, insiders and 13F, document search.",
       "**News:** Real-time stories, sources and topics.",
-      "**Macro and positioning:** CPI, EIA inventories, COT, yield curves and macro series, central bank rates, short volume and interest, CDS, government awards.",
+      "**Macro and positioning:** CPI, EIA inventories, COT (CFTC and ICE Futures Europe), yield curves and macro series, central bank rates, short volume and interest, CDS, government awards.",
       "**Market data and fundamentals:** Quotes and history, financial statements, statistics, profiles, earnings, estimates, IPOs, M&A, screener, options and gamma positioning, futures, rate path, crypto, session tape."
      ]
     },
@@ -8967,7 +8988,7 @@
   {
    "url": "/academy/special-datasets/research-search",
    "title": "Searching calls, news and filings (SRCH)",
-   "summary": "SRCH searches earnings-call transcripts, news and SEC filings at once and shows every passage that matches your phrase, with saved searches that alert you to new matches.",
+   "summary": "SRCH searches earnings-call transcripts, news and SEC filings at once and shows every passage that matches your phrase, with saved searches that can alert you to new matches.",
    "chapter": "Special datasets",
    "minutes": 3
   }
