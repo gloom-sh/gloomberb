@@ -1,4 +1,4 @@
-import type { AppResourceStorePort } from "../../core/app-service-ports";
+import type { ResourceStore } from "../../data/resource-store";
 import type { BrokerAdapter } from "../../types/broker";
 import type { DataProvider, MarketDataRequestContext } from "../../types/data-provider";
 import type { BrokerContractRef } from "../../types/instrument";
@@ -12,7 +12,7 @@ export interface SourceResult<T> {
 }
 
 export interface ProviderRouterCoreDeps {
-  resources?: AppResourceStorePort;
+  resources?: ResourceStore;
   getEntityKey(ticker: string, instrument?: BrokerContractRef | null): string;
   getTickerVariantCandidates(exchange?: string): string[];
   getBrokerCandidatesForContext(context?: MarketDataRequestContext, includeFallbackInstances?: boolean): BrokerCandidate[];

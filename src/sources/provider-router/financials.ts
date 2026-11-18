@@ -1,5 +1,4 @@
-import type { CachedResourceRecord } from "../../data/resource-store";
-import type { AppResourceStorePort } from "../../core/app-service-ports";
+import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
 import type { AnalystResearchData, CompanyProfile, CorporateActionsData, FinancialStatement, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows } from "../../utils/financial-statements";
@@ -340,7 +339,7 @@ export function needsFinancialProfile(data: TickerFinancials | null | undefined)
 }
 
 /** Retry a missing profile after a short pause, scoped to the listing and providers. */
-export function hasRecentFinancialProfileAttempt(resources: AppResourceStorePort | undefined, entityKey: string, variantKey: string, sourceKeys: string[]): boolean {
+export function hasRecentFinancialProfileAttempt(resources: ResourceStore | undefined, entityKey: string, variantKey: string, sourceKeys: string[]): boolean {
   const attempt = resources?.get<{ sourceKeys: string[] }>({ namespace: "market", kind: "financial-profile-attempt", entityKey, variantKey, sourceKey: "router" });
   return !!attempt && !attempt.stale && Array.isArray(attempt.value.sourceKeys)
     && attempt.value.sourceKeys.length === sourceKeys.length

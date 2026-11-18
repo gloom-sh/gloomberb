@@ -1,6 +1,5 @@
 import { listingSuffixExchange } from "../listing-symbols";
-import type { CachedResourceRecord } from "../../data/resource-store";
-import type { AppResourceStorePort } from "../../core/app-service-ports";
+import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
 import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { Quote, TickerFinancials } from "../../types/financials";
@@ -107,7 +106,7 @@ export function resolveCachePolicy(
 }
 
 export function cacheRouterResource<T>(
-  resources: AppResourceStorePort | undefined,
+  resources: ResourceStore | undefined,
   kind: string,
   entityKey: string,
   variantKey: string,
@@ -163,7 +162,7 @@ function cachedProviderFinancialsMatchTarget(value: TickerFinancials, symbol: st
 }
 
 export function listCachedResources<T>(
-  resources: AppResourceStorePort | undefined,
+  resources: ResourceStore | undefined,
   kind: string,
   entityKey: string,
   variantKeys: string[],
@@ -221,7 +220,7 @@ export function listCachedResources<T>(
 }
 
 export function selectCachedResource<T>(
-  resources: AppResourceStorePort | undefined,
+  resources: ResourceStore | undefined,
   kind: string,
   entityKey: string,
   variantKeys: string[],

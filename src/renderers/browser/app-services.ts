@@ -22,7 +22,7 @@ export function createBrowserAppServices({ config, plugins, externalPlugins }: A
     keepResource: isBrokerAccountSnapshotKey,
     durable: resources && { saved: resources.records, sink: resources.sink },
   });
-  const dataProvider = new AssetDataRouter(null, [cloudProvider], persistence.resources);
+  const dataProvider = new AssetDataRouter(null, [cloudProvider]);
   const cloudNews = createGloomberbCloudCapabilities(cloudProvider).find(
     (capability): capability is NewsCapability => capability.kind === "news",
   );
