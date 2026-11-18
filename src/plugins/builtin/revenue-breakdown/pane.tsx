@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Text, useUiCapabilities } from "../../../ui";
+import { Text, useRendererHost, useUiCapabilities } from "../../../ui";
 import {
   useAsyncResource,
   useAutoRefresh,
@@ -27,7 +27,7 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
-import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { listingIdentity, useIssuerListing } from "../shared/ticker-request";
@@ -44,6 +44,7 @@ import {
   nextRevenueSort,
   quarterLabel,
   REVENUE_MODES,
+  reportedPeriods,
   reportedSpan,
   revenueAmount,
   revenueColumns,
@@ -74,6 +75,7 @@ function placeholderLevels(count: number, seed: number): number[] {
 
 function RevenueBreakdownView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
   const colors = useThemeColors();
+  const host = useRendererHost();
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const { ticker, symbol: boundSymbol } = usePaneTickerIdentity();
   const session = useResearchCloudSession();
@@ -107,12 +109,22 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
   );
   const preview = payload?.access === "preview" && payload.lockedRows > 0;
   const noun = VIEW_NOUNS[payload?.view ?? view];
+  const reported = payload ? reportedPeriods(payload) : [];
+  const latest = reported.at(-1);
 
-  usePaneStatusFooter({
+  usePaneStatusLinkFooter({
     registrationId: "revenue-breakdown",
+    focused,
+    url: latest ? `${latest.filing.url}#page=${latest.filing.page}` : null,
+    showOpenHint: !!latest,
     loading: resource.loading,
     error: payload ? resource.error : null,
-    info: payload?.filed ? [{ id: "filed", parts: [{ text: `filed ${payload.filed}`, tone: "muted" as const }] }] : [],
+    info: latest ? reported.map((period) => ({
+      id: `filing:${period.end}`,
+      parts: [{ text: `${quarterLabel(period)} filed ${period.filing.filed}`, tone: "value" as const }],
+      capture: true,
+      onPress: () => void host.openExternal(`${period.filing.url}#page=${period.filing.page}`),
+    })) : payload?.filed ? [{ id: "filed", parts: [{ text: `filed ${payload.filed}`, tone: "muted" as const }] }] : [],
     stale: !!payload && resource.data?.stale,
     hints: preview
       ? [{ id: "revenue-upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade }]
@@ -227,7 +239,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
           onHeaderClick={(column) => setSort((old) => nextRevenueSort(old, column))}
           renderCell={renderCell}
           emptyStateTitle={`No ${noun.plural} rows.`}
-          showHorizontalScrollbar={mode === "text"}
+          showHorizontalScrollbar={mode === "text" || !!latest}
           bodyAfter={preview && isDesktopWeb ? (
             <LockedOverlay
               rows={items.length - rows.length}
@@ -252,7 +264,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
                 })),
                 onChange: (value: RevenueBreakdownView) => setView(value),
               }]}
-              view={{
+              view={latest ? undefined : {
                 value: mode,
                 options: REVENUE_MODES,
                 onChange: (value: RevenueMode) => setMode(value),
@@ -260,7 +272,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
               // The terminal has no pointer tooltip, so the hovered quarter reads out here.
               meta={!isDesktopWeb && hover && hoverText
                 ? `${payload.rows.find((item) => item.key === hover.rowKey)?.label ?? ""}  ${hoverText}`
-                : payload.currency}
+                : latest?.revenueLabel.toLowerCase() === "insurance revenue" ? `${payload.currency} · Insurance revenue` : payload.currency}
             />
           )}
         />

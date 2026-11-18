@@ -1,11 +1,22 @@
 export type RevenueBreakdownView = "product" | "segment" | "region";
 
-export interface RevenueBreakdownPeriod {
+interface QuarterlyRevenueBreakdownPeriod {
   /** Period end, rounded to the month end as the SEC data sets do. */
   end: string;
   fiscalYear: number;
   fiscalQuarter: number;
 }
+
+export interface ReportedRevenueBreakdownPeriod {
+  end: string;
+  kind: "annual" | "interim";
+  label: string;
+  revenueLabel: string;
+  singleSegment?: true;
+  filing: { filed: string; url: string; page: number };
+}
+
+export type RevenueBreakdownPeriod = QuarterlyRevenueBreakdownPeriod | ReportedRevenueBreakdownPeriod;
 
 export interface RevenueBreakdownRow {
   key: string;
@@ -21,8 +32,8 @@ export interface RevenueBreakdownRow {
 
 export interface RevenueBreakdownPayload {
   symbol: string;
-  cik: string;
-  currency: "USD";
+  cik?: string;
+  currency: string;
   view: RevenueBreakdownView;
   views: RevenueBreakdownView[];
   periods: RevenueBreakdownPeriod[];

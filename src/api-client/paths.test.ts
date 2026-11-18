@@ -72,6 +72,13 @@ test("issuer reads of a listing outside the US send its bare symbol with its ven
     .toBe("/cloud/risks/AI?exchange=EPA&name=L%27Air+Liquide+S.A.");
 });
 
+test("Hong Kong revenue requests negotiate as-reported periods without changing US requests", () => {
+  expect(cloudRevenueBreakdownPath("0700:HKEX", "region"))
+    .toBe("/cloud/revenue-breakdown?symbol=0700&exchange=HKEX&view=region&periods=reported");
+  expect(cloudRevenueBreakdownPath("AAPL", "product"))
+    .toBe("/cloud/revenue-breakdown?symbol=AAPL&view=product");
+});
+
 test("debt maturities and the revenue breakdown send a US symbol exactly as it was, with no venue", () => {
   for (const [symbol, exchange, encoded] of [
     ["AAPL", undefined, "AAPL"], ["AAPL", "NASDAQ", "AAPL"], ["AAPL:XNAS", undefined, "AAPL%3AXNAS"],
