@@ -142,6 +142,15 @@ test("calculator screenshot evidence must match the requested inputs, not just a
   expect(shotUnavailableSymbols(request, source, [])).toEqual(["AAPL"]);
   expect(mismatches(request, source, nodes(), visibleKeyValues.slice(0, 5)))
     .toEqual(["option calculator metrics are clipped or missing: Vega, Rho"]);
+
+  // `shot OVME --symbol SPY` drew Underlying SPY in a text field, whose value is no page text: it read as missing.
+  const assess = (fieldValues?: string[]) => assessPaneScreenshot(request, source, {
+    visibleText: "Options Calculator Type Call Put Underlying Spot 120 Model 21.36 Delta +0.68", ...fieldValues ? { fieldValues } : {},
+    rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
+    emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues, semanticUi: nodes(),
+  }, "", "/tmp/ovme-shot-test.png");
+  expect(assess(["AAPL"])).toMatchObject({ semanticMismatch: false, empty: false, render: { missingExpectedText: [] } });
+  expect(assess().render.missingExpectedText).toContain("AAPL");
 });
 
 // Regression: an overview without fundamentals reported its "-" grid as rows.

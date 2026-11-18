@@ -209,6 +209,12 @@ interface DesktopPaneShotSurface {
 export interface DesktopPaneShotRenderResult {
   visibleText: string;
   /**
+   * What the visible text fields hold (OVME's Underlying, a search box), which
+   * `visibleText` leaves out: an input's value is not its text. A password
+   * field is never read. Absent when no field holds anything.
+   */
+  fieldValues?: string[];
+  /**
    * The visible text a line per block of the page, as the browser lays it out,
    * where `visibleText` has run them together: the words of a pane that is prose
    * and not a table, to be read as paragraphs. Absent in a capture that did not read it.
@@ -1179,6 +1185,11 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
       }
       return {
         visibleText: root.innerText || root.textContent || "",
+        // What the visible text fields hold, which innerText leaves out: OVME's Underlying is one.
+        fieldValues: [...root.querySelectorAll("input, textarea")]
+          .filter((field) => isVisible(field) && field.type !== "password" && field.type !== "hidden")
+          .map((field) => normalize(field.value))
+          .filter(Boolean),
         footerText: [...root.querySelectorAll('[data-gloom-role="pane-footer"]')]
           .map((footer) => normalize(footer.innerText || footer.textContent))
           .filter(Boolean)
@@ -1255,6 +1266,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
     result?: {
       value?: {
         visibleText?: string;
+        fieldValues?: unknown;
         footerText?: string;
         footerNotes?: unknown;
         visibleKeyValues?: Array<{ label: string; text: string }>;
@@ -1299,8 +1311,10 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
   const visibleLines = (value?.visibleText ?? "").split("\n")
     .map((line) => line.replace(/\u00a0/g, " ").trimEnd())
     .filter((line) => line.trim().length > 0);
+  const fieldValues = Array.isArray(value?.fieldValues) ? value.fieldValues.filter((field): field is string => typeof field === "string") : [];
   return {
     visibleText,
+    ...(fieldValues.length > 0 ? { fieldValues } : {}),
     visibleLines,
     footerText: typeof value?.footerText === "string" ? value.footerText : "",
     visibleKeyValues: Array.isArray(value?.visibleKeyValues) ? value.visibleKeyValues : [],

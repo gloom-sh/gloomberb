@@ -142,7 +142,8 @@ export function assessPaneScreenshot(
   const figureGaps = essentialFigureMismatches(render);
   const complete = unavailableSymbols.length === 0 && figureGaps.length === 0;
   const expectedText = shotExpectedText(resolved, symbols, payload);
-  const normalizedVisibleText = render.visibleText.toLowerCase();
+  // A text field's value is on screen too (OVME's Underlying SPY), though not in the page's text.
+  const normalizedVisibleText = [render.visibleText, ...render.fieldValues ?? []].join(" ").toLowerCase();
   const missingExpectedText = expectedText.filter((value) => !shotShowsText(normalizedVisibleText, value));
   const expectedSelections = shotExpectedSelections(resolved);
   const missingExpectedSelections = missingActiveTabSelections(
