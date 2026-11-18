@@ -11,9 +11,8 @@
  *
  * The copy served is marked, by a symbol property that object spreads carry
  * along and JSON never writes, and the command's output is searched for the
- * marks. Outside a command only quotes are marked (`quoteServedFromSavedCopy`):
- * the app keeps running for hours, and its other panes say how current their
- * data is in their own footers. A quote built from a newer answer must not
+ * marks. Panes also mark cached resources they show while revalidating. A
+ * quote built from a newer answer must not
  * inherit a mark through a spread: `withSavedCopyMarkOf` gives it the mark of
  * what was served instead.
  */
@@ -42,9 +41,13 @@ export function servedFromSavedCopy<T>(value: T, savedAt: number): T {
   return (Array.isArray(value) ? value.map((item) => mark(item, savedAt)) : mark(value, savedAt)) as T;
 }
 
+export function markSavedCopy<T extends object>(value: T, savedAt: number): T {
+  return Number.isFinite(savedAt) ? mark(value, savedAt) : value;
+}
+
 /** A quote answered from a copy saved at `savedAt` (ms) after its refresh failed: marked, in a command and in the app. */
 export function quoteServedFromSavedCopy<T extends object>(quote: T, savedAt: number): T {
-  return Number.isFinite(savedAt) ? mark(quote, savedAt) : quote;
+  return markSavedCopy(quote, savedAt);
 }
 
 /**

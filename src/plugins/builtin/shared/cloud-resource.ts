@@ -2,6 +2,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { ApiRequestError } from "../../../api-client/errors";
 import { createMissingRouteLatch } from "../../../api-client/coalesce";
 import { savedCopyForTransientFailure, type PluginCacheResult } from "../../../data/plugin-cache";
+import { markSavedCopy } from "../../../data/saved-copies";
 
 interface CloudCache<T> {
   get(key: string, options?: { allowExpired?: boolean }): PluginCacheResult<T> | null;
@@ -29,7 +30,7 @@ export function cachedCloudResource<T>(
   const cached = cache.get(key, { allowExpired: true });
   if (!cached) return null;
   try {
-    return { payload: validate(cached.data), stale: false, refreshError: null };
+    return markSavedCopy({ payload: validate(cached.data), stale: false, refreshError: null }, cached.fetchedAt);
   } catch (error) {
     return logFailure("shared.cloud-resource", "Validate cached cloud payload failed", null)(error);
   }
@@ -65,10 +66,11 @@ export async function loadCloudResource<T>(
   if (!result || cancelledByOther(result.error)) result = await cache.load(key, fetch, { force });
   const saved = savedCopyForTransientFailure(result).source === "stale-fallback";
   // A copy served because its refresh failed is one by where it came from, whatever the failure said (or did not).
-  return {
+  const answer: CloudResource<T> = {
     payload: validate(result.data), stale: result.stale, refreshError: result.refreshError ?? null,
     ...(saved ? { savedAt: result.fetchedAt } : {}),
   };
+  return saved ? markSavedCopy(answer, result.fetchedAt) : answer;
 }
 
 /**

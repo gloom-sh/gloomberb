@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connectionHealth, recoversDataRequests } from "../core/connection-health";
 import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
-import { isPermanentClientError } from "../api-client/errors";
+import { isPermanentClientError, isTransientFailure } from "../api-client/errors";
 import { deleteSavedCopy, readSavedCopy, savedCopyId, writeSavedCopy, type SavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
 import { savedCopyAt } from "../data/saved-copies";
 import { logFailure } from "../utils/log-failure";
@@ -55,14 +55,16 @@ export function useAsyncResource<T>(
   // loader for the same key (a session restored, a callback remade) asks the
   // same question, so the data stays while it loads.
   const [state, setState] = useState<ResourceState<T> & { owner: typeof loader; ownerKey: string | null }>(() => {
+    const data = saved?.value ?? options.initialData?.() ?? null;
+    const savedAt = saved?.fetchedAt ?? savedCopyAt(data);
     return {
       owner: loader,
       ownerKey: savedId,
-      data: saved?.value ?? options.initialData?.() ?? null,
+      data,
       loading: !!loader,
       error: null,
-      updatedAt: saved?.fetchedAt ?? null,
-      savedAt: saved?.fetchedAt ?? null,
+      updatedAt: savedAt,
+      savedAt,
     };
   });
   const generation = useRef(0);
@@ -86,7 +88,7 @@ export function useAsyncResource<T>(
     try {
       const data = await loader(force);
       if (generation.current === currentGeneration) {
-        const savedAt = key ? savedCopyAt(data) : null;
+        const savedAt = savedCopyAt(data);
         const updatedAt = savedAt ?? Date.now();
         setState({ owner: loader, ownerKey: keyId, data, loading: false, error: null, updatedAt, savedAt });
         if (key && savedAt === null) writeSavedCopy(key, data, updatedAt);
@@ -95,17 +97,21 @@ export function useAsyncResource<T>(
       if (generation.current === currentGeneration) {
         const clearOnError = clearOnErrorRef.current;
         const discardData = (typeof clearOnError === "function" ? clearOnError(error) : clearOnError) || (key !== null && isPermanentClientError(error));
+        const discardSaved = !isTransientFailure(error);
         const message = error instanceof Error ? error.message : String(error);
         // What may no longer be shown is not opened on next time either.
-        if (discardData && key) deleteSavedCopy(key);
-        setState((current) => ({
-          ...current,
-          data: discardData ? null : current.data,
-          updatedAt: discardData ? null : current.updatedAt,
-          savedAt: discardData ? null : current.savedAt,
-          loading: false,
-          error: message.trim() ? message : "Request failed",
-        }));
+        if (key && (discardData || (opening && discardSaved))) deleteSavedCopy(key);
+        setState((current) => {
+          const discard = discardData || (current.savedAt !== null && discardSaved);
+          return {
+            ...current,
+            data: discard ? null : current.data,
+            updatedAt: discard ? null : current.updatedAt,
+            savedAt: discard ? null : current.savedAt,
+            loading: false,
+            error: message.trim() ? message : "Request failed",
+          };
+        });
       }
     }
   }, [keepPreviousData, loader, savedId, savedKey, saved]);
@@ -114,11 +120,6 @@ export function useAsyncResource<T>(
   const load = useCallback((force = false) => {
     settle(force).catch(logFailure("react.async-resource", "Resource load failed"));
   }, [settle]);
-
-  useEffect(() => {
-    load();
-    return () => { generation.current += 1; };
-  }, [load]);
 
   const reload = useCallback(() => load(true), [load]);
   const reloadAndWait = useCallback(() => settle(true), [settle]);
@@ -129,6 +130,10 @@ export function useAsyncResource<T>(
     : ((keepPreviousData && !saved) || (savedId !== null && state.ownerKey === savedId)) && loader ? { ...state, loading: true, error: null }
       : { data: saved?.value ?? null, loading: !!loader, error: null, updatedAt: saved?.fetchedAt ?? null, savedAt: saved?.fetchedAt ?? null };
   useSavedCopyFooter(savedAt, loading);
+  useEffect(() => {
+    load(savedAt !== null);
+    return () => { generation.current += 1; };
+  }, [load]);
 
   // A load that failed is asked again once the data service (or the desktop
   // bridge) answers after an outage, so a pane recovers by itself instead of
