@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { MISSING_VALUE } from "../../../utils/format";
 import type { EarningsCalendarPayload, EarningsCalendarReport, EarningsHistoryPayload } from "../../../api-client/earnings";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { addDays, newYorkToday } from "./board-model";
@@ -600,6 +601,8 @@ test("a report out with no actual yet says pending in the text, the CSV status a
   const out: EarningsHistoryPayload = { ...history, symbol: "NVDA", name: "NVIDIA Corporation", reports: [
     report({ date: today, fiscalPeriod: "2026-10", epsEstimate: 2.49, epsAnalysts: 14, epsBasis: "adjusted", dateStatus: "reported", reportedAt: `${today}T21:20:00.000Z` }),
     report({ date: addDays(today, -83), fiscalPeriod: "2026-07", epsEstimate: 2.09, epsActual: 2.22, epsAnalysts: 12, epsBasis: "adjusted", dateStatus: "reported" }),
+    // A report known only from its results filing, years back: no figure is coming, so no "pending".
+    report({ date: addDays(today, -1092), dateStatus: "reported", reportedAt: `${addDays(today, -1092)}T21:20:00.000Z` }),
   ] };
   const definition = createEarningsHeadless({
     calendar: async () => { throw new Error("unused"); },
@@ -617,5 +620,5 @@ test("a report out with no actual yet says pending in the text, the CSV status a
   expect(lines.find((line) => line.includes(",2.22,"))!.split(",")[status]).toBe("");
   const rows = historyRows(out, today, null);
   const column = historyColumns(2000, rows).find((entry) => entry.id === "epsActual")!;
-  expect(rows.map((entry) => renderHistoryCell(entry, column).text)).toEqual(["pending", "2.22"]);
+  expect(rows.map((entry) => renderHistoryCell(entry, column).text)).toEqual(["pending", "2.22", MISSING_VALUE]);
 });

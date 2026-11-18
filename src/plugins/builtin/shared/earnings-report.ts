@@ -63,8 +63,22 @@ export const NO_CONSENSUS = "no consensus";
  */
 export const ACTUAL_PENDING = "pending";
 
-export function actualPending(row: { epsActual?: number | null; dateStatus?: string | null }, abroad = false): boolean {
-  return !abroad && row.epsActual == null && row.dateStatus === "reported";
+/**
+ * Gloom Cloud reads a report's date from the calendar for a week after it, so
+ * an actual is pending only that long: an older report with none (a 2023
+ * report known only from its results filing) has none coming, and keeps its
+ * dash.
+ */
+const PENDING_DAYS = 7;
+
+export function actualPending(
+  row: { date?: string | null; epsActual?: number | null; dateStatus?: string | null },
+  abroad = false,
+  now = Date.now(),
+): boolean {
+  if (abroad || row.epsActual != null || row.dateStatus !== "reported") return false;
+  const date = Date.parse(`${String(row.date ?? "").slice(0, 10)}T00:00:00Z`);
+  return !Number.isFinite(date) || now - date <= (PENDING_DAYS + 1) * 86_400_000;
 }
 
 /** NO_CONSENSUS where a column is narrow. */
@@ -103,7 +117,7 @@ type EarningsRecord = CorporateActionsData["earnings"][number];
 export function earningsDetailParts(earning: EarningsRecord): string[] {
   if (earning.epsActual == null) {
     const status = earningsDateStatus(earning.dateStatus);
-    return [status === "reported" ? ACTUAL_PENDING : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
+    return [status === "reported" ? (actualPending(earning) ? ACTUAL_PENDING : null) : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
       earningsEpsBasis(earning.epsBasis) === "adjusted" ? BASIS_TEXT.adjusted : null].filter((part): part is string => !!part);
   }
   return [BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))], isProvisionalActual(earning) ? "provisional" : null,

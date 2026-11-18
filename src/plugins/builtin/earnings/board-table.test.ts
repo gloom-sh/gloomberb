@@ -4,7 +4,7 @@ import type { EarningsCalendarReport, EarningsHistoryPayload } from "../../../ap
 import { colors } from "../../../theme/colors";
 import { notMeaningfulColor } from "../../../components/ui/not-meaningful";
 import type { Quote } from "../../../types/financials";
-import { boardReport, boardRowOf, reportMove, type BoardRow } from "./board-model";
+import { boardReport, boardRowOf, newYorkToday, reportMove, type BoardRow } from "./board-model";
 import { boardColumns, boardHasActuals, boardHasCurrencies, boardSymbolWidth, renderBoardCell, type BoardCellContext, type BoardColumn } from "./board-table";
 import { historyFigures, historyRows } from "./history-model";
 
@@ -56,7 +56,8 @@ describe("EVTS rows", () => {
 
   test("a report out with no actual yet says pending, and keeps EPS ACT on a narrow board", () => {
     // Disney this morning: out before the open, the calendar's figure due tomorrow, its release unproven.
-    const DIS = boardReport(calendarReport({ symbol: "DIS", reportedAt: `${TODAY}T10:45:00.000Z`, epsEstimate: 1.06, epsAnalysts: 17, dateStatus: "reported" }), new Map());
+    const today = newYorkToday();
+    const DIS = boardReport(calendarReport({ symbol: "DIS", date: today, reportedAt: `${today}T10:45:00.000Z`, epsEstimate: 1.06, epsAnalysts: 17, dateStatus: "reported" }), new Map());
     expect(cell(DIS, "epsActual")).toEqual({ text: "pending", color: colors.textDim });
     // Still to come, it waits with a dash.
     expect(cell(LADR, "epsActual").text).toBe(MISSING_VALUE);
@@ -66,6 +67,9 @@ describe("EVTS rows", () => {
     const FN = boardReport(calendarReport({ symbol: "F99:SGX", currency: "SGD", dateStatus: "reported" }), new Map());
     expect(cell(FN, "epsActual").text).toBe(MISSING_VALUE);
     expect(boardHasActuals([row(LADR), row(FN)])).toBe(false);
+    // Past the week the calendar reads a date for, none is coming: the dash again.
+    const OLD = boardReport(calendarReport({ symbol: "OXY", date: "2026-10-01", dateStatus: "reported" }), new Map());
+    expect(cell(OLD, "epsActual").text).toBe(MISSING_VALUE);
   });
 
   test("MOVE is the move on a report out today, beside the implied move", () => {

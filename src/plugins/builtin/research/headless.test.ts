@@ -159,7 +159,8 @@ test("EE names Visa's quarters and years as GUIDE does, says which quarter has n
 test("EE says a report out with no actual yet is pending, as ERN and the board do", async () => {
   const definition = createEarningsEstimatesHeadless({ loadSources: async () => ({
     ...sources,
-    actions: { ...sources.actions!, earnings: [{ date: "2026-11-17", fiscalPeriod: "2026-10", time: "After Hours", epsEstimate: 2.49, epsAnalysts: 14, dateStatus: "reported" }] },
+    // Out yesterday: the calendar's figure is due within the week it reads the date for.
+    actions: { ...sources.actions!, earnings: [{ date: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10), fiscalPeriod: "2026-10", time: "After Hours", epsEstimate: 2.49, epsAnalysts: 14, dateStatus: "reported" }] },
   }) });
   const result = await definition.load(args({ kind: "all" }), context);
   // In the place a date's status takes before it is out, with the time of day after it.
