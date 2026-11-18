@@ -7,6 +7,7 @@ import {
   validateChartSpec,
 } from "../../../time-series/spec";
 import { isRecord } from "../../../utils/guards";
+import type { ChartResolution, TimeRange } from "../../../time-series/range";
 
 export const CHART_SPEC_SETTING_KEY = "chartSpec";
 export const CHART_INTERACTION_VIEWPORT_SETTING_KEY = "chartInteractionViewport";
@@ -32,6 +33,10 @@ export function parseSharedPinnedMoment(value: unknown, now = Date.now()): numbe
     && value >= EARLIEST_SHARED_MOMENT && value <= now + SHARED_MOMENT_LEAD_MS ? value : null;
 }
 export const MAX_CHART_COMPOSER_SERIES = MAX_CHART_SERIES;
+
+export function comparisonPresetResolution(range: TimeRange): ChartResolution {
+  return range === "1D" ? "auto" : "1d";
+}
 
 export interface ChartInteractionViewport {
   authoredViewportKey: string;

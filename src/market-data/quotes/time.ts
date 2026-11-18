@@ -1,10 +1,9 @@
 import { MISSING_VALUE } from "../../utils/format";
 import type { Quote } from "../../types/financials";
 import { getLanguage, tf } from "../../i18n";
-import { isPerpetualExchange } from "../../tickers/perpetual-listing";
 import { formatUtcDayTime, formatUtcWeekdayTime } from "../../utils/utc-time";
 import { formatShortDate } from "../../utils/datetime-format";
-import { delayedFeedLagMs } from "../market/freshness";
+import { quoteFeedDelayMinutes } from "../market/freshness";
 import { quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
 import { dailyNavDate, isQuoteStaleForCurrentSession } from "./freshness";
 
@@ -27,17 +26,14 @@ export function formatQuoteNavAsOf(quote: Quote | null | undefined, now = Date.n
   return tf("NAV · as of {date}", { date: dateText });
 }
 
-const CLOUD_PROVIDER_ID = "gloomberb-cloud";
 const WEEK_MS = 7 * 86_400_000;
 
 /** How current a quote's feed is: `15 min delayed` (Gloom Cloud knows each venue's lag), `delayed`, `real-time`. */
 function quoteFeedWord(quote: Quote): string | null {
   if (quote.dataSource === "live") return "real-time";
   if (quote.dataSource !== "delayed") return null;
-  const exchange = quote.listingExchangeName || quote.exchangeName;
-  // A perpetual's venue is read about once a minute, not held back by a feed lag.
-  if (quote.providerId !== CLOUD_PROVIDER_ID || isPerpetualExchange(exchange)) return "delayed";
-  return `${Math.round(delayedFeedLagMs(exchange) / 60_000)} min delayed`;
+  const minutes = quoteFeedDelayMinutes(quote);
+  return minutes == null ? "delayed" : `${minutes} min delayed`;
 }
 
 /**

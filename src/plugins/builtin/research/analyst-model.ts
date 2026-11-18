@@ -8,6 +8,8 @@ import { loadingErrorFooterInfo } from "../../../components/data-table/table-pan
 import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
 import { regularSessionValuationPrice, regularSessionValuationTime } from "../../../market-data/quotes/regular-session-valuation";
 import { getCompletedRegularSessionDisplay } from "../../../market-data/market/status";
+import { quoteFeedDelayMinutes } from "../../../market-data/market/freshness";
+import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-rules";
 import { formatUtcDayTime, parseReportTime, type ReportTime } from "../../../utils/utc-time";
 
 function compactPeriod(period: string): string {
@@ -45,9 +47,10 @@ export interface AnalystReferencePrice {
   sessionDate?: string;
 }
 
+/** `real-time`, or `20m delayed` by the quote's own feed delay (the free tier's 15 when it states none), as its footer says. */
 function quoteFreshness(quote: Quote): string | null {
   if (quote.dataSource === "live") return "real-time";
-  if (quote.dataSource === "delayed") return "15m delayed";
+  if (quote.dataSource === "delayed") return `${quoteFeedDelayMinutes(quote) ?? CLOUD_QUOTE_DELAY_MINUTES}m delayed`;
   return null;
 }
 

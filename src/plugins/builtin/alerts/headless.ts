@@ -25,8 +25,10 @@ import {
   formatAlertTargetPrice,
   formatCurrentPrice,
   formatQuoteChecked,
+  readingSessionWords,
   relativeTime,
 } from "./format";
+import { alertPriceText } from "./price-text";
 import { FIRED_LOG_KEY, firedAlertTime, quoteSourceWords, readFiredAlerts } from "./fired-log";
 import { alertKindLabel, validateAlertHistory, type AlertHistory, type AlertHistoryItem } from "./history";
 import { ALERT_HISTORY_VIA, mergeAlertHistory, type AlertHistoryRow } from "./history-rows";
@@ -71,7 +73,8 @@ const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "created", header: "Created" },
   { key: "listing", header: "Listing" },
   { key: "currency", header: "Currency" },
-  // A measure's last reading in words, last so the columns before it keep their places: an RRG quadrant with the strength and momentum that place it.
+  // A measure's last reading in words, last so the columns before it keep their places: an RRG quadrant with the strength and momentum that place it,
+  // a move with its close, and a price or move read off a pre-market, after-hours or overnight print with that session, as `alerts list` says it.
   { key: "reading", header: "Reading" },
 ];
 /** The terminal table keeps the pane's columns: the Quote cell already says the quote's age and feed. */
@@ -118,6 +121,7 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
   const away = price == null || !Number.isFinite(price) || price === 0 || alert.metric?.kind === "rrg" || alert.move ? null : (((alert.lastCheckedTarget ?? alert.targetPrice) - price) / price) * 100;
   const quoted = !alert.lastCheckError;
   const target = alert.lastCheckedTarget ?? alert.targetPrice;
+  const session = readingSessionWords(alert);
   return {
     ...stored,
     awayPercent: away != null && Number.isFinite(away) ? Number(away.toFixed(2)) : null,
@@ -127,8 +131,10 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
     listing: alertListing(alert),
     currency: alert.lastQuoteCurrency ?? null,
     reading: alert.metric && price != null && Number.isFinite(price) && Number.isFinite(target) ? metricReadingText(alert.metric, { value: price, target })
-      // A move, with the close it is measured from.
-      : alert.move && price != null && Number.isFinite(price) ? `${movePercentText(price)} ${moveBasisText(alert.lastMoveBasis)}` : null,
+      // A move, with the session of the print it was read off and the close it is measured from, as `alerts list` words it.
+      : alert.move && price != null && Number.isFinite(price) ? `${movePercentText(price)}${session} ${moveBasisText(alert.lastMoveBasis)}`
+      // A price read off a pre-market, after-hours or overnight print says so, as `alerts list` does: 508.17 after hours.
+      : session && price != null && Number.isFinite(price) ? `${alertPriceText(alert, price)}${session}` : null,
   };
 }
 

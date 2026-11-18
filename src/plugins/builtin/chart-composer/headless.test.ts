@@ -2,7 +2,8 @@ import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { bareCatalogSeries, chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
 import { setPairStudies } from "./studies";
-import { buildComparisonChartPreset, buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
+import { buildComparisonChartPreset, buildCustomChartPreset, buildIntradayPriceChartPreset, buildPriceChartPreset } from "./presets";
+import { applyChartComposerCapabilityOptions } from "./cli-options";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import { resetFuturesPriceUnits } from "../../../market-data/futures-contract";
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
@@ -59,6 +60,36 @@ test("CMP requests daily history on the resolved US fund listings, not the unqua
   expect(result.series.map(({ label, points }) => [label, points.length])).toEqual([
     ["IVV:ARCA Close", 3], ["VOO:ARCA Close", 3], ["QQQ:NASDAQ Close", 3],
   ]);
+});
+
+test("CMP 1D compares shared bars from the same latest session as GP", async () => {
+  const marketData = {
+    ...fixture().context.marketData,
+    getQuote: async (symbol: string) => ({ symbol, price: 106, change: 0, changePercent: 0, currency: "USD", lastUpdated: Date.parse("2026-09-03T13:35:00Z") }),
+  };
+  const symbols = ["XLP:ARCA", "XLY:ARCA"];
+  const options = { rangePreset: "1D" };
+  setSystemTime(new Date("2026-09-03T13:40:00Z"));
+  try {
+    const result = await chartHeadless("comparison-chart-pane").load({
+      argument: symbols.join(","), rawArgument: symbols.join(","), symbols, options,
+    }, createTestHeadlessContext({ marketData, settings: {
+      chartSpec: applyChartComposerCapabilityOptions(buildComparisonChartPreset(symbols), "price-comparison", options),
+    } })) as ChartPaneModel;
+    const price = await chartHeadless("graph-price-pane").load({
+      argument: symbols[0]!, rawArgument: symbols[0]!, symbols: symbols.slice(0, 1), options,
+    }, createTestHeadlessContext({ marketData, settings: {
+      chartSpec: applyChartComposerCapabilityOptions(buildPriceChartPreset(symbols[0]!), "price-chart", options),
+    } })) as ChartPaneModel;
+    expect(result.chart.priceComparison).toMatchObject({ alignment: "timestamp", start: Date.parse("2026-09-03T13:30:00Z") });
+    const session = price.series[0]!.points.map((point) => point.date);
+    expect(session).toEqual([new Date("2026-09-03T13:30:00Z"), new Date("2026-09-03T13:35:00Z")]);
+    expect(result.series.map((series) => [series.interval, series.points.map((point) => point.date)])).toEqual([
+      ["1m", session], ["1m", session],
+    ]);
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("an unavailable currency spread reaches headless errors even with normalized chart presentation", async () => {
