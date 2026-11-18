@@ -24,6 +24,7 @@ import { isReasonCode, readableStatus } from "../../../utils/reason-codes";
 import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fundamentals";
 import { isNotMeaningful, NOT_MEANINGFUL, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE, type Rate } from "../../../utils/growth";
 import {
+  ACTUAL_PENDING,
   earningsDateStatus,
   earningsDetail,
   earningsDetailParts,
@@ -358,7 +359,8 @@ function upcomingEarningsDetail(earning: CorporateActionsData["earnings"][number
   if (earning.epsActual != null || !time) return earningsDetail(earning);
   const parts = earningsDetailParts(earning);
   if (parts.length === 0) return `Pending, ${time}`;
-  const at = earningsDateStatus(parts[0]) ? 1 : 0;
+  // The time follows whether the date is announced, or that the report is out with its actual pending.
+  const at = earningsDateStatus(parts[0]) || parts[0] === ACTUAL_PENDING ? 1 : 0;
   return [...parts.slice(0, at), time, ...parts.slice(at)].join(", ");
 }
 
