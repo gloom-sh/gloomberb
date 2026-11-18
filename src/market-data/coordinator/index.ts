@@ -87,7 +87,7 @@ import {
   type QuoteSubscriptionHandle,
   type QuoteSubscriptionRequest,
 } from "./quotes";
-import { withSavedCopyMarkOf } from "../../data/saved-copies";
+import { quoteServedFromSavedCopy, withSavedCopyMarkOf } from "../../data/saved-copies";
 import { readsInBatches } from "../batched-reads";
 
 /** How long a streamed tick may reuse the quote fields read from the cache. */
@@ -230,11 +230,15 @@ export class MarketDataCoordinator {
     },
   };
 
-  private readonly quoteStore = new QueryStore<Quote>((key) => this.events.bump(key));
-  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), this.retainedSnapshots);
-  private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), this.retained);
-  private readonly optionsStore = new QueryStore<OptionsChain>((key) => this.events.bump(key), this.retainedCachedQueries);
-  private readonly secFilingsStore = new QueryStore<SecFilingItem[]>((key) => this.events.bump(key), this.retainedCachedQueries);
+  // The answers panes open on after a restart are kept as saved copies: quotes,
+  // snapshots, price histories, option chains and filing lists.
+  private readonly quoteStore = new QueryStore<Quote>((key) => this.events.bump(key), {
+    savedCopies: { name: "quote", writeIntervalMs: 30_000, mark: quoteServedFromSavedCopy },
+  });
+  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), { ...this.retainedSnapshots, savedCopies: { name: "snapshot" } });
+  private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), { ...this.retained, savedCopies: { name: "chart" } });
+  private readonly optionsStore = new QueryStore<OptionsChain>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "options" } });
+  private readonly secFilingsStore = new QueryStore<SecFilingItem[]>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "sec-filings" } });
   private readonly secDocumentsStore = new QueryStore<SecFilingDocument[]>((key) => this.events.bump(key), this.retainedCachedQueries);
   private readonly secContentStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retainedCachedQueries);
   private readonly articleSummaryStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retainedCachedQueries);
@@ -848,6 +852,10 @@ export class MarketDataCoordinator {
       // it through errors so old expirations cannot return via lastGoodData.
       const value = result && (!empty || method === "getOptionsChain") ? result.value : null;
       const classified = error ? classifyError(error) : null;
+      if (!result && current.savedCopyAt != null) {
+        store.set(key, { ...current, phase: loading ? "refreshing" : "ready", error: classified });
+        return;
+      }
       store.set(key, {
         phase: loading ? (result ? "refreshing" : "loading") : result ? "ready" : "error",
         data: value,

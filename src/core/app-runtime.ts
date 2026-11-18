@@ -1,4 +1,5 @@
 import { MarketDataCoordinator, getSharedMarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
+import { setSavedCopyStore } from "../data/pane-saved-copies";
 import { followDataServiceHealth } from "../market-data/connection-follow";
 import { NewsService, type NewsServiceOptions } from "../news/aggregator";
 import { cloudNewsSession } from "../news/cloud-session";
@@ -79,6 +80,8 @@ export function createAppRuntime({
   });
   setSharedMarketDataCoordinator(marketData);
   setSharedNewsService(newsService);
+  // The panes' saved copies live with the other cached resources (data/pane-saved-copies.ts).
+  setSavedCopyStore(persistence.resources);
 
   let destroyed = false;
   let registering = false;
@@ -97,6 +100,8 @@ export function createAppRuntime({
     destroyed = true;
     if (getSharedMarketDataCoordinator() === marketData) setSharedMarketDataCoordinator(null);
     if (getSharedNewsService() === newsService) setSharedNewsService(null);
+    const savedCopies = setSavedCopyStore(null);
+    if (savedCopies !== persistence.resources) setSavedCopyStore(savedCopies);
     dispose(
       disposeReady, () => newsService.stop(), stopFollowingHealth, () => marketData.destroy(),
       // An async setup may still use persistence or contribute panes. Dispose it

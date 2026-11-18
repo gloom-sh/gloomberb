@@ -13,6 +13,7 @@ import {
 } from "react";
 import {
   combinePaneFooterRegistrations,
+  savedCopyFooterSegment,
   samePaneFooterRegistration,
   type CombinedPaneFooter,
   type PaneFooterRegistration,
@@ -29,6 +30,13 @@ interface PaneFooterContextValue {
 }
 
 const PaneFooterContext = createContext<PaneFooterContextValue | null>(null);
+
+export function useSavedCopyFooter(savedAt: number | null | undefined, refreshing: boolean): void {
+  const id = useId();
+  usePaneFooter(`saved-copy:${id}`, () => savedAt == null ? null : {
+    info: [savedCopyFooterSegment(id, savedAt, Date.now(), refreshing)],
+  }, [id, savedAt, refreshing]);
+}
 
 /** Also gates non-footer interaction owned by an inactive pane/tab. */
 export function usePaneFooterScopeActive(): boolean {

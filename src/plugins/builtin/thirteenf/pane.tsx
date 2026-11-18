@@ -115,7 +115,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     loadBrowserRows(browserMode, query, signal, offset > 0 ? { offset } : { forceRefresh: force })
   ), [browserMode, query]);
   // A new query starts from an empty list; a refresh keeps the rows it has.
-  const browser = usePagedRows(showTickerHoldings ? null : loadPage, { getId: rowId });
+  const browser = usePagedRows(showTickerHoldings ? null : loadPage, { getId: rowId, savedCopy: { key: ["thirteenf-browser", browserMode, query] } });
   const { loading, loadingMore, rows } = browser;
   const [reportPaint, setReportPaint] = useState(0);
   useEffect(() => {
@@ -704,7 +704,7 @@ function FilingDetailView({
     loadFilingPositions(filing.cik, filing.accessionNumber, signal, offset > 0 ? { offset } : { forceRefresh: force, offset })
   ), [filing.accessionNumber, filing.cik]);
   // Another filing starts empty; a refresh keeps its positions on screen.
-  const positions = usePagedRows(loadPage);
+  const positions = usePagedRows(loadPage, { savedCopy: { key: ["thirteenf-positions", filing.cik, filing.accessionNumber] } });
   const holdings = positions.rows;
   const error = (positions.error ?? positions.moreError)?.message ?? null;
   // A refresh clears the pages' warnings until it answers.

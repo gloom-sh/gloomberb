@@ -133,7 +133,8 @@ export function createChartLoadingEntry({
 }: ChartSeedLookupArgs & {
   current: QueryEntry<PricePoint[]>;
 }): QueryEntry<PricePoint[]> {
-  const currentData = normalizeFreshChartData(resolveEntryData(current), request, current.history, current.fetchedAt);
+  const currentData = current.savedCopyAt != null ? resolveEntryData(current) ?? []
+    : normalizeFreshChartData(resolveEntryData(current), request, current.history, current.fetchedAt);
   if (currentData.length) {
     return loadingEntry<PricePoint[]>({
       ...current,

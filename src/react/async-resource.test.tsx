@@ -3,6 +3,9 @@ import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { useAsyncResource } from "./async-resource";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../core/connection-health";
+import { MemoryResourceStore } from "../data/memory-resource-store";
+import { setSavedCopyStore, writeSavedCopy } from "../data/pane-saved-copies";
+import { Text } from "../ui";
 
 type Loader = ((force: boolean) => Promise<string>) | null;
 const tui = createOpenTuiTestHarness({ width: 20, height: 5 });
@@ -38,6 +41,32 @@ test("only the newest request may publish data or an error", async () => {
   await act(async () => { first.reject(new Error("old failure")); });
   expect(forces).toEqual([false, true]);
   expect(resource).toMatchObject({ data: "new", loading: false, error: null });
+});
+
+test("terminal draws the saved result on mount while the loader is still pending", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const savedCopy = { key: ["board", "NYSE"] };
+  const pending = Promise.withResolvers<string>();
+  const loader = () => pending.promise;
+  const rendered: string[] = [];
+  function Pane() {
+    const view = useAsyncResource(loader, { savedCopy });
+    const text = view.loading ? "Loading" : view.data ?? "Empty";
+    rendered.push(text);
+    return <Text>{text}</Text>;
+  }
+  try {
+    writeSavedCopy(savedCopy, "Old rows", Date.UTC(2023, 0, 1));
+    await tui.render(<Pane />);
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("Old rows");
+    await act(async () => { pending.resolve("New rows"); });
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("New rows");
+    expect(rendered).not.toContain("Loading");
+  } finally {
+    setSavedCopyStore(previous);
+  }
 });
 
 test("reload starts a forced load and returns nothing; reloadAndWait settles once the answer or failure is in", async () => {

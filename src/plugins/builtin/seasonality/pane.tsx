@@ -159,6 +159,7 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
   }, [instrumentKey, cadence]);
   const history = useAsyncResource(instrument ? loader : null, {
     initialData: () => instrument ? cachedSeasonalityHistory({ instrument, cadence }) : null,
+    savedCopy: { key: ["seasonality", instrumentKey, cadence] },
   });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(history.updatedAt, history.load);

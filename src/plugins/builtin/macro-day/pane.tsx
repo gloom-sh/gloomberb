@@ -126,7 +126,7 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
     if (!snapshot.history.length && snapshot.error) throw new Error(snapshot.error);
     return { ...snapshot, releases, earnings };
   }, [instrumentKey]);
-  const history = useAsyncResource(instrument ? loader : null);
+  const history = useAsyncResource(instrument ? loader : null, { savedCopy: { key: ["macro-day", instrumentKey] } });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(history.updatedAt, history.load);
   usePaneRefreshKey(() => { history.reload(); }, { focused });

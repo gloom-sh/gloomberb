@@ -335,11 +335,11 @@ the origin of a number. The one count the kit draws is the
   against the hints: the hints that no longer fit go under More first. A
   longer one gives way to the hints. This is the footer's own layout
   (`layoutPaneFooterHintRow`); a pane does not shorten its status for it.
-- Data a failed refresh left answering from its saved copy says so with
+- Data shown from a saved copy, while it refreshes on open or after a failed refresh, says so with
   `savedCopyFooterInfo` (or `savedCopyFooterSegment`): `saved copy from
   14:37`. The footer draws it first, wherever the pane registers it, and
   once: the oldest copy when a list and the report it opens each show one.
-  The copy answers only a failure asking again may get past (no connection,
+  After a failure the copy answers only one that asking again may get past (no connection,
   a timeout, 408, 429, 5xx, `isTransientFailure`), and a reply saying its
   source did not answer this time (a board's `unavailable`,
   `sourceDidNotAnswer`). A permanent reason (a route not served yet, an

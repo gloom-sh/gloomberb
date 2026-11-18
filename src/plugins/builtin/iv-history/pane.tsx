@@ -58,7 +58,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
   }, [instrumentKey]);
   // An FX pair has no implied volatility history: the pane says what stands in, and asks for nothing.
   const fxNote = symbol ? fxVolatilityNote(symbol, ticker?.metadata.exchange) : null;
-  const resource = useAsyncResource(instrument && !fxNote ? loader : null);
+  const resource = useAsyncResource(instrument && !fxNote ? loader : null, { savedCopy: { key: ["iv-history", instrumentKey] } });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const model = useMemo(() => resource.data

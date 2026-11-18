@@ -60,12 +60,21 @@ export function useBoundTicker() {
   };
 }
 
+/**
+ * One listing's research, loaded with `loader`. `savedAs` names what it is
+ * (with anything else it depends on beyond the listing): the pane then opens
+ * on the copy it last loaded for this listing, and refreshes behind it.
+ */
 export function useTickerRequest<T>(
   loader: (symbol: string, exchange: string, forceRefresh: boolean) => Promise<T>,
   symbol: string | null,
   exchange: string,
+  savedAs?: readonly unknown[],
 ) {
   const request = useCallback((force: boolean) => loader(symbol!, exchange, force), [exchange, loader, symbol]);
-  const { data, loading, error, reload } = useAsyncResource(symbol ? request : null, { clearOnError: discardDeniedResearch });
+  const { data, loading, error, reload } = useAsyncResource(symbol ? request : null, {
+    clearOnError: discardDeniedResearch,
+    savedCopy: savedAs && symbol ? { key: [...savedAs, symbol, exchange] } : null,
+  });
   return { data, loading, error: symbol ? error : "No ticker selected", reload };
 }

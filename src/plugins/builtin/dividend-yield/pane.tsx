@@ -223,7 +223,9 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   const request = useCallback(() => loadData(listingSymbol!, quoteRef.current.price, exchange, quoteRef.current.currency, {
     loadStatedForwardRate: () => statedRef.current,
   }), [exchange, loadData, listingSymbol, cloudSession.requestKey, statedKey]);
-  const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(listingSymbol ? request : null);
+  const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(listingSymbol ? request : null, {
+    savedCopy: { key: ["dividend-yield", listingSymbol, exchange, cloudSession.requestKey] },
+  });
   // An integrity response may contain no usable rows. Retain only historical
   // rows from this resource; its new unavailable metrics remain authoritative.
   const lastHistory = useRef<{ request: typeof request; data: DividendData } | null>(null);

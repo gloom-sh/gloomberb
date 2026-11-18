@@ -95,7 +95,7 @@ export function WorldVenueMapPane(props: PaneProps) {
 
 function VenueMapView({ focused, width, height, start }: PaneProps & { start: MapStart }) {
   // A background refresh keeps the venues on screen, so loading only shows before the first answer.
-  const { data, loading, error, load } = useAsyncResource(loadWorldVenues);
+  const { data, loading, error, load } = useAsyncResource(loadWorldVenues, { savedCopy: { key: ["world-venues"] } });
   const [query, setQuery] = useState("");
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const mapKeys = useMapKeyboard(searchFocused);

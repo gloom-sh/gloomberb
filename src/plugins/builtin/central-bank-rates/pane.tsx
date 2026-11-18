@@ -58,7 +58,7 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
 export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadCentralBankRates(force), [session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: getCachedCentralBankRates, clearOnError: isAccessDenied });
+  const resource = useAsyncResource(loader, { initialData: getCachedCentralBankRates, clearOnError: isAccessDenied, savedCopy: { key: ["central-bank-rates"] } });
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [openId, setOpenId] = usePluginPaneState<string | null>("open", null);
   const data = resource.data?.payload;

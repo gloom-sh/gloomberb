@@ -140,7 +140,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
   const [openSignal, setOpenSignal] = useState<BuildoutUpdate | null>(null);
 
   const loader = useMemo(() => (symbol ? () => fetchCompanyProfile(symbol) : null), [symbol]);
-  const profile = useAsyncResource(loader, { keepPreviousData: true });
+  const profile = useAsyncResource(loader, { keepPreviousData: true, savedCopy: { key: ["buildout-company", symbol] } });
   // The last company stays while the next loads; one the dataset does not have says so.
   const company = profile.data;
   const missing = !!symbol && !company && !profile.loading && !profile.error;
@@ -148,7 +148,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
     () => (company?.id && tab === "signals" ? () => fetchCompanySignals(company.id) : null),
     [company?.id, tab],
   );
-  const signals = useAsyncResource(signalsLoader);
+  const signals = useAsyncResource(signalsLoader, { savedCopy: { key: ["buildout-company-signals", company?.id] } });
 
   const openRelation = useCallback((relation: BuildoutRelation) => {
     if (relation.ticker) openDescription(relation.ticker);

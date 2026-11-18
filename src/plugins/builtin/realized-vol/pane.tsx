@@ -91,7 +91,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     proxyController.current = controller;
     return loadFxVolProxy({ symbol: instrument!.symbol, exchange: instrument!.exchange, signal: controller.signal });
   }, [instrumentKey]);
-  const history = useAsyncResource(instrument ? historyLoader : null);
+  const history = useAsyncResource(instrument ? historyLoader : null, { savedCopy: { key: ["realized-volatility-history", instrumentKey] } });
   const loadedIv = useAsyncResource(instrument && showIv && spotAvailable && !fxPair ? ivLoader : null);
   const proxy = useAsyncResource(instrument && showIv && fxPair ? proxyLoader : null);
   useEffect(() => () => historyController.current?.abort(), [historyLoader]);

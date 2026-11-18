@@ -1,5 +1,6 @@
 import type { QueryEntry } from "./result-types";
 import { createIdleEntry } from "./result-types";
+import { readSavedCopy, writeSavedCopy } from "../data/pane-saved-copies";
 
 /** How many entries a store keeps once nothing is watching them. */
 export interface QueryStoreRetention {
@@ -23,7 +24,16 @@ export interface QueryStoreOptions<T> extends QueryStoreRetention {
    * source (a streamed FX rate over a loaded one) on whatever writes it.
    */
   project?: (key: string, entry: QueryEntry<T>) => QueryEntry<T>;
+  /**
+   * Keeps each answer as a saved copy under this name (data/pane-saved-copies.ts):
+   * a key nothing has loaded yet this run starts from its copy, of any age, as
+   * `data` in a ready entry. Freshness checks still require a new answer.
+   */
+  savedCopies?: { name: string; version?: number; writeIntervalMs?: number; mark?: (value: T, at: number) => T };
 }
+
+/** What a saved copy keeps of an entry: its data and where and when it came from. */
+type SavedEntry<T> = Pick<QueryEntry<T>, "data" | "history" | "source" | "asOf" | "delayMinutes">;
 
 export class QueryStore<T> {
   private readonly entries = new Map<string, QueryEntry<T>>();
@@ -36,18 +46,44 @@ export class QueryStore<T> {
   ) {}
 
   get(key: string): QueryEntry<T> {
-    return this.entries.get(key) ?? createIdleEntry<T>();
+    const entry = this.entries.get(key);
+    if (entry) return entry;
+    const saved = this.readSaved(key);
+    if (!saved) return createIdleEntry<T>();
+    // Kept as the key's entry, without a change event: reading it is not news.
+    return this.store(key, saved);
   }
 
   set(key: string, entry: QueryEntry<T>): void {
-    this.store(key, entry);
+    this.save(key, this.store(key, entry));
     this.onChange(key);
   }
 
   update(key: string, updater: (current: QueryEntry<T>) => QueryEntry<T>): QueryEntry<T> {
     const next = this.store(key, updater(this.get(key)));
+    this.save(key, next);
     this.onChange(key);
     return next;
+  }
+
+  private savedKey(key: string) {
+    const saved = this.options.savedCopies!;
+    return { key: [saved.name, key], version: saved.version };
+  }
+
+  private readSaved(key: string): QueryEntry<T> | null {
+    if (!this.options.savedCopies) return null;
+    const copy = readSavedCopy<SavedEntry<T>>(this.savedKey(key));
+    if (!copy?.value || copy.value.data == null) return null;
+    const { data, ...from } = copy.value;
+    const value = this.options.savedCopies.mark?.(data, copy.fetchedAt) ?? data;
+    return { ...createIdleEntry<T>(), ...from, phase: "ready", data: value, lastGoodData: value, fetchedAt: copy.fetchedAt, savedCopyAt: copy.fetchedAt, staleAt: 0 };
+  }
+
+  private save(key: string, entry: QueryEntry<T>): void {
+    if (!this.options.savedCopies || entry.phase !== "ready" || entry.savedCopyAt != null || entry.error || entry.data == null) return;
+    const { data, history, source, asOf, delayMinutes } = entry;
+    writeSavedCopy(this.savedKey(key), { data, history, source, asOf, delayMinutes }, entry.fetchedAt ?? Date.now(), this.options.savedCopies.writeIntervalMs);
   }
 
   /** A pane started watching `key`, so it is kept until released. */

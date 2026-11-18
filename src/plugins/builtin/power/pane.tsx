@@ -100,7 +100,7 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
     const result = snapshot ? { payload: snapshot.board, stale: false, refreshError: null } : await loadPowerBoard({ ...filter, offset, limit: 100 }, scope, force, signal);
     return { ...result, rows: result.payload.projects, hasMore: projectTab && result.payload.hasMore && !snapshot, nextOffset: result.payload.nextOffset };
   }, [filter, scope, projectTab, snapshot]);
-  const pages = usePagedRows(loader, { getId: (row) => row.id });
+  const pages = usePagedRows(loader, { getId: (row) => row.id, savedCopy: snapshot ? null : { key: ["power-board", queryKey, scope, projectTab] } });
   const board = isAccessDenied(pages.error) || isAccessDenied(pages.moreError) ? undefined : pages.pages[0]?.payload;
   // A tab or filter change starts its list over; the filter menus keep the last board's choices until the new one answers.
   const lastFilters = useRef(board?.filters);

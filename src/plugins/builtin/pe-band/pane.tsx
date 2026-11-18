@@ -95,7 +95,7 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
     if (!inputs.financials && inputs.error) throw new Error(inputs.error);
     return inputs;
   }, [instrumentKey, marketData]);
-  const inputs = useAsyncResource(instrument && marketData ? loader : null);
+  const inputs = useAsyncResource(instrument && marketData ? loader : null, { savedCopy: { key: ["pe-band", instrumentKey] } });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(inputs.updatedAt, inputs.load);
   usePaneRefreshKey(() => { inputs.reload(); }, { focused });

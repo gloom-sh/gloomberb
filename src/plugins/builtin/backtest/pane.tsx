@@ -103,7 +103,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   const wholeHistory = lookbackYears(lookback) == null;
   const loader = useCallback((force: boolean) => loadBacktestHistory(instrument!, { forceRefresh: force, wholeHistory }),
     [instrumentKey, wholeHistory]);
-  const history = useAsyncResource(instrument ? loader : null);
+  const history = useAsyncResource(instrument ? loader : null, { savedCopy: { key: ["backtest-history", instrumentKey, wholeHistory] } });
   useAutoRefresh(history.updatedAt, history.load);
 
   const rules = useMemo(() => readRules(preset, entryText, exitText), [preset, entryText, exitText]);

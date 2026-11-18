@@ -54,7 +54,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
 
   const skipNonUs = isKnownNonUsEquityTicker(ticker);
   const request = useCallback(() => loadShortInterestWithFloat(symbol!), [symbol]);
-  const resource = useAsyncResource(symbol && !skipNonUs ? request : null, { clearOnError: true });
+  const resource = useAsyncResource(symbol && !skipNonUs ? request : null, { clearOnError: true, savedCopy: { key: ["short-interest", symbol] } });
   const { error, updatedAt, reload: refresh } = resource;
   const records = resource.data?.records ?? EMPTY_RECORDS;
   const latestSettlements = resource.data?.source === "gloom" && records.length > 0;

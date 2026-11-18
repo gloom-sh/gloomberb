@@ -84,7 +84,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const scopeControl = useRef<SelectControl>(null);
   const positionsControl = useRef<SelectControl>(null);
   const loader = useCallback((force: boolean) => loadCotBoard(family, traderClass, force, positions), [family, traderClass, positions, session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedCotBoard(family, traderClass, positions), clearOnError: isAccessDenied });
+  const resource = useAsyncResource(loader, { initialData: () => cachedCotBoard(family, traderClass, positions), clearOnError: isAccessDenied, savedCopy: { key: ["cot-board", family, traderClass, positions] } });
   const data = resource.data?.traderClass === traderClass && resource.data.scope === positions ? resource.data : null;
   const rows = useMemo(() => {
     // A typed query searches every market; the scope only shapes the unsearched board.

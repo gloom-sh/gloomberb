@@ -79,7 +79,7 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
     return loadShortWatch(key.split(","), { signal: current.signal, forceRefresh: force });
   }, [key]);
   useEffect(() => () => controller.current?.abort(), [loader]);
-  const resource = useAsyncResource(key ? loader : null, { keepPreviousData: true });
+  const resource = useAsyncResource(key ? loader : null, { keepPreviousData: true, savedCopy: { key: ["short-watch", key] } });
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(resource.reload, { focused });
 

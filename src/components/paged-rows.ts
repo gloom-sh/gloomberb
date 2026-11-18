@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSavedCopyFooter } from "./layout/pane/footer/registration";
+import { deleteSavedCopy, readSavedCopy, savedCopyId, writeSavedCopy, type SavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
+import { isPermanentClientError } from "../api-client/errors";
 import { logFailure } from "../utils/log-failure";
 
 /** One page of an offset-paged source. Extra fields (an as-of date, warnings) stay on `pages`. */
@@ -31,6 +34,12 @@ export interface PagedRowsOptions<T> {
    * new loader starts from an empty list.
    */
   keepPreviousRows?: boolean;
+  /**
+   * The key the first page is saved under: everything it depends on. The list
+   * opens on that page at once, of any age, and loads behind it; a failed
+   * load keeps it as a failed reload does (data/pane-saved-copies.ts).
+   */
+  savedCopy?: SavedCopyKey | null;
 }
 
 export interface PagedRows<T, P> {
@@ -38,8 +47,9 @@ export interface PagedRows<T, P> {
   /** Every page loaded so far, first page first. */
   pages: P[];
   status: "idle" | "loading" | "loaded" | "error";
-  /** The first page is in flight, on first load or on `reload()`. */
+  /** The first page is in flight and does not have a saved copy. */
   loading: boolean;
+  refreshing: boolean;
   /** The first page failed. A failed reload keeps the rows it had. */
   error: Error | null;
   loadingMore: boolean;
@@ -55,6 +65,9 @@ export interface PagedRows<T, P> {
 interface PagedState<T, P> {
   /** The loader these pages came from. */
   owner: unknown;
+  /** The saved-copy key of the question they answer: a new loader for the same key keeps them while it loads. */
+  ownerKey?: string | null;
+  savedAt?: number;
   pages: P[];
   rows: T[];
   nextOffset: number;
@@ -71,6 +84,16 @@ const NONE: never[] = [];
 
 function emptyState<T, P>(owner: unknown, loading: boolean): PagedState<T, P> {
   return { owner, pages: NONE, rows: NONE, nextOffset: 0, hasMore: false, loading, loadingMore: false, error: null, moreError: null };
+}
+
+/** A list opening on its saved first page, the first page loading behind it. */
+function openingState<T, P extends RowPage<unknown>>(owner: unknown, copy: SavedCopy<P> | null): PagedState<T, P> {
+  const saved = copy?.value;
+  if (!saved || !Array.isArray(saved.rows) || saved.rows.length === 0) return emptyState(owner, true);
+  return {
+    owner, pages: [saved], rows: saved.rows as T[], nextOffset: saved.nextOffset ?? saved.rows.length,
+    hasMore: saved.hasMore === true, loading: true, loadingMore: false, error: null, moreError: null, savedAt: copy.fetchedAt,
+  };
 }
 
 function toError(cause: unknown): Error {
@@ -104,7 +127,12 @@ export function usePagedRows<P extends RowPage<unknown>>(
 ): PagedRows<PageRow<P>, P> {
   type T = PageRow<P>;
   const keepPreviousRows = options.keepPreviousRows === true;
-  const [state, setState] = useState<PagedState<T, P>>(() => emptyState(loadPage, !!loadPage));
+  const requestedKey = loadPage ? options.savedCopy ?? null : null;
+  const savedId = requestedKey ? `${savedCopyId(requestedKey)}#${requestedKey.version ?? 1}` : null;
+  const savedKey = useMemo(() => requestedKey, [savedId]);
+  // The first page a new question opens on, read synchronously so its first frame has it.
+  const saved = useMemo(() => (savedKey ? readSavedCopy<P>(savedKey) : null), [savedId]);
+  const [state, setState] = useState<PagedState<T, P>>(() => (loadPage ? { ...openingState<T, P>(loadPage, saved), ownerKey: savedId } : emptyState(loadPage, false)));
   const firstRequest = useRef<AbortController | null>(null);
   const moreRequest = useRef<AbortController | null>(null);
   // Read when a page lands so an inline getter cannot restart the list.
@@ -122,15 +150,21 @@ export function usePagedRows<P extends RowPage<unknown>>(
     }
     const controller = new AbortController();
     firstRequest.current = controller;
-    setState((current) => current.owner === loadPage || keepPreviousRows
-      ? { ...current, loading: true, loadingMore: false, error: null, moreError: null }
-      : emptyState(loadPage, true));
+    const key = savedKey;
+    const keyId = savedId;
+    const opening = saved;
+    setState((current) => (current.owner === loadPage && current.ownerKey === keyId) || (keyId !== null && current.ownerKey === keyId)
+      ? { ...current, owner: loadPage, loading: true, loadingMore: false, error: null, moreError: null }
+      : keepPreviousRows && !opening ? { ...current, loading: true, loadingMore: false, error: null, moreError: null }
+      : { ...openingState<T, P>(loadPage, opening), ownerKey: keyId });
     try {
       const page = await loadPage({ offset: 0, signal: controller.signal, force });
       if (firstRequest.current !== controller) return;
       firstRequest.current = null;
+      if (key) writeSavedCopy(key, page.rows.length > 0 ? page : null);
       setState({
         owner: loadPage,
+        ownerKey: keyId,
         pages: [page],
         rows: page.rows as T[],
         nextOffset: page.nextOffset ?? page.rows.length,
@@ -143,14 +177,16 @@ export function usePagedRows<P extends RowPage<unknown>>(
     } catch (cause) {
       if (firstRequest.current !== controller) return;
       firstRequest.current = null;
+      const discard = key !== null && isPermanentClientError(cause);
+      if (discard) deleteSavedCopy(key);
       setState((current) => ({
-        ...(current.owner === loadPage ? current : emptyState<T, P>(loadPage, false)),
+        ...(!discard && current.owner === loadPage && current.ownerKey === keyId ? current : { ...emptyState<T, P>(loadPage, false), ownerKey: keyId }),
         hasMore: false,
         loading: false,
         error: toError(cause),
       }));
     }
-  }, [keepPreviousRows, loadPage]);
+  }, [keepPreviousRows, loadPage, savedId, savedKey, saved]);
   // A load nobody waits on: its failures end in `error`, and anything else
   // that escapes is logged.
   const load = useCallback((force: boolean) => {
@@ -167,7 +203,7 @@ export function usePagedRows<P extends RowPage<unknown>>(
     };
   }, [load]);
 
-  const owned = state.owner === loadPage;
+  const owned = state.owner === loadPage && (state.ownerKey ?? null) === savedId;
   const loadMore = useCallback(() => {
     // The refs, not this render's state, say whether a request is in flight:
     // a reload and a scroll in the same tick must not page the list being replaced.
@@ -203,16 +239,18 @@ export function usePagedRows<P extends RowPage<unknown>>(
   // previous list is either hidden or (with keepPreviousRows) shown but inert.
   const view = owned ? state
     : !loadPage ? emptyState<T, P>(null, false)
-      : keepPreviousRows ? { ...state, hasMore: false, loading: true, loadingMore: false, error: null, moreError: null }
-        : emptyState<T, P>(loadPage, true);
+      : (keepPreviousRows && !saved) || (savedId !== null && state.ownerKey === savedId) ? { ...state, hasMore: false, loading: true, loadingMore: false, error: null, moreError: null }
+        : openingState<T, P>(loadPage, saved);
   // Rows kept from a previous loader are a placeholder, not this loader's answer.
-  const status = !owned && loadPage ? "loading"
+  const status = !owned && loadPage && view.savedAt == null ? "loading"
     : view.error ? "error" : view.pages.length > 0 ? "loaded" : view.loading ? "loading" : "idle";
+  useSavedCopyFooter(view.savedAt, view.loading);
   return {
     rows: view.rows,
     pages: view.pages,
     status,
-    loading: view.loading,
+    loading: view.loading && view.savedAt == null,
+    refreshing: view.loading && view.pages.length > 0,
     error: view.error,
     loadingMore: view.loadingMore,
     moreError: view.moreError,

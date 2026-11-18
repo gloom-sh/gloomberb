@@ -75,7 +75,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       } });
     return payload;
   }, [key]);
-  const resource = useAsyncResource(universe.instruments.length ? loader : null);
+  const resource = useAsyncResource(universe.instruments.length ? loader : null, { savedCopy: { key: ["iv-screen", key] } });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const [sort, setSort] = useState<{ columnId: SortId; direction: SortDirection }>({ columnId: "percentile", direction: "desc" });

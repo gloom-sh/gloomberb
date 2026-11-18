@@ -192,7 +192,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
       forceRefresh ? { cacheMode: "refresh" } : undefined,
     );
   }, [dataProvider, cloudSession.requestKey]);
-  const { data, loading, error, reload } = useTickerRequest<AnalystResearchData>(loader, symbol, exchange);
+  const { data, loading, error, reload } = useTickerRequest<AnalystResearchData>(loader, symbol, exchange, ["analyst-research", cloudSession.requestKey]);
   const authWall = !data && isCloudSessionRequired(error);
   // A listing no analyst covers loads as research with nothing in it: the body says so, the footer has nothing to add.
   const noCoverage = !!data && !hasAnalystCoverage(data);

@@ -480,8 +480,8 @@ export function CorporateActionsView({
     loading: actionsLoading,
     error: actionsError,
     reload: reloadActions,
-  } = useTickerRequest<CorporateActionsData>(actionsLoader, symbol, exchange);
-  const { data: calendarEvent, reload: reloadCalendar } = useTickerRequest(calendarLoader, symbol, exchange);
+  } = useTickerRequest<CorporateActionsData>(actionsLoader, symbol, exchange, ["corporate-actions", cloudSession.requestKey]);
+  const { data: calendarEvent, reload: reloadCalendar } = useTickerRequest(calendarLoader, symbol, exchange, ["corporate-actions-calendar"]);
   // The listing's own day, as `earnings` reads a report date: SIE:XETRA's has passed once Berlin's day has.
   const today = listingDay(exchange);
   const actionsData = useMemo(
