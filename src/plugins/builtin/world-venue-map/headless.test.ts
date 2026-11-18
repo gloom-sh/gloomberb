@@ -88,3 +88,27 @@ test("headless places bound and order the table; an unknown place reports once a
   const coordinates = await mapHeadless.load(createTestHeadlessArgs({ argument: "ships 26.5,56.3" }), context);
   expect(coordinates.metadata?.place).toMatchObject({ latitude: 26.5, longitude: 56.3 });
 });
+
+test("the venue list says each venue's session as the service read it from the exchange's calendar", async () => {
+  const venue = (mic: string, extra: object) => ({
+    mic, name: mic, title: mic, country: "Somewhere", countryCode: "XX", city: "City", timezone: "UTC", latitude: 0, longitude: 0, isOpen: false, ...extra,
+  });
+  const client = {
+    geo: createGeoFixtureRequest(),
+    getCloudWorldVenues: async () => ({
+      data: {
+        providerId: "gloomberb-cloud", checkedAt: 0, refreshAt: 0,
+        venues: [
+          venue("XRIS", { session: "holiday" }), venue("XNAS", { session: "pre-market" }), venue("ARCX", { session: "after-hours" }),
+          // An older service sends the core session alone.
+          venue("XLON", { isOpen: true }), venue("XZAG", {}),
+        ],
+      },
+    }),
+  } as unknown as HeadlessPaneContext["apiClient"];
+  const result = await mapHeadless.load(createTestHeadlessArgs({ argument: "venues" }), createTestHeadlessContext({ apiClient: client }));
+  expect(result.columns?.find((column) => column.key === "session")?.header).toBe("Session");
+  expect(Object.fromEntries(result.rows.map((row) => [row.mic, [row.session, row.open]]))).toEqual({
+    XRIS: ["holiday", false], XNAS: ["pre-market", false], ARCX: ["after-hours", false], XLON: ["open", true], XZAG: ["closed", false],
+  });
+});

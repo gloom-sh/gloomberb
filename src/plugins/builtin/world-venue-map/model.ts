@@ -1,4 +1,4 @@
-import type { CloudWorldVenuePayload } from "../../../api-client";
+import type { CloudWorldVenuePayload, WorldVenueSession } from "../../../api-client";
 import { clamp } from "../../../utils/math";
 
 export interface WorldMapPoint {
@@ -298,6 +298,11 @@ export function formatVenueLocalTime(timezone: string, now: number): string {
     localTimeFormatters.set(timezone, formatter);
   }
   return formatter.format(now);
+}
+
+/** The venue's state as the service read it from the exchange's calendar, or from its core session where it says none. */
+export function venueSession(venue: Pick<CloudWorldVenuePayload, "isOpen" | "session">): WorldVenueSession {
+  return venue.session ?? (venue.isOpen ? "open" : "closed");
 }
 
 export function venueRemainingSeconds(
