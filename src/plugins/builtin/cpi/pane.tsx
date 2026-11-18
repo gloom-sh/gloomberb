@@ -64,7 +64,7 @@ const NAME_MIN_WIDTH = 10;
  * sector and index boards size theirs. The Y/Y points count only when a row has
  * them, since the column is left out while none does.
  */
-export function cpiColumns(width: number, yoyPoints: boolean): DataTableColumn[] {
+function cpiColumns(width: number, yoyPoints: boolean): DataTableColumn[] {
   const figures = yoyPoints ? FIGURE_COLUMNS : FIGURE_COLUMNS.filter((column) => column.id !== "contributionYoy");
   const room = width - getTableWidth(figures) - 1;
   return [

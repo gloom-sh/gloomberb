@@ -598,18 +598,37 @@ const SHOT_PROGRESS_AFTER_MS = 3_000;
 const FN_PROGRESS_AFTER_MS = 5_000;
 
 /**
- * One line on standard error when a capture or report is slow: "Still loading
- * the data for PORT izmir." while its data is read, "Still drawing PORT
- * izmir." once a capture's page draws it. Nothing for a quick one, or with --quiet.
+ * One line on a terminal's standard error while a capture or report is slow:
+ * "Still loading the data for PORT izmir." while its data is read, "Still
+ * drawing PORT izmir." once a capture's page draws it. It is progress, not
+ * part of the answer: the line is cleared once the work ends, so a finished
+ * report never starts with it, and standard error that is not a terminal (a
+ * file, a pipe, a script reading it) never gets it. Nothing for a quick one,
+ * or with --quiet.
  */
-function progressNotice(ctx: Pick<CliCommandContext, "cliOptions">, label: string, afterMs = SHOT_PROGRESS_AFTER_MS): { drawing(): void; stop(): void } {
-  if (ctx.cliOptions.quiet) return { drawing: () => {}, stop: () => {} };
+export function progressNotice(
+  ctx: Pick<CliCommandContext, "cliOptions">,
+  label: string,
+  afterMs = SHOT_PROGRESS_AFTER_MS,
+  stream: Pick<NodeJS.WriteStream, "isTTY" | "write"> = process.stderr,
+): { drawing(): void; stop(): void } {
+  if (ctx.cliOptions.quiet || !stream.isTTY) return { drawing: () => {}, stop: () => {} };
   let drawing = false;
+  let shown = false;
   const timer = setTimeout(() => {
-    console.error(cliStyles.muted(drawing ? `Still drawing ${label}.` : `Still loading the data for ${label}.`));
+    // No newline: the line stays the cursor's until it is cleared.
+    stream.write(cliStyles.muted(drawing ? `Still drawing ${label}.` : `Still loading the data for ${label}.`));
+    shown = true;
   }, afterMs);
   (timer as { unref?: () => void }).unref?.();
-  return { drawing: () => { drawing = true; }, stop: () => clearTimeout(timer) };
+  return {
+    drawing: () => { drawing = true; },
+    stop: () => {
+      clearTimeout(timer);
+      if (shown) stream.write("\r\x1b[2K");
+      shown = false;
+    },
+  };
 }
 
 export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) {

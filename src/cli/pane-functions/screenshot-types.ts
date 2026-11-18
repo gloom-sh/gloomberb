@@ -147,6 +147,12 @@ export interface PaneScreenshotResult {
   empty: boolean;
   complete: boolean;
   unavailableSymbols: string[];
+  /**
+   * When the oldest copy the page drew from was saved (ms): a read the data
+   * service did not answer was answered from a copy saved earlier, through
+   * the market bridge or the API proxy. A report dates its view as saved.
+   */
+  savedCopyAt?: number;
   /** Rows of a list whose read failed (refused, timed out): pictured without figures and named on the status line. */
   unreadRows?: string[];
   /** Why each of `unreadRows` did not load, as the source answered. */

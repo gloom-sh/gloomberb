@@ -42,7 +42,7 @@ const SEARCH_ANSWER_TIMEOUT_MS = 4_000;
  * until any answer comes back: a hung connection is not waited out in full by
  * every request a command or a pane makes after it.
  */
-const UNREACHABLE_REQUEST_TIMEOUT_MS = 3_000;
+export const UNREACHABLE_REQUEST_TIMEOUT_MS = 3_000;
 /**
  * Right after a request hung with nothing back, the requests that follow it
  * (a fallback, the next step of a command) fail at once rather than each
@@ -129,8 +129,21 @@ export function dataServiceUnreachable(): boolean {
  * current command began, still out when it did, records nothing.
  */
 export function noteDataServiceReach(answered: boolean, epoch = reachEpoch): void {
+  if (answered) serviceAnswers += 1;
   if (epoch !== reachEpoch) return;
   lastServiceReach = answered ? "answered" : "unreachable";
+}
+
+/** How many answers the data service gave this process, whichever command asked. */
+let serviceAnswers = 0;
+
+/**
+ * The count of the data service's answers (`noteDataServiceReach`): a read
+ * with nothing back while the count moved is slow, not cut off, as the
+ * client's own deadlines read it.
+ */
+export function dataServiceAnswerCount(): number {
+  return serviceAnswers;
 }
 
 /** Forgets what the last request came to, so a command reads only its own (`gloom fn` and `shot` start with it). */
