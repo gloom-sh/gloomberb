@@ -994,9 +994,11 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       dayRange: quote?.low != null && quote.high != null
         ? indexPoints ? `${price(quote.low)}-${price(quote.high)}` : formatPriceRange(quote.low, quote.high, quote.currency, options, "-")
         : "",
-      // An index's 0 is volume nobody counts, and its level has no currency.
+      // An index's 0 is volume nobody counts.
       volume: reportedQuoteVolume(quote),
-      currency: indexPoints ? "" : quote?.currency ?? "",
+      // The currency the service gives, an index's too (^MERV's ARS, ^N225's JPY), whether the row is current or
+      // stale: its level stays in points, and the export's currency_or_unit says so.
+      currency: quote?.currency ?? "",
       providerId: quote?.providerId ?? "",
       source: quote?.dataSource ?? quote?.providerId ?? "",
       feed: quoteFeedState(quote, now),
@@ -1511,12 +1513,12 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ),
     }, {
       rows: quoteRows,
-      // An index row's Cur is blank, its level having no currency; the export names what it is in instead.
+      // An index row's Cur is the index's currency, but its level is in points (or a yield in percent): the export names that.
       exportIdentity: (row) => ({
         symbolOrSeries: row.symbol,
         // A pair's rate is its quote currency per base: JPY per USD, as `history` and `fx` export it.
-        currencyOrUnit: (row.currency && pairExportUnit(row.symbol, row.currency))
-          || row.currency || (row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : isIndexLevel(row.instrumentType) ? INDEX_POINTS_EXPORT_UNIT : null),
+        currencyOrUnit: isIndexLevel(row.instrumentType) ? row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : INDEX_POINTS_EXPORT_UNIT
+          : (row.currency && pairExportUnit(row.symbol, row.currency)) || row.currency || (row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : null),
         // Each row as of its own price (^TNX's 19:59 beside ^VIX's 21:15), as Updated says; a row with none is blank.
         asOf: row.updatedAt || null,
         // Beside a coin priced by one exchange's own trade, which is cited to that exchange, each row names its own.

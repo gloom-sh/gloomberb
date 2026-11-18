@@ -1,6 +1,7 @@
 import { DataServiceUnreachableError, isNetworkFailure } from "../utils/network-failure";
 import { OperationTimeoutError } from "../utils/async-deadline";
 import { ApiRequestError, isTransientFailure, wasAskedTwice } from "../api-client/errors";
+import type { PriceHistoryResult } from "../types/price-history";
 
 // Registered, so a miss raised by another copy of this module (a plugin that
 // resolved `gloomberb/market-data` from the source tree) is still recognized.
@@ -48,11 +49,18 @@ export function createProviderMiss(message?: string, reason?: unknown, options?:
   return new ProviderMissError(message, reason, options);
 }
 
-/** A source has the listing's bars but not up to the present: it answered, just behind. */
+/**
+ * A source has the listing's bars but not up to the present: it answered, just
+ * behind. `behind` is what it answered, which the router shows, said to be
+ * behind, when no source has the present.
+ */
 export class StaleHistoryError extends ProviderMissError {
-  constructor(message: string) {
+  readonly behind?: PriceHistoryResult;
+
+  constructor(message: string, behind?: PriceHistoryResult) {
     super(message);
     this.name = "StaleHistoryError";
+    if (behind) this.behind = behind;
   }
 }
 
