@@ -881,7 +881,7 @@ function feedStatusText(freshness: ReportFreshness, short: boolean): string {
         return `${rest ? `${rest}, ` : ""}${stale}`;
       }
       // A line that says how old its oldest observation is does not say it twice.
-      return freshness.ageMinutes != null && freshness.oldestAgeMinutes == null ? `stale (${ageText(freshness.ageMinutes)} old)` : "stale";
+      return freshness.ageMinutes != null && freshness.ageMinutes > 0 && freshness.oldestAgeMinutes == null ? `stale (${ageText(freshness.ageMinutes)} old)` : "stale";
     }
     case "not-a-feed":
       return freshness.basis ? `not a live feed (${freshness.basis})` : "not a live feed";

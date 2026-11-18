@@ -5,6 +5,8 @@ import type { PaneScreenshotEvidence } from "./screenshot-evidence";
 import type { ReportFreshness } from "./freshness";
 import type { PaneScreenshotFinancialRatioEvidence } from "./financial-ratio-shot";
 
+export const PANE_SWEEP_EVIDENCE_PATH = "GLOOMBERB_PANE_SWEEP_EVIDENCE_PATH";
+
 export interface PaneScreenshotExpectedSelection {
   control: "metric" | "statement" | "ratio" | "period";
   value?: string;

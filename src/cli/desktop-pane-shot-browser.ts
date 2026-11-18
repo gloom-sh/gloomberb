@@ -151,7 +151,7 @@ const CHROME_ARGS = [
   "--disable-default-apps",
   "--disable-extensions",
   "--disable-popup-blocking",
-  "--hide-scrollbars",
+  "--mute-audio",
   "--no-first-run",
   "--no-default-browser-check",
   "--allow-file-access-from-files",

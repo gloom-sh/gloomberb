@@ -467,7 +467,7 @@ describe("financial analysis ratio screenshots", () => {
       }))],
     }] : []);
     const render: DesktopPaneShotRenderResult = {
-      visibleText: ["FA MSFT Statement Income Cash Flow Balance Sheet Ratios Ratio", tab.name, "USD · as of 2026-06-30 Annual Quarterly RATIO",
+      visibleText: ["FA MSFT Statement Income Cash Flow Balance Sheet Ratios Ratio", tab.name, "USD Annual Quarterly RATIO FY2026 2026-06-30",
         ...rows.flatMap(({ cells }) => cells.map(({ text }) => text))].join(" "),
       rows, truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
       emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [],
@@ -1267,6 +1267,8 @@ describe("pane screenshot structured data evidence", () => {
       resolved("financial-statements", { statement: "cashflow", period: "annual" }),
       payload([["NVDA", financials]]),
     );
+    expect(shotExpectedText(resolved("financial-statements", { statement: "cashflow", period: "annual" }),
+      ["NVDA"], payload([["NVDA", financials]]))).toContain("FY2026 2026-01-31");
     expect(statementEvidence).toMatchObject({
       kind: "financial-statement",
       symbol: "NVDA",

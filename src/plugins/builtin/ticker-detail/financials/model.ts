@@ -131,8 +131,8 @@ const FINANCIAL_LABEL_MIN_W = 12;
  * once showed nothing but metric names and "more →". The other 6 cells are the
  * pane's padding, the table's, the column gap and the scrollbar.
  */
-export function financialLabelWidth(width: number): number {
-  return Math.max(FINANCIAL_LABEL_MIN_W, Math.min(FINANCIAL_LABEL_W, width - FINANCIAL_COL_W - 6));
+export function financialLabelWidth(width: number, periodWidth = FINANCIAL_COL_W): number {
+  return Math.max(FINANCIAL_LABEL_MIN_W, Math.min(FINANCIAL_LABEL_W, width - periodWidth - 6));
 }
 /** The growth after a period's value: a blank and up to six characters (`+466%`, `<-99T%`). */
 const FINANCIAL_GROWTH_W = 7;
@@ -299,19 +299,6 @@ export function formatFinancialAmount(value: number, divisor: number): string {
 }
 
 /**
- * A statement column's header for reports. The compact form is the period as
- * the pane prints it without a fiscal calendar: `TTM`, or the period end date
- * the query bar shows as of. Table columns use `financialColumnLabel`.
- */
-export function formatFinancialHeader(date: string, currency?: string, dateSource?: FinancialStatement["dateSource"], compact = false, periodEnd?: string): string {
-  if (compact) return date === "TTM" ? "TTM" : date.slice(0, 10);
-  const period = date === "TTM" ? (periodEnd ? `TTM ${periodEnd}` : "TTM") : date.slice(0, 10);
-  const label = currency ? `${period} ${currency}` : period;
-  if (date === "TTM") return label;
-  return `${label} ${dateSource === "sec" ? "(SEC date)" : "(provider date)"}`;
-}
-
-/**
  * A report column's header (`gloom fn FA`): the fiscal period as the pane's
  * column names it and the day it ends (`FY2026 2026-09-30 USD bn (SEC
  * date)`, `TTM Q3 FY26 2026-09-30 USD`), with a half in the quarterly list
@@ -329,26 +316,17 @@ export function financialReportHeader(
   yearEndMonth: number | null,
   rows: readonly FinancialStatement[] = [],
 ): string {
-  const { date, dateSource } = statement;
-  // The fiscal period as the pane names it (`FY2026`, `Q3 FY26`, `TTM Q3 FY26`), then the day it ends.
-  const named = (name: string, end: string) => (name.endsWith(end) ? name : `${name} ${end}`);
-  if (date === "TTM") {
-    const end = statement.aggregation?.periodEnd;
-    const period = end ? named(financialColumnLabel(statement, kind, yearEndMonth), end) : "TTM";
-    return currency ? `${period} ${currency}` : period;
-  }
-  const end = date.slice(0, 10);
-  const months = kind === "quarterly" ? statementPeriodMonths(statement) : undefined;
-  const longer = months && months > 3 ? longerPeriodLabel(end, months, yearEndMonth) : null;
-  const period = named(longer ?? financialColumnLabel(statement, kind, yearEndMonth), end);
+  const period = financialFiscalHeader(statement, kind, yearEndMonth);
+  const header = currency ? `${period} ${currency}` : period;
+  if (statement.date === "TTM") return header;
   const filled = statement.filledFrom?.source === "results" ? fillDate(statement, rows) : null;
-  const source = filled ? fillDateText(filled) : dateSource === "sec" ? "SEC date" : "provider date";
-  return `${currency ? `${period} ${currency}` : period} (${source})`;
+  const source = filled ? fillDateText(filled) : statement.dateSource === "sec" ? "SEC date" : "provider date";
+  return `${header} (${source})`;
 }
 
 /**
- * A table column's label: the fiscal period, a half in the quarterly list as
- * a half (`H1 FY26`), and `TTM` with the quarter or half it runs to.
+ * The fiscal period, with a half in the quarterly list named as a half
+ * (`H1 FY26`), and `TTM` with the quarter or half it runs to.
  */
 export function financialColumnLabel(
   statement: FinancialTableStatement,
@@ -360,7 +338,19 @@ export function financialColumnLabel(
   return ttmPeriodLabel(periodEnd, yearEndMonth, interimMonths);
 }
 
-/** The end of the latest period on screen, which the query bar shows as of. */
+export function financialFiscalHeader(statement: FinancialTableStatement, kind: FinancialPeriod, yearEndMonth: number | null): string {
+  const end = statement.date === "TTM" ? statement.aggregation?.periodEnd : statement.date.slice(0, 10);
+  const months = kind === "quarterly" && statement.date !== "TTM" ? statementPeriodMonths(statement) : undefined;
+  const longer = end && months && months > 3 ? longerPeriodLabel(end, months, yearEndMonth) : null;
+  const name = longer ?? financialColumnLabel(statement, kind, yearEndMonth);
+  return end && !name.endsWith(end) ? `${name} ${end}` : name;
+}
+
+/** An annual balance sheet can lead with a newer interim position. */
+export function financialColumnPeriod(statement: FinancialTableStatement, period: FinancialPeriod, annualDates: ReadonlySet<string>): FinancialPeriod {
+  return period === "annual" && (statement.date === "TTM" || annualDates.has(statement.date)) ? "annual" : "quarterly";
+}
+
 export function latestFinancialPeriodEnd(statements: readonly FinancialTableStatement[]): string | undefined {
   return statements
     .map((statement) => statement.date === "TTM" ? statement.aggregation?.periodEnd : statement.date.slice(0, 10))
