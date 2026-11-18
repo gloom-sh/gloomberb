@@ -1731,6 +1731,7 @@ The line under the table names the spot and time they are valued at and the open
 - `--strikes 10` keeps 10 either side of the money. `--strikes 0.70-0.90` (or `--delta 0.70-0.90`) keeps the strikes whose call or put delta is in the band. `--strikes all`, the default, keeps every strike.
 - `--columns bid,ask,spread,delta,openInterest,extrinsicPerYear` picks the fields mirrored around the strike. `costOfSpot` adds the put's midpoint as a percent of spot on the put side ([method](research-data.md#omon-strike-window-and-carry)).
 - `gloom shot OMON` takes the same options, and its result names the rows cut above or below the view.
+- While the chain shows open interest, the footer keeps its date (`OI as of Mon 16 Nov`, `OI 11-16` in a narrow pane) and the image prints it; the spot the Greeks are valued at and the contract under the cursor give way first.
 - The report and the image name the expiry with its days left (`Expiry 2028-01-21 (469d)`, `data.metadata.expiry` in `--json`), and the report ends with the chain's as-of and delay in the same words as `options`.
 
 ### Adding and removing symbols

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { act, useReducer, useState } from "react";
 import { Box } from "../../../ui";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
+import type { CombinedPaneFooter } from "../../../components/layout/pane/footer/model";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable, hasPaneTableExporter } from "../../../state/pane-table-export-registry";
@@ -86,6 +87,7 @@ function OptionsHarness({
   settings,
   runtime = createTestPluginRuntime(),
   brokerInstances,
+  onFooter,
 }: {
   ticker: TickerRecord;
   quotePrice?: number;
@@ -98,6 +100,8 @@ function OptionsHarness({
   settings?: Record<string, unknown>;
   runtime?: ReturnType<typeof createTestPluginRuntime>;
   brokerInstances?: BrokerInstanceConfig[];
+  /** The footer as the pane registered it, before the bar fits it to its width. */
+  onFooter?: (footer: CombinedPaneFooter) => void;
 }) {
   const config = createTestPaneConfig("/tmp/gloomberb-options-test", {
     instanceId: TEST_PANE_ID,
@@ -123,10 +127,10 @@ function OptionsHarness({
 
   return (
     <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={runtime}>
-      {showFooter ? <PaneFooterProvider>{(footer) => <Box width={width} height={height} flexDirection="column">
+      {showFooter ? <PaneFooterProvider>{(footer) => (onFooter?.(footer), <Box width={width} height={height} flexDirection="column">
         <Box width={width} height={height - 1}><OptionsView width={width} height={height - 1} focused nestedInTabs={nestedInTabs} /></Box>
         <PaneFooterBar footer={footer} focused width={width} />
-      </Box>}</PaneFooterProvider> : <OptionsView width={width} height={height} focused nestedInTabs={nestedInTabs} />}
+      </Box>)}</PaneFooterProvider> : <OptionsView width={width} height={height} focused nestedInTabs={nestedInTabs} />}
     </TestPaneProvider>
   );
 }
@@ -577,6 +581,25 @@ test("a chain that gives up fields fits as drawn, its last put column whole, and
     expect(header.includes("C LAST")).toBe(width >= 106);
     expect(/1 (field )?hidden/.test(lines.join("\n"))).toBe(width < 106);
   }
+});
+
+/** `shot OMON SPY --columns gamma,openInterest,volume` printed OI counts with no session: the date gave way in a crowded footer. */
+test("while the chain shows open interest, its date stays in the footer and in a picture of the pane", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getOptionsChain: async () => ({ ...makeChain([100, 101], 101), openInterestAsOf: "2026-05-22" }),
+  })));
+  let footer: CombinedPaneFooter | null = null;
+  for (const width of [66, 90, 190]) {
+    await act(async () => {
+      await tui.render(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} showFooter width={width} height={16}
+        settings={{ optionColumnIds: ["gamma", "openInterest", "volume"] }} onFooter={(registered) => { footer = registered; }} />, { width, height: 16 });
+    });
+    await renderSettled();
+    const footerLine = tui.frame().trimEnd().split("\n").at(-1)!;
+    expect(footerLine).toMatch(width >= 190 ? /OI as of Fri 22 May/ : /OI (as of Fri 22 May|05-22)/);
+  }
+  // A shot keeps a footer's capture segments; this is the one that dates the counts.
+  expect(footer!.info.find((segment) => segment.id === "oi-as-of")).toMatchObject({ capture: true, parts: [{ text: "OI as of Fri 22 May" }] });
 });
 
 test("keeps both sides of a narrow strike table on screen and its expiration tabs independently scrollable", async () => {
