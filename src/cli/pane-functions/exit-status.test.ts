@@ -242,4 +242,10 @@ test("a report holds nothing when every row failed, never when it sits behind a 
   // A wall's note, and "Select a ticker.", are answers of their own.
   expect(reportHasNoData({ empty: true, rowCount: 0, unavailableSymbols: [], locked: "sign-in" })).toBe(false);
   expect(reportHasNoData({ empty: true, rowCount: 0, unavailableSymbols: [] })).toBe(false);
+  // Every listing without a quote: nothing when no figure shows (BI's sectors, all dashes), a report when a read
+  // that did answer shows one (VIX's term structure beside quotes it has none of).
+  const listings = { empty: false, rowCount: 2, unavailableSymbols: ["XLK", "XLV", "XLF"], errors: ["XLK: quote unavailable."] };
+  const table = (rows: (string | number)[][]) => ({ tables: [{ title: "t", columns: ["Name", "Last", "1M"], rows }], footer: [] });
+  expect(reportHasNoData(listings, table([["Technology", "", ""], ["Healthcare", "", ""]]))).toBe(true);
+  expect(reportHasNoData(listings, table([["3M / 30D", 1.07, ""], ["Healthcare", "", ""]]))).toBe(false);
 });

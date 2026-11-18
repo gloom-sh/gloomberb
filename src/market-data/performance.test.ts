@@ -146,3 +146,10 @@ test("each horizon runs from the daily close on its start date to the headline c
     point("2026-11-02", 30), point("2026-11-09", 29), point("2026-11-16", 28.53)];
   expect(buildPriceReturnFields(weekly, "NASDAQ", [horizon("1Y")], end)[0]).toMatchObject({ baseDay: "2025-11-14" });
 });
+
+test("a headline older than the bars is not the end: the newest close is, as before a quote was given", () => {
+  const daily = [point("2026-01-02", 100), point("2026-02-02", 104), point("2026-03-02", 110)];
+  const fields = buildPriceReturnFields(daily, undefined, [horizon("1M")], { day: "2026-01-02", close: 105.25 });
+  expect(fields[0]).toMatchObject({ baseDay: "2026-02-02" });
+  expect(fields[0]?.value).toBeCloseTo(110 / 104 - 1, 12);
+});

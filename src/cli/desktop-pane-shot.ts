@@ -31,7 +31,7 @@ import {
   type ShotMarketSocketCall,
 } from "./desktop-pane-shot-routes";
 import { SHOT_REQUEST_REFUSED } from "../api-client/errors";
-import { isProxyRefusal, noteDataServiceReach, SHOT_SERVICE_UNREACHABLE_HEADER } from "../api-client/request";
+import { dataServiceReachEpoch, isProxyRefusal, noteDataServiceReach, SHOT_SERVICE_UNREACHABLE_HEADER } from "../api-client/request";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../utils/network-failure";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import { isShotApiRequestAllowed, isShotSessionPath } from "./desktop-pane-shot-api-policy";
@@ -574,6 +574,8 @@ async function proxyShotApiRequest(
   apiProxy: DesktopPaneShotApiProxy,
   signal?: AbortSignal,
 ): Promise<Response> {
+  // The command this read is for, which records what it came to.
+  const epoch = dataServiceReachEpoch();
   const baseUrl = new URL(apiProxy.baseUrl);
   const basePath = baseUrl.pathname.replace(/\/+$/, "");
   let path = requestUrl.pathname.slice(SHOT_API_PROXY_PREFIX.length) || "/";
@@ -603,9 +605,9 @@ async function proxyShotApiRequest(
       // The proxy in HTTPS_PROXY refusing to reach the service answers for it: the page is told the service was not reached.
       if (isProxyRefusal(target.href, response)) {
         await response.body?.cancel().catch(() => { /* Intentional ignore: the refusal's own body is never read. */ });
-        return shotApiUnreachable();
+        return shotApiUnreachable(epoch);
       }
-      noteDataServiceReach(true);
+      noteDataServiceReach(true, epoch);
       const location = SHOT_API_REDIRECT_STATUSES.has(response.status) ? response.headers.get("location") : null;
       if (location === null) return await shotApiResponse(response, path);
       await response.body?.cancel().catch(() => { /* Intentional ignore: a redirect's own body is never read, only dropped. */ });
@@ -627,7 +629,7 @@ async function proxyShotApiRequest(
   } catch (error) {
     // A read that never reached the service (no connection, a refused proxy) is said as one, in the words every
     // command uses; any other failure is told as a dropped connection tells fetch.
-    if (isNetworkFailure(error)) return shotApiUnreachable();
+    if (isNetworkFailure(error)) return shotApiUnreachable(epoch);
     return shotApiError("Cloud API request failed.", 502);
   }
 }
@@ -637,8 +639,8 @@ async function proxyShotApiRequest(
  * the page's request reads it as the service being unreachable
  * (SHOT_SERVICE_UNREACHABLE_HEADER), as it would a refused connection of its own.
  */
-function shotApiUnreachable(): Response {
-  noteDataServiceReach(false);
+function shotApiUnreachable(epoch: number): Response {
+  noteDataServiceReach(false, epoch);
   return Response.json({ error: DATA_SERVICE_UNREACHABLE_MESSAGE }, {
     status: 502,
     headers: { "Cache-Control": "no-store", [SHOT_SERVICE_UNREACHABLE_HEADER]: "1" },

@@ -348,25 +348,39 @@ function tablesHoldValues(tables: CliReportTables): boolean {
   });
 }
 
+/** Whether a report's tables show a figure: a cell outside the label column with a digit in it (not a dash). */
+function tablesHoldFigures(tables: CliReportTables): boolean {
+  return tables.tables.some((table) => {
+    const skipped = new Set(table.columns.flatMap((header, index) => index === 0 || header === "status" || header === "value_status" ? [index] : []));
+    return table.rows.some((row) => row.some((cell, index) => !skipped.has(index) && /\d/.test(String(cell ?? ""))));
+  });
+}
+
 /**
- * Whether a report holds nothing because its reads failed: empty, or every
- * row of it unavailable or failed (WEI's twenty indices each "couldn't
- * reach", VIX's curve), with a failure said (an error, a listing without
- * data); never one behind a wall, whose note is its answer, or one with
- * nothing asked yet ("Select a ticker.").
+ * Whether a report holds nothing because its reads failed: empty with a
+ * failure said, every row failing to reach the data service (WEI's twenty
+ * indices each "couldn't reach"), or every row's listing without data and no
+ * figure anywhere (BI's sectors, all dashes). Never one behind a wall, whose
+ * note is its answer, one with nothing asked yet ("Select a ticker."), or one
+ * with a figure from a read that did answer (VIX's term structure beside
+ * quotes it has none of).
  */
 export function reportHasNoData(data: {
   empty: boolean; rowCount: number; unavailableSymbols: readonly string[]; errors?: readonly string[]; locked?: unknown;
-}): boolean {
+}, tables?: CliReportTables): boolean {
   if (data.locked) return false;
-  const failures = Math.max(data.unavailableSymbols.length, data.errors?.length ?? 0);
-  if (failures === 0) return false;
-  return data.empty || (data.rowCount > 0 && failures >= data.rowCount);
+  const errors = data.errors ?? [];
+  if (data.unavailableSymbols.length === 0 && errors.length === 0) return false;
+  if (data.empty) return true;
+  if (data.rowCount === 0) return false;
+  const unreached = errors.filter((error) => error.includes(DATA_SERVICE_UNREACHABLE_MESSAGE)).length;
+  if (unreached >= data.rowCount) return true;
+  return data.unavailableSymbols.length >= data.rowCount && !!tables && !tablesHoldFigures(tables);
 }
 
 /** A report with nothing in it because the data service went unanswered: no answer, not "no data" dated now. */
-function reportFailedUnreached(data: Parameters<typeof reportHasNoData>[0]): boolean {
-  return reportHasNoData(data) && dataServiceUnreachable();
+function reportFailedUnreached(data: Parameters<typeof reportHasNoData>[0], tables: CliReportTables): boolean {
+  return reportHasNoData(data, tables) && dataServiceUnreachable();
 }
 
 /**
@@ -474,7 +488,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       }).finally(progress.stop);
       // A report with nothing in it while the data service went unanswered is no answer, not "No data" dated now:
       // it fails as `search` and `quote` do (G, CMP, WEI and CHOKE printed empty tables and "retrieved" at the run).
-      if (reportFailedUnreached(report.data)) failUnreachable();
+      if (reportFailedUnreached(report.data, report.tables)) failUnreachable();
       // A company's name typed where its ticker goes (`fn RDCF Palantir`) found nothing: the answer is `quote`'s,
       // "Not a ticker: PALANTIR. Did you mean PLTR (Palantir Technologies Inc.)?", not an empty report. A source that
       // could not answer for the word (a timeout) says nothing of it, but when search finds the company it is that.

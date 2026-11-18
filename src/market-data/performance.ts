@@ -279,9 +279,12 @@ export function buildPriceReturnFields(
   const sessions = sessionDays(history, venue);
   const interval = barInterval(history);
   const days = interval ? sessions.map((day) => barCloseDay(day, interval, venue)) : sessions;
+  // A headline older than the bars (a quote that stopped while history went on) is not the end: the newest close is.
+  const lastDay = days.at(-1);
+  const final = end && (lastDay === undefined || end.day >= lastDay) ? end : null;
   return horizons.map((horizon) => ({
     id: horizon.id,
     label: horizon.label,
-    ...priceReturnFromHistory(history, days, horizon, end ?? null),
+    ...priceReturnFromHistory(history, days, horizon, final),
   }));
 }
