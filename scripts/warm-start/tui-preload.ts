@@ -1,4 +1,6 @@
-import { appendFileSync, writeFileSync } from "fs";
+import { appendFileSync, existsSync, unlinkSync, writeFileSync } from "fs";
+import { heapStats } from "bun:jsc";
+import { dirname, join } from "path";
 import { CliRenderer } from "@opentui/core";
 import { installWarmStartNetwork, warmStartNetworkFromEnv } from "./network";
 import { terminalPaneStates, type PaneShownState } from "./pane-states";
@@ -20,6 +22,17 @@ if (network) installWarmStartNetwork({ ...network, log: (event, url) => {
 const out = process.env.WARM_START_PROBE_OUT;
 if (out) {
   writeFileSync(out, "");
+  const home = dirname(out);
+  const trigger = join(home, "collect-heap");
+  const result = join(home, "heap-bytes");
+  if (process.env.WARM_START_METRICS === "1") {
+    setInterval(() => {
+      if (!existsSync(trigger)) return;
+      unlinkSync(trigger);
+      Bun.gc(true);
+      writeFileSync(result, String(heapStats().heapSize));
+    }, 100).unref();
+  }
   const last = new Map<string, PaneShownState>();
   let frame = 0;
   const proto = CliRenderer.prototype as unknown as { renderNative: (...args: unknown[]) => unknown };

@@ -23,8 +23,7 @@ export interface DesktopStandIn {
  * on the same port, so the page's origin and storage stay put between
  * launches as the app's do.
  */
-export async function startDesktopStandIn({ checkout, app, home, networkDir }: { checkout: string; app: string; home: string; networkDir: string }): Promise<DesktopStandIn> {
-  const viewDir = join(home, "desktop-view");
+export async function startDesktopStandIn({ checkout, app, home, viewDir, networkDir }: { checkout: string; app: string; home: string; viewDir: string; networkDir: string }): Promise<DesktopStandIn> {
   await buildView(app, join(checkout, "scripts/warm-start/desktop-electroview.ts"), viewDir);
   // One port per profile: the page's storage belongs to its origin.
   const port = 41_000 + Number(BigInt(Bun.hash(home)) % 2000n);

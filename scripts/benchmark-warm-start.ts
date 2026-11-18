@@ -1,5 +1,5 @@
 import { existsSync } from "fs";
-import { mkdir, readFile, rm, writeFile } from "fs/promises";
+import { cp, mkdir, readFile, rename, rm, writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join, resolve } from "path";
 import type { AppConfig, DockLayoutNode, SavedLayout } from "../src/types/config";
@@ -13,12 +13,13 @@ import { startDesktopStandIn, type DesktopStandIn } from "./warm-start/desktop-s
 
 /**
  *   bun scripts/benchmark-warm-start.ts <tui|web|desktop> [--runs 5] [--network normal,slow]
- *     [--layouts 1,2] [--label before] [--app <checkout>] [--root <dir>] [--out <dir>]
+ *     [--layouts 1,2] [--label before] [--app <checkout>] [--root <dir>] [--out <dir>] [--metrics]
  *
  * A warm restart, pane by pane. One pane of every type the catalog lists
  * (scripts/warm-start/plan.ts) is laid out in layouts of 16; for each layout
- * the app is launched once to fill its caches and is killed, then launched again
- * `--runs` times per network. Every frame, each pane's body is read as blank,
+ * the app is launched once to fill its caches and is killed, then the profile
+ * left by that exit is restored before each of `--runs` restarts per network.
+ * Every frame, each pane's body is read as blank,
  * loading, empty, error or content (scripts/warm-start/pane-states.ts), and
  * the report gives per pane and renderer:
  *
@@ -54,6 +55,7 @@ const outDir = resolve(takeOption(args, "--out") ?? join(root, "results"));
 const perLayout = positiveInteger(takeOption(args, "--per-layout"), 16, "per-layout");
 const build = args.includes("--build");
 const capture = args.includes("--capture");
+const metrics = args.includes("--metrics");
 /** The harness's own checkout, for its scripts. */
 const checkout = resolve(join(import.meta.dir, ".."));
 /** The checkout whose app is launched: `--app`, for a before run of the base while this branch changes. */
@@ -64,6 +66,7 @@ const WIDTH = { tui: 256, view: 2048 };
 const HEIGHT = { tui: 80, view: 1280 };
 
 const profile = join(root, `${target}-${label}`);
+const filledProfile = `${profile}-filled`;
 const networkDir = join(root, "network");
 const interrupted = new AbortController();
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -80,6 +83,8 @@ interface RunRecord {
   launchedAt: number;
   panes: PaneTimeline[];
   requests?: Record<string, number>;
+  heapBytes?: number;
+  cacheKiB?: number;
 }
 
 function grid(ids: string[]): DockLayoutNode {
@@ -141,6 +146,7 @@ interface Launch {
   timeline(): Map<string, PaneTimeline>;
   launchedAt: number;
   requests(): Record<string, number> | undefined;
+  heapBytes(): Promise<number | undefined>;
   quit(): Promise<void>;
 }
 
@@ -187,6 +193,7 @@ async function launchTui(network: Network | "fill"): Promise<Launch> {
     `WARM_START_NET_DIR=${shellQuote(networkDir)}`,
     `WARM_START_NET_DELAY_MS=${network === "slow" ? SLOW_MS : 0}`,
     `WARM_START_REPLAY_ONLY=${process.env.WARM_START_REPLAY_ONLY === "1" ? 1 : 0}`,
+    `WARM_START_METRICS=${metrics ? 1 : 0}`,
     `BUN_RUNTIME_TRANSPILER_CACHE_PATH=${shellQuote(join(root, "transpiler"))}`,
   ].join(" ");
   const launchedAt = Date.now();
@@ -214,6 +221,19 @@ async function launchTui(network: Network | "fill"): Promise<Launch> {
     launchedAt,
     timeline: () => timelines,
     requests: () => requests,
+    async heapBytes() {
+      const trigger = join(profile, "collect-heap");
+      const result = join(profile, "heap-bytes");
+      await rm(result, { force: true });
+      await writeFile(trigger, "");
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        const sample = await readFile(result, "utf8").catch(() => "");
+        if (sample) return Number(sample);
+        if (interrupted.signal.aborted) break;
+        await sleep(50);
+      }
+      return undefined;
+    },
     async quit() {
       const panePid = Number(Bun.spawnSync(["tmux", "display-message", "-p", "-t", `=${session}:`, "#{pane_pid}"]).stdout.toString());
       try {
@@ -245,7 +265,7 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
     webServer.setDelay(delayMs);
     origin = webServer.origin;
   } else {
-    standIn ??= await startDesktopStandIn({ checkout, app, home: profile, networkDir });
+    standIn ??= await startDesktopStandIn({ checkout, app, home: profile, viewDir: `${profile}-view`, networkDir });
     await standIn.restart(delayMs);
     origin = standIn.origin;
     path = standIn.pagePath;
@@ -273,6 +293,10 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
     launchedAt,
     timeline: () => timelines,
     requests: () => server.requests(),
+    async heapBytes() {
+      await browser.cdp.send("HeapProfiler.collectGarbage", {}, 3_000);
+      return (await browser.cdp.send<{ usedSize: number }>("Runtime.getHeapUsage", {}, 3_000)).usedSize;
+    },
     async quit() {
       try {
         await picture;
@@ -326,8 +350,8 @@ function summarize(records: RunRecord[], fills: Map<number, RunRecord>, plan: Wa
     const layout = Math.floor(plan.panes.indexOf(pane) / perLayout);
     if (!fills.has(layout)) continue;
     const fill = fills.get(layout)?.panes.find((timeline) => timeline.paneId === id);
-    const filled = fill?.states.some((state) => state.state === "content") ?? false;
     const filledLast = fill?.states.at(-1)?.state ?? "missing";
+    const filled = filledLast === "content";
     for (const network of networks) {
       const mine = records.filter((entry) => entry.layout === layout && entry.network === network);
       const firstContent: number[] = [];
@@ -376,6 +400,16 @@ function markdown(rows: Array<Record<string, any>>): string {
   return lines.join("\n");
 }
 
+async function cacheKiB(): Promise<number> {
+  const paths = (target === "web" ? ["chrome/Default/IndexedDB"] : [".gloomberb-cache.db", ".gloomberb-cache.db-wal", ".gloomberb-cache.db-shm"])
+    .map((file) => join(profile, file)).filter(existsSync);
+  if (paths.length === 0) return 0;
+  const child = Bun.spawn(["du", "-sk", ...paths], { stdout: "pipe", stderr: "ignore" });
+  const sizes = (await new Response(child.stdout).text()).trim().split("\n").map((line) => Number(line.split(/\s/)[0]));
+  if (await child.exited !== 0 || sizes.some((size) => !Number.isFinite(size))) throw new Error("Could not measure the cache files");
+  return sizes.reduce((total, size) => total + size, 0);
+}
+
 async function main(): Promise<void> {
   await mkdir(root, { recursive: true });
   await mkdir(outDir, { recursive: true });
@@ -396,20 +430,38 @@ async function main(): Promise<void> {
       const expected = layouts[layout]!.layout.instances.length;
       const done = (network: Network | "fill", run: number) => (network === "fill" ? saved.fills : saved.records)
         .some((entry) => entry.layout === layout && entry.network === network && entry.run === run);
+      if (interrupted.signal.aborted) break;
+      if (networks.every((network) => Array.from({ length: runs }, (_, index) => done(network, index + 1)).every(Boolean))) continue;
       const once = async (network: Network | "fill", run: number) => {
-        if (interrupted.signal.aborted || done(network, run)) return;
-        await writeLaunchConfig(base, layouts, layout);
+        if (interrupted.signal.aborted || (network !== "fill" && done(network, run))) return;
+        await rm(profile, { recursive: true, force: true });
+        if (network === "fill") {
+          await mkdir(profile, { recursive: true });
+          await writeLaunchConfig(base, layouts, layout);
+        } else {
+          await cp(filledProfile, profile, { recursive: true, verbatimSymlinks: true });
+        }
         const screenshot = capture && network !== "fill" && run === 1
           ? join(outDir, `${target}-${label}-${network}-layout-${layout + 1}.png`) : undefined;
         const started = await launch(network, screenshot);
+        let heapBytes: number | undefined;
         try {
           await settle(started, expected, network);
+          if (metrics && !interrupted.signal.aborted) heapBytes = await started.heapBytes().catch(() => undefined);
         } finally {
           await started.quit();
         }
         if (interrupted.signal.aborted) return;
-        const entry: RunRecord = { layout, network, run, launchedAt: started.launchedAt, panes: [...started.timeline().values()], requests: started.requests() };
-        (network === "fill" ? saved.fills : saved.records).push(entry);
+        const entry: RunRecord = { layout, network, run, launchedAt: started.launchedAt, panes: [...started.timeline().values()],
+          requests: started.requests(), heapBytes, cacheKiB: metrics ? await cacheKiB() : undefined };
+        if (network === "fill") {
+          await rm(filledProfile, { recursive: true, force: true });
+          await rename(profile, filledProfile);
+          saved.fills = saved.fills.filter((fill) => fill.layout !== layout);
+          saved.fills.push(entry);
+        } else {
+          saved.records.push(entry);
+        }
         await writeFile(results, JSON.stringify(saved));
         const loading = entry.panes.filter((pane) => pane.states.some((state) => state.state === "loading")).length;
         console.error(`${target} ${label} layout ${layout + 1} ${network} ${run}: ${entry.panes.length} panes, ${loading} showed loading, requests ${JSON.stringify(entry.requests ?? {})}`);
@@ -422,6 +474,7 @@ async function main(): Promise<void> {
   } finally {
     webServer?.stop();
     await standIn?.stop();
+    await rm(filledProfile, { recursive: true, force: true });
   }
 
   const fills = new Map(saved.fills.map((entry) => [entry.layout, entry]));
