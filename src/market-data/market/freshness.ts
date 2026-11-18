@@ -1,4 +1,4 @@
-import type { MarketState, QuoteIndexSession } from "../../types/financials";
+import type { MarketState, Quote, QuoteIndexSession } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
 import { hasPublishedApacCalendar, isPublishedApacClosure, publishedApacEarlyClose } from "../published-apac-sessions";
 import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-sessions";
@@ -8,7 +8,7 @@ import { hasPublishedNseCalendar, isPublishedNseClosure, publishedNseSpecialSess
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "../quotes/clock";
 import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
-import { PERPETUAL_EXCHANGES } from "../../tickers/perpetual-listing";
+import { isPerpetualExchange, PERPETUAL_EXCHANGES } from "../../tickers/perpetual-listing";
 
 const ALWAYS_OPEN_EXCHANGES = new Set(["CCC", ...PERPETUAL_EXCHANGES]);
 
@@ -638,6 +638,24 @@ export function previousPublishedSession(
 /** How far the delayed feed runs behind the venue's trades. */
 export function delayedFeedLagMs(exchange: string | undefined): number {
   return SLOWER_DELAYED_FEEDS.has(canonicalExchange(exchange)) ? SLOWER_DELAYED_FEED_LAG_MS : DELAYED_FEED_LAG_MS;
+}
+
+const CLOUD_PROVIDER_ID = "gloomberb-cloud";
+
+/**
+ * The minutes a quote's own feed runs behind its venue: a delayed Gloom Cloud
+ * quote by its venue's lag (`delayedFeedLagMs`: 20 for SGX, 15 for New York).
+ * Null for a quote that states no lag of its own: a live one, another
+ * source's, or a perpetual's, whose venue is read about once a minute rather
+ * than held back. The quote's footer and its delayed mark both say this.
+ */
+export function quoteFeedDelayMinutes(
+  quote: Pick<Quote, "dataSource" | "providerId" | "listingExchangeName" | "exchangeName">,
+): number | null {
+  if (quote.dataSource !== "delayed" || quote.providerId !== CLOUD_PROVIDER_ID) return null;
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  if (isPerpetualExchange(exchange)) return null;
+  return Math.round(delayedFeedLagMs(exchange) / 60_000);
 }
 
 /**

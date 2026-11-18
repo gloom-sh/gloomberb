@@ -2,6 +2,7 @@
 // router can gate real-time routing on the same entitlement the panes show.
 
 import type { Quote } from "../types/financials";
+import { quoteFeedDelayMinutes } from "../market-data/market/freshness";
 
 /**
  * Minimum shape the plan helpers need. Both `AuthUser` (from `/auth/get-session`)
@@ -72,16 +73,18 @@ export function hasProAccess(user: PlanAccessUser | null | undefined, now = Date
   return user.effectivePlan === "pro" && !user.trialEndsAt;
 }
 
-/** What of a price decides whether a free account sees it late. */
-export type QuoteDelayFacts = Pick<Quote, "dataSource" | "delisting" | "priceObservation">;
+/** What of a price decides whether a free account sees it late, and by how much. */
+export type QuoteDelayFacts = Pick<Quote, "dataSource" | "delisting" | "priceObservation" | "providerId" | "listingExchangeName" | "exchangeName">;
 
 /**
- * The delay in minutes an account sees on a price: the free tier's quote
- * delay when the account has no real-time access (signed out, free, a trial
- * that ended) and the price is not live, null otherwise. A live price (a
+ * The delay in minutes an account sees on a price, null when it sees none.
+ * Whether it sees one: an account without real-time access (signed out, free,
+ * a trial that ended) does, on a price that is not live. A live price (a
  * coin, a broker's own feed) has none, and neither does a price with no delay
  * to speak of (a delisted line's last trade, a fund's NAV). Pro and trial
- * accounts never see one.
+ * accounts never see one. How long: the quote's own feed delay when it states
+ * one (`quoteFeedDelayMinutes`: 20 for SGX), as the quote's footer says it,
+ * else the free tier's quote delay.
  */
 export function freeQuoteDelayMinutes(
   access: Pick<PlanAccess, "hasProAccess">,
@@ -89,20 +92,21 @@ export function freeQuoteDelayMinutes(
 ): number | null {
   if (access.hasProAccess || !quote) return null;
   if (quote.dataSource === "live" || quote.delisting || quote.priceObservation === "nav") return null;
-  return CLOUD_QUOTE_DELAY_MINUTES;
+  return quoteFeedDelayMinutes(quote) ?? CLOUD_QUOTE_DELAY_MINUTES;
 }
 
-/** The delay of the first of `quotes` an account sees late (see {@link freeQuoteDelayMinutes}), or null when none is. */
+/** The longest delay this account sees on any of `quotes` (see {@link freeQuoteDelayMinutes}), or null when none is late. */
 export function freeQuotesDelayMinutes(
   access: Pick<PlanAccess, "hasProAccess">,
   quotes: Iterable<QuoteDelayFacts | null | undefined>,
 ): number | null {
   if (access.hasProAccess) return null;
+  let longest: number | null = null;
   for (const quote of quotes) {
     const minutes = freeQuoteDelayMinutes(access, quote);
-    if (minutes != null) return minutes;
+    if (minutes != null && (longest == null || minutes > longest)) longest = minutes;
   }
-  return null;
+  return longest;
 }
 
 export function resolvePlanAccess(
