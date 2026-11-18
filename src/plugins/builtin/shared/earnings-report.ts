@@ -56,12 +56,15 @@ export const NO_CONSENSUS = "no consensus";
 /**
  * A report that is out with no actual yet (the calendar fills it the next
  * day, a press release only when it proves the figure) says so where its
- * actual would be, one word everywhere: ERN, the board, EE's detail.
+ * actual would be, one word everywhere: ERN, the board, EE's detail. A
+ * listing abroad's figures come from its own results documents, with Gloom
+ * Pro only, so its row without one is not waiting on anything: it keeps its
+ * dash.
  */
 export const ACTUAL_PENDING = "pending";
 
-export function actualPending(row: { epsActual?: number | null; dateStatus?: string | null }): boolean {
-  return row.epsActual == null && row.dateStatus === "reported";
+export function actualPending(row: { epsActual?: number | null; dateStatus?: string | null }, abroad = false): boolean {
+  return !abroad && row.epsActual == null && row.dateStatus === "reported";
 }
 
 /** NO_CONSENSUS where a column is narrow. */

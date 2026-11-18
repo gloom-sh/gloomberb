@@ -62,6 +62,10 @@ describe("EVTS rows", () => {
     expect(cell(LADR, "epsActual").text).toBe(MISSING_VALUE);
     expect(boardHasActuals([row(LADR), row(DIS)])).toBe(true);
     expect(boardColumns(88, { actuals: true }).map((entry) => entry.id)).toContain("epsActual");
+    // A listing abroad's figures come from its own documents, with Gloom Pro: one out without them is waiting on nothing.
+    const FN = boardReport(calendarReport({ symbol: "F99:SGX", currency: "SGD", dateStatus: "reported" }), new Map());
+    expect(cell(FN, "epsActual").text).toBe(MISSING_VALUE);
+    expect(boardHasActuals([row(LADR), row(FN)])).toBe(false);
   });
 
   test("MOVE is the move on a report out today, beside the implied move", () => {

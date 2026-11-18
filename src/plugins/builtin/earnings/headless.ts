@@ -59,6 +59,11 @@ const BASIS_COLUMN: HeadlessPaneColumn = {
   textFormat: (value, row) => (value == null ? MISSING_VALUE : row.epsActualProvisional === true ? `${String(value)}, provisional` : String(value)),
 };
 
+/** A listing abroad's row (a board row naming one, an ERN row in its own currency) has no actual pending: see actualPending. */
+function pendingAbroad(row: Record<string, unknown>): boolean {
+  return typeof row.symbol === "string" ? listingAbroadVenue(row.symbol) != null : row.currency != null && row.currency !== "USD";
+}
+
 const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
   { key: "dateStatus", header: "Status" },
@@ -72,7 +77,7 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
   // A report out with no actual yet says so (exports: in the status column), never a bare blank.
-  { key: "epsActual", header: "EPS act", align: right, format: (value, row) => actualPending({ epsActual: num(value), dateStatus: typeof row.dateStatus === "string" ? row.dateStatus : null }) ? ACTUAL_PENDING : epsText(num(value)) },
+  { key: "epsActual", header: "EPS act", align: right, format: (value, row) => actualPending({ epsActual: num(value), dateStatus: typeof row.dateStatus === "string" ? row.dateStatus : null }, pendingAbroad(row)) ? ACTUAL_PENDING : epsText(num(value)) },
   BASIS_COLUMN,
   surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
@@ -102,7 +107,7 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "epsEstimate", header: "EPS est", align: right, format: (value, row) => lacksConsensus({ epsActual: num(row.epsActual), epsEstimate: num(value) }) ? NO_CONSENSUS : epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
   // A report out with no actual yet says so (exports: in the status column), never a bare blank.
-  { key: "epsActual", header: "EPS act", align: right, format: (value, row) => actualPending({ epsActual: num(value), dateStatus: typeof row.dateStatus === "string" ? row.dateStatus : null }) ? ACTUAL_PENDING : epsText(num(value)) },
+  { key: "epsActual", header: "EPS act", align: right, format: (value, row) => actualPending({ epsActual: num(value), dateStatus: typeof row.dateStatus === "string" ? row.dateStatus : null }, pendingAbroad(row)) ? ACTUAL_PENDING : epsText(num(value)) },
   BASIS_COLUMN,
   surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },

@@ -123,7 +123,8 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
       return { text: row.epsAnalysts == null ? MISSING_VALUE : String(row.epsAnalysts), color: dim };
     case "epsActual":
       // A report out with no actual yet says so; the company's press release's figure reads quieter until the calendar's replaces it.
-      if (actualPending(row)) return { text: ACTUAL_PENDING, color: dim };
+      // A listing abroad's rows carry their own currency; a US listing's are dollars (null).
+      if (actualPending(row, row.currency != null)) return { text: ACTUAL_PENDING, color: dim };
       return { text: inCurrency(epsText(row.epsActual), row), color: row.provisional ? colors.textMuted : colors.text };
     case "basis":
       // A listing abroad's basic EPS is not the statements' diluted figure: it says what it is.
