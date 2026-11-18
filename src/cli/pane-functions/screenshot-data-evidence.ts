@@ -7,10 +7,11 @@ import { graphRowsForFinancials, limitGraphRowsBySymbol, metricDef } from "../..
 import { getTimeSeriesField } from "../../time-series/field-catalog";
 import {
   buildFinancialTableModel,
-  financialStatementCurrency,
-  formatFinancialHeader,
+  financialColumnPeriod,
+  financialFiscalHeader,
   splitPeriodsNotInYet,
 } from "../../plugins/builtin/ticker-detail/financials/model";
+import { fiscalYearEndMonth } from "../../utils/fiscal-period";
 import type { FundamentalPeriod, GraphKind, GraphMetricKey } from "../../time-series/reporting";
 import type { TimeRange } from "../../time-series/range";
 import { subtractTimeRange } from "../../time-series/date-window";
@@ -363,19 +364,10 @@ export function shotExpectedText(
       // A newest period with only some figures is left out of the pane's statement columns (splitPeriodsNotInYet).
       const latestStatement = table && !ratioTab ? splitPeriodsNotInYet(table.statements, table.subTab).shown[0] : table?.statements[0];
       const firstMetric = table?.rows[0];
-      // The pane prints the compact header: date, currency and an S/P source marker.
-      if (latestStatement) {
-        const currency = latestStatement.currency ?? financialStatementCurrency(
-          financials,
-          [...(financials.annualStatements ?? []), ...(financials.quarterlyStatements ?? [])],
-        );
-        expected.push(formatFinancialHeader(
-          latestStatement.date,
-          currency,
-          latestStatement.dateSource,
-          true,
-          latestStatement.aggregation?.periodEnd,
-        ).trim());
+      if (table && latestStatement) {
+        const annual = financials.annualStatements ?? [];
+        const kind = financialColumnPeriod(latestStatement, table.period, new Set(annual.map(({ date }) => date)));
+        expected.push(financialFiscalHeader(latestStatement, kind, fiscalYearEndMonth(annual)));
       }
       const firstLabel = ratioTab ? ratioTab.ratios[0]?.label : firstMetric?.unitLabel;
       if (firstLabel) expected.push(firstLabel);

@@ -15,6 +15,12 @@ const line = (definition: Pick<HeadlessPaneDefinition, "shape" | "freshness">, r
 );
 
 describe("report freshness", () => {
+  test("a source can flag newly retrieved data stale without calling it zero minutes old", () => {
+    const stale = { source: "Gloom Cloud", status: "stale" as const, asOf: "2026-11-18T00:20:26Z" };
+    expect(formatFreshnessLine({ ...stale, ageMinutes: 0 })).toEndWith("00:20 UTC · stale");
+    expect(formatFreshnessLine({ ...stale, ageMinutes: 9 })).toEndWith("00:20 UTC · stale (9 min old)");
+  });
+
   test("an intraday history names its newest bar's span, not the time the bar opened", () => {
     const hourly = rows({ source: "Gloom Cloud", status: "not-a-feed", basis: "hourly bars", observedKey: "date", oldest: null, barMinutes: 60 });
     const bars = { rows: [{ date: "2026-10-09T02:00:00Z" }, { date: "2026-10-09T03:00:00Z" }] };
