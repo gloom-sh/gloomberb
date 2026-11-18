@@ -60,6 +60,35 @@ test("changes preserve frequency, currency, basis, zero denominators and percent
   expect(observationChange(year(2025, 120), [year(2023, 100)]).value).toBeNull();
 });
 
+test("a year to date is set against the same window a year earlier, never the same year's half", () => {
+  const ytd = (id: string, start: string | null, end: string | null, fiscalYear: number, value: number, fiscalQuarter: number | null = null) =>
+    observation({ id, value, period: { start, end, kind: "ytd", fiscalYear, fiscalQuarter, label: id } });
+  const nine2026 = ytd("9m-2026", "2026-01-01", "2026-09-30", 2026, 218_851);
+  const six2026 = ytd("6m-2026", "2026-01-01", "2026-06-30", 2026, 143_300);
+  const nine2025 = ytd("9m-2025", "2025-01-01", "2025-09-30", 2025, 216_900);
+  // An insurer's nine months beside its half of the same year: no change, rather than +52.73%.
+  expect(observationChange(nine2026, [six2026]).value).toBeNull();
+  // With the nine months a year earlier stated too, that is the prior, whatever else stands between.
+  expect(observationChange(nine2026, [six2026, nine2025]).value).toBeCloseTo(0.899, 2);
+  // The half a year earlier compares with its own half, as before.
+  expect(observationChange(six2026, [ytd("6m-2025", "2025-01-01", "2025-06-30", 2025, 126_600), nine2025]).value).toBeCloseTo(13.19, 1);
+  // A window of another length ending a year earlier (a fiscal year starting elsewhere) is not the same window.
+  expect(observationChange(nine2026, [ytd("other", "2024-10-01", "2025-09-30", 2025, 200_000)]).value).toBeNull();
+  // Undated: the same fiscal quarter a year earlier, not the quarter before.
+  const undated = (item: ReturnType<typeof ytd>, fiscalQuarter: number) => ({ ...item, period: { ...item.period, start: null, end: null, fiscalQuarter } });
+  expect(observationChange(undated(nine2026, 3), [undated(six2026, 2)]).value).toBeNull();
+  expect(observationChange(undated(nine2026, 3), [undated(six2026, 2), undated(nine2025, 3)]).value).toBeCloseTo(0.899, 2);
+  // An end with no start still pairs with the same end a year earlier.
+  expect(observationChange(ytd("9m-open", null, "2026-09-30", 2026, 218_851), [ytd("9m-open-2025", null, "2025-09-30", 2025, 216_900), six2026]).value).toBeCloseTo(0.899, 2);
+});
+
+test("a balance is set against the balance before it; a period of an unknown window against none", () => {
+  const at = (id: string, end: string, value: number) => observation({ id, value, period: { start: null, end, kind: "instant", fiscalYear: Number(end.slice(0, 4)), fiscalQuarter: null, label: end } });
+  expect(observationChange(at("jun-2026", "2026-06-30", 83_402), [at("dec-2025", "2025-12-31", 79_678), at("jun-2025", "2025-06-30", 73_670)]).value).toBeCloseTo(4.67, 2);
+  const other = (id: string, end: string, value: number) => observation({ id, value, period: { start: null, end, kind: "other", fiscalYear: Number(end.slice(0, 4)), fiscalQuarter: null, label: id } });
+  expect(observationChange(other("final dividend", "2026-06-30", 120), [other("interim dividend", "2025-12-31", 100)]).value).toBeNull();
+});
+
 test("chart projection excludes conflicts, revisions and missing dates without combining fiscal frequencies", () => {
   const rows = ["2025-12-31", "2026-03-31", "2026-06-30"].map((end, i) => observation({ id: `row:${i}`, period: { ...observation().period, start: null, end }, value: 100 + i }));
   expect(observationChart(rows, "#fff").series[0]?.points.map((point) => point.value)).toEqual([100, 101, 102]);
