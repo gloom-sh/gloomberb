@@ -55,11 +55,15 @@ test("a narrow NBBO pane gives up both venues, then the lots, before the spread 
   expect(wide).toContain("SPREAD BP");
 
   const narrow = await render("quotes", 84);
-  expect(narrow).not.toContain("VENUE");
-  expect(narrow.match(/LOTS/g)).toHaveLength(2);
-  expect(narrow).toContain("SPREAD BP");
+  const narrowHeader = narrow.split("\n").find((line) => line.includes("TIME ET"))!;
+  expect(narrowHeader).not.toContain("VENUE");
+  expect(narrowHeader.match(/LOTS/g)).toHaveLength(2);
+  expect(narrowHeader).toContain("SPREAD BP");
+  expect(narrow).toContain("2 hidden · VENUE ×2");
 
   const narrower = await render("quotes", 64);
-  expect(narrower).not.toContain("LOTS");
-  expect(narrower).toContain("SPREAD BP");
+  const narrowerHeader = narrower.split("\n").find((line) => line.includes("TIME ET"))!;
+  expect(narrowerHeader).not.toMatch(/VENUE|LOTS/);
+  expect(narrowerHeader).toContain("SPREAD BP");
+  expect(narrower).toContain("4 hidden · LOTS ×2, VENUE ×2");
 });

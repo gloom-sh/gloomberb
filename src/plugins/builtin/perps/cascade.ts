@@ -2,7 +2,7 @@ import { MISSING_VALUE } from "../../../utils/format";
 import type { PerpDepthPayload, PerpDepthRow, PerpDepthSnapshot, PerpLiquidationMarket, PerpLiquidationPrint, PerpLiquidationsPayload } from "../../../api-client/perps";
 import type { DataTableCell, DataTableColumn, StatItem } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { getTableWidth, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { ThemeColors } from "../../../theme/colors";
 import { compact, price, venueName } from "./model";
@@ -23,12 +23,13 @@ const usd = (n: number | null | undefined) => n == null ? MISSING_VALUE : compac
  * shorts) goes together; the venue and the contract stay, since only both tell one venue's contracts apart.
  */
 function fit<Id extends string>(columns: Record<Id, DataTableColumn>, ids: readonly Id[], drops: readonly (readonly Id[])[], width: number): DataTableColumn[] {
-  let kept = ids.map((id) => columns[id]);
+  const original = ids.map((id) => columns[id]);
+  let kept = original;
   for (const drop of drops) {
     if (getTableWidth(kept) <= width) break;
     kept = kept.filter((column) => !(drop as readonly string[]).includes(column.id));
   }
-  return kept;
+  return markHiddenTableColumns(original, kept);
 }
 
 // ---- Liquidations ----

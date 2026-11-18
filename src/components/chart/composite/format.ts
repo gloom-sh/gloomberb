@@ -783,6 +783,7 @@ export function formatCompositePointDetails(point: TimeSeriesPoint | null | unde
     details.push(`${isFiscalPeriod ? "Period ended" : "Observed"} ${observedAt}`);
   }
   if (availableAt && availableAt !== observedAt) details.push(`Available ${availableAt}`);
+  if (point.nativeAmount) details.push(`Native ${compactNumber(point.nativeAmount.value)} ${point.nativeAmount.currency}`);
 
   const quality = point.provenance?.quality;
   if (quality) details.push(`${quality[0]!.toUpperCase()}${quality.slice(1)}`);

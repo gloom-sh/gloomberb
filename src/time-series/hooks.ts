@@ -7,6 +7,7 @@ import { getSharedRegistry } from "../plugins/registry";
 import { createChartSeriesResolver } from "../capabilities";
 import { loadFuturesPriceUnit } from "../market-data/futures-contract";
 import { loadDailyFxCloses } from "./currency-conversion";
+import { loadStatementCurrency } from "../plugins/builtin/shared/statement-currency";
 import { useAppSelector } from "../state/app/context";
 import type { FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
 import type { TickerRecord } from "../types/ticker";
@@ -85,6 +86,7 @@ export function useResolvedChartSpec(
     capabilityRefreshMs: registeredSeriesRefreshMs,
     loadFuturesPriceUnit: (symbol: string) => loadFuturesPriceUnit(symbol),
     loadFxCloses: (currency: string, startDate: string) => loadDailyFxCloses(currency, startDate, apiClient),
+    ...(dataProvider ? { loadStatementCurrency: (target: string, currencies: readonly string[]) => loadStatementCurrency(target, currencies, { marketData: dataProvider }) } : {}),
   }), [capabilityInvoker, dataProvider]);
   return useChartResolution(hydratedSpec, sources, { ...options, snapshot });
 }

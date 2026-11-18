@@ -649,6 +649,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
       latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestDate(series, latest.date) : MISSING_VALUE,
       value: series.notMeaningful ? "N/M" : seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
+      native: latest?.nativeAmount ? `${seriesValue(series, latest.nativeAmount.value)} ${latest.nativeAmount.currency}` : null,
       ...trailingCells(series.trailing),
       ...(mixedBars ? { bars: barSizes[index] ?? MISSING_VALUE } : {}),
       points: observationCount(series),
@@ -664,6 +665,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
     ...(trailing ? TRAILING_COLUMNS : []),
     ...(rows.some((row) => row.unit) ? [{ key: "unit", header: "Unit" }] : []),
     ...(mixedBars ? [{ key: "bars", header: "Bars" }] : []),
+    ...(rows.some((row) => row.native) ? [{ key: "native", header: "Native", align: "right" as const }] : []),
     // Beside the averages, the count of points is the first thing a narrow table drops.
     { key: "points", header: "Points", align: "right", ...(trailing ? { optional: true } : {}) },
   ];

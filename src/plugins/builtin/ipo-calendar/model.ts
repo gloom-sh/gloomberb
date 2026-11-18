@@ -1,6 +1,6 @@
 import type { IpoDeal, IpoRegion, IpoSourceHealth, IpoStatus } from "../../../api-client/ipo";
 import type { DataTableColumn } from "../../../components";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-layout";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { MISSING_VALUE, displayWidth, formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
@@ -358,12 +358,8 @@ export function marketColumnWidth(deals: readonly IpoDeal[]): number {
 }
 
 export function buildIpoColumns(width: number, marketWidth = 10): IpoColumn[] {
-  let columns = IPO_COLUMNS.map((column) => (column.id === "market" ? { ...column, width: marketWidth } : column));
-  for (const id of NARROW_DROP_ORDER) {
-    if (ipoTableWidth(columns) <= width) break;
-    columns = columns.filter((column) => column.id !== id);
-  }
-  return columns;
+  const columns = IPO_COLUMNS.map((column) => (column.id === "market" ? { ...column, width: marketWidth } : column));
+  return dropColumnsToFit(columns, width - 1, NARROW_DROP_ORDER);
 }
 
 /**

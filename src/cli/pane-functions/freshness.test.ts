@@ -99,6 +99,13 @@ describe("report freshness", () => {
     expect(line(declared, filings)).toBe("Source: SEC EDGAR · newest filing Tue 6 Oct 2026 · retrieved Fri 9 Oct 2026 05:00 UTC · not a live feed (filed data)");
     // No filing to date it by: when it was read, once.
     expect(line(declared, { rows: [] })).toBe("Source: SEC EDGAR · retrieved Fri 9 Oct 2026 05:00 UTC · not a live feed (filed data)");
+    // A capture too narrow for the whole line gives up when it was read, then what the data is; the date keeps
+    // its label to the last, a day and never its midnight, so it is not read as the time now.
+    expect(statusLineVariants(deriveHeadlessFreshness(declared, filings, NOW)).slice(-2))
+      .toEqual(["Newest filing Tue 6 Oct 2026 · not a live feed", "Newest filing Tue 6 Oct 2026"]);
+    // Filed dates read as instants (INS's rows) narrow to the labelled day, as `2026-11-06 00:00 UTC` never should.
+    const instants = { rows: [{ filingDate: "2026-10-06T00:00:00.000Z" }] };
+    expect(statusLineVariants(deriveHeadlessFreshness(declared, instants, NOW)).at(-1)).toBe("Newest filing 2026-10-06");
   });
 
   test("says how long a delay is in minutes or hours, as a range when rows differ", () => {

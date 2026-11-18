@@ -5,6 +5,7 @@ import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_V
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP } from "../../../utils/price-window";
 import { isCurrencyCode } from "../../../utils/currency-pair";
+import { STATEMENT_CURRENCY_OPTION } from "../shared/statement-currency";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
@@ -217,6 +218,7 @@ export const paneSchemas = {
       },
       FUNDAMENTAL_PERIOD_OPTION,
       FINANCIAL_PERIOD_COUNT_OPTION,
+      STATEMENT_CURRENCY_OPTION,
     ],
     discovery: {
       id: "fundamental-series",

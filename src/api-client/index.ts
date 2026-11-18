@@ -1266,6 +1266,7 @@ class GloomApiClient {
   getCloudNews = this.data.getCloudNews.bind(this.data);
   searchCloudNews = this.data.searchCloudNews.bind(this.data);
   getCloudNewsStory = this.data.getCloudNewsStory.bind(this.data);
+  getCloudInsiderFilingStories = this.data.getCloudInsiderFilingStories.bind(this.data);
   getCloudTickerTweets = this.data.getCloudTickerTweets.bind(this.data);
   searchCloudTweets = this.data.searchCloudTweets.bind(this.data);
 }

@@ -1962,6 +1962,28 @@ describe("resolveChartSpecData", () => {
     });
   });
 
+  test("converts each fundamental series before tabulation and keeps its native amount and fiscal end", async () => {
+    const provider = createTestDataProvider({
+      getTickerFinancials: async (symbol) => {
+        const usa = symbol === "LMT";
+        return { ...emptyFinancials(), quarterlyStatements: [{ date: usa ? "2026-09-27" : "2026-09-30", currency: usa ? "USD" : "EUR", totalRevenue: 100e6 }] };
+      },
+    });
+    const spec = chartSpec({ viewport: { range: "ALL", resolution: "auto", currency: "SGD" }, series: ["LMT", "RHM"].map((symbol) => chartSeries({
+      id: symbol, source: { kind: "security", instrument: { symbol }, fieldId: "fundamental.totalRevenue", period: "quarterly" },
+    })) });
+    const rateNotice = "Statements in SGD at USD/SGD 1.25 and EUR/SGD 1.5";
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider, loadFredSeries: async () => fredLoad(), now: new Date("2026-11-18T00:00:00Z"),
+      loadStatementCurrency: async () => ({ rates: new Map([["USD", 1.25], ["EUR", 1.5]]), note: rateNotice, failures: [] }),
+    });
+    expect(result.coverageNotices).toContain(rateNotice);
+    expect(result.series.map((series) => ({ group: series.unitGroup, point: series.points.at(-1) }))).toMatchObject([
+      { group: "currency-total:SGD", point: { value: 125e6, observedAt: new Date("2026-09-27"), nativeAmount: { value: 100e6, currency: "USD" } } },
+      { group: "currency-total:SGD", point: { value: 150e6, observedAt: new Date("2026-09-30"), nativeAmount: { value: 100e6, currency: "EUR" } } },
+    ]);
+  });
+
   test("keeps an explicit viewport when a latest-observation cap is also set", async () => {
     const provider = createTestDataProvider({
       getTickerFinancials: async () => ({

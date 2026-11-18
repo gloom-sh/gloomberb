@@ -6,7 +6,7 @@ import { formatRelativeAge } from "../../../utils/datetime-format";
 import { fetchThemeMembers, fetchThemes } from "./client";
 import {
   aggregateText, boardClose, boardYtdBase, DEFAULT_SORT, matchTheme, memberExtended, memberExtendedSessions, memberPrice, percent, periodLabel,
-  isLiveBoard, SNAPSHOT_STALE_MS, sortMembers, sortThemes,
+  isLiveBoard, SNAPSHOT_STALE_MS, sortMembers, sortThemes, THEME_LISTING_SCOPE,
 } from "./model";
 
 /** The period columns; YTD names the close it is measured from, `YTD vs 31 Dec close`. */
@@ -71,10 +71,10 @@ function boardObservation(payload: ThemesPayload | ThemeMembersPayload, now = Da
  */
 function themeReportTitle(query: string | undefined, theme: Pick<ThemeSummary, "id" | "name"> | undefined): string {
   const typed = query?.trim();
-  if (!typed) return "Thematic baskets";
-  if (!theme) return `Thematic baskets | ${typed}`;
+  if (!typed) return `Thematic baskets · ${THEME_LISTING_SCOPE}`;
+  if (!theme) return `Thematic baskets · ${THEME_LISTING_SCOPE} | ${typed}`;
   const named = [theme.id, theme.name].some((label) => label.toLowerCase() === typed.toLowerCase());
-  return `Thematic baskets | ${theme.name}${named ? "" : ` (matched ${typed})`}`;
+  return `Thematic baskets · ${THEME_LISTING_SCOPE} | ${theme.name}${named ? "" : ` (matched ${typed})`}`;
 }
 
 export const themesHeadless: HeadlessPaneDefinition<"rows"> = {

@@ -38,15 +38,17 @@ import {
 import {
   EXTENDED_SESSION_LABELS,
   exchangeShortName,
+  extendedPrintTime,
   getExtendedSessionDisplay,
   getQuoteSessionFields,
   getRegularSessionDisplay,
+  headlineCloseDate,
   quoteBookSessionLabel,
   quoteHeadlineTime,
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { changeBasisJson, futuresQuoteFromSettle, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import { changeBasisJson, closeDayLabel, futuresQuoteFromSettle, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
   futuresContractLines, futuresPricePer, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
@@ -1473,11 +1475,14 @@ export async function buildTickerReport({
     // As the Overview reads it: the regular session, then the extended-hours print against its close.
     const session = getRegularSessionDisplay(quote)!;
     const extended = getExtendedSessionDisplay(quote);
+    // Each price says when it is from: Last a completed session's close by its day, the extended print by its time.
+    const closeDate = futuresContract ? null : headlineCloseDate(quote);
+    const extendedTime = extendedPrintTime(quote);
     const extendedRow = (kind: "PRE" | "POST") => extended?.session === kind
-      ? colorBySign(
+      ? `${colorBySign(
         `${formatMarketPriceWithCurrency(extended.price, quote.currency, quoteOptions)} (${formatPercentRaw(extended.changePercent)})`,
         extended.change,
-      )
+      )}${extendedTime != null ? cliStyles.muted(` at ${formatTimestamp(extendedTime)}`) : ""}`
       : "—";
     const volume = reportedQuoteVolume(quote);
     // A coin's volume is traded value in its quote currency (BTC-USD: US dollars), not a count of coins, and its
@@ -1491,7 +1496,7 @@ export async function buildTickerReport({
     // A futures price is its latest trade; the exchange settlement is its own row, dated by its session.
     appendMetricSection(lines, "Quote", [
       // A price in cents says what it is per: 314.95¢/lb.
-      ["Last", colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${futuresPricePer(futuresContract, quote.currency)}`, session.change)],
+      ["Last", `${colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${futuresPricePer(futuresContract, quote.currency)}`, session.change)}${closeDate ? cliStyles.muted(` (${closeDayLabel(closeDate)})`) : ""}`],
       ...futuresContract
         ? [["Settle", quoteSettleText(quote, futuresContract)] as [string, string]]
         : [],

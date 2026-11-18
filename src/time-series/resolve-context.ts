@@ -43,6 +43,12 @@ export interface ChartResolveSources {
   loadFuturesPriceUnit?: (symbol: string) => Promise<string | null>;
   /** A currency's daily USD closes, for a chart converted into one currency (`viewport.currency`). */
   loadFxCloses?: LoadFxCloses;
+  loadStatementCurrency?: (target: string, currencies: readonly string[]) => Promise<{
+    rates: ReadonlyMap<string, number>;
+    note: string | null;
+    rateNotes?: readonly string[];
+    failures: readonly string[];
+  }>;
   /** Provider-neutral boundary for plugin-owned chart series. */
   resolveCapabilitySeries?: (
     source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>,

@@ -147,6 +147,7 @@ export interface TimeSeriesPoint {
   value: number | null;
   /** Original primary scalar before any presentation transform, including missing values. */
   rawValue?: number | null;
+  nativeAmount?: { value: number; currency: string };
   open?: number | null;
   high?: number | null;
   low?: number | null;

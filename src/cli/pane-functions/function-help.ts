@@ -520,11 +520,11 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   SRCH: {
-    summary: "Full-text search across earnings call transcripts, news wires and SEC filings, with the matching passage inline. Save a search to get alerted on new hits.",
+    // Searching and reading hits need only a free account; alerts on a saved search are the part the service keeps for Pro.
+    summary: "Full-text search across earnings call transcripts, news wires and SEC filings, with the matching passage inline. Free with a Gloom account; alerts on a saved search's new hits are Pro.",
     usage: ["SRCH data center capex"],
     keys: [SEARCH, key("Ctrl+S", " save search"), key("a", "lerts")],
-    data: pro("As calls, stories and filings arrive"),
-    access: "pro",
+    data: same("As calls, stories and filings arrive"),
     bloomberg: ["NSE"],
   },
   COVN: {

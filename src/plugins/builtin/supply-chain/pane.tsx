@@ -11,7 +11,7 @@ import {
 import { staticSeries } from "../../../components/chart/static/series";
 import { ClippedText } from "../../../components/ui/display";
 import { RatioBar } from "../../../components/ui/ratio-bar";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { getTableWidth, hiddenTableColumnRows, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { chromeBarRows } from "../../../components/layout/pane/sizing";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
@@ -121,6 +121,7 @@ export function tableColumns(width: number, desktop: boolean, locked: boolean, v
   ];
   const preferred = { share: share.width, name: name.width };
   // The table ignores its last trailing gutter when deciding whether it fits.
+  const original = columns;
   const overflow = () => getTableWidth(columns) - width - 1;
   // Native units keep their column before the share keeps its bar or its whole wording.
   const withBar = SHARE_BAR_MIN_CELLS + 1;
@@ -154,7 +155,7 @@ export function tableColumns(width: number, desktop: boolean, locked: boolean, v
   if (overflow() > 0 && shares) fit(plain + bare);
   if (overflow() > 0) fit(shares ? plain + bare : SHARE_FIGURE_CELLS + 2, 12);
   if (overflow() > 0 && shares) fit(plain + SHARE_BASIS_LAST_CELLS, 12);
-  return columns;
+  return markHiddenTableColumns(original, columns);
 }
 
 /**
@@ -398,7 +399,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
     : <Box flexDirection="column" flexShrink={0}>{query}<StatGrid items={figures} width={width} /></Box>;
   // The rows the table leaves free under its last row: the query bar, the figures, the column header and the rows,
   // and a scrollbar row a wide table may draw.
-  const spareRows = bodyHeight - 1 - statGridRows(figures, width) - 1 - items.length - 1;
+  const spareRows = bodyHeight - 1 - statGridRows(figures, width) - 1 - hiddenTableColumnRows(columns, items.length) - items.length - 1;
   const disclosureBand = tab === "table" && !concentrationChart && !openRow && selected && spareRows >= DISCLOSURE_BAND_MIN_ROWS
     ? <SelectedDisclosure row={selected} width={width} height={spareRows} /> : null;
   const flowFigureColumns = Math.min(Math.max(1, figures.length), Math.max(1, Math.floor(width / 24)));

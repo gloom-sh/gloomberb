@@ -533,6 +533,31 @@ export function regularSessionDisplayDate(quote: Quote | null | undefined): stri
 }
 
 /**
+ * The exchange-local day of the close a quote's headline holds at once its
+ * regular session is over (and in the pre-market while it still shows the last
+ * close), so a report that prints an extended print beside it dates each: the
+ * close by its day, the print by its time (extendedPrintTime). Null while the
+ * session trades, for a listing that no longer trades, and when the quote does
+ * not say which day the close is.
+ */
+export function headlineCloseDate(quote: Quote | null | undefined): string | null {
+  if (!quote || quote.delisting || completedRegularClose(quote) == null) return null;
+  const date = regularSessionDisplayDate(quote);
+  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+/**
+ * When the pre-market, after-hours or overnight print getExtendedSessionDisplay
+ * shows was observed: the quote's last update, which that print is (the close
+ * beside it holds at its own day, headlineCloseDate). Null without an extended
+ * print or a time.
+ */
+export function extendedPrintTime(quote: Quote | null | undefined): number | null {
+  if (!quote || !getExtendedSessionDisplay(quote)) return null;
+  return Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? quote.lastUpdated : null;
+}
+
+/**
  * getRegularSessionDisplay once the regular session is over (and in the
  * pre-market, while the quote carries the last session's close and move), null
  * while it is open. A table row headlines this when it has a column for the

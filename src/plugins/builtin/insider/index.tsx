@@ -14,6 +14,7 @@ import {
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import {
+  ChoiceDialog,
   DataTableStackView,
   EmptyState,
   PaneLinkMenu,
@@ -29,7 +30,7 @@ import {
   type StackSortPreference,
   type StatItem,
 } from "../../../components";
-import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
+import { useDebouncedPluginPaneState, usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { homeInsiderReportsNote, mayBeSecEquityListing, mayBeUsEquityTicker, noSecReportsNotice, nonUsSecListingVenue } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { formatCompact } from "../../../utils/format";
@@ -71,6 +72,9 @@ import {
 } from "./table-model";
 import { renderInsiderCell } from "./table";
 import { InsiderDetail, insiderDetailTitle } from "./detail";
+import { useFilingStories, type FilingStory } from "./filing-stories";
+import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
+import { logFailure } from "../../../utils/log-failure";
 import { InsiderActivityView, type InsiderViewControl } from "./insiders";
 import { InsiderSignalsView, type InsiderOpenedCompany } from "./signals";
 import { InsiderTickersView } from "./tickers";
@@ -114,17 +118,27 @@ const TYPE_FILTER_LABELS: Record<InsiderTypeFilter, string> = {
   other: "Other",
 };
 
+/** `21 Aug`, with the year when it is not this one's. */
+function windowDay(day: string, now = Date.now()): string {
+  const sameYear = day.slice(0, 4) === new Date(now).toISOString().slice(0, 4);
+  return formatShortDate(`${day}T00:00:00Z`, { utc: true, year: sameYear ? false : "numeric" });
+}
+
 /**
  * The 90-day buy and sale totals as figures: one cell per side, and per
- * security when there are several. A side with no trades shows 0 shares,
- * muted. Buys read in the gain colour and sales in the loss colour, as in
- * the table; when the Type filter hides open-market trades the figures dim
- * and say so. With `currency` the dollars read with its code (1.2M USD), as
- * the table's CCY column names them.
+ * security when there are several. The last cell says once, for the band,
+ * what they count: trades dated since the window's first day (by trade date,
+ * not filing date) in the filings loaded, which a narrow pane gives up before
+ * the figures, the 90 days staying in the labels. A side with no trades shows
+ * 0 shares, muted. Buys read in the gain colour and sales in the loss colour,
+ * as in the table; when the Type filter hides open-market trades the figures
+ * dim and say so. With `currency` the dollars read with its code (1.2M USD),
+ * as the table's CCY column names them.
  */
 function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFilter, currency?: string): StatItem[] {
   const securities = new Set(figures.totals.map((total) => total.security));
   const hidden = typeFilter === "other";
+  const since = windowDay(figures.window.from);
   const items: StatItem[] = [];
   for (const side of ["P", "S"] as const) {
     const label = side === "P" ? "90d buys" : "90d sales";
@@ -144,6 +158,16 @@ function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFil
         tone: total.unreconciled || hidden ? "muted" : side === "P" ? "positive" : "negative",
       });
     }
+  }
+  // Once, after the last figure: the trade dates counted, and that they are the loaded filings' trades.
+  const last = items.at(-1);
+  if (last) {
+    const detail = last.detail ?? "";
+    const window = `trades since ${since}`;
+    const coverage = `${window}, ${figures.filings} ${figures.filings === 1 ? "filing" : "filings"} loaded`;
+    const join = (...parts: string[]) => parts.filter(Boolean).join(" \u00b7 ");
+    // Narrower, the window keeps its first day longest: what "90d" is from.
+    items[items.length - 1] = { ...last, detail: join(detail, coverage), detailVariants: [join(detail, window), join(detail, `since ${since}`), detail] };
   }
   return items;
 }
@@ -183,7 +207,8 @@ const freshTradesState = (tickerKey: string, insider: string | null = null): Sta
  */
 function useInsiderTradesState(tickerKey: string, stacked: boolean, insider: string | null = null): InsiderTradesState {
   const [paneSelectedId, setPaneSelectedId] = usePluginPaneState<string | null>(`insider:selectedId:${tickerKey}`, null);
-  const [paneNameFilter, setPaneNameFilter] = usePluginPaneState<string | null>(`insider:nameFilter:${tickerKey}`, null);
+  // A pane opened on an insider (a story's filings) starts filtered to them, as one opened from the ranking does.
+  const [paneNameFilter, setPaneNameFilter] = usePluginPaneState<string | null>(`insider:nameFilter:${tickerKey}`, insider);
   const [paneTypeFilter, setPaneTypeFilter] = usePluginPaneState<InsiderTypeFilter>("insider:typeFilter", DEFAULT_INSIDER_TYPE_FILTER);
   const [paneOpenItemId, setPaneOpenItemIdState] = useDebouncedPluginPaneState<string | null>(`insider:openItemId:${tickerKey}`, null);
   const setPaneOpenItemId = useCallback(
@@ -425,6 +450,34 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
   };
   const handleFilterPress = useCallback(() => filterActionRef.current(), []);
 
+  // The stories that report the open transaction's filing: back from the Form 4 to the news about it.
+  const openStories = useFilingStories(openRow && !openRow.entry.isLoading ? openRow.entry.filing.accessionNumber : null);
+  const { createPaneFromTemplate } = usePluginAppActions();
+  const dialog = useOptionalDialog();
+  const openStory = useCallback((story: FilingStory) => {
+    createPaneFromTemplate("news-story-pane", { arg: story.id, values: { title: story.headline } });
+  }, [createPaneFromTemplate]);
+  const chooseStory = useCallback(() => {
+    if (openStories.length === 1) {
+      openStory(openStories[0]!);
+      return;
+    }
+    if (!dialog || openStories.length === 0) return;
+    void dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (ctx: PromptContext<string>) => (
+        <ChoiceDialog
+          {...ctx}
+          title="Stories"
+          choices={openStories.map((story, index) => ({ id: String(index), label: story.headline, detail: story.publisher }))}
+        />
+      ),
+    }).then((choice) => {
+      const story = choice ? openStories[Number(choice)] : undefined;
+      if (story) openStory(story);
+    }).catch(logFailure("insider.detail", "Choose a story reporting the filing failed"));
+  }, [dialog, openStories, openStory]);
+
   // Reading on: the next or previous row opens in place, and the cursor
   // follows it so Back lands on the last one read.
   const openIndex = openRow ? sortedRows.findIndex((row) => row.id === openRow.id) : -1;
@@ -440,8 +493,9 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
     hints: [
       { id: "insider-next", key: "n", label: "ext", title: "Next Transaction", disabled: openIndex >= sortedRows.length - 1, onPress: () => openAdjacent(1) },
       { id: "insider-previous", key: "p", label: "rev", title: "Previous Transaction", disabled: openIndex <= 0, onPress: () => openAdjacent(-1) },
+      ...(openStories.length > 0 ? [{ id: "insider-story", key: "s", label: "tory", title: "Open Story", onPress: chooseStory }] : []),
     ],
-  } : null), [focused, openAdjacent, openIndex, sortedRows.length]);
+  } : null), [chooseStory, focused, openAdjacent, openIndex, openStories.length, sortedRows.length]);
 
   const pendingLabel = pendingCount > 0 ? `loading ${pendingCount}...` : "";
   const footerInfo = useMemo(() => [
@@ -519,7 +573,9 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
       onBack={() => setOpenItemId(null)}
       detailTitle={openRow ? insiderDetailTitle(openRow) : undefined}
       detailScrollRef={detailScrollRef}
-      detailContent={openRow ? <PaneLinkMenu><InsiderDetail row={openRow} width={width} scrollRef={detailScrollRef} /></PaneLinkMenu> : <Box flexGrow={1} />}
+      detailContent={openRow
+        ? <PaneLinkMenu><InsiderDetail row={openRow} width={width} scrollRef={detailScrollRef} stories={openStories} onOpenStory={openStory} /></PaneLinkMenu>
+        : <Box flexGrow={1} />}
       selection={{
         kind: "index",
         selectedIndex: sortedRows.length > 0 ? selectedRowIndex : null,
@@ -720,9 +776,16 @@ function insiderPaneSymbols(settings: Record<string, unknown> | undefined): stri
  * selling. A ranked company opens here as INS on its ticker, and Back
  * returns to the ranking.
  */
+/** The insider a pane was opened on (`settings.insider`, as filed), whose trades it starts filtered to. */
+function insiderPaneInsider(settings: Record<string, unknown> | undefined): string | undefined {
+  const insider = settings?.insider;
+  return typeof insider === "string" && insider.trim() ? insider.trim() : undefined;
+}
+
 function InsiderPane({ width, height, focused }: PaneProps) {
   const { symbol: paneSymbol } = usePaneTickerIdentity();
   const instance = usePaneInstance();
+  const openedInsider = insiderPaneInsider(instance?.settings);
   // One list per set of tickers, so the views' loads do not start again on every render.
   const symbolsKey = insiderPaneSymbols(instance?.settings).join(",");
   const symbols = useMemo(() => (symbolsKey ? symbolsKey.split(",") : []), [symbolsKey]);
@@ -737,7 +800,7 @@ function InsiderPane({ width, height, focused }: PaneProps) {
   if (!paneSymbol && instance?.binding?.kind !== "follow") {
     return <InsiderSignalsView width={width} height={height} focused={focused} renderCompany={renderRankedCompany} />;
   }
-  return <InsiderView width={width} height={height} focused={focused} />;
+  return <InsiderView width={width} height={height} focused={focused} {...(openedInsider ? { insider: openedInsider } : {})} />;
 }
 
 const tickerTemplate = createTickerSurfacePaneTemplate({
@@ -750,6 +813,12 @@ const tickerTemplate = createTickerSurfacePaneTemplate({
   canCreate: (_context, options) => !options?.ticker || mayBeSecEquityListing(options.ticker),
   // Typed alone with no active ticker it ranks the market's insider buying or selling.
   withoutTickerTitle: INSIDER_SIGNALS_TITLE,
+  // Opened on one insider (a story's filings, `values.insider` as filed): a window of its own, filtered to them.
+  settings: (_symbol, _context, options) => {
+    const insider = options?.values?.insider?.trim();
+    return insider ? { insider } : undefined;
+  },
+  viewKey: (_symbol, _context, options) => options?.values?.insider?.trim() || undefined,
 });
 
 /**

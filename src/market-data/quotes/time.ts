@@ -40,8 +40,11 @@ function quoteFeedWord(quote: Quote): string | null {
   return `${Math.round(delayedFeedLagMs(exchange) / 60_000)} min delayed`;
 }
 
-/** `08:09 UTC` on today's UTC date, `Thu 08:09 UTC` within the week, `Thu 29 Oct 08:09 UTC` before it. */
-function asOfClock(time: number, now: number): string {
+/**
+ * `08:09 UTC` on today's UTC date, `Thu 08:09 UTC` within the week, `Thu 29 Oct
+ * 08:09 UTC` before it: when a card's price, or an extended print, was observed.
+ */
+export function asOfClock(time: number, now = Date.now()): string {
   const iso = new Date(time).toISOString();
   if (iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10)) return `${iso.slice(11, 16)} UTC`;
   return `${now - time < WEEK_MS ? formatUtcWeekdayTime(time) : formatUtcDayTime({ time, dateOnly: false }, now)} UTC`;

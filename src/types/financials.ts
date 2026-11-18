@@ -876,7 +876,7 @@ export type StatementFilingKind = "annual_results" | "interim_results" | "quarte
 
 /** A results announcement or report on HKEXnews or SGXNet, with when it was published and read. */
 export interface StatementFilingDocument {
-  source: "hkex" | "sgx";
+  source: "hkex" | "sgx" | "lse" | "cninfo" | "ir";
   kind: StatementFilingKind;
   title: string;
   url: string;

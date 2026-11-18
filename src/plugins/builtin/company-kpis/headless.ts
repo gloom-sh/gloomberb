@@ -121,7 +121,7 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
       // A company with nothing on file says so once, as the pane does, rather than "not covered".
       const nothingOnFile = datasetRows(data).length === 0 && data.lockedRows === 0 && !requested;
       const { title, hint } = companyEmptyState(mode, symbol, { tab: "table", hasRows: !nothingOnFile }, "cli");
-      return { complete: !data.truncated, ...(nothingOnFile ? { empty: `${title} ${hint}` } : {}), errors: data.truncated ? [data.access === "preview" ? companyPreviewNote(data, mode === "guidance") : "Response limit reached; narrow the metric or date range"] : [],
+      return { complete: !data.truncated, ...(nothingOnFile ? { empty: [title, hint].filter(Boolean).join(" ") } : {}), errors: data.truncated ? [data.access === "preview" ? companyPreviewNote(data, mode === "guidance") : "Response limit reached; narrow the metric or date range"] : [],
         ...(notes.length ? { notes } : {}),
         sections: "series" in data ? [
           section("Latest KPIs", currentKpiSeries(data.series).map((series) => series.latest), { first: true }),
