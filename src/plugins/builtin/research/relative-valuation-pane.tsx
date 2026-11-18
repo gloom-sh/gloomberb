@@ -234,7 +234,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   }, [discovery.data, discovery.savedAt, discoveredSymbols, updateSettings]);
   // The table waits for the peers, so it fills once; without any it shows the ticker alone.
   const pickingPeers = peerSubject != null && !discoveredSymbols && peerError == null;
-  const comparison = discoveredSymbols?.join(",") ?? (pickingPeers ? "" : symbolList);
+  const comparison = discoveredSymbols?.join(",") ?? symbolList;
   const symbols = useMemo(() => comparison ? comparison.split(",") : NO_SYMBOLS, [comparison]);
   // The title says how the peers were chosen, or lists the tickers; a title the user gave the pane stays.
   const ownsTitle = /^RV(?:\s|$)/.test(pane?.title ?? "");
@@ -259,9 +259,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   // Fundamentals come from one batched snapshot; prices stream on top of it.
   const peerSnapshot = useAsyncResource(symbols.length > 0 ? loadPeers : null, {
     savedCopy: scope && dataProvider ? { key: ["relative-valuation", scope, dataProvider.id, symbols] } : null,
+    deferLoad: pickingPeers,
   });
   const { data: peers, updatedAt, reload: reloadSnapshot } = peerSnapshot;
-  const loading = peerSnapshot.loading || pickingPeers;
+  const loading = peerSnapshot.loading || (pickingPeers && peers === null);
   const error = symbols.length > 0 ? peerSnapshot.error : pickingPeers ? null : "No tickers selected";
   // Refreshing asks for the peers again when picking them failed.
   const reload = useCallback(() => {

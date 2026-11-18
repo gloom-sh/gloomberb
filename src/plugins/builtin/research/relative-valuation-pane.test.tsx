@@ -24,6 +24,9 @@ import { researchModule } from "./index";
 import { RGBA } from "@opentui/core";
 import { DEFAULT_THEME } from "../../../theme/themes";
 import { getThemeColors } from "../../../theme/colors";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
+import { MemoryResourceStore } from "../../../data/memory-resource-store";
+import { setSavedCopyStore, writeSavedCopy } from "../../../data/pane-saved-copies";
 
 const tui = createOpenTuiTestHarness();
 const paneId = "relative-valuation:test";
@@ -207,6 +210,30 @@ test("an insurer's EV/S and growth or a margin off revenue at or below zero read
 });
 
 const LEARNING = "Duolingo, Inc. is a technology company focused on language learning and digital education.";
+
+test("auto peers opens on the saved subject while peer discovery is unresolved", async () => {
+  const pending = Promise.withResolvers<never>();
+  const provider = createTestDataProvider({ getTickerFinancials: () => pending.promise });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+  const config = createTestPaneConfig("/tmp/gloom-relative-valuation-test", {
+    instanceId: paneId, paneId: "relative-valuation", title: "RV DUOL", settings: { symbols: ["DUOL"], autoPeers: true },
+  });
+  const runtime = createTestPluginRuntime({ getMarketData: () => provider });
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  try {
+    writeSavedCopy({ key: ["relative-valuation", cloudDisplayScope(), provider.id, ["DUOL"]] }, [{
+      symbol: "DUOL", financials: { annualStatements: [], quarterlyStatements: [], priceHistory: [], profile: { longName: "Saved subject" } },
+    }]);
+    await tui.render(<TestPaneProvider state={createInitialState(config)} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
+      <RelativeValuationPane paneId={paneId} paneType="relative-valuation" focused width={120} height={15} />
+    </TestPaneProvider>);
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("DUOL");
+    expect(tui.frame()).not.toContain("Loading");
+  } finally {
+    setSavedCopyStore(previous);
+  }
+});
 
 function screenRow(symbol: string, cap: number): ScreenPayload["rows"][number] {
   const row = structuredClone(screenFixture().rows[0]!);
