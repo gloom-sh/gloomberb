@@ -87,6 +87,19 @@ function hasRenderableData(result: ChartResolutionResult): boolean {
   return (result.bufferedSeries ?? result.series).some((series) => series.points.length > 0);
 }
 
+function publicChartSpecKey(spec: ChartSpec, scope: string | null | undefined): string | null {
+  if (!scope || spec.series.length === 0) return null;
+  if (spec.series.some(({ source }) => source.kind === "capability" || (source.kind === "security"
+    && (source.instrument.instrument || source.instrument.brokerId || source.instrument.brokerInstanceId)))) return null;
+  const series = spec.series.map((entry) => {
+    const { source } = entry;
+    if (source.kind !== "security") return entry;
+    const { symbol, exchange } = source.instrument;
+    return { ...entry, source: { ...source, instrument: { symbol, exchange, instrument: null } } };
+  });
+  return JSON.stringify([scope, { ...spec, series }]);
+}
+
 function saveChartResolution(key: SavedCopyKey | null, result: ChartResolutionResult): void {
   if (key && hasRenderableData(result) && result.savedAt == null && result.errors.length === 0) {
     const { bufferedSeries: _buffer, ...visible } = result;
@@ -231,11 +244,12 @@ export function useChartResolution(
 ): UseChartResolutionResult {
   const snapshot = options.snapshot;
   const coordinator = getSharedMarketDataCoordinator();
-  const specKey = JSON.stringify([options.savedCopyScope, spec]);
-  const savedKey = !snapshot && options.savedCopyScope && spec.series.every(({ source }) => source.kind !== "capability"
-    && (source.kind !== "security" || !source.instrument.instrument))
-    ? { version: 2, key: ["chart-resolution", specKey, options.requestViewport?.start, options.requestViewport?.end,
-      options.autoViewport?.start, options.autoViewport?.end, options.autoViewport ? options.targetPointCount : null] } : null;
+  const scope = options.savedCopyScope;
+  const publicSpecKey = useMemo(() => publicChartSpecKey(spec, scope), [spec, scope]);
+  const specKey = publicSpecKey ?? JSON.stringify([scope, spec]);
+  const savedKey = !snapshot && publicSpecKey ? { version: 2, key: ["chart-resolution", publicSpecKey,
+    options.requestViewport?.start, options.requestViewport?.end, options.autoViewport?.start, options.autoViewport?.end,
+    options.autoViewport ? options.targetPointCount : null] } : null;
   const seedResult = () => {
     const now = sources.now ?? new Date();
     // The first paint prices a formula's legs in one month as the settled chart does, from the next months it read.

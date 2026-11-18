@@ -45,7 +45,7 @@ export function domProbeSource(binding: string): string {
       text = true;
     }
     if (marked("error")) return "error";
-    if (marked("empty")) return "empty";
+    if (marked("empty") || [...body.querySelectorAll("[data-gloom-role=composite-chart-empty]")].some(shown)) return "empty";
     if (text || [...body.querySelectorAll("canvas,svg,img")].some(shown)) return "content";
     return "blank";
   };
@@ -96,7 +96,7 @@ export function terminalPaneStates(root: RenderableLike): Map<string, PaneShownS
     }
     const body = inBody || (pane !== null && node["data-gloom-role"] === "pane-body");
     if (pane && body) {
-      const status = node["data-gloom-status"];
+      const status = node["data-gloom-role"] === "composite-chart-empty" ? "empty" : node["data-gloom-status"];
       if (typeof status === "string") pane.marks.add(status);
       const text = typeof node.plainText === "string" ? node.plainText : "";
       if (text.trim()) {
