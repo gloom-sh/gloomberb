@@ -26,7 +26,9 @@ import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../option
 import { formatModelSpotPrice } from "../options/model-spot";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
-import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
+import { CLOUD_QUOTE_DELAY_MINUTES, useCloudDisplayScope } from "../../../api-client/plan-access";
+import { writeSavedCopy } from "../../../data/pane-saved-copies";
+import { useAssetData } from "../../runtime";
 import { optionsClosedNotice, useLiveSessionRefresh, useOptionsSessionOpen, usOptionsReopen } from "../shared/volatility/live-session";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { hasFreshReadyEntry } from "../../../market-data/coordinator/entries";
@@ -86,6 +88,8 @@ type Axis = "spot" | "forward" | "delta" | "strike";
 
 export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
+  const scope = useCloudDisplayScope();
+  const providerId = useAssetData()?.id;
   // The chosen cell is the table's cursor: quieter while the pane does not have the keys.
   const selectionFill = useSelectionFill();
   const { symbol, ticker, financials } = usePaneTicker();
@@ -141,7 +145,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const eventExchange = target?.effectiveExchange ?? "";
   const eventsLoader = useCallback(async () => loadSurfaceEvents({ symbol: eventSymbol!, exchange: eventExchange }, { apiClient }),
     [eventSymbol, eventExchange]);
-  const surfaceEvents = useAsyncResource(eventsWanted && eventSymbol && !dvolCurrency(eventSymbol.toUpperCase()) ? eventsLoader : null);
+  const surfaceEvents = useAsyncResource(eventsWanted && eventSymbol && !dvolCurrency(eventSymbol.toUpperCase()) ? eventsLoader : null, {
+    savedCopy: scope ? { key: ["surface-events", scope, eventSymbol, eventExchange] } : null,
+  });
   const eventDates = surfaceEvents.data?.events.map((event) => event.date) ?? [];
   const requestKey = JSON.stringify([target?.cacheKey, symbol, axis, tenors, ivSource, priceSide, spread, age, limit, spotAvailable, requestedExpiration,
     eventDates]);
@@ -167,7 +173,12 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     return loadVolatilitySurface({ ...surfaceRequest(force, abort.signal),
       onSnapshot: (snapshot) => { if (!abort.signal.aborted) setPartial({ key: requestKey, snapshot }); } });
   }, [surfaceRequest]);
-  const resource = useAsyncResource(symbol && spotAvailable && !historyDate ? request : null);
+  const surfaceKey = scope && providerId && symbol ? { key: ["vol-surface", scope, providerId, target?.cacheKey,
+    symbol, limit, ivSource, priceSide, spread, age, requestedExpiration, eventDates] } : null;
+  const resource = useAsyncResource(symbol && !historyDate ? request : null, {
+    savedCopy: surfaceKey,
+    deferLoad: !spotAvailable,
+  });
   // A live reload replaces the whole surface once it is complete: the sheet
   // never collapses to the first few expiries while the rest reload.
   const [live, setLive] = useState<{ key: string; snapshot: SurfaceSnapshot; at: number } | null>(null);
@@ -192,8 +203,11 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     const snapshot = await loadVolatilitySurface({ ...surfaceRequest(true, abort.signal),
       // Each expiry is fitted as its chain arrives, never all together at the end.
       onSnapshot: () => {} }, liveDependencies);
-    if (!abort.signal.aborted) setLive({ key: requestKey, snapshot, at: Date.now() });
-  }, [surfaceRequest, liveDependencies, symbol, target]);
+    if (!abort.signal.aborted) {
+      setLive({ key: requestKey, snapshot, at: Date.now() });
+      if (surfaceKey && snapshot.loaded > 0 && snapshot.savedAt == null) writeSavedCopy(surfaceKey, snapshot);
+    }
+  }, [surfaceRequest, liveDependencies, symbol, target, scope, providerId]);
   useEffect(() => () => liveController.current?.abort(), [reloadLive]);
   const liveReload = live?.key === requestKey && (resource.updatedAt == null || live.at > resource.updatedAt) ? live.snapshot : null;
   const settledSnapshot = liveReload ?? resource.data;
@@ -201,7 +215,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // Stored close surfaces and IV rank come from the Cloud IV history of the underlying.
   const underlying = (target?.effectiveTicker ?? symbol ?? "").toUpperCase();
   const datesLoader = useCallback(async () => (await loadSurfaceDates(underlying)).dates, [underlying]);
-  const dates = useAsyncResource(underlying ? datesLoader : null);
+  const dates = useAsyncResource(underlying ? datesLoader : null, {
+    savedCopy: scope ? { key: ["surface-dates", scope, underlying, target?.effectiveExchange] } : null,
+  });
   // A symbol with no current price, or no option chain at all, says what became of it when something
   // did, as `quote` says it: TWTR stopped trading, FB is a fund now and Meta trades as META.
   const noChain = !historyDate && !!quote && (!spotAvailable
@@ -218,11 +234,13 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // A coin's options (BTC-USD, ETH-USD) come with Deribit's volatility index.
   const coin = dvolCurrency(underlying);
   const dvolLoader = useCallback(async () => loadDvol(coin!), [coin]);
-  const dvol = useAsyncResource<CloudResource<DvolPayload>>(coin ? dvolLoader : null);
+  const dvol = useAsyncResource<CloudResource<DvolPayload>>(coin ? dvolLoader : null, {
+    savedCopy: scope ? { key: ["dvol", scope, coin] } : null,
+  });
   useAutoRefresh(dvol.updatedAt, dvol.load, { intervalMs: coin ? DVOL_REFRESH_MS : null });
   useEffect(() => () => controller.current?.abort(), [request]);
   const incremental = partial?.key === requestKey ? partial.snapshot : null;
-  const liveSnapshot = liveReload ?? (incremental && (incremental.loaded > 0 || !resource.data) ? incremental : resource.data);
+  const liveSnapshot = liveReload ?? (incremental && (!resource.data || (!resource.refreshing && incremental.loaded > 0)) ? incremental : resource.data);
   // Outside regular hours the delayed chain publishes zero bids, so nothing is two-sided.
   // Judged on the last complete load, so a refresh in progress does not flip the view.
   const liveQuotes = liveQuoteCoverage(settledSnapshot);
@@ -255,7 +273,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   useAutoRefresh(resource.updatedAt, liveActive ? noRefresh : resource.load);
   const shownDate = historyDate ?? fallbackDate;
   const storedLoader = useCallback(async () => storedSurfaceSnapshot(await loadStoredSurface(underlying, shownDate!)), [underlying, shownDate]);
-  const stored = useAsyncResource(underlying && shownDate ? storedLoader : null);
+  const stored = useAsyncResource(underlying && shownDate ? storedLoader : null, {
+    savedCopy: scope ? { key: ["stored-surface", scope, underlying, target?.effectiveExchange, shownDate] } : null,
+  });
   const active = shownDate ? stored : resource;
   const snapshot: DatedSurfaceSnapshot | null | undefined = shownDate ? stored.data : liveSnapshot;
   // IV30 and its rank rate the latest stored close, so they sit beside the live surface only.
@@ -433,7 +453,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const spotBasis = snapshot && !snapshot.stored ? surfaceSpotBasisLabel(snapshot) : null;
   // What the quotes are and when they were observed; a reload moves the time.
   const freshness = !snapshot ? null : snapshot.stored ? `stored close ${snapshot.stored.sessionDate}`
-    : surfaceFreshnessLabel(snapshot, CLOUD_QUOTE_DELAY_MINUTES);
+    : active.savedAt == null ? surfaceFreshnessLabel(snapshot, CLOUD_QUOTE_DELAY_MINUTES) : null;
   // The cell under the cursor on the views that have one: the quoted contract it came from, or the fitted value.
   const selectionStatus = !snapshot || !["surface", "table", "smile"].includes(activeTab) ? null
     : selectedCell?.point

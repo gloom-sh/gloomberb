@@ -69,6 +69,33 @@ test("terminal draws the saved result on mount while the loader is still pending
   }
 });
 
+test("a saved result renders before the live request has its inputs", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const savedCopy = { key: ["surface", "SPY", "ARCA"] };
+  const forces: boolean[] = [];
+  const loader = async (force: boolean) => { forces.push(force); return "Live surface"; };
+  let ready!: (value: boolean) => void;
+  function Pane() {
+    const [canLoad, setCanLoad] = useState(false);
+    ready = setCanLoad;
+    const view = useAsyncResource(loader, { savedCopy, deferLoad: !canLoad });
+    return <Text>{view.loading ? "Loading" : view.data}</Text>;
+  }
+  try {
+    writeSavedCopy(savedCopy, "Saved surface", Date.UTC(2023, 0, 1));
+    await tui.render(<Pane />);
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("Saved surface");
+    expect(forces).toEqual([]);
+    await act(async () => { ready(true); });
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("Live surface");
+    expect(forces).toEqual([true]);
+  } finally {
+    setSavedCopyStore(previous);
+  }
+});
+
 test("reload starts a forced load and returns nothing; reloadAndWait settles once the answer or failure is in", async () => {
   const forces: boolean[] = [];
   let answer = Promise.withResolvers<string>();

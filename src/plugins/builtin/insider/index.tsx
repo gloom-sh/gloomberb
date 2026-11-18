@@ -3,6 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import type { PaneProps, PaneTemplateDef } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
 import type { InsiderSignalSide } from "../../../api-client/insider-signals";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAppDispatch, useAppSelector, useAppStateRef, usePaneInstance } from "../../../state/app/context";
 import { resolveTickerOpenTarget, tickerOpenFailureMessage } from "../../../tickers/open-target";
 import { offerTickerListings, publishTickerOpenTarget } from "../../../app/pane-runtime/ticker-open-target";
@@ -41,7 +42,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { SignInWall } from "../cloud/auth-actions";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { formatFilingFormLabel, renderFilingNotice } from "../sec/filing-display";
-import { useSecFilingContentCache } from "../sec/filing-content";
+import { useInsiderFilingRows } from "./filing-rows";
 import {
   DEFAULT_INSIDER_TYPE_FILTER,
   buildInsiderSummaryFigures,
@@ -50,16 +51,14 @@ import {
   matchesInsiderOwner,
   matchesInsiderTypeFilter,
   insiderReportedName,
-  parseInsiderFiling,
   type InsiderSummaryFigures,
   type InsiderTypeFilter,
-  type ParsedInsiderFiling as ParsedFiling,
 } from "./model";
 import { formatInsiderName } from "./display";
 import { insiderHeadless } from "./headless";
 import { FORM4_CURRENCY } from "./base-values";
 import { isInsiderForm } from "./insider-data";
-import { filesAsForeignPrivateIssuer, insiderEmptyNotice, isOtherIssuerFiling } from "./issuer";
+import { filesAsForeignPrivateIssuer, insiderEmptyNotice } from "./issuer";
 import { relevantInsiderAmendments } from "./amendments";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import {
@@ -320,27 +319,15 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
     void coordinator.loadSecFilings({ instrument, count: SEC_FILING_SCAN_LIMIT }, { forceRefresh: true });
   }, [cloudSession.requestKey, instrument]);
 
-  const { contentCache: contentMap, pendingCount } = useSecFilingContentCache({
-    scopeKey: `${ticker.metadata.ticker}:${ticker.metadata.exchange ?? ""}`,
-    targets: visibleForm4Filings,
-  });
+  const access = useCloudDisplayScope();
   // The list also holds the Form 4s the company filed as an owner of another
   // company's shares, which only their documents tell apart. Until one of its
   // own is read, the pages are read on to the end, so a list of none says so.
-  const ownerFilingsShown = useMemo(() => visibleForm4Filings.some((filing) => (
-    isOtherIssuerFiling(filing, contentMap.get(filing.accessionNumber))
-  )), [contentMap, visibleForm4Filings]);
-  const ownFilingShown = useMemo(() => visibleForm4Filings.some((filing) => (
-    contentMap.has(filing.accessionNumber) && !isOtherIssuerFiling(filing, contentMap.get(filing.accessionNumber))
-  )), [contentMap, visibleForm4Filings]);
+  const { ownerFilingsShown, ownFilingShown, pendingCount, rows: allParsed } = useInsiderFilingRows(
+    `${tickerKey}:${ticker.metadata.exchange ?? ""}`, access, visibleForm4Filings,
+  );
   const searchingOwn = !ownFilingShown && pendingCount === 0 && shownCount < form4Filings.length;
   const noOwnFilings = !loading && !ownFilingShown && pendingCount === 0 && shownCount >= form4Filings.length;
-
-  const allParsed: ParsedFiling[] = useMemo(() => visibleForm4Filings.flatMap((filing) => {
-    const hasContent = contentMap.has(filing.accessionNumber);
-    const xml = contentMap.get(filing.accessionNumber) ?? null;
-    return parseInsiderFiling(filing, xml, !hasContent);
-  }), [contentMap, visibleForm4Filings]);
 
   // The insider filter narrows the totals and the table; the Type filter only the table.
   const parsed = useMemo(() => (

@@ -121,7 +121,10 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   usePaneNoticeFooter({ registrationId: "time-sales:notices", focused, notices: [...(data?.gaps ?? []), ...(resource.transport ? [resource.transport] : []),
     ...(pinnedBeforeTape ? [`The pinned moment is before this tape's first ${tab === "quotes" ? "quote" : "print"}, ${tapeStampNewYork(rowTime(rows.at(-1)!))}.`] : [])] });
   usePaneStatusFooter({ registrationId: "time-sales:status", loading: resource.loading, error: resource.error,
-    info: data ? [...splitDelayedStatus({ id: "feed", quoteStatus: true, parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeStampNewYork(data.asOf)}`, tone: "muted" }] }),
+    info: data ? [...splitDelayedStatus({ id: "feed", quoteStatus: true, parts: [{
+      text: resource.savedAt != null ? `as of ${tapeStampNewYork(data.asOf)}` : `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeStampNewYork(data.asOf)}`,
+      tone: "muted",
+    }] }),
       ...(lastSessionNote(data) ? [{ id: "last-session", parts: [{ text: lastSessionNote(data)!, tone: "muted" as const }] }] : []),
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });

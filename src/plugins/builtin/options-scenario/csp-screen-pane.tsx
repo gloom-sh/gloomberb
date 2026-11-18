@@ -7,6 +7,7 @@ import {
 } from "../../../components";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneSettingValue, usePluginAppActions } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -138,6 +139,7 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
   const [symbolsActive, setSymbolsActive] = useState(false);
   const { createPaneFromTemplate } = usePluginAppActions();
   const assetData = useAssetData();
+  const scope = useCloudDisplayScope();
   const strategy = useMemo((): StrategyFamily => {
     try { return readStrategyFamily(strategySetting); } catch { /* Intentional ignore: an unknown saved strategy opens the cash-secured put screen. */ return "csp"; }
   }, [strategySetting]);
@@ -174,7 +176,9 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     if (criteria.trade) return { kind: "trade" as const, screen: await loadStrategyScreen(instruments, criteria.trade, dependencies, current.signal) };
     return { kind: "csp" as const, screen: await loadCspScreen(instruments, criteria.value!, dependencies, current.signal) };
   }, [key, assetData]);
-  const resource = useAsyncResource(symbols.length && ready ? loader : null);
+  const resource = useAsyncResource(symbols.length && ready ? loader : null, {
+    savedCopy: scope && assetData ? { key: ["options-screen", scope, assetData.id, symbols, strategy, ready] } : null,
+  });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "rank", direction: "asc" });

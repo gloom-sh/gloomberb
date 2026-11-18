@@ -44,11 +44,14 @@ export function useAsyncResource<T>(
      * depends on, so a copy is only ever shown for the same question.
      */
     savedCopy?: SavedCopyKey | null;
+    /** The request is identified, but its live inputs are not ready yet. */
+    deferLoad?: boolean;
   } = {},
 ) {
   const requestedKey = loader ? options.savedCopy ?? null : null;
   const savedId = requestedKey ? `${savedCopyId(requestedKey)}#${requestedKey.version ?? 1}` : null;
   const savedKey = useMemo(() => requestedKey, [savedId]);
+  const deferLoad = options.deferLoad === true;
   const open = (): ResourceState<T> & { owner: typeof loader; ownerKey: string | null } => {
     const saved = savedKey ? readSavedCopy<T>(savedKey) : null;
     const data = loader ? saved?.value ?? options.initialData?.() ?? null : null;
@@ -76,6 +79,7 @@ export function useAsyncResource<T>(
   savedAtRef.current = view.savedAt;
   const settle = useCallback(async (force: boolean) => {
     const currentGeneration = ++generation.current;
+    if (deferLoad) return;
     if (!loader) {
       setState({ owner: loader, ownerKey: null, data: null, loading: false, error: null, updatedAt: null, savedAt: null });
       return;
@@ -114,7 +118,7 @@ export function useAsyncResource<T>(
         });
       }
     }
-  }, [loader, savedId, savedKey]);
+  }, [deferLoad, loader, savedId, savedKey]);
   // A load nobody waits on: its failures end in `error`, and anything else
   // that escapes is logged.
   const load = useCallback((force = false) => {
@@ -141,6 +145,6 @@ export function useAsyncResource<T>(
       if (recoversDataRequests(sourceId) && failedRef.current) load();
     });
   }, [load, loader]);
-  const status = error !== null ? "error" : data !== null ? "loaded" : loading ? "loading" : "idle";
-  return { data, loading: loading && savedAt === null, refreshing: loading && data !== null, error, updatedAt, status, load, reload, reloadAndWait };
+  const status: "error" | "loaded" | "loading" | "idle" = error !== null ? "error" : data !== null ? "loaded" : loading ? "loading" : "idle";
+  return { data, loading: loading && savedAt === null, refreshing: loading && data !== null, error, updatedAt, savedAt, status, load, reload, reloadAndWait };
 }

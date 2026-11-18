@@ -3,6 +3,7 @@ import { setSavedCopyStore } from "../data/pane-saved-copies";
 import { followDataServiceHealth } from "../market-data/connection-follow";
 import { NewsService, type NewsServiceOptions } from "../news/aggregator";
 import { cloudNewsSession } from "../news/cloud-session";
+import { cloudDisplayScope } from "../api-client/plan-access";
 import { getSharedNewsService, setSharedNewsService } from "../news/hooks";
 import { PluginRegistry } from "../plugins/registry";
 import { releaseSharedRegistry } from "../plugins/registry/shared";
@@ -67,6 +68,7 @@ export function createAppRuntime({
     connectionHealth: pluginRegistry.connectionHealth,
     pollIntervalMs: () => Math.max(1, config.refreshIntervalMinutes) * 60_000,
     session: cloudNewsSession,
+    savedCopyScope: cloudDisplayScope,
     ...newsOptions,
   });
   const modules = { pluginRegistry, marketData, newsService };

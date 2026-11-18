@@ -4,6 +4,7 @@ import {
   type CloudProxyStatementPayload,
 } from "../../../api-client";
 import { ApiRequestError, isPermanentClientError, isTransientFailure } from "../../../api-client/errors";
+import { markSavedCopy } from "../../../data/saved-copies";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import type { PluginPersistence } from "../../../types/plugin";
 import { secListingKey } from "../../../utils/sec";
@@ -128,6 +129,32 @@ interface ProxyLoadOptions {
   listing?: IssuerListingParams;
   /** What the account's plan is served: `full` unless it has no Pro. */
   tier?: ProxyTier;
+  displayIdentity?: readonly unknown[];
+}
+
+function proxyKey(ticker: string, year: number | null, options?: ProxyLoadOptions): string {
+  const listing = secListingKey(ticker.toUpperCase(), options?.listing?.exchange);
+  const key = year === null ? listing : `${listing}:${year}`;
+  return options?.displayIdentity
+    ? JSON.stringify([key, options.listing?.name, options.tier, options.displayIdentity])
+    : key;
+}
+
+function readProxy<T>(kind: string, ticker: string, year: number | null, options: ProxyLoadOptions): ProxyResult<T> | null {
+  if (!options.displayIdentity) return null;
+  const hit = persistence?.getResource<T>(kind, proxyKey(ticker, year, options), {
+    sourceKey: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION, allowExpired: true,
+  });
+  if (!hit || tierOf(hit.value) !== options.tier) return null;
+  return markSavedCopy({ data: hit.value, fetchedAt: hit.fetchedAt }, hit.fetchedAt);
+}
+
+export function readProxyStatements(ticker: string, options: ProxyLoadOptions) {
+  return readProxy<CloudProxyStatementListPayload>(LIST_KIND, ticker, null, options);
+}
+
+export function readProxyStatement(ticker: string, year: number, options: ProxyLoadOptions) {
+  return readProxy<CloudProxyStatementPayload>(STATEMENT_KIND, ticker, year, options);
 }
 
 export async function loadProxyStatements(
@@ -136,7 +163,7 @@ export async function loadProxyStatements(
 ): Promise<ProxyResult<CloudProxyStatementListPayload>> {
   const symbol = ticker.toUpperCase();
   // SAN in Paris is not SAN in New York: a listing abroad is cached under its venue.
-  const key = secListingKey(symbol, options?.listing?.exchange);
+  const key = proxyKey(symbol, null, options);
   return loadCached(LIST_KIND, key, options?.tier ?? "full", activeListFetches, LIST_CACHE_POLICY, options?.force ?? false,
     () => apiClient.getProxyStatements(symbol, options?.listing));
 }
@@ -147,7 +174,7 @@ export async function loadProxyStatement(
   options?: ProxyLoadOptions,
 ): Promise<ProxyResult<CloudProxyStatementPayload>> {
   const symbol = ticker.toUpperCase();
-  const key = `${secListingKey(symbol, options?.listing?.exchange)}:${year}`;
+  const key = proxyKey(symbol, year, options);
   return loadCached(STATEMENT_KIND, key, options?.tier ?? "full", activeStatementFetches, STATEMENT_CACHE_POLICY, options?.force ?? false,
     () => apiClient.getProxyStatement(symbol, year, options?.listing));
 }

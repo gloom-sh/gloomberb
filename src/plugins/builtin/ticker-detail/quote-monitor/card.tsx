@@ -25,6 +25,8 @@ import { formatQuoteNavAsOf, formatQuoteSessionAsOf } from "../../../../market-d
 import { ClippedText } from "../../../../components/ui/display";
 import { useSelectionFill } from "../../../../components/ui/selection-fill";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
+import { useSavedCopyFooter } from "../../../../components/layout/pane/footer/registration";
+import { savedCopyAt } from "../../../../data/saved-copies";
 import { followLiveSparklinePrice } from "../../../../components/price-sparkline/model";
 import {
   PriceAreaSparklineBackground,
@@ -169,6 +171,7 @@ export function QuoteMonitorCard({
   const { nativePaneChrome, cellWidthPx = 8 } = useUiCapabilities();
   const selectionFill = useSelectionFill();
   const quote = resolveEntryData(quoteEntry) ?? cachedFinancials?.quote;
+  useSavedCopyFooter(savedCopyAt(quote), !quoteEntry?.error);
   const queriedPriceHistory = resolveEntryData(chartEntry);
   const barHistory = queriedPriceHistory && queriedPriceHistory.length >= 2
     ? queriedPriceHistory

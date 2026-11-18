@@ -1,4 +1,5 @@
 import { apiClient } from "../../../api-client";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
 import { createTtlCache } from "../../../data/ttl-cache";
 import type { MarketHeatmapResult, MarketHeatmapUniverseId } from "../../../api-client/market-discovery";
 export type { MarketHeatmapUniverseId } from "../../../api-client/market-discovery";
@@ -83,8 +84,9 @@ export function fetchMarketHeatmap(
   const count = Math.max(1, Math.min(MAX_MARKET_HEATMAP_COUNT, Math.round(options?.count ?? DEFAULT_COUNT)));
   const load = () => loadMarketHeatmap(universe, count, sources);
   // A board asked for uncached, or through another client, neither reads nor fills the shared cache.
-  if (options?.cache === false || sources?.client) return load();
-  return boards.load(`${universe}:${count}`, load, { force: options?.forceRefresh });
+  const scope = cloudDisplayScope();
+  if (options?.cache === false || sources?.client || scope === null) return load();
+  return boards.load(JSON.stringify([scope, universe, count]), load, { force: options?.forceRefresh });
 }
 
 export function resetMarketHeatmapCache(): void {

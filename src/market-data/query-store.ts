@@ -38,6 +38,7 @@ type SavedEntry<T> = Pick<QueryEntry<T>, "data" | "history" | "source" | "asOf" 
 export class QueryStore<T> {
   private readonly entries = new Map<string, QueryEntry<T>>();
   private readonly hydratedScopes = new Map<string, string>();
+  private readonly savedEntries = new WeakSet<QueryEntry<T>>();
   /** Stored keys no pane is watching, least recently used first. */
   private readonly unwatched = new Set<string>();
 
@@ -93,7 +94,7 @@ export class QueryStore<T> {
 
   private save(key: string, entry: QueryEntry<T>): void {
     const cache = this.options.savedCopies;
-    if (!cache || entry.savedCopyAt != null || (entry.phase !== "ready" && entry.phase !== "error")) return;
+    if (!cache || this.savedEntries.has(entry) || entry.savedCopyAt != null || (entry.phase !== "ready" && entry.phase !== "error")) return;
     const scope = cache.scope();
     const hydratedScope = this.hydratedScopes.get(key);
     if (scope === null || (hydratedScope !== undefined && hydratedScope !== scope)) return;
@@ -107,6 +108,7 @@ export class QueryStore<T> {
     if (cache.observedOnly && !this.options.isWatched?.(key)) return;
     const { data, history, source, asOf, delayMinutes } = entry;
     writeSavedCopy(savedKey, { data, history, source, asOf, delayMinutes }, entry.fetchedAt ?? Date.now(), cache.writeIntervalMs);
+    this.savedEntries.add(entry);
   }
 
   /** A pane started watching `key`, so it is kept until released. */

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { peekGeoCatalog, type GeoLayerInfo, type GeoLayersPayload, type GeoRequest } from "../../../api-client/geo";
+import { type GeoLayerInfo, type GeoLayersPayload, type GeoRequest } from "../../../api-client/geo";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
+import { useAsyncResource } from "../../../react/async-resource";
 import { cloudGeoRequest, loadMapCatalog } from "./client";
 import { GeoLayerFeed, type GeoFeedOptions, type GeoLayerState } from "./feed";
 import type { GeoView } from "./layers";
-import { logFailure } from "../../../utils/log-failure";
 
 export interface GeoCatalogState {
   catalog: GeoLayersPayload | null;
@@ -17,21 +18,12 @@ export interface GeoCatalogState {
  * venue map.
  */
 export function useGeoCatalog(request: GeoRequest = cloudGeoRequest): GeoCatalogState {
-  const [state, setState] = useState<GeoCatalogState>(() => {
-    const cached = peekGeoCatalog();
-    return { catalog: cached, settled: !!cached };
+  const scope = useCloudDisplayScope();
+  const load = useMemo(() => (force: boolean) => loadMapCatalog(request, force), [request, scope]);
+  const catalog = useAsyncResource(load, {
+    savedCopy: scope && request === cloudGeoRequest ? { key: ["map-catalog", scope] } : null,
   });
-  useEffect(() => {
-    let current = true;
-    // A failed request answers null; anything else is logged.
-    loadMapCatalog(request).then((catalog) => {
-      if (current) setState({ catalog, settled: true });
-    }, logFailure("world-venue-map.geo", "Loading the map layer catalog failed"));
-    return () => {
-      current = false;
-    };
-  }, [request]);
-  return state;
+  return { catalog: catalog.data, settled: !catalog.loading };
 }
 
 /** Feature state for each layer on, kept in step with the view and the pane's visibility. */

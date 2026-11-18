@@ -144,7 +144,6 @@
   "src/plugins/builtin/iv-history/screen-pane.tsx": ["void:loadScreenVolatilities()"],
   "src/plugins/builtin/jobs/pane.tsx": ["void:rendererHost.openExternal()","void:rendererHost.openExternal()","void:rendererHost.openExternal()"],
   "src/plugins/builtin/kelly-sizer/pane.tsx": ["void:kellyCountMultiplier().then()","void:resolveTickerQuery()"],
-  "src/plugins/builtin/market-heatmap/index.tsx": ["void:loadUniverse()","void:loadUniverse()","void:loadUniverse()"],
   "src/plugins/builtin/market-movers/index.tsx": ["callback:loadTab()","void:loadTab()","void:loadTab()"],
   "src/plugins/builtin/market-movers/session-body.tsx": ["callback:load()","void:load()","void:load()"],
   "src/plugins/builtin/mna/detail.tsx": ["void:rendererHost.openExternal()"],

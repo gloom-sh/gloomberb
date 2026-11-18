@@ -41,10 +41,13 @@ import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { COIN_OPTIONS_HINT, isCoinWithoutOptions, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
 import {
   loadGamma,
   loadOpenInterest,
+  readGamma,
+  readOpenInterest,
   type ExpiryOpenInterest,
   type GammaPayload,
   type GammaStrike,
@@ -197,6 +200,7 @@ export function OptionsPositioningPane(props: PaneProps) {
 
 function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & { symbol: string }) {
   const colors = useThemeColors();
+  const scope = useCloudDisplayScope();
   // A pane linked to a watchlist changes underlying with the cursor. The expiry and strike it
   // saved for one would otherwise open the next on the same date, so they are kept per symbol
   // and the last symbol's are dropped.
@@ -220,9 +224,11 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
 
   const openInterestLoader = useCallback(
     (force: boolean) => loadOpenInterest(symbol, requestedExpiry, { force }),
-    [symbol, requestedExpiry],
+    [symbol, requestedExpiry, scope],
   );
-  const openInterestLoad = useAsyncResource<CloudResource<OpenInterestPayload>>(openInterestLoader, { keepPreviousData: true });
+  const openInterestLoad = useAsyncResource<CloudResource<OpenInterestPayload>>(openInterestLoader, {
+    initialData: () => scope ? readOpenInterest(scope, symbol, requestedExpiry) : null,
+  });
   const openInterest = { ...openInterestLoad, data: openInterestLoad.data?.payload ?? null };
   const data = openInterest.data;
   const spot = data?.spot ?? null;
@@ -251,10 +257,12 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   // single expiry waits for the listed expiries to say whether it is still there.
   const gammaLoader = useCallback(
     (force: boolean) => loadGamma(symbol, gammaScope === ALL_EXPIRIES ? null : gammaScope, { force }),
-    [symbol, gammaScope],
+    [symbol, gammaScope, scope],
   );
   const gammaReady = (tab === "gex" && (!!data || gammaExpiry === ALL_EXPIRIES)) || (tab === "expiries" && hasGamma);
-  const gammaLoad = useAsyncResource<CloudResource<GammaPayload>>(gammaReady ? gammaLoader : null, { keepPreviousData: true });
+  const gammaLoad = useAsyncResource<CloudResource<GammaPayload>>(gammaReady ? gammaLoader : null, {
+    initialData: () => scope ? readGamma(scope, symbol, gammaScope === ALL_EXPIRIES ? null : gammaScope) : null,
+  });
   const gamma = { ...gammaLoad, data: gammaLoad.data?.payload ?? null };
   useAutoRefresh(openInterest.updatedAt, openInterest.load, { intervalMs: OPEN_INTEREST_REFRESH_MS });
   useAutoRefresh(gamma.updatedAt, gamma.load, { intervalMs: gammaReady ? GAMMA_REFRESH_MS : null });

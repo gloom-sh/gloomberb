@@ -18,6 +18,8 @@ import {
   normalizeNewsQuery,
 } from "./news-model";
 import { storyIdMatches } from "./story-id";
+import { deleteSavedCopy, readSavedCopy, writeSavedCopy } from "../data/pane-saved-copies";
+import { isPermanentClientError } from "../api-client/errors";
 
 export { buildNewsQueryKey } from "./news-model";
 
@@ -37,6 +39,7 @@ export interface NewsServiceOptions {
    * replaced, so a feed read without the session is not left on screen.
    */
   session?: NewsSessionSignal;
+  savedCopyScope?: () => string | null;
 }
 
 export interface NewsSessionSignal {
@@ -66,6 +69,7 @@ interface SourceFetchResult {
   nextCursor: string | null;
   access: NewsAccess | null;
   companyFrom?: CompanyFrom | null;
+  denied?: boolean;
 }
 
 interface NewsQueryEntry {
@@ -97,6 +101,8 @@ function newsCapabilitySourceId(source: NewsCapability): string {
   return source.sourceId ?? source.id;
 }
 
+const PUBLIC_NEWS_SOURCES = new Set(["gloomberb-cloud", "asset-data-router", "desktop-backend"]);
+
 export class NewsService {
   private readonly sources = new Map<string, NewsCapability>();
   private readonly listeners = new Set<() => void>();
@@ -116,10 +122,12 @@ export class NewsService {
   private unsubscribeRecovery: (() => void) | null = null;
   private readonly session?: NewsSessionSignal;
   private sessionKey: string | null = null;
+  private displayScope: string | null = null;
   /** Bumped when the session changes; a read from an older generation is dropped. */
   private sessionGeneration = 0;
   private sessionRefetchQueued = false;
   private unsubscribeSession: (() => void) | null = null;
+  private readonly savedCopyScope?: NewsServiceOptions["savedCopyScope"];
 
   constructor(options: NewsServiceOptions = {}) {
     const pollInterval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -130,6 +138,16 @@ export class NewsService {
     this.connectionHealth = options.connectionHealth;
     this.visibility = options.visibility ?? { isVisible: isAppVisible, subscribe: subscribeAppVisibility };
     this.session = options.session;
+    this.savedCopyScope = options.savedCopyScope;
+  }
+
+  private savedKey(query: NewsQuery) {
+    const access = this.savedCopyScope?.();
+    if (!access || query.cursor || normalizeNewsFeed(query) !== "ticker") return null;
+    const sources = this.enabledSources(query).map(newsCapabilitySourceId);
+    return sources.length && PUBLIC_NEWS_SOURCES.has(sources[0]!)
+      ? { key: ["news-headlines", access, sources, buildNewsQueryKey(query)] }
+      : null;
   }
 
   register(source: NewsCapability): () => void {
@@ -163,6 +181,7 @@ export class NewsService {
     });
     if (this.session) {
       this.sessionKey = this.session.key();
+      this.displayScope = this.savedCopyScope?.() ?? null;
       this.unsubscribeSession = this.session.subscribe(() => this.handleSessionChange());
     }
     // A list that failed while the data service (or the desktop bridge) gave no answer is read again once it answers, not at the next poll.
@@ -198,9 +217,21 @@ export class NewsService {
   private handleSessionChange(): void {
     if (!this.session) return;
     const key = this.session.key();
-    if (key === this.sessionKey) return;
+    const scope = this.savedCopyScope?.() ?? null;
+    if (key === this.sessionKey && scope === this.displayScope) return;
     this.sessionKey = key;
+    this.displayScope = scope;
     this.sessionGeneration++;
+    let droppedSaved = false;
+    for (const entry of this.queries.values()) {
+      if (entry.state.savedAt == null) continue;
+      entry.state = createIdleNewsQueryState();
+      droppedSaved = true;
+    }
+    if (droppedSaved) {
+      this.rebuildArticlePool();
+      this.notify();
+    }
     if (this.sessionRefetchQueued) return;
     this.sessionRefetchQueued = true;
     queueMicrotask(() => {
@@ -431,6 +462,7 @@ export class NewsService {
     if (entry.inFlight && entry.inFlightGeneration === generation) return entry.inFlight;
 
     const current = entry.state;
+    const savedKey = this.savedKey(query);
     if (showLoading) {
       entry.state = {
         ...current,
@@ -440,10 +472,13 @@ export class NewsService {
       this.notify();
     }
 
+    let denied = false;
     const promise = (async () => {
       try {
         const result = await this.fetchFromSources(query);
         if (generation !== this.sessionGeneration) return this.currentRead(entry);
+        denied = result.denied === true;
+        if (savedKey && result.denied) deleteSavedCopy(savedKey);
         if (result.sourceIds.length === 0 && result.failedSourceIds.length > 0) {
           throw new Error("News sources unavailable.");
         }
@@ -452,7 +487,7 @@ export class NewsService {
         // Stories read under another session are another feed (held back, or live): the new read replaces them.
         const sameSession = entry.generation === generation;
         // The stories a coin's fallback found are not the pair's own: once stories are filed under it, they replace them.
-        const existing = !sameSession || (incoming.length > 0 && entry.state.articles.length > 0
+        const existing = denied || !sameSession || current.savedAt != null || (incoming.length > 0 && entry.state.articles.length > 0
           && (incoming[0]!.searchedFor ?? null) !== (entry.state.articles[0]!.searchedFor ?? null))
           ? []
           : entry.state.articles;
@@ -483,13 +518,16 @@ export class NewsService {
         entry.state = state;
         entry.generation = generation;
         entry.lastAccessedAt = this.now();
+        if (savedKey && !result.denied && incoming.length > 0 && result.sourceIds.every((id) => PUBLIC_NEWS_SOURCES.has(id))) {
+          writeSavedCopy(savedKey, { ...state, articles: incoming, nextCursor: null, error: null, loadingMore: false }, state.updatedAt ?? undefined);
+        }
         this.rebuildArticlePool();
         this.notify();
         return state;
       } catch (error) {
         if (generation !== this.sessionGeneration) return this.currentRead(entry);
         const state: NewsQueryState = {
-          ...current,
+          ...(denied ? createIdleNewsQueryState() : current),
           phase: "error",
           error: error instanceof Error ? error.message : String(error),
         };
@@ -522,9 +560,11 @@ export class NewsService {
       existing.lastAccessedAt = now;
       return existing;
     }
+    const savedKey = this.savedKey(query);
+    const copy = savedKey ? readSavedCopy<NewsQueryState>(savedKey) : null;
     const entry: NewsQueryEntry = {
       query,
-      state: createIdleNewsQueryState(),
+      state: copy ? { ...copy.value, savedAt: copy.fetchedAt } : createIdleNewsQueryState(),
       inFlight: null,
       inFlightGeneration: this.sessionGeneration,
       loadMoreInFlight: null,
@@ -604,6 +644,7 @@ export class NewsService {
   private async fetchTickerNews(query: NewsQuery, sources: NewsCapability[]): Promise<SourceFetchResult> {
     let firstEmpty: SourceFetchResult | null = null;
     const failedSourceIds: string[] = [];
+    let denied = false;
     for (const source of sources) {
       try {
         const page = await this.readSourcePage(source, query);
@@ -615,14 +656,16 @@ export class NewsService {
           nextCursor: page.nextCursor,
           access: page.access ?? null,
           companyFrom: page.companyFrom ?? null,
+          denied,
         };
         if (page.articles.length > 0) return result;
         firstEmpty ??= result;
-      } catch {
+      } catch (error) {
+        denied ||= PUBLIC_NEWS_SOURCES.has(newsCapabilitySourceId(source)) && isPermanentClientError(error);
         failedSourceIds.push(newsCapabilitySourceId(source));
       }
     }
-    return firstEmpty ?? { articles: [], sourceIds: [], failedSourceIds, errors: [], nextCursor: null, access: null };
+    return firstEmpty ? { ...firstEmpty, denied } : { articles: [], sourceIds: [], failedSourceIds, errors: [], nextCursor: null, access: null, denied };
   }
 
   private async fetchMergedNews(query: NewsQuery, sources: NewsCapability[]): Promise<SourceFetchResult> {

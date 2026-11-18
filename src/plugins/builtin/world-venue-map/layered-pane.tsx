@@ -8,7 +8,7 @@ import type {
   GeoSeriesInfo,
   GeoTickerLink,
 } from "../../../api-client/geo";
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { useCloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
 import {
   Button,
   DataTableStackView,
@@ -189,6 +189,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const openDescription = useOpenDescription();
   const visible = usePaneVisible();
   const { hasProAccess } = usePlanAccess();
+  const access = useCloudDisplayScope();
   const upgrade = useCloudUpgradeAction("map-layers");
   const [venuesSetting] = usePaneSettingValue<boolean | undefined>(VENUES_SETTING_KEY, undefined);
   const venuesOn = readVenuesSetting(plain ? { [VENUES_SETTING_KEY]: venuesSetting } : { [VENUES_SETTING_KEY]: venuesSetting, [LAYERS_SETTING_KEY]: tokens }, layers.length);
@@ -270,7 +271,10 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
       scopeKey: scope?.key ?? null,
     };
   }, [query, request, scope?.key, sort.dir, sort.key, tableBboxKey, tableLayer.id]);
-  const pages = usePagedRows(tableReadable ? loadPage : null, { getId: (row) => row.id, savedCopy: { key: ["world-map-entities", scope?.key, tableLayer.id, query, sort.key, sort.dir, tableBboxKey] } });
+  const pages = usePagedRows(tableReadable ? loadPage : null, {
+    getId: (row) => row.id,
+    savedCopy: access ? { key: ["world-map-entities", access, scope?.key, tableLayer.id, query, sort.key, sort.dir, tableBboxKey] } : null,
+  });
   const rows = useMemo(() => !sort.key ? nearestPlaces(pages.rows, start.place, (row) => ({ longitude: row.lon, latitude: row.lat })) : pages.rows,
     [pages.rows, sort.key, start.place]);
   // A linked map frames the places of each company or theme it moves to, once.
