@@ -65,34 +65,26 @@ const INSIDER_FORM = /^4(?:\/A)?$/i;
 /**
  * The Form 4 rows with the stories that report them: `stories` on the row, and
  * a note under it that names each (`fn story <id>` opens one). The other rows,
- * and every row when Gloom Cloud cannot be asked, as they were, with a note
- * saying why.
+ * and a Form 4 Gloom Cloud could not be asked about, stay as they were, and
+ * the report says nothing of it: the stories are a lead, not its data.
  */
 async function withFilingStories(
   rows: HeadlessPaneRow[],
   ctx: HeadlessPaneContext,
   dependencies: SecHeadlessDependencies,
-): Promise<{ rows: HeadlessPaneRow[]; note: string | null }> {
+): Promise<HeadlessPaneRow[]> {
   const accessions = rows
     .filter((row) => typeof row.form === "string" && INSIDER_FORM.test(row.form.trim()))
     .map((row) => row.accessionNumber)
     .filter((value): value is string => typeof value === "string");
   const load = dependencies.loadFilingStories;
-  if (!load || accessions.length === 0) return { rows, note: null };
-  let found: Map<string, FilingStory[]>;
-  try {
-    found = await load(accessions, ctx);
-  } catch (error) {
-    return { rows, note: `The stories reporting its Form 4s could not be read: ${errorMessage(error)}` };
-  }
-  return {
-    note: null,
-    rows: rows.map((row) => {
-      const stories = typeof row.accessionNumber === "string" ? found.get(row.accessionNumber) : undefined;
-      if (!stories) return row;
-      return { ...row, stories: stories.map((story) => ({ ...story })), ...(stories.length ? { storiesNote: stories.map(filingStoryNote).join("\n") } : {}) };
-    }),
-  };
+  if (!load || accessions.length === 0) return rows;
+  const found = await load(accessions, ctx).catch(logFailure("sec.headless", "Read the stories reporting Form 4s failed", new Map<string, FilingStory[]>()));
+  return rows.map((row) => {
+    const stories = typeof row.accessionNumber === "string" ? found.get(row.accessionNumber) : undefined;
+    if (!stories) return row;
+    return { ...row, stories: stories.map((story) => ({ ...story })), ...(stories.length ? { storiesNote: stories.map(filingStoryNote).join("\n") } : {}) };
+  });
 }
 
 /**
@@ -186,8 +178,8 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
       const { filings, hidden } = await loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true });
       const hiddenNote = hidden && hiddenFilingsNote(hidden);
-      const { rows, note: storiesNote } = await withFilingStories(buildSecFilingRows(filings), ctx, dependencies);
-      const notes = [...(hiddenNote ? [hiddenNote] : []), ...(storiesNote ? [storiesNote] : [])];
+      const rows = await withFilingStories(buildSecFilingRows(filings), ctx, dependencies);
+      const notes = hiddenNote ? [hiddenNote] : [];
       // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.
       const page = !form && filings.length === 0 ? listingAnnouncementsPage(symbol) : null;
       return {

@@ -40,7 +40,10 @@ function storiesOf(item: CloudInsiderFilingStoriesResponse["items"][number]): Fi
 /**
  * The stories reporting each filing, by accession number, from a short-lived
  * cache where it has them. A filing Gloom Cloud could not be asked about is
- * left out of the map: no stories said is not "none".
+ * left out of the map: no stories said is not "none". A batch that fails (a
+ * server without the lookup, a session it refuses, a rate or capacity limit)
+ * ends the asking without an error: the batches answered before it are kept,
+ * and the rows that would have named stories name none.
  */
 export async function loadFilingStories(
   accessions: readonly string[],
@@ -57,7 +60,14 @@ export async function loadFilingStories(
   }
   for (let start = 0; start < wanted.length; start += BATCH) {
     const batch = wanted.slice(start, start + BATCH);
-    const response = await client.getCloudInsiderFilingStories(batch);
+    let response: CloudInsiderFilingStoriesResponse;
+    try {
+      response = await client.getCloudInsiderFilingStories(batch);
+    } catch (error) {
+      // The next batch would meet the same refusal: stop, keeping what was answered.
+      logFailure("insider.filing-stories", "Read the stories reporting filings failed")(error);
+      break;
+    }
     for (const item of response.items ?? []) {
       if (!batch.includes(item.accession)) continue;
       const stories = storiesOf(item);

@@ -224,7 +224,7 @@ describe("insider headless model", () => {
 });
 
 // `fn SEC NVDA` and `fn INS NVDA` named no story about Mark Stevens' sales, which named no filing either.
-test("a filing's rows name the stories that report it, once under its last line, and say so when they cannot be asked", async () => {
+test("a filing's rows name the stories that report it, once under its last line, and say nothing when they cannot be asked", async () => {
   const filing = (accessionNumber: string, day: string, shares: number): ParsedInsiderFiling => ({
     ...parsed[1]!,
     filing: { ...parsed[1]!.filing, accessionNumber, filingDate: new Date(`${day}T00:00:00.000Z`) },
@@ -256,8 +256,10 @@ test("a filing's rows name the stories that report it, once under its last line,
     loadFilingStories: async () => { throw new Error("Gloom Cloud unavailable"); },
   });
   const read = await unreachable.load(args("", 3), createTestHeadlessContext());
-  expect(read.rows.every((row) => row.stories === undefined)).toBe(true);
-  expect(read.notes).toContain("The stories reporting these filings could not be read: Gloom Cloud unavailable");
+  // The lookup is a lead, not the report's data: its failure leaves the rows as they were, unremarked.
+  expect(read.rows.every((row) => row.stories === undefined && row.note == null)).toBe(true);
+  expect(read.notes ?? []).toEqual([]);
+  expect(read.errors).toEqual(result.errors);
 });
 
 // `fn INS JNJ` with a CAD base printed $6.19M and $61.99M with no currency in text or JSON.
