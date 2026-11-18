@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync } from "fs";
 import { homedir, hostname } from "os";
 import { join } from "path";
+import { heapStats } from "bun:jsc";
 import { installWarmStartNetwork, warmStartNetworkFromEnv } from "./network";
 
 /**
@@ -136,6 +137,10 @@ const server = Bun.serve({
       return new Response("", { headers: { "access-control-allow-origin": "*" } });
     }
     if (url.pathname === "/health") return Response.json({ status: "ok" });
+    if (url.pathname === "/__warm-heap") {
+      Bun.gc(true);
+      return new Response(String(heapStats().heapSize));
+    }
     const file = Bun.file(join(viewDir, url.pathname === "/" ? "index.html" : url.pathname.slice(1)));
     if (!url.pathname.includes("..") && await file.exists()) return new Response(file, { headers: { "cache-control": "no-cache" } });
     return new Response("Not found", { status: 404 });
@@ -146,8 +151,12 @@ const server = Bun.serve({
       const message = JSON.parse(String(raw)) as { type: string; id: number; name: string; params: { method: string; payload: unknown } };
       if (message.type !== "request" || message.name !== "backend.request") return;
       const { method, payload } = message.params;
-      const result = await encodeRpcResponse(() => handle(method, decodeRpcValue(payload ?? null)));
-      socket.send(JSON.stringify({ id: message.id, result }));
+      try {
+        const result = await encodeRpcResponse(() => handle(method, decodeRpcValue(payload ?? null)));
+        socket.send(JSON.stringify({ id: message.id, result }));
+      } catch (error) {
+        socket.send(JSON.stringify({ id: message.id, error: error instanceof Error ? error.message : String(error) }));
+      }
     },
     close(socket) { if (view === socket) view = null; },
   },

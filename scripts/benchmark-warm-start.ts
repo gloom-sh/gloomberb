@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { existsSync } from "fs";
 import { cp, mkdir, readFile, rename, rm, writeFile } from "fs/promises";
 import { homedir } from "os";
@@ -5,9 +6,11 @@ import { join, resolve } from "path";
 import type { AppConfig, DockLayoutNode, SavedLayout } from "../src/types/config";
 import { testAppEnv } from "./test-app-env";
 import { evaluate, launchBrowser, sleep } from "./pane-chrome/browser";
+import { routeDirectReads } from "./pane-chrome/web-app";
 import { median, positiveInteger, runTmux, shellQuote, takeOption, writeFreshInstallConfig } from "./tui-benchmark-harness";
 import type { WarmStartPlan } from "./warm-start/plan";
 import { domProbeSource, type PaneShownState, type PaneTimeline } from "./warm-start/pane-states";
+import { installWarmStartNetwork } from "./warm-start/network";
 import { startWarmStartWebServer, type WarmStartWebServer } from "./warm-start/web-server";
 import { startDesktopStandIn, type DesktopStandIn } from "./warm-start/desktop-stand-in";
 
@@ -85,7 +88,10 @@ interface RunRecord {
   requests?: Record<string, number>;
   heapBytes?: number;
   cacheKiB?: number;
+  cache?: CacheFootprint;
 }
+
+interface CacheFootprint { rows: number; bytes: number; byNamespace: Record<string, number>; }
 
 function grid(ids: string[]): DockLayoutNode {
   const columns = Math.ceil(Math.sqrt(ids.length));
@@ -147,11 +153,12 @@ interface Launch {
   launchedAt: number;
   requests(): Record<string, number> | undefined;
   heapBytes(): Promise<number | undefined>;
+  cacheFootprint?(): Promise<CacheFootprint>;
   quit(): Promise<void>;
 }
 
 /** Waits until every pane has been in a settled state (content, empty or error) for a while, or the time runs out. */
-async function settle(launch: Launch, expected: number, network: Network | "fill"): Promise<void> {
+async function settle(launch: Launch, expected: number, network: Network | "fill", filledPanes?: ReadonlySet<string>): Promise<void> {
   const minimum = network === "fill" ? 15_000 : network === "slow" ? SLOW_MS + 7_000 : 7_000;
   const limit = network === "fill" ? 90_000 : network === "slow" ? 45_000 : 35_000;
   const started = Date.now();
@@ -165,8 +172,8 @@ async function settle(launch: Launch, expected: number, network: Network | "fill
       signature = current;
       stableSince = Date.now();
     }
-    const settled = timelines.length >= expected
-      && timelines.every((timeline) => ["content", "empty", "error"].includes(timeline.states.at(-1)?.state ?? ""));
+    const settled = timelines.length >= expected && timelines.every((timeline) =>
+      (filledPanes && !filledPanes.has(timeline.paneId)) || ["content", "empty", "error"].includes(timeline.states.at(-1)?.state ?? ""));
     if (settled && Date.now() - started >= minimum && Date.now() - stableSince >= 3_000) return;
   }
 }
@@ -260,18 +267,21 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
   const delayMs = network === "slow" ? SLOW_MS : 0;
   let origin: string;
   let path = "/";
+  let launchedAt: number;
   if (target === "web") {
     webServer ??= await startWarmStartWebServer({ webRoot, networkDir });
     webServer.setDelay(delayMs);
     origin = webServer.origin;
+    launchedAt = Date.now();
   } else {
+    installWarmStartNetwork({ dir: networkDir, extraDelayMs: delayMs, replayOnly: process.env.WARM_START_REPLAY_ONLY === "1" }).setExtraDelay(delayMs);
     standIn ??= await startDesktopStandIn({ checkout, app, home: profile, viewDir: `${profile}-view`, networkDir });
+    launchedAt = Date.now();
     await standIn.restart(delayMs);
     origin = standIn.origin;
     path = standIn.pagePath;
   }
   const server = (webServer ?? standIn)!;
-  const launchedAt = Date.now();
   const browser = await launchBrowser(`warm-${target}`, WIDTH.view, HEIGHT.view, { profileDir: join(profile, "chrome") });
   let picture: Promise<void> | undefined;
   server.onProbe((entry) => {
@@ -283,6 +293,7 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
     }
   });
   try {
+    await routeDirectReads(browser.cdp, { read: (_key, load) => load() });
     await browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: domProbeSource(`${origin}/__warm-probe`) });
     await browser.cdp.send("Page.navigate", { url: `${origin}${path}` });
   } catch (error) {
@@ -295,8 +306,38 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
     requests: () => server.requests(),
     async heapBytes() {
       await browser.cdp.send("HeapProfiler.collectGarbage", {}, 3_000);
-      return (await browser.cdp.send<{ usedSize: number }>("Runtime.getHeapUsage", {}, 3_000)).usedSize;
+      const { usedSize } = await browser.cdp.send<{ usedSize: number }>("Runtime.getHeapUsage", {}, 3_000);
+      if (!standIn) return usedSize;
+      const response = await fetch(`${origin}/__warm-heap`, { signal: AbortSignal.timeout(3_000) });
+      if (!response.ok) return undefined;
+      return usedSize + Number(await response.text());
     },
+    ...(target === "web" ? { cacheFootprint: () => evaluate<CacheFootprint>(browser.cdp, `(async () => {
+      const name = "gloomberb-cache";
+      const totals = { rows: 0, bytes: 0, byNamespace: {} };
+      if (!(await indexedDB.databases()).some(db => db.name === name)) return totals;
+      const db = await new Promise((resolve, reject) => {
+        const open = indexedDB.open(name);
+        open.onsuccess = () => resolve(open.result);
+        open.onerror = () => reject(open.error);
+      });
+      try {
+        await new Promise((resolve, reject) => {
+          const cursor = db.transaction("meta").objectStore("meta").openCursor();
+          cursor.onsuccess = () => {
+            const row = cursor.result;
+            if (!row) return resolve();
+            const namespace = row.key.split("\\u0000")[0];
+            totals.rows++;
+            totals.bytes += row.value.size;
+            totals.byNamespace[namespace] = (totals.byNamespace[namespace] ?? 0) + row.value.size;
+            row.continue();
+          };
+          cursor.onerror = () => reject(cursor.error);
+        });
+        return totals;
+      } finally { db.close(); }
+    })()`, 3_000) } : {}),
     async quit() {
       try {
         await picture;
@@ -409,6 +450,22 @@ async function cacheKiB(): Promise<number> {
   return sizes.reduce((total, size) => total + size, 0);
 }
 
+function sqliteFootprint(): CacheFootprint | undefined {
+  const file = join(profile, ".gloomberb-cache.db");
+  if (!existsSync(file)) return undefined;
+  const db = new Database(file, { readonly: true });
+  try {
+    const entries = db.query<{ namespace: string; rows: number; bytes: number }, []>(
+      "SELECT namespace, COUNT(*) AS rows, SUM(size_bytes) AS bytes FROM resource_cache GROUP BY namespace",
+    ).all();
+    return {
+      rows: entries.reduce((total, entry) => total + entry.rows, 0),
+      bytes: entries.reduce((total, entry) => total + entry.bytes, 0),
+      byNamespace: Object.fromEntries(entries.map((entry) => [entry.namespace, entry.bytes])),
+    };
+  } finally { db.close(); }
+}
+
 async function main(): Promise<void> {
   await mkdir(root, { recursive: true });
   await mkdir(outDir, { recursive: true });
@@ -431,6 +488,8 @@ async function main(): Promise<void> {
         .some((entry) => entry.layout === layout && entry.network === network && entry.run === run);
       if (interrupted.signal.aborted) break;
       if (networks.every((network) => Array.from({ length: runs }, (_, index) => done(network, index + 1)).every(Boolean))) continue;
+      saved.records = saved.records.filter((entry) => entry.layout !== layout);
+      let filledPanes: ReadonlySet<string> | undefined;
       const once = async (network: Network | "fill", run: number) => {
         if (interrupted.signal.aborted || (network !== "fill" && done(network, run))) return;
         await rm(profile, { recursive: true, force: true });
@@ -444,16 +503,22 @@ async function main(): Promise<void> {
           ? join(outDir, `${target}-${label}-${network}-layout-${layout + 1}.png`) : undefined;
         const started = await launch(network, screenshot);
         let heapBytes: number | undefined;
+        let cache: CacheFootprint | undefined;
         try {
-          await settle(started, expected, network);
-          if (metrics && !interrupted.signal.aborted) heapBytes = await started.heapBytes().catch(() => undefined);
+          await settle(started, expected, network, filledPanes);
+          if (metrics && !interrupted.signal.aborted) {
+            heapBytes = await started.heapBytes().catch(() => undefined);
+            cache = await started.cacheFootprint?.().catch(() => undefined);
+          }
         } finally {
           await started.quit();
         }
         if (interrupted.signal.aborted) return;
+        if (metrics && target !== "web") cache = sqliteFootprint();
         const entry: RunRecord = { layout, network, run, launchedAt: started.launchedAt, panes: [...started.timeline().values()],
-          requests: started.requests(), heapBytes, cacheKiB: metrics ? await cacheKiB() : undefined };
+          requests: started.requests(), heapBytes, cache, cacheKiB: metrics ? await cacheKiB() : undefined };
         if (network === "fill") {
+          filledPanes = new Set(entry.panes.filter((pane) => pane.states.at(-1)?.state === "content").map((pane) => pane.paneId));
           await rm(filledProfile, { recursive: true, force: true });
           await rename(profile, filledProfile);
           saved.fills = saved.fills.filter((fill) => fill.layout !== layout);
@@ -461,7 +526,8 @@ async function main(): Promise<void> {
         } else {
           saved.records.push(entry);
         }
-        await writeFile(results, JSON.stringify(saved));
+        await writeFile(`${results}.partial`, JSON.stringify(saved));
+        await rename(`${results}.partial`, results);
         const loading = entry.panes.filter((pane) => pane.states.some((state) => state.state === "loading")).length;
         console.error(`${target} ${label} layout ${layout + 1} ${network} ${run}: ${entry.panes.length} panes, ${loading} showed loading, requests ${JSON.stringify(entry.requests ?? {})}`);
       };
