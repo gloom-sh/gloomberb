@@ -86,16 +86,21 @@ test("an options flow alert reads Needs Pro without an account that has Pro, sig
   };
   const signedOut = await read({ getSessionToken: () => null });
   expect(signedOut.states).toEqual({ options_flow: "Needs Pro", filing_type: "Needs sign-in" });
-  expect(signedOut.notes[1]).toStartWith("1 event alert needs Gloom Cloud Pro: options flow alerts are saved, but checked only for a signed-in account with Pro.");
-  expect(signedOut.notes[1]).toContain("OMON's option chain");
+  expect(signedOut.notes[1]).toBe("1 event alert needs Pro (options flow). Free: OMON chain, price and move alerts.");
 
   const free = await read({ getSessionToken: () => "session-token", getCurrentUser: () => ({ emailVerified: true, plan: "free", effectivePlan: "free" }) as never });
   expect(free.states).toEqual({ options_flow: "Needs Pro", filing_type: "Active" });
-  expect(free.notes).toEqual([expect.stringMatching(/^1 event alert needs Gloom Cloud Pro/)]);
+  expect(free.notes).toEqual(["1 event alert needs Pro (options flow). Free: OMON chain, price and move alerts."]);
 
   const pro = await read({ getSessionToken: () => "session-token", getCurrentUser: () => ({ emailVerified: true, plan: "pro", effectivePlan: "pro" }) as never });
   expect(pro.states).toEqual({ options_flow: "Active", filing_type: "Active" });
-  expect(pro.notes).toEqual([expect.stringMatching(/^Options flow alerts are checked only for an account with Gloom Cloud Pro/)]);
+  expect(pro.notes).toEqual(["Options flow alerts are checked only with Pro. Free: OMON chain, price and move alerts."]);
+
+  // An IV spike's free list leads with the IV level alerts the app checks, and covers flow's.
+  const spike = createResearchAlert("iv_spike", { "iv_spike:contract": "SPY271217C00700000", "iv_spike:threshold": "5" });
+  const both = await alertsHeadless.load(createTestHeadlessArgs({ options: { tab: "events" } }),
+    { ...contextWith([], [flow, spike]), apiClient: { getSessionToken: () => null } as unknown as HeadlessPaneApiClient });
+  expect(both.notes).toEqual(["2 event alerts need Pro (options flow and IV spike). Free: IV level alerts, OMON chain, price and move alerts."]);
 });
 
 test("a saved event list that does not read is reported, not shown as no alerts", async () => {

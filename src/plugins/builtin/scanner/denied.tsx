@@ -1,7 +1,5 @@
 import { ProWall, SignInWall } from "../cloud/auth-actions";
-
-/** What is free beside options flow: the chain its prints are of, and the alerts the app checks itself. */
-const FLOW_FREE = "OMON's option chain, with each contract's volume and open interest, and price and move alerts are free.";
+import { FLOW_FREE, FLOW_PRO_NOTE } from "../shared/options-pro-copy";
 
 /**
  * Options flow is the one scanner with no delayed tier to fall back to, so a
@@ -20,7 +18,7 @@ export function ScannerDeniedState({ scanner, reason, placement, width, height }
   if (reason === "auth_required") {
     return <SignInWall placement={`${placement.replace(/-wall$/, "")}-signin`} width={width} height={height}
       action={flow ? "stream options flow with Gloom Cloud Pro" : "stream the market scanners"}
-      hint={flow ? `A free account does not include options flow. ${FLOW_FREE}` : undefined} />;
+      hint={flow ? FLOW_PRO_NOTE : undefined} />;
   }
 
   return (

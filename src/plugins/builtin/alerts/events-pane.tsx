@@ -27,7 +27,7 @@ import {
   type EventAlertRule,
 } from "./events";
 import { ruleState, ruleTarget, type RuleState } from "./event-rows";
-import { checksProRules, PRO_RULE_STATUS } from "./pro-rules";
+import { checksProRules, proRuleStatus } from "./pro-rules";
 import { relativeTime } from "./format";
 import { alertKindLabel, fetchAlertHistory, ruleStateText } from "./history";
 import { isResearchAlertKind } from "./research-rules";
@@ -172,7 +172,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     error ??
     (selectedRule?.kind === "catalyst" ? catalystStatus : null) ??
     // A Pro rule nothing checks says so while it is selected, and what is free beside it.
-    (selectedRule && ruleState(selectedRule, now, signedIn, pro) === "Needs Pro" ? PRO_RULE_STATUS : null) ??
+    (selectedRule && ruleState(selectedRule, now, signedIn, pro) === "Needs Pro" ? proRuleStatus(selectedRule) : null) ??
     sync.error ??
     (sync.phase === "disabled"
       ? "Cloud sync disabled"

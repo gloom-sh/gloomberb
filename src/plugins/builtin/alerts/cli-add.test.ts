@@ -625,22 +625,21 @@ test("an options flow alert saved without Pro reads needs Pro, and list keeps th
   expect(added.error).toBeNull();
   expect(added.printed!.result.data.status).toBe("needs Pro");
   expect(added.output).toContain("on Gloom Pro");
-  expect(added.output).toContain("It needs Gloom Cloud Pro: nothing checks it without a signed-in account that has Pro. OMON's option chain");
+  expect(added.output).toContain("Checked only with Pro. Free: OMON chain, price and move alerts.");
   expect(added.output).not.toContain("sign up free");
   // A rule a sign-in alone arms still says sign-in.
   await desk.run(["add", "AAPL", "filing", "10-Q"]);
 
   const list = await desk.run(["list"], { format: "csv" });
   expect(list.output.split("\n").slice(1).map((line) => line.split(",")[5])).toEqual(["needs Pro", "needs sign-in"]);
-  const pro = (warnings?: string[]) => warnings?.find((warning) => warning.includes("Gloom Cloud Pro"));
-  expect(pro(list.printed!.result.warnings)).toStartWith("1 event alert needs Gloom Cloud Pro: options flow alerts are saved, but checked only for a signed-in account with Pro. OMON's option chain");
+  expect(list.printed!.result.warnings).toContain("1 event alert needs Pro (options flow). Free: OMON chain, price and move alerts.");
 
   desk.signIn();
   setCloudApiFetchTransport(async () => { throw new TypeError("fetch failed"); });
   // Signed in, with no account loaded to say its plan, the rule is active and the list still says it is Pro.
   const signedIn = await desk.run(["list"], { format: "csv" });
   expect(signedIn.output.split("\n")[1]!.split(",")[5]).toBe("active");
-  expect(pro(signedIn.printed!.result.warnings)).toStartWith("Options flow alerts are checked only for an account with Gloom Cloud Pro");
+  expect(signedIn.printed!.result.warnings).toContain("Options flow alerts are checked only with Pro. Free: OMON chain, price and move alerts.");
 });
 
 // `alerts add BRK.B filing 13F` was refused with the list of filing forms.
