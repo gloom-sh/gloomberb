@@ -280,7 +280,7 @@ export function validateRiskHistory(
   }));
   const local = resolveDatedReturns(prices);
   if (local.integrity)
-    throw new Error("Daily history has inconsistent OHLC observations");
+    throw new Error("Daily history has contradictory prices");
   // A converted series is on the NYSE calendar the basket and SPY share.
   const usd = conversion
     ? convertClosesToUsd(

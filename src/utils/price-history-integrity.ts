@@ -174,9 +174,17 @@ export function pricePointValues(point: PricePoint, integrity = pricePointIntegr
   };
 }
 
+/** What every price view says of the bars it shows whose prices contradict each other. */
+export const CONTRADICTORY_PRICES = "contradictory prices";
+
+/**
+ * "2 bars have contradictory prices; left blank.", or undefined for none: the bars a view shows blank because their
+ * high, low, open and close contradict each other. Only views that show those bars say it; a figure read across them
+ * names itself instead (priceReturnIntegrityNotice).
+ */
 export function priceHistoryIntegrityNotice(count: number): string | undefined {
   return count > 0
-    ? `${count} inconsistent OHLC ${count === 1 ? "bar is" : "bars are"} unavailable. Affected calculations contain gaps; original values and reasons are retained in JSON exports.`
+    ? `${count === 1 ? "1 bar has" : `${count} bars have`} ${CONTRADICTORY_PRICES}; left blank.`
     : undefined;
 }
 

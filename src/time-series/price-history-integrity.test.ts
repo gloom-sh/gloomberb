@@ -11,7 +11,7 @@ import { LiveBarAccumulator } from "./live-bars";
 import { seedChartResolutionResult } from "./chart-seed";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { resolveStudies } from "./studies/resolve";
-import { buildPriceReturnFields } from "../market-data/performance";
+import { buildPriceReturnFields, priceReturnIntegrityNotice } from "../market-data/performance";
 import { pricePointsToResolvedSeries } from "../components/chart/composite/price-series";
 import { applyCompositeChartCursor, buildCompositeChartScene } from "../components/chart/composite/scene";
 import { CHART_SPEC_VERSION, type ChartSpec, type ResolvedSeries, type SeriesPeriod, type SeriesTransform } from "./types";
@@ -98,10 +98,10 @@ test("seed, resolved chart transforms and HP exports agree on quarantined values
   expect(hp.rows[1]).toMatchObject({ date: reported.date.toISOString(), close: null, open: null, integrity: pricePointIntegrity(reported) });
   // The drawdown line HP prints under its title, then the integrity notice.
   expect(hp.metadata!.notices).toEqual(["Max drawdown 0.0% (daily closes): no close fell below an earlier one",
-    expect.stringContaining("1 inconsistent OHLC bar is unavailable")]);
+    "1 bar has contradictory prices; left blank."]);
   expect(hp.complete).toBe(false);
   const seeded = seedChartResolutionResult(spec(), new Map([[chartQuoteOverrideKeyForSource(source), history]]))!;
-  expect(seeded.warnings.join(" ")).toContain("inconsistent OHLC");
+  expect(seeded.warnings.join(" ")).toContain("contradictory prices");
   for (const transform of ["raw", "percent", "index100", "log", "yoy", "qoq"] as SeriesTransform[]) {
     const model = await loadChartPaneModel(spec(transform), context);
     expect(model.chart.errors).toEqual([]);
@@ -110,7 +110,7 @@ test("seed, resolved chart transforms and HP exports agree on quarantined values
     const gap = json.series[0].points.find((point: { provenance?: { priceHistoryIntegrity?: unknown } }) => point.provenance?.priceHistoryIntegrity);
     expect(gap).toMatchObject({ value: null, open: null, high: null, low: null, close: null });
     expect(gap.provenance.priceHistoryIntegrity.sourcePoints[0].open).toBe(reported.open);
-    expect(json.metadata.notices.join(" ")).toContain("inconsistent OHLC");
+    expect(json.metadata.notices.join(" ")).toContain("contradictory prices");
     expect(json.metadata.summaries[0]).toMatchObject({ return: null, startValue: null, endValue: null });
   }
 });
@@ -150,16 +150,31 @@ test("a quote that names the bar's whole closed session replaces an inconsistent
   expect(new LiveBarAccumulator().apply(bars, bare, { now, resolution: "1d", exchange: "BATS" }).at(-1)).toEqual(bars[1]!);
 });
 
-test("overview chart and return windows preserve the integrity boundary without suppressing unaffected horizons", () => {
+test("overview chart and return windows preserve the integrity boundary; a return is blank only when an end bar is bad", () => {
   const chart = pricePointsToResolvedSeries(history, { id: "overview", label: "SPY", color: "#fff", unit: "USD" });
   expect(chart.points[1]).toMatchObject({ value: null, open: null, close: null });
-  expect(chart.warning).toContain("inconsistent OHLC");
+  expect(chart.warning).toContain("contradictory prices");
   const fields = buildPriceReturnFields([
     { date: new Date("2025-10-09"), close: 700 }, reported,
     { date: new Date("2026-09-11"), close: 760 }, { date: new Date("2026-10-11"), close: 770 },
   ]);
   expect(fields.find((field) => field.id === "1M")!.value).toBeCloseTo(10 / 760);
-  expect(fields.find((field) => field.id === "1Y")).toMatchObject({ value: null, unavailableReason: "inconsistent-ohlc" });
+  // The bad bar lies between the 1Y return's two closes, which it changes neither of (3698:HKEX's 3Y and 5Y read blank so).
+  expect(fields.find((field) => field.id === "1Y")!.value).toBeCloseTo(70 / 700);
+  expect(priceReturnIntegrityNotice(fields)).toBeUndefined();
+  // The bar a return is measured from has contradictory prices: that return alone is blank, and says its day.
+  const based = buildPriceReturnFields([
+    { date: new Date("2025-09-09T13:30:00Z"), close: 690 }, { ...reported, date: new Date("2025-09-10T13:30:00Z") },
+    { date: new Date("2026-03-10T13:30:00Z"), close: 720 }, { date: new Date("2026-06-10T13:30:00Z"), close: 740 },
+    { date: new Date("2026-08-10T13:30:00Z"), close: 750 }, { date: new Date("2026-09-10T13:30:00Z"), close: 760 },
+  ], "NYSE");
+  expect(based.find((field) => field.id === "1M")!.value).toBeCloseTo(10 / 750);
+  expect(based.find((field) => field.id === "1Y")).toMatchObject({ value: null, unavailableReason: "inconsistent-ohlc", inconsistentDay: "2025-09-10" });
+  expect(priceReturnIntegrityNotice(based)).toBe("1Y return left blank: contradictory prices on 10 Sep 2025.");
+  // A bad latest bar blanks every horizon, said once for its day.
+  const ended = buildPriceReturnFields([{ date: new Date("2025-09-09T13:30:00Z"), close: 690 }, reported], "NYSE");
+  expect(ended.every((field) => field.unavailableReason === "inconsistent-ohlc")).toBe(true);
+  expect(priceReturnIntegrityNotice(ended)).toBe("1M, 3M, 6M, 1Y, 3Y and 5Y returns left blank: contradictory prices on 10 Sep 2026.");
   expect(buildPriceReturnFields([reported]).every((field) => field.unavailableReason === "inconsistent-ohlc")).toBe(true);
 });
 
@@ -207,7 +222,7 @@ test("a study retains integrity attribution while warming up after a gap outside
   expect(study.points[1]).toMatchObject({ value: 760.5 });
   expect(study.points[1]!.provenance?.priceHistoryIntegrity).toBeUndefined();
   expect(model.complete).toBe(false);
-  expect(model.chart.warnings.some((warning) => warning.startsWith("SMA") && warning.includes("inconsistent OHLC"))).toBe(true);
+  expect(model.chart.warnings.some((warning) => warning.startsWith("SMA") && warning.includes("contradictory prices"))).toBe(true);
   expect(model.chart.priceHistoryIntegrity?.map((entry) => [entry.seriesId, entry.scope])).toEqual([["sma", "visible-calculation"]]);
 });
 

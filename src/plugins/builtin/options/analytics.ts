@@ -184,7 +184,7 @@ function historicalVolatilityResult(points: readonly PricePoint[]): HistoricalVo
   if (cadenceIssue) return { value: null, unavailableReason: `HV30 unavailable: ${cadenceIssue}` };
   const result = realizedVolatilityResult(points, HISTORICAL_VOLATILITY_SESSIONS, "close-to-close");
   const reason = result.reason === "invalid-date" ? "invalid history date"
-    : result.reason === "inconsistent-ohlc" ? "inconsistent OHLC history"
+    : result.reason === "inconsistent-ohlc" ? "contradictory prices in the history"
     : result.reason === "missing-close" ? "missing or nonpositive close"
     : result.reason && result.reason !== "insufficient-history" ? result.reason.replaceAll("-", " ") : null;
   return { value: result.value,

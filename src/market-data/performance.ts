@@ -1,6 +1,7 @@
 import type { PricePoint, Quote } from "../types/financials";
-import { pricePointCloseCopied, pricePointIntegrity } from "../utils/price-history-integrity";
+import { CONTRADICTORY_PRICES, pricePointCloseCopied, pricePointIntegrity } from "../utils/price-history-integrity";
 import { calendarMonthsBefore } from "../utils/calendar-date";
+import { formatShortDate } from "../utils/datetime-format";
 import { barSessionDay, isReturnPeriod, periodBaseDay, periodBaseIndex } from "./market/period-return";
 
 export interface PriceReturnHorizon {
@@ -15,6 +16,8 @@ export interface PriceReturnField {
   label: string;
   value: number | null;
   unavailableReason?: "inconsistent-ohlc";
+  /** With `inconsistent-ohlc`: the session day of the end bar (the base or the latest) whose prices contradict each other. */
+  inconsistentDay?: string;
 }
 
 export const PRICE_RETURN_HORIZONS: PriceReturnHorizon[] = [
@@ -156,11 +159,12 @@ function priceReturnFromHistory(
   history: readonly PricePoint[],
   days: readonly string[],
   horizon: PriceReturnHorizon,
-): Pick<PriceReturnField, "value" | "unavailableReason"> {
-  if (history.length < 2) return {
-    value: null,
-    ...(history.some(isInconsistent) ? { unavailableReason: "inconsistent-ohlc" as const } : {}),
-  };
+): Pick<PriceReturnField, "value" | "unavailableReason" | "inconsistentDay"> {
+  const inconsistentAt = (index: number) => ({ value: null, unavailableReason: "inconsistent-ohlc" as const, inconsistentDay: days[index]! });
+  if (history.length < 2) {
+    const index = history.findIndex(isInconsistent);
+    return index < 0 ? { value: null } : inconsistentAt(index);
+  }
 
   const latest = history.at(-1)!;
   // The close on or before the same date a horizon earlier, as every period return is measured. No gap
@@ -169,16 +173,33 @@ function priceReturnFromHistory(
   const baseDay = horizonBaseDay(days.at(-1)!, horizon);
   const baseIndex = periodBaseIndex(days, baseDay, Number.POSITIVE_INFINITY);
   const baseline = baseIndex < 0 ? null : history[baseIndex]!;
-  const cutoff = new Date(`${baseDay}T00:00:00Z`);
 
-  // The bars from the baseline (or the cutoff) on: the history is in time order, one bar a timestamp.
-  const since = (baseline?.date ?? cutoff).getTime();
-  for (let index = history.length - 1; index >= 0 && history[index]!.date.getTime() >= since; index -= 1) {
-    if (isInconsistent(history[index]!)) return { value: null, unavailableReason: "inconsistent-ohlc" };
-  }
+  // A price return reads two closes, the base's and the latest's. A bar between them whose prices contradict each
+  // other changes neither, so only an end bar's contradiction leaves the return blank (as the sector board reads its
+  // returns): 3698:HKEX's 3Y and 5Y read blank for one bad bar inside the five years before.
+  if (isInconsistent(latest)) return inconsistentAt(history.length - 1);
+  if (baseline && isInconsistent(baseline)) return inconsistentAt(baseIndex);
   if (!baseline || !Number.isFinite(baseline.close) || baseline.close === 0) return { value: null };
   if (!Number.isFinite(latest.close)) return { value: null };
   return { value: (latest.close - baseline.close) / baseline.close };
+}
+
+/** "1M", "1M and 3M", "1M, 3M and 1Y". */
+function listed(items: readonly string[]): string {
+  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/**
+ * "3Y and 5Y returns left blank: contradictory prices on 16 Jan 2025.": the returns shown blank because the bar one is
+ * measured from or to has contradictory prices, with those bars' days; undefined when none is. A bad bar no shown
+ * return reads is not mentioned: it changes no figure the overview shows.
+ */
+export function priceReturnIntegrityNotice(fields: readonly PriceReturnField[]): string | undefined {
+  const blank = fields.filter((field) => field.unavailableReason === "inconsistent-ohlc");
+  if (blank.length === 0) return undefined;
+  const days = [...new Set(blank.flatMap((field) => field.inconsistentDay ? [field.inconsistentDay] : []))].sort();
+  const on = days.length > 0 ? ` on ${listed(days.map((day) => formatShortDate(`${day}T00:00:00Z`, { utc: true })))}` : "";
+  return `${listed(blank.map((field) => field.label))} ${blank.length === 1 ? "return" : "returns"} left blank: ${CONTRADICTORY_PRICES}${on}.`;
 }
 
 export function buildPriceReturnFields(

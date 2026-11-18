@@ -807,7 +807,7 @@ test("rejected history disables HV and IV/HV without discarding healthy chain an
   expect(frame).toMatch(new RegExp(String.raw`HV30\s+${MISSING_VALUE}`));
   expect(frame).toMatch(new RegExp(String.raw`IV\/HV\s+${MISSING_VALUE}`));
   expect(historyRequests).toContainEqual({ range: "1Y", resolution: "1d" });
-  expect(frame).toContain("HV30 unavailable: inconsistent OHLC");
+  expect(frame).toContain("HV30 unavailable: contradictory prices");
   expect(frame).toContain("[c]alc");
 });
 

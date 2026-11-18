@@ -25,7 +25,7 @@ import {
   quoteSessionColor,
   quoteSessionLabel,
 } from "../../../market-data/market/status";
-import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
+import { appendQuoteToPriceReturnHistory, buildPriceReturnFields, priceReturnIntegrityNotice } from "../../../market-data/performance";
 import { changeBasisLabel, changeBasisNote, closeDayLabel, futuresQuoteFromSettle, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
 import { asOfClock } from "../../../market-data/quotes/time";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -283,6 +283,11 @@ function ResolvedOverviewTab({
     panelId: "price",
     timeBasis: chartTimeZone ? { kind: "market", timeZone: chartTimeZone } : undefined,
   });
+  // Bars and the quote are dated on the listing's clock.
+  const performanceFields = buildPriceReturnFields(
+    appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], historyQuote),
+    ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined,
+  );
   // Years of history from a few dollars to hundreds read on a log axis, the Chart tab's own, so the early ones do not lie flat.
   const autoChartScale = autoOverviewChartScale(priceSeries.points, { rate: isYieldIndexSymbol(ticker.metadata.ticker) });
   const chartScale = resolveOverviewChartScale(chartScaleChoice, autoChartScale);
@@ -307,6 +312,7 @@ function ResolvedOverviewTab({
     ? ttmConversionNote(shownFundamentals) : undefined;
   // FB lists a fund now, and Meta trades as META: said for someone who typed FB meaning the company, as `quote FB` says it.
   const changeNote = useTickerChangeNote(ticker.metadata.ticker, ticker, quote);
+  const returnIntegrityNotice = priceReturnIntegrityNotice(performanceFields);
   usePaneNoticeFooter({
     registrationId: "overview-notices",
     notices: [
@@ -314,7 +320,9 @@ function ResolvedOverviewTab({
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
       ...(runwayOfferingNote ? [runwayOfferingNote] : []),
       ...(runway?.trailingGap === "short-history" ? [`Runway TTM: ${SHORT_RUNWAY_HISTORY}.`] : []),
-      ...(priceSeries.warning ? [priceSeries.warning] : []),
+      // A bar with contradictory prices is said only where it leaves a shown return blank: the chart, a few cells
+      // a year, shows no gap for one bar, and a return reads only the bars at its ends.
+      ...(returnIntegrityNotice ? [returnIntegrityNotice] : []),
       ...(hiddenOnLog > 0 ? [logScaleHiddenWarning(priceSeries.label, hiddenOnLog)] : []),
       ...(enterpriseValueNote ? [enterpriseValueNote] : []),
       ...(ttmNote ? [ttmNote] : []),
@@ -491,11 +499,6 @@ function ResolvedOverviewTab({
     profile,
     isin: ticker.metadata.isin,
   });
-  // Bars and the quote are dated on the listing's clock.
-  const performanceFields = buildPriceReturnFields(
-    appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], historyQuote),
-    ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined,
-  );
   const hasPerformance = performanceFields.some((field) => field.value != null || field.unavailableReason);
   const positionRows = buildPositionRows({
     ticker,
