@@ -348,7 +348,15 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
       try {
         await picture;
         if (screenshot && network === "fill" && timelines.size) await takePicture(screenshot);
-        if (timelines.size === 0 && exceptions.size) console.error("Page did not mount; uncaught exceptions:", Object.fromEntries(exceptions));
+        if (timelines.size === 0) {
+          const state = await evaluate(browser.cdp, `({
+            ready: document.readyState,
+            fatal: !!document.querySelector(".gloom-fatal"),
+            panes: document.querySelectorAll("[data-gloom-role=pane-window][data-gloom-pane-id]").length,
+          })`, 1_000).catch(() => null);
+          console.error("No pane frames recorded", { state, exceptions: Object.fromEntries(exceptions) });
+          if (screenshot) await takePicture(screenshot);
+        }
         if (standIn) await standIn.stopBackend();
       } finally {
         await browser.close("SIGKILL");
@@ -437,11 +445,11 @@ function markdown(rows: Array<Record<string, any>>): string {
     const kept = mine.filter((row) => row.filled);
     const showing = kept.filter((row) => row.loadingRuns > 0);
     lines.push(`### ${target}, ${network} network, ${label}`, "");
-    lines.push(`${kept.length} of ${mine.length} panes had content to keep after the fill launch; ${showing.length} of them showed a loading or empty state on a warm restart.`, "");
-    lines.push("| pane | first content p50 | worst | frames to content (worst) | runs showing loading |", "|---|---|---|---|---|");
+    lines.push(`${kept.length} of ${mine.length} panes showed content at the end of the fill launch; ${showing.length} of them showed a loading or empty state on a warm restart.`, "");
+    lines.push("| pane | first content p50 | worst | frames to content (worst) | runs showing loading | missing mounts |", "|---|---|---|---|---|---|");
     for (const row of mine) {
       const cell = (value: unknown, unit = "") => value == null ? "-" : `${value}${unit}`;
-      lines.push(`| ${row.token} (${row.paneId})${row.filled ? "" : ` (fill: ${row.filledLast})`} | ${cell(row.firstContentP50, " ms")} | ${cell(row.firstContentWorst, " ms")} | ${cell(row.framesToContentWorst)} | ${row.filled ? `${row.loadingRuns} of ${row.runs}` : "-"} |`);
+      lines.push(`| ${row.token} (${row.paneId})${row.filled ? "" : ` (fill: ${row.filledLast})`} | ${cell(row.firstContentP50, " ms")} | ${cell(row.firstContentWorst, " ms")} | ${cell(row.framesToContentWorst)} | ${row.filled ? `${row.loadingRuns} of ${row.runs}` : "-"} | ${row.missing} of ${row.runs} |`);
     }
     lines.push("");
   }
