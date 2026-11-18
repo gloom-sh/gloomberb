@@ -320,8 +320,8 @@ function ResolvedOverviewTab({
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
       ...(runwayOfferingNote ? [runwayOfferingNote] : []),
       ...(runway?.trailingGap === "short-history" ? [`Runway TTM: ${SHORT_RUNWAY_HISTORY}.`] : []),
-      // A bar with contradictory prices is said only where it leaves a shown return blank: the chart, a few cells
-      // a year, shows no gap for one bar, and a return reads only the bars at its ends.
+      // A bar with contradictory prices is said only where it leaves a shown return blank: on a chart of years one
+      // bar's gap is a hairline that changes no figure, and a return reads only the bars at its ends.
       ...(returnIntegrityNotice ? [returnIntegrityNotice] : []),
       ...(hiddenOnLog > 0 ? [logScaleHiddenWarning(priceSeries.label, hiddenOnLog)] : []),
       ...(enterpriseValueNote ? [enterpriseValueNote] : []),
