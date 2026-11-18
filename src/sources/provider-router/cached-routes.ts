@@ -76,7 +76,9 @@ export class ProviderRouterCachedRoutes {
       const records = listCachedResources<unknown>(this.deps.resources, route.kind, route.entityKey, route.variants, sourceKeys, allowExpired)
         .filter((record) => (route.rank?.(record.value, record.fetchedAt) ?? 0) >= 0)
         .map((record) => ({ ...record, value: route.decode ? route.decode(record.value) : record.value, metadata: route.metadata?.(record.value, record.fetchedAt) }));
-      const record = (route.acceptCached ? records.find((entry) => route.acceptCached!(entry.value)) : null) ?? records[0];
+      const preferred = records[0];
+      const accept = route.acceptCached;
+      const record = (accept ? records.find((entry) => entry.expired === preferred?.expired && accept(entry.value)) : null) ?? preferred;
       if (!record) return null;
       return {
         value: record.value,

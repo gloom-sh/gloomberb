@@ -5,6 +5,19 @@ const value = (name: string, time = Date.now()): CachedValue<string> => ({
   value: name, fetchedAt: time, staleAt: time + 600_000, expiresAt: time + 3_600_000, source: "test",
 });
 
+test("a cold query checks for a saved copy only once at mount and loads on a miss", async () => {
+  const reads: boolean[] = [];
+  const fresh = value("live");
+  const query = new CachedQuery({
+    read: (allowExpired) => { reads.push(allowExpired); return null; },
+    fetch: async () => fresh,
+  });
+  expect(reads).toEqual([true]);
+  expect(query.getSnapshot().result).toBeNull();
+  expect(await query.load()).toMatchObject(fresh);
+  expect(reads).toEqual([true, false]);
+});
+
 test("hydration, cache reads and failed refreshes retain successful response identity", async () => {
   const seeded = value("hydrated");
   let calls = 0;

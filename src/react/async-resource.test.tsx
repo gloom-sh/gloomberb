@@ -76,6 +76,31 @@ test("terminal draws the saved result before starting its background refresh", a
   }
 });
 
+test("terminal starts a cold load even if the saved-copy frame has not drawn", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const savedCopy = { key: ["board", "NYSE"] };
+  const drawn = Promise.withResolvers<void>();
+  const pending = Promise.withResolvers<string>();
+  const loads: boolean[] = [];
+  const loader = (force: boolean) => { loads.push(force); return pending.promise; };
+  function Pane() {
+    const view = useAsyncResource(loader, { savedCopy });
+    return <Text>{view.loading ? "Loading" : view.data ?? "Empty"}</Text>;
+  }
+  try {
+    setSavedCopyFrameGate(() => drawn.promise);
+    await tui.render(<Pane />);
+    expect(loads).toEqual([false]);
+    await act(async () => { pending.resolve("Live rows"); });
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("Live rows");
+  } finally {
+    drawn.resolve();
+    setSavedCopyFrameGate(null);
+    setSavedCopyStore(previous);
+  }
+});
+
 test("an unchanged refresh keeps the display data stable without keeping the saved age", async () => {
   const previous = setSavedCopyStore(new MemoryResourceStore());
   const savedCopy = { key: ["history", "NYSE", "public"] };

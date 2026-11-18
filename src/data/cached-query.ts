@@ -49,10 +49,9 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
     /** Optional source-age/identity limit that also applies to stale fallback. */
     acceptResult?: (result: CachedValue<T>) => boolean;
   }) {
-    const cached = options.read(false);
-    const saved = cached ? null : options.read(true);
-    this.fallbackOnly = saved !== null;
-    this.state = { result: cached ?? saved, loading: false, error: null };
+    const result = options.read(true);
+    this.fallbackOnly = result !== null && result.expiresAt < Date.now();
+    this.state = { result, loading: false, error: null };
   }
 
   getSnapshot = (): CachedQueryState<T> => {

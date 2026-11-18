@@ -44,6 +44,22 @@ describe("shared cached market queries", () => {
       expect(actionCalls).toBe(2);
     } finally { persistence.close(); }
   });
+  test("opening the cache prefers unexpired partial coverage to an expired complete record", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const complete = { symbol: "AAPL", dividends: [], splits: [], earnings: [], coverage: { earnings: "available" as const } };
+    const partial = { ...complete, coverage: { earnings: "unavailable" as const } };
+    const provider = createTestDataProvider({ id: "actions", getCorporateActions: async () => complete });
+    const key = { namespace: "market", kind: "corporateActions-v4", entityKey: "AAPL", sourceKey: "provider:actions" };
+    const options = { schemaVersion: MARKET_METADATA_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 60_000 } };
+    try {
+      persistence.resources.set({ ...key, variantKey: "exchange=NASDAQ" }, partial, options);
+      persistence.resources.set(key, complete, { ...options, fetchedAt: Date.now() - 120_000 });
+      const router = new AssetDataRouter(provider, [], persistence.resources);
+      const query = router.getCachedQuery("getCorporateActions", ["AAPL", "NASDAQ"]);
+      expect(query.getSnapshot().result?.value.coverage).toEqual(partial.coverage);
+      expect((await query.load()).value.coverage).toEqual(complete.coverage);
+    } finally { persistence.close(); }
+  });
   test("a sub-unit cash history reaches every reader in the major unit, divided once", async () => {
     const persistence = new AppPersistence(":memory:");
     let calls = 0;
