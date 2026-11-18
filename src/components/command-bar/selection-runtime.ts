@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import type { AppState } from "../../state/app/context";
 import type { TickerRecord } from "../../types/ticker";
 import { t } from "../../i18n";
-import { listingChoiceQuery } from "../../tickers/search";
+import { listingChoiceQuery, normalizeTickerInput } from "../../tickers/search";
 import { isKnownExchangeCode } from "../../utils/exchanges";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { Command } from "./commands/registry";
@@ -24,6 +24,8 @@ import type { OpenInlineConfirm } from "./routing/confirm";
 import { activatePickerSelectionAction } from "./picker-activation";
 import type { RunRootRow } from "./routes/root/search-report";
 import type { ShortcutIntent } from "./routes/root/shortcuts";
+import { isNamedListingRow } from "./routes/ticker-search/results";
+import { writtenAsSymbol } from "./routes/root/runtime";
 
 type OpenModeRouteFn = (
   screen: "ticker-search" | "layout",
@@ -181,6 +183,15 @@ export function useCommandBarSelectionRuntime({
   ]);
 
   /**
+   * The typed ticker command Enter runs while no row is highlighted (DES
+   * before its search answers), so the prompt names its keys as a ticker row's.
+   */
+  const typedTickerRow = useMemo(() => (
+    !currentRoute && rootShortcutIntent.kind !== "none" && rootShortcutIntent.argKind === "ticker"
+      ? resolveImmediateRootSelection(rootQuery) : null
+  ), [currentRoute, resolveImmediateRootSelection, rootQuery, rootShortcutIntent]);
+
+  /**
    * Tab on a typed shortcut: it completes the prefix, or opens what the
    * shortcut starts (a ticker search in the bar, a pane form in the form
    * modal), which is the typed text running.
@@ -301,13 +312,25 @@ export function useCommandBarSelectionRuntime({
     const queryChanged = rootQueryRef.current !== rootQuery;
     const tickerArgument = rootShortcutIntent.kind !== "none" && rootShortcutIntent.argKind === "ticker"
       ? rootShortcutIntent.argText : null;
-    const listingQuery = listingChoiceQuery(tickerArgument ?? rootQueryRef.current);
+    // `DES BA LN` names its listing as `DES BA:LSE` does.
+    const listingQuery = listingChoiceQuery((tickerArgument === null ? null : normalizeTickerInput(null, tickerArgument)) ?? rootQueryRef.current);
     const choosingVenue = listingQuery && !isKnownExchangeCode(listingQuery.suffix);
     const highlighted = listState.results[listState.selectedIdx];
-    const listingHighlighted = !queryChanged && (highlighted?.kind === "ticker" || highlighted?.kind === "search");
+    // A function given a listing with its venue opens that listing: a row the
+    // user did not pick (a saved BRK.B the letters match, Boeing's BA on NYSE)
+    // runs only when it is that listing, and the typed text runs otherwise.
+    const namedListing = tickerArgument !== null && listingQuery && !choosingVenue ? listingQuery : null;
+    const otherListingHighlighted = !!namedListing && !!highlighted && !rootSelectionNavigatedRef.current
+      && !isNamedListingRow(highlighted, namedListing);
+    const listingHighlighted = !queryChanged && !otherListingHighlighted
+      && (highlighted?.kind === "ticker" || highlighted?.kind === "search");
     const submitTyped = !options?.item && !currentRoute && !listingHighlighted
       && (queryChanged || (!rootSelectionNavigatedRef.current && !choosingVenue));
-    const typed = submitTyped && (queryChanged || tickerArgument !== null)
+    // A name (`DES Microsoft`, `DES nvda`) is search's to read, not the
+    // resolver's: before the answer, Enter waits for it.
+    const nameAwaitingAnswer = searchPending && !queryChanged && tickerArgument !== null && !namedListing
+      && !writtenAsSymbol(tickerArgument);
+    const typed = submitTyped && !nameAwaitingAnswer && (queryChanged || tickerArgument !== null)
       ? resolveImmediateRootSelection(rootQueryRef.current) : null;
     const selected = options?.item ?? typed ?? listState.results[listState.selectedIdx];
     if (!selected) {
@@ -439,5 +462,6 @@ export function useCommandBarSelectionRuntime({
     activateListSelection,
     runRootQuery,
     setActiveListQuery,
+    typedTickerRow,
   };
 }
