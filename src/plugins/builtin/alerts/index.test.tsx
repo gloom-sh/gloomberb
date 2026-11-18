@@ -528,6 +528,10 @@ describe("alertsPlugin command", () => {
       const command = commands.find((entry) => entry.id === "set-alert");
       await expect(command.execute({ shortcut: "XLK/SPY above 0.25" })).rejects.toThrow("Quoted XLK for a ratio.");
       expect([quoted[0], quoted.at(-1)]).toEqual(["XLK/SPY", "XLK"]);
+      // A venue before the slash is no listing's: each side is read on its own, as `alerts add` reads it.
+      quoted.length = 0;
+      await expect(command.execute({ shortcut: "XLK:ARCA/SPY above 0.25" })).rejects.toThrow("Quoted XLK:ARCA for a ratio.");
+      expect(quoted.some((symbol) => symbol.includes("/"))).toBe(false);
       // Read as `alerts add` reads them, one listing each (BTC-USD, BRK-B), never a ratio.
       for (const [symbol, listing] of [["BTC/USD", "BTC-USD"], ["BRK/B", "BRK-B"]] as const) {
         quoted.length = 0;

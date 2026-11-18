@@ -1,4 +1,4 @@
-import { METRIC_CHOICES, benchmarkKey, metricWizardFields, parseMetricAlert } from "./metric-command";
+import { METRIC_CHOICES, benchmarkKey, metricWizardFields, namesTwoListings, parseMetricAlert } from "./metric-command";
 import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metric-data";
 import { alertLogRule } from "./alert-log";
 import { closeBasis, isDailyMetric, isRelativeMetric, metricReadingText, metricTrigger, validMetricRule, type MetricReading } from "./metric-model";
@@ -289,6 +289,10 @@ export const alertsPlugin: GloomPlugin = {
           const key = found.listing.key.toUpperCase();
           return { key, exchange: found.listing.exchange, quote: alertQuote(found.quote, key) };
         };
+        // META:NASDAQ/GOOGL, with a venue before the slash, is no listing: the ratio of two, as `alerts add` reads it.
+        if (!input.metric && !input.move && namesTwoListings(input.symbol)) {
+          input = parseMetricAlert(`${input.symbol} ratio ${input.condition} ${input.price}`)!;
+        }
         let resolved: Awaited<ReturnType<typeof quoteFor>>;
         try {
           resolved = await quoteFor(input.symbol);
