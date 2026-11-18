@@ -20,10 +20,9 @@ function pick<T extends object, K extends keyof T>(value: T, keys: readonly K[])
 
 function publicEvidenceUrl(value: string | null | undefined) {
   if (value == null) return value;
-  try {
-    const url = new URL(value);
-    return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password && !url.search && !url.hash ? value : null;
-  } catch { return null; }
+  if (!URL.canParse(value)) return null;
+  const url = new URL(value);
+  return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password && !url.search && !url.hash ? value : null;
 }
 
 function evidenceForDisplay(value: Pick<GpuObservation, "provenance" | "provenanceLabel" | "sourceUrl" | "evidenceUrl">) {
