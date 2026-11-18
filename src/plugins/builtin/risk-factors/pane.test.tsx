@@ -1,6 +1,7 @@
 import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { act, useEffect, useMemo, useState } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
@@ -9,7 +10,7 @@ import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box, useRendererHost } from "../../../ui";
-import { attachRiskFactorsPersistence, resetRiskFactorsPersistence } from "./data";
+import { attachRiskFactorsPersistence, loadRiskReportsWithClient, loadRiskReportWithClient, resetRiskFactorsPersistence } from "./data";
 import { RiskFactorsPane } from "./pane";
 import { list, noRiskFactorsReport, report } from "./test-fixtures";
 
@@ -116,18 +117,26 @@ afterEach(() => {
 
 test("discovery answered from its saved copy says when it was saved; standard refresh follows latest until an explicit historical selection", async () => {
   const store = new MemoryPluginPersistence();
-  store.seedResource("reports", "ACME", list([2025]), { sourceKey: "risk-factors", schemaVersion: 1, stale: true });
-  store.seedResource("report", "ACME:2025", report(2025), { sourceKey: "risk-factors", schemaVersion: 1 });
   attachRiskFactorsPersistence(store);
+  const ticker = createTestTicker("ACME");
+  const scope = { displayScope: cloudDisplayScope(), exchange: ticker.metadata.exchange };
+  const saved = { getRiskReports: async () => list([2025]), getRiskReport: async () => report(2025) };
+  await loadRiskReportsWithClient(saved, "ACME", scope);
+  await loadRiskReportWithClient(saved, "ACME", 2025, scope);
   let newest = 2026;
   let unavailable = true;
+  const firstRefresh = Promise.withResolvers<Response>();
   transport((path) => {
     if (!path.endsWith("/ACME")) return Response.json(report(Number(path.split("/").at(-1))));
-    if (unavailable) return new Response("Discovery unavailable", { status: 503 });
+    if (unavailable) return firstRefresh.promise;
     return Response.json(list([...new Set([2025, newest, 2026])]));
   });
 
   await mount();
+  expect(frame()).toContain("Only 2025 risk analysis");
+  expect(frame()).not.toContain("Loading risk factors");
+  firstRefresh.resolve(new Response("Discovery unavailable", { status: 503 }));
+  await settle();
   const stale = frame();
   expect(stale).toContain("Only 2025 risk analysis");
   // The footer line every pane gives a saved copy, not the failure or a cache stamp of its own.

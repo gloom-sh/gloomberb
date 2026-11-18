@@ -19,12 +19,13 @@ import {
   useUiCapabilities,
 } from "../../../ui";
 import { isPermanentClientError } from "../../../api-client/errors";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { formatFilingDate, formatShortDate } from "../../../utils/datetime-format";
 import { usePluginPaneState } from "../../runtime";
 import { useFilingYearReader } from "../shared/filing-year-reader";
 import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
 import { useBoundTicker, useIssuerListing } from "../shared/ticker-request";
-import { loadRiskReport, loadRiskReports } from "./data";
+import { getSavedRiskReport, getSavedRiskReports, loadRiskReport, loadRiskReports } from "./data";
 
 export const RISK_FACTORS_PANE_ID = "risk-factors";
 
@@ -107,6 +108,9 @@ function RiskFactorsReader({
   const { symbol, ticker: boundTicker } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
   const listing = useIssuerListing(boundTicker);
+  const displayScope = useCloudDisplayScope();
+  const exchange = boundTicker?.metadata.exchange;
+  const request = useMemo(() => ({ listing, displayScope, exchange }), [listing, displayScope, exchange]);
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
 
@@ -114,14 +118,20 @@ function RiskFactorsReader({
   // one the pane opened with, so a restored year applies to it.
   const [selectedYear, setSelectedYear] = usePluginPaneState<number | null>("filingYear", null);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(ticker);
-  const listLoader = useCallback((force: boolean) => guard(loadRiskReports(ticker!, { force, listing })), [guard, listing, ticker]);
-  const list = useAsyncResource(ticker ? listLoader : null, { clearOnError: isPermanentClientError });
+  const listLoader = useCallback((force: boolean) => guard(loadRiskReports(ticker!, { ...request, force })), [guard, request, ticker]);
+  const list = useAsyncResource(ticker && displayScope ? listLoader : null, {
+    clearOnError: isPermanentClientError,
+    initialData: () => getSavedRiskReports(ticker!, request),
+  });
   const years = useMemo(() => (list.data?.reports ?? []).map((entry) => entry.reportYear).sort((a, b) => b - a), [list.data]);
   // Null follows the newest discovered filing; an explicit choice stays on that year.
   const year = selectedTicker === ticker && selectedYear !== null
     ? selectedYear : years[0] ?? null;
-  const reportLoader = useCallback((force: boolean) => guard(loadRiskReport(ticker!, year!, { force, listing })), [guard, listing, ticker, year]);
-  const detail = useAsyncResource(ticker && year !== null ? reportLoader : null, { clearOnError: isPermanentClientError });
+  const reportLoader = useCallback((force: boolean) => guard(loadRiskReport(ticker!, year!, { ...request, force })), [guard, request, ticker, year]);
+  const detail = useAsyncResource(ticker && displayScope && year !== null ? reportLoader : null, {
+    clearOnError: isPermanentClientError,
+    initialData: () => getSavedRiskReport(ticker!, year!, request),
+  });
   const report = detail.data;
   // A copy saved earlier answering a failed refresh says when it was saved, in the footer every pane uses, not as an error.
   const listError = list.error ?? (list.data?.savedAt == null ? list.data?.refreshError : null) ?? null;
