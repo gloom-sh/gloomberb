@@ -253,6 +253,34 @@ describe("chart drawings", () => {
   });
 });
 
+describe("restoring saved drawings", () => {
+  const line = (id: string) => ({
+    id, panelId: "main", color: "#f5a524",
+    points: [{ time: START, value: 100 }, { time: START + DAY, value: 110 }],
+  });
+
+  it("skips only an entry it cannot read, and keeps the list's order", () => {
+    expect(parseChartDrawings([
+      line("a"),
+      { ...line("bad-colour"), color: "red" },
+      { ...line("one-point"), points: [{ time: START, value: 1 }] },
+      { ...line("bad-point"), points: [{ time: START, value: 1 }, { time: "soon", value: 2 }] },
+      null,
+      line("b"),
+    ])).toEqual([line("a"), line("b")]);
+    expect(parseChartDrawings({ drawings: [line("a")] })).toEqual([]);
+  });
+
+  it("parts two drawings an older build saved under one id, so removing one leaves the other", () => {
+    const restored = parseChartDrawings([line("drawing:1"), line("fib:drawing:1"), line("drawing:1"), line("fib:drawing:1")]);
+    expect(restored.map(({ id }) => id).slice(0, 2)).toEqual(["drawing:1", "fib:drawing:1"]);
+    expect(new Set(restored.map(({ id }) => id)).size).toBe(4);
+    // Each keeps its shape, and reads back as it is.
+    expect(restored.map(chartDrawingShape)).toEqual(["line", "fib", "line", "fib"]);
+    expect(parseChartDrawings(JSON.parse(JSON.stringify(restored)))).toEqual(restored);
+  });
+});
+
 describe("shaped drawings", () => {
   const panel: CompositePanelScene = {
     id: "main",
