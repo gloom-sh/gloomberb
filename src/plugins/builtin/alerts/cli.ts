@@ -16,6 +16,7 @@ import { resolvePersistedCloudSessionToken } from "../../../cli/pane-functions/c
 import type { ConfigContext } from "../../../cli/types";
 import { checkedWhenSignedIn, NEEDS_SIGN_IN, needsSignInNote } from "./event-rows";
 import { checkedOnlyWithPro, checksProRules, NEEDS_PRO, needsProNote, savedWithoutProNote } from "./pro-rules";
+import { OCC_CONTRACT, occContractExample, occFormText, parseLooseOptionContract, resolveLooseOptionContract, type LooseOptionContract } from "./option-contract";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
@@ -58,7 +59,7 @@ import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertSt
 import { alertKindLabel, fetchAlertHistory, ruleStateText, type AlertRuleState } from "./history";
 import { apiClient } from "../../../api-client";
 import { IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
-import { isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
+import { isDollarMark, isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
 import { commodityFutureNote, farTargetMessage, levelInQuoteUnit } from "./quotes";
 import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel } from "./research-builder";
@@ -128,8 +129,11 @@ export type AlertAddRequest =
   | { kind: "flow"; symbol: string | null; premium: number; side: "any" | "calls" | "puts"; print: "any" | "sweep" | "block" }
   /** The symbol's 30-day ATM IV (`atm`, in %) or 25-delta risk reversal (`rr`, in vol points) above or below a level, checked by the running app. */
   | { kind: "iv_level"; symbol: string; metric: IvLevelMetric; direction: "above" | "below"; level: number }
-  /** One OCC contract's IV rising by `points`. */
-  | { kind: "iv_spike"; contract: string; points: number }
+  /**
+   * One OCC contract's IV rising by `points`. A contract typed loosely (`SPY 680C 11/19`) carries what it was
+   * read as (`loose`), for the chain to name the one listed contract it is before the rule is made.
+   */
+  | { kind: "iv_spike"; contract: string; points: number; loose?: LooseOptionContract }
   /** The rest of what Add Event Alert offers: 52-week range, unusual volume, filings, insiders, short interest and more. */
   | RuleAddRequest;
 
@@ -275,6 +279,8 @@ export function parseAlertAddArgs(
   if (country !== undefined) throw new Error(COUNTRY_RULE);
   if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not price alerts.");
   if (third === undefined) throw new Error(ADD_USAGE);
+  // A dollar mark the shell split from its price (`$ 757.75`, `757.75 USD`) is part of it.
+  if (rest.length === 1 && (isDollarMark(third) || isDollarMark(rest[0]!))) return parseAlertAddArgs([first, second, `${third} ${rest[0]}`], days, exchange, country, benchmark, watchlist);
   const retype = (price: number) => retypeCommand(first, condition, price, exchange);
   // `81 000` without quotes arrives as 81 and a stray 000; neither reading is taken for granted.
   const spaced = rest.length > 0 && LEADING_GROUP.test(third) ? parsePastedNumber([third, ...rest].join(" ")) : null;
@@ -291,8 +297,16 @@ export function parseAlertAddArgs(
     ...(thousandsDot ? { thousandsDot: { ...thousandsDot, text: third.trim() } } : {}) };
 }
 
-const OCC_CONTRACT = /^(?:O:)?[A-Z.]{1,6}\d{6}[CP]\d{8}$/i;
 const LEVEL_DIRECTIONS = ["above", "below"] as const;
+
+/** An IV spike's rise in vol points, with the unit or without it (`5`, `5 pts`), refused with its range when it does not read. */
+function readSpikePoints(typed: string, contract: string): number {
+  const value = typed && !/%/.test(typed) ? parseIvLevel(typed) : Number.NaN;
+  if (!Number.isFinite(value) || value < 0.1 || value > 100) {
+    throw new Error(`An IV spike is a rise of 0.1 to 100 vol points: gloom alerts add ${/\s/.test(contract) ? `"${contract}"` : contract} iv spike 5.`);
+  }
+  return value;
+}
 
 /** A level typed for an IV level rule, with its unit or without (`50`, `50%`, `-5.5 pts`), refused with its unit and range when it does not read. */
 function readLevel(metric: IvLevelMetric, typed: string | undefined, symbol: string): number {
@@ -322,6 +336,21 @@ function parseResearchAddArgs(args: readonly string[]): ResearchAddRequest | nul
   const word = (value: string | undefined) => value?.toLowerCase() ?? "";
   const isCondition = (value: string | undefined) => (CONDITIONS as readonly string[]).includes(word(value)) || word(value) === "earnings";
   const lead = word(first);
+  // `<contract> iv spike <points>`, the contract typed as OCC writes it or loosely, over one word or several
+  // (`SPY 680C 11/19`, `SPY241119C680`), read against the listed chain once the command runs.
+  const spikeAt = args.findIndex((arg, index) => index > 0 && word(arg) === "iv" && word(args[index + 1]) === "spike");
+  if (spikeAt > 0 && !(spikeAt === 1 && OCC_CONTRACT.test(first.trim()))) {
+    const typed = args.slice(0, spikeAt).join(" ").trim();
+    const points = readSpikePoints(args.slice(spikeAt + 2).join(" "), typed);
+    if (OCC_CONTRACT.test(typed.replace(/\s+/g, ""))) return { kind: "iv_spike", contract: typed.replace(/\s+/g, "").toUpperCase(), points };
+    const loose = parseLooseOptionContract(typed);
+    if (!loose) {
+      // A ticker alone has an IV level to follow, not one contract's spike.
+      const level = /^[A-Z.^=:-]+$/i.test(typed) ? ` For ${typed.toUpperCase()}'s 30-day ATM IV, add a level: gloom alerts add ${typed.toUpperCase()} iv above 50.` : "";
+      throw new Error(`"${typed}" is not an option contract. ${occFormText(occContractExample())}: gloom alerts add ${occContractExample()} iv spike 5.${level}`);
+    }
+    return { kind: "iv_spike", contract: typed, points, loose };
+  }
   const [symbol, kind, tail] = (lead === "news" || lead === "flow") && !isCondition(second)
     ? [null, lead, args.slice(1)] as const
     : [first, word(second), args.slice(2)] as const;
@@ -351,13 +380,7 @@ function parseResearchAddArgs(args: readonly string[]): ResearchAddRequest | nul
     if (kind !== "iv" || word(third) !== "spike") {
       throw new Error(`An option contract takes an IV spike in vol points: gloom alerts add ${symbol.toUpperCase()} iv spike 5. For a level, name the underlying: alerts add ${symbol.replace(/^O:/i, "").match(/^[A-Z.]+/i)![0]!.toUpperCase()} iv above 50.`);
     }
-    // Vol points, with the unit or without it: `5`, `5 pts`.
-    const typed = rest.join(" ");
-    const value = typed && !/%/.test(typed) ? parseIvLevel(typed) : Number.NaN;
-    if (!Number.isFinite(value) || value < 0.1 || value > 100) {
-      throw new Error(`An IV spike is a rise of 0.1 to 100 vol points: gloom alerts add ${symbol.toUpperCase()} iv spike 5.`);
-    }
-    return { kind: "iv_spike", contract: symbol.toUpperCase(), points: value };
+    return { kind: "iv_spike", contract: symbol.toUpperCase(), points: readSpikePoints(rest.join(" "), symbol.toUpperCase()) };
   }
   const metric: IvLevelMetric = kind === "iv" ? "atm" : "rr";
   const direction = word(third);
@@ -1049,6 +1072,17 @@ export const alertsCliCommand: CliCommandDef = {
     let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...futureNote ? [futureNote] : [], ...seriesNote ? [seriesNote] : [], ...benchmarkNotes, ...penceNote ? [penceNote] : []];
     let newEventRule: EventAlertRule | null = null;
     let newResearchRule: EventAlertRule | null = null;
+    // A contract typed loosely is the one listed contract it names, read from the chain; one past its expiry is
+    // kept as typed, for the rule to refuse it as expired.
+    if (research?.kind === "iv_spike" && research.loose) {
+      const { loose, contract: typedContract } = research;
+      const resolved = await withMarketData(ctx, (market) => resolveLooseOptionContract(typedContract, loose, (expiration) => {
+        if (!market.dataProvider.getOptionsChain) throw new Error(`Option chains cannot be read here to find ${typedContract}.`);
+        return market.dataProvider.getOptionsChain(loose.root, "", expiration);
+      }, now)).catch(failWith);
+      research.contract = resolved.contract;
+      if (resolved.readAs) read = [...read, resolved.readAs];
+    }
     if (research) {
       const typed = priceListing?.exchange ? canonicalExchange(priceListing.exchange) : "";
       const { kind, values } = researchFormValues(

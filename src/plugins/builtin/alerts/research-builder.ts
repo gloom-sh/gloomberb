@@ -3,6 +3,7 @@ import { DEFAULT_LEAD_DAYS, isResearchAlertKind, MACRO_ALERT_EVENTS, normalizeRe
 import type { EventAlertRule } from "./events";
 import { isLiveOptionExpiry, parseOptionExpiration } from "../../../utils/option-expiry";
 import { PRO_RULE_FORM_NOTE } from "./pro-rules";
+import { occContractExample } from "./option-contract";
 
 /** What a macro event is called in a rule, a list and a notification. */
 export const MACRO_EVENT_NAMES: Record<MacroAlertEvent, string> = { cpi: "CPI release", fomc: "FOMC decision" };
@@ -16,16 +17,6 @@ export const IV_LEVEL_NAMES: Record<IvLevelMetric, string> = { atm: "30d ATM IV"
 export function formatIvLevel(metric: IvLevelMetric, value: number): string {
   const rounded = Number(value.toFixed(2));
   return metric === "atm" ? `${rounded}%` : `${rounded > 0 ? "+" : ""}${rounded} pts`;
-}
-/**
- * An OCC contract that has not expired, for the IV spike form's example: an
- * AAPL call on the monthly expiry (the third Friday) two months from `now`.
- */
-function occContractExample(now = new Date()): string {
-  const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1));
-  const thirdFriday = 1 + ((5 - month.getUTCDay() + 7) % 7) + 14;
-  const two = (value: number) => String(value).padStart(2, "0");
-  return `AAPL${two(month.getUTCFullYear() % 100)}${two(month.getUTCMonth() + 1)}${two(thirdFriday)}C00300000`;
 }
 type Command = Parameters<Parameters<NonNullable<GloomPlugin["setup"]>>[0]["registerCommand"]>[0];
 type Field = NonNullable<Command["wizard"]>[number];

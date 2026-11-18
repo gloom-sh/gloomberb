@@ -10,6 +10,7 @@ import { checkIvLevelAlertsNow, startIvLevelAlerts } from "./iv-level";
 import { logFailure } from "../../../utils/log-failure";
 import { RESEARCH_FORM_KINDS, RESEARCH_LABELS, researchWizardFields, createResearchAlert } from "./research-builder";
 import { checkedOnlyWithPro, checksProRules, savedWithoutProNote } from "./pro-rules";
+import { OCC_CONTRACT, parseLooseOptionContract, resolveLooseOptionContract } from "./option-contract";
 import { apiClient } from "../../../api-client";
 import { newYorkToday } from "../earnings/board-model";
 import { checkScheduledEventAlertsNow, startScheduledEventAlerts } from "./scheduled-check";
@@ -39,6 +40,8 @@ import {
   sameLevelRule,
 } from "./alert-engine";
 import {
+  MOVE_KIND_CHOICE,
+  moveWizardFields,
   parseAlertCommandValues,
   parseAlertShortcutValues,
 } from "./command";
@@ -65,7 +68,8 @@ import {
 import { createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream } from "./live";
 import { alertPriceText } from "./price-text";
 import { isPenceQuotedLine } from "../../../market-data/market/format";
-import { judgeMove, moveBasisText, moveFiredText } from "./move";
+import { judgeMove, moveBasisText, moveFiredText, MOVE_DELIVERY } from "./move";
+import { MOVE_REARM, moveNowText, planMoveAlerts } from "./cli-move";
 import { alertListing, readingSessionWords } from "./format";
 import type { AlertRule } from "./types";
 
@@ -229,8 +233,8 @@ export const alertsPlugin: GloomPlugin = {
     ctx.registerCommand({
       id: "set-alert",
       label: "Add Alert",
-      description: "Create a price, valuation or daily technical alert",
-      keywords: ["add", "set", "alert", "pe", "ps", "rsi", "moving average", "valuation", "price", "trigger", "notify", "alarm", "watch"],
+      description: "Create a price, move, valuation or daily technical alert",
+      keywords: ["add", "set", "alert", "move", "previous close", "pe", "ps", "rsi", "moving average", "valuation", "price", "trigger", "notify", "alarm", "watch"],
       category: "data",
       shortcut: "SA",
       shortcutArg: {
@@ -240,7 +244,8 @@ export const alertsPlugin: GloomPlugin = {
       },
       wizardLayout: "form",
       wizard: [
-        { key: "kind", label: "Kind", type: "select", defaultValue: "price", options: METRIC_CHOICES },
+        // A move from the previous close sits beside a price level: both are checked on the listing's quotes.
+        { key: "kind", label: "Kind", type: "select", defaultValue: "price", options: [METRIC_CHOICES[0]!, MOVE_KIND_CHOICE, ...METRIC_CHOICES.slice(1)] },
         {
           key: "symbol",
           label: "Symbol",
@@ -265,6 +270,7 @@ export const alertsPlugin: GloomPlugin = {
           placeholder: "200.00",
           type: "number",
         },
+        ...moveWizardFields,
         ...metricWizardFields,
       ],
       async execute(values) {
@@ -281,7 +287,7 @@ export const alertsPlugin: GloomPlugin = {
             });
           notes.push(...found.notes);
           const key = found.listing.key.toUpperCase();
-          return { key, quote: alertQuote(found.quote, key) };
+          return { key, exchange: found.listing.exchange, quote: alertQuote(found.quote, key) };
         };
         let resolved: Awaited<ReturnType<typeof quoteFor>>;
         try {
@@ -289,13 +295,41 @@ export const alertsPlugin: GloomPlugin = {
         } catch (error) {
           // XLK/SPY is a listing first; only one the service says is no ticker is the ratio of the two, as `alerts add` reads it.
           // A timeout stays a timeout, and BTC/USD, BRK/B or EUR/USD, one listing written with a slash, keeps its own answer.
-          const pair = !input.metric && /^[^/\s]+\/[^/\s]+$/.test(input.symbol) && notATickerSymbol(error instanceof Error ? error.message : String(error))
+          const pair = !input.metric && !input.move && /^[^/\s]+\/[^/\s]+$/.test(input.symbol) && notATickerSymbol(error instanceof Error ? error.message : String(error))
             && !slashSpellsListing(input.symbol) ? parseMetricAlert(`${input.symbol} ratio ${input.condition} ${input.price}`) : null;
           if (!pair) throw error;
           input = pair;
           resolved = await quoteFor(pair.symbol);
         }
         const { key: symbol, quote } = resolved;
+        // A move from the previous close is made as `alerts add` makes one: its first reading is the quote it was read on.
+        if (input.move) {
+          const now = Date.now();
+          const exchange = resolved.exchange ? canonicalExchange(resolved.exchange) : canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+          const saved = loadJudgedAlerts();
+          const plan = planMoveAlerts({ kind: "move", symbols: [input.symbol], condition: input.condition, percent: input.price },
+            [{ input: input.symbol, listing: { symbol, ...exchange ? { exchange } : {} }, quote }], saved, now);
+          const existing = plan.existing[0]?.alert;
+          if (existing) {
+            throw new Error(`${formatAlertDescription(existing)} already exists (alert ${existing.id})${existing.status === "triggered"
+              ? "; it went off this session and arms again in the next" : ""}. Nothing was added.`);
+          }
+          const alert = plan.added[0];
+          if (!alert) throw new Error(plan.failed[0]?.error ?? "No move alert was added.");
+          const alerts = [...saved, alert];
+          await saveAlerts(ctx, alerts, "price");
+          // Its readings stay on this device, beside the rules, as the checks keep them.
+          saveMoveChecks(alerts);
+          recordFired(alertChangeEntry("created", alertLogRule(alert)));
+          alertStream?.sync();
+          const reading = moveNowText(alert, now);
+          ctx.notify({
+            body: [`Alert set: ${formatAlertDescription(alert)} (${MOVE_REARM})${reading ? `, ${reading}` : ""}.`, MOVE_DELIVERY,
+              ...notes.map((note) => /[.?!]$/.test(note) ? note : `${note}.`)].join(" "),
+            type: "success",
+          });
+          return;
+        }
         let metric = input.metric;
         if (metric && isRelativeMetric(metric)) {
           const reference = (await quoteFor(benchmarkKey(metric))).quote;
@@ -416,6 +450,17 @@ export const alertsPlugin: GloomPlugin = {
           });
           if (abroad.exchange) throw new Error(earningsUsOnlyMessage(`${abroad.symbol}:${abroad.exchange}`));
         }
+        // A contract typed loosely (`SPY 680C 11/19`) is the one listed contract it names, as `alerts add` reads it.
+        const typedContract = event === "iv_spike" ? String(values["iv_spike:contract"] ?? "").trim() : "";
+        const looseContract = typedContract && !OCC_CONTRACT.test(typedContract) ? parseLooseOptionContract(typedContract) : null;
+        const notes: string[] = [];
+        if (looseContract) {
+          const getChain = ctx.marketData.getOptionsChain?.bind(ctx.marketData);
+          if (!getChain) throw new Error(`Option chains cannot be read here to find ${typedContract}.`);
+          const resolved = await resolveLooseOptionContract(typedContract, looseContract, (expiration) => getChain(looseContract.root, "", expiration), Date.now());
+          values = { ...values, "iv_spike:contract": resolved.contract };
+          if (resolved.readAs) notes.push(resolved.readAs);
+        }
         let rule = isResearchAlertKind(event) ? createResearchAlert(event, values) : createEventAlert(event, values?.[event] || "");
         const target = scheduled ? readScheduledRule(rule)?.target : null;
         if (target) {
@@ -444,7 +489,7 @@ export const alertsPlugin: GloomPlugin = {
         // Saved without Pro, a Pro rule waits on it, as its form said and its row reads (Needs Pro).
         const signedIn = !!apiClient.getSessionToken() || !!apiClient.getCurrentUser();
         const waitsOnPro = checkedOnlyWithPro(rule) && !checksProRules(signedIn, apiClient.getCurrentUser());
-        ctx.notify({ body: `Event alert saved.${waitsOnPro ? savedWithoutProNote(rule) : ""}`, type: "success" });
+        ctx.notify({ body: [`Event alert saved.${waitsOnPro ? savedWithoutProNote(rule) : ""}`, ...notes].join(" "), type: "success" });
         if (scheduled) checkScheduledEventAlertsNow();
         if (rule.kind === "iv_level") checkIvLevelAlertsNow();
       },
