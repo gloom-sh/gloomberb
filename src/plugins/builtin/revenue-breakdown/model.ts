@@ -1,6 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 import { MISSING_VALUE, pickUnit } from "../../../utils/format";
 import type {
+  ReportedRevenueBreakdownPeriod,
   RevenueBreakdownPayload,
   RevenueBreakdownPeriod,
   RevenueBreakdownRow,
@@ -35,6 +36,12 @@ export const quarterLabel = (period: RevenueBreakdownPeriod) =>
 
 export function reportedPeriods(payload: RevenueBreakdownPayload) {
   return payload.periods.flatMap((period) => "kind" in period ? [period] : []);
+}
+
+export function filingPageUrl(filing: ReportedRevenueBreakdownPeriod["filing"]): string {
+  const url = new URL(filing.url);
+  url.hash = `page=${filing.page}`;
+  return url.href;
 }
 
 /**

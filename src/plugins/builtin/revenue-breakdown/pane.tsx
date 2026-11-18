@@ -25,6 +25,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { logFailure } from "../../../utils/log-failure";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
@@ -40,6 +41,7 @@ import {
 } from "./client";
 import {
   barLevels,
+  filingPageUrl,
   growthPercent,
   nextRevenueSort,
   quarterLabel,
@@ -115,7 +117,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
   usePaneStatusLinkFooter({
     registrationId: "revenue-breakdown",
     focused,
-    url: latest ? `${latest.filing.url}#page=${latest.filing.page}` : null,
+    url: latest ? filingPageUrl(latest.filing) : null,
     showOpenHint: !!latest,
     loading: resource.loading,
     error: payload ? resource.error : null,
@@ -123,7 +125,8 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
       id: `filing:${period.end}`,
       parts: [{ text: `${quarterLabel(period)} filed ${period.filing.filed}`, tone: "value" as const }],
       capture: true,
-      onPress: () => void host.openExternal(`${period.filing.url}#page=${period.filing.page}`),
+      onPress: () => void host.openExternal(filingPageUrl(period.filing))
+        .catch(logFailure("revenue-breakdown", "Open filing link failed")),
     })) : payload?.filed ? [{ id: "filed", parts: [{ text: `filed ${payload.filed}`, tone: "muted" as const }] }] : [],
     stale: !!payload && resource.data?.stale,
     hints: preview

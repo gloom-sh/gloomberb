@@ -1,7 +1,7 @@
 import type { RevenueBreakdownView } from "../../../api-client/revenue-breakdown";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRevenueBreakdown } from "./client";
-import { growthPercent, quarterLabel, reportedPeriods, reportedSpan, revenueScale, sharePercent } from "./model";
+import { filingPageUrl, growthPercent, quarterLabel, reportedPeriods, reportedSpan, revenueScale, sharePercent } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 
@@ -89,7 +89,7 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
             ? [{ key: "period", header: "Period" }, totalScale.column("revenue", "Revenue"), { key: "basis", header: "Basis" }, { key: "filed", header: "Filed" }, { key: "filing", header: "Filing" }]
             : [{ key: "quarter", header: "Quarter" }, { key: "end", header: "End" }, totalScale.column("revenue", "Revenue")],
           rows: data.periods.map((period, index) => "kind" in period
-            ? { period: period.label, revenue: data.total[index], basis: period.revenueLabel, filed: period.filing.filed, filing: `${period.filing.url}#page=${period.filing.page}` }
+            ? { period: period.label, revenue: data.total[index], basis: period.revenueLabel, filed: period.filing.filed, filing: filingPageUrl(period.filing) }
             : { quarter: quarterLabel(period), end: period.end, revenue: data.total[index] }),
         },
       ],

@@ -31,7 +31,7 @@ const finiteOrNull = (value: unknown) =>
   value === null || (typeof value === "number" && Number.isFinite(value));
 const day = (value: unknown) =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
-const filingUrl = /^https:\/\/(?:www1?\.)?hkexnews\.hk\/listedco\/listconews\/sehk\/\d{4}\/\d{4}\/\d{13}\.pdf$/i;
+const filingUrl = /^https:\/\/(?:www1?\.)?hkexnews\.hk\/listedco\/listconews\/sehk\/\d{4}\/\d{4}\/\d{13}\.pdf(?:#page=[1-9]\d*)?$/i;
 
 function validPeriod(period: RevenueBreakdownPeriod) {
   if (!day(period?.end)) return false;
