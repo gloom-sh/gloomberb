@@ -53,13 +53,15 @@ test("Chrome keeps its sandbox unless it says it cannot have one", () => {
 });
 
 // A stand-in browser: without --no-sandbox it fails as Chrome does with no kernel support for its sandbox; with it, it
-// answers the three DevTools calls a start makes.
+// answers the three DevTools calls a start makes. A start without --use-mock-keychain is logged as one that reaches
+// the real keychain, which on a Mac with none to hold Chrome's key opens a dialog nobody is there to close.
 async function writeFakeChrome(folder: string, starts: string): Promise<string> {
   const fakeChrome = join(folder, "chrome");
   await writeFile(fakeChrome, `#!/usr/bin/env bun
 import { appendFileSync, createReadStream, createWriteStream } from "fs";
 const sandboxed = !process.argv.includes("--no-sandbox");
-appendFileSync(${JSON.stringify(starts)}, sandboxed ? "sandboxed\\n" : "unsandboxed\\n");
+const keychain = process.argv.includes("--use-mock-keychain") ? "" : " with the real keychain";
+appendFileSync(${JSON.stringify(starts)}, (sandboxed ? "sandboxed" : "unsandboxed") + keychain + "\\n");
 if (sandboxed) {
   process.stderr.write("[1:1:FATAL:zygote_host_impl_linux.cc(128)] No usable sandbox!\\n", () => process.exit(1));
 } else {

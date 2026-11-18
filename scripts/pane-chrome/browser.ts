@@ -152,6 +152,8 @@ export async function launchBrowser(name: string, width: number, height: number,
     ...(gpu ? ["--enable-gpu", "--ignore-gpu-blocklist"] : ["--disable-gpu"]),
     "--hide-scrollbars",
     "--mute-audio",
+    // The profile is throwaway: keep macOS Chrome from storing a key in the keychain and opening a dialog.
+    "--use-mock-keychain",
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-extensions",
