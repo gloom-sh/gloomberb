@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "fs";
 import { mkdir, rm, writeFile } from "fs/promises";
 import { join, relative } from "path";
 import { testAppEnv } from "../test-app-env";
-import { sleep } from "../pane-chrome/browser";
 import type { ProbeEntry } from "./web-server";
 
 export interface DesktopStandIn {
@@ -56,9 +55,7 @@ export async function startDesktopStandIn({ checkout, app, home, networkDir }: {
     polling = null;
     poll();
     if (!child) return;
-    child.kill("SIGTERM");
-    await Promise.race([child.exited, sleep(5_000)]);
-    if (child.exitCode === null) child.kill("SIGKILL");
+    child.kill("SIGKILL");
     await child.exited;
     child = null;
   };

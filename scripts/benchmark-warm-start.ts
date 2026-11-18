@@ -4,7 +4,7 @@ import { homedir } from "os";
 import { join, resolve } from "path";
 import type { AppConfig, DockLayoutNode, SavedLayout } from "../src/types/config";
 import { testAppEnv } from "./test-app-env";
-import { launchBrowser, sleep, type Browser } from "./pane-chrome/browser";
+import { evaluate, launchBrowser, sleep } from "./pane-chrome/browser";
 import { median, positiveInteger, runTmux, shellQuote, takeOption, writeFreshInstallConfig } from "./tui-benchmark-harness";
 import type { WarmStartPlan } from "./warm-start/plan";
 import { domProbeSource, type PaneShownState, type PaneTimeline } from "./warm-start/pane-states";
@@ -17,7 +17,7 @@ import { startDesktopStandIn, type DesktopStandIn } from "./warm-start/desktop-s
  *
  * A warm restart, pane by pane. One pane of every type the catalog lists
  * (scripts/warm-start/plan.ts) is laid out in layouts of 16; for each layout
- * the app is launched once to fill its caches and quit, then launched again
+ * the app is launched once to fill its caches and is killed, then launched again
  * `--runs` times per network. Every frame, each pane's body is read as blank,
  * loading, empty, error or content (scripts/warm-start/pane-states.ts), and
  * the report gives per pane and renderer:
@@ -53,16 +53,25 @@ const root = resolve(takeOption(args, "--root") ?? join(homedir(), ".cache", "gl
 const outDir = resolve(takeOption(args, "--out") ?? join(root, "results"));
 const perLayout = positiveInteger(takeOption(args, "--per-layout"), 16, "per-layout");
 const build = args.includes("--build");
+const capture = args.includes("--capture");
 /** The harness's own checkout, for its scripts. */
 const checkout = resolve(join(import.meta.dir, ".."));
 /** The checkout whose app is launched: `--app`, for a before run of the base while this branch changes. */
 const app = resolve(takeOption(args, "--app") ?? checkout);
+const webRoot = resolve(takeOption(args, "--web-root") ?? join(app, "dist", "web"));
 const SLOW_MS = 5_000;
 const WIDTH = { tui: 256, view: 2048 };
 const HEIGHT = { tui: 80, view: 1280 };
 
 const profile = join(root, `${target}-${label}`);
 const networkDir = join(root, "network");
+const interrupted = new AbortController();
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    process.exitCode = signal === "SIGINT" ? 130 : 143;
+    interrupted.abort();
+  });
+}
 
 interface RunRecord {
   layout: number;
@@ -142,7 +151,7 @@ async function settle(launch: Launch, expected: number, network: Network | "fill
   const started = Date.now();
   let stableSince = Date.now();
   let signature = "";
-  while (Date.now() - started < limit) {
+  while (!interrupted.signal.aborted && Date.now() - started < limit) {
     await sleep(250);
     const timelines = [...launch.timeline().values()];
     const current = timelines.map((timeline) => `${timeline.paneId}=${timeline.states.at(-1)?.state}`).sort().join(",");
@@ -170,18 +179,20 @@ async function launchTui(network: Network | "fill"): Promise<Launch> {
   const session = `gloom-warm-${process.pid}`;
   const probeFile = join(profile, "probe.jsonl");
   await rm(probeFile, { force: true });
-  await runTmux(["kill-session", "-t", session], false);
   const env = [
     `GLOOMBERB_HOME=${shellQuote(profile)}`,
+    "GLOOMBERB_NO_TELEMETRY=1",
+    "DO_NOT_TRACK=1",
     `WARM_START_PROBE_OUT=${shellQuote(probeFile)}`,
     `WARM_START_NET_DIR=${shellQuote(networkDir)}`,
     `WARM_START_NET_DELAY_MS=${network === "slow" ? SLOW_MS : 0}`,
+    `WARM_START_REPLAY_ONLY=${process.env.WARM_START_REPLAY_ONLY === "1" ? 1 : 0}`,
     `BUN_RUNTIME_TRANSPILER_CACHE_PATH=${shellQuote(join(root, "transpiler"))}`,
   ].join(" ");
   const launchedAt = Date.now();
   await runTmux([
     "new-session", "-d", "-s", session, "-x", String(WIDTH.tui), "-y", String(HEIGHT.tui), "-c", app,
-    `env ${env} bun --preload ${shellQuote(join(checkout, "scripts/warm-start/tui-preload.ts"))} ${shellQuote(join(app, "src/cli/entry.ts"))} 2>>${shellQuote(join(profile, "stderr.log"))}`,
+    `exec env ${env} bun --preload ${shellQuote(join(checkout, "scripts/warm-start/tui-preload.ts"))} ${shellQuote(join(app, "src/cli/entry.ts"))} 2>>${shellQuote(join(profile, "stderr.log"))}`,
   ]);
   let timelines = new Map<string, PaneTimeline>();
   let requests: Record<string, number> | undefined;
@@ -204,16 +215,14 @@ async function launchTui(network: Network | "fill"): Promise<Launch> {
     timeline: () => timelines,
     requests: () => requests,
     async quit() {
-      // Ctrl+C quits the way the quit key does (the renderer's exit flushes what is pending); Q types into a focused field.
-      await runTmux(["send-keys", "-t", session, "C-c"], false);
-      const deadline = Date.now() + 8_000;
-      while (Date.now() < deadline) {
-        const alive = Bun.spawnSync(["tmux", "has-session", "-t", session]).exitCode === 0;
-        if (!alive) break;
-        await sleep(200);
+      const panePid = Number(Bun.spawnSync(["tmux", "display-message", "-p", "-t", `=${session}:`, "#{pane_pid}"]).stdout.toString());
+      try {
+        if (Number.isInteger(panePid) && panePid > 1) process.kill(panePid, "SIGKILL");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      } finally {
+        await runTmux(["kill-session", "-t", `=${session}`], false);
       }
-      await runTmux(["kill-session", "-t", session], false);
-      await sleep(300);
       polling = false;
       await loop;
       await poll().catch(() => {});
@@ -226,13 +235,13 @@ async function launchTui(network: Network | "fill"): Promise<Launch> {
 let webServer: WarmStartWebServer | null = null;
 let standIn: DesktopStandIn | null = null;
 
-async function launchView(network: Network | "fill"): Promise<Launch> {
+async function launchView(network: Network | "fill", screenshot?: string): Promise<Launch> {
   const timelines = new Map<string, PaneTimeline>();
   const delayMs = network === "slow" ? SLOW_MS : 0;
   let origin: string;
   let path = "/";
   if (target === "web") {
-    webServer ??= await startWarmStartWebServer({ webRoot: join(app, "dist", "web"), networkDir });
+    webServer ??= await startWarmStartWebServer({ webRoot, networkDir });
     webServer.setDelay(delayMs);
     origin = webServer.origin;
   } else {
@@ -243,21 +252,36 @@ async function launchView(network: Network | "fill"): Promise<Launch> {
   }
   const server = (webServer ?? standIn)!;
   const launchedAt = Date.now();
-  server.onProbe((entry) => record(timelines, entry.at - launchedAt, entry.frame, entry.panes));
-  const browser: Browser = await launchBrowser(`warm-${target}`, WIDTH.view, HEIGHT.view, { profileDir: join(profile, "chrome") });
-  await browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: domProbeSource(`${origin}/__warm-probe`) });
-  await browser.cdp.send("Page.navigate", { url: `${origin}${path}` });
+  const browser = await launchBrowser(`warm-${target}`, WIDTH.view, HEIGHT.view, { profileDir: join(profile, "chrome") });
+  let picture: Promise<void> | undefined;
+  server.onProbe((entry) => {
+    record(timelines, entry.at - launchedAt, entry.frame, entry.panes);
+    if (screenshot && !picture && Object.values(entry.panes).some((state) => state !== "blank")) {
+      picture = browser.cdp.send("Page.captureScreenshot", { format: "png" }, 3_000).then(async ({ data }) => {
+        await writeFile(screenshot, Buffer.from(data, "base64"));
+      }).catch((error) => { console.error("Could not capture a restart screenshot:", error); });
+    }
+  });
+  try {
+    await browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: domProbeSource(`${origin}/__warm-probe`) });
+    await browser.cdp.send("Page.navigate", { url: `${origin}${path}` });
+  } catch (error) {
+    await browser.close();
+    throw error;
+  }
   return {
     launchedAt,
     timeline: () => timelines,
     requests: () => server.requests(),
     async quit() {
-      // The page saves what it holds back on pagehide, as a closed tab does.
-      await browser.cdp.send("Page.navigate", { url: `${origin}/health` }).catch(() => {});
-      await sleep(1_500);
-      await browser.close();
-      server.onProbe(null);
-      if (standIn) await standIn.stopBackend();
+      try {
+        await picture;
+        if (standIn) await standIn.stopBackend();
+        await browser.cdp.send("Page.crash", {}, 500).catch(() => {});
+      } finally {
+        await browser.close();
+        server.onProbe(null);
+      }
     },
   };
 }
@@ -281,17 +305,14 @@ async function writeLaunchConfig(base: AppConfig, layouts: SavedLayout[], active
     await writeFile(join(profile, "config.json"), `${JSON.stringify(config, null, 2)}\n`);
     return;
   }
-  webServer ??= await startWarmStartWebServer({ webRoot: join(app, "dist", "web"), networkDir });
+  webServer ??= await startWarmStartWebServer({ webRoot, networkDir });
   // The web app reads its config from local storage: written from a page of the same origin that is not the app.
   const browser = await launchBrowser("warm-web-seed", 800, 600, { profileDir: join(profile, "chrome") });
   try {
     await browser.cdp.send("Page.navigate", { url: `${webServer.origin}/health` });
     await sleep(500);
     const webConfig = { ...config, dataDir: "browser://local" };
-    await browser.cdp.send("Runtime.evaluate", {
-      expression: `localStorage.setItem("gloomberb.web.config.v1", ${JSON.stringify(JSON.stringify(webConfig))}); true`,
-      returnByValue: true,
-    });
+    await evaluate(browser.cdp, `localStorage.setItem("gloomberb.web.config.v1", ${JSON.stringify(JSON.stringify(webConfig))}); true`);
     await sleep(300);
   } finally {
     await browser.close();
@@ -303,6 +324,7 @@ function summarize(records: RunRecord[], fills: Map<number, RunRecord>, plan: Wa
   for (const pane of plan.panes) {
     const id = pane.instance.instanceId;
     const layout = Math.floor(plan.panes.indexOf(pane) / perLayout);
+    if (!fills.has(layout)) continue;
     const fill = fills.get(layout)?.panes.find((timeline) => timeline.paneId === id);
     const filled = fill?.states.some((state) => state.state === "content") ?? false;
     const filledLast = fill?.states.at(-1)?.state ?? "missing";
@@ -357,8 +379,8 @@ function markdown(rows: Array<Record<string, any>>): string {
 async function main(): Promise<void> {
   await mkdir(root, { recursive: true });
   await mkdir(outDir, { recursive: true });
-  if (target === "web" && (build || !existsSync(join(app, "dist", "web", "index.html")))) {
-    const child = Bun.spawn(["bun", "run", "web:build"], { cwd: app, stdout: "ignore", stderr: "inherit" });
+  if (target === "web" && (build || !existsSync(join(webRoot, "index.html")))) {
+    const child = Bun.spawn(["bun", "run", "web:build", "--out", webRoot], { cwd: app, stdout: "ignore", stderr: "inherit" });
     if (await child.exited !== 0) throw new Error("web:build failed");
   }
   const plan = await loadPlan();
@@ -375,14 +397,17 @@ async function main(): Promise<void> {
       const done = (network: Network | "fill", run: number) => (network === "fill" ? saved.fills : saved.records)
         .some((entry) => entry.layout === layout && entry.network === network && entry.run === run);
       const once = async (network: Network | "fill", run: number) => {
-        if (done(network, run)) return;
+        if (interrupted.signal.aborted || done(network, run)) return;
         await writeLaunchConfig(base, layouts, layout);
-        const started = await launch(network);
+        const screenshot = capture && network !== "fill" && run === 1
+          ? join(outDir, `${target}-${label}-${network}-layout-${layout + 1}.png`) : undefined;
+        const started = await launch(network, screenshot);
         try {
           await settle(started, expected, network);
         } finally {
           await started.quit();
         }
+        if (interrupted.signal.aborted) return;
         const entry: RunRecord = { layout, network, run, launchedAt: started.launchedAt, panes: [...started.timeline().values()], requests: started.requests() };
         (network === "fill" ? saved.fills : saved.records).push(entry);
         await writeFile(results, JSON.stringify(saved));

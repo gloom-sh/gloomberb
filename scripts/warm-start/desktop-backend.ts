@@ -129,7 +129,7 @@ const server = Bun.serve({
   port,
   async fetch(request, bun) {
     const url = new URL(request.url);
-    if (url.pathname === "/__desktop-rpc" && bun.upgrade(request, { data: null })) return undefined as unknown as Response;
+    if (url.pathname === "/__desktop-rpc" && bun.upgrade(request, { data: undefined })) return undefined as unknown as Response;
     if (url.pathname === "/__warm-probe") {
       const text = await request.text();
       if (probeOut) appendFileSync(probeOut, `${text.replace(/}$/, `,"network":${JSON.stringify(counts)}}`)}\n`);

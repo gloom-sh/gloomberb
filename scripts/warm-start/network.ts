@@ -12,13 +12,13 @@ import { join } from "path";
  *   alike and the data service sees each read once, not once per launch.
  *   A read nobody kept yet goes to the network and is kept.
  * - `extraDelayMs` holds every answer that much longer: the slow network.
- * - Only reads leave the machine: GET and HEAD, and the data service's
- *   read-only batch POSTs under `/market/` (the client sends quote and
- *   history batches that way). Anything else is answered 503 here.
+ * - Only GET and HEAD leave the machine. Previously recorded read-only batch
+ *   POSTs can be replayed, but nothing writes to an upstream service.
  */
 export interface WarmStartNetworkOptions {
   dir: string;
   extraDelayMs: number;
+  replayOnly?: boolean;
   /** Counts what happened, for the report. */
   log?: (event: "kept" | "fetched" | "refused" | "streamed", url: string) => void;
 }
@@ -82,6 +82,10 @@ export function installWarmStartNetwork(options: WarmStartNetworkOptions): WarmS
       }
     }
     await wait(extraDelayMs);
+    if (options.replayOnly || method === "POST") {
+      options.log?.("refused", `${method} ${url.href}`);
+      return new Response(null, { status: 503 });
+    }
     const started = performance.now();
     const response = await realFetch(request);
     const type = response.headers.get("content-type") ?? "";
@@ -102,6 +106,16 @@ export function installWarmStartNetwork(options: WarmStartNetworkOptions): WarmS
     return new Response(method === "HEAD" || response.status === 204 || response.status === 304 ? null : bytes, { status: response.status, headers });
   };
   globalThis.fetch = Object.assign(wrapped, { preconnect: () => {} }) as typeof fetch;
+  if (options.replayOnly) {
+    const Socket = globalThis.WebSocket;
+    globalThis.WebSocket = class ReplaySocket extends Socket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        const host = new URL(url).hostname;
+        if (host !== "127.0.0.1" && host !== "localhost") throw new Error("The benchmark does not replay WebSocket streams");
+        super(url, protocols);
+      }
+    };
+  }
   const control: WarmStartNetworkControl = { setExtraDelay: (ms) => { extraDelayMs = ms; } };
   (globalThis as { __warmStartNetwork?: WarmStartNetworkControl }).__warmStartNetwork = control;
   return control;
@@ -111,5 +125,5 @@ export function installWarmStartNetwork(options: WarmStartNetworkOptions): WarmS
 export function warmStartNetworkFromEnv(env: NodeJS.ProcessEnv = process.env): WarmStartNetworkOptions | null {
   const dir = env.WARM_START_NET_DIR;
   if (!dir) return null;
-  return { dir, extraDelayMs: Number(env.WARM_START_NET_DELAY_MS ?? 0) || 0 };
+  return { dir, extraDelayMs: Number(env.WARM_START_NET_DELAY_MS ?? 0) || 0, replayOnly: env.WARM_START_REPLAY_ONLY === "1" };
 }

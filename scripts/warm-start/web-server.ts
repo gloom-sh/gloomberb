@@ -21,7 +21,8 @@ export interface WarmStartWebServer {
  */
 export async function startWarmStartWebServer({ webRoot, networkDir }: { webRoot: string; networkDir: string }): Promise<WarmStartWebServer> {
   const counts: Record<string, number> = { kept: 0, fetched: 0, refused: 0, streamed: 0 };
-  const network = installWarmStartNetwork({ dir: networkDir, extraDelayMs: 0, log: (event) => { counts[event] = (counts[event] ?? 0) + 1; } });
+  const replayOnly = process.env.WARM_START_REPLAY_ONLY === "1";
+  const network = installWarmStartNetwork({ dir: networkDir, extraDelayMs: 0, replayOnly, log: (event) => { counts[event] = (counts[event] ?? 0) + 1; } });
   let probe: ((entry: ProbeEntry) => void) | null = null;
   const assets = {
     async fetch(request: Request): Promise<Response> {
@@ -47,7 +48,10 @@ export async function startWarmStartWebServer({ webRoot, networkDir }: { webRoot
         try { probe?.(await request.json() as ProbeEntry); } catch { /* Intentional ignore: a report cut short is dropped. */ }
         return new Response("", { headers: { "access-control-allow-origin": "*" } });
       }
-      if (url.pathname === "/api/cloud/ws" && bun.upgrade(request, { data: { upstream: null, queued: [] } })) return undefined as unknown as Response;
+      if (url.pathname === "/api/cloud/ws") {
+        if (replayOnly) return new Response(null, { status: 503 });
+        if (bun.upgrade(request, { data: { upstream: null, queued: [] } })) return undefined as unknown as Response;
+      }
       return handleRequest(request, { ASSETS: assets }, (upstream) => fetch(upstream));
     },
     websocket: {
