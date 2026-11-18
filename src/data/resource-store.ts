@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { CachePolicy, PersistedResourceValue } from "../types/persistence";
 import type { JsonValue } from "./sqlite/json";
+import type { PackedResourceRecord } from "./memory-resource-store";
 import { createSqliteAccess, type SqliteAccess } from "./sqlite/access";
 import { safeParseJson, serializeJson } from "./sqlite/json";
 import { logFailure } from "../utils/log-failure";
@@ -131,16 +132,13 @@ export class ResourceStore {
     private readonly access: SqliteAccess = createSqliteAccess(db),
   ) {}
 
-  private toCachedResource<T>(row: ResourceCacheRow): CachedResourceRecord<T> | null {
-    const value = safeParseJson<T>(row.payload);
-    if (value == null) return null;
+  private resourceMetadata(row: ResourceCacheRow): Omit<CachedResourceRecord, "value"> {
     return {
       namespace: row.namespace,
       kind: row.kind,
       entityKey: row.entity_key,
       variantKey: row.variant_key,
       sourceKey: row.source_key,
-      value,
       schemaVersion: row.schema_version,
       provenance: safeParseJson<JsonValue>(row.provenance),
       fetchedAt: row.fetched_at,
@@ -151,6 +149,11 @@ export class ResourceStore {
       stale: isStale(row.stale_at),
       expired: isExpired(row.expires_at),
     };
+  }
+
+  private toCachedResource<T>(row: ResourceCacheRow): CachedResourceRecord<T> | null {
+    const value = safeParseJson<T>(row.payload);
+    return value == null ? null : { ...this.resourceMetadata(row), value };
   }
 
   private deleteExact(key: ResourceCacheKey): void {
@@ -503,7 +506,7 @@ export class ResourceStore {
    * keeps its caches in memory starts from (data/durable-resources.ts). Any
    * age; a record of another schema stays for the reader that knows it.
    */
-  listRecent<T>(namespacePrefixes: readonly string[], budget: { maxBytes: number; maxRows: number }): CachedResourceRecord<T>[] {
+  listRecent(namespacePrefixes: readonly string[], budget: { maxBytes: number; maxRows: number }): PackedResourceRecord[] {
     if (namespacePrefixes.length === 0) return [];
     this.flushTouches();
     const where = namespacePrefixes.map(() => "instr(namespace, ?) = 1").join(" OR ");
@@ -525,7 +528,7 @@ export class ResourceStore {
       }
       return selected;
     })) ?? [];
-    return rows.flatMap((row) => this.toCachedResource<T>(row) ?? []);
+    return rows.map((row) => ({ ...this.resourceMetadata(row), valueJson: row.payload }));
   }
 
   /** Moves a row up the eviction order as a read at `at` does: a renderer that read its own copy of it says so here. */

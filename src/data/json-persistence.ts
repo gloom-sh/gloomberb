@@ -1,7 +1,7 @@
 import type { AppPersistencePort } from "../core/app-service-ports";
 import type { PluginStateRecord } from "./plugin-state-store";
 import type { SessionSnapshotRecord } from "./session-store";
-import { resourceRecordKey, WriteThroughResourceStore, type ResourceRecordSink } from "./memory-resource-store";
+import { resourceRecordKey, WriteThroughResourceStore, type ResourceRecordSink, type WarmResourceRecord } from "./memory-resource-store";
 import type { CachedResourceRecord, ResourceCacheKey } from "./resource-store";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./json-storage";
 import { isRecord } from "../utils/guards";
@@ -24,7 +24,7 @@ export class JsonPersistence implements AppPersistencePort {
      * app's IndexedDB, renderers/browser/resource-db.ts), and the records a
      * launch starts from. Records selected by `keepResource` stay in local storage.
      */
-    durable?: { saved: readonly CachedResourceRecord[]; sink: ResourceRecordSink };
+    durable?: { saved: readonly WarmResourceRecord[]; sink: ResourceRecordSink };
   } = {}) {
     this.pluginStateData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.pluginState, {}, (value): value is PluginState => isRecord(value));
     this.sessionData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.session, {}, (value): value is Sessions => isRecord(value));

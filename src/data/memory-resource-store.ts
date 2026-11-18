@@ -5,8 +5,18 @@ import type {
   ResourceCacheKey,
   SetResourceOptions,
 } from "./resource-store";
+import { safeParseJson, serializeJson } from "./sqlite/json";
 
 const DEFAULT_RESOURCE_SCHEMA_VERSION = 1;
+
+export type PackedResourceRecord = Omit<CachedResourceRecord, "value"> & { valueJson: string };
+export type WarmResourceRecord = CachedResourceRecord | PackedResourceRecord;
+
+export function packWarmResource(record: CachedResourceRecord): WarmResourceRecord {
+  if (!record.namespace.startsWith("plugin:") || record.value === null || typeof record.value !== "object") return record;
+  const { value, ...metadata } = record;
+  return { ...metadata, valueJson: serializeJson(value) };
+}
 
 function normalizeVariantKey(value: string | undefined): string {
   return value ?? "";
@@ -105,7 +115,20 @@ export class MemoryResourceStore {
   }
 
   /** Puts back a record saved elsewhere, with its own times. */
-  protected restore(record: CachedResourceRecord): void {
+  protected restore(record: WarmResourceRecord): void {
+    if ("valueJson" in record) {
+      const { valueJson, ...metadata } = record;
+      let decoded: WeakRef<object> | undefined;
+      const restored = { ...metadata, get value() {
+        const current = decoded?.deref();
+        if (current) return current;
+        const data = safeParseJson<object>(valueJson);
+        if (data && typeof data === "object") decoded = new WeakRef(data);
+        return data;
+      } };
+      this.records.set(buildMapKey(restored), restored);
+      return;
+    }
     this.records.set(buildMapKey(record), { ...record });
   }
 }
@@ -135,13 +158,13 @@ export interface ResourceRecordSink {
  */
 export class WriteThroughResourceStore extends MemoryResourceStore {
   constructor(
-    saved: readonly CachedResourceRecord[],
+    saved: readonly WarmResourceRecord[],
     private readonly sink: ResourceRecordSink,
     private readonly durable: (key: ResourceCacheKey) => boolean,
   ) {
     super();
     for (const record of saved) {
-      if (durable(record)) this.restore(record);
+      if (durable(record)) this.restore("valueJson" in record ? record : packWarmResource(record));
     }
   }
 

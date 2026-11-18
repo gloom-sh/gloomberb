@@ -5,8 +5,7 @@ import {
   type BatchedResourceSink,
   type ResourceSyncBatch,
 } from "../../data/durable-resources";
-import { resourceRecordKey } from "../../data/memory-resource-store";
-import type { CachedResourceRecord } from "../../data/resource-store";
+import { packWarmResource, resourceRecordKey, type WarmResourceRecord } from "../../data/memory-resource-store";
 import { logFailure } from "../../utils/log-failure";
 
 /**
@@ -28,7 +27,7 @@ const OPEN_TIMEOUT_MS = 1_500;
 interface RecordMeta { at: number; size: number }
 
 export interface BrowserResources {
-  records: CachedResourceRecord[];
+  records: WarmResourceRecord[];
   sink: BatchedResourceSink;
 }
 
@@ -71,8 +70,10 @@ function open(factory: IDBFactory): Promise<IDBDatabase> {
 
 const encoder = new TextEncoder();
 
-function sizeOf(record: CachedResourceRecord): number {
-  return encoder.encode(JSON.stringify(record)).byteLength;
+function sizeOf(record: WarmResourceRecord): number {
+  if (!("valueJson" in record)) return encoder.encode(JSON.stringify(record)).byteLength;
+  const { valueJson, ...metadata } = record;
+  return encoder.encode(valueJson).byteLength + encoder.encode(JSON.stringify(metadata)).byteLength + '"value":,'.length;
 }
 
 async function readMetadata(store: IDBObjectStore): Promise<Map<string, RecordMeta>> {
@@ -85,15 +86,15 @@ function withinBudget(entries: Map<string, RecordMeta>): Set<string> {
   return new Set(selectWarmRecords(byAccess, (entry) => entry.size).map((entry) => entry.key));
 }
 
-async function readWarm(db: IDBDatabase): Promise<CachedResourceRecord[]> {
+async function readWarm(db: IDBDatabase): Promise<WarmResourceRecord[]> {
   const transaction = db.transaction([RECORDS, META], "readonly");
   const records = transaction.objectStore(RECORDS);
   const entries = await readMetadata(transaction.objectStore(META));
   const loaded = await Promise.all([...withinBudget(entries)].map(async (key) => {
-    const record = await request(records.get(key) as IDBRequest<CachedResourceRecord | undefined>);
+    const record = await request(records.get(key) as IDBRequest<WarmResourceRecord | undefined>);
     return record ? { ...record, lastAccessedAt: entries.get(key)!.at } : null;
   }));
-  return loaded.filter((record): record is CachedResourceRecord => record !== null);
+  return loaded.filter((record): record is WarmResourceRecord => record !== null);
 }
 
 async function writeBatch(db: IDBDatabase, batch: ResourceSyncBatch): Promise<void> {
@@ -101,12 +102,13 @@ async function writeBatch(db: IDBDatabase, batch: ResourceSyncBatch): Promise<vo
   const records = transaction.objectStore(RECORDS);
   const meta = transaction.objectStore(META);
   const existing = await readMetadata(meta);
-  const updates = new Map<string, CachedResourceRecord>();
+  const updates = new Map<string, WarmResourceRecord>();
   for (const record of batch.set) {
     const key = resourceRecordKey(record);
-    const size = sizeOf(record);
+    const packed = packWarmResource(record);
+    const size = sizeOf(packed);
     if (size > WARM_RESOURCE_BUDGET.maxBytes) continue;
-    updates.set(key, record);
+    updates.set(key, packed);
     existing.set(key, { at: record.lastAccessedAt, size });
   }
   for (const key of batch.delete) {
@@ -150,7 +152,7 @@ export async function openBrowserResources(factory: IDBFactory | undefined = glo
     let closed = false;
     connection.onversionchange = () => { closed = true; connection.close(); };
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    const records = await Promise.race([readWarm(connection), new Promise<CachedResourceRecord[]>((_, reject) => {
+    const records = await Promise.race([readWarm(connection), new Promise<WarmResourceRecord[]>((_, reject) => {
       timeout = setTimeout(() => reject(new Error("Reading the saved data timed out")), OPEN_TIMEOUT_MS);
     })]).finally(() => clearTimeout(timeout));
     return { records, sink: createBatchedResourceSink((batch) => closed ? undefined : writeBatch(connection, batch), { label: "browser-resources" }) };

@@ -9,7 +9,7 @@ import type {
 } from "../../../types/desktop-window";
 import type { DesktopApplicationMenuCommand } from "../../../types/desktop-menu";
 import type { AppConfig, UpdateChannel } from "../../../types/config";
-import type { CachedResourceRecord } from "../../../data/resource-store";
+import type { WarmResourceRecord } from "../../../data/memory-resource-store";
 import type { ResourceSyncBatch } from "../../../data/durable-resources";
 import type { TickerRecord } from "../../../types/ticker";
 import type { ReleaseInfo, UpdateCheckResult, UpdateProgress } from "../../../updater";
@@ -30,7 +30,7 @@ export interface ElectrobunBackendInit {
   desktopThemePreview: DesktopThemePreviewState;
   pluginState: Record<string, Record<string, unknown>>;
   /** The cached resources the view's in-memory store starts from: its most recently read, and every broker account snapshot. */
-  savedResources?: CachedResourceRecord[];
+  savedResources?: WarmResourceRecord[];
   capabilityManifests: CapabilityManifest[];
   desktopPlatform: string;
   /** The machine name, which a remote assistant sees this desktop app under. */
