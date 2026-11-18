@@ -152,6 +152,8 @@ const CHROME_ARGS = [
   "--disable-extensions",
   "--disable-popup-blocking",
   "--mute-audio",
+  // The profile is throwaway: on macOS Chrome's first start would otherwise store a key in the keychain, and with none to hold it that opens a dialog.
+  "--use-mock-keychain",
   "--no-first-run",
   "--no-default-browser-check",
   "--allow-file-access-from-files",
