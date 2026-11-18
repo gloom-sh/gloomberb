@@ -318,4 +318,7 @@ test("a statements report points to GF only when GF holds older periods, and a h
   const quarterly = await statementsReport("quarterly", financials);
   expect(quarterly.result.rows).toEqual([]);
   expect(quarterly.result.errors).toEqual([`${SYMBOL} reports half-yearly, not quarterly. For its years: gloom fn FA ${SYMBOL} --period annual`]);
+  // A company with a quarter and no full year reported yet: the annual report names its quarters.
+  const firstQuarter = await statementsReport("annual", { annualStatements: [], quarterlyStatements: [{ date: "2026-05-31", netIncome: -671_000 }], priceHistory: [] });
+  expect(firstQuarter.result.errors).toEqual([`${SYMBOL}: No annual financial statement coverage. For its quarters: gloom fn FA ${SYMBOL} --period quarterly`]);
 });
