@@ -35,7 +35,7 @@ import { findTickerResearchGroup, groupTickerResearchTabs, tickerResearchGroupVi
 import { isRecord } from "../../../utils/guards";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
-import { CLOUD_QUOTE_DELAY_MINUTES, usePlanAccess } from "../../../api-client/plan-access";
+import { CLOUD_QUOTE_DELAY_MINUTES, freeQuoteDelayMinutes, usePlanAccess } from "../../../api-client/plan-access";
 import { shownPaneChoice } from "../../../core/state/app/pane-choices";
 import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { captureAttentionAction } from "../../../telemetry/attention-counts";
@@ -265,8 +265,10 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   // Only quote/chart views use the parent quote status. Other research tabs
   // own their data status (the options chain may have a different delay/feed).
   const quoteFooterActive = resolvedTabId === "overview" || resolvedTabId === "chart";
+  // The quote's own delay (SGX's 20m), as the delayed mark on its price and the quote's status say it.
+  const quoteDelay = freeQuoteDelayMinutes(access, financials?.quote) ?? CLOUD_QUOTE_DELAY_MINUTES;
   const cloudAccess = useCloudAccessFooter({
-    delayLabel: tf("{count}m", { count: CLOUD_QUOTE_DELAY_MINUTES }),
+    delayLabel: tf("{count}m", { count: quoteDelay }),
     // A listing that no longer trades has no delay to speak of: its quote is its last session's close.
     degraded: !financials?.quote?.delisting && financials?.quote?.priceObservation !== "nav"
       && financials?.quote?.dataSource !== "live",

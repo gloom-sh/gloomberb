@@ -14,6 +14,8 @@ import type { BuildoutCompany } from "../model/types";
 import { DetailListLine, DetailSpecGrid, ListingBadges, MarkdownBlock, RelatedCompaniesLine, type DetailSpec, type InlineTickerCatalog } from "./ui";
 import { dateCell, detailListValues, recommendationColor, valueWithOriginal } from "./values";
 import { regularSessionValuationPrice } from "../../../../market-data/quotes/regular-session-valuation";
+import { quoteFeedDelayMinutes } from "../../../../market-data/market/freshness";
+import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../../api-client/plan-rules";
 
 interface LiveCompanyValues {
   price: string | null;
@@ -44,12 +46,13 @@ function liveCompanyValues(company: BuildoutCompany, quote: Quote | null): LiveC
 
 /**
  * What the detail's live price is, for the status bar: `real-time` or
- * `15m delayed`. Null while the dataset's own price is shown.
+ * `15m delayed`, by the quote's own feed delay when it states one. Null while
+ * the dataset's own price is shown.
  */
 export function liveCompanyFreshness(company: BuildoutCompany, quote: Quote | null): string | null {
   if (!liveCompanyValues(company, quote)) return null;
   if (quote?.dataSource === "live") return "real-time";
-  if (quote?.dataSource === "delayed") return "15m delayed";
+  if (quote?.dataSource === "delayed") return `${quoteFeedDelayMinutes(quote) ?? CLOUD_QUOTE_DELAY_MINUTES}m delayed`;
   return null;
 }
 

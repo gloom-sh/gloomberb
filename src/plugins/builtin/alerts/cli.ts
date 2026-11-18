@@ -1,6 +1,6 @@
 import { closeBasis, isDailyMetric, isRelativeMetric, metricDescription, metricName, metricReadingText, validMetricRule } from "./metric-model";
 import { logFailure } from "../../../utils/log-failure";
-import { benchmarkKey, parseMetricAlert, type MetricAlertInput } from "./metric-command";
+import { benchmarkKey, namesTwoListings, parseMetricAlert, type MetricAlertInput } from "./metric-command";
 import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metric-data";
 import { ALERT_ADD_FORMS, ALERT_KINDS_TEXT, parseRuleAddArgs, RULE_US_DATA, ruleDelivery, type RuleAddRequest } from "./cli-forms";
 import { alertChangeEntry, appendAlertLog, type AlertLogAction } from "./fired-log";
@@ -949,8 +949,9 @@ export const alertsCliCommand: CliCommandDef = {
       });
     }
     // XLK/SPY is first a listing written with a slash (BRK/B, EUR/USD); one that quotes nothing is the ratio of the two.
+    // META:NASDAQ/GOOGL, with a venue before the slash, can only be the ratio.
     const pairListing = typedRequest?.kind === "price" && PAIR_SHAPE.test(typedRequest.symbol)
-      ? await withMarketData(ctx, (market) => resolveAlertListing(typedRequest.symbol, exchangeOption, market, { retry: alertRetry })).catch((error: unknown) => {
+      ? namesTwoListings(typedRequest.symbol) ? null : await withMarketData(ctx, (market) => resolveAlertListing(typedRequest.symbol, exchangeOption, market, { retry: alertRetry })).catch((error: unknown) => {
         if (!(error instanceof AlertListingRefusal)) throw error;
         if (!notATickerSymbol(error.message)) return ctx.fail(error.message, error.details);
         return null;

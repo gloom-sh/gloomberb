@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
@@ -18,6 +18,7 @@ import { createManualFrameDriver, DataFrameScheduler } from "../../../market-dat
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
+import { apiClient } from "../../../api-client";
 
 const TEST_PANE_ID = "alerts:test";
 
@@ -131,6 +132,23 @@ describe("AlertsPane", () => {
     expect(frame).toContain("TARGET");
     expect(frame).toContain("200");
     expect(frame).toContain("[a]dd alert");
+  });
+
+  test("says once, above the rules, that they run on this device while nothing syncs them", async () => {
+    const line = "On this device · keep Gloom running";
+    await tui.render(<AlertsHarness width={110} height={8} alerts={[makeAlert("alert-aapl", "AAPL", "above", 200)]} />, { width: 110, height: 8 });
+    await renderSettled();
+    expect(tui.frame().split("\n").filter((row) => row.includes(line))).toHaveLength(1);
+    // A verified account with Cloud sync carries the rules: nothing is said.
+    const user = spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "alerts-synced", emailVerified: true, plan: "free" } as any);
+    try {
+      await tui.render(<AlertsHarness width={110} height={8} alerts={[makeAlert("alert-aapl", "AAPL", "above", 200)]} />, { width: 110, height: 8 });
+      await renderSettled();
+      expect(tui.frame()).not.toContain(line);
+      expect(tui.frame()).toContain("AAPL");
+    } finally {
+      user.mockRestore();
+    }
   });
 
   test("Current writes a price as Target does, separators kept from 100,000 up, and a coin pair without its venue", async () => {
@@ -463,6 +481,8 @@ describe("alertsPlugin command", () => {
   });
 
   test("SA adds a move from the previous close in the app, with its first reading kept on the device", async () => {
+    // Tuesday 17 Nov 2026 in New York's session: the quote below is that session's, not a stale one.
+    setSystemTime(new Date("2026-11-17T18:00:00Z"));
     const store = new Map<string, unknown>();
     const resume = new Map<string, unknown>();
     const commands: any[] = [];
@@ -497,6 +517,7 @@ describe("alertsPlugin command", () => {
       await expect(command.execute({ shortcut: "QQQ moves 5%" })).rejects.toThrow(`QQQ:NASDAQ moves 5.00% from the previous close already exists (alert ${move!.id}). Nothing was added.`);
     } finally {
       alertsPlugin.dispose?.();
+      setSystemTime();
     }
   });
 
@@ -528,6 +549,10 @@ describe("alertsPlugin command", () => {
       const command = commands.find((entry) => entry.id === "set-alert");
       await expect(command.execute({ shortcut: "XLK/SPY above 0.25" })).rejects.toThrow("Quoted XLK for a ratio.");
       expect([quoted[0], quoted.at(-1)]).toEqual(["XLK/SPY", "XLK"]);
+      // A venue before the slash is no listing's: each side is read on its own, as `alerts add` reads it.
+      quoted.length = 0;
+      await expect(command.execute({ shortcut: "XLK:ARCA/SPY above 0.25" })).rejects.toThrow("Quoted XLK:ARCA for a ratio.");
+      expect(quoted.some((symbol) => symbol.includes("/"))).toBe(false);
       // Read as `alerts add` reads them, one listing each (BTC-USD, BRK-B), never a ratio.
       for (const [symbol, listing] of [["BTC/USD", "BTC-USD"], ["BRK/B", "BRK-B"]] as const) {
         quoted.length = 0;

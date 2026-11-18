@@ -478,6 +478,14 @@ test("XLK/SPY quoting nothing is the two listings' ratio, kept apart from older 
   // A daily rule that already holds goes off on its first close if it still does then.
   expect((await add(["XLK/SPY", "below", "0.25"])).text).toContain("Ratio to SPY was 0.2434 on the 2026-10-26 close, already below 0.25. "
     + "First checked on the 2026-10-27 close, from 20:30 UTC. It goes off then if it is still below.");
+  // Each listing of a ratio is read on its own, either or both named with a venue: a venue before the slash
+  // is no listing's (it read "Unknown exchange ARCA/SPY for XLK").
+  for (const [pair, symbol] of [["XLK:ARCA/SPY", "XLK:ARCA"], ["XLK/SPY:ARCA", "XLK"], ["XLK:ARCA/SPY:ARCA", "XLK:ARCA"]] as const) {
+    const qualified = await add([pair, "above", "0.25"]);
+    expect(qualified.error).toBeNull();
+    expect(qualified.stored).toMatchObject([{ symbol, exchange: "ARCA", lastCheckedPrice: 0.2434,
+      metric: { kind: "rs_ratio", benchmark: "SPY", benchmarkExchange: "ARCA" } }]);
+  }
 
   const rrg = await add(["XLE", "rrg", "leading"]);
   expect(rrg.error).toBeNull();
