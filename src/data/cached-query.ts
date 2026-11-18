@@ -40,6 +40,7 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
   private readonly listeners = new Set<() => void>();
   private active: Promise<CachedValue<T>> | null = null;
   private generation = 0;
+  private fallbackOnly = false;
 
   constructor(private readonly options: {
     read: (allowExpired: boolean) => CachedValue<T> | null;
@@ -48,7 +49,10 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
     /** Optional source-age/identity limit that also applies to stale fallback. */
     acceptResult?: (result: CachedValue<T>) => boolean;
   }) {
-    this.state = { result: options.read(false), loading: false, error: null };
+    const cached = options.read(false);
+    const saved = cached ? null : options.read(true);
+    this.fallbackOnly = saved !== null;
+    this.state = { result: cached ?? saved, loading: false, error: null };
   }
 
   getSnapshot = (): CachedQueryState<T> => {
@@ -87,23 +91,28 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
     replace?: boolean;
     fetch?: (force: boolean) => Promise<CachedValue<T>>;
   } = {}): Promise<CachedValue<T>> {
-    const cached = this.usable(this.state.result) ?? this.usable(this.options.read(false));
+    const previous = this.usable(this.state.result);
+    const cached = (this.fallbackOnly ? null : previous) ?? this.usable(this.options.read(false));
     const acceptable = cached && (this.options.acceptCached?.(cached.value) ?? true);
-    if (!force && acceptable && cached.staleAt > Date.now()) return Promise.resolve(cached);
+    if (!force && acceptable && Math.min(cached.staleAt, cached.expiresAt) > Date.now()) return Promise.resolve(cached);
     if (!this.active || replace) {
       if (!fetch) return Promise.reject(new Error("A cache miss requires a loader"));
       const generation = ++this.generation;
-      this.publish({ result: cached, loading: true, error: null });
+      this.publish({ result: cached ?? previous, loading: true, error: null });
       const request = Promise.resolve().then(() => fetch(force)).then((result) => {
         if (generation !== this.generation) return result;
         const accepted = { ...result, responseSequence: nextResponseSequence() };
+        this.fallbackOnly = false;
         this.publish({ result: accepted, loading: false, error: null });
         return accepted;
       }, (error: unknown) => {
-        const fallback = this.usable(cached) ?? this.usable(this.options.read(true));
+        const fallback = this.usable(cached ?? previous) ?? this.usable(this.options.read(true));
         // A command that shows it says it is the saved copy (`servedFromSavedCopy`).
         const retained = fallback ? { ...fallback, value: servedFromSavedCopy(fallback.value, fallback.fetchedAt), refreshError: error } : null;
-        if (generation === this.generation) this.publish({ result: retained, loading: false, error });
+        if (generation === this.generation) {
+          this.fallbackOnly = cached === null && retained !== null;
+          this.publish({ result: retained, loading: false, error });
+        }
         if (retained) return retained;
         throw error;
       }).finally(() => {

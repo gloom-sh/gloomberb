@@ -8,17 +8,27 @@ import { JsonPersistence } from "../../data/json-persistence";
 import { isBrokerAccountSnapshotKey } from "../../brokers/account-cache";
 import { JsonTickerRepository } from "../../data/json-ticker-repository";
 import { registerGloomCloudConnectionSources } from "../../core/connection-health";
+import type { BrowserResources } from "./resource-db";
 
-export function createBrowserAppServices({ config, plugins, externalPlugins }: AppServicesFactoryOptions) {
+/**
+ * The web app's services. `resources` are the saved copies the launch opened
+ * (resource-db.ts): every cache, the plugins' and the market data's, starts
+ * from them and writes through to them, so a reload opens its panes on what
+ * they last showed.
+ */
+export function createBrowserAppServices({ config, plugins, externalPlugins }: AppServicesFactoryOptions, resources?: BrowserResources) {
   const cloudProvider = createGloomberbCloudProvider();
-  const dataProvider = new AssetDataRouter(null, [cloudProvider]);
+  const persistence = new JsonPersistence(localStorage, {
+    keepResource: isBrokerAccountSnapshotKey,
+    durable: resources && { saved: resources.records, sink: resources.sink },
+  });
+  const dataProvider = new AssetDataRouter(null, [cloudProvider], persistence.resources);
   const cloudNews = createGloomberbCloudCapabilities(cloudProvider).find(
     (capability): capability is NewsCapability => capability.kind === "news",
   );
   return createAppRuntime({
     config, plugins, externalPlugins, dataProvider,
-    // Broker account snapshots are kept with the positions, so a reload keeps the account's equity and cash.
-    persistence: new JsonPersistence(localStorage, { keepResource: isBrokerAccountSnapshotKey }),
+    persistence,
     tickerRepository: new JsonTickerRepository(localStorage),
     configure({ pluginRegistry, newsService }) {
       dataProvider.attachRegistry(pluginRegistry);

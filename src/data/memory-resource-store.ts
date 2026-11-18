@@ -114,18 +114,24 @@ export function resourceRecordKey(key: ResourceCacheKey): string {
   return buildMapKey(key);
 }
 
+/** The read time last handed to a sink, per record, so a read that moved nothing sends nothing. */
+const touchedAt = new WeakMap<object, number>();
+
 /** Where a renderer without the cache database keeps the records that must outlive a restart. */
 export interface ResourceRecordSink {
   set(record: CachedResourceRecord): void;
   delete(key: ResourceCacheKey): void;
+  /** A read moved the record up the eviction order, so a record read every launch is not the first to go. */
+  touch?(key: ResourceCacheKey, at: number): void;
 }
 
 /**
  * The in-memory store, except that the records `durable` picks are handed to
  * a sink as they change and come back from it on the next start. The desktop
- * view and the web app have no cache database: without this a broker
- * account's snapshot lived only until the app closed, while its positions
- * were saved.
+ * view and the web app have no cache database of their own: the desktop's
+ * sink is the Bun process's, the web app's the browser's (see
+ * data/durable-resources.ts), so a pane opens on its saved copy after a
+ * restart as it does in the terminal.
  */
 export class WriteThroughResourceStore extends MemoryResourceStore {
   constructor(
@@ -137,6 +143,16 @@ export class WriteThroughResourceStore extends MemoryResourceStore {
     for (const record of saved) {
       if (durable(record)) this.restore(record);
     }
+  }
+
+  override get<T>(key: ResourceCacheKey, options: GetResourceOptions = {}): CachedResourceRecord<T> | null {
+    const record = super.get<T>(key, options);
+    const previousTouch = record ? touchedAt.get(record) ?? 0 : 0;
+    if (record && options.touch !== false && this.sink.touch && record.lastAccessedAt - previousTouch >= 30_000 && this.durable(record)) {
+      touchedAt.set(record, record.lastAccessedAt);
+      this.sink.touch(record, record.lastAccessedAt);
+    }
+    return record;
   }
 
   override set<T>(key: ResourceCacheKey, value: T, options: SetResourceOptions): CachedResourceRecord<T> {

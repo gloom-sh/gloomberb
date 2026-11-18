@@ -1,6 +1,6 @@
 import { logFailure } from "../../utils/log-failure";
 import type { PriceHistoryResult } from "../../types/price-history";
-import type { ResourceStore } from "../../data/resource-store";
+import type { AppResourceStorePort } from "../../core/app-service-ports";
 import type { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { BrokerAdapter } from "../../types/broker";
@@ -124,7 +124,7 @@ export class AssetDataRouter implements DataProvider {
   constructor(
     fallbackSource: CapabilityRouteSource | DataProvider | null = null,
     extraSources: Array<CapabilityRouteSource | DataProvider> = [],
-    private readonly resources?: ResourceStore,
+    private readonly resources?: AppResourceStorePort,
     private readonly connectionHealth?: ConnectionHealthRegistry,
   ) {
     this.fallbackSource = fallbackSource ? normalizeRouteSource(fallbackSource) : null;

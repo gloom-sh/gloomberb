@@ -58,7 +58,10 @@ test("expired fallbacks retain source age and a superseded failure cannot restor
     calls++;
     throw new Error("offline");
   } });
-  const fallback = await query.load();
+  expect(query.getSnapshot()).toMatchObject({ result: expired, loading: false });
+  const refreshing = query.load();
+  expect(query.getSnapshot()).toMatchObject({ result: expired, loading: true });
+  const fallback = await refreshing;
   expect(fallback).toMatchObject({ fetchedAt: expired.fetchedAt, expiresAt: expired.expiresAt, refreshError: expect.any(Error) });
   await query.load();
   expect(calls).toBe(2);

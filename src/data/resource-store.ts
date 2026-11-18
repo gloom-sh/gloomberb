@@ -181,6 +181,10 @@ export class ResourceStore {
     const { namespace, kind, entityKey, variantKey, sourceKey } = record;
     this.pendingTouches.set(mapKey, { key: { namespace, kind, entityKey, variantKey, sourceKey }, touchedAt: now });
     record.lastAccessedAt = now;
+    this.scheduleTouchFlush();
+  }
+
+  private scheduleTouchFlush(): void {
     if (this.touchTimer) return;
     this.touchTimer = setTimeout(() => {
       this.touchTimer = null;
@@ -491,6 +495,44 @@ export class ResourceStore {
 
   delete(key: ResourceCacheKey): void {
     this.deleteExact(key);
+  }
+
+  /**
+   * The records of the namespaces starting with one of `namespacePrefixes` read most
+   * recently, newest first, as many as fit the budget: what a renderer that
+   * keeps its caches in memory starts from (data/durable-resources.ts). Any
+   * age; a record of another schema stays for the reader that knows it.
+   */
+  listRecent<T>(namespacePrefixes: readonly string[], budget: { maxBytes: number; maxRows: number }): CachedResourceRecord<T>[] {
+    if (namespacePrefixes.length === 0) return [];
+    this.flushTouches();
+    const where = namespacePrefixes.map(() => "instr(namespace, ?) = 1").join(" OR ");
+    const rows = this.access.readCache("list recent cached resources", () => (
+      this.db
+        .query<ResourceCacheRow, Array<string | number>>(
+          `WITH recent AS (
+             SELECT rowid AS id, last_accessed_at, size_bytes FROM resource_cache
+             WHERE (${where}) AND size_bytes <= ?
+             ORDER BY last_accessed_at DESC, rowid DESC LIMIT ?
+           ), sized AS (
+             SELECT id, SUM(size_bytes) OVER (ORDER BY last_accessed_at DESC, id DESC) AS bytes FROM recent
+           )
+           SELECT resource_cache.* FROM sized JOIN resource_cache ON resource_cache.rowid = sized.id
+           WHERE sized.bytes <= ? ORDER BY resource_cache.last_accessed_at DESC, sized.id DESC`,
+        )
+        .all(...namespacePrefixes, budget.maxBytes, budget.maxRows, budget.maxBytes)
+    )) ?? [];
+    return rows.flatMap((row) => this.toCachedResource<T>(row) ?? []);
+  }
+
+  /** Moves a row up the eviction order as a read at `at` does: a renderer that read its own copy of it says so here. */
+  touch(key: ResourceCacheKey, at: number): void {
+    const mapKey = rowMapKey(key);
+    const { namespace, kind, entityKey, variantKey, sourceKey } = key;
+    const touchedAt = Math.min(at, Date.now());
+    if ((this.pendingTouches.get(mapKey)?.touchedAt ?? 0) >= touchedAt) return;
+    this.pendingTouches.set(mapKey, { key: { namespace, kind, entityKey, variantKey, sourceKey }, touchedAt });
+    this.scheduleTouchFlush();
   }
 
   /** Asked for by the user, so it waits for another program's lock, and throws when it cannot get it. */

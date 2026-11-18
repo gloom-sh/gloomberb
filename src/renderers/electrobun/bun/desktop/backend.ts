@@ -72,6 +72,7 @@ import { DesktopHttpStreamBridge } from "./http-stream";
 import { initializeDesktopBackend, joinDesktopBackendLaunch } from "./initialization";
 import { applyMacosDockIcon } from "./macos-dock-icon";
 import { handleDesktopPluginStateRequest } from "./plugin-state";
+import { handleDesktopViewResourceRequest } from "./view-resources";
 import { scheduleDesktopRelaunch } from "./relaunch";
 import { createDesktopRpcRegistry } from "./rpc-registry";
 import { measureRpcTraffic } from "./rpc-timing";
@@ -938,9 +939,9 @@ export class DesktopBackend {
       case "config.import":
       case "session.set":
       case "session.delete":
-      case "resources.set":
-      case "resources.delete":
         return handleDesktopBackendRequest(this, rpc, request);
+      case "resources.sync":
+        return handleDesktopViewResourceRequest(this.requireServices(), request);
       default: {
         const exhaustive: never = request;
         throw new Error(`Unknown backend request: ${String(exhaustive)}`);
