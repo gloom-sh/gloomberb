@@ -151,7 +151,7 @@ function HiloPane({ focused, width, height }: PaneProps) {
   }, []);
 
   if (feed.denied) {
-    return <ScannerDeniedState reason={feed.deniedReason} placement="hilo-wall" width={width} height={height} />;
+    return <ScannerDeniedState scanner="hilo" reason={feed.deniedReason} placement="hilo-wall" width={width} height={height} />;
   }
 
   const renderTable = (side: Side, rows: ScannerHiloExtreme[]) => (

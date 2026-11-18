@@ -51,6 +51,7 @@ import {
   buildEventRows,
   eventSourceNotice,
   formatEventMetric,
+  isFundListing,
   type EventFinancials,
   type EventRow,
   type EventStatus,
@@ -156,7 +157,10 @@ function sharedMetricCurrency(rows: readonly EventRow[]): string | undefined {
   return currencies.size === 1 ? only : undefined;
 }
 
-export function buildEventColumns(width: number, unit?: string, variant: "corporate-actions" | "earnings-estimates" = "corporate-actions"): EventColumn[] {
+/** The earnings figures a fund's events never have: its rows are distributions and splits. */
+const EARNINGS_COLUMN_IDS: ReadonlySet<EventColumnId> = new Set(["period", "qEps", "qRevenue", "annualEps", "annualRevenue"]);
+
+export function buildEventColumns(width: number, unit?: string, variant: "corporate-actions" | "earnings-estimates" = "corporate-actions", fund = false): EventColumn[] {
   if (variant === "earnings-estimates") {
     return fitChartTableColumns<EventColumn>([
       { id: "date", label: "DATE", width: 11, align: "left" },
@@ -180,6 +184,7 @@ export function buildEventColumns(width: number, unit?: string, variant: "corpor
     { id: "value", label: "VALUE", width: 11, align: "right" },
     { id: "detail", label: "DETAIL", width: 9, align: "left", flexGrow: 1 },
   ];
+  if (fund) return fitChartTableColumns(columns.filter((column) => !EARNINGS_COLUMN_IDS.has(column.id)), width, ["detail"]);
   return fitChartTableColumns(columns, width, ["annualRevenue", "annualEps", "qRevenue", "qEps", "detail"]);
 }
 
@@ -452,17 +457,23 @@ export function CorporateActionsView({
   const fundamentalsCurrency = tickerFinancials?.fundamentals?.financialCurrency;
   const marketCapCurrency = tickerFinancials?.fundamentals?.marketCapCurrency;
   const quoteCurrency = tickerFinancials?.quote?.currency;
+  // The listing's type, as `fn EVT` reads it: a fund's events are its distributions, never a feed's EPS rows.
+  const quoteType = tickerFinancials?.quote?.instrumentType;
+  const metadataType = tickerFinancials?.quoteMetadata?.instrumentType;
   const financialsData = useMemo<EventFinancials | null>(
-    () => (quarterlyStatements || financialCurrency || trailingEps != null ? {
+    () => (quarterlyStatements || financialCurrency || trailingEps != null || quoteType || metadataType ? {
       quarterlyStatements: quarterlyStatements ?? [],
       // Their last end names the fiscal quarters (Q1 FY2027), as GUIDE and ERN name them.
       annualStatements: annualStatements ?? [],
       financialCurrency,
       fundamentals: { eps: trailingEps, epsCurrency: trailingEpsCurrency, financialCurrency: fundamentalsCurrency, marketCapCurrency, trailingEpsSource },
-      quote: quoteCurrency ? { currency: quoteCurrency } : null,
+      quote: quoteCurrency || quoteType ? { currency: quoteCurrency ?? "", instrumentType: quoteType } : null,
+      quoteMetadata: metadataType ? { instrumentType: metadataType } : null,
     } : null),
-    [annualStatements, financialCurrency, fundamentalsCurrency, marketCapCurrency, quarterlyStatements, quoteCurrency, trailingEps, trailingEpsCurrency, trailingEpsSource],
+    [annualStatements, financialCurrency, fundamentalsCurrency, marketCapCurrency, metadataType, quarterlyStatements, quoteCurrency, quoteType,
+      trailingEps, trailingEpsCurrency, trailingEpsSource],
   );
+  const fund = isFundListing(financialsData);
   const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");
     return dataProvider.getCorporateActions(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
@@ -512,7 +523,7 @@ export function CorporateActionsView({
     ((row.qEps != null || row.annualEps != null) && !row.epsCurrency)
     || ((row.qRevenue != null || row.annualRevenue != null) && !row.revenueCurrency));
   const currencyMeta = [unit, hasUnstatedCurrency ? "? currency unstated" : null].filter(Boolean).join(" · ");
-  const columns = useMemo(() => buildEventColumns(width, unit, variant), [width, unit, variant]);
+  const columns = useMemo(() => buildEventColumns(width, unit, variant, fund), [width, unit, variant, fund]);
   const sourceNotice = useMemo(() => (
     actionsLoading || analystLoading
       ? null
@@ -521,10 +532,11 @@ export function CorporateActionsView({
         symbol: symbol ?? "this ticker",
         actions: actionsData,
         actionsError,
-        estimates: analystData,
-        estimatesError: analystError,
+        // A fund has no analyst estimates to miss.
+        estimates: fund ? null : analystData,
+        estimatesError: fund ? null : analystError,
       })
-  ), [actionsData, actionsError, actionsLoading, analystData, analystError, analystLoading, symbol, variant]);
+  ), [actionsData, actionsError, actionsLoading, analystData, analystError, analystLoading, fund, symbol, variant]);
   // Keyed by row id, not by position, so a reload or a shared layout comes
   // back to the same event.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);

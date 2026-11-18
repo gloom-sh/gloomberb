@@ -108,6 +108,17 @@ export function formatRatio(value: number | null | undefined): string {
 export function formatLevel(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? MISSING_VALUE : formatModelSpotPrice(value);
 }
+
+/** The line Add Alert shows under Target Price when GEX fills it in: the level is fixed. */
+const FLIP_ALERT_NOTE = "Fixed price: it does not follow the flip.";
+
+/**
+ * Add Alert filled in for a price alert crossing the gamma flip as GEX shows it (the Flip figure's price, its
+ * grouping left out): a fixed level on the listing's quotes, which stays put when the flip moves, and says so.
+ */
+export function flipAlertValues(symbol: string, flip: number): Record<string, string> {
+  return { kind: "price", symbol, condition: "crosses", price: formatLevel(flip).replaceAll(",", ""), priceNote: FLIP_ALERT_NOTE };
+}
 /**
  * The spot of a positioning answer as the options panes stamp theirs: the
  * regular session's close when the server says so (a cash index outside its

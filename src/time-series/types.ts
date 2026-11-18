@@ -319,7 +319,7 @@ export interface ResolvedSeries {
    * `dataset`: a capability's published observations (vessel transits),
    * whose values the legend dates because they arrive days late. */
   observationKind?: "market" | "dataset";
-  /** Regular-session move supplied with the latest market quote. */
+  /** The move of the series's last bar from the close the latest market quote measures its change from, in percent. */
   latestChangePercent?: number;
   /** The previous session's close, set on a one-day chart's price series and drawn as its reference line. */
   priorClose?: number;

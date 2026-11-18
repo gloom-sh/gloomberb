@@ -13,6 +13,7 @@ import type { PaneLock } from "../../../types/plugin";
 import { refusedLock } from "../shared/cloud-denied";
 import { ALERT_TABS, ALERTS_PLUGIN_ID } from "./constants";
 import { eventWhen, needsSignInNote, ruleState } from "./event-rows";
+import { checkedOnlyWithPro, checksProRules, needsProNote } from "./pro-rules";
 import { readerTimeZone } from "../../../utils/utc-time";
 import { eventAlertTarget, type EventAlertRule } from "./events";
 import {
@@ -149,7 +150,7 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
 }
 
 /** An event alert as the Events table lists it: a scheduled one with its event date and lead time apart. */
-function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLevelCheck>, signedIn: boolean, readerZone: string | null = null): HeadlessPaneRow {
+function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLevelCheck>, signedIn: boolean, pro: boolean, readerZone: string | null = null): HeadlessPaneRow {
   const scheduled = readScheduledRule(rule);
   return {
     id: rule.id,
@@ -160,7 +161,7 @@ function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLe
     eventDate: scheduled && rule.eventDate ? eventWhen(rule, readerZone) : null,
     leadDays: scheduled?.leadDays ?? null,
     ...(scheduled?.trigger === "results" ? { when: "results" } : {}),
-    state: ruleState(rule, now, signedIn),
+    state: ruleState(rule, now, signedIn, pro),
     since: new Date(rule.createdAt).toISOString().slice(0, 10),
     // An IV level's last reading, or why there was none, on its own row.
     ...rule.kind === "iv_level" ? { lastCheck: ivLevelCheckText(rule, checks[rule.id]) } : {},
@@ -168,20 +169,25 @@ function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLe
 }
 
 function eventsResult(
-  rules: readonly EventAlertRule[], error: string | null, checks: Record<string, IvLevelCheck>, signedIn: boolean, readerZone: string | null = null,
+  rules: readonly EventAlertRule[], error: string | null, checks: Record<string, IvLevelCheck>, signedIn: boolean, pro: boolean,
+  readerZone: string | null = null,
 ): HeadlessRowsResult {
   const now = Date.now();
   const checked = rules.some((rule) => rule.kind === "iv_level");
-  const rows = [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, now, checks, signedIn, readerZone));
+  const rows = [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, now, checks, signedIn, pro, readerZone));
   // Signed out, the rules only a signed-in account gets checked say so on their rows, and once what to do.
   const waiting = rows.filter((row) => row.state === "Needs sign-in").length;
+  // Options flow and IV spikes are checked only with Pro, which their rows say without it; the list says it once either way.
+  const proRules = rules.filter(checkedOnlyWithPro);
+  const notes = [...waiting ? [needsSignInNote(waiting)] : [],
+    ...proRules.length ? [needsProNote(proRules, rows.filter((row) => row.state === "Needs Pro").length)] : []];
   return {
     // A Last check column only when an IV level rule has a reading to show.
     columns: checked ? [...EVENT_COLUMNS.slice(0, -2), { key: "lastCheck", header: "Last check" }, ...EVENT_COLUMNS.slice(-2)] : EVENT_COLUMNS,
     rows,
     empty: "No event alerts. Add one with gloom alerts add CRWV earnings --days 3, gloom alerts add CPI --days 1 or gloom alerts add CN PMI.",
     ...(error ? { errors: [error], complete: false } : {}),
-    ...(waiting ? { notes: [needsSignInNote(waiting)] } : {}),
+    ...(notes.length ? { notes } : {}),
   };
 }
 
@@ -276,7 +282,7 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
     const { alerts, alertsError, events } = readAlertStores(ctx.config);
     return tab === "events"
       ? eventsResult(events.rules, events.error, readIvLevelChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, IV_LEVEL_CHECKS_KEY)), !!ctx.apiClient.getSessionToken?.(),
-        readerTimeZone(ctx.config.timezone))
+        checksProRules(!!ctx.apiClient.getSessionToken?.(), ctx.apiClient.getCurrentUser?.()), readerTimeZone(ctx.config.timezone))
       // A move rule with this device's last reading of it, and whether it went off this session.
       : pricesResult(withMoveChecks(alerts, readMoveChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, MOVE_CHECKS_KEY))), alertsError, events.rules.length);
   },

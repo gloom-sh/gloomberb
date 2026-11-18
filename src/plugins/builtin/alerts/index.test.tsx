@@ -462,6 +462,44 @@ describe("alertsPlugin command", () => {
     }
   });
 
+  test("SA adds a move from the previous close in the app, with its first reading kept on the device", async () => {
+    const store = new Map<string, unknown>();
+    const resume = new Map<string, unknown>();
+    const commands: any[] = [];
+    const notifications: any[] = [];
+    const ctx = {
+      registerCommand(command: any) { commands.push(command); },
+      registerPane() {},
+      registerPaneTemplate() {},
+      configState: { get: (key: string) => store.get(key), set: (key: string, value: unknown) => { store.set(key, value); } },
+      resume: { getState: (key: string) => resume.get(key), setState: (key: string, value: unknown) => { resume.set(key, value); } },
+      marketData: {
+        // Down 1.2% from Monday's close, in Tuesday's session.
+        getQuote: async (symbol: string) => ({ symbol, price: 650, currency: "USD", change: -7.9, changePercent: -1.2, previousClose: 657.9,
+          changeSessionDate: "2026-11-17", listingExchangeName: "NASDAQ", lastUpdated: Date.now(), dataSource: "live" }),
+        search: async () => [],
+      },
+      tickerRepository: { loadTicker: async () => null, loadAllTickers: async () => [] },
+      notify(notification: any) { notifications.push(notification); },
+      log: { info() {}, warn() {}, error() {} },
+    };
+    try {
+      await alertsPlugin.setup?.(ctx as any);
+      const command = commands.find((entry) => entry.id === "set-alert");
+      await command.execute(command.shortcutArg.parse("Qqq moves 5%"));
+      // Kept in the move list, never the price list a level is kept in.
+      expect(store.get("alerts")).toBeUndefined();
+      const [move] = deserializeAlerts(String(store.get("moveAlerts")));
+      expect(move).toMatchObject({ symbol: "QQQ", condition: "crosses", targetPrice: 5, move: true, status: "active" });
+      expect(notifications[0]?.body).toStartWith("Alert set: QQQ:NASDAQ moves 5.00% from the previous close (once a session, armed again for the next one), now -1.20%");
+      expect(notifications[0]?.body).toContain("The app alerts while it is running");
+      // The same move again is the one already there.
+      await expect(command.execute({ shortcut: "QQQ moves 5%" })).rejects.toThrow(`QQQ:NASDAQ moves 5.00% from the previous close already exists (alert ${move!.id}). Nothing was added.`);
+    } finally {
+      alertsPlugin.dispose?.();
+    }
+  });
+
   test("reads an unquoted pair as a ratio only when the service says it is no ticker, and never a listing written with a slash", async () => {
     const commands: any[] = [];
     const quoted: string[] = [];

@@ -224,8 +224,11 @@ export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "fi
   quoteMetadata?: Pick<NonNullable<TickerFinancials["quoteMetadata"]>, "instrumentType"> | null;
 };
 
-/** A fund (an ETF, a closed-end fund) reports no earnings: a feed's EPS rows for one are another company's or noise. */
-function isFundListing(financials: EventFinancials | null): boolean {
+/**
+ * A fund (an ETF, a closed-end fund) reports no earnings: a feed's EPS rows, estimates and statements for one
+ * are another company's or noise, so its events are its distributions and splits alone.
+ */
+export function isFundListing(financials: EventFinancials | null): boolean {
   return [financials?.quote?.instrumentType, financials?.quoteMetadata?.instrumentType].some((type) => classifyInstrumentType(type) === "fund");
 }
 
@@ -371,8 +374,9 @@ export function buildEventRows(
   currency: string,
 ): EventRow[] {
   const rows: EventRow[] = [];
-  const quarterlyStatements = sortedQuarterlyStatements(financials);
-  const earnings = isFundListing(financials) ? [] : data?.earnings ?? [];
+  const fund = isFundListing(financials);
+  const quarterlyStatements = fund ? [] : sortedQuarterlyStatements(financials);
+  const earnings = fund ? [] : data?.earnings ?? [];
   const ttm = ttmRow(quarterlyStatements, earnings, financials);
   if (ttm) rows.push(ttm);
 
@@ -434,7 +438,7 @@ export function buildEventRows(
   }
 
   const reportedPeriodEnds = reportedPeriodTimes(earnings, quarterlyStatements);
-  for (const pair of buildEstimatePairs(estimates)) {
+  for (const pair of fund ? [] : buildEstimatePairs(estimates)) {
     const isFiscal = isFiscalEstimatePeriod(pair.period);
     if (!isFiscal && isReportedQuarter(pair.date, reportedPeriodEnds)) continue;
     const growth = estimatePairGrowth(pair);
