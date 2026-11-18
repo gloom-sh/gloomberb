@@ -183,6 +183,6 @@ export class RemotePersistence {
   close(): void {
     void this.sessions.flush();
     void this.pluginState.flush();
-    void this.resourceSink.flush();
+    void this.resourceSink.flush().catch(logFailure("desktop-view-persistence", "Could not flush cached resources"));
   }
 }

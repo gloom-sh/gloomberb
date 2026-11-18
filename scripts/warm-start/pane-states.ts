@@ -20,7 +20,7 @@ export interface PaneTimeline {
   states: Array<{ at: number; frame: number; state: PaneShownState }>;
 }
 
-export const LOADING_TEXT = /^\s*(?:Loading|Fetching)\b/;
+const LOADING_TEXT = /^\s*(?:Loading|Fetching)\b/;
 
 /** The page probe: reads every frame and posts each change to `endpoint` as `{ at, frame, panes: {id: state} }`. */
 export function domProbeSource(endpoint: string): string {

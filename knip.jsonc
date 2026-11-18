@@ -7,6 +7,11 @@
     "bin/gloom",
     "electrobun.config.ts",
     "scripts/install-electrobun-tui-shim.ts",
+    "scripts/benchmark-warm-start.ts",
+    "scripts/warm-start/desktop-backend.ts",
+    "scripts/warm-start/desktop-electroview.ts",
+    "scripts/warm-start/plan.ts",
+    "scripts/warm-start/tui-preload.ts",
     // Preloaded by path in scripts/benchmark-tui-memory.ts.
     "scripts/heap-probe.ts",
     // Built by path in scripts/pane-chrome/page.ts.
