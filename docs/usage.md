@@ -350,7 +350,7 @@ The Overview's price chart draws on a log scale when the history's highest close
 
 #### Extended hours on the headline
 
-The Overview headline is the regular session, with one extra line for the extended-hours price. After the close the headline stays at the official close and the After-Hours line under it gives the latest extended-hours price and its move from that close. In pre-market the headline is the last session's close, and only the Pre-Market line changes.
+The Overview headline is the regular session, with one extra line for the extended-hours price. After the close the headline stays at the official close and the After-Hours line under it gives the latest extended-hours price and its move from that close. In pre-market the headline is the last session's close, and only the Pre-Market line changes. Each price says when it is from: the close its day (`Tue 17 Nov close · vs Mon 16 Nov close`) and the extended print its time (`After-Hours 00:10 UTC`). In `quote` the extended cell carries its time and Updated names the close Last is; `ticker` puts the close's day after Last and the print's time after the extended price.
 
 `gloom ticker` and the `QQ` cards (`AH` or `PM` where narrow) report it the same way, and `quote`, `compare` and `fn QQ` add an After Hours or Pre-Market column when a row has one. In `--json`, `price`, `change` and `changePercent` are the headline, and `extendedSession` (`PRE` or `POST`), `extendedPrice`, `extendedChange` and `extendedChangePercent` are the extended print, null without one.
 
@@ -783,6 +783,8 @@ An open theme in `THEM` and the Members tab of `MEMB` add two entries to the pan
 News rows credit the article's publisher and open its original URL. The managed news feed includes only articles whose publisher and original link can be verified, and custom RSS and Atom feeds use each item's source when supplied. If a feed fails, News keeps any available stories and shows the failure in its footer.
 
 A story opened from `SRCH` or a news pane is set for reading: headline, source and time, the tickers it names as chips (click one, or `t`), then the text. A long `SRCH` story shows a **Key facts** list and about a screen of text, with the rest behind **Read more**.
+
+A story's **Coverage** lists the outlets that tell the story first, by how much of its own wording each shares, then any wider post it took in. A story about insiders buying or selling lists the Form 4s it reports under **Filings**, matched by Gloom Cloud: each insider it names at one of its companies, their total, and each filing's accession (linked to EDGAR), filed date, trade dates, shares, weighted average price and whether a Rule 10b5-1 plan covers it. `f`, or a click on the insider, opens INS on that company filtered to them. The other way, an INS transaction lists the stories that report its filing (`s` opens one), an SEC Form 4 names them as facts, and `fn INS` and `fn SEC` print them under the filing's rows with the id `fn story` opens.
 
 Space and Shift+Space page, `]` and `[` jump between sections, `n` and `p` open the next and previous result, and **Show Original Text** in the pane menu (`.`) shows the text as indexed.
 
