@@ -116,6 +116,7 @@ describe("a press after the assistant set fields", () => {
     const executor = createASKGToolExecutor({
       manifests: tools,
       registry: catalog,
+      context: {} as MarketContext,
       remoteHandler: async (request) => (request.type === "get" ? { ok: true, data: nodes } : { ok: false, error: { code: "remote_error", message: "read only" } }),
     });
     const call = (turnId: string, args: Record<string, string>) => executor.gate({
