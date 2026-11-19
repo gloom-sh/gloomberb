@@ -62,7 +62,7 @@ const AMOUNT_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["epsEstimate", "ep
 const CURRENCY_WIDTH = 4;
 
 /** A listing abroad's figure with its currency; a US listing's dollars stay bare. */
-const inCurrency = (text: string, row: HistoryRow) => (row.currency && text !== MISSING_VALUE ? `${text} ${row.currency}` : text);
+const inCurrency = (text: string, row: HistoryRow, currency = row.currency) => (currency && text !== MISSING_VALUE ? `${text} ${currency}` : text);
 
 /**
  * The columns that fit `width`. A listing abroad's (`abroad`, Hong Kong's)
@@ -72,6 +72,8 @@ const inCurrency = (text: string, row: HistoryRow) => (row.currency && text !== 
 export function historyColumns(width: number, rows: readonly HistoryRow[], options: { abroad?: boolean } = {}): HistoryColumn[] {
   const abroad = options.abroad === true;
   const labelled = abroad || rows.some((row) => row.currency != null);
+  // A US listing that reports its revenue in another currency labels that column alone.
+  const revenueLabelled = !labelled && rows.some((row) => row.revenueCurrency != null);
   const periods = abroad || rows.some((row) => row.periodKind !== "quarter");
   let columns = ALL_COLUMNS.filter((column) => {
     if (OPTIONAL_COLUMNS.has(column.id) && rows.length > 0)
@@ -80,6 +82,7 @@ export function historyColumns(width: number, rows: readonly HistoryRow[], optio
     return !value || rows.some((row) => value(row) != null);
   }).map((column): HistoryColumn => {
     if (labelled && AMOUNT_COLUMNS.has(column.id)) return { ...column, width: column.width + CURRENCY_WIDTH };
+    if (revenueLabelled && column.id === "revenueActual") return { ...column, width: column.width + CURRENCY_WIDTH };
     // A half or a year is no quarter: the column names what it holds.
     if (periods && column.id === "period") {
       return { ...column, label: "PERIOD", width: Math.max(column.width, "PERIOD".length, ...rows.map((row) => periodText(row).length)) };
@@ -138,7 +141,7 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
     case "revenueEstimate":
       return { text: inCurrency(moneyText(row.revenueEstimate), row), color: dim };
     case "revenueActual":
-      return { text: inCurrency(moneyText(row.revenueActual), row), color: row.revenueProvisional ? colors.textMuted : colors.text };
+      return { text: inCurrency(moneyText(row.revenueActual), row, row.revenueCurrency ?? row.currency), color: row.revenueProvisional ? colors.textMuted : colors.text };
     case "revenueSurprise":
       return signed(row.revenueSurprise);
     case "implied":
