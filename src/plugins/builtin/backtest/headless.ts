@@ -1,6 +1,7 @@
 import type { HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
+import { logFailure } from "../../../utils/log-failure";
 import { loadHeadlessContractPriceUnit, resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createBacktestDependencies, loadBacktestHistory } from "./client";
 import { BACKTEST_PRESETS, CUSTOM_PRESET_ID, DEFAULT_PRESET, lookbackYears, presetRulesConflict, resolveRules } from "./presets";
@@ -10,14 +11,10 @@ import { runHistoryBacktest } from "./window";
 
 /** The listing's price unit, as `history` reads it from its contract terms or quote. */
 async function priceUnit(ctx: HeadlessPaneContext, instrument: InstrumentRef): Promise<string | null> {
-  let quote;
-  try {
-    quote = ctx.marketData.getQuoteMetadata
-      ? await ctx.marketData.getQuoteMetadata(instrument.symbol, instrument.exchange)
-      : await ctx.marketData.getQuote(instrument.symbol, instrument.exchange);
-  } catch {
-    quote = null;
-  }
+  const quote = await (ctx.marketData.getQuoteMetadata
+    ? ctx.marketData.getQuoteMetadata(instrument.symbol, instrument.exchange)
+    : ctx.marketData.getQuote(instrument.symbol, instrument.exchange))
+    .catch(logFailure("backtest.headless", "Read listing facts for a price unit failed", null));
   const unit = await loadHeadlessContractPriceUnit(ctx, instrument.symbol, quote?.instrumentType);
   return backtestPriceUnit(instrument.symbol, quote, unit);
 }
