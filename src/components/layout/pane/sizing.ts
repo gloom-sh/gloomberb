@@ -1,14 +1,15 @@
 import { WEB_CELL_HEIGHT, chromeRowPx } from "../../../theme/font-scale";
 
 const PANE_HEADER_ROWS = 1;
+const nativeChromeRows = (pixels = chromeRowPx()) => pixels / WEB_CELL_HEIGHT;
 /** Desktop pane header height in cells: one chrome row (see chromeRowPx). */
 export function nativePaneHeaderRows(): number {
-  return chromeRowPx() / WEB_CELL_HEIGHT;
+  return nativeChromeRows();
 }
 const PANE_FOOTER_ROWS = 1;
 /** Desktop pane footer height in cells: the same chrome row as the header. */
 export function nativePaneFooterRows(): number {
-  return chromeRowPx() / WEB_CELL_HEIGHT;
+  return nativeChromeRows();
 }
 
 /**
@@ -87,7 +88,7 @@ export function resolvePaneBodyFrame({
   chromeSupplementPx?: number;
 }) {
   const bodyHeight = typeof height === "number"
-    ? resolvePaneBodyHeight({ height: height - (nativePaneChrome ? chromeSupplementPx / WEB_CELL_HEIGHT : 0),
+    ? resolvePaneBodyHeight({ height: height - (nativePaneChrome ? nativeChromeRows(chromeSupplementPx) : 0),
       nativePaneChrome, footerVisible, reserveFooter, headerRows })
     : undefined;
   return {

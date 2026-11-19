@@ -4,8 +4,8 @@
     "why": "The title bar's inset for the window controls comes from the shell's header geometry, which the terminal shares, in cells."
   },
   "src/components/layout/pane/sizing.ts": {
-    "uses": 3,
-    "why": "Panes receive their size in cells (PaneProps); this gives the desktop's taller chrome row in those cells."
+    "uses": 2,
+    "why": "Panes receive their size in cells (PaneProps); this converts measured desktop chrome heights at that boundary."
   },
   "src/components/layout/shell/drag/slide.ts": {
     "uses": 4,
