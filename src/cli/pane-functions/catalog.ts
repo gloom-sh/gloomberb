@@ -834,16 +834,27 @@ export async function functionsForQuestion(registry: PaneFunctionCatalog, questi
   const topic = questionTopic(question);
   if (!topic) return [];
   const entries = await buildPaneCatalogEntries(registry, null);
+  const stats = entries.find(({ token }) => token === "ECST");
+  const nowcast = stats && /\b(?:gdp\s*now|nowcasts?|nowcasting)\b/i.test(question)
+    ? [{ code: stats.token, label: "Atlanta Fed GDPNow", command: "gloom fn ECST gdpnow", input: "ECST gdpnow" }]
+    : [];
   const rates = ratesQuestionFunctions(question).flatMap(({ code, argument, input }): FunctionForQuestion[] => {
     const entry = entries.find((candidate) => candidate.token === code);
     return entry ? [{ code, label: entry.label, command: `gloom fn ${code}${argument ? ` ${argument}` : ""}`, ...(input ? { input: `${code} ${input}` } : {}) }] : [];
   });
+  const calendar = rates.find(({ code }) => code === "ECO");
+  if (calendar && nowcast.length && /\bpmis?\b/i.test(question)) {
+    return [{ ...calendar, command: `${calendar.command} --impact all --search PMI` }, ...nowcast].slice(0, limit);
+  }
   const { shown } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, topic), topic, limit);
-  const found = shown.filter((entry) => !rates.some((named) => named.code === entry.token)).map((entry) => {
+  const preferred = rates[0]?.code === "ECO"
+    ? [rates[0], ...nowcast, ...rates.slice(1)]
+    : [...nowcast, ...rates];
+  const found = shown.filter((entry) => !preferred.some((named) => named.code === entry.token)).map((entry) => {
     const argument = argumentHint(entry);
     return { code: entry.token, label: entry.label, command: `gloom fn ${entry.token}${argument ? ` ${argument}` : ""}` };
   });
-  return [...rates, ...found].slice(0, limit);
+  return [...preferred, ...found].slice(0, limit);
 }
 
 const CATALOG_TEXT_WIDTH = 100;

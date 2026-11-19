@@ -955,8 +955,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   // Macro and rates
   ECO: {
     summary: "Upcoming releases and central bank events with impact, country, actual, forecast and prior.",
-    usage: ["ECO"],
-    keys: [key("f", " impact"), key("c", " region"), OPEN],
+    usage: ["ECO", "gloom fn ECO --country CN --from 2026-10-30 --search PMI --csv (same export as gloom econ)"],
+    keys: [SEARCH, key("f", " impact"), key("c", " region"), OPEN],
     data: ON_RELEASE,
     bloomberg: ["ECO", "WECO"],
   },

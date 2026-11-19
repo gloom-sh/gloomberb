@@ -901,8 +901,8 @@ export class CloudDataApi {
   }
 
   /** The calendar from a UTC day, past events included, and the first day the stored calendar holds. */
-  async getCloudEconomicCalendarFrom(from: string): Promise<CloudEconCalendarFromPayload> {
-    return this.request<CloudEconCalendarFromPayload>(`/cloud/econ/calendar/history?from=${encodeURIComponent(from)}`);
+  async getCloudEconomicCalendarFrom(from: string, options?: { signal?: AbortSignal }): Promise<CloudEconCalendarFromPayload> {
+    return this.request<CloudEconCalendarFromPayload>(`/cloud/econ/calendar/history?from=${encodeURIComponent(from)}`, options);
   }
 
   /** Each currency's short rate and its day, for forwards implied by covered interest parity. */

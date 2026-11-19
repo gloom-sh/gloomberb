@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { heatmapBoardCaption, heatmapMove, heatmapNameCount, regularSessionHeatmapAssets, summarizeHeatmapGroups } from "./model";
+import { heatmapBoardCaption, heatmapExtendedPrintTime, heatmapMove, heatmapNameCount, regularSessionHeatmapAssets, summarizeHeatmapGroups } from "./model";
 
 function asset(symbol: string, size: number, changePercent: number | null, sector: string | null, industry: string | null = null) {
   return { symbol, size, changePercent: changePercent ?? 0, hasChange: changePercent != null, sector, industry };
@@ -106,6 +106,15 @@ test("a board of a completed session is as of its close when the server gives it
     expect(heatmapBoardCaption(board, { now: saturday })).toBe("top 500 · 9 Oct session · snapshot 10 Oct 05:58 ET");
   }
   expect(heatmapBoardCaption({ ...closed, regularSessionDate: null }, { now: saturday })).toBe("top 500 · snapshot 05:58 ET");
+});
+
+test("the selected pre-market print has its own New York date beside the board's prior close", () => {
+  const print = { ...asset("OKTA", 1, 4.29, "Tech"), extendedSession: "PRE", lastUpdated: Date.parse("2026-11-19T10:51:00Z") };
+  const board = { topCount: 500, regularSessionDate: "2026-11-18", fetchedAt: print.lastUpdated, regularSessionClosedAt: Date.parse("2026-11-18T21:00:00Z") };
+  expect(heatmapExtendedPrintTime(print)).toBe("19 Nov 05:51 ET");
+  expect(heatmapBoardCaption(board, { now: print.lastUpdated })).toBe("top 500 · 18 Nov session · as of 16:00 ET");
+  expect(heatmapExtendedPrintTime({ ...print, extendedSession: null })).toBeNull();
+  expect(heatmapExtendedPrintTime({ ...print, lastUpdated: null })).toBe("print time unavailable");
 });
 
 test("a board is as of when its prices printed, which the snapshot time is always later than", () => {

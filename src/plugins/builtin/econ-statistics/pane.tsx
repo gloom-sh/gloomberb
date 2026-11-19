@@ -14,7 +14,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { SeriesListDetail, useSeriesList } from "../shared/series-list-detail";
-import { getCachedStatsBundle, loadStatsBundle, unansweredErrors } from "./client";
+import { getCachedStatsBundle, getGdpNowPrevious, loadStatsBundle, unansweredErrors } from "./client";
 import { categoryLabel, changeColor, type StatCategoryId } from "./defs";
 import { StatDetail } from "./detail";
 import { DEFAULT_STAT_ID } from "./stats";
@@ -136,10 +136,16 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
   const { data: bundle, load: refresh, reload, updatedAt: lastUpdated } = resource;
   useAutoRefresh(lastUpdated, refresh);
 
-  const views = useMemo(
-    () => (bundle ? selectStatViews(bundle.builds, range) : []),
-    [bundle, range],
-  );
+  const nowcast = statId === "gdpnow" ? bundle?.builds.find(({ stat }) => stat.id === statId) : undefined;
+  const loadPrevious = useMemo(() => nowcast ? () => getGdpNowPrevious(nowcast) : null, [nowcast]);
+  const { data: previousUpdate } = useAsyncResource(loadPrevious);
+  const views = useMemo(() => {
+    if (!bundle) return [];
+    const builds = nowcast && previousUpdate
+      ? bundle.builds.map((build) => build === nowcast ? { ...build, previousUpdate } : build)
+      : bundle.builds;
+    return selectStatViews(builds, range);
+  }, [bundle, nowcast, previousUpdate, range]);
   const list = useSeriesList({
     focused,
     items: views,

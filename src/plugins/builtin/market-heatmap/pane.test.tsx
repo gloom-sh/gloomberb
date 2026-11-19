@@ -389,12 +389,12 @@ test("Colour by moves a streaming tile between its after-hours move and the regu
   // Sized by market cap, so the tile this is about stays the first, and selected.
   const pane = await mountHeatmap({ sizeBy: "market-cap" });
   expect(selected(pane.footer())).toBe("+0.29%");
-  expect(pane.footer()).toContain('"text":"AH","tone":"muted"');
+  expect(pane.footer()).toContain('"text":"AH · 9 Oct 18:58 ET","tone":"muted"');
   expect(tui.frame()).toContain("+0.3%");
 
   await pane.setSetting("sessionBasis", "regular-session");
   expect(selected(pane.footer())).toBe("-0.52%");
-  expect(pane.footer()).not.toContain('"text":"AH"');
+  expect(pane.footer()).not.toMatch(/"text":"AH(?:"| ·)/);
   expect(tui.frame()).toContain("-0.5%");
   expect(tui.frame()).not.toContain("+0.3%");
 
