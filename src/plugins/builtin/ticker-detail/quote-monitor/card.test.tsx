@@ -53,6 +53,27 @@ describe("QuoteMonitorCard without a quote", () => {
   });
 });
 
+test("a first-session card shows the live price and why it has no move", async () => {
+  const now = Date.parse("2026-11-19T19:00:00Z");
+  const clock = spyOn(Date, "now").mockReturnValue(now);
+  const quote: Quote = {
+    symbol: "NEW", currency: "USD", listingExchangeName: "NASDAQ", marketState: "REGULAR",
+    price: 95, lastUpdated: now, dataSource: "live", changeBasis: "none",
+    change: Number.NaN, changePercent: Number.NaN,
+  };
+  try {
+    const entry = { ...createIdleEntry<Quote>(), phase: "ready" as const, data: quote };
+    for (const width of [28, 40]) {
+      const card = await renderCard(entry, width, 4);
+      expect(card).toContain("$95.00");
+      expect(card).toContain("No previous close");
+      expect(card).not.toContain("Stale quote");
+    }
+  } finally {
+    clock.mockRestore();
+  }
+});
+
 test("a dense NAV card keeps the published date beside its monetary price and day change", async () => {
   const clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-07T15:00:00Z"));
   const quote: Quote = {
