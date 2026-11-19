@@ -306,6 +306,8 @@ export interface HeadlessPaneFreshness {
    * Who a reader would cite: the venue, exchange or agency for primary data
    * ("SEC EDGAR", "Hyperliquid"), "Gloom Cloud" for aggregated market data,
    * "Local data" or "Your inputs". Never a data vendor or an internal provider id.
+   * Blank says the data has no name to give: the source is then left out, not
+   * cited to Gloom Cloud as an undeclared one is.
    */
   source?: string;
   /**

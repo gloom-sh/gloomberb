@@ -33,6 +33,7 @@ type ReportFreshnessStatus = HeadlessFreshnessStatus | "unreported";
 
 /** What every `fn` report cites about its data, in its JSON and its last text line. */
 export interface ReportFreshness {
+  /** Who the data is cited to; blank when it has no name to give (a quote from a provider with no name), never a default. */
   source: string;
   /**
    * Newest observation: an ISO instant in UTC, or an ISO date. For a figure
@@ -619,7 +620,9 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const oldestPeriodicity = declared.oldestPeriodicity !== undefined ? declared.oldestPeriodicity
     : oldestRelease ? oldestRelease.periodicity ?? null : unitRelease?.periodicity ? null : undefined;
   return {
-    source: declared.source?.trim() || (sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE),
+    // A declared blank source says the data has no name to give, which is left out rather than called Gloom Cloud.
+    source: declared.source !== undefined ? declared.source.trim()
+      : sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE,
     asOf: released ? isoTime(released) : asOf ? isoTime(asOf) : null,
     ...(released && asOf ? { referencePeriod: isoTime(asOf) } : {}),
     ...(asOf && oldestTime && asOf.time - oldestTime.time > OLDEST_GAP_MS ? {
@@ -1234,7 +1237,7 @@ function lagText(days: number): string {
  */
 function datasetLineParts(freshness: ReportFreshness & { asOf: string }, detail: DatasetLineDetail = {}): string[] {
   const { asOf, lagDays, observationAgeMinutes } = freshness;
-  const source = detail.source === "none" ? [] : [detail.source === "bare" ? freshness.source : `Source: ${freshness.source}`];
+  const source = detail.source === "none" || !freshness.source ? [] : [detail.source === "bare" ? freshness.source : `Source: ${freshness.source}`];
   const lag = observationAgeMinutes != null ? `${ageText(observationAgeMinutes)} old`
     : freshness.observation ? lagText(lagDays!) : `lag ${lagDays}d`;
   const timestamp = observationAgeMinutes != null ? ` ${asOf.slice(11, 16)} UTC` : "";
@@ -1393,7 +1396,7 @@ export function statusLineVariants(freshness: ReportFreshness, { source = false 
     lines.push(narrowestAsOf(freshness, freshness.asOf));
   }
   // A line that dates each source names them already.
-  if (!source || freshness.sources?.length) return lines;
+  if (!source || freshness.sources?.length || !freshness.source) return lines;
   const sourced = [...new Set(variants.map((detail) => [`Source: ${freshness.source}`, ...statusLineParts(freshness, detail)].join(" · ")))];
   const floor = sourced.at(-1)!.length;
   return [...sourced, ...lines.filter((line) => line.length < floor)];
@@ -1483,5 +1486,7 @@ export function formatFreshnessLine(freshness: ReportFreshness): string {
   // A dataset that names its observation ends `fn` as its pane and capture do.
   if (freshness.observation && datesObservation(freshness)) return statusLineVariants(freshness)[0]!;
   const parts = statusLineParts(freshness);
+  // Without a source to name, the line starts with its status, as a pane footer's does.
+  if (!freshness.source && !freshness.sources?.length) return capitalize(parts.join(" · "));
   return (freshness.sources?.length ? parts : [`Source: ${freshness.source}`, ...parts]).join(" · ");
 }

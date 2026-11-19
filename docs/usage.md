@@ -1957,6 +1957,8 @@ The plain commands that print market data end the same way: `quote`, `compare`, 
 
 A top-level `source` object has `name`, `publisher`, `observationDate`, `publicationTime`, `retrievalTime`.
 
+Quotes name where each comes from: Gloom Cloud, a connected broker by its name, a plugin's data provider by the name it gives itself, joined with `and` (`Source: Gloom Cloud and Acme Feed · ...`). A quote whose source has no name to give leaves the source out of the line, and `name` is `null` in `--json`, rather than being credited to Gloom Cloud.
+
 **In `--csv`,** the source line, `Publisher:`, `Observation date:` (and `Oldest observation:` when relevant), `Publication time:` and `Retrieval time:` (UTC) are retained in every row's `export_notes` and repeated on stderr.
 
 `--ndjson` stays rows only, each ending with the [fixed fields](#what-every-exported-row-says). A field the data does not state reads `not published` in CSV and `null` in JSON, never a guess.

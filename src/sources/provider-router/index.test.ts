@@ -24,6 +24,18 @@ afterEach(() => {
 });
 
 describe("AssetDataRouter", () => {
+  test("a quote's provider id is named by the broker or the registered data provider that goes by it", () => {
+    const acme = createTestDataProvider({ id: "acme-feed", name: "Acme Feed" });
+    const router = new AssetDataRouter(null, [acme]);
+    attachTestRegistry(router, { brokers: [["ibkr", { name: "Interactive Brokers" } as BrokerAdapter]] });
+    expect(router.sourceNameOf("ibkr")).toBe("Interactive Brokers");
+    expect(router.sourceNameOf("acme-feed")).toBe("Acme Feed");
+    // An id nothing here answers to is unnamed, not echoed back.
+    expect(router.sourceNameOf("unregistered-feed")).toBeNull();
+    // Before a registry is attached, a provider the host passed still names itself.
+    expect(new AssetDataRouter(null, [acme]).sourceNameOf("acme-feed")).toBe("Acme Feed");
+  });
+
   test("a source the host passes and a plugin also registers is asked once", async () => {
     let reads = 0;
     const cloud = () => createTestDataProvider({

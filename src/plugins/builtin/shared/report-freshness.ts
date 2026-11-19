@@ -1,5 +1,5 @@
 import { logFailure } from "../../../utils/log-failure";
-import type { HeadlessPaneFreshness } from "../../../types/headless";
+import type { HeadlessPaneContext, HeadlessPaneFreshness } from "../../../types/headless";
 import type { Quote, QuoteIndexSession } from "../../../types/financials";
 import { isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { quoteFeedDelayMinutes, readIndexSession } from "../../../market-data/market/freshness";
@@ -9,12 +9,30 @@ import { barSizeFromGap, medianBarGap } from "../../../time-series/bar-spacing";
 import { apiClient } from "../../../api-client";
 import { hasProAccess } from "../../../api-client/plan-rules";
 import { savedCopyMark } from "../../../data/saved-copies";
+import { CLOUD_SOURCE, quotesSourceName, type BrokerNameOf } from "../../../market-data/quotes/export-identity";
 
 /**
  * Freshness declarations shared by built-in reports. Each `fn` report ends
  * with the source, as-of and status line these feed; see
  * docs/usage.md#how-current-a-report-is.
  */
+
+/** A broker's quote names the broker as its source, by the adapters a report reads its account through. */
+export function brokerNameOf(ctx: Pick<HeadlessPaneContext, "resolveBroker">): BrokerNameOf {
+  return (providerId) => ctx.resolveBroker?.(providerId)?.name;
+}
+
+/**
+ * The source of a book (a portfolio or watchlist) valued at its quotes: where its holdings are from, then where
+ * the prices are (`Local portfolio and Gloom Cloud`, `Local watchlist and Interactive Brokers`), the prices'
+ * source left out when one of them has no name to give. A book with no quote read is Gloom Cloud's, as a report
+ * with nothing to name says.
+ */
+export function bookSource(holdings: string, quotes: Iterable<Quote | null | undefined>, brokerName?: BrokerNameOf): string {
+  const shown = [...quotes].filter((quote): quote is Quote => quote != null);
+  const prices = shown.length > 0 ? quotesSourceName(shown, brokerName) : CLOUD_SOURCE;
+  return prices ? `${holdings} and ${prices}` : holdings;
+}
 
 /** Analyses over end-of-day history: not a feed, but stale once the closes stop arriving. */
 export const DAILY_CLOSES: HeadlessPaneFreshness = { status: "not-a-feed", basis: "daily closes", cadence: "daily" };

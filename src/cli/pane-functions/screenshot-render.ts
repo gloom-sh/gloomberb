@@ -27,6 +27,7 @@ import {
   type ReportFreshness,
 } from "./freshness";
 import { quotesFreshness } from "../freshness";
+import type { BrokerNameOf } from "../../market-data/quotes/export-identity";
 import { paneFitsRows, shotMaxHeightCells, buildDesktopShotPayload } from "./screenshot-payload";
 import { resolveDesktopShotApiProxy, createDesktopShotBridge } from "./screenshot-bridge";
 import type { PaneScreenshotResult } from "./screenshot-types";
@@ -86,6 +87,7 @@ export function shotFreshness(
   bridgedQuotes: readonly Quote[],
   report: CaptureReport | undefined,
   now = Date.now(),
+  sourceName?: BrokerNameOf,
 ): CaptureStatusLine {
   const published = renderedReportFreshness(render.semanticUi ?? []);
   const declared = { ...declaredReportFreshness(resolved), ...published };
@@ -98,7 +100,7 @@ export function shotFreshness(
   const observed = renderedReportObservations(render.semanticUi ?? []);
   const quoted = declared.status || observed.length > 0
     ? undefined
-    : quotesFreshness(quotes, declared.source ? { source: declared.source } : undefined, now);
+    : quotesFreshness(quotes, declared.source ? { source: declared.source } : undefined, now, sourceName);
   return captureStatusLine({
     report,
     selfDated: Object.keys(published).length > 0 || observed.length > 0,
@@ -329,7 +331,8 @@ export async function renderDesktopShot({
         }
         const tab = report && shownReportTab(resolved, rendered.semanticUi);
         const shown = tab ? reportShotFreshness(resolved, () => loadReport({ ...resolved, options: { ...resolved.options, tab } })) : report;
-        const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, shown && await settledWithin(shown, SHOT_REPORT_WAIT_MS));
+        const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, shown && await settledWithin(shown, SHOT_REPORT_WAIT_MS),
+          Date.now(), context.dataProvider.sourceNameOf);
         abandonReports();
         freshness = line.freshness;
         // A row whose read failed is marked on the picture, where its figures are missing.

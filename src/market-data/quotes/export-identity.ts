@@ -9,7 +9,7 @@ import { isQuoteStaleForCurrentSession } from "./freshness";
 
 /** The quotes Gloom Cloud serves, which an export cites by that name. */
 const CLOUD_PROVIDER_ID = "gloomberb-cloud";
-const CLOUD_SOURCE = "Gloom Cloud";
+export const CLOUD_SOURCE = "Gloom Cloud";
 
 /**
  * The columns a pane's quote export ends each row with, as `quote --csv` does:
@@ -36,13 +36,16 @@ export function quoteExportUnit(symbol: string, quote: Pick<Quote, "currency" | 
   return currency;
 }
 
-/** A broker's name by the id its quotes carry (`ibkr`: Interactive Brokers); null for no broker of that id. */
+/**
+ * The name of a source by the id its quotes carry as `providerId`: a broker (`ibkr`: Interactive Brokers) or a
+ * plugin's data provider, by the name it gives itself. Null for an id nothing registered answers to.
+ */
 export type BrokerNameOf = (providerId: string) => string | null | undefined;
 
 /**
  * Where a quote is from, as an export's `source` names it: Gloom Cloud, or
- * the broker whose feed it is, by its name. Blank for a source with no name
- * to give, never its internal id.
+ * the broker or plugin data provider whose feed it is, by its name. Blank for
+ * a source with no name to give, never its internal id.
  */
 export function quoteSourceName(quote: Pick<Quote, "providerId" | "priceVenue"> | null | undefined, brokerName?: BrokerNameOf): string {
   if (!quote) return "";
@@ -50,6 +53,19 @@ export function quoteSourceName(quote: Pick<Quote, "providerId" | "priceVenue"> 
   if (quote.priceVenue && (!quote.providerId || quote.providerId === CLOUD_PROVIDER_ID)) return quote.priceVenue;
   if (!quote.providerId || quote.providerId === CLOUD_PROVIDER_ID) return CLOUD_SOURCE;
   return brokerName?.(quote.providerId)?.trim() || "";
+}
+
+/**
+ * Where a set of quotes is from, as a source line names it: each source once, by name, joined with `and`
+ * (`Coinbase and Kraken`, `Gloom Cloud and Interactive Brokers`). Blank when any of them has no name to give: the
+ * line then leaves its source out rather than name only some of them, or call them all Gloom Cloud.
+ */
+export function quotesSourceName(
+  quotes: Iterable<Pick<Quote, "providerId" | "priceVenue"> | null | undefined>,
+  brokerName?: BrokerNameOf,
+): string {
+  const names = [...new Set([...quotes].filter((quote) => quote != null).map((quote) => quoteSourceName(quote, brokerName)))];
+  return names.length > 0 && names.every(Boolean) ? names.join(" and ") : "";
 }
 
 /**

@@ -15,8 +15,8 @@ const NOT_PUBLISHED = "not published";
 
 /** JSON's `source`: one field per footer line after the first. */
 export interface ExportSource {
-  /** Who the data is cited to: `FRED`, `DTCC`, `Gloom Cloud`. */
-  name: string;
+  /** Who the data is cited to: `FRED`, `DTCC`, `Gloom Cloud`; null when its source has no name to give. */
+  name: string | null;
   /** Who published the figures, when the data names them. */
   publisher: string | null;
   /** The newest observation: an ISO date, or an ISO instant in UTC. */
@@ -36,7 +36,7 @@ export interface ExportSource {
 
 export function exportSource(freshness: ReportFreshness): ExportSource {
   return {
-    name: freshness.source,
+    name: freshness.source || null,
     publisher: freshness.publisher ?? null,
     // A figure as of its release is still dated by the period it covers; the release is its publication time.
     observationDate: freshness.referencePeriod ?? freshness.asOf,
@@ -122,7 +122,7 @@ export function exportIdentityCells(freshness: ReportFreshness, identity: Export
     identity.symbolOrSeries?.trim() ?? "",
     identity.currencyOrUnit?.trim() ?? "",
     identity.interval?.trim() ?? "",
-    identity.source?.trim() || source.name,
+    identity.source?.trim() || source.name || "",
     identity.asOf !== undefined ? rowAsOf(identity.asOf) : source.observationDate ?? "",
   ];
 }

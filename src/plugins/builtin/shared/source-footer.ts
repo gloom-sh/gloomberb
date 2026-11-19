@@ -2,7 +2,6 @@ import { formatWeekdayDay } from "../../../utils/datetime-format";
 import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { deriveHeadlessFreshness, paneSourceLineVariants, type ReportFreshness } from "../../../cli/pane-functions/freshness";
 import { quotesFreshness } from "../../../cli/freshness";
-import { quoteSourceName } from "../../../market-data/quotes/export-identity";
 import { quoteHeadlineTime } from "../../../market-data/market/status";
 import type { Quote } from "../../../types/financials";
 import type { HeadlessPaneDefinition, HeadlessPaneResult } from "../../../types/headless";
@@ -62,10 +61,8 @@ export function quoteSourceFooterSegment(
   { id = "source", now = Date.now() }: { id?: string; now?: number } = {},
 ): PaneFooterSegment | null {
   const shown = [...quotes].filter((quote): quote is Quote => quote != null && quote.lastUpdated > 0);
-  const names = [...new Set(shown.map((quote) => quoteSourceName(quote, (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name)))];
-  const source = names.length > 0 && names.every(Boolean) ? names.join(" and ") : "";
-  const freshness = quotesFreshness(shown, undefined, now);
+  const freshness = quotesFreshness(shown, undefined, now, (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name);
   if (!freshness) return null;
   const newest = Math.max(...shown.map((quote) => quoteHeadlineTime(quote)));
-  return sourceFooterSegment({ ...freshness, source }, { id, feed: false, ...Number.isFinite(newest) && newest > 0 ? { time: compactTime(newest, now) } : {} });
+  return sourceFooterSegment(freshness, { id, feed: false, ...Number.isFinite(newest) && newest > 0 ? { time: compactTime(newest, now) } : {} });
 }
