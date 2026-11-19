@@ -95,7 +95,7 @@ describe("buildFuturesRows search", () => {
     expect(futuresUnitLabel(row("CL=F"), { spec })).toBe("USD / barrel");
     expect(futuresUnitLabel(row("TTF=F"), { spec: null })).toBe("EUR / MWh");
     expect(futuresUnitLabel(row("CL=F"), null)).toBe("USD / barrel");
-    expect(futuresUnitLabel(row("ES=F"), null)).toBeNull();
+    expect(futuresUnitLabel(row("ES=F"), null)).toBe("index points");
   });
 
   test("matches contract code, name, and listed symbol case-insensitively", () => {

@@ -93,7 +93,7 @@ describe("futures price formatting", () => {
 });
 
 describe("futures unit", () => {
-  test("says what a price counts, as quote does, and waits for the terms before saying nothing", () => {
+  test("uses catalog units for crude and equity-index futures while terms are unavailable", () => {
     const crude = FUTURES_CONTRACTS.find((contract) => contract.symbol === "CL=F")!;
     const index = FUTURES_CONTRACTS.find((contract) => contract.symbol === "ES=F")!;
     const unit = (terms: FuturesTermsMap, contract = crude) => {
@@ -104,11 +104,10 @@ describe("futures unit", () => {
     const terms = { symbol: "CL=F", root: "CL", name: "WTI Crude Oil", contract: "CLZ26", contractSymbol: "CLZ26.NYM", deliveryMonth: "2026-12",
       spec, lastTrade: "2026-11-20", firstNotice: null, inDelivery: false, settlement: null };
     expect(unit(new Map([["CL=F", { loading: false, terms }]]))).toBe("USD / barrel");
-    // Crude's unit is the catalog's while its terms load or when they fail; a root the catalog gives none waits, then says nothing.
     expect(unit(new Map([["CL=F", { loading: true, terms: null }]]))).toBe("USD / barrel");
     expect(unit(new Map([["CL=F", { loading: false, terms: null }]]))).toBe("USD / barrel");
-    expect(unit(new Map([["ES=F", { loading: true, terms: null }]]), index)).toBe("…");
-    expect(unit(new Map([["ES=F", { loading: false, terms: null }]]), index)).toBe("—");
+    expect(unit(new Map([["ES=F", { loading: true, terms: null }]]), index)).toBe("index points");
+    expect(unit(new Map([["ES=F", { loading: false, terms: null }]]), index)).toBe("index points");
   });
 });
 
