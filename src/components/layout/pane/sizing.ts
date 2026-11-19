@@ -76,6 +76,7 @@ export function resolvePaneBodyFrame({
   footerVisible,
   reserveFooter = true,
   headerRows = paneHeaderRows(nativePaneChrome),
+  chromeSupplementPx = 0,
 }: {
   width?: number;
   height?: number;
@@ -83,9 +84,11 @@ export function resolvePaneBodyFrame({
   footerVisible?: boolean;
   reserveFooter?: boolean;
   headerRows?: number;
+  chromeSupplementPx?: number;
 }) {
   const bodyHeight = typeof height === "number"
-    ? resolvePaneBodyHeight({ height, nativePaneChrome, footerVisible, reserveFooter, headerRows })
+    ? resolvePaneBodyHeight({ height: height - (nativePaneChrome ? chromeSupplementPx / WEB_CELL_HEIGHT : 0),
+      nativePaneChrome, footerVisible, reserveFooter, headerRows })
     : undefined;
   return {
     width: typeof width === "number" ? resolvePaneBodyWidth(width, nativePaneChrome) : undefined,

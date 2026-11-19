@@ -62,10 +62,8 @@ export interface PaneFooterSegment {
   holdsPlace?: boolean;
   /**
    * The notes behind a warning icon (usePaneNoticeFooter), each in full. The
-   * icon opens them in the app. A picture of the pane cannot, so it draws a
-   * segment carrying `notes` and no icon as its one note line
-   * ({@link noteLineParts}): the first note, cut after a whole word when the
-   * row is short, and how many more there are.
+   * icon opens them in the app. A picture of the pane instead wraps the
+   * first note in full and says how many more there are.
    */
   notes?: readonly string[];
   /**

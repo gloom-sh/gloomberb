@@ -49,11 +49,10 @@ test("pane screenshots retain warnings, optionally preserve source status and re
 
   await act(async () => update({ warning: true, active: true }));
   expect(root.querySelector('button[aria-label="Data warnings"] svg')).toBeNull();
-  expect(root.querySelector('[data-gloom-role="pane-footer"]')).not.toBeNull();
+  expect(root.querySelector('[data-gloom-role="pane-footer-notes"]')).not.toBeNull();
   expect(root.textContent).toContain("Source publication date unavailable.");
   expect(root.textContent).not.toContain("Loading a normal source");
   expect(root.querySelector('[data-gloom-role="pane-hint"]')).toBeNull();
-  expect(bodyHeight()).toBeCloseTo(withFooter);
 
   await act(async () => update({ warning: true, active: false }));
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
@@ -71,8 +70,7 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(bodyHeight()).toBeCloseTo(withFooter);
 
   await act(async () => update({ warning: true, active: true, preserveStatus: true }));
-  // Beside the status, the note takes what the row leaves it, cut after a whole word.
-  expect(root.textContent).toContain("Source publication…");
+  expect(root.textContent).toContain("Source publication date unavailable.");
   expect(root.textContent).toContain("Loading a normal source");
   expect(root.querySelector('button[aria-label="Data warnings"]')).toBeNull();
 });
@@ -136,7 +134,7 @@ test("a capture with nothing to date gives the footer row back to the pane", asy
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
 });
 
-test("a capture's notes are one line that says how many more there are, marked apart from the pane's own state", async () => {
+test("a capture keeps the first caveat in full, with a count of remaining notes, separate from the pane's own state", async () => {
   const ui = createDomUiHost();
   const notes = ["Some jurisdictions have no awards in the dataset yet.", "Historical coverage has windows that are not complete yet.",
     "Some totals run past what one view can hold; narrow the date range or scope."];
@@ -146,14 +144,15 @@ test("a capture's notes are one line that says how many more there are, marked a
   }
   const root = await render(<UiHostProvider ui={ui} renderer={noopRendererHost}>
     <WebInputHostProvider><WebDialogHostProvider>
-      <PaneShotFrame paneId="shot" title="Awards" width={120} height={24}>
+      <PaneShotFrame paneId="shot" title="Awards" width={30} height={24}>
         {() => <PaneFooterScope active><Noted /></PaneFooterScope>}
       </PaneShotFrame>
     </WebDialogHostProvider></WebInputHostProvider>
   </UiHostProvider>);
   const line = root.querySelector('[data-gloom-role="pane-footer-notes"]');
   expect(line?.textContent).toBe(`${notes[0]} +2 more`);
-  expect(root.querySelector('[data-gloom-role="pane-footer"]')?.textContent).not.toContain(notes[1]!);
+  expect(line?.querySelector('[data-gloom-ui="prose"]')).not.toBeNull();
+  expect(root.textContent).not.toContain(notes[1]!);
 });
 
 test("a status line too long for the row loses whole words from its middle, never part of one", () => {
@@ -187,14 +186,15 @@ test("a pane's capture notes stand in for its notices in a capture, and empty on
   }
   const root = await render(<Harness />);
   const footer = () => root.querySelector('[data-gloom-role="pane-footer"]')?.textContent ?? "";
-  expect(footer()).toContain("Closes failed for GARAN.");
+  const notes = () => root.querySelector('[data-gloom-role="pane-footer-notes"]')?.textContent ?? "";
+  expect(notes()).toContain("Closes failed for GARAN.");
   expect(footer()).toContain("73% of book; BTC-USD left out");
-  expect(footer()).not.toContain("is excluded from the risk estimate");
+  expect(notes()).not.toContain("is excluded from the risk estimate");
   await act(async () => update([]));
   expect(footer()).toContain("73% of book; BTC-USD left out");
-  expect(footer()).not.toContain("GARAN");
+  expect(notes()).toBe("");
   // Without them, the notices print as the note line, as for any pane.
   await act(async () => update(undefined));
-  expect(footer()).toContain("BTC-USD (17.5% of the book) is excluded");
-  expect(footer()).toContain("+1 more");
+  expect(notes()).toContain("BTC-USD (17.5% of the book) is excluded");
+  expect(notes()).toContain("+1 more");
 });
