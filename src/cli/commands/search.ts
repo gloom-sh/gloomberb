@@ -43,7 +43,7 @@ import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../ser
 import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, selectPaneCatalogMatches } from "../pane-functions/catalog";
-import { normalizeSearchText } from "../../tickers/search/ranking";
+import { answersToFutureCode, normalizeSearchText } from "../../tickers/search/ranking";
 import { hasNonLatinLetters } from "../../utils/typed-text";
 import { isKanjiOnlyName, japaneseNameReadAs, readExactJapaneseName, readJapaneseName, type JapaneseNameListing } from "../../tickers/search/japanese-names";
 
@@ -143,7 +143,7 @@ export async function searchCandidatesForCli({
     const ordered = withLiveCompanyPrimary(symbol,
       withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, named ? null : quote))), quote),
       quote);
-    return cutKeepingCompanies(withOtherCompaniesApart(ordered, named ? trimmedQuery : null), totalLimit, symbol);
+    return cutKeepingCompanies(withOtherCompaniesApart(ordered, symbol, named ? trimmedQuery : null), totalLimit, symbol);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);
@@ -498,7 +498,7 @@ const baseSymbol = (symbol: string) => symbol.toUpperCase().replace(/[:.][A-Z]{1
  * company named it (`leadsWithNamedCompany`), a company named more words
  * (AEON Biopharma beside Aeon Co., Ltd.) is another company.
  */
-function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord: string | null = null): TickerSearchCandidate[] {
+function withOtherCompaniesApart(candidates: TickerSearchCandidate[], symbol: string, namedWord: string | null): TickerSearchCandidate[] {
   // A line search names no company for: no name, or only its symbol (DKC1O).
   const nameless = (candidate: TickerSearchCandidate) =>
     isLowQualityTickerName(candidate.result ? candidate.result.name ?? "" : resolveSearchName(candidate), candidate.symbol);
@@ -538,7 +538,8 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord:
   const others = candidates.filter((candidate) => candidate.category === "Other Listings" && !ownLine(candidate));
   if (others.length === 0) return candidates;
   const kept = candidates.filter((candidate) => !others.includes(candidate));
-  const at = kept.findLastIndex((candidate) => candidate === primary || candidate.category === "Other Listings") + 1;
+  const at = kept.findLastIndex((candidate) => candidate === primary || candidate.category === "Other Listings"
+    || answersToFutureCode(candidate, symbol)) + 1;
   const apart = others.map((candidate) => ({ ...candidate, category: "Other Matches" as const }));
   return [...kept.slice(0, at), ...apart, ...kept.slice(at)];
 }
