@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 type Permissions = string | Record<string, string> | undefined;
@@ -113,8 +113,32 @@ test("the jobs that publish download only the builds and check every file before
   }
 });
 
-test("the Windows installer is built with a pinned Inno Setup", () => {
-  const install = build.jobs["desktop-windows"]!.steps!.find((step) => step.name === "Install Inno Setup")!;
+// The release and every check that builds the Windows installer compile it
+// with the one pinned Inno Setup, so no check passes on a compiler the
+// release does not ship with.
+test("every job that builds the Windows installer installs the pinned Inno Setup first, and nothing installs another", () => {
+  const action = Bun.YAML.parse(readFileSync(resolve(import.meta.dir, "../.github/actions/inno-setup/action.yml"), "utf8")) as { runs: { steps: Step[] } };
+  const install = action.runs.steps.find((step) => step.run?.includes("choco install innosetup"))!;
   expect(install.env?.INNO_SETUP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   expect(install.run).toContain("choco install innosetup --version $env:INNO_SETUP_VERSION ");
+
+  const builders: string[] = [];
+  for (const file of readdirSync(resolve(import.meta.dir, "../.github/workflows")).filter((name) => name.endsWith(".yml"))) {
+    for (const [job, { steps = [] }] of Object.entries(workflow(file.slice(0, -".yml".length)).jobs)) {
+      const where = `${file} ${job}`;
+      const installs = steps.filter((step) => /\binnosetup\b|\biscc(\.exe)?\b/i.test(step.run ?? ""));
+      expect({ where, installs }).toEqual({ where, installs: [] });
+      const built = steps.findIndex((step) => step.run?.includes("build-windows-installer.ps1"));
+      if (built === -1) continue;
+      builders.push(where);
+      const pinned = steps.findIndex((step) => step.uses === "./.github/actions/inno-setup");
+      expect({ where, pinnedFirst: pinned !== -1 && pinned < built }).toEqual({ where, pinnedFirst: true });
+    }
+  }
+  expect(builders).toEqual(expect.arrayContaining([
+    "build-release-assets.yml desktop-windows",
+    "desktop-shell-check.yml windows",
+    "verify-windows.yml desktop",
+    "windows-desktop-check.yml build",
+  ]));
 });

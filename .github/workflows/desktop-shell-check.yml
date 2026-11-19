@@ -14,6 +14,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - ".github/actions/inno-setup/**"
       - ".github/workflows/desktop-shell-check.yml"
       - "electrobun.config.ts"
       - "patches/electrobun-devkit@*.patch"
@@ -237,8 +238,9 @@ jobs:
           if ("${{ matrix.renderer }}" -eq "webview2") { $env:GLOOM_WINDOWS_RENDERER = "native" }
           ./scripts/build-windows-desktop-package.ps1
 
+      # The release's pinned Inno Setup, so this checks the compiler it ships with.
       - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
+        uses: ./.github/actions/inno-setup
 
       - name: Build the installer
         shell: pwsh

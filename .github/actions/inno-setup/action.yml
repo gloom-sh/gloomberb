@@ -1,0 +1,36 @@
+name: Install Inno Setup
+description: >-
+  Install the Inno Setup the Windows installer is built with, check that its
+  compiler is that version, and point scripts/build-windows-installer.ps1 at
+  that compiler through ISCC_EXE. Every workflow that builds the installer
+  uses this, so no check passes on a compiler the release does not ship with.
+  The runner image comes with an Inno Setup of its own, which moves when the
+  image does; a newer one is taken back to this one.
+
+runs:
+  using: composite
+  steps:
+    # ISCC.exe's file properties carry no version (they read 0.0.0.0), so the
+    # check reads the one the compiler prints for its engine, here on a script
+    # it writes no installer for. The folders are the ones
+    # build-windows-installer.ps1 looks in, in its order.
+    - name: Install Inno Setup
+      shell: pwsh
+      env:
+        INNO_SETUP_VERSION: "6.7.1"
+      run: |
+        choco install innosetup --version $env:INNO_SETUP_VERSION --allow-downgrade -y --no-progress
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $Candidates = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "${env:ProgramFiles}\Inno Setup 6\ISCC.exe")
+        $Iscc = $Candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+        if (-not $Iscc) { throw "ISCC.exe is not at $($Candidates -join ' or ')." }
+        $Script = Join-Path $env:RUNNER_TEMP "inno-setup-version.iss"
+        Set-Content -LiteralPath $Script -Value "[Setup]`nAppName=Version check`nAppVersion=1`nDefaultDirName={autopf}\Version check"
+        $Output = & $Iscc /O- $Script
+        if ($LASTEXITCODE -ne 0) { $Output; throw "ISCC.exe failed on the version check script (exit $LASTEXITCODE)." }
+        $Engine = $Output | Select-String -Pattern '^Compiler engine version: Inno Setup (\S+)' | Select-Object -First 1
+        if (-not $Engine) { $Output; throw "ISCC.exe printed no compiler engine version." }
+        $Installed = $Engine.Matches[0].Groups[1].Value
+        if ($Installed -ne $env:INNO_SETUP_VERSION) { throw "Inno Setup $Installed is installed, not $env:INNO_SETUP_VERSION." }
+        Write-Host "Inno Setup $Installed at $Iscc"
+        "ISCC_EXE=$Iscc" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
