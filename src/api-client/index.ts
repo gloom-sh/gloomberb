@@ -136,7 +136,7 @@ class GloomApiClient {
   /** Local user/credential binding, masked until verified and never serialized. */
   private verifiedSessionIdentity: object | null = null;
   private verifiedSessionCredential: string | null = null;
-  private socketUserUnverified = false;
+  private socketUnverifiedUser: AuthUser | null = null;
   private sessionTransitions = 0;
   private sessionTransition: Promise<void> | null = null;
   /** Device adoption and external session installs supersede pending email auth. */
@@ -168,13 +168,12 @@ class GloomApiClient {
     getBaseUrl: () => this.transport.baseUrl,
     getSocketAuthToken: () => this.getSocketAuthToken(),
     hasSessionCredential: () => this.transport.hasSessionCredential(),
-    hasVerifiedUser: () => this.currentUser?.emailVerified === true,
+    hasVerifiedUser: () => this.getCurrentUser()?.emailVerified === true,
     isUsingWebSocketToken: () => !!this.transport.getWebSocketToken(),
     clearWebSocketTokenForFallback: () => this.transport.clearWebSocketTokenForFallback(),
     markCurrentUserUnverified: () => {
-      if (this.currentUser) {
-        this.socketUserUnverified = true;
-        this.currentUser = { ...this.currentUser, emailVerified: false };
+      if (this.currentUser && !this.socketUnverifiedUser) {
+        this.socketUnverifiedUser = { ...this.currentUser, emailVerified: false };
         this.emitCurrentUserChange();
       }
     },
@@ -184,13 +183,12 @@ class GloomApiClient {
       // its data again (teams, theses, sync), and after a server restart every
       // client reconnects at once. After a long silence they do load again, for
       // what changed while nothing arrived.
-      const confirmsVerification = this.socketUserUnverified && typeof user.emailVerified === "boolean";
+      const confirmsVerification = this.socketUnverifiedUser !== null && typeof user.emailVerified === "boolean";
       if (!this.currentUser || (!resync && !confirmsVerification && !changesUser(this.currentUser, user))) return;
-      if (confirmsVerification) this.socketUserUnverified = false;
       this.updateCurrentUser((currentUser) => ({
         ...currentUser,
         ...user,
-      }));
+      }), confirmsVerification);
     },
     onServiceAnswered: () => this.transport.noteServiceAnswered(),
   });
@@ -254,6 +252,7 @@ class GloomApiClient {
     if (!token) {
       this.cancelSessionRevalidation();
       this.currentUser = null;
+      this.socketUnverifiedUser = null;
       this.verifiedSessionIdentity = null;
     }
     if (changed || !token) {
@@ -269,7 +268,7 @@ class GloomApiClient {
   }
 
   getCurrentUser(): AuthUser | null {
-    return this.currentUser;
+    return this.socketUnverifiedUser ?? this.currentUser;
   }
 
   /**
@@ -324,7 +323,7 @@ class GloomApiClient {
   }
 
   isVerified(): boolean {
-    return this.transport.hasSessionCredential() && !!this.currentUser?.emailVerified;
+    return this.transport.hasSessionCredential() && !!this.getCurrentUser()?.emailVerified;
   }
 
   /** Null while a replacement credential still awaits its matching user. */
@@ -333,7 +332,7 @@ class GloomApiClient {
   }
 
   getConfirmedDisplayUser(): AuthUser | null {
-    return !this.socketUserUnverified && this.sessionTransitions === 0 && this.verifiedSessionIdentity !== null
+    return !this.socketUnverifiedUser && this.sessionTransitions === 0 && this.verifiedSessionIdentity !== null
       && this.verifiedSessionCredential === this.transport.getSessionToken()
       ? this.currentUser : null;
   }
@@ -358,7 +357,7 @@ class GloomApiClient {
       trialEndsAt: string | null;
     } | null;
   } {
-    const user = this.currentUser;
+    const user = this.getCurrentUser();
     return {
       hasSessionCredential: this.transport.hasSessionCredential(),
       hasSessionToken: !!this.transport.getSessionToken(),
@@ -387,12 +386,14 @@ class GloomApiClient {
     if (this.authTrace.length > 24) this.authTrace.shift();
   }
 
-  private setCurrentUser(user: AuthUser | null, confirmSession = true): void {
+  private setCurrentUser(user: AuthUser | null, confirmSession = true, confirmVerification = confirmSession): void {
     const sameAccount = this.currentUser?.id === user?.id;
-    const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
+    const previous = this.getCurrentUser();
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
-    if (confirmSession || !sameAccount) this.socketUserUnverified = false;
+    if (confirmVerification || !sameAccount || !user) this.socketUnverifiedUser = null;
+    else if (this.socketUnverifiedUser) this.socketUnverifiedUser = { ...user, emailVerified: false };
+    const changed = this.socketEntitlementKey(previous) !== this.socketEntitlementKey(this.getCurrentUser());
     if (confirmSession) this.cookieIdentity = "ready";
     // Another account, or a plan that changed, reads other answers: no later read joins one sent before.
     if (changed) this.transport.forgetSharedReads();
@@ -411,11 +412,11 @@ class GloomApiClient {
     for (const listener of this.currentUserListeners) listener();
   }
 
-  private updateCurrentUser(updater: (user: AuthUser) => AuthUser): void {
+  private updateCurrentUser(updater: (user: AuthUser) => AuthUser, confirmVerification = false): void {
     if (!this.currentUser) return;
     // A socket/profile update is metadata, not proof that a replacement
     // credential belongs to this user. Keep its existing binding, even null.
-    this.setCurrentUser(updater(this.currentUser), false);
+    this.setCurrentUser(updater(this.currentUser), false, confirmVerification);
   }
 
   private socketEntitlementKey(user: AuthUser | null): string {
@@ -447,7 +448,8 @@ class GloomApiClient {
   async ensureVerifiedSession(): Promise<AuthUser | null> {
     if (!this.transport.hasSessionCredential()) return null;
     if (!this.currentUser && !this.sessionChecked) await this.getSession();
-    return this.currentUser?.emailVerified ? this.currentUser : null;
+    const user = this.getCurrentUser();
+    return user?.emailVerified ? user : null;
   }
 
   signUp = (email: string, username: string, name: string, password: string) =>
@@ -577,7 +579,7 @@ class GloomApiClient {
    * view that opens right after the app checked its session use that answer.
    */
   recentSession(maxAgeMs: number): { user: AuthUser | null } | undefined {
-    if (!this.sessionChecked || this.sessionCheckedAt === null || this.sessionTransitions > 0 || this.sessionRequest) return undefined;
+    if (!this.sessionChecked || this.sessionCheckedAt === null || this.sessionTransitions > 0 || this.sessionRequest || this.socketUnverifiedUser) return undefined;
     if (Date.now() - this.sessionCheckedAt > maxAgeMs) return undefined;
     return { user: this.currentUser };
   }

@@ -127,14 +127,14 @@ test("a Free launch does not read resource_cache for revocation, even with anoth
   }
 });
 
-test("a SQLite purge queued behind a writer cannot delete a refreshed Pro copy", async () => {
+test("a SQLite purge queued behind a writer cannot delete a refreshed Pro copy", () => {
   const path = createTempDbPath("queued-pro");
   const app = new AppPersistence(path, { interactive: true });
   const writer = new Database(path);
   try {
     const { resources } = app;
     resources.set(proKey, "old copy", cacheOptions);
-    await Bun.sleep(5);
+    expect(app.database.access.write("commit the test cache seed", () => {})).toBe(true);
     writer.exec("BEGIN IMMEDIATE");
     resources.setProResourceAccess(proAccount, false);
     expect(resources.get(proKey)).toBeNull();
