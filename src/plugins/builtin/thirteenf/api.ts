@@ -571,9 +571,11 @@ export async function lookupThirteenFHoldersByCusip(
     cusip,
     period_of_report: periodOfReport,
   }, { ...options, signal }));
+  const fallbackFromPeriod = stringOrEmpty(raw.fallbackFromPeriod);
   return {
     cusip: stringOrEmpty(raw.cusip) || cusip,
     periodOfReport: stringOrEmpty(raw.period_of_report) || periodOfReport,
+    ...(fallbackFromPeriod ? { fallbackFromPeriod } : {}),
     ciks: Array.isArray(raw.ciks)
       ? raw.ciks.map((cik: unknown) => normalizeCik(stringOrEmpty(cik))).filter(Boolean)
       : [],

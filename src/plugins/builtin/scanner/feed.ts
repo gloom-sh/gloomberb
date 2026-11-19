@@ -13,6 +13,7 @@ import { CLOUD_QUOTE_DELAY_MINUTES, useCloudDisplayScope } from "../../../api-cl
 import { useAppVisible } from "../../../state/app/activity";
 import { ScannerClientContext } from "../shared/scanner-capture";
 import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
+import { observationFooterSegment } from "../../../components/layout/pane/footer/freshness";
 import { useSavedCopyFooter } from "../../../components/layout/pane/footer/registration";
 import { deleteSavedCopy, readSavedCopy, writeSavedCopy } from "../../../data/pane-saved-copies";
 
@@ -84,13 +85,15 @@ export function useFlowFeed() {
  */
 export function useScannerStatusFooter(
   registrationId: string,
-  state: ScannerFeedState<Pick<ScannerPayload, "status" | "access" | "delayMinutes">>,
+  state: ScannerFeedState<Pick<ScannerPayload, "status" | "access" | "delayMinutes"> & { asOf?: number | null }>,
   focused: boolean,
   extra: PaneFooterSegment | null = null,
 ): void {
+  const delayed = state.payload?.access === "delayed";
   const { hint: upgradeHint, segment } = useCloudAccessFooter({
     delayLabel: tf("{count}m", { count: state.payload?.delayMinutes || CLOUD_QUOTE_DELAY_MINUTES }),
-    degraded: state.payload?.access === "delayed",
+    degraded: delayed,
+    showDelayLabel: true,
     focused,
     segmentId: `${registrationId}-access`,
     placement: `${registrationId}-footer`,
@@ -111,28 +114,29 @@ export function useScannerStatusFooter(
     // The feed connects in the background; nothing to report until it answers.
     if (!status || status === "starting" || state.savedAt != null) return [];
     if (status === "live") {
-      return [{ id: "scanner-status", parts: [{ text: "live", tone: "positive" as const }] }];
+      return delayed ? [] : [{ id: "scanner-status", parts: [{ text: "live", tone: "positive" as const }] }];
     }
     if (status === "closed") {
       return [{ id: "scanner-status", parts: [{ text: "market closed", tone: "muted" as const }] }];
     }
     return [{ id: "scanner-status", parts: [{ text: "degraded", tone: "warning" as const }] }];
-  }, [state.denied, state.deniedReason, state.payload?.status, state.savedAt]);
+  }, [delayed, state.denied, state.deniedReason, state.payload?.status, state.savedAt]);
 
   // The upgrade segment carries the delay for free accounts; a delayed feed reaching Pro still says so.
-  const delayMinutes = state.payload?.access === "delayed" ? state.payload.delayMinutes || CLOUD_QUOTE_DELAY_MINUTES : null;
+  const delayMinutes = delayed ? state.payload?.delayMinutes || CLOUD_QUOTE_DELAY_MINUTES : null;
+  const asOf = state.payload?.status !== "starting" ? state.payload?.asOf : null;
   const info = useMemo<PaneFooterSegment[]>(
     () => {
-      const base = segment ? [segment, ...status]
-        : delayMinutes != null ? [delayedFooterSegment({
+      const delay = delayMinutes != null && !upgradeHint ? delayedFooterSegment({
           id: "scanner-delay",
           detail: tf("{delay} delayed", { delay: tf("{count}m", { count: delayMinutes }) }),
           delay: tf("{count}m", { count: delayMinutes }),
-        }), ...status]
-          : status;
-      return extra ? [...base, extra] : base;
+          showLabel: true,
+        }) : null;
+      const observed = observationFooterSegment(asOf);
+      return [segment, delay, observed, ...status, extra].filter((item): item is PaneFooterSegment => item != null);
     },
-    [delayMinutes, extra, segment, status],
+    [asOf, delayMinutes, extra, segment, status, upgradeHint],
   );
 
   usePaneStatusFooter({ registrationId, info, hints: upgradeHint ? [upgradeHint] : undefined });

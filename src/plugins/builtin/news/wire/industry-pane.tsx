@@ -118,6 +118,7 @@ function IndustryNewsBody({ focused, width, height, entry, code, codeFilter }: P
   const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(loaded.query, loaded.newsState);
   const { search, searchQuery, ...stack } = useNewsArticleStack({
     paneKey: "industry",
+    listKey: code,
     articles,
     focused,
     width,

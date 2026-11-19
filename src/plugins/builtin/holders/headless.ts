@@ -35,6 +35,7 @@ import {
 import { REPORT_ROWS } from "../shared/headless-options";
 import { noHoldersAnswer } from "./fund-holders";
 import { companyDataNotes } from "../../../types/company-from";
+import { quarterFallbackText } from "../thirteenf/signals";
 import {
   HOLDER_ROWS_MAX,
   indexedHoldersPartialNote,
@@ -269,6 +270,7 @@ export function createHoldersHeadless(
       const { notices, valueBasis, positionsBasis, changeReported } = holderReportNotices({
         data, requested: symbol, shown: rows, reported: sorted.length, total, sort, indexed,
       });
+      const fallback = quarterFallbackText(indexed ? index : null);
       return {
         // A change column that is empty on every row says nothing; the notices explain it once.
         columns: holderReportColumns(rows, valueCurrency),
@@ -295,7 +297,7 @@ export function createHoldersHeadless(
           valueBasis,
           changeReported,
           positionsBasis,
-          notices,
+          notices: fallback ? [fallback, ...notices] : notices,
         },
       };
     },

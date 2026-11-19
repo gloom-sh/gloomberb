@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import type { CloudCongressHousePayload } from "../../../api-client";
-import type { CloudCongressHouseParams } from "../../../api-client/paths";
+import { normalizeIssuerResearchTicker, type CloudCongressHouseParams } from "../../../api-client/paths";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
 
 /** Reads the feed named by `params.chamber`, House when omitted. */
@@ -9,5 +9,6 @@ export function loadCongressHouse(
   client: Pick<HeadlessPaneApiClient, "getCloudCongressHouse"> = apiClient,
   signal?: AbortSignal,
 ): Promise<CloudCongressHousePayload> {
-  return client.getCloudCongressHouse(params, { signal });
+  const ticker = params.ticker ? normalizeIssuerResearchTicker(params.ticker) : undefined;
+  return client.getCloudCongressHouse(ticker ? { ...params, ticker } : params, { signal });
 }

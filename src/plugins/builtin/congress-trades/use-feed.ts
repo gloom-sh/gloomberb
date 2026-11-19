@@ -28,7 +28,7 @@ export function useCongressFeed(request: CloudCongressHouseParams, memberId: str
     const last = previous.current;
     if (!current.signal.aborted) setPage(null);
     return refresh && last?.owner === loader
-      ? { ...last.payload, asOf: loaded.asOf, trades: mergeCongressPages(last.payload, loaded).trades }
+      ? { ...last.payload, asOf: loaded.asOf, fetchedAt: loaded.fetchedAt, trades: mergeCongressPages(last.payload, loaded).trades }
       : loaded;
   }, [path, scope, memberId]);
   useEffect(() => () => { controller.current?.abort(); pageController.current?.abort(); }, [loader]);

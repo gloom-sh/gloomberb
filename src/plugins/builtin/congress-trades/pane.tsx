@@ -56,7 +56,7 @@ import {
   type TradeColumnId,
 } from "./model";
 import { MemberTradesDetail, TradeDetail } from "./detail";
-import { useCongressTradesFooter } from "./footer";
+import { latestCongressFiling, useCongressTradesFooter } from "./footer";
 import { CONGRESS_TAB_KEYS, useCongressTradesKeyboard } from "./keyboard";
 import {
   renderCongressMemberCell,
@@ -273,6 +273,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     detailMode,
     detailTrade,
     error,
+    latestFiling: latestCongressFiling(visibleTrades),
     loadPreviousYear: previousYearRequest ? loadPreviousYear : null,
     loadMore: payload && canLoadMoreCongress(payload) ? loadMore : null,
     loadingMore,

@@ -15,6 +15,7 @@ import {
 import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
 import { abortable, OperationTimeoutError, withDeadline } from "../../../utils/async-deadline";
 import { logFailure } from "../../../utils/log-failure";
+import { quarterFallbackText } from "./signals";
 import {
   amendmentKind,
   buildBrowserRows,
@@ -226,12 +227,14 @@ async function loadBrowserPage(
     const periodOfReport = quarterToPeriod(quarter);
     try {
       const holders = await lookupThirteenFHoldersByCusip(cusip, periodOfReport, signal, apiOptions);
+      const fallback = quarterFallbackText({ period: holders.periodOfReport, fallbackFromPeriod: holders.fallbackFromPeriod });
       const pageCiks = holders.ciks.slice(offset, offset + browserLimit);
       const funds = pageCiks.map((cik) => ({ cik, name: cik }));
       const rows = buildBrowserRows({ funds, source: "ticker" });
       const result: BrowserLoadResult = {
         rows,
         period: holders.periodOfReport,
+        ...(fallback ? { warning: `${fallback}.` } : {}),
         hasMore: holders.ciks.length > offset + pageCiks.length,
         nextOffset: offset + pageCiks.length,
       };

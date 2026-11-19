@@ -23,6 +23,7 @@ import { parseNewsFeedSettings } from "../feed-config";
 interface NewsArticleStackOptions {
   /** Prefix of every key the pane persists, and of its footer registration. */
   paneKey: string;
+  listKey?: string;
   articles: NewsArticle[];
   focused: boolean;
   width: number;
@@ -41,6 +42,7 @@ interface NewsArticleStackOptions {
  */
 export function useNewsArticleStack({
   paneKey,
+  listKey,
   articles,
   focused,
   width,
@@ -58,7 +60,7 @@ export function useNewsArticleStack({
     `${paneKey}:sort`,
     defaultSort,
   );
-  const search = useNewsListSearch(articles);
+  const search = useNewsListSearch(articles, paneKey, listKey);
   const visibleArticles = search.filteredArticles;
   const loadNewsStory = useLoadNewsStory();
   const { detailArticle, detailLoading, detailError, openArticle, closeDetail } = useNewsArticleDetail(
@@ -126,6 +128,9 @@ export function useNewsArticleStack({
     ),
     search: searchBar,
     searchQuery: search.searchQuery,
+    initialScrollIndex: search.initialScrollIndex,
+    onVisibleRangeChange: search.onVisibleRangeChange,
+    visibleRangeKey: search.visibleRangeKey,
   };
 }
 

@@ -186,6 +186,7 @@ export interface DataTableViewProps<
     context: DataTableRootKeyContext,
   ) => boolean | void;
   resetScrollKey?: unknown;
+  initialScrollIndex?: number | null;
   /**
    * A column to bring to the middle of a table too wide for its pane: on
    * first draw and whenever it changes. A grid whose reading is in its middle
@@ -225,7 +226,10 @@ export function DataTableView<
   resetScrollKey,
   revealColumnId,
   scrollToIndex,
+  scrollToIndexAlign,
   scrollToIndexVersion = 0,
+  initialScrollIndex,
+  onVisibleRangeChange,
   ...tableProps
 }: DataTableViewProps<T, C>) {
   const onHeaderClick = tableProps.onHeaderClick;
@@ -341,7 +345,16 @@ export function DataTableView<
       lastControlledScrollRequestRef.current.index !== scrollToIndex
       || lastControlledScrollRequestRef.current.version !== scrollToIndexVersion
     );
-  const effectiveScrollToIndex = controlledScrollRequestChanged
+  const [restoreIndex, setRestoreIndex] = useState(initialScrollIndex ?? null);
+  const restoring = restoreIndex !== null && scrollToIndex == null && selectionScrollTarget === null;
+  const reportVisibleRange = useCallback<NonNullable<DataTableProps<T, C>["onVisibleRangeChange"]>>((range) => {
+    if (restoring) {
+      if (range.end === 0 || (range.start !== restoreIndex && range.end < tableProps.items.length)) return;
+      setRestoreIndex(null);
+    }
+    onVisibleRangeChange?.(range);
+  }, [onVisibleRangeChange, restoreIndex, restoring, tableProps.items.length]);
+  const effectiveScrollToIndex = restoring ? restoreIndex : controlledScrollRequestChanged
     ? scrollToIndex
     : selectionScrollTarget ?? scrollToIndex;
 
@@ -434,7 +447,7 @@ export function DataTableView<
       clearSelectionScrollTarget();
       return;
     }
-    if (effectiveSelectedIndex < 0) return;
+    if (restoring || effectiveSelectedIndex < 0) return;
 
     const selectionChanged = !previous
       || previous.kind !== current.kind
@@ -451,6 +464,7 @@ export function DataTableView<
     defaultCursorIndex,
     effectiveSelectedIndex,
     requestSelectionScroll,
+    restoring,
     scrollToIndex,
     selectedIndexFromSelection,
     selection.kind,
@@ -878,7 +892,9 @@ export function DataTableView<
         scrollRef={effectiveScrollRef}
         syncHeaderScroll={effectiveSyncHeaderScroll}
         onBodyScrollActivity={handleBodyScrollActivity}
+        onVisibleRangeChange={restoring || onVisibleRangeChange ? reportVisibleRange : undefined}
         scrollToIndex={effectiveScrollToIndex}
+        scrollToIndexAlign={restoring ? "start" : scrollToIndexAlign}
         scrollToIndexVersion={scrollToIndexVersion + selectionScrollVersion}
         isSelected={isItemSelected}
         onSelect={handleTableSelect}
