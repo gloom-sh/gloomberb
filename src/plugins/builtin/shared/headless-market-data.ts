@@ -5,9 +5,17 @@ import type { TimeRange } from "../../../time-series/range";
 import { clipPriceHistoryToRange } from "../../../time-series/history-window";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { nonUsSecListingVenue } from "../../../utils/sec";
+import { isFuturesInstrument, loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
+import { settleWithin } from "../../../utils/async-deadline";
 
 export async function resolveHeadlessInstrument(ctx: Pick<HeadlessPaneContext, "resolveInstrument">, symbol: string) {
   return ctx.resolveInstrument ? ctx.resolveInstrument(symbol) : parsePublicTickerKey(symbol);
+}
+
+export function loadHeadlessContractPriceUnit(ctx: Pick<HeadlessPaneContext, "apiClient">, symbol: string, type?: string): Promise<string | null> {
+  return isFuturesInstrument(symbol, type)
+    ? settleWithin(loadFuturesPriceUnit(symbol, (key) => loadFuturesContractTerms(key, ctx.apiClient)), 1_500)
+    : Promise.resolve(null);
 }
 
 /**

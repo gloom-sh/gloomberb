@@ -226,6 +226,7 @@ export function baseSecuritySeries(
     ? currencyPairPriceUnit(spec.source.instrument.symbol, spec.source.instrument.exchange, currency) : null;
   const unit = field.id === "market.volume" ? volumeUnit ?? ""
     : statedUnit ?? genericUnit ?? pairUnit
+      ?? (instrumentKind === "future" && unitTemplate === "currency" ? "unknown" : null)
       ?? (unitTemplate.startsWith("currency") && currency ? unitTemplate.replace("currency", currency) : unitTemplate);
   const currencyUnitGroup = genericUnit ? `${field.unitGroup}:${genericUnit}`
     : unknownBondBasis && field.unitGroup === "price" ? "price:unknown"

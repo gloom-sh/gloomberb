@@ -41,7 +41,7 @@ test("share denominations require equity metadata; crypto-shaped symbols cannot 
   for (const type of ["EQUITY", "ETF"]) {
     expect((await resolve(type)).series.map((entry) => entry.unit)).toEqual(Array(5).fill("USD/share"));
   }
-  for (const type of [undefined, "", "FUTURE", "CURRENCY"]) {
+  for (const type of [undefined, "", "CURRENCY"]) {
     expect((await resolve(type)).series.map((entry) => entry.unit)).toEqual(Array(5).fill("USD"));
   }
   // A loading seed draws with what the last settled chart of the listing knew
@@ -73,7 +73,7 @@ test("futures and unknown price bases stay available as raw prices but cannot es
     expect(result.series.filter(({ id }) => id !== "spread")).toEqual(before.series);
     expect(result.series.some(({ id }) => id === "spread")).toBe(false);
     expect(result.series.find(({ id }) => id === "ratio")?.unit).toBe("unknown");
-    expect(result.errors).toEqual([expect.stringContaining("per an unknown quantity: a spread needs both in one known unit.")]);
+    expect(result.errors).toEqual([expect.stringContaining("a spread needs both in one known unit.")]);
   }
 });
 
@@ -104,7 +104,7 @@ test("a future's price counts what its contract terms say, asked once per symbol
   // A unit in another currency than the quote's is not the price's; index futures read in points.
   expect(result.series.map(({ unit, statedUnit }) => [unit, statedUnit])).toEqual([
     ["USD / gallon", "USD / gallon"], ["USD / gallon", "USD / gallon"], ["US cents / bushel", "US cents / bushel"],
-    ["EUR", undefined], ["points", undefined], ["USD/share", undefined],
+    ["unknown", undefined], ["points", undefined], ["USD/share", undefined],
   ]);
   expect(asked.sort()).toEqual(["HO=F", "TTF=F", "ZC=F"]);
   const seeded = seedChartResolutionResult(chart, new Map(chart.series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), history])));

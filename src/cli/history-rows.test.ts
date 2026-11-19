@@ -448,6 +448,11 @@ describe("history rows", () => {
     }
     expect(historyUnit("LUMI.TA", { currency: "ILA" }).unit).toBe("ILA (agorot, 1/100 ILS)");
     expect(historyUnit("^GSPC", { currency: "USD", instrumentType: "INDEX" })).toEqual({ kind: "points", currency: null, unit: "index points" });
+    const usdFuture = { currency: "USD", instrumentType: "FUTURE" };
+    expect(historyUnit("ZN=F:CBT", usdFuture)).toEqual({ kind: "contract", currency: "USD", unit: "% of par" });
+    expect(historyUnit("ES=F", usdFuture).unit).toBe("index points");
+    expect(historyUnit("ZNZ26.CBT", usdFuture, "% of par").unit).toBe("% of par");
+    expect(historyUnit("UNKNOWN=F", usdFuture).unit).toBeNull();
     expect(historyUnit("LUMI.TA", null)).toEqual({ kind: "unknown", currency: null, unit: null });
   });
 

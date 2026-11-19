@@ -18,6 +18,7 @@ import {
 } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { barsPerYearLabel } from "../../../market-data/bars-per-year";
+import { isFuturesInstrument, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -128,13 +129,16 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   }, [history.data, rules, lookback, costBps, runWindow]);
   const result = run.result;
   const continuation = instrument ? continuationNote(instrument.symbol, instrument.exchange, history.data?.rollNote) : null;
+  const quote = financials?.quote ?? { currency: ticker?.metadata.currency, instrumentType: ticker?.metadata.assetCategory };
+  const futuresSymbol = instrument && isFuturesInstrument(instrument.symbol, quote.instrumentType) ? instrument.symbol : null;
+  const loadContractUnit = useCallback(() => loadFuturesPriceUnit(futuresSymbol!), [futuresSymbol]);
+  const contractUnit = useAsyncResource(futuresSymbol ? loadContractUnit : null);
   // Export CSV writes the daily curve `fn BT --csv --equity` prints for this run, whichever table is in view;
   // the table reads it when the export runs. Without a run the table's own rows export.
   const exportCsv = result && symbol ? () => {
-    const quote = financials?.quote ?? (ticker?.metadata.currency ? { currency: ticker.metadata.currency } : null);
     return backtestEquityCsv(backtestReport({
       symbol, exchange: instrument?.exchange ?? null, rules: ruleStrings, costBps, window: runWindow,
-      unit: backtestPriceUnit(symbol, quote), result, equity: true,
+      unit: backtestPriceUnit(symbol, quote, contractUnit.data), result, equity: true,
     }), symbol);
   } : undefined;
 
