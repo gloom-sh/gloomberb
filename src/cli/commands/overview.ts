@@ -78,6 +78,7 @@ import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
 import { getSectorCollection, SECTOR_COLLECTIONS } from "../../plugins/builtin/sectors/sector-data";
 import { DAILY_CLOSES } from "../../plugins/builtin/shared/report-freshness";
 import { canonicalTimeZone, localTimeSuffix, newestReportTime, oldestReportTime, timeZoneCity, zonedClock } from "../../utils/utc-time";
+import { zonedDayStart } from "../../utils/zoned-date-time";
 import { quotesFreshness, rowsFreshness } from "../freshness";
 import { periodicityOf } from "../pane-functions/freshness";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
@@ -389,27 +390,50 @@ function publisherClock(localTime: unknown, timeZone: unknown): string {
 }
 const DAY_MS = 86_400_000;
 
-/** The calendar's columns up to the event: shared by the text table and the exports, which keep the raw values under them. */
+/** The release's UTC day, for the Date column: text shows the event timestamp in UTC, never the host's zone. */
+const ECON_UTC_DATE_COLUMN: CliResultColumn = { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") };
+/** Only rows a publisher times itself fill it, so the feeds' calendar prints as before. */
+const ECON_LOCAL_COLUMN: CliResultColumn = {
+  key: "localTime", header: "Local", optional: true, dropPriority: 1, format: (value, row) => publisherClock(value, row.timeZone),
+};
+const ECON_EVENT_COLUMNS: CliResultColumn[] = [{ key: "country", header: "Country" }, { key: "impact", header: "Impact" }, { key: "event", header: "Event" }];
+/** `All day`, blank for a bank that states no time, else the release's UTC clock (`12:30 UTC`). */
+const econUtcTime = (value: unknown, row: Record<string, unknown>, readerClock: boolean) => value === "All Day" ? "All day"
+  : value === "" ? "" : utcDateTimePart(row.date, "time", readerClock);
+/** The day a row is listed under with --tz: its date on that clock, or its own day when it has no time to move. */
+const econViewerDay = (row: Record<string, unknown>) => typeof row.viewerDate === "string" ? row.viewerDate : utcDateTimePart(row.date, "date");
+
+/**
+ * The calendar's columns up to the event, as the text table shows them; the
+ * exports keep the raw values under their own (`econExportZoneColumns`).
+ * Without --tz the day, its weekday and the time are UTC's. With --tz they are
+ * the zone's, so --from, Date and Day name one day: Date and Day, the clock
+ * there, then the UTC time, with the UTC date where it is another day (08:50
+ * on 12 Nov in Tokyo is 23:50 UTC on 11 Nov: "11-11 23:50 UTC").
+ */
 function econHeadColumns(viewerZone: string | null): CliResultColumn[] {
+  if (!viewerZone) {
+    return [
+      ECON_UTC_DATE_COLUMN,
+      ECON_DAY_COLUMN,
+      { key: "time", header: "Time", format: (value, row) => econUtcTime(value, row, true) },
+      // Only --tz fills it, so the text leaves it out (`econTextHeadColumns`) and the exports keep it empty.
+      { key: "viewerTime", header: "Viewer", shrink: false, format: () => "" },
+      ECON_LOCAL_COLUMN,
+      ...ECON_EVENT_COLUMNS,
+    ];
+  }
   return [
-    // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
-    { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
-    // The weekday sits before the clock it is on: the UTC time's, or with --tz the viewer's.
-    ...viewerZone ? [] : [ECON_DAY_COLUMN],
-    // With --tz the viewer's clock has its own column, so the UTC time does not repeat it.
-    { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : value === ""
-      ? "" : utcDateTimePart(row.date, "time", !viewerZone) },
-    ...viewerZone ? [ECON_DAY_COLUMN] : [],
-    // Only --tz fills it: the viewer's clock, its weekday in Day before it, and its own date where that is not the
-    // Date column's (19:00 UTC on 9 Dec is 03:00 on 10 Dec in Hong Kong: "12-10 03:00").
-    { key: "viewerTime", header: viewerZone ? timeZoneCity(viewerZone) : "Viewer", shrink: false,
-      format: (value, row) => typeof value !== "string" || !viewerZone ? ""
-        : typeof row.viewerDate === "string" && row.viewerDate !== utcDateTimePart(row.date, "date") ? `${row.viewerDate.slice(5)} ${value}` : value },
-    // Only rows a publisher times itself fill it, so the feeds' calendar prints as before.
-    { key: "localTime", header: "Local", optional: true, dropPriority: 1, format: (value, row) => publisherClock(value, row.timeZone) },
-    { key: "country", header: "Country" },
-    { key: "impact", header: "Impact" },
-    { key: "event", header: "Event" },
+    { key: "date", header: "Date", format: (_value, row) => econViewerDay(row) },
+    ECON_DAY_COLUMN,
+    { key: "viewerTime", header: timeZoneCity(viewerZone), shrink: false, format: (value) => typeof value === "string" ? value : "" },
+    { key: "time", header: "Time", format: (value, row) => {
+      const time = econUtcTime(value, row, false);
+      const utcDay = utcDateTimePart(row.date, "date");
+      return time && time !== "All day" && utcDay !== econViewerDay(row) ? `${utcDay.slice(5)} ${time}` : time;
+    } },
+    ECON_LOCAL_COLUMN,
+    ...ECON_EVENT_COLUMNS,
   ];
 }
 
@@ -426,18 +450,17 @@ function econExportHeadColumns(viewerZone: string | null, publisherTimed: boolea
 }
 
 function econExportZoneColumns(viewerZone: string | null): CliResultColumn[] {
-  const [date, , , viewerTime, local, ...rest] = viewerZone ? econHeadColumns(viewerZone) : [];
   if (!viewerZone) return econHeadColumns(null);
   const city = timeZoneCity(viewerZone);
   return [
-    date!,
-    { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : value === "" ? "" : utcDateTimePart(row.date, "time") },
+    ECON_UTC_DATE_COLUMN,
+    { key: "time", header: "Time", format: (value, row) => econUtcTime(value, row, true) },
     { key: "utcDay", header: "Day" },
     { key: "viewerDate", header: `${city} date` },
     { key: "day", header: `${city} day`, format: (value, row) => typeof row.viewerDate === "string" ? String(value ?? "") : "" },
-    { ...viewerTime!, header: `${city} time`, format: (value) => typeof value === "string" ? value : "" },
-    local!,
-    ...rest,
+    { key: "viewerTime", header: `${city} time`, shrink: false, format: (value) => typeof value === "string" ? value : "" },
+    ECON_LOCAL_COLUMN,
+    ...ECON_EVENT_COLUMNS,
   ];
 }
 
@@ -605,20 +628,29 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   await withCliServices(ctx, async () => {
     const now = Date.now();
     const todayStart = Math.floor(now / DAY_MS) * DAY_MS;
+    // With --tz a day is the zone's: 12 Nov in Tokyo starts at 15:00 UTC on 11 Nov, where the stored calendar is read
+    // from, so the BoJ's 08:50 release on the 12th (23:50 UTC on the 11th) is in it. Without, a day is UTC's.
+    const dayStartUtc = (day: string) => viewerZone ? isoDate(new Date(zonedDayStart(day, viewerZone))).slice(0, 10) : day;
+    const fromUtc = fromOption == null ? null : dayStartUtc(fromOption);
     // An earlier day reads the stored calendar, which keeps past events after the week's listing drops them.
     // A server without it, a server error or no network lists the current calendar (cached when offline) instead.
-    const stored = fromOption != null && fromOption < isoDate(new Date(todayStart))
-      ? await fetchEconCalendarFrom(fromOption).catch((error: unknown) => failBeforeCalendar(error, fromOption, todayStart))
+    const stored = fromOption != null && fromUtc! < isoDate(new Date(todayStart))
+      ? await fetchEconCalendarFrom(fromUtc!).catch((error: unknown) => failBeforeCalendar(error, fromOption, todayStart))
       : null;
     const past = stored?.events ? stored : null;
     const unread = stored && !stored.events && stored.failure ? `The stored calendar could not be read (${stored.failure}); listing the current calendar` : null;
     const { data: events, fetchedAt, stale, source } = past
       ? { data: past.events, fetchedAt: Date.now(), stale: false, source: "network" as const }
       : await loadCalendar(ctx.cliOptions.refresh);
-    // The calendar lists from today (UTC). --from moves the first day; --tail
+    // The calendar lists from today (UTC, or with --tz the zone's). --from moves the first day; --tail
     // alone keeps the newest events of the whole calendar, the past week's too.
-    const from = fromOption ?? (ctx.cliOptions.tail != null ? null : new Date(todayStart).toISOString().slice(0, 10));
-    const fromTime = from == null ? Number.NEGATIVE_INFINITY : Date.parse(`${from}T00:00:00Z`);
+    const from = fromOption ?? (ctx.cliOptions.tail != null ? null
+      : viewerZone ? zonedClock(now, viewerZone).date : new Date(todayStart).toISOString().slice(0, 10));
+    const fromTime = from == null ? Number.NEGATIVE_INFINITY : viewerZone ? zonedDayStart(from, viewerZone) : Date.parse(`${from}T00:00:00Z`);
+    // The day a row is listed under: on the --tz clock where it has a time, else its own UTC day, which a bank that
+    // states no time keeps on any clock.
+    const eventDay = (event: EconEvent) => viewerZone && !hasNoReleaseTime(event)
+      ? zonedClock(event.date.getTime(), viewerZone).date : isoDate(event.date).slice(0, 10);
     // The last day the listing reaches, as Gloom Cloud says it: past it, it lists each central bank's next decision
     // and each country's next CPI release.
     const listedThrough = listingEnd(events, past?.listedThrough);
@@ -629,7 +661,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     const listedFrom = firstEvent ? firstEvent.toISOString().slice(0, 10) : null;
     // The stored calendar's first day, or once the calendar reaches back less far than that, the furthest day it lists.
     const pastFrom = past ? past.listedFrom ?? past.storedFrom : null;
-    const startsLater = fromOption != null && (past ? pastFrom == null || pastFrom > fromOption : listedFrom != null && listedFrom > fromOption);
+    const startsLater = fromUtc != null && (past ? pastFrom == null || pastFrom > fromUtc : listedFrom != null && listedFrom > fromUtc);
     const listedBefore = !startsLater ? null
       : past?.listedFrom && (!past.storedFrom || past.listedFrom > past.storedFrom)
         ? `The calendar lists back ${Math.round((todayStart - Date.parse(`${past.listedFrom}T00:00:00Z`)) / DAY_MS)} days, to ${past.listedFrom}; nothing earlier is listed`
@@ -638,11 +670,12 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // Countries asked for that the calendar does not cover (EG, NG): not in it, which a longer window would not change.
     const absent = countriesNotInCalendar(country, events);
     // Countries asked for that nothing in the window is for: a quiet week there, not an unknown country.
-    const inWindow = events.filter((event) => event.date.getTime() >= fromTime);
+    const inWindow = from == null ? events : events.filter((event) => eventDay(event) >= from);
     const unscheduled = countriesWithoutEvents(country, inWindow).filter((code) => !absent.includes(code));
     const listed = inWindow
       .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact) && (search == null || matchesEventSearch(event, search)))
-      .sort((left, right) => left.date.getTime() - right.date.getTime());
+      // Day by day, then in time: a day-long row on another clock's day stays under that day.
+      .sort((left, right) => eventDay(left).localeCompare(eventDay(right)) || left.date.getTime() - right.date.getTime());
     const rows = listed
       .map((event) => {
         // The viewer's clock (--tz) for a row with a time: its date and time there.
@@ -1198,8 +1231,8 @@ export const overviewCliCommands: CliCommandDef[] = [
         { flags: "--country <regions or countries>", description: "US, G7, EU, all (default), or countries by their two-letter codes, comma separated, such as MX or MX,BR,ZA" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
         { flags: "--search <words>", description: "Match all words in an event name or publisher; OR joins alternatives, such as \"housing OR mortgage OR NAHB\". Case, spaces and hyphens are ignored" },
-        { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day lists past events from the stored calendar and says where it starts` },
-        { flags: "--tz <zone>", description: "Add a column with each release's time on that clock, an IANA zone such as America/New_York; with the weekday when it falls on another day than the UTC date" },
+        { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC, or with --tz the zone's); an earlier day lists past events from the stored calendar and says where it starts` },
+        { flags: "--tz <zone>", description: "List the days on that clock, an IANA zone such as Asia/Tokyo: --from, Date and Day are its days, beside each release's time there and in UTC" },
       ],
       examples: ["econ", "econ --country US --impact high", "econ --search nonfarm", "econ --country MX,BR,ZA,IN,KR", "econ --from 2026-10-12 --country US",
         "econ --country BR --tz America/New_York", "econ --tail 20"],

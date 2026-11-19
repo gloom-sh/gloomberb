@@ -27,6 +27,7 @@ import { usePlotWheel } from "./panel-surface/plot-wheel";
 import { useValueAxisGestures } from "./panel-surface/value-axis-gestures";
 import { DESKTOP_PLOT_PICK_STYLE, DESKTOP_PLOT_STYLE, PanelPlotSurface, PanelValueAxis } from "./panel-surface/panel-cursor";
 import { PanelLevelLabels } from "./panel-surface/level-labels";
+import { compositeAxisLabelColor } from "./panel-labels";
 
 /** The grab strip over the line between two panels: the line and a few pixels either side of it. */
 const PANEL_DIVIDER_STYLE = {
@@ -172,6 +173,9 @@ export function CompositePanelSurface({
       : panel.axes.left?.manual && leftAxisWidth > 0 ? "left"
         : rightAxisWidth > 0 ? "right" : leftAxisWidth > 0 ? "left" : null;
   const manualLabel = (manualSide === "left" ? leftAxisWidth : rightAxisWidth) >= 4 ? "Auto" : "A";
+  // Every axis past the chart's first is labelled in its lines' colour.
+  const leftAxisColor = compositeAxisLabelColor(scene, panel, "left", colors.textDim);
+  const rightAxisColor = compositeAxisLabelColor(scene, panel, "right", colors.textDim);
 
   return (
     <Box
@@ -247,7 +251,7 @@ export function CompositePanelSurface({
             height={panel.height}
             cursorColor={colors.crosshair}
             cursorBackgroundColor={colors.background}
-            axisColor={colors.textDim}
+            axisColor={leftAxisColor}
             extraMarkers={leftAxisMarkers}
             measuredPixelHeight={plotSize.height * cellHeightPx}
             gestures={leftAxisGestures}
@@ -322,7 +326,7 @@ export function CompositePanelSurface({
             height={panel.height}
             cursorColor={colors.crosshair}
             cursorBackgroundColor={colors.background}
-            axisColor={colors.textDim}
+            axisColor={rightAxisColor}
             extraMarkers={rightAxisMarkers}
             measuredPixelHeight={plotSize.height * cellHeightPx}
             gestures={rightAxisGestures}

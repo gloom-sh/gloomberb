@@ -9,6 +9,10 @@ import {
   rebindResearchChartSpec,
 } from "./chart-spec-edit";
 import { setBuiltinStudies } from "./studies";
+import { setStandaloneSeriesCatalog } from "../../../series/standalone-catalog";
+import { GOVERNMENT_BOND_SERIES, TREASURY_SERIES } from "../yield-curve/series";
+import { CENTRAL_BANK_SERIES } from "../central-bank-rates/series";
+import { FRED_CATALOG_SERIES } from "../shared/fred-catalog";
 import {
   appendCatalogSuggestion,
   buildComparisonChartPreset,
@@ -102,6 +106,23 @@ describe("chart composer series placement", () => {
       label: "Panel 2",
       height: 0.35,
     });
+  });
+
+  // `G CAP:policy-rate:us,FRED:DGS2,CAP:policy-rate:jp,CAP:bond-yield:jp-2y` drew the JGB under the rest, on a scale of its
+  // own, and `G FRED:DGS2,FRED:DGS10,FRED:DGS30` the 30-year: each source counted as a unit of its own.
+  test("series the catalog lists in one unit share a panel, whatever source they load from", () => {
+    setStandaloneSeriesCatalog([{ id: "macro", series: [...TREASURY_SERIES, ...GOVERNMENT_BOND_SERIES, ...CENTRAL_BANK_SERIES, ...FRED_CATALOG_SERIES] }] as never);
+    try {
+      const panels = (expression: string) => buildCustomChartPreset(expression).series.map((series) => series.panelId);
+      expect(panels("CAP:policy-rate:us,FRED:DGS2,CAP:policy-rate:jp,CAP:bond-yield:jp-2y")).toEqual(["main", "main", "main", "main"]);
+      expect(panels("FRED:DGS2,FRED:DGS10,FRED:DGS30")).toEqual(["main", "main", "main"]);
+      // Units that differ still take a panel each pair: a price, a percentage, an index level.
+      expect(panels("AAPL,FRED:DFF,FRED:VIXCLS")).toEqual(["main", "main", "panel-2"]);
+      // A source the catalog does not list loads in a unit of its own.
+      expect(panels("FRED:DGS2,CAP:alpha:one,CAP:beta:two")).toEqual(["main", "main", "panel-2"]);
+    } finally {
+      setStandaloneSeriesCatalog(null);
+    }
   });
 
   test("renders an appended secondary OHLCV price as a valid comparison line", () => {

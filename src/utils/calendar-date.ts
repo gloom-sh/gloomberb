@@ -104,29 +104,46 @@ export function readCalendarDate(value: string): string | null {
   return null;
 }
 
-/**
- * The YYYY-MM-DD date that a date written another way plainly names, to
- * offer as the one to type: 14/10/2026 and 10/14/2026 are 2026-10-14, since a
- * part over 12 can only be the day. Null when both parts could be the month
- * (03/04/2026), and for text that is not a date of the calendar.
- */
-function isoDateReading(value: string): string | null {
-  const text = value.trim();
-  const yearLast = YEAR_LAST.exec(text);
-  if (!yearLast) return null;
-  const [first, second, year] = [Number(yearLast[1]), Number(yearLast[3]), Number(yearLast[4])];
-  if (first <= 12 && second <= 12 && first !== second) return null;
-  return first <= 12 && second > 12 ? calendarDay(year, first, second) : calendarDay(year, second, first);
+/** Whether a word names a month, in full or in three letters (`Oct.`, `Sept`), as a date typed in words has it. */
+export function isMonthName(word: string): boolean {
+  return monthNumber(word.replace(/[.,]+$/, "")) !== null;
 }
 
 /**
- * What to type instead of a date written another way that plainly names one:
- * `type --from 2026-10-14 for 14/10/2026`. Null for anything else. `option` is
- * how the option is typed (`--from`), or empty for a form's field.
+ * The YYYY-MM-DD dates a date written another way can be, to offer as the
+ * ones to type, the day first before the month first: 14/10/2026 and
+ * 10/14/2026 are only 2026-10-14, since a part over 12 can only be the day,
+ * and 1/11/2026 is 2026-11-01 or 2026-01-11. None for text that is not a date
+ * of the calendar either way.
+ */
+function isoDateReadings(value: string): string[] {
+  const yearLast = YEAR_LAST.exec(value.trim());
+  if (!yearLast) return [];
+  const [first, second, year] = [Number(yearLast[1]), Number(yearLast[3]), Number(yearLast[4])];
+  return [...new Set([calendarDay(year, second, first), calendarDay(year, first, second)])]
+    .filter((date): date is string => date !== null);
+}
+
+const SHORT_MONTHS = MONTHS.map((month) => `${month[0]!.toUpperCase()}${month.slice(1, 3)}`);
+/** `1 Nov` for 2026-11-01: a reading named the way that cannot be mistaken. */
+const dayAndMonth = (date: string) => `${Number(date.slice(8, 10))} ${SHORT_MONTHS[Number(date.slice(5, 7)) - 1]!}`;
+
+/**
+ * What to type instead of a date written another way: `type --from 2026-10-14
+ * for 14/10/2026` where it plainly names one, and both readings with the date
+ * to type for each where the day and the month could be either part (`1/11/2026
+ * is 1 Nov or 11 Jan; type --from 2026-11-01 for 1 Nov or --from 2026-01-11 for
+ * 11 Jan`). Null for anything else. `option` is how the option is typed
+ * (`--from`), or empty for a form's field.
  */
 export function dateOptionHint(value: string, option: string): string | null {
-  const reading = isoDateReading(value);
-  return reading ? `type ${option ? `${option} ` : ""}${reading} for ${value.trim()}` : null;
+  const typed = (date: string) => `${option ? `${option} ` : ""}${date}`;
+  const readings = isoDateReadings(value);
+  if (readings.length === 1) return `type ${typed(readings[0]!)} for ${value.trim()}`;
+  if (readings.length !== 2) return null;
+  const [dayFirst, monthFirst] = readings as [string, string];
+  return `${value.trim()} is ${dayAndMonth(dayFirst)} or ${dayAndMonth(monthFirst)}; `
+    + `type ${typed(dayFirst)} for ${dayAndMonth(dayFirst)} or ${typed(monthFirst)} for ${dayAndMonth(monthFirst)}`;
 }
 
 /**

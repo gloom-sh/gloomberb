@@ -9,6 +9,7 @@ import {
 } from "./format";
 import { projectCompositeValue, unprojectCompositeValue } from "./scene";
 import type { CompositeAxisDomain, CompositeChartScene, CompositePanelScene } from "./types";
+import { isOhlcSeriesStyle } from "../../../time-series/spec";
 
 /**
  * The crosshair, and a marker where it crosses each line: hollow where the
@@ -164,4 +165,32 @@ export function resolveSeriesCursorYRatio(
     if (yRatio !== null) return yRatio;
   }
   return null;
+}
+
+/** The one colour a line is drawn in; null for one drawn in two (candles, a histogram with its own colour below zero). */
+function singleColor(series: CompositePanelScene["series"][number]): string | null {
+  const { style, color, negativeColor } = series.source;
+  return isOhlcSeriesStyle(style) || (negativeColor && negativeColor !== color) ? null : color;
+}
+
+/**
+ * The colour an axis's labels are drawn in. The chart's first axis (its top
+ * panel's left, or its right where it has no left) is `neutral`; any other,
+ * a second scale beside it or a lower panel's, takes its lines' colour where
+ * they are drawn in one, so each line is read against the axis in its colour,
+ * as its cursor tag is. An axis lines of several colours share stays
+ * `neutral`: the legend tells them apart.
+ */
+export function compositeAxisLabelColor(
+  scene: Pick<CompositeChartScene, "panels">,
+  panel: CompositePanelScene,
+  side: "left" | "right",
+  neutral: string,
+): string {
+  const domain = panel.axes[side];
+  const first = scene.panels[0];
+  if (!domain || !first || (panel.id === first.id && side === (first.axes.left ? "left" : "right"))) return neutral;
+  const colors = new Set(panel.series.filter((series) => domain.seriesIds.includes(series.source.id)).map(singleColor));
+  const [color] = colors;
+  return colors.size === 1 && color ? color : neutral;
 }

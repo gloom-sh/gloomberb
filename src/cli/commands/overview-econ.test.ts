@@ -193,7 +193,7 @@ test("the listing's end is said as Gloom Cloud gives it, and each bank's next de
   const cpi = { ...event("2026-12-03T07:00:00.000Z", "TR", "high", "CPI"), kind: "statistics-release", localTime: "10:00",
     timeZone: "Europe/Istanbul", referencePeriod: "2026-11", source: { name: "TurkStat" }, pastListing: true, listedThrough: "2026-11-21" };
   const turkey = await econText([...next, cpi], ["--from", "2026-12-01", "--country", "TR", "--tz", "Europe/Istanbul"]);
-  expect(turkey).toMatch(/2026-12-03\s+07:00 UTC\s+Thu\s+10:00\s+10:00 Istanbul\s+TR\s+high\s+CPI\s.*TurkStat/);
+  expect(turkey).toMatch(/2026-12-03\s+Thu\s+10:00\s+07:00 UTC\s+10:00 Istanbul\s+TR\s+high\s+CPI\s.*TurkStat/);
   expect(turkey).toContain("the rows after it are each central bank's next decision and each country's next CPI release, as its statistics office schedules it");
   // The calendar from an earlier day says the end itself.
   const stored = await econText(listing, ["--from", "2026-11-01", "--country", "TR"], {}, "2026-10-01", "2026-11-21");
@@ -233,7 +233,7 @@ test("plain output leaves out the Local and Viewer columns when nothing fills th
     expect(mixed).toMatch(/12:00 UTC\s+06:00 Mexico City\s+MX\s+high\s+Mid-Month CPI/);
     expect(mixed).toMatch(/12:30 UTC\s+—\s+US\s+high\s+Housing Starts/);
     // --tz gives the viewer's clock its column, named for the zone.
-    expect(await econText(twoWeeks, ["--country", "US", "--tz", "America/New_York"])).toMatch(/Time\s+Day\s+New York\s+Country/);
+    expect(await econText(twoWeeks, ["--country", "US", "--tz", "America/New_York"])).toMatch(/Date\s+Day\s+New York\s+Time\s+Country/);
     // A script's CSV header has Local only when a row has a publisher's clock: `econ --tz Asia/Tokyo --csv` carried it
     // empty on every row.
     const header = async (calendar: typeof twoWeeks, args: string[]) => {
@@ -273,7 +273,7 @@ test("a row names who publishes it, the period it covers and its page, in the ta
   expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Publisher");
 });
 
-test("--tz adds the viewer's clock, with the weekday there in Day", async () => {
+test("--tz lists the zone's days: Date and Day are its own, beside the time there and in UTC", async () => {
   const brazil = [
     ...twoWeeks,
     { ...event("2026-10-23T12:00:00.000Z", "BR", "high", "IPCA-15 Mid-Month CPI m/m"), kind: "statistics-release", localTime: "09:00",
@@ -282,10 +282,11 @@ test("--tz adds the viewer's clock, with the weekday there in Day", async () => 
     { ...event("2026-10-14T01:30:00.000Z", "BR", "medium", "Night release") },
   ];
   const text = await econText(brazil, ["--country", "BR", "--tz", "america/new_york"]);
-  expect(text).toMatch(/Date\s+Time\s+Day\s+New York\s+Local/);
-  // Wednesday the 14th in UTC is still Tuesday evening in New York, and the clock says its own date.
-  expect(text).toMatch(/2026-10-14\s+01:30 UTC\s+Tue\s+10-13 21:30\s+BR\s+medium\s+Night release/);
-  expect(text).toMatch(/2026-10-23\s+12:00 UTC\s+Fri\s+08:00\s+09:00 Sao Paulo\s+BR\s+high\s+IPCA-15 Mid-Month CPI m\/m\s+2026-10\s+0\.32%\s+0\.43%\s+0\.70%/);
+  expect(text).toMatch(/Date\s+Day\s+New York\s+Time\s+Local/);
+  // Wednesday the 14th in UTC is still Tuesday evening in New York: Date and Day say the 13th, a Tuesday, and the UTC
+  // time its own date. The date beside the Day it names was the 14th, a Wednesday.
+  expect(text).toMatch(/2026-10-13\s+Tue\s+21:30\s+10-14 01:30 UTC\s+BR\s+medium\s+Night release/);
+  expect(text).toMatch(/2026-10-23\s+Fri\s+08:00\s+12:00 UTC\s+09:00 Sao Paulo\s+BR\s+high\s+IPCA-15 Mid-Month CPI m\/m\s+2026-10\s+0\.32%\s+0\.43%\s+0\.70%/);
   const printed = await econPrinted(brazil, ["--country", "BR", "--tz", "America/New_York"]);
   expect(printed.result.metadata).toMatchObject({ timeZone: "America/New_York" });
   expect((printed.result.data as Record<string, unknown>[]).at(-1)).toMatchObject({ viewerDate: "2026-10-23", viewerTime: "08:00" });
@@ -302,6 +303,43 @@ test("--tz adds the viewer's clock, with the weekday there in Day", async () => 
   await expect(econText(brazil, ["--tz", "EST5"])).rejects.toThrow('Unknown time zone "EST5"');
 });
 
+// `econ --country JP --from 12.11.2026 --tz Asia/Tokyo --search PPI` left out the BoJ's PPI of 12 Nov 08:50 in Tokyo,
+// 23:50 UTC on the 11th, and `--from 11.11.2026` listed it dated the 11th beside "Thu".
+test("with --tz, --from is a day on that clock, read from the stored calendar where the day starts in UTC", async () => {
+  setSystemTime(new Date("2026-11-19T07:00:00.000Z"));
+  const japan = [
+    { ...event("2026-11-11T23:50:00.000Z", "JP", "low", "PPI y/y"), actual: "7.1%" },
+    { ...event("2026-11-11T05:00:00.000Z", "JP", "low", "Machine Tool Orders") },
+    // A bank that states no time keeps its own day on any clock.
+    { ...event("2026-11-12T00:00:00.000Z", "JP", "low", "Day-long release"), time: "All Day" },
+  ];
+  const requested: string[] = [];
+  const read = async (args: string[]) => {
+    resetEconCalendarPersistence();
+    attachEconCalendarPersistence(new MemoryPluginPersistence());
+    setCloudApiFetchTransport(async (url) => {
+      requested.push(url);
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ events: japan, storedFrom: "2026-01-01" }) } as Response;
+    });
+    const cli = createTestCliContext({}, {});
+    await econ.execute(args, cli.context);
+    const { result, options } = cli.printed[0]!;
+    return { text: serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options), result };
+  };
+  const tokyo = await read(["--country", "JP", "--from", "12.11.2026", "--tz", "Asia/Tokyo"]);
+  // 12 Nov starts at 15:00 UTC on the 11th in Tokyo: the stored calendar is read from the 11th.
+  expect(new URL(requested.at(-1)!).searchParams.get("from")).toBe("2026-11-11");
+  expect(tokyo.text).toMatch(/2026-11-12\s+Thu\s+08:50\s+11-11 23:50 UTC\s+JP\s+low\s+PPI y\/y/);
+  expect(tokyo.text).toMatch(/2026-11-12\s+Thu\s+All day\s+JP\s+low\s+Day-long release/);
+  // 14:00 on the 11th in Tokyo is before the day asked for.
+  expect(tokyo.text).not.toContain("Machine Tool Orders");
+  expect(tokyo.result.metadata).toMatchObject({ from: "2026-11-12", timeZone: "Asia/Tokyo" });
+  // The same day in UTC starts after the release.
+  const utc = await read(["--country", "JP", "--from", "12.11.2026"]);
+  expect(utc.text).not.toContain("PPI y/y");
+  expect(utc.text).toMatch(/2026-11-12\s+Thu\s+All day\s+JP\s+low\s+Day-long release/);
+});
+
 test("a day-long event prints All day under its own weekday, never a midnight clock", async () => {
   // A plenum the calendar lists for the day, beside a release timed at midnight UTC.
   const china = [
@@ -312,14 +350,15 @@ test("a day-long event prints All day under its own weekday, never a midnight cl
   const text = await econText(china, ["--country", "CN"]);
   expect(text).toMatch(/2026-10-12\s+Mon\s+All day\s+CN\s+medium\s+Communist Party Fifth Plenum/);
   expect(text).toMatch(/2026-10-12\s+Mon\s+00:00 UTC\s+CN\s+low\s+Midnight release/);
-  // Its day stays its own on another clock, which has no time to show for it.
+  // Its day stays its own on another clock, which has no time to show for it; a release at midnight UTC is the evening
+  // before in New York, and listed under that day.
   const newYork = await econText(china, ["--country", "CN", "--tz", "America/New_York"]);
-  expect(newYork).toMatch(/2026-10-12\s+All day\s+Mon\s+CN\s+medium\s+Communist Party Fifth Plenum/);
-  expect(newYork).toMatch(/2026-10-12\s+00:00 UTC\s+Sun\s+10-11 20:00\s+CN\s+low\s+Midnight release/);
+  expect(newYork).toMatch(/2026-10-12\s+Mon\s+All day\s+CN\s+medium\s+Communist Party Fifth Plenum/);
+  expect(newYork).toMatch(/2026-10-11\s+Sun\s+20:00\s+10-12 00:00 UTC\s+CN\s+low\s+Midnight release/);
   const rows = (await econPrinted(china, ["--country", "CN", "--tz", "America/New_York"])).result.data as Record<string, unknown>[];
   expect(rows.map((row) => [row.event, row.time, row.day, row.viewerTime])).toEqual([
-    ["Communist Party Fifth Plenum", "All Day", "Mon", null],
     ["Midnight release", "00:00", "Sun", "20:00"],
+    ["Communist Party Fifth Plenum", "All Day", "Mon", null],
   ]);
 });
 

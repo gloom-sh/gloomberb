@@ -20,9 +20,10 @@ test("a window that cannot be read names the option and what to type", () => {
   expect(() => readPriceWindow("2009", "2007", now)).toThrow("--from 2009 is after --to 2007. The window runs from the earlier to the later, such as --from 2007 --to 2009.");
   expect(() => readPriceWindow("2027", undefined, now)).toThrow("--from 2027 has not started yet");
   expect(() => readPriceWindow("2007x", undefined, now)).toThrow('Invalid --from "2007x"');
-  // A slashed date that reads two ways names the dotted day-first form that is read one way.
+  // A slashed date that reads two ways names both readings and the date to type for each.
   expect(() => readPriceWindow("05/11/2025", undefined, now))
-    .toThrow('Invalid --from "05/11/2025". Use the window\'s start as a year (2007) or a date (2008-09-15, or day first as 15.9.2008), such as --from 2007.');
+    .toThrow('Invalid --from "05/11/2025". Use the window\'s start as a year (2007) or a date (2008-09-15, or day first as 15.9.2008): '
+      + "05/11/2025 is 5 Nov or 11 May; type --from 2025-11-05 for 5 Nov or --from 2025-05-11 for 11 May.");
 });
 
 test("a date that has begun where the reader is, east of UTC, is no start still ahead", () => {

@@ -36,6 +36,7 @@ import { glossaryFunctionsNamed, glossaryNamesFunction, renderGlossaryEntries, t
 import { renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { typoDistance } from "../../utils/typo-distance";
 import { FUNCTION_HELP } from "./function-help";
+import { ratesQuestionFunctions } from "./rates-question";
 import { quotedSearchCommand } from "../commands/news-search";
 
 /**
@@ -814,25 +815,35 @@ function questionTopic(question: string): string {
 export interface FunctionForQuestion {
   code: string;
   label: string;
-  /** `gloom fn WEI`, `gloom fn CMP <tickers>`: the command that runs it. */
+  /** `gloom fn WEI`, `gloom fn CMP <tickers>`, `gloom fn GC jgb`: the command that runs it. */
   command: string;
+  /** What the command bar runs it with, where the question names its argument: `GC JGB`, `ECO JP,AU`. */
+  input?: string;
 }
 
 /**
  * The functions `catalog` finds for a question's topic, best first, up to
  * `limit`: what Ask Gloom offers without an account ("what did the DAX do
- * yesterday" finds WEI and CMP). Built from the templates alone, without a
- * market context, so the app's pane asks it as the command line does.
+ * yesterday" finds WEI and CMP). A question about policy rates, curves or the
+ * macro calendar gets CBR, GC and ECO first, run for the markets it names
+ * (`ratesQuestionFunctions`): "BoJ and RBA policy rates and JGB yields" found
+ * CBR, then MDAY and FIRST. Built from the templates alone, without a market
+ * context, so the app's pane asks it as the command line does.
  */
 export async function functionsForQuestion(registry: PaneFunctionCatalog, question: string, limit = 3): Promise<FunctionForQuestion[]> {
   const topic = questionTopic(question);
   if (!topic) return [];
   const entries = await buildPaneCatalogEntries(registry, null);
+  const rates = ratesQuestionFunctions(question).flatMap(({ code, argument, input }): FunctionForQuestion[] => {
+    const entry = entries.find((candidate) => candidate.token === code);
+    return entry ? [{ code, label: entry.label, command: `gloom fn ${code}${argument ? ` ${argument}` : ""}`, ...(input ? { input: `${code} ${input}` } : {}) }] : [];
+  });
   const { shown } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, topic), topic, limit);
-  return shown.map((entry) => {
+  const found = shown.filter((entry) => !rates.some((named) => named.code === entry.token)).map((entry) => {
     const argument = argumentHint(entry);
     return { code: entry.token, label: entry.label, command: `gloom fn ${entry.token}${argument ? ` ${argument}` : ""}` };
   });
+  return [...rates, ...found].slice(0, limit);
 }
 
 const CATALOG_TEXT_WIDTH = 100;

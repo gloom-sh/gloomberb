@@ -1227,9 +1227,14 @@ export class CloudDataApi {
     );
   }
 
-  /** Each market's latest curve and the session before, each on its own date. */
-  async getCloudWorldCurves(): Promise<CloudWorldCurves> {
-    return this.request<CloudWorldCurves>("/cloud/econ/curves", { signal: AbortSignal.timeout(30_000) });
+  /**
+   * Each market's curve and the session before, each on its own date: the
+   * latest, or with `date` the last on or before it (within ten days). A
+   * server older than dated reads answers with the latest whatever the date.
+   */
+  async getCloudWorldCurves(date?: string | null): Promise<CloudWorldCurves> {
+    const query = date ? `?${new URLSearchParams({ date })}` : "";
+    return this.request<CloudWorldCurves>(`/cloud/econ/curves${query}`, { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudCryptoMarkets(): Promise<CryptoMarketsPayload> {

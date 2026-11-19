@@ -71,13 +71,16 @@ export function cachedCurve(curve: CurveId, requestedDate: string): SavedCopyAns
   return cached ? { data: cached.data, savedAt: null } : null;
 }
 
-/** Each market's latest curve, or the copy an earlier read saved when they cannot be read. */
-export async function loadSavedWorldRows(client?: Parameters<typeof loadWorldRows>[0]): Promise<SavedCopyAnswer<WorldRow[]>> {
-  return answer(await worldCurvesCache.load("latest", () => loadWorldRows(client), { force: true }));
+/**
+ * Each market's latest curve, or its last on or before `requestedDate`; the
+ * copy an earlier read of the same day saved when they cannot be read.
+ */
+export async function loadSavedWorldRows(requestedDate = "", client?: Parameters<typeof loadWorldRows>[0]): Promise<SavedCopyAnswer<WorldRow[]>> {
+  return answer(await worldCurvesCache.load(requestedDate || "latest", () => loadWorldRows(client, requestedDate), { force: true }));
 }
 
-/** The saved world board, for the tab's first paint while it is read again. */
-export function cachedWorldRows(): SavedCopyAnswer<WorldRow[]> | null {
-  const cached = worldCurvesCache.get("latest", { allowExpired: true });
+/** The saved world board for the day, for the tab's first paint while it is read again. */
+export function cachedWorldRows(requestedDate = ""): SavedCopyAnswer<WorldRow[]> | null {
+  const cached = worldCurvesCache.get(requestedDate || "latest", { allowExpired: true });
   return cached ? { data: cached.data, savedAt: null } : null;
 }

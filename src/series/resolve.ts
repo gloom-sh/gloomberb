@@ -64,7 +64,7 @@ function nativeFrequency(frequency: SeriesFrequency): SeriesPeriod {
 }
 
 /** Series in one unit share an axis; percentages share it with FRED's. */
-function seriesUnitGroup(unit: string): string {
+export function seriesUnitGroup(unit: string): string {
   return unit === "%" ? "percent" : `series:${unit.toLowerCase()}`;
 }
 

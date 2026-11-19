@@ -36,7 +36,12 @@ test("a date option takes ISO, year-first, marked, day-first dotted and month-na
   expect(fails("14/10/2026")).toBe("Use a --from date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026: type --from 2026-10-14 for 14/10/2026.");
   expect(["10/14/2026", "14-10-2026", "10.14.2026"].map((value) => fails(value)?.match(/--from (\S+) for/)?.[1]))
     .toEqual(["2026-10-14", "2026-10-14", "2026-10-14"]);
-  for (const value of ["03/04/2026", "03-04-2026", "foo", "2026-02-30", "2026/02/30", "2026年2月30日", "10月14日", "31.02.2026", "Feb 30 2026", "Octember 1 2026", "Oct 2026", "31/02/2026", "14/14/2026", "14/10/26", "20261014"]) {
+  // Where either part could be the month, both readings, the day first, each with the date to type.
+  expect(fails("1/11/2026")).toBe("Use a --from date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026: "
+    + "1/11/2026 is 1 Nov or 11 Jan; type --from 2026-11-01 for 1 Nov or --from 2026-01-11 for 11 Jan.");
+  expect(fails("03-04-2026")).toContain("03-04-2026 is 3 Apr or 4 Mar; type --from 2026-04-03 for 3 Apr or --from 2026-03-04 for 4 Mar.");
+  expect(fails("11/11/2026")).toContain("type --from 2026-11-11 for 11/11/2026.");
+  for (const value of ["foo", "2026-02-30", "2026/02/30", "2026年2月30日", "10月14日", "31.02.2026", "Feb 30 2026", "Octember 1 2026", "Oct 2026", "31/02/2026", "14/14/2026", "14/10/26", "20261014"]) {
     expect(fails(value)).toBe("Use a --from date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026, such as --from 2026-10-14.");
   }
 });
