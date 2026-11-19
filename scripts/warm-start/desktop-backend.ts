@@ -3,10 +3,11 @@ import { homedir, hostname } from "os";
 import { join } from "path";
 import { heapStats } from "bun:jsc";
 import { installWarmStartNetwork, warmStartNetworkFromEnv } from "./network";
+import { isOwnPageSocket, secretRoute } from "./local-guard";
 
 /**
  *   WARM_DESKTOP_APP=<checkout> WARM_DESKTOP_VIEW=<built view> WARM_DESKTOP_PORT=<port>
- *   GLOOMBERB_HOME=<profile> bun scripts/warm-start/desktop-backend.ts
+ *   WARM_DESKTOP_SECRET=<64 hex> GLOOMBERB_HOME=<profile> bun scripts/warm-start/desktop-backend.ts
  *
  * The desktop's Bun process for the warm-start benchmark, without windows:
  * the services the app's Bun process starts (the same SQLite cache, plugin
@@ -16,10 +17,16 @@ import { installWarmStartNetwork, warmStartNetworkFromEnv } from "./network";
  * from the same port; window, menu, update and workspace requests are
  * answered with nothing, as a single main window that never moves needs.
  * Probe reports from the page are appended to `WARM_START_PROBE_OUT`.
+ *
+ * Everything, the page, its socket and the heap and request counts, is served
+ * under the launch's secret folder (`/<secret>/`), to requests that name the
+ * server as 127.0.0.1:<port> and come from no other page (local-guard.ts).
  */
 const app = process.env.WARM_DESKTOP_APP!;
 const viewDir = process.env.WARM_DESKTOP_VIEW!;
 const port = Number(process.env.WARM_DESKTOP_PORT);
+const secret = process.env.WARM_DESKTOP_SECRET ?? "";
+if (!/^[0-9a-f]{64}$/.test(secret)) throw new Error("WARM_DESKTOP_SECRET must be the launch's 64-character secret.");
 const counts = { kept: 0, fetched: 0, refused: 0, streamed: 0 };
 const network = warmStartNetworkFromEnv();
 if (network) installWarmStartNetwork({ ...network, log: (event) => { counts[event] += 1; } });
@@ -128,17 +135,21 @@ const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
   async fetch(request, bun) {
-    const url = new URL(request.url);
-    if (url.pathname === "/__desktop-rpc" && bun.upgrade(request, { data: undefined })) return undefined as unknown as Response;
-    if (url.pathname === "/__warm-requests") return Response.json(counts);
-    if (url.pathname === "/health") return Response.json({ status: "ok" });
-    if (url.pathname === "/__warm-heap") {
+    const path = secretRoute(request, bun.port, secret);
+    if (path === null) return new Response("Forbidden", { status: 403 });
+    if (path === "/__desktop-rpc") {
+      if (!isOwnPageSocket(request, bun.port)) return new Response("Forbidden", { status: 403 });
+      return bun.upgrade(request, { data: undefined }) ? undefined as unknown as Response : new Response("Expected a WebSocket upgrade", { status: 426 });
+    }
+    if (path === "/__warm-requests") return Response.json(counts);
+    if (path === "/health") return Response.json({ status: "ok" });
+    if (path === "/__warm-heap") {
       Bun.gc(true);
       return new Response(String(heapStats().heapSize));
     }
-    if (url.pathname === "/__warm-heap-snapshot") return new Response(Bun.generateHeapSnapshot("v8", "arraybuffer"));
-    const file = Bun.file(join(viewDir, url.pathname === "/" ? "index.html" : url.pathname.slice(1)));
-    if (!url.pathname.includes("..") && await file.exists()) return new Response(file, { headers: { "cache-control": "no-cache" } });
+    if (path === "/__warm-heap-snapshot") return new Response(Bun.generateHeapSnapshot("v8", "arraybuffer"));
+    const file = Bun.file(join(viewDir, path === "/" ? "index.html" : path.slice(1)));
+    if (!path.includes("..") && await file.exists()) return new Response(file, { headers: { "cache-control": "no-cache" } });
     return new Response("Not found", { status: 404 });
   },
   websocket: {

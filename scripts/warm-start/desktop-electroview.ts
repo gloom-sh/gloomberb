@@ -17,7 +17,8 @@ interface RpcConfig {
 type Pending = { resolve(value: unknown): void; reject(error: Error): void };
 
 function createRpc(config: RpcConfig) {
-  const socket = new WebSocket(`ws://${location.host}/__desktop-rpc`);
+  // Beside the page, under the launch's secret folder the page was opened at.
+  const socket = new WebSocket(new URL("__desktop-rpc", location.href).href.replace(/^http/, "ws"));
   const pending = new Map<number, Pending>();
   const queued: string[] = [];
   let nextId = 1;
