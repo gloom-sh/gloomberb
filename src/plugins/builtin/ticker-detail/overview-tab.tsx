@@ -78,7 +78,7 @@ import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 import { ClippedText } from "../../../components/ui/display";
 import { DelayedMark, delayedMarkWidth, useDelayedMarkMinutes } from "../../../components/ui/delayed-mark";
 import { safeExternalUrl } from "../../../utils/external-url";
-import { cashRunway, SHORT_RUNWAY_HISTORY } from "../../../utils/cash-runway";
+import { cashRunway } from "../../../utils/cash-runway";
 import { useOfferingNote } from "./financials/offerings";
 import { taxEquivalentFields, useOverviewTaxEquivalent } from "./overview/tax-equivalent";
 import { distributionBasis, type TaxRates } from "../../../market-data/tax-equivalent";
@@ -338,7 +338,6 @@ function ResolvedOverviewTab({
       ...(changeNote ? [changeNote] : []),
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
       ...(runwayOfferingNote ? [runwayOfferingNote] : []),
-      ...(runway?.trailingGap === "short-history" ? [`Runway TTM: ${SHORT_RUNWAY_HISTORY}.`] : []),
       // A bar with contradictory prices is said only where it leaves a shown return blank: on a chart of years one
       // bar's gap is a hairline that changes no figure, and a return reads only the bars at its ends.
       ...(returnIntegrityNotice ? [returnIntegrityNotice] : []),

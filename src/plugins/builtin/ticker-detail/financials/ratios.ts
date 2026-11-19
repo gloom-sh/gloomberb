@@ -37,7 +37,7 @@ export const RATIO_GAP_TEXT: Record<RatioGap, string> = {
   // An average of the opening and closing balance with no opening balance sheet on file: the oldest column's, a year's
   // whose prior year is missing, a TTM column's without the quarter a year earlier.
   "no-opening": "needs prior period",
-  "short-history": SHORT_RUNWAY_HISTORY,
+  "short-history": "< 4 quarters",
   "no-burn": "no burn",
   "not-meaningful": "N/M",
   "no-price": "no price",
@@ -660,16 +660,20 @@ function ratioInputLabel(input: RatioInputDef, quarterly: boolean): string {
   return input.operator ? `${input.operator} ${label}` : label;
 }
 
+export function ratioGapText(gap: RatioGap, format?: RatioFormat): string {
+  return gap === "short-history" && format === "months" ? SHORT_RUNWAY_HISTORY : RATIO_GAP_TEXT[gap];
+}
+
 export function formatRatioValue(format: RatioFormat, amount: RatioAmount): string {
-  if (isGap(amount)) return RATIO_GAP_TEXT[amount];
+  if (isGap(amount)) return ratioGapText(amount, format);
   if (format === "percent") return `${formatNumber(amount * 100, 1)}%`;
   if (format === "months") return formatRunwayMonths(amount, "");
   if (format === "days") return formatNumber(amount, 1);
   return `${formatNumber(amount, Math.abs(amount) < 10 ? 2 : 1)}x`;
 }
 
-export function formatRatioInput(format: RatioInputFormat, amount: RatioAmount, divisor: number): string {
-  if (isGap(amount)) return RATIO_GAP_TEXT[amount];
+export function formatRatioInput(format: RatioInputFormat, amount: RatioAmount, divisor: number, ratioFormat?: RatioFormat): string {
+  if (isGap(amount)) return ratioGapText(amount, ratioFormat);
   if (format === "perShare") return formatPerShareNumber(amount);
   if (format === "days") return formatNumber(amount, 1);
   const scaled = amount / divisor;
@@ -821,6 +825,18 @@ export interface RatioTableModel {
   /** Each ratio's cell per period, by ratio id. */
   cells: Map<string, RatioCell[]>;
   rows: RatioTableRow[];
+}
+
+export function latestRunwayPeriodEnd(table: RatioTableModel | null | undefined): string | null {
+  const runway = table?.ratios.filter((def) => def.format === "months");
+  if (!table || !runway?.length) return null;
+  let latest: string | null = null;
+  for (const [index, { statement }] of table.periods.entries()) {
+    if (!runway.some((def) => typeof table.cells.get(def.id)?.[index]?.value === "number")) continue;
+    const date = ratioPeriodEnd(statement);
+    if (date !== "TTM" && (!latest || date > latest)) latest = date;
+  }
+  return latest;
 }
 
 const UNIT_WORDS: Record<string, string> = { K: "k", M: "mn", B: "bn", T: "tn" };
