@@ -12,6 +12,7 @@ import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import type { StatDef } from "./defs";
 import {
   createStatSeriesLoader,
+  gdpNowCalendarFrom,
   loadStatsBundle,
   unansweredErrors,
   type StatsBundle,
@@ -50,9 +51,11 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
       label: "Previous",
       value: view.previous?.value ?? null,
       formatted: view.previous ? `${format(view.previous.value)}${text && view.previousReading ? ` (${view.previousReading})` : ""}` : MISSING_VALUE,
-      ...earlierDating(view, view.previous),
+      ...(view.stat.seriesId === "GDPNOW" && view.previous
+        ? { period: view.latest.date, released: view.previous.date, asOf: view.previous.date }
+        : earlierDating(view, view.previous)),
     },
-    ...!text && view.previous ? [{ label: "Previous period", value: view.previous.date, formatted: view.previousReading ?? view.previous.date, ...earlierDating(view, view.previous) }] : [],
+    ...!text && view.previous && view.stat.seriesId !== "GDPNOW" ? [{ label: "Previous period", value: view.previous.date, formatted: view.previousReading ?? view.previous.date, ...earlierDating(view, view.previous) }] : [],
     {
       label: "1Y ago",
       value: view.yearAgo?.value ?? null,
@@ -159,6 +162,7 @@ export function projectStatsHeadlessBundle(
       },
       // Which period Previous is: exports carry it beside the figure, the text table has its Period column for the latest.
       ...text ? [] : [{ key: "previousPeriod", header: "Previous period" }],
+      ...(!text && views.some((view) => view.stat.seriesId === "GDPNOW") ? [{ key: "previousReleased", header: "previous_released", literalHeader: true }] : []),
       {
         key: "percentile",
         header: "%ile",
@@ -203,7 +207,8 @@ export function projectStatsHeadlessBundle(
         formattedLatest: reportFormat(view.stat)(view.latest.value),
         previous: view.previous?.value ?? null,
         formattedPrevious: view.previous ? reportFormat(view.stat)(view.previous.value) : MISSING_VALUE,
-        previousPeriod: view.previous?.date ?? null,
+        previousPeriod: view.previous ? view.stat.seriesId === "GDPNOW" ? view.latest.date : view.previous.date : null,
+        previousReleased: view.stat.seriesId === "GDPNOW" ? view.previous?.date ?? null : null,
         // A spread's values stay in percentage points; these carry the figures its text shows.
         ...(view.stat.basisPoints ? {
           latestBasisPoints: toBasisPoints(view.latest.value),
@@ -327,6 +332,7 @@ export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const range = args.options.range as StatRangeId;
     const bundle = await loadStatsBundle({
       loader: createStatSeriesLoader(ctx.apiClient),
+      gdpNowCalendar: gdpNowCalendarFrom(ctx.apiClient),
       ...(requested ? { stats: [requested] } : {}),
     });
     const report = projectStatsHeadlessBundle(bundle, range, requested?.id ?? DEFAULT_STAT_ID);

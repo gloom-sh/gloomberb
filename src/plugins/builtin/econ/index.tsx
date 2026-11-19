@@ -7,6 +7,7 @@ import {
   DataTableStackView,
   EmptyState,
   QueryBar,
+  useQueryBarSearch,
   usePaneFooter,
   type DataTableCell,
   type DataTableKeyEvent,
@@ -55,6 +56,7 @@ import {
   lowerImpactHidden,
   eventCountry,
   matchesCountry,
+  matchesEventSearch,
   matchesImpact,
   NO_CONSENSUS_NOTE,
   countriesNotInCalendar,
@@ -141,6 +143,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, [countryPending, countryRequest, requestedCountry, setCountryFilter, setShownCountryRequest]);
   const [now, setNow] = useState(Date.now());
   const [openKey, setOpenKey] = usePluginPaneState<string | null>("openKey", null);
+  const [search, setSearch] = usePluginPaneState("search", "");
+  const searchFocus = useQueryBarSearch();
 
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const headerScrollRef = useRef<ScrollBoxRenderable>(null);
@@ -160,9 +164,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, [paneVisible]);
 
   const filtered = useMemo(() => events
-    .filter((ev) => matchesImpact(ev, impactFilter) && matchesCountry(ev, countryFilter))
+    .filter((ev) => matchesImpact(ev, impactFilter) && matchesCountry(ev, countryFilter) && (!search.trim() || matchesEventSearch(ev, search)))
     .sort((a, b) => a.date.getTime() - b.date.getTime()),
-  [countryFilter, events, impactFilter]);
+  [countryFilter, events, impactFilter, search]);
   const detailEvent = useMemo(
     () => (openKey ? events.find((ev) => ev.id === openKey) ?? null : null),
     [events, openKey],
@@ -247,9 +251,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const showAllEvents = useCallback(() => {
     setImpactFilter("all");
     setCountryFilter("all");
+    setSearch("");
     setSelectedKey(null);
     returnToPresent();
-  }, [returnToPresent, setCountryFilter, setImpactFilter, setSelectedKey]);
+  }, [returnToPresent, setCountryFilter, setImpactFilter, setSearch, setSelectedKey]);
   const cycleImpactFilter = useCallback((step: 1 | -1) => {
     setImpactFilter((prev) => FILTER_CYCLE[(FILTER_CYCLE.indexOf(prev) + step + FILTER_CYCLE.length) % FILTER_CYCLE.length]!);
     setSelectedKey(null);
@@ -336,7 +341,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       ? [absent.length > 0 ? notInCalendarMessage(absent) : null,
         quiet.length > 0 ? noScheduledReleasesMessage(quiet, releasesThrough ? shortDayLabel(dayStart(releasesThrough)) : null) : null]
         .filter(Boolean).join(" ").replace(/\.$/, "")
-    : filteredEmptyTitle(impactFilter, countryFilter);
+    : search.trim() ? `No releases matching “${search.trim()}” with these filters` : filteredEmptyTitle(impactFilter, countryFilter);
   const emptyStateHint = !loading && !error
     ? [
         impactFilter !== "all" ? `impact: ${impactFilter}` : null,
@@ -522,6 +527,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const filterControls = (
     <QueryBar
       width={width}
+      search={{ value: search, onChange: setSearch, placeholder: "PMI, Caixin, GDPNow…", focused: focused && !detailEvent, ...searchFocus.searchProps }}
       filters={[
         { id: "impact", label: "Impact", inline: true, value: impactFilter, defaultValue: DEFAULT_IMPACT_FILTER,
           options: FILTER_CYCLE.map((value) => ({ value, label: IMPACT_LABELS[value] })),
@@ -550,7 +556,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 
   return (
     <DataTableStackView<DisplayRow, EconCalendarColumn>
-      focused={focused}
+      focused={focused && !searchFocus.active}
       detailOpen={!!detailEvent}
       onBack={() => setOpenKey(null)}
       detailTitle={detailEvent ? econEventName(detailEvent) : undefined}

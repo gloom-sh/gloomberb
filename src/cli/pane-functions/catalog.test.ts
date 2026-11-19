@@ -136,6 +136,10 @@ test("the morning's European words lead to the index board, a question asked sig
     expect(found.map((entry) => entry.code).sort()).toEqual(["CMP", "WEI"]);
     expect(found.find((entry) => entry.code === "CMP")?.command).toBe("gloom fn CMP <tickers>");
     expect(await functionsForQuestion(registry, "what did it do?")).toEqual([]);
+    expect((await functionsForQuestion(registry, "Latest US ISM and S&P Global, euro area, UK, Japan and China PMIs plus the Atlanta Fed GDPNow nowcast?"))
+      .map(({ command, input }) => [command, input])).toEqual([
+      ["gloom fn ECO US,EU,GB,JP,CN --impact all --search PMI", "ECO US,EU,GB,JP,CN"], ["gloom fn ECST gdpnow", "ECST gdpnow"],
+    ]);
     // A rates question was offered CBR, then MDAY and FIRST: it gets CBR, GC and ECO, run for the markets it names.
     expect((await functionsForQuestion(registry, "What did the BoJ and RBA do with policy rates and how did JGB yields react?"))
       .map((entry) => [entry.command, entry.input ?? null])).toEqual([

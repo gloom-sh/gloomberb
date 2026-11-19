@@ -1,4 +1,6 @@
-import { apiClient } from "../../../api-client";
+import { apiClient, type CloudEconEventPayload } from "../../../api-client";
+import { logFailure } from "../../../utils/log-failure";
+import { parseEconFigure } from "../econ/figures";
 import type { DatedObservation, SeriesCacheLoadResult, SeriesCacheMetadata } from "../shared/series-cache";
 import { applyTransform, type StatPoint } from "../shared/stat-transform";
 import { fitTrend, type TrendFit } from "../shared/trend";
@@ -17,6 +19,7 @@ export interface StatBuild {
   firstReleased?: string;
   revisedOn?: string;
   firstReleaseValue?: number;
+  previousUpdate?: StatPoint;
   cache?: SeriesCacheMetadata;
 }
 
@@ -29,6 +32,10 @@ export interface StatsBundle {
 }
 
 export type StatsCloudClient = Pick<typeof apiClient, "getCloudFredSeries">;
+type GdpNowCalendar = (from: string) => Promise<readonly CloudEconEventPayload[]>;
+
+export const gdpNowCalendarFrom = (client: Pick<typeof apiClient, "getCloudEconomicCalendarFrom">): GdpNowCalendar =>
+  async (from) => (await client.getCloudEconomicCalendarFrom(from)).events;
 
 export function createStatSeriesLoader(client: StatsCloudClient): StatSeriesLoader {
   const cloudLoader = async (def: StatDef): Promise<DatedObservation[]> => {
@@ -56,7 +63,9 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
   const points = applyTransform(scaled, def.transform);
   if (points.length === 0) return null;
   const release = observations.find((entry) => entry.date === points.at(-1)!.date);
-  const releasedOn = release?.firstReleased ?? release?.releasedOn;
+  const releasedOn = def.seriesId === "GDPNOW"
+    ? release?.revisedOn ?? release?.releasedOn ?? release?.firstReleased
+    : release?.firstReleased ?? release?.releasedOn;
   const cache = Array.isArray(result) ? undefined : {
     fetchedAt: result.fetchedAt,
     stale: result.stale,
@@ -69,6 +78,18 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
     ...(release?.revisedOn ? { revisedOn: release.revisedOn } : {}),
     ...(def.transform === "level" && release?.firstReleaseValue != null ? { firstReleaseValue: release.firstReleaseValue * scale } : {}),
     ...(cache ? { cache } : {}) };
+}
+
+async function withGdpNowPrevious(build: StatBuild, calendar: GdpNowCalendar): Promise<StatBuild> {
+  const latest = build.points.at(-1)!;
+  const quarter = `${latest.date.slice(0, 4)} Q${Math.ceil(Number(latest.date.slice(5, 7)) / 3)}`;
+  const from = build.releasedOn ?? latest.date;
+  const events = await calendar(from).catch(logFailure("econ-statistics.gdpnow", "Read previous GDPNow update failed", []));
+  const update = events.find((event) => event.id.startsWith("atlanta-fed-gdpnow-")
+    && event.referencePeriod === quarter && event.date.slice(0, 10) === from
+    && Math.abs((parseEconFigure(event.actual)?.value ?? Infinity) - latest.value) < 0.00005);
+  const prior = parseEconFigure(update?.prior);
+  return update?.priorAsOf && prior ? { ...build, previousUpdate: { date: update.priorAsOf, value: prior.value } } : build;
 }
 
 /**
@@ -131,6 +152,7 @@ export function getCachedStatsBundle(stats: readonly StatDef[] = STATS): StatsBu
 
 export async function loadStatsBundle(options?: {
   loader?: StatSeriesLoader;
+  gdpNowCalendar?: GdpNowCalendar;
   stats?: readonly StatDef[];
   force?: boolean;
 }): Promise<StatsBundle> {
@@ -161,5 +183,7 @@ export async function loadStatsBundle(options?: {
   if (builds.length === 0) {
     throw new Error(errors[0] ?? "Economic statistics unavailable");
   }
-  return bundleFrom(builds, errors);
+  const calendar = options?.gdpNowCalendar ?? (!options?.loader ? gdpNowCalendarFrom(apiClient) : null);
+  return bundleFrom(calendar ? await Promise.all(builds.map((made) => made.stat.seriesId === "GDPNOW"
+    ? withGdpNowPrevious(made, calendar) : made)) : builds, errors);
 }

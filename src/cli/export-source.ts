@@ -157,6 +157,8 @@ export function exportIdentityFields(freshness: ReportFreshness, identity: Expor
  */
 export function exportSourceLines(freshness: ReportFreshness): string[] {
   const source = exportSource(freshness);
+  if (freshness.basis === "calendar") return [formatFreshnessLine(freshness), `Retrieval time: ${source.retrievalTime}`,
+    ...(source.savedTime ? [`Saved time: ${source.savedTime}`] : [])];
   const stated = (value: string | null) => value ?? NOT_PUBLISHED;
   return [
     formatFreshnessLine(freshness),

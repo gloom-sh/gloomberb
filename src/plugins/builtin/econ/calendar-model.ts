@@ -360,6 +360,10 @@ export function eventSearchNames(event: Pick<EconEvent, "country" | "event" | "a
   const series = resolveFredMapping(event.event, event.country)?.seriesId;
   const policy = POLICY_DECISION.test(event.event) ? policyRateNames(event.country) : [];
   const names = [event.event, econEventName(event)];
+  if (eventCountry(event) === "CN") {
+    const alias = /\bratingdog\b/i.test(event.event) ? "Caixin" : /\bcaixin\b/i.test(event.event) ? "RatingDog" : null;
+    if (alias) names.push(event.event.replace(/\b(?:ratingdog|caixin)\b/i, alias));
+  }
   return [...[...names, ...names.flatMap(inflationRateNames)].map(compactName), ...series ? statNamesOf(series) : [], ...policy];
 }
 

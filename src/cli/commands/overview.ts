@@ -39,7 +39,6 @@ import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } 
 import {
   COUNTRY_CYCLE,
   COUNTRY_FILTER_HINT,
-  awaitsConsensus,
   figureGap,
   figureGapText,
   countriesWithoutEvents,
@@ -51,7 +50,6 @@ import {
   matchesEventSearch,
   policyDecisionsNamed,
   matchesImpact,
-  NO_CONSENSUS_NOTE,
   countriesNotInCalendar,
   noScheduledReleasesMessage,
   notInCalendarMessage,
@@ -510,6 +508,7 @@ const econExportColumns: CliResultColumn[] = [
   // Which feed the forecast was read from and when, so a consensus can be told from another read of it.
   { key: "consensusFeed", header: "consensus_feed" },
   { key: "consensusReadAt", header: "consensus_read_at" },
+  { key: "priorAsOf", header: "prior_as_of" },
   // A release past its time whose figure is not in yet, said as the text says it.
   { key: "actualStatus", header: "actual_status" },
 ];
@@ -591,9 +590,9 @@ function blankTimeNotes(rows: ReadonlyArray<{ event: string; country: string; ti
  * or a prior and no actual has not, whatever its time: past it, its
  * `actualStatus` says the figure is awaited.
  */
-function cameOut(event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date">, now: number): boolean {
+function cameOut(event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date" | "kind" | "referencePeriod">, now: number): boolean {
   if (event.actual?.trim()) return true;
-  return !event.forecast?.trim() && !event.prior?.trim() && event.date.getTime() <= now;
+  return !event.kind && !event.referencePeriod?.trim() && !event.forecast?.trim() && !event.prior?.trim() && event.date.getTime() <= now;
 }
 
 /**
@@ -745,30 +744,29 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       return reason ? [`${isoDate(event.date).slice(0, 10)} ${econEventName(event)}: ${reason}.`] : [];
     });
     const notes = [listedBefore, listedPast ?? listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []), ...unpublished,
-      rows.length > 0 && coverage ? coverage : null,
-      // A dash under Forecast on a release still to come is a consensus not in yet, not a missing figure.
-      listed.some(awaitsConsensus) ? NO_CONSENSUS_NOTE : null]
+      rows.length > 0 && coverage ? coverage : null]
       .filter((note): note is string => !!note);
     const footnote = notes.join("\n");
     // The calendar as read, not its rows: those are scheduled, mostly ahead. One that could not be
     // refreshed is the copy an earlier read saved, and says when that was.
-    const read = rowsFreshness([], { status: "not-a-feed", basis: "calendar", asOf: fetchedAt }, { stale });
+    const read = rowsFreshness([], { status: "not-a-feed", basis: "calendar" }, { stale });
     const calendarFreshness = read && source === "stale-fallback" ? { ...read, savedAt: new Date(fetchedAt).toISOString() } : read;
     // Only rows a bank or statistics office times itself have its own clock (`Local`).
     const publisherTimed = rows.some((row) => !!publisherClock(row.localTime, row.timeZone));
     ctx.printResult({
       data: rows,
       ...(unread ? { warnings: [unread] } : {}),
-      metadata: { country, impact, ...(search != null ? { search } : {}), from, listedThrough, storedFrom: past?.storedFrom ?? null, ...(past?.listedFrom ? { listedFrom: past.listedFrom } : {}), ...(viewerZone ? { timeZone: viewerZone } : {}) },
+      metadata: { country, impact, ...(search != null ? { search } : {}), from, listedThrough, storedFrom: past?.storedFrom ?? null, ...(past?.listedFrom ? { listedFrom: past.listedFrom } : {}), ...(viewerZone ? { timeZone: viewerZone } : {}),
+        dating: { date: "calendar listing", referencePeriod: "period covered", released: "publication date or time", retrievalTime: "export retrieval" } },
       freshness: calendarFreshness,
     }, {
       dateKey: "date",
-      defaultLimit: 50,
+      ...(ctx.cliOptions.format === "text" ? { defaultLimit: 50 } : {}),
       empty: allUnscheduled ? coverage
         : [econEmptyMessage(from, listedThrough, listedAfter != null), search == null ? null : policyDecisionHint(search, country)].filter(Boolean).join(" "),
       ...(footnote ? { footnote } : {}),
       // What the text says under the table, a script reads in the CSV's closing lines.
-      exportNotes: notes,
+      exportNotes: [...notes, "Date is the calendar listing; period is what the figure covers; released and as_of date the published figure; retrieved dates this export."],
       // `as_of` is the release: when a row's figure came out, blank for one that has none yet.
       exportDated: true,
       exportIdentity: (row) => ({
@@ -1230,7 +1228,7 @@ export const overviewCliCommands: CliCommandDef[] = [
       options: [
         { flags: "--country <regions or countries>", description: "US, G7, EU, all (default), or countries by their two-letter codes, comma separated, such as MX or MX,BR,ZA" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
-        { flags: "--search <words>", description: "Match all words in an event name or publisher; OR joins alternatives, such as \"housing OR mortgage OR NAHB\". Case, spaces and hyphens are ignored" },
+        { flags: "--search <words>", description: "Match words in an event name or publisher (Caixin also matches RatingDog); OR joins alternatives, such as \"housing OR mortgage OR NAHB\". Case, spaces and hyphens are ignored" },
         { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC, or with --tz the zone's); an earlier day lists past events from the stored calendar and says where it starts` },
         { flags: "--tz <zone>", description: "List the days on that clock, an IANA zone such as Asia/Tokyo: --from, Date and Day are its days, beside each release's time there and in UTC" },
       ],
