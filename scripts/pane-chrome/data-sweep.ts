@@ -115,15 +115,15 @@ function candidateCodes(text: string, symbols?: readonly string[]): string[] {
   }).map((match) => match[0]);
 }
 
-const REVIEWED_EMPTY: Record<string, ["no-coverage" | "expected-empty" | "unsupported" | "market-closed", RegExp]> = {
+export const REVIEWED_EMPTY: Record<string, ["no-coverage" | "expected-empty" | "unsupported" | "market-closed", RegExp]> = {
   APPS: ["no-coverage", /^\S+ has no mapped apps in the observed App Store and Google Play charts\.$/],
   CALLS: ["no-coverage", /^Earnings calls for \S+ are not yet available\. Calls appear once the company's investor site or filings list a webcast\.$/],
   CATL: ["expected-empty", /^No events linked to \S+ yet\.$/],
   EM: ["no-coverage", /^No covered estimate periods\.$/],
   COVN: ["no-coverage", /^(?:No debt instrument has been read from this issuer's filings yet|This is not an issuer the credit documents cover)\.$/],
   CRDOC: ["no-coverage", /^(?:No debt instrument has been read from this issuer's filings yet|This is not an issuer the credit documents cover)\.$/],
-  GUIDE: ["no-coverage", /^Guidance for \S+ is not yet available\. Try GUIDE WMT\.$/],
-  KPIS: ["no-coverage", /^KPIs for \S+ are not yet available\. Try KPIS AAPL\.$/],
+  GUIDE: ["no-coverage", /^Guidance for \S+ is not yet available\. Try GUIDE \S+\.$/],
+  KPIS: ["no-coverage", /^No KPIs on file for \S+ yet\.$/],
   HIRE: ["no-coverage", /^No current role evidence has been captured yet\.$/],
   HILO: ["market-closed", /^Markets closed(?: until [^.]+)?\. New highs and lows resume at the open\.$/],
   // The default scan's conditions (a move and a volume spike over 5 minutes) only hold in the session.
@@ -140,6 +140,15 @@ const REVIEWED_EMPTY: Record<string, ["no-coverage" | "expected-empty" | "unsupp
   BUZZ: ["unsupported", /^This ticker cannot be searched as a cashtag\. Use a symbol of up to six letters and digits, starting with a letter\.$/],
   OSA: ["expected-empty", /^Build an options position\.$/],
   SIW: ["expected-empty", /^No US-listed names in your portfolios or watchlists\.$/],
+};
+
+// Empty states of event lists and first reads, matched on the start of the pane's wording.
+export const EXPECTED_EMPTY: Record<string, RegExp> = {
+  ANR: /^No upgrades, downgrades or target changes on record for /m,
+  HALT: /^No trading halts reported\./m,
+  ERN: /^No reports on the calendar /m,
+  // A company nobody had asked about: the server looks for its careers system, the pane fills in when it is read.
+  JOBS: /^Looking for \S+'s careers system\./m,
 };
 
 export function assessCapture(result: CommandResult, token: string): Assessment {
@@ -221,14 +230,7 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
       && /\bmarket (?:is )?closed\b|\boutside (?:regular |market |trading )?hours\b/i.test(said)) {
       expected = "market-closed";
     }
-    const expectedEmpty: Record<string, RegExp> = {
-      ANR: /^No upgrades, downgrades or target changes on record for /m,
-      HALT: /^No trading halts reported\./m,
-      ERN: /^No reports on the calendar /m,
-      // A company nobody had asked about: the server looks for its careers system, the pane fills in when it is read.
-      JOBS: /^Looking for \S+'s careers system\./m,
-    };
-    if (!expected && expectedEmpty[token]?.test(said)) expected = "expected-empty";
+    if (!expected && EXPECTED_EMPTY[token]?.test(said)) expected = "expected-empty";
   }
   const allowedCodes = expected === "no-coverage" ? ["no_coverage", "symbol_not_covered"]
     : expected === "market-closed" ? ["market_closed", "outside_market_hours", "outside_session"] : [];

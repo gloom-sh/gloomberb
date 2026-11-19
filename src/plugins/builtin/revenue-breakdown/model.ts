@@ -8,6 +8,12 @@ import type {
   RevenueBreakdownView,
 } from "../../../api-client/revenue-breakdown";
 
+/** What the pane says for a company whose filings do not split revenue. */
+export const NO_BREAKDOWN_STATE = {
+  title: "No revenue breakdown.",
+  hint: "This company's filings do not split revenue by product, segment or region.",
+};
+
 /**
  * Trend scales each row's bars to its own range, so shape reads at a glance;
  * Actual puts every row on one scale, so size does; Text shows the numbers.

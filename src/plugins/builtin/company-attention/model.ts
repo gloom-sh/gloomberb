@@ -62,6 +62,9 @@ export function attentionTabs(kind: AttentionKind, symbol: string | null | undef
  * building-model.ts).
  */
 export type AttentionPaneTab = AttentionTab | "moves" | "expansion" | "anomalies" | "building";
+/** What HIRE says for a company whose open roles have no evidence rows yet. */
+export const NO_CURRENT_ROLE_EVIDENCE = "No current role evidence has been captured yet.";
+
 const HIRING_READ_TABS = ["moves", "expansion", "anomalies", "building"] as const;
 export function attentionPaneTabs(kind: AttentionKind, symbol: string | null | undefined): AttentionPaneTab[] {
   return kind === "hiring" ? [...attentionTabs(kind, symbol), ...HIRING_READ_TABS] : attentionTabs(kind, symbol);
@@ -194,7 +197,7 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
     chart: { label: "Open roles", unit: "roles", points: history.map((point) => ({ date: point.week, value: point.openCount })), since: detail?.coverage.firstObservedAt ?? null },
   };
   if (detail) {
-    model.sections.table = { ...model.sections.evidence, columns: model.sections.evidence.columns.filter((entry) => entry.id !== "confidence"), empty: "No current role evidence has been captured yet." };
+    model.sections.table = { ...model.sections.evidence, columns: model.sections.evidence.columns.filter((entry) => entry.id !== "confidence"), empty: NO_CURRENT_ROLE_EVIDENCE };
   }
   return model;
 }
@@ -230,7 +233,7 @@ const appCompanyRow = (row: AppCompany): AttentionRow => ({ id: row.symbol, symb
  * sees, so an empty preview is never the free cap. Null when the report has rows, a filter is set, or nothing has
  * been captured yet.
  */
-function appsUnmappedReason(data: AppAttentionPayload, filtered: boolean): string | null {
+export function appsUnmappedReason(data: AppAttentionPayload, filtered: boolean): string | null {
   if (!data.symbol || filtered || data.apps.length || (data.page?.total ?? 0) > 0 || data.summary.appCount > 0) return null;
   // Rows held back for Pro are apps it maps, so a capped preview is never read as none.
   if (!Object.values(data.locked).every((count) => !count)) return null;

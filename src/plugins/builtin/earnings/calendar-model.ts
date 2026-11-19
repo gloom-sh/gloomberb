@@ -134,6 +134,9 @@ export function boardRangeWords(range: BoardRange, today: string): string | null
   return offset >= -1 && offset <= 1 ? calendarWeekLabel(today, offset).toLowerCase() : `in the week of ${shortDate(calendarWeekDates(today, offset)[0]!)}`;
 }
 
+/** What the market-wide board says with no report in the range `boardRangeWords` names. */
+export const noCalendarReportsTitle = (rangeWords: string | null) => `No reports on the calendar ${rangeWords ?? "these days"}.`;
+
 function bySize(left: BoardReport, right: BoardReport, mineFirst: boolean): number {
   const rank = ownershipRank(left, mineFirst) - ownershipRank(right, mineFirst);
   if (rank !== 0) return rank;

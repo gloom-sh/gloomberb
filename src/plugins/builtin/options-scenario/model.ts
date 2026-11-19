@@ -2,6 +2,9 @@ import { daysToExpiryFrom, valueOption, type OptionValuation } from "../shared/v
 import { isFiniteNumber } from "../../../utils/guards";
 import { isUsListingExchange } from "../../../utils/exchanges";
 
+/** What the pane says before any leg is added. */
+export const EMPTY_POSITION_TITLE = "Build an options position.";
+
 const DAY_MS = 86_400_000;
 const MAX_DATE_MS = Date.UTC(9999, 11, 31);
 const MAX_SCENARIO_LEGS = 32;

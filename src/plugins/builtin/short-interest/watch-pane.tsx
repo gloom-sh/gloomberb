@@ -25,6 +25,7 @@ import {
   ownNamesUniverse,
   setupLabel,
   sharedDate,
+  shortWatchEmptyTitle,
   sortShortWatchRows,
   type ShortWatchRow,
   type ShortWatchSortId,
@@ -132,7 +133,7 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
     }
   }, []);
 
-  const emptyTitle = custom ? "Add symbols to watch." : "No US-listed names in your portfolios or watchlists.";
+  const emptyTitle = shortWatchEmptyTitle(custom);
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     <QueryBar width={width} meta={asOf} filters={[
       { id: "scope", label: "Names", value: custom ? "custom" : "mine", options: SCOPE_FILTER_OPTIONS, onChange: setScope },

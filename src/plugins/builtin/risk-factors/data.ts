@@ -9,6 +9,9 @@ import { servedFromSavedCopy } from "../../../data/saved-copies";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
 import { secListingKey } from "../../../utils/sec";
 
+/** What the pane says for a ticker with no 10-K report. */
+export const noRiskFactorsTitle = (ticker: string) => `No 10-K risk factors on file for ${ticker}.`;
+
 /** Annual reports are immutable; discovery of newly produced reports is not. */
 const LIST_KIND = "reports";
 const REPORT_KIND = "report";
