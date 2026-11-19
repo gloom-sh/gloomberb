@@ -118,6 +118,7 @@ import {
 } from "./chart-bounds";
 import {
   type PriceHistoryRequest,
+  NoPriceHistoryError,
   PriceHistoryAcquisitionError,
   priceHistoryAcquisitionIdentity,
   priceHistoryTailAcquisition,
@@ -187,7 +188,7 @@ function tradesUsExtendedHours(exchange: string | undefined, contract: BrokerCon
     || (!!contract && canonicalExchange(venue) === "SMART" && (!contract.currency || contract.currency.toUpperCase() === "USD"));
 }
 
-/** Fewer daily or coarser bars than this make a line or two, not a chart. */
+/** Fewer bars than this make a line or two, not a chart. */
 const SHORT_HISTORY_MAX_BARS = 20;
 
 /**
@@ -261,16 +262,20 @@ async function resolveChartSpecWindow(
   const now = sources.now ?? new Date();
   let captured: Capture[] = [];
   let shownSpec = spec;
-  let result = await resolveChartSpecPass(spec, capturing(captured), cache, options);
-  // A listing younger than the range has a bar or two at weekly or monthly
-  // size. When its sources serve finer bars, Auto charts the shortest range
-  // that holds them all, at that range's interval. Coarse bars are dated at
-  // their period's start, so the finer bars can place the first trade in a
-  // shorter range still.
-  const coarse = !!result.resolution && !isIntradayResolution(result.resolution)
-    && !!result.resolutionSupport?.some((entry) => isIntradayResolution(entry.resolution));
-  let shown = coarse ? visibleMarketBars(result) : { count: 0, first: Number.POSITIVE_INFINITY };
+  let noPriceHistory = false;
+  let result = await resolveChartSpecPass(spec, capturing(captured), cache, options, () => { noPriceHistory = true; });
+  const servesIntraday = !!result.resolutionSupport?.some((entry) => isIntradayResolution(entry.resolution));
+  // A listing younger than the range has a few bars at its size: a bar or two
+  // at weekly or monthly size, a handful of hourly ones. When its sources
+  // serve finer bars, Auto charts the shortest range that holds them all, at
+  // that range's interval. Coarse bars are dated at their period's start, so
+  // the finer bars can place the first trade in a shorter range still.
+  let shown = result.resolution && servesIntraday ? visibleMarketBars(result) : { count: 0, first: Number.POSITIVE_INFINITY };
   let range = shown.count > 0 && shown.count < SHORT_HISTORY_MAX_BARS ? coveringRange(shown.first, now) : null;
+  // A listing in its first session has no daily bar yet, so no bar at all at
+  // the range's size: its sources said they hold none. The month's intraday
+  // bars place its first trade.
+  if (!range && noPriceHistory && servesIntraday && visibleMarketBars(result).count === 0) range = "1M";
   while (range && TIME_RANGES.indexOf(range) < TIME_RANGES.indexOf(shownSpec.viewport.range)) {
     const liveTails = cache.liveTails;
     const narrowedCaptured: Capture[] = [];
@@ -330,6 +335,8 @@ async function resolveChartSpecPass(
   sources: ChartResolveSources,
   cache: ChartResolveCache,
   options: ChartResolveOptions,
+  /** Called when a series' sources answered that they hold no bars at the pass's size. */
+  onNoPriceHistory?: () => void,
 ): Promise<ChartResolutionResult> {
   const errors: string[] = [];
   const warnings: string[] = spec.series.some((entry) => entry.visible !== false
@@ -1088,6 +1095,7 @@ async function resolveChartSpecPass(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(`${seriesMessageName(seriesSpec)}: ${message}`);
+      if (error instanceof NoPriceHistoryError) onNoPriceHistory?.();
       return unloadableSeries(seriesSpec, index, message);
     }
   }));
