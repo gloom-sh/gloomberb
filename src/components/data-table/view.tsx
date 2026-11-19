@@ -345,8 +345,7 @@ export function DataTableView<
       lastControlledScrollRequestRef.current.index !== scrollToIndex
       || lastControlledScrollRequestRef.current.version !== scrollToIndexVersion
     );
-  const initialRestoreIndex = useRef(initialScrollIndex ?? null).current;
-  const [restoreIndex, setRestoreIndex] = useState(initialRestoreIndex);
+  const [restoreIndex, setRestoreIndex] = useState(initialScrollIndex ?? null);
   const restoring = restoreIndex !== null && scrollToIndex == null && selectionScrollTarget === null;
   const reportVisibleRange = useCallback<NonNullable<DataTableProps<T, C>["onVisibleRangeChange"]>>((range) => {
     if (restoring) {
@@ -448,13 +447,12 @@ export function DataTableView<
       clearSelectionScrollTarget();
       return;
     }
-    if (effectiveSelectedIndex < 0) return;
+    if (restoring || effectiveSelectedIndex < 0) return;
 
     const selectionChanged = !previous
       || previous.kind !== current.kind
       || previous.key !== current.key;
     const selectedRowAppeared = !previous?.resolved && current.resolved;
-    if (initialRestoreIndex != null && (!previous || (selectedRowAppeared && previous.key === current.key))) return;
     if (selectionChanged || selectedRowAppeared) {
       // An external selection renders before the optimistic cursor's syncing
       // effect commits. Scroll to the new selection, retaining an immediate
@@ -465,8 +463,8 @@ export function DataTableView<
     clearSelectionScrollTarget,
     defaultCursorIndex,
     effectiveSelectedIndex,
-    initialRestoreIndex,
     requestSelectionScroll,
+    restoring,
     scrollToIndex,
     selectedIndexFromSelection,
     selection.kind,

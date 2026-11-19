@@ -151,6 +151,7 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
       ) : (
         <ScreenerMoversBody
           activeTab={activeTab}
+          hasProAccess={access.hasProAccess}
           focused={focused}
           width={width}
           summaryQuotes={summaryQuotes}
@@ -162,8 +163,9 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
 }
 
 /** Gainers, losers, most active and trending: day screeners with live quotes on the rows. */
-function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStreaming }: {
+function ScreenerMoversBody({ activeTab, hasProAccess, focused, width, summaryQuotes, liveStreaming }: {
   activeTab: ScreenerTabId;
+  hasProAccess: boolean;
   focused: boolean;
   width: number;
   summaryQuotes: MarketSummaryQuote[];
@@ -264,7 +266,7 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
     handleRefreshKey(event, reload, { stopPropagation: true })
   ), [reload]);
 
-  const delayed = !trending && data?.source === "gloom";
+  const delayed = trending ? !hasProAccess : data?.source === "gloom";
   const quoteDelay = useListDelayFooter(delayed ? CLOUD_QUOTE_DELAY_MINUTES : null, "movers-delay");
   const stale = data && savedAt == null && (data.stale || loadError != null);
   usePaneFooter("market-movers", () => ({

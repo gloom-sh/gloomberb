@@ -234,8 +234,3 @@ export function earlierSessionLabel(listSession: string | null, session: UsSessi
   if (!listSession || listSession === session.date) return null;
   return shortDay(listSession);
 }
-
-/**
- * When a free account's list was built, New York time: "as of 07:42 ET", and
- * "as of Oct 19 19:58 ET" when that is not on the list's own session day.
- */

@@ -22,7 +22,7 @@ import { useNewsListSearch } from "./list-search";
 
 const tui = createOpenTuiTestHarness();
 
-test("the next mount restores the filter and viewport, even with a selected story offscreen", async () => {
+test("restores a list's filter and viewport without leaking the filter or disabling later selection scrolling", async () => {
   const articles = Array.from({ length: 40 }, (_, index) => createTestArticle(`story-${index}`, {
     title: index % 2 ? `Gold story ${index}` : `Silver story ${index}`,
     publishedAt: new Date(Date.UTC(2026, 10, 19, 0, -index)),
@@ -30,11 +30,13 @@ test("the next mount restores the filter and viewport, even with a selected stor
   const initial = createInitialState(createDefaultConfig(":memory:"));
   const runtime = createTestPluginRuntime();
   let show!: (open: boolean) => void;
+  let chooseList!: (list: string) => void;
+  let includeSelectedStory!: (include: boolean) => void;
   let filter!: (query: string) => void;
   let body!: RefObject<ScrollBoxRenderable | null>;
   let savedScroll: unknown;
-  function List() {
-    const search = useNewsListSearch(articles, "top");
+  function List({ list, includeSelected }: { list: string; includeSelected: boolean }) {
+    const search = useNewsListSearch(includeSelected ? articles : articles.slice(2), "news-industry", list);
     filter = search.setSearchQuery;
     const scrollRef = useRef<ScrollBoxRenderable | null>(null);
     body = scrollRef;
@@ -48,11 +50,15 @@ test("the next mount restores the filter and viewport, even with a selected stor
   }
   function Harness() {
     const [state, dispatch] = useReducer(appReducer, initial);
-    savedScroll = state.paneState["top:test"]?.pluginState?.news?.["top:scroll"];
+    savedScroll = state.paneState["news-industry:test"]?.pluginState?.news?.["news-industry:scroll"];
     const [open, setOpen] = useState(true);
+    const [list, setList] = useState("METALS");
+    const [includeSelected, setIncludeSelected] = useState(true);
     show = setOpen;
-    return <TestPaneProvider state={state} dispatch={dispatch} paneId="top:test" pluginId="news" runtime={runtime}>
-      {open && <List />}
+    chooseList = setList;
+    includeSelectedStory = setIncludeSelected;
+    return <TestPaneProvider state={state} dispatch={dispatch} paneId="news-industry:test" pluginId="news" runtime={runtime}>
+      {open && <List list={list} includeSelected={includeSelected} />}
     </TestPaneProvider>;
   }
   await tui.render(<Harness />, { width: 90, height: 10 });
@@ -62,13 +68,26 @@ test("the next mount restores the filter and viewport, even with a selected stor
   await tui.waitForFrameToContain("Gold story 25");
   expect(tui.frame()).not.toContain("Gold story 1 ");
   await act(async () => { show(false); });
-  expect(savedScroll).toEqual({ list: "top", query: "gold", index: 7 });
+  expect(savedScroll).toEqual({ list: "METALS", query: "gold", index: 7 });
   await act(async () => { show(true); });
   await tui.renderFrames(3);
   const frame = await tui.waitForFrameToContain("Gold story 25");
   expect(frame).toContain("gold");
   expect(frame).not.toContain("Silver story");
   expect(body.current?.scrollTop).toBe(7);
+
+  await act(async () => { includeSelectedStory(false); });
+  await tui.renderFrames(2);
+  await act(async () => { includeSelectedStory(true); });
+  await tui.waitForFrameToContain("Gold story 1 ");
+  expect(body.current?.scrollTop).toBe(0);
+
+  await act(async () => { chooseList("ENERGY"); });
+  expect(await tui.waitForFrameToContain("Silver story")).toContain("Gold story");
+  await act(async () => { filter("silver"); });
+  expect(await tui.waitForFrameToContain("/ silver")).not.toContain("Gold story");
+  await act(async () => { chooseList("METALS"); });
+  expect(await tui.waitForFrameToContain("/ gold")).not.toContain("Silver story");
 });
 
 const sortPreference: NewsSortPreference = {

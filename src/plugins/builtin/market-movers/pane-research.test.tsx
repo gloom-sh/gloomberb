@@ -1,13 +1,14 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { outage } from "../../../test-support/outage";
 import { act, useState } from "react";
+import { apiClient } from "../../../api-client";
 import * as autoRefresh from "../../../react/auto-refresh";
 import { marketMoversModule } from "./index";
 import { attachMarketMoversPersistence, resetMarketMoversPersistence } from "./screener";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createOpenTuiTestHarness, settleFrame, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
@@ -21,6 +22,7 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../
 import { useRegularMarketSession } from "../../../test-support/market-session";
 import { createTestTicker } from "../../../test-support/ticker";
 import { formatDetailDate } from "../../../utils/datetime-format";
+import type { Quote } from "../../../types/financials";
 
 useRegularMarketSession();
 
@@ -177,6 +179,46 @@ test("signed out during the pre-market, the pane opens the pre-market list as it
   }
 });
 
+
+test.each(["free", "pro", "trial"] as const)("Trending reports live quotes only with real-time access (%s)", async (plan) => {
+  const now = new Date().toISOString();
+  const user = spyOn(apiClient, "getCurrentUser").mockReturnValue({
+    id: plan, name: "Test user", email: "trending@example.test", username: null, image: null, emailVerified: true,
+    createdAt: now, updatedAt: now,
+    plan: plan === "pro" ? "pro" : "free",
+    ...(plan === "trial" ? { trialEndsAt: new Date(Date.now() + 60_000).toISOString() } : {}),
+  });
+  const quote = createTestQuote({ symbol: "HOT", price: 10, exchangeName: "NASDAQ", listingExchangeName: "NASDAQ", marketState: "REGULAR" });
+  let publish!: (quote: Quote) => void;
+  const provider = createTestDataProvider({
+    getQuotesBatch: async (targets) => targets.filter((target) => target.symbol === quote.symbol).map((target) => ({ target, quote })),
+    subscribeQuotes: (targets, onQuote) => {
+      const target = targets.find((entry) => entry.symbol === quote.symbol);
+      if (target) publish = (update) => onQuote(target, update);
+      return () => {};
+    },
+  });
+  coordinator = new MarketDataCoordinator(provider);
+  setSharedMarketDataCoordinator(coordinator);
+  try {
+    await mount(url => url.pathname.endsWith("/market/trending")
+      ? { status: "success", data: [{ symbol: quote.symbol }] }
+      : payload([raw("GAINER")]), provider);
+    await clickLabel("Trending");
+    await act(async () => { publish({ ...quote, price: 11, dataSource: "live", delivery: "stream", stale: false }); });
+    await settleFrame(tui.setup(), 4);
+    expect(await csv()).toMatch(/HOT,.*?,11\.00,/);
+    if (plan === "free") {
+      expect(JSON.stringify(footer)).toContain("15m delayed");
+      expect(JSON.stringify(footer)).not.toContain('"text":"quotes live"');
+    } else {
+      expect(JSON.stringify(footer)).not.toContain("15m delayed");
+      expect(JSON.stringify(footer)).toContain('"text":"quotes live"');
+    }
+  } finally {
+    user.mockRestore();
+  }
+});
 
 test("trending failures retain only same-list rows and success time, partial refreshes expose gaps, and recovery clears them", async () => {
   attachMarketMoversPersistence(new MemoryPluginPersistence());

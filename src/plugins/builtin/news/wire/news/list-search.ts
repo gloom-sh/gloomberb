@@ -13,7 +13,8 @@ export const NEWS_LIST_SEARCH_PLACEHOLDER = ["filter loaded stories", "filter st
 type ListPosition = { list: string; query: string; index: number };
 
 export function useNewsListSearch<T extends NewsArticle>(articles: readonly T[], paneKey: string, list = paneKey) {
-  const [searchQuery, setSearchQuery] = usePluginPaneState(`${paneKey}:search`, "");
+  const searchKey = list === paneKey ? `${paneKey}:search` : `${paneKey}:search:${list}`;
+  const [searchQuery, setSearchQuery] = usePluginPaneState(searchKey, "");
   const [position, setPosition] = useDebouncedPluginPaneState<ListPosition | null>(`${paneKey}:scroll`, null);
   const initialScrollIndex = position?.list === list && position.query === searchQuery ? position.index : null;
   const onVisibleRangeChange = useCallback(({ start, end }: { start: number; end: number }) => {
