@@ -4,6 +4,7 @@ import { AppPersistence } from "./app-persistence";
 import { applyResourceSync, createBatchedResourceSink } from "./durable-resources";
 import { MemoryResourceStore, WriteThroughResourceStore } from "./memory-resource-store";
 import { readSavedCopy, setSavedCopyStore, writeSavedCopy } from "./pane-saved-copies";
+import type { ResourceCacheKey } from "./resource-store";
 
 afterEach(removeTempDbFiles);
 
@@ -52,6 +53,48 @@ test("a large record cannot hide smaller saved copies that still fit in the view
     const saved = persistence.resources.listRecent(["pane:"], { maxRows: 2, maxBytes: 100 });
     expect(saved.map((record) => record.entityKey)).toEqual(["newest", "small"]);
   } finally {
+    persistence.close();
+  }
+});
+
+test.each(["terminal", "desktop"] as const)("%s purges only the downgraded account's paid records, even outside the warm set", async (renderer) => {
+  const path = createTempDbPath("revoked-pro");
+  const persistence = new AppPersistence(path);
+  const sink = createBatchedResourceSink((batch) => applyResourceSync(persistence.resources, batch));
+  const options = { cachePolicy: { staleMs: 0, expireMs: 30_000 } };
+  const account = 'test"account';
+  const scope = (id: string | null, pro: boolean) => JSON.stringify([id, id !== null, pro]);
+  const pane = (entityKey: string): ResourceCacheKey => ({ namespace: "pane:saved-copies", kind: "loaded", entityKey });
+  const market = { namespace: "market", kind: "holders", entityKey: "AAPL", sourceKey: `provider:gloomberb-cloud:${scope(account, true)}` };
+  const plugin = { namespace: "plugin:earnings", kind: "earnings-history", entityKey: `AAPL|${JSON.stringify([account, true])}:pro`, sourceKey: "gloom-cloud" };
+  const paid = pane(JSON.stringify(["quote", JSON.stringify(["router", scope(account, true)]), "AAPL"]));
+  const legacy = pane(JSON.stringify(["catalysts", {}, `${JSON.stringify([account, true])}:full`]));
+  const preserved = [pane(JSON.stringify(["risk", scope(account, false)])), pane(JSON.stringify(["risk", scope(`${account}-other`, true)])), pane(JSON.stringify(["risk", scope(null, false)]))];
+  try {
+    for (const key of [market, plugin, legacy, ...preserved, paid]) persistence.resources.set(key, "original", options);
+    const store = renderer === "terminal" ? persistence.resources : new WriteThroughResourceStore(
+      [persistence.resources.get(paid)!], sink, () => true,
+    );
+    expect(store.get(paid)?.value).toBe("original");
+    store.set(paid, "queued refresh", options);
+    store.setProResourceAccess(account, false);
+    store.set(paid, "late refresh", options);
+    expect(store.get(paid)).toBeNull();
+    await sink.flush();
+    const reopened = new AppPersistence(path);
+    try {
+      for (const key of [market, plugin, paid, legacy]) expect(reopened.resources.get(key)).toBeNull();
+      for (const key of preserved) expect(reopened.resources.get(key)?.value).toBe("original");
+      store.setProResourceAccess(account, true);
+      expect(store.get(paid)).toBeNull();
+      store.set(paid, "new subscription", options);
+      await sink.flush();
+      expect(reopened.resources.get(paid)?.value).toBe("new subscription");
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    await sink.flush();
     persistence.close();
   }
 });

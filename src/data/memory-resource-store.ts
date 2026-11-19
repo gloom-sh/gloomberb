@@ -8,6 +8,7 @@ import type {
 import { safeParseJson, serializeJson } from "./sqlite/json";
 import { packJson, unpackJson } from "./packed-json";
 import { logFailure } from "../utils/log-failure";
+import { ProResourceAccess } from "./pro-resource-access";
 
 const DEFAULT_RESOURCE_SCHEMA_VERSION = 1;
 const encoder = new TextEncoder();
@@ -55,6 +56,7 @@ function isStale(record: CachedResourceRecord): boolean {
 
 export class MemoryResourceStore {
   private readonly records = new Map<string, CachedResourceRecord>();
+  protected readonly proAccess = new ProResourceAccess();
   private bytes = 0;
 
   constructor(private readonly budget: Readonly<typeof WARM_RESOURCE_BUDGET> = WARM_RESOURCE_BUDGET) {}
@@ -144,9 +146,18 @@ export class MemoryResourceStore {
       stale: false,
       expired: false,
     };
-    this.remember(record);
+    if (this.proAccess.permits(key)) this.remember(record);
     return record;
   }
+
+  setProResourceAccess(account: string, allowed: boolean): void {
+    const matches = this.proAccess.update(account, allowed);
+    if (!matches) return;
+    for (const [id, record] of this.records) if (matches(record)) this.forget(id);
+    this.purgeProResources(account);
+  }
+
+  protected purgeProResources(_account: string): void {}
 
   delete(key: ResourceCacheKey): void {
     this.forget(buildMapKey(key));
@@ -188,6 +199,7 @@ const touchedAt = new WeakMap<object, number>();
 export interface ResourceRecordSink {
   set(record: CachedResourceRecord): void;
   delete(key: ResourceCacheKey): void;
+  purgeProResources(account: string): void;
   /** A read moved the record up the eviction order, so a record read every launch is not the first to go. */
   touch?(key: ResourceCacheKey, at: number): void;
 }
@@ -225,12 +237,16 @@ export class WriteThroughResourceStore extends MemoryResourceStore {
 
   override set<T>(key: ResourceCacheKey, value: T, options: SetResourceOptions): CachedResourceRecord<T> {
     const record = super.set(key, value, options);
-    if (this.durable(key)) this.sink.set(record);
+    if (this.durable(key) && this.proAccess.permits(key)) this.sink.set(record);
     return record;
   }
 
   override delete(key: ResourceCacheKey): void {
     super.delete(key);
     if (this.durable(key)) this.sink.delete(key);
+  }
+
+  protected override purgeProResources(account: string): void {
+    this.sink.purgeProResources(account);
   }
 }

@@ -7,6 +7,7 @@ import {
 } from "../../data/durable-resources";
 import { packWarmResource, resourceRecordKey, type WarmResourceRecord } from "../../data/memory-resource-store";
 import { logFailure } from "../../utils/log-failure";
+import { proResourceMatcher } from "../../data/pro-resource-access";
 
 /**
  * The web app's saved copies, in the browser's IndexedDB: every cached
@@ -120,6 +121,16 @@ async function writeBatch(db: IDBDatabase, batch: ResourceSyncBatch): Promise<vo
     const key = resourceRecordKey(touch);
     const entry = existing.get(key);
     if (entry) entry.at = Math.max(entry.at, touch.at);
+  }
+  if (batch.purgePro?.length) {
+    const revoked = batch.purgePro.map(proResourceMatcher);
+    for (const key of existing.keys()) {
+      const [namespace = "", kind = "", entityKey = "", , sourceKey] = key.split("\u0000");
+      if (!revoked.some((matches) => matches({ namespace, kind, entityKey, sourceKey }))) continue;
+      records.delete(key);
+      meta.delete(key);
+      existing.delete(key);
+    }
   }
   const keep = withinBudget(existing);
   for (const key of existing.keys()) {

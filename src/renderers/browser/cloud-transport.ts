@@ -1,6 +1,6 @@
 import { apiClient, setCloudApiFetchTransport, setCloudApiUploadTransport } from "../../api-client";
 import type { CloudApiUploadRequest } from "../../api-client/request";
-import { settleWithin } from "../../utils/async-deadline";
+import { settleWithin, signalWithTimeout } from "../../utils/async-deadline";
 import { setHttpFetchTransport } from "../../utils/http-transport";
 import { createBrowserHttpProxyTransport } from "./http-proxy-transport";
 import { NO_SESSION_COOKIE, SESSION_BINDING_HEADER, SESSION_BINDING_META, SESSION_COOKIE_NAMES } from "../../api-client/session-cookie";
@@ -9,6 +9,8 @@ import { readBrowserSessionUser, rememberBrowserSessionUser } from "./session-ca
 import type { AuthUser } from "../../api-client";
 
 let boundAccount: { binding: string; id: string } | null = null;
+let sessionRead = 0;
+const SESSION_READ_TIMEOUT_MS = 15_000;
 
 function plantBrowserSessionCookies(cookieHeader: string): void {
   if (typeof document === "undefined") return;
@@ -37,14 +39,28 @@ export async function browserCredentialedFetch(url: string, init: RequestInit = 
   // cache at a time, so the same read from a second tab, or a second pane,
   // waits for the first to finish and then goes to the network anyway: three
   // tabs opened together waited seconds per request that way.
-  const read = (init.method ?? "GET").toUpperCase() === "GET" && init.cache === undefined;
-  const response = await fetch(url, { ...init, headers, credentials: "include", ...(read ? { cache: "no-store" as const } : {}) });
+  const method = (init.method ?? "GET").toUpperCase();
+  const read = method === "GET" && init.cache === undefined;
+  const authRoute = typeof location !== "undefined" && url.startsWith(`${location.origin}/api/auth/`);
+  const sessionRoute = authRoute && url === `${location.origin}/api/auth/get-session` && method === "GET";
+  if (authRoute && method !== "GET") sessionRead += 1;
+  const request = sessionRoute ? ++sessionRead : sessionRead;
+  const signal = sessionRoute ? signalWithTimeout(init.signal ?? undefined, SESSION_READ_TIMEOUT_MS) : init.signal;
+  const credentials = !authRoute && !cookieHeader && apiClient.isCookieIdentityUnavailable() ? "omit" : "include";
+  const response = await fetch(url, { ...init, headers, signal, credentials, ...(read ? { cache: "no-store" as const } : {}) });
   const binding = response.headers.get(SESSION_BINDING_HEADER);
-  if (binding && response.ok && response.url === `${location.origin}/api/auth/get-session`) {
+  if (sessionRoute && response.url === url && request === sessionRead && !signal?.aborted) {
     try {
-      const result = await response.clone().json() as { user?: AuthUser } | null;
-      boundAccount = result?.user && binding !== NO_SESSION_COOKIE ? { binding, id: result.user.id } : null;
-      rememberBrowserSessionUser(localStorage, binding, result?.user ?? null);
+      if (response.status === 401) {
+        boundAccount = null;
+        rememberBrowserSessionUser(localStorage, NO_SESSION_COOKIE, null);
+      } else if (binding && response.ok) {
+        const result = await response.clone().json() as { user?: AuthUser } | null;
+        if (request === sessionRead && !signal?.aborted) {
+          boundAccount = result?.user && binding !== NO_SESSION_COOKIE ? { binding, id: result.user.id } : null;
+          rememberBrowserSessionUser(localStorage, binding, result?.user ?? null);
+        }
+      }
     } catch {
       // Intentional ignore: an unavailable display cache must not affect authentication.
     }
@@ -147,4 +163,5 @@ export async function restoreBrowserCloudSession(budgetMs = 5_000): Promise<void
     return;
   }
   await settleWithin(apiClient.getSession(), budgetMs);
+  apiClient.finishCookieIdentityBoot();
 }

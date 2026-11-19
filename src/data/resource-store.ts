@@ -5,6 +5,7 @@ import type { PackedResourceRecord } from "./memory-resource-store";
 import { createSqliteAccess, type SqliteAccess } from "./sqlite/access";
 import { safeParseJson, serializeJson } from "./sqlite/json";
 import { logFailure } from "../utils/log-failure";
+import { ProResourceAccess, proResourceMatcher } from "./pro-resource-access";
 
 const RESOURCE_CACHE_SOFT_ROW_LIMIT = 25_000;
 const RESOURCE_CACHE_SOFT_SIZE_LIMIT = 100 * 1024 * 1024;
@@ -116,6 +117,7 @@ function sortRows(rows: ResourceCacheRow[]): ResourceCacheRow[] {
 }
 
 export class ResourceStore {
+  private readonly proAccess = new ProResourceAccess();
   private writesSinceMaintenance = 0;
   private bytesWrittenSinceMaintenance = 0;
   private lastMaintenanceAt = 0;
@@ -346,6 +348,7 @@ export class ResourceStore {
   }
 
   get<T>(key: ResourceCacheKey, options: GetResourceOptions = {}): CachedResourceRecord<T> | null {
+    if (!this.proAccess.permits(key)) return null;
     const row = this.access.readCache("load cached resource", () => (
       this.db
         .query<ResourceCacheRow, [string, string, string, string, string]>(
@@ -410,6 +413,7 @@ export class ResourceStore {
 
     const records: CachedResourceRecord<T>[] = [];
     for (const row of sortRows(rows)) {
+      if (!this.proAccess.permits({ ...key, sourceKey: row.source_key })) continue;
       if (!options.allowExpired && isExpired(row.expires_at)) continue;
       if (options.schemaVersion != null && row.schema_version !== options.schemaVersion) {
         this.deleteExact({
@@ -455,7 +459,7 @@ export class ResourceStore {
     };
 
     this.pendingTouches.delete(rowMapKey(rowKey));
-    const saved = this.access.writeCache("save cached resource", () => {
+    const saved = this.proAccess.permits(key) && this.access.writeCache("save cached resource", () => {
       this.db
         .query(
           `INSERT OR REPLACE INTO resource_cache (
@@ -498,6 +502,22 @@ export class ResourceStore {
 
   delete(key: ResourceCacheKey): void {
     this.deleteExact(key);
+  }
+
+  setProResourceAccess(account: string, allowed: boolean): void {
+    if (this.proAccess.update(account, allowed)) this.purgeProResources(account);
+  }
+
+  purgeProResources(account: string): void {
+    const matches = proResourceMatcher(account);
+    for (const [id, { key }] of this.pendingTouches) if (matches(key)) this.pendingTouches.delete(id);
+    this.access.write("purge revoked Pro resources", this.db.transaction(() => {
+      const keys = this.db.query<ResourceCacheKey & { id: number }, []>(
+        `SELECT rowid AS id, namespace, kind, entity_key AS entityKey, source_key AS sourceKey FROM resource_cache`,
+      );
+      const remove = this.db.query("DELETE FROM resource_cache WHERE rowid = ?");
+      for (const key of keys.all()) if (matches(key)) remove.run(key.id);
+    }));
   }
 
   /**

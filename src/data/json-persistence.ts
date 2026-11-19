@@ -5,6 +5,7 @@ import { resourceRecordKey, WriteThroughResourceStore, type ResourceRecordSink, 
 import type { CachedResourceRecord, ResourceCacheKey } from "./resource-store";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./json-storage";
 import { isRecord } from "../utils/guards";
+import { proResourceMatcher } from "./pro-resource-access";
 
 type PluginState = Record<string, Record<string, PluginStateRecord>>;
 type Sessions = Record<string, SessionSnapshotRecord>;
@@ -44,6 +45,13 @@ export class JsonPersistence implements AppPersistencePort {
         const next = { ...this.resourceData.get() };
         delete next[resourceRecordKey(key)];
         this.resourceData.set(next);
+      },
+      purgeProResources: (account) => {
+        sink?.purgeProResources(account);
+        const current = this.resourceData.get();
+        const matches = proResourceMatcher(account);
+        const kept = Object.entries(current).filter(([, record]) => isRecord(record) && !matches(record));
+        if (kept.length !== Object.keys(current).length) this.resourceData.set(Object.fromEntries(kept));
       },
       touch: sink?.touch ? (key, at) => { if (!keepResource(key)) sink.touch?.(key, at); } : undefined,
     }, (key) => !!sink || keepResource(key));

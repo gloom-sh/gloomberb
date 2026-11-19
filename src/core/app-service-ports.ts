@@ -14,7 +14,7 @@ export type AppPluginStateStorePort = Pick<
   "get" | "set" | "delete" | "keys" | "clear"
 > & Partial<Pick<PluginStateStore, "getStrict">>;
 
-export type AppResourceStorePort = Pick<ResourceStore, "get" | "list" | "set" | "delete">;
+export type AppResourceStorePort = Pick<ResourceStore, "get" | "list" | "set" | "delete" | "setProResourceAccess">;
 export type AppSessionStorePort = Pick<SessionStore, "get" | "set" | "delete">;
 
 export interface AppPersistencePort {

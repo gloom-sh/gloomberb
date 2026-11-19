@@ -25,6 +25,7 @@ interface CloudAuthApiOptions {
   getCurrentUser(): AuthUser | null;
   getSessionToken(): string | null;
   hasSessionCredential(): boolean;
+  isCookieSessionMode(): boolean;
   request: CloudApiRequest;
   requireCapturedSession(message: string): void;
   setCurrentUser(user: AuthUser | null, confirmSession?: boolean): void;
@@ -200,7 +201,7 @@ export class CloudAuthApi {
       if (this.options.getCurrentUser() !== previousUser) return retainedSession();
       if (
         error instanceof ApiRequestError &&
-        isHardSessionInvalidMessage(error.message)
+        ((error.status === 401 && this.options.isCookieSessionMode()) || isHardSessionInvalidMessage(error.message))
       ) {
         this.options.setSessionToken(null);
         return { user: null, validated: true };
