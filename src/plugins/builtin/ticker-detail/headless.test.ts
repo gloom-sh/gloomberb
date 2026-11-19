@@ -939,11 +939,17 @@ test("a quarter-only runway flags an offering since its balance sheet even with 
       { date: "2026-06-30", currency: "USD", totalRevenue: 0, cashAndCashEquivalents: 120, operatingCashFlow: -30 },
     ],
   });
-  const filing = { form: "424B4", filingDate: "2026-08-01" };
   const symbol = "NEWIPO";
+  const apiClient: Pick<HeadlessPaneContext["apiClient"], "getCloudSecFilings"> = {
+    getCloudSecFilings: async () => ({
+      filings: [{ form: "424B4", filingDate: "2026-08-01", accessionNumber: "fixture", cik: "1", filingUrl: "https://example.test/filing" }],
+      hasMore: false,
+      nextOffset: 0,
+    }),
+  };
   const ctx = createTestHeadlessContext({
     marketData: createTestDataProvider({ getTickerFinancials: async () => financials }),
-    apiClient: { getCloudSecFilings: async () => ({ filings: [filing] }) } as HeadlessPaneContext["apiClient"],
+    apiClient: apiClient as HeadlessPaneContext["apiClient"],
   });
   const report = await financialStatementsHeadless.load(args([`${symbol}:NASDAQ`], { statement: "liquidity", period: "quarterly" }), ctx);
   expect(report.rows.find((row) => row.id === "runway-quarter")?.cells).toEqual([
