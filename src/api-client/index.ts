@@ -136,6 +136,7 @@ class GloomApiClient {
   /** Local user/credential binding, masked until verified and never serialized. */
   private verifiedSessionIdentity: object | null = null;
   private verifiedSessionCredential: string | null = null;
+  private socketUserUnverified = false;
   private sessionTransitions = 0;
   private sessionTransition: Promise<void> | null = null;
   /** Device adoption and external session installs supersede pending email auth. */
@@ -172,6 +173,7 @@ class GloomApiClient {
     clearWebSocketTokenForFallback: () => this.transport.clearWebSocketTokenForFallback(),
     markCurrentUserUnverified: () => {
       if (this.currentUser) {
+        this.socketUserUnverified = true;
         this.currentUser = { ...this.currentUser, emailVerified: false };
         this.emitCurrentUserChange();
       }
@@ -182,7 +184,9 @@ class GloomApiClient {
       // its data again (teams, theses, sync), and after a server restart every
       // client reconnects at once. After a long silence they do load again, for
       // what changed while nothing arrived.
-      if (!this.currentUser || (!resync && !changesUser(this.currentUser, user))) return;
+      const confirmsVerification = this.socketUserUnverified && typeof user.emailVerified === "boolean";
+      if (!this.currentUser || (!resync && !confirmsVerification && !changesUser(this.currentUser, user))) return;
+      if (confirmsVerification) this.socketUserUnverified = false;
       this.updateCurrentUser((currentUser) => ({
         ...currentUser,
         ...user,
@@ -329,7 +333,7 @@ class GloomApiClient {
   }
 
   getConfirmedDisplayUser(): AuthUser | null {
-    return this.sessionTransitions === 0 && this.verifiedSessionIdentity !== null
+    return !this.socketUserUnverified && this.sessionTransitions === 0 && this.verifiedSessionIdentity !== null
       && this.verifiedSessionCredential === this.transport.getSessionToken()
       ? this.currentUser : null;
   }
@@ -388,6 +392,7 @@ class GloomApiClient {
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
+    if (confirmSession || !sameAccount) this.socketUserUnverified = false;
     if (confirmSession) this.cookieIdentity = "ready";
     // Another account, or a plan that changed, reads other answers: no later read joins one sent before.
     if (changed) this.transport.forgetSharedReads();

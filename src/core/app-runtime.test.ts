@@ -58,6 +58,33 @@ test("confirmed Free access purges the account's old Pro copies, not a tentative
   }
 });
 
+test("a transient socket unverify retains paid copies until the account's downgrade is confirmed", async () => {
+  const originalSocket = globalThis.WebSocket;
+  const sockets = installTestWebSocket();
+  const proUser = { ...verifiedUser, plan: "pro" } as const;
+  const paid = { key: ["risk-factors", JSON.stringify([proUser.id, true, true]), "AAPL"] };
+  apiClient.setSessionToken("pro-session");
+  apiClient.restoreCachedUser(proUser);
+  const services = runtime();
+  const stop = apiClient.subscribeQuotes([{ symbol: "AAPL" }], () => {});
+  try {
+    await services.ready;
+    writeSavedCopy(paid, "paid data");
+    sockets.at(-1)!.receive({ type: "auth.unverified" });
+    expect(apiClient.getCurrentUser()?.emailVerified).toBe(false);
+    expect(readSavedCopy(paid)?.value).toBe("paid data");
+    sockets.at(-1)!.receive({ type: "ready", user: { ...proUser, plan: "free" } });
+    expect(apiClient.getConfirmedDisplayUser()?.plan).toBe("free");
+    expect(readSavedCopy(paid)).toBeNull();
+  } finally {
+    stop();
+    services.destroy();
+    apiClient.dispose();
+    apiClient.setSessionToken(null);
+    globalThis.WebSocket = originalSocket;
+  }
+});
+
 test("retiring an old runtime cannot disconnect its replacement", async () => {
   const dataProvider = createTestDataProvider();
   const previous = runtime({ dataProvider });
