@@ -124,7 +124,7 @@ test("EVTS restores the board on its first frame while the highlighted report re
       return <EarningsBoard focused scopedSymbols={MARKET} highlight="AAPL" {...body} />;
     }}
   </TestPaneFrame>;
-  const held = Promise.withResolvers<Awaited<ReturnType<typeof apiClient.getEarningsHistory>>>();
+  const held = Promise.withResolvers<Awaited<ReturnType<typeof apiClient.getCloudEarningsHistory>>>();
   const before = historyRequests.getMockImplementation();
   try {
     resetEarningsCloudCaches();
