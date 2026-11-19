@@ -44,12 +44,12 @@ import {
   filingPageUrl,
   growthPercent,
   nextRevenueSort,
-  quarterLabel,
   REVENUE_MODES,
   reportedPeriods,
   reportedSpan,
   revenueAmount,
   revenueColumns,
+  revenuePeriodLabeler,
   sharedMaximum,
   sharePercent,
   sortRevenueRows,
@@ -109,6 +109,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
     () => (resource.data ? reportedSpan(resource.data.payload) : null),
     [resource.data],
   );
+  const periodLabel = useMemo(() => revenuePeriodLabeler(resource.data?.payload.periods ?? []), [resource.data]);
   const preview = payload?.access === "preview" && payload.lockedRows > 0;
   const noun = VIEW_NOUNS[payload?.view ?? view];
   const reported = payload ? reportedPeriods(payload) : [];
@@ -123,7 +124,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
     error: payload ? resource.error : null,
     info: latest ? reported.map((period) => ({
       id: `filing:${period.end}`,
-      parts: [{ text: `${quarterLabel(period)} filed ${period.filing.filed}`, tone: "value" as const }],
+      parts: [{ text: `${periodLabel(period)} filed ${period.filing.filed}`, tone: "value" as const }],
       capture: true,
       onPress: () => void host.openExternal(filingPageUrl(period.filing))
         .catch(logFailure("revenue-breakdown", "Open filing link failed")),
@@ -145,14 +146,14 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
   }, [payload, preview, rows]);
   const columns = useMemo<DataTableColumn[]>(() => {
     if (!payload) return [];
-    const base = revenueColumns(payload, mode);
+    const base = revenueColumns(payload, mode, periodLabel);
     // In the terminal the upgrade line sits in the label column, so it must fit there.
     return preview && !isDesktopWeb
       ? base.map((column) => column.id === "label"
         ? { ...column, width: Math.max(column.width, `Upgrade to see every ${noun.plural}`.length + 4) }
         : column)
       : base;
-  }, [isDesktopWeb, mode, noun.plural, payload, preview]);
+  }, [isDesktopWeb, mode, noun.plural, payload, periodLabel, preview]);
 
   // The quarter under the pointer. Moving between bars sends an out before
   // the next over, so clearing waits a beat and a new hover cancels it.
@@ -171,8 +172,8 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
     const period = payload.periods[hover.index];
     if (!row || !period) return null;
     const value = row.values[hover.index] ?? null;
-    return `${quarterLabel(period)}  ${value === null ? "not reported" : revenueAmount(value)}`;
-  }, [hover, payload]);
+    return `${periodLabel(period)}  ${value === null ? "not reported" : revenueAmount(value)}`;
+  }, [hover, payload, periodLabel]);
 
   const placeholder = blendHex(colors.bg, colors.textMuted, 0.35);
   const renderCell = useCallback((item: Item, column: DataTableColumn): DataTableCell => {

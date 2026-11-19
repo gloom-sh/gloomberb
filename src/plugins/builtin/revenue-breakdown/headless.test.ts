@@ -64,24 +64,28 @@ test("the text report names each table's scale in its heading; JSON, CSV and NDJ
   }
 });
 
-test("reported periods have filed dates and links, not quarter or TTM labels", async () => {
-  const url = "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0318/2026031800388.pdf";
-  const annual = { end: "2025-12-31", kind: "annual" as const, label: "Year ended 31 December 2025", revenueLabel: "Revenue", filing: { filed: "2026-03-18", url, page: 33 } };
+test("reported periods share fiscal-year labels across the pane, text report and exports", async () => {
+  const annualUrl = "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0513/2026051300653.pdf";
+  const interimUrl = "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/1125/2025112501051.pdf";
+  const annual = { end: "2026-03-31", kind: "annual" as const, label: "Year ended 31 March 2026", revenueLabel: "Revenue", filing: { filed: "2026-05-13", url: annualUrl, page: 18 } };
   const hk: RevenueBreakdownPayload = {
-    ...payload, cik: undefined, symbol: "0700", currency: "CNY", view: "segment", views: ["segment"],
-    periods: [annual, {
-      ...annual, kind: "interim", end: "2026-06-30", label: "Six months ended 30 June 2026",
-      filing: { ...annual.filing, url: `${url}#page=4`, page: 27 },
-    }],
-    rows: [{ ...payload.rows[0]!, label: "Single operating segment", share: 1, values: payload.total }],
+    ...payload, cik: undefined, symbol: "9988", currency: "CNY", view: "segment", views: ["segment"],
+    periods: [{
+      ...annual, kind: "interim", end: "2025-09-30", label: "Six months ended 30 September 2025",
+      filing: { filed: "2025-11-25", url: `${interimUrl}#page=4`, page: 17 },
+    }, annual],
   };
-  const args = createTestHeadlessArgs({ symbols: ["0700:HKEX"], argument: "0700:HKEX", rawArgument: "0700:HKEX", options: {} });
+  const args = createTestHeadlessArgs({ symbols: ["9988:HKEX"], argument: "9988:HKEX", rawArgument: "9988:HKEX", options: {} });
   const result = await revenueBreakdownHeadless.load(args, createTestHeadlessContext({
     apiClient: { getCloudRevenueBreakdown: async () => hk } as never,
   }));
-  expect(result.sections[0]?.columns?.map((column) => column.header)).toEqual(["Segment", "FY 2025", "H1 2026", "Share"]);
-  expect(result.sections[1]?.rows?.[0]).toMatchObject({ filed: "2026-03-18", filing: `${url}#page=33` });
-  expect(result.sections[1]?.rows?.[1]).toMatchObject({ filing: `${url}#page=27` });
-  expect(deriveHeadlessFreshness(revenueBreakdownHeadless, result).source).toBe("Company filings");
-  expect(revenueColumns(hk, "trend").map((column) => column.label)).toEqual(["Segment", "FY 2025", "H1 2026", "% Total"]);
+  expect(result.sections[0]?.columns?.map((column) => column.header)).toEqual(["Segment", "H1 2026", "FY 2026", "Share"]);
+  expect(result.sections[1]?.rows?.[0]).toMatchObject({ period: "Six months ended 30 September 2025", filing: `${interimUrl}#page=17` });
+  expect(result.sections[1]?.rows?.[1]).toMatchObject({ filed: "2026-05-13", filing: `${annualUrl}#page=18` });
+  const freshness = deriveHeadlessFreshness(revenueBreakdownHeadless, result);
+  expect(freshness.source).toBe("Company filings");
+  expect(revenueColumns(hk, "trend").map((column) => column.label)).toEqual(["Segment", "H1 2026", "FY 2026", "% Total"]);
+  expect(renderHeadlessPaneText(revenueBreakdownHeadless, result, args, "SEG", freshness)).toMatch(/H1 2026\s+FY 2026/);
+  const tables = headlessReportTables(revenueBreakdownHeadless, result, args, "SEG", freshness, { complete: true, unavailableSymbols: [] });
+  expect(renderReportCsv(tables, freshness)).toContain("Segment,H1 2026,FY 2026,Share");
 });
