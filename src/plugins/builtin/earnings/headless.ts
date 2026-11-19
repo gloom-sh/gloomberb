@@ -111,7 +111,11 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   BASIS_COLUMN,
   surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
-  { key: "revenueActual", header: "Sales act", align: right, format: (value) => moneyText(num(value)) },
+  // A US listing that reports its revenue in another currency: the figure in that currency, labelled.
+  { key: "revenueActual", header: "Sales act", align: right, format: (value, row) => {
+    const text = moneyText(num(value));
+    return typeof row.revenueCurrency === "string" && text !== MISSING_VALUE ? `${text} ${row.revenueCurrency}` : text;
+  } },
   surpriseColumn("revenueSurprise", "Sales surp"),
   { key: "impliedMove", header: "Implied", align: right, format: (value) => impliedText(num(value)) },
   { key: "impliedFrom", header: "Implied from" },
@@ -335,6 +339,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     ...surpriseFields("epsSurprise", row.epsSurprise),
     revenueEstimate: row.revenueEstimate,
     revenueActual: row.revenueActual,
+    ...(row.revenueCurrency ? { revenueCurrency: row.revenueCurrency } : {}),
     revenueActualProvisional: row.revenueProvisional,
     ...surpriseFields("revenueSurprise", row.revenueSurprise),
     impliedMove: row.implied,

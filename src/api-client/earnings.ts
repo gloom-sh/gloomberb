@@ -91,8 +91,19 @@ export interface EarningsCalendarPayload {
   reports: EarningsCalendarReport[];
 }
 
+/** A quarter's revenue as the company reports it, in its own currency. */
+export interface EarningsReportedRevenue {
+  amount: number;
+  /** ISO currency of `amount`: the company's reporting currency (CNY for a company reporting in yuan), USD for most. */
+  currency: string;
+  source: "statements" | "press-release";
+}
+
 interface EarningsHistoryReport extends EarningsReport {
+  /** Dollars only: null for a US listing that reports in another currency, whose revenue is in `reportedRevenue`. */
   revenueActual: number | null;
+  /** The quarter's revenue in the currency the company reports it in; absent from older servers. */
+  reportedRevenue?: EarningsReportedRevenue | null;
   /** `press-release` until the statements have the quarter, `filing` a listing abroad's results announcement; absent from older servers. */
   revenueActualSource?: "statements" | "press-release" | "filing" | null;
   /** The fiscal quarter as the company names it, null when its calls do not say; absent from older servers. */

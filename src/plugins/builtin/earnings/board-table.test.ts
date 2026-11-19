@@ -255,6 +255,36 @@ describe("ERN rows", () => {
   });
 });
 
+describe("ERN for a US listing that reports in another currency", () => {
+  type Report = EarningsHistoryPayload["reports"][number];
+  const report = (fields: Partial<Report> & Pick<Report, "date">): Report => ({
+    symbol: "BIDU", name: "Baidu, Inc.", timing: null, timingSource: "calendar", reportedAt: null, fiscalPeriod: "2026-09",
+    marketCap: 24e9, epsEstimate: 2.04, epsActual: 2.11, epsActualSource: "calendar", epsAnalysts: 2, revenueEstimate: null,
+    revenueAnalysts: null, implied: null, realized: null, revenueActual: null, dateStatus: "reported", ...fields,
+  });
+  const rows = historyRows({ asOf: "2026-11-19T03:00:00Z", symbol: "BIDU", name: null, reports: [
+    report({ date: "2026-11-16", reportedRevenue: { amount: 30.807e9, currency: "CNY", source: "press-release" } }),
+    report({ date: "2026-08-20", fiscalPeriod: "2026-06", reportedRevenue: { amount: 31.325e9, currency: "CNY", source: "statements" } }),
+    // Dollars are served as revenueActual, never through the company's own currency.
+    report({ date: "2026-05-18", fiscalPeriod: "2026-03", reportedRevenue: { amount: 4.4e9, currency: "USD", source: "statements" } }),
+  ] }, "2026-11-19", null);
+  const columns = historyColumns(2000, rows);
+  const sales = columns.find((entry) => entry.id === "revenueActual")!;
+
+  test("its sales in that currency, labelled; its EPS in dollars stays bare", () => {
+    expect(rows.map((row) => [row.revenueActual, row.revenueCurrency, row.revenueSurprise])).toEqual([
+      [30.807e9, "CNY", null],
+      [31.325e9, "CNY", null],
+      [null, null, null],
+    ]);
+    expect(rows.map((row) => renderHistoryCell(row, sales).text)).toEqual(["30.81B CNY", "31.32B CNY", MISSING_VALUE]);
+    expect(renderHistoryCell(rows[0]!, sales).color).toBe(colors.textMuted);
+    expect(renderHistoryCell(rows[0]!, columns.find((entry) => entry.id === "epsActual")!).text).toBe("2.11");
+    // SALES ACT, nine wide, takes the currency after each figure.
+    expect(sales.width).toBe(9 + 4);
+  });
+});
+
 describe("surprises against a loss or zero estimate", () => {
   type Report = EarningsHistoryPayload["reports"][number];
   const report = (fields: Partial<Report> & Pick<Report, "date">): Report => ({
