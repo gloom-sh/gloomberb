@@ -175,12 +175,13 @@ const DEFAULT_TEXT_FIELD_CELLS = 20;
 
 /**
  * Cells a text filter's field takes: the width it names, or where that is
- * narrower its value, the cursor after it and the cell the terminal's field
- * keeps past the cursor, so a value is never cut, at rest or typed in: a
- * 10-cell Date field cut 2026-11-13 to "6-11-13".
+ * narrower its value, so a value is never cut. The terminal's field also
+ * needs the cursor after the value and the cell it keeps past the cursor: a
+ * 10-cell Date field there cut 2026-11-13 to "6-11-13". The desktop's field
+ * shows a value as wide as itself.
  */
-function textFieldCells(filter: Pick<QueryBarTextFilter, "width" | "value">): number {
-  return Math.max(filter.width ?? DEFAULT_TEXT_FIELD_CELLS, displayWidth(filter.value) + 2);
+function textFieldCells(filter: Pick<QueryBarTextFilter, "width" | "value">, terminal = true): number {
+  return Math.max(filter.width ?? DEFAULT_TEXT_FIELD_CELLS, displayWidth(filter.value) + (terminal ? 2 : 0));
 }
 
 /** An inline filter of a few short options, drawn as segments: what collapses to its menu when the row runs short. */
@@ -436,7 +437,7 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
         options: [],
         node: textNodes.get(filter.id),
         active: filter.active,
-        width: textFieldCells(filter),
+        width: textFieldCells(filter, false),
         onActivate: () => {
           filter.onActiveChange(true);
           filter.inputRef?.current?.focus?.();
