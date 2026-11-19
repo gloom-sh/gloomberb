@@ -83,7 +83,8 @@ test("the longest read wraps whole at 80 columns, and a wide pane keeps it on on
 test("a narrow pane keeps the release whole and every figure in view: the next release and the names give way", async () => {
   // At 70 columns the stamp was cut in its middle and M/M Pts and Y/Y Pts scrolled out of view.
   await mount(68, 36);
-  const frame = await tui.waitForFrameToContain("COMPONENT");
+  // The table fits its columns over a few renders: the first frame with COMPONENT in it is the unfitted one.
+  const frame = await tui.waitForFrameToContain("Y/Y PTS");
   const header = frame.split("\n").find((line) => line.includes("COMPONENT"))!;
   expect(header).toContain("M/M PTS");
   expect(header).toContain("Y/Y PTS");
