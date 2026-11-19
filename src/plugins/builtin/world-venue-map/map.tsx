@@ -45,6 +45,7 @@ export interface WorldMapFocus {
   zoom?: number;
   /** Exactly at `zoom`, out as well as in: a frame around a set of places. */
   exact?: boolean;
+  initial?: boolean;
   /** The pane starts here on its own, so the view is not kept in the pane until the map moves. */
   transient?: boolean;
 }
@@ -58,8 +59,8 @@ interface WorldVenueMapProps {
   /** Geo layers drawn on the same projection; without them the map is the venue map alone. */
   overlay?: GeoMapOverlay;
   onSelectGeo?: (hit: Extract<GeoHit, { kind: "feature" }>) => void;
-  /** The area and zoom in view, as the layers request it. */
-  onViewChange?: (view: GeoView) => void;
+  /** The area and zoom in view, and whether it has moved from its starting viewport. */
+  onViewChange?: (view: GeoView, moved: boolean) => void;
   focus?: WorldMapFocus | null;
   /** How far the map may zoom; geo layers go closer than venues. */
   maxZoom?: number;
@@ -322,7 +323,7 @@ function TerminalWorldVenueMap(props: WorldVenueMapProps) {
   // The terminal map never pans or zooms, so it always covers the world.
   const onViewChange = props.onViewChange;
   useEffect(() => {
-    onViewChange?.(WORLD_GEO_VIEW);
+    onViewChange?.(WORLD_GEO_VIEW, false);
   }, [onViewChange]);
 
   const selectAt = (event: ChartMouseEvent) => {
@@ -556,6 +557,7 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
   const [viewport, setViewport] = useState<WorldMapViewport>(
     () => savedWorldMapViewport(props.savedViewport, maxZoom) ?? DEFAULT_WORLD_MAP_VIEWPORT,
   );
+  const initialViewportRef = useRef(viewport);
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const [dragging, setDragging] = useState(false);
@@ -670,7 +672,7 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     const next = geoViewForViewport(viewport, props.width, plotHeight);
     if (reportedViewRef.current && sameGeoView(reportedViewRef.current, next)) return;
     reportedViewRef.current = next;
-    onViewChange(next);
+    onViewChange(next, viewport !== initialViewportRef.current);
   }, [onViewChange, plotHeight, props.width, sized, viewport]);
 
   // The pane keeps the view once it rests, so a remount opens where this left off.
@@ -693,9 +695,10 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     const focus = props.focus;
     if (!focus || !sized || appliedFocusRef.current === focus.key) return;
     appliedFocusRef.current = focus.key;
-    if (focus.transient) {
+    if (focus.initial) {
       const start = clampWorldMapViewport({ zoom: Math.max(1, focus.zoom ?? 1), centerLongitude: focus.longitude, centerLatitude: focus.latitude }, props.width, plotHeight, 1, maxZoom);
-      settledViewportRef.current = start;
+      initialViewportRef.current = start;
+      if (focus.transient) settledViewportRef.current = start;
       setViewport(start);
       return;
     }
