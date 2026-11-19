@@ -72,7 +72,7 @@ export const researchSearchPlugin: GloomPlugin = {
         prefix: "SRCH",
         aliases: ["NSE"],
         argPlaceholder: "query",
-        argKind: "text",
+        argKind: "text", argOnlySelects: true,
         argOptional: true,
       },
       createInstance(_context, options) {

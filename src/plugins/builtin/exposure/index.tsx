@@ -33,7 +33,7 @@ export const exposureModule: PluginModule = {
     portableShare: { private: { params: true, settings: true, state: true } } }],
   paneTemplates: [{ id: "exposure-pane", paneId: "exposure", label: "Exposure", description: "Pro scenario exposures across holdings, geographic revenue and supply chains, with source evidence and portfolio concentrations.",
     keywords: ["exposure", "scenario", "stress", "portfolio", "supply", "country", "tariff", "pro"],
-    shortcut: { prefix: "EXPO", argKind: "text", argOptional: true, argPlaceholder: "AAPL=60% NVDA=40%", argError: unknownSourceArg }, headless: exposureHeadless,
+    shortcut: { prefix: "EXPO", argKind: "text", argOnlySelects: true, argOptional: true, argPlaceholder: "AAPL=60% NVDA=40%", argError: unknownSourceArg }, headless: exposureHeadless,
     createInstance: (context, options) => ({ params: { input: sourceInput(options?.arg ?? "", context) } }),
   }],
 };

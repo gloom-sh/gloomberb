@@ -66,7 +66,7 @@ export const thirteenFModule: PluginModule = {
       shortcut: {
         prefix: "13F",
         argPlaceholder: "fund, ticker, or CIK",
-        argKind: "text",
+        argKind: "text", argOnlySelects: true,
         argOptional: true,
       },
       headless: thirteenFHeadless,

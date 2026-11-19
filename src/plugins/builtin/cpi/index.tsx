@@ -20,7 +20,7 @@ export const cpiModule: PluginModule = {
     id: "cpi-pane", paneId: "cpi", label: "US Consumer Prices",
     description: "The US consumer price index by component: weights, monthly, annualised and yearly changes, and contributions to the headline.",
     keywords: ["cpi", "ecan", "inflation", "consumer prices", "bls", "core", "shelter", "supercore", "rent", "gasoline"],
-    shortcut: { prefix: "CPI", aliases: ["ECAN"], argKind: "text", argPlaceholder: "component", argOptional: true,
+    shortcut: { prefix: "CPI", aliases: ["ECAN"], argKind: "text", argOnlySelects: true, argPlaceholder: "component", argOptional: true,
       argOptions: () => CPI_ROW_OPTIONS.map(({ value, label }) => ({ value, label })) },
     headless: cpiHeadless,
     createInstance: (_context, options) => cpiInstance(options),

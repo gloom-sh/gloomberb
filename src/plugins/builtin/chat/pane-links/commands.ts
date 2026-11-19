@@ -107,7 +107,7 @@ function sourceSignature(source: ChatFunctionSource): string {
   for (const [id, template] of source.paneTemplates) {
     const shortcut = template.shortcut;
     if (!shortcut?.prefix) continue;
-    signature += `\n${id} ${shortcut.prefix} ${shortcut.aliases?.join(",") ?? ""} ${shortcut.argKind ?? shortcut.argPlaceholder ?? ""}${shortcut.argOptions ? " ?" : ""}`;
+    signature += `\n${id} ${shortcut.prefix} ${shortcut.aliases?.join(",") ?? ""} ${shortcut.argKind ?? shortcut.argPlaceholder ?? ""}${shortcut.argOptions ? " ?" : ""}${shortcut.argOnlySelects ? " =" : ""}`;
   }
   for (const command of source.commands.values()) {
     if (command.shortcut) signature += `\n:${command.shortcut}`;

@@ -13,6 +13,7 @@ function functionLinkHarness() {
       ["earnings-pane", { shortcut: { prefix: "ERN", argKind: "ticker-list" } }],
       ["ticker-detail", { shortcut: { prefix: "T", aliases: ["DES"], argKind: "ticker" } }],
       ["news-industry", { shortcut: { prefix: "NI", argKind: "text", argOptions: () => [{ value: "CRYPTO", label: "Crypto" }] } }],
+      ["perps-pane", { shortcut: { prefix: "PERP", aliases: ["FUND"], argKind: "text", argOnlySelects: true } }],
       ["askg", { shortcut: { prefix: "ASKG", argPlaceholder: "question", argKind: "text" } }],
       ["no-shortcut", {}],
     ]),
@@ -20,6 +21,26 @@ function functionLinkHarness() {
     notify: (notice: (typeof notices)[number]) => { notices.push(notice); },
   } as unknown as PluginRegistry;
   return { ran, notices, options: { pluginRegistry: registry, dispatch: () => {}, stateRef: { current: {} as AppState } } };
+}
+
+/** A web terminal address (`?fn=ERN&arg=NVDA`) handed to the runtime as the browser app hands it. */
+function openFromWeb(search: string, options: Parameters<typeof handleDesktopDeepLink>[1]): void {
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      location: { search, pathname: "/", hash: "" },
+      history: { state: null, replaceState() {} },
+      addEventListener() {},
+      removeEventListener() {},
+    },
+  });
+  try {
+    createBrowserDeepLinkBridge().subscribe(({ url }) => handleDesktopDeepLink(url, options));
+  } finally {
+    if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window;
+    else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
 }
 
 describe("desktop deeplinks", () => {
@@ -223,10 +244,12 @@ describe("desktop deeplinks", () => {
     handleDesktopDeepLink("gloomberb://fn/ERN?arg=nvda", options);
     handleDesktopDeepLink("gloomberb://fn/des?arg=AAPL", options);
     handleDesktopDeepLink("gloomberb://fn/NI?arg=crypto", options);
+    // Free text that only picks what the pane shows, as its template says.
+    handleDesktopDeepLink("gloomberb://fn/fund?arg=BTC-USD", options);
     handleDesktopDeepLink("gloomberb://fn/ASKG", options);
     // A command's code (settings, sign out) is not a pane: refused, never run.
     handleDesktopDeepLink("gloomberb://fn/LOGOUT", options);
-    expect(ran).toEqual(["ERN NVDA", "DES AAPL", "NI CRYPTO", "ASKG"]);
+    expect(ran).toEqual(["ERN NVDA", "DES AAPL", "NI CRYPTO", "FUND BTC-USD", "ASKG"]);
     expect(notices).toEqual([{ body: "LOGOUT is not a function this version of Gloom opens from a link.", type: "error" }]);
   });
 
@@ -235,22 +258,7 @@ describe("desktop deeplinks", () => {
   test("a function link with free text, from the app or the web, runs nothing until the toast is clicked", () => {
     const { ran, notices, options } = functionLinkHarness();
     handleDesktopDeepLink("gloomberb://fn/ASKG?arg=SELL_EVERYTHING", options);
-    const originalWindow = globalThis.window;
-    Object.defineProperty(globalThis, "window", {
-      configurable: true,
-      value: {
-        location: { search: "?fn=askg&arg=SELL_EVERYTHING", pathname: "/", hash: "" },
-        history: { state: null, replaceState() {} },
-        addEventListener() {},
-        removeEventListener() {},
-      },
-    });
-    try {
-      createBrowserDeepLinkBridge().subscribe(({ url }) => handleDesktopDeepLink(url, options));
-    } finally {
-      if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window;
-      else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
-    }
+    openFromWeb("?fn=askg&arg=SELL_EVERYTHING", options);
     // Free text where a function takes a value it names, too.
     handleDesktopDeepLink("gloomberb://fn/NI?arg=HELLO", options);
 
@@ -262,6 +270,28 @@ describe("desktop deeplinks", () => {
     ]);
     notices[0]!.action!.onClick();
     expect(ran).toEqual(["ASKG SELL_EVERYTHING"]);
+  });
+
+  // gloom.sh links to the web terminal's functions (the AI traders' ERN and
+  // PERP links, the command-bar lesson's ERN example), so each must open at
+  // once with the app's own functions. ASKG and THESIS act on their text and
+  // CHAT joins what it names, so theirs keep asking.
+  test("the function links gloom.sh publishes open at once, and functions that act on their text ask", async () => {
+    const { getPluginCatalog } = await import("../../plugins/catalog");
+    const { ran, notices, options } = functionLinkHarness();
+    (options.pluginRegistry as unknown as { paneTemplates: Map<string, unknown> }).paneTemplates = new Map(
+      getPluginCatalog().flatMap(({ plugin }) => (plugin.paneTemplates ?? []).map((template) => [template.id, template] as const)),
+    );
+    const published = ["?fn=ERN&arg=NVDA", "?fn=PERP&arg=BTC", "?fn=PERP&arg=ETH", "?fn=PERP&arg=SOL", "?fn=PERP&arg=NVDA"];
+    for (const search of published) openFromWeb(search, options);
+    handleDesktopDeepLink("gloomberb://fn/PERP?arg=BTC", options);
+    expect(notices).toEqual([]);
+    expect(ran).toEqual(["ERN NVDA", "PERP BTC", "PERP ETH", "PERP SOL", "PERP NVDA", "PERP BTC"]);
+
+    ran.length = 0;
+    for (const search of ["?fn=ASKG&arg=HELLO", "?fn=THESIS&arg=NVDA", "?fn=CHAT&arg=MACRO"]) openFromWeb(search, options);
+    expect(ran).toEqual([]);
+    expect(notices.map(({ body }) => body)).toEqual(["Run ASKG HELLO?", "Run THESIS NVDA?", "Run CHAT MACRO?"]);
   });
 
   test("rejects command-bar, non-gloomberb, and malformed links", () => {

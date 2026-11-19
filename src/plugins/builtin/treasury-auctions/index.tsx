@@ -112,7 +112,7 @@ export const treasuryAuctionsModule: PluginModule = {
           "tender",
           "tender results",
         ],
-        shortcut: { prefix: "AUCT", argKind: "text", argOptional: true, argPlaceholder: "search" },
+        shortcut: { prefix: "AUCT", argKind: "text", argOnlySelects: true, argOptional: true, argPlaceholder: "search" },
         headless: treasuryAuctionsHeadless,
         createInstance: (_context, options) => {
           const { params, settings } = auctionCommandRequest(options?.arg);

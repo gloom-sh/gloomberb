@@ -39,6 +39,15 @@ interface PaneTemplateShortcut {
   argPlaceholder?: string;
   argKind?: "text" | "ticker" | "ticker-list";
   /**
+   * A text argument that only picks what the pane shows (a market, a series,
+   * a search): opening the pane on it sends, asks, saves and runs nothing.
+   * A link (`term.gloom.sh/?fn=PERP&arg=BTC`) or a code in a chat message
+   * may then pass one word of it, as it may a ticker. Leave it out for text
+   * the function acts on (ASKG asks it, THESIS starts one): a link with such
+   * an argument waits for a click on a notice that shows the command.
+   */
+  argOnlySelects?: boolean;
+  /**
    * For a ticker list, entries kept as typed instead of resolved as tickers:
    * CORR keeps map series (`GEO:HORMUZ`) beside its tickers.
    */

@@ -12,7 +12,7 @@ export const membersPlugin: GloomPlugin = {
   paneTemplates: [{ id: "members-pane", paneId: "members", label: "Index and ETF members", description: "ETF holdings, member returns, daily contributions, breadth and index changes, and the ETFs holding a stock.",
     keywords: ["members", "index", "ETF", "holdings", "weights", "rebalance", "breadth", "advancers", "decliners", "MRR", "IMOV",
       "look-through", "look through", "which ETFs hold", "ETFs holding", "ETF exposure", "thematic ETF", "N-PORT"],
-    shortcut: { prefix: "MEMB", argKind: "text", argPlaceholder: "fund or stock", argOptional: true, openWithoutArg: true }, headless: membersHeadless,
+    shortcut: { prefix: "MEMB", argKind: "text", argOnlySelects: true, argPlaceholder: "fund or stock", argOptional: true, openWithoutArg: true }, headless: membersHeadless,
     createInstance: (_context, options) => { const symbol = (options?.arg ?? options?.symbol)?.trim().toUpperCase();
       return { placement: "floating", title: membersTitle(symbol ?? ""),
         ...(symbol ? { binding: { kind: "fixed", symbol } } : {}), settings: { tab: options?.values?.tab ?? "members" } }; },

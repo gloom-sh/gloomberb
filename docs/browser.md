@@ -13,7 +13,7 @@
 
 ## Links
 
-- A function link opens one function, as typing it would: `term.gloom.sh/?fn=ERN&arg=NVDA` opens NVDA's earnings. The argument is one symbol, a comma list, or one of the values the function lists. Any other argument (`?fn=ASKG&arg=...`) waits for you to click Run on the notice that shows the command. `?ticker=NVDA&tab=news` opens the research pane on a tab.
+- A function link opens one function, as typing it would: `term.gloom.sh/?fn=ERN&arg=NVDA` opens NVDA's earnings. The argument is one word: a symbol, a comma list, or what the function shows (`?fn=PERP&arg=BTC` opens Bitcoin's perpetuals). A link to a function that acts on its text, such as Ask Gloom (`?fn=ASKG&arg=...`), Theses or Chat, waits for you to click Run on the notice that shows the command. `?ticker=NVDA&tab=news` opens the research pane on a tab.
 - A share link opens the shared pane as the sender saw it, with a chart's drawings and zoom or a news pane's open story. Opening one needs no account, though panes served by Gloom Cloud ask the receiver to sign in. Creating one needs a verified account.
 
 ## Plugins

@@ -36,7 +36,7 @@ const chokepointTemplate: PaneTemplateDef = {
   label: "Chokepoint Transits",
   description: "Chart daily vessel transits through the main shipping chokepoints, or one of them.",
   keywords: ["chokepoint", "chokepoints", "transits", "suez", "panama", "hormuz", "malacca", "shipping", "strait", "canal"],
-  shortcut: { prefix: "CHOKE", argPlaceholder: "chokepoint", argKind: "text", argOptional: true },
+  shortcut: { prefix: "CHOKE", argPlaceholder: "chokepoint", argKind: "text", argOnlySelects: true, argOptional: true },
   canCreate: () => true,
   catalogSettings: {},
   createInstance: (_context, options) => createChokepointInstance(cloudGeoRequest, options?.arg),
@@ -79,7 +79,7 @@ export const worldVenueMapModule: PluginModule = {
       shortcut: {
         prefix: "MAP",
         argPlaceholder: "layers [place or lat,lon]",
-        argKind: "text",
+        argKind: "text", argOnlySelects: true,
         argOptional: true,
         argOptions: () => MAP_PRESET_OPTIONS,
       },

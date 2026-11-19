@@ -655,7 +655,7 @@ export const economicCalendarModule: PluginModule = {
     // ECO MX,BR opens the calendar on those countries.
     shortcut: {
       prefix: "ECO",
-      argKind: "text",
+      argKind: "text", argOnlySelects: true,
       argPlaceholder: "countries",
       argOptional: true,
       openWithoutArg: true,

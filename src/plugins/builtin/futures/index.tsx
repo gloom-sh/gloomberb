@@ -493,7 +493,7 @@ export const futuresModule: PluginModule = {
       shortcut: {
         prefix: "FUT",
         aliases: ["GLCO"],
-        argKind: "text",
+        argKind: "text", argOnlySelects: true,
         argPlaceholder: "code or name",
         argOptional: true,
       },

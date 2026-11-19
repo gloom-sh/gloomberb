@@ -13,7 +13,7 @@ export const awardsModule: PluginModule = {
     settings: { title: "Government awards", fields: [{ type: "toggle", key: "awardAlerts", label: "New awards above 1% of annual revenue", description: "Notify while this pane is visible. Starts with the next refresh; historical backfills are excluded." }] } }],
   paneTemplates: [{ id: "awards-pane", paneId: "awards", label: "Government Awards", description: "Pro: government awards, company history, agency concentration and revenue exposure with source evidence.",
     keywords: ["awards", "contracts", "government", "procurement", "defense", "tenders", "obligations", "pro"],
-    shortcut: { prefix: "AWARDS", argKind: "text", argPlaceholder: "ticker", argOptional: true }, headless: awardsHeadless,
+    shortcut: { prefix: "AWARDS", argKind: "text", argOnlySelects: true, argPlaceholder: "ticker", argOptional: true }, headless: awardsHeadless,
     createInstance: (_context, options) => {
       const symbol = (options?.symbol ?? options?.arg)?.trim().toUpperCase();
       return { placement: "floating", ...(symbol ? { title: `AWARDS ${symbol}`, binding: { kind: "fixed", symbol }, settings: { tab: "company" } } : {}) };

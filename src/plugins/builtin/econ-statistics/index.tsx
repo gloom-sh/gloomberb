@@ -36,7 +36,7 @@ export const econStatisticsModule: PluginModule = {
     shortcut: {
       prefix: "ECST",
       argPlaceholder: "statistic",
-      argKind: "text",
+      argKind: "text", argOnlySelects: true,
       argOptional: true,
       argOptions: () => STATS.map((stat) => ({ value: stat.id, label: `${stat.label} (${stat.shortLabel})` })),
     },

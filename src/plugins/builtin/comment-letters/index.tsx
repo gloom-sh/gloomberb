@@ -65,7 +65,7 @@ export const commentLettersPlugin: GloomPlugin = {
       shortcut: {
         prefix: "CLTR",
         argPlaceholder: "words or ticker",
-        argKind: "text",
+        argKind: "text", argOnlySelects: true,
         argOptional: true,
       },
       createInstance: (_context, options) => createCommentLettersPaneInstance(options),
