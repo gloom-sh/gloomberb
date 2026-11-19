@@ -202,9 +202,9 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
     return () => clearInterval(timer);
   }, []);
 
-  const [view, setView] = useState<GeoView>(WORLD_GEO_VIEW);
-  const onViewChange = useCallback((next: GeoView) => {
-    setView((current) => sameGeoView(current, next) ? current : next);
+  const [{ view, moved }, setMapView] = useState({ view: WORLD_GEO_VIEW, moved: false });
+  const onViewChange = useCallback((view: GeoView, moved: boolean) => {
+    setMapView((current) => ({ view, moved: current.moved || moved }));
   }, []);
   const canAccess = useCallback((layer: GeoLayerInfo) => layer.access !== "pro" || hasProAccess, [hasProAccess]);
   // A linked map narrows the app's own layers to what its source pane selects.
@@ -239,7 +239,8 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const [headerSubject, setHeaderSubject] = useState<"entity" | "venue">("entity");
   // Kept per pane, so docking, undocking, popping out or reloading reopens the map where it was.
   const [savedViewport, setSavedViewport] = usePluginPaneState<unknown>("map:viewport", null);
-  const [focus, setFocus] = useState<WorldMapFocus | null>(() => initialMapFocus(start.place, savedViewport, start.home));
+  const [initialFocus] = useState(() => initialMapFocus(start.place, savedViewport, start.home));
+  const [focus, setFocus] = useState<WorldMapFocus | null>(initialFocus);
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const mapKeys = useMapKeyboard(searchFocused);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
@@ -247,14 +248,16 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
 
   const tableLocked = !canAccess(tableLayer) || tableState?.phase === "locked";
   const tableReadable = tableLayer.status !== "unavailable" && tableState?.phase !== "unavailable" && !tableLocked;
+  const startedAtPlace = !!start.place && !(nativePaneChrome && scope && isLocalGeoLayer(tableLayer.id));
   // The table follows the map once the view rests, not every frame of a pan.
-  const [tableView, setTableView] = useState<GeoView>(view);
+  const [tableView, setTableView] = useState<GeoView>();
+  const tablePlace = startedAtPlace && !tableView && (!nativePaneChrome || initialFocus) ? start.place : null;
   useEffect(() => {
-    if (sameGeoView(tableView, view)) return;
+    if (tablePlace ? !moved : sameGeoView(tableView ?? WORLD_GEO_VIEW, view)) return;
     const timer = setTimeout(() => setTableView(view), TABLE_VIEW_SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [tableView, view]);
-  const tableBbox = !nativePaneChrome && start.place ? mapPlaceBbox(start.place) : entityTableBbox(tableLayer, tableView);
+  }, [moved, tablePlace, tableView, view]);
+  const tableBbox = tablePlace ? mapPlaceBbox(tablePlace) : entityTableBbox(tableLayer, tableView ?? WORLD_GEO_VIEW, startedAtPlace);
   const tableBboxKey = tableBbox?.join(",") ?? "";
   const loadPage = useCallback(async ({ offset, signal }: PageRequest) => {
     const page = await loadEntityPage(tableLayer.id, {
@@ -277,8 +280,8 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
     getId: (row) => row.id,
     savedCopy: access ? { key: ["world-map-entities", access, scope?.key, tableLayer.id, query, sort.key, sort.dir, tableBboxKey] } : null,
   });
-  const rows = useMemo(() => !sort.key ? nearestPlaces(pages.rows, start.place, (row) => ({ longitude: row.lon, latitude: row.lat })) : pages.rows,
-    [pages.rows, sort.key, start.place]);
+  const rows = useMemo(() => !sort.key && tablePlace ? nearestPlaces(pages.rows, tablePlace, (row) => ({ longitude: row.lon, latitude: row.lat })) : pages.rows,
+    [pages.rows, sort.key, tablePlace]);
   // A linked map frames the places of each company or theme it moves to, once.
   const framedScopeRef = useRef<string | null>(null);
   const firstPage = pages.pages[0];

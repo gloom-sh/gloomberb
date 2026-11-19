@@ -102,7 +102,7 @@ export function mapPlaceBbox(place: MapPlace): GeoBbox {
 
 export function initialMapFocus(place: MapPlace | null, savedViewport: unknown, transient = false) {
   return place && !savedWorldMapViewport(savedViewport)
-    ? { key: "initial-place", ...place, exact: true, ...(transient ? { transient: true } : {}) }
+    ? { key: "initial-place", ...place, initial: true, ...(transient ? { transient: true } : {}) }
     : null;
 }
 

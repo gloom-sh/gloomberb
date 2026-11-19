@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { setCloudApiFetchTransport, type CloudWorldVenueMapPayload } from "../../../api-client";
-import { resetGeoCatalogCache } from "../../../api-client/geo";
+import { resetGeoCatalogCache, type GeoEntitiesPayload } from "../../../api-client/geo";
 import { createDomUiHost } from "../../../renderers/dom/dom-ui-host";
 import { WebInputHostProvider } from "../../../renderers/dom/input-host";
 import { createDomTestHarness } from "../../../renderers/dom/test-utils";
@@ -32,11 +32,11 @@ const venues: CloudWorldVenueMapPayload = {
   })),
 } as CloudWorldVenueMapPayload;
 
-function serve() {
+function serve(answerGeo = answerGeoFixture) {
   setCloudApiFetchTransport(async (url) => {
     const { pathname, search } = new URL(String(url));
     if (pathname === "/market/venues") return Response.json({ data: venues });
-    if (pathname.startsWith("/cloud/geo/")) return Response.json(answerGeoFixture(pathname.slice("/cloud/geo/".length) + search));
+    if (pathname.startsWith("/cloud/geo/")) return Response.json(answerGeo(pathname.slice("/cloud/geo/".length) + search));
     return Response.json({ error: "unexpected" }, { status: 500 });
   });
 }
@@ -90,19 +90,48 @@ async function until(container: HTMLElement, text: string) {
 
 const sidebarCells = (container: HTMLElement) => Number.parseFloat((container.querySelector('[data-gloom-role="pane-sidebar"]') as HTMLElement).style.width) / WEB_CELL_WIDTH;
 const basemap = (container: HTMLElement) => container.querySelector('[data-gloom-role="basemap"]')!.getAttribute("transform")!;
+const mapHeader = (container: HTMLElement) => container.querySelector('[data-gloom-role="world-venue-map"]')?.parentElement?.textContent;
 // A hint is a keycap and its words; read back as `[key] words`.
 const hints = (container: HTMLElement) => [...container.querySelectorAll('[data-gloom-role="pane-hint"]')]
   .map((hint) => `[${hint.querySelector(".gloom-keycap")?.textContent ?? ""}] ${hint.querySelector(".gloom-key-hint-words")?.textContent ?? ""}`)
   .join(" ");
 
 describe("MAP on the desktop and the web", () => {
-  test("a place argument starts a zoomed map rather than the whole world", async () => {
-    serve();
-    const container = await mount({ layers: [], venues: true, place: "51.5,-0.1" });
-    await until(container, "City 0");
-    expect(container.querySelector('[data-gloom-role="world-venue-map"]')?.getAttribute("data-zoomed")).toBe("true");
-    const [scale] = basemap(container).slice(7, -1).split(" ").map(Number);
-    expect(scale).toBeGreaterThan(1);
+  test.each(["argument", "home area"])("ships start near the %s and follow the map after a zoom", async (source) => {
+    const requests: (string | null)[] = [];
+    const ships = [
+      { id: "distant", label: "Atlantic Trader", lon: 10, lat: 43, props: {} },
+      { id: "offshore", label: "Coastal Explorer", lon: -29, lat: 43, props: {} },
+      { id: "nearest", label: "Harbour Ferry", lon: -34, lat: 43, props: {} },
+    ];
+    serve((path) => {
+      const result = answerGeoFixture(path);
+      const url = new URL(path, "https://example.test/");
+      if (url.pathname !== "/layers/vessels/entities") return result;
+      const bounds = url.searchParams.get("bbox");
+      requests.push(bounds);
+      const bbox = bounds?.split(",").map(Number);
+      const rows = ships.filter(({ lon, lat }) => !bbox || (lon >= bbox[0]! && lat >= bbox[1]! && lon <= bbox[2]! && lat <= bbox[3]!));
+      return { ...(result as GeoEntitiesPayload), rows, total: rows.length };
+    });
+
+    const container = await mount({ layers: ["vessels"], venues: false, ...(source === "argument" ? { place: "City 1" } : {}) },
+      source === "home area" ? "City 1" : undefined);
+    await until(container, "Harbour Ferry");
+    const initialBounds = "-39.625,37.375,-28.375,48.625";
+    expect(requests).toEqual([initialBounds]);
+    await act(async () => { await Bun.sleep(750); });
+    expect(requests).toEqual([initialBounds]);
+
+    await press("+");
+    for (let attempt = 0; attempt < 100 && requests.length < 2; attempt += 1) {
+      await act(async () => { await Bun.sleep(20); });
+    }
+    expect(requests).toEqual([initialBounds, expect.any(String)]);
+    const [west, , east] = requests[1]!.split(",").map(Number);
+    expect(west!).toBeLessThan(-34);
+    expect(east!).toBeGreaterThan(-34);
+    expect(east!).toBeLessThan(-29);
   });
 
   test("a map that starts at the home area is not saved there until it moves", async () => {
@@ -118,13 +147,15 @@ describe("MAP on the desktop and the web", () => {
     expect(savedViewport()).toMatchObject({ centerLongitude: expect.any(Number) });
   });
 
-  test("the venue map starts at the home area without saving it either", async () => {
+  test.each(["argument", "home area"])("venues start nearest the %s", async (source) => {
     serve();
-    const container = await mount({ layers: [], venues: true }, "51.5,-0.1");
-    await until(container, "City 0");
+    const container = await mount({ layers: [], venues: true, ...(source === "argument" ? { place: "City 1" } : {}) },
+      source === "home area" ? "City 1" : undefined);
+    await until(container, "City 1");
     expect(container.querySelector('[data-gloom-role="world-venue-map"]')?.getAttribute("data-zoomed")).toBe("true");
+    expect(mapHeader(container)).toContain("City 1");
     await settled();
-    expect(savedViewport()).toBeUndefined();
+    expect(savedViewport()).toEqual(source === "argument" ? { zoom: 32, centerLongitude: -34, centerLatitude: expect.closeTo(43) } : undefined);
   });
 
   test("a place the map was made with is saved as its view, whatever the home area is", async () => {

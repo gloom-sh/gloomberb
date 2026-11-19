@@ -373,11 +373,12 @@ export function framePlaces(places: readonly { lon: number; lat: number }[]): { 
  * The area a layer's table reads. A layer drawn only from a zoom (live
  * flights) lists what the map shows once it is that close; further out, and
  * for every other layer, the table asks without one and the server answers
- * for the whole layer or, for flights, one busy area.
+ * for the whole layer or, for flights, one busy area. A map opened at a place
+ * also follows the viewport for layers without a minimum zoom.
  */
-export function entityTableBbox(layer: Pick<GeoLayerInfo, "minZoom">, view: GeoView): GeoBbox | undefined {
-  if (layer.minZoom === undefined || view.zoom < layer.minZoom) return undefined;
-  return view.bbox;
+export function entityTableBbox(layer: Pick<GeoLayerInfo, "minZoom">, view: GeoView, startedAtPlace = false): GeoBbox | undefined {
+  if (layer.minZoom === undefined) return startedAtPlace && view.zoom > 0 ? view.bbox : undefined;
+  return view.zoom >= layer.minZoom ? view.bbox : undefined;
 }
 
 export function geoViewKey(view: GeoView): string {
