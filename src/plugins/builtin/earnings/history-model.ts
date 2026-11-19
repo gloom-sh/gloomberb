@@ -45,6 +45,12 @@ export interface HistoryRow {
   epsSurprise: Surprise;
   revenueEstimate: number | null;
   revenueActual: number | null;
+  /**
+   * ISO currency of `revenueActual` when a US listing reports its revenue in
+   * another currency (yuan for a company reporting in China); null when it is
+   * in dollars, or in the row's own `currency`.
+   */
+  revenueCurrency: string | null;
   /** The revenue is the press release's, until the statements have the quarter. */
   revenueProvisional: boolean;
   revenueSurprise: Surprise;
@@ -99,6 +105,22 @@ function reportPeriod(report: { periodKind?: unknown; periodMonths?: unknown }):
 }
 
 const isoCurrency = (value: unknown) => (typeof value === "string" && /^[A-Z]{3}$/.test(value) ? value : null);
+
+/**
+ * A US listing's revenue: its dollar figure, else the one it reports in its
+ * own currency, labelled with that currency. Never the second read as the first.
+ */
+function listedRevenue(report: { revenueActual: number | null; revenueActualSource?: unknown; reportedRevenue?: unknown }) {
+  if (report.revenueActual != null) {
+    return { amount: report.revenueActual, currency: null, provisional: report.revenueActualSource === "press-release" };
+  }
+  const reported = report.reportedRevenue;
+  if (!reported || typeof reported !== "object") return null;
+  const { amount, currency, source } = reported as { amount?: unknown; currency?: unknown; source?: unknown };
+  const code = isoCurrency(currency);
+  if (typeof amount !== "number" || !Number.isFinite(amount) || !code || code === "USD") return null;
+  return { amount, currency: code, provisional: source === "press-release" };
+}
 const wholeOrNull = (value: unknown) => (typeof value === "number" && Number.isInteger(value) ? value : null);
 
 /** ERN's rows as the shared calendar resolver reads and rebuilds them. */
@@ -148,6 +170,7 @@ const historyAdapter = (today: string, abroad: boolean): ReportRowAdapter<Histor
       epsSurprise: surprise(epsActual, epsEstimate),
       revenueEstimate: revenueEstimate ?? row?.revenueEstimate ?? null,
       revenueActual: row?.revenueActual ?? null,
+      revenueCurrency: row?.revenueCurrency ?? null,
       revenueProvisional: row?.revenueProvisional ?? false,
       revenueSurprise: row?.revenueSurprise ?? null,
       implied: row?.implied ?? null,
@@ -184,6 +207,10 @@ export function historyRows(
     const implied = report.implied?.move ?? null;
     const dateStatus = earningsDateStatus(report.dateStatus);
     const quarter = period.kind === "quarter";
+    // A listing abroad's amounts are all in the row's currency; a US listing's revenue may be in the company's own.
+    const revenue = abroad
+      ? { amount: report.revenueActual, currency: null, provisional: report.revenueActual != null && report.revenueActualSource === "press-release" }
+      : listedRevenue(report);
     return [{
       // A listing abroad's half and quarter can share a day.
       key: quarter ? report.date : `${report.date}:${period.kind}`,
@@ -209,9 +236,11 @@ export function historyRows(
       epsDilution: abroad && report.epsDilution === "basic" ? "basic" : null,
       epsSurprise: surprise(report.epsActual, report.epsEstimate),
       revenueEstimate: report.revenueEstimate,
-      revenueActual: report.revenueActual,
-      revenueProvisional: report.revenueActual != null && report.revenueActualSource === "press-release",
-      revenueSurprise: surprise(report.revenueActual, report.revenueEstimate),
+      revenueActual: revenue?.amount ?? null,
+      revenueCurrency: revenue?.currency ?? null,
+      revenueProvisional: revenue?.provisional ?? false,
+      // A dollar consensus measures no figure in another currency.
+      revenueSurprise: revenue?.currency ? null : surprise(revenue?.amount ?? null, report.revenueEstimate),
       implied,
       impliedMethod: report.implied?.method ?? null,
       impliedExpiry: report.implied?.expiry ?? null,
