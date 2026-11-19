@@ -18,7 +18,7 @@ import { usePluginAppActions } from "../../runtime";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { requestAuthDialog } from "../../../account/auth-dialog";
+import { requestAuthDialog, requestEmailConfirmation } from "../../../account/auth-dialog";
 import type { AccountMode } from "../../../account/auth-model";
 import { recordWallCtaClicked } from "../../../api-client/research-activity";
 import { WallTeaser } from "../shared/wall-teaser";
@@ -33,6 +33,16 @@ function openAuth(
 }
 
 const RESEND_VERIFICATION = "Resend Verification Email";
+
+/**
+ * What every "Resend Verification Email" button does: sends the link and
+ * opens the confirmation dialog, which names the address and carries on once
+ * the link is opened. Where no dialog can open, the command bar holds the
+ * command, as before.
+ */
+export function resendVerification(openCommandBar: (query?: string) => void) {
+  if (!requestEmailConfirmation()) openCommandBar(RESEND_VERIFICATION);
+}
 
 /**
  * The account actions as buttons: Sign up free and Log in, or the resend for
@@ -78,7 +88,7 @@ export function InlineAuthActions({ showSignup = true, needsVerification = false
   const authenticate = (mode: AccountMode) => openAuth(openCommandBar, mode);
   const logIn = () => authenticate("login");
   const signUp = () => authenticate("signup");
-  const resend = () => openCommandBar(RESEND_VERIFICATION);
+  const resend = () => resendVerification(openCommandBar);
   // Inside a pane (the chat composer) the pane menu lists them, so they need
   // no mouse; the status bar copy has the Log In command instead.
   usePaneMenuItems(`inline-auth:${useId()}`, () => needsVerification
@@ -148,7 +158,7 @@ export function SignInWall({ placement, action, needsVerification = false, hint,
               showSignup
               needsVerification={needsVerification}
               onAuth={authenticate}
-              onResend={() => openCommandBar(RESEND_VERIFICATION)}
+              onResend={() => resendVerification(openCommandBar)}
             />
           )}
         />
