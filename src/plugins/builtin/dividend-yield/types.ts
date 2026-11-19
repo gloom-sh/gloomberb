@@ -1,5 +1,6 @@
 import type { DividendLapse } from "../../../utils/forward-dividend";
 import type { DistributionCadence, TrailingPayments } from "../../../utils/trailing-dividend";
+import type { DividendCashEstimate } from "../../../types/financials";
 
 export interface DividendPayment {
   exDate: Date;
@@ -11,6 +12,7 @@ export interface DividendPayment {
   type: "cash" | "special" | "stock" | "unknown";
   /** The amount as the company declared it, in another currency than `currency` (BP's dollars beside the pence its London line paid). */
   declared?: { amount: number; currency: string };
+  cashEstimate?: DividendCashEstimate;
   /** Who published it when not the listing's history: the fund's sponsor (DividendAction.source). */
   source?: { publisher: string; url: string };
 }
@@ -28,6 +30,8 @@ export interface DividendMetrics {
   forwardRate: number | null;
   /** The ex-date of the distribution the forward rate annualizes, YYYY-MM-DD; with `forwardBasis`, the latest of the year's payments. */
   forwardRateAsOf: string | null;
+  forwardEstimate?: DividendCashEstimate;
+  trailingEstimates?: DividendCashEstimate[];
   /** `uneven`: the year's regular payments differ widely, so the forward rate is their total rather than one annualized (unevenRegularPayments). */
   forwardBasis?: "uneven" | null;
   /** Set once the dividend has stopped (lapsedDividend), when there is no forward rate or yield. */

@@ -46,8 +46,8 @@ function OriginalWall({ needsVerification = false }: { needsVerification?: boole
   return <Box flexDirection="column" paddingX={1} paddingY={1} data-gloom-ui="sign-in-wall">
     <EmptyState title={needsVerification ? "Verify your email to read risk factors." : "Sign in to read risk factors."}
       actions={needsVerification ? <Button label="Resend Verification Email" onPress={() => {}} /> : <>
-        <Button label="Log in" variant="primary" onPress={() => {}} />
-        <Button label="Sign up free" variant="secondary" onPress={() => {}} />
+        <Button label="Sign up free" variant="primary" onPress={() => {}} />
+        <Button label="Log in" variant="secondary" onPress={() => {}} />
       </>} />
   </Box>;
 }
@@ -86,7 +86,12 @@ test("a sign-in sample preserves keyboard and mouse auth actions and their place
   arm("teaser");
   await renderWall(<Harness placement="flow-signin" />);
   await tui.waitForFrameToContain("Sample");
+  // Sign up free leads and takes the key: most people at a wall have no account.
+  expect(tui.frame().indexOf("Sign up free")).toBeLessThan(tui.frame().indexOf("Log in"));
   await tui.emitKeypress({ name: "return" });
+  expect(activity.recordWallCtaClicked).toHaveBeenLastCalledWith("flow-signin", "signup");
+  expect(authDialog.requestAuthDialog).toHaveBeenLastCalledWith({ mode: "signup" });
+  await tui.clickFrameText("Log in");
   expect(activity.recordWallCtaClicked).toHaveBeenLastCalledWith("flow-signin", "login");
   expect(authDialog.requestAuthDialog).toHaveBeenLastCalledWith({ mode: "login" });
   await tui.clickFrameText("Sign up free");
@@ -142,11 +147,18 @@ test("a short sign-in wall retains the original frame and reports no teaser", as
 test("the verification wall keeps its resend action without reporting an auth CTA", async () => {
   arm(null);
   spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "unverified", plan: "free", emailVerified: false } as AuthUser);
+  // The press sends the link and opens the confirmation dialog; with no dialog to open, the command bar holds the command.
+  const confirm = spyOn(authDialog, "requestEmailConfirmation").mockReturnValue(true);
+  restore.push(() => confirm.mockRestore());
   await renderWall(<Harness original needsVerification />);
   const original = await tui.waitForFrameToContain("Resend Verification Email");
   await renderWall(<Harness needsVerification />);
   await tui.renderFrames(2);
   expect(tui.frame()).toBe(original);
+  await tui.emitKeypress({ name: "return" });
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(openCommandBar).not.toHaveBeenCalled();
+  confirm.mockReturnValue(false);
   await tui.emitKeypress({ name: "return" });
   expect(openCommandBar).toHaveBeenLastCalledWith("Resend Verification Email");
   expect(authDialog.requestAuthDialog).not.toHaveBeenCalled();

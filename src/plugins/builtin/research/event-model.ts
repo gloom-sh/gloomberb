@@ -1,3 +1,4 @@
+import { splitShareTerms } from "../../../market-data/split-terms";
 import type {
   AnalystEstimateRecord,
   AnalystResearchData,
@@ -16,11 +17,14 @@ import {
 } from "../../../utils/format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
-import { declaredDividends } from "../../../utils/declared-dividends";
+import { declaredDividendCash, declaredDividends } from "../../../utils/declared-dividends";
+import { fiscalPeriodText, fiscalQuarterInYear, fiscalQuarterText, fiscalYearText } from "../earnings/fiscal-quarter";
+import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { isReasonCode, readableStatus } from "../../../utils/reason-codes";
 import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fundamentals";
 import { isNotMeaningful, NOT_MEANINGFUL, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE, type Rate } from "../../../utils/growth";
 import {
+  ACTUAL_PENDING,
   earningsDateStatus,
   earningsDetail,
   earningsDetailParts,
@@ -29,14 +33,13 @@ import {
   epsSurprise,
   inFiscalMonth,
   isProvisionalActual,
-  quarterLabel,
   showsEpsBasis,
   type EpsBasisName,
 } from "../shared/earnings-report";
 
 export const CORPORATE_ACTION_COVERAGE = "Split-feed factors may include spinoff price adjustments. Merger terms, spinoff distributions, and security conversions are not covered.";
 
-export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Factor";
+export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Split" | "Factor";
 
 export interface EventRow {
   id: string;
@@ -165,13 +168,16 @@ function buildEstimatePairs(data: AnalystResearchData | null): EstimatePair[] {
   return [...pairs.values()];
 }
 
-function formatEstimateDetail(pair: EstimatePair): string {
+function formatEstimateDetail(pair: EstimatePair, relative?: string): string {
   const analystCounts: string[] = [];
   if (pair.eps?.analysts != null) analystCounts.push(`${pair.eps.analysts} EPS`);
   if (pair.revenue?.analysts != null) analystCounts.push(`${pair.revenue.analysts} rev`);
-  if (analystCounts.length) return `${analystCounts.join(" / ")} analysts`;
-  return "Consensus";
+  const counts = analystCounts.length ? `${analystCounts.join(" / ")} analysts` : "Consensus";
+  return relative ? `${relative}, ${counts}` : counts;
 }
+
+/** An estimate period the fiscal calendar names: the current or next quarter or year. */
+const NAMED_ESTIMATE_PERIOD = /^(?:cur|next) (?:qtr|yr)$/;
 
 /**
  * An estimate's growth over its year-ago figure: the source's, except off a year-ago figure at or below zero, where
@@ -210,14 +216,19 @@ function estimateValue(growth: Rate | undefined): string {
  * the figure `ticker` prints as EPS (TTM) (the filed quarters' when they give one, see time-series/filed-trailing-eps).
  */
 export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency"> & {
+  /** The years, whose last end names the fiscal quarters (`Q1 FY2027`) as GUIDE and ERN do. */
+  annualStatements?: readonly Pick<FinancialStatement, "date">[];
   fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency" | "trailingEpsSource"> | null;
   /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency), and its type. */
   quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType"> | null;
   quoteMetadata?: Pick<NonNullable<TickerFinancials["quoteMetadata"]>, "instrumentType"> | null;
 };
 
-/** A fund (an ETF, a closed-end fund) reports no earnings: a feed's EPS rows for one are another company's or noise. */
-function isFundListing(financials: EventFinancials | null): boolean {
+/**
+ * A fund (an ETF, a closed-end fund) reports no earnings: a feed's EPS rows, estimates and statements for one
+ * are another company's or noise, so its events are its distributions and splits alone.
+ */
+export function isFundListing(financials: EventFinancials | null): boolean {
   return [financials?.quote?.instrumentType, financials?.quoteMetadata?.instrumentType].some((type) => classifyInstrumentType(type) === "fund");
 }
 
@@ -336,6 +347,7 @@ function eventSortRank(status: EventStatus): number {
     case "Earnings": return 2;
     case "TTM": return 3;
     case "Dividend": return 4;
+    case "Split":
     case "Factor": return 5;
   }
 }
@@ -350,7 +362,8 @@ function upcomingEarningsDetail(earning: CorporateActionsData["earnings"][number
   if (earning.epsActual != null || !time) return earningsDetail(earning);
   const parts = earningsDetailParts(earning);
   if (parts.length === 0) return `Pending, ${time}`;
-  const at = earningsDateStatus(parts[0]) ? 1 : 0;
+  // The time follows whether the date is announced, or that the report is out with its actual pending.
+  const at = earningsDateStatus(parts[0]) || parts[0] === ACTUAL_PENDING ? 1 : 0;
   return [...parts.slice(0, at), time, ...parts.slice(at)].join(", ");
 }
 
@@ -361,12 +374,15 @@ export function buildEventRows(
   currency: string,
 ): EventRow[] {
   const rows: EventRow[] = [];
-  const quarterlyStatements = sortedQuarterlyStatements(financials);
-  const earnings = isFundListing(financials) ? [] : data?.earnings ?? [];
+  const fund = isFundListing(financials);
+  const quarterlyStatements = fund ? [] : sortedQuarterlyStatements(financials);
+  const earnings = fund ? [] : data?.earnings ?? [];
   const ttm = ttmRow(quarterlyStatements, earnings, financials);
   if (ttm) rows.push(ttm);
 
   const earningsIds = earningsRowIds(earnings);
+  // Quarters and years by the names GUIDE and ERN give them (Q1 FY2027), where the company's years say when they end.
+  const yearEnd = fiscalYearEndMonth(financials?.annualStatements ?? []);
   // An upcoming report often arrives without a currency; the feed's reported
   // quarters give it when they all agree on one.
   const feedCurrencies = new Set(earnings.map((earning) => earning.currency).filter(Boolean));
@@ -390,7 +406,7 @@ export function buildEventRows(
       dateType: earning.dateType,
       status: "Earnings",
       // The fiscal quarter, never the time of day ("After Hours"), which the row keeps as reportTime.
-      period: statement ? quarterLabel(statement.date) : earning.fiscalPeriod ? quarterLabel(earning.fiscalPeriod) : MISSING_VALUE,
+      period: fiscalPeriodText(earning.fiscalPeriod ?? statement?.date, fiscalQuarterInYear(earning.fiscalPeriod ?? statement?.date, yearEnd)),
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
       detail: upcomingEarningsDetail(earning),
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),
@@ -422,16 +438,20 @@ export function buildEventRows(
   }
 
   const reportedPeriodEnds = reportedPeriodTimes(earnings, quarterlyStatements);
-  for (const pair of buildEstimatePairs(estimates)) {
+  for (const pair of fund ? [] : buildEstimatePairs(estimates)) {
     const isFiscal = isFiscalEstimatePeriod(pair.period);
     if (!isFiscal && isReportedQuarter(pair.date, reportedPeriodEnds)) continue;
     const growth = estimatePairGrowth(pair);
+    const relative = formatPeriod(pair.period);
+    const named = !NAMED_ESTIMATE_PERIOD.test(relative) ? null
+      : isFiscal ? fiscalYearText(pair.date, yearEnd) : fiscalQuarterText(fiscalQuarterInYear(pair.date, yearEnd));
     rows.push({
       id: `estimate:${pair.date}:${pair.period}`,
       date: pair.date,
       status: isFiscal ? "FY Est" : "Q Est",
-      period: formatPeriod(pair.period),
-      detail: formatEstimateDetail(pair),
+      // Named as the company's fiscal calendar names it; which one it is from today ("cur qtr") leads the detail.
+      period: named ?? relative,
+      detail: formatEstimateDetail(pair, named ? relative : undefined),
       providerId: estimates?.providerId,
       fetchedAt: estimates?.fetchedAt,
       estimateInputs: {
@@ -466,25 +486,29 @@ export function buildEventRows(
 
   // Declared and unpaid: its own row at its ex-date, apart from the paid distributions above.
   for (const dividend of declaredDividends(data)) {
+    const cash = declaredDividendCash(dividend, data?.currency ?? currency);
     rows.push({
       id: `div-declared:${dividend.exDate}`,
       date: dividend.exDate,
       status: "Dividend",
       period: MISSING_VALUE,
       // A one-off beside the regular payments says so: "Declared special, payable 2026-11-25".
-      detail: `Declared${dividend.special ? " special" : ""}${dividend.payDate ? `, payable ${dividend.payDate}` : ""}`,
-      value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
+      detail: `Declared${dividend.special ? " special" : ""}${cash.estimate ? `, ${cash.estimate}` : ""}${dividend.payDate ? `, payable ${dividend.payDate}` : ""}`,
+      value: cash.amount,
       tone: "positive",
     });
   }
 
   for (const split of data?.splits ?? []) {
+    // A factor of whole share counts is a split, said in its terms (DBS's bonus issue: 11-for-10, 1 new share for
+    // every 10 held); any other may be a spinoff's price adjustment, and says no more than that.
+    const terms = splitShareTerms(split);
     rows.push({
       id: `split:${split.date}:${split.description ?? ""}`,
       date: split.date,
-      status: "Factor",
+      status: terms ? "Split" : "Factor",
       period: MISSING_VALUE,
-      detail: "Split/adjustment",
+      detail: terms ?? "Split/adjustment",
       providerDescription: split.description,
       adjustmentFactor: split.fromFactor && split.toFactor ? split.toFactor / split.fromFactor : split.ratio,
       value: split.fromFactor && split.toFactor

@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { act, useState } from "react";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
@@ -7,7 +7,7 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { DividendYieldPane } from "./pane";
 import { fetchDividendData } from "./client";
-import { chartResponse, marketTransport } from "./test-fixture";
+import { chartResponse, hsbcIssuerDividendRead, marketTransport } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 const realNow = Date.now;
@@ -37,6 +37,21 @@ async function frame() {
   });
   return tui.frame();
 }
+
+test.each([44, 60])("an ex-dated unfixed sterling declaration keeps its row, estimate labels and fixing date at %d columns", async (width) => {
+  setSystemTime(new Date("2026-11-17T06:00:00Z"));
+  setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead() }));
+  let data: Awaited<ReturnType<typeof fetchDividendData>>;
+  try {
+    data = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
+  } finally {
+    setSystemTime();
+  }
+  const text = await renderLoaded(data, width, 24);
+  expect(text.split("\n").find((line) => line.includes("2026-11-05"))).toMatch(/2026-11-05\s+estimated 7\.5835p\s+\$0\.10/);
+  expect(text).toContain("2026-12-07");
+  expect(text).toContain("2026-12-17");
+});
 
 test("summary failures retain cash and recover dated payment information through refresh", async () => {
   const day = Math.floor(Date.now() / 86400_000) * 86400;
@@ -319,9 +334,10 @@ test("short dividend panes keep the yields and every payment row within reach", 
     metrics: { ...buildDividendMetrics(payments, null, 50), nextPayDate: new Date("2030-01-15T00:00:00Z") } }, 40, 9)).split("\n");
   // One row of figures, the strip, then the table with its header and rows.
   expect(lines[0]).toContain("7.32%");
-  expect(lines[1]).toContain("●");
-  expect(lines[2]).toContain("EX-DATE");
-  expect(lines[3]).toContain(latest);
+  expect(lines.join("\n")).toContain("Fwd yield");
+  expect(lines.join("\n")).toContain("2030-01-15");
+  expect(lines.join("\n")).toContain("EX-DATE");
+  expect(lines.join("\n")).toContain(latest);
   await tui.emitKeypress(Array.from({ length: 8 }, () => ({ name: "down" })), { trackPropagation: true });
   const moved = await frame();
   expect(moved.split("EX-DATE")[1]).not.toContain(latest);
@@ -350,6 +366,19 @@ test("cash paid again after a year of none reads N/M for its growth, never a per
   const shown = await renderLoaded(resumed, 120, 26);
   expect(shown).toMatch(/1Y growth\s+N\/M/);
   expect(shown).not.toMatch(/1Y growth\s+n\/a/);
+});
+
+test.each([32, 46, 52, 60, 80, 120])("an undated payout keeps its label, value and basis detail without shortening unrelated labels at %d columns", async (width) => {
+  const data = await quarterlyIncome();
+  const shown = await renderLoaded({ ...data, metrics: { ...data.metrics, payoutRatio: 0.47 } }, width, 40);
+  expect(shown).toMatch(/Payout\s+47\.0%/);
+  expect(shown).toContain("Basis/date unstated");
+  expect(shown).not.toMatch(/Payout[^\n]*…/);
+  if (width >= 80) {
+    expect(shown).toContain("TTM/share");
+    expect(shown).toContain("Fwd/share");
+    expect(shown).toContain("1Y growth");
+  }
 });
 
 test("mixed-currency payments keep the currency column", async () => {

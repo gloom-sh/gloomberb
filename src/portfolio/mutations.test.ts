@@ -3,6 +3,7 @@ import { createDefaultConfig } from "../types/config";
 import type { TickerPosition, TickerRecord } from "../types/ticker";
 import {
   adoptFirstPositionCurrency,
+  clearPortfolioCash,
   createManualPortfolio,
   deleteManualPortfolio,
   deleteWatchlist,
@@ -11,8 +12,10 @@ import {
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
+  setPortfolioCash,
   type SetManualPortfolioPositionInput,
 } from "./mutations";
+import { portfolioCashBalances } from "./cash-balances";
 import { createTestTicker } from "../test-support/ticker";
 import { resolvePortfolioTotalsCurrency } from "./totals-currency";
 
@@ -285,5 +288,38 @@ describe("portfolio-list mutations", () => {
     expect(resolvePortfolioTotalsCurrency(portfolio, "EUR")).toBe("THB");
     // Without one, a manual portfolio still totals in the base currency the user chose.
     expect(resolvePortfolioTotalsCurrency(createManualPortfolio(config, "Plain", "USD").portfolio, "EUR")).toBe("EUR");
+  });
+
+  test("cash set keeps every other currency's balance, and clear takes one currency or all of them", () => {
+    let config = createDefaultConfig("/tmp/gloomberb-cash-currencies");
+    config.portfolios = [{ id: "ist", name: "Istanbul", currency: "USD" }];
+    const book = () => config.portfolios[0]!;
+    const set = (amount: number, currency: string) => {
+      const result = setPortfolioCash(config, "ist", { amount, currency });
+      config = result.config;
+      return result;
+    };
+
+    expect(set(250_000, "try")).toMatchObject({ replaced: null, balances: [{ amount: 250_000, currency: "TRY" }] });
+    // A second currency sits beside the first, which stays where a build before several currencies reads it.
+    expect(set(1_200, "USD")).toMatchObject({ replaced: null, balances: [{ amount: 250_000, currency: "TRY" }, { amount: 1_200, currency: "USD" }] });
+    expect(book()).toMatchObject({ cash: { amount: 250_000, currency: "TRY" }, otherCash: [{ amount: 1_200, currency: "USD" }] });
+    // Setting a currency held already replaces that balance alone, in its place; the same amount again replaces nothing.
+    expect(set(300_000, "TRY")).toMatchObject({ replaced: { amount: 250_000, currency: "TRY" } });
+    expect(set(300_000, "TRY").replaced).toBeNull();
+    expect(portfolioCashBalances(book())).toEqual([{ amount: 300_000, currency: "TRY" }, { amount: 1_200, currency: "USD" }]);
+
+    // Clearing the first currency moves the next into `cash`; clearing one not held changes nothing.
+    const try_ = clearPortfolioCash(config, "ist", "try");
+    expect(try_).toMatchObject({ removed: [{ amount: 300_000, currency: "TRY" }], balances: [{ amount: 1_200, currency: "USD" }] });
+    expect(try_.config.portfolios[0]).toEqual({ id: "ist", name: "Istanbul", currency: "USD", cash: { amount: 1_200, currency: "USD" } });
+    const none = clearPortfolioCash(try_.config, "ist", "HKD");
+    expect(none.removed).toEqual([]);
+    expect(none.config).toBe(try_.config);
+    // No currency clears them all.
+    const all = clearPortfolioCash(config, "ist");
+    expect(all.removed.map((balance) => balance.currency)).toEqual(["TRY", "USD"]);
+    expect(all.config.portfolios[0]).toEqual({ id: "ist", name: "Istanbul", currency: "USD" });
+    expect(clearPortfolioCash(all.config, "ist").removed).toEqual([]);
   });
 });

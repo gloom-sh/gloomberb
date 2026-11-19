@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { parseAlertCommandValues, parseAlertShortcutValues } from "./command";
+import { parseAlertAddArgs } from "./cli";
 
 test("the SA shortcut reads its price as alerts add reads it, and never as the digits before a comma or a k", () => {
   const price = (text: string) => parseAlertShortcutValues(`BTC-USD below ${text}`).price;
@@ -8,6 +9,22 @@ test("the SA shortcut reads its price as alerts add reads it, and never as the d
   expect(() => price("1,500k")).toThrow("1,500k could be 1500000 (thousands) or 1500 (decimal comma)");
   expect(() => price("0,01%")).toThrow('Alert price must be a number, got "0,01%"; type 81000 or 81k.');
   expect(() => price("abc")).toThrow('Alert price must be a number, got "abc"; type 81000 or 81k.');
+});
+
+/** `alerts add ' spy ' crosses '$757.75'` was refused over the dollar sign SA had always taken. */
+test("SA and alerts add read the same dollar prices, a comma in one grouping thousands", () => {
+  const forms: Array<[string[], number]> = [
+    [["$757.75"], 757.75], [["$1,000.00"], 1000], [["$1,000"], 1000], [["$", "757.75"], 757.75], [["757.75", "USD"], 757.75],
+    [["US$ 1,000.50"], 1000.5], [["1 000.50"], 1000.5], [["$81k"], 81000],
+  ];
+  for (const [words, value] of forms) {
+    expect(Number(parseAlertShortcutValues(` spy  crosses ${words.join(" ")}`).price)).toBe(value);
+    expect(parseAlertAddArgs([" spy ", "crosses", ...words], undefined)).toMatchObject({ kind: "price", price: value });
+  }
+  // Without a dollar sign nothing says which a comma is.
+  expect(() => parseAlertShortcutValues("SPY crosses 1,000")).toThrow("could be 1000 (thousands) or 1 (decimal comma)");
+  expect(() => parseAlertAddArgs(["SPY", "crosses", "1,000"], undefined)).toThrow("could be 1000 (thousands) or 1 (decimal comma)");
+  expect(() => parseAlertShortcutValues("SPY crosses 757.75 extra")).toThrow("Use SA SYMBOL above|below|crosses PRICE.");
 });
 
 test("a form or shortcut value that is missing is null, and one that reads two ways throws instead of being cut at the comma", () => {

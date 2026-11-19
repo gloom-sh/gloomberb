@@ -27,6 +27,10 @@ does not fetch coverage or infer that every small/non-US equity is incompatible.
 Captures run sequentially as `shot --strict --json`, 500ms apart, in a newly
 created profile under `~/.cache/gloom-smoke/`. Telemetry is disabled, command
 runtime starts no sync engine, and external plugin folders must remain empty.
+The sweep saves the frame behind each strict assessment, including empty, gated
+and failed panes. The JSON and strict exit code still describe the pane, not
+whether a PNG was saved. A missing evidence file is a separate sweep error;
+ordinary `shot --strict` still does not save an unusable image.
 Only the session value should be passed from a caller's credential store. Never
 copy a real profile or run third-party plugins with credentials. The profile is
 removed in `finally`; do not externally SIGKILL the script before cleanup.
@@ -42,7 +46,7 @@ A default run is deliberately partial, not a full-manifest pass.
 
 By default the script invokes this checkout's CLI with Bun. `--cli /path/to/gloom`
 uses a trusted release binary instead; it must support the current strict shot
-assessment fields. No shell evaluates catalog arguments.
+assessment fields and the sweep evidence path. No shell evaluates catalog arguments.
 
 The specified empty output directory receives the catalog, complete plan,
 per-capture JSON/stderr and PNGs, plus `results.json` and `results.md`. Reports keep
@@ -56,9 +60,15 @@ retain their separate classification; other codes, error evidence or invalid CLI
 exits take precedence. Reviewed event-list empties (no halts,
 calendar reports or recorded analyst actions), explicit no-coverage and closed-session list
 states are distinct from passes and unexplained failures. A usable strict capture
-whose report is incomplete (for example a clipped long list) is **partial**, not
-a pass or a broken-pane assertion. Blank columns, loading,
-access gates and mismatches still fail. Timeout, invalid output and command errors
+with a data gap or an unannounced viewport cut is **partial**, not a pass or a
+broken-pane assertion. A table's own scroll indicator or row count is not a
+viewport-cut finding. Blank columns, loading,
+access gates and mismatches still fail. A capture's state is read from the pane
+less its footer's note line: a note that says what the data leaves out
+("Grossing and genre ranks are unavailable.") is no error state. A column is
+blank when every row owed a value shows none: a row the pane marks as still
+waiting on it (ECO's ACTUAL before the release) is left out, and released rows
+with no figure still fail. Timeout, invalid output and command errors
 are separate findings. Exit 1 means a failure, missing review/input, or failed Pro
 preflight; skips and unsupported cases are always counted, never passes.
 
@@ -75,3 +85,10 @@ in the reports). The caller can deduplicate/file findings using its existing too
 Inspect screenshots before sharing evidence; keep task output out of the repo.
 
 Offline regression checks: `bun test scripts/pane-chrome/data-sweep.test.ts`.
+
+Each reviewed empty state (`REVIEWED_EMPTY`, `EXPECTED_EMPTY`) has a case in that
+test whose text comes from the pane's own empty-state builder or exported copy
+constant, never from a copy of the wording. A pane that rewords an empty state
+fails the test until the sweep's pattern follows, instead of turning an honest
+empty into a failure in the next live run. A new entry needs a case built the
+same way, and a pane that draws its wording inline exports it first.

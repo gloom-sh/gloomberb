@@ -168,6 +168,12 @@ export function useOnboardingKeyboard({
     const sectionDigit = !chord && !editingField && !event.targetEditable ? SECTION_DIGITS[name] : undefined;
 
     const handled = ((): boolean => {
+      if (!chord && name === "escape" && stage === "portfolio" && portfolioSub === "positions" && !isBrokerCommitting) {
+        if (editingField) setEditingField(false);
+        else if (positionCount === 0 && !progress.rerun) skipPositions();
+        else skipSetup();
+        return true;
+      }
       if (isPlainKey(event, "f10")) {
         // "Which tickers do you follow?" is skipped from its search field too.
         if (stage === "tickers") {
@@ -303,7 +309,7 @@ export function useOnboardingKeyboard({
           const desk = DESKS[deskCursor];
           if (chosenDesks.length > 0) finishDesks(chosenDesks);
           else if (desk) setChosenDesks((current) => toggleDeskChoice(current, desk.key));
-        } else if (letter(SKIP_DESKS_KEY)) {
+        } else if (letter(SKIP_DESKS_KEY) || (!chord && name === "escape")) {
           finishDesks([]);
         } else if (!chord && (name === "up" || name === "k")) {
           setDeskCursor((index) => Math.max(0, index - 1));

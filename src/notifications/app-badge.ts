@@ -1,7 +1,6 @@
 /**
- * The badge on the app's icon: the Dock icon on macOS. Only a host that can
- * show one installs a sink, which is the desktop app's main window; the
- * terminal and the web app have none, so nothing is set up for them.
+ * The unread badge on the macOS Dock icon or the browser tab. Hosts that
+ * cannot show one do not install a sink.
  */
 export interface AppBadgeHost {
   /** `""` clears the badge; otherwise the label from {@link appBadgeLabel}. */

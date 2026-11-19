@@ -219,7 +219,7 @@ test("retains rejected-source diagnostics before enough history exists for HV30"
   const summary = calculateOptionsSummary(chain, 100, [bad], NO_VOLS);
   expect(summary.historicalVolatility30d).toBeNull();
   expect(summary.historicalVolatilityIntegrity!.sourcePoints).toHaveLength(1);
-  expect(summary.historicalVolatilityUnavailableReason).toContain("inconsistent OHLC");
+  expect(summary.historicalVolatilityUnavailableReason).toContain("contradictory prices");
   bad.high = 120;
   expect(summary.historicalVolatilityIntegrity!.sourcePoints[0]!.high).toBe(90);
   const missing = calculateOptionsSummary(chain, 100, [{ date: bad.date, close: 0 }], NO_VOLS);

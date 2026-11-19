@@ -20,6 +20,8 @@
  * `&float=board`, `&float=beside`, `&float=overlay` or `&float=under` one of
  * the charts that sit inside a pane's own layout), `nested` (the first four
  * docked), `stacked` (the chart under a table docked beside a chart),
+ * `research` (research panes whose title-bar strips scroll, docked and
+ * floating, see researchLayout),
  * `narrow` (floating panes either side of the width a header keeps Ask Gloom
  * at), `chat` (the chat view over an invented channel, see chat-fixture.tsx),
  * `cmp` (one chart composer pane on invented 30-minute bars, see
@@ -193,6 +195,23 @@ function TabsPane(_props: PaneProps) {
     <Box flexDirection="column">
       {strip}
       <Text>{`Showing ${TAB_LABELS[active]}`}</Text>
+    </Box>
+  );
+}
+
+/** Ticker Research's top strip, its eleven groups: wider than a narrow pane. */
+const RESEARCH_TABS = ["Overview", "Chart", "Financials", "Analysts", "Options", "Events", "Filings", "Ownership", "People", "Buzz", "Notes"]
+  .map((label) => ({ value: label.toLowerCase(), label }));
+
+/** A research pane on Options, as Ticker Research draws it: a dense strip that scrolls, and a query bar at the top of the body. */
+function ResearchPane({ focused, width }: PaneProps) {
+  const [active, setActive] = useState("options");
+  const { strip } = usePaneTabs({ tabs: RESEARCH_TABS, activeValue: active, onSelect: setActive, focused, dense: true });
+  return (
+    <Box flexDirection="column">
+      {strip}
+      <QueryBar width={width} meta="Invented chain" />
+      <Text>{`Showing ${RESEARCH_TABS.find((tab) => tab.value === active)?.label}`}</Text>
     </Box>
   );
 }
@@ -1171,6 +1190,7 @@ const PANES = {
   paint: { name: "Research", component: PaintPane },
   plain: { name: "Plain", component: PlainPane },
   tabs: { name: "Tabbed", component: TabsPane },
+  research: { name: "AAPL", component: ResearchPane },
   broken: { name: "Broken", component: BrokenPane },
   table: { name: "Table", component: TablePane },
   "fear-greed": { name: "Fear & Greed", component: FearGreedPane },
@@ -1317,6 +1337,33 @@ function narrowLayout(): LayoutConfig {
   };
 }
 
+/** Panes stacked in one window, more than its title bar shows. */
+const RESEARCH_STACK = Array.from({ length: 6 }, (_, index) => `plain:s${index + 1}`);
+
+/**
+ * Title-bar strips that scroll, in title bars a fraction of a pixel off the
+ * grid, as a split or a moved window leaves them: research:dock under a chart
+ * (`&ratio=` the chart's share of the height) beside a table, research:float
+ * floating over the table (`&at=x,y` in cells), and six plain panes stacked
+ * as tabs in one narrow window over the chart, plain:s6 in front.
+ */
+function researchLayout(): LayoutConfig {
+  const ratio = Number(params.get("ratio") ?? "0.37");
+  const [x, y] = (params.get("at") ?? "70,12.3").split(",").map(Number) as [number, number];
+  return {
+    dockRoot: {
+      kind: "split", axis: "vertical", ratio, first: leaf("chart:dock"),
+      second: { kind: "split", axis: "horizontal", ratio: 0.3, first: leaf("research:dock"), second: leaf("table:dock") },
+    },
+    instances: ["chart:dock", "research:dock", "table:dock", "research:float", ...RESEARCH_STACK].map(instance),
+    floating: [
+      { instanceId: "research:float", x, y, width: 46, height: 14, zIndex: 60 },
+      ...RESEARCH_STACK.map((instanceId, index) => ({ instanceId, x: 8, y: y - 9, width: 36, height: 8, zIndex: 61 + index, stack: "plain" })),
+    ],
+    detached: [],
+  };
+}
+
 /** The charts that sit inside a pane's own layout, docked: chart-bar:dock | beside:dock over board:dock | overlay:dock. */
 function nestedLayout(): LayoutConfig {
   return {
@@ -1417,6 +1464,7 @@ function config() {
     : scenario === "chat" ? chatLayout()
     : scenario === "des" ? desLayout()
     : scenario === "nested" ? nestedLayout()
+    : scenario === "research" ? researchLayout()
     : scenario === "stacked" ? stackedLayout()
     : scenario === "axis" ? axisLayout()
     : scenario === "cmp" ? chartComposerLayout()

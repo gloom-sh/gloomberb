@@ -148,7 +148,7 @@ function FilingEventsReader({
     (key: string, venue: string) => guard(fetchFilingEvents(key, { exchange: venue, name })),
     [guard, name],
   );
-  const { data, loading, error, reload } = useTickerRequest(loadFilingEvents, ticker, exchange);
+  const { data, loading, error, reload } = useTickerRequest(loadFilingEvents, ticker, exchange, ["filing-events", name ?? null]);
   const events = data?.events ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);

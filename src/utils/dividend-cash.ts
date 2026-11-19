@@ -23,7 +23,7 @@ export function atSourcePrecision(value: number): number {
   return value;
 }
 
-type CashHistory = Pick<CorporateActionsData, "currency" | "dividends" | "declaredDividends">;
+type CashHistory = Pick<CorporateActionsData, "currency" | "dividends" | "declaredDividends" | "declaredCash">;
 
 /**
  * A distribution history with its cash in the major currency unit, at its
@@ -44,5 +44,9 @@ export function cashInMajorUnits<T extends CashHistory>(actions: T): T {
     currency: unit.currency,
     dividends: Array.isArray(actions.dividends) ? actions.dividends.map(major) : actions.dividends,
     ...(Array.isArray(actions.declaredDividends) ? { declaredDividends: actions.declaredDividends.map(major) } : {}),
+    ...(actions.declaredCash?.announced?.paidAmount != null ? { declaredCash: {
+      ...actions.declaredCash,
+      announced: { ...actions.declaredCash.announced, paidAmount: atSourcePrecision(actions.declaredCash.announced.paidAmount / unit.divisor) },
+    } } : {}),
   };
 }

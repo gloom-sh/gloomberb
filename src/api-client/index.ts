@@ -28,6 +28,7 @@ import { CloudCollectionsApi } from "./collections";
 import { CloudFeedbackApi } from "./feedback";
 import { CloudRoadmapApi } from "./roadmap";
 import { CloudWaitlistApi } from "./product-waitlist";
+import { CloudHeardFromApi } from "./heard-from";
 import { CloudNotesApi } from "./notes";
 import { CloudTeamsApi } from "./teams";
 import { CloudTelemetryApi } from "./telemetry";
@@ -40,6 +41,8 @@ import type {
   AssistCommandResponse,
   AuthUser,
   CloudCancelFeedback,
+  CloudRetentionOffer,
+  CloudRetentionOfferAnswer,
   CloudSyncPushResponse,
   CloudYearlyPlanStatus,
   CloudYearlyResult,
@@ -78,6 +81,15 @@ const ASSIST_COMMAND_LIMIT = 150;
 export const ASSIST_ARG_OPTION_LIMIT = 128;
 /** The longest cancel note the server keeps, in UTF-16 units as its schema counts them. */
 export const CLOUD_CANCEL_COMMENT_MAX = 500;
+
+/** The reason and note a cancel step sends, the note trimmed to what the server keeps. */
+function cancelFeedbackBody(feedback: CloudCancelFeedback): CloudCancelFeedback {
+  const comment = feedback.comment === undefined ? undefined : sliceWholeCharacters(feedback.comment.trim(), CLOUD_CANCEL_COMMENT_MAX);
+  return {
+    ...(feedback.reason ? { reason: feedback.reason } : {}),
+    ...(comment ? { comment } : {}),
+  };
+}
 const ASSIST_ARG_OPTION_VALUE_MAX_LENGTH = 40;
 const ASSIST_ARG_OPTION_LABEL_MAX_LENGTH = 60;
 const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
@@ -124,6 +136,7 @@ class GloomApiClient {
   /** Local user/credential binding, masked until verified and never serialized. */
   private verifiedSessionIdentity: object | null = null;
   private verifiedSessionCredential: string | null = null;
+  private socketUnverifiedUser: AuthUser | null = null;
   private sessionTransitions = 0;
   private sessionTransition: Promise<void> | null = null;
   /** Device adoption and external session installs supersede pending email auth. */
@@ -131,6 +144,7 @@ class GloomApiClient {
   private sessionRevalidationGeneration = 0;
   private sessionRevalidationTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionChecked = false;
+  private cookieIdentity: "ready" | "pending" | "unavailable" = "ready";
   /** When a session check last answered for the credential in place (`recentSession`). */
   private sessionCheckedAt: number | null = null;
   /** Last few session transitions, content-free, for app://auth. */
@@ -143,9 +157,10 @@ class GloomApiClient {
     getCurrentUser: () => this.currentUser,
     getSessionToken: () => this.transport.getSessionToken(),
     hasSessionCredential: () => this.transport.hasSessionCredential(),
+    isCookieSessionMode: () => this.transport.isCookieSessionMode(),
     request: (path, options, canApplySession) => this.request(path, options, canApplySession),
     requireCapturedSession: (message) => this.requireCapturedSession(message),
-    setCurrentUser: (user) => this.setCurrentUser(user),
+    setCurrentUser: (user, confirmSession) => this.setCurrentUser(user, confirmSession),
     setSessionToken: (token) => this.installSessionToken(token),
     updateCurrentUser: (updater) => this.updateCurrentUser(updater),
   });
@@ -153,12 +168,12 @@ class GloomApiClient {
     getBaseUrl: () => this.transport.baseUrl,
     getSocketAuthToken: () => this.getSocketAuthToken(),
     hasSessionCredential: () => this.transport.hasSessionCredential(),
-    hasVerifiedUser: () => this.currentUser?.emailVerified === true,
+    hasVerifiedUser: () => this.getCurrentUser()?.emailVerified === true,
     isUsingWebSocketToken: () => !!this.transport.getWebSocketToken(),
     clearWebSocketTokenForFallback: () => this.transport.clearWebSocketTokenForFallback(),
     markCurrentUserUnverified: () => {
-      if (this.currentUser) {
-        this.currentUser = { ...this.currentUser, emailVerified: false };
+      if (this.currentUser && !this.socketUnverifiedUser) {
+        this.socketUnverifiedUser = { ...this.currentUser, emailVerified: false };
         this.emitCurrentUserChange();
       }
     },
@@ -168,11 +183,12 @@ class GloomApiClient {
       // its data again (teams, theses, sync), and after a server restart every
       // client reconnects at once. After a long silence they do load again, for
       // what changed while nothing arrived.
-      if (!this.currentUser || (!resync && !changesUser(this.currentUser, user))) return;
+      const confirmsVerification = this.socketUnverifiedUser !== null && typeof user.emailVerified === "boolean";
+      if (!this.currentUser || (!resync && !confirmsVerification && !changesUser(this.currentUser, user))) return;
       this.updateCurrentUser((currentUser) => ({
         ...currentUser,
         ...user,
-      }));
+      }), confirmsVerification);
     },
     onServiceAnswered: () => this.transport.noteServiceAnswered(),
   });
@@ -190,6 +206,7 @@ class GloomApiClient {
   private readonly feedback: CloudFeedbackApi = new CloudFeedbackApi((path, options) => this.request(path, options));
   private readonly roadmap: CloudRoadmapApi = new CloudRoadmapApi((path, options) => this.request(path, options));
   private readonly waitlist: CloudWaitlistApi = new CloudWaitlistApi((path, options) => this.request(path, options));
+  private readonly heardFrom: CloudHeardFromApi = new CloudHeardFromApi((path, options) => this.request(path, options));
   private readonly telemetry: CloudTelemetryApi = new CloudTelemetryApi((path, options) => this.request(path, options));
   private readonly theses: CloudThesesApi = new CloudThesesApi((path, options) => this.request(path, options));
   private readonly collections: CloudCollectionsApi = new CloudCollectionsApi((path, options) => this.request(path, options));
@@ -212,6 +229,7 @@ class GloomApiClient {
     this.cancelSessionRevalidation();
     this.sessionInstallationGeneration += 1;
     this.sessionChecked = false;
+    this.cookieIdentity = "ready";
     this.verifiedSessionIdentity = null;
     this.transport.setCookieSessionMode(enabled);
     this.emitCurrentUserChange();
@@ -234,6 +252,7 @@ class GloomApiClient {
     if (!token) {
       this.cancelSessionRevalidation();
       this.currentUser = null;
+      this.socketUnverifiedUser = null;
       this.verifiedSessionIdentity = null;
     }
     if (changed || !token) {
@@ -249,7 +268,7 @@ class GloomApiClient {
   }
 
   getCurrentUser(): AuthUser | null {
-    return this.currentUser;
+    return this.socketUnverifiedUser ?? this.currentUser;
   }
 
   /**
@@ -277,19 +296,45 @@ class GloomApiClient {
     };
   }
 
-  restoreCachedUser(user: PersistedAuthUser | null): void {
-    this.auth.restoreCachedUser(user);
+  restoreCachedUser(user: PersistedAuthUser | null, confirmSession = true): void {
+    this.auth.restoreCachedUser(user, confirmSession);
+  }
+
+  waitForCookieIdentity(): void {
+    this.cookieIdentity = "pending";
+    this.emitCurrentUserChange();
+  }
+
+  finishCookieIdentityBoot(): void {
+    if (this.cookieIdentity !== "pending" || this.currentUser) return;
+    const generation = this.sessionRevalidationGeneration;
+    this.cookieIdentity = "unavailable";
+    this.transport.forgetSharedReads();
+    this.emitCurrentUserChange();
+    this.scheduleSessionRevalidation(generation);
+  }
+
+  isCookieIdentityUnavailable(): boolean {
+    return this.cookieIdentity === "unavailable";
+  }
+
+  isDisplayScopePending(): boolean {
+    return !this.getCurrentUser()?.id && (this.cookieIdentity === "pending" || this.isSignedIn());
   }
 
   isVerified(): boolean {
-    return this.transport.hasSessionCredential() && !!this.currentUser?.emailVerified;
+    return this.transport.hasSessionCredential() && !!this.getCurrentUser()?.emailVerified;
   }
 
   /** Null while a replacement credential still awaits its matching user. */
   getVerifiedSessionIdentity(): object | null {
-    return this.sessionTransitions === 0 && this.isVerified()
+    return this.isVerified() && this.getConfirmedDisplayUser() ? this.verifiedSessionIdentity : null;
+  }
+
+  getConfirmedDisplayUser(): AuthUser | null {
+    return !this.socketUnverifiedUser && this.sessionTransitions === 0 && this.verifiedSessionIdentity !== null
       && this.verifiedSessionCredential === this.transport.getSessionToken()
-      ? this.verifiedSessionIdentity : null;
+      ? this.currentUser : null;
   }
 
   /**
@@ -312,7 +357,7 @@ class GloomApiClient {
       trialEndsAt: string | null;
     } | null;
   } {
-    const user = this.currentUser;
+    const user = this.getCurrentUser();
     return {
       hasSessionCredential: this.transport.hasSessionCredential(),
       hasSessionToken: !!this.transport.getSessionToken(),
@@ -341,11 +386,15 @@ class GloomApiClient {
     if (this.authTrace.length > 24) this.authTrace.shift();
   }
 
-  private setCurrentUser(user: AuthUser | null, confirmSession = true): void {
+  private setCurrentUser(user: AuthUser | null, confirmSession = true, confirmVerification = confirmSession): void {
     const sameAccount = this.currentUser?.id === user?.id;
-    const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
+    const previous = this.getCurrentUser();
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
+    if (confirmVerification || !sameAccount || !user) this.socketUnverifiedUser = null;
+    else if (this.socketUnverifiedUser) this.socketUnverifiedUser = { ...user, emailVerified: false };
+    const changed = this.socketEntitlementKey(previous) !== this.socketEntitlementKey(this.getCurrentUser());
+    if (confirmSession) this.cookieIdentity = "ready";
     // Another account, or a plan that changed, reads other answers: no later read joins one sent before.
     if (changed) this.transport.forgetSharedReads();
     if (confirmSession) {
@@ -363,11 +412,11 @@ class GloomApiClient {
     for (const listener of this.currentUserListeners) listener();
   }
 
-  private updateCurrentUser(updater: (user: AuthUser) => AuthUser): void {
+  private updateCurrentUser(updater: (user: AuthUser) => AuthUser, confirmVerification = false): void {
     if (!this.currentUser) return;
     // A socket/profile update is metadata, not proof that a replacement
     // credential belongs to this user. Keep its existing binding, even null.
-    this.setCurrentUser(updater(this.currentUser), false);
+    this.setCurrentUser(updater(this.currentUser), false, confirmVerification);
   }
 
   private socketEntitlementKey(user: AuthUser | null): string {
@@ -399,7 +448,8 @@ class GloomApiClient {
   async ensureVerifiedSession(): Promise<AuthUser | null> {
     if (!this.transport.hasSessionCredential()) return null;
     if (!this.currentUser && !this.sessionChecked) await this.getSession();
-    return this.currentUser?.emailVerified ? this.currentUser : null;
+    const user = this.getCurrentUser();
+    return user?.emailVerified ? user : null;
   }
 
   signUp = (email: string, username: string, name: string, password: string) =>
@@ -481,7 +531,7 @@ class GloomApiClient {
     this.clearSessionRevalidationTimer();
   }
 
-  /** A failed auth response can replace a cookie even when its recovery read is offline. */
+  /** Revalidate after an inconclusive auth response or browser boot. */
   private scheduleSessionRevalidation(generation: number, delay = SESSION_REVALIDATION_INITIAL_MS): void {
     const isCurrent = () => generation === this.sessionRevalidationGeneration;
     const needsRevalidation = () => isCurrent() && this.sessionTransitions === 0
@@ -529,7 +579,7 @@ class GloomApiClient {
    * view that opens right after the app checked its session use that answer.
    */
   recentSession(maxAgeMs: number): { user: AuthUser | null } | undefined {
-    if (!this.sessionChecked || this.sessionCheckedAt === null || this.sessionTransitions > 0 || this.sessionRequest) return undefined;
+    if (!this.sessionChecked || this.sessionCheckedAt === null || this.sessionTransitions > 0 || this.sessionRequest || this.socketUnverifiedUser) return undefined;
     if (Date.now() - this.sessionCheckedAt > maxAgeMs) return undefined;
     return { user: this.currentUser };
   }
@@ -559,6 +609,10 @@ class GloomApiClient {
             this.sessionChecked = true;
             this.sessionCheckedAt = Date.now();
             this.clearSessionRevalidationTimer();
+            if (this.cookieIdentity !== "ready") {
+              this.cookieIdentity = "ready";
+              this.emitCurrentUserChange();
+            }
           }
           this.traceAuth(validated ? "getSession:done" : "getSession:retained", user);
           return user;
@@ -688,15 +742,55 @@ class GloomApiClient {
    * reason and note, when given, go to the billing provider with the cancel.
    */
   async endCloudTrial(feedback: CloudCancelFeedback = {}): Promise<{ canceled: boolean; endedNow?: boolean }> {
-    const comment = feedback.comment === undefined ? undefined : sliceWholeCharacters(feedback.comment.trim(), CLOUD_CANCEL_COMMENT_MAX);
     return this.request<{ canceled: boolean; endedNow?: boolean }>("/stripe/subscription/cancel", {
       method: "POST",
-      body: JSON.stringify({
-        ...(feedback.reason ? { reason: feedback.reason } : {}),
-        ...(comment ? { comment } : {}),
-        endTrialNow: true,
-      }),
+      body: JSON.stringify({ ...cancelFeedbackBody(feedback), endTrialNow: true }),
     });
+  }
+
+  /**
+   * Stops a paid Pro plan from renewing: it keeps Pro to the end of the period
+   * it paid for. The same request gloom.sh's cancel window sends, the reason
+   * and note with it when given. Call it only once the person confirmed.
+   */
+  async cancelCloudSubscription(feedback: CloudCancelFeedback = {}): Promise<{ canceled: boolean; endedNow?: boolean }> {
+    return this.request<{ canceled: boolean; endedNow?: boolean }>("/stripe/subscription/cancel", {
+      method: "POST",
+      body: JSON.stringify(cancelFeedbackBody(feedback)),
+    });
+  }
+
+  /**
+   * The save offer and the kept price the cancel flow shows, read as it opens.
+   * The server counts this as the cancel flow starting.
+   */
+  async getCloudRetentionOffer(options?: { signal?: AbortSignal }): Promise<CloudRetentionOfferAnswer> {
+    const body = await this.request<Partial<CloudRetentionOfferAnswer> | null>("/stripe/subscription/retention-offer", {
+      method: "GET",
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
+    const offer = body?.offer === "discount" || body?.offer === "trial_extension" ? body.offer : null;
+    const kept = body?.keptPrice;
+    return {
+      offer,
+      extendedTrialEndsAt: typeof body?.extendedTrialEndsAt === "string" ? body.extendedTrialEndsAt : null,
+      keptPrice: kept && Number.isFinite(kept.amount) && Number.isFinite(kept.listAmount)
+        && (kept.interval === "month" || kept.interval === "year")
+        ? { amount: kept.amount, listAmount: kept.listAmount, interval: kept.interval }
+        : null,
+    };
+  }
+
+  /** Takes the save offer the cancel flow showed, with the reason and note picked. */
+  async acceptCloudRetentionOffer(feedback: CloudCancelFeedback = {}): Promise<{ offer: CloudRetentionOffer | null; extendedTrialEndsAt: string | null }> {
+    const body = await this.request<{ offer?: unknown; extendedTrialEndsAt?: unknown } | null>("/stripe/subscription/retention-offer", {
+      method: "POST",
+      body: JSON.stringify(cancelFeedbackBody(feedback)),
+    });
+    return {
+      offer: body?.offer === "discount" || body?.offer === "trial_extension" ? body.offer : null,
+      extendedTrialEndsAt: typeof body?.extendedTrialEndsAt === "string" ? body.extendedTrialEndsAt : null,
+    };
   }
 
   /**
@@ -985,6 +1079,10 @@ class GloomApiClient {
   getWaitlist = this.waitlist.getWaitlist.bind(this.waitlist);
   joinWaitlist = this.waitlist.joinWaitlist.bind(this.waitlist);
   leaveWaitlist = this.waitlist.leaveWaitlist.bind(this.waitlist);
+  getHeardFrom = this.heardFrom.getHeardFrom.bind(this.heardFrom);
+  reportHeardFromShown = this.heardFrom.reportHeardFromShown.bind(this.heardFrom);
+  answerHeardFrom = this.heardFrom.answerHeardFrom.bind(this.heardFrom);
+  skipHeardFrom = this.heardFrom.skipHeardFrom.bind(this.heardFrom);
   reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
   reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
   reportInstallExperiment = this.telemetry.reportInstallExperiment.bind(this.telemetry);
@@ -1209,6 +1307,7 @@ class GloomApiClient {
   getCloudNews = this.data.getCloudNews.bind(this.data);
   searchCloudNews = this.data.searchCloudNews.bind(this.data);
   getCloudNewsStory = this.data.getCloudNewsStory.bind(this.data);
+  getCloudInsiderFilingStories = this.data.getCloudInsiderFilingStories.bind(this.data);
   getCloudTickerTweets = this.data.getCloudTickerTweets.bind(this.data);
   searchCloudTweets = this.data.searchCloudTweets.bind(this.data);
 }

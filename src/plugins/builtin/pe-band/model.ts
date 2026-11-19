@@ -26,7 +26,11 @@ interface PeBandWeek {
 }
 
 export interface PeBandRow extends EpsStep {
-  /** The close of the week the figure became known, in price units. */
+  /**
+   * The close of the day the figure became known (the last session on or
+   * before it), in price units; before the daily closes on record, the close
+   * of the weekly bar dated on or before it.
+   */
   price: number | null;
   pe: number | null;
   /** Change from the figure a year earlier in the same currency, when both are positive. */
@@ -53,7 +57,18 @@ export interface PeBandModel {
   symbol: string;
   /** Price currency. */
   currency: string | null;
+  /**
+   * The weekly closes the percentile and range rank over, each dated by the
+   * session it closed on where the daily closes cover its week (a bar is
+   * dated by its first day, its close by its last).
+   */
   weeks: PeBandWeek[];
+  /**
+   * What the chart draws: the weeks, and the close of each day a figure in
+   * the table became known, so selecting its row puts the chart's cursor on
+   * that day and the price the row reads.
+   */
+  points: PeBandWeek[];
   /** Newest first. */
   rows: PeBandRow[];
   multiples: number[];
@@ -176,6 +191,32 @@ export function chooseMultiples(pes: readonly number[], current?: number | null)
   return [];
 }
 
+/** Positive closes in time order; cached history can carry ISO strings for dates. */
+function closesOf(history: readonly PricePoint[]): Array<{ date: Date; close: number }> {
+  return history.map((point) => ({ date: new Date(point.date), close: point.close }))
+    .filter((point) => Number.isFinite(point.date.getTime()) && Number.isFinite(point.close) && point.close > 0)
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+/**
+ * Weekly bars dated by the session their close is from. A bar is dated by
+ * its week's first day, so DWSN's week of 9 Nov 2026 read 9 Nov with the
+ * close of Friday the 13th. Where the daily closes cover a week, the bar
+ * takes the date of the last daily close before the next bar; elsewhere it
+ * keeps its own.
+ */
+function closingSessions<T extends { date: Date }>(weekly: readonly T[], daily: readonly { date: Date }[]): T[] {
+  let at = 0;
+  return weekly.map((bar, index) => {
+    const from = bar.date.getTime();
+    const until = weekly[index + 1]?.date.getTime() ?? Number.POSITIVE_INFINITY;
+    while (at < daily.length && daily[at]!.date.getTime() < from) at += 1;
+    let last: { date: Date } | null = null;
+    while (at < daily.length && daily[at]!.date.getTime() < until) last = daily[at++]!;
+    return last ? { ...bar, date: last.date } : bar;
+  });
+}
+
 /** Percent of `values` at or below `value`. */
 function percentileRank(values: readonly number[], value: number): number | null {
   return values.length ? 100 * values.filter((other) => other <= value).length / values.length : null;
@@ -204,10 +245,12 @@ export function projectPeBand(
     fx?: ReadonlyMap<string, FxCloses>;
     /** Why a needed FX history is missing, said when it leaves today's EPS unconverted. */
     fxError?: string | null;
+    /** Daily closes for the recent years they are served for (see `weeks` and `PeBandRow.price`). */
+    daily?: readonly PricePoint[];
   },
 ): PeBandModel {
   const currency = financials?.quote?.currency ?? null;
-  const empty: PeBandModel = { symbol: options.symbol, currency, weeks: [], rows: [], multiples: [], current: null, range: null, sample: null, bandCeiling: null,
+  const empty: PeBandModel = { symbol: options.symbol, currency, weeks: [], points: [], rows: [], multiples: [], current: null, range: null, sample: null, bandCeiling: null,
     undated: 0, unavailable: 0, conversion: null, error: null, notice: null };
   if (!financials) return { ...empty, error: "Fundamentals unavailable." };
   // A warrant's, a right's, a unit's or an unratioed receipt's price over its company's EPS is no P/E at any date.
@@ -246,22 +289,25 @@ export function projectPeBand(
   const now = options.now ?? Date.now();
   const firstKnown = allSteps.find((step) => step.eps != null)!.knownAt.getTime();
   const start = Math.max(firstKnown, options.lookbackYears > 0 ? now - options.lookbackYears * YEAR_MS : firstKnown);
-  // Cached history can carry ISO strings for dates.
-  const sorted = history.map((point) => ({ date: new Date(point.date), close: point.close }))
-    .filter((point) => Number.isFinite(point.date.getTime()) && Number.isFinite(point.close) && point.close > 0)
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-  const weeks = sorted.filter((point) => point.date.getTime() >= start).map((point): PeBandWeek => {
+  const sorted = closesOf(history);
+  const daily = closesOf(options.daily ?? []);
+  const dailyStart = daily[0]?.date.getTime() ?? Number.POSITIVE_INFINITY;
+  /** A close as the chart reads it: with the EPS in force on its day, and the P/E they make. */
+  const reading = (point: { date: Date; close: number }): PeBandWeek => {
     // Converted at the FX close of the bar's date, the same date that picks the EPS in force, so each week's multiple
     // moves with the price and the currency together rather than with the rate of an old publication date.
     const eps = priced(stepAt(allSteps, point.date.getTime()), day(point.date))?.eps ?? null;
     const positive = eps != null && eps > 0 ? eps : null;
     return { date: point.date, close: point.close, eps: positive, pe: positive ? point.close / positive : null };
-  });
+  };
+  const weeks = closingSessions(sorted, daily).filter((point) => point.date.getTime() >= start).map(reading);
 
+  /** The close of the day `time` falls on, or the last session before it, where the daily closes reach. */
+  const dayClose = (time: number) => time >= dailyStart ? daily.findLast((point) => point.date.getTime() <= time) ?? null : null;
   const steps = allSteps.filter((step) => step.knownAt.getTime() >= start);
   const rows = steps.filter((step) => step.eps != null).map((step): PeBandRow => {
     const time = step.knownAt.getTime();
-    const price = sorted.findLast((point) => point.date.getTime() <= time)?.close ?? null;
+    const price = (dayClose(time) ?? sorted.findLast((point) => point.date.getTime() <= time))?.close ?? null;
     // Converted at the FX close of the day it became known.
     const converted = priced(step, day(step.knownAt));
     const eps = converted?.eps ?? null;
@@ -286,8 +332,15 @@ export function projectPeBand(
   const multiples = chooseMultiples(pes, currentPe);
   const above = currentPe == null ? undefined : multiples.find((multiple) => multiple >= currentPe);
   const highestClose = weeks.reduce((max, week) => Math.max(max, week.close), 0);
+  // Each dated row's day on the chart, the close it reads: its cursor lands there, not on the week around it.
+  const rowDays = rows.flatMap((row) => {
+    const close = row.dated ? dayClose(row.knownAt.getTime()) : null;
+    return close && close.date.getTime() >= start ? [reading(close)] : [];
+  });
+  const byTime = new Map([...weeks, ...rowDays].map((point) => [point.date.getTime(), point]));
+  const points = [...byTime.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
   return {
-    ...empty, weeks, rows, multiples,
+    ...empty, weeks, points, rows, multiples,
     conversion: latestFx ? { currency: latestFx.currency, latest: fxCloseOnOrBefore(latestFx, day(now))! } : null,
     sample: ranked.length ? { start: ranked[0]!.date, weeks: ranked.length } : null,
     bandCeiling: highestClose > 0 ? Math.max(highestClose * 1.5, above != null && currentEps != null ? above * currentEps : 0) : null,

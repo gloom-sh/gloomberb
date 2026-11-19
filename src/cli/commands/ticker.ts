@@ -5,7 +5,7 @@ import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils
 import {
   appTtmRate, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel,
   enterpriseValueReconciliationNote,
-  epsConversionNote, financialEnterpriseValue, fundamentalsCurrency, isFinancialEnterpriseValueReason, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
+  epsConversionNote, financialEnterpriseValue, fundamentalsCurrency, isFinancialEnterpriseValueReason, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, trailingPeriodNote, ttmAtAppRate, ttmConversionNote,
   withFinancialEnterpriseValue,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
@@ -38,15 +38,17 @@ import {
 import {
   EXTENDED_SESSION_LABELS,
   exchangeShortName,
+  extendedPrintTime,
   getExtendedSessionDisplay,
   getQuoteSessionFields,
   getRegularSessionDisplay,
+  headlineCloseDate,
   quoteBookSessionLabel,
   quoteHeadlineTime,
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { changeBasisJson, futuresQuoteFromSettle, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import { changeBasisJson, closeDayLabel, futuresQuoteFromSettle, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
   futuresContractLines, futuresPricePer, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
@@ -1004,6 +1006,8 @@ function fundamentalsNotes(
     ? marketCapBasisNote(viewMarketCapitalization(priced.quote, fundamentals, regularSessionValuationPrice(priced.quote)))
     : undefined;
   const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
+  // Which twelve months the revenue, net income and margin are, as Financials' TTM column names them.
+  const period = shown("Revenue (TTM)") || shown("Net Income (TTM)") ? trailingPeriodNote(fundamentals) : undefined;
   const eps = metrics.some((metric) => metricName(metric.label) === "EPS (TTM)" && metric.text !== "—") ? epsConversionNote(fundamentals) : undefined;
   const epsSource = trailingEpsSourceNote(fundamentals, { eps: shown("EPS (TTM)"), pe: shown("P/E (TTM)") });
   const priceEarnings = metrics.some((metric) => metricName(metric.label) === "P/E (TTM)" && typeof metric.value === "number")
@@ -1019,7 +1023,7 @@ function fundamentalsNotes(
     : undefined;
   // A cap Gloom Cloud withheld says why, as RV and EQS do.
   const withheld = withheldMarketCap(fundamentals)?.note;
-  return [withheld, shareBasis, enterpriseValue, conversion, eps, epsSource, priceEarnings, withdrawnMultiplesNote(fundamentals, metrics),
+  return [withheld, shareBasis, enterpriseValue, conversion, period, eps, epsSource, priceEarnings, withdrawnMultiplesNote(fundamentals, metrics),
     unsourcedCurrencyNote(metrics)]
     .filter((note): note is string => !!note);
 }
@@ -1473,11 +1477,14 @@ export async function buildTickerReport({
     // As the Overview reads it: the regular session, then the extended-hours print against its close.
     const session = getRegularSessionDisplay(quote)!;
     const extended = getExtendedSessionDisplay(quote);
+    // Each price says when it is from: Last a completed session's close by its day, the extended print by its time.
+    const closeDate = futuresContract ? null : headlineCloseDate(quote);
+    const extendedTime = extendedPrintTime(quote);
     const extendedRow = (kind: "PRE" | "POST") => extended?.session === kind
-      ? colorBySign(
+      ? `${colorBySign(
         `${formatMarketPriceWithCurrency(extended.price, quote.currency, quoteOptions)} (${formatPercentRaw(extended.changePercent)})`,
         extended.change,
-      )
+      )}${extendedTime != null ? cliStyles.muted(` at ${formatTimestamp(extendedTime)}`) : ""}`
       : "—";
     const volume = reportedQuoteVolume(quote);
     // A coin's volume is traded value in its quote currency (BTC-USD: US dollars), not a count of coins, and its
@@ -1491,7 +1498,7 @@ export async function buildTickerReport({
     // A futures price is its latest trade; the exchange settlement is its own row, dated by its session.
     appendMetricSection(lines, "Quote", [
       // A price in cents says what it is per: 314.95¢/lb.
-      ["Last", colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${futuresPricePer(futuresContract, quote.currency)}`, session.change)],
+      ["Last", `${colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${futuresPricePer(futuresContract, quote.currency)}`, session.change)}${closeDate ? cliStyles.muted(` (${closeDayLabel(closeDate)})`) : ""}`],
       ...futuresContract
         ? [["Settle", quoteSettleText(quote, futuresContract)] as [string, string]]
         : [],

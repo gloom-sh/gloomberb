@@ -319,8 +319,9 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="status-bar"] span {
   line-height: var(--cell-h);
 }
-/* The returning-user strip under the header: one row of shell chrome, ruled off from the layout. */
-[data-gloom-role="since-last-visit"] {
+/* The returning-user strip and the new Pro payer's row under the header: one row of shell chrome each, ruled off from the layout. */
+[data-gloom-role="since-last-visit"],
+[data-gloom-role="pro-welcome"] {
   flex: none;
   align-items: center;
   border-bottom: 1px solid var(--gloom-hairline);
@@ -535,6 +536,9 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   /* Header colour left above a box, and the box's line: the header rule's width. */
   --pane-tab-top-gap: 2px;
   --pane-tab-rule: 1px;
+  /* The strip hangs this far past the rule into the pane (pane/header.tsx says
+     why), and only the active tab reaches into it: the others end on the rule. */
+  padding-bottom: var(--pane-tab-overhang, 0px);
 }
 [data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"] {
   height: calc(100% - var(--pane-tab-top-gap));
@@ -553,6 +557,10 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 }
 [data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"]::after { content: none; }
 [data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"][data-active="true"] {
+  /* Past the rule into the pane, with the label where it was. */
+  height: calc(100% - var(--pane-tab-top-gap) + var(--pane-tab-overhang, 0px));
+  margin-bottom: calc(-1 * var(--pane-tab-overhang, 0px));
+  padding-bottom: calc(var(--pane-tab-top-gap) + 2 * var(--pane-tab-rule) - var(--pane-tab-top-inset, 0px) + var(--pane-tab-overhang, 0px));
   background-color: var(--pane-tab-active-bg, var(--gloom-bg));
   border-color: var(--pane-tab-border, var(--gloom-hairline));
 }
@@ -1639,13 +1647,13 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 /* ===== Chrome: title-bar tab overflow, query bar edges, quick-add band ===== */
 
 /* Title-bar tabs that do not fit: a chevron after the strip lists them all.
-   The strip hangs over the header's rules; the padding puts the chevron back
-   on the header's centre line. */
+   The strip hangs over the header's rules and past the bottom one; the
+   padding puts the chevron back on the header's centre line. */
 .gloom-tab-overflow {
   flex: none;
   display: flex;
   align-items: center;
-  padding: var(--pane-tab-top-inset, 0px) 0 1px 2px;
+  padding: var(--pane-tab-top-inset, 0px) 0 calc(1px + var(--pane-tab-overhang, 0px)) 2px;
 }
 
 /* A search with nothing beside it takes the room filters would have used. */

@@ -46,7 +46,8 @@ describe("AssetDataRouter chart history", () => {
         expect(JSON.stringify(await router.getDetailedPriceHistory("QQQ", "NASDAQ", start, end, "1wk"))).toBe(JSON.stringify(weekly));
       }
       expect(calls).toEqual({ generic: 1, resolution: 1, detailed: 2 });
-      await expect(router.getPriceHistoryForResolution("QQQ", "NASDAQ", "1M", "1m")).rejects.toThrow("No resolution-aware history provider");
+      // Its one-minute bars stopped 39 minutes ago: behind, which is said, not that no source has them.
+      await expect(router.getPriceHistoryForResolution("QQQ", "NASDAQ", "1M", "1m")).rejects.toThrow("Latest history for QQQ is behind");
       // A day later the source still answers the same bars, which are behind
       // Friday's session: the saved copy answers rather than nothing.
       Date.now = () => Date.parse("2026-09-11T19:39:09Z");
@@ -65,8 +66,8 @@ describe("AssetDataRouter chart history", () => {
     const router = new AssetDataRouter({ ...fallbackProvider, async getPriceHistory() { return opening; } }, [], persistence.resources);
     try {
       expect((await router.getPriceHistory("BRZE261120P00047500", "", "1D")).map((point) => point.close)).toEqual([2.45, 2.45]);
-      // The same bars for a share are a source behind the market.
-      await expect(router.getPriceHistory("BRZE", "NASDAQ", "1D")).rejects.toThrow("No history provider available for BRZE");
+      // The same bars for a share are a source behind the market, and say so.
+      await expect(router.getPriceHistory("BRZE", "NASDAQ", "1D")).rejects.toThrow("Latest history for BRZE is behind");
     } finally {
       persistence.close();
     }

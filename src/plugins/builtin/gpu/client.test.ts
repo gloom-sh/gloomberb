@@ -2,7 +2,10 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { GpuBoardPayload, GpuHistoryPayload, GpuHistoryQuery } from "../../../api-client/gpu";
-import { fetchGpuBoard, fetchGpuEvents, fetchGpuHistory, gpuCacheScope, getCachedGpuBoard, gpuBoardCache, GPU_NOT_AVAILABLE, loadGpuBoard } from "./client";
+import { JsonPersistence } from "../../../data/json-persistence";
+import { savedCopyAt } from "../../../data/saved-copies";
+import { createPluginPersistence } from "../../plugin-persistence";
+import { fetchGpuBoard, fetchGpuEvents, fetchGpuHistory, getCachedGpuHistory, gpuCacheScope, getCachedGpuBoard, gpuBoardCache, gpuHistoryCache, GPU_NOT_AVAILABLE, loadGpuBoard, loadGpuHistory } from "./client";
 import { gpuBoard, gpuEvent, gpuRow, gpuSettle } from "./test-fixture";
 
 describe("GPU API boundary", () => {
@@ -122,4 +125,40 @@ test("changing account or plan cannot reuse cached full data", async () => {
     user.mockReturnValue(null);
     expect(getCachedGpuBoard()).toBeNull();
   } finally { user.mockRestore(); gpuBoardCache.reset(); }
+});
+
+test("a reopened GPU detail restores only the exact series and access, without credentials or actions", async () => {
+  const display = new JsonPersistence();
+  const persistence = createPluginPersistence(display.pluginState, display.resources, "plugin:gpu", "gpu");
+  const reopen = () => { gpuHistoryCache.reset(); gpuHistoryCache.attach(persistence); };
+  reopen();
+  const full = { id: "sample-account", emailVerified: true, plan: "pro" } as NonNullable<ReturnType<typeof apiClient.getCurrentUser>>;
+  const user = spyOn(apiClient, "getCurrentUser").mockReturnValue(full);
+  const signedIn = spyOn(apiClient, "isSignedIn").mockReturnValue(true);
+  const point = { ...gpuRow({ sourceUrl: "https://example.com/prices?token=fixture-secret" }), run: "open-order" };
+  const network = spyOn(apiClient, "getCloudGpuHistory").mockResolvedValue({
+    generatedAt: point.observedAt, points: [point], effectivePoints: [],
+    access: { tier: "pro", preview: false, locked: false, token: "fixture-secret" } as NonNullable<GpuHistoryPayload["access"]>,
+  });
+  const series = `${point.source}:${point.skuKey}`;
+  try {
+    await loadGpuHistory(series);
+    reopen();
+    const restored = getCachedGpuHistory(series);
+    expect(savedCopyAt(restored)).not.toBeNull();
+    expect(restored?.payload.points[0]?.pricePerGpuHr).toBe(point.pricePerGpuHr);
+    expect(JSON.stringify(restored)).not.toMatch(/fixture-secret|open-order/);
+    expect(getCachedGpuHistory(`${series}-other`)).toBeNull();
+    user.mockReturnValue({ ...full, plan: "free" });
+    expect(getCachedGpuHistory(series)).toBeNull();
+    user.mockReturnValue({ ...full, id: "another-account" });
+    expect(getCachedGpuHistory(series)).toBeNull();
+    user.mockReturnValue(null);
+    await loadGpuHistory(series);
+    expect(getCachedGpuHistory(series)).toBeNull();
+    expect(gpuHistoryCache.get(`null:series:${series}`)).toBeNull();
+    signedIn.mockReturnValue(false);
+    expect(getCachedGpuHistory(series)).toBeNull();
+    expect(network).toHaveBeenCalledTimes(2);
+  } finally { gpuHistoryCache.reset(); network.mockRestore(); user.mockRestore(); signedIn.mockRestore(); }
 });

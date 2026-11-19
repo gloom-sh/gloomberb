@@ -27,6 +27,7 @@ export type AccountFieldKey =
   | "yearlyPlanAction"
   | "yearlyPlanDismissAction"
   | "cancelTrialAction"
+  | "cancelProAction"
   | "inviteCopyAction"
   | "assistantsAction"
   | "passwordAction"

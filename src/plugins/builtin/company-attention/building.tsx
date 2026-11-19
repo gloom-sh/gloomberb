@@ -67,7 +67,7 @@ export function HiringBuildingView({ symbol, width, height, focused, accessKey, 
     }
   }, [snapshotSetting, symbol]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadBuilding(symbol, accessKey, filter, force), [snapshot, symbol, accessKey, filter]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedBuilding(symbol, accessKey, filter), clearOnError: isAccessDenied, keepPreviousData: true });
+  const resource = useAsyncResource(loader, { initialData: () => cachedBuilding(symbol, accessKey, filter), clearOnError: isAccessDenied, keepPreviousData: accessKey });
   const data = resource.data?.payload;
   const model = useMemo(() => !data ? null : "filter" in data ? buildingBoardModel(data, filter) : companyBuildingModel(data), [data, filter]);
   const sectionId = symbol ? view : "board";

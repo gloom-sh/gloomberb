@@ -5,6 +5,7 @@ import { blendForContrast, higherContrast } from "../../theme/color-utils";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
+import { clipKeepingEnd } from "./table-layout";
 import { CountryFlagLead } from "./country-flag";
 import { usePaneLinkMenuEntry } from "./external-link";
 import { ICON_GLYPHS, Icon, type IconName } from "./icon";
@@ -96,6 +97,12 @@ export interface ClippedTextProps {
   cut?: (text: string, width: number) => string;
   /** The desktop wraps it onto more lines instead (a message, a description); the terminal still cuts it. */
   wrap?: boolean;
+  /**
+   * The end of `text` a cut keeps whole, as a table cell's `keepEnd` does: what tells it apart from its
+   * neighbours ("Customer 1", "Customer A"). The cut shortens what comes before it, in the terminal by its
+   * count of cells and on the desktop and the web by CSS.
+   */
+  keepEnd?: string | null;
 }
 
 /**
@@ -104,10 +111,18 @@ export interface ClippedTextProps {
  * `wrap`. Its box (or its row, with the siblings that keep their room) has to
  * bound it there.
  */
-export function ClippedText({ text, width, fg, attributes, flex = "0 1 auto", lead = "", cut = truncateToDisplayWidth, wrap = false }: ClippedTextProps) {
+export function ClippedText({ text, width, fg, attributes, flex = "0 1 auto", lead = "", cut = truncateToDisplayWidth, wrap = false, keepEnd = null }: ClippedTextProps) {
   const { nativePaneChrome } = useUiCapabilities();
   const ink = { ...(fg === undefined ? {} : { fg }), ...(attributes === undefined ? {} : { attributes }) };
-  if (!nativePaneChrome) return <Text {...ink}>{`${lead}${cut(text, width)}`}</Text>;
+  const end = keepEnd && text.endsWith(keepEnd) && text.length > keepEnd.length ? keepEnd : null;
+  if (!nativePaneChrome) return <Text {...ink}>{`${lead}${end ? clipKeepingEnd(text, width, end) : cut(text, width)}`}</Text>;
+  // The desktop clips what comes before the end, which keeps its own room beside it.
+  if (end && !wrap) {
+    return <Box flexDirection="row" style={{ minWidth: 0, flex, overflow: "hidden" }}>
+      <Text {...ink} style={{ ...NATIVE_CLIP_STYLE, flex: "0 1 auto" }}>{`${lead}${text.slice(0, -end.length)}`}</Text>
+      <Text {...ink} style={{ flex: "0 0 auto", whiteSpace: "pre" }}>{end}</Text>
+    </Box>;
+  }
   return wrap
     ? <Text {...ink} wrapText style={{ minWidth: 0, flex }}>{`${lead}${text}`}</Text>
     : <Text {...ink} style={{ ...NATIVE_CLIP_STYLE, flex }}>{`${lead}${text}`}</Text>;

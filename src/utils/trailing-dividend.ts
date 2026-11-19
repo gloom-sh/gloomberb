@@ -73,7 +73,7 @@ export function inferCadence(payments: readonly Pick<CashDistribution, "exDate">
  * the window holds fewer than one year of payments. Irregular cash uses the
  * plain window, so special distributions are neither dropped nor extended.
  */
-function trailingPayments<Payment extends CashDistribution>(payments: readonly Payment[], asOf: Date): { counted: Payment[]; perYear: number | null; cadence: DistributionCadence | null } {
+export function trailingPayments<Payment extends CashDistribution>(payments: readonly Payment[], asOf: Date): { counted: Payment[]; perYear: number | null; cadence: DistributionCadence | null } {
   const known = payments.filter((payment) => payment.exDate <= asOf && Number.isFinite(payment.amount) && payment.amount > 0)
     .sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
   const cutoff = calendarMonthsBefore(asOf, 12);

@@ -146,13 +146,21 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
   ],
   describe: (args) => `Supply chain | ${args.symbols[0]}${args.options.to ? ` → ${args.options.to}` : ""}`,
   async load(args, ctx) {
+    const asOfOption = args.options.asOf ?? args.options["as-of"];
+    const asOf = typeof asOfOption === "string" && asOfOption ? asOfOption : undefined;
     if (args.options.tab === "graph" || args.options.tab === "path") {
       const target = String(args.options.to ?? "").trim();
       if (args.options.tab === "path" && !target) throw new Error("Path requires a target company: --to TICKER");
-      return graphReport(await fetchSupplyGraph(args.symbols[0]!, graphOptions(args.options), target, ctx.apiClient), target);
+      const graph = await fetchSupplyGraph(args.symbols[0]!, graphOptions(args.options), target, ctx.apiClient);
+      // The free preview reads the graph's latest snapshot whatever the cutoff: said, never served as if it were that day's.
+      if (asOf && graph.options.asOf !== asOf) {
+        throw new Error(`--as-of ${asOf} on the ${args.options.tab === "path" ? "Path" : "Graph"} tab needs Gloom Pro; the free preview reads the latest disclosures. `
+          + `The Table tab reads it for everyone: gloom fn SPLC ${args.symbols[0]} --as-of ${asOf}`);
+      }
+      return graphReport(graph, target);
     }
     const options = supplyOptions(args.options.tiers);
-    const data = await fetchSupplyChain(args.symbols[0]!, ctx.apiClient, options);
+    const data = await fetchSupplyChain(args.symbols[0]!, ctx.apiClient, { ...options, ...asOf ? { asOf } : {} });
     const sources = new Map<HeadlessPaneRow, SupplyRow>();
     const sourced = (source: SupplyRow, row: HeadlessPaneRow) => { sources.set(row, source); return row; };
     // The pane's figures, per tab: Table shows one direction, Flow both.
@@ -193,10 +201,17 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     const locked = lockedDisclosures(data, views);
     const truncated = data.truncated && (!requested || locked > 0);
     // A company with no relationship at all says what SPLC reads and where else to look, not that it is "not covered".
-    const none = sections.every((section) => !section.rows?.length) ? supplyEmptyText(data, (symbol) => `fn SPLC ${symbol}`) : null;
+    const none = !sections.every((section) => !section.rows?.length) ? null
+      : asOf && data.status === "available" ? `No relationship of ${data.symbol}'s was disclosed by ${asOf}.`
+        : asOf ? `No relationship of ${data.symbol}'s was disclosed by ${asOf}; ${supplyEmptyText(data, (symbol) => `fn SPLC ${symbol}`)}`
+          : supplyEmptyText(data, (symbol) => `fn SPLC ${symbol}`);
+    // Dated by the newest disclosure shown, as each row's Published says, never by the latest period one covers: a
+    // filing published on 29 Oct about June is known from 29 Oct.
+    const published = [...sources.values()].map(evidenceDate).sort().at(-1) ?? null;
     return { complete: !truncated, errors: truncated ? [data.access === "preview" ? supplyPreviewNote(data, locked) : "Additional relationships need Gloom Pro"] : [],
       sections, ...(none && !requested ? { empty: none } : {}),
-      metadata: { symbol: data.symbol, asOf: data.asOf, view: requested ?? "both", counterparties: figures("counterparties"), locked: figures("locked"),
+      metadata: { symbol: data.symbol, asOf: published, latestPeriod: data.asOf, ...asOf ? { knownBy: asOf } : {},
+        view: requested ?? "both", counterparties: figures("counterparties"), locked: figures("locked"),
         counts: data.counts, earlierCounts: data.earlierCounts ?? null, tierCounts: data.tierCounts, tiers: options.tiers, disclaimer: data.disclaimer } };
   },
 };

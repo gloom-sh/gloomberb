@@ -8,7 +8,7 @@ import type {
 } from "../../../api-client/social-mentions";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
+import { cachedCloudResource, cloudDisplayCacheKey, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 import { withListingNames, type OutlierNameSource } from "./outliers-names";
 
@@ -68,7 +68,7 @@ function outliersParams(query: SocialOutliersQuery, limit: number): CloudSocialO
 const cacheKey = (query: SocialOutliersQuery, limit: number) => [query.window, query.minPosts, query.cap ?? "-", limit].join(":");
 
 export function cachedSocialOutliers(query: SocialOutliersQuery, limit = SOCIAL_OUTLIER_PANE_ROWS): CloudResource<SocialOutliersPayload> | null {
-  return cachedCloudResource(socialOutliersCache, cacheKey(query, limit), validateSocialOutliers);
+  return cachedCloudResource(socialOutliersCache, cloudDisplayCacheKey(cacheKey(query, limit)), validateSocialOutliers);
 }
 
 export async function loadSocialOutliers(
@@ -90,7 +90,7 @@ export async function loadSocialOutliers(
 ): Promise<CloudResource<SocialOutliersPayload>> {
   return loadCloudResource(
     socialOutliersCache,
-    cacheKey(query, limit),
+    cloudDisplayCacheKey(cacheKey(query, limit)),
     async () => withListingNames(await client.getCloudSocialOutliers(outliersParams(query, limit), { signal }).catch((error: unknown) => {
       // A refused session is the pane's sign-in wall, keyed on the shared gate.
       if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED, { cause: error });

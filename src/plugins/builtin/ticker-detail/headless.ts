@@ -2,7 +2,7 @@ import {
   FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote,
   statementHistoryNotes, statementPeriodMonths,
 } from "../../../utils/financial-statements";
-import { canonicalExchange } from "../../../utils/exchanges";
+import { canonicalExchange, isUsEquityExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import { quoteMonitorColumns, quoteMonitorRow, QUOTE_MONITOR_BASE_COLUMNS, QUOTE_MONITOR_ROW_KEYS } from "./quote-monitor/rows";
 import type {
@@ -26,10 +26,14 @@ import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
 import { loadPeriodEndHistory } from "./financials/period-end-history";
 import { loadExchangeResultsNotes } from "./financials/exchange-results";
+import { boardKey, newYorkToday } from "../earnings/board-model";
+import { fetchEarningsHistory } from "../earnings/client";
+import { fiscalPeriodText, fiscalQuarterOf } from "../earnings/fiscal-quarter";
 import { latestBalanceSheetDate, loadOfferingNote } from "./financials/offerings";
 import { formatRunwayMonths, reportsShortTermTotal, runwayMethod } from "../../../utils/cash-runway";
 import { formatPerShareNumber } from "../../../utils/reported-money";
 import { logFailure } from "../../../utils/log-failure";
+import { loadStatementCurrency } from "../shared/statement-currency";
 import {
   RATIO_GAP_TEXT,
   findRatioTab,
@@ -126,10 +130,10 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
  * `--layout long` asks for it. Several tickers have no shared columns, so they are never laid out wide.
  */
 function financialReportLayout(symbols: readonly string[], options: HeadlessPaneOptionValues): "wide" | "long" {
-  if (options.layout === "wide" && symbols.length > 1) {
-    throw new Error(`--layout wide is one ticker's periods as columns; ${symbols.length} tickers have no shared columns. Leave --layout out for one long table, or run FA once per ticker.`);
+  if (options.layout === "wide" && (symbols.length > 1 || options.currency)) {
+    throw new Error("--layout wide shows one ticker in its reporting currency. Leave --layout out for converted figures or multiple tickers.");
   }
-  return options.layout === "long" || symbols.length > 1 ? "long" : "wide";
+  return options.layout === "long" || symbols.length > 1 || options.currency ? "long" : "wide";
 }
 
 /** How a figure of an FA row reads: the kind of number it is, which names its unit and draws it. */
@@ -243,6 +247,8 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
     symbol, data, rows: data.rows as unknown as WideRow[], columns: (data.metadata?.columns ?? []) as WideColumn[],
   }));
   const divisor = mostCommon(tables.flatMap(({ rows }) => rows.filter((row) => row.figure === "money").map((row) => row.divisor))) ?? 1;
+  const target = typeof options.currency === "string" ? options.currency : null;
+  const fx = target ? await loadStatementCurrency(target, tables.flatMap(({ columns }) => columns.flatMap(({ currency }) => currency ? [currency] : [])), ctx) : null;
   const rows = tables.flatMap(({ symbol, rows: wide, columns }) => {
     const said = new Set<string>();
     return wide.flatMap((row) => {
@@ -253,13 +259,19 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
       const rowDivisor = row.figure === "money" ? divisor : row.divisor;
       return columns.map((column, index) => {
         const cell = row.cells[index];
-        const value = typeof cell?.value === "number" && Number.isFinite(cell.value) ? cell.value : null;
+        const native = typeof cell?.value === "number" && Number.isFinite(cell.value) ? cell.value : null;
+        const monetary = row.figure === "money" || row.figure === "perShare";
+        const rate = fx && monetary ? fx.rates.get(column.currency ?? "") : 1;
+        const value = native != null && rate != null ? native * rate : null;
+        const nativeUnit = figureUnit(row.figure, column.currency, rowDivisor);
         return {
           ticker: symbol, period: column.period, periodEnd: column.periodEnd, metric,
           value: value == null ? null : longFigureValue(row.figure, value, rowDivisor),
-          unit: figureUnit(row.figure, column.currency, rowDivisor),
+          unit: figureUnit(row.figure, monetary && target ? target : column.currency, rowDivisor),
           formatted: value == null ? null : drawLongFigure(row.figure, value, rowDivisor),
-          gap: value == null ? cell?.gap ?? (cell?.formatted && cell.formatted !== MISSING_VALUE ? cell.formatted : null) : null,
+          gap: native != null && rate == null ? "No FX rate" : value == null ? cell?.gap ?? (cell?.formatted && cell.formatted !== MISSING_VALUE ? cell.formatted : null) : null,
+          ...(fx && monetary && native != null ? { nativeValue: longFigureValue(row.figure, native, rowDivisor), nativeUnit,
+            nativeFormatted: `${drawLongFigure(row.figure, native, rowDivisor)} ${nativeUnit}` } : {}),
         };
       });
     });
@@ -273,18 +285,21 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
   const ownNotes = tables.flatMap(({ symbol, data }) => (data.notes ?? []).filter((note) => !shared(note)).map((note) => `${symbol}: ${note}`));
   const empty = tables.filter(({ rows: wide }) => wide.length === 0);
   const first = tables[0]?.data.metadata ?? {};
+  const nativeColumn: HeadlessPaneColumn = { key: "nativeValue", header: "Native", align: "right", unitKey: "nativeUnit",
+    format: (_value, row) => String(row.nativeFormatted ?? "") };
   return {
     rows,
-    columns: LONG_FINANCIAL_COLUMNS,
-    textColumns: [...LONG_FINANCIAL_COLUMNS, { key: "unit", header: "Unit" }],
+    columns: fx ? [...LONG_FINANCIAL_COLUMNS, nativeColumn] : LONG_FINANCIAL_COLUMNS,
+    textColumns: [...LONG_FINANCIAL_COLUMNS, { key: "unit", header: "Unit" }, ...(fx ? [nativeColumn] : [])],
     rowUnitKey: "unit", rowSymbolKey: "ticker", rowAsOfKey: "periodEnd",
     interval: options.period === "quarterly" ? "quarterly" : "annual",
     unavailableSymbols: [...loaded.unavailableSymbols, ...empty.flatMap(({ data }) => data.unavailableSymbols ?? [])],
     errors: [...loaded.errors, ...tables.flatMap(({ symbol, data }) => (data.errors ?? []).map((error) => error.startsWith(symbol) ? error : `${symbol}: ${error}`))],
-    notes: [...new Set([...notes.filter(shared), ...ownNotes])],
+    notes: [...new Set([...notes.filter(shared), ...ownNotes, ...(fx?.note ? [fx.note] : []), ...fx?.failures ?? []])],
     metadata: {
       symbols, layout: "long", statement: first.statement ?? options.statement, statementLabel: first.statementLabel ?? null,
       period: options.period === "quarterly" ? "quarterly" : "annual",
+      ...(fx ? { currency: target, conversions: fx.conversions } : {}),
       notices: [...new Set(tables.flatMap(({ data }) => (data.metadata?.notices ?? []) as string[]))],
       limitations: [...new Set(tables.flatMap(({ data }) => (data.metadata?.limitations ?? []) as string[]))],
     },
@@ -377,8 +392,11 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
     // said again in the results line.
     const shownFields = table ? financialSubTabFields(table.subTab) : undefined;
     const filled = table ? filledPeriodsNote(table.statements, shownFields) : null;
-    const announced = table ? await reportExchangeResults(ctx, symbol, financials, filledPeriodPublications(table.statements, shownFields)) : [];
     const periodDates = dates.map(({ date }) => date);
+    const [announced, newerRelease] = await Promise.all([
+      table ? reportExchangeResults(ctx, symbol, financials, filledPeriodPublications(table.statements, shownFields)) : [],
+      requestedPeriod === "quarterly" ? newerQuarterRelease(ctx, symbol, financials, periodDates[0]) : null,
+    ]);
     const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, requestedPeriod, hasRequestedStatements, options.statement);
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
@@ -386,7 +404,7 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       // Each exported row names its unit, the statements' period and the newest period end it runs to.
       rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: requestedPeriod,
       // The report closes with how old its latest period is, how far back its periods go, and how to read further.
-      notes: [...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
+      notes: [...newerRelease ? [newerRelease] : [], ...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
         ...statementHistoryNotes(requestedPeriod, periodDates, symbol, await reportOlderStatements(ctx, symbol, requestedPeriod, periodDates)),
         ...table?.subTab.key === "cashflow" ? [CASH_FLOW_NOTE] : [], ...dateSourceNotes(dates)],
       metadata: {
@@ -442,6 +460,23 @@ function quarterlyGrowthNotice(statements: readonly FinancialStatement[]): strin
 
 type HeadlessContext = Parameters<typeof financialStatementsHeadless.load>[1];
 
+async function newerQuarterRelease(ctx: HeadlessContext, symbol: string, financials: Awaited<ReturnType<typeof loadHeadlessFinancials>>, filedEnd: string | undefined): Promise<string | null> {
+  const exchange = parsePublicTickerKey(symbol).exchange ?? financials.quote?.listingExchangeName;
+  if (!filedEnd || !isUsEquityExchange(exchange ?? undefined)) return null;
+  const history = await fetchEarningsHistory(boardKey(symbol), ctx.apiClient, 4)
+    .catch(logFailure("fa", "Earnings release lookup failed", null));
+  if (!history) return null;
+  const today = newYorkToday();
+  const report = history.reports.filter((entry) => entry.date <= today && entry.dateStatus === "reported"
+    && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(entry.fiscalPeriod ?? "") && entry.fiscalPeriod! > filedEnd.slice(0, 7)
+    && (entry.revenueActualSource === "press-release" || entry.epsActualSource === "press-release"))
+    .sort((left, right) => right.fiscalPeriod!.localeCompare(left.fiscalPeriod!) || right.date.localeCompare(left.date))[0];
+  if (!report) return null;
+  const quarter = report.fiscalYear && report.fiscalQuarter
+    ? { fiscalYear: report.fiscalYear, fiscalQuarter: report.fiscalQuarter } : fiscalQuarterOf(report.fiscalPeriod, history.fiscalAnchor);
+  return `Newer results for ${fiscalPeriodText(report.fiscalPeriod, quarter)} were reported on ${report.date} in the company's earnings release. See ERN ${symbol} for the release figures until FA reflects the filing.`;
+}
+
 /** Whether GF, reading the listing's extended statement history, goes back further than the report (statementHistoryNotes). */
 function reportOlderStatements(ctx: HeadlessContext, symbol: string, period: "annual" | "quarterly", dates: readonly string[]) {
   return hasOlderStatements(async () => {
@@ -453,8 +488,9 @@ function reportOlderStatements(ctx: HeadlessContext, symbol: string, period: "an
 /**
  * Why a statements report has no rows, and what to read instead: a listing
  * with years but no quarters names its years, and says so of a company that
- * reports half-yearly (Qantas on ASX). Null when it has years and quarters,
- * whatever this table lacks.
+ * reports half-yearly (Qantas on ASX); one with quarters but no full year
+ * reported (O8A:FWB2) names its quarters. Null when it has years and
+ * quarters, whatever this table lacks.
  */
 async function missingPeriodsError(
   ctx: HeadlessContext,
@@ -465,12 +501,15 @@ async function missingPeriodsError(
   statement: unknown,
 ): Promise<string | null> {
   const hasYears = financials.annualStatements.length > 0;
+  const tab = typeof statement === "string" && statement && statement !== "income" ? ` --statement ${statement}` : "";
+  if (period === "annual" && !hasRequestedStatements && financials.quarterlyStatements.length > 0) {
+    return `${symbol}: No annual financial statement coverage. For its quarters: gloom fn FA ${symbol} --period quarterly${tab}`;
+  }
   if (period === "annual" || !hasYears) return hasRequestedStatements ? null : `${symbol}: No ${period} financial statement coverage.`;
   const exchange = await resolveHeadlessInstrument(ctx, symbol).then(({ exchange }) => canonicalExchange(exchange ?? ""))
     .catch(logFailure("ticker-detail.headless", "Resolving the listing of a statements report failed", ""));
   const halfYearly = reportsHalfYearly(exchange, financials.quarterlyStatements, financials.annualStatements);
   if (hasRequestedStatements && !halfYearly) return null;
-  const tab = typeof statement === "string" && statement && statement !== "income" ? ` --statement ${statement}` : "";
   const years = `For its years: gloom fn FA ${symbol} --period annual${tab}`;
   return halfYearly ? `${symbol} reports half-yearly, not quarterly. ${years}` : `${symbol}: No quarterly financial statement coverage. ${years}`;
 }

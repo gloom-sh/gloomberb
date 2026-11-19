@@ -40,7 +40,7 @@ test("a rejected benchmark suppresses beta while the independent basket Sharpe r
   expect(result.integrity?.sourcePoints[0]).toMatchObject({ open: 764.08, high: 758.555, close: 759.9 });
   const rows = buildAnalyticsRiskRows({ sharpe: 1.75, beta: 1.2, benchmarkIntegrity: result.integrity });
   expect(rows[0]?.value).toBe("1.75");
-  expect(rows[1]).toMatchObject({ value: "—", detail: "SPY benchmark: inconsistent OHLC history" });
+  expect(rows[1]).toMatchObject({ value: "—", detail: "SPY benchmark: contradictory prices in its history" });
   entries.set(buildChartKey(request), { data: riskHistory() });
   expect(buildBenchmarkReturnSeries(request, entries)).toMatchObject({ integrity: null });
   expect(buildBenchmarkReturnSeries(request, entries).returns).toHaveLength(20);
@@ -58,7 +58,7 @@ test("a corrupt holding cannot be silently dropped from estimated portfolio risk
   expect(result).toMatchObject({ returns: null, coverage: 0.5, missingCount: 1 });
   expect(result.historyIntegrity[0]).toMatchObject({ symbol: "SPY", integrity: { sourcePoints: [{ ...rejectedSpy, date: "2026-09-10T00:00:00.000Z" }] } });
   const rows = buildAnalyticsRiskRows({ ...result, sharpe: 2, beta: 1 });
-  expect(rows.every((row) => row.value === "—" && row.detail === "Inconsistent OHLC history: SPY")).toBe(true);
+  expect(rows.every((row) => row.value === "—" && row.detail === "Contradictory prices in the history: SPY")).toBe(true);
   chartEntries.set(buildChartKey(targets[0]!.request!), { data: riskHistory() });
   expect(buildPortfolioReturnSeries(input).returns).toHaveLength(20);
   expect(buildPortfolioReturnSeries(input).historyIntegrity).toEqual([]);

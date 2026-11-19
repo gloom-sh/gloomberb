@@ -81,6 +81,7 @@ on:
       - "scripts/pane-chrome/**"
       - "scripts/tui-benchmark-harness.ts"
       - ".github/workflows/pane-chrome.yml"
+      - ".github/actions/install-webkit/**"
       - "package.json"
       - "bun.lock"
   push:
@@ -175,8 +176,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
 
-      - name: Install the pinned WebKit build and system libraries
-        run: bun node_modules/playwright-core/cli.js install --with-deps webkit
+      - name: Install WebKit
+        timeout-minutes: 8
+        uses: ./.github/actions/install-webkit
 
       - name: Paint chat through mount and channel transitions in three panes
         run: |

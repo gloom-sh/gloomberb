@@ -32,6 +32,7 @@ import {
   formatHaltAge,
   formatHaltDuration,
   haltStatusColor,
+  haltsEmptyTitle,
   haltStatusLabel,
   nextHaltFilter,
   nextHaltSort,
@@ -53,7 +54,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
   const connectionHealth = useConnectionHealth();
   const request = useCallback(() => fetchMarketHalts(connectionHealth), [connectionHealth]);
-  const { data, status, error, updatedAt: fetchedAt, load } = useAsyncResource(request);
+  const { data, status, error, updatedAt: fetchedAt, load } = useAsyncResource(request, { savedCopy: { key: ["market-halts"] } });
   const records = data ?? EMPTY_RECORDS;
   const [initialTab] = usePaneSettingValue("initialTab", "all");
   const [filter, setFilter] = usePluginPaneState<HaltFilter>("filter",
@@ -234,7 +235,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
         getItemKey={(row) => row.id}
         onActivate={openTicker}
         renderCell={renderCell}
-        emptyStateTitle={filter === "all" ? "No trading halts reported." : "No halts match this filter."}
+        emptyStateTitle={haltsEmptyTitle(filter)}
       />
     </Box>
   );

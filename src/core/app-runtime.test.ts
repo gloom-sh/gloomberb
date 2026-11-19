@@ -7,6 +7,9 @@ import { getSharedRegistry, getSharedMarketData } from "../plugins/registry";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { createDefaultConfig } from "../types/config";
 import { createAppRuntime } from "./app-runtime";
+import { apiClient, setCloudApiFetchTransport } from "../api-client";
+import { installTestWebSocket, verifiedUser } from "../test-support/cloud-api";
+import { readSavedCopy, writeSavedCopy } from "../data/pane-saved-copies";
 
 const runtimes: ReturnType<typeof createAppRuntime>[] = [];
 function runtime(overrides: Partial<Parameters<typeof createAppRuntime>[0]> = {}) {
@@ -23,6 +26,74 @@ function runtime(overrides: Partial<Parameters<typeof createAppRuntime>[0]> = {}
 }
 
 afterEach(() => { for (const services of runtimes.splice(0).reverse()) services.destroy(); });
+
+test("confirmed Free access purges the account's old Pro copies, not a tentative boot identity or sign-out", async () => {
+  const socket = globalThis.WebSocket;
+  const proUser = { ...verifiedUser, plan: "pro" } as const;
+  const paid = { key: ["risk-factors", JSON.stringify([proUser.id, true, true]), "AAPL"] };
+  const other = { key: ["risk-factors", JSON.stringify(["other-account", true, true]), "AAPL"] };
+  installTestWebSocket();
+  apiClient.setCookieSessionMode(true);
+  apiClient.restoreCachedUser({ ...proUser, plan: "free" }, false);
+  const services = runtime();
+  try {
+    await services.ready;
+    writeSavedCopy(paid, "paid data");
+    writeSavedCopy(other, "other account data");
+    setCloudApiFetchTransport(async () => Response.json(null));
+    expect(await apiClient.getSession()).toBeNull();
+    expect(readSavedCopy(paid)?.value).toBe("paid data");
+
+    setCloudApiFetchTransport(async () => Response.json({ user: { ...proUser, plan: "free" } }));
+    expect(await apiClient.getSession()).toMatchObject({ plan: "free" });
+    expect(readSavedCopy(paid)).toBeNull();
+    expect(readSavedCopy(other)?.value).toBe("other account data");
+  } finally {
+    services.destroy();
+    apiClient.dispose();
+    apiClient.setSessionToken(null);
+    apiClient.setCookieSessionMode(false);
+    setCloudApiFetchTransport(null);
+    globalThis.WebSocket = socket;
+  }
+});
+
+test.each(["session read", "socket ready"])("an unverified socket retains paid copies until a %s confirms the downgrade", async (confirmation) => {
+  const originalSocket = globalThis.WebSocket;
+  const sockets = installTestWebSocket();
+  const proUser = { ...verifiedUser, plan: "pro" } as const;
+  const paid = { key: ["risk-factors", JSON.stringify([proUser.id, true, true]), "AAPL"] };
+  apiClient.setSessionToken("pro-session");
+  apiClient.restoreCachedUser(proUser);
+  const services = runtime();
+  const stop = apiClient.subscribeQuotes([{ symbol: "AAPL" }], () => {});
+  try {
+    await services.ready;
+    writeSavedCopy(paid, "paid data");
+    const downgraded = { ...proUser, plan: "free" };
+    const answer = Promise.withResolvers<Response>();
+    setCloudApiFetchTransport(async () => answer.promise);
+    const session = confirmation === "session read" ? apiClient.getSession() : null;
+    sockets.at(-1)!.receive({ type: "auth.unverified" });
+    expect(apiClient.getCurrentUser()?.emailVerified).toBe(false);
+    expect(readSavedCopy(paid)?.value).toBe("paid data");
+    if (session) {
+      answer.resolve(Response.json({ user: downgraded }));
+      await session;
+    } else {
+      sockets.at(-1)!.receive({ type: "ready", user: downgraded });
+    }
+    expect(apiClient.getConfirmedDisplayUser()?.plan).toBe("free");
+    expect(readSavedCopy(paid)).toBeNull();
+  } finally {
+    stop();
+    services.destroy();
+    apiClient.dispose();
+    apiClient.setSessionToken(null);
+    setCloudApiFetchTransport(null);
+    globalThis.WebSocket = originalSocket;
+  }
+});
 
 test("retiring an old runtime cannot disconnect its replacement", async () => {
   const dataProvider = createTestDataProvider();

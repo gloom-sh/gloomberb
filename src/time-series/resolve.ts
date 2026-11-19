@@ -11,6 +11,7 @@ import { subtractTimeRange } from "./date-window";
 import { hiddenOnLogScale, logScaleHiddenWarning } from "./log-scale";
 import {
   CHART_RESOLUTION_STEP_MS,
+  chartBarSizeName,
   chartBarSizeSource,
   clampTimeRangeToMaxRange,
   DEFAULT_CHART_RESOLUTION_SUPPORT,
@@ -134,6 +135,7 @@ import {
   latestQuote,
   mergeHistory,
   baseSecuritySeries,
+  withPriorClose,
   baseEconomicSeries,
   baseCapabilitySeries,
   staleFredWarning,
@@ -1090,7 +1092,32 @@ async function resolveChartSpecPass(
     }
   }));
 
-  const rawSeries = loaded.filter((entry): entry is ResolvedSeries => !!entry);
+  let rawSeries = loaded.filter((entry): entry is ResolvedSeries => !!entry);
+  const statementTarget = spec.viewport.currency;
+  if (statementTarget && sources.loadStatementCurrency) {
+    const statements = new Set(spec.series.filter(({ source }) => source.kind === "security" && source.fieldId.startsWith("fundamental.")).map(({ id }) => id));
+    const group = (series: ResolvedSeries) => /^(currency-total|per-share)(?::|$)/.exec(series.unitGroup)?.[1];
+    const nativeCurrency = (series: ResolvedSeries) => series.unitGroup.split(":")[1] ?? "";
+    const monetary = rawSeries.filter((series) => statements.has(series.id) && group(series) && series.points.length);
+    if (monetary.length) {
+      const { rates, note, rateNotes, failures } = await sources.loadStatementCurrency(statementTarget, monetary.map(nativeCurrency).filter(Boolean));
+      if (note) { coverageNotices.push(note); warnings.push(...rateNotes ?? [note]); }
+      warnings.push(...failures);
+      rawSeries = rawSeries.map((series) => {
+        const currency = nativeCurrency(series);
+        if (!monetary.includes(series) || currency === statementTarget) return series;
+        const rate = rates.get(currency);
+        return {
+          ...series, unit: group(series) === "per-share" ? `${statementTarget}/share` : statementTarget, unitGroup: `${group(series)}:${statementTarget}`,
+          ...(rate == null ? { warning: `No ${currency || "reporting currency"}/${statementTarget} rate` } : {}),
+          points: rate == null ? [] : series.points.map((point) => ({ ...point,
+            ...(point.value == null ? {} : { nativeAmount: { value: point.value, currency: series.unit } }),
+            value: point.value == null ? null : point.value * rate,
+          })),
+        };
+      });
+    }
+  }
   const marketTimelineSeries = primaryMarketSeries?.visible === false
     ? rawSeries.filter((entry) => entry.id === primaryMarketSeries.id)
     : [];
@@ -1130,11 +1157,21 @@ async function resolveChartSpecPass(
   if (sessionView?.priorClose != null && primaryRaw?.transform === "raw"
     && primaryRaw.unitGroup.startsWith("price") && primaryRaw.unitGroup !== "price:unknown") {
     const index = rawSeries.indexOf(primaryRaw);
-    rawSeries[index] = { ...primaryRaw, priorClose: sessionView.priorClose };
+    rawSeries[index] = withPriorClose(primaryRaw, sessionView.priorClose);
   }
   const servedCadences = new Set(rawSeries.filter((entry) => entry.observationKind === "market" && entry.points.length > 0)
     .map((entry) => entry.historyResolution));
   const commonCadence = servedCadences.size === 1 ? [...servedCadences][0] : undefined;
+  // A series served in other bars than the chart's (a source that did not answer for 5-minute bars, then
+  // answered daily ones) says so, so its line is not read in the bars the others are in.
+  if (servedCadences.size > 1) {
+    const chartBars = builtBarSize ?? initialResolution;
+    for (const entry of rawSeries) {
+      const served = entry.barSize ?? entry.historyResolution;
+      if (!visibleSeriesIds.has(entry.id) || entry.observationKind !== "market" || !entry.points.length || !served || served === chartBars) continue;
+      warnings.push(`${entry.label}: ${chartBarSizeName(served)} bars, not the chart's ${chartBarSizeName(chartBars)} bars.`);
+    }
+  }
   const resolution = commonCadence ?? undefined;
   const comparisonResolution = resolution ?? "auto";
   const comparisonOptions = { preset: hasExplicitWindow ? null : spec.viewport.range, now: referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt) };
@@ -1148,7 +1185,9 @@ async function resolveChartSpecPass(
       { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
   }
   const splitNotice = priceComparison?.legs ? await comparedSplitNotice(spec, priceComparison, rawSeries, loadDistributions, comparisonOptions.now) : null;
-  const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
+  const comparedBounds = comparisonDisplayBounds(bounds, priceComparison);
+  const displayBounds = spec.viewport.dateWindow?.endAtLatestObservation && !requestBounds
+    ? endAtNewestObservation(comparedBounds, rawSeries) : comparedBounds;
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
   const baseSeries = rawSeries

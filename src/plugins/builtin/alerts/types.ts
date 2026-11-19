@@ -1,5 +1,6 @@
 import type { QuoteDataSource } from "../../../types/financials";
 import type { QuoteChangeBasis } from "../../../market-data/market/change-basis";
+import type { ExtendedSession } from "../../../market-data/market/status";
 
 export type AlertCondition = "above" | "below" | "crosses";
 export type AlertStatus = "active" | "triggered" | "expired";
@@ -52,5 +53,11 @@ export interface AlertRule {
   lastQuoteExchange?: string;
   /** That quote was of a London line in pence (117.35p), whose levels are written in pence. */
   lastQuotePence?: boolean;
+  /**
+   * The pre-market, after-hours or overnight session the last reading's price
+   * is a print of, which lists say beside it; absent for the regular session's
+   * price or close.
+   */
+  lastQuoteSession?: ExtendedSession;
   message?: string;
 }

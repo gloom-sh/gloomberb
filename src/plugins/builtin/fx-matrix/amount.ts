@@ -1,7 +1,7 @@
 import { parseFxArgs, parseFxRequest } from "../../../cli/fx-pair";
 import { currencyMinorDigits } from "../../../market-data/market/format";
 import { parseTypedNumber } from "../../../utils/decimal-comma";
-import { isFxCurrency, type FxCurrency } from "./pairs";
+import { CURRENCY_SETS, isFxCurrency, type FxCurrency } from "./pairs";
 
 /** An amount of one of the board's currencies, shown in every currency it lists. */
 export interface FxBoardAmount {
@@ -61,6 +61,20 @@ export function parseFxBoardAmount(text: string): FxBoardAmountRequest | { error
   const target = to ? boardCurrency(to, to) : null;
   if (target && typeof target !== "string") return target;
   return { amount, currency, to: target === currency ? null : target };
+}
+
+/**
+ * Currencies typed for the board with no amount, to add to it: `TRY`,
+ * `USD,TRY`, `usd try`, a set's name (`emea`), separated by commas or spaces,
+ * in order without repeats. Null for anything else: an amount, a pair written
+ * as one (`EUR/USD`, `eur to usd`, one unit of it), a word that is neither.
+ */
+export function parseFxBoardCurrencies(text: string): FxCurrency[] | null {
+  const tokens = text.trim().split(/[\s,;]+/).filter(Boolean);
+  if (tokens.length === 0 || /[\d/]/.test(text)) return null;
+  const codes = tokens.map((token) => CURRENCY_SETS.find((set) => set.id === token.toLowerCase())?.currencies
+    ?? (isFxCurrency(token.toUpperCase()) ? [token.toUpperCase() as FxCurrency] : null));
+  return codes.every((code) => code !== null) ? [...new Set(codes.flat())] : null;
 }
 
 /** An amount as its currency writes it, grouped: 2,500,000 and 2,500,000.50 in EUR, 445,000,000 in JPY. */

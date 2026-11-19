@@ -11,8 +11,7 @@ import {
   initDataDir,
 } from "../../../../data/config/store";
 import type { AppConfig } from "../../../../types/config";
-import { listPersistedBrokerAccountRecords } from "../../../../brokers/account-cache";
-import type { CachedResourceRecord } from "../../../../data/resource-store";
+import { loadDesktopViewResources } from "./view-resources";
 import {
   loadDesktopPluginState,
 } from "./plugin-state";
@@ -65,16 +64,6 @@ export function desktopRendererCapabilityManifests(registry: CapabilityRegistry)
   return registry.manifests({ rendererOnly: true, includeDisabled: true });
 }
 
-/** The view's resource store lives in memory; it starts from the account snapshots saved here. */
-function loadSavedResources(services: AppServices, config: AppConfig): CachedResourceRecord[] {
-  try {
-    return listPersistedBrokerAccountRecords(services.persistence.resources, config.brokerInstances);
-  } catch (error) {
-    console.warn("saved broker accounts could not be read", error);
-    return [];
-  }
-}
-
 function buildInitializationPayload(
   backend: DesktopBackend,
   config: AppConfig,
@@ -98,7 +87,7 @@ function buildInitializationPayload(
     desktopSnapshot,
     desktopThemePreview: backend.stateBroadcaster.currentThemePreview,
     pluginState: loadDesktopPluginState(services.pluginRegistry),
-    savedResources: loadSavedResources(services, config),
+    savedResources: loadDesktopViewResources(services, config),
     capabilityManifests: desktopRendererCapabilityManifests(services.pluginRegistry.capabilities),
     desktopPlatform: process.platform,
     hostName: hostname(),

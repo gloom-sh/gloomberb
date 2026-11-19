@@ -10,6 +10,7 @@ import {
 } from "../../../components";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState, useTickers } from "../../../public/react";
 import { colors } from "../../../theme/colors";
@@ -25,6 +26,7 @@ import {
   ownNamesUniverse,
   setupLabel,
   sharedDate,
+  shortWatchEmptyTitle,
   sortShortWatchRows,
   type ShortWatchRow,
   type ShortWatchSortId,
@@ -79,7 +81,11 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
     return loadShortWatch(key.split(","), { signal: current.signal, forceRefresh: force });
   }, [key]);
   useEffect(() => () => controller.current?.abort(), [loader]);
-  const resource = useAsyncResource(key ? loader : null, { keepPreviousData: true });
+  const access = useCloudDisplayScope();
+  const resource = useAsyncResource(access && key ? loader : null, {
+    keepPreviousData: access,
+    savedCopy: access ? { key: ["short-watch", access, key] } : null,
+  });
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(resource.reload, { focused });
 
@@ -132,7 +138,7 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
     }
   }, []);
 
-  const emptyTitle = custom ? "Add symbols to watch." : "No US-listed names in your portfolios or watchlists.";
+  const emptyTitle = shortWatchEmptyTitle(custom);
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     <QueryBar width={width} meta={asOf} filters={[
       { id: "scope", label: "Names", value: custom ? "custom" : "mine", options: SCOPE_FILTER_OPTIONS, onChange: setScope },

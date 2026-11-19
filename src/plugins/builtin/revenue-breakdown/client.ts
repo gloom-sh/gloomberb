@@ -2,16 +2,17 @@ import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type {
   RevenueBreakdownPayload,
+  RevenueBreakdownPeriod,
   RevenueBreakdownView,
 } from "../../../api-client/revenue-breakdown";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { markSavedCopy } from "../../../data/saved-copies";
 import { secListingKey } from "../../../utils/sec";
 import { logFailure } from "../../../utils/log-failure";
 
 /**
- * Revenue by product, segment or region comes from Gloom Cloud, which reads
- * it out of each 10-Q and 10-K. A quarter changes only when a filing lands,
+ * Revenue by product, segment or region changes only when a filing lands,
  * so a result stays fresh for an hour; the plan is part of the key because a
  * preview and the full split are different answers.
  */
@@ -31,6 +32,21 @@ const finiteOrNull = (value: unknown) =>
   value === null || (typeof value === "number" && Number.isFinite(value));
 const day = (value: unknown) =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+const filingUrl = /^https:\/\/(?:www1?\.)?hkexnews\.hk\/listedco\/listconews\/sehk\/\d{4}\/\d{4}\/\d{13}\.pdf(?:#page=[1-9]\d*)?$/i;
+
+function validPeriod(period: RevenueBreakdownPeriod) {
+  if (!day(period?.end)) return false;
+  return "kind" in period
+    ? (period.kind === "annual" || period.kind === "interim")
+      && typeof period.label === "string"
+      && typeof period.revenueLabel === "string"
+      && (period.singleSegment === undefined || period.singleSegment === true)
+      && day(period.filing?.filed)
+      && typeof period.filing?.url === "string" && filingUrl.test(period.filing.url)
+      && Number.isInteger(period.filing.page) && period.filing.page > 0
+    : Number.isInteger(period.fiscalYear) && Number.isInteger(period.fiscalQuarter)
+      && period.fiscalQuarter >= 1 && period.fiscalQuarter <= 4;
+}
 
 function validateRevenueBreakdown(data: RevenueBreakdownPayload): RevenueBreakdownPayload {
   const width = data?.periods?.length;
@@ -42,11 +58,7 @@ function validateRevenueBreakdown(data: RevenueBreakdownPayload): RevenueBreakdo
     && (data.access === "full" || data.access === "preview")
     && Number.isInteger(data.lockedRows) && data.lockedRows >= 0
     && Array.isArray(data.periods) && width > 0
-    && data.periods.every((period) =>
-      day(period?.end)
-      && Number.isInteger(period.fiscalYear)
-      && Number.isInteger(period.fiscalQuarter)
-      && period.fiscalQuarter >= 1 && period.fiscalQuarter <= 4)
+    && data.periods.every((period) => validPeriod(period) && ("kind" in period) === ("kind" in data.periods[0]!))
     && Array.isArray(data.total) && data.total.length === width && data.total.every(finiteOrNull)
     && Array.isArray(data.rows)
     && data.rows.every((row) =>
@@ -67,7 +79,6 @@ export async function fetchRevenueBreakdown(
   try {
     return validateRevenueBreakdown(await client.getCloudRevenueBreakdown(symbol, view, listing));
   } catch (error) {
-    // 404 is also a listing abroad whose company the SEC does not know.
     if (error instanceof ApiRequestError && error.status === 404) throw new Error(NO_BREAKDOWN);
     throw error;
   }
@@ -94,7 +105,7 @@ export function cachedRevenueBreakdown(
   const cached = revenueBreakdownCache.get(cacheKey(symbol, view, pro, listing), { allowExpired: true });
   if (!cached) return null;
   try {
-    return { payload: validateRevenueBreakdown(cached.data), stale: false, refreshError: null };
+    return markSavedCopy({ payload: validateRevenueBreakdown(cached.data), stale: false, refreshError: null }, cached.fetchedAt);
   } catch (error) {
     return logFailure("revenue-breakdown.client", "Validate cached revenue breakdown failed", null)(error);
   }
@@ -114,9 +125,10 @@ export async function loadRevenueBreakdown(
   );
   // A company that stopped reporting a breakdown must not keep showing an old one.
   if (result.error instanceof Error && result.error.message === NO_BREAKDOWN) throw result.error;
-  return {
+  const resource = {
     payload: validateRevenueBreakdown(result.data),
     stale: result.stale,
     refreshError: result.refreshError ?? null,
   };
+  return result.stale ? markSavedCopy(resource, result.fetchedAt) : resource;
 }

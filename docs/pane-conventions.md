@@ -91,7 +91,7 @@ column under 480px steps every reading level down together (13.2px body).
 | Family | The convention (component) |
 |---|---|
 | Buttons (`Button`, `IconButton`) | Four kinds, one radius (`md`), no shadow. Primary: accent fill, bold. Danger: the same in negative. Secondary: 1px control border, regular. Ghost (`ghost`, `plain`): text that takes the hover fill. Icon: 20×18, hover fill; a tab's close mark and a chart's tool are icon buttons. Height one row (18px), a bar's controls the bar's 20px. A chosen button takes the selection fill. What a settings row does when pressed is a secondary button; its current value is a chip. |
-| Tabs, segmented choices (`Tabs`, `SegmentedControl`, query bar choices) | One look: 12px text, 8px padding, no box and no radius; inactive dim, hover the text colour, active bright and bold on a 2px accent underline. Sub-tabs, the query bar's choices and segmented choices are the same. Title-bar tabs (a pane's primary strip, drawn in its title bar) are the same text and spacing in boxes instead of underlines: the active tab is a box with `md` top corners, open at the bottom, its top and sides the title bar's rule (the accent while the pane is focused), filled with the surface under it so it opens into the pane; an inactive one takes the hover fill in that shape. Their labels sit on the title's centre line. |
+| Tabs, segmented choices (`Tabs`, `SegmentedControl`, query bar choices) | One look: 12px text, 8px padding, no box and no radius; inactive dim, hover the text colour, active bright and bold on a 2px accent underline. Sub-tabs, the query bar's choices and segmented choices are the same. Title-bar tabs (a pane's primary strip, drawn in its title bar) are the same text and spacing in boxes instead of underlines: the active tab is a box with `md` top corners, open at the bottom, its top and sides the title bar's rule (the accent while the pane is focused), filled with the surface under it and reaching a pixel past the rule so it opens into the pane; an inactive one ends on the rule and takes the hover fill in that shape. Their labels sit on the title's centre line. A strip wider than its pane scrolls and keeps the active tab whole and clear of the fades at its edges. |
 | Chips (`Badge`, ticker chips) | 16px in an 18px row, `sm` radius, 8px padding, a subtle fill, the tone in the text. Regular weight; tickers bold. A label's lowercase letters sit in the middle of the fill, and an icon in front of it centres with them. A chip that is chosen (a filter that is on) is the solid tone with the background colour in its text. A chip is a mark: a word drawn without a fill or a border is text, and a pressable one is a ghost button. |
 | Key caps | 14px tall, caption size, `sm` radius, a 1px ring and a faint fill mixed from the text colour around it. A key named outside a button is a `KeyHint`: a keycap before the whole words, the words `textMuted` and the keycap `textDim`, regular weight, 12px between two. A pane footer's hints, a dialog's (`KeyHints`) and the command bar prompt's keys are all one. A pressable one (a footer hint) brightens both under the pointer, with no fill. The terminal keeps its own forms: a footer's `[a]dd`, not bold, and a dialog's footer line. |
 | Fields and selects (`TextField`, `SelectField`, `SelectButton`) | One row tall, sunken fill, 1px control border, `md` radius, 8px padding, the placeholder in the placeholder colour; focused or open, the accent border (`fieldFrameStyle` for a field a pane frames itself, such as a text area). In a query bar they are its segments. A select in a form is `SelectButton variant="form"`: the label bold above the field, as a text field's. A search strip (`InputSearchBar` `strip`) is the band with the field's text at the inset. A block of code to copy is sunken too, `md` radius, 8 by 12px inside. |
@@ -110,7 +110,7 @@ column under 480px steps every reading level down together (13.2px body).
 | Shell | App header and status bar at 12px, theme text roles (no greys of their own); status bar items are ghost buttons. |
 | Dialogs, menus, popovers, toasts, command bar | One floating surface: raised fill, 1px control border, `lg` radius, the elevation shadow; 16px inside a dialog, 4px inside a menu; menu items a row with 4px above and below (26px), `md` radius, hover fill. |
 | Readers (`ArticleReader`, `DetailReader`, Docs, `MarkdownText`) | One column, centred at 66ch of the reading size, the pane's inset on each side, 12px above and 16px below; title 20, headings 16 bold bright (a list's label too), body and lead 14 at line height 1.6, metadata and label and value facts 12. One paragraph gap (0.9em) after every block; a section heading 0.9em of its size above and 0.4em below. Every prose bullet (an article's key facts and lists, markdown and Docs lists) is body text: 14, a dim dot, the text hanging 2ch in, no space between items. The pane chrome check `readers:` holds the three to this. |
-| Chart chrome | Legends and axes 12px dim; a legend over a map or chart sits at the inset. A chart drawn as a stretched SVG puts its labels in HTML over it, so they keep the app's type. Labels a heat map, treemap or map fits to its own shapes are allowed to size themselves. Stacked panels that are a fixed set of scales (a chart you cannot pan) are split by a hairline across the plot and both gutters, and each panel's axis reads in its own unit (`x` on a ratio, `%`, `K`); the chart composer, whose panels the user arranges, has its resize line instead. A time-axis tag on the desktop and the web reads as the axis's end labels do (`Nov 3 2026`). A scatter has values on both axes and names each at its own axis: x at the end of the axis row (`AMD returns (%) →`), y above its values at the right (`NVDA returns (%) ↑`), as Relative Rotation does. |
+| Chart chrome | Legends and axes 12px dim, except that every value axis besides a chart's first (a right-hand scale, a lower panel's) takes its lines' colour where they are drawn in one, so each line is read against the axis in its colour; a legend over a map or chart sits at the inset. A chart drawn as a stretched SVG puts its labels in HTML over it, so they keep the app's type. Labels a heat map, treemap or map fits to its own shapes are allowed to size themselves. Stacked panels that are a fixed set of scales (a chart you cannot pan) are split by a hairline across the plot and both gutters, and each panel's axis reads in its own unit (`x` on a ratio, `%`, `K`); the chart composer, whose panels the user arranges, has its resize line instead. A time-axis tag on the desktop and the web reads as the axis's end labels do (`Nov 3 2026`). A scatter has values on both axes and names each at its own axis: x at the end of the axis row (`AMD returns (%) →`), y above its values at the right (`NVDA returns (%) ↑`), as Relative Rotation does. |
 
 ### Exceptions
 
@@ -261,12 +261,12 @@ the browser, which the command bar also lists (Download Desktop App).
 |---|---|---|
 | A pane action (add, edit, open source, sync, save search) | Footer hint | `usePaneFooter({ hints })` |
 | Changing status (loading, error, live/delayed, stale, updated 2m ago, saving) | Footer info | `usePaneStatusFooter`, `loadingErrorFooterInfo` |
-| A message about one row of a list (a broker profile, an account, an alert, a plugin, an order, a team member): its state, an action running on it, what that action came to | On that row: a short state in its status cell, the full reason in its detail. Never the footer, never a toast | [Row messages](#row-messages), `useRowNotes`, a settings action's `setRowNote` |
+| A message about one row of a list (a broker profile, an account, an alert, a plugin, an order, a team member, a name a screen could not price): its state, an action running on it, what that action came to | On that row: a short state in its status cell, the full reason in its detail. Never the footer, never a toast | [Row messages](#row-messages), `useRowNotes`, `RowNote`, a settings action's `setRowNote` |
 | Summary figures for the whole pane or an open detail (VWAP, spread, percentile, range) | Header zone, under the query bar | `StatGrid` |
 | A control that changes what the pane shows (range, window, scope, level) | Query bar, never a cycling footer hint | `QueryBar` |
 | Non-blocking data limitation (missing period, fallback dates, partial source) | One amber `⚠` in the footer, `!` or click opens details; once opened it is muted, and a new or changed warning is amber again | `usePaneNoticeFooter` |
 | Data a source delivers late (`15m delayed`, delayed options, a delayed feed) | One yellow clock in the footer, the detail in its tooltip; the terminal, which has no tooltip, draws `◷15m` | `delayedFooterSegment`, `DELAYED_SEGMENT`, `splitDelayedStatus` for a `15m delayed · …` status |
-| A price an account without Pro sees late, signed out included | Said once per screen, never beside every price: the status bar's note (`◷ 15m delayed`) for the app, the footer clock for a pane's prices. A price outside a footer, such as a quote's headline, carries the mark, the clock and `15m` in the dim tone of the meta text around it, only where the note is not on screen: the status bar hidden (presentation mode, `SB`) or a capture of the pane alone. Onboarding's preview, which covers the status bar, always does. The header's market never does, whether or not the status bar is shown. Pro and trial accounts see none of them | `useQuoteDelayFooter`, `DelayedMark` with `useDelayedMarkMinutes` (`useFreeQuoteDelay` where nothing else can say it) |
+| A price an account without Pro sees late, signed out included | Said once per screen, never beside every price: the status bar's note (`◷ 15m delayed`) for the app, the footer clock for a pane's prices. A price outside a footer, such as a quote's headline, carries the mark, the clock and the delay in the dim tone of the meta text around it, only where the note is not on screen: the status bar hidden (presentation mode, `SB`) or a capture of the pane alone. Onboarding's preview, which covers the status bar, always does. The header's market never does, whether or not the status bar is shown. The delay is the quote's own feed delay where it states one (`20m` on SGX, as its status says), else the free tier's `15m`; a pane's clock says the longest of its prices'. Pro and trial accounts see none of them | `useQuoteDelayFooter`, `DelayedMark` with `useDelayedMarkMinutes` (`useFreeQuoteDelay` where nothing else can say it) |
 | Nothing can render yet (first load, hard failure, no data) | Body, replacing content below the tab strip and query bar, which stay | `PaneStatusBody`, a table's `status` |
 | No ticker, no selection, empty result | Body | `EmptyState` |
 | Refresh failed but last data exists | Keep the data, failure in footer info | `loading={loading && !data}`, `error={!data ? error : null}` |
@@ -308,6 +308,24 @@ the origin of a number. The one count the kit draws is the
   `o` hint opening the current item's URL), `usePaneNoticeFooter` (warnings).
 - Info is what changes. If a segment reads the same on every render of every
   instance, delete it.
+- Static pane captures print warning text instead of an icon that opens a
+  dialog, as one note line (`noteLineParts`): the first note, whole or cut
+  after its last whole word that fits, and how many more there are (`+3
+  more`), which the app opens from the ⚠. A note never cuts a word, and
+  neither does a status a narrow row shortens. Beside a capture's status
+  line the note keeps at least 60% of the row while it needs it; the status
+  line steps down to its shorter forms first, and as a last resort drops
+  whole words from its middle (`Newest filing Fri 6 Nov … (Form 4
+  filings)`). `usePaneNoticeFooter` supplies the notices (`notes`).
+  Warnings remain visible with `--no-status` too. A pane whose capture
+  segments already say what some notices explain at length (what its
+  numbers leave out) passes the rest as `captureNotes`; the dialog still
+  lists every notice.
+- A note is plain words for a reader: never a reason code (`node_limit`,
+  `UPSTREAM_ERROR`), a CLI flag (`--spot`) or a back-end term
+  (`quarantined`). Say what is missing and, where it helps, what to do in
+  the pane. A note about one row is that row's, not the footer's
+  ([Row messages](#row-messages)).
 - The footer sets info segments apart with a muted ` · ` (`PANE_FOOTER_SEPARATOR`),
   and an icon (`⚠`, `◷15m`) with one column, so two segments never read as one
   sentence. A pane neither adds its own `·` between segments nor starts one
@@ -317,11 +335,11 @@ the origin of a number. The one count the kit draws is the
   against the hints: the hints that no longer fit go under More first. A
   longer one gives way to the hints. This is the footer's own layout
   (`layoutPaneFooterHintRow`); a pane does not shorten its status for it.
-- Data a failed refresh left answering from its saved copy says so with
+- Data shown from a saved copy, while it refreshes on open or after a failed refresh, says so with
   `savedCopyFooterInfo` (or `savedCopyFooterSegment`): `saved copy from
   14:37`. The footer draws it first, wherever the pane registers it, and
   once: the oldest copy when a list and the report it opens each show one.
-  The copy answers only a failure asking again may get past (no connection,
+  After a failure the copy answers only one that asking again may get past (no connection,
   a timeout, 408, 429, 5xx, `isTransientFailure`), and a reply saying its
   source did not answer this time (a board's `unavailable`,
   `sourceDidNotAnswer`). A permanent reason (a route not served yet, an
@@ -414,6 +432,21 @@ each is that row's.
 - Only when the row is gone (removed, left the list) is what became of it a
   toast. A failure of the whole pane (its feed is down, it is signed out)
   goes in its footer.
+
+The same holds for what the data says about one row of a list of names
+(a screen, a comparison, a portfolio's holdings): a name the screen could
+not price, a peer whose fundamentals are stale, a holding whose evidence has
+gaps. The row says it in a few words (`no price` in its first column with
+room, `Estimated 3 gaps`, its symbol in the warning colour), and the whole
+reason goes in its detail or under the table while the row is selected
+(DataTableView's and MarketBoardStack's `rowNote`, drawn as `RowNote`). A
+pane that is no table says it where its selection is: a correlation cell's
+symbols under the matrix, a series' limitation above its chart. The
+footer's notes are the pane's: what concerns every row, and names with no
+row of their own (a ticker with no trades in the window). A payload that
+repeats its rows' notes among its own (EXPO's `AAPL: …`) is filtered before
+the footer. CSP, EXPO, RV, VIX, PORT, BI, RRG, BTMM, CBR, VAL, CORR, WEI,
+CAT and PF do this.
 
 `useRowNotes` (`gloomberb/components`) keeps the notes: `setNote(key,
 note)` after an action, `noteFor(row)` in the status cell and the detail.
@@ -553,7 +586,7 @@ logo.
 
 **The body under a bar.** What sits under a pane's tabs, query bar and figures takes the rest of the pane by flex on the desktop and the web: spread `FILL_REST` (`components/ui/fill.ts`) on its box, and on the pane's own root box, instead of the rows the terminal counts. A chrome bar is taller than a row there, so a body given `height - 1` rows runs past the footer by the difference. Tables, charts and the 3D surface in that box fill it to the footer. `SeriesListDetail` does this for a series list beside its detail. A pane that shows other panes as views under its own bars (Fixed Income) puts each in a box with `data-gloom-role="nested-pane-content"`, and the view's root takes that box the way a pane's root takes the pane.
 
-**Text that may not fit.** One line that can run past its room (a name in a table cell, a heading) is `ClippedText`, or `SectionHeading` with a `width`: the terminal cuts it at a count of cells, the desktop and the web at the box's edge in CSS with an ellipsis. Siblings that must stay whole (a ticker, a kind badge) keep their room and the text gives way. Never pass a string already cut with `truncateToDisplayWidth` to a DOM render. `ClippedText` takes the caller's own terminal cut (`cut={truncateWithEllipsis}`) so the terminal frame stays as it was, a `lead` kept whole before the text, and `wrap` for a message or description the desktop should wrap rather than cut. An optional item that shows only when it fits beside the rest (a ticker after a name) goes in a row with `flexWrap: "wrap"`, one line tall and clipped: the browser moves what does not fit to the hidden line, as the terminal's count of columns dropped it.
+**Text that may not fit.** One line that can run past its room (a name in a table cell, a heading) is `ClippedText`, or `SectionHeading` with a `width`: the terminal cuts it at a count of cells, the desktop and the web at the box's edge in CSS with an ellipsis. Siblings that must stay whole (a ticker, a kind badge) keep their room and the text gives way. Never pass a string already cut with `truncateToDisplayWidth` to a DOM render. `ClippedText` takes the caller's own terminal cut (`cut={truncateWithEllipsis}`) so the terminal frame stays as it was, a `lead` kept whole before the text, `keepEnd` for the end that tells it apart from its neighbours (an undisclosed customer's number or letter: "Cus… 1"), kept whole in both renderers while what comes before it is cut, and `wrap` for a message or description the desktop should wrap rather than cut. An optional item that shows only when it fits beside the rest (a ticker after a name) goes in a row with `flexWrap: "wrap"`, one line tall and clipped: the browser moves what does not fit to the hidden line, as the terminal's count of columns dropped it.
 
 A table cell's optional `note` adds muted context after its `text`, such as a reference contract and price. It appears whole only when both fit; otherwise the primary text keeps its room and normal ellipsis. Use it through `DataTableCell` or `TickerTableCell`, so the terminal, desktop and web share the same behavior. It does not change the exported cell value.
 
@@ -644,7 +677,13 @@ tooltips. Different metrics stay whole in their own entries instead of
 sharing a caption. `ResolvedSeries.legendContext` supplies that context;
 security series carry their field's label through resolution, including
 unavailable and hidden series. Custom labels are left as authored. A wide
-legend keeps the full names. When the
+legend keeps the full names. Compact company names use the available row
+width together: keep every company name when they all fit; otherwise use
+clean tickers for all of them, never a mix of names and ticker ellipses.
+If even the wrapped legend cannot fit every series, its last scrolling line
+keeps the total series count visible; no drawn series disappears silently.
+Static captures give the legend the space of its hidden add-series control.
+Values, units and the shared metric stay visible. When the
 legend runs short of width, a curve's caption gives way before any series
 name does. A series read against the right axis of a panel whose other
 series read against the left says so after its value, dim: `51.57 USD / troy
@@ -654,6 +693,9 @@ gold) take an axis each: the smaller goes right, with what is drawn in its
 price. Each is read at the median of its loaded bars, and the split is kept
 for that set of prices, so the axes never trade places on a new high or a
 pan.
+
+An open-ended date window ends at its latest observation, not the viewer's
+clock. An explicit end date or a panned viewport keeps its requested bounds.
 
 **The chart earns its rows.** It shows what the table cannot: a trend, a
 curve's shape, how a level moved (look-back curves, trails). The table adds
@@ -679,15 +721,18 @@ the same way:
 
 | Pane body | Figures | Band | Table |
 |---|---|---|---|
-| Room for the chart (six rows: legend, four plot rows, axis) and the table's header plus four rows | up to a quarter of the body, trimmed from the end | the chart, 40% of what the figures leave, or all the rows a short table does not need | the rest; all its rows when they fit |
-| Less room, but the whole table fits with four rows to spare | up to a quarter of the body | a compact chart in the spare rows | all its rows |
-| Too short for either | one row | one row: `● label` sparkline value | the rest |
-| Shorter still, or narrower than 24 columns | one row | none | the rest |
+| Room for the chart (six rows: legend, four plot rows, axis) and the table's header plus four rows | required figures, optional figures up to a quarter of the body | the chart, 40% of what the figures leave, or all the rows a short table does not need | the rest; all its rows when they fit |
+| Less room, but the whole table fits with four rows to spare | required figures first | a compact chart in the spare rows | all its rows |
+| Too short for either | required figures before optional ones | one row: `● label` sparkline value | the rest |
+| Shorter still, or narrower than 24 columns | figures that fit above the table's header and one row | none | the rest |
 
-- The table keeps its header and four rows (all of them when it has fewer)
-  at every size; the chart gives way first, then the second row of figures.
-- Figures are listed most important first; the ones at the end go when rows
-  run short, and the strip leaves out what the remaining figures already say.
+- Figures are optional by default. Only figures marked `essential: true` are
+  required: they take room from the chart before the table, which keeps its
+  header and at least one row. Optional figures never push the table below its
+  header and four rows.
+- Figures are listed most important first. When even required figures cannot fit,
+  captures report the missing figures and do not certify the picture complete.
+  The strip leaves out what the remaining figures already say.
 - A short table never leaves a blank band: the chart grows into its spare rows.
 - Custom charts (curves, scatters) pass their own `minRows` and a `strip`;
   content with a natural height (a few bars) passes `maxRows` and the table

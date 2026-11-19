@@ -223,9 +223,12 @@ test("quote gives the overnight session its own column and names it, saying when
     { rawPrice: 198.78, changePercent: 0.51, extendedSession: "OVERNIGHT", rawExtendedPrice: 198.95, extendedChangePercent: 0.09, extendedMark: true, session: "OVERNIGHT" },
   ]);
   expect(text).toMatch(/Chg% +Chg Basis +Overnight +Session/);
-  // Friday's move, from Thursday's close; the overnight print moves from Friday's.
-  expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(/\$198\.78 +\+0\.51% +vs Thu 8 Oct close +\$198\.95 \+0\.09% +OVERNIGHT/);
-  expect(text.split("\n").find((line) => line.startsWith("XLE"))).toMatch(/\$198\.95 mid \+0\.09% +OVERNIGHT/);
+  // Friday's move, from Thursday's close; the overnight print moves from Friday's. Each price says when it is
+  // from: the print its time in its own cell, Updated the close Last is.
+  const xlk = text.split("\n").find((line) => line.startsWith("XLK"));
+  expect(xlk).toMatch(/\$198\.78 +\+0\.51% +vs Thu 8 Oct close +\$198\.95 \+0\.09% \d{2}:\d{2} UTC +OVERNIGHT/);
+  expect(xlk).toMatch(/Fri 9 Oct close$/);
+  expect(text.split("\n").find((line) => line.startsWith("XLE"))).toMatch(/\$198\.95 mid \+0\.09% \d{2}:\d{2} UTC +OVERNIGHT/);
   expect(text).not.toMatch(/After Hours|Pre-Market/);
 });
 

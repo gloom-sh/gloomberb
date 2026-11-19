@@ -78,6 +78,12 @@ export function zonedWallClockToUtcMs(
   return wallMs - verifiedOffset;
 }
 
+/** The instant a calendar day ("2026-11-12") starts on a zone's clock: 15:00 UTC on 11 Nov in Tokyo. */
+export function zonedDayStart(day: string, timeZone: string): number {
+  const [year, month, date] = day.split("-").map(Number) as [number, number, number];
+  return zonedWallClockToUtcMs(timeZone, year, month, date, 0, 0, 0);
+}
+
 const QUARTER_HOUR_MS = 15 * 60_000;
 const offsetBuckets = new Map<string, Map<number, number>>();
 

@@ -148,35 +148,42 @@ function isQuoteInActiveSession(quote: Quote, now: number): boolean {
 const OPENING_AUCTION_MS = 15 * 60_000;
 
 /**
- * Whether Gloom Cloud vouches that a delayed quote is current, however long
- * ago its last trade was. The service judges more than that trade's age: it
- * knows when it asked for the quote and how often the listing trades, so a
- * thinly traded listing's hour-old trade can be the current price while its
- * venue trades. Its verdict stands in for the age bound when:
+ * Whether Gloom Cloud vouches that a quote is current, however long ago its
+ * last trade was. The service judges more than that trade's age: it knows
+ * when it asked for the quote and how often the listing trades, so a thinly
+ * traded listing's hour-old trade can be the current price while its venue
+ * trades. Its verdict stands in for the age bound when:
  * - the service answered on this request, or a cache entry still inside its
  *   TTL holds that answer (`recentAnswer`); a copy past the TTL is not vouched for;
  * - the answer says `stale: false`. One without the flag vouches for nothing,
  *   and one flagged stale never gets this far;
- * - the quote is delayed. The service bounds a delayed quote's feed age itself
- *   but not a real-time one's, so real-time quotes keep the age bound;
- * - it reports the regular session, the venue's session is in progress as
- *   the delayed feed shows it, and the trade belongs to that session; a
- *   currency pair's session is the service's to judge; or
  * - it reports a US extended-hours session and the trade is no older than
  *   the regular session that session extends: after the close, today's
  *   regular session or its after-hours; before the open, the previous
  *   regular session or anything since. Whether the quote carries the
- *   session's price is the freshness rule's call, made before this one.
+ *   session's price is the freshness rule's call, made before this one. The
+ *   service bounds an extended-hours print's age itself, real-time or
+ *   delayed: past half an hour it asks the source again and keeps the print
+ *   only when the source shows nothing has traded since. GS after hours on
+ *   16 Nov 2026 went more than ten minutes between trades, and its real-time
+ *   quote was dropped as stuck, so the put screen had no price for it; or
+ * - the quote is delayed, it reports the regular session, the venue's
+ *   session is in progress as the delayed feed shows it, and the trade
+ *   belongs to that session; a currency pair's session is the service's to
+ *   judge. The service bounds a delayed quote's feed age in the regular
+ *   session but not a real-time one's, so there real-time quotes keep the
+ *   age bound.
  * The answer says nothing about how often a listing trades, so a liquid
  * listing the service wrongly vouches for is accepted too. The service's own
  * bound for liquid listings, about twenty minutes, is tighter than this one.
  */
 function isVouchedCurrentByService(quote: Quote, exchange: string | undefined, now: number): boolean {
-  if (quote.providerId !== "gloomberb-cloud" || quote.stale !== false || quote.dataSource !== "delayed") return false;
+  if (quote.providerId !== "gloomberb-cloud" || quote.stale !== false) return false;
+  if (quote.dataSource !== "live" && quote.dataSource !== "delayed") return false;
   if (quote.marketState === "PRE" || quote.marketState === "POST") {
     return isUsExtendedHoursSessionPrint(quote.lastUpdated, exchange, quote.marketState, now);
   }
-  if (quote.marketState !== "REGULAR") return false;
+  if (quote.dataSource !== "delayed" || quote.marketState !== "REGULAR") return false;
   // A currency pair trades around the clock through the week, and the service
   // measures its silence against how often that pair prints: a pegged or
   // exotic pair such as SAR=X goes hours without a print while its feed is fine.

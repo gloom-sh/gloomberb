@@ -1,27 +1,36 @@
-import type { DividendPayment, GrowthPayments } from "./types";
-import { MISSING_VALUE, formatCurrency } from "../../../utils/format";
-import { currencyMinorDigits } from "../../../market-data/market/format";
+import type { DividendMetrics, DividendPayment, GrowthPayments } from "./types";
+import { MISSING_VALUE, formatCurrency, formatDistributionAmount } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { NOT_MEANINGFUL, formatPriceEarnings } from "../../../utils/price-earnings";
+import { UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
 import { CADENCE_GRACE_DAYS, LATE_GRACE_DAYS, trailingCashAt, type TrailingPayments } from "../../../utils/trailing-dividend";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-/**
- * A cash amount the listing pays as a conversion of the currency its company
- * declares in (`DividendData.convertedFrom`), to two decimals of the unit its
- * source states it in: pence stay pence (BP's 6.4059p is `6.41p`, never
- * `£0.06`), and a major unit keeps its currency's decimals (`ZAR 0.87`, not
- * `ZAR 0.866087`), as the conversion gives it no more.
- */
 export function formatConvertedAmount(value: number | null | undefined, currency: string, subUnit?: string): string {
   if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const unit = subUnit ? resolveCurrencyUnit(subUnit) : null;
   return unit && unit.divisor !== 1 && unit.currency === currency
-    ? formatCurrency(value * unit.divisor, subUnit!, 2)
-    : formatCurrency(value, currency, currencyMinorDigits(currency));
+    ? formatCurrency(value * unit.divisor, subUnit!, 6)
+    : formatCurrency(value, currency, 8);
+}
+
+export function formatDividendRowAmount(row: Pick<DividendRow, "amount" | "currency" | "cashEstimate">, converted = false, subUnit?: string): string {
+  const cash = converted ? formatConvertedAmount(row.amount, row.currency, subUnit) : formatDistributionAmount(row.amount, row.currency);
+  return `${row.cashEstimate ? "estimated " : ""}${cash}`;
+}
+
+export function forwardEstimateText(metrics: DividendMetrics): string | null {
+  const estimate = metrics.forwardEstimate;
+  if (!estimate) return null;
+  return `${metrics.forwardBasis === "uneven" ? `${UNEVEN_REGULAR_PAYMENTS}; ` : ""}${cashEstimateText(estimate)}`;
+}
+
+export function cashEstimateText(estimate: NonNullable<DividendMetrics["forwardEstimate"]>): string {
+  const declared = estimate.declaredAmount == null ? estimate.declaredCurrency : `${estimate.declaredAmount} ${estimate.declaredCurrency}/share`;
+  return `estimated from ${declared}; FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}${estimate.basis ? `; ${estimate.basis}` : ""}`;
 }
 
 /** What a converted amount says beside it: `converted from USD`. */
@@ -101,6 +110,7 @@ export interface DividendRow {
   key: string;
   exDate: string;
   amount: number;
+  cashEstimate?: DividendPayment["cashEstimate"];
   currency: string;
   /** The amount as the company declared it, in another currency (DividendPayment.declared). */
   declared?: { amount: number; currency: string };
@@ -113,6 +123,7 @@ export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
     key: `${payment.exDate.toISOString()}:${index}`,
     exDate: payment.exDate.toISOString().slice(0, 10),
     amount: payment.amount,
+    ...(payment.cashEstimate ? { cashEstimate: payment.cashEstimate } : {}),
     currency: payment.currency,
     ...(payment.declared ? { declared: payment.declared } : {}),
     ...(payment.source ? { source: payment.source.publisher } : {}),

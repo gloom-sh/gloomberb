@@ -24,7 +24,7 @@ import {
 } from "./analytics-payload";
 import { idEntries } from "./broker-instances";
 import { CORE_CONFIG_CONTRIBUTOR_ID, log } from "./config-contributor";
-import { sanitizePortfolio, sanitizeWatchlist, WATCHLISTS_CARRY_GROUPS } from "./sanitize";
+import { PORTFOLIOS_CARRY_OTHER_CASH, sanitizePortfolio, sanitizeWatchlist, WATCHLISTS_CARRY_GROUPS } from "./sanitize";
 import {
   lastSyncedTickersById,
   latestBrokerPortfolioSyncs,
@@ -55,6 +55,8 @@ export function collectCoreCollectionsPayload(
     baseCurrency: config.baseCurrency,
     exchangeRates: { USD: 1 },
     portfolios: config.portfolios.map(sanitizePortfolio),
+    // The portfolios carry their cash in other currencies, as the config payload's do.
+    [PORTFOLIOS_CARRY_OTHER_CASH]: true,
     watchlists: config.watchlists.map(sanitizeWatchlist),
     // The lists carry their groups, as the config payload's do: a reader can tell a list without them from an older build's.
     [WATCHLISTS_CARRY_GROUPS]: true,

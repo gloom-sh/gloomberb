@@ -187,7 +187,12 @@ function fromPrivateSource<T>(source: string, compile: (path: string) => T): T {
     writeFileSync(path, source, { flag: "wx", mode: 0o600 });
     return compile(path);
   } finally {
-    rmSync(folder, { recursive: true, force: true });
+    // Windows can still hold the file for a moment; a folder left behind must not cost the window its minimum size.
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch (error) {
+      logFailure("window", "Could not remove the minimum size helper's temporary folder")(error);
+    }
   }
 }
 

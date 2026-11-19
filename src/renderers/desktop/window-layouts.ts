@@ -15,6 +15,7 @@ import {
 } from "../../types/config";
 import type { DesktopSharedStateSnapshot, OtherWindowTab } from "../../types/desktop-window";
 import { MAIN_WINDOW_ID, type ExtraWindowRecord } from "./screen-setup";
+import { applyProfileEdits, diffProfile, type ProfileJson } from "../../data/profile-merge";
 
 /**
  * Every full desktop window shows its own layout tabs from one shared config.
@@ -321,6 +322,18 @@ function inSentOrder(layouts: SavedLayout[], sentIds: readonly string[], owns: (
 }
 
 /**
+ * The plugins' settings with what a window changed in them since `before`,
+ * value by value, the window's value winning where both changed one: an
+ * alert another window or a `gloom` command added since stays when this
+ * window's alert check rewrote the same list.
+ */
+function mergedPluginConfig(shared: AppConfig["pluginConfig"], before: AppConfig["pluginConfig"], after: AppConfig["pluginConfig"]): AppConfig["pluginConfig"] {
+  if (deepEqual(shared, before)) return after;
+  const json = (value: AppConfig["pluginConfig"]) => JSON.parse(JSON.stringify(value ?? {})) as ProfileJson;
+  return applyProfileEdits(json(shared), diffProfile(json(before), json(after)), { conflicts: "take" }) as AppConfig["pluginConfig"];
+}
+
+/**
  * Applies what `windowId` sent on top of the shared state, counting only what
  * changed since `base`, the state the window drew from. Settings and lists
  * take the window's value when it changed them. Tabs are matched by id: the
@@ -349,6 +362,7 @@ export function mergeWindowSnapshot(
   for (const key of new Set([...Object.keys(afterRecord), ...Object.keys(beforeRecord)])) {
     if (LAYOUT_KEYS.has(key) || deepEqual(afterRecord[key], beforeRecord[key])) continue;
     if (afterRecord[key] === undefined) delete configRecord[key];
+    else if (key === "pluginConfig") configRecord[key] = mergedPluginConfig(state.config.pluginConfig, before.config.pluginConfig, after.config.pluginConfig);
     else configRecord[key] = afterRecord[key];
   }
 

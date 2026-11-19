@@ -20,16 +20,23 @@ export const ROLE_COLORS: Readonly<Record<SupplyRole, string>> = currentThemeCol
 
 /** A company, a customer the filer does not name, or a geographic or channel cohort that is not one company. */
 export type CounterpartyKind = "company" | "undisclosed" | "group";
-export const counterpartyKind = (row: SupplyRow): CounterpartyKind =>
+export const counterpartyKind = (row: Pick<SupplyRow, "counterparty">): CounterpartyKind =>
   row.counterparty.aggregate ? "group" : row.counterparty.anonymous ? "undisclosed" : "company";
 
 const GENERIC_WORDS = /\b(And|Of|The|Based|End|Customers?|Suppliers?|Vendors?|Channel|Partners?|Undisclosed|Other|Carriers?|Networks?|Cellular|Distributors?|Retailers?)\b/g;
 
+/**
+ * The measure a filer spells into an undisclosed customer's member ("Revenue Customer 1", "A/R Customer A"), which
+ * the share beside it already names: the label keeps what tells the customers apart.
+ */
+const MEASURE_PREFIX = /^(?:revenues?|net sales|sales|a\/r|ar|accounts receivables?|receivables?|trade receivables?)\s+(?=(?:customer|client|supplier|vendor)\b)/i;
+
 /** The counterparty's name without the kind spelled into it; the kind travels as its own label. */
-export function counterpartyLabel(row: SupplyRow): string {
+export function counterpartyLabel(row: Pick<SupplyRow, "counterparty" | "pctBasis">): string {
   const kind = counterpartyKind(row);
   if (kind === "company") return row.counterparty.name;
-  const name = counterpartyName(row).replace(/^Group: /, "").replace(/\s*\(undisclosed\)$/i, "");
+  const name = counterpartyName(row).replace(/^Group: /, "").replace(/\s*\(undisclosed\)$/i, "")
+    .replace(row.pctBasis ? MEASURE_PREFIX : /^$/, "");
   // Cohort labels arrive in title case from XBRL member names; generic words read lower case, names keep theirs.
   return name.replace(GENERIC_WORDS, (word) => word.toLowerCase()).replace(/^./, (first) => first.toUpperCase());
 }
@@ -54,8 +61,26 @@ export const counterpartyKindLabel = (row: SupplyRow, short = false) => {
   if (isRelatedParty(row)) return namedGroup(row) ? short ? "related group" : "related-party group" : "related party";
   return namedGroup(row) ? short ? "group" : "corporate group" : null;
 };
+/**
+ * A row's role as the company it is read for sees it. An investee row runs
+ * from the holder to the company held, so read inbound its counterparty is
+ * the holder: Sinopec, whose interim report holds CATL shares, is CATL's
+ * investor, not its investee.
+ */
+export const rowRoleLabel = (row: Pick<SupplyRow, "role"> & { direction?: SupplyRow["direction"] }) =>
+  row.role === "investee" && row.direction === "in" ? "Investor" : roleLabel(row.role);
 /** The relationship in words: "Related-party supplier" for a related-party trade, else the role. */
-export const relationshipLabel = (row: Pick<SupplyRow, "role" | "relatedParty">) => isRelatedParty(row) ? `Related-party ${row.role}` : roleLabel(row.role);
+export const relationshipLabel = (row: Pick<SupplyRow, "role" | "relatedParty"> & { direction?: SupplyRow["direction"] }) =>
+  isRelatedParty(row) ? `Related-party ${rowRoleLabel(row).toLowerCase()}` : rowRoleLabel(row);
+
+/**
+ * The end of a counterparty's label that tells it apart, which a narrow column keeps whole while it cuts what comes
+ * before: the letter or number of an undisclosed customer ("Customer 1", "Customer A"). Null for a company's name.
+ */
+export function counterpartyLabelEnd(row: Pick<SupplyRow, "counterparty" | "pctBasis">): string | null {
+  if (counterpartyKind(row) !== "undisclosed") return null;
+  return / (?:\d{1,3}|[A-Z]|One|Two|Three|Four|Five|Six)$/i.exec(counterpartyLabel(row))?.[0] ?? null;
+}
 
 /** A filer's segment or product scope in plain words: "Compute And Networking Segment" reads "Compute & Networking". */
 export function scopeWords(scope: string): string {
@@ -107,6 +132,15 @@ export function shareParts(row: SupplyRow, focusId?: string | null, { includeRep
   if (row.sourceKind === "xbrl" && scope) {
     if (taggedDimension(row, "ProductOrService"))
       return shareWords(value, [`of ${reporter}total ${basis} (${lowerFirst(scope)} sales)${owed}`, `of ${reporter}total ${basis}`, `${reporter}${basis}`]);
+    // A segment tag says where the revenue comes from or whose revenue it is a share of; the filing's sentence says
+    // which (`pctScopeBasis`): NVDA's 16% is of total revenue, from Compute & Networking; RPM's 24% of Consumer's own.
+    if (row.pctScopeBasis === "total")
+      return shareWords(value, [`of ${reporter}total ${basis}, from ${scope}${owed}`, `of ${reporter}total ${basis}`, `${reporter}${basis}`]);
+    if (row.pctScopeBasis === "segment")
+      return shareWords(value, [`of ${reporter}${scope} ${basis}${owed}`, `of ${reporter}segment ${basis}`, `${reporter}segment ${basis}`]);
+    // A segment tag not yet read is said as a tag, never as the share's base.
+    if (taggedDimension(row, "BusinessSegments") || /segment/i.test(row.pctScope ?? ""))
+      return shareWords(value, [`of ${reporter}${basis}, tagged ${scope}${owed}`, `of ${reporter}${basis}`, `${reporter}${basis}`]);
     return shareWords(value, [`of ${reporter}${basis} (${scope})${owed}`, `${reporter}${basis}`]);
   }
   const scoped = `${scope ? `${scope} ` : ""}${basis}`;
@@ -151,7 +185,7 @@ export function disclosureText(row: SupplyRow): string {
     .filter((part): part is string => !!part).join(", ") || "Tagged in the filing";
 }
 
-export function counterpartyName(row: SupplyRow): string {
+export function counterpartyName(row: Pick<SupplyRow, "counterparty">): string {
   if (row.counterparty.aggregate) return `Group: ${row.counterparty.name.replace(/^Undisclosed customer \((.+)\)$/i, "$1")}`;
   if (!row.counterparty.anonymous) return row.counterparty.name;
   const name = row.counterparty.name;
@@ -219,6 +253,16 @@ export function supplyRoleCounts(data: Pick<SupplyChainPayload, "says" | "names"
  * as current counterparties. Empty from servers that do not split them.
  */
 export const earlierRows = (data: Pick<SupplyChainPayload, "earlier">, view: "says" | "names"): SupplyRow[] => data.earlier?.[view] ?? [];
+
+/**
+ * The direction a table opens on before one is chosen: what the company says,
+ * unless its own reports name no one and others' name it (CATL: none of its
+ * own, ten from customers, competitors and a holder), not an empty table.
+ */
+export function openingSupplyView(data: Pick<SupplyChainPayload, "says" | "names" | "earlier">, options: Required<SupplyOptions>): "says" | "names" {
+  const shown = (rows: SupplyRow[]) => rows.some((row) => matchesSupplyOptions(row, options));
+  return !shown(data.says) && !shown(earlierRows(data, "says")) && shown(data.names) ? "names" : "says";
+}
 
 /** Disclosures a free preview withholds from these views: the server's counts less the rows it sent. */
 export function lockedDisclosures(data: Pick<SupplyChainPayload, "says" | "names" | "counts" | "earlier" | "earlierCounts">, views: readonly ("says" | "names")[]): number {
@@ -347,7 +391,7 @@ export const periodText = (row: Pick<SupplyRow, "period" | "periodMonths">) => {
 export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL" : row.sourceKind === "filing_text" ? row.form ?? "Filing" : row.sourceKind === "call" ? "Call" : row.sourceKind === "news" ? "News" : row.sourceKind === "press_release" ? "Release" : row.sourceKind === "web" ? "Web" : "Disclosure";
 export function cellText(row: SupplyRow, column: string): string {
   return column === "name" ? counterpartyName(row) : column === "ticker" ? entityTicker(row.counterparty) ?? MISSING_VALUE
-    : column === "role" ? roleLabel(row.role) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
+    : column === "role" ? rowRoleLabel(row) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
     : column === "pct" ? percentage(row) : column === "usd" ? disclosedValue(row) : column === "fy" ? periodText(row)
     : column === "publisher" ? row.evidence?.find((item) => item.status === "active")?.publisher ?? row.reportingEntity.name
     : column === "corroboration" ? corroborationLabel(row)

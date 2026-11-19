@@ -5,11 +5,17 @@
 | Type | Opens |
 |---|---|
 | `MAP` | The world map: trading venues and the default layers (today the shipping chokepoints) |
-| `MAP venues` | Trading venues alone, with open status, local time and the next session change |
+| `MAP venues` | Trading venues alone, with each one's session, local time and the next session change |
 | `MAP ships` | Ships and shipping chokepoints |
 | `MAP ports` | Ports with weekly calls and trade |
 | `MAP energy` | Pipelines, oil and gas fields and LNG terminals, all in the United States (the footer dates the terminals' capacity list); a search elsewhere says so |
 | `MAP air` | Airports, and flights where they are switched on |
+| `MAP ships Sydney` | Ships and chokepoints around Sydney |
+| `MAP air 51.5,-0.1` | Air traffic around latitude 51.5, longitude -0.1 |
+
+A venue's session is `open` while its core session trades, `holiday` on a full-day closure its exchange published (Nasdaq Riga on Latvia's Proclamation Day), `pre-market` or `after-hours` for a US venue trading around its core session, and `closed` otherwise. `gloom fn MAP venues --json` keeps `open` for the core session beside `session`.
+
+Put a place after the layers. Coordinates are latitude,longitude; names come from the app's countries, venue cities and layer search (including ports, airports and chokepoints), with no outside geocoder. An unknown place opens the world and says so in the footer. In pane settings, **Home area** sets where new maps without a place start; blank means world. The table starts with nearby results first, including in `gloom fn MAP ships Sydney` and `gloom shot MAP ships Sydney`. The terminal always draws the whole world. On desktop and web, moving the map switches layer tables to the visible area at the layer's supported zoom, and the pane keeps its own saved pan and zoom.
 
 ## Layers
 

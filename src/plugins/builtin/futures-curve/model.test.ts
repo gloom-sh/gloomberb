@@ -136,7 +136,9 @@ test("Dutch TTF gas is a curve root that reads in euros per MWh at its 0.001 tic
   // The server sends no contract terms for the euro contract, so the catalogue says what a price counts.
   expect(curveUnitLabel(ttf)).toBe("EUR / MWh");
   // A root with neither terms nor a catalogue unit reads its quote unit, and the server's terms win.
-  expect(curveUnitLabel({ ...payload(), spec: null })).toBe("USD");
+  expect(curveUnitLabel({ ...payload(), root: "VX", spec: null })).toBe("USD");
+  // Crude whose terms are missing reads per barrel, from the catalogue.
+  expect(curveUnitLabel({ ...payload(), spec: null })).toBe("USD / barrel");
   expect(curveUnitLabel({ ...ttf, spec: { unit: "EUR / MWh", size: "1 MW", pointValue: 1, tick: 0.001, tickValue: 0.001, settlement: "cash" } })).toBe("EUR / MWh");
   // A past TTF curve keeps the archive's euro rather than defaulting to dollars.
   const past = archivedFuturesCurve("TTF", { root: "TTF", name: "Dutch TTF Natural Gas", date: "2026-10-02", asOf: "2026-10-02", currency: "EUR", quoteUnit: "EUR",
@@ -156,9 +158,10 @@ test("every FUT board root opens a curve, as a typed code or an =F symbol; the c
   }
   expect(requested).toEqual(FUTURES_CONTRACTS.map((row) => row.code));
   // Zoom, KC wheat's, live cattle's, lean hogs' and aluminum's codes are listed securities too, as are those of a sector ETF
-  // (XAR), Goldmoney (XAU), Sensient (SXT) and the micros listed abroad: under the cursor they open the curve only as the
-  // future's symbol, while a typed argument always means the future.
-  const securities = ["ZM", "KE", "LE", "HE", "ALI", "EMD", "RS1", "MES", "MYM", "M2K", "SXT", "SXI", "SOX", "XAU", "XAR", "RX", "MCL", "MNG", "HH"];
+  // (XAR), Goldmoney (XAU), Sensient (SXT), the micros listed abroad and the micro metals' ETFs (MGC, SIL): under the cursor
+  // they open the curve only as the future's symbol, while a typed argument always means the future.
+  const securities = ["ZM", "KE", "LE", "HE", "ALI", "EMD", "RS1", "MES", "MYM", "M2K", "SXT", "SXI", "SOX", "XAU", "XAR", "RX", "MCL", "MNG", "HH",
+    "MGC", "SIL", "MHG"];
   for (const row of FUTURES_CONTRACTS) {
     expect(curveRootForTicker(row.symbol)).toBe(row.code);
     expect(curveRootForTicker(row.code.toLowerCase())).toBe(securities.includes(row.code) ? null : row.code);

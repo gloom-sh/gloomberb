@@ -6,7 +6,7 @@ import {
 } from "../../../../state/persist-scheduler";
 import { backendRequest, getElectrobunBackendInitSnapshot } from "../backend-rpc";
 import { WriteThroughResourceStore } from "../../../../data/memory-resource-store";
-import { isBrokerAccountSnapshotKey } from "../../../../brokers/account-cache";
+import { createBatchedResourceSink, isViewResourceKey } from "../../../../data/durable-resources";
 import { logFailure } from "../../../../utils/log-failure";
 
 class RemoteSessionStore {
@@ -161,25 +161,28 @@ class RemotePluginStateStore {
 }
 
 /**
- * Caches stay in the view's memory, except broker account snapshots: the Bun
- * process saves those in the cache database, as the terminal does, so a
- * broker portfolio opens with its last known equity and cash.
+ * The plugins' caches live in the view's memory and are written through to
+ * the Bun process's cache database, as the terminal keeps them, in batches.
+ * A window starts from the records it read most recently there (and every
+ * broker account snapshot), so its panes open on their saved copies.
  */
-function createViewResourceStore(): WriteThroughResourceStore {
-  return new WriteThroughResourceStore(getElectrobunBackendInitSnapshot()?.savedResources ?? [], {
-    set: (record) => void backendRequest("resources.set", { record }).catch(logFailure("desktop-view-persistence", "Could not save a broker account snapshot")),
-    delete: (key) => void backendRequest("resources.delete", { key }).catch(logFailure("desktop-view-persistence", "Could not delete a broker account snapshot")),
-  }, isBrokerAccountSnapshotKey);
-}
-
 export class RemotePersistence {
   readonly tickers = {};
-  readonly resources = createViewResourceStore();
+  private readonly resourceSink = createBatchedResourceSink(
+    (batch) => backendRequest("resources.sync", batch),
+    { label: "desktop-view-persistence" },
+  );
+  readonly resources = new WriteThroughResourceStore(
+    getElectrobunBackendInitSnapshot()?.savedResources?.splice(0) ?? [],
+    this.resourceSink,
+    isViewResourceKey,
+  );
   readonly pluginState = new RemotePluginStateStore(getElectrobunBackendInitSnapshot()?.pluginState ?? {});
   readonly sessions = new RemoteSessionStore();
 
   close(): void {
     void this.sessions.flush();
     void this.pluginState.flush();
+    void this.resourceSink.flush().catch(logFailure("desktop-view-persistence", "Could not flush cached resources"));
   }
 }

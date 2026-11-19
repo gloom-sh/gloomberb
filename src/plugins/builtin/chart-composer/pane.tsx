@@ -20,6 +20,7 @@ import {
   type MultiSelectRowAction,
 } from "../../../components/ui";
 import { CompositeChart } from "../../../components/chart/composite";
+import { useCaptureDatesData } from "../../../components/layout/pane/capture-status";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { useChartViewReset, useChartViewResetListener } from "../../../components/chart/core/view-reset";
 import { formatCompositeDatasetDate } from "../../../components/chart/composite/format";
@@ -64,6 +65,7 @@ import { getTimeSeriesField, isMarketFieldId } from "../../../time-series/field-
 import { isDatasetChart, isOhlcSeriesStyle } from "../../../time-series/spec";
 import { useThemeColors } from "../../../theme/theme-context";
 import { comparisonLegCurrencies, priceComparisonSeriesIds } from "../../../time-series/price-comparison";
+import { periodDayText } from "../../../market-data/market/period-return";
 import { companyLegendLabels } from "./legend-names";
 import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
@@ -120,7 +122,7 @@ import {
   type PairStudySelection,
 } from "./studies";
 import { buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
-import type { ChartInteractionViewport } from "./chart-spec";
+import { comparisonPresetResolution, type ChartInteractionViewport } from "./chart-spec";
 import {
   CHART_FORMULA_OPTIONS,
   CHART_BAR_SIZE_PRESETS,
@@ -962,14 +964,18 @@ function ChartComposerSurface({
   /** The range the bar shows as selected; a fixed window or a period count leaves a range to pick. */
   const rangeReselects = !spec.viewport.dateWindow && spec.viewport.maxPoints === undefined;
   const setRange = useCallback((range: TimeRange) => {
+    const current = spec.viewport;
+    const changesSession = range === "1D" ? current.resolution === "1d"
+      : current.range === "1D" && current.resolution === "auto";
+    const resolution = changesSession && priceComparisonSeriesIds(spec) ? comparisonPresetResolution(range) : current.resolution;
     // The range already showing: a view moved off it goes back to it, as `0` does.
-    if (rangeReselects && range === spec.viewport.range) {
+    if (rangeReselects && range === current.range && resolution === current.resolution) {
       resetChartView();
       return;
     }
     setSpec({
       ...spec,
-      viewport: { ...spec.viewport, range, dateWindow: undefined, maxPoints: undefined },
+      viewport: { ...current, range, resolution, dateWindow: undefined, maxPoints: undefined },
     });
   }, [rangeReselects, resetChartView, setSpec, spec]);
   const setResolution = useCallback((next: ChartResolution) => {
@@ -1217,8 +1223,14 @@ function ChartComposerSurface({
     const timeZone = exchange?.kind === "security"
       ? intradaySessionTimeZone(exchange.instrument.symbol, exchange.instrument.exchange)
       : "UTC";
-    return formatChartDateWindow(window, timeZone);
-  }, [spec.series, spec.viewport.dateWindow]);
+    const end = window.endAtLatestObservation && viewport?.end
+      ? /^\d{4}-\d{2}-\d{2}$/.test(window.end) ? viewport.end.toISOString().slice(0, 10) : viewport.end.toISOString()
+      : window.end;
+    return formatChartDateWindow({ ...window, end }, timeZone);
+  }, [spec.series, spec.viewport.dateWindow, viewport?.end]);
+  const comparisonEnd = resolution.resolution === "1d" ? Object.values(resolution.priceComparison?.legs ?? {})[0] : undefined;
+  const comparisonAsOf = comparisonEnd && `${periodDayText(comparisonEnd.endDay, new Date().getUTCFullYear())} ${comparisonEnd.intraday ? "partial" : "close"}`;
+  const captureDatesData = useCaptureDatesData();
 
   // A generic future (CL1) is a rolling series: its roll rule and adjustment are chart controls.
   const generic = useMemo(() => chartFuturesGeneric(spec), [spec]);
@@ -1323,7 +1335,8 @@ function ChartComposerSurface({
           options: resolutionOptions,
           onChange: (value: string) => setResolution(value as ChartResolution),
         } : undefined}
-        meta={dateWindowLabel}
+        asOf={comparisonAsOf}
+        meta={[dateWindowLabel, captureDatesData && comparisonAsOf].filter(Boolean).join(" · ") || undefined}
       />
       <MultiSelectDialogButton
         ref={indicatorsDialogRef}

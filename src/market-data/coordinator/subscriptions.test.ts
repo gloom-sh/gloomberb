@@ -5,6 +5,8 @@ import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler"
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import type { Quote } from "../../types/financials";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
+import { MemoryResourceStore } from "../../data/memory-resource-store";
+import { setSavedCopyStore } from "../../data/pane-saved-copies";
 import {
   QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS,
   QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS,
@@ -581,6 +583,31 @@ describe("MarketDataCoordinator key subscriptions", () => {
       expect(coordinator.getQuoteEntry(aapl).data?.receivedAt).toBe(firstTimestamp + 20_000);
     } finally {
       Date.now = realDateNow;
+    }
+  });
+
+  test("the first stream tick replaces a saved quote even when the price and timestamp are unchanged", async () => {
+    const previous = setSavedCopyStore(new MemoryResourceStore());
+    const first = createProvider();
+    const next = createProvider();
+    const initial = new MarketDataCoordinator(first.provider);
+    const reopened = new MarketDataCoordinator(next.provider);
+    const instrument = { symbol: "AAPL", exchange: "NASDAQ" };
+    const tick = quote("AAPL", 100, { lastUpdated: Date.now(), dataSource: "live", delivery: "stream" });
+    try {
+      initial.subscribeQuotes([{ instrument }]);
+      first.emitQuote(instrument, tick);
+      await flushCoordinator();
+      expect(reopened.getQuoteEntry(instrument).savedCopyAt).toBeNumber();
+      reopened.subscribeQuotes([{ instrument }]);
+      next.emitQuote(instrument, tick);
+      await flushCoordinator();
+      expect(reopened.getQuoteEntry(instrument).data?.price).toBe(100);
+      expect(reopened.getQuoteEntry(instrument).savedCopyAt).toBeUndefined();
+    } finally {
+      initial.destroy();
+      reopened.destroy();
+      setSavedCopyStore(previous);
     }
   });
 

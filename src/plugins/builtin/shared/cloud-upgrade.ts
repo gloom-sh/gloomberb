@@ -245,7 +245,7 @@ export function useCloudUpgradeAction(placement: string): (options?: unknown) =>
         if (resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess) return;
         void openUpgradeRef.current({ ...checkout, recordIntent: false });
       };
-      if (requestAuthDialog({ mode: "signup", onSignedIn: continueSignedIn, ...(checkout.reason ? { reason: checkout.reason } : {}) })) {
+      if (requestAuthDialog({ mode: "signup", onSignedIn: continueSignedIn, checkout: true, ...(checkout.reason ? { reason: checkout.reason } : {}) })) {
         if (checkout.recordIntent !== false) recordUpgradeIntent(checkout.placement);
         return;
       }

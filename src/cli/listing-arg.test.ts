@@ -237,8 +237,10 @@ test("a broker's index code is the index, and a cashtag stays the stock it names
   persistences.push(persistence);
   const store = new TickerRepository(persistence.tickers);
   const quoted: string[] = [];
-  // No source lists VIX; MOVE is Corvex, AAPL Apple, and a quote for MID times out.
+  // No source lists VIX; MOVE is Corvex, AAPL Apple, and a quote for MID times out. The shipped listings know AAPL as a
+  // US stock, as the command line's provider says.
   const dataProvider = createTestDataProvider({
+    knownUsStock: (symbol) => symbol === "AAPL",
     getQuote: async (symbol) => {
       quoted.push(symbol);
       if (symbol === "VIX") throw new Error("No provider available for VIX");
@@ -627,6 +629,16 @@ test("a listing that moved to a new symbol, typed by its old symbol or its old n
   }
   // Named on a venue, the old symbol is what was asked for.
   expect((await resolveCliListing("ELET3", "B3", deps)).request.symbol).not.toBe("AXIA3.SA");
+  // TATAMOTORS follows its line, renamed TMPV, never the demerged company that took the Tata Motors name; the name
+  // itself is no old symbol.
+  const line = "NSE renamed TATAMOTORS TMPV (Tata Motors Passenger Vehicles) on 24 Oct 2025; its commercial-vehicle business was demerged into TMCV:NSE (Tata Motors Limited).";
+  for (const typed of ["TATAMOTORS", "TATAMOTORS:NSE", "TATAMOTORS.NS"]) {
+    const listing = await resolveCliListing(typed, undefined, deps);
+    expect(listing.key, typed).toBe("TMPV:NSE");
+    expect(listing.readAs, typed).toBe(`Read ${typed} as TMPV:NSE: ${line}`);
+  }
+  expect((await resolveCliListing("TATAMOTORS:BSE", undefined, deps)).key).toBe("TMPV:BSE");
+  expect((await resolveCliListing("tata motors", undefined, deps)).readAs ?? "").not.toContain("TMPV");
 });
 
 test("a code its exchange withdrew is that company, gone on its day for its reason, never the line another market trades under the digits", async () => {

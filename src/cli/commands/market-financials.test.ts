@@ -113,6 +113,24 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
   );
 });
 
+test("financials with no fiscal year to list says why and where the quarters are, never a bare \"No results.\"", async () => {
+  // O8A:FWB2 had one quarter on record (to 2026-05-31) and no full year reported.
+  const quarterOnly: TickerFinancials = { ...FINANCIALS, quote: { ...FINANCIALS.quote!, symbol: "O8A:FWB2" }, annualStatements: [],
+    quarterlyStatements: [{ date: "2026-02-28", netIncome: -12_000 }, { date: "2026-05-31", netIncome: -671_000 }] };
+  const pointer = "No fiscal-year statements on record for O8A:FWB2; its quarterly statements run to 2026-05-31: gloom fn FA O8A:FWB2 --period quarterly";
+  const text = (await run("financials", [], "text", quarterOnly)).join("\n");
+  expect(text).toContain(pointer);
+  expect(text).not.toContain("No results.");
+  // JSON and CSV readers get the same line.
+  expect(JSON.parse((await run("financials", [], "json", quarterOnly)).join("\n")).metadata.notes).toEqual([pointer]);
+  expect((await run("financials", [], "csv", quarterOnly)).join("\n")).toContain(pointer);
+  // Years with balance sheet figures alone point at those; a fund with no statements says it has none.
+  expect((await run("financials", [], "text", { ...quarterOnly, annualStatements: [{ date: "2025-12-31", totalAssets: 9_000 }] })).join("\n"))
+    .toContain("No fiscal-year revenue, income or EPS on record for O8A:FWB2. Its balance sheets: gloom fn FA O8A:FWB2 --statement balance");
+  expect((await run("financials", [], "text", { ...quarterOnly, quarterlyStatements: [] })).join("\n"))
+    .toContain("No fiscal-year or quarterly statements on record for O8A:FWB2.");
+});
+
 test("--section names the sections a report has, and is only for --csv and --ndjson", async () => {
   await expect(run("fundamentals", ["--section", "ratios"], "csv")).rejects.toThrow(
     "No section \"ratios\". Sections: Fundamentals, Profile, or a number from 1 to 2.",

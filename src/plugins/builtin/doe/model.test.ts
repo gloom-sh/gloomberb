@@ -6,7 +6,7 @@ import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneLoadArgs } 
 import { DOE_NOT_AVAILABLE, fetchDoeBoard } from "./client";
 import { doeHeadless } from "./headless";
 import {
-  doeComparisonBasis, doeHeaderLine, doeSeasonalSeries, doeSeriesOption, formatDoeChange, formatDoeVsFive, formatDoeVsYear,
+  doeComparisonBasis, doeCoverageNote, doeHeaderLine, doeSeasonalSeries, doeSeriesOption, formatDoeChange, formatDoeVsFive, formatDoeVsYear,
 } from "./model";
 
 /** Commercial crude as the board served it for the week ending 2026-09-25. */
@@ -216,6 +216,22 @@ describe("DOE figures", () => {
     // A row with nothing to compare does not count either way.
     expect(doeComparisonBasis([mountain(), crude({ basis: "computed", yearAgo: null, fiveYear: null })]))
       .toBe("year-ago and 5-year average as EIA published");
+  });
+
+  test("opened from a futures search on no energy contract, the board says what it covers and that those stocks are not on it", () => {
+    const covers = "Covers US oil and gas inventories only";
+    // FUT HG opens the board searched for HG=F; a name, a group and a rates contract read the same way.
+    expect(doeCoverageNote("HG=F")).toBe(`${covers}, not Copper (HG) stocks.`);
+    expect(doeCoverageNote("copper")).toBe(`${covers}, not Copper (HG) stocks.`);
+    // A micro metal names itself, and a name it shares with its full-size contract names that one.
+    expect(doeCoverageNote("MGC=F")).toBe(`${covers}, not Micro Gold (MGC) stocks.`);
+    expect(doeCoverageNote("SIL=F")).toBe(`${covers}, not Micro Silver (SIL) stocks.`);
+    expect(doeCoverageNote("MHG=F")).toBe(`${covers}, not Micro Copper (MHG) stocks.`);
+    expect(doeCoverageNote("silver")).toBe(`${covers}, not Silver (SI) stocks.`);
+    expect(doeCoverageNote("grains")).toBe(`${covers}, not agriculture stocks.`);
+    expect(doeCoverageNote("ZN=F")).toBe(`${covers}; 10-Year T-Note (ZN) is a financial future with none to report.`);
+    // An energy search, a search that names nothing, and no search at all are the board's own subject.
+    for (const query of ["CL=F", "NG=F", "energy", "urea", "", undefined]) expect(doeCoverageNote(query)).toBeNull();
   });
 
   test("a typed series opens by id, label or region name", () => {

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { ApiRequestError } from "../../../api-client/errors";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
 import type { TickerRecord } from "../../../types/ticker";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -60,12 +61,22 @@ export function useBoundTicker() {
   };
 }
 
+/**
+ * One listing's research, loaded with `loader`. `savedAs` names what it is
+ * (with anything else it depends on beyond the listing): the pane then opens
+ * on the copy it last loaded for this listing, and refreshes behind it.
+ */
 export function useTickerRequest<T>(
   loader: (symbol: string, exchange: string, forceRefresh: boolean) => Promise<T>,
   symbol: string | null,
   exchange: string,
+  savedAs?: readonly unknown[],
 ) {
+  const scope = useCloudDisplayScope();
   const request = useCallback((force: boolean) => loader(symbol!, exchange, force), [exchange, loader, symbol]);
-  const { data, loading, error, reload } = useAsyncResource(symbol ? request : null, { clearOnError: discardDeniedResearch });
+  const { data, loading, error, reload } = useAsyncResource(symbol ? request : null, {
+    clearOnError: discardDeniedResearch,
+    savedCopy: savedAs && symbol && scope ? { key: [...savedAs, scope, symbol, exchange] } : null,
+  });
   return { data, loading, error: symbol ? error : "No ticker selected", reload };
 }

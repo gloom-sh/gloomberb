@@ -12,10 +12,35 @@ import { WebIcon, WebIconButton } from "../desktop/icons";
 import { WebMenu } from "../desktop/menu";
 import { WebPopover } from "../desktop/popover";
 import { useHorizontalOverflow } from "./overflow-fade";
+import { FADE_PX } from "./overflow-fade-px";
+import { isLiveResizing, onLiveResizeEnd } from "../../../ui/live-resize";
 import { useTopSurfaceColor } from "./top-surface";
 import { hideDragShield, showDragShield } from "./drag-shield";
 
 type CssVars = CSSProperties & Record<`--${string}`, string>;
+
+/**
+ * Scrolls a strip so `tab` shows. A title-bar strip also keeps it clear of
+ * the fades at its edges (overflow-fade.ts), which would fade the active tab's
+ * box and let the header's rule show through it; when the tab cannot clear
+ * both, its start shows. At either end the fade on that side goes, so the
+ * first and last tabs sit at the edge.
+ */
+function revealTab(list: HTMLElement | null, tab: HTMLElement | null, clearOfFades: boolean): void {
+  if (!list || !tab) return;
+  if (!clearOfFades) {
+    tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+    return;
+  }
+  const box = list.getBoundingClientRect();
+  const rect = tab.getBoundingClientRect();
+  // How far to scroll right: at least this for the tab's end to clear the
+  // end fade, at most that for its start to clear the start fade.
+  const atLeast = rect.right - (box.right - FADE_PX);
+  const atMost = rect.left - (box.left + FADE_PX);
+  const delta = atLeast > 0 ? Math.min(atLeast, atMost) : atMost < 0 ? atMost : 0;
+  if (delta !== 0) list.scrollLeft += delta;
+}
 
 export function WebTabs({
   tabs,
@@ -61,11 +86,34 @@ export function WebTabs({
   // Again once the overflow chevron appears: it narrows the strip, which would
   // otherwise push the last tab's label past the edge.
   useEffect(() => {
-    activeTabRef.current?.scrollIntoView({
-      block: "nearest",
-      inline: "nearest",
+    revealTab(tabListRef.current, activeTabRef.current, header);
+  }, [activeValue, tabs, overflowing, header]);
+  // A title-bar strip again when it changes width (its pane resized, focus
+  // showing the header's buttons), so the active tab stays clear of the fades;
+  // after a live resize rather than on every frame of it.
+  useEffect(() => {
+    const list = tabListRef.current;
+    if (!header || !list || typeof ResizeObserver === "undefined") return;
+    let width = list.clientWidth;
+    let pending = false;
+    const reveal = () => revealTab(list, activeTabRef.current, true);
+    const observer = new ResizeObserver(() => {
+      if (list.clientWidth === width) return;
+      width = list.clientWidth;
+      if (isLiveResizing()) pending = true;
+      else reveal();
     });
-  }, [activeValue, tabs, overflowing]);
+    const stopListening = onLiveResizeEnd(() => {
+      if (!pending) return;
+      pending = false;
+      reveal();
+    });
+    observer.observe(list);
+    return () => {
+      observer.disconnect();
+      stopListening();
+    };
+  }, [header]);
   useEffect(() => {
     if (!overflowing) setOverflowMenuOpen(false);
   }, [overflowing]);
@@ -78,9 +126,8 @@ export function WebTabs({
     onSelect(value);
     // Also when the chosen tab was already active, so the effect above does not run.
     requestAnimationFrame(() => {
-      tabListRef.current
-        ?.querySelector<HTMLElement>(`[data-tab-value="${CSS.escape(value)}"]`)
-        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const list = tabListRef.current;
+      revealTab(list, list?.querySelector<HTMLElement>(`[data-tab-value="${CSS.escape(value)}"]`) ?? null, header);
     });
   };
   const startReorder = (sourceValue: string, event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -220,7 +267,9 @@ export function WebTabs({
           "--tab-active-fg": header ? "var(--pane-tab-active-fg)" : palette.activeFg,
           flex: "0 0 auto",
           minWidth: 0,
-          margin: 0,
+          // A title-bar tab's margins are its look (styles.css): the active one
+          // reaches past the header's rule.
+          margin: header ? undefined : 0,
           transform: `translateX(${dragTranslateX}px)${sourceDragging ? " scale(1.03)" : ""}`,
           zIndex: dragSourceValue === tab.value ? 2 : undefined,
           willChange: dragSourceValue ? "transform" : undefined,

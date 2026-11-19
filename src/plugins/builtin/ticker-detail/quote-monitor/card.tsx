@@ -25,6 +25,8 @@ import { formatQuoteNavAsOf, formatQuoteSessionAsOf } from "../../../../market-d
 import { ClippedText } from "../../../../components/ui/display";
 import { useSelectionFill } from "../../../../components/ui/selection-fill";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
+import { useSavedCopyFooter } from "../../../../components/layout/pane/footer/registration";
+import { savedCopyAt } from "../../../../data/saved-copies";
 import { followLiveSparklinePrice } from "../../../../components/price-sparkline/model";
 import {
   PriceAreaSparklineBackground,
@@ -65,6 +67,9 @@ function extendedLineParts(
 }
 
 const DESKTOP_DETAIL_TEXT_STYLE = { fontSize: "var(--gloom-type-ui)", lineHeight: "14px", whiteSpace: "nowrap" };
+
+/** A desktop card row: its line's height at least, more only as its line needs. */
+const CARD_LINE_ROW = "minmax(min-content, auto)";
 
 /** The desktop card's muted lines: the name under its symbol, and what the price is as of. */
 /** A line set over the sparkline, backed in the card's colour (the theme's, as drawn) so the line does not run through it. */
@@ -166,6 +171,7 @@ export function QuoteMonitorCard({
   const { nativePaneChrome, cellWidthPx = 8 } = useUiCapabilities();
   const selectionFill = useSelectionFill();
   const quote = resolveEntryData(quoteEntry) ?? cachedFinancials?.quote;
+  useSavedCopyFooter(savedCopyAt(quote), !quoteEntry?.error);
   const queriedPriceHistory = resolveEntryData(chartEntry);
   const barHistory = queriedPriceHistory && queriedPriceHistory.length >= 2
     ? queriedPriceHistory
@@ -304,8 +310,12 @@ export function QuoteMonitorCard({
             display: "grid",
             // The symbol and the price keep their natural widths; the name gives way first.
             gridTemplateColumns: "minmax(min-content, 1fr) auto",
-            // The symbol and price, what the price is as of, an extended print, the range, a perpetual.
-            gridTemplateRows: "auto auto 1fr auto auto",
+            // The symbol and price, what the price is as of, an extended print, the range, a perpetual. Each row
+            // keeps its line's height however short the card: a line cut for width (overflow hidden) counts for
+            // no height in an `auto` row, and on a narrow board the as-of, after-hours and range lines drew over
+            // one another ("After-Hours $155.90 -0." under the range, the as-of half hidden). The board gives the
+            // card that height (QuoteMonitorPane).
+            gridTemplateRows: `${CARD_LINE_ROW} ${CARD_LINE_ROW} minmax(min-content, 1fr) ${CARD_LINE_ROW} ${CARD_LINE_ROW}`,
             columnGap: "var(--gloom-space-md)",
             width: "100%",
             height: "100%",

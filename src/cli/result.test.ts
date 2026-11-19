@@ -302,6 +302,32 @@ test("plain output words the arrows of its tables and nothing else: a note, an a
   }
 });
 
+test("a warning, an export note and a command's own text print without the terminal commands in them, and keep their colours", async () => {
+  const hostile = "late\u001b]0;renamed\u0007 data\u001b[2J\u009b31m.";
+  const clean = "late]0;renamed data[2J31m.";
+  setCliColorEnabledOverride(true);
+  try {
+    const text = await captureConsole(() => printCliResult(
+      { data: { text: `${hostile} \u001b[31mred\u001b[0m` }, warnings: [hostile] },
+      baseOptions,
+      { text: (data) => data.text },
+    ));
+    expect(text.stdout).toBe(`${clean} \u001b[31mred\u001b[0m`);
+    expect(text.stderr).toBe(`\u001b[33mwarning:\u001b[0m ${clean}`);
+
+    const csv = await captureConsole(() => printCliResult(
+      { data: [], warnings: [hostile] },
+      { ...baseOptions, format: "csv" },
+      { tables: { tables: [{ title: "A", columns: ["x"], rows: [[1]] }], footer: [`note: ${hostile}`] } },
+    ));
+    expect(csv.stderr.split("\n")).toEqual([`\u001b[33mwarning:\u001b[0m ${clean}`, `note: ${clean}`]);
+    expect(csv.stdout).toBe(`x,export_notes\n1,note: ${clean} | warning: ${clean}`);
+    expect(csv.stdout).not.toContain("\u001b");
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+});
+
 describe("serializeCliError", () => {
   test("renders stable structured errors for JSON", () => {
     const output = serializeCliError(

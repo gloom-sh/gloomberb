@@ -1,8 +1,9 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { FloatingPaneWrapper } from "../../../components/layout/floating-pane";
-import { CaptureDatesDataContext } from "../../../components/layout/pane/capture-status";
+import { CaptureDatesDataContext, PaneCaptureContext } from "../../../components/layout/pane/capture-status";
 import { PaneFooterProvider, datesPaneData, hasPaneFooterContent, type PaneFooterSegment } from "../../../components/layout/pane/footer";
+import { noteLineParts } from "../../../components/layout/pane/footer/model";
 import { resolvePaneBodyFrame } from "../../../components/layout/pane/sizing";
 
 /** What a capture's status line dates (`CaptureStatusLine`): the pane's own data, the quotes on screen, or neither. */
@@ -35,19 +36,45 @@ function nextFrames(count: number): Promise<void> {
   });
 }
 
-/** Keeps the start and the end of a line that does not fit, `keep` characters in all. */
-function middleEllipsis(text: string, keep: number): string {
+/** What a cut line's ends do not start or end on beside the ellipsis: a separator or a space. */
+const LOOSE_END = /^[\s·,;:]+|[\s·,;:]+$/gu;
+
+/**
+ * Keeps the start and the end of a line that does not fit, `keep` characters
+ * in all, in whole words ("US trading day Mon … 15 min delayed"), never a
+ * word cut ("Mon 1…ose"); by characters only where not a word fits either end.
+ */
+export function middleEllipsis(text: string, keep: number): string {
   if (keep >= text.length) return text;
-  const head = Math.ceil(keep / 2);
-  const tail = Math.max(0, keep - head);
-  return `${text.slice(0, head).trimEnd()}…${tail > 0 ? text.slice(text.length - tail).trimStart() : ""}`;
+  const headRoom = Math.ceil(keep / 2);
+  const tailRoom = Math.max(0, keep - headRoom);
+  const words = text.split(" ");
+  let head = "";
+  for (const word of words) {
+    const next = head ? `${head} ${word}` : word;
+    if (next.length > headRoom) break;
+    head = next;
+  }
+  let tail = "";
+  for (const word of [...words].reverse()) {
+    const next = tail ? `${word} ${tail}` : word;
+    if (next.length > tailRoom) break;
+    tail = next;
+  }
+  head = head.replace(LOOSE_END, "");
+  tail = tail.replace(LOOSE_END, "");
+  if (head && tail) return `${head} … ${tail}`;
+  if (head) return `${head}…`;
+  return `${text.slice(0, headRoom).trimEnd()}…${tailRoom > 0 ? text.slice(text.length - tailRoom).trimStart() : ""}`;
 }
 
 /**
  * The first variant that fits; else, when the footer can make room (the
  * pane's own `as of` gives way), the first that fits then; else the last one
- * cut in the middle as little as it must be. `show` puts a text on screen and
- * resolves once it is drawn.
+ * cut in the middle, between words, as little as it must be. A note line
+ * keeps its share of the row (fitPaneFooterInfo): its first words say more
+ * than the rest of a status line. `show` puts a text on screen and resolves
+ * once it is drawn.
  */
 async function fitStatusLine(
   variants: readonly string[],
@@ -133,7 +160,8 @@ function useShotStatusLine(enabled: boolean, hasAsOf: () => boolean): ShotStatus
 }
 
 /**
- * Static captures retain warnings, what a filter leaves out (`capture`) and
+ * Static captures retain warnings, as one note line (the first note, cut
+ * after a whole word, and how many more there are), what a filter leaves out (`capture`) and
  * optional source status without action shortcuts. With `statusLine` the footer also carries the capture's dated
  * status line (`Fri 9 Oct close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET`),
  * inside the requested size: the body gives up the footer row for it. The
@@ -157,9 +185,17 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
   const datesData = statusLine && dates === "data";
   return <PaneFooterProvider>{(registeredFooter) => {
     const status: PaneFooterSegment[] = statusLine && statusText !== null ? [{ id: "shot-status", parts: [{ text: statusText, tone: "label" }] }] : [];
-    const info = registeredFooter.info.filter((segment) => (preserveStatus || segment.icon === "warning" || segment.capture)
+    // A warning whose pane gives a picture no notes to print (`captureNotes` empty) leaves no segment.
+    const info = registeredFooter.info.filter((segment) => !(segment.icon === "warning" && segment.notes?.length === 0)
+      && (preserveStatus || segment.icon === "warning" || segment.capture)
       && !(datesPaneData(segment) && (datesData || crowded))
-      && !(segment.quoteStatus && statusLine && dates !== null));
+      && !(segment.quoteStatus && statusLine && dates !== null))
+      // Nothing opens a picture's ⚠: its notes are the footer's one note line (noteLineParts).
+      .map((segment): PaneFooterSegment => {
+        if (segment.icon !== "warning") return segment;
+        const notes = segment.notes?.length ? segment.notes : [segment.label ?? segment.title ?? segment.parts.map((part) => part.text).join(" ")];
+        return { ...segment, icon: undefined, onPress: undefined, notes, parts: noteLineParts(notes, Number.POSITIVE_INFINITY) };
+      });
     shownAsOf.current = info.some(datesPaneData);
     const footer = { info: [...info, ...status], hints: [], menu: [], keys: [] };
     const bodyFrame = resolvePaneBodyFrame({
@@ -181,7 +217,9 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
       showActions={false}
       footer={footer}
     >
-      <CaptureDatesDataContext.Provider value={datesData}>{children(bodyFrame)}</CaptureDatesDataContext.Provider>
+      <PaneCaptureContext.Provider value>
+        <CaptureDatesDataContext.Provider value={datesData}>{children(bodyFrame)}</CaptureDatesDataContext.Provider>
+      </PaneCaptureContext.Provider>
     </FloatingPaneWrapper>;
   }}</PaneFooterProvider>;
 }

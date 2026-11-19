@@ -56,11 +56,12 @@ export class MarketDataCoordinatorEvents {
   subscribeKeys(keys: readonly string[], listener: () => void): () => void {
     const uniqueKeys = [...new Set(keys)];
     for (const key of uniqueKeys) {
-      if (!this.keyListeners.has(key)) {
-        this.keyListeners.set(key, new Set());
+      const listeners = this.keyListeners.get(key);
+      if (listeners) listeners.add(listener);
+      else {
+        this.keyListeners.set(key, new Set([listener]));
         this.watchHooks.watched?.(key);
       }
-      this.keyListeners.get(key)!.add(listener);
     }
     return () => {
       for (const key of uniqueKeys) {

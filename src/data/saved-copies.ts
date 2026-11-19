@@ -9,11 +9,10 @@
  * nothing about the data on screen. The app says the same of a quote, in the
  * footer of a pane showing one (`savedCopyAt`), until a refresh replaces it.
  *
- * The copy served is marked, by a symbol property that object spreads carry
- * along and JSON never writes, and the command's output is searched for the
- * marks. Outside a command only quotes are marked (`quoteServedFromSavedCopy`):
- * the app keeps running for hours, and its other panes say how current their
- * data is in their own footers. A quote built from a newer answer must not
+ * The copy served is marked with a symbol that JSON never writes, and the
+ * command's output is searched for the marks. Quotes and CLI marks spread
+ * into derived rows; panes can mark a cached resource without changing its
+ * enumerable fields. A quote built from a newer answer must not
  * inherit a mark through a spread: `withSavedCopyMarkOf` gives it the mark of
  * what was served instead.
  */
@@ -25,10 +24,10 @@ let anyMarked = false;
 
 type Marked = { [SAVED_AT]?: number };
 
-function mark<T>(value: T, savedAt: number): T {
+function mark<T>(value: T, savedAt: number, enumerable = true): T {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   anyMarked = true;
-  return { ...value, [SAVED_AT]: savedAt };
+  return Object.defineProperty({ ...value }, SAVED_AT, { value: savedAt, enumerable });
 }
 
 /**
@@ -40,6 +39,13 @@ function mark<T>(value: T, savedAt: number): T {
 export function servedFromSavedCopy<T>(value: T, savedAt: number): T {
   if (collecting === 0 || !Number.isFinite(savedAt) || !value || typeof value !== "object") return value;
   return (Array.isArray(value) ? value.map((item) => mark(item, savedAt)) : mark(value, savedAt)) as T;
+}
+
+export function markSavedCopy<T extends object>(value: T, savedAt: number): T {
+  if (Array.isArray(value) && Number.isFinite(savedAt)) {
+    return Object.defineProperty(value.slice(), SAVED_AT, { value: savedAt }) as T;
+  }
+  return Number.isFinite(savedAt) ? mark(value, savedAt, false) : value;
 }
 
 /** A quote answered from a copy saved at `savedAt` (ms) after its refresh failed: marked, in a command and in the app. */

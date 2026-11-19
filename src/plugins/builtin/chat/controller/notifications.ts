@@ -167,6 +167,7 @@ export class ChatNotificationAlerts {
       body,
       type: "info",
       desktop: "when-inactive",
+      browser: true,
       ...(openMessage ? {
         action: {
           label: "Open",

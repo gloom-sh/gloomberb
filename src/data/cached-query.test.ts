@@ -1,8 +1,35 @@
 import { expect, test } from "bun:test";
-import { CachedQuery, type CachedValue } from "./cached-query";
+import { CachedQuery, cachedValueForDisplay, type CachedValue } from "./cached-query";
+import { savedCopyAt } from "./saved-copies";
 
 const value = (name: string, time = Date.now()): CachedValue<string> => ({
   value: name, fetchedAt: time, staleAt: time + 600_000, expiresAt: time + 3_600_000, source: "test",
+});
+
+test("a pane seeding itself from an expired query sees its age until live data replaces it", async () => {
+  const expired = { ...value("expired", Date.now() - 10_000_000), value: [{ holders: 19 }] };
+  const live = { ...value("live"), value: [{ holders: 20 }] };
+  const query = new CachedQuery({ read: (allowExpired) => allowExpired ? expired : null, fetch: async () => live });
+  const opening = cachedValueForDisplay(query.getSnapshot().result);
+  expect(opening).toEqual(expired.value);
+  expect(savedCopyAt(opening)).toBe(expired.fetchedAt);
+  expect(savedCopyAt(expired.value)).toBeNull();
+  await query.load();
+  expect(cachedValueForDisplay(query.getSnapshot().result)).toBe(live.value);
+  expect(savedCopyAt(live.value)).toBeNull();
+});
+
+test("a cold query checks for a saved copy only once at mount and loads on a miss", async () => {
+  const reads: boolean[] = [];
+  const fresh = value("live");
+  const query = new CachedQuery({
+    read: (allowExpired) => { reads.push(allowExpired); return null; },
+    fetch: async () => fresh,
+  });
+  expect(reads).toEqual([true]);
+  expect(query.getSnapshot().result).toBeNull();
+  expect(await query.load()).toMatchObject(fresh);
+  expect(reads).toEqual([true, false]);
 });
 
 test("hydration, cache reads and failed refreshes retain successful response identity", async () => {
@@ -58,7 +85,10 @@ test("expired fallbacks retain source age and a superseded failure cannot restor
     calls++;
     throw new Error("offline");
   } });
-  const fallback = await query.load();
+  expect(query.getSnapshot()).toMatchObject({ result: expired, loading: false });
+  const refreshing = query.load();
+  expect(query.getSnapshot()).toMatchObject({ result: expired, loading: true });
+  const fallback = await refreshing;
   expect(fallback).toMatchObject({ fetchedAt: expired.fetchedAt, expiresAt: expired.expiresAt, refreshError: expect.any(Error) });
   await query.load();
   expect(calls).toBe(2);

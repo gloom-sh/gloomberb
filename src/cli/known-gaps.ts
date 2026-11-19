@@ -479,6 +479,22 @@ export function commandPointerLeads(query: string): boolean {
   return findCommandPointer(query)?.leads === true;
 }
 
+/** The app's Send Feedback command (FB, FEEDBACK, BUG), which no function or CLI command does. */
+const FEEDBACK_NAMES = new Set(["fb", "feedback", "bug", "bugs", "idea", "ideas"]);
+const FEEDBACK_WORDS = new Set(["send", "report", "file", "submit", "give", "suggest", "a", "an"]);
+
+/**
+ * The line `catalog` prints for a command of the app's command bar that is no
+ * function: `catalog FB`, `catalog feedback` and `catalog report bug` name
+ * Send Feedback, which the command bar opens as FB. Null for any other query.
+ * `search` leaves it out: FB there is a ticker.
+ */
+export function appCommandPointer(query: string): string | null {
+  const asked = words(query);
+  if (!asked.some((word) => FEEDBACK_NAMES.has(word)) || !asked.every((word) => FEEDBACK_NAMES.has(word) || FEEDBACK_WORDS.has(word))) return null;
+  return "Send Feedback: open the app (gloom) and run it from the command bar (Ctrl+P, FB), or open an issue at https://github.com/gloom-sh/gloomberb/issues";
+}
+
 /**
  * The line for a command word typed as `gloom export LMT`: exporting is a flag every command takes, not a
  * command, so the example runs on the symbol typed. Null for any other word.

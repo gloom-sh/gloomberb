@@ -21,9 +21,12 @@ import {
   isOhlcSeriesStyle,
 } from "../../../time-series/spec";
 import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
-import type { SeriesPlacement } from "../../../series/types";
+import type { SeriesCatalogEntry, SeriesPlacement } from "../../../series/types";
+import { seriesUnitGroup } from "../../../series/resolve";
+import { standaloneSeriesCatalogEntries } from "../../../series/standalone-catalog";
+import { getSharedRegistry } from "../../registry";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
-import { CHART_FIELD_IDS, normalizeInstrument, type ParsedSeriesExpression } from "./series-expression";
+import { CHART_FIELD_IDS, normalizeInstrument, parseSeriesExpression, type ParsedSeriesExpression } from "./series-expression";
 
 /** The chart's first generic future (CL1), whose roll and adjustment the pane's controls show. */
 export function chartFuturesGeneric(spec: ChartSpec): FuturesGeneric | null {
@@ -198,16 +201,58 @@ function isMarketPriceSeries(series: ChartSeriesSpec): boolean {
     && getTimeSeriesField(series.source.fieldId)?.unitGroup === "price";
 }
 
+/** The key a FRED or registered series' source has in `catalogUnitGroups`. */
+function catalogSourceKey(source: ChartSeriesSpec["source"]): string | null {
+  return source.kind === "economic" ? `economic:${source.seriesId.toUpperCase()}`
+    : source.kind === "capability" ? `capability:${source.capabilityId}:${source.seriesId}`
+      : null;
+}
+
+const catalogUnitGroupsByEntries = new WeakMap<readonly SeriesCatalogEntry[], ReadonlyMap<string, string>>();
+
+/**
+ * The unit group each FRED and registered series in the catalog resolves to,
+ * by its source: `%` is `percent` for both, as they resolve, and a registered
+ * series' other units are its own (`seriesUnitGroup`). A FRED series' other
+ * units are left out: FRED's own unit decides those once it loads.
+ */
+function catalogUnitGroups(): ReadonlyMap<string, string> {
+  const entries = getSharedRegistry()?.series?.catalog() ?? standaloneSeriesCatalogEntries();
+  const known = catalogUnitGroupsByEntries.get(entries);
+  if (known) return known;
+  const groups = new Map<string, string>();
+  for (const entry of entries) {
+    if (entry.input || entry.lines?.length) continue;
+    const parsed = parseSeriesExpression(entry.expression);
+    const key = parsed && parsed.kind !== "security" ? catalogSourceKey(buildSeriesSpec(parsed, 0).source) : null;
+    if (!key || groups.has(key)) continue;
+    if (parsed!.kind === "capability") groups.set(key, seriesUnitGroup(entry.unit));
+    else if (entry.unit === "%") groups.set(key, "percent");
+  }
+  catalogUnitGroupsByEntries.set(entries, groups);
+  return groups;
+}
+
+/**
+ * What a series is drawn against before it loads, so series in one unit share
+ * a panel: a FRED or registered series in the catalog by its unit there
+ * (`UST:2Y`, `CAP:policy-rate:jp` and `CAP:bond-yield:jp-2y` are all `%`),
+ * any other by its source, which loads in a unit of its own. Three such
+ * sources once took a panel each pair: a 2Y JGB yield went under the US and
+ * Japanese policy rates and the 2Y Treasury, on a scale of its own.
+ */
 function effectiveSeriesUnitGroup(series: ChartSeriesSpec): string {
   if (series.transform === "percent" || series.transform === "yoy" || series.transform === "qoq") {
     return "percent";
   }
   if (series.transform === "index100") return "index";
+  if (series.source.kind === "security") return getTimeSeriesField(series.source.fieldId)?.unitGroup ?? series.source.fieldId;
+  const key = catalogSourceKey(series.source);
+  const known = key ? catalogUnitGroups().get(key) : undefined;
+  if (known) return known;
   return series.source.kind === "economic"
     ? `economic:${series.source.seriesId}`
-    : series.source.kind === "capability"
-      ? `capability:${series.source.capabilityId}`
-      : getTimeSeriesField(series.source.fieldId)?.unitGroup ?? series.source.fieldId;
+    : `capability:${series.source.capabilityId}`;
 }
 
 export function nextGeneratedPanelId(

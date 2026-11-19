@@ -1,7 +1,7 @@
 import type { RevenueBreakdownView } from "../../../api-client/revenue-breakdown";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRevenueBreakdown } from "./client";
-import { growthPercent, quarterLabel, reportedSpan, revenueScale, sharePercent } from "./model";
+import { filingPageUrl, growthPercent, reportedPeriods, reportedSpan, revenuePeriodLabeler, revenueScale, sharePercent } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 
@@ -23,19 +23,18 @@ function amountScale(values: ReadonlyArray<number | null>, currency: string | nu
 
 export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
-  freshness: { ...SEC_FILINGS, basis: "10-Q and 10-K filings" },
+  freshness: { status: "not-a-feed", source: "Company filings", basis: "filed data", oldest: null },
   argument: {
     kind: "ticker",
-    description: "SEC reporting issuer ticker.",
+    description: "Company ticker, with its exchange when needed.",
     placeholder: "ticker",
   },
   discovery: {
     aliases: ["SEG"],
-    dataRequirements: ["Gloom Cloud revenue breakdowns from 10-Q and 10-K XBRL"],
+    dataRequirements: ["Revenue breakdowns from company filings"],
     limitations: [
-      "US filers only; 20-F filers report no quarterly breakdown.",
       "Rows are the members that add up to reported revenue; subtotals are dropped.",
-      "Fiscal quarters; Q4 is the fiscal year less nine months.",
+      "Annual and interim periods for Hong Kong listings; fiscal quarters for US filings.",
       "Free accounts get the two largest rows.",
     ],
   },
@@ -52,48 +51,54 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
   describe: (args) => `Revenue breakdown | ${args.symbols[0]}`,
   async load(args, ctx) {
     const symbol = args.symbols[0]!;
-    const data = reportedSpan(await fetchRevenueBreakdown(
+    const source = await fetchRevenueBreakdown(
       symbol,
       (args.options.view as RevenueBreakdownView | undefined) ?? "product",
       ctx.apiClient,
       await resolveHeadlessIssuerListing(ctx, symbol),
-    ));
+    );
+    const data = reportedSpan(source);
+    const periodLabel = revenuePeriodLabeler(source.periods);
+    const labels = data.periods.map(periodLabel);
     const rowScale = amountScale(data.rows.flatMap((row) => [...row.values, row.ttm]), data.currency);
     const totalScale = amountScale(data.total, data.currency);
+    const periods = reportedPeriods(data);
+    const asReported = periods.length > 0;
     return {
       complete: data.access === "full",
+      freshness: asReported ? { asOf: periods.at(-1)!.end } : { ...SEC_FILINGS, basis: "10-Q and 10-K filings" },
       errors: data.lockedRows > 0 ? [`${data.lockedRows} more rows need Gloom Pro`] : [],
       sections: [
         {
-          ...rowScale.section(`Quarterly revenue by ${data.view}`),
+          ...rowScale.section(`${asReported ? "Reported" : "Quarterly"} revenue by ${data.view}`),
           columns: [
             { key: data.view, header: data.view[0]!.toUpperCase() + data.view.slice(1) },
-            ...data.periods.map((period) => rowScale.column(quarterLabel(period), quarterLabel(period))),
-            rowScale.column("ttm", "TTM"),
+            ...labels.map((label) => rowScale.column(label, label)),
+            ...(!asReported ? [rowScale.column("ttm", "TTM")] : []),
             { key: "share", header: "Share", align: "right", textFormat: number(sharePercent) },
-            { key: "yoy", header: "YoY", align: "right", textFormat: number(growthPercent) },
+            ...(!asReported ? [{ key: "yoy", header: "YoY", align: "right" as const, textFormat: number(growthPercent) }] : []),
           ],
           rows: data.rows.map((row) => ({
             [data.view]: row.label,
-            ...Object.fromEntries(data.periods.map((period, index) => [quarterLabel(period), row.values[index]])),
-            ttm: row.ttm,
+            ...Object.fromEntries(labels.map((label, index) => [label, row.values[index]])),
+            ...(!asReported ? { ttm: row.ttm } : {}),
             share: row.share,
-            yoy: row.yoy,
+            ...(!asReported ? { yoy: row.yoy } : {}),
           })),
         },
         {
           ...totalScale.section("Total revenue"),
-          columns: [{ key: "quarter", header: "Quarter" }, { key: "end", header: "End" }, totalScale.column("revenue", "Revenue")],
-          rows: data.periods.map((period, index) => ({
-            quarter: quarterLabel(period),
-            end: period.end,
-            revenue: data.total[index],
-          })),
+          columns: asReported
+            ? [{ key: "period", header: "Period" }, totalScale.column("revenue", "Revenue"), { key: "basis", header: "Basis" }, { key: "filed", header: "Filed" }, { key: "filing", header: "Filing" }]
+            : [{ key: "quarter", header: "Quarter" }, { key: "end", header: "End" }, totalScale.column("revenue", "Revenue")],
+          rows: data.periods.map((period, index) => "kind" in period
+            ? { period: period.label, revenue: data.total[index], basis: period.revenueLabel, filed: period.filing.filed, filing: filingPageUrl(period.filing) }
+            : { quarter: periodLabel(period), end: period.end, revenue: data.total[index] }),
         },
       ],
       metadata: {
         symbol: data.symbol,
-        cik: data.cik,
+        ...(data.cik ? { cik: data.cik } : {}),
         currency: data.currency,
         filed: data.filed,
         views: data.views,

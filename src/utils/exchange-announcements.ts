@@ -48,7 +48,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
  * ASX is ASX's announcements page for NST, a TSX listing SEDAR+. Null for a
  * US venue and for a venue Gloom knows no page for.
  */
-export function exchangeAnnouncementsPage(symbol: string, exchange: string | null | undefined): ExchangeAnnouncementsPage | null {
+function exchangeAnnouncementsPage(symbol: string, exchange: string | null | undefined): ExchangeAnnouncementsPage | null {
   const page = PAGES[canonicalExchange(exchange ?? "")];
   const code = symbol.trim().toUpperCase();
   return page && code ? page(code) : null;
@@ -77,6 +77,10 @@ export function listsExchangeAnnouncements(exchange: string | null | undefined):
  */
 const ROUTINE_RETURNS = new Set(["Next Day Disclosure Returns", "Monthly Returns"]);
 
+const ISSUER_RESULTS_PAGES: Readonly<Record<string, string>> = {
+  "RHM:XETRA": "https://www.rheinmetall.com/en/investor-relations/publications/financial-publications-and-presentations",
+};
+
 export function isRoutineReturn(item: { category?: string | null }): boolean {
   return item.category != null && ROUTINE_RETURNS.has(item.category);
 }
@@ -90,5 +94,6 @@ export function listingAnnouncementsPage(key: string, exchange?: string | null):
   const suffixed = parsed.exchange ? null : listingSuffixExchange(parsed.symbol);
   const venue = parsed.exchange || suffixed || exchange;
   const symbol = suffixed ? parsed.symbol.replace(/\.[A-Z]+$/i, "") : parsed.symbol;
-  return venue ? exchangeAnnouncementsPage(symbol, venue) : null;
+  const issuerPage = !listsExchangeAnnouncements(venue) && ISSUER_RESULTS_PAGES[`${symbol.toUpperCase()}:${canonicalExchange(venue ?? "")}`];
+  return issuerPage ? { name: "Company results", url: issuerPage } : venue ? exchangeAnnouncementsPage(symbol, venue) : null;
 }

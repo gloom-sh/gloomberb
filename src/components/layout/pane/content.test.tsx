@@ -7,6 +7,7 @@ import { applyTheme, colors } from "../../../theme/colors";
 import { getTheme } from "../../../theme/themes";
 import { createDefaultConfig } from "../../../types/config";
 import { PaneContent } from "./content";
+import { apiClient } from "../../../api-client";
 
 let capturedDispatch: Dispatch<AppAction> | null = null;
 
@@ -30,6 +31,24 @@ describe("PaneContent", () => {
     capturedDispatch = null;
     applyTheme("amber");
     setLanguage("en");
+  });
+
+  test("waits for the session scope before letting a pane draw its empty state", async () => {
+    const config = createDefaultConfig("pane-session-test");
+    apiClient.waitForCookieIdentity();
+    try {
+      await tui.render(<AppProvider config={config}>
+        <PaneContent component={LanguageProbe} paneId="session:test" paneType="test" title="Test" focused width={24} height={6} />
+      </AppProvider>, { width: 32, height: 8 });
+      await tui.setup().renderOnce();
+      expect(tui.frame()).toContain("Loading...");
+      expect(tui.frame()).not.toContain("Done");
+      await act(async () => { apiClient.restoreCachedUser(null); });
+      await tui.setup().renderOnce();
+      expect(tui.frame()).toContain("Done");
+    } finally {
+      apiClient.restoreCachedUser(null);
+    }
   });
 
   test("rerenders legacy pane colors when the theme preview changes", async () => {

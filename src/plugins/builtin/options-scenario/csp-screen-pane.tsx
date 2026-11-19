@@ -7,6 +7,7 @@ import {
 } from "../../../components";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneSettingValue, usePluginAppActions } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -89,6 +90,9 @@ const tradeDropOrder = (strategy: ScreenFamily) => strategyFamilyDef(strategy).n
   ? ["maxGain", "breakEven", "rank", "maxLoss", "earnings", "spread"]
   : ["maxLoss", "breakEven", "rank", "maxGain", "earnings", "spread"];
 
+/** The cells a name's state takes (`no price`, `no chain`, `no trade`). */
+const STATE_WIDTH = 8;
+
 const DELTA_OPTIONS = ["0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40", "0.50"];
 const WING_OPTIONS = ["0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40"];
 const DAYS_OPTIONS = ["7", "14", "21", "30", "45", "60", "90"];
@@ -135,6 +139,7 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
   const [symbolsActive, setSymbolsActive] = useState(false);
   const { createPaneFromTemplate } = usePluginAppActions();
   const assetData = useAssetData();
+  const scope = useCloudDisplayScope();
   const strategy = useMemo((): StrategyFamily => {
     try { return readStrategyFamily(strategySetting); } catch { /* Intentional ignore: an unknown saved strategy opens the cash-secured put screen. */ return "csp"; }
   }, [strategySetting]);
@@ -171,7 +176,9 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     if (criteria.trade) return { kind: "trade" as const, screen: await loadStrategyScreen(instruments, criteria.trade, dependencies, current.signal) };
     return { kind: "csp" as const, screen: await loadCspScreen(instruments, criteria.value!, dependencies, current.signal) };
   }, [key, assetData]);
-  const resource = useAsyncResource(symbols.length && ready ? loader : null);
+  const resource = useAsyncResource(symbols.length && ready ? loader : null, {
+    savedCopy: scope && assetData ? { key: ["options-screen", scope, assetData.id, symbols, strategy, ready] } : null,
+  });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "rank", direction: "asc" });
@@ -189,10 +196,10 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const screen = data?.screen;
   const rankedBy = strategy === "csp" ? undefined : strategyRankedBy(strategy);
+  // What concerns one name is on its row (rowState, rowNote); the footer's notes are the screen's.
   const notices = [criteria.error, data ? null : resource.error,
     leftOut.length ? `Ranks the first ${CSP_SCREEN_LIMIT} symbols; ${leftOut.length} left out: ${leftOut.join(", ")}` : null,
     ...(screen?.ivRankError ? [`IV rank unavailable: ${screen.ivRankError}`] : []),
-    ...(screen?.rows ?? []).flatMap((row) => row.note ? [`${row.symbol}: ${row.note}`] : []),
     ...(screen ? cspScreenNotes(screen, rankedBy).slice(1) : [])].filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "csp-screen-notices", notices, focused });
   // The bar names the delta and the expiry; the footer says only what changes.
@@ -219,7 +226,12 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     resource.reload();
     event.preventDefault?.(); event.stopPropagation?.(); return true;
   };
-  const putCell = (row: ScreenRow, id: string): { text: string; color?: string } => {
+  /** A name with nothing to rank says why in its first column with room for it, in a few words; the rest of its row stays blank. */
+  const stateCell = (row: { source: { state: string | null } }, id: string, stateColumn: string | undefined): DataTableCell | null =>
+    row.source.state && id === stateColumn ? { text: row.source.state, color: colors.warning } : null;
+  const putCell = (row: ScreenRow, id: string): DataTableCell => {
+    const state = row.source.csp ? null : stateCell(row, id, putStateColumn);
+    if (state) return state;
     switch (id) {
       case "rank": return { text: row.rank == null ? "" : String(row.rank), color: colors.textDim };
       case "symbol": return { text: row.symbol, color: colors.textBright };
@@ -239,6 +251,8 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     }
   };
   const tradeCell = (row: TradeRow, id: string): DataTableCell => {
+    const state = row.source.trade ? null : stateCell(row, id, "trade");
+    if (state) return state;
     switch (id) {
       case "rank": return { text: row.rank == null ? "" : String(row.rank), color: colors.textDim };
       case "symbol": return { text: row.symbol, color: colors.textBright };
@@ -297,11 +311,17 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
   };
   // Whole columns give way, least needed first, so nothing scrolls sideways; a vertical scrollbar takes a cell.
   const putColumns = useMemo(() => dropColumnsToFit(COLUMNS, width - 1, PUT_DROP_ORDER), [width]);
+  // The first column past the symbol wide enough for a state's few words.
+  const putStateColumn = putColumns.find((column) => column.id !== "rank" && column.id !== "symbol" && (column.width ?? 0) >= STATE_WIDTH)?.id;
   const tradeColumnWidth = tradeWidth(tradeRows);
   const shownTradeColumns = useMemo(() => strategy === "csp" ? [] : dropColumnsToFit(tradeColumns(strategy, tradeColumnWidth), width - 1,
     tradeDropOrder(strategy)), [strategy, tradeColumnWidth, width]);
-  const firstSymbol = (strategy === "csp" ? putRows : tradeRows)[0]?.symbol ?? "";
-  const selection = { kind: "id" as const, selectedId: selected ?? firstSymbol, getId: (row: { symbol: string }) => row.symbol, onChange: (id: string) => setSelected(id) };
+  const shownRows: Array<ScreenRow | TradeRow> = strategy === "csp" ? putRows : tradeRows;
+  const firstSymbol = shownRows[0]?.symbol ?? "";
+  const selectedSymbol = selected ?? firstSymbol;
+  const selection = { kind: "id" as const, selectedId: selectedSymbol, getId: (row: { symbol: string }) => row.symbol, onChange: (id: string) => setSelected(id) };
+  // The selected name's whole reason, under the table: the row has room for its few words only.
+  const rowNote = (row: ScreenRow | TradeRow) => row.source.note ? `${row.symbol}: ${row.source.note}` : null;
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     {tabStrip}
     <QueryBar width={width} filters={filters} meta={strategy === "csp" ? undefined : STRATEGY_MONEY_UNIT} />
@@ -309,9 +329,9 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
       error={criteria.error && !ready ? criteria.error : !data ? resource.error : null}>
       {strategy === "csp"
         ? <DataTableView<ScreenRow> {...table} columns={putColumns} items={putRows} selection={selection}
-          renderCell={(row, column) => putCell(row, column.id)} />
+          renderCell={(row, column) => putCell(row, column.id)} rowNote={rowNote} />
         : <DataTableView<TradeRow> {...table} columns={shownTradeColumns} items={tradeRows} selection={selection}
-          renderCell={(row, column) => tradeCell(row, column.id)} />}
+          renderCell={(row, column) => tradeCell(row, column.id)} rowNote={rowNote} />}
     </PaneStatusBody>
   </Box>;
 }

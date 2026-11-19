@@ -4,7 +4,9 @@ import { apiClient, type AuthUser } from "../api-client";
 import { chatController } from "../plugins/builtin/chat/controller";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { blockExternalNetwork } from "../test-support/network-guard";
-import { AuthDialogHost, isAuthDialogOpen, requestAuthDialog } from "./auth-dialog";
+import { AuthDialogHost, isAuthDialogOpen, requestAuthDialog, requestEmailConfirmation } from "./auth-dialog";
+import { heardFromDueAccount, takeHeardFromDue } from "./heard-from";
+import { resetVerificationCooldownForTests } from "./verification-panel";
 
 blockExternalNetwork();
 const tui = createOpenTuiTestHarness();
@@ -107,5 +109,108 @@ describe("sign-up dialog", () => {
     await clickClose("Confirm ana@example.com");
     await tui.waitForFrameToExclude("Confirm ana@example.com");
     expect(isAuthDialogOpen()).toBe(false);
+    // The account exists: closing before confirming still asks where it heard about Gloom.
+    expect(heardFromDueAccount()).toBe("u1");
+    takeHeardFromDue("u1");
+  });
+});
+
+// "verify your email" in the status bar and a wall's Resend Verification Email both end here: the link goes out
+// again and the dialog names the address it went to. They used to send it with only a toast to show for it.
+describe("coming back to confirm an email", () => {
+  const user = { id: "u2", email: "ana@example.com", emailVerified: false } as AuthUser;
+
+  function signedInAs(account: AuthUser | null) {
+    const send = spyOn(apiClient, "sendVerification").mockResolvedValue(undefined as never);
+    spies.push(
+      send,
+      spyOn(apiClient, "getCurrentUser").mockReturnValue(account),
+      spyOn(apiClient, "getSession").mockResolvedValue(account),
+    );
+    return send;
+  }
+
+  test("sends the link once and opens on the address it went to", async () => {
+    resetVerificationCooldownForTests();
+    const send = signedInAs(user);
+    await tui.render(<AuthDialogHost />, { width: 100, height: 40 });
+    await act(async () => {
+      expect(requestEmailConfirmation()).toBe(true);
+    });
+    await tui.waitForFrameToContain("Confirm ana@example.com");
+    await tui.waitForFrameToContain("Confirmation link sent");
+    expect(send).toHaveBeenCalledTimes(1);
+
+    // Closed and pressed again within the minute: the dialog comes back, no second email goes out.
+    await clickClose("Confirm ana@example.com");
+    await tui.waitForFrameToExclude("Confirm ana@example.com");
+    await act(async () => {
+      expect(requestEmailConfirmation()).toBe(true);
+    });
+    const again = await tui.waitForFrameToContain("Confirm ana@example.com");
+    expect(again).toContain("Email sent");
+    expect(send).toHaveBeenCalledTimes(1);
+    await clickClose("Confirm ana@example.com");
+    await tui.waitForFrameToExclude("Confirm ana@example.com");
+    // It signed up earlier; coming back to confirm is not a sign-up.
+    expect(heardFromDueAccount()).toBeNull();
+  });
+
+  test("opens nothing for a confirmed account or no account, so the caller falls back", async () => {
+    await tui.render(<AuthDialogHost />, { width: 100, height: 40 });
+    signedInAs({ ...user, emailVerified: true });
+    expect(requestEmailConfirmation()).toBe(false);
+    for (const spy of spies.splice(0)) spy.mockRestore();
+    signedInAs(null);
+    expect(requestEmailConfirmation()).toBe(false);
+    expect(isAuthDialogOpen()).toBe(false);
+  });
+});
+
+// "Where did you hear about Gloom?" follows a sign-up from this dialog, never one on its way to a checkout.
+describe("the question after a sign-up", () => {
+  afterEach(() => {
+    const due = heardFromDueAccount();
+    if (due) takeHeardFromDue(due);
+  });
+
+  async function signUpThrough(request: Parameters<typeof requestAuthDialog>[0]) {
+    const user = { id: "u-new", email: "new@example.com", emailVerified: true } as AuthUser;
+    spies.push(
+      spyOn(apiClient, "signUp").mockResolvedValue(user),
+      spyOn(apiClient, "getCurrentUser").mockReturnValue(user),
+      spyOn(apiClient, "getSessionToken").mockReturnValue(null),
+      spyOn(apiClient, "getSession").mockResolvedValue(user),
+      spyOn(chatController, "refreshSession").mockResolvedValue(undefined as never),
+    );
+    await tui.render(<AuthDialogHost />, { width: 100, height: 40 });
+    await act(async () => {
+      expect(requestAuthDialog(request)).toBe(true);
+    });
+    await tui.waitForFrameToContain("Create your free Gloom Cloud account");
+    for (const step of [
+      () => tui.setup().mockInput.typeText("new@example.com"),
+      () => tui.setup().mockInput.pressTab(),
+      () => tui.setup().mockInput.typeText("correct horse battery"),
+      () => tui.setup().mockInput.pressEnter(),
+    ]) {
+      await act(async () => {
+        await step();
+        await tui.setup().renderOnce();
+      });
+    }
+    await tui.waitForFrameToExclude("Create your free Gloom Cloud account");
+  }
+
+  test("is due once the dialog closes on a new account", async () => {
+    let continued = false;
+    await signUpThrough({ mode: "signup", onSignedIn: () => { continued = true; } });
+    expect(continued).toBe(true);
+    expect(heardFromDueAccount()).toBe("u-new");
+  });
+
+  test("is never due when the sign-up goes on to a checkout", async () => {
+    await signUpThrough({ mode: "signup", onSignedIn: () => {}, checkout: true });
+    expect(heardFromDueAccount()).toBeNull();
   });
 });

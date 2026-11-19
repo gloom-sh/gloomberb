@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connectionHealth, recoversDataRequests } from "../core/connection-health";
+import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
+import { isPermanentClientError, isTransientFailure } from "../api-client/errors";
+import { afterSavedCopyFrame, deleteSavedCopy, readSavedCopy, savedCopyId, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
+import { savedCopyAt } from "../data/saved-copies";
+import { reuseSavedData } from "../data/reuse-saved-data";
 import { logFailure } from "../utils/log-failure";
 
 interface ResourceState<T> {
@@ -7,6 +12,8 @@ interface ResourceState<T> {
   loading: boolean;
   error: string | null;
   updatedAt: number | null;
+  savedAt: number | null;
+  placeholder?: boolean;
 }
 
 /**
@@ -17,6 +24,11 @@ interface ResourceState<T> {
  * for a caller that waits on it, such as a Retry button that stays busy until
  * the answer is in. It settles once the answer or the failure is in state, and
  * never rejects.
+ *
+ * With `savedCopy`, the resource opens on what it last loaded under that key,
+ * at once and of any age, and loads behind it: `data` is the saved copy and
+ * `updatedAt` when it was loaded until the answer replaces both, and a failed
+ * load keeps it as a failed refresh does (data/pane-saved-copies.ts).
  */
 export function useAsyncResource<T>(
   loader: ((force: boolean) => Promise<T>) | null,
@@ -26,70 +38,125 @@ export function useAsyncResource<T>(
     /**
      * Leave the previous loader's data on screen, loading, until the new
      * loader answers, and through its failure as a failed refresh does.
-     * Without it a new loader starts from no data. Null still clears.
+     * A matching saved copy wins. Use a stable, non-secret access identity
+     * instead of true when data must not carry over across account or plan
+     * changes. A null loader still clears.
      */
-    keepPreviousData?: boolean;
+    keepPreviousData?: boolean | string | null;
+    /**
+     * The key what this loader answers is saved under: everything the answer
+     * depends on, so a copy is only ever shown for the same question.
+     */
+    savedCopy?: SavedCopyKey | null;
+    shouldSave?: (data: T) => boolean;
+    /** The request is identified, but its live inputs are not ready yet. */
+    deferLoad?: boolean;
   } = {},
 ) {
-  const [state, setState] = useState<ResourceState<T> & { owner: typeof loader }>(() => ({
-    owner: loader,
-    data: options.initialData?.() ?? null,
-    loading: !!loader,
-    error: null,
-    updatedAt: null,
-  }));
+  const requestedKey = loader ? options.savedCopy ?? null : null;
+  const savedId = requestedKey ? `${savedCopyId(requestedKey)}#${requestedKey.version ?? 1}` : null;
+  const savedKey = useMemo(() => requestedKey, [savedId]);
+  const deferLoad = options.deferLoad === true;
+  const retainWithin = options.keepPreviousData || null;
+  const open = (): ResourceState<T> & { owner: typeof loader; ownerKey: string | null; retainWithin: typeof retainWithin } => {
+    const saved = savedKey ? readSavedCopy<T>(savedKey) : null;
+    const data = loader ? saved?.value ?? options.initialData?.() ?? null : null;
+    const savedAt = saved?.fetchedAt ?? savedCopyAt(data);
+    return { owner: loader, ownerKey: savedId, retainWithin, data, savedAt, updatedAt: savedAt, loading: !!loader, error: null };
+  };
+  // `ownerKey`: the saved-copy key of the question the data answers. A new
+  // loader for the same key (a session restored, a callback remade) asks the
+  // same question, so the data stays while it loads.
+  const [state, setState] = useState(open);
+  let view = state;
+  if (state.owner !== loader || state.ownerKey !== savedId || state.retainWithin !== retainWithin) {
+    const sameQuestion = savedId !== null && state.ownerKey === savedId && state.retainWithin === retainWithin;
+    view = sameQuestion ? { ...state, owner: loader, loading: true, error: null } : open();
+    if (loader && retainWithin !== null && state.retainWithin === retainWithin && state.data !== null && view.data === null) {
+      view = { ...state, owner: loader, ownerKey: savedId, loading: true, error: null, placeholder: true };
+    }
+    setState(view);
+  }
   const generation = useRef(0);
   // Read at failure time so an inline predicate cannot recreate load and refetch every render.
   const clearOnErrorRef = useRef(options.clearOnError ?? false);
   clearOnErrorRef.current = options.clearOnError ?? false;
-  const keepPreviousData = options.keepPreviousData === true;
+  const shouldSaveRef = useRef(options.shouldSave);
+  shouldSaveRef.current = options.shouldSave;
+  const currentView = useRef(view);
+  currentView.current = view;
   const settle = useCallback(async (force: boolean) => {
     const currentGeneration = ++generation.current;
+    if (deferLoad) return;
     if (!loader) {
-      setState({ owner: loader, data: null, loading: false, error: null, updatedAt: null });
       return;
     }
-    setState((current) => current.owner === loader || keepPreviousData
-      ? { ...current, owner: loader, loading: true, error: null }
-      : { owner: loader, data: null, loading: true, error: null, updatedAt: null });
+    // The key of the question this load answers.
+    const key = savedKey;
+    const keyId = savedId;
+    const isCurrent = () => generation.current === currentGeneration && currentView.current.owner === loader
+      && currentView.current.ownerKey === keyId && currentView.current.retainWithin === retainWithin;
+    const opening = currentView.current.savedAt !== null && !currentView.current.placeholder;
+    setState((current) => current.owner === loader && current.ownerKey === keyId && (!current.loading || current.error !== null)
+      ? { ...current, loading: true, error: null } : current);
     try {
       const data = await loader(force);
-      if (generation.current === currentGeneration) {
-        setState({ owner: loader, data, loading: false, error: null, updatedAt: Date.now() });
+      if (isCurrent()) {
+        const savedAt = savedCopyAt(data);
+        const updatedAt = savedAt ?? Date.now();
+        const current = currentView.current;
+        setState({
+          owner: loader, ownerKey: keyId, retainWithin, loading: false, error: null, updatedAt, savedAt,
+          data: key && opening && savedAt === null && savedCopyAt(current.data) === null
+            ? reuseSavedData(current.data, data) : data,
+        });
+        if (key && savedAt === null && (shouldSaveRef.current?.(data) ?? true)) writeSavedCopy(key, data, updatedAt);
       }
     } catch (error) {
-      if (generation.current === currentGeneration) {
+      if (isCurrent()) {
         const clearOnError = clearOnErrorRef.current;
-        const discardData = typeof clearOnError === "function" ? clearOnError(error) : clearOnError;
+        const discardData = (typeof clearOnError === "function" ? clearOnError(error) : clearOnError) || (key !== null && isPermanentClientError(error));
+        const discardSaved = !isTransientFailure(error);
         const message = error instanceof Error ? error.message : String(error);
-        setState((current) => ({
-          ...current,
-          data: discardData ? null : current.data,
-          updatedAt: discardData ? null : current.updatedAt,
-          loading: false,
-          error: message.trim() ? message : "Request failed",
-        }));
+        // What may no longer be shown is not opened on next time either.
+        if (key && (discardData || (opening && discardSaved))) deleteSavedCopy(key);
+        setState((current) => {
+          const discard = discardData || (current.savedAt !== null && discardSaved);
+          return {
+            ...current,
+            data: discard ? null : current.data,
+            updatedAt: discard ? null : current.updatedAt,
+            savedAt: discard ? null : current.savedAt,
+            loading: false,
+            error: message.trim() ? message : "Request failed",
+          };
+        });
       }
     }
-  }, [keepPreviousData, loader]);
+  }, [deferLoad, loader, retainWithin, savedId, savedKey]);
   // A load nobody waits on: its failures end in `error`, and anything else
   // that escapes is logged.
   const load = useCallback((force = false) => {
     settle(force).catch(logFailure("react.async-resource", "Resource load failed"));
   }, [settle]);
 
-  useEffect(() => {
-    load();
-    return () => { generation.current += 1; };
-  }, [load]);
-
   const reload = useCallback(() => load(true), [load]);
   const reloadAndWait = useCallback(() => settle(true), [settle]);
-  // Hide a previous resource during the render before the new loader's effect
-  // runs, as well as throughout a failed request for the new security.
-  const { data, loading, error, updatedAt } = state.owner === loader ? state
-    : keepPreviousData && loader ? { ...state, loading: true, error: null }
-      : { data: null, loading: !!loader, error: null, updatedAt: null };
+  const { data, error, updatedAt, savedAt } = view;
+  const loading = view.loading && !deferLoad;
+  useSavedCopyFooter(savedAt, loading || deferLoad);
+  useEffect(() => {
+    if (deferLoad || !loader) return;
+    const restored = savedAt !== null && !view.placeholder;
+    const frame = restored ? afterSavedCopyFrame() : undefined;
+    const openingGeneration = generation.current;
+    if (frame) {
+      void frame.then(() => {
+        if (generation.current === openingGeneration) load(true);
+      }).catch(logFailure("react.async-resource", "Refresh after the saved copy failed"));
+    } else load(restored);
+    return () => { generation.current += 1; };
+  }, [deferLoad, load, loader]);
 
   // A load that failed is asked again once the data service (or the desktop
   // bridge) answers after an outage, so a pane recovers by itself instead of
@@ -102,6 +169,6 @@ export function useAsyncResource<T>(
       if (recoversDataRequests(sourceId) && failedRef.current) load();
     });
   }, [load, loader]);
-  const status = error !== null ? "error" : data !== null ? "loaded" : loading ? "loading" : "idle";
-  return { data, loading, error, updatedAt, status, load, reload, reloadAndWait };
+  const status: "error" | "loaded" | "loading" | "idle" = error !== null ? "error" : data !== null ? "loaded" : loading ? "loading" : "idle";
+  return { data, loading: loading && savedAt === null, refreshing: loading && data !== null, error, updatedAt, savedAt, status, load, reload, reloadAndWait };
 }

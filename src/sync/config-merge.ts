@@ -29,11 +29,13 @@ import {
   type LayoutMergeContext,
 } from "./layout-merge";
 import {
+  PORTFOLIOS_CARRY_OTHER_CASH,
   sanitizeBrokerInstance,
   sanitizePortfolio,
   sanitizeUnknown,
   sanitizeWatchlist,
   WATCHLISTS_CARRY_GROUPS,
+  withLocalOtherCash,
   withLocalPluginSecrets,
   withLocalWatchlistGroups,
 } from "./sanitize";
@@ -44,6 +46,8 @@ export function collectCoreConfigPayload(config: AppConfig) {
     baseCurrency: config.baseCurrency,
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     portfolios: config.portfolios.map(sanitizePortfolio),
+    // The portfolios carry their cash in other currencies: one without it holds no more.
+    [PORTFOLIOS_CARRY_OTHER_CASH]: true,
     watchlists: config.watchlists.map(sanitizeWatchlist),
     [WATCHLISTS_CARRY_GROUPS]: true,
     ...collectLayoutPayload(config),
@@ -166,10 +170,15 @@ export function mergeConfigPayload(
       payload.brokerInstancesMergedById === true,
     );
   }
+  // An older build pushes its portfolios without their cash in other currencies: they keep what they hold here.
   if ("portfolios" in payload && canApply("portfolios")) {
     const syncedPortfolios = payload.portfolios;
     next.portfolios = Array.isArray(syncedPortfolios)
-      ? mergeLocalBrokerPortfolioIdentity(config.portfolios, syncedPortfolios as Portfolio[], next.brokerInstances)
+      ? mergeLocalBrokerPortfolioIdentity(
+        config.portfolios,
+        withLocalOtherCash(syncedPortfolios, config.portfolios, payload[PORTFOLIOS_CARRY_OTHER_CASH] === true),
+        next.brokerInstances,
+      )
       : syncedPortfolios as AppConfig["portfolios"];
   }
   // An older build pushes its lists without their groups: they keep the groups they have here.

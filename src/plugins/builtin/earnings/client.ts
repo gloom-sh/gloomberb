@@ -8,7 +8,7 @@ import type {
 import { ApiRequestError } from "../../../api-client/errors";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { PluginPersistence } from "../../../types/plugin";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { cachedCloudResource, cloudDisplayCacheKey, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 // Implied moves are captured through the session, so the board goes stale in minutes; history in hours.
 const calendarCache = createPluginCache<EarningsCalendarPayload>({
@@ -91,11 +91,11 @@ export async function fetchEarningsHistory(symbol: string, client: HistoryClient
 }
 
 export function cachedEarningsCalendar(query: EarningsCalendarQuery) {
-  return cachedCloudResource(calendarCache, earningsCalendarKey(query), validateEarningsCalendar);
+  return cachedCloudResource(calendarCache, cloudDisplayCacheKey(earningsCalendarKey(query)), validateEarningsCalendar);
 }
 
 export function loadEarningsBoard(query: EarningsCalendarQuery, force = false) {
-  return loadCloudResource(calendarCache, earningsCalendarKey(query), () => fetchEarningsCalendar(query),
+  return loadCloudResource(calendarCache, cloudDisplayCacheKey(earningsCalendarKey(query)), () => fetchEarningsCalendar(query),
     { force, validate: validateEarningsCalendar });
 }
 

@@ -2,6 +2,9 @@ import { daysToExpiryFrom, valueOption, type OptionValuation } from "../shared/v
 import { isFiniteNumber } from "../../../utils/guards";
 import { isUsListingExchange } from "../../../utils/exchanges";
 
+/** What the pane says before any leg is added. */
+export const EMPTY_POSITION_TITLE = "Build an options position.";
+
 const DAY_MS = 86_400_000;
 const MAX_DATE_MS = Date.UTC(9999, 11, 31);
 const MAX_SCENARIO_LEGS = 32;
@@ -357,6 +360,38 @@ export function expiryRisk(position: ScenarioPosition): ScenarioExpiryRisk {
     maxLoss: unlimitedLoss ? null : Math.max(0, -Math.min(...values)), unlimitedProfit, unlimitedLoss, reason: null };
 }
 
+const utcDay = (time: number) => new Date(time).toISOString().slice(0, 10);
+
+/**
+ * The grid's dates: the origin, the scenario date the valuation is at, the
+ * first expiration close, and up to three even steps between the origin and
+ * the close, each on a day no other column is on. A three-day position reads
+ * the 17th, 18th, 19th and the 20th's close, never two 20ths.
+ */
+function scenarioGridDates(asOf: number, expiry: number, selected: number): number[] {
+  if (asOf === expiry) return [asOf];
+  const fixed = [...new Set([asOf, selected, expiry])];
+  const days = new Set(fixed.map(utcDay));
+  const steps = [1, 2, 3].map((index) => asOf + (expiry - asOf) * index / 4).filter((date) => {
+    const day = utcDay(date);
+    if (days.has(day)) return false;
+    days.add(day);
+    return true;
+  });
+  return [...fixed, ...steps].sort((a, b) => a - b);
+}
+
+/**
+ * Each grid date as its column heads it: the UTC day, with the time where
+ * another column is on the same day (a position valued on its expiry day:
+ * `2026-11-20 14:30` and `2026-11-20 21:00`), so no two columns read alike.
+ */
+export function scenarioDateLabels(dates: readonly number[]): string[] {
+  const days = dates.map(utcDay);
+  return dates.map((date, index) => days.indexOf(days[index]!) !== days.lastIndexOf(days[index]!)
+    ? `${days[index]} ${new Date(date).toISOString().slice(11, 16)}` : days[index]!);
+}
+
 export function buildScenario(position: ScenarioPosition, input: Partial<ScenarioControls> = {}): ScenarioModel {
   const prepared = prepare(position);
   const date = input.date ?? position.asOf;
@@ -372,8 +407,7 @@ export function buildScenario(position: ScenarioPosition, input: Partial<Scenari
   const risk = expiryRisk(position);
   if (risk.reason) warnings.push(risk.reason);
   if (position.spot === 0) warnings.push("Spot is zero; percentage moves are unavailable.");
-  const dates = position.asOf === prepared.expiryDate ? [position.asOf]
-    : Array.from({ length: 5 }, (_, index) => position.asOf + (prepared.expiryDate - position.asOf) * index / 4);
+  const dates = scenarioGridDates(position.asOf, prepared.expiryDate, controls.date);
   const anchor = position.spot || Math.max(...position.legs.map((leg) => leg.strike));
   const low = Math.max(0, position.spot * (1 - spotRange));
   const high = anchor * (1 + spotRange);

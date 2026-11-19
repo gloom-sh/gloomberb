@@ -63,7 +63,8 @@ describe("supply chain graph headless integration", () => {
       tiers: "structured,primary", "min-pct": "2.5", "min-confidence": "0.85", limit: "12", "as-of": "2025-12-31", ranking: "shortest" }, { strict: true });
     expect(graphOptions(capabilityPaneSettings(capability, options))).toEqual(graphOptions(options));
     const requests: string[] = [];
-    await supplyChainHeadless.load(args(options), context(graphPayload(), requests));
+    // A server that reads the cutoff answers it in its options.
+    await supplyChainHeadless.load(args(options), context({ ...graphPayload(), options: { ...graphPayload().options, asOf: "2025-12-31" } }, requests));
     const url = new URL(requests[0]!, "https://example.test");
     expect(url.pathname).toBe("/cloud/supply-chain/A/graph");
     expect(Object.fromEntries(url.searchParams)).toEqual({ depth: "3", direction: "upstream", roles: "supplier", sources: "xbrl,filing_text",
@@ -76,6 +77,9 @@ describe("supply chain graph headless integration", () => {
         .rejects.toThrow(invalid["as-of"] ? "Use a filing cutoff as YYYY-MM-DD" : "Invalid supply chain graph filters");
     }
     expect(requests).toHaveLength(1);
+    // The free preview reads the latest graph whatever the cutoff: said, never served as that day's.
+    await expect(supplyChainHeadless.load(args({ tab: "graph", "as-of": "2025-12-31" }), context(graphPayload(), requests)))
+      .rejects.toThrow("--as-of 2025-12-31 on the Graph tab needs Gloom Pro; the free preview reads the latest disclosures.");
   });
 
   test("reports retain every hop and exposure denominator without turning the rank into probability", async () => {
@@ -227,16 +231,18 @@ test("graph boundaries preserve global filing scale and provenance and reject un
 
 test("--view prints that view alone and says when it is empty; an earlier period's share prints apart, never as current", async () => {
   const zero = { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 };
-  // A listing outside the US prints with its venue's suffix, never as a bare ticker a US company could hold.
+  // A listing outside the US prints with its venue, as every function writes it, never as a bare ticker a US
+  // company could hold; one served with a vendor's suffix (600028.SS) reads as its venue's listing.
   const current = supplyRow("current", { sourceKind: "xbrl", period: "2025-12-31", periodMonths: 12, pctOfRevenue: 27, counterparty: { ...entity("current"), ticker: "STAN", exchange: "LSE" } });
+  const suffixed = supplyRow("suffixed", { sourceKind: "xbrl", period: "2025-12-31", periodMonths: 12, pctOfRevenue: 5, counterparty: { ...entity("suffixed"), ticker: "600028.SS", exchange: null } });
   const earlier = supplyRow("earlier", { sourceKind: "xbrl", period: "2023-12-31", periodMonths: 12, pctOfRevenue: 14 });
   const context = createTestHeadlessContext();
-  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [current], totalRows: 3, truncated: true, lockedRows: 1, access: "preview", previewRowsPerRole: 3,
-    counts: { says: { ...zero, customer: 2 }, names: zero }, earlier: { says: [earlier], names: [] }, earlierCounts: { says: { ...zero, customer: 1 }, names: zero } }) };
+  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [current, suffixed], totalRows: 4, truncated: true, lockedRows: 1, access: "preview", previewRowsPerRole: 3,
+    counts: { says: { ...zero, customer: 3 }, names: zero }, earlier: { says: [earlier], names: [] }, earlierCounts: { says: { ...zero, customer: 1 }, names: zero } }) };
   const load = (options: Record<string, string>) => supplyChainHeadless.load(createTestHeadlessArgs({ symbols: ["FOCUS"], options }), context);
   const both = await load({});
   expect(both.sections.map((section) => [section.title, section.rows?.map((row) => [row.counterparty, row.ticker, row.pct, row.period])])).toEqual([
-    ["FOCUS says", [["current", "STAN.L", 27, "2025-12-31"]]],
+    ["FOCUS says", [["current", "STAN:LSE", 27, "2025-12-31"], ["suffixed", "600028:SSE", 5, "2025-12-31"]]],
     ["FOCUS says | Earlier periods", [["earlier", "earlier", 14, "2023-12-31"]]],
   ]);
   const names = await load({ view: "names" });

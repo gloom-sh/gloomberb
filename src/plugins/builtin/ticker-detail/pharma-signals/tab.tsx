@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useSyncExternalStore } from "react";
-import { requestAuthDialog } from "../../../../account/auth-dialog";
+import { requestAuthDialog, requestEmailConfirmation } from "../../../../account/auth-dialog";
 import { apiClient } from "../../../../api-client";
 import { usePlanAccess } from "../../../../api-client/plan-access";
 import { isEmailVerificationRequired } from "../../../../api-client/product-waitlist";
@@ -114,7 +114,8 @@ export function PharmaSignalsResearchTab({ width, height, focused }: TickerResea
         height={height}
         emptyTitle={t("Verify your email to join the pharma signals waitlist.")}
         emptyMessage={t(PLANNED)}
-        actions={<Button label={t(RESEND_VERIFICATION)} onPress={() => openCommandBar(RESEND_VERIFICATION)} />}
+        // The link again, and the dialog that names the address and waits for it.
+        actions={<Button label={t(RESEND_VERIFICATION)} onPress={() => { if (!requestEmailConfirmation()) openCommandBar(RESEND_VERIFICATION); }} />}
       />
     );
   }

@@ -92,7 +92,7 @@ test("the title names the basket shown, and the word that matched it when that i
     const args = { symbols: [], argument: [argument], rawArgument: argument, options: {} } as unknown as HeadlessPaneLoadArgs;
     return typeof themesHeadless.describe === "function" ? themesHeadless.describe(args, result) : themesHeadless.describe;
   };
-  expect(await title("defense")).toBe("Thematic baskets | Defense & aerospace");
+  expect(await title("defense")).toBe("Thematic baskets · US-listed | Defense & aerospace");
   // "lithium" opens Critical minerals: the title says so rather than claim a lithium basket.
-  expect(await title("aerospace")).toBe("Thematic baskets | Defense & aerospace (matched aerospace)");
+  expect(await title("aerospace")).toBe("Thematic baskets · US-listed | Defense & aerospace (matched aerospace)");
 });

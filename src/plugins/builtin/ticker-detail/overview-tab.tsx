@@ -12,19 +12,26 @@ import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-
 import { bodyLineInk, FigureText, figureLineInk, useFigureCells } from "../../../components/ui/figure";
 import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
-import { useFxRateObservations, type TickerSnapshotState } from "../../../market-data/hooks";
+import { useChartQueries, useFxRateObservations, useResolvedEntryValue, useTickerChangeNote, type TickerSnapshotState } from "../../../market-data/hooks";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { priceSeriesUnit } from "../../../market-data/market/index-level";
 import {
   exchangeShortName,
+  extendedPrintTime,
   extendedSessionLineLabel,
   getExtendedSessionDisplay,
   getRegularSessionDisplay,
+  headlineCloseDate,
   quoteSessionColor,
   quoteSessionLabel,
 } from "../../../market-data/market/status";
-import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
-import { changeBasisLabel, changeBasisNote, futuresQuoteFromSettle, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
+import { buildPriceReturnFields, headlinePriceReturnEnd, priceReturnDailyWindow, priceReturnIntegrityNotice } from "../../../market-data/performance";
+import type { ChartRequest } from "../../../market-data/request-types";
+import { buildChartKey } from "../../../market-data/selectors";
+import { changeBasisLabel, changeBasisNote, closeDayLabel, futuresQuoteFromSettle, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
+import { asOfClock } from "../../../market-data/quotes/time";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { quoteObservation } from "../shared/report-freshness";
 import {
   fitFuturesContractLines, futuresContractLines, isFuturesInstrument, futuresPricePer, usdPerMmbtu, usdPerMmbtuText,
   type FuturesContractLine,
@@ -39,7 +46,8 @@ import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import {
-  appTtmRate, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate, ttmConversionNote, withFinancialEnterpriseValue,
+  appTtmRate, baseCurrencyFiguresNote, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate,
+  ttmConversionNote, withFinancialEnterpriseValue,
 } from "../../../utils/fundamentals";
 import { servedRatesNotMeaningful } from "../../../utils/served-rates";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
@@ -78,6 +86,7 @@ import { currentListingName } from "../../../tickers/listing-name";
 import { isYieldIndexSymbol } from "../../../tickers/index-roots";
 import { coinPriceVenueText, quoteStatsBasisText } from "../../../market-data/quotes/export-identity";
 import { hiddenOnLogScale, logScaleHiddenWarning } from "../../../time-series/log-scale";
+import type { AhPairState } from "./adr-pair/ah";
 import {
   autoOverviewChartScale, resolveOverviewChartScale, toggledOverviewChartScale, type OverviewChartScaleChoice,
 } from "./overview/chart-scale";
@@ -119,6 +128,10 @@ interface OverviewTabProps {
   onOpenFunction?: (link: OverviewFunctionLink) => void;
   /** The history the dividend yield reads (useOverviewDividend): a trailing one's cash, a forward one's lapse; without it the yield stands. */
   dividend?: OverviewDividendState;
+  /** An A+H company's other line and how the two prices compare (useAhPair); none for any other listing. */
+  ah?: AhPairState | null;
+  /** The shares one lot of an HKEX or SGX line trades in (useListingBoardLot); none elsewhere. */
+  boardLot?: number | null;
   /** Where the ticker's snapshot load stands (useTickerSnapshotState), for the state shown before anything of it is in. */
   snapshot?: TickerSnapshotState;
   /** The rates `fn DES --tax-rate` set (taxRatesFromSettings): a fund's tax-equivalent yield and muni/Treasury ratio follow its facts. */
@@ -159,7 +172,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({
-  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, tax = null,
+  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, ah = null, boardLot = null, tax = null,
   chartScale: chartScaleChoice = "auto", onChartScaleChange,
 }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
@@ -177,6 +190,13 @@ function ResolvedOverviewTab({
 
   const quote = financials?.quote;
   const quoteDelayMinutes = useDelayedMarkMinutes(quote);
+  // `fn DES` and a capture are dated by the quote the header shows, as `quote` dates it: its last print,
+  // its delay and its session, the time it was read after them.
+  useRemoteUiNode(quote ? {
+    role: "report-freshness",
+    label: "Quote freshness",
+    getMetadata: () => ({ observations: [quoteObservation(quote, Date.now())] }),
+  } : null);
   const fundamentals = financials?.fundamentals;
   const capitalization = liveMarketCapitalization(quote, fundamentals);
   const profile = financials?.profile;
@@ -252,6 +272,16 @@ function ResolvedOverviewTab({
   const unknownHistoryBasis = hasUnknownBondHistoryBasis(quote, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType);
   const historyQuote = unknownHistoryBasis ? undefined : quote;
   const chartHistory = appendLiveQuotePoint(financials?.priceHistory ?? [], historyQuote);
+  // Five years of daily closes, which the Price Return strip measures each horizon on: the chart's bars are weekly.
+  const returnInstrument = useMemo(() => instrumentFromTicker(ticker), [ticker]);
+  const returnWindowDay = new Date().toISOString().slice(0, 10);
+  const dailyReturnsRequest = useMemo<ChartRequest | null>(() => {
+    if (!returnInstrument || unknownHistoryBasis) return null;
+    const { start, end } = priceReturnDailyWindow(Date.parse(`${returnWindowDay}T12:00:00Z`));
+    return { instrument: returnInstrument, bufferRange: "5Y", granularity: "detail", barSize: "1d", startDate: start, endDate: end };
+  }, [returnInstrument, returnWindowDay, unknownHistoryBasis]);
+  const dailyReturnEntries = useChartQueries(dailyReturnsRequest ? [dailyReturnsRequest] : []);
+  const dailyReturnBars = useResolvedEntryValue(dailyReturnsRequest ? dailyReturnEntries.get(buildChartKey(dailyReturnsRequest)) ?? null : null);
   const chartDelta = (chartHistory.at(-1)?.close ?? 0) - (chartHistory[0]?.close ?? 0);
   const chartTimeZone = resolveExchangeTimeZone(
     ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName,
@@ -266,6 +296,15 @@ function ResolvedOverviewTab({
     panelId: "price",
     timeBasis: chartTimeZone ? { kind: "market", timeZone: chartTimeZone } : undefined,
   });
+  // Each horizon runs from the daily close on its start date to the headline's close, as CMP and `history` measure
+  // it; the chart's weekly bars stand in until the daily ones are in. Bars and the quote are dated on the listing's clock.
+  const returnVenue = ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
+  const performanceFields = buildPriceReturnFields(
+    dailyReturnBars?.length ? dailyReturnBars : financials?.priceHistory ?? [],
+    returnVenue,
+    undefined,
+    historyQuote ? headlinePriceReturnEnd(historyQuote, returnVenue) : null,
+  );
   // Years of history from a few dollars to hundreds read on a log axis, the Chart tab's own, so the early ones do not lie flat.
   const autoChartScale = autoOverviewChartScale(priceSeries.points, { rate: isYieldIndexSymbol(ticker.metadata.ticker) });
   const chartScale = resolveOverviewChartScale(chartScaleChoice, autoChartScale);
@@ -288,16 +327,25 @@ function ResolvedOverviewTab({
   // A converted TTM block names what it was converted from, at the pane's rate and its time.
   const ttmNote = [shownFundamentals?.revenue, shownFundamentals?.netIncome, shownFundamentals?.freeCashFlow].some((value) => value != null)
     ? ttmConversionNote(shownFundamentals) : undefined;
+  // A cap shown in the base currency too (7.80T ARS, 5.03B USD) says at what rate, and when it was read.
+  const capRateNote = capitalization ? baseCurrencyFiguresNote(capitalization.currency, baseCurrency, fxObservations) : undefined;
+  // FB lists a fund now, and Meta trades as META: said for someone who typed FB meaning the company, as `quote FB` says it.
+  const changeNote = useTickerChangeNote(ticker.metadata.ticker, ticker, quote);
+  const returnIntegrityNotice = priceReturnIntegrityNotice(performanceFields);
   usePaneNoticeFooter({
     registrationId: "overview-notices",
     notices: [
+      ...(changeNote ? [changeNote] : []),
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
       ...(runwayOfferingNote ? [runwayOfferingNote] : []),
       ...(runway?.trailingGap === "short-history" ? [`Runway TTM: ${SHORT_RUNWAY_HISTORY}.`] : []),
-      ...(priceSeries.warning ? [priceSeries.warning] : []),
+      // A bar with contradictory prices is said only where it leaves a shown return blank: on a chart of years one
+      // bar's gap is a hairline that changes no figure, and a return reads only the bars at its ends.
+      ...(returnIntegrityNotice ? [returnIntegrityNotice] : []),
       ...(hiddenOnLog > 0 ? [logScaleHiddenWarning(priceSeries.label, hiddenOnLog)] : []),
       ...(enterpriseValueNote ? [enterpriseValueNote] : []),
       ...(ttmNote ? [ttmNote] : []),
+      ...(capRateNote ? [capRateNote] : []),
       ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live
         ? [`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`] : []),
     ],
@@ -323,7 +371,13 @@ function ResolvedOverviewTab({
   const quoteChangeText = sessionQuote && !delisted ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
   const quotePercentText = sessionQuote && !delisted ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
   const changeBasis = delisted ? null : quoteChangeBasis(movedQuote, { terms: contractTerms });
-  const changeBasisText = changeBasis ? changeBasisLabel(changeBasis) : "";
+  // Once the session is over the headline is its close, dated apart from the extended print below it:
+  // "Tue 17 Nov close · vs Mon 16 Nov close". A future's settle is dated on its own line.
+  const closeDate = contractTerms ? null : headlineCloseDate(movedQuote);
+  const changeBasisText = [
+    closeDate ? closeDayLabel(closeDate) : "",
+    changeBasis ? changeBasisLabel(changeBasis) : "",
+  ].filter(Boolean).join(" \u00b7 ");
   // The days the venue was closed since that close, under the move: "HKEX closed Mon 19 Oct, holiday".
   const changeBasisNoteText = changeBasisNote(changeBasis);
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
@@ -373,7 +427,11 @@ function ResolvedOverviewTab({
     : "";
   // The extended session's line keeps its label and price whole on a narrow pane: the move gives
   // way to its percent, then goes, rather than wrapping a figure across two lines ("(+0." / "08%)").
-  const extendedLabelText = extendedQuote ? `${extendedSessionLineLabel(extendedQuote, t)}:` : "";
+  // The extended print says when it was observed (After-Hours 00:10 UTC), as the close above says its day.
+  const extendedTime = extendedQuote ? extendedPrintTime(quote) : null;
+  const extendedLabelText = extendedQuote
+    ? `${extendedSessionLineLabel(extendedQuote, t)}${extendedTime != null ? ` ${asOfClock(Math.min(extendedTime, Date.now()))}` : ""}:`
+    : "";
   const extendedPriceText = extendedQuote ? formatMarketPriceWithCurrency(extendedQuote.price, quote?.currency, moneyOptions) : "";
   const extendedMoveText = extendedQuote
     ? [
@@ -432,6 +490,7 @@ function ResolvedOverviewTab({
   const contractGridColumns = futuresFields.length > 0 ? contractColumns : textGridColumns(optionFields, contentWidth);
   const depositaryPair = listingDepositaryPair(financials);
   const stats = buildOverviewStats({
+    ahPair: ah ? { other: ah.side === "h" ? ah.pair.a : ah.pair.h, side: ah.side, premiumPercent: ah.comparison?.premiumPercent ?? null, linked: !!depositaryPair } : null,
     quote,
     fundamentals: shownFundamentals,
     financialCurrency: financials?.financialCurrency,
@@ -443,6 +502,7 @@ function ResolvedOverviewTab({
     depositaryReceipt: sharesOutstandingInReceipts(quote, fundamentals, description),
     depositaryPair: depositaryPair ? { pair: depositaryPair, receiptSide: isReceiptSide(financials) } : null,
     cedearRatio: listingCedearRatio(financials),
+    boardLot,
     // Report and ex-dividend dates are the listing's calendar days.
     today: zonedDateKey(Date.now(), chartTimeZone ?? "America/New_York"),
     dividend,
@@ -459,11 +519,6 @@ function ResolvedOverviewTab({
     profile,
     isin: ticker.metadata.isin,
   });
-  // Bars and the quote are dated on the listing's clock.
-  const performanceFields = buildPriceReturnFields(
-    appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], historyQuote),
-    ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined,
-  );
   const hasPerformance = performanceFields.some((field) => field.value != null || field.unavailableReason);
   const positionRows = buildPositionRows({
     ticker,

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
+import { MemoryResourceStore } from "../data/memory-resource-store";
+import { setSavedCopyFrameGate, setSavedCopyStore } from "../data/pane-saved-copies";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { DataProvider } from "../types/data-provider";
@@ -155,6 +157,59 @@ afterEach(() => {
 });
 
 describe("useChartResolution", () => {
+  test("a plot saved with ticker metadata opens before refresh using the same resolved listing", async () => {
+    const previous = setSavedCopyStore(new MemoryResourceStore());
+    const drawn = Promise.withResolvers<void>();
+    const history = Promise.withResolvers<PricePoint[]>();
+    const listing = { symbol: "SAVED-CHART-TEST", exchange: "NASDAQ" };
+    let filled = false;
+    let refreshes = 0;
+    const sources = sourcesFor(createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: async () => {
+        if (!filled) return INITIAL_HISTORY;
+        refreshes += 1;
+        return history.promise;
+      },
+    }));
+    function Plot({ instrument, scope = "account:free", range = "1Y" }: {
+      instrument: typeof listing & { instrument?: null };
+      scope?: string;
+      range?: "1Y" | "5Y";
+    }) {
+      const spec: ChartSpec = { ...SPEC, viewport: { ...SPEC.viewport, range }, series: [{ ...SPEC.series[0]!,
+        source: { kind: "security", instrument, fieldId: "market.ohlcv" },
+      }] };
+      const result = useChartResolution(spec, sources, { savedCopyScope: scope, liveRefreshIntervalMs: 0 });
+      return <text>{result.loading ? "loading" : `points:${result.series[0]?.points.length ?? 0}`}</text>;
+    }
+    try {
+      await tui.render(<Plot instrument={{ ...listing, instrument: null }} />);
+      await waitFor(() => tui.frame().includes("points:2"));
+      filled = true;
+      setSavedCopyFrameGate(() => drawn.promise);
+      await tui.render(<Plot instrument={listing} />);
+      await flushEffects();
+      expect(tui.frame()).toContain("points:2");
+      expect(refreshes).toBe(0);
+      for (const render of [
+        <Plot instrument={{ ...listing, exchange: "NYSE" }} />,
+        <Plot instrument={listing} scope="other-account:free" />,
+        <Plot instrument={listing} range="5Y" />,
+      ]) {
+        await tui.render(render);
+        await flushEffects();
+        expect(tui.frame()).toContain("loading");
+      }
+    } finally {
+      await tui.destroy();
+      drawn.resolve();
+      history.resolve(INITIAL_HISTORY);
+      setSavedCopyFrameGate(null);
+      setSavedCopyStore(previous);
+    }
+  });
+
   test("with streaming off, polls quotes into the chart without reloading its history", async () => {
     let historyCalls = 0;
     let quoteCalls = 0;

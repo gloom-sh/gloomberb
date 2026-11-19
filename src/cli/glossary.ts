@@ -14,6 +14,12 @@ export interface GlossaryEntry {
   short?: string;
   /** Other names a reader may look it up by: `stop-out` for the high yield. */
   aliases: readonly string[];
+  /**
+   * Other names for what the functions that show it cover, which find those
+   * functions as the term and its abbreviation do (`expected shortfall` for
+   * MARS and PORT); the aliases only look the term up. Looked up as aliases are.
+   */
+  finds?: readonly string[];
   /** The functions that show it, by the token `fn` takes. */
   functions: readonly string[];
   /**
@@ -454,26 +460,42 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "The plain difference between two percentages. A 22% weight against a 20% target is 2pp over it, not 10%, "
       + "and gas storage going from 74.31% to 74.46% full is up 0.15pp.",
   },
-  // Portfolio risk (PORT): the factor table's betas and fits, the tail loss, concentration.
+  // Portfolio risk (PORT, and MARS, which opens it on its risk view): the factor table's betas and fits, the tail loss,
+  // the drawdown, the stress scenarios, concentration.
   {
-    term: "Beta", aliases: ["betas", "factor beta", "market beta", "beta to spy", "exposure", "factor exposure"], functions: ["PORT"],
+    term: "Beta", aliases: ["betas", "factor beta", "market beta", "beta to spy", "exposure", "factor exposure"], functions: ["PORT", "MARS"],
     shown: ["beta", "Beta"],
     definition: "How far a basket moves with a factor: a beta of 0.54 to SPY means it rose 0.54% on average for each 1% SPY rose. "
       + "PORT estimates it from the last 60 daily returns; read it with its R², since a beta from a weak fit says little about an exposure.",
   },
   {
-    term: "R²", aliases: ["r-squared", "r squared", "r2", "coefficient of determination", "goodness of fit", "weak fit"], functions: ["PORT"],
+    term: "R²", aliases: ["r-squared", "r squared", "r2", "coefficient of determination", "goodness of fit", "weak fit"], functions: ["PORT", "MARS"],
     definition: "R-squared: the share of a basket's daily moves a factor explains, from 0 (none) to 1 (all), over the same 60 sessions as its beta. "
       + "Under 0.1 PORT marks the factor a weak fit: the beta beside it is mostly noise, not an exposure.",
   },
   {
-    term: "Value at risk", short: "VaR", aliases: ["value-at-risk", "var 95%", "1d var", "historical var", "expected shortfall", "cvar", "tail loss"],
-    functions: ["PORT"], shown: ["VaR", "expected shortfall"],
+    term: "Value at risk", short: "VaR", aliases: ["var 95%", "1d var", "historical var", "tail loss"],
+    finds: ["value-at-risk", "expected shortfall", "cvar", "conditional var"],
+    functions: ["PORT", "MARS"], shown: ["VaR", "expected shortfall"],
     definition: "The loss a basket went beyond on only 5% of its last 60 trading days, as a share of its value and in money: a 1-day VaR 95% of 1.19% means "
       + "about one day in twenty lost more than that. Expected shortfall is the average loss on those worst days. Both read the past, not a limit on the next loss.",
   },
   {
-    term: "HHI", aliases: ["herfindahl", "herfindahl index", "herfindahl-hirschman index", "concentration index", "effective holdings"], functions: ["PORT"],
+    term: "Max drawdown", aliases: ["drawdowns", "mdd", "peak to trough", "peak-to-trough decline"], finds: ["drawdown", "maximum drawdown"],
+    functions: ["PORT", "MARS"], shown: ["max drawdown"],
+    definition: "The largest fall from a high to a later low over the window, as a share of the high: a 60D max drawdown of -7.2% is the basket's "
+      + "worst drop from any of its last 60 closes to a later one.",
+  },
+  {
+    term: "Stress test", aliases: ["stress", "scenario", "scenarios", "shock", "shocks", "what if", "historical scenarios", "crash replay"],
+    finds: ["stress tests", "stress testing", "scenario analysis"],
+    functions: ["PORT", "MARS"], shown: ["stress", "Stress"],
+    definition: "What the book would move by in a given shock: an index fall, a 10Y yield rise or a VIX jump read through the basket's past moves "
+      + "with each, a currency or holding move repricing the lines it touches, and four past selloffs replayed on today's holdings at today's weights. "
+      + "A measure of exposure, not a forecast.",
+  },
+  {
+    term: "HHI", aliases: ["herfindahl", "herfindahl index", "herfindahl-hirschman index", "concentration index", "effective holdings"], functions: ["PORT", "MARS"],
     definition: "Herfindahl-Hirschman index: each holding's weight squared and added up, from near 0 for a book spread thin to 1 for a single holding. "
       + "One over it is the effective number of holdings: 0.20 reads as a book of five equal positions.",
   },
@@ -508,9 +530,10 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "It is usually a fraction of a percent, and widens when the fund's holdings are hard to trade or their market is shut.",
   },
   {
-    term: "Tracking error", aliases: ["index tracking error"], functions: ["ETF"], shown: ["Tracking error", "tracking error"],
+    term: "Tracking error", aliases: ["index tracking error", "active risk"], functions: ["ETF", "PORT", "MARS"],
+    shown: ["Tracking error", "tracking error"],
     definition: "How loosely a fund follows its index: how much the gap between the fund's return and the index's swings, usually over a year. "
-      + "Fees, cash and holdings that differ from the index widen it.",
+      + "Fees, cash and holdings that differ from the index widen it. PORT measures a basket's against SPY from 60 daily returns, annualized.",
   },
   {
     term: "Leveraged and inverse ETFs", aliases: ["leveraged", "inverse", "decay", "daily reset", "3x", "2x", "-1x", "-3x",
@@ -781,7 +804,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     term: "Commitments of Traders", short: "COT", aliases: ["cot report", "commitment of traders", "cftc", "cftc report", "cftc positioning", "positioning"],
     functions: ["COT"], shown: ["CFTC", "COT"],
-    definition: "The CFTC's weekly count of who holds each US futures market: open contracts split by type of trader, as of Tuesday and published that Friday. "
+    definition: "Weekly open contracts split by trader type, from the CFTC and ICE Futures Europe. ICE publishes Brent, gasoil and other European markets itself, separately from the CFTC's ICE WTI market. Tuesday positions are released later; ICE's usual release is Friday at 18:30 London time, subject to holidays. "
       + "It shows whether speculators or hedgers are net long or short, and how that moved since the week before.",
   },
   {
@@ -1057,7 +1080,38 @@ function words(text: string): string[] {
 }
 
 function names(entry: GlossaryEntry): string[] {
-  return [entry.term, ...(entry.short ? [entry.short] : []), ...entry.aliases];
+  return [entry.term, ...(entry.short ? [entry.short] : []), ...entry.finds ?? [], ...entry.aliases];
+}
+
+/** The names that find the functions showing a term: the term, its abbreviation and its `finds`, never a loose alias. */
+function findingNames(entry: GlossaryEntry): string[] {
+  return [entry.term, ...(entry.short ? [entry.short] : []), ...entry.finds ?? []];
+}
+
+let keysByFunction: ReadonlyMap<string, ReadonlySet<string>> | null = null;
+
+/**
+ * Whether a query is, whole, the name of a term a function shows (its term,
+ * abbreviation or `finds`, in any case and punctuation), by the function's
+ * code: `VaR`, `value at risk` and `expected shortfall` name MARS and PORT
+ * in `catalog`, `fn`'s hint and the command bar. A word of a longer query, or
+ * a loose alias (`close`, `exposure`), names nothing, so common searches list
+ * what they did.
+ */
+export function glossaryNamesFunction(code: string, query: string): boolean {
+  keysByFunction ??= GLOSSARY.reduce((map, entry) => {
+    for (const fn of entry.functions) map.set(fn, new Set([...map.get(fn) ?? [], ...findingNames(entry).map(lookupKey)]));
+    return map;
+  }, new Map<string, Set<string>>());
+  const key = lookupKey(query);
+  return !!key && !!keysByFunction.get(code.toUpperCase())?.has(key);
+}
+
+/** The functions that show the term a query names whole (`VaR`, `value-at-risk`: PORT and MARS), in glossary order. */
+export function glossaryFunctionsNamed(query: string): string[] {
+  const key = lookupKey(query);
+  if (!key) return [];
+  return [...new Set(GLOSSARY.filter((entry) => findingNames(entry).some((name) => lookupKey(name) === key)).flatMap((entry) => entry.functions))];
 }
 
 export interface GlossaryLookup {
@@ -1181,7 +1235,7 @@ export function glossaryRecord(entry: GlossaryEntry): Record<string, unknown> {
   return {
     term: entry.term,
     ...(entry.short ? { short: entry.short } : {}),
-    aliases: entry.aliases,
+    aliases: [...entry.finds ?? [], ...entry.aliases],
     functions: entry.functions,
     definition: entry.definition,
   };

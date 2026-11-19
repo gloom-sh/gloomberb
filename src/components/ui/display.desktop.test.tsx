@@ -5,7 +5,7 @@ import { syncTheme } from "../../theme/colors";
 import { ThemeProvider } from "../../theme/theme-context";
 import { DEFAULT_THEME } from "../../theme/themes";
 import { Button } from "./button";
-import { Badge, Divider, SectionHeading } from "./display";
+import { Badge, ClippedText, Divider, SectionHeading } from "./display";
 import { PaneStatusBody } from "./status";
 
 const { render, window } = createDomTestHarness();
@@ -52,4 +52,17 @@ test("stable display content follows theme changes and status transitions expose
   expect(container.querySelector('[data-gloom-status]')).toBeNull();
   expect(container.textContent).toContain("Loaded history");
   expect(container.querySelector('[data-gloom-ui="divider"]')?.textContent).toBe("");
+});
+
+test("a clipped name keeps its end whole on the desktop: the browser cuts what comes before it, never the letter that tells it apart", async () => {
+  const container = await render(<div style={{ width: "40px" }}><ClippedText text="Revenue customer 1" width={8} keepEnd=" 1" /></div>);
+  const [lead, end] = [...container.querySelectorAll("span")].filter((span) => span.textContent);
+  expect(lead!.textContent).toBe("Revenue customer");
+  expect(lead!.style.textOverflow).toBe("ellipsis");
+  expect(end!.textContent).toBe(" 1");
+  // The end keeps its room: it never shrinks, so the cut falls on the words before it.
+  expect(end!.style.flex).toBe("0 0 auto");
+  // Without an end, or one the text does not end with, one span as before.
+  const plain = await render(<ClippedText text="Hon Hai Precision Industry" width={8} keepEnd=" 1" />);
+  expect([...plain.querySelectorAll("span")].filter((span) => span.textContent).map((span) => span.textContent)).toEqual(["Hon Hai Precision Industry"]);
 });

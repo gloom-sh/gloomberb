@@ -50,7 +50,23 @@ const ROOTS: Record<string, { code: string; exchange: string; priceSymbol: strin
   XRP: { code: "176740", exchange: "CME", priceSymbol: null, name: "XRP", crypto: true },
 };
 /** The verified root aliases, labeled "ZQ 30-Day Fed Funds"; `cotContractCode` also takes every FUT board root the CFTC reports. */
-export const COT_ROOT_OPTIONS = Object.entries(ROOTS).map(([root, row]) => ({ value: root, label: root === row.name ? root : `${root} ${row.name}` }));
+const ICE_MARKETS = [
+  { code: "ICE00B", root: "BRENT", name: "ICE Brent Crude", aliases: ["brent", "ice brent", "brent crude", "brent crude oil", "ice brent crude", "ice brent crude oil"], exchange: "NYM", priceSymbol: "BZ=F" },
+  { code: "ICE00G", root: "GASOIL", name: "ICE Gasoil", aliases: ["gasoil", "gas oil", "ice gasoil", "ice gas oil", "low sulphur gasoil"], exchange: "ICEU", priceSymbol: null },
+  { code: "ICEDBI", root: "ICE DUBAI", name: "ICE Dubai 1st Line", aliases: ["dubai", "ice dubai", "dubai 1st line", "ice dubai 1st line"], exchange: "ICEU", priceSymbol: null },
+  { code: "ICE00C", root: "ICE COCOA", name: "ICE Cocoa", aliases: ["ice cocoa", "london cocoa"], exchange: "ICEU", priceSymbol: null },
+  { code: "ICE0RC", root: "ROBUSTA", name: "ICE Robusta Coffee", aliases: ["robusta", "robusta coffee", "ice robusta", "ice robusta coffee", "rc", "ice rc"], exchange: "ICEU", priceSymbol: null },
+  { code: "ICE00W", root: "WHITE SUGAR", name: "ICE White Sugar", aliases: ["white sugar", "ice white sugar"], exchange: "ICEU", priceSymbol: null },
+  { code: "ICE00T", root: "ICE WHEAT", name: "ICE Wheat", aliases: ["ice wheat", "feed wheat", "uk wheat", "london wheat"], exchange: "ICEU", priceSymbol: null },
+  { code: "067411", root: "ICE WTI", name: "ICE WTI Crude", aliases: ["ice wti", "ice wti crude", "ice wti crude oil"], exchange: "ICEU", priceSymbol: null },
+] as const;
+const iceMarket = (value: string) => {
+  const input = value.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+  return ICE_MARKETS.find((market) => (market.aliases as readonly string[]).includes(input));
+};
+export const COT_ROOT_OPTIONS = [...Object.entries(ROOTS).map(([root, row]) => ({ value: root, label: root === row.name ? root : `${root} ${row.name}` })),
+  ...ICE_MARKETS.map((market) => ({ value: market.aliases[0], label: market.name }))];
+export function cotDefaultFamily(code: string | null): CotFamily { return code?.startsWith("ICE") ? "disaggregated" : "legacy"; }
 /** The crypto roots named for a coin, which a coin pair (BTC-USD) can stand for. The micros have no pair. */
 const COIN_PAIR_ROOTS: ReadonlySet<string> = new Set(["BTC", "ETH", "SOL", "XRP"]);
 /**
@@ -119,6 +135,7 @@ function boardMarketCode(contract: FuturesContract): string | null {
  * not appear; nothing is substituted. Everything else is one scope switch away.
  */
 export const COT_MAJOR_CODES: ReadonlySet<string> = new Set([
+  ...ICE_MARKETS.map((market) => market.code),
   // Equity index and volatility
   "13874A", "209742", "239742", "124603", "1170E1",
   // Rates
@@ -172,6 +189,8 @@ function typedMarket(value: string): { board: FuturesContract } | { root: string
  */
 export function cotContractCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
+  const ice = iceMarket(value);
+  if (ice) return ice.code;
   const input = value.trim().toUpperCase().replace(/=F$/, "");
   const alias = rootAlias(input) ?? currencyFuture(input);
   if (alias) return alias;
@@ -219,9 +238,9 @@ const SUGGESTED_MARKETS: ReadonlyArray<readonly [string, string]> = [
  */
 export function cotUnknownMarketMessage(value: unknown): string {
   const market = typeof value === "string" ? typedMarket(value) : null;
-  if (market && "board" in market) return `${market.board.code} (${market.board.name}) is not reported in the CFTC COT.`;
+  if (market && "board" in market) return `${market.board.code} (${market.board.name}) is not reported in COT.`;
   const known = SUGGESTED_MARKETS.map(([code, name]) => `${code} ${name}`).join(", ");
-  return `Unknown market "${String(value)}". Try a code or name such as ${known}, or a CFTC market code such as ${ROOTS.GC!.code}.`;
+  return `Unknown market "${String(value)}". Try a code or name such as ${known}, Brent, gasoil, or a market code such as ${ROOTS.GC!.code} or ICE00B.`;
 }
 /**
  * The code for the ticker under the cursor, when COT is opened without an
@@ -274,11 +293,12 @@ export function cotReleaseTime(reportDate: string | null | undefined): string | 
 
 /** The futures root a CFTC code belongs to, for titles readers recognize: a verified alias, else its FUT board root. */
 export function cotRoot(code: string): string | null {
-  return Object.entries(ROOTS).find(([, row]) => row.code === code)?.[0]
+  return ICE_MARKETS.find((market) => market.code === code)?.root
+    ?? Object.entries(ROOTS).find(([, row]) => row.code === code)?.[0]
     ?? FUTURES_CONTRACTS.find((contract) => boardMarketCode(contract) === code)?.code
     ?? null;
 }
-export function cotPriceMapping(code: string) { return Object.values(ROOTS).find((row) => row.code === code) ?? PRICE_OVERLAYS[code] ?? null; }
+export function cotPriceMapping(code: string) { return ICE_MARKETS.find((market) => market.code === code) ?? Object.values(ROOTS).find((row) => row.code === code) ?? PRICE_OVERLAYS[code] ?? null; }
 export function cotClass(family: CotFamily, value: unknown): CotClass {
   return COT_CLASSES[family].find((row) => row.value === value)?.value ?? COT_CLASSES[family][0]!.value;
 }

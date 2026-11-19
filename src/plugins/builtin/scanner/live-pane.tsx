@@ -190,7 +190,7 @@ function sortMatches(
     .map(({ match }) => match);
 }
 
-function emptyState(payload: LiveScanPayload | null): { title: string; hint?: string } {
+export function liveScanEmptyState(payload: LiveScanPayload | null): { title: string; hint?: string } {
   if (payload?.status === "starting") return { title: "The scanner is starting.", hint: "Matches appear within a minute." };
   if (payload?.status === "closed") return { title: "Nothing matched at the close.", hint: "The scan runs again at the open." };
   return { title: "Nothing matches right now." };
@@ -312,9 +312,9 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
   const trackRef = useRef<LiveScanTrack | null>(null);
   const [track, setTrack] = useState<LiveScanTrack | null>(null);
   useEffect(() => {
-    if (!payload || !key) return;
+    if (!payload || !key || feed.savedAt != null) return;
     const now = Date.now();
-    const step = trackLiveScan(trackRef.current, payload, key, { alerts, now });
+    const step = trackLiveScan(trackRef.current, payload, feed.identity, { alerts, now });
     if (step.track === trackRef.current) return;
     trackRef.current = step.track;
     setTrack(step.track);
@@ -344,7 +344,7 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
       LIVE_SCAN_HISTORY_LIMIT,
     );
     // Only a new answer is folded in; the scan and its name are read as they are then.
-  }, [payload]);
+  }, [feed.identity, feed.savedAt, payload]);
 
   const noteOf = useCallback(
     (match: LiveScanMatch) => (payload ? liveScanRowNote(match, payload, track) : null),
@@ -425,7 +425,7 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
     }
     return null;
   }, [feed.error, payload]);
-  useScannerStatusFooter("scanner-live", { payload, denied: false, deniedReason: null }, focused, footerExtra);
+  useScannerStatusFooter("scanner-live", { payload, savedAt: feed.savedAt, denied: false, deniedReason: null }, focused, footerExtra);
   usePaneNoticeFooter({
     registrationId: "scanner-live:notices",
     focused,
@@ -575,8 +575,8 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
             : !payload ? { loading: true, loadingLabel: "Waiting for the scanner..." }
               : undefined
       }
-      emptyStateTitle={emptyState(payload).title}
-      emptyStateHint={emptyState(payload).hint}
+      emptyStateTitle={liveScanEmptyState(payload).title}
+      emptyStateHint={liveScanEmptyState(payload).hint}
     />
   );
 

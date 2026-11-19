@@ -191,7 +191,7 @@ function normalizeSource(value: unknown): ChartSeriesSource | null {
   };
 }
 
-function normalizedDateWindow(value: unknown): { start: string; end: string } | undefined {
+function normalizedDateWindow(value: unknown): ChartSpec["viewport"]["dateWindow"] {
   const window = recordOrNull(value);
   const start = nonEmptyString(window?.start);
   const end = nonEmptyString(window?.end);
@@ -199,7 +199,7 @@ function normalizedDateWindow(value: unknown): { start: string; end: string } | 
   const startTime = Date.parse(start);
   const endTime = Date.parse(end);
   if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime > endTime) return undefined;
-  return { start, end };
+  return { start, end, ...(window?.endAtLatestObservation === true ? { endAtLatestObservation: true } : {}) };
 }
 
 function normalizePanel(value: unknown, index: number, seen: Set<string>): ChartPanelSpec | null {

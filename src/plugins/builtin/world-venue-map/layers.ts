@@ -20,6 +20,7 @@ import { unprojectWorldPoint, type WorldMapViewport } from "./model";
 
 export const LAYERS_SETTING_KEY = "layers";
 export const VENUES_SETTING_KEY = "venues";
+export const HOME_AREA_SETTING_KEY = "mapHomeArea";
 /** Layers that refresh on their own (ships, flights) are the expensive ones. */
 const MAX_LIVE_LAYERS = GEO_MAX_LIVE_LAYERS;
 const MAX_DATA_LAYERS = 4;
@@ -124,17 +125,31 @@ export function resolveActiveLayers(tokens: readonly string[], layers: readonly 
 export interface MapPreset {
   layers: string[];
   venues: boolean;
+  place?: string;
 }
 
 /**
- * `MAP ships` and friends: the typed words become layer tokens, resolved once
- * the catalog is known. `MAP venues` alone is the venue map without layers.
+ * Layers lead the argument; the remaining text names a place, keeping its commas.
  */
-export function parseMapPreset(arg: string | null | undefined): MapPreset | null {
-  const tokens = parseLayerTokens(arg ?? "");
-  const venues = /\bvenues\b/i.test(arg ?? "");
-  if (!tokens.length) return venues ? { layers: [], venues: true } : null;
-  return { layers: tokens, venues };
+export function parseMapPreset(arg: string | null | undefined, catalog: readonly GeoLayerInfo[] = []): MapPreset | null {
+  const text = arg?.trim() ?? "";
+  if (!text) return null;
+  const known = new Set([
+    "venues", "ships", "ports", "energy", "air", "infrastructure", "facilities",
+    "vessels", "chokepoints", "airports", "flights", "pipelines", "oil-gas-fields", "terminals",
+    ...catalog.flatMap((layer) => [layer.id.toLowerCase(), String(layer.group).toLowerCase()]),
+  ]);
+  const layers: string[] = [];
+  let venues = false;
+  let rest = text;
+  while (rest) {
+    const token = /^[^\s,;+]+/.exec(rest)?.[0]?.toLowerCase();
+    if (!token || !known.has(token)) break;
+    if (token === "venues") venues = true;
+    else if (!layers.includes(token)) layers.push(token);
+    rest = rest.slice(token.length).replace(/^[\s,;+]+/, "");
+  }
+  return { layers, venues: venues || !layers.length, ...(rest ? { place: rest } : {}) };
 }
 
 export const MAP_PRESET_OPTIONS = [
@@ -221,17 +236,23 @@ export function readVenuesSetting(settings: Record<string, unknown> | undefined,
 
 /**
  * The layer picker in the pane settings: venues, then one list per group with
- * each layer's cadence and status. Without a catalog there is nothing to add,
- * so a server without geo layers shows the settings it always had.
+ * each layer's cadence and status. Home area also works without a catalog.
  */
 export function buildMapSettingsDef(
   settings: Record<string, unknown>,
   layers: readonly GeoLayerInfo[] | null | undefined,
-): PaneSettingsDef | undefined {
-  if (!layers?.length) return undefined;
+): PaneSettingsDef {
+  layers ??= [];
   const active = resolveActiveLayers(activeLayerTokens(settings, layers), layers);
   const values: Record<string, unknown> = { [VENUES_SETTING_KEY]: readVenuesSetting(settings, active.length) };
   const fields: PaneSettingField[] = [{
+    key: HOME_AREA_SETTING_KEY,
+    label: "Home area",
+    description: "New maps start here. Place name or latitude,longitude; blank for world.",
+    type: "text",
+    storage: "plugin",
+    placeholder: "Sydney or 51.5,-0.1",
+  }, {
     key: VENUES_SETTING_KEY,
     label: "Venues",
     description: "Trading venues with open or closed status.",
@@ -262,6 +283,7 @@ export function applyMapSetting(
   value: unknown,
   layers: readonly GeoLayerInfo[],
 ): Record<string, unknown> {
+  if (key === HOME_AREA_SETTING_KEY) return { ...settings, [key]: value };
   const before = resolveActiveLayers(activeLayerTokens(settings, layers), layers);
   // The first edit of a plain map writes down what it showed, so only the edited part changes.
   const chosen = isPlainMap(settings)
@@ -351,11 +373,12 @@ export function framePlaces(places: readonly { lon: number; lat: number }[]): { 
  * The area a layer's table reads. A layer drawn only from a zoom (live
  * flights) lists what the map shows once it is that close; further out, and
  * for every other layer, the table asks without one and the server answers
- * for the whole layer or, for flights, one busy area.
+ * for the whole layer or, for flights, one busy area. A map opened at a place
+ * also follows the viewport for layers without a minimum zoom.
  */
-export function entityTableBbox(layer: Pick<GeoLayerInfo, "minZoom">, view: GeoView): GeoBbox | undefined {
-  if (layer.minZoom === undefined || view.zoom < layer.minZoom) return undefined;
-  return view.bbox;
+export function entityTableBbox(layer: Pick<GeoLayerInfo, "minZoom">, view: GeoView, startedAtPlace = false): GeoBbox | undefined {
+  if (layer.minZoom === undefined) return startedAtPlace && view.zoom > 0 ? view.bbox : undefined;
+  return view.zoom >= layer.minZoom ? view.bbox : undefined;
 }
 
 export function geoViewKey(view: GeoView): string {

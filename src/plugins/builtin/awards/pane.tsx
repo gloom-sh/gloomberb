@@ -136,7 +136,8 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
       return { ...loaded, rows: payload.rows, hasMore: !snapshot && !!payload.nextCursor && !payload.locked, nextOffset: offset + payload.rows.length };
     };
   }, [filter, accessKey, snapshot]);
-  const paged = usePagedRows(loader, { getId: rowId });
+  // The list's own range, not the date it works out to today, so tomorrow's launch still opens on today's copy.
+  const paged = usePagedRows(loader, { getId: rowId, savedCopy: snapshot || !session.displayScope ? null : { key: ["awards", { ...filter, from: range === "all" ? filter.from : range }, accessKey] } });
   const loaded = paged.pages[0], data = loaded?.payload;
   useAwardAlerts(data, JSON.stringify([filter, accessKey]), setOpen);
   const failed = paged.error ?? paged.moreError;
@@ -194,7 +195,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     // The same coverage notes `fn AWARDS` prints: what the awards shown may be missing.
     ...(data ? awardsCoverageNotes(data) : []),
     ...(loaded?.refreshError ? [loaded.refreshError] : []),
-    ...(data?.truncated && Object.values(data.truncated).some(Boolean) ? ["Some aggregate history exceeds this response's limit. Narrow the date range or scope."] : []),
+    ...(data?.truncated && Object.values(data.truncated).some(Boolean) ? ["Some breakdowns list only their first entries; narrow the date range or scope to see the rest."] : []),
     ...(tab === "company" && currencies.length > 1 && !currency ? [`Chart in ${chartCurrency}; select a currency to inspect other obligations.`] : []),
     ...(tab === "company" && scopes.length > 1 && !source ? [`Chart covers ${awardScope(chartSource).toLowerCase()}; select a scope to inspect other contracts.`] : []),
     ...(data && (tab === "feed" || tab === "company") ? [futureAwardDatesNote(rows, data.generatedAt)].filter((note): note is string => !!note) : []),

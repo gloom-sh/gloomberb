@@ -1,5 +1,7 @@
 import { DataServiceUnreachableError, isNetworkFailure } from "../utils/network-failure";
-import { ApiRequestError, wasAskedTwice } from "../api-client/errors";
+import { OperationTimeoutError } from "../utils/async-deadline";
+import { ApiRequestError, isTransientFailure, wasAskedTwice } from "../api-client/errors";
+import type { PriceHistoryResult } from "../types/price-history";
 
 // Registered, so a miss raised by another copy of this module (a plugin that
 // resolved `gloomberb/market-data` from the source tree) is still recognized.
@@ -47,11 +49,18 @@ export function createProviderMiss(message?: string, reason?: unknown, options?:
   return new ProviderMissError(message, reason, options);
 }
 
-/** A source has the listing's bars but not up to the present: it answered, just behind. */
+/**
+ * A source has the listing's bars but not up to the present: it answered, just
+ * behind. `behind` is what it answered, which the router shows, said to be
+ * behind, when no source has the present.
+ */
 export class StaleHistoryError extends ProviderMissError {
-  constructor(message: string) {
+  readonly behind?: PriceHistoryResult;
+
+  constructor(message: string, behind?: PriceHistoryResult) {
     super(message);
     this.name = "StaleHistoryError";
+    if (behind) this.behind = behind;
   }
 }
 
@@ -136,8 +145,15 @@ export function isNoProviderMessage(message: string): boolean {
  * data, since asked again in a moment it may. "for SYMBOL" closes the first
  * sentence, so a table's note can name several symbols in front of it.
  */
-export function serviceDidNotAnswerMessage(symbol?: string): string {
-  return `Gloom's data service did not answer${symbol ? ` for ${symbol}` : ""}. Try again in a moment.`;
+export function serviceDidNotAnswerMessage(symbol?: string, failure?: unknown): string {
+  // A source the service reads that took too long (TIMEOUT) is said as a timeout, never as no source for the symbol.
+  const then = serviceSourceTimedOut(failure) ? "Its source timed out; try again in a moment." : "Try again in a moment.";
+  return `Gloom's data service did not answer${symbol ? ` for ${symbol}` : ""}. ${then}`;
+}
+
+/** Whether the data service answered that the source it reads timed out (reason TIMEOUT), asked twice. */
+function serviceSourceTimedOut(failure: unknown): boolean {
+  return failure instanceof Error && failure.message.trim() === "TIMEOUT";
 }
 
 /** The router's generic answer that no provider served a request, holding the failure behind it when a provider failed rather than missed. */
@@ -154,7 +170,8 @@ class NoProviderError extends Error {
  * the data service, and a listing read the data service failed to answer twice
  * (`wasAskedTwice`, `serviceDidNotAnswerMessage`), each of which says that
  * rather than that no source has the symbol; any other failure, a 5xx on a read
- * that is not asked again among them, keeps the generic message.
+ * that is not asked again among them, keeps the generic message. A timeout
+ * on a working connection is kept in its own words as well.
  */
 export function noProviderError(message: string, note: ProviderMissNote | undefined, symbol?: string): Error {
   if (note?.reason) return createProviderMiss(note.reason, note.reason);
@@ -162,7 +179,8 @@ export function noProviderError(message: string, note: ProviderMissNote | undefi
   if (isNetworkFailure(note?.failure)) {
     return note!.failure instanceof DataServiceUnreachableError ? note!.failure : new DataServiceUnreachableError(note!.failure);
   }
-  if (wasAskedTwice(note?.failure)) return new NoProviderError(serviceDidNotAnswerMessage(symbol), note!.failure);
+  if (note?.failure instanceof OperationTimeoutError) return new NoProviderError(note.failure.message, note.failure);
+  if (wasAskedTwice(note?.failure)) return new NoProviderError(serviceDidNotAnswerMessage(symbol, note!.failure), note!.failure);
   if (note?.failure instanceof ApiRequestError && note.failure.status === 429) {
     return new NoProviderError(rateLimitedMessage(symbol, note.failure.retryAfterMs), note.failure);
   }
@@ -186,6 +204,15 @@ export function rateLimitedMessage(symbol?: string, retryAfterMs?: number): stri
  */
 export function isSourceFailure(error: unknown): boolean {
   return error instanceof NoProviderError && error.failure !== undefined;
+}
+
+/**
+ * A source failure (`isSourceFailure`) that asking again shortly may get
+ * past: the source timed out, was rate limited or overloaded
+ * (`isTransientFailure`). A source that refused the read is not one.
+ */
+export function isTransientSourceFailure(error: unknown): boolean {
+  return error instanceof NoProviderError && error.failure !== undefined && isTransientFailure(error.failure);
 }
 
 /**

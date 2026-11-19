@@ -19,6 +19,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
@@ -29,6 +30,7 @@ import {
   DOE_UNIT_LABEL,
   doeAxisFormatter,
   doeComparisonBasis,
+  doeCoverageNote,
   doeHeaderLine,
   doeReport,
   doeRows,
@@ -130,7 +132,11 @@ export function DoePane({ width, height, focused }: PaneProps) {
   const [openingTab] = usePaneSettingValue<string>("tab", "crude");
   const [storedTab, setTab] = usePluginPaneState<string>("tab", openingTab);
   const tab = doeTab(storedTab);
-  const initialSeries = usePaneInstance()?.params?.series ?? null;
+  const params = usePaneInstance()?.params;
+  const initialSeries = params?.series ?? null;
+  // Opened from a futures search on a contract this board does not cover (`FUT HG --tab inventories`): it says so.
+  const coverage = useMemo(() => doeCoverageNote(params?.query), [params?.query]);
+  useRemoteUiNode(coverage ? { role: "report-notice", label: "Coverage", getMetadata: () => ({ text: coverage }) } : null);
   const resource = useAsyncResource(loadDoeBoard, { initialData: getCachedDoeBoard });
   const data = resource.data?.payload ?? null;
   // The server not serving the board yet is a state of the data, not a failure.
@@ -141,7 +147,7 @@ export function DoePane({ width, height, focused }: PaneProps) {
   // A refresh that failed shows the board an earlier read saved, and says when that copy is from.
   const savedAt = resource.data?.savedAt ?? null;
   usePaneNoticeFooter({ registrationId: "doe:notices", focused,
-    notices: [...(data?.gaps ?? []), ...(resource.data?.refreshError && savedAt == null ? [resource.data.refreshError] : [])] });
+    notices: [...(coverage ? [coverage] : []), ...(data?.gaps ?? []), ...(resource.data?.refreshError && savedAt == null ? [resource.data.refreshError] : [])] });
   // What Vs 1Y and Vs 5Y are measured against on this tab: the EIA's published figures for gas storage.
   const basis = useMemo(() => data ? doeComparisonBasis(doeRows(data, tab)) : null, [data, tab]);
   const info = useMemo(() => {

@@ -79,6 +79,19 @@ describe("headless pane printer", () => {
     expect(report.text.split("\n").find((line) => line.startsWith("AAPL P/E"))?.trimEnd()).toMatch(/ 2$/);
   });
 
+  test("series served in different bars name their own in a Bars column; series in one bar size need none", () => {
+    const series: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
+    const bars = (label: string, interval: string) => ({ id: label, label, interval, points: [{ date: "2026-11-17T16:30:00Z", close: 6 }] });
+    // G COPX, HG=F, where copper's 5-minute bars timed out and its daily ones answered.
+    const lines = renderHeadlessPaneText(series, { series: [bars("COPX Price", "5m"), bars("HG=F Price", "1d"), bars("CPI", "monthly")] }, args, "Chart")
+      .split("\n");
+    expect(lines.find((line) => line.startsWith("Series"))).toContain("Bars");
+    expect(lines.find((line) => line.startsWith("HG=F Price"))).toMatch(/ 1d +1$/);
+    expect(lines.find((line) => line.startsWith("COPX Price"))).toMatch(/ 5m +1$/);
+    const alike = renderHeadlessPaneText(series, { series: [bars("COPX Price", "5m"), bars("HG=F Price", "5m")] }, args, "Chart");
+    expect(alike).not.toContain("Bars");
+  });
+
   test("--width wraps the notes, errors and source line under a table, and never cuts a cell", () => {
     const definition: HeadlessPaneDefinition<"rows"> = {
       shape: "rows", argument: { kind: "none" }, options: [],
@@ -601,11 +614,22 @@ test("a series observed by the day is dated without a time in text and CSV, one 
   expect(csv).toContain("\n2026-10-16T23:59:49Z,17.9383219955,");
 });
 
-async function reportOf(definition: HeadlessPaneDefinition, rawArgument = "") {
+async function reportOf(definition: HeadlessPaneDefinition, rawArgument = "", rowWindow?: ResolvedPaneFunction["rowWindow"]) {
   return buildHeadlessFunctionReport({
-    headless: definition, token: "TEST", label: "Test report", options: {}, instance: {}, capability: { id: "test" },
+    headless: definition, token: "TEST", label: "Test report", options: {}, instance: {}, capability: { id: "test" }, rowWindow,
   } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-csv") } as MarketContext, rawArgument);
 }
+
+test("a windowed series prints the dated points the export keeps, not just the summary", async () => {
+  const points = [13, 14, 15, 16].map((date) => ({ date: `2026-11-${date}`, value: date - 10 }));
+  const report = await reportOf({ shape: "series", argument: { kind: "none" }, options: [], load: () => ({
+    series: [{ id: "transits", label: "Transits", unit: "vessels", points }],
+  }) }, "", { tail: 3 });
+  expect(report.text.replace(/^─[^\n]*\n/gm, "")).toMatch(/Transits \(vessels\)\s+Date\s+Value\s+2026-11-14\s+4\s+2026-11-15\s+5\s+2026-11-16\s+6/);
+  expect(report.text).not.toContain("2026-11-13");
+  expect(report.text).toContain("newest 3 of 4 rows");
+  expect(report.tables?.tables[0]?.rows).toEqual(points.slice(1).map(({ date, value }) => [date, value]));
+});
 
 function csvOf(report: Awaited<ReturnType<typeof reportOf>>, section?: string): string[] {
   return serializeCliResult({ data: report.data }, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, {

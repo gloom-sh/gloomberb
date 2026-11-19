@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { InsiderSignalCap, InsiderSignalRoleGroup, InsiderSignalRow, InsiderSignalSide, InsiderSignalsPayload } from "../../../api-client/insider-signals";
 import {
   DataTableStackView,
@@ -129,7 +129,7 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
 
   const loader = useCallback(
     async (force: boolean): Promise<InsiderSignalsAnswer> => ({ query, resource: await loadInsiderSignals(query, { force }) }),
-    [query],
+    [query, session.displayScope],
   );
   const resource = useAsyncResource(loader, {
     initialData: () => {
@@ -138,7 +138,7 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
     },
     clearOnError: (error) => error instanceof Error && isCloudSessionRequired(error.message),
     // Another side, window or filter keeps the rows on screen, loading, until its own arrive.
-    keepPreviousData: true,
+    keepPreviousData: session.displayScope,
   });
   // The rows another query left stay only while this one loads the first time: once it has
   // failed, the body says so with Retry, never another side's or filter's rows under this one.
@@ -152,14 +152,6 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
   const detailOpen = !!openTicker;
   // An opened company refreshes itself.
   usePaneRefreshKey(() => resource.reload(), { focused, enabled: !detailOpen });
-  // Signing in or out reads the ranking again for the new session.
-  const sessionKeyRef = useRef(session.requestKey);
-  const reload = resource.reload;
-  useEffect(() => {
-    if (sessionKeyRef.current === session.requestKey) return;
-    sessionKeyRef.current = session.requestKey;
-    reload();
-  }, [reload, session.requestKey]);
 
   const data = shown?.payload ?? null;
   // Rows of the other side, kept on screen while this one loads, are drawn in their own side's words.

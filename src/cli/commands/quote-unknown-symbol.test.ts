@@ -57,8 +57,10 @@ function cloud(listed: Record<string, unknown> = {}, searchMs = 0) {
   return { requests, release: () => release() };
 }
 
-async function runQuote(args: string[], service: ReturnType<typeof cloud>) {
-  const cli = createTestCliContext({ dataProvider: new AssetDataRouter(createGloomberbCloudProvider()) });
+async function runQuote(args: string[], service: ReturnType<typeof cloud>, knownUsStock?: (symbol: string) => boolean) {
+  const provider = createGloomberbCloudProvider();
+  if (knownUsStock) provider.knownUsStock = knownUsStock;
+  const cli = createTestCliContext({ dataProvider: new AssetDataRouter(provider) });
   const done = quoteCommand.execute(args, cli.context).catch(() => {});
   return {
     finish: async () => {
@@ -84,7 +86,7 @@ test("a symbol nothing lists is answered from the requests that start together, 
   // The batch has not answered: the symbol's changes, its venues and its index form are out beside it.
   await settle();
   expect([...service.requests].sort()).toEqual([
-    "GET /cloud/perps/board QWZXQ", "GET /market/quote ^QWZXQ", "GET /market/search QWZXQ", "GET /market/ticker-changes QWZXQ", "POST /market/quotes/batch",
+    "GET /cloud/perps/board", "GET /market/quote ^QWZXQ", "GET /market/search QWZXQ", "GET /market/ticker-changes QWZXQ", "POST /market/quotes/batch",
   ].sort());
   const { warnings } = await run.finish();
   expect(withSearchHints(warnings.join("\n"), ["QWZXQ"])).toBe("Not a ticker: QWZXQ. Try `gloom search QWZXQ`.");
@@ -119,4 +121,24 @@ test("a symbol's index form does not wait for a venue search slower than the bat
   expect(service.requests).toContain("GET /market/quote ^QWZXW");
   await run.finish();
   expect(service.requests).toHaveLength(5);
+});
+
+test("a symbol known to be a US stock is looked up in three requests that start together: no contracts, no share-class guesses", async () => {
+  const service = cloud({ NVDA: { ...APPLE, symbol: "NVDA", name: "NVIDIA Corporation" } });
+  const run = await runQuote(["NVDA"], service, (symbol) => symbol === "NVDA");
+  await settle();
+  expect([...service.requests].sort()).toEqual(["GET /market/search NVDA", "GET /market/ticker-changes NVDA", "POST /market/quotes/batch"].sort());
+  await run.finish();
+  expect(service.requests.filter((request) => /perps|NVD[.-]A/.test(request))).toEqual([]);
+});
+
+test("any other lookup asks for the contracts and the share-class guesses with its first search, none of them after it", async () => {
+  // Nothing here knows NVDA to be a US stock, as in the apps: it is asked as it always was, all at once.
+  const service = cloud({ NVDA: { ...APPLE, symbol: "NVDA", name: "NVIDIA Corporation" } });
+  const run = await runQuote(["NVDA"], service);
+  await settle();
+  expect([...service.requests].sort()).toEqual([
+    "GET /cloud/perps/board", "GET /market/search NVD-A", "GET /market/search NVD.A", "GET /market/search NVDA", "GET /market/ticker-changes NVDA", "POST /market/quotes/batch",
+  ].sort());
+  await run.finish();
 });

@@ -57,7 +57,7 @@ const TAB_ELSEWHERE: Readonly<Record<string, string>> = {
 const TAB_REPORT_OPTION: PaneReportOptionDef = {
   key: "tab",
   type: "enum",
-  description: "The board to open on: futures markets, EIA inventories, CFTC positioning or USDA crop balances.",
+  description: "The board to open on: futures markets, EIA inventories, COT positioning or USDA crop balances.",
   values: [{ value: "markets" }, { value: "inventories" }, { value: "positioning" }, { value: "crops" }],
   example: "--tab inventories",
   exampleWithoutArgument: true,

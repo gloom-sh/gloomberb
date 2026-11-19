@@ -8,6 +8,7 @@ import {
   isNoProviderMessage,
   isNoSourceAnswer,
   isSourceFailure,
+  isTransientServiceFailure,
   noProviderError,
   noteProviderAnswer,
   noteProviderMiss,
@@ -100,9 +101,8 @@ test("a listing read the data service failed to answer twice says so and to try 
     expect(isSourceFailure(error)).toBe(true);
     expect(isNoSourceAnswer(error)).toBe(false);
   }
-  // A failure of a read that is not asked again, a 5xx and a timeout among them, keeps the router's words.
-  const unretried = [sourceDidNotAnswer("UPSTREAM_ERROR"), new ApiRequestError("Bad gateway", 502), new ApiRequestError("Forbidden", 403),
-    new OperationTimeoutError("Cloud market request timed out after 10000ms")];
+  // A failure of a read that is not asked again keeps the router's words.
+  const unretried = [sourceDidNotAnswer("UPSTREAM_ERROR"), new ApiRequestError("Bad gateway", 502), new ApiRequestError("Forbidden", 403)];
   for (const failure of unretried) {
     const note: ProviderMissNote = {};
     noteProviderMiss(note, failure);
@@ -114,6 +114,14 @@ test("a listing read the data service failed to answer twice says so and to try 
   const limited = noProviderError("No quote provider available for YAR:OSL", note, "YAR:OSL");
   expect(limited.message).toBe("Gloom's data service is at its request limit for YAR:OSL. Try again in 42 s.");
   expect(isSourceFailure(limited)).toBe(true);
+});
+
+test("a routed read that times out on a working connection keeps the timeout wording", () => {
+  const failure = new OperationTimeoutError("Cloud market request timed out after 25000ms");
+  const error = noProviderError("No history provider available for LMT", { failure }, "LMT");
+  expect(error.message).toBe(failure.message);
+  expect(isSourceFailure(error)).toBe(true);
+  expect(isNoSourceAnswer(error)).toBe(false);
 });
 
 /**
@@ -132,4 +140,16 @@ test("only a source's answer that it has nothing for a listing it knows is an em
   expect(isNoDataAnswer(noProviderError("No provider available", { notFound: true }, "MULN"))).toBe(false);
   expect(isNoDataAnswer(new Error("UPSTREAM_ERROR"))).toBe(false);
   expect(isNoDataAnswer(noProviderError("No provider available", { failure: new Error("UPSTREAM_ERROR") }))).toBe(false);
+});
+
+// ^MERV while BYMA's host did not answer: the service answered TIMEOUT for its source, which `quote` and `history`
+// said as no provider for the symbol.
+test("a source the data service timed out on is said as a timeout, never as no source for the symbol", () => {
+  const timedOut = markAskedTwice(sourceDidNotAnswer("TIMEOUT"));
+  const error = noProviderError("No history provider available for ^MERV", { failure: timedOut }, "^MERV");
+  expect(error.message).toBe("Gloom's data service did not answer for ^MERV. Its source timed out; try again in a moment.");
+  expect(isTransientServiceFailure(error)).toBe(true);
+  // Any other failure the service answered twice stays as it was.
+  expect(noProviderError("No quote provider available for X", { failure: markAskedTwice(sourceDidNotAnswer("UPSTREAM_ERROR")) }, "X").message)
+    .toBe("Gloom's data service did not answer for X. Try again in a moment.");
 });

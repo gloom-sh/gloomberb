@@ -1,6 +1,10 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../../api-client";
+import { isPermanentClientError } from "../../../api-client/errors";
 import type { LiveScanPayload, LiveScanWireDefinition } from "../../../api-client/live-scan";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
+import { useSavedCopyFooter } from "../../../components/layout/pane/footer/registration";
+import { deleteSavedCopy, readSavedCopy, writeSavedCopy, type SavedCopy, type SavedCopyKey } from "../../../data/pane-saved-copies";
 import { errorMessage } from "../../../utils/errors";
 
 /** Where a live scan pane reads its scans; absent, Gloom Cloud. */
@@ -35,6 +39,7 @@ export interface LiveScanFeedState {
   /** The last refresh's failure; the last matches stay. */
   error: string | null;
   loading: boolean;
+  savedAt?: number;
 }
 
 interface Timers {
@@ -55,6 +60,7 @@ const realTimers: Timers = {
 export class LiveScanPoller {
   private definition: LiveScanWireDefinition | null = null;
   private key = "";
+  private savedKey: SavedCopyKey | null = null;
   private enabled = false;
   private timer: unknown = null;
   private controller: AbortController | null = null;
@@ -68,12 +74,15 @@ export class LiveScanPoller {
     private readonly now: () => number = Date.now,
   ) {}
 
-  setScan(definition: LiveScanWireDefinition | null, key: string): void {
+  setScan(definition: LiveScanWireDefinition | null, key: string, savedKey: SavedCopyKey | null = null, opening: SavedCopy<LiveScanPayload> | null = null): void {
     if (key === this.key) return;
     this.key = key;
     this.definition = definition;
+    this.savedKey = savedKey;
     this.cancel();
-    this.emit({ payload: null, error: null, loading: !!definition && this.enabled });
+    this.emit(opening
+      ? { payload: opening.value, error: null, loading: false, savedAt: opening.fetchedAt }
+      : { payload: null, error: null, loading: !!definition && this.enabled });
     if (this.enabled) this.ask();
   }
 
@@ -122,12 +131,22 @@ export class LiveScanPoller {
     this.client.getLiveScan(definition, controller.signal).then(
       (payload) => {
         if (generation !== this.generation) return;
-        this.emit({ payload, error: null, loading: false });
+        if (payload.status === "live" || payload.status === "closed" || (payload.status === "degraded" && payload.takenAt != null)) {
+          if (this.savedKey) writeSavedCopy(this.savedKey, payload, this.now(), MIN_POLL_MS);
+          this.emit({ payload, error: null, loading: false });
+        } else if (this.state.savedAt == null) {
+          this.emit({ payload, error: null, loading: false });
+        }
         this.schedule(nextLiveScanPoll(payload, false, this.now()));
       },
       (error: unknown) => {
         if (generation !== this.generation) return;
-        this.emit({ payload: this.state.payload, error: errorMessage(error), loading: false });
+        if (isPermanentClientError(error)) {
+          if (this.savedKey) deleteSavedCopy(this.savedKey);
+          this.emit({ payload: null, error: errorMessage(error), loading: false });
+        } else {
+          this.emit({ ...this.state, error: errorMessage(error), loading: false });
+        }
         this.schedule(nextLiveScanPoll(this.state.payload, true, this.now()));
       },
     );
@@ -150,19 +169,29 @@ export function useLiveScanFeed(
   definition: LiveScanWireDefinition | null,
   key: string,
   enabled: boolean,
-): LiveScanFeedState & { reload: () => void } {
-  const client = useContext(LiveScanClientContext) ?? apiClient;
-  const [state, setState] = useState<LiveScanFeedState>({ payload: null, error: null, loading: !!definition && enabled });
-  const pollerRef = useRef<LiveScanPoller | null>(null);
-  const poller = useMemo(() => new LiveScanPoller(client, setState), [client]);
-  pollerRef.current = poller;
+): LiveScanFeedState & { identity: string; reload: () => void } {
+  const override = useContext(LiveScanClientContext);
+  const client = override ?? apiClient;
+  const scope = useCloudDisplayScope();
+  const identity = JSON.stringify([scope, key]);
+  const savedKey = useMemo(() => !override && key && scope ? { key: ["live-scan", identity] } : null, [identity, key, override, scope]);
+  const opening = useMemo(() => ({ copy: savedKey ? readSavedCopy<LiveScanPayload>(savedKey) : null }), [savedKey]);
+  const [latest, setLatest] = useState<{ owner: LiveScanPoller; state: LiveScanFeedState } | null>(null);
+  const poller = useMemo(() => {
+    const owner = new LiveScanPoller(client, (state) => setLatest({ owner, state }));
+    return owner;
+  }, [client, identity]);
   useEffect(() => () => poller.dispose(), [poller]);
-  // The definition is read through its key.
   useEffect(() => {
-    poller.setScan(definition, key);
-  }, [poller, key]);
+    poller.setScan(definition, identity, savedKey, opening.copy);
+    opening.copy = null;
+  }, [poller, identity, opening, savedKey]);
   useEffect(() => {
     poller.setEnabled(enabled);
   }, [poller, enabled]);
-  return useMemo(() => ({ ...state, reload: () => pollerRef.current?.reload() }), [state]);
+  const state = latest?.owner === poller ? latest.state : opening.copy
+    ? { payload: opening.copy.value, error: null, loading: false, savedAt: opening.copy.fetchedAt }
+    : { payload: null, error: null, loading: !!definition && enabled };
+  useSavedCopyFooter(state.savedAt, enabled && state.error === null);
+  return { ...state, identity, reload: () => poller.reload() };
 }

@@ -2,8 +2,10 @@ import { expect, test } from "bun:test";
 import { parseRootShortcutIntent } from "../../../components/command-bar/routes/root/shortcuts";
 import { createTestPaneConfig } from "../../../test-support/pane";
 import type { PaneTemplateContext } from "../../../types/plugin";
-import { formatFxBoardAmount, parseFxBoardAmount, parseFxBoardAmountEdit, readFxBoardAmount } from "./amount";
-import { fxMatrixSettings } from "./settings";
+import { formatFxBoardAmount, parseFxBoardAmount, parseFxBoardAmountEdit, parseFxBoardCurrencies, readFxBoardAmount } from "./amount";
+import { fxMatrixHeadless } from "./headless";
+import { resolveCurrencies } from "./pairs";
+import { fxMatrixReportNotices, fxMatrixSettings } from "./settings";
 import type { PaneSettingField, PaneSettingsContext } from "../../../types/plugin";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import { fxConvertRows, fxMatrixModule } from "./index";
@@ -67,4 +69,31 @@ test("an amount saved from the field, the command bar or the settings reads back
       expect((await settings.applyValue!({ amount: stored }, amountField, stored, {} as PaneSettingsContext)).amount).toBe(stored);
     }
   }
+});
+
+// FXC opened on the majors and nothing in the app said how to add the lira: `FXC TRY` read as one lira to convert.
+test("FXC TRY and FXC USD,TRY add those currencies to the board open, its amount kept; fn FXC TRY reads the same board", async () => {
+  const template = fxMatrixModule.paneTemplates![0]!;
+  expect(["TRY", "USD,TRY", "usd try", " TRY, ZAR "].map(parseFxBoardCurrencies)).toEqual([["TRY"], ["USD", "TRY"], ["USD", "TRY"], ["TRY", "ZAR"]]);
+  expect(parseFxBoardCurrencies("emea")).toContain("TRY");
+  // An amount, a pair written as one and a word that is no currency are not.
+  for (const typed of ["100 TRY", "EUR/USD", "eur to usd", "XAU", "TRY XAU", ""]) expect(parseFxBoardCurrencies(typed), typed).toBeNull();
+  expect(parseRootShortcutIntent({ query: "FXC USD,TRY", commands: [], paneTemplates: [template], activeTicker: null }))
+    .toMatchObject({ source: "pane-template", argText: "USD,TRY" });
+
+  const config = createTestPaneConfig("/tmp/gloomberb-fxc-amount-test", {
+    instanceId: "fx-matrix:desk", paneId: "fx-matrix", settings: { currencies: ["USD", "JPY"], amount: "5000 EUR" },
+  });
+  const context = { config, layout: config.layout, focusedPaneId: null, activeTicker: null, activeCollectionId: null } as PaneTemplateContext;
+  expect(await template.createInstance!(context, { arg: "USD,TRY" })).toEqual({
+    instanceId: "fx-matrix:desk", settings: { amount: "5000 EUR", currencies: ["USD", "JPY", "TRY"] },
+  });
+  expect(template.shortcut!.argError!("TRY", context)).toBeNull();
+  expect(template.shortcut!.argError!("XAU", context)).toMatchObject({ message: "XAU is no currency on the board" });
+
+  const args = { rawArgument: "TRY", argument: "TRY", symbols: [], options: {} };
+  expect(fxMatrixHeadless.describe instanceof Function && fxMatrixHeadless.describe(args)).toBe("FX Cross Rates | USD EUR GBP JPY CHF CAD AUD NZD TRY");
+  // The majors alone say how to add others, the app's way too.
+  expect(fxMatrixReportNotices({})[0]).toContain("Add others with fn FXC TRY (FXC TRY in the app)");
+  expect(fxMatrixReportNotices({}, [...resolveCurrencies(undefined), "TRY"])).toEqual([]);
 });

@@ -280,11 +280,13 @@ function FlowPane({ focused, width, height }: PaneProps) {
   // has received, and recorded pages continue below the oldest of them.
   // Folded in during render, not after it, so the first recorded page is
   // already asked for below the live prints it arrived with.
-  const keptRef = useRef<readonly ScannerFlowEvent[]>([]);
+  const keptRef = useRef<{ identity: string; events: readonly ScannerFlowEvent[] }>({ identity: feed.identity, events: [] });
   const kept = useMemo(() => {
-    keptRef.current = keepFlowPrints(keptRef.current, feed.payload?.events);
-    return keptRef.current;
-  }, [feed.payload?.events]);
+    const previous = keptRef.current.identity === feed.identity && !feed.denied ? keptRef.current.events : [];
+    const events = keepFlowPrints(previous, feed.payload?.events);
+    keptRef.current = { identity: feed.identity, events };
+    return events;
+  }, [feed.denied, feed.identity, feed.payload?.events]);
   const liveRows = useMemo(
     () => filterFlowEvents(kept, filters, scope),
     [filters, kept, scope],
@@ -296,7 +298,9 @@ function FlowPane({ focused, width, height }: PaneProps) {
     () => (oldestKept ? { at: oldestKept.at, id: oldestKept.id } : null),
     [oldestKept?.at, oldestKept?.id],
   );
-  const history = useFlowHistory(historyQuery, oldestLive, !!feed.payload && !feed.denied);
+  const history = useFlowHistory(historyQuery, oldestLive, !!feed.payload && !feed.denied, undefined, {
+    identity: feed.identity, cacheScope: feed.cacheScope,
+  });
   const events = useMemo(() => mergeFlowRows(liveRows, history.events), [history.events, liveRows]);
 
   // The session summary is read only while Tide or Strikes is on screen: it
@@ -314,6 +318,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
   );
   const session = useAsyncResource<ScannerFlowSession>(
     sessionLoader && feed.payload && !feed.denied ? sessionLoader : null,
+    { savedCopy: feed.cacheScope && shownSearch !== null ? { key: ["scanner-flow-session", feed.cacheScope, shownSearch] } : null },
   );
   useAutoRefresh(session.updatedAt, () => session.load(), {
     intervalMs: sessionShown && feed.payload?.status === "live" ? FLOW_SESSION_LIVE_REFRESH_MS : null,
@@ -367,7 +372,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
   }, [setCursorSymbol]);
 
   if (feed.denied) {
-    return <ScannerDeniedState reason={feed.deniedReason} placement="flow-wall" width={width} height={height} />;
+    return <ScannerDeniedState scanner="flow" reason={feed.deniedReason} placement="flow-wall" width={width} height={height} />;
   }
 
   const queryBar = (

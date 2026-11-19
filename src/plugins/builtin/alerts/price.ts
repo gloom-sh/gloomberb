@@ -9,12 +9,37 @@ const PRICE_FORMAT = "type 81000 or 81k";
 
 const scaled = (value: number, scale: number) => Number((value * scale).toPrecision(15));
 
-/** A price as `parsePastedNumber` reads it, and `81k` is 81000: the scale applies to either reading of a comma and three digits. */
+/** A dollar price's marks: `$757.75`, `US$ 1,000`, `757.75 USD`. */
+const DOLLAR_LEAD = /^(?:US)?\$\s*/i;
+const DOLLAR_TAIL = /\s*USD$/i;
+
+/**
+ * A price without the dollar marks it was typed with (`$757.75`, `US$ 1,000`,
+ * `757.75 USD`), and whether it had one: a dollar price is written the US way,
+ * so a comma in it groups thousands.
+ */
+function withoutDollarMark(text: string): { text: string; dollars: boolean } {
+  const trimmed = text.trim();
+  const bare = trimmed.replace(DOLLAR_LEAD, "").replace(DOLLAR_TAIL, "");
+  return { text: bare, dollars: bare !== trimmed };
+}
+
+/** Whether a word is a dollar mark alone (`$`, `US$`, `USD`), as a shell splits `$ 757.75` or `757.75 USD`. */
+export const isDollarMark = (word: string): boolean => /^(?:US\$|\$|USD)$/i.test(word.trim());
+
+/**
+ * A price as `parsePastedNumber` reads it, and `81k` is 81000: the scale
+ * applies to either reading of a comma and three digits. A dollar price
+ * (`$1,000`, `1,000 USD`) is written the US way, so its comma groups thousands
+ * and it reads two ways no more.
+ */
 export function parseAlertPrice(text: string): PastedNumber {
-  const match = SCALED_PRICE.exec(text.trim());
-  if (!match) return parsePastedNumber(text);
-  const scale = PRICE_SCALES[match[2]!.toLowerCase() as keyof typeof PRICE_SCALES];
-  const base = parsePastedNumber(match[1]);
+  const { text: bare, dollars } = withoutDollarMark(text);
+  const match = SCALED_PRICE.exec(bare);
+  const scale = match ? PRICE_SCALES[match[2]!.toLowerCase() as keyof typeof PRICE_SCALES] : 1;
+  const base = parsePastedNumber(match ? match[1] : bare);
+  if (base.kind === "ambiguous" && dollars) return { kind: "number", value: scaled(base.thousands, scale) };
+  if (!match) return base;
   if (base.kind === "number") return { kind: "number", value: scaled(base.value, scale) };
   if (base.kind === "ambiguous") return { kind: "ambiguous", thousands: scaled(base.thousands, scale), decimal: scaled(base.decimal, scale) };
   return base;

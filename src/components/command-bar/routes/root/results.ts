@@ -15,6 +15,9 @@ import {
 import { matchPrefix, type Command } from "../../commands/registry";
 import { pastedRootList } from "../../commands/collection-list";
 import { isCollectionCommand, SECURITY_DESCRIPTION_SEARCH } from "../../helpers";
+
+/** A command's code that is a ticker's shape too: letters, as a US listing's symbol is written. */
+const TICKER_SHAPED_CODE = /^[A-Z]{1,5}$/;
 import { recentPaneTemplateArg } from "../../pane-templates/items";
 import { dedupeById, PASTED_LIST_CATEGORY } from "../../view-model";
 import type { ResultItem } from "../../list/model";
@@ -107,6 +110,27 @@ export interface RootResultModelOptions {
   runSecurityDescriptionShortcut: (query?: string) => void | Promise<void>;
   state: AppState;
   tickerActionItems: () => ResultItem[];
+}
+
+/**
+ * The row that opens a function's code as a ticker instead (`FB as a ticker`,
+ * `CATL as a ticker`): the security search for the code. Null for a code no
+ * ticker is written like, or with no security search to open.
+ */
+function tickerCodeItem(
+  code: string,
+  availableCommands: Command[],
+  openModeRoute: RootResultModelOptions["openModeRoute"],
+): ResultItem | null {
+  if (!TICKER_SHAPED_CODE.test(code) || !availableCommands.some((command) => command.id === "security-description")) return null;
+  return {
+    id: `ticker-code:${code}`,
+    label: `${code} as a ticker`,
+    detail: "Open security details after resolving a ticker",
+    category: "Search",
+    kind: "command",
+    action: () => openModeRoute("ticker-search", code, SECURITY_DESCRIPTION_SEARCH),
+  };
 }
 
 /** An in-flight or answered request keeps its rows even if the heuristic lapses. */
@@ -340,13 +364,17 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       }))
       : [shortcutItem];
     shortcutRuns = templateItems.some((item) => !item.disabled);
-    const relatedTemplateItems = rootQuery.trim().toUpperCase() === rootShortcutIntent.prefix
+    const codeAlone = rootQuery.trim().toUpperCase() === rootShortcutIntent.prefix;
+    const relatedTemplateItems = codeAlone
       ? paneShortcutItems({
         filterQuery: rootQuery,
         includePromptableTickerTemplates: true,
       })
       : [];
-    items.push(...templateItems, ...relatedTemplateItems);
+    // CATL is Catalysts and CATL's own name for itself, as FB is Send Feedback and a ticker: the listing is the
+    // row under the function, which Enter still opens.
+    const tickerItem = codeAlone ? tickerCodeItem(rootShortcutIntent.prefix, availableCommands, openModeRoute) : null;
+    items.push(...templateItems, ...(tickerItem ? [tickerItem] : []), ...relatedTemplateItems);
   } else if (
     rootShortcutIntent.kind !== "none"
     && rootShortcutIntent.source === "plugin-command"
@@ -392,6 +420,10 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
   } else if (match && !match.command.hasArg) {
     const item = commandToItem(match.command);
     if (item) items.push(item);
+    // FB is Send Feedback and a ticker too (VF, SB and CR are companies): the ticker is the row under the command,
+    // which Enter still runs, for someone who typed the code meaning the listing.
+    const tickerItem = match.arg ? null : tickerCodeItem(rootQuery.trim().toUpperCase(), availableCommands, openModeRoute);
+    if (tickerItem) items.push(tickerItem);
   } else if (!rootQuery) {
     // One row per function: a code a group above already runs as it is (a
     // recent CHAT, Start Here's PF) is not listed again in the groups below.

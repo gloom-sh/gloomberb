@@ -96,7 +96,7 @@ export function useListPerpetuals(tickers: readonly TickerRecord[], enabled: boo
     };
   }, [accessKey, requestKey]);
   // An added row waits for its own answer while the others keep theirs.
-  const resource = useAsyncResource(requestKey ? loader : null, { clearOnError: isAccessDenied, keepPreviousData: true });
+  const resource = useAsyncResource(requestKey ? loader : null, { clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   const versionRef = useRef(0);
   const { data, loading } = resource;

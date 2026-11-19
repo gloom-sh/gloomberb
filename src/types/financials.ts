@@ -444,6 +444,14 @@ export interface Fundamentals extends DepositaryReceiptFacts {
    * home line, per receipt), `cpo` (a CPO line's company, per CPO).
    */
   trailingEpsBasis?: "statements" | "home" | "cpo";
+  /**
+   * `YYYY-MM-DD`, the last day of the twelve months `revenue`, `netIncome` and
+   * `profitMargin` are: the statements' trailing window (Financials' TTM)
+   * when they are its figures. Absent when Gloom Cloud cannot tie them to one.
+   */
+  trailingPeriodEnd?: string;
+  /** `statements`: the trailing revenue, net income and margin are the statements' window, in place of figures on no twelve months the EPS is on. */
+  trailingIncomeBasis?: "statements";
   /** Provider-reported issuer market cap; marketCapCurrency identifies its units when known. */
   marketCap?: number;
   marketCapCurrency?: string;
@@ -666,6 +674,8 @@ export interface AnalystResearchData {
 export interface DividendAction {
   exDate: string;
   amount: number;
+  payDate?: string;
+  recordDate?: string;
   /**
    * Who published the row when it is not the listing's own history: a fund's
    * sponsor, for a distribution the history lacks (iShares, SPDR, J.P. Morgan,
@@ -676,18 +686,27 @@ export interface DividendAction {
 
 /**
  * A distribution the issuer has declared and not yet paid, as the source
- * states it. Kept apart from the paid `dividends`: no history, yield or growth
- * figure takes it.
+ * states it. Kept apart from paid `dividends`; issuer-confirmed declarations
+ * enter ex-date-based cash figures once ex-dated, with any conversion estimate.
  */
 export interface DeclaredDividendAction {
   exDate: string;
   /** Per share, in the listing's dividend currency (`currency`). */
   amount: number;
+  cashEstimate?: DividendCashEstimate;
   declarationDate?: string;
   recordDate?: string;
   payDate?: string;
   /** A one-off beside the regular payments (AIOK's $3.50), as the server marks it. */
   special?: true;
+}
+
+/** declaredAmount is in declaredCurrency's major unit; the enclosing amount keeps the history's currency/unit. */
+export interface DividendCashEstimate {
+  declaredCurrency: string;
+  declaredAmount?: number;
+  fixingDate?: string;
+  basis: string;
 }
 
 export interface SplitAction {
@@ -757,12 +776,37 @@ export interface CorporateActionsData {
   dividendsAsOf?: string;
   splits: SplitAction[];
   earnings: EarningsAction[];
+  /** Businesses demerged out of the listing into companies of their own; absent where none is on record and from older servers. */
+  demergers?: DemergerAction[];
 }
 
-/** Paid rows as their company declared them, in `currency` (its major unit). */
+/**
+ * A business demerged out of a listing (Tata Motors' commercial vehicles into
+ * TMCV): the listing's price falls by that business's value on the ex-date,
+ * which is no market move.
+ */
+export interface DemergerAction {
+  /** The first session the listing traded without the business, YYYY-MM-DD. */
+  exDate: string;
+  recordDate?: string;
+  /** The company the business went to, as it lists, and the day it first traded (null until it lists). */
+  successor: { symbol: string; exchange?: string; name?: string; listedOn?: string | null };
+  /** What the business does: "commercial vehicles". */
+  business?: string;
+  /** Shares of the demerged company per share of the listing. */
+  ratio?: number;
+  source?: string;
+}
+
+/** Declaration amounts (rows and announced.amount) are in the major unit of `currency`.
+ * announced.paidAmount uses the corporate-action history's currency/unit, like dividends. */
 export interface DeclaredCash {
   currency: string;
   rows: DividendAction[];
+  announced?: { exDate: string; payDate: string; amount: number; paidAmount?: number; fixingDate?: string };
+  fetchedAt?: string;
+  stale?: boolean;
+  verification?: "unavailable";
 }
 
 export interface CompanyProfile {
@@ -840,7 +884,7 @@ export type StatementFilingKind = "annual_results" | "interim_results" | "quarte
 
 /** A results announcement or report on HKEXnews or SGXNet, with when it was published and read. */
 export interface StatementFilingDocument {
-  source: "hkex" | "sgx";
+  source: "hkex" | "sgx" | "lse" | "cninfo" | "ir";
   kind: StatementFilingKind;
   title: string;
   url: string;

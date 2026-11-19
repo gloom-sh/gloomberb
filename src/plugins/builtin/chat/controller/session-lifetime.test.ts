@@ -66,6 +66,16 @@ afterEach(() => {
   Object.assign(apiClient, original);
 });
 
+test("a browser cannot restore an old chat identity without the matching cookie binding", () => {
+  apiClient.setCookieSessionMode(true);
+  apiClient.waitForCookieIdentity();
+  persistence.setState("session", { sessionToken: null, user: currentUser }, { schemaVersion: 1 });
+  controller.attachPersistence(persistence);
+  expect(apiClient.getCurrentUser()).toBeNull();
+  expect(apiClient.isDisplayScopePending()).toBe(true);
+  expect(controller.getSnapshot().user).toBeNull();
+});
+
 test.each(["null", "success", "reject"])("disposed get-session continuation cannot mutate account or restart runtime: %s", async (outcome) => {
   attach();
   const deferred = Promise.withResolvers<AuthUser | null>();

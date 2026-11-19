@@ -20,14 +20,21 @@ const drawing = (id: string): ChartDrawing => ({
   id, panelId: "main", color: "#ffcc00",
   points: [{ time: 1_700_000_000_000, value: 100 }, { time: 1_700_086_400_000, value: 104 }],
 });
+/** A freehand stroke as the pencil saves it: one point per pointer move. */
+const stroke = (id: string, length: number): ChartDrawing => ({
+  id, panelId: "main", color: "#4c9aff",
+  points: Array.from({ length }, (_, index) => ({ time: 1_700_000_000_000 + index * 60_000, value: 100 + Math.sin(index / 40) })),
+});
 
 let latest: AppState;
 let dispatch: Dispatch<AppAction>;
 let setDrawings: (drawings: readonly ChartDrawing[]) => void;
+/** What the chart shows. */
+let shown: readonly ChartDrawing[];
 let unmount: () => void;
 
 /** A pane holding `stored` drawings, with the store mounted on a chart that starts with none until restored. */
-async function mount(stored: readonly ChartDrawing[]) {
+async function mount(stored: readonly unknown[]) {
   const config = createTestPaneConfig("/tmp/gloom-drawing-store", {
     instanceId: PANE_ID,
     paneId: "chart-composer",
@@ -36,6 +43,7 @@ async function mount(stored: readonly ChartDrawing[]) {
   function Chart() {
     const [drawings, set] = useState<readonly ChartDrawing[]>(NO_DRAWINGS);
     setDrawings = set;
+    shown = drawings;
     return <ChartDrawingStore paneInstanceId={PANE_ID} drawings={drawings} onRestore={set} />;
   }
   function Harness() {
@@ -51,9 +59,10 @@ async function mount(stored: readonly ChartDrawing[]) {
   await tui.render(<Harness />, { width: 20, height: 4 });
 }
 
+const saved = () => findPaneInstance(latest.config.layout, PANE_ID)?.settings?.[CHART_DRAWINGS_SETTING_KEY];
 const savedIds = () => {
-  const saved = findPaneInstance(latest.config.layout, PANE_ID)?.settings?.[CHART_DRAWINGS_SETTING_KEY];
-  return Array.isArray(saved) ? saved.map((entry: ChartDrawing) => entry.id) : null;
+  const list = saved();
+  return Array.isArray(list) ? list.map((entry: ChartDrawing) => entry.id) : null;
 };
 const wait = (ms: number) => act(async () => { await Bun.sleep(ms); await tui.setup().renderOnce(); });
 
@@ -75,6 +84,33 @@ test("removing the last drawing is saved even when the pane opened with none, an
   await act(async () => unmount());
   await wait(50);
   expect(savedIds()).toEqual([]);
+});
+
+test("a chart with more drawings and freehand points than a link carries reopens with every one, and the next drawing adds to them", async () => {
+  const stored = [
+    ...Array.from({ length: 101 }, (_, index) => drawing(`line-${index}`)),
+    stroke("pencil-1", 2_600),
+    stroke("pencil-2", 2_600),
+  ];
+  await mount(stored);
+  await wait(50);
+  expect(shown).toEqual(stored);
+
+  await act(async () => setDrawings([...shown, drawing("next")]));
+  await wait(500);
+  expect(saved()).toEqual([...stored, drawing("next")]);
+});
+
+test("an entry the chart cannot read costs only itself: the rest restore, and the next edit keeps them and it", async () => {
+  // Written by a build that knows a field this one does not.
+  const unreadable = { ...drawing("from-newer-build"), label: "Breakout" };
+  await mount([drawing("a"), unreadable, drawing("b")]);
+  await wait(50);
+  expect(shown.map(({ id }) => id)).toEqual(["a", "b"]);
+
+  await act(async () => setDrawings([...shown, drawing("c")]));
+  await wait(500);
+  expect(saved()).toEqual([drawing("a"), drawing("b"), drawing("c"), unreadable]);
 });
 
 test("drawings the pane restored are left alone when the chart goes untouched", async () => {

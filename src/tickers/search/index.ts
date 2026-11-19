@@ -41,7 +41,7 @@ import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTermin
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
-import { withFundReceiptsAsFunds, withHomeListingLead, withNamedCompanyAfterUsLead } from "./home-listing";
+import { withFundReceiptsAsFunds, withHomeListingLead, withHomeVenueLead, withNamedCompanyAfterUsLead } from "./home-listing";
 import { answeredInFull, rememberSearchAnswer, withKnownListings } from "./listing-index";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
 import { delistingLabel, parseListingWithdrawal, withdrawalLabel } from "../../market-data/quotes/delisting";
@@ -284,6 +284,7 @@ export async function searchTickerCandidates({
   totalLimit = 8,
   includeOptionContracts = true,
   onPartial,
+  homeVenue,
 }: {
   query: string;
   tickers: ReadonlyMap<string, TickerRecord>;
@@ -292,6 +293,8 @@ export async function searchTickerCandidates({
   localLimit?: number;
   totalLimit?: number;
   includeOptionContracts?: boolean;
+  /** The venue of the user's own market, whose lines of the company a word names lead (`withHomeVenueLead`). */
+  homeVenue?: string | null;
   /** Called when a slower, richer source improves results already returned. */
   onPartial?: (candidates: TickerSearchCandidate[]) => void;
 }): Promise<TickerSearchCandidate[]> {
@@ -304,6 +307,7 @@ export async function searchTickerCandidates({
     totalLimit,
     // A search that hides contracts still shows them when asked: "AAPL OPT".
     includeOptionContracts: includeOptionContracts || parseAssetClassQuery(query)?.code === "OPT",
+    homeVenue,
   });
   const renamed = renamedListingFor(rawQuery);
   const [searched, renamedRow] = await Promise.all([
@@ -339,6 +343,7 @@ export function buildTickerSearchCandidates({
   localLimit = 6,
   totalLimit = 8,
   includeOptionContracts = true,
+  homeVenue,
 }: {
   query: string;
   tickers: ReadonlyMap<string, TickerRecord>;
@@ -346,6 +351,8 @@ export function buildTickerSearchCandidates({
   localLimit?: number;
   totalLimit?: number;
   includeOptionContracts?: boolean;
+  /** The venue of the user's own market (`homeMarketVenue`): its lines of the company a word names lead (`withHomeVenueLead`). */
+  homeVenue?: string | null;
 }): TickerSearchCandidate[] {
   const filteredProviderResults = includeOptionContracts
     ? providerResults
@@ -363,10 +370,10 @@ export function buildTickerSearchCandidates({
   );
   // A receipt on a fund is the fund's line, never a company's primary listing over it (HK01 on SET for the Tracker Fund).
   const providerItems = withFundReceiptsAsFunds(createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions));
-  const ranked = withNamedCompanyAfterUsLead(
+  const ranked = withHomeVenueLead(withNamedCompanyAfterUsLead(
     withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query),
     query,
-  );
+  ), query, homeVenue);
   return limitTickerSearchCandidates(companyListingsFirst(assignTickerSearchCategories(ranked, query), query), totalLimit, localLimit);
 }
 
@@ -816,7 +823,7 @@ async function searchProviderResults(
   };
   let busy = false;
   let unreachable: unknown = null;
-  await Promise.all(searchQueries.map(async (searchQuery, index) => {
+  const ask = async (searchQuery: string, index: number) => {
     try {
       const results = await dataProvider.search(searchQuery, {
         ...searchContext,
@@ -838,7 +845,11 @@ async function searchProviderResults(
       else if (isProviderBusy(error)) busy = true;
       else logFailure("tickers-search", "Could not search ticker spelling")(error);
     }
-  }));
+  };
+  // A share class written without its mark (BRKB for BRK.B) is guessed at beside the symbol's own search, unless the
+  // symbol is known to be a US stock: NVDA is Nvidia, and NVD-A and NVD.A are two more searches for nothing.
+  const notAsked = dataProvider.knownUsStock?.(query) ? new Set(compactShareClassAliases(query)) : new Set<string>();
+  await Promise.all(searchQueries.map((searchQuery, index) => notAsked.has(searchQuery) ? null : ask(searchQuery, index)));
 
   // Catalogues can omit exact market symbols or return a crypto pair from a
   // different venue. Verify the requested quote before accepting an alias.
@@ -949,12 +960,13 @@ function buildProviderSearchQueries(query: string): string[] {
 
   if (!symbolLike) queries.add(trimmedQuery);
   for (const alias of buildSymbolAliases(trimmedQuery)) queries.add(alias);
-  for (const alias of buildCompactShareClassAliases(trimmedQuery)) queries.add(alias);
+  for (const alias of compactShareClassAliases(trimmedQuery)) queries.add(alias);
   queries.add(trimmedQuery);
   return [...queries].slice(0, 4);
 }
 
-function buildCompactShareClassAliases(query: string): string[] {
+/** The share-class spellings a four or five letter code with a class letter at its end may be (NVDA: NVD-A, NVD.A). */
+function compactShareClassAliases(query: string): string[] {
   const normalized = normalizeTickerSymbol(query);
   if (!/^[A-Z]{4,5}$/.test(normalized)) return [];
   const shareClass = normalized.slice(-1);

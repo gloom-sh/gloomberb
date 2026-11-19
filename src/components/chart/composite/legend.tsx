@@ -2,7 +2,7 @@ import { memo, useEffect, useRef } from "react";
 import { Box, ScrollBox, Span, Text, useShortcutLabel, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
-import { MISSING_VALUE, displayWidth, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatPercentRaw, formatCompact } from "../../../utils/format";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import {
@@ -15,6 +15,7 @@ import {
 import type { CompositeChartProps, CompositeChartScene } from "./types";
 import { DIRECTION_MARKER, seriesColorsDirection, seriesCueCssBackground, type SeriesLineCue } from "./series-cues";
 import { DisclosureMarker as KitDisclosureMarker } from "../../ui/disclosure-marker";
+import { usePaneCapture } from "../../layout/pane/capture-status";
 
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
 const NO_LINE_CUES: ReadonlyMap<string, SeriesLineCue> = new Map();
@@ -253,7 +254,7 @@ export function CompositeLegend({
   cellPlot = false,
   directionDownColor = null,
   width,
-  accessory,
+  accessory: liveAccessory,
   accessoryWidth,
   formatValue,
   showLatestChangePercent,
@@ -297,6 +298,7 @@ export function CompositeLegend({
   /** Folds or opens the legend: a chevron in its inset, shown under the pointer while it is open. */
   onToggleCollapsed?: () => void;
 }) {
+  const accessory = usePaneCapture() ? null : liveAccessory;
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const foldKey = useShortcutLabel()("Shift+L");
   // Folded, the legend keeps its first series; the rest wait behind a count.
@@ -331,8 +333,11 @@ export function CompositeLegend({
     // What a futures price counts, beside its number as FUT prints it.
     const statedUnit = entry.points.length > 0 && !formatValue && entry.statedUnit ? ` ${entry.statedUnit}` : "";
     // A statement value names the fiscal period it reports, as FA's columns do.
+    const native = cursorValue?.point?.nativeAmount;
+    const statementEnd = native ? cursorValue?.point?.observedAt.toISOString().slice(0, 10) : undefined;
     const fiscalPeriod = withFiscalPeriods && cursorValue?.value != null ? cursorValue.point?.fiscalPeriod : undefined;
-    const valueTail = `${ownDate ? ` ${ownDate}` : ""}${fiscalPeriod ? ` ${fiscalPeriod}` : ""}${changeText}`;
+    const readDate = statementEnd ?? ownDate;
+    const valueTail = `${readDate ? ` ${readDate}` : ""}${fiscalPeriod && !statementEnd ? ` ${fiscalPeriod}` : ""}${native && withFiscalPeriods ? ` (${formatCompact(native.value)} ${native.currency})` : ""}${changeText}`;
     const readsRight = entry.points.length > 0 && entry.axis === "right" && leftPanels.has(entry.panelId);
     const axisNote = readsRight && withAxisNotes ? RIGHT_AXIS_NOTE : "";
     const valueText = entry.points.length === 0
@@ -457,6 +462,17 @@ export function CompositeLegend({
   // fits with every name at its first word it stays in the tooltip.
   if (entries.some(({ axisNote }) => axisNote) && minimumWidthOf(entries) > widthBeforeAccessory) {
     entries = buildEntries(entries.some(({ fiscalPeriod }) => fiscalPeriod), false);
+  }
+  if (entries.some((entry) => entry.entry.compactLabel) && measureSeriesWidth() > widthBeforeAccessory) {
+    for (const entry of entries) setEntryLabel(entry, entry.compactLabel, displayWidth(entry.compactLabel));
+    if (measureSeriesWidth() > widthBeforeAccessory) {
+      for (const entry of entries) {
+        if (!entry.entry.compactLabel) continue;
+        const { name, suffix } = labelParts(entry, entry.compactLabel);
+        entry.compactLabel = (nameWords(name)[0] ?? name) + suffix;
+        setEntryLabel(entry, entry.compactLabel, displayWidth(entry.compactLabel));
+      }
+    }
   }
   const fitsOneLine = minimumWidthOf(entries, true) <= widthBeforeAccessory;
   // Entries that cannot share a line even with names cut to fragments wrap onto
@@ -659,24 +675,36 @@ export function CompositeLegend({
       </Box>
     );
   };
-  const scrollLine = (line: number[] | null, key: string | number, ref: typeof scrollRef | undefined) => (
-    <ScrollBox
-      key={key}
-      ref={ref}
-      width={seriesWidth}
-      height={1}
-      flexShrink={0}
-      scrollX
-      focusable={false}
-      horizontalScrollbarOptions={{ visible: false }}
-      onMouseScroll={ref ? handleMouseScroll : undefined}
-      data-gloom-role="composite-chart-legend-scroll"
-    >
-      <Box flexDirection="row" width={line ? lineWidth(line) : desiredSeriesWidth} height={1} gap={1}>
-        {line ? line.map((index) => renderEntry(entries[index]!, index)) : entries.map(renderEntry)}
+  const scrollLine = (line: number[] | null, key: string | number, ref: typeof scrollRef | undefined) => {
+    const contentWidth = line ? lineWidth(line) : desiredSeriesWidth;
+    const count = ref && !collapsed && series.length > 1 && contentWidth > seriesWidth ? `${series.length} series` : "";
+    const countWidth = count ? Math.min(seriesWidth, displayWidth(count) + 1) : 0;
+    return (
+      <Box key={key} flexDirection="row" width={seriesWidth} height={1} flexShrink={0}>
+        <ScrollBox
+          ref={ref}
+          width={Math.max(0, seriesWidth - countWidth)}
+          height={1}
+          flexShrink={0}
+          scrollX
+          focusable={false}
+          horizontalScrollbarOptions={{ visible: false }}
+          onMouseScroll={ref ? handleMouseScroll : undefined}
+          data-gloom-role="composite-chart-legend-scroll"
+        >
+          <Box flexDirection="row" width={contentWidth} height={1} gap={1}>
+            {line ? line.map((index) => renderEntry(entries[index]!, index)) : entries.map(renderEntry)}
+          </Box>
+        </ScrollBox>
+        {count ? (
+          <Box width={countWidth} height={1} flexShrink={0} paddingLeft={countWidth > displayWidth(count) ? 1 : 0}
+            data-gloom-role="composite-chart-legend-count" title={series.map((entry) => entry.label).join(" · ")}>
+            <Text fg={themeColors.textDim}>{countWidth < displayWidth(count) ? String(series.length) : count}</Text>
+          </Box>
+        ) : null}
       </Box>
-    </ScrollBox>
-  );
+    );
+  };
   const lineCount = lines?.length ?? 1;
   const foldLabel = foldedCount > 0
     ? `Show ${foldedCount} more series (${foldKey})`

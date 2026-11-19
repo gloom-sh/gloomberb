@@ -1962,6 +1962,28 @@ describe("resolveChartSpecData", () => {
     });
   });
 
+  test("converts each fundamental series before tabulation and keeps its native amount and fiscal end", async () => {
+    const provider = createTestDataProvider({
+      getTickerFinancials: async (symbol) => {
+        const usa = symbol === "LMT";
+        return { ...emptyFinancials(), quarterlyStatements: [{ date: usa ? "2026-09-27" : "2026-09-30", currency: usa ? "USD" : "EUR", totalRevenue: 100e6 }] };
+      },
+    });
+    const spec = chartSpec({ viewport: { range: "ALL", resolution: "auto", currency: "SGD" }, series: ["LMT", "RHM"].map((symbol) => chartSeries({
+      id: symbol, source: { kind: "security", instrument: { symbol }, fieldId: "fundamental.totalRevenue", period: "quarterly" },
+    })) });
+    const rateNotice = "Statements in SGD at USD/SGD 1.25 and EUR/SGD 1.5";
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider, loadFredSeries: async () => fredLoad(), now: new Date("2026-11-18T00:00:00Z"),
+      loadStatementCurrency: async () => ({ rates: new Map([["USD", 1.25], ["EUR", 1.5]]), note: rateNotice, failures: [] }),
+    });
+    expect(result.coverageNotices).toContain(rateNotice);
+    expect(result.series.map((series) => ({ group: series.unitGroup, point: series.points.at(-1) }))).toMatchObject([
+      { group: "currency-total:SGD", point: { value: 125e6, observedAt: new Date("2026-09-27"), nativeAmount: { value: 100e6, currency: "USD" } } },
+      { group: "currency-total:SGD", point: { value: 150e6, observedAt: new Date("2026-09-30"), nativeAmount: { value: 100e6, currency: "EUR" } } },
+    ]);
+  });
+
   test("keeps an explicit viewport when a latest-observation cap is also set", async () => {
     const provider = createTestDataProvider({
       getTickerFinancials: async () => ({
@@ -2220,7 +2242,8 @@ describe("resolveChartSpecData", () => {
       expect(price?.points.at(-1)?.date.getTime()).toBe(elapsed ? quoteTime : now - 86_400_000);
       // After the close the daily bar takes the regular close (130), not the 129 after-hours print.
       expect(price?.points.at(-1)?.close).toBe(elapsed ? 130 : 100);
-      expect(price?.latestChangePercent).toBe(elapsed ? 30 : undefined);
+      if (elapsed) expect(price?.latestChangePercent).toBeCloseTo(30, 8);
+      else expect(price?.latestChangePercent).toBeUndefined();
       expect(sma?.points.at(-1)?.date.getTime()).toBe(elapsed ? quoteTime : now - 86_400_000);
     } finally { clock.mockRestore(); }
   });
@@ -2971,11 +2994,13 @@ describe("one-day charts show the latest session", () => {
     expect(requests).toEqual(["extended", undefined]);
   });
 
-  test("the legend moves with the regular session on its bars, and with the latest print on bars that run into extended hours", async () => {
-    const bars = [...hourlyBars("2026-10-01T13:30:00Z", "2026-10-01T19:30:00Z", 330), ...hourlyBars("2026-10-02T08:00:00Z", "2026-10-02T23:00:00Z", 333)];
+  /** GP QQQ 1D extended printed $654.41 -0.28%: the last bar's price beside a quote's move read a moment apart, -0.39% from the 656.95 close. */
+  test("the legend moves with the regular session on its bars, and with the latest print on bars that run into extended hours, each its last bar's move", async () => {
+    const bars = [...hourlyBars("2026-10-01T13:30:00Z", "2026-10-01T19:30:00Z", 330), ...hourlyBars("2026-10-02T08:00:00Z", "2026-10-02T12:00:00Z", 333),
+      ...hourlyBars("2026-10-02T13:30:00Z", "2026-10-02T19:30:00Z", 336.6), ...hourlyBars("2026-10-02T20:00:00Z", "2026-10-02T23:00:00Z", 326.7)];
     const source = { kind: "security" as const, instrument: { symbol: "AAPL", exchange: "NASDAQ" }, fieldId: "market.ohlcv" };
     // After Friday's session: up 2% to a 336.60 close, then 326.70 after hours, 1% under Thursday's 330 close.
-    const quote = { symbol: "AAPL", currency: "USD", price: 326.7, change: -3.3, changePercent: -1, previousClose: 330,
+    let quote = { symbol: "AAPL", currency: "USD", price: 326.7, change: -3.3, changePercent: -1, previousClose: 330,
       regularClose: 336.6, regularCloseSessionDate: "2026-10-02", changeSessionDate: "2026-10-02", marketState: "POSTPOST" as const,
       listingExchangeName: "NASDAQ", lastUpdated: Date.parse("2026-10-02T23:59:00Z") };
     const legend = async (extendedHours: boolean) => (await resolveChartSpecData(chartSpec({
@@ -2994,6 +3019,12 @@ describe("one-day charts show the latest session", () => {
     })).series[0]?.latestChangePercent;
     // As `quote` heads Last: the session's +2%, the after-hours print beside it.
     expect(await legend(false)).toBeCloseTo(2, 8);
+    expect(await legend(true)).toBeCloseTo(-1, 8);
+    // A quote that has moved on from the last bar (324.06, -1.8%), or whose change lags its price, still prints the
+    // last bar's move from the prior close the chart draws: -1%.
+    quote = { ...quote, price: 324.06, change: -5.94, changePercent: -1.8 };
+    expect(await legend(true)).toBeCloseTo(-1, 8);
+    quote = { ...quote, price: 327.45, change: -3.3, changePercent: -1 };
     expect(await legend(true)).toBeCloseTo(-1, 8);
   });
 

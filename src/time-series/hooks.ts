@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo } from "react";
 import { apiClient } from "../api-client";
+import { useCloudDisplayScope } from "../api-client/plan-access";
 import { loadCachedFredSeries } from "../sources/gloomberb-cloud/fred-series";
 import { instrumentFromTicker } from "../market-data/request-types";
 import { useAssetData, useCapabilityInvoker } from "../plugins/runtime";
@@ -7,6 +8,7 @@ import { getSharedRegistry } from "../plugins/registry";
 import { createChartSeriesResolver } from "../capabilities";
 import { loadFuturesPriceUnit } from "../market-data/futures-contract";
 import { loadDailyFxCloses } from "./currency-conversion";
+import { loadStatementCurrency } from "../plugins/builtin/shared/statement-currency";
 import { useAppSelector } from "../state/app/context";
 import type { FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
 import type { TickerRecord } from "../types/ticker";
@@ -72,6 +74,7 @@ export function useResolvedChartSpec(
   const snapshot = useContext(ChartSnapshotContext);
   const dataProvider = useAssetData();
   const capabilityInvoker = useCapabilityInvoker();
+  const savedCopyScope = useCloudDisplayScope();
   const tickers = useAppSelector((state) => state.tickers);
   const hydratedSpec = useMemo(
     () => hydrateChartSpecInstruments(spec, tickers),
@@ -85,6 +88,7 @@ export function useResolvedChartSpec(
     capabilityRefreshMs: registeredSeriesRefreshMs,
     loadFuturesPriceUnit: (symbol: string) => loadFuturesPriceUnit(symbol),
     loadFxCloses: (currency: string, startDate: string) => loadDailyFxCloses(currency, startDate, apiClient),
+    ...(dataProvider ? { loadStatementCurrency: (target: string, currencies: readonly string[]) => loadStatementCurrency(target, currencies, { marketData: dataProvider }) } : {}),
   }), [capabilityInvoker, dataProvider]);
-  return useChartResolution(hydratedSpec, sources, { ...options, snapshot });
+  return useChartResolution(hydratedSpec, sources, { ...options, snapshot, savedCopyScope });
 }

@@ -7,7 +7,7 @@ import type { PlanAccess } from "../../../api-client/plan-rules";
 import type { DialogApi } from "../../../ui/dialog";
 
 /** The reasons gloom.sh's cancel window offers, in its words and order. */
-const CANCEL_REASONS: ReadonlyArray<{ id: CloudCancelReason; label: string }> = [
+export const CANCEL_REASONS: ReadonlyArray<{ id: CloudCancelReason; label: string }> = [
   { id: "bugs", label: "Bugs or reliability" },
   { id: "missing_feature", label: "Missing feature" },
   { id: "too_expensive", label: "Too expensive" },

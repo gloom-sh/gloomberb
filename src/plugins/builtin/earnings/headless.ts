@@ -17,9 +17,9 @@ import { fetchEarningsCalendar, fetchEarningsHistory, noHistoryAbroad, sameHisto
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows, periodText } from "./history-model";
-import { fiscalQuarterText } from "./fiscal-quarter";
+import { fiscalPeriodText, fiscalQuarterText } from "./fiscal-quarter";
 import { loadNoEarningsText } from "./no-earnings";
-import { EPS_BASIS_NOTE, epsBasisName, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
+import { ACTUAL_PENDING, actualPending, EPS_BASIS_NOTE, epsBasisName, lacksConsensus, NO_CONSENSUS, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
 import { lastReportOnRecord, listingDay, noNextReportText } from "../shared/earnings-calendar";
 import { commandWord } from "../../../utils/shell-word";
 import { listingAbroadVenue } from "../../../utils/sec";
@@ -59,6 +59,11 @@ const BASIS_COLUMN: HeadlessPaneColumn = {
   textFormat: (value, row) => (value == null ? MISSING_VALUE : row.epsActualProvisional === true ? `${String(value)}, provisional` : String(value)),
 };
 
+/** A listing abroad's row (a board row naming one, an ERN row in its own currency) has no actual pending: see actualPending. */
+function pendingAbroad(row: Record<string, unknown>): boolean {
+  return typeof row.symbol === "string" ? listingAbroadVenue(row.symbol) != null : row.currency != null && row.currency !== "USD";
+}
+
 const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
   { key: "dateStatus", header: "Status" },
@@ -71,7 +76,8 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "currency", header: "Ccy" },
   { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
-  { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
+  // A report out with no actual yet says so (exports: in the status column), never a bare blank.
+  { key: "epsActual", header: "EPS act", align: right, format: (value, row) => actualPending({ date: typeof row.date === "string" ? row.date : null, epsActual: num(value), dateStatus: typeof row.dateStatus === "string" ? row.dateStatus : null }, pendingAbroad(row)) ? ACTUAL_PENDING : epsText(num(value)) },
   BASIS_COLUMN,
   surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
@@ -96,14 +102,20 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "dateStatus", header: "Status" },
   { key: "timing", header: "When" },
   // The quarter as the company names it; its end month where the company's calls do not say. Exports keep both.
-  { key: "fiscalQuarter", header: "Quarter", format: (value, row) => typeof value === "string" ? value : typeof row.fiscalPeriod === "string" ? row.fiscalPeriod : MISSING_VALUE },
-  { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
+  { key: "fiscalQuarter", header: "Quarter", format: (value, row) => typeof value === "string" ? value : fiscalPeriodText(typeof row.fiscalPeriod === "string" ? row.fiscalPeriod : undefined) },
+  // A reported quarter with no consensus on record says so (exports: in the status column), never a bare blank.
+  { key: "epsEstimate", header: "EPS est", align: right, format: (value, row) => lacksConsensus({ epsActual: num(row.epsActual), epsEstimate: num(value) }) ? NO_CONSENSUS : epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
-  { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
+  // A report out with no actual yet says so (exports: in the status column), never a bare blank.
+  { key: "epsActual", header: "EPS act", align: right, format: (value, row) => actualPending({ date: typeof row.date === "string" ? row.date : null, epsActual: num(value), dateStatus: typeof row.dateStatus === "string" ? row.dateStatus : null }, pendingAbroad(row)) ? ACTUAL_PENDING : epsText(num(value)) },
   BASIS_COLUMN,
   surpriseColumn("epsSurprise", "EPS surp"),
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
-  { key: "revenueActual", header: "Sales act", align: right, format: (value) => moneyText(num(value)) },
+  // A US listing that reports its revenue in another currency: the figure in that currency, labelled.
+  { key: "revenueActual", header: "Sales act", align: right, format: (value, row) => {
+    const text = moneyText(num(value));
+    return typeof row.revenueCurrency === "string" && text !== MISSING_VALUE ? `${text} ${row.revenueCurrency}` : text;
+  } },
   surpriseColumn("revenueSurprise", "Sales surp"),
   { key: "impliedMove", header: "Implied", align: right, format: (value) => impliedText(num(value)) },
   { key: "impliedFrom", header: "Implied from" },
@@ -245,6 +257,8 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   return {
     columns: BOARD_COLUMNS,
     rows,
+    complete: rows.length === all.length && cloud.status !== "rejected",
+    ...(rows.length < all.length ? { notes: [`Showing ${rows.length} of ${all.length} reports. Retrieve all with --limit ${all.length}.`] } : {}),
     errors: cloud.status === "rejected" ? [String(cloud.reason instanceof Error ? cloud.reason.message : cloud.reason)] : undefined,
     metadata: {
       ...(ticker ? { notices: [ticker.notice], highlight: { symbol: highlight, onBoard: ticker.date != null, date: ticker.date, row: ticker.row } } : {}),
@@ -325,6 +339,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     ...surpriseFields("epsSurprise", row.epsSurprise),
     revenueEstimate: row.revenueEstimate,
     revenueActual: row.revenueActual,
+    ...(row.revenueCurrency ? { revenueCurrency: row.revenueCurrency } : {}),
     revenueActualProvisional: row.revenueProvisional,
     ...surpriseFields("revenueSurprise", row.revenueSurprise),
     impliedMove: row.implied,

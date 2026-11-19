@@ -1,4 +1,6 @@
 import { apiClient } from "../../../api-client";
+import { isAccessDenied } from "../../../api-client/errors";
+import type { SavedCopyKey } from "../../../data/pane-saved-copies";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { InstrumentRef, OptionsRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
@@ -22,6 +24,12 @@ export interface CalculatorSurfaceRequest {
   daysToExpiry: number;
   signal?: AbortSignal;
   forceRefresh?: boolean;
+}
+
+export function calculatorSurfaceCopy(scope: string | null, { symbol, exchange, strike, daysToExpiry }: CalculatorSurfaceRequest): SavedCopyKey | null {
+  if (scope === null) return null;
+  const target = parsePublicTickerKey(symbol);
+  return { key: ["calculator-surface", scope, target.symbol, canonicalExchange(target.exchange ?? exchange), strike, daysToExpiry] };
 }
 
 export interface CalculatorSurfaceVol {
@@ -189,6 +197,7 @@ export async function loadCalculatorSurfaceVol(
     return projectCalculatorSurfaceVol(snapshot, { ...request, symbol: target.symbol });
   } catch (error) {
     if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
+    if (isAccessDenied(error)) throw error;
     return empty(errorMessage(error));
   }
 }

@@ -128,7 +128,7 @@ export function CommentLettersPane({ width, height, focused }: PaneProps) {
   // The search can change after the pane opens; the title follows it.
   usePaneTitle(term ? `Comment Letters ${term}` : "Comment Letters");
   const loadPage = useMemo(() => createCommentLettersLoader(client, term, loadIssuerFilings), [client, term]);
-  const letters = usePagedRows(loadPage, { getId: (letter) => letter.id, keepPreviousRows: true });
+  const letters = usePagedRows(loadPage, { getId: (letter) => letter.id, keepPreviousRows: true, savedCopy: { key: ["comment-letters", term] } });
   const rows = letters.rows;
   const issuer = letters.pages[0]?.issuer ?? null;
   const windowLimited = letters.pages[letters.pages.length - 1]?.windowLimited ?? false;

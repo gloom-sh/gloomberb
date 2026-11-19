@@ -5,6 +5,7 @@ import type {
   PaneTemplateDef,
   ShortcutArgError,
 } from "../../../types/plugin";
+import { glossaryNamesFunction } from "../../../cli/glossary";
 import { fuzzyFilter } from "../../../utils/fuzzy-search";
 import { discoveryOpening } from "../../../utils/lookup-token";
 import { summarizeError } from "../helpers";
@@ -295,6 +296,20 @@ function paneTemplateDiscovery(template: PaneTemplateDef, registry: Pick<PluginR
   return (template.headless ?? registry.panes?.get(template.paneId)?.headless)?.discovery;
 }
 
+/**
+ * A row found by a query that is, whole, a term its function shows (`var`,
+ * `value at risk` for MARS and PORT), as `catalog` finds it, where the row's
+ * own words do not carry the query already; those rank as they did. A word of
+ * a longer query, or a loose alias, finds nothing.
+ */
+function withShownTerm(item: ResultItem, template: PaneTemplateDef, query: string): ResultItem {
+  const codes = [template.shortcut?.prefix, ...template.shortcut?.aliases ?? []];
+  if (!codes.some((code) => !!code && glossaryNamesFunction(code, query))) return item;
+  const own = `${item.label} ${item.searchText ?? ""} ${item.detail} ${item.right ?? ""}`.toLowerCase();
+  if (query.toLowerCase().split(/\s+/).every((word) => own.includes(word))) return item;
+  return { ...item, searchText: `${query} ${item.searchText ?? ""}` };
+}
+
 export function buildPaneShortcutItems(options: {
   templates: readonly PaneTemplateDef[];
   filterQuery?: string;
@@ -328,7 +343,8 @@ export function buildPaneShortcutItems(options: {
           : options.createOptions,
         showShortcut: true,
       });
-      return opening && opening.argument && !item.disabled ? { ...item, name: opening.argument } : item;
+      const named = opening && opening.argument && !item.disabled ? { ...item, name: opening.argument } : item;
+      return query ? withShownTerm(named, template, query) : named;
     });
 
   return options.filterQuery

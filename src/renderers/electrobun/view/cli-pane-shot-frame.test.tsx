@@ -8,7 +8,7 @@ import { createDomUiHost } from "../../dom/dom-ui-host";
 import { WebInputHostProvider } from "../../dom/input-host";
 import { WebDialogHostProvider } from "../../dom/dialog-host";
 import { createDomTestHarness } from "../../dom/test-utils";
-import { PaneShotFrame } from "./cli-pane-shot-frame";
+import { middleEllipsis, PaneShotFrame } from "./cli-pane-shot-frame";
 import { nativePaneFooterRows, nativePaneHeaderRows } from "../../../components/layout/pane/sizing";
 import { noopRendererHost } from "../../../test-support/renderer-host";
 
@@ -48,9 +48,9 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
 
   await act(async () => update({ warning: true, active: true }));
-  expect(root.querySelector('button[aria-label="Data warnings"] svg')).not.toBeNull();
+  expect(root.querySelector('button[aria-label="Data warnings"] svg')).toBeNull();
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).not.toBeNull();
-  expect(root.textContent).not.toContain("Source publication date unavailable.");
+  expect(root.textContent).toContain("Source publication date unavailable.");
   expect(root.textContent).not.toContain("Loading a normal source");
   expect(root.querySelector('[data-gloom-role="pane-hint"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withFooter);
@@ -60,7 +60,7 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
 
   await act(async () => update({ warning: true, active: true }));
-  expect(root.querySelector('button[aria-label="Data warnings"]')).not.toBeNull();
+  expect(root.textContent).toContain("Source publication date unavailable.");
   await act(async () => update({ warning: false, active: true }));
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
@@ -69,6 +69,12 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(root.textContent).toContain("Loading a normal source");
   expect(root.querySelector('[data-gloom-role="pane-hint"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withFooter);
+
+  await act(async () => update({ warning: true, active: true, preserveStatus: true }));
+  // Beside the status, the note takes what the row leaves it, cut after a whole word.
+  expect(root.textContent).toContain("Source publication…");
+  expect(root.textContent).toContain("Loading a normal source");
+  expect(root.querySelector('button[aria-label="Data warnings"]')).toBeNull();
 });
 
 test("a status line replaces the pane's own text that says the same: its as-of for the pane's data, its quote date and delay for quotes", async () => {
@@ -128,4 +134,67 @@ test("a capture with nothing to date gives the footer row back to the pane", asy
   await act(async () => { expect(await window.__GLOOM_CLI_SHOT_FIT_STATUS__?.([])).toBe(""); });
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withoutFooter);
+});
+
+test("a capture's notes are one line that says how many more there are, marked apart from the pane's own state", async () => {
+  const ui = createDomUiHost();
+  const notes = ["Some jurisdictions have no awards in the dataset yet.", "Historical coverage has windows that are not complete yet.",
+    "Some totals run past what one view can hold; narrow the date range or scope."];
+  function Noted() {
+    usePaneNoticeFooter({ registrationId: "noted", notices: notes, focused: true });
+    return <div>Awards</div>;
+  }
+  const root = await render(<UiHostProvider ui={ui} renderer={noopRendererHost}>
+    <WebInputHostProvider><WebDialogHostProvider>
+      <PaneShotFrame paneId="shot" title="Awards" width={120} height={24}>
+        {() => <PaneFooterScope active><Noted /></PaneFooterScope>}
+      </PaneShotFrame>
+    </WebDialogHostProvider></WebInputHostProvider>
+  </UiHostProvider>);
+  const line = root.querySelector('[data-gloom-role="pane-footer-notes"]');
+  expect(line?.textContent).toBe(`${notes[0]} +2 more`);
+  expect(root.querySelector('[data-gloom-role="pane-footer"]')?.textContent).not.toContain(notes[1]!);
+});
+
+test("a status line too long for the row loses whole words from its middle, never part of one", () => {
+  const line = "US trading day Mon 16 Nov 2026 close · 15 min delayed";
+  expect(middleEllipsis(line, line.length)).toBe(line);
+  expect(middleEllipsis(line, 36)).toBe("US trading day Mon … 15 min delayed");
+  // Not a whole word fits at either end: the characters it has room for.
+  expect(middleEllipsis("Supercalifragilistic", 8)).toBe("Supe…stic");
+});
+
+// MARS printed every left-out holding as a note while its footer already said what was left out.
+test("a pane's capture notes stand in for its notices in a capture, and empty ones print none of them", async () => {
+  const ui = createDomUiHost();
+  let update: (captureNotes: readonly string[] | undefined) => void = () => {};
+  function Notices({ captureNotes }: { captureNotes: readonly string[] | undefined }) {
+    usePaneNoticeFooter({
+      registrationId: "shot-notice", focused: true, captureNotes,
+      notices: ["BTC-USD (17.5% of the book) is excluded from the risk estimate: crypto is not covered by the equity basket.", "Closes failed for GARAN."],
+    });
+    usePaneFooter("shot-coverage", () => ({ info: [{ id: "coverage", capture: true, parts: [{ text: "73% of book; BTC-USD left out" }] }] }), []);
+    return <div>Risk rows</div>;
+  }
+  function Harness() {
+    const [captureNotes, setCaptureNotes] = useState<readonly string[] | undefined>(["Closes failed for GARAN."]);
+    update = setCaptureNotes;
+    return <UiHostProvider ui={ui} renderer={noopRendererHost}>
+      <WebInputHostProvider><WebDialogHostProvider>
+        <PaneShotFrame paneId="shot" title="Risk" width={100} height={24}>{() => <Notices captureNotes={captureNotes} />}</PaneShotFrame>
+      </WebDialogHostProvider></WebInputHostProvider>
+    </UiHostProvider>;
+  }
+  const root = await render(<Harness />);
+  const footer = () => root.querySelector('[data-gloom-role="pane-footer"]')?.textContent ?? "";
+  expect(footer()).toContain("Closes failed for GARAN.");
+  expect(footer()).toContain("73% of book; BTC-USD left out");
+  expect(footer()).not.toContain("is excluded from the risk estimate");
+  await act(async () => update([]));
+  expect(footer()).toContain("73% of book; BTC-USD left out");
+  expect(footer()).not.toContain("GARAN");
+  // Without them, the notices print as the note line, as for any pane.
+  await act(async () => update(undefined));
+  expect(footer()).toContain("BTC-USD (17.5% of the book) is excluded");
+  expect(footer()).toContain("+1 more");
 });

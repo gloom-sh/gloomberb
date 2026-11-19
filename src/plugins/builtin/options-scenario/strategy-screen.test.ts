@@ -284,7 +284,7 @@ describe("a name whose chain cannot open the trade is left out with why", () => 
 test("each family ranks by its own measure: return, reward to risk, or IV rank rich first to sell and cheap first to buy", () => {
   const row = (symbol: string, measure: number | null, ivRank: number | null, trade = true): Omit<StrategyScreenRow, "rank"> =>
     ({ symbol, trade: trade ? { annualizedReturn: measure, rewardToRisk: measure } as StrategyTrade : null, ivRank, wideSpread: false,
-      note: trade ? null : "No chain" });
+      note: trade ? null : "No chain", state: trade ? null : "no chain" });
   // A figure that came out not a number is unranked, never a sort that breaks.
   const rows = [row("AAA", 0.4, 30), row("BBB", 0.9, 70), row("CCC", Number.NaN, null), row("DDD", 0.6, 50), row("EEE", null, null, false)];
   const order = (strategy: ScreenFamily) => rankStrategyScreen(rows, strategy).map((entry) => `${entry.rank ?? "-"}${entry.symbol}`);

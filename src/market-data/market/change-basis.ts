@@ -381,6 +381,15 @@ function sessionDay(date: string, now: number): string {
 }
 
 /**
+ * The close a headline price is, by its session's day: "Tue 17 Nov close",
+ * worded as the close a move is from ("vs Mon 16 Nov close"), so a report that
+ * shows an after-hours print beside it dates the two apart (headlineCloseDate).
+ */
+export function closeDayLabel(date: string, now = Date.now()): string {
+  return `${sessionDay(date, now)} close`;
+}
+
+/**
  * The words a change line ends with, the same on every surface: "vs Fri 16
  * Oct close", "vs Fri 16 Oct settle", "vs prev close", "since 00:00 UTC",
  * "24h".
@@ -435,7 +444,8 @@ export function combinedChangeBasisLabel(bases: Iterable<QuoteChangeBasis | null
 }
 
 /** An extended session as a day's move names its print in words, where there is room: "after hours vs Tue 10 Nov close". */
-const EXTENDED_PRINT_WORDS: Record<ExtendedSession, string> = { PRE: "pre-market", POST: "after hours", OVERNIGHT: "overnight" };
+/** An extended session in a sentence: "the move after hours vs Tue 10 Nov close", "Last price 158.78 after hours". */
+export const EXTENDED_PRINT_WORDS: Record<ExtendedSession, string> = { PRE: "pre-market", POST: "after hours", OVERNIGHT: "overnight" };
 
 /**
  * The basis of a day's move summed over the prices a book is valued at, when

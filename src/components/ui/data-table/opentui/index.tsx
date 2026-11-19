@@ -20,6 +20,7 @@ import {
   tableColumnWidth,
   fitTableHeaderText,
   getTableWidth,
+  hiddenTableColumnText,
   hasMeaningfulTableHorizontalOverflow,
   tableColumnLeadGap,
   tableColumnStarts,
@@ -647,6 +648,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     viewportWidth: measuredViewportWidth,
   }) : null;
   const moreColumnsReserve = moreColumns?.reserve ?? 0;
+  const hiddenColumns = items.length ? hiddenTableColumnText(columns) : null;
   // A scroll step that cuts the columns as the last one did keeps the same
   // array, so the memoized rows skip the render.
   const columnClipsRef = useRef<readonly (DataTableColumnClip | null)[] | null>(null);
@@ -874,6 +876,8 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
         height={1}
         backgroundColor={colors.panel}
         scrollX={showHorizontalScrollbar}
+        scrollY={false}
+        verticalScrollbarOptions={{ visible: false }}
         focusable={false}
         onSizeChange={measureContentWidth}
       >
@@ -982,6 +986,11 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
           }}
         >
           <Text fg={colors.textDim}>{moreColumns.text}</Text>
+        </Box>
+      ) : null}
+      {hiddenColumns ? (
+        <Box height={1} paddingX={horizontalPadding} backgroundColor={colors.panel}>
+          <Text fg={colors.textDim}>{hiddenColumns}</Text>
         </Box>
       ) : null}
 

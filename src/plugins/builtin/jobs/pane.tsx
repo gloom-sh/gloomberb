@@ -47,6 +47,8 @@ import {
   buildMoverColumns,
   buildMoverRows,
   buildPostingColumns,
+  PENDING_JOBS_MESSAGE,
+  pendingJobsTitle,
   buildPostingRows,
   buildShareBars,
   changeTone,
@@ -67,6 +69,7 @@ import {
   type PostingRow,
   type PostingSort,
   type ShareBarRow,
+  uncoveredJobsState,
 } from "./model";
 import { ShareBars } from "./share-bars";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -562,21 +565,25 @@ function CompanyPanel({
   }
   if (!data) return null;
   if (data.kind === "pending") {
+    // An answer, not a load: the server is looking, which takes minutes, so the pane says so at once and fills in
+    // when the poll above brings the roles. A spinner here stood for minutes and read as a pane that never loaded.
     return (
       <PaneStatusBody
-        loading
-        align="center"
-        loadingLabel={`Looking for ${symbol}'s careers system. First read lands within a few minutes.`}
+        empty
+        emptyTitle={pendingJobsTitle(symbol)}
+        emptyMessage={PENDING_JOBS_MESSAGE}
+        retry={{ onRetry: reloadAndWait, pending: loading, label: "Check now", pendingLabel: "Checking...", unchanged: "Still looking." }}
       />
     );
   }
   if (data.kind === "uncovered") {
     // The answer stays on screen while it asks again, so the button says it is asking.
+    const { title, message } = uncoveredJobsState(symbol);
     return (
       <PaneStatusBody
         empty
-        emptyTitle={`No careers system found for ${symbol}.`}
-        emptyMessage="Gloom reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards."
+        emptyTitle={title}
+        emptyMessage={message}
         retry={{ onRetry: reloadAndWait, pending: loading, label: "Look again", pendingLabel: "Looking again...", unchanged: "Still no careers system." }}
       />
     );

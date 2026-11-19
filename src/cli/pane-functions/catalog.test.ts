@@ -9,9 +9,12 @@ import type { MarketContext } from "../types";
 import type { PaneTemplateDef } from "../../types/plugin";
 import {
   buildPaneCatalogEntries, buildTemplateContext, correctCatalogQuery, filterPaneCatalogEntries, findFunctionCode, functionsForQuestion, limitationSentence,
-  paneFunctionCode, renderPaneCatalogReport, type PaneFunctionCatalog,
+  paneFunctionCode, renderPaneCatalogReport, suggestedFunctionCodes, type PaneFunctionCatalog,
 } from "./catalog";
-import { lookupGlossary } from "../glossary";
+import { GLOSSARY, lookupGlossary } from "../glossary";
+import { buildPaneShortcutItems, buildPaneTemplateItem } from "../../components/command-bar/pane-templates/items";
+import type { PluginRegistry } from "../../plugins/registry";
+import { fuzzyFilter } from "../../utils/fuzzy-search";
 import { createPaneCatalog } from "./discovery";
 import { parsePaneCatalogArgs } from "./options";
 import { parseViewSpec } from "../../plugins/builtin/custom-view/view-spec";
@@ -133,6 +136,11 @@ test("the morning's European words lead to the index board, a question asked sig
     expect(found.map((entry) => entry.code).sort()).toEqual(["CMP", "WEI"]);
     expect(found.find((entry) => entry.code === "CMP")?.command).toBe("gloom fn CMP <tickers>");
     expect(await functionsForQuestion(registry, "what did it do?")).toEqual([]);
+    // A rates question was offered CBR, then MDAY and FIRST: it gets CBR, GC and ECO, run for the markets it names.
+    expect((await functionsForQuestion(registry, "What did the BoJ and RBA do with policy rates and how did JGB yields react?"))
+      .map((entry) => [entry.command, entry.input ?? null])).toEqual([
+      ["gloom fn CBR", null], ["gloom fn GC jgb", "GC JGB"], ["gloom fn ECO JP,AU", "ECO JP,AU"],
+    ]);
     // VIEW's example is a spec that runs as typed, not only `<spec JSON or empty>`.
     const [example] = entries.find((entry) => entry.token === "VIEW")?.argExamples ?? [];
     expect(parseViewSpec(example!.replace(/^'|'$/g, ""))?.source).toEqual({ kind: "inline", pane: "WEI" });
@@ -156,7 +164,6 @@ test("a function's entry says Requires only for a sign-in or Pro, and names its 
       expect(entry(code), code).not.toContain("Requires");
       expect(entry(code), code).toMatch(/\nData +\S/);
     }
-    expect(entry("COT")).toContain("Data         Gloom Cloud CFTC history");
     // A sign-in stays a requirement, beside the data it opens.
     expect(entry("BUZZ")).toContain("Requires     Free Gloom sign-in\nData         Gloom Cloud X mention history");
     // A number option says its range before a value is refused for it (`--days must be at least 30`).
@@ -241,6 +248,11 @@ test("a perp venue's name finds PERP first, and a function only Pro opens is mar
     expect(correctCatalogQuery(entries, "libor")).not.toBe("hibor");
     const plain = (args: string[]) => renderPaneCatalogReport(entries, parsePaneCatalogArgs(args)).replace(/\x1b\[[0-9;]*m/g, "");
     expect(plain(["CALLS"])).toContain("Report       ready · Pro\n");
+    for (const code of ["EM", "GUID"]) {
+      expect(plain([code])).toContain("Report       ready · Sign-in\n");
+      expect(plain([code])).toContain("Requires     Verified Gloom sign-in");
+      expect(plain([code])).not.toContain("ready · Pro");
+    }
     expect(plain(["earnings"])).toMatch(/\nCALLS +Earnings Calls +<ticker> +ready · Pro +Pro earnings/);
     // A free preview is no lock: PERP reads ready.
     expect(plain(["PERP"])).toContain("Report       ready\n");
@@ -322,6 +334,54 @@ test("a memo's figures find FA with the tab that shows them, and an option's val
     expect(searched("operating margin").replace(/\s+/g, " ")).toContain("gloom fn GF <tickers> --metric operatingMargin");
     // An EQS preset is found by its value, which only the option's list named.
     expect(searched("compounders")).toStartWith('"compounders": gloom fn EQS --preset compounders\n\nEQS  Equity Screener');
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
+  }
+});
+
+// `fn VAR my` offered VAL, `catalog VAR` left MARS and PORT out and the command bar found nothing for "value at risk":
+// the glossary knew VaR was PORT's, and nothing looked there.
+test("a risk term a function shows reaches it from catalog, fn's hint and the command bar, as the glossary names it", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    // Every function a glossary term names is one the catalog lists, so a term never points nowhere.
+    const tokens = new Set(entries.flatMap((entry) => [entry.token, ...entry.aliases]));
+    for (const entry of GLOSSARY) for (const code of entry.functions) expect(tokens.has(code), `${entry.term}: ${code}`).toBe(true);
+    const leading = (query: string) => filterPaneCatalogEntries(entries, query).slice(0, 2).map((entry) => entry.token).sort();
+    for (const query of ["VAR", "value at risk", "expected shortfall", "cvar", "stress test"]) expect(leading(query), query).toEqual(["MARS", "PORT"]);
+    expect(filterPaneCatalogEntries(entries, "drawdown").map((entry) => entry.token)).toEqual(expect.arrayContaining(["MARS", "PORT"]));
+    expect(suggestedFunctionCodes(registry, "VAR").map((entry) => entry.code)).toEqual(["MARS", "PORT"]);
+    expect(suggestedFunctionCodes(registry, "drawdown").map((entry) => entry.code)).toEqual(["MARS", "PORT"]);
+    // The command bar finds them for the same words, as one of the rows it ranks.
+    const templates = [...registry.paneTemplates.values()].filter((template) => template.shortcut?.prefix);
+    const pluginRegistry = { getPaneTemplatePluginId: () => null, allPlugins: new Map(), panes: registry.panes } as unknown as PluginRegistry;
+    const found = (query: string) => fuzzyFilter(buildPaneShortcutItems({
+      templates, searchedQuery: query, registry: pluginRegistry,
+      createItem: (template, options) => buildPaneTemplateItem({
+        template, pluginRegistry, ...options, runPaneTemplateShortcut: () => {}, shouldOpenTemplateConfig: () => false,
+        openPaneTemplateWorkflow: () => {}, openPaneTemplateDirect: () => {},
+      }),
+    }), query, (row) => `${row.label} ${row.searchText ?? ""} ${row.detail} ${row.right ?? ""}`, (row) => row.label).map((row) => row.right);
+    for (const query of ["var", "value at risk", "expected shortfall", "stress test"]) expect(found(query).slice(0, 2).sort(), query).toEqual(["MARS", "PORT"]);
+    // HP and RETURN show a drawdown too.
+    expect(found("drawdown")).toEqual(expect.arrayContaining(["MARS", "PORT"]));
+
+    // A word of a common search, or a loose alias of a term (basis points, implied fx, close), names no function: these
+    // list what they listed before the glossary counted.
+    for (const query of ["fx", "earnings", "basis", "chart", "close", "exposure", "basis points", "implied fx", "beta", "trade"]) {
+      expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token), query)
+        .toEqual(filterPaneCatalogEntries(entries, query, { glossary: false }).map((entry) => entry.token));
+    }
+    // Nor do they send fn's hint to a function: only a term, its abbreviation or a name for its subject does.
+    for (const query of ["fx", "earnings", "basis", "chart", "close", "exposure", "basis points"]) {
+      expect(suggestedFunctionCodes(registry, query).filter((entry) => ["MARS", "PORT", "QQ", "GC"].includes(entry.code)), query).toEqual([]);
+    }
   } finally {
     registry.destroy();
     channels.mockRestore();

@@ -5,6 +5,9 @@ import { newsProvider, type NewsCapability } from "../capabilities";
 import type { MarketNewsItem } from "../types/news-source";
 import type { NewsPage } from "./types";
 import { ConnectionHealthRegistry, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../core/connection-health";
+import { ApiRequestError } from "../api-client/errors";
+import { MemoryResourceStore } from "../data/memory-resource-store";
+import { setSavedCopyStore } from "../data/pane-saved-copies";
 
 function makeItem(overrides: Partial<MarketNewsItem> & { url: string }): MarketNewsItem {
   return {
@@ -660,5 +663,32 @@ describe("NewsService across a session change", () => {
     expect(service.getQueryState(query).articles.map((article) => article.id)).toEqual(["live"]);
     dispose();
     service.stop();
+  });
+
+  it("opens a saved ticker feed only for the same access and discards it on denial", async () => {
+    const previous = setSavedCopyStore(new MemoryResourceStore());
+    const session = testSession("first-user");
+    const tickerQuery = { feed: "ticker" as const, ticker: "AAPL", exchange: "NASDAQ" };
+    const create = (fetchNews: () => Promise<MarketNewsItem[]>) => {
+      const service = new NewsService({ session: session.signal, savedCopyScope: session.signal.key, visibility: alwaysVisible });
+      service.register(newsProvider({ id: "gloomberb-cloud", name: "Cloud", provider: { fetchNews } }));
+      return service;
+    };
+    const stateOf = (service: NewsService) => service.getQueryState(tickerQuery);
+    const fill = create(async () => [live]);
+    const restart = create(async () => { throw new ApiRequestError("Access withdrawn", 403); });
+    try {
+      await fill.load(tickerQuery);
+      expect(stateOf(restart).articles.map((article) => article.id)).toEqual(["live"]);
+      expect(stateOf(restart).savedAt).toBeNumber();
+      session.change("other-user");
+      expect(stateOf(create(async () => [])).articles).toEqual([]);
+      session.change("first-user");
+      await restart.load(tickerQuery);
+      expect(stateOf(restart).articles).toEqual([]);
+      expect(stateOf(create(async () => [])).articles).toEqual([]);
+    } finally {
+      setSavedCopyStore(previous);
+    }
   });
 });

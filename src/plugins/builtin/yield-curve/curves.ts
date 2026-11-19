@@ -5,7 +5,7 @@ import type { MoveHorizon } from "../shared/move-rank";
 import type { CurveBasis } from "./forward";
 import { yieldSpreads, type YieldLookbackCurves } from "./chart";
 import { completeYieldCurve, loadHistoricalYieldCurve, yieldCurveDate } from "./history";
-import { DATE_OPTION_FORMATS, dateOptionHint, readCalendarDate } from "../../../utils/calendar-date";
+import { DATE_OPTION_FORMATS, dateOptionHint, isMonthName, readCalendarDate } from "../../../utils/calendar-date";
 import { formatBasisPoints } from "../../../utils/basis-points";
 import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { isYieldObservationDate, loadYieldCurve, type YieldPoint } from "./treasury-data";
@@ -69,6 +69,13 @@ export function parseCurveArgument(value: unknown, now = new Date()): { curve: C
   }
   const text = rest.join(" ");
   if (text && !/\d/.test(text) && text.toLowerCase() !== "latest") throw new Error(unknownCurveMessage(text));
+  // Words beside a date that are no part of one name a market GC has no curve for (`GC australia 2026-11-13`),
+  // not a date written wrong; a word in a date that is not one (`14 Octobre 2026`) still gets the date's help.
+  if (text && !readCalendarDate(text)) {
+    const named = rest.filter((word) => !/\d/.test(word) && !isMonthName(word) && word.toLowerCase() !== "latest");
+    const dateText = rest.filter((word) => !named.includes(word)).join(" ");
+    if (named.length > 0 && (readCalendarDate(dateText) || dateOptionHint(dateText, ""))) throw new Error(unknownCurveMessage(named.join(" ")));
+  }
   return { curve, date: yieldCurveDate(text || null, now) };
 }
 

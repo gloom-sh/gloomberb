@@ -3,11 +3,15 @@ import { expect, test } from "bun:test";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import {
   buildPortfolioRisk,
+  riskPaneWarnings,
+  riskRowWarnings,
   factorFitText,
   withoutFactorFit,
   portfolioRiskRequests,
   portfolioRiskTickers,
   riskCoverageLine,
+  riskCoverageParts,
+  riskReturnCalendar,
   riskCoverageNotices,
   riskCoverageShortfall,
   riskEvidence,
@@ -149,6 +153,18 @@ test("foreign listings with daily FX closes enter the basket in USD and the foot
   // Converted returns sit on the basket's calendar, so the estimates still have 60 matched sessions.
   expect(model.metrics.every((row) => row.value != null)).toBe(true);
   expect(model.rows.holdings.find((row) => row.label === "JPY1")?.detail).toContain("from JPY at daily FX");
+  // The returns are on US trading days, each market abroad carrying its last close over the ones it did not trade, and
+  // the tail rows' method says so.
+  expect(model.calendar).toBe("US trading days, other markets at their last close");
+  const tail = model.rows.risk.find((row) => row.id === "var")!;
+  expect(riskEvidence(tail)).toStartWith("historical, 1-day, 95%, 60 daily returns on US trading days, other markets at their last close; basket 453,560 USD");
+  // The pane's footer sets the coverage apart from the conversions, with shorter forms for a narrow row.
+  expect(riskCoverageParts(model.coverage)).toEqual({
+    text: "basket 453,560 USD = 97% of book; left out: UNQ1 2%, UNQ2 1%, UNQ3 under 1%",
+    short: "97% of book; left out: UNQ1 2%, UNQ2 1%, UNQ3 under 1%",
+    shortest: "97% of book; UNQ1, UNQ2, UNQ3 left out",
+    converted: "6 holdings converted from local currency",
+  });
   // Closes at another time than the US session read low against US holdings, and the pane says so.
   expect(model.notes).toContain(
     "Converted holdings are matched to the US close of the same date; where their market closes at another time, correlations and betas to US holdings read lower than they are.",
@@ -403,6 +419,25 @@ test("currency and price shocks reprice each line of the book, cash included, an
   ]);
   expect(lira.lines[1]!.shocks).toEqual(["EUR +5% vs USD", "TRY -20% vs USD"]);
   expect(lira.percent).toBeCloseTo(5_800 / 25_600 * 100, 10);
+});
+test("cash entered by hand in several currencies is left out one currency at a time, and an FX shift moves each balance in its own currency", () => {
+  // HK$800 ($100 at 8 to the dollar), $220 and 4,400 lira ($110), with $330 of SPY: a $760 book.
+  const book: Portfolio = { ...portfolio, cash: { amount: 800, currency: "HKD" },
+    otherCash: [{ amount: 220, currency: "USD" }, { amount: 4_400, currency: "TRY" }] };
+  expect(riskCashLines(book, null)).toEqual([{ currency: "HKD", amount: 800 }, { currency: "USD", amount: 220 }, { currency: "TRY", amount: 4_400 }]);
+  const snapshot = { ...market(), fxRates: { TRY: 0.025, HKD: 0.125 } };
+  // Left out, the cash comes from the portfolio's own balances.
+  const model = buildPortfolioRisk(book, [holding("SPY", 3)], snapshot, null,
+    { equity: -10, rates: 100, volatility: 10, fx: [{ currency: "TRY", percent: -20 }, { currency: "HKD", percent: 5 }] });
+  expect(model.coverage).toMatchObject({ marketValue: 760, cashValue: 430 });
+  expect(riskCoverageLine(model.coverage)).toBe("basket 330 USD = 43% of book; left out: USD cash 29%, TRY cash 15%, HKD cash 13%");
+  // The lira takes a fifth off its $110 and the Hong Kong dollar adds 5% to its $100; the dollars stay: -$17 on the book.
+  const rows = model.rows.stress.filter((row) => row.id.startsWith("shock:"));
+  expect(rows.map((row) => [row.label, row.value, row.amount])).toEqual([
+    ["TRY cash", expect.closeTo(-20, 10), expect.closeTo(-22, 10)],
+    ["HKD cash", expect.closeTo(5, 10), expect.closeTo(5, 10)],
+    ["Book total", expect.closeTo(-17 / 760 * 100, 10), expect.closeTo(-17, 10)],
+  ]);
 });
 test("a short enters the basket at its signed weight, not left out", () => {
   // $330 of SPY long and $110 of IWM short: weights of +75% and -25% of the $440 gross, every dollar covered.
@@ -674,4 +709,27 @@ test("a holding saved under its venue's code (ES3:XSES) is requested and labelle
   expect(portfolioRiskRequests([held], "book")[0]).toMatchObject({ symbol: "ES3", exchange: "SGX" });
   // The pane names it by the venue, as D05:SGX beside it.
   expect(listedSymbol(held, held.metadata.ticker, "US")).toBe("ES3:SGX");
+});
+
+// A book of US funds and two Borsa Istanbul banks read its risk with no word of which days its returns were on.
+test("the days a basket's returns are on are named when it holds a market abroad, which carries its last close over US days", () => {
+  expect(riskReturnCalendar([{ exchange: "ARCA" }, { exchange: "NASDAQ" }, { exchange: "" }, { exchange: "CME" }])).toBeNull();
+  expect(riskReturnCalendar([{ exchange: "ARCA" }, { exchange: "BIST", convertedFrom: "TRY" }, { exchange: "BIST", convertedFrom: "TRY" }]))
+    .toBe("US trading days, BIST at its last close");
+  expect(riskReturnCalendar([{ exchange: "LSE" }, { exchange: "XETR" }])).toBe("US trading days, LSE and XETRA at their last close");
+  expect(riskReturnCalendar([{ exchange: "LSE" }, { exchange: "XETRA" }, { exchange: "JPX" }])).toBe("US trading days, other markets at their last close");
+  // A listing abroad saved without its venue still says the days, without naming one.
+  expect(riskReturnCalendar([{ exchange: "", convertedFrom: "TRY" }])).toBe("US trading days, other markets at their last close");
+});
+
+// A holding's failed mark and an option's failed valuation read as the whole book's in the footer.
+test("a warning that names a holding or an option is its row's; the book's stay the footer's", () => {
+  const model = {
+    warnings: ["AAPL: quote is from another listing", "AAPL261120C00200000: no implied volatility", "Treasury yield: the source did not answer"],
+    holdings: [{ symbol: "AAPL" }, { symbol: "MSFT" }],
+    greeks: { rows: [{ symbol: "AAPL261120C00200000" }] },
+  } as unknown as Parameters<typeof riskPaneWarnings>[0];
+  expect(riskPaneWarnings(model)).toEqual(["Treasury yield: the source did not answer"]);
+  expect(riskRowWarnings(model, "AAPL")).toEqual(["quote is from another listing"]);
+  expect(riskRowWarnings(model, "MSFT")).toEqual([]);
 });

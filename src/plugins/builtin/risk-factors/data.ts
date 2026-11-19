@@ -5,9 +5,12 @@ import {
 } from "../../../api-client";
 import { ApiRequestError, isPermanentClientError, isTransientFailure } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
-import { servedFromSavedCopy } from "../../../data/saved-copies";
+import { markSavedCopy, servedFromSavedCopy } from "../../../data/saved-copies";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
 import { secListingKey } from "../../../utils/sec";
+
+/** What the pane says for a ticker with no 10-K report. */
+export const noRiskFactorsTitle = (ticker: string) => `No 10-K risk factors on file for ${ticker}.`;
 
 /** Annual reports are immutable; discovery of newly produced reports is not. */
 const LIST_KIND = "reports";
@@ -100,12 +103,31 @@ interface RiskLoadOptions {
   force?: boolean;
   /** The listing's venue and company, for a listing outside the US. */
   listing?: IssuerListingParams;
+  displayScope?: string | null;
+  exchange?: string;
 }
+
+function riskKey(symbol: string, options?: RiskLoadOptions, year?: number): string {
+  if (options?.displayScope != null) {
+    return JSON.stringify([options.displayScope, symbol, options.exchange, options.listing?.exchange, options.listing?.name, year]);
+  }
+  const listingKey = secListingKey(symbol, options?.listing?.exchange);
+  return year === undefined ? listingKey : `${listingKey}:${year}`;
+}
+
+function savedRisk<T extends object>(kind: string, ticker: string, options: RiskLoadOptions, year?: number): (T & RiskFreshness) | null {
+  if (options.displayScope == null) return null;
+  const key = riskKey(ticker.trim().toUpperCase(), options, year);
+  const cached = persistence?.getResource<T>(kind, key, { sourceKey: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION, allowExpired: true });
+  return cached ? markSavedCopy({ ...cached.value, fetchedAt: cached.fetchedAt, stale: false }, cached.fetchedAt) : null;
+}
+
+export const getSavedRiskReports = (ticker: string, options: RiskLoadOptions) => savedRisk<CloudRiskReportListPayload>(LIST_KIND, ticker, options);
+export const getSavedRiskReport = (ticker: string, year: number, options: RiskLoadOptions) => savedRisk<CloudRiskReportPayload>(REPORT_KIND, ticker, options, year);
 
 export function loadRiskReportsWithClient(client: RiskApiClient, ticker: string, options?: RiskLoadOptions): Promise<RiskReportsResult> {
   const symbol = ticker.trim().toUpperCase();
-  // SAN in Paris is not SAN in New York: a listing abroad is cached under its venue.
-  const key = secListingKey(symbol, options?.listing?.exchange);
+  const key = riskKey(symbol, options);
   return loadCached(client, LIST_KIND, key, activeListFetches, LIST_CACHE_POLICY, options?.force ?? false, async () => {
     let payload: CloudRiskReportListPayload;
     try {
@@ -115,7 +137,7 @@ export function loadRiskReportsWithClient(client: RiskApiClient, ticker: string,
       if (error instanceof ApiRequestError && error.status === 404) return { company: null, reports: [] };
       throw error;
     }
-    if (!payload || !Array.isArray(payload.reports)) throw new Error(`Risk report list unavailable for ${key}.`);
+    if (!payload || !Array.isArray(payload.reports)) throw new Error(`Risk report list unavailable for ${symbol}.`);
     return payload;
   });
 }
@@ -123,7 +145,7 @@ export function loadRiskReportsWithClient(client: RiskApiClient, ticker: string,
 export function loadRiskReportWithClient(client: RiskApiClient, ticker: string, year: number, options?: RiskLoadOptions): Promise<RiskReportResult> {
   const symbol = ticker.trim().toUpperCase();
   const abroad = listingAbroad(symbol, options?.listing?.exchange) !== null;
-  const key = `${secListingKey(symbol, options?.listing?.exchange)}:${year}`;
+  const key = riskKey(symbol, options, year);
   return loadCached(client, REPORT_KIND, key, activeReportFetches, REPORT_CACHE_POLICY, options?.force ?? false, async () => {
     const payload = await client.getRiskReport(symbol, year, options?.listing);
     // SEC rows spell share classes BRK-B; a BRK.B request is the same company.

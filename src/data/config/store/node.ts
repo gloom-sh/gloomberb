@@ -11,11 +11,22 @@ import { EXTRACTED_PLUGINS } from "../../../plugins/extracted-plugins";
 import { makePrivateDir, writePrivateFile } from "../../../utils/private-files";
 import { renameIntoPlace } from "../../../utils/replace-file";
 import { tightenProfilePermissions } from "../../profile-permissions";
+import type { ExternalConfigChange } from "./index";
 import type { ConfigMigrationHost } from "./migrations";
 import {
   normalizeConfigForSave,
   normalizeLoadedConfig,
 } from "./normalize";
+import { applyProfileEdits, sameProfileJson, type ProfileJson } from "../../profile-merge";
+import {
+  changesHeld,
+  changesSince,
+  forgetSharedFile,
+  markChangesHeld,
+  noteSharedFileRead,
+  watchSharedFile,
+  writeSharedFile,
+} from "./shared-file";
 
 const configLog = debugLog.createLogger("config");
 const IN_MEMORY_DATA_DIR = ":memory:";
@@ -96,23 +107,25 @@ async function loadConfigState(dataDir: string): Promise<{ config: AppConfig; ne
     const raw = await readFile(configPath, "utf-8");
     const saved = JSON.parse(raw) as Record<string, unknown>;
     const state = normalizeLoadedConfig(saved, dataDir, migrationHost);
+    noteSharedFileRead(configPath, raw);
     // A config.json that names a different directory than the one it belongs
     // to came along with a moved folder. Record where it lives now, so the next
     // launch reads it directly instead of through the missing-path fallback.
     const recorded = typeof saved.dataDir === "string" ? saved.dataDir : null;
-    return { config: state.config, needsSave: state.needsSave || (recorded !== null && recorded !== dataDir) };
+    return {
+      config: markChangesHeld(configPath, state.config),
+      needsSave: state.needsSave || (recorded !== null && recorded !== dataDir),
+    };
   } catch {
     // Fresh installs have no former built-in plugins to restore. Record the
     // current baseline so onboarding never waits for plugin network installs.
     return {
-      config: { ...createDefaultConfig(dataDir), seededPlugins: EXTRACTED_PLUGINS.map((plugin) => plugin.id) },
+      config: markChangesHeld(configFileFor(dataDir), { ...createDefaultConfig(dataDir), seededPlugins: EXTRACTED_PLUGINS.map((plugin) => plugin.id) }),
       needsSave: true,
     };
   }
 }
 
-/** The save in flight or queued last for each config file; it never rejects. */
-const saveQueues = new Map<string, Promise<void>>();
 let tempFileCounter = 0;
 
 async function writeConfigFile(configPath: string, contents: string): Promise<void> {
@@ -133,7 +146,9 @@ async function writeConfigFile(configPath: string, contents: string): Promise<vo
 /**
  * Saves to one file run one after another in call order, so the last call is
  * the one on disk and none is lost. A failed save rejects only its own caller
- * and the next one still runs.
+ * and the next one still runs. What another program wrote to the file since
+ * this one last read or wrote it (a `gloom` command run beside the app) is
+ * kept: see `shared-file.ts`.
  */
 export async function saveConfig(config: AppConfig): Promise<void> {
   // `:memory:` is the data directory of a config kept in memory (tests, as for
@@ -143,13 +158,47 @@ export async function saveConfig(config: AppConfig): Promise<void> {
   // Written as it was when called, however the caller's object changes while
   // earlier saves are still running.
   const contents = JSON.stringify(normalizeConfigForSave(config), null, 2);
-  const result = (saveQueues.get(configPath) ?? Promise.resolve()).then(() => writeConfigFile(configPath, contents));
-  const settled = result.catch(() => { /* Intentional ignore: The caller receives result; only the serialization chain consumes its duplicate rejection. */ });
-  saveQueues.set(configPath, settled);
-  void settled.then(() => {
-    if (saveQueues.get(configPath) === settled) saveQueues.delete(configPath);
+  return writeSharedFile(configPath, contents, changesHeld(configPath, config), (output) => writeConfigFile(configPath, output));
+}
+
+/**
+ * Calls `listener` with each change another program makes to the config of
+ * `dataDir` while this one runs, as soon as it is found. The listener folds
+ * it into the app's state before anything more is written.
+ */
+export function watchExternalChanges(dataDir: string, listener: (change: ExternalConfigChange) => void): () => void {
+  if (dataDir === IN_MEMORY_DATA_DIR) return () => {};
+  const configPath = configFileFor(dataDir);
+  return watchSharedFile(configPath, (change) => {
+    // A copy that does not say what it holds was built before this change was found.
+    listener({ apply: (config) => foldConfigChanges(configPath, config, change.index + 1, change.index) });
   });
-  return result;
+}
+
+/** The top-level settings one derives from the others: a change to either takes all three. */
+const LAYOUT_KEYS = ["layout", "layouts", "activeLayoutIndex"];
+
+/**
+ * `config` with the changes it lacks, up to the first `upTo`, folded in. What
+ * the changes leave alone keeps its object, so a pane that reads it does not
+ * redraw for another program's edit elsewhere.
+ */
+function foldConfigChanges(configPath: string, config: AppConfig, upTo: number, unmarked: number): AppConfig {
+  const held = changesHeld(configPath, config, unmarked);
+  if (held >= upTo) return config;
+  const saved = JSON.parse(JSON.stringify(normalizeConfigForSave(config))) as Record<string, ProfileJson>;
+  let merged = saved;
+  for (const change of changesSince(configPath, held).slice(0, upTo - held)) merged = applyProfileEdits(merged, change.edits);
+  if (merged === saved) return markChangesHeld(configPath, { ...config }, upTo);
+  const loaded = normalizeLoadedConfig(merged, config.dataDir, migrationHost).config as unknown as Record<string, unknown>;
+  const next: Record<string, unknown> = { ...config };
+  const touched = new Set(Object.keys({ ...saved, ...merged }).filter((key) => !sameProfileJson(saved[key], merged[key])));
+  if (LAYOUT_KEYS.some((key) => touched.has(key))) for (const key of LAYOUT_KEYS) touched.add(key);
+  for (const key of touched) {
+    if (Object.hasOwn(loaded, key)) next[key] = loaded[key];
+    else delete next[key];
+  }
+  return markChangesHeld(configPath, next as unknown as AppConfig, upTo);
 }
 
 export async function initDataDir(dataDir: string): Promise<AppConfig> {
@@ -168,6 +217,7 @@ export async function resetAllData(dataDir: string): Promise<void> {
   // Settings outside the data directory (the XDG config file) go too, or the
   // next launch would skip the setup wizard the reset promises.
   await rm(configFileFor(dataDir), { force: true });
+  forgetSharedFile(configFileFor(dataDir));
 }
 
 export async function exportConfig(config: AppConfig, destPath: string): Promise<void> {

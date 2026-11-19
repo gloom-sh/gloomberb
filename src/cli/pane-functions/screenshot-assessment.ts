@@ -61,7 +61,7 @@ export function shotShowsText(visibleText: string, value: string): boolean {
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
   return !signals.refused
     && !signals.blankColumns?.length
-    && (signals.interactive || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
+    && (signals.interactive || signals.confirmedEmpty || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
     && !signals.loadingStateDetected
     && !signals.errorStateDetected
     && signals.complete
@@ -139,9 +139,13 @@ export function assessPaneScreenshot(
   const unavailableSymbols = usesLiveDomEvidence
     ? []
     : shotUnavailableSymbols(resolved, payload, render.semanticUi);
-  const complete = unavailableSymbols.length === 0;
+  const figureGaps = essentialFigureMismatches(render);
+  const complete = unavailableSymbols.length === 0 && figureGaps.length === 0;
   const expectedText = shotExpectedText(resolved, symbols, payload);
-  const normalizedVisibleText = render.visibleText.toLowerCase();
+  // A text field's value is on screen too (OVME's Underlying SPY), though not in the page's text. It is read
+  // for this check alone: what a reader typed in a field never reaches the result, its JSON or its print.
+  const { fieldValues, ...shownRender } = render;
+  const normalizedVisibleText = [render.visibleText, ...fieldValues ?? []].join(" ").toLowerCase();
   const missingExpectedText = expectedText.filter((value) => !shotShowsText(normalizedVisibleText, value));
   const expectedSelections = shotExpectedSelections(resolved);
   const missingExpectedSelections = missingActiveTabSelections(
@@ -156,6 +160,7 @@ export function assessPaneScreenshot(
     ...paneEvidenceMismatches(resolved, payload, render),
     ...financialRatioRenderMismatches(resolved, payload, render),
     ...surfaceNotDrawnMismatches(render),
+    ...figureGaps,
   ];
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
@@ -183,6 +188,8 @@ export function assessPaneScreenshot(
     interactive,
     rowCount,
     contentShown,
+    confirmedEmpty: rowCount === 0 && render.emptyStateDetected && !render.accessGate
+      && (render.semanticUi ?? []).some((node) => node.role === "pane-empty-result"),
     refused,
     loadingStateDetected: render.loadingStateDetected,
     errorStateDetected: render.errorStateDetected,
@@ -200,6 +207,7 @@ export function assessPaneScreenshot(
   const tableRows = shotTableRows(resolved, render);
   const notices = [
     ...renderedReportNotices(render.semanticUi ?? []).notices,
+    ...(render.statusLineClipped ? ["The as-of status line is clipped."] : []),
     ...unquotedHoldingsNotice(resolved, payload),
     ...(render.surfaces?.some((surface) => surface.renderer === "software")
       ? ["The 3D surface was drawn by the software renderer: this browser has no WebGL."] : []),
@@ -231,7 +239,7 @@ export function assessPaneScreenshot(
     ...(tableRows ? { tableRows } : {}),
     outputPath,
     render: {
-      ...stripDesktopShotCredentials(render),
+      ...stripDesktopShotCredentials(shownRender),
       expectedText,
       missingExpectedText,
       expectedSelections,
@@ -309,7 +317,10 @@ const BLANK_COLUMN_MIN_ROWS = 3;
  * and V/AVG did before the open. A column some rows leave empty is a sparse
  * marker (an event column), not a blank one, and neither is a column the pane
  * says can be blank (`mayBeBlank`: a value that comes after an event, such as
- * an upcoming report's move); section headers and tables of fewer than
+ * an upcoming report's move). A row the pane says is still waiting on the
+ * value (a cell's `mayBeBlank`: ECO's ACTUAL before the release) is left out:
+ * the column is blank when every other row is, and there are at least
+ * BLANK_COLUMN_MIN_ROWS of them. Section headers and tables of fewer than
  * BLANK_COLUMN_MIN_ROWS rows are not read.
  */
 function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow, "tableIndex" | "cells" | "section">[]): string[] {
@@ -322,18 +333,22 @@ function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow, "table
   const blank: string[] = [];
   for (const tableRows of tables.values()) {
     if (tableRows.length < BLANK_COLUMN_MIN_ROWS) continue;
-    const columns = new Map<string, { label: string; placeholders: number; filled: boolean }>();
+    const columns = new Map<string, { label: string; placeholders: number; waiting: number; filled: boolean }>();
     for (const row of tableRows) {
       for (const cell of row.cells) {
         const key = cell.columnId ?? cell.columnLabel;
-        const column = columns.get(key) ?? { label: cell.columnLabel, placeholders: 0, filled: false };
-        if (PLACEHOLDER_VALUE.test(cell.text.trim()) && !cell.mayBeBlank) column.placeholders += 1;
+        const column = columns.get(key) ?? { label: cell.columnLabel, placeholders: 0, waiting: 0, filled: false };
+        // A row still waiting on the value (an upcoming release's ACTUAL) is neither a gap nor a value.
+        if (cell.mayBeBlank && PLACEHOLDER_VALUE.test(cell.text.trim())) column.waiting += 1;
+        else if (PLACEHOLDER_VALUE.test(cell.text.trim())) column.placeholders += 1;
         else column.filled = true;
         columns.set(key, column);
       }
     }
-    for (const { label, placeholders, filled } of columns.values()) {
-      if (!filled && placeholders === tableRows.length && !blank.includes(label)) blank.push(label);
+    for (const { label, placeholders, waiting, filled } of columns.values()) {
+      // Blank in every row that should have the value, and in enough of them to be no short list's gaps.
+      const owed = tableRows.length - waiting;
+      if (!filled && owed >= BLANK_COLUMN_MIN_ROWS && placeholders === owed && !blank.includes(label)) blank.push(label);
     }
   }
   return blank;
@@ -432,6 +447,19 @@ function plotsData(node: RemoteUiNodeSnapshot): boolean {
   const lists = [metadata.series, metadata.baseSeries, metadata.resolvedSeries].filter(Array.isArray);
   if (lists.length === 0) return true;
   return lists.some((list) => list.some((series) => isRecord(series) && typeof series.pointCount === "number" && series.pointCount > 0));
+}
+
+export function essentialFigureMismatches(render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "visibleText">): string[] {
+  return render.semanticUi.filter((node) => node.role === "figure-layout").flatMap((node) => {
+    const metadata = node.metadata;
+    if (!isRecord(metadata) || !Array.isArray(metadata.figures) || !Array.isArray(metadata.omitted)) return ["Essential figure evidence is unavailable."];
+    const omitted = metadata.omitted;
+    return metadata.figures.flatMap((figure) => {
+      if (!isRecord(figure) || typeof figure.label !== "string" || typeof figure.value !== "string") return ["Essential figure evidence is invalid."];
+      return omitted.includes(figure.label) || !shotShowsText(render.visibleText, figure.label) || !shotShowsText(render.visibleText, figure.value)
+        ? [`Essential figure is missing or clipped: ${figure.label}.`] : [];
+    });
+  });
 }
 
 /**

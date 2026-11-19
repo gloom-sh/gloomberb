@@ -88,6 +88,7 @@ import {
   perpetualTarget,
   searchPerpetualMarkets,
   boardSearchesFrom,
+  PerpetualBoardCache,
 } from "./perpetuals";
 import { predictionMarketListing } from "../../tickers/prediction-listing";
 import { cleanListingName } from "../../tickers/company-name";
@@ -105,6 +106,11 @@ const QUOTE_BATCHES_IN_FLIGHT = 3;
 const PERPETUAL_SEARCH_WAIT_MS = 2_000;
 /** How long a batched search waits for the board it answers every query's perpetual markets from. */
 const PERPETUAL_BOARD_WAIT_MS = 5_000;
+/** A bare symbol a command looks up (AAPL, MCO), not a search the person typed to browse: `search` and the command bar keep the contracts. */
+function isSymbolLookup(query: string, context?: SearchRequestContext): boolean {
+  return !context?.interactive && context?.perpetuals !== "always" && /^[A-Za-z][A-Za-z0-9]{1,5}$/.test(query.trim());
+}
+
 const CLOUD_RESOLUTION_SUPPORT = normalizeChartResolutionSupport([
   { resolution: "1m", maxRange: "1W" },
   { resolution: "5m", maxRange: "1M" },
@@ -254,8 +260,9 @@ function mapCloudPriceHistory(
     && requestedStart.getTime() < Date.parse(coverageStart)) throw new HistoryCoverageError(coverageStart);
   // The server marks a cached copy it could not refresh in time. Bars that
   // reach the venue's latest settled session still answer, and the router's
-  // own current-window check applies to them as to any other copy. Older bars,
-  // or a stale answer without bars, are a miss.
+  // own current-window check applies to them as to any other copy. Older bars
+  // are a miss that carries them, shown as behind when no source has the
+  // present; a stale answer without bars is a miss.
   const stale = isStaleCloudResponse(response);
   if (stale && response.status !== "success" && response.status !== "partial") {
     throw new StaleHistoryError(`Cloud chart data is stale for ${ticker}`);
@@ -282,9 +289,6 @@ function mapCloudPriceHistory(
       `Cloud chart data is unavailable for ${ticker}`,
     ).map((point) => mapPricePoint(point, divisor, exchange, coin)),
   );
-  if (stale && !reachesLatestSettledSession(points, Date.now(), { symbol: ticker, exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
-    throw new StaleHistoryError(`Cloud chart data is stale for ${ticker}`);
-  }
   const intraday = /^\d+(min|h)$/i.test(interval);
   // Daily bars answering an intraday range: the listing has no intraday bars.
   const dailyBars = intraday && response.servedResolution === "1day";
@@ -309,7 +313,7 @@ function mapCloudPriceHistory(
   // Sessions of daily bars the answer left out for a close at or below zero.
   const nonPositiveCloseDates = resolution === "1d" ? cloudNonPositiveCloseDates(response.omittedSessions) : undefined;
   const delisting = parseListingDelisting(response.delisting);
-  return {
+  const result: PriceHistoryResult = {
     points,
     resolution,
     ...(delisting ? { delisting } : {}),
@@ -319,6 +323,10 @@ function mapCloudPriceHistory(
     ...(coverageNote ? { coverageNote } : {}),
     ...(extendedHours ? { extendedHours: true } : {}),
   };
+  if (stale && !reachesLatestSettledSession(points, Date.now(), { symbol: ticker, exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
+    throw new StaleHistoryError(`Cloud chart data is stale for ${ticker}`, result);
+  }
+  return result;
 }
 
 /**
@@ -524,6 +532,10 @@ function perpetualFinancials(quote: Quote): TickerFinancials {
 }
 
 export class GloomberbCloudProvider implements AssetDataProvider {
+  /** See `AssetDataProvider.knownUsStock`; this provider asks for no perpetual contracts of such a symbol either. */
+  knownUsStock?: (symbol: string) => boolean;
+  private readonly perpetualBoards = new PerpetualBoardCache();
+
   readonly id = providerId;
   readonly name = "Gloom Cloud";
   readonly priority = 100;
@@ -733,7 +745,8 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   async search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {
     // Perpetual markets are listings too, asked for beside the others. They are optional: a failed lookup leaves the
     // other results, and a keystroke waits for them only briefly once the listings are in, unless the query names one.
-    const pending = searchPerpetualMarkets(query).catch(logFailure("sources.gloomberb-cloud.index", "Searching perpetual markets failed", [] as InstrumentSearchResult[]));
+    const pending = isSymbolLookup(query, context) && this.knownUsStock?.(query) === true ? null
+      : searchPerpetualMarkets(query, apiClient, this.perpetualBoards).catch(logFailure("sources.gloomberb-cloud.index", "Searching perpetual markets failed", [] as InstrumentSearchResult[]));
     // A crypto exchange's line of a coin pair, which no source quotes, is offered as the crypto venue's listing.
     const listings = await withCloudFallback(
       async () => withExchangeLinesAsCoinListings(withCleanNames(
@@ -743,7 +756,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       // Rate limited or overloaded: the search was not run, which is not a search that found nothing.
       throw isRetryableApiError(error) ? new ProviderBusyError("Cloud search is busy", { cause: error }) : error;
     });
-    const perpetuals = await settleWithin(pending, namesPerpetualMarket(query) || !context?.interactive ? PERPETUAL_SEARCH_WAIT_MS : 250) ?? [];
+    const perpetuals = pending ? await settleWithin(pending, namesPerpetualMarket(query) || !context?.interactive ? PERPETUAL_SEARCH_WAIT_MS : 250) ?? [] : [];
     // Ahead of the listings, so a contract found by its plain name ("brent" for BZUSDT:BINANCE) is not cut
     // behind every warrant that names it; an exact symbol still leads.
     return perpetuals.length ? [...perpetuals, ...listings] : listings;
@@ -860,7 +873,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     // on its own, which finds them then; a board that does not answer leaves them out, as a search does.
     const found = queries.filter((query) => answers.get(query)?.length);
     const board = found.length
-      ? await settleWithin(apiClient.getCloudPerpsBoard().catch(logFailure("sources.gloomberb-cloud.index", "Reading the perpetual board failed", null)), PERPETUAL_BOARD_WAIT_MS)
+      ? await settleWithin(this.perpetualBoards.read(apiClient).catch(logFailure("sources.gloomberb-cloud.index", "Reading the perpetual board failed", null)), PERPETUAL_BOARD_WAIT_MS)
       : null;
     if (!board) return answers;
     const client = boardSearchesFrom(board);

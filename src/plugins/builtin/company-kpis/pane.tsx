@@ -3,7 +3,7 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { KpiObservation } from "../../../api-client/company-kpis";
 import { listingAbroad } from "../../../api-client/paths";
-import { ChartTableHeader, DataTableStackView, DetailScrollBody, EmptyState, KeyValueRow, PaneStatusBody, QueryBar, SectionHeading,
+import { ChartTableHeader, DataTableStackView, DetailScrollBody, EmptyState, KeyValueRow, Notice, PaneStatusBody, QueryBar, SectionHeading,
   useChartTableSelection, usePaneMenuItems, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type PaneHint } from "../../../components";
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -21,13 +21,14 @@ import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
-import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, companyEmptyState, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, fiscalLabel,
+import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, companyEmptyState, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, guidanceIssueNote, fiscalLabel,
   isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, QUIET_COLUMNS, rangeText, scopeWords, seriesDetail, seriesLabel, seriesLabels, seriesName,
   seriesOrder, unitLabel, valueText, companyPreviewNote, type CompanyRow } from "./model";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { PricePoint } from "../../../types/financials";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
 import { logFailure } from "../../../utils/log-failure";
+import { currentKpiSeries } from "./latest";
 
 /** A locked placeholder, or with `note` the line above them saying what free shows and what Pro adds. */
 type Item = { id: string; row: CompanyRow } | { id: string; row: null; note?: string };
@@ -117,6 +118,8 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const guides = useMemo(() => guidance ? allGuidance(guidance) : [], [guidance]);
   const allRows = useMemo<CompanyRow[]>(() => [...observations, ...guides], [observations, guides]);
   const eligible = useMemo(() => allRows.filter((row) => metric === "all" || row.metricId === metric), [allRows, metric]);
+  // The table lists the series the company still reports (currentKpiSeries); the chart and evidence every figure.
+  const latestIds = useMemo(() => new Set(kpis ? currentKpiSeries(kpis.series).map((series) => series.latest.id) : []), [kpis]);
   const plotOptions = useMemo(() => mode === "kpis"
     ? [...new Map(eligible.filter((row) => !isGuidance(row)).map((row) => [`${row.seriesKey}:${row.period.kind}`, { value: `${row.seriesKey}:${row.period.kind}`, label: `${desktop ? seriesName(row) : seriesLabel(row)} · ${row.period.kind}` }])).values()]
     : [...new Map(eligible.filter(isGuidance).map((row) => [guideGroupKey(row), { value: guideGroupKey(row), label: `${desktop ? seriesName(row) : seriesLabel(row)} · ${row.period.label}` }])).values()], [eligible, mode, desktop]);
@@ -124,7 +127,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const rows = useMemo(() => {
     const values = eligible.filter((row) => tab === "chart" ? (isGuidance(row) ? guideGroupKey(row) : `${row.seriesKey}:${row.period.kind}`) === activePlot
       : tab === "history" ? isGuidance(row) && !!row.actual
-      : tab === "evidence" ? true : isGuidance(row) ? guidance?.guidance.some((current) => current.id === row.id) : kpis?.series.some((series) => series.latest.id === row.id));
+      : tab === "evidence" ? true : isGuidance(row) ? guidance?.guidance.some((current) => current.id === row.id) : latestIds.has(row.id));
     const key = (row: CompanyRow): string | number | null => {
       const guide = isGuidance(row) ? row : null;
       return sort.column === "metric" ? row.metric.name : sort.column === "value" ? guide ? guide.point ?? guide.low ?? guide.high : (row as KpiObservation).value
@@ -141,15 +144,19 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
       return x === null || y === null ? x === y ? a.id.localeCompare(b.id) : x === null ? 1 : -1
         : (x < y ? -1 : x > y ? 1 : a.metric.name.localeCompare(b.metric.name) || dimensionLabel(a.dimensions).localeCompare(dimensionLabel(b.dimensions)) || a.id.localeCompare(b.id)) * direction;
     });
-  }, [eligible, tab, activePlot, guidance, kpis, sort, observations, desktop]);
+  }, [eligible, tab, activePlot, guidance, latestIds, sort, observations, desktop]);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0];
   const openRow = allRows.find((row) => row.id === openId);
   const activeRow = openRow ?? selected;
   const preview = data?.access === "preview" && data.lockedRows > 0;
   const lockedCount = preview ? Math.min(3, data.lockedRows) : 0;
   const previewNote = preview ? companyPreviewNote(data, mode === "guidance") : null;
-  const items = useMemo<Item[]>(() => [...rows.map((row) => ({ id: row.id, row })), ...(previewNote ? [{ id: "note:preview", row: null, note: previewNote }] : []),
-    ...Array.from({ length: lockedCount }, (_, index) => ({ id: `locked:${index}`, row: null }))], [rows, lockedCount, previewNote]);
+  const items = useMemo<Item[]>(() => [...rows.map((row) => ({ id: row.id, row })),
+    ...Array.from({ length: lockedCount }, (_, index) => ({ id: `locked:${index}`, row: null }))], [rows, lockedCount]);
+  const issueNotes = guidance?.guidance.flatMap((row) => {
+    const note = guidanceIssueNote(row, guidance.guidance);
+    return note ? [`${row.metric.name}: ${note}.`] : [];
+  }) ?? [];
   // One trend per series beside its latest value, once a series has three comparable points.
   const trends = useMemo(() => {
     const map = new Map<string, PricePoint[]>();
@@ -234,7 +241,9 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
         {detail ? <ClippedText fg={state.selected ? colors.selectedText : colors.textDim} lead="  " text={detail} width={column.width} flex="1 1 0%" /> : null}
       </Box> };
     }
-    const text = companyCellText(row, column.id, observations);
+    const text = column.id === "metric" && !columns.some((entry) => entry.id === "basis")
+      ? [row.metricId === "eps" ? "EPS" : row.metric.name, seriesDetail(row)].filter(Boolean).join(" · ")
+      : companyCellText(row, column.id, observations);
     return { text, ...(column.id === "value" && !guide ? { value: exactObservation(row as KpiObservation) ? (row as KpiObservation).value : observationValue(row as KpiObservation) } : column.id === "actual" ? { value: guide?.actual?.value } : {}),
       color: column.id === "metric" ? colors.textBright : column.id === "value" || column.id === "actual" ? colors.textBright
         : column.id === "outcome" && guide?.actual ? guide.actual.favorable === "beat" ? colors.positive : guide.actual.favorable === "miss" ? colors.negative : colors.text
@@ -258,7 +267,12 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
           chart={tab === "chart" ? { series, ...(mode === "kpis" ? { xAxis: kpiChart.xAxis, viewport: kpiChart.viewport } : {}), empty: preview ? "Full history is available with Pro." : "History is accumulating. Two comparable disclosures are needed for a trend.",
             formatValue: (value) => selected ? `${valueText(selected, value)}${selected.currency ? ` ${unitLabel(selected)}` : ""}` : String(value),
             formatAxisValue: (value) => selected ? valueText(selected, value) : String(value), remoteKind: "company-disclosure-history", ...link } : null} />}
-        bodyAfter={lockedCount && desktop ? <LockedOverlay rows={lockedCount} text="Upgrade for all disclosures and history" onPress={openUpgrade} /> : undefined}
+        bodyAfter={<Box flexDirection="column" width={width}>
+          {mode === "guidance" && selected && !columns.some((column) => column.id === "period") ? <Notice tone="muted">{`${seriesName(selected)} · ${fiscalLabel(selected)}`}</Notice> : null}
+          {issueNotes.map((note) => <Notice key={note}>{note}</Notice>)}
+          {previewNote ? <Notice tone="muted">{previewNote}</Notice> : null}
+          {lockedCount && desktop ? <LockedOverlay rows={lockedCount} text="Upgrade for all disclosures and history" onPress={openUpgrade} /> : null}
+        </Box>}
       /> : null}
     </PaneStatusBody>
   </Box>;

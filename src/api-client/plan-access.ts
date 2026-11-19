@@ -6,7 +6,7 @@ export * from "./plan-rules";
 
 function planAccessKey(): string {
   const user = apiClient.getCurrentUser();
-  if (!user) return "anonymous";
+  if (!user) return apiClient.isDisplayScopePending() ? "pending" : "anonymous";
   return [
     user.id,
     user.emailVerified === true ? "verified" : "unverified",
@@ -24,6 +24,19 @@ export function usePlanAccess(): PlanAccess {
     planAccessKey,
   );
   return resolvePlanAccess(apiClient.getCurrentUser());
+}
+
+export function cloudDisplayScope(): string | null {
+  const user = apiClient.getCurrentUser();
+  const access = resolvePlanAccess(user);
+  const account = user?.id ?? null;
+  return apiClient.isDisplayScopePending() ? null : JSON.stringify([account, access.emailVerified, access.hasProAccess]);
+}
+
+/** Non-secret identity for display data whose answer depends on cloud access. */
+export function useCloudDisplayScope(): string | null {
+  usePlanAccess();
+  return cloudDisplayScope();
 }
 
 /**

@@ -341,6 +341,19 @@ test("a call held in Chinese says it is translated, and g shows the machine tran
   expect(original).not.toContain("FIRST CONTROLLED SUMMARY");
 });
 
+test("a dual-listed company's call opens from its other line, whose ticker the call carries", async () => {
+  signIn();
+  // CALLS 1088:HKEX lists China Shenhua's calls as 601088:SSE's: opening one read nothing.
+  setCloudApiFetchTransport(async (url) => new URL(String(url)).pathname.includes("HOME-call")
+    ? Response.json(transcript("HOME"))
+    : Response.json({ calls: [call("HOME")], companyFrom: { symbol: "HOME", exchange: "SSE" } }));
+  await mount(120, "1088:HKEX");
+  await framesUntil(() => tui.frame().includes("HOME CORP"));
+  await press("return");
+  await framesUntil(() => tui.frame().includes("HOME CONTROLLED SUMMARY"));
+  expect(tui.frame()).toContain("HOME CONTROLLED SUMMARY");
+});
+
 test("a call that is not translated has no original section", async () => {
   signIn();
   setCloudApiFetchTransport(async (url) => new URL(String(url)).pathname.includes("FIRST-call")

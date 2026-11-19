@@ -4,6 +4,7 @@ import type { CompanyFrom } from "../../../types/company-from";
 import { useAppLanguage } from "../../../i18n/react";
 import { useExternalLinkFooter } from "../../use-external-link-footer";
 import { loadingErrorFooterInfo } from "../../data-table/table-pane";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
 const EMPTY_STATUS_INFO: PaneFooterSegment[] = [];
 
@@ -64,16 +65,33 @@ export function useCompanyDataFooter(companyFrom: CompanyFrom | null | undefined
   );
 }
 
+/**
+ * A load that failed, published for the pane's report (`gloom fn`): the
+ * footer says it in the app, and a report of a pane with nothing else to
+ * show fails with it, as the plain commands do, instead of reading back the
+ * empty body ("No events") as the data and dating it (`pane-load-error`).
+ */
+function usePaneLoadErrorNode(loading: boolean, error: string | null | undefined, enabled = true) {
+  const message = !loading && enabled ? error?.trim() ?? "" : "";
+  useRemoteUiNode(message ? {
+    role: "pane-load-error",
+    label: "Load failed",
+    getMetadata: () => ({ message }),
+  } : null);
+}
+
 export function usePaneStatusFooter({
   registrationId,
   loading = false,
   error,
+  emptyResult = false,
   stale = false,
   info = EMPTY_STATUS_INFO,
   hints,
   enabled = true,
 }: PaneStatusInfoOptions & {
   registrationId: string;
+  emptyResult?: boolean;
   hints?: PaneHint[];
   enabled?: boolean;
 }) {
@@ -81,6 +99,11 @@ export function usePaneStatusFooter({
     () => buildPaneStatusInfo({ loading, error, stale, info }),
     [error, info, loading, stale],
   );
+  usePaneLoadErrorNode(loading, error, enabled);
+  useRemoteUiNode(enabled && emptyResult && !loading && !error ? {
+    role: "pane-empty-result",
+    label: "No results",
+  } : null);
   usePaneFooter(
     registrationId,
     () => enabled && (statusInfo.length > 0 || (hints?.length ?? 0) > 0)
@@ -115,6 +138,7 @@ export function usePaneStatusLinkFooter({
     () => buildPaneStatusInfo({ loading, error, stale, info }),
     [error, info, loading, stale],
   );
+  usePaneLoadErrorNode(loading, error);
   return useExternalLinkFooter({
     registrationId,
     focused,

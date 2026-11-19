@@ -15,6 +15,12 @@ const line = (definition: Pick<HeadlessPaneDefinition, "shape" | "freshness">, r
 );
 
 describe("report freshness", () => {
+  test("a source can flag newly retrieved data stale without calling it zero minutes old", () => {
+    const stale = { source: "Gloom Cloud", status: "stale" as const, asOf: "2026-11-18T00:20:26Z" };
+    expect(formatFreshnessLine({ ...stale, ageMinutes: 0 })).toEndWith("00:20 UTC · stale");
+    expect(formatFreshnessLine({ ...stale, ageMinutes: 9 })).toEndWith("00:20 UTC · stale (9 min old)");
+  });
+
   test("an intraday history names its newest bar's span, not the time the bar opened", () => {
     const hourly = rows({ source: "Gloom Cloud", status: "not-a-feed", basis: "hourly bars", observedKey: "date", oldest: null, barMinutes: 60 });
     const bars = { rows: [{ date: "2026-10-09T02:00:00Z" }, { date: "2026-10-09T03:00:00Z" }] };
@@ -93,6 +99,13 @@ describe("report freshness", () => {
     expect(line(declared, filings)).toBe("Source: SEC EDGAR · newest filing Tue 6 Oct 2026 · retrieved Fri 9 Oct 2026 05:00 UTC · not a live feed (filed data)");
     // No filing to date it by: when it was read, once.
     expect(line(declared, { rows: [] })).toBe("Source: SEC EDGAR · retrieved Fri 9 Oct 2026 05:00 UTC · not a live feed (filed data)");
+    // A capture too narrow for the whole line gives up when it was read, then what the data is; the date keeps
+    // its label to the last, a day and never its midnight, so it is not read as the time now.
+    expect(statusLineVariants(deriveHeadlessFreshness(declared, filings, NOW)).slice(-2))
+      .toEqual(["Newest filing Tue 6 Oct 2026 · not a live feed", "Newest filing Tue 6 Oct 2026"]);
+    // Filed dates read as instants (INS's rows) narrow to the labelled day, as `2026-11-06 00:00 UTC` never should.
+    const instants = { rows: [{ filingDate: "2026-10-06T00:00:00.000Z" }] };
+    expect(statusLineVariants(deriveHeadlessFreshness(declared, instants, NOW)).at(-1)).toBe("Newest filing 2026-10-06");
   });
 
   test("says how long a delay is in minutes or hours, as a range when rows differ", () => {
@@ -102,7 +115,7 @@ describe("report freshness", () => {
     // News held back for an account without real-time access says how far; with it, the wire is live. The time is the
     // newest story's and says so, so it is not read as the time now.
     const stories = { rows: [{ publishedAt: "2026-10-08T16:30:00Z" }, { publishedAt: "2026-10-08T15:00:00Z" }] };
-    expect(line(rows(cloudNewsFreshness(false)), stories)).toBe("Source: Gloom Cloud · newest story Thu 8 Oct 2026 16:30 UTC · 12 h delayed");
+    expect(line(rows(cloudNewsFreshness(false)), stories)).toBe("Source: Gloom Cloud · newest story Thu 8 Oct 2026 16:30 UTC · not a live feed (published stories)");
     expect(line(rows(cloudNewsFreshness(true)), stories)).toBe("Source: Gloom Cloud · newest story Thu 8 Oct 2026 16:30 UTC · live");
     expect(line(rows(), { rows: [{ dataSource: "delayed", lastUpdated: NOW - 60_000 }] }))
       .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · delayed");
@@ -211,9 +224,9 @@ describe("report freshness", () => {
     const SAT = Date.parse("2026-10-10T22:47:00Z");
     const transits = { source: "Gloom Cloud", status: "not-a-feed" as const, basis: "reported and published data", dataset: true };
     const dataset = deriveHeadlessFreshness(rows(transits), { rows: [
-      { asOf: "2026-10-04T00:00:00Z", stale: false }, { asOf: "2026-09-27T00:00:00Z", stale: true },
+      { asOf: "2026-10-04", stale: false }, { asOf: "2026-09-27", stale: true },
     ] }, SAT);
-    expect(dataset).toMatchObject({ lagDays: 6, oldest: "2026-09-27T00:00:00.000Z" });
+    expect(dataset).toMatchObject({ lagDays: 6, oldest: "2026-09-27" });
     expect(statusLineVariants(dataset)).toEqual([
       "Source: Gloom Cloud · observed Sun 4 Oct (oldest Sun 27 Sep) · lag 6d · 1 of 2 stale",
       "Source: Gloom Cloud · observed Sun 4 Oct · lag 6d · 1 of 2 stale",
@@ -400,11 +413,11 @@ describe("report freshness", () => {
     // DTCC's swap tape: a delayed feed whose single names trade days apart, dated by the last trade.
     const tape = { source: "DTCC", status: "delayed" as const, dataset: true, observation: "last trade", asOf: "2026-10-09T13:21:00Z", oldest: null };
     const freshness = deriveHeadlessFreshness(rows(tape), { rows: [], metadata: { asOf: "2026-10-11T15:14:13Z" } }, SUN);
-    expect(freshness).toMatchObject({ status: "delayed", asOf: "2026-10-09T13:21:00.000Z", lagDays: 2, observation: "last trade" });
-    const one = "Source: DTCC \u00b7 last trade 2026-10-09 \u00b7 lag 2 days";
+    expect(freshness).toMatchObject({ status: "delayed", asOf: "2026-10-09T13:21:00.000Z", observationAgeMinutes: 2993, observation: "last trade" });
+    const one = "Source: DTCC \u00b7 last trade 2026-10-09 13:21 UTC \u00b7 2 days old";
     expect(formatFreshnessLine(freshness)).toBe(one);
     expect(paneStatusLine(freshness)).toBe(one);
-    expect(statusLineVariants(freshness)).toEqual([one, "Source: DTCC \u00b7 last trade 2026-10-09", "DTCC \u00b7 last trade 2026-10-09", "Last trade 2026-10-09"]);
+    expect(statusLineVariants(freshness)).toEqual([one, "Source: DTCC \u00b7 last trade 2026-10-09 13:21 UTC", "DTCC \u00b7 last trade 2026-10-09 13:21 UTC", "Last trade 2026-10-09 13:21 UTC"]);
     // The equity session of the ticker on screen does not date it.
     const quoted = deriveHeadlessFreshness(rows(), { rows: [
       { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NYSE", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T20:00:00Z") },
@@ -412,7 +425,7 @@ describe("report freshness", () => {
     expect(captureStatusLine({ report: { freshness, declaresData: true }, quoted, selfDated: false, rendered: () => quoted }).variants[0]).toBe(one);
     // Without a name the dataset keeps its own line, and a delayed feed that is no dataset has no lag.
     expect(formatStatusLine(deriveHeadlessFreshness(rows({ ...tape, observation: undefined }), { rows: [] }, SUN)))
-      .toBe("Source: DTCC \u00b7 observed Fri 9 Oct \u00b7 lag 2d");
+      .toBe("Source: DTCC \u00b7 observed Fri 9 Oct 13:21 UTC \u00b7 2 days old");
     expect(deriveHeadlessFreshness(rows({ ...tape, dataset: undefined }), { rows: [] }, SUN).lagDays).toBeUndefined();
   });
 
@@ -468,15 +481,23 @@ describe("report freshness", () => {
       const freshness = deriveHeadlessFreshness(rows({ status: "not-a-feed", dataset: true, ...(periodicity ? { periodicity } : {}) }), { rows: [{ asOf }] }, Date.parse(now));
       return `${freshness.lagDays} ${formatStatusLine(freshness)}`;
     };
-    // Calendar days, not elapsed hours: late Monday to just past midnight Saturday is five.
-    expect(lag("2026-10-05T23:59:00Z", "2026-10-10T00:01:00Z")).toBe("5 Source: Gloom Cloud · observed Mon 5 Oct · lag 5d");
-    expect(lag("2026-10-10T07:19:00Z", "2026-10-10T22:47:00Z")).toBe("0 Source: Gloom Cloud · observed Sat 10 Oct · lag 0d");
+    expect(lag("2026-10-05", "2026-10-10T00:01:00Z")).toBe("5 Source: Gloom Cloud · observed Mon 5 Oct · lag 5d");
     // A period lags from its last day; the date names its year when that is not the capture's.
     expect(lag("2026-09-01", "2026-10-10T12:00:00Z", "monthly")).toBe("10 Source: Gloom Cloud · observed Sep 2026 (monthly) · lag 10d");
     expect(lag("2026-07-01", "2026-10-10T12:00:00Z", "quarterly")).toBe("10 Source: Gloom Cloud · observed Q3 2026 (quarterly) · lag 10d");
     expect(lag("2025-01-01", "2026-01-31T12:00:00Z", "annual")).toBe("31 Source: Gloom Cloud · observed 2025 (annual) · lag 31d");
     expect(lag("2026-10-01", "2026-10-10T12:00:00Z", "monthly")).toBe("0 Source: Gloom Cloud · observed Oct 2026 (monthly) · lag 0d");
     expect(lag("2025-12-28", "2026-01-02T12:00:00Z")).toBe("5 Source: Gloom Cloud · observed Sun 28 Dec 2025 · lag 5d");
+  });
+
+  test("a timestamped dataset uses elapsed minutes across UTC midnight and keeps the observation time", () => {
+    const dataset = rows({ status: "not-a-feed", source: "GPU cloud providers", dataset: true });
+    const result = { rows: [{ asOf: "2026-11-18T23:24:00Z" }] };
+    const now = Date.parse("2026-11-19T00:08:30Z");
+    const freshness = deriveHeadlessFreshness(dataset, result, now);
+    expect(freshness.lagDays).toBeUndefined();
+    expect(formatStatusLine(freshness)).toBe("Source: GPU cloud providers · observed Wed 18 Nov 23:24 UTC · 44 min old");
+    expect(statusLineVariants(freshness).at(-1)).toBe("Observed Wed 18 Nov 23:24 UTC");
   });
 
   test("is live only when the data says so, and the worst row decides", () => {

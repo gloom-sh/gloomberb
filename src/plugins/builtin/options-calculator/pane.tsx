@@ -1,4 +1,5 @@
 import { unavailableText } from "../../../components/ui/status";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { delayedFooterSegment, FieldGrid, KeyValueRow, QueryBar, usePaneFooter, usePaneNoticeFooter, type GridField } from "../../../components";
 import { CompositeChart } from "../../../components/chart/composite/composite-chart";
@@ -22,7 +23,7 @@ import { daysToExpiryFrom, optionMid, solveImpliedVolatility, valueOption, type 
 import { useThrottledValue } from "../shared/volatility/live-session";
 import { valueBinomialOption, solveBinomialImpliedVolatility, effectiveBinomialSteps } from "./binomial";
 import { draftFromCalculatorInputs, parseCashDividends } from "./inputs";
-import { loadCalculatorSurfaceVol } from "./surface";
+import { calculatorSurfaceCopy, loadCalculatorSurfaceVol } from "./surface";
 import { loadContractPremiumHistory, premiumSeries } from "./premium-history";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { OptionQuoteContext, optionQuoteContextHeight } from "../options/quote-context";
@@ -48,6 +49,7 @@ function formatSigned(value: number | undefined, decimals: number): string {
 
 export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const paneInstance = usePaneInstance();
+  const displayScope = useCloudDisplayScope();
   const screenshotSnapshot = paneInstance?.settings?.calculatorSnapshot as CalculatorScreenshotSnapshot | undefined;
   const seedResult = useMemo(() => {
     if (screenshotSnapshot?.draft) return { draft: screenshotSnapshot.draft,
@@ -77,18 +79,20 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     catch (error) { return { dividends: [], error: error instanceof Error ? error.message : String(error) }; }
   }, [dividendText, draft.daysToExpiry]);
   useInputCapture(focused && (activeFieldId === "symbol" || activeFieldId === "dividends"));
-  const surfaceKey = JSON.stringify([draft.symbol, draft.strike, draft.daysToExpiry]);
+  const surfaceRequest = { symbol: draft.symbol, spot: draft.spot, strike: draft.strike, daysToExpiry: draft.daysToExpiry };
   const controller = useRef<AbortController | null>(null);
   const loadSurface = useCallback(async (force: boolean) => {
     controller.current?.abort();
     const abort = new AbortController(); controller.current = abort;
-    return { key: surfaceKey, result: await loadCalculatorSurfaceVol({ symbol: draft.symbol, spot: draft.spot,
-      strike: draft.strike, daysToExpiry: draft.daysToExpiry, signal: abort.signal, forceRefresh: force }) };
-  }, [surfaceKey]);
-  const surfaceResource = useAsyncResource(surfaceSource && !!draft.symbol && !screenshotSnapshot ? loadSurface : null);
+    return loadCalculatorSurfaceVol({ symbol: draft.symbol, spot: draft.spot, strike: draft.strike, daysToExpiry: draft.daysToExpiry,
+      signal: abort.signal, forceRefresh: force });
+  }, [draft.symbol, draft.spot, draft.strike, draft.daysToExpiry]);
+  const surfaceResource = useAsyncResource(surfaceSource && !!draft.symbol && !screenshotSnapshot && displayScope !== null ? loadSurface : null, {
+    savedCopy: calculatorSurfaceCopy(displayScope, surfaceRequest),
+    shouldSave: (surface) => surface.volatility !== null && surface.error === null,
+  });
   useEffect(() => () => controller.current?.abort(), [loadSurface, surfaceSource]);
-  const surface = screenshotSnapshot ? screenshotSnapshot.surface
-    : surfaceResource.data?.key === surfaceKey ? surfaceResource.data.result : null;
+  const surface = screenshotSnapshot ? screenshotSnapshot.surface : surfaceResource.data;
   // A calculator opened on a chain contract follows that contract and its
   // underlying until the user edits the price, the contract or the spot:
   // any edit is theirs and ends the link for that input.
@@ -99,7 +103,9 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     if (!contractSymbol) return [];
     return loadContractPremiumHistory(contractSymbol);
   }, [contractSymbol]);
-  const premiumResource = useAsyncResource(contractSymbol ? loadPremium : null);
+  const premiumResource = useAsyncResource(contractSymbol && displayScope !== null ? loadPremium : null, {
+    savedCopy: displayScope === null ? null : { key: ["calculator-premium", displayScope, draft.symbol, OPTIONS_QUOTE_EXCHANGE, contractSymbol, "1day", 400] },
+  });
   const priceLinked = !screenshotSnapshot && !!draft.marketPriceSource && !!reference && !!draft.symbol;
   const spotLinked = priceLinked && draft.spot === seed.spot;
   // One stable subscription while the price is linked: dropping the

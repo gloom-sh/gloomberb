@@ -26,6 +26,10 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { createTestPaneConfig } from "../../../test-support/pane";
 import { apiClient } from "../../../api-client";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
+import { MemoryResourceStore } from "../../../data/memory-resource-store";
+import { setSavedCopyStore, writeSavedCopy } from "../../../data/pane-saved-copies";
+import { calculatorSurfaceCopy, type CalculatorSurfaceVol } from "./surface";
 
 const TEST_PANE_ID = "options-calculator:test";
 
@@ -102,6 +106,30 @@ afterEach(() => {
 function savedDraft(): OptionCalcDraft {
   return harnessState!.paneState[TEST_PANE_ID]!.draft as OptionCalcDraft;
 }
+
+test("the calculator draws its matching saved surface before the market responds", async () => {
+  const account = { id: "surface-mount", emailVerified: true, plan: "pro" } as NonNullable<ReturnType<typeof apiClient.getCurrentUser>>;
+  const user = spyOn(apiClient, "getCurrentUser").mockReturnValue(account);
+  const signedIn = spyOn(apiClient, "isSignedIn").mockReturnValue(true);
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const request = { symbol: "SPY:ARCX", spot: 100, strike: 100, daysToExpiry: 30 };
+  const record: CalculatorSurfaceVol = { volatility: 0.2375, rate: 0.04, dividendYield: 0, asOf: "2026-09-22",
+    sourceSpot: 100, spotAsOf: 1, rateAsOf: [], source: "fixture surface", warnings: [], error: null };
+  const pending = Promise.withResolvers<Quote>();
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getQuote: () => pending.promise })));
+  try {
+    writeSavedCopy(calculatorSurfaceCopy(cloudDisplayScope(), request)!, record, Date.UTC(2026, 8, 22));
+    const params = { symbol: request.symbol, side: "call", spot: "100", strike: "100", days: "30", volSource: "surface" };
+    await render(params, 100, 24);
+    expect(tui.frame()).toMatch(/Model\s+[0-9.]+\s+per unit/);
+    await render({ ...params, symbol: "SPY:NYSE" }, 100, 24);
+    expect(tui.frame()).not.toMatch(/Model\s+[0-9.]+\s+per unit/);
+    user.mockReturnValue(null);
+    signedIn.mockReturnValue(false);
+    await render(params, 100, 24);
+    expect(tui.frame()).not.toMatch(/Model\s+[0-9.]+\s+per unit/);
+  } finally { setSavedCopyStore(previous); }
+});
 
 test("a chain-seeded calculator follows the contract and underlying until the user edits them", async () => {
   const targets: QuoteSubscriptionTarget[] = [];

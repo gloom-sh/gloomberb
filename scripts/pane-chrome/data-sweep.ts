@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { PaneCatalogEntry } from "../../src/cli/pane-functions/catalog";
 import { FUNCTION_HELP } from "../../src/cli/pane-functions/function-help";
-import type { PaneScreenshotResult } from "../../src/cli/pane-functions/screenshot-types";
+import { PANE_SWEEP_EVIDENCE_PATH, type PaneScreenshotResult } from "../../src/cli/pane-functions/screenshot-types";
 import { isRecord } from "../../src/utils/guards";
 
 const READ_ONLY = new Set(`adverse-events analyst-research apps attention-trending awards backtest buildout buildout-company
@@ -115,15 +115,15 @@ function candidateCodes(text: string, symbols?: readonly string[]): string[] {
   }).map((match) => match[0]);
 }
 
-const REVIEWED_EMPTY: Record<string, ["no-coverage" | "expected-empty" | "unsupported" | "market-closed", RegExp]> = {
+export const REVIEWED_EMPTY: Record<string, ["no-coverage" | "expected-empty" | "unsupported" | "market-closed", RegExp]> = {
   APPS: ["no-coverage", /^\S+ has no mapped apps in the observed App Store and Google Play charts\.$/],
   CALLS: ["no-coverage", /^Earnings calls for \S+ are not yet available\. Calls appear once the company's investor site or filings list a webcast\.$/],
   CATL: ["expected-empty", /^No events linked to \S+ yet\.$/],
   EM: ["no-coverage", /^No covered estimate periods\.$/],
   COVN: ["no-coverage", /^(?:No debt instrument has been read from this issuer's filings yet|This is not an issuer the credit documents cover)\.$/],
   CRDOC: ["no-coverage", /^(?:No debt instrument has been read from this issuer's filings yet|This is not an issuer the credit documents cover)\.$/],
-  GUIDE: ["no-coverage", /^Guidance for \S+ is not yet available\. Try GUIDE WMT\.$/],
-  KPIS: ["no-coverage", /^KPIs for \S+ are not yet available\. Try KPIS AAPL\.$/],
+  GUIDE: ["no-coverage", /^Guidance for \S+ is not yet available\. Try GUIDE \S+\.$/],
+  KPIS: ["no-coverage", /^No KPIs on file for \S+ yet\.$/],
   HIRE: ["no-coverage", /^No current role evidence has been captured yet\.$/],
   HILO: ["market-closed", /^Markets closed(?: until [^.]+)?\. New highs and lows resume at the open\.$/],
   // The default scan's conditions (a move and a volume spike over 5 minutes) only hold in the session.
@@ -142,12 +142,21 @@ const REVIEWED_EMPTY: Record<string, ["no-coverage" | "expected-empty" | "unsupp
   SIW: ["expected-empty", /^No US-listed names in your portfolios or watchlists\.$/],
 };
 
+// Empty states of event lists and first reads, matched on the start of the pane's wording.
+export const EXPECTED_EMPTY: Record<string, RegExp> = {
+  ANR: /^No upgrades, downgrades or target changes on record for /m,
+  HALT: /^No trading halts reported\./m,
+  ERN: /^No reports on the calendar /m,
+  // A company nobody had asked about: the server looks for its careers system, the pane fills in when it is read.
+  JOBS: /^Looking for \S+'s careers system\./m,
+};
+
 export function assessCapture(result: CommandResult, token: string): Assessment {
   const base = { reason: null, states: [], stateText: {}, visibleText: "", reasonCodes: [], blankColumns: [] };
   if (result.timedOut) return { ...base, status: "timeout", reason: "Capture exceeded its time limit" };
   let envelope: unknown;
   const fromStderr = !result.stdout.trim() && result.exitCode !== 0;
-  const serialized = fromStderr ? result.stderr.replace(/^(?:Still drawing [^\r\n]+\.\r?\n)+/, "").trim() : result.stdout;
+  const serialized = fromStderr ? result.stderr.replace(/^(?:Still (?:drawing|loading the data for) [^\r\n]+\.\r?\n)+/, "").trim() : result.stdout;
   try { envelope = JSON.parse(serialized); }
   catch (error) { return { ...base, status: "invalid-output", reason: `Invalid JSON: ${String(error)}` }; }
   if (!isRecord(envelope)) return { ...base, status: "invalid-output", reason: "Missing CLI envelope" };
@@ -164,7 +173,7 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
     || ["errorStateDetected", "emptyStateDetected", "loadingStateDetected"].some((key) => typeof rendered[key] !== "boolean")
     || (data.blankColumns !== undefined && !strings(data.blankColumns))
     || (data.symbols !== undefined && !strings(data.symbols))
-    || ["emptyStateText", "errorStateMarkers", "emptyStateMarkers"].some((key) => rendered[key] !== undefined && !strings(rendered[key]))
+    || ["emptyStateText", "errorStateMarkers", "emptyStateMarkers", "truncationReasons"].some((key) => rendered[key] !== undefined && !strings(rendered[key]))
     || (rendered.stateText !== undefined && (!isRecord(rendered.stateText)
       || Object.values(rendered.stateText).some((value) => !strings(value))))) {
     return { ...base, status: "invalid-output", reason: "Missing strict screenshot assessment fields" };
@@ -176,7 +185,8 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
     ...(render.emptyStateText?.length ? { empty: render.emptyStateText } : render.emptyStateMarkers?.length ? { empty: render.emptyStateMarkers } : {}),
     ...render.stateText,
   };
-  const reason = shot.unusableReason ?? shot.gaps ?? (!shot.complete ? render.truncationReasons?.join("; ") || "Strict capture is usable but its report is incomplete" : null);
+  const truncation = (shot.complete ? render.truncationReasons?.filter((reason) => reason.startsWith("rows ")) : render.truncationReasons)?.join("; ");
+  const reason = shot.unusableReason ?? shot.gaps ?? (truncation || (!shot.complete ? "Strict capture is usable but its report is incomplete" : null));
   const diagnostics = [reason, shot.gaps, ...Object.values(shot.unreadReasons ?? {})].filter((text): text is string => typeof text === "string");
   const markers = [...Object.values(stateText).flat(), ...(render.emptyStateText ?? []), ...(render.errorStateMarkers ?? []), ...(render.emptyStateMarkers ?? [])];
   const reasonCodes = [...new Set([...candidateCodes(render.visibleText, shot.symbols ?? []), ...candidateCodes([...diagnostics, ...markers].join("\n"))])];
@@ -220,18 +230,13 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
       && /\bmarket (?:is )?closed\b|\boutside (?:regular |market |trading )?hours\b/i.test(said)) {
       expected = "market-closed";
     }
-    const expectedEmpty: Record<string, RegExp> = {
-      ANR: /^No upgrades, downgrades or target changes on record for /m,
-      HALT: /^No trading halts reported\./m,
-      ERN: /^No reports on the calendar /m,
-    };
-    if (!expected && expectedEmpty[token]?.test(said)) expected = "expected-empty";
+    if (!expected && EXPECTED_EMPTY[token]?.test(said)) expected = "expected-empty";
   }
   const allowedCodes = expected === "no-coverage" ? ["no_coverage", "symbol_not_covered"]
     : expected === "market-closed" ? ["market_closed", "outside_market_hours", "outside_session"] : [];
   if (reasonCodes.some((code) => !allowedCodes.includes(code.toLowerCase()))) return { ...evidence, status: "failure" };
   if (expected) return { ...evidence, status: expected };
-  return { ...evidence, status: shot.usable && !states.length && result.exitCode === 0 ? shot.complete ? "pass" : "partial" : "failure" };
+  return { ...evidence, status: shot.usable && !states.length && result.exitCode === 0 ? shot.complete && !truncation ? "pass" : "partial" : "failure" };
 }
 
 export async function runCommand(argv: string[], env: NodeJS.ProcessEnv, timeoutMs: number): Promise<CommandResult> {
@@ -270,7 +275,18 @@ type SweepResult = Omit<SweepCase, "status" | "reason"> & Omit<Partial<Assessmen
   status: NonNullable<SweepCase["status"]> | Assessment["status"];
   exitCode?: number;
   png?: string;
+  evidenceError?: string;
 };
+
+export async function captureEvidence(result: CommandResult, token: string, png: string, image: Blob) {
+  const assessment = assessCapture(result, token);
+  if (["timeout", "invalid-output", "command-error"].includes(assessment.status)) return assessment;
+  const signature = new Uint8Array(await image.slice(0, 8).arrayBuffer());
+  return Buffer.from(signature).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    ? { ...assessment, png }
+    : { ...assessment, evidenceError: "Strict report has no rendered PNG" };
+}
+
 export function selectCases(plan: SweepCase[], selection: Selection): SweepCase[] {
   let selected = 0;
   return plan.map((item) => {
@@ -330,11 +346,12 @@ async function main() {
   let proVerified = false;
   let fatal: string | null = null;
   let profileRemoved = false;
-  const command = async (argv: string[]) => {
+  const command = async (argv: string[], evidencePath?: string) => {
     const plugins = join(profile, "plugins");
     await mkdir(plugins, { recursive: true });
     if ((await readdir(plugins)).length) throw new Error("Refusing to load external plugins beside credentials");
-    return runCommand([...cli, ...argv], env, Math.max(1, Math.min(timeoutSeconds * 1_000, deadline - Date.now())));
+    return runCommand([...cli, ...argv], { ...env, [PANE_SWEEP_EVIDENCE_PATH]: evidencePath },
+      Math.max(1, Math.min(timeoutSeconds * 1_000, deadline - Date.now())));
   };
   try {
     await mkdir(temp);
@@ -366,20 +383,15 @@ async function main() {
       if (Date.now() >= deadline) { results.push({ ...item, status: "skipped", reason: "Global time budget exhausted" }); continue; }
       const stem = String(results.length + 1).padStart(4, "0");
       const png = `${stem}.png`;
-      const raw = await command(["shot", item.token, ...item.args, "--strict", "--json", "--width", "1600", "--output", join(out, png)]);
+      const evidencePath = join(out, png);
+      const raw = await command(["shot", item.token, ...item.args, "--strict", "--json", "--width", "1600", "--output", evidencePath], evidencePath);
       raw.stdout = redact(raw.stdout);
       raw.stderr = redact(raw.stderr);
       await writeFile(join(out, `${stem}.json`), raw.stdout);
       await writeFile(join(out, `${stem}.stderr`), raw.stderr);
-      const assessment = assessCapture(raw, item.token);
-      if (!["timeout", "invalid-output", "command-error"].includes(assessment.status)) {
-        const file = Bun.file(join(out, png));
-        if (!await file.exists() || !Buffer.from(await file.slice(0, 8).arrayBuffer()).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
-          assessment.status = "invalid-output";
-          assessment.reason = "Strict report has no rendered PNG";
-        }
-      }
-      results.push({ ...item, ...assessment, exitCode: raw.exitCode, png });
+      const file = Bun.file(evidencePath);
+      const assessment = await captureEvidence(raw, item.token, png, await file.exists() ? file : new Blob());
+      results.push({ ...item, ...assessment, exitCode: raw.exitCode });
       await Bun.sleep(Math.min(500, Math.max(0, deadline - Date.now())));
     }
   } catch (error) {
@@ -398,8 +410,8 @@ async function main() {
   const attempted = results.filter((result) => result.exitCode !== undefined).length;
   const breakdown = Object.entries(counts).map(([status, count]) => `${count} ${status}`).join(", ") || "no pane coverage";
   const total = `${attempted} attempted / ${results.length} planned: ${breakdown}; Pro ${proVerified ? "verified" : "NOT verified"}; profile removed`;
-  const findings = results.filter((result) => result.status !== "pass").map((result) => {
-    const evidence = [result.reason, result.states?.length ? `states: ${result.states.join(", ")}` : "", ...Object.values(result.stateText ?? {}).flat(),
+  const findings = results.filter((result) => result.status !== "pass" || result.evidenceError).map((result) => {
+    const evidence = [result.reason, result.evidenceError, result.states?.length ? `states: ${result.states.join(", ")}` : "", ...Object.values(result.stateText ?? {}).flat(),
       result.states?.some((state) => state === "loading" || state.startsWith("access:")) ? result.visibleText : "",
       result.reasonCodes?.length ? `codes: ${result.reasonCodes.join(", ")}` : "",
       result.blankColumns?.length ? `blank columns: ${result.blankColumns.join(", ")}` : ""].filter(Boolean).join(" | ");
@@ -409,7 +421,7 @@ async function main() {
   console.log(total);
   if (fatal) console.error(`FATAL: ${fatal}`);
   for (const finding of findings.filter((finding) => !finding.includes(": skipped "))) console.log(finding);
-  if (fatal || results.some((result) => ["failure", "timeout", "invalid-output", "command-error", "missing"].includes(result.status!))) process.exitCode = 1;
+  if (fatal || results.some((result) => result.evidenceError || ["failure", "timeout", "invalid-output", "command-error", "missing"].includes(result.status!))) process.exitCode = 1;
 }
 
 if (import.meta.main) await main();

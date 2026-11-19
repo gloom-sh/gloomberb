@@ -2,7 +2,7 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import {
   assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, liveDomRowCount, missingActiveTabSelections, shotCutColumnsWarning, shotLoadedNothing,
-  shotShowsText, shotTableRows,
+  shotShowsText, shotTableRows, essentialFigureMismatches,
 } from "./screenshot-assessment";
 import { buildDesktopShotPayload } from "./screenshot-payload";
 import { chartSeriesEvidenceWithinRange, chartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
@@ -16,10 +16,19 @@ import { commoditiesEnergyModule } from "../../plugins/builtin/commodities-energ
 import { realizedVolSemanticEvidence } from "../../plugins/builtin/realized-vol/evidence";
 import { coneChartSeries, realizedChartSeries } from "../../plugins/builtin/realized-vol/chart-model";
 import { collectShotSymbols } from "./data";
-import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
+import { paneStateMarkers, shotStatusDateClipped, type DesktopPaneShotPayload, type DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
+
+test("a dropped essential figure is a screenshot gap even when its table holds the same value", () => {
+  const semanticUi = [{ id: "figures", role: "figure-layout", label: "Essential figures", actions: [],
+    metadata: { figures: [{ label: "Next ex", value: "2026-11-19" }], omitted: ["Next ex"] } }];
+  expect(essentialFigureMismatches({ semanticUi, visibleText: "Next ex 2026-11-19" })).toHaveLength(1);
+  semanticUi[0]!.metadata.omitted = [];
+  expect(essentialFigureMismatches({ semanticUi, visibleText: "Next ex 2026-11-19" })).toEqual([]);
+  expect(essentialFigureMismatches({ semanticUi, visibleText: "Next ex 2026-11…" })).toHaveLength(1);
+});
 import type { MarketContext } from "../types";
 import { createSnapshotDataProvider } from "../../market-data/snapshot-provider";
 import { volatilitySemanticEvidence } from "../../plugins/builtin/volatility/evidence";
@@ -48,7 +57,20 @@ import { debtMaturitiesModule } from "../../plugins/builtin/debt-maturities";
 import { debtMaturitiesHeadless } from "../../plugins/builtin/debt-maturities/headless";
 import { traceBondsModule } from "../../plugins/builtin/trace-bonds";
 import { traceBondsHeadless } from "../../plugins/builtin/trace-bonds/headless";
-import { deriveCaptureReport, formatFreshnessLine } from "./freshness";
+import { deriveCaptureReport, formatFreshnessLine, statusDateEvidence, statusLineVariants } from "./freshness";
+
+test("fitting may shorten status context, but not the as-of date or any source clock", () => {
+  const freshness = { source: "Gloom Cloud", status: "not-a-feed" as const, asOf: "2026-10-30", retrievedAt: "2026-11-17T06:00:00Z" };
+  const dated = { dates: "data" as const, variants: statusLineVariants(freshness), dateEvidence: statusDateEvidence(freshness) };
+  expect(shotStatusDateClipped(dated, "Fri 30 Oct 2026 · not a … settlement)")).toBe(false);
+  expect(shotStatusDateClipped(dated, "Fri 30 Oct … settlement)")).toBe(true);
+  const sources = { ...freshness, asOf: "2026-11-17T06:00:00Z", sources: [
+    { source: "Venue A", asOf: "2026-11-17T06:00:00Z" }, { source: "Venue B", asOf: "2026-11-17T05:45:00Z" },
+  ] };
+  const timed = { ...dated, variants: statusLineVariants(sources), dateEvidence: statusDateEvidence(sources) };
+  expect(shotStatusDateClipped(timed, "Tue 17 Nov 2026 · Venue A 06:00 · Venue B 05:45 UTC · …")).toBe(false);
+  expect(shotStatusDateClipped(timed, "Tue 17 Nov 2026 · Venue A … Venue B 05:45 UTC")).toBe(true);
+});
 import { futuresCurveHeadless } from "../../plugins/builtin/futures-curve/headless";
 import { curveFreshnessObservations, curveReportFreshness } from "../../plugins/builtin/futures-curve/model";
 import type { FuturesContract } from "../../api-client/futures-curve";
@@ -120,6 +142,19 @@ test("calculator screenshot evidence must match the requested inputs, not just a
   expect(shotUnavailableSymbols(request, source, [])).toEqual(["AAPL"]);
   expect(mismatches(request, source, nodes(), visibleKeyValues.slice(0, 5)))
     .toEqual(["option calculator metrics are clipped or missing: Vega, Rho"]);
+
+  // `shot OVME --symbol SPY` drew Underlying SPY in a text field, whose value is no page text: it read as missing.
+  const assess = (fieldValues?: string[]) => assessPaneScreenshot(request, source, {
+    visibleText: "Options Calculator Type Call Put Underlying Spot 120 Model 21.36 Delta +0.68", ...fieldValues ? { fieldValues } : {},
+    rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
+    emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues, semanticUi: nodes(),
+  }, "", "/tmp/ovme-shot-test.png");
+  const read = assess(["AAPL"]);
+  expect(read).toMatchObject({ semanticMismatch: false, empty: false, render: { missingExpectedText: [] } });
+  expect(assess().render.missingExpectedText).toContain("AAPL");
+  // A field's value is read for the check alone: the result, and so its JSON and print, never carries one.
+  expect(read.render).not.toHaveProperty("fieldValues");
+  expect(JSON.stringify(read)).not.toContain("fieldValues");
 });
 
 // Regression: an overview without fundamentals reported its "-" grid as rows.
@@ -445,7 +480,7 @@ describe("financial analysis ratio screenshots", () => {
       }))],
     }] : []);
     const render: DesktopPaneShotRenderResult = {
-      visibleText: ["FA MSFT Statement Income Cash Flow Balance Sheet Ratios Ratio", tab.name, "USD · as of 2026-06-30 Annual Quarterly RATIO",
+      visibleText: ["FA MSFT Statement Income Cash Flow Balance Sheet Ratios Ratio", tab.name, "USD Annual Quarterly RATIO FY2026 2026-06-30",
         ...rows.flatMap(({ cells }) => cells.map(({ text }) => text))].join(" "),
       rows, truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
       emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [],
@@ -672,6 +707,12 @@ describe("a capture of a pane that marks no rows", () => {
   );
 
   // DIAG's prose and CORR's matrix were "not verifiable" for want of table rows, however much they showed.
+  test("an ellipsis in status content is not a clipped date; the renderer's dated-line evidence decides", () => {
+    expect(assess(diag, { contentFigures: 24, statusLine: "2026-11-17 06:00 UTC · Checking…" })).toMatchObject({ usable: true, complete: true });
+    expect(assess(diag, { contentFigures: 24, statusLine: "17 Nov … history", statusLineClipped: true })).toMatchObject({
+      usable: true, empty: false, semanticMismatch: false, notices: ["The as-of status line is clipped."],
+    });
+  });
   test("is read by the figures its body shows: prose passes, a form's one hint or an empty state does not", () => {
     expect(assess(diag, { contentFigures: 24 })).toMatchObject({ usable: true, empty: false, unusableReason: null });
     expect(assess(diag, { contentFigures: 1 })).toMatchObject({ usable: false, empty: true });
@@ -714,6 +755,44 @@ describe("a capture of a pane that marks no rows", () => {
     expect(filled).not.toHaveProperty("blankColumns");
     // Two rows are a short list's gaps, not a lost column.
     expect(assess(diag, { rows: [row(1, "—", "—"), row(2, "—", "—")] })).toMatchObject({ usable: true });
+  });
+
+  // ECO at 00:07Z on 17 Nov 2026 failed "ACTUAL blank in every row" with every listed release still to come.
+  test("a row still waiting on its value leaves its blank out; the rows that should have it still fail the column", () => {
+    const release = (index: number, actual: string, waiting: boolean) => ({
+      tableIndex: 0, rowIndex: index, selected: false,
+      cells: [
+        { columnId: "event", columnLabel: "EVENT", text: `Release ${index}` },
+        { columnId: "actual", columnLabel: "ACTUAL", text: actual, ...(waiting ? { mayBeBlank: true as const } : {}) },
+        { columnId: "prior", columnLabel: "PRIOR", text: "0.4%" },
+      ],
+    });
+    const upcoming = Array.from({ length: 6 }, (_, index) => release(index, "—", true));
+    expect(assess(diag, { rows: upcoming })).toMatchObject({ usable: true, unusableReason: null });
+    // Released rows with no figure fail the column, however many rows still wait on theirs.
+    const lost = [release(0, "—", false), release(1, "—", false), release(2, "—", false), ...upcoming];
+    expect(assess(diag, { rows: lost })).toMatchObject({ usable: false, blankColumns: ["ACTUAL"], unusableReason: "The ACTUAL column is blank in every row." });
+    expect(assess(diag, { rows: [release(0, "0.3%", false), release(1, "—", false), release(2, "—", false), ...upcoming] })).toMatchObject({ usable: true });
+    // As few released rows as a short list has are its gaps, as without waiting rows.
+    expect(assess(diag, { rows: [release(0, "—", false), release(1, "—", false), ...upcoming] })).toMatchObject({ usable: true });
+  });
+
+  // APPS read "Grossing and genre ranks are unavailable." in its footer as an error over its empty state, and INS's
+  // "…$21.24M A Form 4/A in this window is unreconciled, so the affected transaction totals are unavailable." over a full table.
+  test("a footer note is not the pane's state; the same words in its body are", () => {
+    const appsNote = "App Store official Apps charts provide top 100 free and paid apps; gaming charts are not verified. Grossing and genre… +4 more";
+    const apps = `APPS AAPL Table Chart AAPL has no mapped apps in the observed App Store and Google Play charts. ${appsNote}`;
+    expect(paneStateMarkers(apps, [appsNote])).toMatchObject({ error: [], loading: [] });
+    // Cut at a word, the note still names what is missing; whole, it would have matched.
+    const whole = "Grossing and genre ranks are unavailable.";
+    expect(paneStateMarkers(`APPS AAPL ${whole}`, [whole]).error).toEqual([]);
+    expect(paneStateMarkers(`APPS AAPL ${whole}`).error).toEqual([`APPS AAPL ${whole}`]);
+    const insNote = "A Form 4/A in this window is unreconciled, so the affected transaction totals are unavailable.";
+    expect(paneStateMarkers(`INS NVDA 20 Mar 2026 Mark A. Stevens Director SELL 121.7k $174.57 $21.24M ${insNote} Source: SEC EDGAR`, [insNote]).error).toEqual([]);
+    // A body that failed still reads as failed beside any note.
+    const rdcf = "RDCF DWSN Discount 9% reverse DCF unavailable. Free cash flow over the last twelve months is negative.";
+    expect(paneStateMarkers(`${rdcf} ${insNote}`, [insNote]).error).toEqual(["RDCF DWSN Discount 9% reverse DCF unavailable."]);
+    expect(paneStateMarkers(`HP AAPL Failed to fetch ${insNote}`, [insNote]).error).toEqual(["Failed to fetch"]);
   });
 
   // AUCT's after view at 720px lost +5D, +20D and the CUSIP past the table's edge unsaid. Nineteen other panes cut one
@@ -1201,6 +1280,8 @@ describe("pane screenshot structured data evidence", () => {
       resolved("financial-statements", { statement: "cashflow", period: "annual" }),
       payload([["NVDA", financials]]),
     );
+    expect(shotExpectedText(resolved("financial-statements", { statement: "cashflow", period: "annual" }),
+      ["NVDA"], payload([["NVDA", financials]]))).toContain("FY2026 2026-01-31");
     expect(statementEvidence).toMatchObject({
       kind: "financial-statement",
       symbol: "NVDA",

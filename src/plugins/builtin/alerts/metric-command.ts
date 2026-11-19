@@ -58,6 +58,14 @@ function parseRelativeAlert(parts: readonly string[]): MetricAlertInput | undefi
   }
   return undefined;
 }
+/**
+ * `META:NASDAQ/GOOGL`, `D05:SGX/GC=F`: a venue before the slash, which no listing's venue holds, so the ratio of
+ * two listings, each read on its own, and never one listing written with a slash (BRK/B, BRK/B:NYSE, EUR/USD).
+ */
+export function namesTwoListings(symbol: string): boolean {
+  const pair = /^([^/\s]+)\/([^/\s]+)$/.exec(symbol);
+  return pair != null && pair[1]!.includes(":");
+}
 /** Parses both compact CLI notation and the words traders type, without swallowing malformed metrics as calendar events. */
 export function parseMetricAlert(input: string): MetricAlertInput | null {
   const words = input.trim().replace(/\s+/g, " ");

@@ -19,6 +19,7 @@ import { buildDockStack } from "../../layout/pane-manager/dock-stack";
 import { getDockedPaneIds } from "../../layout/pane-manager/dock-tree";
 import { holdsPaneGrid } from "../../layout/pane-manager/gridlock";
 import { researchEntryFromSearch } from "./research-entry";
+import { resetBrowserResources } from "./resource-db";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "../../data/json-storage";
 import { stopBootFrameRecorders } from "../dom/boot-frame";
 import { logFailure } from "../../utils/log-failure";
@@ -159,6 +160,7 @@ export function createBrowserConfigStore(storage: StorageLike, search = "", scre
     async resetAllData(dataDir) {
       // Before the keys go, or the frame saved as the page closes would bring the old layout back.
       stopBootFrameRecorders();
+      await resetBrowserResources().catch(logFailure("web-config", "Could not remove cached resources on reset"));
       for (const key of Object.values(BROWSER_STORAGE_KEYS)) {
         try { storage.removeItem(key); } catch (error) { logFailure("web-config", "Could not remove saved browser data on reset")(error); }
       }

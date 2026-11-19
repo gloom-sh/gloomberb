@@ -121,8 +121,11 @@ test("opens the command bar by clicking the header prompt", async () => {
  * While the bar is open the header prompt is its input: what the panel
  * publishes is what the user types into, and a screen without a binding (a
  * workflow with its own fields) must not put a focused input in the header.
+ * A header that offers no closed prompt (setup) still hosts the open bar's
+ * input: the bar opened over first-run setup once had none, so what was typed
+ * or pasted went nowhere and Enter ran the first suggestion.
  */
-test("hosts the command bar input while a list screen is published", async () => {
+test("hosts the command bar input while a list screen is published, even where no closed prompt is offered", async () => {
   const state = {
     ...createInitialState(headerConfig()),
     commandBarOpen: true,
@@ -130,7 +133,7 @@ test("hosts the command bar input while a list screen is published", async () =>
   const typed: string[] = [];
   await tui.render(
     <AppContext value={createStaticAppStore(state)}>
-      <Header />
+      <Header commandInputAvailable={false} />
     </AppContext>,
     { width: 120, height: 1 },
   );

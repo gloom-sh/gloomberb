@@ -1,6 +1,6 @@
-import type { GloomPlugin } from "../types/plugin";
 import { logFailure } from "../utils/log-failure";
 import { SeriesRegistry } from "./registry";
+import { type SeriesPlugins, pluginsOf } from "./standalone";
 import type { SeriesCatalogEntry } from "./types";
 
 let standaloneEntries: (() => readonly SeriesCatalogEntry[]) | null = null;
@@ -10,7 +10,7 @@ let standaloneEntries: (() => readonly SeriesCatalogEntry[]) | null = null;
  * where no plugin runtime runs: the series the plugins declare, registered
  * once on first read. Null forgets it.
  */
-export function setStandaloneSeriesCatalog(plugins: readonly GloomPlugin[] | null, disabledPlugins: readonly string[] = []): void {
+export function setStandaloneSeriesCatalog(plugins: SeriesPlugins | null, disabledPlugins: readonly string[] = []): void {
   if (!plugins) {
     standaloneEntries = null;
     return;
@@ -18,8 +18,9 @@ export function setStandaloneSeriesCatalog(plugins: readonly GloomPlugin[] | nul
   let entries: readonly SeriesCatalogEntry[] | null = null;
   standaloneEntries = () => {
     if (entries) return entries;
-    const registry = new SeriesRegistry({ pluginHosts: (pluginId) => plugins.find((plugin) => plugin.id === pluginId)?.hosts });
-    for (const plugin of plugins) {
+    const all = pluginsOf(plugins);
+    const registry = new SeriesRegistry({ pluginHosts: (pluginId) => all.find((plugin) => plugin.id === pluginId)?.hosts });
+    for (const plugin of all) {
       if (disabledPlugins.includes(plugin.id)) continue;
       for (const definition of plugin.series ?? []) {
         try {

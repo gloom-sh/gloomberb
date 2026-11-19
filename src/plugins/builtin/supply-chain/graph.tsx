@@ -15,7 +15,7 @@ import { cardSurfaceStyle } from "../../../components/ui/card";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
 import { entityLabel, entityTicker, graphNodes, relatedPartyLink } from "./graph-model";
-import { ROLE_COLORS } from "./model";
+import { counterpartyLabel, counterpartyLabelEnd, ROLE_COLORS } from "./model";
 import { blendHex } from "../../../theme/colors";
 
 export function SupplyGraph({ data, width, height, focused, selectedId, selectedPath, collapsed, onSelect, onRecenter, onVisible }: {
@@ -144,7 +144,9 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
         const tickerWidth = ticker ? displayWidth(ticker) + 3 : 0;
         const showTicker = company && tickerWidth > 0 && inner >= tickerWidth + 5;
         const prefix = collapsed.includes(node.entity.id) ? "+ " : "";
-        const name = prefix + (showTicker ? node.entity.name : entityLabel(node.entity));
+        // An undisclosed customer or a cohort reads as the table and the flow name it ("Customer 1"), its letter or number kept.
+        const label = company ? null : { counterparty: node.entity, pctBasis: null };
+        const name = prefix + (showTicker ? node.entity.name : label ? counterpartyLabel(label) : entityLabel(node.entity));
         const nameWidth = inner - (showTicker ? tickerWidth : 0);
         // A related-party trade with the company before it on the path reads as one, never as a plain supplier or customer.
         const link = node.path ? data.links.find(entry => entry.id === node.path!.linkIds.at(-1)) : undefined;
@@ -160,7 +162,8 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
             <Box flexDirection="column" width="100%">
               <Box flexDirection="row" height={1} gap={desktop ? 1 : 0} overflow="hidden">
                 {!desktop ? <Text fg={accent}>▍</Text> : null}
-                <ClippedText fg={active && !desktop ? chosenText(company ? colors.textBright : colors.textDim) : company ? colors.textBright : colors.textDim} attributes={company ? TextAttributes.BOLD : 0} text={name} width={nameWidth} />
+                <ClippedText fg={active && !desktop ? chosenText(company ? colors.textBright : colors.textDim) : company ? colors.textBright : colors.textDim} attributes={company ? TextAttributes.BOLD : 0} text={name} width={nameWidth}
+                  keepEnd={label ? counterpartyLabelEnd(label) : null} />
                 {showTicker ? desktop ? <Badge label={ticker!} tone="accent" /> : <Text fg={active ? chosenText(colors.textDim) : colors.textDim}>{` ${ticker}`}</Text> : null}
               </Box>
               <Box height={1} paddingLeft={desktop ? 0 : 1} overflow="hidden"><ClippedText fg={active && !desktop ? chosenText(colors.textDim) : colors.textDim} text={detail} width={inner} /></Box>

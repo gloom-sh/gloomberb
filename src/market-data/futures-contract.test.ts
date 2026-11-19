@@ -91,7 +91,9 @@ test("a price in cents and every energy price say what they are per; any other d
   expect(futuresPricePer(energy("CL", "USD / barrel"), "USD")).toBe("/bbl");
   expect(futuresPricePer(energy("HO", "USD / gallon"), "USD")).toBe("/gal");
   expect(futuresPricePer(energy("TTF", null), "USD")).toBe("");
-  expect(futuresPricePer(energy("CL", null), "USD")).toBe("");
+  // Crude whose terms could not be read is per barrel by the catalog.
+  expect(futuresPricePer(energy("CL", null), "USD")).toBe("/bbl");
+  expect(futuresPricePer(energy("ES", null), "USD")).toBe("");
 });
 
 test("TTF without terms names its unit in the Contract block, and its dollar equivalent per MMBtu is a marked conversion", async () => {
@@ -255,12 +257,15 @@ test("a futures price unit is asked once per symbol at a time, and a failed ask 
   const now = Date.now();
   setSystemTime(now);
   try {
-    expect(await loadFuturesPriceUnit("BZ=F", failing)).toBeNull();
-    const brent = async () => ({ ...gold, symbol: "BZ=F", spec: { ...gold.spec!, unit: "USD / barrel" } });
+    // Copper's terms timing out still read as its unit, the catalog's, never a bare USD (G HG=F on a slow cold start).
+    expect(await loadFuturesPriceUnit("HG=F", failing)).toBe("USD / lb");
+    // A future the board does not list (E-mini gold) has no catalog unit; its terms are asked again a minute later.
+    expect(await loadFuturesPriceUnit("QO=F", failing)).toBeNull();
+    const mini = async () => ({ ...gold, symbol: "QO=F", spec: { ...gold.spec!, unit: "USD / troy oz" } });
     setSystemTime(now + 30_000);
-    expect(await loadFuturesPriceUnit("BZ=F", brent)).toBeNull();
+    expect(await loadFuturesPriceUnit("QO=F", mini)).toBeNull();
     setSystemTime(now + 61_000);
-    expect(await loadFuturesPriceUnit("BZ=F", brent)).toBe("USD / barrel");
+    expect(await loadFuturesPriceUnit("QO=F", mini)).toBe("USD / troy oz");
   } finally {
     setSystemTime();
     resetFuturesPriceUnits();

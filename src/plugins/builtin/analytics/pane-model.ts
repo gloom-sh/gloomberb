@@ -416,7 +416,7 @@ export function buildAnalyticsRiskRows({
 }): AnalyticsMetricRow[] {
   const unavailable = unvaluedCount > 0
     ? `${unvaluedCount} holding${unvaluedCount === 1 ? "" : "s"} unvalued; check prices and FX`
-    : historyIntegrity.length > 0 ? `Inconsistent OHLC history: ${historyIntegrity.map((entry) => entry.symbol).join(", ")}`
+    : historyIntegrity.length > 0 ? `Contradictory prices in the history: ${historyIntegrity.map((entry) => entry.symbol).join(", ")}`
     : unsupportedReason ?? (missingCount > 0 ? "Incomplete holding history" : null);
   const partial = formatRiskCoverage(coverage, missingCount);
   return [
@@ -425,7 +425,7 @@ export function buildAnalyticsRiskRows({
   ].map((row) => {
     const rowTimestamps = row.id === "beta" ? betaHoldingTimestamps ?? returnTimestamps : returnTimestamps;
     const reason = unavailable ?? (rowTimestamps && !rowTimestamps.supported ? rowTimestamps.reason : null)
-      ?? (row.id === "beta" && benchmarkIntegrity ? "SPY benchmark: inconsistent OHLC history"
+      ?? (row.id === "beta" && benchmarkIntegrity ? "SPY benchmark: contradictory prices in its history"
       : row.id === "beta" && benchmarkTimestamps && !benchmarkTimestamps.supported ? "SPY timestamps unverified"
       : row.id === "sharpe" && sharpeCadence && !sharpeCadence.supported ? sharpeCadence.reason : null);
     const sample = row.id === "beta" && returns && benchmarkReturns ? alignedAssetReturns(returns, benchmarkReturns) : returns;

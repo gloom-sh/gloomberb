@@ -10,6 +10,7 @@ import {
   SHOT_VIEW_SMOKE_COMMAND,
 } from "../src/cli/native-smoke";
 import { buildShotView, packShotView } from "../src/cli/desktop-pane-shot-view";
+import { removeCatalogSnapshot, writeCatalogSnapshot } from "./catalog-snapshot-file";
 import { detectLinuxLibc, type LinuxLibc } from "../src/utils/linux-libc";
 
 const rootDir = join(import.meta.dir, "..");
@@ -89,7 +90,8 @@ function compileCacheEnv(): Record<string, string> {
  * image below, a glibc one in Debian's.
  */
 const OLD_CPU_MODEL = "Nehalem";
-const GLIBC_OLD_CPU_IMAGE = "debian:13-slim";
+// debian:13-slim, pinned by its multi-arch index digest so a moved tag cannot change what runs here.
+const GLIBC_OLD_CPU_IMAGE = "debian@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2";
 /** Where the emulator is mounted in the container. */
 const CONTAINER_EMULATOR = "/usr/local/bin/qemu-x86_64";
 
@@ -137,7 +139,8 @@ function containerRunner(container: string, image: string, smokeDir: string, emu
  * The Alpine image a musl binary is smoke tested in when the build host runs
  * glibc: plain Alpine plus libstdc++, which every musl Bun binary links.
  */
-const MUSL_SMOKE_BASE_IMAGE = "alpine:3.22";
+// alpine:3.22, pinned by its multi-arch index digest.
+const MUSL_SMOKE_BASE_IMAGE = "alpine@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f";
 const MUSL_SMOKE_IMAGE = "gloomberb-musl-smoke:alpine-3.22";
 
 const args = process.argv.slice(2);
@@ -582,7 +585,16 @@ const buildTargets = selectedTargets();
 mkdirSync(join(rootDir, "dist"), { recursive: true });
 console.log("Building the pane page...");
 await writeShotViewModule();
+// A failed step ends the process with process.exit, which skips the finally below, and a generator that fails
+// part way leaves part of the file: whichever way this ends, none stays in the checkout.
+process.on("exit", removeCatalogSnapshot);
 try {
+  // Before the compile, which bundles it; see catalog-snapshot-file.ts.
+  console.log("Writing the catalog snapshot...");
+  if (writeCatalogSnapshot() !== 0) {
+    console.error("Failed to write the catalog snapshot");
+    process.exit(1);
+  }
   for (const t of buildTargets) {
     await build(t);
   }

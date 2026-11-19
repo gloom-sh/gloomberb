@@ -1,6 +1,7 @@
 import { summaryRowKey, type TickerTableSummaryRow } from "../../../components/ticker/list-table-view";
 import {
   CASH_SYMBOL,
+  cashLineLabel,
   formatAllocationDrift,
   formatAllocationWeight,
   type PortfolioAllocation,
@@ -31,24 +32,41 @@ function sumKnown(values: readonly (number | null | undefined)[]): number | null
  * The CASH and TOTAL rows under a book's holdings, as `portfolio show`
  * prints them. CASH has its value, weight, target, drift and, in TRADE VAL,
  * the amount that reaches its target: TRADE counts units, which cash has
- * none of, so it stays blank there. TOTAL adds up the allocation columns:
- * the weight, the targets, the drifts and the trades, so a book whose targets
- * cover it sums to zero. Its value, day and P&L are the header's, and stay
- * there. Null rows when the book has neither cash nor a target.
+ * none of, so it stays blank there. Cash held in several currencies first
+ * has a row per currency (CASH HKD, CASH USD) with its value and weight,
+ * and the CASH row under them is the whole line, as a ticker's position line
+ * is under its lots: the target belongs to all the cash. TOTAL adds up the
+ * allocation columns: the weight, the targets, the drifts and the trades, so
+ * a book whose targets cover it sums to zero. Its value, day and P&L are the
+ * header's, and stay there. Null rows when the book has neither cash nor a
+ * target.
  */
 export function allocationSummaryRows(
   allocation: Pick<PortfolioAllocation, "rows" | "cash" | "total" | "weightBasis" | "targetSum">,
-  { cashCurrency, currency }: { cashCurrency?: string | null; currency: string },
+  { currency }: { currency: string },
 ): TickerTableSummaryRow[] {
   const rows: TickerTableSummaryRow[] = [];
   const { cash } = allocation;
+  const several = !!cash && cash.balances.length > 1;
+  if (cash && several) {
+    for (const balance of cash.balances) {
+      rows.push({
+        id: `cash:${balance.currency}`,
+        cells: {
+          ticker: { text: cashLineLabel(balance.currency, currency, true) },
+          mkt_value: { text: formatCompactAmount(balance.value ?? undefined), value: balance.value },
+          weight: { text: formatAllocationWeight(balance.weight), value: balance.weight },
+        },
+      });
+    }
+  }
   if (cash) {
     rows.push({
       id: "cash",
       selectable: true,
       cells: {
-        ticker: { text: cashCurrency && cashCurrency !== currency ? `${CASH_SYMBOL} ${cashCurrency}` : CASH_SYMBOL },
-        mkt_value: { text: formatCompactAmount(cash.value), value: cash.value },
+        ticker: { text: several ? CASH_SYMBOL : cashLineLabel(cash.balances[0]?.currency, currency) },
+        mkt_value: { text: formatCompactAmount(cash.value ?? undefined), value: cash.value },
         weight: { text: formatAllocationWeight(cash.weight), value: cash.weight },
         target_weight: { text: formatAllocationWeight(cash.targetWeight), value: cash.targetWeight },
         drift: signed(formatAllocationDrift(cash.drift), cash.drift),
@@ -57,6 +75,7 @@ export function allocationSummaryRows(
     });
   }
   const weight = allocation.weightBasis === "total" && allocation.total != null && allocation.total > 0 ? 100 : null;
+  // The whole cash line once, never each currency's row too.
   const lines = [...allocation.rows, ...(cash ? [cash] : [])];
   const drift = sumKnown(lines.map((line) => line.drift));
   const tradeValue = sumKnown(lines.map((line) => line.tradeValue));

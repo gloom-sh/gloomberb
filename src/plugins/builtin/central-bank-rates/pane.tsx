@@ -16,7 +16,7 @@ import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
 import { centralBankRatesHeadless } from "./headless";
 import { reportFooterSegment } from "../shared/source-footer";
 import {
-  hasNoPolicyRate, policyBoardRow, policyChange, policyChangeDate, policyHistory, policyLevel, policyNotices, policyObservations, policyRate,
+  hasNoPolicyRate, policyBoardRow, policyChange, policyChangeDate, policyHistory, policyLevel, policyObservations, policyRate, policyRowNote,
   policySource,
 } from "./model";
 
@@ -68,7 +68,8 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "central-bank-rates:notices", focused,
-    notices: [...(data ? policyNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
+    // A bank with no rate or an old one says so on its row (`rowNote`); the footer is the board's.
+    notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
   usePaneStatusLinkFooter({ registrationId: "central-bank-rates", focused, loading: resource.loading, error: resource.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
     // Its sources and the rows' dates, as `fn CBR` ends; how long ago it loaded goes first on a narrow row.
@@ -82,7 +83,8 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
       {/* The board heads the move's date LAST CHANGE, so the move itself is MOVE. */}
       {data ? <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
         selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-        valueWidth={14} changeLabel="MOVE" labelHeader="JURISDICTION" labelWidth={14} labelDetailHeader="INSTRUMENT" renderDetail={(row) => <PolicyDetail row={row.observation} width={width} height={Math.max(5, height - 2)} focused={focused} />} /> : null}
+        valueWidth={14} changeLabel="MOVE" labelHeader="JURISDICTION" labelWidth={14} labelDetailHeader="INSTRUMENT"
+        rowNote={(row) => policyRowNote(row.observation)} renderDetail={(row) => <PolicyDetail row={row.observation} width={width} height={Math.max(5, height - 2)} focused={focused} />} /> : null}
     </PaneStatusBody>
   </Box>;
 }

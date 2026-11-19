@@ -33,6 +33,7 @@ const originalGetChatMentionCandidates = apiClient.getChatMentionCandidates;
 const originalUpdateChatChannelState = apiClient.updateChatChannelState.bind(apiClient);
 const originalEditMessage = apiClient.editMessage.bind(apiClient);
 const testControllers = new Set<ChatController>();
+let fixtureSessionSequence = 0;
 
 const TEST_CHAT_CHANNELS: ChatChannel[] = [
   { id: "everyone", name: "everyone", created_at: "2026-03-26T12:10:05.684Z" },
@@ -161,8 +162,10 @@ export function createController(options: {
   const user = Object.prototype.hasOwnProperty.call(options, "user")
     ? options.user ?? null
     : { id: "u0", username: "ada", emailVerified: true };
+  const sessionToken = options.sessionToken === undefined && user
+    ? `chat-fixture-session-${++fixtureSessionSequence}` : options.sessionToken ?? null;
   persistence.setState("session", {
-    sessionToken: options.sessionToken ?? null,
+    sessionToken,
     user,
   }, { schemaVersion: 1 });
   persistence.setState("channel:everyone", {

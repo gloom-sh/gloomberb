@@ -15,6 +15,7 @@ import { renderReportCsv } from "../report-tables";
 import { formatFreshnessLine } from "./freshness";
 import { reportFailure } from ".";
 import * as paneCatalog from "./catalog";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, DataServiceUnreachableError, isNetworkFailure } from "../../utils/network-failure";
 
 // The status line names the year only when it is not the current one.
 beforeAll(() => setSystemTime(new Date("2026-10-10T12:00:00Z")));
@@ -70,10 +71,10 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
       visibleText: "",
       footerText: "15m delayed",
       rows: [
-        // The pane shortens times to fit; the cell keeps the instant behind them.
-        { tableIndex: 0, rowIndex: 0, selected: false, cells: [cell("time", "TIME", "Wed 11:27", "2026-10-07T11:27:00.000Z"), cell("title", "HEADLINE", "Deal"), cell("tickers", "TICKERS", "PSKY"), cell("categories", "CATEGORY", "M&A")] },
+        // The pane shortens times to fit, on the host's clock its header names; the cell keeps the instant behind them.
+        { tableIndex: 0, rowIndex: 0, selected: false, cells: [cell("time", "TIME HKT", "Wed 19:27", "2026-10-07T11:27:00.000Z"), cell("title", "HEADLINE", "Deal"), cell("tickers", "TICKERS", "PSKY"), cell("categories", "CATEGORY", "M&A")] },
         // The DOM capture drops the blank TICKERS cell.
-        { tableIndex: 0, rowIndex: 1, selected: false, cells: [cell("time", "TIME", "Oct 2", "2026-10-02T14:00:00.000Z"), cell("title", "HEADLINE", "Sanctions"), cell("categories", "CATEGORY", "Regulatory")] },
+        { tableIndex: 0, rowIndex: 1, selected: false, cells: [cell("time", "TIME HKT", "Oct 2", "2026-10-02T14:00:00.000Z"), cell("title", "HEADLINE", "Sanctions"), cell("categories", "CATEGORY", "Regulatory")] },
       ],
       truncated: false,
       truncationReasons: [],
@@ -91,12 +92,14 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
   const row = lines.find((line) => line.includes("Sanctions"))!;
   expect(row.indexOf("Regulatory")).toBe(header.indexOf("CATEGORY"));
   expect(lines.find((line) => line.includes("Deal"))).toContain("2026-10-07 11:27 UTC");
+  // `fn TOP` headed those UTC times "TIME HKT": the header names the report's zone, not the clock the pane drew.
+  expect(header).toStartWith("TIME UTC ");
   expect(row).toContain("2026-10-02 14:00 UTC");
   // The pane's declaration says what the data is; a footer phrase does not turn it into a feed.
   expect(report.data.freshness).toMatchObject({ source: "Gloom Cloud", asOf: "2026-10-07T11:27:00.000Z", status: "not-a-feed" });
   // --csv writes the same columns, the blank cell empty and each time as the instant behind it.
   expect(renderReportCsv(report.tables).split("\n").slice(0, 5)).toEqual([
-    "TIME,HEADLINE,TICKERS,CATEGORY",
+    "TIME UTC,HEADLINE,TICKERS,CATEGORY",
     "2026-10-07T11:27:00.000Z,Deal,PSKY,M&A",
     "2026-10-02T14:00:00.000Z,Sanctions,,Regulatory",
     "",
@@ -322,12 +325,12 @@ test("a pane behind the sign-in wall reports what it needs instead of the wall's
       errorStateDetected: true, errorStateMarkers: ["Sign in to"], emptyStateDetected: false, emptyStateMarkers: [],
     },
   } as unknown as PaneScreenshotResult)).text;
-  expect(await wall("DIAG MSTR Sign in to run the Equity Diagnostic. Log in \u21B5 Sign up free")).toBe([
+  expect(await wall("DIAG MSTR Sign in to run the Equity Diagnostic. Sign up free \u21B5 Log in")).toBe([
     "Equity Diagnostic", "", "DIAG MSTR Sign in to run the Equity Diagnostic. Requires a free Gloom sign-in: open the app (gloom) and log in or "
       + "sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.",
   ].join("\n"));
   // The key that presses the first button, as the theses wall draws it.
-  expect(await wall("THESIS Sign in to keep investment theses. Log in \u21A9 Sign up free")).toEndWith("keep investment theses. Requires a free Gloom sign-in: "
+  expect(await wall("THESIS Sign in to keep investment theses. Sign up free \u21A9 Log in")).toEndWith("keep investment theses. Requires a free Gloom sign-in: "
     + "open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.");
   // Signed in with an unconfirmed address, the wall asks for the email instead.
   expect(await wall("DIAG MSTR Verify your email to run the Equity Diagnostic. Resend Verification Email")).toEndWith(
@@ -357,7 +360,7 @@ test("a pane walled whole cites no source, and one that says how to reach it say
       errorStateDetected: true, errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [],
     },
   } as unknown as PaneScreenshotResult, context);
-  const signedOut = await walled("sign-in", "EK NEM Sign in to read 8-K filings. Log in \u21B5 Sign up free");
+  const signedOut = await walled("sign-in", "EK NEM Sign in to read 8-K filings. Sign up free \u21B5 Log in");
   expect(signedOut.data).toMatchObject({ locked: "sign-in", complete: false });
   expect(signedOut.data.freshness).toBeUndefined();
   expect(signedOut.data.reason).toContain("Free, with no sign-in: gloom fn SEC NEM lists NEM's recent filings");
@@ -499,3 +502,68 @@ function askgFunction() {
   const context = { persistence: { pluginState: { get: () => null } }, config: {}, dataProvider: {} } as unknown as MarketContext;
   return { resolved, context };
 }
+
+// `fn ECO AR` through a proxy that refused every connection printed "No events" and "retrieved" at the time of the
+// run: the load error only reached the pane's footer. A report of a pane with nothing to show stands for its failure.
+test("a pane whose load failed with nothing to show fails as the plain commands do, never its empty body dated", async () => {
+  const resolved = { token: "ECO", label: "Economic Calendar", pane: { id: "econ-calendar", reportFreshness: { status: "not-a-feed", basis: "calendar" } },
+    capability: { id: "econ-calendar-pane" }, options: {}, instance: { settings: {} } } as unknown as ResolvedPaneFunction;
+  const context = { persistence: { pluginState: { get: () => null } }, config: {}, dataProvider: {} } as unknown as MarketContext;
+  const shown = (render: Partial<DesktopPaneShotRenderResult>) => spyOn(screenshotRender, "renderDesktopShot").mockImplementation(async () => ({
+    symbols: [],
+    render: { visibleText: "", rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false,
+      errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [], semanticUi: [], ...render },
+  }) as unknown as PaneScreenshotResult);
+  const loadError = (message: string) => [{ id: "ui:1", role: "pane-load-error", label: "Load failed", metadata: { message } }];
+
+  // The footer's error, published by the status footer: no connection is said in the words `search` and `quote` use.
+  let render = shown({ visibleText: "UTC IMPACT COUNTRY EVENT No events", emptyStateDetected: true, emptyStateMarkers: ["No events"],
+    semanticUi: loadError(DATA_SERVICE_UNREACHABLE_MESSAGE) } as Partial<DesktopPaneShotRenderResult>);
+  try {
+    const failed = await buildDomFunctionReport(resolved, context, "AR").catch((error: unknown) => error);
+    expect(failed).toBeInstanceOf(DataServiceUnreachableError);
+    expect(isNetworkFailure(failed)).toBe(true);
+  } finally {
+    render.mockRestore();
+  }
+  // An error state the body draws, any other failure: its words, and no report.
+  render = shown({ visibleText: "Calendar unavailable. TIMEOUT", errorStateDetected: true, stateText: { error: ["Calendar unavailable. TIMEOUT"] } });
+  try {
+    await expect(buildDomFunctionReport(resolved, context, "")).rejects.toThrow("Calendar unavailable. TIMEOUT");
+  } finally {
+    render.mockRestore();
+  }
+  // Rows beside the failure are a report, which says it could not refresh them.
+  render = shown({ visibleText: "13:30 HIGH US Core PPI", semanticUi: loadError(DATA_SERVICE_UNREACHABLE_MESSAGE),
+    rows: [{ tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "EVENT", text: "Core PPI m/m" }] }] } as Partial<DesktopPaneShotRenderResult>);
+  try {
+    const report = await buildDomFunctionReport(resolved, context, "");
+    expect(report.data).toMatchObject({ rowCount: 1, complete: false, reason: `The rendered pane could not refresh: ${DATA_SERVICE_UNREACHABLE_MESSAGE}` });
+    expect(report.text).toContain(`The rendered pane could not refresh: ${DATA_SERVICE_UNREACHABLE_MESSAGE}`);
+  } finally {
+    render.mockRestore();
+  }
+});
+
+test("a view the page drew from copies saved earlier is dated as saved, never as delayed at the copy's time", async () => {
+  // DES GC=F offline: the bridged quote and the proxied contract terms were saved copies, the oldest saved at 09:10.
+  const resolved = {
+    token: "FXC", label: "FX Cross Rates", options: {}, capability: { id: "fx-matrix-pane" }, pane: { id: "fx-matrix" },
+  } as unknown as ResolvedPaneFunction;
+  const screenshot = {
+    symbols: [],
+    savedCopyAt: Date.parse("2026-10-10T09:10:00Z"),
+    render: {
+      visibleText: "", footerText: "",
+      rows: [{ tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "EUR", text: "1.1206" }] }],
+      semanticUi: [{ id: "ui:1", role: "report-freshness", actions: [], metadata: { status: "delayed", delayMinutes: 15, asOf: "2026-10-09T20:59:00.000Z" } }],
+      truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
+      emptyStateDetected: false, emptyStateMarkers: [],
+    },
+  } as unknown as PaneScreenshotResult;
+  const report = await buildDomPaneReportFromRender(resolved, screenshot);
+  expect(report.data.freshness).toMatchObject({ savedAt: "2026-10-10T09:10:00.000Z" });
+  const line = formatFreshnessLine(report.data.freshness!);
+  expect(line).toContain("couldn't refresh; saved copy from 09:10 UTC");
+  expect(line).not.toContain("15 min delayed");
+});

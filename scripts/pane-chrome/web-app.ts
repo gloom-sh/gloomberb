@@ -273,7 +273,7 @@ export async function replaySocket(file: string): Promise<SocketStandIn> {
 }
 
 /** Reads the web app makes straight from another site (the release feed) go through the same replay. */
-export async function routeDirectReads(cdp: Cdp, replay: Replay): Promise<void> {
+export async function routeDirectReads(cdp: Cdp, replay: Pick<Replay, "read">): Promise<void> {
   await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "https://*" }] });
   cdp.on("Fetch.requestPaused", async (event: any) => {
     const { requestId, request } = event;
@@ -285,7 +285,8 @@ export async function routeDirectReads(cdp: Cdp, replay: Replay): Promise<void> 
       await cdp.send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" }).catch(() => {});
       return;
     }
-    const answer = await replay.read(`DIRECT ${request.url}`, () => upstream(request.url, { headers: { accept: request.headers?.Accept ?? "*/*" } }));
+    const answer = await replay.read(`DIRECT ${request.url}`, () => upstream(request.url, { headers: { accept: request.headers?.Accept ?? "*/*" } }))
+      .catch(() => NOT_KEPT);
     await cdp.send("Fetch.fulfillRequest", {
       requestId,
       responseCode: answer.status,

@@ -1,4 +1,12 @@
 import { MISSING_VALUE } from "../../../utils/format";
+
+test("only a coverage-bounded dividend streak carries a plus sign, in cells and details", () => {
+  const bounded = { value: 9, unit: "years", reason: "At least 9: the stored history starts 2016-11-15" };
+  expect(formatScreenMetric("dividendGrowthYears", bounded)).toBe("9+");
+  expect(screenDetailValue("dividendGrowthYears", bounded)).toBe("9+ years");
+  expect(formatScreenMetric("dividendGrowthYears", { ...bounded, reason: undefined })).toBe("9");
+  expect(formatScreenMetric("dividendGrowthYears", { ...bounded, value: null })).toBe(MISSING_VALUE);
+});
 import { screenFixture as payload } from "./test-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";

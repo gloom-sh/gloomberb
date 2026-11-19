@@ -89,8 +89,10 @@ test("on a Saturday a coin's hourly bars that stopped at Friday's US close are b
       // Never the Friday bars as the latest, and never "No history provider available".
       await expect(router.getPriceHistory(symbol, "", "1W")).rejects.toThrow(`Latest history for ${symbol} is behind`);
     }
-    // The service answering that its bars are stale is behind too.
+    // The service answering that its bars are stale is behind too, with its bars or without.
     cloud = () => { throw new StaleHistoryError("Cloud chart data is stale for ETH-USD"); };
+    await expect(router.getPriceHistory("ETH-USD", "", "1W")).rejects.toThrow("Latest history for ETH-USD is behind");
+    cloud = () => { throw new StaleHistoryError("Cloud chart data is stale for ETH-USD", { points: hourly("2026-10-23T20:00:00Z"), resolution: "1h" }); };
     await expect(router.getPriceHistory("ETH-USD", "", "1W")).rejects.toThrow("Latest history for ETH-USD is behind");
     // Every source failing outright says the coin's bars could not be loaded, not that it has no source.
     cloud = () => { throw new Error("HTTP 502"); };
@@ -100,6 +102,33 @@ test("on a Saturday a coin's hourly bars that stopped at Friday's US close are b
     const served = await router.getPriceHistoryWithMetadata("BTC-EUR", "", "1W");
     expect(served.points.at(-1)!.date).toEqual(new Date("2026-10-24T00:00:00Z"));
     expect(served).toMatchObject({ sourceKey: "provider:next-source", sourceName: "Next Source" });
+  } finally { store.close(); }
+});
+
+test("a source's answer that is behind shows over a saved copy it reaches past, and a current copy or one reaching further shows over it", async () => {
+  const calls: string[] = [];
+  let load: () => PricePoint[] = () => daily("2026-09-22", 219.65);
+  const behind = (last: string, close: number) => () => {
+    throw new StaleHistoryError("Cloud chart data is stale for NVDA", { points: daily(last, close), resolution: "1d" });
+  };
+  const store = new AppPersistence(createTempDbPath("behind-answer"));
+  const router = new AssetDataRouter(source(() => load(), calls), [], store.resources);
+  const served = async (iso: string, context?: { cacheMode: "refresh" }) => {
+    setSystemTime(new Date(iso));
+    const answer = await router.getPriceHistoryWithMetadata("NVDA", "NASDAQ", "1Y", context);
+    return { close: answer.points.at(-1)?.close, behind: answer.savedCopyBehind === true };
+  };
+  try {
+    expect(await served("2026-09-22T20:31:00Z")).toEqual({ close: 219.65, behind: false });
+    // Asked again in the hour, the current copy shows over the source's answer that stops on Monday.
+    load = behind("2026-09-21", 214);
+    expect(await served("2026-09-22T20:45:00Z", { cacheMode: "refresh" })).toEqual({ close: 219.65, behind: false });
+    // A day on, the saved copy is behind too: it reaches past an answer that stops on Monday...
+    expect(await served("2026-09-23T20:45:00Z")).toEqual({ close: 219.65, behind: false });
+    // ...and an answer that reaches Wednesday shows over it, said to be behind as of Thursday's close.
+    load = behind("2026-09-23", 225.1);
+    expect(await served("2026-09-24T20:45:00Z")).toEqual({ close: 225.1, behind: true });
+    expect(calls).toHaveLength(4);
   } finally { store.close(); }
 });
 

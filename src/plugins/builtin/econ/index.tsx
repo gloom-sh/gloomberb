@@ -36,6 +36,7 @@ import {
   FILTER_CYCLE,
   attachEconCalendarPersistence,
   actualColor,
+  actualMayBeBlank,
   AWAITING_FIGURE_CELL,
   awaitsConsensus,
   figureGap,
@@ -110,7 +111,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   useEffect(() => subscribeCalendar(() => setCacheVersion((version) => version + 1)), []);
   const cached = useMemo(() => getCalendarCache(), [cacheVersion]);
   const shown = cached && (!calendar.data || cached.fetchedAt > calendar.data.fetchedAt) ? cached : calendar.data;
-  const { loading } = calendar;
+  const loading = calendar.loading || (!shown && !calendar.error);
   const events = shown?.data ?? NO_EVENTS;
   const stale = shown?.stale ?? false;
   const fetchedAt = shown?.fetchedAt ?? null;
@@ -422,6 +423,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     registrationId: "econ-calendar",
     loading,
     error,
+    emptyResult: !!shown && !rows.length && !detailEvent,
     info: calendarStatus,
   });
   // The filter keys step through the choices; Shift steps back. The pane menu
@@ -506,6 +508,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         return {
           text: figureWithCurrency(ev.actual, ev.currency) ?? MISSING_VALUE,
           color: actualColor(ev.actual, ev.forecast),
+          // A release still to come, or one with no figure to print: its dash is no figure lost.
+          ...(actualMayBeBlank(ev, now) ? { mayBeBlank: true } : {}),
         };
       case "forecast":
         return { text: figureWithCurrency(ev.forecast, ev.currency) ?? MISSING_VALUE, color: colors.textDim };
@@ -581,12 +585,13 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
       selectedTextOverridesCellColor
+      status={{ loading: loading && !rows.length, error: !loading && !events.length ? error : null, subject: "economic events" }}
       emptyContent={filterEmptyTitle ? (
         <Box width="100%" paddingX={1} paddingY={1}>
           <EmptyState title={filterEmptyTitle} actions={<Button label="Show all" compact onPress={showAllEvents} />} />
         </Box>
       ) : undefined}
-      emptyStateTitle={loading ? "Loading economic events..." : listedAfter ?? "No events"}
+      emptyStateTitle={listedAfter ?? "No events"}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}
     />

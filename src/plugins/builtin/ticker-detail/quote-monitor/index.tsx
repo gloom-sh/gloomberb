@@ -10,7 +10,7 @@ import type { ChartRequest, InstrumentRef } from "../../../../market-data/reques
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../../market-data/request-types";
 import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import { buildChartKey, buildQuoteKey, resolveEntryData } from "../../../../market-data/selectors";
-import { DEFAULT_LIVE_CHART_REFRESH_INTERVAL_MS, useChartQueries } from "../../../../market-data/hooks";
+import { DEFAULT_LIVE_CHART_REFRESH_INTERVAL_MS, useChartQueries, useTickerFinancialsMap } from "../../../../market-data/hooks";
 import { useAppSelector, usePaneInstance, usePaneTicker } from "../../../../state/app/context";
 import { useLiveQuoteEntries } from "../../../../state/hooks/quote-streaming";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
@@ -177,6 +177,10 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
     }
     return targets;
   }, [boardEntries, fallbackSymbol]);
+  const boardTickers = useMemo(() => boardEntries.flatMap(({ ticker }) => ticker ? [ticker] : []), [boardEntries]);
+  const observedFinancials = useTickerFinancialsMap(boardTickers);
+  const cachedFinancials = (entry: BoardEntry) => observedFinancials.get(entry.ticker?.metadata.ticker ?? entry.symbol)
+    ?? financialsBySymbol.get(entry.symbol) ?? null;
   const { entries: quoteEntries } = useLiveQuoteEntries(streamingTargets, { liveStreaming });
   const chartRequests = useMemo(
     () => boardEntries.flatMap((entry) => entry.chartRequest ? [entry.chartRequest] : []),
@@ -204,7 +208,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
   exportCsvRef.current = () => quoteMonitorCsv(boardEntries.map((entry) => ({
     symbol: entry.symbol,
     instrument: entry.instrument,
-    quote: (entry.quoteKey ? resolveEntryData(quoteEntries.get(entry.quoteKey)) : null) ?? financialsBySymbol.get(entry.symbol)?.quote,
+    quote: (entry.quoteKey ? resolveEntryData(quoteEntries.get(entry.quoteKey)) : null) ?? cachedFinancials(entry)?.quote,
   })), Date.now(), (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name);
   useEffect(() => {
     if (!renderer.saveTextFile) return;
@@ -285,11 +289,14 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
       <Box
         flexGrow={1}
         backgroundColor={colors.bg}
-        overflow="hidden"
         style={{
           display: "grid",
           gridTemplateColumns: `repeat(${desktopColumns}, minmax(0, 1fr))`,
-          gridAutoRows: "minmax(66px, 1fr)",
+          // The rows share the board, each at least as tall as its cards' lines: a board too short for every card
+          // scrolls rather than draw a card's lines over one another.
+          gridAutoRows: "minmax(min-content, 1fr)",
+          overflowX: "hidden",
+          overflowY: "auto",
           alignItems: "stretch",
           alignContent: "stretch",
           width: "100%",
@@ -302,7 +309,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
             symbol={entry.symbol}
             label={entry.label}
             ticker={entry.ticker}
-            cachedFinancials={financialsBySymbol.get(entry.symbol) ?? null}
+            cachedFinancials={cachedFinancials(entry)}
             quoteEntry={entry.quoteKey ? quoteEntries.get(entry.quoteKey) ?? null : null}
             chartEntry={entry.chartRequest ? chartEntries.get(buildChartKey(entry.chartRequest)) ?? null : null}
             width={Math.floor(width / desktopColumns)}
@@ -338,7 +345,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
               symbol={entry.symbol}
               label={entry.label}
               ticker={entry.ticker}
-              cachedFinancials={financialsBySymbol.get(entry.symbol) ?? null}
+              cachedFinancials={cachedFinancials(entry)}
               quoteEntry={entry.quoteKey ? quoteEntries.get(entry.quoteKey) ?? null : null}
               chartEntry={entry.chartRequest ? chartEntries.get(buildChartKey(entry.chartRequest)) ?? null : null}
               width={cardWidth}

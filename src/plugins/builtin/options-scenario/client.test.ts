@@ -7,7 +7,11 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, type ScenarioLoaderDependencies } from "./client";
 import { daysToExpiryFrom, solveImpliedVolatility, valueOption } from "../shared/volatility";
 import { optionsScenarioHeadless } from "./headless";
-import { parseOptionExpiration } from "../../../utils/option-expiry";
+import { expirationOptionSeconds, parseOptionExpiration } from "../../../utils/option-expiry";
+import { createProviderMiss } from "../../../sources/provider-errors";
+import { AssetDataRouter } from "../../../sources/provider-router";
+import { createTestDataProvider } from "../../../test-support/data-provider";
+import { OperationTimeoutError } from "../../../utils/async-deadline";
 import { buildScenario, optionExpirationClose } from "./model";
 import { scenarioHedgeBudget } from "./hedge";
 
@@ -134,6 +138,22 @@ describe("scenario market loader", () => {
     expect(lapsed.chain).toBeNull();
     expect(() => scenarioPositionFromSettings({ symbol: "COPX", strategy: "put" }, lapsed))
       .toThrow("Expiry 2026-10-23 for COPX expired on 23 Oct; nearest live: 30 Oct (--expiration 2026-10-30)");
+  });
+
+  test("a chain read the data service did not answer says to try again, apart from a chain no source lists", async () => {
+    // Read through the router and the coordinator, as the CLI and the pane read it: the router answers that no
+    // source served the chain, holding the timeout behind it.
+    const seed = async (getOptionsChain: NonNullable<DataProvider["getOptionsChain"]>) => {
+      const coordinator = new MarketDataCoordinator(new AssetDataRouter(createTestDataProvider({ id: "scenario-test", getOptionsChain })));
+      const market = await loadScenarioMarket({ instrument: { symbol: "COPX", exchange: "ARCA" }, expiration: expirationOptionSeconds("18.12.2026") },
+        dependencies({ loadOptions: coordinator.loadOptions.bind(coordinator), loadQuote: async () => ready({ ...quote, symbol: "COPX" }) }));
+      return () => scenarioPositionFromSettings({ symbol: "COPX", strategy: "put", spot: "60.5" }, market);
+    };
+    expect(expirationOptionSeconds("18.12.2026")).toBe(expiration);
+    expect(await seed(async () => { throw new OperationTimeoutError("Cloud market request timed out after 10000ms"); }))
+      .toThrow("Gloom's data service did not answer for the COPX options chain. Try again in a moment.");
+    expect(await seed(async () => { throw createProviderMiss("Cloud options chains are unavailable for COPX"); }))
+      .toThrow("No options chain is listed for COPX.");
   });
 
   test("consumer cancellation does not wait for or cancel the shared chain request", async () => {

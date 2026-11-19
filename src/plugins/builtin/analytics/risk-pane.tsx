@@ -1,4 +1,4 @@
-import { MISSING_VALUE } from "../../../utils/format";
+import { MISSING_VALUE, formatCurrency } from "../../../utils/format";
 import {
   staticSeries,
   scalarPoint,
@@ -25,6 +25,7 @@ import {
   usePaneTabs,
   type ChartTableChart,
   type DataTableColumn,
+  type PaneFooterSegment,
   type StatItem,
 } from "../../../components";
 import {
@@ -60,11 +61,12 @@ import {
   NO_HOLDINGS_HINT,
   portfolioRiskRequests,
   portfolioRiskTickers,
-  riskCoverageLine,
-  riskCoverageNotices,
+  riskCoverageParts,
   riskCoverageShortfall,
+  riskPaneWarnings,
   riskPercentile,
   riskEvidence,
+  riskRowWarnings,
   riskReturnsCurrency,
   riskValue,
   RISK_VIEWS,
@@ -83,6 +85,7 @@ import { CorrelationMatrixGrid, correlationMatrixFits, useCorrelationMatrixNavig
 import { usePluginTickerActions } from "../../runtime";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { formatTickerListInput } from "../../../tickers/list";
+import { getTableWidth } from "../../../components/ui/table-layout";
 
 const titles = {
   risk: "Risk",
@@ -421,8 +424,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     [portfolio?.id, tickers],
   );
   const requests = useMemo(
-    () => (portfolio ? portfolioRiskRequests(localTickers, portfolio.id) : []),
-    [localTickers, portfolio?.id],
+    () => (portfolio ? portfolioRiskRequests(localTickers, portfolio.id, !(portfolio.brokerId || portfolio.brokerInstanceId || portfolio.brokerAccountId)) : []),
+    [localTickers, portfolio],
   );
   const session = useResearchCloudSession();
   const loader = useCallback(
@@ -433,7 +436,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ]);
       return { ...market, brokerOptions };
     },
-    [requests, localTickers, portfolio, cashCurrencies, session.requestKey],
+    [requests, localTickers, portfolio, cashCurrencies, session.displayScope],
   );
   const resource = useAsyncResource(!frozen && portfolio ? loader : null, {
     clearOnError: isAccessDenied,
@@ -451,9 +454,9 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     () => (episodeTargetsKey && portfolio
       ? () => loadRiskEpisodeHistory(JSON.parse(episodeTargetsKey) as RiskEpisodeTarget[], portfolio.currency)
       : null),
-    [episodeTargetsKey, portfolio?.currency, session.requestKey],
+    [episodeTargetsKey, portfolio?.currency, session.displayScope],
   );
-  const episodeResource = useAsyncResource(episodeLoader, { clearOnError: isAccessDenied, keepPreviousData: true });
+  const episodeResource = useAsyncResource(episodeLoader, { clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
   // A reload reads the kept closes again and asks only for those that failed
   // (a rate limit on a large book), so it follows the market data's cadence.
   useAutoRefresh(episodeResource.updatedAt, episodeResource.load);
@@ -562,7 +565,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   // A broker linked to the portfolio may still be sending its account history.
   const evidenceLoading = evidenceMissing && view === "performance" && brokerPerformance.loading;
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  // Columns that say the same thing on every row belong in the footer, not repeated per row.
+  // Evidence that says the same thing on every row belongs in the footer, not repeated per row; a shared date shows
+  // where there is room, so every number keeps its date beside it.
   const showPercentile = rows.some((row) => row.percentile != null);
   const sharedDate =
     rows.length > 1 &&
@@ -628,48 +632,70 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     [frozen, importEvidence, portfolios.length, nextPortfolio],
   );
   // Only real data limitations raise the footer warning; the empty evidence
-  // views say what they need in the body, with the import action.
-  const notices = [
-    ...riskCoverageNotices(model?.coverage),
-    ...(model?.notes ?? []),
-    ...(model?.warnings ?? []),
+  // views say what they need in the body, with the import action. What
+  // concerns one holding is its row's: a left-out holding's reason is its
+  // detail, a holding's or an option's failure its note under the table.
+  const failures = [
+    ...(model ? riskPaneWarnings(model) : []),
+    ...(view === "performance" ? model?.performanceEstimate?.warnings ?? [] : []),
     ...shocks.errors,
     ...(derived.error ? [derived.error] : []),
     ...(resource.error ? [resource.error] : []),
   ];
+  const notices = [
+    ...(model?.notes ?? []),
+    ...failures,
+  ];
   // What the basket views cover of the book and leave out, unless the body already says why they show nothing.
   // Stress showing its shocks alone says instead why the basket scenarios are not there.
+  const coverage = useMemo(
+    () => (!model || !BASKET_VIEWS.has(view) || basketBody || stressShortfall ? null : riskCoverageParts(model.coverage)),
+    [basketBody, model, stressShortfall, view],
+  );
   const coverageText = !model || !BASKET_VIEWS.has(view) || basketBody
     ? null
     : stressShortfall
       ? `Index, 10Y, VIX and episode scenarios: ${stressShortfall.title.replace(/\.$/, "").replace(/^[A-Z](?=[a-z])/, (letter) => letter.toLowerCase())}`
-      : riskCoverageLine(model.coverage);
+      : coverage?.text ?? null;
+  // The days the returns are on, for a basket that mixes markets: the views read from its returns say so.
+  const calendar = model && DAILY_CLOSE_VIEWS.has(view) && !basketBody && !stressShortfall ? model.calendar ?? null : null;
   const asOfDate = (stressShortfall ? rows : model?.rows[view])?.find((row) => row.asOf)?.asOf?.slice(0, 10) ?? null;
   // The views estimated from returns name the currency a non-USD account's returns were converted into.
   const returnsCurrency = BASKET_VIEWS.has(view) && view !== "holdings" && !stressShortfall ? riskReturnsCurrency(model) : null;
-  // Dated evidence only when a row has a date; a missing date is not a claim about history.
-  const asOfText = !model
-    ? null
-    : [
-        ...(basketBody ? [] : [
-          ...(coverageText ? [coverageText] : []),
-          ...(asOfDate && footerEvidence ? [footerEvidence] : []),
-          // The coverage names the currency of its basket value; a non-USD account's returns say what they converted into.
-          // An evidence view with nothing in it has no amounts for a currency to describe.
-          ...(returnsCurrency ? [returnsCurrency] : coverageText || evidenceMissing ? [] : [model.portfolio.currency]),
-          ...(EVIDENCE_VIEWS.has(view) && model.evidence ? [model.evidence.source] : []),
-        ]),
-      ].join(" · ") || null;
   // What the figures are read from and to when: the basket's daily closes, or the marks and evidence of that day.
   // The shocks alone are repriced at the current marks.
   const sourceText = basketBody || !asOfDate
     ? null
     : DAILY_CLOSE_VIEWS.has(view) && !stressShortfall ? `daily closes to ${asOfDate}` : `as of ${asOfDate}`;
+  // Each fact its own segment, in the order a narrow footer keeps them: what the numbers cover, how the tail rows are
+  // estimated and on which days; the date and the currency give way first. A capture keeps the first three, which say
+  // what its rows leave out and how they read. Dated evidence only when a row has a date; a missing date is not a
+  // claim about history.
+  const tailMethodShort = view === "risk" && footerEvidence ? footerEvidence.replace(/^historical, 1-day, \d+%, /, "historical, ") : null;
+  const infoSegments = useMemo((): PaneFooterSegment[] => {
+    if (!model || basketBody) return [];
+    const muted = (text: string) => [{ text, tone: "muted" as const }];
+    const text = (id: string, value: string | null | undefined, extra: Partial<PaneFooterSegment> = {}): PaneFooterSegment[] =>
+      value ? [{ id, parts: muted(value), ...extra }] : [];
+    return [
+      ...text("coverage", coverageText, { capture: true, ...(coverage && coverage.short !== coverage.text ? { variants: [muted(coverage.short), muted(coverage.shortest)] } : {}) }),
+      // The tail rows' labels say 1D and 95%: a narrow row keeps the rest of the method.
+      ...text("method", asOfDate ? footerEvidence : null, { capture: true, ...(tailMethodShort && tailMethodShort !== footerEvidence ? { variants: [muted(tailMethodShort)] } : {}) }),
+      ...text("calendar", calendar, { capture: true }),
+      ...text("source", sourceText, { asOf: true }),
+      // The coverage names the currency of its basket value; a non-USD account's returns say what they converted into.
+      // An evidence view with nothing in it has no amounts for a currency to describe.
+      ...text("currency", returnsCurrency ?? (coverageText || evidenceMissing ? null : model.portfolio.currency)),
+      ...text("evidence", EVIDENCE_VIEWS.has(view) && model.evidence ? model.evidence.source : null),
+    ];
+  }, [asOfDate, basketBody, calendar, coverage, coverageText, evidenceMissing, footerEvidence, model, returnsCurrency, sourceText, tailMethodShort, view]);
   usePaneNoticeFooter({
     registrationId: "portfolio-risk-notices",
     notices,
     focused,
     enabled: !openRow,
+    // A capture's footer says what the basket leaves out and how it reads; of the warnings it prints only what failed.
+    captureNotes: failures,
   });
   usePaneFooter(
     "portfolio-risk",
@@ -685,14 +711,9 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
               },
             ]
           : []),
-        // Coverage first: a narrow footer cuts the method and the date before what the numbers cover.
-        ...(asOfText
-          ? [{ id: "asof", parts: [{ text: asOfText, tone: "muted" as const }] }]
-          : []),
-        // The source and its date, which a capture's own dated status line stands in for.
-        ...(sourceText
-          ? [{ id: "source", asOf: true, parts: [{ text: sourceText, tone: "muted" as const }] }]
-          : []),
+        // Coverage first: a narrow footer cuts the method and the date before what the numbers cover. The source's
+        // date gives way to a capture's own dated status line.
+        ...infoSegments,
         ...(actionStatus
           ? [
               {
@@ -704,7 +725,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ],
       hints,
     }),
-    [resource.loading, view, episodeResource.loading, asOfText, sourceText, actionStatus, hints],
+    [resource.loading, view, episodeResource.loading, infoSegments, actionStatus, hints],
   );
   useShortcut(
     (event) => {
@@ -738,6 +759,15 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const chart = useMemo<ChartTableChart | null>(() => {
     if (!model) return null;
     if (view === "performance") {
+      if (model.performanceEstimate) return {
+        series: [staticSeries(
+          model.performanceEstimate.points.map((row) => scalarPoint(new Date(row.date), row.value)),
+          { id: "estimated-value", label: model.performanceEstimate.label, color: colors.positive, calendarSpaced: true },
+        )],
+        formatValue: (value: number) => formatCurrency(value, model.portfolio.currency),
+        formatAxisValue: formatPlainAxis,
+        remoteKind: "portfolio-risk-history",
+      };
       if (!model.performance) return null;
       return {
         series: [staticSeries(
@@ -772,6 +802,20 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     : sharedUnit
       ? sharedUnit.length <= 3 ? `Value ${sharedUnit}` : sharedUnit
       : "Value";
+  // Dates that differ always show; one every row shares shows where the row has room for it beside the figures.
+  const asOfColumn = useMemo<DataTableColumn | null>(() => {
+    const column: DataTableColumn = { id: "asOf", label: "As of", width: 11, align: "left" };
+    if (!sharedDate) return column;
+    const figures = [
+      { width: 19, align: "left" as const },
+      { width: sharedUnit || attributionParts ? Math.max(9, valueHeader.length) : rows.some((row) => row.amount != null) ? 18 : 16, align: "right" as const },
+      ...(attributionParts ? ATTRIBUTION_PARTS.map(() => ({ width: 11, align: "right" as const })) : []),
+      ...(factorFits ? [{ width: 9, align: "right" as const }] : []),
+      ...(showPercentile ? [{ width: 8, align: "right" as const }] : []),
+    ];
+    // A cell for the scrollbar a long table draws.
+    return getTableWidth([...figures, column]) + 1 <= width ? column : null;
+  }, [attributionParts, factorFits, rows, sharedDate, sharedUnit, showPercentile, valueHeader, width]);
   const columns = useMemo<DataTableColumn[]>(
     () => [
       {
@@ -797,9 +841,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ...(showPercentile
         ? [{ id: "percentile", label: "Pctl 1Y", width: 8, align: "right" as const }]
         : []),
-      ...(sharedDate
-        ? []
-        : [{ id: "asOf", label: "As of", width: 11, align: "left" as const }]),
+      // Every row's date where there is room, the one they share too: each number says when it is from.
+      ...(asOfColumn ? [asOfColumn] : []),
       // Attribution's evidence is the three effects, now columns of their own.
       ...(width >= 95 && !footerEvidence && !attributionParts
         ? [
@@ -813,7 +856,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           ]
         : []),
     ],
-    [width, view, valueHeader, sharedUnit, attributionParts, factorFits, footerEvidence, showPercentile, sharedDate, rows],
+    [width, view, valueHeader, sharedUnit, attributionParts, factorFits, footerEvidence, showPercentile, asOfColumn, rows],
   );
   const selectView = (value: string) => {
     setView(value);
@@ -982,6 +1025,10 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           return { text: factorFits ? withoutFactorFit(row.detail) : row.detail };
         }}
         selectedTextOverridesCellColor
+        rowNote={(row) => {
+          const notes = model ? riskRowWarnings(model, row.label) : [];
+          return notes.length ? `${row.label}: ${notes.join(" ")}` : null;
+        }}
         onActivate={(row) => setOpen(row.id)}
         detailOpen={!!openRow}
         detailTitle={openRow?.label}

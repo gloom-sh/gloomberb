@@ -24,5 +24,6 @@
 ## Building Gloom
 
 - [Contributing](../CONTRIBUTING.md) and the [plugin guide](../PLUGINS.md)
+- [Bring your own licensed market data](market-data-plugins.md): connect an entitled feed through an asset-data plugin
 - [Checks by area](checks.md): the command for each part of the app a change touches
 - [Pane conventions](pane-conventions.md): how a pane is put together

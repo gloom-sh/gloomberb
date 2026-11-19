@@ -1,11 +1,18 @@
 import { logFailure } from "../../../utils/log-failure";
 import { ApiRequestError } from "../../../api-client/errors";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
 import { createMissingRouteLatch } from "../../../api-client/coalesce";
 import { savedCopyForTransientFailure, type PluginCacheResult } from "../../../data/plugin-cache";
+import { markSavedCopy } from "../../../data/saved-copies";
 
 interface CloudCache<T> {
   get(key: string, options?: { allowExpired?: boolean }): PluginCacheResult<T> | null;
   load(key: string, loader: () => Promise<T>, options?: { force?: boolean }): Promise<PluginCacheResult<T>>;
+}
+
+export function cloudDisplayCacheKey(key: string): string | null {
+  const scope = cloudDisplayScope();
+  return scope === null ? null : `${key}|${scope}`;
 }
 
 /** A cached server payload; `stale` and `refreshError` come only from a failed refresh. */
@@ -23,13 +30,14 @@ export interface CloudResource<T> {
  */
 export function cachedCloudResource<T>(
   cache: CloudCache<T>,
-  key: string,
+  key: string | null,
   validate: (payload: T) => T = (payload) => payload,
 ): CloudResource<T> | null {
-  const cached = cache.get(key, { allowExpired: true });
+  const cached = key === null ? null : cache.get(key, { allowExpired: true });
   if (!cached) return null;
   try {
-    return { payload: validate(cached.data), stale: false, refreshError: null };
+    const result = { payload: validate(cached.data), stale: false, refreshError: null };
+    return cached.fromEarlierRun || cached.stale ? markSavedCopy(result, cached.fetchedAt) : result;
   } catch (error) {
     return logFailure("shared.cloud-resource", "Validate cached cloud payload failed", null)(error);
   }
@@ -53,10 +61,11 @@ const isAbort = (error: unknown) => !!error && typeof error === "object" && (err
  */
 export async function loadCloudResource<T>(
   cache: CloudCache<T>,
-  key: string,
+  key: string | null,
   fetch: () => Promise<T>,
   { force = false, validate = (payload: T) => payload, signal }: { force?: boolean; validate?: (payload: T) => T; signal?: AbortSignal } = {},
 ): Promise<CloudResource<T>> {
+  if (key === null) return { payload: validate(await fetch()), stale: false, refreshError: null };
   const cancelledByOther = (error: unknown) => !!signal && !signal.aborted && isAbort(error);
   let result = await cache.load(key, fetch, { force }).catch((error: unknown) => {
     if (cancelledByOther(error)) return null;
@@ -65,10 +74,11 @@ export async function loadCloudResource<T>(
   if (!result || cancelledByOther(result.error)) result = await cache.load(key, fetch, { force });
   const saved = savedCopyForTransientFailure(result).source === "stale-fallback";
   // A copy served because its refresh failed is one by where it came from, whatever the failure said (or did not).
-  return {
+  const answer: CloudResource<T> = {
     payload: validate(result.data), stale: result.stale, refreshError: result.refreshError ?? null,
     ...(saved ? { savedAt: result.fetchedAt } : {}),
   };
+  return saved ? markSavedCopy(answer, result.fetchedAt) : answer;
 }
 
 /**

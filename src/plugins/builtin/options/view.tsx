@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { usePaneAppConfig, usePaneSettingValue, usePaneTicker, useUpdatePaneSettings } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
@@ -89,7 +90,7 @@ import {
   formatModelSpotPrice, modelSpotExtendedPrint, modelSpotLabel, modelSpotStamp, modelSpotStampVariants, optionModelSpot,
   type OptionModelSpot,
 } from "./model-spot";
-import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, statedOpenInterestAsOf } from "./open-interest-as-of";
+import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, readListedOpenInterest, statedOpenInterestAsOf } from "./open-interest-as-of";
 import { useAsyncResource } from "../../../react/async-resource";
 import {
   ALL_STRIKES,
@@ -614,8 +615,13 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const statedOpenInterest = useMemo(() => strikeChain ? statedOpenInterestAsOf(strikeChain) : undefined, [strikeChain]);
   const listedExpiry = selectedExpiration == null || !effectiveTicker || !strikeChain || statedOpenInterest
     ? null : expiryIsoDate(selectedExpiration);
-  const listedLoader = useCallback(() => loadListedOpenInterest(effectiveTicker, listedExpiry!), [effectiveTicker, listedExpiry]);
-  const listedOpenInterest = useAsyncResource(listedExpiry ? listedLoader : null);
+  const listedScope = useCloudDisplayScope();
+  const listedTicker = canonicalTickerKey(effectiveTicker, effectiveExchange);
+  const listedLoader = useCallback((force: boolean) => listedScope === null || !listedExpiry ? Promise.resolve(null)
+    : loadListedOpenInterest(listedTicker, listedExpiry, { force }), [listedScope, listedTicker, listedExpiry]);
+  const listedOpenInterest = useAsyncResource(listedExpiry && listedScope !== null ? listedLoader : null, {
+    initialData: () => listedExpiry && listedScope !== null ? readListedOpenInterest(listedScope, listedTicker, listedExpiry) : null,
+  });
   const openInterestAsOf = useMemo(() => statedOpenInterest
     ?? (strikeChain && listedOpenInterest.data ? chainOpenInterestAsOf(strikeChain, listedOpenInterest.data) : null),
   [statedOpenInterest, strikeChain, listedOpenInterest.data]);
@@ -635,16 +641,17 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     label: "Open interest as of",
     getMetadata: () => ({ text: openInterestAsOfLabel(openInterestAsOf), key: "openInterestAsOf", value: openInterestAsOf?.date ?? null }),
   } : null);
-  // What IV and the Greeks are valued at, and the open interest's date. In a
-  // crowded footer it shortens, then gives way to the contract under the cursor.
-  // A stamped spot (a close, an extended print) is already the Spot figure's.
+  // What IV and the Greeks are valued at. In a crowded footer it shortens,
+  // then gives way to the contract under the cursor. A stamped spot (a close,
+  // an extended print) is already the Spot figure's.
   const footerSpot = modelSpot && !modelSpotStamp(modelSpot) ? modelSpot : null;
-  const basisText = [footerSpot ? `spot ${formatModelSpotPrice(footerSpot.price)} ${modelSpotLabel(footerSpot)}` : null,
-    strikeChain && !listedOpenInterest.loading ? openInterestAsOfLabel(openInterestAsOf) : null].filter(Boolean).join(" · ");
-  const shortBasisText = [footerSpot ? `${formatModelSpotPrice(footerSpot.price)} last `
-    + `${new Date(footerSpot.observedAt).toISOString().slice(11, 16)} UTC` : null,
-  strikeChain && !listedOpenInterest.loading ? openInterestAsOf?.date ? `OI ${openInterestAsOf.date.slice(5)}` : "OI undated" : null]
-    .filter(Boolean).join(" · ");
+  const basisText = footerSpot ? `spot ${formatModelSpotPrice(footerSpot.price)} ${modelSpotLabel(footerSpot)}` : "";
+  const shortBasisText = footerSpot ? `${formatModelSpotPrice(footerSpot.price)} last ${new Date(footerSpot.observedAt).toISOString().slice(11, 16)} UTC` : "";
+  // The open interest's date, which its counts cannot be read without: while the chain shows OI it shortens but
+  // stays, before the spot and the contract under the cursor give way, and a picture of the pane keeps it.
+  const openInterestShown = shownFieldIds.includes("openInterest");
+  const openInterestDateText = strikeChain && !listedOpenInterest.loading ? openInterestAsOfLabel(openInterestAsOf) : "";
+  const openInterestShortText = openInterestAsOf?.date ? `OI ${openInterestAsOf.date.slice(5)}` : "OI undated";
   // How IV was solved is said while the chain shows a figure that was not: a strike with no two-sided
   // out-of-the-money quote has its IV read off the neighbouring strikes, and its cell leads with "~".
   const ivFilledShown = shownFieldIds.includes("iv") && rows.some((row) => row.impliedVolatilityFilled && row.impliedVolatility != null);
@@ -654,6 +661,10 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     label: "IV filled",
     getMetadata: () => ({ text: IV_FILLED_NOTE, key: "ivFilled", value: true }),
   } : null);
+  usePaneFooter("options-oi-date", () => ({ order: -1, info: openInterestDateText ? [{
+    id: "oi-as-of", capture: openInterestShown, holdsPlace: openInterestShown, parts: [{ text: openInterestDateText, tone: "muted" as const }],
+    variants: openInterestShown ? [[{ text: openInterestShortText, tone: "muted" as const }]] : [[{ text: openInterestShortText, tone: "muted" as const }], []],
+  }] : [] }), [openInterestDateText, openInterestShortText, openInterestShown]);
   usePaneFooter("options-basis", () => ({ info: [
     ...(basisText ? [{ id: "greeks-basis", parts: [{ text: basisText, tone: "muted" as const }],
       variants: [[{ text: shortBasisText, tone: "muted" as const }], []] }] : []),
@@ -661,8 +672,9 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       title: IV_FILLED_DETAIL, variants: [[{ text: IV_FILLED_SHORT, tone: "muted" as const }]] }] : []),
   ] }), [basisText, shortBasisText, ivFilledShown]);
   // Fields the terminal chain gave up for width, counted so a narrow chain does
-  // not read as all there is; hover names them. It leads the footer, so a
-  // crowded row gives up the contract under the cursor before it.
+  // not read as all there is; hover names them. It leads the footer and holds
+  // its place beside the open interest's date, so a crowded row gives up the
+  // contract under the cursor before either.
   const hiddenFields = OPTION_FIELD_DEFS.filter((field) => optionFieldIds.includes(field.id) && !shownFieldIds.includes(field.id))
     .map((field) => field.label).join(", ");
   usePaneFooter("options-fit", () => {
@@ -670,6 +682,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     return { order: -1, info: count ? [{
       id: "options-hidden-fields",
       capture: true,
+      holdsPlace: true,
       parts: [{ text: `${count} ${count === 1 ? "field" : "fields"} hidden`, tone: "muted" as const }],
       title: `Too narrow for ${hiddenFields}: a wider pane shows them, and Export CSV keeps them.`,
       variants: [[{ text: `${count} hidden`, tone: "muted" as const }]],

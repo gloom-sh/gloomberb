@@ -1,7 +1,9 @@
 import { portfolioOptionGreeks } from "./risk-options";
+import { manualPortfolioValue } from "./manual-value";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { MISSING_VALUE, formatCurrency, formatNumber } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import { canonicalExchange, isUsEquityExchange } from "../../../utils/exchanges";
 import {
   getPortfolioPositionMetrics,
   resolvePortfolioMarketValue,
@@ -171,6 +173,8 @@ export interface RiskDisplayRow {
   amountBase?: number;
   /** What a tail loss in money is taken on: the basket's value and share of the book, and what it leaves out. */
   basis?: string;
+  /** The trading days the tail rows' returns are on, when the basket mixes markets (`riskReturnCalendar`). */
+  calendar?: string;
   /**
    * The caveat a narrow pane puts beside the label when it has no room for
    * the evidence: the basket share an episode replays by beta proxy ("22% proxy").
@@ -408,6 +412,7 @@ const signedQuantity = (lots: TickerRecord["metadata"]["positions"]) =>
 export function portfolioRiskRequests(
   tickers: readonly TickerRecord[],
   portfolioId: string,
+  estimate = false,
 ): RiskHoldingRequest[] {
   return tickers.map((ticker) => {
     const lots = positions(ticker, portfolioId);
@@ -419,6 +424,7 @@ export function portfolioRiskRequests(
       : null;
     return {
       ...riskInstrumentOf(ticker),
+      ...(estimate ? { estimate: true, estimateStart: lots.map((lot) => lot.dateAcquired).filter((date): date is string => !!date).sort()[0] } : {}),
       quantity: signedQuantity(lots),
       currency,
       snapshotValue: snapshot,
@@ -553,18 +559,61 @@ const NAMED_EXCLUSIONS = 2;
  * values is named with "value unknown". Converted listings are counted after.
  */
 export function riskCoverageLine(coverage: RiskCoverage | undefined): string | null {
+  const parts = riskCoverageParts(coverage);
+  return parts ? [parts.text, parts.converted].filter(Boolean).join(" · ") : null;
+}
+/**
+ * The coverage line's parts, for a footer that sets them apart: `text`
+ * ("basket 48,286 USD = 72% of book; left out: BTC-USD 10%, TRY cash 18%"),
+ * `short`, the same without the basket's value ("72% of book; left out: ..."),
+ * `shortest`, without their shares ("72% of book; BTC-USD, TRY cash left out"),
+ * and `converted` ("2 holdings converted from local currency"), null when none was.
+ */
+export function riskCoverageParts(
+  coverage: RiskCoverage | undefined,
+): { text: string; short: string; shortest: string; converted: string | null } | null {
   if (!coverage) return null;
   const named = coverage.leftOut.length <= NAMED_EXCLUSIONS + 1 ? coverage.leftOut : coverage.leftOut.slice(0, NAMED_EXCLUSIONS);
   const rest = coverage.leftOut.slice(named.length);
   const restShare = rest.reduce((sum, row) => sum + (row.share ?? 0), 0);
   const shares = [coverage.share ?? 0, ...named.map((row) => row.share ?? 0), ...(rest.length ? [restShare] : [])];
   const percents = wholePercents(shares);
-  const basket = `basket ${formatNumber(coverage.coveredValue, 0)} ${coverage.currency}${coverage.share == null ? "" : ` = ${coverage.unvalued ? "at most " : ""}${percentText(percents[0]!, shares[0]!)} of book`}`;
+  const share = coverage.share == null ? null : `${coverage.unvalued ? "at most " : ""}${percentText(percents[0]!, shares[0]!)} of book`;
+  const basket = `basket ${formatNumber(coverage.coveredValue, 0)} ${coverage.currency}${share ? ` = ${share}` : ""}`;
   const items = [
     ...named.map((row, index) => `${row.symbol} ${row.share == null ? "value unknown" : percentText(percents[index + 1]!, row.share)}`),
     ...(rest.length ? [`${rest.length} more${restShare > 0 ? ` ${percentText(percents.at(-1)!, restShare)}` : ""}`] : []),
   ];
-  return [`${basket}${items.length ? `; left out: ${items.join(", ")}` : ""}`, convertedText(coverage)].filter(Boolean).join(" · ");
+  const leftOut = items.length ? `; left out: ${items.join(", ")}` : "";
+  const symbols = [...named.map((row) => row.symbol), ...(rest.length ? [`${rest.length} more`] : [])];
+  return {
+    text: `${basket}${leftOut}`,
+    short: `${share ?? basket}${leftOut}`,
+    shortest: `${share ?? basket}${symbols.length ? `; ${symbols.join(", ")} left out` : ""}`,
+    converted: convertedText(coverage),
+  };
+}
+/** US futures exchanges, whose settlements follow the US trading days the basket is on. */
+const US_FUTURES_VENUES: ReadonlySet<string> = new Set(["CME", "CBT", "NYM", "CMX", "NYB", "CFE"]);
+/** Venues a calendar line names before it says "other markets". */
+const NAMED_CALENDAR_VENUES = 2;
+/**
+ * "US trading days, BIST at its last close": the days the basket's returns
+ * are on when it holds a listing abroad. The basket, SPY and the factor
+ * proxies share the US calendar; a market abroad carries its last close over
+ * a US trading day it did not trade (convertClosesToUsd). Null when every
+ * holding in the basket trades on a US venue.
+ */
+export function riskReturnCalendar(members: ReadonlyArray<{ exchange: string; convertedFrom?: string | null }>): string | null {
+  const abroad = [...new Set(members.flatMap((row) => {
+    const venue = canonicalExchange(row.exchange);
+    if (!venue) return row.convertedFrom ? ["other"] : [];
+    return isUsEquityExchange(venue) || US_FUTURES_VENUES.has(venue) ? [] : [venue];
+  }))];
+  if (abroad.length === 0) return null;
+  const named = abroad.filter((venue) => venue !== "other");
+  if (named.length === 0 || named.length > NAMED_CALENDAR_VENUES || named.length < abroad.length) return "US trading days, other markets at their last close";
+  return `US trading days, ${named.join(" and ")} at ${named.length === 1 ? "its" : "their"} last close`;
 }
 /** Whether the basket leaves out a holding, which makes a report incomplete; cash never is in it. */
 export const riskHoldingsLeftOut = (coverage: RiskCoverage) => coverage.leftOut.some((row) => !row.cash);
@@ -881,6 +930,8 @@ export function buildPortfolioRisk(
   const book = concentration(
     valued.filter((row) => row.marketValue! > 0).map((row) => ({ id: row.id, value: row.marketValue })),
   );
+  // The days the returns are on, when the basket holds a market abroad that carries its last close over US days.
+  const calendar = riskReturnCalendar(members);
   const closeMarked = members.filter((row) => row.markSource === "close").length;
   const converted = members.filter((row) => row.convertedFrom != null).length;
   const held = new Set(holdings.map((row) => row.id));
@@ -1129,6 +1180,10 @@ export function buildPortfolioRisk(
   const performance = evidence?.performance
     ? calculateAccountPerformance(evidence.performance)
     : null;
+  const performanceEstimate = performance ? null : manualPortfolioValue(
+    portfolio, tickers, market,
+    cashHoldings.every((line) => line.value != null) ? cashHoldings.reduce((sum, line) => sum + line.value!, 0) : null,
+  );
   const attribution = evidence?.attribution
     ? calculateBrinson(evidence.attribution)
     : null;
@@ -1154,6 +1209,7 @@ export function buildPortfolioRisk(
         percentile: row.rank.percentile,
         // The tail rows name how they are estimated; the other rows' method (price returns, bought and held or at fixed current weights) is in docs.
         detail: TAIL_ROW_IDS.has(row.id) ? riskTailMethod(row.samples, row.value != null) : `${row.samples} sessions`,
+        ...(TAIL_ROW_IDS.has(row.id) && calendar ? { calendar } : {}),
         ...(tail
           ? {
               amount: (row.value! / 100) * tailBase,
@@ -1289,7 +1345,15 @@ export function buildPortfolioRisk(
           asOf: performance.endDate,
           detail: `${performance.startDate} to ${performance.endDate}; ${row.detail}`,
         }))
-      : [],
+      : performanceEstimate ? [{
+          id: "estimated-value",
+          label: performanceEstimate.label,
+          value: performanceEstimate.points.at(-1)?.value ?? null,
+          unit: portfolio.currency,
+          percentile: null,
+          asOf: performanceEstimate.points.at(-1)?.date ?? null,
+          detail: "Today's holdings at daily closes; cash held flat; not account performance",
+        }] : [],
     attribution: attribution
       ? attribution.rows.map((row) => ({
           id: row.sector,
@@ -1403,6 +1467,7 @@ export function buildPortfolioRisk(
     stresses,
     episodes,
     performance,
+    performanceEstimate,
     attribution,
     greeks,
     evidence,
@@ -1418,6 +1483,8 @@ export function buildPortfolioRisk(
     notes,
     fetchedAt: market.fetchedAt,
     benchmark: RISK_BENCHMARK,
+    /** The days the basket's returns are on when it mixes markets (`riskReturnCalendar`); null when it trades in the US only. */
+    calendar,
     /** The currency a non-USD account's returns converted into, at the daily closes of `pair`; null for USD. */
     accountConversion:
       account && !account.error && account.pair
@@ -1436,6 +1503,26 @@ export function buildPortfolioRisk(
   };
 }
 export type PortfolioRiskModel = ReturnType<typeof buildPortfolioRisk>;
+
+/** The holdings and options the views list by symbol, each a row of its own. */
+function riskRowSymbols(model: Pick<PortfolioRiskModel, "holdings" | "greeks">): string[] {
+  return [...model.holdings.map((row) => row.symbol), ...(model.greeks?.rows ?? []).map((row) => row.symbol)];
+}
+
+/** What a warning says of one holding or option (`AAPL: …`), named by `symbol`, less the name: its row's note. */
+export function riskRowWarnings(model: Pick<PortfolioRiskModel, "warnings">, symbol: string): string[] {
+  return model.warnings.flatMap((warning) => warning.startsWith(`${symbol}: `) ? [warning.slice(symbol.length + 2)] : []);
+}
+
+/**
+ * The warnings the footer says, which concern the whole book: a holding's or
+ * an option's own are its row's (its detail, its note under the table), as
+ * a left-out holding's reason is.
+ */
+export function riskPaneWarnings(model: Pick<PortfolioRiskModel, "warnings" | "holdings" | "greeks">): string[] {
+  const symbols = riskRowSymbols(model);
+  return model.warnings.filter((warning) => !symbols.some((symbol) => warning.startsWith(`${symbol}: `)));
+}
 export const riskValue = (row: RiskDisplayRow) =>
   row.leftOut
     ? "left out"
@@ -1444,7 +1531,8 @@ export const riskValue = (row: RiskDisplayRow) =>
     : `${row.value.toFixed(2)}${row.unit === "%" ? "%" : ` ${row.unit}`}${riskAmount(row)}`;
 /** A row's evidence with what a tail loss in money is taken on: the basket, its share of the book and what it leaves out. */
 export function riskEvidence(row: RiskDisplayRow): string {
-  return row.basis ? `${row.detail}; ${row.basis}` : row.detail;
+  const method = row.calendar ? `${row.detail} on ${row.calendar}` : row.detail;
+  return row.basis ? `${method}; ${row.basis}` : method;
 }
 /** " ($5,735)": a loss or change in money beside its percent. */
 function riskAmount(row: RiskDisplayRow): string {

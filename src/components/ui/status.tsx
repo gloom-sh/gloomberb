@@ -243,13 +243,14 @@ export interface NoticeProps {
 export function Notice({ children, tone = "warning", variant = "inline" }: NoticeProps) {
   const colors = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
+  const { id, flush } = useFlushInPane(native === true && variant === "inline");
   const color = tone === "muted" ? colors.textDim : colors[tone];
   const status = tone === "negative" ? "error" : "notice";
   const body = typeof children === "string" ? readableError(children) : children;
   // Inline feedback keeps its original single-text shape: a flex row here collapses inside content-sized parents.
   if (variant !== "callout") {
     return (
-      <Box data-gloom-status={status} data-gloom-ui="notice">
+      <Box id={id} data-gloom-status={status} data-gloom-ui="notice" style={flush ? { paddingInline: "var(--gloom-inset)" } : undefined}>
         <Text fg={color} wrapText>{body}</Text>
       </Box>
     );
@@ -260,6 +261,17 @@ export function Notice({ children, tone = "warning", variant = "inline" }: Notic
       <Text fg={foreground}>!</Text><Box flexGrow={1} minWidth={0}><Text fg={foreground} wrapText>{body}</Text></Box>
     </Box>
   );
+}
+
+/**
+ * What concerns the selected row of a table that has no detail of its own,
+ * said under the table (DataTableView `rootAfter`) while the row is
+ * selected: the whole reason behind the few words its row shows
+ * (docs/pane-conventions.md, Row messages). Nothing while no row has one.
+ */
+export function RowNote({ children, tone = "warning" }: Pick<NoticeProps, "tone"> & { children: ReactNode | null | undefined }) {
+  if (children == null || children === "") return null;
+  return <Box paddingX={1} flexShrink={0}><Notice tone={tone}>{children}</Notice></Box>;
 }
 
 /** The one loading phrasing: "Loading ..." with three dots, never the ellipsis glyph. */

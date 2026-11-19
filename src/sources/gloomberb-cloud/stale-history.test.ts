@@ -28,15 +28,37 @@ test("a copy the server marks stale answers when it reaches the venue's latest s
   expect(await staleHistory("2026-10-04T12:00:00Z", ttaloWeek, "TTALO", "HEL", "1W")).toHaveLength(3);
 });
 
-test("a copy the server marks stale is still a miss once a later session has settled", async () => {
+// ^MERV on 18 Nov 2026: the service answered its stored bars to 12 Nov, marked stale, while the index's source
+// refused, and `history ^MERV` said "No history provider available for ^MERV".
+test("a copy the server marks stale that a later session has passed is shown, said to be behind, when nothing newer answers", async () => {
+  const behind = async (now: string, data: CloudPricePointPayload[], symbol: string, exchange: string, range: "1W" | "1M") => {
+    setSystemTime(Date.parse(now));
+    apiClient.getCloudHistory = async () => ({ status: "success", stale: true, data });
+    return new AssetDataRouter(new GloomberbCloudProvider()).getPriceHistoryWithMetadata(symbol, exchange, range);
+  };
   // Wednesday's close settled at 20:30Z without its bar.
-  await expect(staleHistory("2026-09-30T21:00:00Z", aaplMonth, "AAPL", "NASDAQ", "1M"))
-    .rejects.toThrow("No history provider available for AAPL");
+  expect(await behind("2026-09-30T21:00:00Z", aaplMonth, "AAPL", "NASDAQ", "1M")).toMatchObject({ points: { length: 2 }, savedCopyBehind: true });
   // Monday after the Helsinki close, still on Friday's bars.
-  await expect(staleHistory("2026-10-05T17:00:00Z", ttaloWeek, "TTALO", "HEL", "1W"))
-    .rejects.toThrow("No history provider available for TTALO");
+  expect(await behind("2026-10-05T17:00:00Z", ttaloWeek, "TTALO", "HEL", "1W")).toMatchObject({ points: { length: 3 }, savedCopyBehind: true });
   // In Wednesday's session, Tuesday's hourly bars reach the settled session
-  // but not the delayed feed: the app's own current-window check decides.
-  await expect(staleHistory("2026-09-30T16:00:00Z", bars("2026-09-29T18:30:00Z", "2026-09-29T19:30:00Z"), "AAPL", "NASDAQ", "1W"))
-    .rejects.toThrow("No history provider available for AAPL");
+  // but not the delayed feed: the app's own current-window check refuses
+  // them, as it does any source's, and says why.
+  await expect(behind("2026-09-30T16:00:00Z", bars("2026-09-29T18:30:00Z", "2026-09-29T19:30:00Z"), "AAPL", "NASDAQ", "1W"))
+    .rejects.toThrow("Latest history for AAPL is behind");
+  // Charts read bars of a size, and windows of dates: the same answer.
+  setSystemTime(Date.parse("2026-11-18T10:30:00Z"));
+  const merval = bars("2026-11-10", "2026-11-11", "2026-11-12");
+  apiClient.getCloudHistory = async () => ({ status: "success", stale: true, data: merval });
+  const router = new AssetDataRouter(new GloomberbCloudProvider());
+  expect(await router.getPriceHistoryForResolutionWithMetadata("^MERV", "BYMA", "1Y", "1d"))
+    .toMatchObject({ points: { length: 3 }, savedCopyBehind: true });
+  expect(await router.getDetailedPriceHistoryWithMetadata("^MERV", "BYMA", new Date("2021-11-18"), new Date("2026-11-19"), "1d"))
+    .toMatchObject({ points: { length: 3 }, savedCopyBehind: true });
+});
+
+test("a stale answer without bars says the history is behind, not that it has no source", async () => {
+  setSystemTime(Date.parse("2026-11-18T10:30:00Z"));
+  apiClient.getCloudHistory = async () => ({ status: "empty", stale: true, data: [] });
+  await expect(new AssetDataRouter(new GloomberbCloudProvider()).getPriceHistory("^MERV", "BYMA", "1Y"))
+    .rejects.toThrow("Latest history for ^MERV is behind");
 });

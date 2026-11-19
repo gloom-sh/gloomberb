@@ -1,12 +1,12 @@
 import { MISSING_VALUE } from "../../utils/format";
 import type { Quote } from "../../types/financials";
 import { getLanguage, tf } from "../../i18n";
-import { isPerpetualExchange } from "../../tickers/perpetual-listing";
 import { formatUtcDayTime, formatUtcWeekdayTime } from "../../utils/utc-time";
 import { formatShortDate } from "../../utils/datetime-format";
-import { delayedFeedLagMs } from "../market/freshness";
+import { quoteFeedDelayMinutes } from "../market/freshness";
 import { quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
 import { dailyNavDate, isQuoteStaleForCurrentSession } from "./freshness";
+import { savedCopyAt } from "../../data/saved-copies";
 
 /** The published NAV session date, independent of local time and receipt time. */
 export function formatQuoteNavAsOf(quote: Quote | null | undefined, now = Date.now()): string | null {
@@ -27,21 +27,21 @@ export function formatQuoteNavAsOf(quote: Quote | null | undefined, now = Date.n
   return tf("NAV · as of {date}", { date: dateText });
 }
 
-const CLOUD_PROVIDER_ID = "gloomberb-cloud";
 const WEEK_MS = 7 * 86_400_000;
 
 /** How current a quote's feed is: `15 min delayed` (Gloom Cloud knows each venue's lag), `delayed`, `real-time`. */
 function quoteFeedWord(quote: Quote): string | null {
   if (quote.dataSource === "live") return "real-time";
   if (quote.dataSource !== "delayed") return null;
-  const exchange = quote.listingExchangeName || quote.exchangeName;
-  // A perpetual's venue is read about once a minute, not held back by a feed lag.
-  if (quote.providerId !== CLOUD_PROVIDER_ID || isPerpetualExchange(exchange)) return "delayed";
-  return `${Math.round(delayedFeedLagMs(exchange) / 60_000)} min delayed`;
+  const minutes = quoteFeedDelayMinutes(quote);
+  return minutes == null ? "delayed" : `${minutes} min delayed`;
 }
 
-/** `08:09 UTC` on today's UTC date, `Thu 08:09 UTC` within the week, `Thu 29 Oct 08:09 UTC` before it. */
-function asOfClock(time: number, now: number): string {
+/**
+ * `08:09 UTC` on today's UTC date, `Thu 08:09 UTC` within the week, `Thu 29 Oct
+ * 08:09 UTC` before it: when a card's price, or an extended print, was observed.
+ */
+export function asOfClock(time: number, now = Date.now()): string {
   const iso = new Date(time).toISOString();
   if (iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10)) return `${iso.slice(11, 16)} UTC`;
   return `${now - time < WEEK_MS ? formatUtcWeekdayTime(time) : formatUtcDayTime({ time, dateOnly: false }, now)} UTC`;
@@ -57,10 +57,11 @@ function asOfClock(time: number, now: number): string {
  */
 export function formatQuoteSessionAsOf(quote: Quote | null | undefined, now = Date.now()): string | null {
   if (!quote || quote.delisting || !(quote.lastUpdated > 0) || dailyNavDate(quote, now)) return null;
+  const clock = asOfClock(Math.min(quoteHeadlineTime(quote), now), now);
+  if (savedCopyAt(quote) != null) return clock;
   if (isQuoteStaleForCurrentSession(quote, now)) return null;
   const session = quoteSessionStateLabel(quote, now);
   const state = session === "CLOSED" ? session : quoteFeedWord(quote) ?? session;
-  const clock = asOfClock(Math.min(quoteHeadlineTime(quote), now), now);
   return state ? `${state} · ${clock}` : clock;
 }
 

@@ -23,6 +23,7 @@ import {
   createWorldIndexColumns,
   renderWorldIndexCell,
   usesSessionText,
+  worldIndexRowNote,
   type WorldIndexColumn,
 } from "./table";
 
@@ -139,6 +140,7 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
       onVisibleRangeChange={setVisibleRange}
       renderSectionHeader={renderRegionHeader}
       renderCell={renderCell}
+      rowNote={(row) => worldIndexRowNote(row, quotes)}
       selectedTextOverridesCellColor
       emptyStateTitle="No market data provider connected."
     />

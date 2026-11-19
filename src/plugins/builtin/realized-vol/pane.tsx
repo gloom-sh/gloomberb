@@ -6,6 +6,7 @@ import { barsPerYearLabel, currencyPairInstrument } from "../../../market-data/b
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -91,7 +92,10 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     proxyController.current = controller;
     return loadFxVolProxy({ symbol: instrument!.symbol, exchange: instrument!.exchange, signal: controller.signal });
   }, [instrumentKey]);
-  const history = useAsyncResource(instrument ? historyLoader : null);
+  const scope = useCloudDisplayScope();
+  const history = useAsyncResource(scope && instrument ? historyLoader : null, {
+    savedCopy: scope && !instrument?.instrument ? { key: ["realized-volatility-history", scope, instrumentKey] } : null,
+  });
   const loadedIv = useAsyncResource(instrument && showIv && spotAvailable && !fxPair ? ivLoader : null);
   const proxy = useAsyncResource(instrument && showIv && fxPair ? proxyLoader : null);
   useEffect(() => () => historyController.current?.abort(), [historyLoader]);

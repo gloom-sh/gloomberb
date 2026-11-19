@@ -99,6 +99,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bun scripts/check-built-files.ts dist
 
+      # The npm package carries the catalog snapshot the build workflow wrote and attested, so `gloom catalog` and
+      # `fn` need not load every built-in plugin. Nothing is installed or generated in this job: the file is the one
+      # that run attested, under its name, as for the files above. It is checked before anything is uploaded, so a
+      # snapshot that is missing or unverified keeps the draft a draft, as a missing release file does.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: catalog-snapshot
+          path: catalog-snapshot
+
+      - name: Check the catalog snapshot is the one built
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/check-built-files.ts catalog-snapshot
+
       # install.sh and install.ps1 read each asset's SHA-256 from
       # `<asset>.sha256` beside it, by its download URL (the API's digests are
       # rate limited), and install nothing without it.
@@ -165,6 +179,10 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+
+      # Put in the npm package below.
+      - name: Put the catalog snapshot in the package
+        run: cp catalog-snapshot/catalog-snapshot.json src/cli/pane-functions/catalog-snapshot.json
 
       - name: Install npm 11 (required for trusted publishing)
         run: npm install -g npm@11.21.2

@@ -11,7 +11,7 @@ import {
 import type { ScrollBoxRenderable } from "../../ui";
 import { useBeforeShortcut, useShortcut } from "../../react/input";
 import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
-import { DataTable, PaneStatusBody, type DataTableColumn, type DataTableProps, type PaneStatusBodyProps } from "../ui";
+import { DataTable, PaneStatusBody, RowNote, type DataTableColumn, type DataTableProps, type NoticeProps, type PaneStatusBodyProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
 import { useDataTableColumnMenuItems } from "./column-menu";
 import { drawnTableColumns, tableFreezesFirstColumn, tableRevealLeft, tableScrollStep } from "../ui/table-layout";
@@ -147,6 +147,14 @@ export interface DataTableViewProps<
   rootBefore?: ReactNode;
   rootAfter?: ReactNode;
   /**
+   * What concerns one row, said under the table while that row is selected
+   * (`RowNote`): the whole reason behind the few words the row shows, such as
+   * a name a screen could not price or a peer whose figures are stale. Null
+   * for a row with nothing to say. A note about one row never goes in the
+   * footer, whose notes are the pane's (docs/pane-conventions.md, Row messages).
+   */
+  rowNote?: (item: T, index: number) => string | { text: string; tone: NonNullable<NoticeProps["tone"]> } | null | undefined;
+  /**
    * Replaces the table (header and rows) with a loading, error or empty
    * state while `rootBefore` stays. Precedence is the caller's, as with
    * `PaneStatusBody`: pass `loading` only while there is nothing to show.
@@ -200,6 +208,7 @@ export function DataTableView<
   continuesRowAbove,
   rootBefore,
   rootAfter,
+  rowNote,
   status,
   rootWidth,
   rootHeight,
@@ -846,6 +855,10 @@ export function DataTableView<
     }
   });
 
+  // The selected row's note follows the cursor, as the row's highlight does.
+  const selectedItem = rowNote && effectiveSelectedIndex >= 0 && !bodyStatusShown(status) ? tableProps.items[effectiveSelectedIndex] : undefined;
+  const note = selectedItem !== undefined ? rowNote!(selectedItem, effectiveSelectedIndex) : null;
+  const noteView = note ? typeof note === "string" ? <RowNote>{note}</RowNote> : <RowNote tone={note.tone}>{note.text}</RowNote> : null;
   return (
     <TableViewFrame
       width={rootWidth}
@@ -853,7 +866,7 @@ export function DataTableView<
       fit={tableProps.fitRows}
       backgroundColor={rootBackgroundColor}
       before={rootBefore}
-      after={rootAfter}
+      after={noteView ? <>{rootAfter}{noteView}</> : rootAfter}
     >
       {bodyStatusShown(status) ? <PaneStatusBody {...status} /> : <DataTable<T, C>
         {...tableProps}

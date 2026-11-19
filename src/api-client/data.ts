@@ -9,7 +9,7 @@ import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power
 import type { PerpBoardPayload, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery,
   PerpMarketPayload, PerpLiquidationsPayload, PerpDepthPayload } from "./perps";
 import type { ExposureRequest, ExposurePayload, ExposureScenario } from "./exposure";
-import type { SupplyChainPayload, SupplyOptions } from "./supply-chain";
+import type { SupplyChainPayload, SupplyOptions, SupplyRead } from "./supply-chain";
 import { createReadCoalescer } from "./coalesce";
 import { supplyGraphQuery, type GraphOptions, type GraphPayload } from "./supply-chain-graph";
 import type { AwardDetailPayload, AwardFilter, AwardsPayload } from "./awards";
@@ -166,6 +166,7 @@ import type {
   CloudMarketScreenerCategory,
   CloudMarketScreenerPayload,
   CloudMoverSession,
+  CloudInsiderFilingStoriesResponse,
   CloudNewsListResponse,
   CloudNewsPayload,
   CloudSavedSearch,
@@ -933,15 +934,17 @@ export class CloudDataApi {
     return this.request<CloudShillerPayload>(cloudShillerPath());
   }
 
-  /** Futures-only positions unless `positions` asks for futures and options combined; the default request is unchanged. */
+  /** Futures-only positions unless `positions` asks for futures and options combined. */
   async getCloudCotBoard(report: CotFamily, traderClass: CotClass, positions: CotPositions = "futures-only"): Promise<CotBoardPayload> {
     const query = new URLSearchParams({ report, traderClass, ...(positions === "combined" ? { scope: positions } : {}) });
+    if (report === "disaggregated") query.set("includeIce", "true");
     return this.request<CotBoardPayload>(`/cloud/cot/board?${query}`);
   }
 
   /** A market's report; `since` (YYYY-MM-DD) lists its history from that day instead of the last three years. */
   async getCloudCotContract(code: string, report: CotFamily, positions: CotPositions = "futures-only", since?: string): Promise<CotContractPayload> {
     const query = new URLSearchParams({ report, ...(positions === "combined" ? { scope: positions } : {}), ...(since ? { since } : {}) });
+    if (report === "disaggregated") query.set("includeIce", "true");
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${query}`);
   }
 
@@ -1056,10 +1059,11 @@ export class CloudDataApi {
     return this.request<{ scenarios: ExposureScenario[] }>("/cloud/exposure/scenarios");
   }
 
-  async getCloudSupplyChain(symbol: string, options: SupplyOptions = {}): Promise<SupplyChainPayload> {
+  async getCloudSupplyChain(symbol: string, options: SupplyRead = {}): Promise<SupplyChainPayload> {
     const query = new URLSearchParams();
     if (options.tiers?.length) query.set("tiers", options.tiers.join(","));
     if (options.includeLeads) query.set("includeLeads", "1");
+    if (options.asOf) query.set("asOf", options.asOf);
     return this.request<SupplyChainPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}${query.size ? `?${query}` : ""}`);
   }
 
@@ -1223,9 +1227,14 @@ export class CloudDataApi {
     );
   }
 
-  /** Each market's latest curve and the session before, each on its own date. */
-  async getCloudWorldCurves(): Promise<CloudWorldCurves> {
-    return this.request<CloudWorldCurves>("/cloud/econ/curves", { signal: AbortSignal.timeout(30_000) });
+  /**
+   * Each market's curve and the session before, each on its own date: the
+   * latest, or with `date` the last on or before it (within ten days). A
+   * server older than dated reads answers with the latest whatever the date.
+   */
+  async getCloudWorldCurves(date?: string | null): Promise<CloudWorldCurves> {
+    const query = date ? `?${new URLSearchParams({ date })}` : "";
+    return this.request<CloudWorldCurves>(`/cloud/econ/curves${query}`, { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudCryptoMarkets(): Promise<CryptoMarketsPayload> {
@@ -1719,6 +1728,13 @@ export class CloudDataApi {
   async getCloudNewsStory(storyId: string): Promise<CloudNewsPayload> {
     return this.request<CloudNewsPayload>(
       `/news/${encodeURIComponent(storyId)}`,
+    );
+  }
+
+  /** The stories that report each Form 4, by accession number: the match a story's own filings come from, run the other way. */
+  async getCloudInsiderFilingStories(accessions: readonly string[]): Promise<CloudInsiderFilingStoriesResponse> {
+    return this.request<CloudInsiderFilingStoriesResponse>(
+      `/news/insider-filing-stories?${new URLSearchParams({ accessions: accessions.join(",") })}`,
     );
   }
 

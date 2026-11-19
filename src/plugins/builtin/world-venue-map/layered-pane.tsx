@@ -8,7 +8,7 @@ import type {
   GeoSeriesInfo,
   GeoTickerLink,
 } from "../../../api-client/geo";
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { useCloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
 import {
   Button,
   DataTableStackView,
@@ -79,6 +79,7 @@ import { usesClassTones } from "./map-symbols";
 import { filterWorldVenues, WORLD_MAP_HEIGHT_RATIO } from "./model";
 import { useGeoLayerFeed } from "./use-geo";
 import { SelectedVenueHeader } from "./venue-header";
+import { initialMapFocus, mapPlaceBbox, nearestPlaces, type MapStart } from "./place";
 
 interface LayeredMapViewProps extends PaneProps {
   /** The layers on, already capped. */
@@ -87,6 +88,7 @@ interface LayeredMapViewProps extends PaneProps {
   tokens: readonly string[];
   /** A plain MAP: venues show unless the pane turned them off. */
   plain?: boolean;
+  start: MapStart;
 }
 
 interface OpenEntity {
@@ -179,7 +181,7 @@ const SelectedEntityHeader = memo(function SelectedEntityHeader({
   );
 });
 
-export function LayeredMapView({ focused, width, height, layers, tokens, plain = false }: LayeredMapViewProps) {
+export function LayeredMapView({ focused, width, height, layers, tokens, plain = false, start }: LayeredMapViewProps) {
   const colors = useThemeColors();
   const dark = relativeLuminance(colors.text) > relativeLuminance(colors.bg);
   const { nativePaneChrome } = useUiCapabilities();
@@ -187,19 +189,22 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const openDescription = useOpenDescription();
   const visible = usePaneVisible();
   const { hasProAccess } = usePlanAccess();
+  const access = useCloudDisplayScope();
   const upgrade = useCloudUpgradeAction("map-layers");
   const [venuesSetting] = usePaneSettingValue<boolean | undefined>(VENUES_SETTING_KEY, undefined);
   const venuesOn = readVenuesSetting(plain ? { [VENUES_SETTING_KEY]: venuesSetting } : { [VENUES_SETTING_KEY]: venuesSetting, [LAYERS_SETTING_KEY]: tokens }, layers.length);
-  const { data: venueData } = useAsyncResource(venuesOn ? loadWorldVenues : null);
+  const { data: venueData } = useAsyncResource(venuesOn && access ? loadWorldVenues : null, {
+    savedCopy: access ? { key: ["world-venues", access] } : null,
+  });
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(timer);
   }, []);
 
-  const [view, setView] = useState<GeoView>(WORLD_GEO_VIEW);
-  const onViewChange = useCallback((next: GeoView) => {
-    setView((current) => sameGeoView(current, next) ? current : next);
+  const [{ view, moved }, setMapView] = useState({ view: WORLD_GEO_VIEW, moved: false });
+  const onViewChange = useCallback((view: GeoView, moved: boolean) => {
+    setMapView((current) => ({ view, moved: current.moved || moved }));
   }, []);
   const canAccess = useCallback((layer: GeoLayerInfo) => layer.access !== "pro" || hasProAccess, [hasProAccess]);
   // A linked map narrows the app's own layers to what its source pane selects.
@@ -232,9 +237,10 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const [open, setOpen] = usePluginPaneState<OpenEntity | null>("map:open", null);
   const [selectedMic, setSelectedMic] = useState<string | null>(null);
   const [headerSubject, setHeaderSubject] = useState<"entity" | "venue">("entity");
-  const [focus, setFocus] = useState<WorldMapFocus | null>(null);
   // Kept per pane, so docking, undocking, popping out or reloading reopens the map where it was.
   const [savedViewport, setSavedViewport] = usePluginPaneState<unknown>("map:viewport", null);
+  const [initialFocus] = useState(() => initialMapFocus(start.place, savedViewport, start.home));
+  const [focus, setFocus] = useState<WorldMapFocus | null>(initialFocus);
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const mapKeys = useMapKeyboard(searchFocused);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
@@ -242,14 +248,16 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
 
   const tableLocked = !canAccess(tableLayer) || tableState?.phase === "locked";
   const tableReadable = tableLayer.status !== "unavailable" && tableState?.phase !== "unavailable" && !tableLocked;
+  const startedAtPlace = !!start.place && !(nativePaneChrome && scope && isLocalGeoLayer(tableLayer.id));
   // The table follows the map once the view rests, not every frame of a pan.
-  const [tableView, setTableView] = useState<GeoView>(view);
+  const [tableView, setTableView] = useState<GeoView>();
+  const tablePlace = startedAtPlace && !tableView && (!nativePaneChrome || initialFocus) ? start.place : null;
   useEffect(() => {
-    if (sameGeoView(tableView, view)) return;
+    if (tablePlace ? !moved : sameGeoView(tableView ?? WORLD_GEO_VIEW, view)) return;
     const timer = setTimeout(() => setTableView(view), TABLE_VIEW_SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [tableView, view]);
-  const tableBbox = entityTableBbox(tableLayer, tableView);
+  }, [moved, tablePlace, tableView, view]);
+  const tableBbox = tablePlace ? mapPlaceBbox(tablePlace) : entityTableBbox(tableLayer, tableView ?? WORLD_GEO_VIEW, startedAtPlace);
   const tableBboxKey = tableBbox?.join(",") ?? "";
   const loadPage = useCallback(async ({ offset, signal }: PageRequest) => {
     const page = await loadEntityPage(tableLayer.id, {
@@ -268,8 +276,12 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
       scopeKey: scope?.key ?? null,
     };
   }, [query, request, scope?.key, sort.dir, sort.key, tableBboxKey, tableLayer.id]);
-  const pages = usePagedRows(tableReadable ? loadPage : null, { getId: (row) => row.id });
-  const rows = pages.rows;
+  const pages = usePagedRows(tableReadable ? loadPage : null, {
+    getId: (row) => row.id,
+    savedCopy: access ? { key: ["world-map-entities", access, scope?.key, tableLayer.id, query, sort.key, sort.dir, tableBboxKey] } : null,
+  });
+  const rows = useMemo(() => !sort.key && tablePlace ? nearestPlaces(pages.rows, tablePlace, (row) => ({ longitude: row.lon, latitude: row.lat })) : pages.rows,
+    [pages.rows, sort.key, tablePlace]);
   // A linked map frames the places of each company or theme it moves to, once.
   const framedScopeRef = useRef<string | null>(null);
   const firstPage = pages.pages[0];
@@ -385,9 +397,10 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
       ...(freshness ? [{ id: "fresh", parts: [{ text: freshness.text, tone: freshness.tone }] }] : []),
       ...(zoomLayers.length ? [{ id: "zoom", parts: [{ text: `zoom in for ${zoomLayers.map((state) => state.layer.name).join(", ")}`, tone: "muted" as const }] }] : []),
       ...(pages.error && rows.length ? [{ id: "error", parts: [{ text: pages.error.message, tone: "warning" as const }] }] : []),
+      ...(start.note ? [{ id: "place", parts: [{ text: start.note, tone: "warning" as const }] }] : []),
     ],
     hints,
-  }), [detail.data, detail.loading, detailOpen, freshness?.text, freshness?.tone, hints.map((hint) => hint.id).join(","), loadingLayers.length, pages.error, pages.loading, pages.loadingMore, rows.length, zoomLayers.map((state) => state.layer.id).join(",")]);
+  }), [detail.data, detail.loading, detailOpen, freshness?.text, freshness?.tone, hints.map((hint) => hint.id).join(","), loadingLayers.length, pages.error, pages.loading, pages.loadingMore, rows.length, start.note, zoomLayers.map((state) => state.layer.id).join(",")]);
   // The table's own layer says it cannot serve in the body; the footer warns about the others.
   const notices = layerNotices(states.filter((state) => state.layer.id !== tableLayer.id || (state.phase !== "unavailable" && state.phase !== "locked")));
   usePaneNoticeFooter({ registrationId: `${WORLD_VENUE_MAP_PANE_ID}:notices`, focused, notices, enabled: !detailOpen });

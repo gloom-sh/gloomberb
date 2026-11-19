@@ -1,5 +1,5 @@
 import { statGridRows, type StatItem } from "../ui/stat-grid";
-import { getTableWidth, hasMeaningfulTableHorizontalOverflow, type TableWidthColumn } from "../ui/table-layout";
+import { getTableWidth, hasMeaningfulTableHorizontalOverflow, hiddenTableColumnRows, type TableWidthColumn } from "../ui/table-layout";
 
 /** Drop optional columns in priority order, using the same widths as the table. */
 export function fitChartTableColumns<C extends TableWidthColumn & { id: string }>(
@@ -29,18 +29,16 @@ const TABLE_MIN_BODY_ROWS = 4;
 const CHART_SHARE = 0.4;
 /** Below this many body rows the figures keep a single row. */
 const SHORT_BODY_ROWS = 12;
-/** The figures never take more than this share of the body. */
 const FIGURE_SHARE = 0.25;
 /** The share of the body figures that wrap rather than cut a date may take, beyond FIGURE_SHARE. */
 const WRAPPED_FIGURE_SHARE = 1 / 3;
 
 /**
- * The rows a kit table spends outside its body: the header, plus a horizontal
- * scrollbar when its columns are wider than the pane (less the vertical
- * scrollbar's column).
+ * The rows a kit table spends outside its body: the header, a hidden-column
+ * disclosure, and a horizontal scrollbar when its columns are wider than the pane.
  */
-export function chartTableChromeRows(columns: readonly TableWidthColumn[], width: number): number {
-  return hasMeaningfulTableHorizontalOverflow(getTableWidth(columns), width - 1) ? 2 : 1;
+export function chartTableChromeRows(columns: readonly TableWidthColumn[], width: number, tableRows = 1): number {
+  return 1 + hiddenTableColumnRows(columns, tableRows) + Number(hasMeaningfulTableHorizontalOverflow(getTableWidth(columns), width - 1));
 }
 
 /**
@@ -96,7 +94,10 @@ function figureRows(figures: readonly StatItem[], width: number, maxLines: numbe
  */
 function fitFigures(figures: readonly StatItem[], width: number, maxRows: number, body: number): { figures: StatItem[]; maxLines: number } {
   const kept = [...figures];
-  while (kept.length > 0 && figureRows(kept, width, maxRows) > maxRows) kept.pop();
+  while (kept.length > 0 && figureRows(kept, width, maxRows) > maxRows) {
+    const optional = kept.findLastIndex((item) => item.essential !== true);
+    kept.splice(optional >= 0 ? optional : kept.length - 1, 1);
+  }
   return { figures: kept, maxLines: maxRows > 1 ? Math.max(maxRows, Math.floor(body * WRAPPED_FIGURE_SHARE)) : maxRows };
 }
 
@@ -106,23 +107,19 @@ function fitFigures(figures: readonly StatItem[], width: number, maxRows: number
  *
  * - The table always keeps its header and a few rows (all of them when it has
  *   fewer), so the rows the pane is about never vanish.
- * - The figures take at most a quarter of the body, one row when it is short
- *   or when a second row would cost the chart its place, and lose items from
- *   the end rather than spill; a whole-row figure wraps onto a second line
- *   rather than cut its detail, in rows up to a third of the body, never
- *   at the cost of a figure that fits a line.
  * - The chart takes 40% of what is left, or everything the table does not
  *   need when all its rows fit, so no blank band opens under a short table.
  * - Below a readable chart the band becomes a one-row strip, then nothing.
  */
 export function chartTableLayout(input: ChartTableLayoutInput): ChartTableLayout {
   const body = Math.max(0, Math.floor(input.height) - (input.queryRows ?? 0));
-  const figureCap = body < SHORT_BODY_ROWS ? 1 : Math.max(1, Math.floor(body * FIGURE_SHARE));
+  const essential = (input.figures ?? []).filter((item) => item.essential === true);
+  const essentialRows = figureRows(essential, input.width, body);
+  const figureCap = Math.max(essentialRows, body < SHORT_BODY_ROWS ? 1 : Math.max(1, Math.floor(body * FIGURE_SHARE)));
   const layout = layoutWithFigureRows(input, body, figureCap);
-  // A readable chart is worth more than a second row of figures.
   if (layout.mode !== "full" && layout.figureRows > 1) {
     const tighter = layoutWithFigureRows(input, body, 1);
-    if (tighter.mode === "full") return tighter;
+    if (tighter.mode === "full" && essential.every((item) => tighter.figures.includes(item))) return tighter;
   }
   // Without a full chart, rows a short table leaves go back to figures that
   // were dropped, rather than to a blank band under the table.
@@ -145,7 +142,9 @@ function layoutWithFigureRows(input: ChartTableLayoutInput, body: number, figure
   const tableFit = chrome + tableRows;
 
   // A table with no room for a single row after the figures gets the body back.
-  const figureBudget = Math.min(figureCap, Math.max(0, body - chrome - Math.min(tableRows, 1)));
+  const essentialRows = figureRows((input.figures ?? []).filter((item) => item.essential === true), width, body);
+  const figureBudget = Math.min(figureCap, Math.max(0, body - tableMin,
+    Math.min(Math.max(1, essentialRows), body - chrome - Math.min(tableRows, 1))));
   const { figures, maxLines: figureMaxLines } = figureBudget > 0 ? fitFigures(input.figures ?? [], width, figureBudget, body) : { figures: [], maxLines: 0 };
   const shownRows = figures.length ? figureRows(figures, width, figureMaxLines) : 0;
 

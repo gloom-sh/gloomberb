@@ -1,8 +1,7 @@
 import { Box, useUiCapabilities } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DataTableView, EmptyState, QueryBar, usePaneFooter, usePaneTabs, type DataTableKeyEvent } from "../../../components";
-import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
@@ -11,10 +10,13 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { useAssetData, usePluginPaneChoice, usePluginPaneState, usePluginTickerActions } from "../../runtime";
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { useCloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
+import { isPermanentClientError, sourceDidNotAnswer } from "../../../api-client/errors";
+import { markSavedCopy } from "../../../data/saved-copies";
 import { shownPaneChoice } from "../../../core/state/app/pane-choices";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh } from "../../../react/auto-refresh";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import {
@@ -170,26 +172,33 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
   liveStreaming: boolean;
 }) {
   const dataProvider = useAssetData();
+  const scope = useCloudDisplayScope();
   const { pinTicker } = usePluginTickerActions();
   const [minFloatValue, setMinFloatValue] = usePluginPaneState<string>("minFloat", ANY_FLOAT);
   // Trending carries no float, so the minimum is not offered there.
   const floatFiltered = activeTab !== "trending";
   const minFloat = floatFiltered ? minFloatShares(minFloatValue) : null;
-  const listKey = `${activeTab}:${minFloat ?? ""}`;
-  const [quotes, setQuotes] = useState<MoverQuote[]>([]);
-  const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const visibleQuotes = loadedKey === listKey ? quotes : NO_QUOTES;
-  // The first load starts before the effect runs; an empty board is not "no data".
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const listKey = JSON.stringify([activeTab, minFloat, scope, dataProvider?.id]);
+  const loader = useCallback(async (forceRefresh: boolean) => {
+    let result;
+    try {
+      result = await loadMarketMoverTab(activeTab, dataProvider, { forceRefresh, minFloat });
+    } catch (error) {
+      if (isPermanentClientError(error)) throw error;
+      throw sourceDidNotAnswer("Market movers temporarily unavailable");
+    }
+    const error = marketMoverQuoteError(result);
+    if (error && result.quotes.length === 0) throw sourceDidNotAnswer(error);
+    return result.savedAt == null ? result : markSavedCopy(result, result.savedAt);
+  }, [activeTab, dataProvider, minFloat, scope]);
+  const { data, loading, error, savedAt, load, reload, updatedAt } = useAsyncResource(loader, {
+    savedCopy: scope ? { key: ["market-movers", listKey] } : null,
+  });
+  const visibleQuotes = data?.quotes ?? NO_QUOTES;
+  const loadError = error ?? (data && marketMoverQuoteError(data));
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<MarketMoverSortPreference>(DEFAULT_SORT_PREFERENCE);
-  const [moversStale, setMoversStale] = useState(false);
-  // The list's refresh failed and a copy saved at this time (ms) answered instead.
-  const [moversSavedAt, setMoversSavedAt] = useState<number | null>(null);
   const [lastSuccess, setLastSuccess] = useState<{ key: string; at: number } | null>(null);
-
-  const fetchGenRef = useRef(0);
 
   const quoteTargets = useMemo(
     () => buildScreenerQuoteTargets(visibleQuotes, selectedSymbol),
@@ -236,55 +245,10 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
     }
   }, [rows, selectedIdx, selectedSymbol]);
 
-  const loadTab = useCallback(async (
-    tab: ScreenerTabId,
-    options?: { forceRefresh?: boolean; background?: boolean },
-  ) => {
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    if (!options?.background) {
-      setLoading(true);
-      setLoadError(null);
-    }
-
-    try {
-      const result = await loadMarketMoverTab(tab, dataProvider, {
-        forceRefresh: options?.forceRefresh,
-        minFloat,
-      });
-      if (fetchGenRef.current !== gen) return;
-
-      const quoteError = marketMoverQuoteError(result);
-      // A partial list shows only its current rows; a total failure keeps this list's prior rows.
-      if (!quoteError || result.quotes.length > 0) {
-        setQuotes(result.quotes);
-        setLoadedKey(`${tab}:${minFloat ?? ""}`);
-        if (!options?.background) setSelectedSymbol(null);
-      }
-      setMoversStale(result.stale);
-      setMoversSavedAt(result.savedAt ?? null);
-      setLoadError(quoteError);
-      if (!quoteError && !result.stale) setLastSuccess({ key: `${tab}:${minFloat ?? ""}`, at: Date.now() });
-    } catch {
-      if (fetchGenRef.current !== gen) return;
-      setMoversStale(true);
-      setMoversSavedAt(null);
-      setLoadError("Market movers temporarily unavailable");
-    }
-    finally {
-      if (fetchGenRef.current === gen && !options?.background) setLoading(false);
-    }
-  }, [dataProvider, minFloat]);
-
   useEffect(() => {
-    setSelectedSymbol(null);
-    void loadTab(activeTab);
-  }, [activeTab, loadTab]);
-
-  const backgroundRefresh = useCallback(() => {
-    void loadTab(activeTab, { background: true });
-  }, [activeTab, loadTab]);
-  useAutoRefresh(lastSuccess?.key === listKey ? lastSuccess.at : null, backgroundRefresh);
+    if (data && !data.stale && !loadError && savedAt == null && updatedAt != null) setLastSuccess({ key: listKey, at: updatedAt });
+  }, [data, listKey, loadError, savedAt, updatedAt]);
+  useAutoRefresh(lastSuccess?.key === listKey ? lastSuccess.at : null, load);
 
   const openSymbol = useCallback((row: MarketMoverRow) => {
     pinTicker(moverKey(row), { floating: true, paneType: TICKER_RESEARCH_PANE_ID, instrument: null });
@@ -299,11 +263,12 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
   const logos = useUiCapabilities().nativePaneChrome === true;
   const renderCell = useCallback((row: MarketMoverRow, column: MarketMoverColumn) => renderMarketMoverCell(row, column, logos), [logos]);
   const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => (
-    handleRefreshKey(event, () => loadTab(activeTab, { forceRefresh: true }), { stopPropagation: true })
-  ), [activeTab, loadTab]);
+    handleRefreshKey(event, reload, { stopPropagation: true })
+  ), [reload]);
 
   // Without Pro the lists are the delayed ones (with Pro the real-time ones), and say so.
-  const quoteDelay = useQuoteDelayFooter(rows.length > 0 ? DELAYED_LIST : [], "movers-delay");
+  const quoteDelay = useQuoteDelayFooter(rows.length > 0 && savedAt == null ? DELAYED_LIST : [], "movers-delay");
+  const stale = data && savedAt == null && (data.stale || loadError != null);
   usePaneFooter("market-movers", () => ({
     info: [
       ...(loadError ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }] : []),
@@ -313,14 +278,12 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
         id: "feed",
         parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
       }] : []),
-      // A saved copy answering a failed refresh says when it was saved; other stale rows say only that.
-      ...(loadedKey === listKey ? savedCopyFooterInfo([moversSavedAt]) : []),
-      ...(moversStale && moversSavedAt == null && loadedKey === listKey ? [STALE_SEGMENT] : []),
+      ...(stale ? [STALE_SEGMENT] : []),
       // The FLOAT column shows while a minimum is set; a float the source does not date says so once.
       ...partialFloatFooter(columns.some((column) => column.id === "floatShares"), rows),
       ...(quoteDelay ? [quoteDelay] : []),
     ],
-  }), [columns, feedStatus, listKey, loadedKey, loadError, loading, moversStale, moversSavedAt, quoteDelay, rows, summaryQuotes]);
+  }), [columns, feedStatus, loadError, loading, stale, quoteDelay, rows, summaryQuotes]);
 
   return (
     <DataTableView<MarketMoverRow, MarketMoverColumn>

@@ -5,6 +5,7 @@ import { createGeoFixtureRequest } from "../../../test-support/test-fixture-geo"
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { mapHeadless } from "./headless";
 import { worldVenueMapModule } from "./index";
+import { buildMapSettingsDef, HOME_AREA_SETTING_KEY } from "./layers";
 
 afterEach(() => resetGeoCatalogCache());
 
@@ -49,4 +50,65 @@ test("a layer reports the status its cadence implies, and a layer that cannot se
   expect(await freshness("airports")).toMatchObject({ status: "not-a-feed", basis: "reference data" });
   // An unavailable live layer has no rows to call live; its error says why.
   expect(await freshness("flights")).toBeUndefined();
+});
+
+test("a new map keeps only the place that was typed: the home area is read when the map opens, and clearing it restores world", async () => {
+  const template = worldVenueMapModule.paneTemplates!.find((entry) => entry.id === "world-venue-map-pane")!;
+  const context = createTestHeadlessContext();
+  context.config.pluginConfig["market-overview"] = { [HOME_AREA_SETTING_KEY]: "51.5,-0.1" };
+  const templateContext = createTestTemplateContext({ config: context.config });
+  for (const arg of ["ships", undefined]) {
+    const made = await template.createInstance!(templateContext, arg ? { arg } : {});
+    expect(JSON.stringify(made)).not.toContain("51.5");
+    expect(made!.settings ?? {}).not.toHaveProperty("place");
+  }
+  expect(await template.createInstance!(templateContext, { arg: "ships" })).toMatchObject({ title: "Map · Ships", settings: { layers: ["ships"] } });
+  expect(await template.createInstance!(templateContext, { arg: "air Sydney" })).toMatchObject({ title: "Map · Air · Sydney", settings: { place: "Sydney", layers: ["air"] } });
+  expect(buildMapSettingsDef({}, null).fields.find((field) => field.key === HOME_AREA_SETTING_KEY)).toMatchObject({ storage: "plugin" });
+  context.config.pluginConfig["market-overview"]![HOME_AREA_SETTING_KEY] = "";
+  expect(await template.createInstance!(templateContext, {})).toEqual({ placement: "floating" });
+});
+
+test("headless places bound and order the table; an unknown place reports once and returns the world", async () => {
+  const paths: string[] = [];
+  const client = { geo: createGeoFixtureRequest({ onRequest: (path) => paths.push(path) }) } as unknown as HeadlessPaneContext["apiClient"];
+  const context = createTestHeadlessContext({ apiClient: client });
+  const args = createTestHeadlessArgs({ argument: "ships Suez Canal" });
+  const near = await mapHeadless.load(args, context);
+  expect(near.metadata?.place).toMatchObject({ label: "Suez Canal" });
+  expect(near.rows.map((row) => row.label)).toEqual(["Suez Canal"]);
+  expect(paths.some((path) => path.includes("bbox="))).toBe(true);
+  expect(mapHeadless.describe(args, near)).toContain("near Suez Canal");
+  const unknown = await mapHeadless.load(createTestHeadlessArgs({ argument: "ships Atlantis" }), context);
+  expect(unknown.errors).toEqual(['Unknown place "Atlantis"; showing world.']);
+  expect(unknown.rows.length).toBeGreaterThan(1);
+  context.config.pluginConfig["market-overview"] = { [HOME_AREA_SETTING_KEY]: "30,32" };
+  const home = await mapHeadless.load(createTestHeadlessArgs({ argument: "ships" }), context);
+  expect(home.metadata?.place).toMatchObject({ latitude: 30, longitude: 32 });
+  const coordinates = await mapHeadless.load(createTestHeadlessArgs({ argument: "ships 26.5,56.3" }), context);
+  expect(coordinates.metadata?.place).toMatchObject({ latitude: 26.5, longitude: 56.3 });
+});
+
+test("the venue list says each venue's session as the service read it from the exchange's calendar", async () => {
+  const venue = (mic: string, extra: object) => ({
+    mic, name: mic, title: mic, country: "Somewhere", countryCode: "XX", city: "City", timezone: "UTC", latitude: 0, longitude: 0, isOpen: false, ...extra,
+  });
+  const client = {
+    geo: createGeoFixtureRequest(),
+    getCloudWorldVenues: async () => ({
+      data: {
+        providerId: "gloomberb-cloud", checkedAt: 0, refreshAt: 0,
+        venues: [
+          venue("XRIS", { session: "holiday" }), venue("XNAS", { session: "pre-market" }), venue("ARCX", { session: "after-hours" }),
+          // An older service sends the core session alone.
+          venue("XLON", { isOpen: true }), venue("XZAG", {}),
+        ],
+      },
+    }),
+  } as unknown as HeadlessPaneContext["apiClient"];
+  const result = await mapHeadless.load(createTestHeadlessArgs({ argument: "venues" }), createTestHeadlessContext({ apiClient: client }));
+  expect(result.columns?.find((column) => column.key === "session")?.header).toBe("Session");
+  expect(Object.fromEntries(result.rows.map((row) => [row.mic, [row.session, row.open]]))).toEqual({
+    XRIS: ["holiday", false], XNAS: ["pre-market", false], ARCX: ["after-hours", false], XLON: ["open", true], XZAG: ["closed", false],
+  });
 });

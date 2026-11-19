@@ -105,7 +105,7 @@ export interface ChartPanelSpec {
 export interface ChartViewportSpec {
   range: TimeRange;
   resolution: ChartResolution;
-  dateWindow?: { start: string; end: string };
+  dateWindow?: { start: string; end: string; endAtLatestObservation?: boolean };
   /** Optional latest-observation cap, useful for period-based financial views. */
   maxPoints?: number;
   /** Intraday market history includes pre-market and after-hours bars where the venue has them. */
@@ -147,6 +147,7 @@ export interface TimeSeriesPoint {
   value: number | null;
   /** Original primary scalar before any presentation transform, including missing values. */
   rawValue?: number | null;
+  nativeAmount?: { value: number; currency: string };
   open?: number | null;
   high?: number | null;
   low?: number | null;
@@ -318,7 +319,7 @@ export interface ResolvedSeries {
    * `dataset`: a capability's published observations (vessel transits),
    * whose values the legend dates because they arrive days late. */
   observationKind?: "market" | "dataset";
-  /** Regular-session move supplied with the latest market quote. */
+  /** The move of the series's last bar from the close the latest market quote measures its change from, in percent. */
   latestChangePercent?: number;
   /** The previous session's close, set on a one-day chart's price series and drawn as its reference line. */
   priorClose?: number;

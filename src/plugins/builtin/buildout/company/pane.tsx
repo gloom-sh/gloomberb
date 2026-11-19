@@ -16,7 +16,10 @@ import {
   type StatItem,
 } from "../../../../components";
 import { statGridWithin } from "../../../../components/ui/stat-grid";
+import { dropColumnsToFit } from "../../../../components/ui/table-layout";
 import { useAsyncResource, usePaneSettingValue, usePluginAppActions } from "../../../../public/react";
+import { apiClient } from "../../../../api-client";
+import { useCloudDisplayScope } from "../../../../api-client/plan-access";
 import { usePaneStateValue } from "../../../../state/app/context";
 import { usePaneTickerIdentity } from "../../../../state/hooks/pane-ticker";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
@@ -38,6 +41,8 @@ import { CompanyFlow, CompanyFlowList, FLOW_MIN_WIDTH } from "./flow";
 import {
   fetchCompanyProfile,
   fetchCompanySignals,
+  NO_RELATIONSHIPS_TITLE,
+  notInBuildoutTitle,
   totalPowerMw,
   type BuildoutCompanyProfile,
   type BuildoutCompanySite,
@@ -80,17 +85,6 @@ const SIGNAL_COLUMNS: BuildoutColumn[] = [
   { id: "headline", label: "Title", width: 40, align: "left", flexGrow: 4 },
   { id: "companies", label: "Also", width: 16, align: "left" },
 ];
-
-/** Columns that fit `width`, the flexible ones first to give way after the fixed tail. */
-function fitColumns<C extends DataTableColumn>(columns: readonly C[], width: number, dropOrder: readonly string[]): C[] {
-  let kept = [...columns];
-  for (const id of dropOrder) {
-    const total = kept.reduce((sum, column) => sum + column.width + 1, 0);
-    if (total <= width) break;
-    kept = kept.filter((column) => column.id !== id);
-  }
-  return kept;
-}
 
 function headerItems(profile: BuildoutCompanyProfile): StatItem[] {
   const count = (role: BuildoutRelation["role"]) => profile.relations.filter((relation) => relation.role === role).length;
@@ -141,7 +135,10 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
   const rendererHost = useRendererHost();
   const { createPaneFromTemplate } = usePluginAppActions();
   const openDescription = useOpenDescription();
-  const { symbol } = usePaneTickerIdentity();
+  const { symbol, ticker } = usePaneTickerIdentity();
+  const scope = useCloudDisplayScope();
+  const publicAccess = !apiClient.isSignedIn();
+  const exchange = ticker?.metadata.exchange ?? "";
   const [settingTab] = usePaneSettingValue<unknown>("tab", undefined);
   const [tab, setTab] = usePaneStateValue<CompanyTab>("tab", isCompanyTab(settingTab) ? settingTab : "flow");
   const [siteIndex, setSiteIndex] = useState(0);
@@ -149,16 +146,20 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
   const [signalIndex, setSignalIndex] = useState(0);
   const [openSignal, setOpenSignal] = useState<BuildoutUpdate | null>(null);
 
-  const loader = useMemo(() => (symbol ? () => fetchCompanyProfile(symbol) : null), [symbol]);
-  const profile = useAsyncResource(loader, { keepPreviousData: true });
-  // The last company stays while the next loads; one the dataset does not have says so.
+  const loader = useMemo(() => (symbol ? () => fetchCompanyProfile(symbol) : null), [scope, symbol]);
+  const profile = useAsyncResource(loader, {
+    keepPreviousData: scope,
+    savedCopy: publicAccess ? { key: ["buildout-company", "anonymous", symbol, exchange] } : null,
+  });
   const company = profile.data;
   const missing = !!symbol && !company && !profile.loading && !profile.error;
   const signalsLoader = useMemo(
     () => (company?.id && tab === "signals" ? () => fetchCompanySignals(company.id) : null),
-    [company?.id, tab],
+    [company?.id, scope, tab],
   );
-  const signals = useAsyncResource(signalsLoader);
+  const signals = useAsyncResource(signalsLoader, {
+    savedCopy: publicAccess ? { key: ["buildout-company-signals", "anonymous", company?.id] } : null,
+  });
 
   const openRelation = useCallback((relation: BuildoutRelation) => {
     if (relation.ticker) openDescription(relation.ticker);
@@ -211,7 +212,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
     return frame(<EmptyState title="No company selected." message="Link this pane to TheBuildout or a list, or open TBOC with a ticker." />);
   }
   if (!company) {
-    if (missing) return frame(<EmptyState title={`${symbol} is not in TheBuildout.`} />);
+    if (missing) return frame(<EmptyState title={notInBuildoutTitle(symbol)} />);
     if (profile.error) return frame(<PaneStatusBody error={String(profile.error)} subject="TheBuildout" retry={String(profile.error) === NOT_IN_SCREENSHOTS ? undefined : { onRetry: () => profile.load(true) }} />);
     return frame(<PaneStatusBody loading subject="TheBuildout" />);
   }
@@ -224,7 +225,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
   let body: ReactNode;
   if (tab === "flow") {
     body = company.relations.length === 0
-      ? <EmptyState title="No relationships in TheBuildout yet." />
+      ? <EmptyState title={NO_RELATIONSHIPS_TITLE} />
       : width >= FLOW_MIN_WIDTH
         ? <CompanyFlow profile={company} width={width} height={bodyHeight} focused={focused} onOpen={openRelation} />
         : (
@@ -233,7 +234,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
           </ScrollBox>
         );
   } else if (tab === "sites") {
-    const columns = fitColumns(SITE_COLUMNS, width - 1, ["place", "type", "mw"]);
+    const columns = dropColumnsToFit(SITE_COLUMNS, width - 1, ["place", "type", "mw"]);
     body = (
       <DataTableStackView<BuildoutCompanySite, SiteColumn>
         focused={focused}
@@ -253,7 +254,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
       />
     );
   } else if (tab === "hiring") {
-    const columns = fitColumns(HIRING_COLUMNS, width - 1, ["site", "family", "change"]);
+    const columns = dropColumnsToFit(HIRING_COLUMNS, width - 1, ["site", "family", "change"]);
     body = company.hiring.segments.length ? (
       <DataTableStackView<BuildoutHiringSegment, HiringColumn>
         focused={focused}
@@ -298,7 +299,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
         )}
         rootWidth={width}
         rootHeight={bodyHeight}
-        columns={fitColumns(SIGNAL_COLUMNS, width - 1, ["companies"])}
+        columns={dropColumnsToFit(SIGNAL_COLUMNS, width - 1, ["companies"])}
         sortColumnId={null}
         sortDirection="asc"
         items={signalRows}

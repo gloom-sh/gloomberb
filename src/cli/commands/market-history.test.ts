@@ -36,6 +36,30 @@ const HISTORY_CSV_HEADER = "Date,Open,High,Low,Close,Volume,Flag,Partial,Filled,
 /** The columns every exported row ends with: what it is, its source and as-of, and when it was retrieved. */
 const IDENTITY = "symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at";
 
+test("an intraday bar reaching the regular close does not imply after-hours without source evidence", async () => {
+  setSystemTime(new Date("2026-11-28T00:16:00Z"));
+  const date = new Date("2026-11-27T17:30:00Z");
+  const read = async (coverage: Partial<PriceHistoryResult>) => {
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "NVDA", currency: "USD", listingExchangeName: "NASDAQ" }),
+        getPriceHistoryWithMetadata: async () => ({ resolution: "1h", points: [{ date, open: 150, high: 151, low: 149, close: 150.87 }], ...coverage }),
+      }),
+    }, { tail: 1 });
+    await history.execute(["NVDA:NASDAQ", "--range", "1W"], cli.context);
+    const [{ result, options }] = cli.printed;
+    return serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, tail: 1 }, options);
+  };
+  const session = { version: 1, kind: "regular", calendar: "us-equity", timeZone: "America/New_York", symbol: "NVDA", exchange: "NASDAQ",
+    interval: "1h", source: "gloom", timestampConvention: "bar-open", barAlignment: "session-open", observedAt: Date.now() } as const;
+  expect(await read({ session })).toContain("last bar 17:30–18:00 UTC (ends at regular close)");
+  expect(await read({ extendedHours: true })).toContain("last bar 17:30–18:30 UTC (includes after-hours)");
+  const unknown = await read({});
+  expect(unknown).toContain("last bar starts 17:30 UTC (regular close 18:00 UTC; bar session not reported)");
+  expect(unknown).not.toContain("17:30–18:30 UTC");
+});
+
 test("history CSV keeps the price columns first, every row ends with its flag, what it is a bar of, its currency, interval and source, and it ends with its source", async () => {
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
@@ -1294,4 +1318,96 @@ test("the text prints the newest exact volume at the hundred the rest of the col
   expect((json.data as Array<{ date: string; volume: number }>).at(-1)).toMatchObject({ date: "2026-11-12", volume: 4_650_114 });
   const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
   expect(csv.find((line) => line.startsWith("2026-11-12,"))!.split(",")[5]).toBe("4650114");
+});
+
+test("a share's fall on a demerger's ex-date is flagged, said, and no drawdown is measured across it", async () => {
+  pinClosedSession();
+  // TMPV on NSE: the commercial-vehicle business left the line on 2025-10-14, its close falling from 660.75 to 395.45.
+  const closes: Array<[string, number]> = [["2025-10-08", 681.55], ["2025-10-10", 678.95], ["2025-10-13", 660.75],
+    ["2025-10-14", 395.45], ["2025-10-15", 390.85], ["2025-10-16", 396.8]];
+  const demerger = { exDate: "2025-10-14", recordDate: "2025-10-14", business: "commercial vehicles", ratio: 1,
+    successor: { symbol: "TMCV", exchange: "NSE", name: "Tata Motors Limited", listedOn: "2025-11-12" } };
+  let actionsRead = 0;
+  const provider = (demergers: typeof demerger[]) => createTestDataProvider({
+    getQuote: async () => createTestQuote({ symbol: "TMPV", currency: "INR", listingExchangeName: "NSE", exchangeName: "NSE", instrumentType: "EQUITY" }),
+    getDetailedPriceHistoryWithMetadata: async () => ({
+      resolution: "1d", points: closes.map(([date, close]) => ({ date: new Date(date), open: close, high: close, low: close, close, volume: 1 })),
+    }),
+    getCorporateActions: async () => {
+      actionsRead++;
+      return { symbol: "TMPV", dividends: [], splits: [], earnings: [], demergers };
+    },
+  });
+  const run = async (demergers: typeof demerger[]) => {
+    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-demerger-fixture"), dataProvider: provider(demergers) });
+    await history.execute(["TMPV:NSE", "--from", "2025-10-08", "--to", "2025-10-16"], cli.context);
+    return cli.printed[0]!;
+  };
+  const { result, options } = await run([demerger]);
+  const rows = result.data as Array<{ date: string; flag: string | null }>;
+  expect(rows.find((row) => row.date === "2025-10-14")?.flag).toBe("demerger");
+  expect(result.warnings).toContain("On 2025-10-14 the commercial vehicles business was demerged into TMCV:NSE (Tata Motors Limited), 1 share per share, "
+    + "listed 2025-11-12: closes before it include that business, so the fall from 660.75 to 395.45 is no market loss (flag demerger)");
+  // The deepest fall within a run, never from 681.55 before the demerger to 390.85 after it (-42.7%).
+  expect((result.metadata as { maxDrawdown: { peak: { close: number }; trough: { close: number } } }).maxDrawdown)
+    .toMatchObject({ peak: { close: 681.55 }, trough: { close: 660.75 } });
+  expect(String(options?.heading)).toContain("Max drawdown -3.1% (daily closes, not across the 2025-10-14 demerger)");
+  // With none on record the bars stand as served: the fall is no demerger the app can name.
+  const none = await run([]);
+  expect((none.result.data as Array<{ flag: string | null }>).every((row) => row.flag == null)).toBe(true);
+  expect(actionsRead).toBe(2);
+});
+
+// `history NFLX --from 2025-11-12 --to 2025-11-20` ran across the 10-for-1 split of 2025-11-17 in split-adjusted bars,
+// and said nothing of it, while META's FB-era bars say what they are.
+test("bars across a split say so, and a range that starts on the split day or a spinoff factor does not", async () => {
+  pinClosedSession();
+  const days = ["2025-11-12", "2025-11-13", "2025-11-14", "2025-11-17", "2025-11-18", "2025-11-19", "2025-11-20"];
+  const run = async (from: string, splits: Array<{ date: string; fromFactor: number; toFactor: number; ratio: number }>) => {
+    const dataProvider = createTestDataProvider({
+      getQuote: async () => createTestQuote({ symbol: "NFLX", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", instrumentType: "EQUITY" }),
+      getDetailedPriceHistoryWithMetadata: async () => ({
+        resolution: "1d", points: sessionBars(days, days.map(() => 30_000_000)).filter((bar) => bar.date.toISOString().slice(0, 10) >= from),
+      }),
+      getCorporateActions: async () => ({ symbol: "NFLX", dividends: [], splits, earnings: [] }),
+    });
+    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-split-fixture"), dataProvider });
+    await history.execute(["NFLX", "--from", from, "--to", "2025-11-20"], cli.context);
+    return cli.printed[0]!.result.warnings ?? [];
+  };
+  const tenForOne = { date: "2025-11-17", fromFactor: 1, toFactor: 10, ratio: 10 };
+  expect(await run("2025-11-12", [tenForOne])).toContain("Splits in range: NFLX 10-for-1 on 2025-11-17; bars before it are split-adjusted.");
+  expect((await run("2025-11-17", [tenForOne])).join("\n")).not.toContain("Splits in range");
+  expect((await run("2025-11-12", [{ date: "2025-11-17", fromFactor: 1000, toFactor: 1253, ratio: 1.253 }])).join("\n")).not.toContain("Splits in range");
+});
+
+test("weekly and monthly bars split their drawdown at the bar a demerger falls in, as daily bars do", async () => {
+  pinClosedSession();
+  const demerger = { exDate: "2025-10-14", recordDate: "2025-10-14", business: "commercial vehicles", ratio: 1,
+    successor: { symbol: "TMCV", exchange: "NSE", name: "Tata Motors Limited", listedOn: "2025-11-12" } };
+  // TMPV's weeks (dated by their Monday) and months: the demerger falls in the week of 13 Oct and in October.
+  const bars: Record<"1wk" | "1mo", Array<[string, number]>> = {
+    "1wk": [["2025-09-29", 690], ["2025-10-06", 678.95], ["2025-10-13", 396.6], ["2025-10-20", 399.75], ["2025-10-27", 390]],
+    "1mo": [["2025-08-01", 700], ["2025-09-01", 681.55], ["2025-10-01", 403.3], ["2025-11-01", 391.2]],
+  };
+  for (const [interval, word, from, to, flagged, depth] of [
+    ["1wk", "weekly", "2025-09-29", "2025-10-31", "2025-10-13", "-2.4%"],
+    ["1mo", "monthly", "2025-08-01", "2025-11-30", "2025-10-01", "-3.0%"],
+  ] as const) {
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-demerger-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "TMPV", currency: "INR", listingExchangeName: "NSE", exchangeName: "NSE", instrumentType: "EQUITY" }),
+        getDetailedPriceHistoryWithMetadata: async () => ({
+          resolution: interval, points: bars[interval].map(([date, close]) => ({ date: new Date(date), open: close, high: close, low: close, close, volume: 1 })),
+        }),
+        getCorporateActions: async () => ({ symbol: "TMPV", dividends: [], splits: [], earnings: [], demergers: [demerger] }),
+      }),
+    });
+    await history.execute(["TMPV:NSE", "--from", from, "--to", to, "--interval", word], cli.context);
+    const { result, options } = cli.printed[0]!;
+    expect((result.data as Array<{ date: string; flag: string | null }>).find((row) => row.flag === "demerger")?.date, word).toBe(flagged);
+    // Never the -42% from a close before the demerger to one after it.
+    expect(String(options?.heading), word).toContain(`Max drawdown ${depth} (${word} closes, not across the 2025-10-14 demerger)`);
+  }
 });

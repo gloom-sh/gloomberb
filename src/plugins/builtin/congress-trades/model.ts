@@ -1,5 +1,5 @@
 import type { DataTableColumn } from "../../../components";
-import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-layout";
+import { dropColumnsToFit, getTableWidth, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import type { ShortDateOptions } from "../../../utils/datetime-format";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import type { SortDirection } from "../../../utils/sort-values";
@@ -246,8 +246,10 @@ export function buildTradeColumns(width: number, tickerView = false): TradeColum
   const fitted = getTableWidth(long) <= width ? long : dropColumnsToFit(tradeColumns(tickerView, 7, MEMBER_READABLE_WIDTH, null), width, TRADE_DROP_ORDER);
   const shown = new Set(fitted.map((column) => column.id));
   const dateWidth = fitted[0]!.width;
-  const layout = (memberWidth: number, assetWidth: number | null) => tradeColumns(tickerView, dateWidth, memberWidth, assetWidth)
-    .filter((column) => shown.has(column.id) || column.id === "asset");
+  const layout = (memberWidth: number, assetWidth: number | null) => {
+    const all = tradeColumns(tickerView, dateWidth, memberWidth, assetWidth);
+    return markHiddenTableColumns(all, all.filter((column) => shown.has(column.id) || column.id === "asset"));
+  };
   // What the other columns leave, as the table draws them, names the member and then the asset.
   const flexWidth = Math.max(TRADE_MEMBER_MIN_WIDTH, MEMBER_READABLE_WIDTH + width - getTableWidth(fitted));
   // Member names rarely pass 22 cells; the rest names the asset, which is the
@@ -276,7 +278,8 @@ export function buildMemberTradeColumns(width: number): TradeColumn[] {
   const fitted = dropColumnsToFit(layout(MEMBER_TRADE_ASSET_MIN_WIDTH), width, MEMBER_TRADE_DROP_ORDER);
   const shown = new Set(fitted.map((column) => column.id));
   const assetWidth = Math.max(MEMBER_TRADE_ASSET_MIN_WIDTH, MEMBER_TRADE_ASSET_MIN_WIDTH + width - getTableWidth(fitted));
-  return layout(assetWidth).filter((column) => shown.has(column.id));
+  const all = layout(assetWidth);
+  return markHiddenTableColumns(all, all.filter((column) => shown.has(column.id)));
 }
 
 /**
@@ -304,7 +307,8 @@ export function buildMemberColumns(width: number): MemberColumn[] {
   const fitted = dropColumnsToFit(layout(MEMBER_READABLE_WIDTH), width, MEMBER_DROP_ORDER);
   const shown = new Set(fitted.map((column) => column.id));
   const memberWidth = Math.max(MEMBER_READABLE_WIDTH, MEMBER_READABLE_WIDTH + width - getTableWidth(fitted));
-  return layout(memberWidth).filter((column) => shown.has(column.id));
+  const all = layout(memberWidth);
+  return markHiddenTableColumns(all, all.filter((column) => shown.has(column.id)));
 }
 
 export function sortedTrades(

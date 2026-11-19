@@ -242,7 +242,7 @@ function stripAnsi(text: string): string {
  * break and the tab goes (withoutControlCharacters), so a name, a headline or
  * a note from a data source prints as the text it is.
  */
-function cliText(text: string): string {
+export function cliText(text: string): string {
   if (!text.includes("\x1b")) return withoutControlCharacters(text);
   return text
     .split(ANSI_SPLIT)

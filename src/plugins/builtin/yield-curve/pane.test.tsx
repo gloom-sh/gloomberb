@@ -27,8 +27,10 @@ function RegistryProbe() {
   return null;
 }
 
-function Harness({ width = 90, height = 30, tab }: { width?: number; height?: number; tab?: "world" }) {
-  const initial = createInitialState(createTestPaneConfig("/tmp/gloom-curve-test", { instanceId: id, paneId: "yield-curve", binding: { kind: "none" } }));
+function Harness({ width = 90, height = 30, tab, asOfDate }: { width?: number; height?: number; tab?: "world"; asOfDate?: string }) {
+  const initial = createInitialState(createTestPaneConfig("/tmp/gloom-curve-test", {
+    instanceId: id, paneId: "yield-curve", binding: { kind: "none" }, ...(asOfDate ? { settings: { asOfDate } } : {}),
+  }));
   initial.focusedPaneId = id;
   if (tab) initial.paneState[id] = { pluginState: { macro: { "yield-curve:tab": tab } } } as never;
   const [state, dispatch] = useReducer(appReducer, initial);
@@ -291,6 +293,33 @@ test("offline, the World tab keeps its markets and says when its saved copy is f
     await refresh();
     expect(tui.frame()).not.toContain("Germany");
     expect(tui.frame()).toContain("Sign in to view world curves");
+  } finally {
+    worldSpy.mockRestore();
+  }
+});
+
+// `fn GC --tab world --date 2026-11-13` drew 17 and 18 Nov sessions: the World tab read the latest whatever the date.
+test("the World tab is as of the pane's date: each market's session on or before it, and its Date field goes back to the latest", async () => {
+  const curve = (id: "us" | "de", asOf: string, ten: number) => ({
+    curve: { id, label: id, country: id.toUpperCase(), basis: "par" as const, couponsPerYear: 2 }, asOf, checkedAt: null,
+    points: [{ tenor: "2Y", years: 2, yield: 3.5 }, { tenor: "10Y", years: 10, yield: ten }, { tenor: "30Y", years: 30, yield: ten + 0.4 }],
+    previous: null,
+  });
+  const worldSpy = spyOn(apiClient, "getCloudWorldCurves").mockImplementation(async (date) => ({
+    curves: date ? [curve("us", "2026-11-13", 4.2)] : [curve("us", "2026-11-18", 4.4), curve("de", "2026-11-18", 2.6)],
+  }));
+  worldCurvesCache.attach(new MemoryPluginPersistence());
+  try {
+    await act(async () => { await tui.render(<Harness width={90} height={28} tab="world" asOfDate="2026-11-13" />, { width: 90, height: 28 }); });
+    await settle();
+    expect(worldSpy.mock.calls.map((call) => call[0])).toEqual(["2026-11-13"]);
+    expect(tui.frame()).toMatch(/US +3\.50% .* 2026-11-13/);
+    expect(tui.frame()).not.toContain("2026-11-18");
+    expect(tui.frame()).toContain("[c]urrent");
+    await tui.emitKeypress({ name: "c" });
+    await settle();
+    expect(worldSpy.mock.calls.at(-1)?.[0]).toBeNull();
+    expect(tui.frame()).toContain("2026-11-18");
   } finally {
     worldSpy.mockRestore();
   }

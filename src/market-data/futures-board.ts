@@ -28,9 +28,12 @@ export interface FuturesContract {
   /** Lists a contract for every calendar month. */
   everyMonth?: true;
   /**
-   * What a price counts where the server sends no contract terms for the root:
-   * Dutch TTF gas quotes in euros per MWh, which a bare "EUR" does not say, and
-   * live cattle in US cents per pound, where the server's "USX" does not.
+   * What a price counts when the server's contract terms are not at hand: a
+   * terms read that failed, or a root the server sends none for. Dutch TTF gas
+   * quotes in euros per MWh, which a bare "EUR" does not say, live cattle in US
+   * cents per pound, where the server's "USX" does not, and copper in USD / lb,
+   * not a bare USD. Worded as the server's terms word it (checked 2026-11-17),
+   * which win when they come.
    */
   unit?: string;
   /**
@@ -110,40 +113,44 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "ZB=F", code: "ZB", name: "30-Year T-Bond", sector: "rates", venue: "CBT", bareCode: true },
   { symbol: "UB=F", code: "UB", name: "Ultra T-Bond", sector: "rates", venue: "CBT", bareCode: true },
 
-  { symbol: "CL=F", code: "CL", name: "WTI Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01, aliases: ["oil"] },
+  { symbol: "CL=F", code: "CL", name: "WTI Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01, unit: "USD / barrel", aliases: ["oil"] },
   // NYMEX's Brent, cash-settled to the ICE Brent futures settlement; ICE's own contract (B) is not carried.
-  { symbol: "BZ=F", code: "BZ", name: "Brent Crude Oil Last Day Financial", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01 },
-  { symbol: "NG=F", code: "NG", name: "Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, aliases: ["natgas", "nat gas"] },
+  { symbol: "BZ=F", code: "BZ", name: "Brent Crude Oil Last Day Financial", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01, unit: "USD / barrel" },
+  { symbol: "NG=F", code: "NG", name: "Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, unit: "USD / MMBtu", aliases: ["natgas", "nat gas"] },
   // Quoted in euros per MWh.
   { symbol: "TTF=F", code: "TTF", name: "Dutch TTF Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, unit: "EUR / MWh", bareCode: true },
-  { symbol: "RB=F", code: "RB", name: "RBOB Gasoline", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.0001 },
-  { symbol: "HO=F", code: "HO", name: "Heating Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.0001 },
+  { symbol: "RB=F", code: "RB", name: "RBOB Gasoline", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.0001, unit: "USD / gallon" },
+  { symbol: "HO=F", code: "HO", name: "Heating Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.0001, unit: "USD / gallon" },
   // Cash settled on the CL and NG final settlements.
-  { symbol: "QM=F", code: "QM", name: "E-Mini Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.025, bareCode: true },
-  { symbol: "MCL=F", code: "MCL", name: "Micro WTI Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01 },
-  { symbol: "QG=F", code: "QG", name: "E-Mini Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.005, bareCode: true },
-  { symbol: "MNG=F", code: "MNG", name: "Micro Henry Hub Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001 },
-  { symbol: "HH=F", code: "HH", name: "Henry Hub Last Day Financial", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001 },
+  { symbol: "QM=F", code: "QM", name: "E-Mini Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.025, unit: "USD / barrel", bareCode: true },
+  { symbol: "MCL=F", code: "MCL", name: "Micro WTI Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01, unit: "USD / barrel" },
+  { symbol: "QG=F", code: "QG", name: "E-Mini Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.005, unit: "USD / MMBtu", bareCode: true },
+  { symbol: "MNG=F", code: "MNG", name: "Micro Henry Hub Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, unit: "USD / MMBtu" },
+  { symbol: "HH=F", code: "HH", name: "Henry Hub Last Day Financial", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, unit: "USD / MMBtu" },
 
-  { symbol: "GC=F", code: "GC", name: "Gold", sector: "metals", venue: "CMX", tick: 0.1 },
-  { symbol: "SI=F", code: "SI", name: "Silver", sector: "metals", venue: "CMX", tick: 0.005 },
-  { symbol: "HG=F", code: "HG", name: "Copper", sector: "metals", venue: "CMX", tick: 0.0005 },
+  { symbol: "GC=F", code: "GC", name: "Gold", sector: "metals", venue: "CMX", tick: 0.1, unit: "USD / troy oz" },
+  { symbol: "SI=F", code: "SI", name: "Silver", sector: "metals", venue: "CMX", tick: 0.005, unit: "USD / troy oz" },
+  { symbol: "HG=F", code: "HG", name: "Copper", sector: "metals", venue: "CMX", tick: 0.0005, unit: "USD / lb" },
+  // COMEX's micro metals, each settled daily at its full-size contract's settlement for the month.
+  { symbol: "MGC=F", code: "MGC", name: "Micro Gold", sector: "metals", venue: "CMX", tick: 0.1, unit: "USD / troy oz" },
+  { symbol: "SIL=F", code: "SIL", name: "Micro Silver", sector: "metals", venue: "CMX", tick: 0.005, unit: "USD / troy oz" },
+  { symbol: "MHG=F", code: "MHG", name: "Micro Copper", sector: "metals", venue: "CMX", tick: 0.0005, unit: "USD / lb" },
   { symbol: "ALI=F", code: "ALI", name: "Aluminum", sector: "metals", venue: "CMX", tick: 0.25, unit: "USD / metric ton" },
-  { symbol: "PL=F", code: "PL", name: "Platinum", sector: "metals", venue: "NYM", tick: 0.1 },
-  { symbol: "PA=F", code: "PA", name: "Palladium", sector: "metals", venue: "NYM", tick: 0.1 },
+  { symbol: "PL=F", code: "PL", name: "Platinum", sector: "metals", venue: "NYM", tick: 0.1, unit: "USD / troy oz" },
+  { symbol: "PA=F", code: "PA", name: "Palladium", sector: "metals", venue: "NYM", tick: 0.1, unit: "USD / troy oz" },
 
   // Most grains and softs quote in US cents (cocoa, soybean meal and lumber in
   // dollars); a tick is in the quote's own units.
-  { symbol: "ZC=F", code: "ZC", name: "Corn", sector: "agriculture", venue: "CBT", tick: 0.25 },
-  { symbol: "ZS=F", code: "ZS", name: "Soybeans", sector: "agriculture", venue: "CBT", tick: 0.25 },
-  { symbol: "ZM=F", code: "ZM", name: "Soybean Meal", sector: "agriculture", venue: "CBT", tick: 0.1 },
-  { symbol: "ZL=F", code: "ZL", name: "Soybean Oil", sector: "agriculture", venue: "CBT", tick: 0.01, bareCode: true },
-  { symbol: "ZW=F", code: "ZW", name: "Chicago SRW Wheat", sector: "agriculture", venue: "CBT", tick: 0.25, bareCode: true },
-  { symbol: "KE=F", code: "KE", name: "KC HRW Wheat", sector: "agriculture", venue: "CBT", tick: 0.25 },
-  { symbol: "KC=F", code: "KC", name: "Coffee", sector: "agriculture", venue: "NYB", tick: 0.05 },
-  { symbol: "SB=F", code: "SB", name: "Sugar #11", sector: "agriculture", venue: "NYB", tick: 0.01 },
-  { symbol: "CC=F", code: "CC", name: "Cocoa", sector: "agriculture", venue: "NYB", tick: 1 },
-  { symbol: "CT=F", code: "CT", name: "Cotton #2", sector: "agriculture", venue: "NYB", tick: 0.01, bareCode: true },
+  { symbol: "ZC=F", code: "ZC", name: "Corn", sector: "agriculture", venue: "CBT", tick: 0.25, unit: "US cents / bushel" },
+  { symbol: "ZS=F", code: "ZS", name: "Soybeans", sector: "agriculture", venue: "CBT", tick: 0.25, unit: "US cents / bushel" },
+  { symbol: "ZM=F", code: "ZM", name: "Soybean Meal", sector: "agriculture", venue: "CBT", tick: 0.1, unit: "USD / short ton" },
+  { symbol: "ZL=F", code: "ZL", name: "Soybean Oil", sector: "agriculture", venue: "CBT", tick: 0.01, unit: "US cents / lb", bareCode: true },
+  { symbol: "ZW=F", code: "ZW", name: "Chicago SRW Wheat", sector: "agriculture", venue: "CBT", tick: 0.25, unit: "US cents / bushel", bareCode: true },
+  { symbol: "KE=F", code: "KE", name: "KC HRW Wheat", sector: "agriculture", venue: "CBT", tick: 0.25, unit: "US cents / bushel" },
+  { symbol: "KC=F", code: "KC", name: "Coffee", sector: "agriculture", venue: "NYB", tick: 0.05, unit: "US cents / lb" },
+  { symbol: "SB=F", code: "SB", name: "Sugar #11", sector: "agriculture", venue: "NYB", tick: 0.01, unit: "US cents / lb" },
+  { symbol: "CC=F", code: "CC", name: "Cocoa", sector: "agriculture", venue: "NYB", tick: 1, unit: "USD / metric ton" },
+  { symbol: "CT=F", code: "CT", name: "Cotton #2", sector: "agriculture", venue: "NYB", tick: 0.01, unit: "US cents / lb", bareCode: true },
   { symbol: "OJ=F", code: "OJ", name: "Orange Juice", sector: "agriculture", venue: "NYB", tick: 0.05, unit: "US cents / lb", bareCode: true },
   { symbol: "LBR=F", code: "LBR", name: "Lumber", sector: "agriculture", venue: "CME", tick: 0.5, unit: "USD / 1,000 board ft", bareCode: true },
 

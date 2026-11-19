@@ -89,11 +89,38 @@ afterEach(() => {
 
 const paneRuntime = createTestPluginRuntime();
 
+test("a reused COT pane follows the ICE command over its stored legacy tab and closed detail", async () => {
+  const market = { contractCode: "ICE00B", marketName: "ICE Brent Crude Futures - ICE Futures Europe", exchangeCode: "ICEU", commodityCode: "B", contractUnits: "CONTRACTS OF 1,000 BARRELS" };
+  const money = position("managed-money", "Managed Money", 290089, 118486);
+  const common = { ...base, source: "ICE Futures Europe" as const, reportFamily: "disaggregated" as const, asOf: "2026-11-03", classes: [{ id: "managed-money" as const, label: "Managed Money" }] };
+  const asked: unknown[][] = [];
+  spies.push(spyOn(apiClient, "getCloudCotBoard").mockImplementation(async (family) => family === "legacy" ? board() : ({ ...common, gaps: [], traderClass: "managed-money", rows: [{ ...market, reportDate: "2026-11-03", openInterest: 2433965, position: money, status: "available" }] })));
+  spies.push(spyOn(apiClient, "getCloudCotContract").mockImplementation(async (...args) => {
+    asked.push(args);
+    return { ...common, gaps: [], contract: market, sourceUrl: null, openInterest: 2433965, positions: [money], history: [{ reportDate: "2026-11-03", openInterest: 2433965, positions: [money] }] };
+  }));
+  const previous = { [PANE_INSTANCE_ID]: { pluginState: { cot: { report: "legacy", open: "", selected: "067651" } } } };
+  let retarget!: (request: { report: string; code: string; requestAt: string }) => void;
+  function ReusedPane() {
+    const [request, setRequest] = useState({ report: "legacy", code: "067651", requestAt: "1" });
+    retarget = setRequest;
+    return <Harness workspace initialPaneState={previous} {...request} />;
+  }
+  await tui.render(<ReusedPane />, { width: 110, height: 28 });
+  await settle();
+  await act(async () => retarget({ report: "disaggregated", code: "ICE00B", requestAt: "2" }));
+  await settleDetail();
+  expect(asked[0]?.slice(0, 2)).toEqual(["ICE00B", "disaggregated"]);
+  expect(tui.frame()).toContain("Managed Money");
+  expect(tui.frame()).toContain("290,089");
+  expect((apiClient.getCloudHistory as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0]).toBe("BZ=F");
+});
+
 /** A COT pane created by typing COT with CL active: the template puts the code in params. */
-function Harness({ width = 110, height = 28, report = "legacy", code = "067651" }: { width?: number; height?: number; report?: string; code?: string | null }) {
-  const [paneState, setPaneState] = useState<AppState["paneState"]>({});
+function Harness({ width = 110, height = 28, report = "legacy", code = "067651", workspace = false, requestAt = "", initialPaneState = {} }: { width?: number; height?: number; report?: string; code?: string | null; workspace?: boolean; requestAt?: string; initialPaneState?: AppState["paneState"] }) {
+  const [paneState, setPaneState] = useState<AppState["paneState"]>(initialPaneState);
   const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-cot-pane-test", {
-    paneId: "cot", instanceId: PANE_INSTANCE_ID, params: code ? { code } : undefined, settings: { report },
+    paneId: workspace ? "commodities-energy" : "cot", instanceId: PANE_INSTANCE_ID, params: code ? { code, cotReport: report, tab: "positioning", tabAt: requestAt } : undefined, settings: { report },
   }));
   state.paneState = paneState;
   const dispatch = (action: AppAction) => setPaneState(

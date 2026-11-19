@@ -1,5 +1,6 @@
 import type { EarningsFiscalAnchor } from "../../../api-client/earnings";
 import { addDays } from "./board-model";
+import { quarterLabel } from "../shared/earnings-report";
 
 /** A quarter as the company names it: NVIDIA's October 2026 quarter is Q3 of fiscal 2027. */
 export interface FiscalQuarter {
@@ -29,6 +30,40 @@ export function fiscalQuarterOf(period: string | null | undefined, anchor: Earni
 }
 
 /**
+ * The month a period ends in, from a YYYY-MM month or a YYYY-MM-DD end. A
+ * 52/53-week period that ends in a month's first week (Feb 1, 2026) closes
+ * the month before, as its filer counts it.
+ */
+function closingMonth(period: string | null | undefined): number | null {
+  const day = period ? /^(\d{4}-\d{2})-(\d{2})/.exec(period) : null;
+  const month = monthIndex(day ? day[1] : period);
+  return month != null && day && Number(day[2]) <= 7 ? month - 1 : month;
+}
+
+/**
+ * The quarter ending in `period` on a fiscal year that ends in `yearEndMonth`
+ * (1 to 12, from the company's annual statements), where no calls name the
+ * company's quarters: Visa's December 2026 quarter is Q1 FY2027, its year
+ * ending in September. A fiscal year is named by the calendar year it ends
+ * in. Null off that year's quarters, or without a year end.
+ */
+export function fiscalQuarterInYear(period: string | null | undefined, yearEndMonth: number | null | undefined): FiscalQuarter | null {
+  const month = closingMonth(period);
+  if (month == null || yearEndMonth == null || yearEndMonth < 1 || yearEndMonth > 12) return null;
+  const calendarMonth = (month % 12) + 1;
+  const offset = (calendarMonth - yearEndMonth + 12) % 12;
+  if (offset % 3 !== 0) return null;
+  const year = Math.floor(month / 12);
+  return { fiscalYear: calendarMonth <= yearEndMonth ? year : year + 1, fiscalQuarter: offset === 0 ? 4 : offset / 3 };
+}
+
+/** "FY2027" for a period that ends a fiscal year ending in `yearEndMonth`; null for any other. */
+export function fiscalYearText(period: string | null | undefined, yearEndMonth: number | null | undefined): string | null {
+  const quarter = fiscalQuarterInYear(period, yearEndMonth);
+  return quarter?.fiscalQuarter === 4 ? `FY${quarter.fiscalYear}` : null;
+}
+
+/**
  * The quarter-end month a report with none on record announces: the last on
  * the company's cycle that ended 5 to 100 days before it, as Gloom Cloud
  * places its own such reports. Null without the company's calendar.
@@ -51,4 +86,8 @@ export function placedPeriod(date: string, anchor: EarningsFiscalAnchor | null |
 export function fiscalQuarterText(quarter: FiscalQuarter | null | undefined, short = false): string | null {
   if (!quarter) return null;
   return `Q${quarter.fiscalQuarter} FY${short ? String(quarter.fiscalYear).slice(-2) : quarter.fiscalYear}`;
+}
+
+export function fiscalPeriodText(period: string | null | undefined, quarter?: FiscalQuarter | null, short = false): string {
+  return fiscalQuarterText(quarter, short) ?? quarterLabel(period ?? undefined);
 }

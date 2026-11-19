@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../api-client";
 import type { SignedInBroker } from "../../brokers/signed-in/client";
 import { runBrokerSignIn, type BrokerSignInOutcome } from "../../brokers/signed-in/sign-in";
@@ -274,8 +274,10 @@ export function FormModalContent({
 
   // Effects that follow what is typed run here, with the values, and each
   // acts only in the form it belongs to, going by its workflow id.
+  const { dataProvider, tickerRepository } = runtime.getDeps();
+  const alertListingDeps = useMemo(() => ({ dataProvider, store: tickerRepository }), [dataProvider, tickerRepository]);
   useAlertWorkflowQuoteSync({
-    dataProvider: runtime.getDeps().dataProvider,
+    listingDeps: alertListingDeps,
     route,
     updateRoute,
   });
@@ -433,8 +435,11 @@ export function FormModalContent({
         ),
       });
     }
-    if (applied && mountedRef.current) moveOn(field.id);
-  }, [desktop, dialog, moveOn, setValue]);
+    if (!mountedRef.current) return;
+    if (applied) moveOn(field.id);
+    // The picker held the keyboard: give it back to the form's field, or keys go to the panes under the form.
+    requestInputFocus();
+  }, [desktop, dialog, moveOn, requestInputFocus, setValue]);
 
   const modalWidth = Math.min(width, Math.max(1, viewport.width - 2));
   const contentWidth = Math.max(10, modalWidth - TERMINAL_DIALOG_INSET);

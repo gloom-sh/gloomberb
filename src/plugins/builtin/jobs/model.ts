@@ -51,6 +51,20 @@ const SENIORITY_SHORT: Record<string, string> = {
   executive: "Exec",
 };
 
+/** What JOBS says while the server looks for a company's careers system: a first read takes minutes, not a load. */
+export function pendingJobsTitle(symbol: string): string {
+  return `Looking for ${symbol}'s careers system.`;
+}
+export const PENDING_JOBS_MESSAGE = "Roles show here once it is read, usually within a few minutes. This pane checks again on its own.";
+
+/** What JOBS says for a company whose careers system the server looked for and did not find. */
+export function uncoveredJobsState(symbol: string): { title: string; message: string } {
+  return {
+    title: `No careers system found for ${symbol}.`,
+    message: "Gloom reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards.",
+  };
+}
+
 export function functionLabel(id: string | null | undefined): string {
   if (!id) return "Unclassified";
   return FUNCTION_LABELS[id] ?? id;

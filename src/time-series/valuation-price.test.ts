@@ -167,7 +167,7 @@ test("actual resolver/export count a null corrupt valuation as unavailable and r
     expect.objectContaining({ seriesId: "pe", integrity: expect.objectContaining({ sourcePoints: [expect.objectContaining({ open: 70, high: 56 })] }) }),
   ]));
   expect(model.metadata?.summaries).toEqual(expect.arrayContaining([expect.objectContaining({ endValue: null })]));
-  expect(model.metadata?.warnings).toEqual(expect.arrayContaining([expect.stringContaining("inconsistent OHLC")]));
+  expect(model.metadata?.warnings).toEqual(expect.arrayContaining([expect.stringContaining("contradictory prices")]));
 });
 
 test("historical date windows and period limits do not inherit excluded current or older price failures", async () => {
@@ -218,7 +218,7 @@ test("invalid non-OHLC prices interrupt studies and retain the reason during lat
     expect.objectContaining({ seriesId: "sma", issues: [expect.objectContaining({ kind: "history", reason: "invalid-price", point: expect.objectContaining({ close: 0 }) })] }),
   ]));
   expect(warmup.chart.warnings.some((warning) => warning.includes("Historical valuation unavailable"))).toBe(true);
-  expect(warmup.chart.warnings.some((warning) => warning.includes("inconsistent OHLC"))).toBe(false);
+  expect(warmup.chart.warnings.some((warning) => warning.includes("contradictory prices"))).toBe(false);
 });
 
 test.each(["NaN", "future"] as const)("actual live quote status and %s timestamp recovery recompute Current valuations", async invalidKind => {

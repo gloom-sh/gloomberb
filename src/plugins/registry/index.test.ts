@@ -6,23 +6,21 @@ import { TickerRepository } from "../../data/ticker-repository";
 import { createDefaultConfig, createPaneInstance } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type { GloomPlugin, GloomPluginContext } from "../../types/plugin";
-import {
-  altDataPlugin,
-  applicationPlugin,
-  creditPlugin,
-  cryptoPlugin,
-  earningsPlugin,
-  futuresCommoditiesPlugin,
-  globalMarketsPlugin,
-  portfolioPlugin,
-  quantPlugin,
-  ratesMacroPlugin,
-  screenersPlugin,
-  filingsPlugin,
-  optionsVolatilityPlugin,
-  ownershipPlugin,
-  tickerCorePlugin,
-} from "../builtin/composite-plugins";
+import { altDataPlugin } from "../builtin/composite/alt-data";
+import { applicationPlugin } from "../builtin/composite/application";
+import { creditPlugin } from "../builtin/composite/credit";
+import { cryptoPlugin } from "../builtin/composite/crypto";
+import { earningsPlugin } from "../builtin/composite/earnings";
+import { futuresCommoditiesPlugin } from "../builtin/composite/futures-commodities";
+import { globalMarketsPlugin } from "../builtin/composite/global-markets";
+import { portfolioPlugin } from "../builtin/composite/portfolio";
+import { quantPlugin } from "../builtin/composite/quant";
+import { ratesMacroPlugin } from "../builtin/composite/rates-macro";
+import { screenersPlugin } from "../builtin/composite/screeners";
+import { filingsPlugin } from "../builtin/composite/filings";
+import { optionsVolatilityPlugin } from "../builtin/composite/options-volatility";
+import { ownershipPlugin } from "../builtin/composite/ownership";
+import { tickerCorePlugin } from "../builtin/composite/ticker-core";
 import { registeredStateNamespace } from "../test-fixture";
 import { resolveShellVisibleLayout } from "../../components/layout/shell/visible-layout";
 import { expandBuiltinPluginGroups } from "../ownership";

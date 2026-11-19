@@ -30,6 +30,7 @@ import { cleanFloat32Price, decimalPlaces } from "../utils/float32-price";
 import { futuresBoardContract } from "../market-data/futures-board";
 import { isFuturesInstrument } from "../market-data/futures-contract";
 import { contractPriceUnit } from "../time-series/price-units";
+import { DEMERGER_FLAG } from "./history-demergers";
 
 /** A float32 price as the decimal it is, which a quote's dated close is cleaned with too (utils/float32-price). */
 export { cleanFloat32Price };
@@ -44,8 +45,11 @@ const LATE_START_MIN_MS = 10 * DAY_MS;
 const LATE_START_MIN_BARS = 3;
 /** A close more than this many times the close before it, or less than its hundredth, follows a jump. */
 const BREAK_JUMP_RATIO = 100;
-/** Flag codes for a break before a bar, whose prices stay as served; every other code blanks them. */
-const BREAK_FLAGS: ReadonlySet<string> = new Set(["gap", "jump"]);
+/**
+ * Flag codes for a break before a bar, whose prices stay as served; every other code blanks them. A demerger is one:
+ * the bar trades without a business the closes before it held.
+ */
+const BREAK_FLAGS: ReadonlySet<string> = new Set(["gap", "jump", DEMERGER_FLAG]);
 const FIRST_MONDAY_MS = Date.UTC(1970, 0, 5);
 
 export const BAR_INTERVAL_LABELS: Record<ManualChartResolution, string> = {
@@ -300,8 +304,8 @@ export function historyBarValues(point: PricePoint, monthly: boolean): ReturnTyp
 
 /**
  * What HP says of its bars whose prices contradict each other: one left
- * blank whole as every price view says it ("1 inconsistent OHLC bar is
- * unavailable"), a month that keeps its close as `history` says it
+ * blank whole as every price view says it ("1 bar has contradictory prices;
+ * left blank."), a month that keeps its close as `history` says it
  * (historyFlagNote, with no daily bars read). Undefined when none.
  */
 export function priceTableIntegrityNotice(rows: readonly { flag?: string | null; close: number | null; integrity?: unknown }[]): string | undefined {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { keyHintWords } from "../../../ui/key-hint-words";
-import { ageFooterSegment, combinePaneFooterRegistrations, delayedFooterSegment, desktopHintMetrics, fitPaneFooterInfo, paneFooterInfoWidth, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, totalHintsWidth, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
+import { ageFooterSegment, combinePaneFooterRegistrations, cutAtWord, delayedFooterSegment, desktopHintMetrics, fitPaneFooterInfo, noteLineParts, paneFooterInfoWidth, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, totalHintsWidth, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -38,10 +38,8 @@ describe("footer hint row", () => {
     const stale: PaneFooterSegment = { id: "stale", parts: [{ text: "stale" }] };
     // The two and the separator between them (" · ").
     expect(fitPaneFooterInfo([line, stale], full.length + 8)).toEqual([line, stale]);
-    // The status after it gives way before it shortens.
-    const tight = fitPaneFooterInfo([line, stale], full.length + 7);
-    expect(tight[0]).toEqual(line);
-    expect(tight[1]!.parts[0]!.text).toBe("st…");
+    // The status after it gives way before it shortens, whole: a word is never cut ("st…").
+    expect(fitPaneFooterInfo([line, stale], full.length + 7)).toEqual([line]);
     const narrow = fitPaneFooterInfo([line, stale], 70);
     expect(narrow.map((segment) => segment.parts[0]!.text)).toEqual(["Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed", "stale"]);
     expect(narrow[0]!.title).toBe(full);
@@ -52,6 +50,12 @@ describe("footer hint row", () => {
     const quote: PaneFooterSegment = { id: "quote", parts: [{ text: "quote" }, { text: "12h" }] };
     const trade: PaneFooterSegment = { id: "trade", parts: [{ text: "trade" }, { text: "12h" }] };
     expect(fitPaneFooterInfo([contract, quote, trade], 32).map((segment) => segment.id)).toEqual(["contract", "quote"]);
+    // A terminal pane not focused has no hints beside its status and trims it the same way, never mid-word
+    // ("historical, 60 daily returns · U"); a pane picture's row still overflows, for its status line to fit.
+    expect(fitPaneFooterInfo([contract, quote, trade], 32, { besideHints: false, terminal: true }).map((segment) => segment.id))
+      .toEqual(["contract", "quote"]);
+    expect(fitPaneFooterInfo([contract, quote, trade], 32, { besideHints: false }).map((segment) => segment.id))
+      .toEqual(["contract", "quote", "trade"]);
     const line: PaneFooterSegment = { id: "line", parts: [{ text: "Fri 9 Oct close" }, { text: "· 15 min delayed", tone: "muted" }] };
     const cut = fitPaneFooterInfo([contract, line], 48).at(-1)!;
     expect(cut.parts).toEqual([{ text: "Fri 9 Oct close" }, { text: "· 15 min…", tone: "muted" }]);
@@ -102,6 +106,38 @@ describe("footer hint row", () => {
     const short = fitPaneFooterInfo([listed, note, updated], 33 + 3 + 20);
     expect(short.map((segment) => segment.parts[0]!.text)).toEqual(["No events listed after Mon 24 Aug", "no consensus yet"]);
     expect(short[1]!.title).toBe("-- forecast = no consensus yet");
+  });
+
+  // APPS, AWARDS and EXPO captures printed every note joined and cut the row mid-word ("Grossing and genre ranks are unava").
+  test("a picture's notes are one line: the first note, cut after a whole word, and how many more", () => {
+    const notes = [
+      "Chart ranks are ordinal attention proxies, not downloads, revenue or market share.",
+      "Grossing and genre ranks are unavailable.",
+      "Country spreads require the same chart and observations within 36 hours.",
+    ];
+    expect(noteLineParts(notes, 200)).toEqual([{ text: notes[0], tone: "warning" }, { text: "+2 more", tone: "label" }]);
+    // Short of room, the note ends on its last whole word, never a comma.
+    expect(noteLineParts(notes, 50)).toEqual([{ text: "Chart ranks are ordinal attention proxies…", tone: "warning" }, { text: "+2 more", tone: "label" }]);
+    expect(noteLineParts([notes[1]!], 41)).toEqual([{ text: notes[1], tone: "warning" }]);
+    expect(noteLineParts([notes[1]!], 40)).toEqual([{ text: "Grossing and genre ranks are…", tone: "warning" }]);
+    // Not a word fits: how many notes there are.
+    expect(noteLineParts(notes, 12)).toEqual([{ text: "3 notes", tone: "warning" }]);
+    expect(cutAtWord("unreconciled", 8)).toBe("");
+
+    const line: PaneFooterSegment = { id: "notes", notes, parts: [{ text: "⚠", tone: "warning" }] };
+    const status: PaneFooterSegment = { id: "status", parts: [{ text: "Tue 17 Nov 2026 00:02 UTC · live · after hours", tone: "label" }] };
+    // Alone, the line has the row; beside a status, what the status leaves.
+    expect(fitPaneFooterInfo([line], 100, { besideHints: false })[0]!.parts.map((part) => part.text)).toEqual([notes[0], "+2 more"]);
+    const shared = fitPaneFooterInfo([line, status], 120, { besideHints: false });
+    expect(shared[1]).toEqual(status);
+    expect(paneFooterInfoWidth(shared)).toBeLessThanOrEqual(120);
+    expect(shared[0]!.parts[0]!.text).toBe("Chart ranks are ordinal attention proxies, not downloads…");
+    expect(shared[0]!.title).toBe(notes.join("\n"));
+    // A status too long to leave the line its share overflows the row, so a capture steps it down.
+    const long: PaneFooterSegment = { id: "status", parts: [{ text: "x ".repeat(40).trim() }] };
+    const crowded = fitPaneFooterInfo([line, long], 100, { besideHints: false });
+    expect(paneFooterInfoWidth([crowded[0]!])).toBeLessThanOrEqual(60);
+    expect(paneFooterInfoWidth(crowded)).toBeGreaterThan(100);
   });
 
   test("a failure keeps more of its sentence than a status word does", () => {

@@ -1,7 +1,7 @@
 import type { GuidancePayload, KpiGuidance, KpiObservation, KpiSeries, KpiUnit, KpisPayload } from "../../../api-client/company-kpis";
 import type { DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
-import { getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
+import { getTableWidth, markHiddenTableColumns, tableColumnWidth } from "../../../components/ui/table-layout";
 import type { CompositeChartXAxis } from "../../../components/chart/composite/types";
 import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 import { growthRate, isNotMeaningful, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE } from "../../../utils/growth";
@@ -129,15 +129,52 @@ export function allObservations(data: KpisPayload): KpiObservation[] {
 export function allGuidance(data: GuidancePayload): KpiGuidance[] {
   return [...new Map([...data.guidance, ...data.history].map((row) => [row.id, row])).values()];
 }
-/** A KPI's change on the period before: N/M off a zero or negative base, where a percentage of it says nothing. */
+/**
+ * How far back the period just before is, for the kinds that repeat: in fiscal
+ * quarters, and in days between period ends (52- and 53-week calendars included).
+ * A year to date repeats a year later: the nine months to September against
+ * the nine months to September before, never against the same year's half.
+ */
+const PERIOD_STEP: Partial<Record<KpiObservation["period"]["kind"], { quarters: number; days: readonly [number, number] }>> = {
+  quarter: { quarters: 1, days: [80, 100] },
+  half: { quarters: 2, days: [170, 195] },
+  year: { quarters: 4, days: [350, 380] },
+  ytd: { quarters: 4, days: [350, 380] },
+};
+const DAY_MS = 86_400_000;
+/**
+ * A KPI's change on the period just before: N/M off a zero or negative base,
+ * where a percentage of it says nothing. A quarter is set against the quarter
+ * before it and a year against the year before, never against an older one
+ * when that period is missing: Tencent's Q2 2026 revenue over its Q3 2025 one
+ * read +6.19% as if quarter on quarter, where the quarter before gave +4%.
+ * A year to date is set against the same window a year earlier: nine months
+ * against the half of the same year read +52.73% for an insurer whose nine
+ * months grew 0.9%. A balance is set against the balance before it; a period
+ * of another kind ("other") against none, its window being unknown.
+ */
 export function observationChange(row: KpiObservation, observations: KpiObservation[]): { value: number | null; unit: string; notMeaningful?: true } {
   const fiscalOrder = (item: KpiObservation) => item.period.fiscalYear !== null && (item.period.kind === "year" || item.period.fiscalQuarter !== null)
     ? item.period.fiscalYear * 4 + (item.period.fiscalQuarter ?? 0) : null;
   const previousPeriod = (other: KpiObservation) => other.period.end && row.period.end ? other.period.end < row.period.end
     : fiscalOrder(other) !== null && fiscalOrder(row) !== null && fiscalOrder(other)! < fiscalOrder(row)!;
+  const step = PERIOD_STEP[row.period.kind];
+  const adjacent = (other: KpiObservation) => {
+    if (!step) return row.period.kind === "instant";
+    if (other.period.end && row.period.end) {
+      const days = (Date.parse(row.period.end) - Date.parse(other.period.end)) / DAY_MS;
+      return days >= step.days[0] && days <= step.days[1];
+    }
+    const [from, to] = [fiscalOrder(other), fiscalOrder(row)];
+    return from !== null && to !== null && to - from === step.quarters;
+  };
+  // A year to date's prior is the same window a year earlier, as long by its dates when both state them.
+  const days = (item: KpiObservation) => item.period.start && item.period.end ? (Date.parse(item.period.end) - Date.parse(item.period.start)) / DAY_MS : null;
+  const sameWindow = (other: KpiObservation) => row.period.kind !== "ytd" || adjacent(other)
+    && (days(row) === null || days(other) === null || Math.abs(days(row)! - days(other)!) <= 10);
   const prior = observations.filter((other) => other.id !== row.id && other.current && !other.conflict && !other.contested && exactObservation(other) && other.seriesKey === row.seriesKey
-    && other.period.kind === row.period.kind && previousPeriod(other)).sort((a, b) => periodOrder(b).localeCompare(periodOrder(a)))[0];
-  if (!prior || (row.conflict || row.contested) || !exactObservation(row)) return { value: null, unit: "" };
+    && other.period.kind === row.period.kind && previousPeriod(other) && sameWindow(other)).sort((a, b) => periodOrder(b).localeCompare(periodOrder(a)))[0];
+  if (!prior || !adjacent(prior) || (row.conflict || row.contested) || !exactObservation(row)) return { value: null, unit: "" };
   if (row.unit === "percent") return { value: row.value - prior.value, unit: "pp" };
   if (row.unit === "basis_points") return { value: row.value - prior.value, unit: "bp" };
   const growth = growthRate(row.value, prior.value);
@@ -251,7 +288,7 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
 }
 
 /** Cells a column gives up on a narrow pane, before any column is dropped: a date needs 10, a range about 19. */
-const NARROW_WIDTHS: Record<string, number> = { value: 19, change: 11, issued: 10, actual: 12, outcome: 9, basis: 12, scope: 18 };
+const NARROW_WIDTHS: Record<string, number> = { period: 13, value: 19, change: 11, issued: 10, actual: 12, outcome: 9, basis: 12, scope: 18 };
 /** The metric keeps at least this much: a name such as "Revenue growth", and its series detail only when there is room. */
 const METRIC_FLOOR = 14;
 
@@ -259,9 +296,8 @@ const METRIC_FLOOR = 14;
  * The table's columns at a pane `width` in cells, so none is cut at the right edge.
  * A table that already fits is left as it is. Otherwise the columns take their
  * narrow widths, and the metric, which flexes, keeps what is left down to its
- * floor. Below that a column whose meaning is in the detail goes (Action in History,
- * where the outcome says it, then Issued), never one that names the row. A table that
- * cannot fit even so keeps its narrow widths and scrolls sideways, as it always has.
+ * floor. Below that optional columns give way, preserving the metric and its value.
+ * The selected row's detail retains the fields that no longer fit.
  */
 export function fitCompanyColumns(columns: readonly DataTableColumn[], width: number, history = false): DataTableColumn[] {
   const room = width - 1;
@@ -275,16 +311,21 @@ export function fitCompanyColumns(columns: readonly DataTableColumn[], width: nu
     return fitted >= METRIC_FLOOR ? tight.map((column) => column === metric ? { ...column, width: fitted } : column) : null;
   };
   let shown = [...columns];
-  for (const drop of [null, ...(history ? ["change", "issued"] : ["issued"])]) {
+  for (const drop of [null, ...(history ? ["change", "issued"] : ["issued", "change"]), "scope", "basis", "trend", "period", "outcome", "actual"]) {
     if (drop) shown = shown.filter((column) => column.id !== drop);
     const fitted = attempt(shown);
-    if (fitted) return fitted;
+    if (fitted) return markHiddenTableColumns(columns, fitted);
   }
-  return narrow(columns);
+  return markHiddenTableColumns(columns, narrow(shown));
+}
+
+export function guidanceIssueNote(row: KpiGuidance, rows: readonly KpiGuidance[]): string | null {
+  const newest = rows.reduce((date, guide) => guide.issuedDate > date ? guide.issuedDate : date, row.issuedDate);
+  return row.issuedDate < newest ? `Issued ${row.issuedDate}; newer outlook ${newest}` : null;
 }
 
 /** Companies to point an empty pane at, one that has data and one for when the pane is for the first. */
-const EXAMPLE_COMPANIES: Record<CompanyMode, readonly string[]> = { guidance: ["WMT", "DAL"], kpis: ["AAPL", "NVDA"] };
+const GUIDANCE_EXAMPLE_COMPANIES = ["WMT", "DAL"] as const;
 
 /**
  * What an empty table says. A company with nothing on file for the function reads as
@@ -293,10 +334,11 @@ const EXAMPLE_COMPANIES: Record<CompanyMode, readonly string[]> = { guidance: ["
  */
 export function companyEmptyState(mode: CompanyMode, symbol: string, view: { tab: string; hasRows: boolean }, surface: "cli" | "pane" = "pane"): { title: string; hint?: string } {
   if (view.hasRows) return { title: view.tab === "history" ? "Actuals have not been matched to these guidance periods yet." : "No disclosed observations for this selection yet." };
-  const examples = EXAMPLE_COMPANIES[mode];
+  if (mode === "kpis") return { title: `No KPIs on file for ${symbol} yet.` };
+  const examples = GUIDANCE_EXAMPLE_COMPANIES;
   const example = examples.find((candidate) => candidate !== symbol.trim().toUpperCase()) ?? examples[0]!;
-  const command = `${mode === "kpis" ? "KPIS" : "GUIDE"} ${example}`;
-  return { title: mode === "kpis" ? `KPIs for ${symbol} are not yet available.` : `Guidance for ${symbol} is not yet available.`, hint: `Try ${surface === "cli" ? `\`fn ${command}\`` : command}.` };
+  const command = `GUIDE ${example}`;
+  return { title: `Guidance for ${symbol} is not yet available.`, hint: `Try ${surface === "cli" ? `\`fn ${command}\`` : command}.` };
 }
 
 /** What a missing KPI means, as KPIS states it among its limitations and EQS beside a KPI column with gaps. */

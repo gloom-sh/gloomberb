@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { MISSING_VALUE } from "../../../utils/format";
 import type { EarningsCalendarPayload, EarningsCalendarReport, EarningsHistoryPayload } from "../../../api-client/earnings";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { addDays, newYorkToday } from "./board-model";
@@ -8,6 +9,8 @@ import { createEarningsBoardHeadless, createEarningsHeadless } from "./headless"
 import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderReportCsv } from "../../../cli/report-tables";
+import { historyRows } from "./history-model";
+import { historyColumns, renderHistoryCell } from "./history-table";
 
 const today = newYorkToday();
 type HistoryReport = EarningsHistoryPayload["reports"][number];
@@ -23,6 +26,26 @@ const history: EarningsHistoryPayload = { asOf: `${today}T12:00:00.000Z`, symbol
 ] };
 const context = {} as HeadlessPaneContext;
 const args = { rawArgument: "CRWV", argument: "CRWV", symbols: ["CRWV"], options: {} };
+
+test("a cut market board is incomplete, advertises its full count, and the suggested limit retrieves the omitted tail", async () => {
+  const reports = Array.from({ length: 331 }, (_, index) => ({
+    ...report({ symbol: `STOCK${index}`, date: addDays(today, index % 5) }),
+    averageMove: null, averageReports: 0,
+  }));
+  const definition = createEarningsBoardHeadless({
+    calendar: async () => ({ asOf: `${today}T12:00:00Z`, from: today, to: addDays(today, 6), reports }),
+    history: async () => history, upcoming: async () => [],
+  });
+  const boardArgs = { rawArgument: "", argument: null, symbols: [], options: {} };
+  const cut = await definition.load(boardArgs, context);
+  expect(cut.rows).toHaveLength(200);
+  expect(cut.complete).toBe(false);
+  expect(cut.notes).toEqual(["Showing 200 of 331 reports. Retrieve all with --limit 331."]);
+  const full = await definition.load({ ...boardArgs, options: { limit: 331 } }, context);
+  expect(full.complete).toBe(true);
+  expect(new Set(full.rows.map((row) => row.symbol)).size).toBe(331);
+  expect(full.notes).toBeUndefined();
+});
 
 test("ERN rows carry each quarter's basis, the estimate's analysts and whether the next date is projected", async () => {
   const definition = createEarningsHeadless({
@@ -545,4 +568,57 @@ test("a surprise against a loss estimate exports null with its NotMeaningful fla
     expect(row[surprise]).toBe("");
     expect(row.at(-1)).toContain("EPS surp: n/m");
   }
+});
+
+test("a reported quarter with no consensus on record says so in the text, the CSV status and the pane, never a bare blank", async () => {
+  // A quarter whose figure Gloom Cloud has and whose consensus no source does (NVIDIA's May 2026 report did not, before Gloom Cloud read the street's).
+  const withoutConsensus: EarningsHistoryPayload = { ...history, symbol: "NVDA", name: "NVIDIA Corporation", reports: [
+    report({ date: addDays(today, -60), fiscalPeriod: "2026-07", epsEstimate: 2.09, epsActual: 2.22, epsAnalysts: 12, epsBasis: "adjusted", dateStatus: "reported" }),
+    report({ date: addDays(today, -150), fiscalPeriod: "2026-04", epsActual: 2.39, epsBasis: "gaap", dateStatus: "reported" }),
+  ] };
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => withoutConsensus,
+    upcoming: async () => [],
+  });
+  const result = await definition.load(args, context);
+  expect(renderHeadlessPaneText(definition, result, args, "ERN")).toContain("no consensus");
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "ERN", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
+  const [header, ...lines] = csv.split("\n");
+  const columns = header!.split(",");
+  const [estimate, status] = [columns.indexOf("EPS est"), columns.indexOf("value_status")];
+  const row = lines.find((line) => line.includes(",2.39,"))!.split(",");
+  expect([row[estimate], row[status]]).toEqual(["", "EPS est: no consensus"]);
+  // Its neighbour, measured against its consensus, says nothing of the kind.
+  expect(lines.find((line) => line.includes(",2.22,"))!.split(",")[status]).toBe("");
+  const rows = historyRows(withoutConsensus, today, null);
+  const column = historyColumns(2000, rows).find((entry) => entry.id === "epsEstimate")!;
+  expect(rows.map((entry) => renderHistoryCell(entry, column).text)).toEqual(["2.09", "no est"]);
+});
+
+test("a report out with no actual yet says pending in the text, the CSV status and the pane, as the board does", async () => {
+  // NVIDIA the evening it reported: out after the close, the calendar's figure due the next day, its release unproven.
+  const out: EarningsHistoryPayload = { ...history, symbol: "NVDA", name: "NVIDIA Corporation", reports: [
+    report({ date: today, fiscalPeriod: "2026-10", epsEstimate: 2.49, epsAnalysts: 14, epsBasis: "adjusted", dateStatus: "reported", reportedAt: `${today}T21:20:00.000Z` }),
+    report({ date: addDays(today, -83), fiscalPeriod: "2026-07", epsEstimate: 2.09, epsActual: 2.22, epsAnalysts: 12, epsBasis: "adjusted", dateStatus: "reported" }),
+    // A report known only from its results filing, years back: no figure is coming, so no "pending".
+    report({ date: addDays(today, -1092), dateStatus: "reported", reportedAt: `${addDays(today, -1092)}T21:20:00.000Z` }),
+  ] };
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => out,
+    upcoming: async () => [],
+  });
+  const result = await definition.load(args, context);
+  expect(renderHeadlessPaneText(definition, result, args, "ERN")).toContain("pending");
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "ERN", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
+  const [header, ...lines] = csv.split("\n");
+  const columns = header!.split(",");
+  const [actual, status] = [columns.indexOf("EPS act"), columns.indexOf("value_status")];
+  const pending = lines.find((line) => line.startsWith(today))!.split(",");
+  expect([pending[actual], pending[status]]).toEqual(["", "EPS act: pending"]);
+  expect(lines.find((line) => line.includes(",2.22,"))!.split(",")[status]).toBe("");
+  const rows = historyRows(out, today, null);
+  const column = historyColumns(2000, rows).find((entry) => entry.id === "epsActual")!;
+  expect(rows.map((entry) => renderHistoryCell(entry, column).text)).toEqual(["pending", "2.22", MISSING_VALUE]);
 });

@@ -1,4 +1,4 @@
-/** The CFTC report: Legacy, Disaggregated, or Traders in Financial Futures (TFF). */
+/** Legacy, Disaggregated (CFTC and ICE Europe), or Traders in Financial Futures (TFF). */
 export type CotFamily = "legacy" | "disaggregated" | "tff"
 export type CotClass = "noncommercial" | "commercial" | "producer" | "swap" | "managed-money" | "other-reportable" | "nonreportable"
   | "dealer" | "asset-manager" | "leveraged-funds"
@@ -39,7 +39,7 @@ interface CotMarket {
   contractUnits?: string | null
 }
 export interface CotPayloadBase {
-  source: "CFTC"
+  source: "CFTC" | "ICE Futures Europe" | "CFTC / ICE Futures Europe"
   scope: CotPositions
   reportFamily: CotFamily
   generatedAt: string
@@ -48,9 +48,8 @@ export interface CotPayloadBase {
   /** Latest report's actual source download time, not its publication time. */
   fetchedAt: string | null
   /**
-   * The latest report's scheduled release by the CFTC's calendar (3:30 p.m.
-   * New York on the Friday after its Tuesday, a business day later around a
-   * federal holiday); null from an older server, which did not say.
+   * The publisher's scheduled release. ICE Europe normally publishes Friday
+   * at 18:30 London time; CFTC uses its own calendar. Null where unverified.
    */
   publishedAt: string | null
   status: "available" | "partial" | "unavailable"
@@ -71,7 +70,7 @@ export interface CotBoardPayload extends CotPayloadBase {
 export interface CotHistoryPoint {
   reportDate: string
   /** The report's scheduled release; absent from an older server. */
-  publishedAt?: string
+  publishedAt?: string | null
   openInterest: number | null
   positions: Array<CotPosition & { id: CotClass; net: number | null; netPercentOfOpenInterest: number | null }>
 }

@@ -303,3 +303,36 @@ jobs:
         with:
           name: gloomberb-desktop-windows-x64
           path: artifacts/*
+
+  # The catalog snapshot the npm package carries: `gloom catalog` and `fn` read it instead of loading every built-in
+  # plugin. The binaries and the desktop app write their own while they build (scripts/build.ts). The job that
+  # publishes to npm installs nothing, so it takes this file, attested here, and puts it in the package.
+  catalog-snapshot:
+    # Nightly publishes nothing to npm.
+    if: ${{ inputs.channel != 'nightly' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Write the catalog snapshot
+        run: bun run catalog:snapshot
+
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: src/cli/pane-functions/catalog-snapshot.json
+
+      # Not named gloomberb-*: the release and nightly jobs download those into the folder they upload from.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: catalog-snapshot
+          path: src/cli/pane-functions/catalog-snapshot.json
+          if-no-files-found: error

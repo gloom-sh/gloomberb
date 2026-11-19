@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { handleRequest, SECURITY_HEADERS, signedOutProxyLimit, type WorkerEnv } from "./worker";
 import { REGISTRY_ORIGIN } from "../../plugins/marketplace/feed";
 import { DOCS_SITE } from "../../docs/content";
+import { NO_SESSION_COOKIE, SESSION_BINDING_HEADER, SESSION_BINDING_META, SESSION_COOKIE_NAMES } from "../../api-client/session-cookie";
 
 function fixture() {
   const requests: Request[] = [];
@@ -17,6 +18,30 @@ function fixture() {
 }
 
 describe("static Cloudflare host", () => {
+  test("the document and a cookie-authenticated session read share only a non-secret binding", async () => {
+    const env: WorkerEnv = { ASSETS: { async fetch() {
+      return new Response("<!doctype html><html><head></head></html>", { headers: { "content-type": "text/html" } });
+    } } };
+    const origin = "https://term.example";
+    const token = "fixture-session-with-opaque-signature";
+    const cookie = `${SESSION_COOKIE_NAMES[0]}=${token}`;
+    const upstream = () => Promise.resolve(Response.json({ user: { id: "test-user" } }));
+    const session = await handleRequest(new Request(`${origin}/api/auth/get-session`, { headers: { cookie } }), env, upstream);
+    const binding = session.headers.get(SESSION_BINDING_HEADER);
+    expect(binding).toMatch(/^[a-f0-9]{64}$/);
+    expect(session.headers.get("cache-control")).toBe("private, no-store");
+    const document = await handleRequest(new Request(origin, { headers: { cookie: `theme=dark; ${cookie}` } }), env);
+    const html = await document.text();
+    expect(html).toContain(`name="${SESSION_BINDING_META}" content="${binding}"`);
+    expect(html).not.toContain(token);
+    const changed = await handleRequest(new Request(origin, { headers: { cookie: `${cookie}-changed` } }), env);
+    expect(await changed.text()).not.toContain(binding!);
+    const signedOut = await handleRequest(new Request(origin), env);
+    expect(await signedOut.text()).toContain(`name="${SESSION_BINDING_META}" content="${NO_SESSION_COOKIE}"`);
+    const bearer = await handleRequest(new Request(`${origin}/api/auth/get-session`, { headers: { cookie, authorization: "Bearer another-account" } }), env, upstream);
+    expect(bearer.headers.has(SESSION_BINDING_HEADER)).toBe(false);
+  });
+
   test("reports health without invoking static assets", async () => {
     const { env, requests } = fixture();
     const response = await handleRequest(new Request("https://term.example/health"), env);

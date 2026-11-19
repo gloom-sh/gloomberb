@@ -32,7 +32,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -99,41 +99,44 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
   // The rates of a listing paid in a conversion of what its company declares say what they were converted from.
   const converted = convertedFrom ? { detail: convertedFromText(convertedFrom) } : {};
   const exDate: StatItem[] = metrics.nextExDividendDate
-    ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate) }]
+    ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate), essential: true }]
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
   const dated = metrics.lapse ? lastPaidNote(metrics.lapse)
     : metrics.forwardYield == null ? null
-    : metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS : forwardDividendNote(metrics.forwardRateAsOf, { declared, currency });
+    : forwardEstimateText(metrics) ?? (metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS : forwardDividendNote(metrics.forwardRateAsOf, { declared, currency }));
   // "not SEC" in the grid: the SEC yield is the next cell, and the long form costs the header a column.
   const notSec = (note: string | null) => bond ? [note, "not SEC"].filter(Boolean).join(", ") : note;
-  const forwardNote = notSec(dated);
+  const forwardNote = metrics.forwardEstimate ? null : notSec(dated);
   // A regular payer's year with fewer payments than its cadence pays says how many the yield counts.
   const trailingNote = notSec(trailingPaymentsText(metrics.trailingPayments));
   const ttmLabel = bond ? (short ? "TTM dist" : "TTM dist yld") : short ? "TTM yld" : "TTM yield";
   const fwdLabel = bond ? (short ? "Fwd dist" : "Fwd dist yld") : short ? "Fwd yld" : "Fwd yield";
   const sec = bond ? bondFigures(bond).find((figure) => figure.key === "secYield") : undefined;
   return [
-    { id: "ttm-yield", label: ttmLabel, value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0),
+    { id: "ttm-yield", essential: true, label: ttmLabel, value: `${formatDividendYield(metrics.trailingYield)}${metrics.trailingEstimates?.length ? " estimated" : ""}`, color: priceColor(metrics.trailingYield ?? 0),
       ...(trailingNote ? { detail: trailingNote } : {}) },
     // Dated by the distribution it annualizes, or marked declared (with its stated amount) beside the next ex-date;
     // a dividend that stopped has none, dated by its last ex-date, and a monthly payer's history that ends says so.
     // docs/research-data.md says how it is built.
     metrics.lapse
-      ? { id: "forward-yield", label: fwdLabel, value: lapseValue(metrics.lapse), ...(forwardNote ? { detail: forwardNote } : {}) }
-      : { id: "forward-yield", label: fwdLabel, value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0),
+      ? { id: "forward-yield", essential: true, label: fwdLabel, value: lapseValue(metrics.lapse), ...(forwardNote ? { detail: forwardNote } : {}) }
+      : { id: "forward-yield", essential: true, label: fwdLabel, value: `${formatDividendYield(metrics.forwardYield)}${metrics.forwardEstimate ? " estimated" : ""}`, color: priceColor(metrics.forwardYield ?? 0),
         ...(forwardNote ? { detail: forwardNote } : {}) },
+    ...(metrics.forwardEstimate ? [{ id: "forward-fx", essential: true, label: metrics.forwardEstimate.fixingDate ? "FX fixing" : "FX basis",
+      value: metrics.forwardEstimate.fixingDate ?? `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
     // The 30-day SEC yield as the fund's sponsor publishes it, dated.
     ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${sec.date}` } : {}) }] : []),
-    { id: "ttm-rate", label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency, !!convertedFrom, convertedSubUnit),
+    { id: "ttm-rate", essential: false, label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency, !!convertedFrom, convertedSubUnit),
       ...metrics.trailingRate != null ? converted : {} },
-    { id: "forward-rate", label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency, !!convertedFrom, convertedSubUnit),
+    { id: "forward-rate", essential: false, label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency, !!convertedFrom, convertedSubUnit),
       ...metrics.forwardRate != null ? converted : {} },
-    growthItem("growth-1y", short ? "1Y chg" : "1Y growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful),
-    growthItem("cagr-3y", "3Y CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),
-    { id: "payout", label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : MISSING_VALUE },
-    { id: "cadence", label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
+    { ...growthItem("growth-1y", short ? "1Y chg" : "1Y growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful), essential: false },
+    { ...growthItem("cagr-3y", "3Y CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful), essential: false },
+    { id: "payout", essential: false, label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : MISSING_VALUE,
+      detail: "Basis/date unstated" },
+    { id: "cadence", essential: false, label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
     ...exDate,
-    { id: "next-pay", label: "Next pay", value: formatDate(metrics.nextPayDate) },
+    { id: "next-pay", essential: true, label: "Next pay", value: metrics.nextPayDate ? formatDate(metrics.nextPayDate) : "Unavailable" },
   ];
 }
 
@@ -162,7 +165,7 @@ function renderCell(
       return { text: row.exDate, color: colors.textDim };
     case "amount":
       return {
-        text: converted ? formatConvertedAmount(row.amount, row.currency, subUnit) : formatDistributionAmount(row.amount, row.currency),
+        text: formatDividendRowAmount(row, converted, subUnit),
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
@@ -219,8 +222,10 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
 
   const request = useCallback(() => loadData(listingSymbol!, quoteRef.current.price, exchange, quoteRef.current.currency, {
     loadStatedForwardRate: () => statedRef.current,
-  }), [exchange, loadData, listingSymbol, cloudSession.requestKey, statedKey]);
-  const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(listingSymbol ? request : null);
+  }), [exchange, loadData, listingSymbol, cloudSession.requestKey, cloudSession.displayScope, statedKey]);
+  const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(listingSymbol ? request : null, {
+    savedCopy: cloudSession.displayScope ? { key: ["dividend-yield", listingSymbol, exchange, cloudSession.displayScope] } : null,
+  });
   // An integrity response may contain no usable rows. Retain only historical
   // rows from this resource; its new unavailable metrics remain authoritative.
   const lastHistory = useRef<{ request: typeof request; data: DividendData } | null>(null);
@@ -257,6 +262,7 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
 
   const sourceWarnings = [
     ...(data?.stale ? [staleHistoryText(data.fetchedAt)] : []),
+    ...(data?.cashVerificationWarning ? [data.cashVerificationWarning] : []),
   ];
   usePaneNoticeFooter({
     registrationId: "dividend-yield-notices",
@@ -267,7 +273,9 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
   const rows = useMemo(() => toDividendRows(payments), [payments]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
-  const columns = useMemo(() => buildDividendColumns(rows), [rows]);
+  const convertedFrom = historyData?.convertedFrom;
+  const convertedSubUnit = historyData?.convertedSubUnit;
+  const columns = useMemo(() => buildDividendColumns(rows, !!convertedFrom, convertedSubUnit), [rows, convertedFrom, convertedSubUnit]);
   const chartPoints = useMemo(
     () => data?.historyAvailable === false ? [] : buildTrailingCashChartPoints(payments),
     [data?.historyAvailable, payments],
@@ -295,8 +303,6 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   });
   // The header row, plus the scrollbar row once the columns overflow the pane.
   const tableChromeRows = chartTableChromeRows(columns, width);
-  const convertedFrom = historyData?.convertedFrom;
-  const convertedSubUnit = historyData?.convertedSubUnit;
   const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, !!convertedFrom, convertedSubUnit),
     [convertedFrom, convertedSubUnit]);
   const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond, convertedFrom, convertedSubUnit) : [];

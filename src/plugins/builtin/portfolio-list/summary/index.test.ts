@@ -257,7 +257,7 @@ describe("buildPortfolioSummarySegments", () => {
   test("beside cash entered by hand, the day and P&L percents say what they are of", () => {
     const segments = buildPortfolioSummarySegments({
       totals, accountState: null, currency: "CAD", baseCurrency: "CAD",
-      manualCash: { value: 50_000, weight: 28.6, targetWeight: null, drift: null, tradeValue: null, tradeUnits: null, total: 175_000 },
+      manualCash: { value: 50_000, weight: 28.6, targetWeight: null, drift: null, total: 175_000 },
     });
     const percent = (id: string) => segments.find((segment) => segment.id === id)?.parts[2]?.text;
     expect([percent("day"), percent("pnl")]).toEqual(["(+4.17% ex cash)", "(+25.00% on cost)"]);

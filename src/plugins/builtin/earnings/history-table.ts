@@ -6,7 +6,7 @@ import { notMeaningfulCell } from "../../../components/ui/not-meaningful";
 import { isNotMeaningful } from "../../../utils/growth";
 import { TextAttributes } from "../../../ui";
 import { datedYear, epsText, impliedText, moneyText, signedPercent, TIMING_LABEL, type Surprise } from "./format";
-import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
+import { ACTUAL_PENDING, actualPending, epsBasisShort, lacksConsensus, NO_CONSENSUS_SHORT, showsEpsBasis } from "../shared/earnings-report";
 import { periodText, type HistoryRow } from "./history-model";
 
 type HistoryColumnId =
@@ -18,7 +18,7 @@ export type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
 const ALL_COLUMNS: HistoryColumn[] = [
   { id: "date", label: "DATE", width: 10, align: "left" },
   { id: "when", label: "WHEN", width: 4, align: "left" },
-  { id: "period", label: "QTR", width: 7, align: "left" },
+  { id: "period", label: "QTR", width: 8, align: "left" },
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
   { id: "analysts", label: "ESTS", width: 4, align: "right" },
   { id: "epsActual", label: "EPS ACT", width: 7, align: "right" },
@@ -62,7 +62,7 @@ const AMOUNT_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["epsEstimate", "ep
 const CURRENCY_WIDTH = 4;
 
 /** A listing abroad's figure with its currency; a US listing's dollars stay bare. */
-const inCurrency = (text: string, row: HistoryRow) => (row.currency && text !== MISSING_VALUE ? `${text} ${row.currency}` : text);
+const inCurrency = (text: string, row: HistoryRow, currency = row.currency) => (currency && text !== MISSING_VALUE ? `${text} ${currency}` : text);
 
 /**
  * The columns that fit `width`. A listing abroad's (`abroad`, Hong Kong's)
@@ -72,6 +72,8 @@ const inCurrency = (text: string, row: HistoryRow) => (row.currency && text !== 
 export function historyColumns(width: number, rows: readonly HistoryRow[], options: { abroad?: boolean } = {}): HistoryColumn[] {
   const abroad = options.abroad === true;
   const labelled = abroad || rows.some((row) => row.currency != null);
+  // A US listing that reports its revenue in another currency labels that column alone.
+  const revenueLabelled = !labelled && rows.some((row) => row.revenueCurrency != null);
   const periods = abroad || rows.some((row) => row.periodKind !== "quarter");
   let columns = ALL_COLUMNS.filter((column) => {
     if (OPTIONAL_COLUMNS.has(column.id) && rows.length > 0)
@@ -80,6 +82,7 @@ export function historyColumns(width: number, rows: readonly HistoryRow[], optio
     return !value || rows.some((row) => value(row) != null);
   }).map((column): HistoryColumn => {
     if (labelled && AMOUNT_COLUMNS.has(column.id)) return { ...column, width: column.width + CURRENCY_WIDTH };
+    if (revenueLabelled && column.id === "revenueActual") return { ...column, width: column.width + CURRENCY_WIDTH };
     // A half or a year is no quarter: the column names what it holds.
     if (periods && column.id === "period") {
       return { ...column, label: "PERIOD", width: Math.max(column.width, "PERIOD".length, ...rows.map((row) => periodText(row).length)) };
@@ -117,11 +120,14 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
     case "period":
       return { text: periodText(row), color: dim };
     case "epsEstimate":
-      return { text: inCurrency(epsText(row.epsEstimate), row), color: dim };
+      // A reported quarter with no consensus on record says so; its surprise stays blank.
+      return { text: lacksConsensus(row) ? NO_CONSENSUS_SHORT : inCurrency(epsText(row.epsEstimate), row), color: dim };
     case "analysts":
       return { text: row.epsAnalysts == null ? MISSING_VALUE : String(row.epsAnalysts), color: dim };
     case "epsActual":
-      // The company's press release's figure reads quieter until the calendar's replaces it.
+      // A report out with no actual yet says so; the company's press release's figure reads quieter until the calendar's replaces it.
+      // A listing abroad's rows carry their own currency; a US listing's are dollars (null).
+      if (actualPending(row, row.currency != null)) return { text: ACTUAL_PENDING, color: dim };
       return { text: inCurrency(epsText(row.epsActual), row), color: row.provisional ? colors.textMuted : colors.text };
     case "basis":
       // A listing abroad's basic EPS is not the statements' diluted figure: it says what it is.
@@ -135,7 +141,7 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
     case "revenueEstimate":
       return { text: inCurrency(moneyText(row.revenueEstimate), row), color: dim };
     case "revenueActual":
-      return { text: inCurrency(moneyText(row.revenueActual), row), color: row.revenueProvisional ? colors.textMuted : colors.text };
+      return { text: inCurrency(moneyText(row.revenueActual), row, row.revenueCurrency ?? row.currency), color: row.revenueProvisional ? colors.textMuted : colors.text };
     case "revenueSurprise":
       return signed(row.revenueSurprise);
     case "implied":

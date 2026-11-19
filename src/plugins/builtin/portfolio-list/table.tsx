@@ -22,7 +22,7 @@ import { RANGE_FROM_BARS_NOTE } from "../../../portfolio/column-values";
 import { periodPnlFigure, tickerDisplayName } from "../../../portfolio/column-values";
 import { listedSymbol } from "../../../portfolio/listed-symbol";
 import { displayWidth } from "../../../utils/format";
-import { dropColumnsToFit } from "../../../components/ui/table-layout";
+import { dropColumnsToFit, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { sinceLastSeenTint, type SinceLastSeenRecap } from "./since-last-seen";
 import { portfolioPnlLabel } from "../../../portfolio/position-metrics";
 import { PORTFOLIO_ROW_MENU_KEYS } from "./row-actions";
@@ -363,7 +363,8 @@ export function PortfolioTickerTable({
   hiddenCompanyRef.current.ids = new Set(hiddenColumnIds.split(",").filter((id) => COMPANY_COLUMN_IDS.has(id)));
   const displayColumns = useMemo(() => {
     const hidden = new Set(hiddenColumnIds.split(","));
-    return hiddenColumnIds ? sizedColumns.filter((column) => !hidden.has(column.id)) : sizedColumns;
+    const eligible = sizedColumns.filter((column) => !hiddenCompanyRef.current.ids.has(column.id));
+    return hiddenColumnIds ? markHiddenTableColumns(eligible, eligible.filter((column) => !hidden.has(column.id))) : sizedColumns;
   }, [hiddenColumnIds, sizedColumns]);
   // Over a period, each currency's part under the rows, so P&L adds up to the header's total as portfolio show --from prints it.
   const periodLines = columnContext.periodPnl?.lines ?? null;

@@ -4,9 +4,18 @@ import type { EarningsCalendarReport, EarningsHistoryPayload } from "../../../ap
 import { colors } from "../../../theme/colors";
 import { notMeaningfulColor } from "../../../components/ui/not-meaningful";
 import type { Quote } from "../../../types/financials";
-import { boardReport, boardRowOf, reportMove, type BoardRow } from "./board-model";
+import { boardReport, boardRowOf, newYorkToday, reportMove, type BoardRow } from "./board-model";
 import { boardColumns, boardHasActuals, boardHasCurrencies, boardSymbolWidth, renderBoardCell, type BoardCellContext, type BoardColumn } from "./board-table";
 import { historyFigures, historyRows } from "./history-model";
+
+test("the next-report figure retains a rounded consensus independently of dropped narrow table columns", () => {
+  const rows = historyRows({ asOf: `${TODAY}T15:00:00Z`, symbol: "CRWV", name: null, reports: [
+    { ...calendarReport({ symbol: "CRWV", date: "2026-11-18", fiscalPeriod: "2026-10", epsEstimate: 1.6374, dateStatus: "confirmed" }), revenueActual: null },
+  ] }, "2026-11-15", null);
+  const next = historyFigures(rows, "2026-11-15").find((figure) => figure.id === "next")!;
+  expect(next.detail).toStartWith("EPS est 1.64");
+  expect(next.detailVariants).toEqual(["EPS est 1.64"]);
+});
 import { historyColumns, renderHistoryCell } from "./history-table";
 
 const TODAY = "2026-10-16";
@@ -43,6 +52,24 @@ describe("EVTS rows", () => {
     for (const id of ["epsActual", "epsSurprise", "basis"] as const) expect(cell(LADR, id)).toEqual({ text: MISSING_VALUE, color: colors.textDim });
     expect(column("basis").mayBeBlank).toBe(true);
     expect(cell(TRV, "basis").text).toBe("adj");
+  });
+
+  test("a report out with no actual yet says pending, and keeps EPS ACT on a narrow board", () => {
+    // Disney this morning: out before the open, the calendar's figure due tomorrow, its release unproven.
+    const today = newYorkToday();
+    const DIS = boardReport(calendarReport({ symbol: "DIS", date: today, reportedAt: `${today}T10:45:00.000Z`, epsEstimate: 1.06, epsAnalysts: 17, dateStatus: "reported" }), new Map());
+    expect(cell(DIS, "epsActual")).toEqual({ text: "pending", color: colors.textDim });
+    // Still to come, it waits with a dash.
+    expect(cell(LADR, "epsActual").text).toBe(MISSING_VALUE);
+    expect(boardHasActuals([row(LADR), row(DIS)])).toBe(true);
+    expect(boardColumns(88, { actuals: true }).map((entry) => entry.id)).toContain("epsActual");
+    // A listing abroad's figures come from its own documents, with Gloom Pro: one out without them is waiting on nothing.
+    const FN = boardReport(calendarReport({ symbol: "F99:SGX", currency: "SGD", dateStatus: "reported" }), new Map());
+    expect(cell(FN, "epsActual").text).toBe(MISSING_VALUE);
+    expect(boardHasActuals([row(LADR), row(FN)])).toBe(false);
+    // Past the week the calendar reads a date for, none is coming: the dash again.
+    const OLD = boardReport(calendarReport({ symbol: "OXY", date: "2026-10-01", dateStatus: "reported" }), new Map());
+    expect(cell(OLD, "epsActual").text).toBe(MISSING_VALUE);
   });
 
   test("MOVE is the move on a report out today, beside the implied move", () => {
@@ -225,6 +252,36 @@ describe("ERN rows", () => {
     // A settled move is the row's own, whatever the quote says.
     const settled = { ...rows[0]!, move: -0.021 };
     expect(renderHistoryCell(settled, move, () => 0.017)).toEqual({ text: "-2.1%", color: colors.negative });
+  });
+});
+
+describe("ERN for a US listing that reports in another currency", () => {
+  type Report = EarningsHistoryPayload["reports"][number];
+  const report = (fields: Partial<Report> & Pick<Report, "date">): Report => ({
+    symbol: "BIDU", name: "Baidu, Inc.", timing: null, timingSource: "calendar", reportedAt: null, fiscalPeriod: "2026-09",
+    marketCap: 24e9, epsEstimate: 2.04, epsActual: 2.11, epsActualSource: "calendar", epsAnalysts: 2, revenueEstimate: null,
+    revenueAnalysts: null, implied: null, realized: null, revenueActual: null, dateStatus: "reported", ...fields,
+  });
+  const rows = historyRows({ asOf: "2026-11-19T03:00:00Z", symbol: "BIDU", name: null, reports: [
+    report({ date: "2026-11-16", reportedRevenue: { amount: 30.807e9, currency: "CNY", source: "press-release" } }),
+    report({ date: "2026-08-20", fiscalPeriod: "2026-06", reportedRevenue: { amount: 31.325e9, currency: "CNY", source: "statements" } }),
+    // Dollars are served as revenueActual, never through the company's own currency.
+    report({ date: "2026-05-18", fiscalPeriod: "2026-03", reportedRevenue: { amount: 4.4e9, currency: "USD", source: "statements" } }),
+  ] }, "2026-11-19", null);
+  const columns = historyColumns(2000, rows);
+  const sales = columns.find((entry) => entry.id === "revenueActual")!;
+
+  test("its sales in that currency, labelled; its EPS in dollars stays bare", () => {
+    expect(rows.map((row) => [row.revenueActual, row.revenueCurrency, row.revenueSurprise])).toEqual([
+      [30.807e9, "CNY", null],
+      [31.325e9, "CNY", null],
+      [null, null, null],
+    ]);
+    expect(rows.map((row) => renderHistoryCell(row, sales).text)).toEqual(["30.81B CNY", "31.32B CNY", MISSING_VALUE]);
+    expect(renderHistoryCell(rows[0]!, sales).color).toBe(colors.textMuted);
+    expect(renderHistoryCell(rows[0]!, columns.find((entry) => entry.id === "epsActual")!).text).toBe("2.11");
+    // SALES ACT, nine wide, takes the currency after each figure.
+    expect(sales.width).toBe(9 + 4);
   });
 });
 

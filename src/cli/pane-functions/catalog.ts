@@ -32,10 +32,11 @@ import {
   wrapText,
   type CliStatEntry,
 } from "../../utils/cli-output";
-import { renderGlossaryEntries, type GlossaryLookup } from "../glossary";
+import { glossaryFunctionsNamed, glossaryNamesFunction, renderGlossaryEntries, type GlossaryLookup } from "../glossary";
 import { renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { typoDistance } from "../../utils/typo-distance";
 import { FUNCTION_HELP } from "./function-help";
+import { ratesQuestionFunctions } from "./rates-question";
 import { quotedSearchCommand } from "../commands/news-search";
 
 /**
@@ -263,17 +264,23 @@ export function nearFunctionCodes(
 
 /**
  * The functions a word that is no code asks for (`IVOL`, `IV`: HIVG and
- * OVDV), as their `discovery.suggestFor` lists it, each by its code.
+ * OVDV), as their `discovery.suggestFor` lists it, or the glossary term it
+ * names is shown by (`VAR`, `drawdown`: MARS and PORT), each by its code.
  */
 export function suggestedFunctionCodes(registry: PaneFunctionCatalog, name: string): NearFunctionCode[] {
   const wanted = normalizeLookupToken(name);
   if (!wanted) return [];
+  // A term many functions show (a percentile) names none of them in particular: the catalog search lists those.
+  const named = glossaryFunctionsNamed(name);
+  const showing = new Set(named.length <= NEAR_CODE_LIMIT ? named : []);
   return [...registry.paneTemplates.values()].flatMap((template) => {
     if (template.listed === false) return [];
     const pane = registry.panes.get(template.paneId);
     const words = pane ? getHeadlessPaneDefinition(template, pane)?.discovery?.suggestFor ?? [] : [];
     const code = template.shortcut?.prefix;
-    return code && words.some((word) => normalizeLookupToken(word) === wanted) ? [{ code: code.toUpperCase(), label: template.label }] : [];
+    const shows = [code, ...template.shortcut?.aliases ?? []].some((candidate) => !!candidate && showing.has(candidate.toUpperCase()));
+    return code && (shows || words.some((word) => normalizeLookupToken(word) === wanted))
+      ? [{ code: code.toUpperCase(), label: template.label }] : [];
   }).sort((left, right) => left.code.localeCompare(right.code));
 }
 
@@ -360,7 +367,7 @@ function argExamples(
 }
 
 /** The first watchlist, else portfolio, that holds a symbol: the list a function's example names. Null when none does. */
-async function exampleListName(context: MarketContext): Promise<string | null> {
+export async function exampleListName(context: Pick<MarketContext, "config" | "store">): Promise<string | null> {
   const tickers = await Promise.resolve().then(() => context.store.loadAllTickers())
     .catch(logFailure("cli-catalog", "Read the lists for an example failed", [] as TickerRecord[]));
   const watchlist = context.config.watchlists.find((list) => tickers.some((ticker) => ticker.metadata.watchlists.includes(list.id)));
@@ -424,6 +431,11 @@ export async function buildPaneCatalogEntries(
   }
 
   return entries.sort((left, right) => left.token.localeCompare(right.token));
+}
+
+/** Whether the whole query names a glossary term the function shows (`VaR` for MARS), by its code or an alias (DES for T). */
+function namesShownTerm(entry: Pick<PaneCatalogEntry, "token" | "shortcut" | "aliases">, query: string): boolean {
+  return [entry.token, entry.shortcut, ...entry.aliases].some((code) => !!code && glossaryNamesFunction(code, query));
 }
 
 /** The phrase starting a word of the text, so "funding rate" finds "funding rates" but "rate" is not found in "separate". */
@@ -524,7 +536,15 @@ interface CatalogMatchScore {
   called: number;
 }
 
-function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogMatchScore {
+/** How catalog matches are scored; `glossary: false` leaves out the glossary terms a function shows, as search did before them. */
+interface CatalogScoring {
+  glossary?: boolean;
+}
+
+/** A query that is, whole, a term a function shows (`VaR`) outweighs it starting a word of a description (`variance`). */
+const SHOWN_TERM_SCORE = 20;
+
+function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string, { glossary = true }: CatalogScoring = {}): CatalogMatchScore {
   const terms = queryTerms(query);
   if (terms.length === 0) return { score: 1, terms: 0, named: 0, called: 0 };
   const none = { score: 0, terms: terms.length, named: 0, called: 0 };
@@ -590,6 +610,14 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
     matchedTerms += 1;
   }
 
+  // The whole query naming a term the function shows (`VaR`, `value at risk`, `expected shortfall` for MARS and PORT)
+  // names the function, every word of it found, where its own words do not already (`beta` is in PORT's keywords,
+  // `trade` in PF's description: those rank as they did). A word of a longer query, or a loose alias, names nothing.
+  if (glossary && matchedNamed < terms.length && namesShownTerm(entry, query)) {
+    score += SHOWN_TERM_SCORE;
+    matchedTerms = terms.length;
+    matchedNamed = terms.length;
+  }
   if (matchedTerms === 0) return none;
   // The whole query a value an option takes (GF's `operating margin` metric) is a name the function answers to.
   const valueNamed = terms.length > 1 && flagValues.has(normalizeLookupToken(wholeQuery));
@@ -624,9 +652,9 @@ function isClosestCatalogMatch(entry: PaneCatalogEntry, query: string): boolean 
   return scorePaneCatalogEntry(entry, query).called === 0;
 }
 
-function rankPaneCatalogEntries(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
+function rankPaneCatalogEntries(entries: PaneCatalogEntry[], query: string, scoring: CatalogScoring = {}): PaneCatalogEntry[] {
   return entries
-    .map((entry) => ({ entry, score: scorePaneCatalogEntry(entry, query).score }))
+    .map((entry) => ({ entry, score: scorePaneCatalogEntry(entry, query, scoring).score }))
     .filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score || left.entry.token.localeCompare(right.entry.token))
     .map(({ entry }) => entry);
@@ -651,23 +679,23 @@ function hasConsecutiveWordStarts(entry: PaneCatalogEntry, head: string, tail: s
  * Two words typed as one ("volsurf" for Volatility Surface) match the functions that carry both
  * words in a row, found by cutting the query into two word starts.
  */
-function fusedQueryMatches(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
+function fusedQueryMatches(entries: PaneCatalogEntry[], query: string, scoring: CatalogScoring): PaneCatalogEntry[] {
   const word = query.trim().toLowerCase();
   if (/\s/.test(word)) return [];
   for (let cut = FUSED_PART_MIN; cut <= word.length - FUSED_PART_MIN; cut += 1) {
     const [head, tail] = [word.slice(0, cut), word.slice(cut)];
     const split = `${head} ${tail}`;
-    const ranked = rankPaneCatalogEntries(entries, split);
-    const { shown, loose } = selectPaneCatalogMatches(ranked, split, ranked.length);
+    const ranked = rankPaneCatalogEntries(entries, split, scoring);
+    const { shown, loose } = selectPaneCatalogMatches(ranked, split, ranked.length, scoring);
     const written = loose ? [] : shown.filter((entry) => hasConsecutiveWordStarts(entry, head, tail));
     if (written.length > 0) return written;
   }
   return [];
 }
 
-export function filterPaneCatalogEntries(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
-  const ranked = rankPaneCatalogEntries(entries, query);
-  return ranked.length > 0 ? ranked : fusedQueryMatches(entries, query);
+export function filterPaneCatalogEntries(entries: PaneCatalogEntry[], query: string, scoring: CatalogScoring = {}): PaneCatalogEntry[] {
+  const ranked = rankPaneCatalogEntries(entries, query, scoring);
+  return ranked.length > 0 ? ranked : fusedQueryMatches(entries, query, scoring);
 }
 
 /** Whether two words differ by one letter: one added, dropped, changed, or two neighbours swapped. */
@@ -721,8 +749,13 @@ interface PaneCatalogSelection {
  * name or description; when none does, the few closest, so "year to date" does not list a hundred functions
  * that each have a date somewhere. `--all` (an infinite limit) lists every match.
  */
-export function selectPaneCatalogMatches(ranked: PaneCatalogEntry[], query: string, limit: number): PaneCatalogSelection {
-  const scored = ranked.map((entry) => ({ entry, ...scorePaneCatalogEntry(entry, query) }));
+export function selectPaneCatalogMatches(
+  ranked: PaneCatalogEntry[],
+  query: string,
+  limit: number,
+  scoring: CatalogScoring = {},
+): PaneCatalogSelection {
+  const scored = ranked.map((entry) => ({ entry, ...scorePaneCatalogEntry(entry, query, scoring) }));
   const every = (items: typeof scored) => items.map(({ entry }) => entry);
   const widened = !Number.isFinite(limit);
   const multiWord = (scored[0]?.terms ?? 0) > 1;
@@ -782,25 +815,35 @@ function questionTopic(question: string): string {
 export interface FunctionForQuestion {
   code: string;
   label: string;
-  /** `gloom fn WEI`, `gloom fn CMP <tickers>`: the command that runs it. */
+  /** `gloom fn WEI`, `gloom fn CMP <tickers>`, `gloom fn GC jgb`: the command that runs it. */
   command: string;
+  /** What the command bar runs it with, where the question names its argument: `GC JGB`, `ECO JP,AU`. */
+  input?: string;
 }
 
 /**
  * The functions `catalog` finds for a question's topic, best first, up to
  * `limit`: what Ask Gloom offers without an account ("what did the DAX do
- * yesterday" finds WEI and CMP). Built from the templates alone, without a
- * market context, so the app's pane asks it as the command line does.
+ * yesterday" finds WEI and CMP). A question about policy rates, curves or the
+ * macro calendar gets CBR, GC and ECO first, run for the markets it names
+ * (`ratesQuestionFunctions`): "BoJ and RBA policy rates and JGB yields" found
+ * CBR, then MDAY and FIRST. Built from the templates alone, without a market
+ * context, so the app's pane asks it as the command line does.
  */
 export async function functionsForQuestion(registry: PaneFunctionCatalog, question: string, limit = 3): Promise<FunctionForQuestion[]> {
   const topic = questionTopic(question);
   if (!topic) return [];
   const entries = await buildPaneCatalogEntries(registry, null);
+  const rates = ratesQuestionFunctions(question).flatMap(({ code, argument, input }): FunctionForQuestion[] => {
+    const entry = entries.find((candidate) => candidate.token === code);
+    return entry ? [{ code, label: entry.label, command: `gloom fn ${code}${argument ? ` ${argument}` : ""}`, ...(input ? { input: `${code} ${input}` } : {}) }] : [];
+  });
   const { shown } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, topic), topic, limit);
-  return shown.map((entry) => {
+  const found = shown.filter((entry) => !rates.some((named) => named.code === entry.token)).map((entry) => {
     const argument = argumentHint(entry);
     return { code: entry.token, label: entry.label, command: `gloom fn ${entry.token}${argument ? ` ${argument}` : ""}` };
   });
+  return [...rates, ...found].slice(0, limit);
 }
 
 const CATALOG_TEXT_WIDTH = 100;
@@ -824,7 +867,9 @@ function readinessCell(readiness: PaneFunctionReadiness): string {
  */
 function reportCell(entry: PaneCatalogEntry): string {
   const readiness = readinessCell(entry.capability.reportReadiness);
-  return FUNCTION_HELP[entry.token]?.access === "pro" ? `${readiness} · ${cliStyles.warning("Pro")}` : readiness;
+  if (FUNCTION_HELP[entry.token]?.access === "pro") return `${readiness} · ${cliStyles.warning("Pro")}`;
+  return entry.capability.dataRequirements.some((requirement) => /\bsign-in\b/i.test(requirement))
+    ? `${readiness} · ${cliStyles.warning("Sign-in")}` : readiness;
 }
 
 function optionDescription(option: PaneFunctionOptionDef): string {

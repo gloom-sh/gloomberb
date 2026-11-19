@@ -7,7 +7,7 @@ import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { fxPairObservation, fxRateObservations } from "../shared/fx-rate-freshness";
 import { loadFxBoard, type FxLegReading } from "./client";
 import { crossMovePercent } from "./direction";
-import { formatAmountFigure, formatFxBoardAmount, parseFxBoardAmount, withAmountCurrencies, type FxBoardAmount } from "./amount";
+import { formatAmountFigure, formatFxBoardAmount, parseFxBoardAmount, parseFxBoardCurrencies, withAmountCurrencies, type FxBoardAmount } from "./amount";
 import { FX_CURRENCY_KEYWORDS, formatRate, resolveCurrencies, type FxCurrency } from "./pairs";
 import { FX_MATRIX_REPORT_OPTIONS, fxMatrixReportNotices } from "./settings";
 
@@ -42,16 +42,22 @@ function crossColumns(basis: string | null, amount: boolean): HeadlessPaneColumn
 }
 
 /** `fn FXC 2500000 EUR`: the amount typed after the function, as the pane's Amount field reads it; null for none. */
+const typedArgument = (argument: string | string[] | null | undefined) => Array.isArray(argument) ? argument.join(" ") : argument ?? "";
+
 function reportAmount(argument: string | string[] | null | undefined): FxBoardAmount & { to: FxCurrency | null } | null {
-  const typed = Array.isArray(argument) ? argument.join(" ") : argument ?? "";
+  const typed = typedArgument(argument);
+  // Currencies alone (`fn FXC TRY`) are added to the board, as `FXC TRY` adds them in the app: no amount.
+  if (parseFxBoardCurrencies(typed)) return null;
   const request = parseFxBoardAmount(typed);
   if (request && "error" in request) throw new Error(request.error);
   return request;
 }
 
-/** The board a report reads: its currencies, with the ones its amount names added at the end as the pane adds them. */
+/** The board a report reads: its currencies, with the ones its argument names added at the end as the pane adds them. */
 function reportCurrencies(args: { argument?: string | string[] | null; options: Record<string, unknown> }): FxCurrency[] {
   const currencies = resolveCurrencies(args.options.currencies);
+  const added = parseFxBoardCurrencies(typedArgument(args.argument));
+  if (added) return [...currencies, ...added.filter((code) => !currencies.includes(code))];
   const amount = reportAmount(args.argument);
   return amount ? withAmountCurrencies(currencies, amount) : currencies;
 }
@@ -171,8 +177,8 @@ export function projectFxCrosses(
 export const fxMatrixHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   argument: {
-    kind: "free-text", optional: true, placeholder: "amount",
-    description: "An amount to convert into each currency, as the pane's Amount field takes it: 2500000 EUR, 2,500,000 EUR/USD.",
+    kind: "free-text", optional: true, placeholder: "amount or currencies",
+    description: "An amount to convert into each currency, as the pane's Amount field takes it (2500000 EUR, 2,500,000 EUR/USD), or currencies to add to the board (TRY, USD,TRY).",
   },
   description: "Cross rates between currencies, one row per ordered pair, each with its move since the previous close, observation time and stale flag.",
   freshness: { source: "Gloom Cloud" },
@@ -212,6 +218,6 @@ export const fxMatrixHeadless: HeadlessPaneDefinition<"rows"> = {
     if (legs.length > 0 && legs.every((reading) => reading.entry == null)) {
       throw new Error(`Exchange rates unavailable for ${legs.map(({ leg }) => leg.currency).join(", ")}: ${legs[0]!.error}`);
     }
-    return projectFxCrosses(currencies, readings, { notices: fxMatrixReportNotices(args.options), amount });
+    return projectFxCrosses(currencies, readings, { notices: fxMatrixReportNotices(args.options, currencies), amount });
   },
 };

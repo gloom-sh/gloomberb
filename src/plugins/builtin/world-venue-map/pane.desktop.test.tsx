@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { setCloudApiFetchTransport, type CloudWorldVenueMapPayload } from "../../../api-client";
-import { resetGeoCatalogCache } from "../../../api-client/geo";
+import { resetGeoCatalogCache, type GeoEntitiesPayload } from "../../../api-client/geo";
 import { createDomUiHost } from "../../../renderers/dom/dom-ui-host";
 import { WebInputHostProvider } from "../../../renderers/dom/input-host";
 import { createDomTestHarness } from "../../../renderers/dom/test-utils";
@@ -13,6 +13,7 @@ import { answerGeoFixture } from "../../../test-support/test-fixture-geo";
 import { noopRendererHost } from "../../../test-support/renderer-host";
 import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { UiHostProvider } from "../../../ui";
+import { DialogHostProvider } from "../../../ui/dialog";
 import { WorldVenueMapPane } from "./pane";
 
 const dom = createDomTestHarness({ withUi: false });
@@ -31,34 +32,44 @@ const venues: CloudWorldVenueMapPayload = {
   })),
 } as CloudWorldVenueMapPayload;
 
-function serve() {
+function serve(answerGeo = answerGeoFixture) {
   setCloudApiFetchTransport(async (url) => {
     const { pathname, search } = new URL(String(url));
     if (pathname === "/market/venues") return Response.json({ data: venues });
-    if (pathname.startsWith("/cloud/geo/")) return Response.json(answerGeoFixture(pathname.slice("/cloud/geo/".length) + search));
+    if (pathname.startsWith("/cloud/geo/")) return Response.json(answerGeo(pathname.slice("/cloud/geo/".length) + search));
     return Response.json({ error: "unexpected" }, { status: 500 });
   });
 }
 
 const PANE_ID = "world-venue-map:desktop-test";
 
-function Pane({ settings }: { settings: Record<string, unknown> }) {
-  const [state, dispatch] = useReducer(appReducer, settings, (initial) => ({
-    ...createInitialState(createTestPaneConfig("/tmp/world-map-desktop-test", { paneId: "world-venue-map", instanceId: PANE_ID, settings: initial })),
-    focusedPaneId: PANE_ID,
-  }));
+/** The pane's saved state as of its last render, to read what the map kept. */
+let savedPaneState: Record<string, unknown> | undefined;
+const savedViewport = () => (savedPaneState?.pluginState as Record<string, Record<string, unknown>> | undefined)?.["market-overview"]?.["map:viewport"];
+
+function Pane({ settings, homeArea }: { settings: Record<string, unknown>; homeArea?: string }) {
+  const [state, dispatch] = useReducer(appReducer, settings, (initial) => {
+    const config = createTestPaneConfig("/tmp/world-map-desktop-test", { paneId: "world-venue-map", instanceId: PANE_ID, settings: initial });
+    if (homeArea) config.pluginConfig["market-overview"] = { mapHomeArea: homeArea };
+    return { ...createInitialState(config), focusedPaneId: PANE_ID };
+  });
+  savedPaneState = state.paneState[PANE_ID];
   return (
     <UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
       <WebInputHostProvider>
-        <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="market-overview" runtime={createTestPluginRuntime()} width={130} height={32} footerKeys>
-          {(body) => <WorldVenueMapPane paneId={PANE_ID} paneType="world-venue-map" width={body.width} height={body.height} focused />}
-        </TestPaneFrame>
+        <DialogHostProvider dialog={{ alert: async () => {}, prompt: async () => undefined }} isOpen={false}>
+          <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="market-overview" runtime={createTestPluginRuntime()} width={130} height={32} footerKeys>
+            {(body) => <WorldVenueMapPane paneId={PANE_ID} paneType="world-venue-map" width={body.width} height={body.height} focused />}
+          </TestPaneFrame>
+        </DialogHostProvider>
       </WebInputHostProvider>
     </UiHostProvider>
   );
 }
 
-const mount = (settings: Record<string, unknown>) => dom.render(<Pane settings={settings} />);
+/** Long enough for a resting view to be saved (the map waits a moment before it does). */
+const settled = () => act(async () => { await Bun.sleep(450); });
+const mount = (settings: Record<string, unknown>, homeArea?: string) => dom.render(<Pane settings={settings} homeArea={homeArea} />);
 
 /** A key as the desktop and the web report it, to the window the input host listens on. */
 async function press(key: string, init: { shiftKey?: boolean } = {}) {
@@ -79,12 +90,82 @@ async function until(container: HTMLElement, text: string) {
 
 const sidebarCells = (container: HTMLElement) => Number.parseFloat((container.querySelector('[data-gloom-role="pane-sidebar"]') as HTMLElement).style.width) / WEB_CELL_WIDTH;
 const basemap = (container: HTMLElement) => container.querySelector('[data-gloom-role="basemap"]')!.getAttribute("transform")!;
+const mapHeader = (container: HTMLElement) => container.querySelector('[data-gloom-role="world-venue-map"]')?.parentElement?.textContent;
 // A hint is a keycap and its words; read back as `[key] words`.
 const hints = (container: HTMLElement) => [...container.querySelectorAll('[data-gloom-role="pane-hint"]')]
   .map((hint) => `[${hint.querySelector(".gloom-keycap")?.textContent ?? ""}] ${hint.querySelector(".gloom-key-hint-words")?.textContent ?? ""}`)
   .join(" ");
 
 describe("MAP on the desktop and the web", () => {
+  test.each(["argument", "home area"])("ships start near the %s and follow the map after a zoom", async (source) => {
+    const requests: (string | null)[] = [];
+    const ships = [
+      { id: "distant", label: "Atlantic Trader", lon: 10, lat: 43, props: {} },
+      { id: "offshore", label: "Coastal Explorer", lon: -29, lat: 43, props: {} },
+      { id: "nearest", label: "Harbour Ferry", lon: -34, lat: 43, props: {} },
+    ];
+    serve((path) => {
+      const result = answerGeoFixture(path);
+      const url = new URL(path, "https://example.test/");
+      if (url.pathname !== "/layers/vessels/entities") return result;
+      const bounds = url.searchParams.get("bbox");
+      requests.push(bounds);
+      const bbox = bounds?.split(",").map(Number);
+      const rows = ships.filter(({ lon, lat }) => !bbox || (lon >= bbox[0]! && lat >= bbox[1]! && lon <= bbox[2]! && lat <= bbox[3]!));
+      return { ...(result as GeoEntitiesPayload), rows, total: rows.length };
+    });
+
+    const container = await mount({ layers: ["vessels"], venues: false, ...(source === "argument" ? { place: "City 1" } : {}) },
+      source === "home area" ? "City 1" : undefined);
+    await until(container, "Harbour Ferry");
+    const initialBounds = "-39.625,37.375,-28.375,48.625";
+    expect(requests).toEqual([initialBounds]);
+    await act(async () => { await Bun.sleep(750); });
+    expect(requests).toEqual([initialBounds]);
+
+    await press("+");
+    for (let attempt = 0; attempt < 100 && requests.length < 2; attempt += 1) {
+      await act(async () => { await Bun.sleep(20); });
+    }
+    expect(requests).toEqual([initialBounds, expect.any(String)]);
+    const [west, , east] = requests[1]!.split(",").map(Number);
+    expect(west!).toBeLessThan(-34);
+    expect(east!).toBeGreaterThan(-34);
+    expect(east!).toBeLessThan(-29);
+  });
+
+  test("a map that starts at the home area is not saved there until it moves", async () => {
+    serve();
+    const container = await mount({ layers: ["ships"], venues: false }, "51.5,-0.1");
+    await until(container, "Dover Strait");
+    expect(container.querySelector('[data-gloom-role="world-venue-map"]')?.getAttribute("data-zoomed")).toBe("true");
+    await settled();
+    expect(savedViewport()).toBeUndefined();
+    // Moving it makes the view the person's own, kept as any map's is.
+    await press("+");
+    await settled();
+    expect(savedViewport()).toMatchObject({ centerLongitude: expect.any(Number) });
+  });
+
+  test.each(["argument", "home area"])("venues start nearest the %s", async (source) => {
+    serve();
+    const container = await mount({ layers: [], venues: true, ...(source === "argument" ? { place: "City 1" } : {}) },
+      source === "home area" ? "City 1" : undefined);
+    await until(container, "City 1");
+    expect(container.querySelector('[data-gloom-role="world-venue-map"]')?.getAttribute("data-zoomed")).toBe("true");
+    expect(mapHeader(container)).toContain("City 1");
+    await settled();
+    expect(savedViewport()).toEqual(source === "argument" ? { zoom: 32, centerLongitude: -34, centerLatitude: expect.closeTo(43) } : undefined);
+  });
+
+  test("a place the map was made with is saved as its view, whatever the home area is", async () => {
+    serve();
+    const container = await mount({ layers: ["ships"], venues: false, place: "51.5,-0.1" }, "40,-74");
+    await until(container, "Dover Strait");
+    await settled();
+    expect(savedViewport()).toEqual({ zoom: 32, centerLongitude: -0.1, centerLatitude: 51.5 });
+  });
+
   test("< and > narrow and widen the sidebar from the keyboard without a footer hint", async () => {
     serve();
     const container = await mount({ layers: [], venues: true });

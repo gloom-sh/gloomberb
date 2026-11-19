@@ -248,6 +248,34 @@ describe("CLI portfolio commands", () => {
     expect(elsewhere.stderr).toContain("--currency is an option of portfolio create, not portfolio cash.");
   });
 
+  // A USD balance set beside a TRY one used to replace it: a portfolio now holds one balance per currency.
+  test("cash set keeps the other currencies' balances and names what it replaced; cash clear takes one currency or all", async () => {
+    const { dataDir } = await createCliFixture({ portfolios: [{ id: "istanbul", name: "Istanbul Book", currency: "USD" }], watchlists: [] });
+    const run = (...args: string[]) => captureConsole(() => runCli(["portfolio", "cash", ...args]));
+    const first = await run("set", "Istanbul Book", "250.000,00", "try");
+    expect(first.stdout).toContain('Set cash in "Istanbul Book" to TRY250,000.00.');
+    const second = await run("set", "Istanbul Book", "1.200", "usd");
+    expect(second.stdout).toContain('Set USD cash in "Istanbul Book" to $1,200.00.');
+    expect(second.stdout).toContain('"Istanbul Book" holds cash in 2 currencies, TRY250,000.00 and $1,200.00; reports convert each into USD.');
+    expect((await loadConfig(dataDir)).portfolios[0]).toMatchObject({ cash: { amount: 250_000, currency: "TRY" }, otherCash: [{ amount: 1_200, currency: "USD" }] });
+    // A currency held already: that balance alone is replaced, and said; the same amount again replaces nothing.
+    const third = await run("set", "Istanbul Book", "1500", "USD");
+    expect(third.stdout).toContain('Set USD cash in "Istanbul Book" to $1,500.00, replacing $1,200.00.');
+    expect((await run("set", "Istanbul Book", "1500", "USD")).stdout).not.toContain("replacing");
+
+    const notHeld = await run("clear", "Istanbul Book", "HKD");
+    expect(notHeld.stdout).toContain('"Istanbul Book" has no HKD cash recorded. It holds TRY and USD.');
+    const one = await run("clear", "Istanbul Book", "try");
+    expect(one.stdout).toContain('Cleared the TRY cash in "Istanbul Book" (TRY250,000.00); $1,500.00 stays.');
+    expect((await loadConfig(dataDir)).portfolios[0]!.cash).toEqual({ amount: 1_500, currency: "USD" });
+    await run("set", "Istanbul Book", "39000", "HKD");
+    const all = await run("clear", "Istanbul Book");
+    expect(all.stdout).toContain('Cleared the cash in "Istanbul Book": $1,500.00 and HK$39,000.00.');
+    const saved = (await loadConfig(dataDir)).portfolios[0]!;
+    expect(saved.cash).toBeUndefined();
+    expect(saved.otherCash).toBeUndefined();
+  });
+
   test("rejects duplicate manual portfolio names", async () => {
     await createCliFixture({
       portfolios: [{ id: "research", name: "Research", currency: "USD" }],

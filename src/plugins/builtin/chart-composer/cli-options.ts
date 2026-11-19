@@ -12,6 +12,7 @@ import {
 import type { ChartSeriesSpec, ChartSpec, SeriesPeriod } from "../../../time-series/types";
 import { yearToDateBaseDay } from "../../../market-data/market/year-to-date";
 import { readPriceWindow } from "../../../utils/price-window";
+import { comparisonPresetResolution } from "./chart-spec";
 
 const PRICE_CAPABILITIES = new Set(["price-chart", "intraday-price-chart", "price-comparison"]);
 
@@ -67,13 +68,14 @@ export function applyChartComposerCapabilityOptions(
   let next = spec;
   if ((options.rangePreset ?? options.range) === "YTD") {
     // A year of daily bars, shown from the prior year's last close.
-    next = { ...next, viewport: { ...next.viewport, range: "1Y", dateWindow: yearToDateWindow(next) } };
+    next = { ...next, viewport: { ...next.viewport, range: "1Y", dateWindow: { ...yearToDateWindow(next), endAtLatestObservation: true } } };
   }
   const selectedRange = chartRange(options);
   const range = capabilityId === "intraday-price-chart" && typeof options.session === "string"
     ? "1D"
     : selectedRange;
-  const resolution = chartResolution(options);
+  const resolution = chartResolution(options)
+    ?? (capabilityId === "price-comparison" ? comparisonPresetResolution(range ?? next.viewport.range) : null);
   if (range || resolution) {
     next = {
       ...next,
@@ -90,10 +92,12 @@ export function applyChartComposerCapabilityOptions(
     ? readPriceWindow(typeof options.from === "string" ? options.from : undefined, typeof options.to === "string" ? options.to : undefined)
     : null;
   if (window) {
-    next = { ...next, viewport: { ...next.viewport, range: rangeCovering(window.from), dateWindow: { start: window.from, end: window.to } } };
+    next = { ...next, viewport: { ...next.viewport, range: rangeCovering(window.from), dateWindow: {
+      start: window.from, end: window.to, ...(options.to == null ? { endAtLatestObservation: true } : {}),
+    } } };
   }
 
-  if (capabilityId === "price-chart" && options.extendedHours === true) {
+  if ((capabilityId === "price-chart" || capabilityId === "price-comparison") && options.extendedHours === true) {
     next = { ...next, viewport: { ...next.viewport, extendedHours: true } };
   }
 
@@ -102,7 +106,7 @@ export function applyChartComposerCapabilityOptions(
   }
 
   // --currency USD: every leg converted into it at each day's FX close.
-  if (capabilityId === "price-comparison" && typeof options.currency === "string" && /^[A-Z]{3}$/.test(options.currency)) {
+  if ((capabilityId === "price-comparison" || capabilityId === "fundamental-series") && typeof options.currency === "string" && /^[A-Z]{3}$/.test(options.currency)) {
     next = { ...next, viewport: { ...next.viewport, currency: options.currency } };
   }
 

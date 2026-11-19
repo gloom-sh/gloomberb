@@ -5,11 +5,18 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import { cachedCompanyData, companyKpisCache, fetchCompanyData, loadCompanyData, validateCompanyData } from "./client";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { allObservations, changeText, changeTone, companyColumns, companyEmptyState, directionLabel, directionTone, fiscalLabel, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
-  seriesOrder } from "./model";
+  seriesOrder, guidanceIssueNote } from "./model";
 import { guide, guidancePayload, kpisPayload, observation } from "./test-fixture";
 import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
 
 afterEach(() => { setCloudApiFetchTransport(null); companyKpisCache.reset(); });
+test("a newer outlook for another metric dates an older guide without claiming it was replaced", () => {
+  const older = guide({ issuedDate: "2026-05-20" });
+  const newer = guide({ id: "guide:newer", issuedDate: "2026-08-19", metric: { ...older.metric, id: "revenue", name: "Revenue" } });
+  expect(guidanceIssueNote(older, [older])).toBeNull();
+  expect(guidanceIssueNote(older, [newer, older])).toBe("Issued 2026-05-20; newer outlook 2026-08-19");
+  expect(guidanceIssueNote(newer, [older, newer])).toBeNull();
+});
 test("runtime boundary rejects nonfinite values, inverted ranges, unsafe evidence and mismatched series", () => {
   for (const overrides of [{ value: NaN }, { currency: null }, { confidence: 2 }, { evidence: [{ ...observation().evidence[0]!, url: "javascript:alert(1)" }] }, { period: { ...observation().period, start: "2026-12-31" } }]) {
     const data = kpisPayload(); data.series[0]!.observations = [observation(overrides)];
@@ -41,6 +48,45 @@ test("changes preserve frequency, currency, basis, zero denominators and percent
   expect(changeTone(current, null)).toBe("muted");
   // A rate's change in points stays a number across zero.
   expect(observationChange({ ...current, value: 2, unit: "percent" }, [{ ...previous, value: -1, unit: "percent" }])).toEqual({ value: 3, unit: "pp" });
+  // Only the period just before counts: with the two quarters between missing, Q3 FY2025 is no prior change for Q2 FY2026.
+  const older = { ...previous, period: { ...previous.period, start: "2025-07-01", end: "2025-09-30", fiscalYear: 2025, fiscalQuarter: 3 } };
+  expect(observationChange(current, [older]).value).toBeNull();
+  expect(observationChange(current, [older, previous]).value).toBe(25);
+  const fiscalOnly = (item: typeof current) => ({ ...item, period: { ...item.period, start: null, end: null } });
+  expect(observationChange(fiscalOnly(current), [fiscalOnly(older)]).value).toBeNull();
+  expect(observationChange(fiscalOnly(current), [fiscalOnly(previous)]).value).toBe(25);
+  const year = (fiscalYear: number, value: number) => observation({ id: `fy${fiscalYear}`, value, period: { start: `${fiscalYear}-01-01`, end: `${fiscalYear}-12-31`, kind: "year", fiscalYear, fiscalQuarter: null, label: `FY${fiscalYear}` } });
+  expect(observationChange(year(2025, 120), [year(2024, 100)]).value).toBe(20);
+  expect(observationChange(year(2025, 120), [year(2023, 100)]).value).toBeNull();
+});
+
+test("a year to date is set against the same window a year earlier, never the same year's half", () => {
+  const ytd = (id: string, start: string | null, end: string | null, fiscalYear: number, value: number, fiscalQuarter: number | null = null) =>
+    observation({ id, value, period: { start, end, kind: "ytd", fiscalYear, fiscalQuarter, label: id } });
+  const nine2026 = ytd("9m-2026", "2026-01-01", "2026-09-30", 2026, 218_851);
+  const six2026 = ytd("6m-2026", "2026-01-01", "2026-06-30", 2026, 143_300);
+  const nine2025 = ytd("9m-2025", "2025-01-01", "2025-09-30", 2025, 216_900);
+  // An insurer's nine months beside its half of the same year: no change, rather than +52.73%.
+  expect(observationChange(nine2026, [six2026]).value).toBeNull();
+  // With the nine months a year earlier stated too, that is the prior, whatever else stands between.
+  expect(observationChange(nine2026, [six2026, nine2025]).value).toBeCloseTo(0.899, 2);
+  // The half a year earlier compares with its own half, as before.
+  expect(observationChange(six2026, [ytd("6m-2025", "2025-01-01", "2025-06-30", 2025, 126_600), nine2025]).value).toBeCloseTo(13.19, 1);
+  // A window of another length ending a year earlier (a fiscal year starting elsewhere) is not the same window.
+  expect(observationChange(nine2026, [ytd("other", "2024-10-01", "2025-09-30", 2025, 200_000)]).value).toBeNull();
+  // Undated: the same fiscal quarter a year earlier, not the quarter before.
+  const undated = (item: ReturnType<typeof ytd>, fiscalQuarter: number) => ({ ...item, period: { ...item.period, start: null, end: null, fiscalQuarter } });
+  expect(observationChange(undated(nine2026, 3), [undated(six2026, 2)]).value).toBeNull();
+  expect(observationChange(undated(nine2026, 3), [undated(six2026, 2), undated(nine2025, 3)]).value).toBeCloseTo(0.899, 2);
+  // An end with no start still pairs with the same end a year earlier.
+  expect(observationChange(ytd("9m-open", null, "2026-09-30", 2026, 218_851), [ytd("9m-open-2025", null, "2025-09-30", 2025, 216_900), six2026]).value).toBeCloseTo(0.899, 2);
+});
+
+test("a balance is set against the balance before it; a period of an unknown window against none", () => {
+  const at = (id: string, end: string, value: number) => observation({ id, value, period: { start: null, end, kind: "instant", fiscalYear: Number(end.slice(0, 4)), fiscalQuarter: null, label: end } });
+  expect(observationChange(at("jun-2026", "2026-06-30", 83_402), [at("dec-2025", "2025-12-31", 79_678), at("jun-2025", "2025-06-30", 73_670)]).value).toBeCloseTo(4.67, 2);
+  const other = (id: string, end: string, value: number) => observation({ id, value, period: { start: null, end, kind: "other", fiscalYear: Number(end.slice(0, 4)), fiscalQuarter: null, label: id } });
+  expect(observationChange(other("final dividend", "2026-06-30", 120), [other("interim dividend", "2025-12-31", 100)]).value).toBeNull();
 });
 
 test("chart projection excludes conflicts, revisions and missing dates without combining fiscal frequencies", () => {
@@ -182,15 +228,22 @@ test("a guidance table fits its pane: the columns narrow, the metric keeps the r
   expect(fitCompanyColumns(tracker, 160)).toEqual(tracker);
   expect(fitCompanyColumns(tracker, 70).map((column) => column.id)).toEqual(["metric", "period", "value", "change"]);
   expect(fits(fitCompanyColumns(tracker, 70), 70)).toBe(true);
-  // Basis and scope name a row on the terminal, so a table they keep too wide scrolls rather than lose them.
-  const named = companyColumns(true, false, false);
-  expect(fitCompanyColumns(named, 60).map((column) => column.id)).toEqual(named.map((column) => column.id));
+  for (const width of [46, 52, 60]) {
+    for (const guidance of [true, false]) {
+      for (const historical of [true, false]) {
+        const columns = fitCompanyColumns(companyColumns(guidance, false, historical), width, historical);
+        expect(fits(columns, width)).toBe(true);
+        expect(columns.map((column) => column.id)).toContain("metric");
+        expect(columns.map((column) => column.id)).toContain("value");
+      }
+    }
+  }
 });
 
 test("an empty table says a company has nothing on file and names one that has, else what the selection lacks", () => {
   expect(companyEmptyState("guidance", "AAPL", { tab: "table", hasRows: false })).toEqual({ title: "Guidance for AAPL is not yet available.", hint: "Try GUIDE WMT." });
   expect(companyEmptyState("guidance", "AAPL", { tab: "table", hasRows: false }, "cli").hint).toBe("Try `fn GUIDE WMT`.");
-  expect(companyEmptyState("kpis", "NFLX", { tab: "table", hasRows: false })).toEqual({ title: "KPIs for NFLX are not yet available.", hint: "Try KPIS AAPL." });
+  expect(companyEmptyState("kpis", "NFLX", { tab: "table", hasRows: false })).toEqual({ title: "No KPIs on file for NFLX yet." });
   // It never sends a company to itself.
   expect(companyEmptyState("guidance", "wmt", { tab: "table", hasRows: false }).hint).toBe("Try GUIDE DAL.");
   expect(companyEmptyState("guidance", "WMT", { tab: "history", hasRows: true })).toEqual({ title: "Actuals have not been matched to these guidance periods yet." });

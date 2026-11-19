@@ -19,10 +19,14 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type PaneFooterSegment,
+  type PaneHint,
   type QueryBarFilter,
   type StatItem,
 } from "../../../components";
 import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
+import { openFormModal } from "../../../components/form-modal";
+import { getSharedRegistry } from "../../registry/shared";
+import { usePluginAppActions } from "../../runtime";
 import type { CloudResource } from "../shared/cloud-resource";
 import { formatCompactAxis } from "../../../components/chart-table";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -41,10 +45,13 @@ import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { COIN_OPTIONS_HINT, isCoinWithoutOptions, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
 import {
   loadGamma,
   loadOpenInterest,
+  readGamma,
+  readOpenInterest,
   type ExpiryOpenInterest,
   type GammaPayload,
   type GammaStrike,
@@ -66,6 +73,7 @@ import {
   formatDistance,
   formatGamma,
   formatLevel,
+  flipAlertValues,
   gammaTimesFigure,
   positioningSpotDetail,
   formatPayout,
@@ -197,6 +205,7 @@ export function OptionsPositioningPane(props: PaneProps) {
 
 function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & { symbol: string }) {
   const colors = useThemeColors();
+  const scope = useCloudDisplayScope();
   // A pane linked to a watchlist changes underlying with the cursor. The expiry and strike it
   // saved for one would otherwise open the next on the same date, so they are kept per symbol
   // and the last symbol's are dropped.
@@ -220,9 +229,12 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
 
   const openInterestLoader = useCallback(
     (force: boolean) => loadOpenInterest(symbol, requestedExpiry, { force }),
-    [symbol, requestedExpiry],
+    [symbol, requestedExpiry, scope],
   );
-  const openInterestLoad = useAsyncResource<CloudResource<OpenInterestPayload>>(openInterestLoader, { keepPreviousData: true });
+  const openInterestLoad = useAsyncResource<CloudResource<OpenInterestPayload>>(openInterestLoader, {
+    keepPreviousData: scope,
+    initialData: () => scope ? readOpenInterest(scope, symbol, requestedExpiry) : null,
+  });
   const openInterest = { ...openInterestLoad, data: openInterestLoad.data?.payload ?? null };
   const data = openInterest.data;
   const spot = data?.spot ?? null;
@@ -251,10 +263,13 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   // single expiry waits for the listed expiries to say whether it is still there.
   const gammaLoader = useCallback(
     (force: boolean) => loadGamma(symbol, gammaScope === ALL_EXPIRIES ? null : gammaScope, { force }),
-    [symbol, gammaScope],
+    [symbol, gammaScope, scope],
   );
   const gammaReady = (tab === "gex" && (!!data || gammaExpiry === ALL_EXPIRIES)) || (tab === "expiries" && hasGamma);
-  const gammaLoad = useAsyncResource<CloudResource<GammaPayload>>(gammaReady ? gammaLoader : null, { keepPreviousData: true });
+  const gammaLoad = useAsyncResource<CloudResource<GammaPayload>>(gammaReady ? gammaLoader : null, {
+    keepPreviousData: scope,
+    initialData: () => scope ? readGamma(scope, symbol, gammaScope === ALL_EXPIRIES ? null : gammaScope) : null,
+  });
   const gamma = { ...gammaLoad, data: gammaLoad.data?.payload ?? null };
   useAutoRefresh(openInterest.updatedAt, openInterest.load, { intervalMs: OPEN_INTEREST_REFRESH_MS });
   useAutoRefresh(gamma.updatedAt, gamma.load, { intervalMs: gammaReady ? GAMMA_REFRESH_MS : null });
@@ -318,12 +333,28 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const activeResource = tab === "gex" ? gamma : openInterest;
   // Expiries' Net GEX column loads beside the open interest it sits with.
   const columnGamma = tab === "expiries" && gammaReady ? gamma : null;
+  // Alert at this flip: Add Alert filled in with a price alert crossing the flip shown, a fixed price on the
+  // reader's quotes that the app checks, which stays put when dealer positioning moves the flip.
+  const { notify } = usePluginAppActions();
+  const flip = tab === "gex" ? gamma.data?.flip ?? null : null;
+  const alertsOn = getSharedRegistry()?.commands.has("set-alert") === true;
+  const flipHint = useMemo<PaneHint | null>(() => {
+    if (flip == null || !Number.isFinite(flip) || !alertsOn) return null;
+    const level = formatLevel(flip);
+    return {
+      id: "flip-alert", key: "a", label: "lert at flip",
+      title: `Alert at this flip: a price alert when your quote crosses ${level}, checked while Gloom runs. A fixed price; it stays at ${level} when dealer positioning moves the flip.`,
+      onPress: () => {
+        if (!openFormModal({ kind: "plugin-command", commandId: "set-alert", values: flipAlertValues(symbol, flip) })) notify({ body: "Open this from the main window.", type: "info" });
+      },
+    };
+  }, [alertsOn, flip, notify, symbol]);
   usePaneStatusFooter({
     registrationId: "options-positioning",
     loading: activeResource.loading || !!columnGamma?.loading,
     error: activeResource.data ? activeResource.error ?? columnGamma?.error ?? null : null,
     info,
-    hints: upgradeHint ? [upgradeHint] : undefined,
+    hints: upgradeHint || flipHint ? [...upgradeHint ? [upgradeHint] : [], ...flipHint ? [flipHint] : []] : undefined,
   });
   const notices = useMemo(() => [
     ...(data?.warnings ?? []),

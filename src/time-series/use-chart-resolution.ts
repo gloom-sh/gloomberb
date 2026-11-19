@@ -1,4 +1,7 @@
 import { logFailure } from "../utils/log-failure";
+import { afterSavedCopyFrame, readSavedCopy, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
+import { reuseSavedData } from "../data/reuse-saved-data";
+import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { resolveChartSpecData } from "./resolve";
 import {
@@ -42,6 +45,8 @@ export interface UseChartResolutionResult extends ChartResolutionResult {
 
 export interface UseChartResolutionOptions {
   snapshot?: ChartResolutionResult | null;
+  /** Account and access scope for the chart's saved observations. */
+  savedCopyScope?: string | null;
   /**
    * Minimum spacing between live redraws. Live updates otherwise follow the
    * shared quote cadence; terminals pass LIVE_CHART_TERMINAL_FRAME_MS.
@@ -80,6 +85,26 @@ const EMPTY_RESULT: ChartResolutionResult = {
 
 function hasRenderableData(result: ChartResolutionResult): boolean {
   return (result.bufferedSeries ?? result.series).some((series) => series.points.length > 0);
+}
+
+function publicChartSpecKey(spec: ChartSpec, scope: string | null | undefined): string | null {
+  if (!scope || spec.series.length === 0) return null;
+  if (spec.series.some(({ source }) => source.kind === "capability" || (source.kind === "security"
+    && (source.instrument.instrument || source.instrument.brokerId || source.instrument.brokerInstanceId)))) return null;
+  const series = spec.series.map((entry) => {
+    const { source } = entry;
+    if (source.kind !== "security") return entry;
+    const { symbol, exchange } = source.instrument;
+    return { ...entry, source: { ...source, instrument: { symbol, exchange, instrument: null } } };
+  });
+  return JSON.stringify([scope, { ...spec, series }]);
+}
+
+function saveChartResolution(key: SavedCopyKey | null, result: ChartResolutionResult): void {
+  if (key && hasRenderableData(result) && result.savedAt == null && result.errors.length === 0) {
+    const { bufferedSeries: _buffer, ...visible } = result;
+    if (hasRenderableData(visible)) writeSavedCopy(key, visible, Date.now(), TAIL_RECONCILE_MIN_SPACING_MS);
+  }
 }
 
 function seedWindowIsCurrent(spec: ChartSpec, now: number, options: ChartResolveOptions): boolean {
@@ -219,7 +244,12 @@ export function useChartResolution(
 ): UseChartResolutionResult {
   const snapshot = options.snapshot;
   const coordinator = getSharedMarketDataCoordinator();
-  const specKey = JSON.stringify(spec);
+  const scope = options.savedCopyScope;
+  const publicSpecKey = useMemo(() => publicChartSpecKey(spec, scope), [spec, scope]);
+  const specKey = publicSpecKey ?? JSON.stringify([scope, spec]);
+  const savedKey = !snapshot && publicSpecKey ? { version: 2, key: ["chart-resolution", publicSpecKey,
+    options.requestViewport?.start, options.requestViewport?.end, options.autoViewport?.start, options.autoViewport?.end,
+    options.autoViewport ? options.targetPointCount : null] } : null;
   const seedResult = () => {
     const now = sources.now ?? new Date();
     // The first paint prices a formula's legs in one month as the settled chart does, from the next months it read.
@@ -230,13 +260,16 @@ export function useChartResolution(
       && readSeedListingFacts(source.instrument)?.quoteMetadata === undefined)) return null;
     return seedChartResolutionResult(seedSpec, history, now, options);
   };
-  const [state, setState] = useState(() => ({
-    key: specKey,
-    result: snapshot ?? seedResult() ?? EMPTY_RESULT,
-  }));
+  const openingState = () => {
+    const saved = savedKey ? readSavedCopy<ChartResolutionResult>(savedKey) : null;
+    return { key: specKey, result: snapshot ?? saved?.value ?? seedResult() ?? EMPTY_RESULT, savedAt: saved?.fetchedAt };
+  };
+  const [state, setState] = useState<{ key: string; result: ChartResolutionResult; savedAt?: number }>(openingState);
   // A selected range, listing or transform owns its displayed data. A pending
   // request must not keep another specification's result under the new controls.
+  if (state.key !== specKey) setState(openingState());
   const result = state.key === specKey ? state.result : EMPTY_RESULT;
+  useSavedCopyFooter(state.key === specKey && !snapshot ? state.savedAt : null, result.errors.length === 0);
   // A seed bridges an in-flight request. Once that request settles, an empty
   // or failed result must not be replaced with a fresh loading seed forever.
   const needsSeed = !snapshot && !hasRenderableData(result)
@@ -256,6 +289,8 @@ export function useChartResolution(
   const displayed = hasRenderableData(result) ? result : (seeded ?? result);
   const resultRef = useRef(displayed);
   resultRef.current = displayed;
+  const stateKey = state.key;
+  const stateSavedAt = state.savedAt;
   const [revision, setRevision] = useState(0);
   // Bumped when a chart painted with the placeholder interval list and the
   // real one has since landed. Unlike a reload it keeps the cache, so the
@@ -307,8 +342,8 @@ export function useChartResolution(
     currentResolution,
     onResolutionSupportSettled,
   };
-  const latestRequestRef = useRef({ spec, sources, options: resolveOptions });
-  latestRequestRef.current = { spec, sources, options: resolveOptions };
+  const latestRequestRef = useRef({ spec, specKey, sources, savedKey, options: resolveOptions });
+  latestRequestRef.current = { spec, specKey, sources, savedKey, options: resolveOptions };
   const reload = useCallback(() => setRevision((current) => current + 1), []);
 
   // A chart that failed is loaded again once the data service, or the desktop
@@ -380,26 +415,27 @@ export function useChartResolution(
           request.options,
         );
         if (!current()) return;
-        const requestKey = JSON.stringify(request.spec);
+        saveChartResolution(request.savedKey, next);
+        const requestKey = request.specKey;
         // A pass that brought in no source data changed at most the newest points.
         const settled = cache.revision === dataRevision;
         const revisions = resultRevisionsRef.current;
         if (settled) revisions.set(next, { cache, revision: dataRevision });
         setState((state) => {
           if (state.key !== requestKey) return { key: requestKey, result: next };
-          if ((request.options.autoViewport || request.options.requestViewport)
+          if ((state.savedAt != null || request.options.autoViewport || request.options.requestViewport)
             && !state.result.loading
             && hasRenderableData(state.result)
             && !hasRenderableData(next)) return state;
           const shown = revisions.get(state.result);
           const edge = settled && shown?.cache === cache && shown.revision === dataRevision ? LIVE_COMPARE_EDGE_POINTS : undefined;
-          if (!sameChartResolution(state.result, next, edge)) return { key: requestKey, result: next };
+          if (state.savedAt != null || !sameChartResolution(state.result, next, edge)) return { key: requestKey, result: next };
           if (settled) revisions.set(state.result, { cache, revision: dataRevision });
           return state;
         });
       } catch (error) {
         if (!current()) return;
-        const requestKey = JSON.stringify(request.spec);
+        const requestKey = request.specKey;
         setState((state) => state.key !== requestKey ? state : ({
           ...state,
           result: {
@@ -524,32 +560,39 @@ export function useChartResolution(
     cacheIdentityRef.current = { spec, sources, revision };
     const cache = resolveCacheRef.current;
     const dataRevision = cache.revision;
-    const current = resultRef.current;
-    const backgroundRefresh = state.key === specKey && hasRenderableData(current) && !current.loading && !isExplicitReload;
+    const opening = resultRef.current;
+    const backgroundRefresh = stateKey === specKey && hasRenderableData(opening) && !opening.loading && (!isExplicitReload || stateSavedAt != null);
     if (!backgroundRefresh) {
-      setState({ key: specKey, result: { ...current, loading: true, errors: [] } });
+      setState({ key: specKey, result: { ...opening, loading: true, errors: [] } });
     }
     resolvedQuoteVersionRef.current = liveQuoteVersionRef.current;
-    resolveChartSpecData(
+    const resolve = () => resolveChartSpecData(
       spec,
       withQuoteOverrides(sources, liveQuoteOverridesRef.current, liveSinceRef.current),
       cache,
       resolveOptions,
-    )
+    );
+    const frame = stateSavedAt != null ? afterSavedCopyFrame() : undefined;
+    (frame ? frame.then(() => generationRef.current === generation ? resolve() : EMPTY_RESULT) : resolve())
       .then((next) => {
         if (generationRef.current !== generation) return;
-        if (backgroundRefresh && !hasRenderableData(next)) return;
-        if (cache.revision === dataRevision) resultRevisionsRef.current.set(next, { cache, revision: dataRevision });
-        setState({ key: specKey, result: next });
+        if (backgroundRefresh && !hasRenderableData(next)) {
+          setState((current) => current.key === specKey && current.savedAt != null
+            ? { ...current, result: { ...current.result, errors: next.errors, warnings: next.warnings } } : current);
+          return;
+        }
+        saveChartResolution(savedKey, next);
+        const series = stateSavedAt != null && !next.bufferedSeries ? reuseSavedData(resultRef.current.series, next.series) : next.series;
+        const result = series === next.series ? next : { ...next, series };
+        if (cache.revision === dataRevision) resultRevisionsRef.current.set(result, { cache, revision: dataRevision });
+        setState({ key: specKey, result });
       })
       .catch((error) => {
         if (generationRef.current !== generation) return;
-        if (backgroundRefresh) return;
-        setState({ key: specKey, result: {
+        setState((current) => current.key !== specKey || (backgroundRefresh && current.savedAt == null) ? current : {
           ...current,
-          loading: false,
-          errors: [error instanceof Error ? error.message : String(error)],
-        } });
+          result: { ...current.result, loading: false, errors: [error instanceof Error ? error.message : String(error)] },
+        });
       });
     return () => {
       if (generationRef.current === generation) generationRef.current += 1;

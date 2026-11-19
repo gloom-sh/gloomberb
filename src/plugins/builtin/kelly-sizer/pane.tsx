@@ -239,13 +239,15 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     ? portfolioFinancials.get(requestedSymbol!) ?? null
     : financials;
   const { accountState } = usePortfolioAccountState(activePortfolio, { brokerAccounts, config });
-  // Cash entered by hand counts toward a manual portfolio's bankroll; a broker's is in its Net Liq.
+  // Cash entered by hand, in every currency it is held in, counts toward a manual portfolio's bankroll; a broker's is in its Net Liq.
   const manualCash = accountState ? null : resolvePortfolioCash(activePortfolio, null);
+  const manualCashKey = manualCash?.balances.map((balance) => balance.currency).join(",") ?? "";
+  const manualCashCurrencies = useMemo(() => (manualCashKey ? manualCashKey.split(",") : []), [manualCashKey]);
   // The sized ticker's own currency too: its units are counted at the base currency's rate to it.
   const sizedCurrency = financials?.quote?.currency || ticker?.metadata.currency || null;
   const trackedCurrencies = useMemo(
-    () => [...buildTrackedCurrencies(portfolioTickers, portfolioFinancials, accountState, config.baseCurrency, manualCash?.currency), sizedCurrency],
-    [accountState, config.baseCurrency, manualCash?.currency, portfolioFinancials, portfolioTickers, sizedCurrency],
+    () => [...buildTrackedCurrencies(portfolioTickers, portfolioFinancials, accountState, config.baseCurrency, manualCashCurrencies), sizedCurrency],
+    [accountState, config.baseCurrency, manualCashCurrencies, portfolioFinancials, portfolioTickers, sizedCurrency],
   );
   const exchangeRates = useFxRatesMap(trackedCurrencies);
   const portfolioSummary = useMemo(
@@ -270,7 +272,10 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     netLiquidation,
     brokerPortfolio: !!activePortfolio?.brokerInstanceId,
     holdings: portfolioSummary.allocationHoldings ?? [],
-    cashValue: manualCash ? convertCurrency(manualCash.amount, manualCash.currency, config.baseCurrency, exchangeRates) : null,
+    // Each balance converted once; one without a rate leaves the sum, and so the bankroll, unknown.
+    cashValue: manualCash
+      ? manualCash.balances.reduce((sum, balance) => sum + convertCurrency(balance.amount, balance.currency, config.baseCurrency, exchangeRates), 0)
+      : null,
   });
   const sourceCurrentValue = getPortfolioPositionValue({
     ticker,

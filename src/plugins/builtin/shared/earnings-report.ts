@@ -47,6 +47,48 @@ export function isProvisionalActual(row: { epsActual?: number | null; epsActualS
   return row.epsActual != null && row.epsActualSource === "press-release";
 }
 
+/**
+ * A reported quarter with an actual and no consensus on record says so where
+ * its estimate would be, so a blank surprise never reads as a lost figure.
+ */
+export const NO_CONSENSUS = "no consensus";
+
+/**
+ * A report that is out with no actual yet (the calendar fills it the next
+ * day, a press release only when it proves the figure) says so where its
+ * actual would be, one word everywhere: ERN, the board, EE's detail. A
+ * listing abroad's figures come from its own results documents, with Gloom
+ * Pro only, so its row without one is not waiting on anything: it keeps its
+ * dash.
+ */
+export const ACTUAL_PENDING = "pending";
+
+/**
+ * Gloom Cloud reads a report's date from the calendar for a week after it, so
+ * an actual is pending only that long: an older report with none (a 2023
+ * report known only from its results filing) has none coming, and keeps its
+ * dash.
+ */
+const PENDING_DAYS = 7;
+
+export function actualPending(
+  row: { date?: string | null; epsActual?: number | null; dateStatus?: string | null },
+  abroad = false,
+  now = Date.now(),
+): boolean {
+  if (abroad || row.epsActual != null || row.dateStatus !== "reported") return false;
+  const date = Date.parse(`${String(row.date ?? "").slice(0, 10)}T00:00:00Z`);
+  return !Number.isFinite(date) || now - date <= (PENDING_DAYS + 1) * 86_400_000;
+}
+
+/** NO_CONSENSUS where a column is narrow. */
+export const NO_CONSENSUS_SHORT = "no est";
+
+/** A beat stated without its estimate (`difference`) still had a consensus. */
+export function lacksConsensus(row: { epsActual?: number | null; epsEstimate?: number | null; difference?: number | null }): boolean {
+  return row.epsActual != null && row.epsEstimate == null && row.difference == null;
+}
+
 /** What a provisional figure is, in every report's metadata. */
 export const PROVISIONAL_NOTE = "A provisional EPS (or sales) figure is the company's own press release's, read from its results filing minutes after it is out, on the basis the consensus is measured on. The earnings calendar's figure replaces it, usually the next day.";
 
@@ -67,18 +109,20 @@ type EarningsRecord = CorporateActionsData["earnings"][number];
 
 /**
  * What follows an earnings row's EPS, one phrase per part. A reported row
- * names its basis, whether the figure is provisional, and its beat; a
- * pending one whether its date is announced, its analysts and an adjusted
- * estimate's basis.
+ * names its basis, whether the figure is provisional, and its beat, or that
+ * no consensus is on record for it; one out with no actual yet that it is
+ * pending; one still to come whether its date is announced; and both their
+ * analysts and an adjusted estimate's basis.
  */
 export function earningsDetailParts(earning: EarningsRecord): string[] {
   if (earning.epsActual == null) {
     const status = earningsDateStatus(earning.dateStatus);
-    return [status === "reported" ? null : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
+    return [status === "reported" ? (actualPending(earning) ? ACTUAL_PENDING : null) : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
       earningsEpsBasis(earning.epsBasis) === "adjusted" ? BASIS_TEXT.adjusted : null].filter((part): part is string => !!part);
   }
   return [BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))], isProvisionalActual(earning) ? "provisional" : null,
-    earning.difference == null ? null : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`]
+    lacksConsensus(earning) ? NO_CONSENSUS
+      : earning.difference == null ? null : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`]
     .filter((part): part is string => !!part);
 }
 

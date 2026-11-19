@@ -3,6 +3,7 @@ type AppDesktopNotificationMode = "never" | "when-inactive" | "always";
 
 export interface AppNotificationDelivery {
   toastVisible: boolean;
+  /** Whether an out-of-app banner was requested by the native or browser host. */
   desktopRequested: boolean;
 }
 
@@ -16,6 +17,8 @@ export interface AppNotificationRequest {
   /** If true, in-app toast stays visible until user dismisses it */
   persistent?: boolean;
   desktop?: AppDesktopNotificationMode;
+  /** Also offer this banner in a background browser tab, if the user opted in. */
+  browser?: boolean;
   /** macOS sound name (e.g., "Glass", "Ping", "Hero"). Ignored on other platforms. */
   sound?: string;
   action?: {

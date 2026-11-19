@@ -11,6 +11,7 @@ import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { areDifferentCompanies } from "../../../sources/sec-registrant";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
 import { shortDate } from "../earnings/format";
+import { cloudDisplayCacheKey } from "../shared/cloud-resource";
 import { callCountdown, callDay, callTimeKnown, isUpcomingCall } from "./upcoming";
 import { type CompanyFrom, readCompanyFrom } from "../../../types/company-from";
 
@@ -350,6 +351,8 @@ function onDays(calls: CloudEarningsCallPayload[], days: UpcomingDays): CloudEar
 type UpcomingCallsClient = Pick<HeadlessPaneApiClient, "getCloudEarningsCalls">;
 type UpcomingCacheValue = { calls: CloudEarningsCallPayload[]; truncated?: boolean };
 
+const upcomingKey = (days: UpcomingDays) => cloudDisplayCacheKey(JSON.stringify([days.from, days.to]));
+
 function upcomingFromCache(value: UpcomingCacheValue, fetchedAt: number, stale: boolean): UpcomingCallsResult {
   return { calls: value.calls, fetchedAt, stale, ...(value.truncated ? { truncated: true } : {}) };
 }
@@ -359,16 +362,16 @@ export async function loadUpcomingCallsWithClient(
   days: UpcomingDays,
   options: { force?: boolean } = {},
 ): Promise<UpcomingCallsResult> {
-  const key = JSON.stringify([days.from, days.to]);
+  const key = upcomingKey(days);
   const store = persistence;
-  const read = (allowExpired: boolean) => store?.getResource<UpcomingCacheValue>(UPCOMING_KIND, key, {
+  const read = (allowExpired: boolean) => key === null ? null : store?.getResource<UpcomingCacheValue>(UPCOMING_KIND, key, {
     sourceKey: CACHE_SOURCE,
     schemaVersion: UPCOMING_CACHE_SCHEMA_VERSION,
     ...(allowExpired ? { allowExpired: true } : {}),
   });
   const cached = read(false);
   if (!options.force && cached && !cached.stale) return upcomingFromCache(cached.value, cached.fetchedAt, false);
-  const active = activeUpcomingFetches.get(key);
+  const active = key === null ? undefined : activeUpcomingFetches.get(key);
   if (active && !options.force) return active;
 
   const request = client
@@ -380,7 +383,7 @@ export async function loadUpcomingCallsWithClient(
         // A full answer may stop partway through the last day it reaches.
         ...(answered.length >= UPCOMING_LIMIT ? { truncated: true } : {}),
       };
-      if (activeUpcomingFetches.get(key) === request && persistence === store) {
+      if (key !== null && activeUpcomingFetches.get(key) === request && persistence === store) {
         store?.setResource(UPCOMING_KIND, key, value, {
           sourceKey: CACHE_SOURCE,
           schemaVersion: UPCOMING_CACHE_SCHEMA_VERSION,
@@ -404,9 +407,9 @@ export async function loadUpcomingCallsWithClient(
       throw error;
     })
     .finally(() => {
-      if (activeUpcomingFetches.get(key) === request) activeUpcomingFetches.delete(key);
+      if (key !== null && activeUpcomingFetches.get(key) === request) activeUpcomingFetches.delete(key);
     });
-  activeUpcomingFetches.set(key, request);
+  if (key !== null) activeUpcomingFetches.set(key, request);
   return request;
 }
 
@@ -415,7 +418,9 @@ export function loadUpcomingCalls(days: UpcomingDays, options?: { force?: boolea
 }
 
 export function cachedUpcomingCalls(days: UpcomingDays): UpcomingCallsResult | null {
-  const cached = persistence?.getResource<UpcomingCacheValue>(UPCOMING_KIND, JSON.stringify([days.from, days.to]), {
+  const key = upcomingKey(days);
+  if (key === null) return null;
+  const cached = persistence?.getResource<UpcomingCacheValue>(UPCOMING_KIND, key, {
     sourceKey: CACHE_SOURCE,
     schemaVersion: UPCOMING_CACHE_SCHEMA_VERSION,
     allowExpired: true,

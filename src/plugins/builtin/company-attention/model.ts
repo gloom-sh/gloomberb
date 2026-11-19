@@ -62,6 +62,9 @@ export function attentionTabs(kind: AttentionKind, symbol: string | null | undef
  * building-model.ts).
  */
 export type AttentionPaneTab = AttentionTab | "moves" | "expansion" | "anomalies" | "building";
+/** What HIRE says for a company whose open roles have no evidence rows yet. */
+export const NO_CURRENT_ROLE_EVIDENCE = "No current role evidence has been captured yet.";
+
 const HIRING_READ_TABS = ["moves", "expansion", "anomalies", "building"] as const;
 export function attentionPaneTabs(kind: AttentionKind, symbol: string | null | undefined): AttentionPaneTab[] {
   return kind === "hiring" ? [...attentionTabs(kind, symbol), ...HIRING_READ_TABS] : attentionTabs(kind, symbol);
@@ -108,7 +111,7 @@ const facts = (entries: Array<[string, string | number | null | undefined]>): At
 const CAPTURES: Record<string, string> = { complete: "Complete", partial: "Partial", unknown: "Coverage not known" };
 const column = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}) });
 const roleFamily = (value: string | null) => value === "data_ai" || value === "data ai" ? "Data / AI" : value ? humanLabel(value) : null;
-const COMPANY_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 24, false, true), column("open", "Open roles", 12, true), column("net", "Net / week", 12, true), column("remote", "Remote %", 17, true), column("z", "Z-score", 10, true), column("signal", "Signal", 12), column("date", "As of", 12)];
+const COMPANY_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 24, false, true), column("open", "Open roles", 12, true), column("net", "Net vs prior", 13, true), column("remote", "Remote %", 17, true), column("z", "Z-score", 10, true), column("signal", "Signal", 12), column("date", "As of", 12)];
 const HISTORY_COLUMNS = [column("date", "Week", 12), column("open", "Open roles", 12, true), column("added", "Added", 9, true), column("removed", "Removed", 9, true), column("net", "Net", 9, true), column("change", "Change %", 11, true), column("remote", "Remote %", 17, true), column("coverage", "Capture", 13, false, true)];
 /** `remoteKnown` rides along for the remote cell; it is not a column of its own. */
 const companyRow = (row: HiringSummary): AttentionRow => ({ id: row.symbol, symbol: row.symbol, values: { symbol: row.symbol, name: row.name, open: row.latest?.openCount ?? null, net: row.latest?.netChange ?? null, remote: row.latest?.remoteShare == null ? null : row.latest.remoteShare * 100, remoteKnown: row.latest?.remoteKnown ?? null, z: row.zScore, signal: humanLabel(row.signal ?? row.status), date: row.latest?.observedAt.slice(0, 10) ?? null } });
@@ -163,6 +166,7 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
   const companies = "companies" in data ? data.companies : [data];
   const history = detail?.series ?? [];
   const latest = detail?.latest;
+  const priorCapture = latest?.netChange == null ? null : count(latest.openCount - latest.netChange);
   const mixKey = ["functions", "seniority", "countries", "locations", "signals"].includes(mix) ? mix as "functions" | "seniority" | "countries" | "locations" | "signals" : "functions";
   const rows = mixKey === "signals" ? (detail?.signals ?? []).map((row, i): AttentionRow => ({ id: `${row.type}:${i}`, url: row.evidenceUrls[0], values: { label: row.label, count: row.value, share: row.confidence * 100, date: row.asOf.slice(0, 10) }, details: facts([["As of", day(row.asOf)], ["Location", row.location]]) }))
     : (detail?.[mixKey] ?? []).map((row): AttentionRow => ({ id: row.id, values: { label: mixKey === "functions" ? roleFamily(row.label) : mixKey === "seniority" ? humanLabel(row.label) : row.label, count: row.count, share: row.share * 100 } }));
@@ -176,8 +180,8 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
     partial: !!detail && (latest?.completeness !== "complete" || detail.status === "stale"),
     // A figure the first capture cannot give yet (a weekly change, a z-score) is left out, not shown as a dash.
     figures: latest ? [
-      { label: "Open roles", value: count(latest.openCount) },
-      ...(latest.netChange != null ? [{ label: "Net / week", value: signed(latest.netChange), tone: latest.netChange === 0 ? "muted" as const : latest.netChange > 0 ? "positive" as const : "negative" as const }] : []),
+      { label: "Open roles", value: count(latest.openCount), detail: day(latest.observedAt) ?? undefined },
+      ...(latest.netChange != null ? [{ label: "Capture change", value: signed(latest.netChange), detail: `vs ${priorCapture} roles`, tone: latest.netChange === 0 ? "muted" as const : latest.netChange > 0 ? "positive" as const : "negative" as const }] : []),
       ...(latest.remoteShare != null ? [{ label: "Remote", value: `${formatNumber(latest.remoteShare * 100, 0)}%`,
         detail: latest.remoteKnown == null ? "of known work modes" : `of ${count(latest.remoteKnown)} known` }] : []),
       ...(detail?.zScore != null ? [{ label: "Z-score", value: detail.zScore.toFixed(2), detail: detail.signal ? `hiring ${detail.signal}` : undefined,
@@ -194,7 +198,7 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
     chart: { label: "Open roles", unit: "roles", points: history.map((point) => ({ date: point.week, value: point.openCount })), since: detail?.coverage.firstObservedAt ?? null },
   };
   if (detail) {
-    model.sections.table = { ...model.sections.evidence, columns: model.sections.evidence.columns.filter((entry) => entry.id !== "confidence"), empty: "No current role evidence has been captured yet." };
+    model.sections.table = { ...model.sections.evidence, columns: model.sections.evidence.columns.filter((entry) => entry.id !== "confidence"), empty: NO_CURRENT_ROLE_EVIDENCE };
   }
   return model;
 }
@@ -230,7 +234,7 @@ const appCompanyRow = (row: AppCompany): AttentionRow => ({ id: row.symbol, symb
  * sees, so an empty preview is never the free cap. Null when the report has rows, a filter is set, or nothing has
  * been captured yet.
  */
-function appsUnmappedReason(data: AppAttentionPayload, filtered: boolean): string | null {
+export function appsUnmappedReason(data: AppAttentionPayload, filtered: boolean): string | null {
   if (!data.symbol || filtered || data.apps.length || (data.page?.total ?? 0) > 0 || data.summary.appCount > 0) return null;
   // Rows held back for Pro are apps it maps, so a capped preview is never read as none.
   if (!Object.values(data.locked).every((count) => !count)) return null;

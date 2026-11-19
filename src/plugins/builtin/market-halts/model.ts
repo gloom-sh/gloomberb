@@ -9,6 +9,9 @@ import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../../utils/zoned-
 
 export const MARKET_HALTS_PANE_ID = "market-halts";
 
+/** What the halts table says with no rows: nothing halted, or a filter that hides every halt. */
+export const haltsEmptyTitle = (filter: HaltFilter) => filter === "all" ? "No trading halts reported." : "No halts match this filter.";
+
 /** Nasdaq publishes every field of this feed as America/New_York wall-clock time. */
 const EXCHANGE_TIME_ZONE = "America/New_York";
 

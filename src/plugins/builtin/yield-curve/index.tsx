@@ -36,7 +36,7 @@ import { formatMoveRank, MOVE_HORIZONS } from "../shared/move-rank";
 import { forwardCurve, type CurveBasis } from "./forward";
 import { loadYieldCurveLookbacks, yieldCurveDate } from "./history";
 import { curveAsOf, isYieldObservationDate, type YieldPoint, yieldCurveErrors } from "./treasury-data";
-import type { WorldRow } from "./world";
+import { worldMissingNote, type WorldRow } from "./world";
 import { SwapsTab } from "./swaps";
 import {
   cachedCurve, cachedWorldRows, curveViewCache, loadSavedCurve, loadSavedWorldRows, swapCurveCache, worldCurvesCache,
@@ -124,6 +124,21 @@ function useDraftField(applied: string) {
     inputRef.current?.blur?.();
   }, []);
   return { draft, setDraft, active, setActive, focusToken, focus, leave, inputRef };
+}
+
+/** A query bar field over a draft (`useDraftField`): typing edits the draft and Enter applies it. */
+function draftTextFilter(field: ReturnType<typeof useDraftField>, focused: boolean, id: string, label: string, placeholder: string,
+  apply: (value: string) => void, applied: string): QueryBarFilter {
+  return {
+    id, kind: "text", label, value: field.draft, placeholder, width: 10, debounceMs: 0, focused,
+    active: field.active, onActiveChange: field.setActive, focusToken: field.focusToken, inputRef: field.inputRef,
+    // Clearing the chip (outside the field) turns it back to its default.
+    onChange: (value: string) => {
+      field.setDraft(value);
+      if (!field.active && !value.trim() && applied) apply("");
+    },
+    onSubmit: apply,
+  };
 }
 
 export function YieldCurvePane({ focused, width, height }: PaneProps) {
@@ -347,26 +362,14 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
     return { text: formatYieldChange(value), color: priceColor(Math.round(value * 100), colors) };
   }, [colors]);
 
-  const textField = (field: ReturnType<typeof useDraftField>, id: string, label: string, placeholder: string,
-    apply: (value: string) => void, applied: string): QueryBarFilter => ({
-    id, kind: "text", label, value: field.draft, placeholder, width: 10, debounceMs: 0, focused,
-    active: field.active, onActiveChange: field.setActive, focusToken: field.focusToken, inputRef: field.inputRef,
-    // Typing only edits the draft; Enter applies it. Clearing the chip
-    // (outside the field) turns it back to its default.
-    onChange: (value: string) => {
-      field.setDraft(value);
-      if (!field.active && !value.trim() && applied) apply("");
-    },
-    onSubmit: apply,
-  });
   const queryBar = (
     <QueryBar
       width={width}
       filters={[
         { id: "curve", label: "Curve", value: curve, options: CURVE_OPTIONS.map((option) => ({ value: option.id, label: option.label })),
           onChange: (value: CurveId) => onCurveChange(value) },
-        textField(dateField, "date", "Date", "latest", selectDate, requestedDate),
-        textField(compareField, "compare", "vs", "date or 1Y", selectCompare, compareInput),
+        draftTextFilter(dateField, focused, "date", "Date", "latest", selectDate, requestedDate),
+        draftTextFilter(compareField, focused, "compare", "vs", "date or 1Y", selectCompare, compareInput),
         // Picks what is drawn rather than narrowing it, so it has no reset.
         ...(comparing ? [{ id: "view", label: "View", inline: true, value: differenceView ? "difference" : "curve",
           options: [{ value: "curve", label: "Curves" }, { value: "difference", label: "Diff" }],
@@ -426,7 +429,11 @@ const worldKey = (row: WorldRow) => row.id;
 /** Palette slots far enough apart that the markets' curves on one axis read apart; the orange and green come last. */
 const MARKET_COLOR_SLOTS = [0, 1, 2, 3, 4, 7, 5, 8] as const;
 
-/** One row per market, each on the session its publisher last printed. */
+/**
+ * One row per market, each on the session its publisher last printed, or as
+ * of the pane's date (the Curve tab's too): each market's last session on or
+ * before it, never a later one.
+ */
 function WorldTab({ onOpen, focused, width, height }: {
   onOpen: (curve: CurveId) => void;
   focused: boolean;
@@ -435,14 +442,48 @@ function WorldTab({ onOpen, focused, width, height }: {
 }) {
   const colors = useThemeColors();
   const [selected, setSelected] = usePluginPaneState<string | null>("yield-curve:market", null);
-  const loadWorld = useCallback(() => loadSavedWorldRows(), []);
+  const [requestedDate, setRequestedDate] = usePaneSettingValue<string>("asOfDate", "");
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const dateField = useDraftField(requestedDate);
+  // Each answer names the day it is for, so a board read for one date never shows under another.
+  const loadWorld = useCallback(async () => ({ requestedDate, ...await loadSavedWorldRows(requestedDate) }), [requestedDate]);
   const { data: answer, loading, error, updatedAt, load } = useAsyncResource(loadWorld, {
-    initialData: cachedWorldRows, clearOnError: isPermanentClientError,
+    initialData: () => {
+      const cached = cachedWorldRows(requestedDate);
+      return cached ? { requestedDate, ...cached } : null;
+    },
+    clearOnError: isPermanentClientError,
   });
-  const data = answer?.data ?? null;
-  useAutoRefresh(updatedAt, load);
-  usePaneRefreshKey(() => load(), { focused });
-  usePaneStatusFooter({ registrationId: "yield-curve:world", loading, error: error || null, info: useSavedCopyInfo(answer?.savedAt) });
+  const current = answer?.requestedDate === requestedDate ? answer : null;
+  const data = current?.data ?? null;
+  // A past board does not move; the latest is read again as publishers print.
+  const refreshLatest = useCallback(() => { if (!requestedDate) load(); }, [requestedDate, load]);
+  useAutoRefresh(updatedAt, refreshLatest);
+  usePaneRefreshKey(() => load(), { focused, enabled: !dateField.active });
+  const selectDate = (value: string) => {
+    try {
+      const nextDate = yieldCurveDate(value);
+      setRequestedDate(nextDate);
+      dateField.setDraft(nextDate);
+      setFieldError(null);
+      dateField.leave();
+      if (nextDate === requestedDate) load();
+    } catch (failure) {
+      setFieldError(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
+  const missing = data ? worldMissingNote(data, requestedDate) : null;
+  usePaneNoticeFooter({ registrationId: "yield-curve:world-notices", notices: missing ? [missing] : [], focused, enabled: !error });
+  usePaneStatusFooter({
+    registrationId: "yield-curve:world",
+    loading,
+    error: error || null,
+    info: useSavedCopyInfo(current?.savedAt),
+    hints: [
+      { id: "date", key: "d", label: "ate", onPress: dateField.focus },
+      ...(requestedDate ? [{ id: "latest", key: "c", label: "urrent", title: "Latest Curves", onPress: () => selectDate("") }] : []),
+    ],
+  });
   const rows = data ?? [];
   const selectedId = rows.some((row) => row.id === selected) ? selected! : rows[0]?.id ?? null;
   // Every market's latest curve, each in its own colour; the selected row is
@@ -468,25 +509,31 @@ function WorldTab({ onOpen, focused, width, height }: {
       ? { text, color: Math.round(value * 100) < 0 ? colors.warning : undefined }
       : { text, color: priceColor(Math.round(value * 100), colors) };
   }, [colors]);
+  // The query bar stays above the status body, so the date can change while a board loads or after one fails.
+  const bodyHeight = Math.max(1, height - 1 - (fieldError ? 1 : 0));
   return (
-    <PaneStatusBody loading={loading && !data} error={!data ? error : null} loadingLabel="Loading world curves..." subject="world curves">
-      <DataTableView<WorldRow>
-        focused={focused} rootWidth={width} rootHeight={height}
-        // Maturities in order, each beside its own change.
-        columns={WORLD_COLUMNS} columnReorder={false} items={rows} getItemKey={worldKey} renderCell={renderCell}
-        selection={{ kind: "id", selectedId, getId: worldKey, onChange: (id) => setSelected(id) }}
-        onActivate={(row) => onOpen(row.id)} sortColumnId={null} sortDirection="asc"
-        emptyStateTitle="No curves yet."
-        rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={WORLD_COLUMNS}
-          chart={strip ? {
-            render: (size) => <CurveSurface series={series} width={size.width} height={size.height} display="chart"
-              caption={level ? `${level} % by maturity` : "Yield % by maturity"} xScale="log" formatValue={formatYield} formatChange={formatYieldChange}
-              formatAxisValue={formatPercentAxis} primarySeriesId={selectedId ?? undefined} />,
-            minRows: curveSurfaceMinRows({ series, width, caption: level ? `${level} % by maturity` : "Yield % by maturity" }),
-            strip,
-          } : null} />}
-      />
-    </PaneStatusBody>
+    <Box flexDirection="column" width={width} height={height}>
+      <QueryBar width={width} filters={[draftTextFilter(dateField, focused, "date", "Date", "latest", selectDate, requestedDate)]} />
+      {fieldError ? <Notice tone="negative">{fieldError}</Notice> : null}
+      <PaneStatusBody loading={loading && !data} error={!data ? error : null} loadingLabel="Loading world curves..." subject="world curves">
+        <DataTableView<WorldRow>
+          focused={focused && !dateField.active} rootWidth={width} rootHeight={bodyHeight}
+          // Maturities in order, each beside its own change.
+          columns={WORLD_COLUMNS} columnReorder={false} items={rows} getItemKey={worldKey} renderCell={renderCell}
+          selection={{ kind: "id", selectedId, getId: worldKey, onChange: (id) => setSelected(id) }}
+          onActivate={(row) => onOpen(row.id)} sortColumnId={null} sortDirection="asc"
+          emptyStateTitle={requestedDate ? `No curves on or in the 10 days before ${requestedDate}.` : "No curves yet."}
+          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={WORLD_COLUMNS}
+            chart={strip ? {
+              render: (size) => <CurveSurface series={series} width={size.width} height={size.height} display="chart"
+                caption={level ? `${level} % by maturity` : "Yield % by maturity"} xScale="log" formatValue={formatYield} formatChange={formatYieldChange}
+                formatAxisValue={formatPercentAxis} primarySeriesId={selectedId ?? undefined} />,
+              minRows: curveSurfaceMinRows({ series, width, caption: level ? `${level} % by maturity` : "Yield % by maturity" }),
+              strip,
+            } : null} />}
+        />
+      </PaneStatusBody>
+    </Box>
   );
 }
 

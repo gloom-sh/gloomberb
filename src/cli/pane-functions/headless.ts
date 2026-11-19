@@ -38,6 +38,7 @@ import {
 } from "../report-tables";
 import type { ExportIdentity } from "../export-source";
 import { observationDate } from "../../time-series/price-comparison";
+import { chartBarSizeParts } from "../../time-series/resolution";
 import type { ResolvedSeries } from "../../time-series/types";
 import { barLastSession } from "../../market-data/market/bar-period";
 import type { PaneFunctionReport } from "./report";
@@ -633,8 +634,11 @@ function trailingCells(trailing: HeadlessSeries["trailing"]): Record<string, str
   };
 }
 
-function renderSeries(result: HeadlessSeriesResult): string[] {
-  const rows = result.series.map((series) => {
+function renderSeries(result: HeadlessSeriesResult, showPoints: boolean): string[] {
+  // Series served in different bars (a chart's 5-minute bars beside a series a source answered in daily ones) name theirs.
+  const barSizes = result.series.map((series) => (chartBarSizeParts(series.interval?.trim()) ? series.interval!.trim() : null));
+  const mixedBars = new Set(barSizes.filter(Boolean)).size > 1;
+  const rows = result.series.map((series, index) => {
     const latest = [...series.points].reverse().find((point) => (
       point.value != null || point.close != null
     ));
@@ -645,7 +649,9 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
       latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestDate(series, latest.date) : MISSING_VALUE,
       value: series.notMeaningful ? "N/M" : seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
+      native: latest?.nativeAmount ? `${seriesValue(series, latest.nativeAmount.value)} ${latest.nativeAmount.currency}` : null,
       ...trailingCells(series.trailing),
+      ...(mixedBars ? { bars: barSizes[index] ?? MISSING_VALUE } : {}),
       points: observationCount(series),
     };
   });
@@ -658,6 +664,8 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
     { key: "value", header: "Value", align: "right" },
     ...(trailing ? TRAILING_COLUMNS : []),
     ...(rows.some((row) => row.unit) ? [{ key: "unit", header: "Unit" }] : []),
+    ...(mixedBars ? [{ key: "bars", header: "Bars" }] : []),
+    ...(rows.some((row) => row.native) ? [{ key: "native", header: "Native", align: "right" as const }] : []),
     // Beside the averages, the count of points is the first thing a narrow table drops.
     { key: "points", header: "Points", align: "right", ...(trailing ? { optional: true } : {}) },
   ];
@@ -667,6 +675,17 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
   if (notMeaningful.length) lines.push("", ...notMeaningful.map((line) => wrapToTerminal(line)));
   if (result.stats) {
     lines.push("", renderSection("Statistics"), renderEntries(statisticsEntries(result.stats)));
+  }
+  if (showPoints) {
+    for (const series of result.series) {
+      if (series.points.length === 0) continue;
+      const table = seriesTable(series, true);
+      const columns = table.columns.map((header, index): HeadlessPaneColumn => ({ key: String(index), header,
+        ...(index > 0 ? { align: "right" } : { shrink: false }) }));
+      const unit = table.identity?.currencyOrUnit;
+      lines.push("", renderSection(`${table.title}${unit ? ` (${unit})` : ""}`),
+        renderRows(table.rows.map((row) => ({ ...row })), columns, undefined));
+    }
   }
   return lines;
 }
@@ -688,7 +707,7 @@ const SERIES_FIELDS = ["value", "open", "high", "low", "close", "volume"] as con
  * its values, in the series' unit, which the export's `currency_or_unit`
  * column names beside the bare `Value`, `Open`... headers.
  */
-function seriesTable(series: HeadlessSeries): CliReportTable {
+function seriesTable(series: HeadlessSeries, text = false): CliReportTable {
   const fields = SERIES_FIELDS.filter((field) => !(field === "value" && series.valueIsClose) && series.points.some((point) => point[field] != null));
   const days = observesDays(series);
   const dates = series.points.map((point) => seriesPointExportDate(series, point.date, days));
@@ -710,7 +729,8 @@ function seriesTable(series: HeadlessSeries): CliReportTable {
       dates[index]!,
       ...fields.map((field) => {
         const value = point[field];
-        return typeof value === "number" && Number.isFinite(value) ? exportNumber(value) : "";
+        return text ? seriesValue(series, typeof value === "number" ? value : null)
+          : typeof value === "number" && Number.isFinite(value) ? exportNumber(value) : "";
       }),
       ...contracts.cells(point, index),
     ]),
@@ -930,7 +950,7 @@ export function headlessReportTables(
       break;
     case "series": {
       const seriesResult = result as HeadlessSeriesResult;
-      tables = seriesResult.series.map(seriesTable);
+      tables = seriesResult.series.map((series) => seriesTable(series));
       if (seriesResult.stats) tables.push(exportEntriesTable("Statistics", statisticsEntries(seriesResult.stats)));
       break;
     }
@@ -1002,6 +1022,7 @@ export function renderHeadlessPaneText(
   freshness: ReportFreshness = deriveHeadlessFreshness(definition, result),
   /** The function's token, which an empty report names as the one that does not cover the symbol. */
   token?: string,
+  showSeriesPoints = false,
 ): string {
   // A long title wraps to a narrow --width like the text under a table; each line stays bold.
   const lines = [...wrapToTerminal(reportTitle(definition, args, result, fallbackTitle)).split("\n").map(cliStyles.bold), ""];
@@ -1023,7 +1044,7 @@ export function renderHeadlessPaneText(
       lines.push(...renderBundle(definition, (result as HeadlessBundleResult).sections));
       break;
     case "series":
-      lines.push(...renderSeries(result as HeadlessSeriesResult));
+      lines.push(...renderSeries(result as HeadlessSeriesResult, showSeriesPoints));
       break;
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
@@ -1213,6 +1234,7 @@ export async function buildHeadlessFunctionReport(
       resolved.label,
       freshness,
       resolved.token,
+      resolved.rowWindow != null,
     ),
     tables: headlessReportTables(
       loaded.definition,

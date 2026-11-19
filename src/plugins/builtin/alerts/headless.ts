@@ -13,6 +13,7 @@ import type { PaneLock } from "../../../types/plugin";
 import { refusedLock } from "../shared/cloud-denied";
 import { ALERT_TABS, ALERTS_PLUGIN_ID } from "./constants";
 import { eventWhen, needsSignInNote, ruleState } from "./event-rows";
+import { checkedOnlyWithPro, checksProRules, needsProNote } from "./pro-rules";
 import { readerTimeZone } from "../../../utils/utc-time";
 import { eventAlertTarget, type EventAlertRule } from "./events";
 import {
@@ -24,8 +25,10 @@ import {
   formatAlertTargetPrice,
   formatCurrentPrice,
   formatQuoteChecked,
+  readingSessionWords,
   relativeTime,
 } from "./format";
+import { alertPriceText } from "./price-text";
 import { FIRED_LOG_KEY, firedAlertTime, quoteSourceWords, readFiredAlerts } from "./fired-log";
 import { alertKindLabel, validateAlertHistory, type AlertHistory, type AlertHistoryItem } from "./history";
 import { ALERT_HISTORY_VIA, mergeAlertHistory, type AlertHistoryRow } from "./history-rows";
@@ -70,7 +73,8 @@ const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "created", header: "Created" },
   { key: "listing", header: "Listing" },
   { key: "currency", header: "Currency" },
-  // A measure's last reading in words, last so the columns before it keep their places: an RRG quadrant with the strength and momentum that place it.
+  // A measure's last reading in words, last so the columns before it keep their places: an RRG quadrant with the strength and momentum that place it,
+  // a move with its close, and a price or move read off a pre-market, after-hours or overnight print with that session, as `alerts list` says it.
   { key: "reading", header: "Reading" },
 ];
 /** The terminal table keeps the pane's columns: the Quote cell already says the quote's age and feed. */
@@ -117,6 +121,7 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
   const away = price == null || !Number.isFinite(price) || price === 0 || alert.metric?.kind === "rrg" || alert.move ? null : (((alert.lastCheckedTarget ?? alert.targetPrice) - price) / price) * 100;
   const quoted = !alert.lastCheckError;
   const target = alert.lastCheckedTarget ?? alert.targetPrice;
+  const session = readingSessionWords(alert);
   return {
     ...stored,
     awayPercent: away != null && Number.isFinite(away) ? Number(away.toFixed(2)) : null,
@@ -126,8 +131,10 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
     listing: alertListing(alert),
     currency: alert.lastQuoteCurrency ?? null,
     reading: alert.metric && price != null && Number.isFinite(price) && Number.isFinite(target) ? metricReadingText(alert.metric, { value: price, target })
-      // A move, with the close it is measured from.
-      : alert.move && price != null && Number.isFinite(price) ? `${movePercentText(price)} ${moveBasisText(alert.lastMoveBasis)}` : null,
+      // A move, with the session of the print it was read off and the close it is measured from, as `alerts list` words it.
+      : alert.move && price != null && Number.isFinite(price) ? `${movePercentText(price)}${session} ${moveBasisText(alert.lastMoveBasis)}`
+      // A price read off a pre-market, after-hours or overnight print says so, as `alerts list` does: 508.17 after hours.
+      : session && price != null && Number.isFinite(price) ? `${alertPriceText(alert, price)}${session}` : null,
   };
 }
 
@@ -149,7 +156,7 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
 }
 
 /** An event alert as the Events table lists it: a scheduled one with its event date and lead time apart. */
-function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLevelCheck>, signedIn: boolean, readerZone: string | null = null): HeadlessPaneRow {
+function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLevelCheck>, signedIn: boolean, pro: boolean, readerZone: string | null = null): HeadlessPaneRow {
   const scheduled = readScheduledRule(rule);
   return {
     id: rule.id,
@@ -160,7 +167,7 @@ function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLe
     eventDate: scheduled && rule.eventDate ? eventWhen(rule, readerZone) : null,
     leadDays: scheduled?.leadDays ?? null,
     ...(scheduled?.trigger === "results" ? { when: "results" } : {}),
-    state: ruleState(rule, now, signedIn),
+    state: ruleState(rule, now, signedIn, pro),
     since: new Date(rule.createdAt).toISOString().slice(0, 10),
     // An IV level's last reading, or why there was none, on its own row.
     ...rule.kind === "iv_level" ? { lastCheck: ivLevelCheckText(rule, checks[rule.id]) } : {},
@@ -168,20 +175,25 @@ function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLe
 }
 
 function eventsResult(
-  rules: readonly EventAlertRule[], error: string | null, checks: Record<string, IvLevelCheck>, signedIn: boolean, readerZone: string | null = null,
+  rules: readonly EventAlertRule[], error: string | null, checks: Record<string, IvLevelCheck>, signedIn: boolean, pro: boolean,
+  readerZone: string | null = null,
 ): HeadlessRowsResult {
   const now = Date.now();
   const checked = rules.some((rule) => rule.kind === "iv_level");
-  const rows = [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, now, checks, signedIn, readerZone));
+  const rows = [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, now, checks, signedIn, pro, readerZone));
   // Signed out, the rules only a signed-in account gets checked say so on their rows, and once what to do.
   const waiting = rows.filter((row) => row.state === "Needs sign-in").length;
+  // Options flow and IV spikes are checked only with Pro, which their rows say without it; the list says it once either way.
+  const proRules = rules.filter(checkedOnlyWithPro);
+  const notes = [...waiting ? [needsSignInNote(waiting)] : [],
+    ...proRules.length ? [needsProNote(proRules, rows.filter((row) => row.state === "Needs Pro").length)] : []];
   return {
     // A Last check column only when an IV level rule has a reading to show.
     columns: checked ? [...EVENT_COLUMNS.slice(0, -2), { key: "lastCheck", header: "Last check" }, ...EVENT_COLUMNS.slice(-2)] : EVENT_COLUMNS,
     rows,
     empty: "No event alerts. Add one with gloom alerts add CRWV earnings --days 3, gloom alerts add CPI --days 1 or gloom alerts add CN PMI.",
     ...(error ? { errors: [error], complete: false } : {}),
-    ...(waiting ? { notes: [needsSignInNote(waiting)] } : {}),
+    ...(notes.length ? { notes } : {}),
   };
 }
 
@@ -276,7 +288,7 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
     const { alerts, alertsError, events } = readAlertStores(ctx.config);
     return tab === "events"
       ? eventsResult(events.rules, events.error, readIvLevelChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, IV_LEVEL_CHECKS_KEY)), !!ctx.apiClient.getSessionToken?.(),
-        readerTimeZone(ctx.config.timezone))
+        checksProRules(!!ctx.apiClient.getSessionToken?.(), ctx.apiClient.getCurrentUser?.()), readerTimeZone(ctx.config.timezone))
       // A move rule with this device's last reading of it, and whether it went off this session.
       : pricesResult(withMoveChecks(alerts, readMoveChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, MOVE_CHECKS_KEY))), alertsError, events.rules.length);
   },

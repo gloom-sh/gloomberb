@@ -17,6 +17,36 @@ function args(symbols: string[], options: HeadlessPaneLoadArgs["options"] = {}):
   return { symbols, options, argument: symbols, rawArgument: symbols.join(",") };
 }
 
+test("FA points to newer earnings releases without putting preliminary figures in the filed table", async () => {
+  let filedDate = "2026-07-26";
+  const release = {
+    symbol: "NVDA", name: "NVIDIA", date: "2026-11-17", timing: "amc", timingSource: "company", reportedAt: "2026-11-17T21:00:00Z",
+    dateStatus: "reported", fiscalPeriod: "2026-10", fiscalYear: 2027, fiscalQuarter: 3, marketCap: null,
+    epsEstimate: null, epsActual: null, epsAnalysts: null, revenueEstimate: null, revenueAnalysts: null,
+    revenueActual: 115_844_000_000, revenueActualSource: "press-release", implied: null, realized: null,
+  } as const;
+  const ctx = createTestHeadlessContext({
+    marketData: createTestDataProvider({ getTickerFinancials: async () => createTestFinancials({
+      quarterlyStatements: [{ date: filedDate, totalRevenue: 82_000_000_000 }],
+    }) }),
+    apiClient: { getCloudEarningsHistory: async (symbol) => ({ asOf: "2026-11-19", symbol, name: release.name,
+      reports: [{ ...release, date: "2027-02-17", dateStatus: "announced", fiscalPeriod: "2027-01", fiscalQuarter: 4 }, release] }) } as HeadlessPaneContext["apiClient"],
+  });
+  const input = args(["NVDA:NASDAQ"], { period: "quarterly", statement: "income" });
+  const notice = /Q3 FY2027 were reported on 2026-11-17.*See ERN NVDA:NASDAQ/;
+  setSystemTime(new Date("2026-11-19T00:16:00Z"));
+  try {
+    const report = await financialStatementsHeadless.load(input, ctx);
+    expect(report.notes?.find((note) => notice.test(note))).toBeDefined();
+    expect(report.metadata?.columns).toMatchObject([{ date: filedDate }]);
+    expect(JSON.stringify(report.rows)).not.toContain("115844000000");
+    filedDate = "2026-10-25";
+    expect((await financialStatementsHeadless.load(input, ctx)).notes?.join(" ")).not.toContain("Newer results");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("financial statements keep raw values, dated growth cells, and formatted columns without requiring a quote", async () => {
   const requested: string[] = [];
   const ctx = {
@@ -966,4 +996,24 @@ test("FA of several tickers is one long table: a row per ticker, fiscal period a
   expect(header).toBe("Ticker,Period,Period End,Metric,Value,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at");
   expect(lines.find((line) => line.startsWith("CPRT,FY2024,2024-07-31,ROE,"))).toStartWith("CPRT,FY2024,2024-07-31,ROE,,Value: needs prior period,CPRT,%,annual,Gloom Cloud,2024-07-31,");
   await expect(financialStatementsHeadless.load(args(["V", "CPRT"], { statement: "income", layout: "wide" }), memoContext())).rejects.toThrow("--layout wide");
+});
+
+test("FA converts reporting currencies without changing a company's fiscal date or percentage rows", async () => {
+  const context = createTestHeadlessContext({ marketData: createTestDataProvider({
+    getExchangeRate: async (currency) => ({ EUR: 1.2, SGD: 0.8 })[currency as "EUR" | "SGD"]!,
+    getTickerFinancials: async (symbol) => {
+      const usa = symbol === "LMT";
+      const currency = usa ? "USD" : "EUR";
+      const row = { date: usa ? "2026-09-27" : "2026-09-30", currency, totalRevenue: 100e6, operatingIncome: 10e6 };
+      return { financialCurrency: currency, annualStatements: [], quarterlyStatements: [row], fundamentals: {}, priceHistory: [] };
+    },
+  }) });
+  const result = await financialStatementsHeadless.load(args(["LMT", "RHM:XETRA"], { period: "quarterly", statement: "income", currency: "SGD" }), context);
+  const revenues = result.rows.filter((row) => row.metric === "Revenue");
+  expect(revenues).toMatchObject([
+    { periodEnd: "2026-09-27", value: 125, unit: "SGD mn", nativeValue: 100, nativeUnit: "USD mn" },
+    { periodEnd: "2026-09-30", formatted: "150.0", unit: "SGD mn", nativeValue: 100, nativeUnit: "EUR mn" },
+  ]);
+  expect(result.rows.filter((row) => row.metric === "Operating Margin").map((row) => [row.value, row.nativeValue])).toEqual([[10, undefined], [10, undefined]]);
+  expect(result.notes?.join("\n")).toMatch(/USD\/SGD 1.25.*UTC.*EUR\/SGD 1.5.*UTC/);
 });

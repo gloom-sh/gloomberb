@@ -11,6 +11,8 @@ import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
 import { EVENT_ALERTS_KEY, IV_LEVEL_ALERTS_KEY } from "./events";
 import { appendFiredAlert, FIRED_LOG_KEY } from "./fired-log";
 import { alertsHeadless } from "./headless";
+import { alertReadingText } from "./format";
+import type { AlertRule } from "./types";
 import { IV_LEVEL_CHECKS_KEY } from "./iv-level";
 import { createResearchAlert } from "./research-builder";
 import { createScheduledAlert } from "./scheduled";
@@ -75,6 +77,34 @@ test("signed out, an event alert only a signed-in account gets checked reads Nee
   expect(signedIn.notes).toBeUndefined();
 });
 
+/** Options flow read "Needs sign-in" signed out, though a free sign-in would not arm it either. */
+test("an options flow alert reads Needs Pro without an account that has Pro, signed out or on a free plan", async () => {
+  const flow = createResearchAlert("options_flow", { "options_flow:symbol": "QQQ", "options_flow:exchange": "US", "options_flow:threshold": "1000000" });
+  const filing = createResearchAlert("filing_type", { "filing_type:symbol": "WHR", "filing_type:exchange": "US", "filing_type:form": "8-K" });
+  const ctx = contextWith([], [flow, filing]);
+  const read = async (apiClient: Partial<HeadlessPaneApiClient>) => {
+    const result = await alertsHeadless.load(createTestHeadlessArgs({ options: { tab: "events" } }), { ...ctx, apiClient: apiClient as HeadlessPaneApiClient });
+    return { states: Object.fromEntries(result.rows.map((row) => [row.kind, row.state])), notes: result.notes ?? [] };
+  };
+  const signedOut = await read({ getSessionToken: () => null });
+  expect(signedOut.states).toEqual({ options_flow: "Needs Pro", filing_type: "Needs sign-in" });
+  expect(signedOut.notes[1]).toBe("1 event alert needs Pro (options flow). Free: OMON chain, price and move alerts.");
+
+  const free = await read({ getSessionToken: () => "session-token", getCurrentUser: () => ({ emailVerified: true, plan: "free", effectivePlan: "free" }) as never });
+  expect(free.states).toEqual({ options_flow: "Needs Pro", filing_type: "Active" });
+  expect(free.notes).toEqual(["1 event alert needs Pro (options flow). Free: OMON chain, price and move alerts."]);
+
+  const pro = await read({ getSessionToken: () => "session-token", getCurrentUser: () => ({ emailVerified: true, plan: "pro", effectivePlan: "pro" }) as never });
+  expect(pro.states).toEqual({ options_flow: "Active", filing_type: "Active" });
+  expect(pro.notes).toEqual(["Options flow alerts are checked only with Pro. Free: OMON chain, price and move alerts."]);
+
+  // An IV spike's free list leads with the IV level alerts the app checks, and covers flow's.
+  const spike = createResearchAlert("iv_spike", { "iv_spike:contract": "SPY271217C00700000", "iv_spike:threshold": "5" });
+  const both = await alertsHeadless.load(createTestHeadlessArgs({ options: { tab: "events" } }),
+    { ...contextWith([], [flow, spike]), apiClient: { getSessionToken: () => null } as unknown as HeadlessPaneApiClient });
+  expect(both.notes).toEqual(["2 event alerts need Pro (options flow and IV spike). Free: IV level alerts, OMON chain, price and move alerts."]);
+});
+
 test("a saved event list that does not read is reported, not shown as no alerts", async () => {
   const ctx = contextWith([], []);
   ctx.config.pluginConfig[ALERTS_PLUGIN_ID]![EVENT_ALERTS_KEY] = "{";
@@ -103,6 +133,24 @@ test("Prices exports the quote's own time and feed apart from the check time, an
   const text = renderHeadlessPaneText(alertsHeadless, result, args, "ALRT");
   expect(text).toMatch(/State\s+Symbol\s+Measure\s+Current\s+Target\s+Away\s+Trigger\s+Quote\s+Alerted/);
   expect(text).not.toContain("Quote source");
+});
+
+test("a reading off an after-hours print is labelled as alerts list labels it, in the export's Reading and the text table", async () => {
+  // MSFT added by name on 2026-11-18 after the close: `alerts list` read "508.17 USD after hours as of 2026-11-18T21:03Z".
+  const quotedAt = Date.UTC(2026, 10, 18, 21, 3);
+  const after = { ...createAlert("MSFT", "above", 900, "NASDAQ"), lastCheckedPrice: 508.17, lastCheckedAt: quotedAt, lastQuoteUpdatedAt: quotedAt,
+    lastQuoteSource: "delayed", lastQuoteCurrency: "USD", lastQuoteSession: "POST" };
+  const regular = { ...createAlert("AAPL", "above", 400, "NASDAQ"), lastCheckedPrice: 352.19, lastCheckedAt: quotedAt, lastQuoteUpdatedAt: quotedAt,
+    lastQuoteSource: "delayed", lastQuoteCurrency: "USD" };
+  expect(alertReadingText(after as AlertRule)).toBe("508.17 USD after hours as of 2026-11-18T21:03Z");
+  const args = createTestHeadlessArgs({ options: { tab: "prices" } });
+  const result = await alertsHeadless.load(args, contextWith([after, regular], []));
+  const table = headlessReportTables(alertsHeadless, result, args, "ALRT", deriveHeadlessFreshness(alertsHeadless, result), { complete: true, unavailableSymbols: [] }).tables[0]!;
+  const reading = (row: number) => table.rows[row]![table.columns.indexOf("Reading")];
+  expect(reading(0)).toBe("508.17 after hours");
+  // A regular session's price says nothing more than its figure.
+  expect(reading(1) ?? "").toBe("");
+  expect(renderHeadlessPaneText(alertsHeadless, result, args, "ALRT")).toMatch(/MSFT\S*\s+Price\s+AH 508\.17\s+900\.00/);
 });
 
 test("History lists this app's fired alerts with no sign-in, and merges Gloom Cloud's deliveries in, newest first", async () => {

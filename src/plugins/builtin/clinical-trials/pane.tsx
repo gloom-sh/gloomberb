@@ -225,7 +225,7 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     // `filtersKey` stands for `filters` and `searchKey` for `search`, which are rebuilt each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [client, filtersKey, searchKey]);
-  const studies = usePagedRows(loadPage, { getId: (trial) => trial.nctId, keepPreviousRows: true });
+  const studies = usePagedRows(loadPage, { getId: (trial) => trial.nctId, keepPreviousRows: true, savedCopy: { key: ["clinical-trials", filtersKey, searchKey] } });
   const loadedTrials = studies.rows;
   const loadMore = useTableLoadMore(scrollRef, studies.hasMore && !openItemId, studies.loadMore);
   // Scrolling asks for the next page, so a page that does not fill a tall

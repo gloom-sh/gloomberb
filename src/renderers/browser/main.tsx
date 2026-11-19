@@ -12,6 +12,7 @@ import { installDomMarketDataFrames } from "../dom/data-frames";
 import { webNativeRenderer } from "../dom/native-renderer";
 import { releaseBootFrameWhenDrawn, startBootFrameRecorder } from "../dom/boot-frame";
 import { BROWSER_STORAGE_KEYS } from "../../data/json-storage";
+import { openBrowserResources } from "./resource-db";
 import { createBrowserAppServices } from "./app-services";
 import {
   installBrowserFetchTransports,
@@ -20,6 +21,9 @@ import {
 import { loadWebBundledPlugins } from "./bundled-plugins";
 import { BROWSER_DATA_DIR, hasSavedBrowserConfig, installBrowserConfigStore } from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
+import { installBrowserAppBadgeHost } from "./app-badge-host";
+import { isBrowserAppActive } from "./activity";
+import { setAppActive } from "../../state/app/activity";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
 import { initializeBrowserResearchActivity, recordResearchActivity } from "../../api-client/research-activity";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
@@ -94,13 +98,19 @@ async function boot(): Promise<void> {
   // here must not stop the app: the built-in catalog is enough to run on, and
   // the marketplace reports what broke.
   const bundledPlugins = loadWebBundledPlugins().catch(logFailure("web-plugins", "Could not load the bundled plugins", []));
+  // The saved copies the panes open on, read while the session is restored.
+  const savedResources = openBrowserResources();
   await restoreBrowserCloudSession();
   recordResearchActivity("workspace_opened");
   // Nothing was restored on a first visit, only the starter workspace shown.
   if (!savedLayout) recordRestoredFunctions([]);
   applyLanguageFromConfig(config);
   const externalPlugins = await bundledPlugins;
+  // Its writes join the pending persistence the page flushes when it is hidden or left.
+  const resources = await savedResources;
   const deepLinkBridge = createBrowserDeepLinkBridge();
+  installBrowserAppBadgeHost();
+  setAppActive(isBrowserAppActive());
   root.render(
     <DomErrorBoundary label="Browser renderer crashed" fallback={(error) => (
       <div className="gloom-fatal">
@@ -112,7 +122,7 @@ async function boot(): Promise<void> {
       <DomHostProviders ui={browserUiHost} renderer={browserRendererHost}>
         <App
           config={config}
-          servicesFactory={createBrowserAppServices}
+          servicesFactory={(options) => createBrowserAppServices(options, resources)}
           externalPlugins={externalPlugins}
           plugins={getBrowserPlugins(externalPlugins)}
           desktopDeepLinkBridge={deepLinkBridge}

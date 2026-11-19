@@ -3,6 +3,7 @@ import { buildNewsQueryKey, type NewsService } from "./aggregator";
 import type { NewsArticle, NewsQuery, NewsQueryState } from "./types";
 import { useTableLoadMore } from "../components/table-view-shared";
 import type { ScrollBoxRenderable } from "../ui";
+import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 
 let sharedService: NewsService | null = null;
 
@@ -37,7 +38,9 @@ export function useNewsArticles(query: NewsQuery | null | undefined): NewsQueryS
     [key, service],
   );
 
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  useSavedCopyFooter(state.savedAt, state.phase === "refreshing" || state.phase === "ready");
+  return state;
 }
 
 export function useLoadNewsStory(): (storyId: string) => Promise<NewsArticle | null> {

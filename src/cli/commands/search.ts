@@ -22,7 +22,7 @@ import {
   type TickerSearchCandidate,
 } from "../../tickers/search";
 import { initMarketData, withMarketData } from "../context";
-import { listingChangeLine, loadListingFate, loadNoQuoteEnding, noLongerListedNote, noQuoteLastTradeNote, type NoQuoteEnding } from "../../tickers/listing-fate";
+import { listingChangeLine, loadListingFate, loadNoQuoteEnding, noLongerListedNote, noQuoteLastTradeNote, tradingListing, type NoQuoteEnding } from "../../tickers/listing-fate";
 import { formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { formerIssuerLine, startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
 import { fail, failRetryable, failWithError, isCliFailure, unreachableError } from "../errors";
@@ -48,6 +48,7 @@ import { hasNonLatinLetters } from "../../utils/typed-text";
 import { isKanjiOnlyName, japaneseNameReadAs, readExactJapaneseName, readJapaneseName, type JapaneseNameListing } from "../../tickers/search/japanese-names";
 
 interface SearchCommandDependencies {
+  limit?: number;
   initMarketData?: () => Promise<MarketContext>;
   fail?: (message: string, details?: string) => never;
   printResult?: CliCommandContext["printResult"];
@@ -128,7 +129,7 @@ export async function searchCandidatesForCli({
       localLimit,
       // Every company's listing of a symbol several use (CAR's ASX line is past the first ten), cut after ordering.
       totalLimit: Math.max(totalLimit, LISTING_SEARCH_LIMIT),
-      searchContext: { limit: LISTING_SEARCH_LIMIT },
+      searchContext: { limit: Math.max(totalLimit, LISTING_SEARCH_LIMIT), perpetuals: "always" },
     });
     const symbol = trimmedQuery.toUpperCase();
     // A bare symbol search lists asks for the quote `quote SYM` reads, once, for its venue and its name:
@@ -139,7 +140,9 @@ export async function searchCandidatesForCli({
       : null;
     // A word written as a name (`Aeon`) whose company search leads with keeps it first, as `quote Aeon` reads it.
     const named = leadsWithNamedCompany(trimmedQuery, candidates, quote);
-    const ordered = withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, named ? null : quote))), quote);
+    const ordered = withLiveCompanyPrimary(symbol,
+      withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, named ? null : quote))), quote),
+      quote);
     return cutKeepingCompanies(withOtherCompaniesApart(ordered, named ? trimmedQuery : null), totalLimit, symbol);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
@@ -351,6 +354,26 @@ function withPrimaryListingFirst(
 }
 
 /**
+ * A symbol whose own line stopped trading (DBS, the silver fund delisted in
+ * 2023) leads with the company the service marks by it that still trades
+ * (DBS Group Holdings' home line, D05 on SGX), as `quote DBS` asks after it;
+ * the stopped line is another match. A saved row is the user's choice and
+ * stays.
+ */
+function withLiveCompanyPrimary(symbol: string, candidates: TickerSearchCandidate[], quote: Quote | null, now = Date.now()): TickerSearchCandidate[] {
+  const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
+  if (!primary || primary.saved || primary.kind !== "search" || primary.symbol.toUpperCase() !== symbol) return candidates;
+  if (!primary.delisted && (!quote || tradingListing(quote, now))) return candidates;
+  const marked = (candidate: TickerSearchCandidate) => candidate !== primary && candidate.kind === "search" && !candidate.delisted
+    && candidate.symbol.toUpperCase() !== symbol && !!candidate.searchAliases?.some((alias) => alias.toUpperCase() === symbol);
+  const live = candidates.find((candidate) => marked(candidate) && candidate.homeListing === true) ?? candidates.find(marked);
+  if (!live) return candidates;
+  const rest = candidates.filter((candidate) => candidate !== live && candidate !== primary);
+  const at = Math.min(candidates.indexOf(primary), rest.length);
+  return [...rest.slice(0, at), { ...live, category: "Primary Listing" as const }, ...rest.slice(at), { ...primary, category: "Other Matches" as const }];
+}
+
+/**
  * One company's lines of a symbol lead with the one the service marks as its
  * home, never a thin secondary line search ranked first: DHL is DHL Group's
  * Xetra line, not the Vienna one.
@@ -426,11 +449,10 @@ function withHomeListingPrimary(query: string, candidates: TickerSearchCandidate
 function withUsLineOfPrimary(candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
   const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
   if (!primary || primary.kind !== "search" || isUsListingExchange(candidateExchange(primary))) return candidates;
-  const symbol = primary.symbol.toUpperCase();
   const company = resolveSearchName(primary);
   const us = candidates.find((candidate) => candidate !== primary && candidate.kind === "search" && !candidate.contractKey
-    && candidate.category !== "Funds & Derivatives" && candidate.symbol.toUpperCase() === symbol
-    && isUsListingExchange(candidateExchange(candidate)) && sameCompany(resolveSearchName(candidate), company));
+    && candidate.category !== "Funds & Derivatives"
+    && isUsListingExchange(candidateExchange(candidate)) && sameCompanyName(resolveSearchName(candidate), company));
   if (!us) return candidates;
   const rest = candidates.filter((candidate) => candidate !== us);
   const at = rest.indexOf(primary) + 1;
@@ -882,6 +904,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
         query: index?.symbol ?? trimmedQuery,
         tickers,
         dataProvider,
+        totalLimit: dependencies.limit,
         ...quote ? { quote } : {},
       }).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult));
     // A name in kanji alone is the service's to read first (中電 is CLP in Hong Kong); a Tokyo company's whole name it
@@ -898,6 +921,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     const bank = searchedCentralBank(trimmedQuery);
     // A query that names no ticker may name what a function does.
     const functions = await searchedFunctions(trimmedQuery, candidates, fate, dependencies.plugins, context);
+    if (!candidates.length && !fate.stopped && !series.length && !functions.length && !bank && !commandPointer(trimmedQuery)) process.exitCode = 1;
     if (dependencies.printResult) {
       const warnings = searchNotes(trimmedQuery, candidates, functions, fate);
       dependencies.printResult({

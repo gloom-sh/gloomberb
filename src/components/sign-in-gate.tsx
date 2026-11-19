@@ -12,6 +12,7 @@ import { t } from "../i18n";
 import { useAppLanguage } from "../i18n/react";
 import { matchesKeyChord, parseKeyChord } from "../app/keybindings";
 import { AuthForm, authFormTitle } from "../account/auth-form";
+import { markHeardFromDue } from "../account/heard-from";
 import type { AccountMode } from "../account/auth-model";
 import {
   DeviceSignInPanel,
@@ -95,7 +96,8 @@ function GateEmailSignIn({
       initialMode="signup"
       shortcutScope={GATE_SCOPE}
       onModeChange={onModeChange}
-      onSignedIn={() => {}}
+      // Where it heard about Gloom is asked once the gate, and setup after it, have closed.
+      onSignedIn={(user) => markHeardFromDue(user.id)}
       footer={(
         <Box flexDirection="row">
           <Button

@@ -7,7 +7,8 @@ import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
 import type { GeoLayerState } from "./feed";
 import { WORLD_VENUE_MAP_PANE_ID } from "./ids";
-import { parseLayerTokens } from "./layers";
+import { parseLayerTokens, parseMapPreset } from "./layers";
+import { peekGeoCatalog } from "../../../api-client/geo";
 
 interface WorldMapEvidenceLayer {
   id: string;
@@ -51,7 +52,7 @@ export function useWorldMapEvidence(tokens: readonly string[], states: readonly 
 
 function requestedTokens(request: Parameters<PaneScreenshotEvidenceHook["mismatches"]>[1]): string[] {
   const fromOption = parseLayerTokens(request.resolved.options.layer);
-  return fromOption.length ? fromOption : parseLayerTokens(request.resolved.createOptions?.arg ?? "");
+  return fromOption.length ? fromOption : parseMapPreset(request.resolved.createOptions?.arg, peekGeoCatalog()?.layers)?.layers ?? [];
 }
 
 export const worldMapScreenshotEvidence: PaneScreenshotEvidenceHook<WorldMapEvidence> = {

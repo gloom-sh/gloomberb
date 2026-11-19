@@ -861,6 +861,8 @@ Plugins contribute data and services through capabilities. A capability declares
 - `chart-series` for searchable provider-owned time series that resolve into normal chart data. To put a series in the data catalog, register it as a [data catalog series](#data-catalog-series) instead; the registry gives it a `chart-series` capability of its own. A raw `chartSeriesProvider` is for an index too large to list, such as the map's place series, whose entries are found by search.
 - `plugin-service` for narrow renderer-safe service escape hatches.
 
+To connect your own entitled feed API, see [Bring your own licensed market data](docs/market-data-plugins.md): one synthetic quote adapter, contract/venue mapping, fallback and an isolated CLI check.
+
 Capability operations can also include CLI manifest metadata. This is what makes the operation understandable to automation without plugin-specific documentation:
 
 ```typescript

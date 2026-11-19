@@ -108,7 +108,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   const favoriteBusyKeysRef = useRef<Set<string>>(new Set());
   const clearFavoriteNotesRef = useRef<() => void>(() => {});
   const [activeTab, setActiveTab] = usePaneStateValue<BuildoutTabId>("activeTab", "themes");
-  const [selectedList, setSelectedList] = useState<BuildoutList | null>(null);
+  const [selectedListSlug, setSelectedListSlug] = usePaneStateValue<string | null>("selectedListSlug", null);
   const [themeSlug, setThemeSlug] = usePaneStateValue<string | null>("themeSlug", null);
   const [, setCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
   const [, setGeoScope] = usePaneStateValue<GeoScope | null>(GEO_SCOPE_STATE_KEY, null);
@@ -122,11 +122,11 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   const handleBeforeLoad = useCallback(() => {
     favoriteBusyKeysRef.current.clear();
     setDetailRow(null);
-    setSelectedList(null);
+    setSelectedListSlug(null);
     setUpgradeMessage(null);
     clearFavoriteNotesRef.current();
     setFavoriteBusyKey(null);
-  }, []);
+  }, [setSelectedListSlug]);
   const {
     loadCompanies,
     loadIntel,
@@ -138,12 +138,13 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   } = useBuildoutDataRuntime({
     activeTab,
     onBeforeLoad: handleBeforeLoad,
-    selectedList,
+    selectedListSlug,
     themeSlug,
   });
   const themes = useMemo(() => (state.status === "ready" ? boardThemes(state.lists) : []), [state]);
   const themeList = useMemo(() => resolveBoardTheme(themes, themeSlug), [themeSlug, themes]);
   // The list whose companies the table shows: the board's theme, or the one opened from Companies.
+  const selectedList = state.status === "ready" ? state.lists.find((list) => list.slug === selectedListSlug) ?? null : null;
   const currentList = activeTab === "themes" ? themeList : selectedList;
   const favoriteToken = state.status === "ready" ? state.token : null;
   const canFavorite = favoriteToken != null;
@@ -274,21 +275,21 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const openCompanyList = useCallback((list: BuildoutList) => {
-    setSelectedList(list);
+    setSelectedListSlug(list.slug);
     setSelectedIndex(0);
     setDetailRow(null);
     setUpgradeMessage(null);
     setSort({ columnId: "marketCap", direction: "desc" });
     resetCompanies();
-  }, [resetCompanies]);
+  }, [resetCompanies, setSelectedListSlug]);
 
   const closeCompanyList = useCallback(() => {
-    setSelectedList(null);
+    setSelectedListSlug(null);
     setSelectedIndex(0);
     setDetailRow(null);
     setUpgradeMessage(null);
     setSort({ columnId: null, direction: "asc" });
-  }, []);
+  }, [setSelectedListSlug]);
 
   const activateRow = useCallback((row: BuildoutRow) => {
     if (row.kind === "list") {

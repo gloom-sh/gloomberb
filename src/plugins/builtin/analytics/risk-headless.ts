@@ -73,10 +73,7 @@ function emptyPortfolioHint(name: string, listed: readonly string[]): string {
 
 /**
  * Why a view of PORT has no rows, in one line, as its section says it in
- * place of a bare "No data.": what it needs, and where the trustee's question
- * is answered instead. Performance reads the account's own history, which a
- * book entered by hand has none of; its P&L over a period is `portfolio show
- * --from`.
+ * place of a bare "No data.": what it needs, and where P&L is answered instead.
  */
 function riskSectionEmpty(
   view: RiskView,
@@ -373,7 +370,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
             fetchedAt: new Date().toISOString(),
           })
         : fetchPortfolioRiskMarket(
-            portfolioRiskRequests(tickers, id),
+            portfolioRiskRequests(tickers, id, !(local.portfolio.brokerId || local.portfolio.brokerInstanceId || local.portfolio.brokerAccountId)),
             ctx.apiClient,
             new Date(),
             ctx.signal,
@@ -429,7 +426,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     const covered = !riskHoldingsLeftOut(model.coverage);
     const complete =
       view === "performance"
-        ? model.performance != null
+        ? model.performance != null || model.performanceEstimate?.complete === true
         : view === "attribution"
           ? model.attribution != null
           : view === "greeks"
@@ -454,8 +451,9 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       : views).map(({ view, rows }) => ({ view, rows: rows.map(displayRow) }));
     return {
       complete,
-      errors: model.warnings,
-      notes: [...riskCoverageNotices(model.coverage), ...model.notes.filter((note) => note !== fallback)],
+      errors: requestedView === "performance" && model.performanceEstimate ? [] : model.warnings,
+      notes: [...(requestedView === "performance" && model.performanceEstimate ? [] : riskCoverageNotices(model.coverage)), ...model.notes.filter((note) => note !== fallback),
+        ...(!requestedView || requestedView === "performance" ? model.performanceEstimate?.warnings ?? [] : [])],
       // A view with nothing to show says why in one line.
       sections: shown.map(({ view, rows }) => ({ title: view, columns: RISK_COLUMNS, rows, ...(rows.length === 0 ? { empty: riskSectionEmpty(view, {
         name: local.portfolio.name,
@@ -494,6 +492,13 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
           currency: model.portfolio.currency,
         },
         view,
+        ...(view === "performance" && model.performanceEstimate ? { performanceEstimate: {
+          kind: model.performanceEstimate.kind,
+          label: model.performanceEstimate.label,
+          currency: model.performanceEstimate.currency,
+          startDate: model.performanceEstimate.points[0]?.date ?? null,
+          endDate: model.performanceEstimate.points.at(-1)?.date ?? null,
+        } } : {}),
         benchmark: model.benchmark,
         window: model.window,
         ...(basketView && model.coverage

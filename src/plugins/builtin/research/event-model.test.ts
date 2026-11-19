@@ -3,6 +3,20 @@ import { describe, expect, test } from "bun:test";
 import type { AnalystResearchData } from "../../../types/financials";
 import { buildEventRows, eventSourceNotice, formatEventMetric, sourceErrorText, type EventFinancials } from "./event-model";
 import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
+import { fiscalPeriodText } from "../earnings/fiscal-quarter";
+
+test("a statement ending in the following month does not rename the earnings calendar's quarter", () => {
+  const rows = buildEventRows({ symbol: "TEST", dividends: [], splits: [], earnings: [
+    { date: "2025-11-19", fiscalPeriod: "2025-10", epsActual: 1.5 },
+    { date: "2026-11-18", fiscalPeriod: "2026-10", epsEstimate: 1.6 },
+  ] }, null, { quarterlyStatements: [{ date: "2025-11-01", eps: 1.5, totalRevenue: 100 }] }, "USD");
+  const earnings = rows.filter((row) => row.status === "Earnings").sort((left, right) => left.date.localeCompare(right.date));
+  expect(earnings.map((row) => row.period)).toEqual([fiscalPeriodText("2025-10"), fiscalPeriodText("2026-10")]);
+  expect(earnings[0]?.fiscalPeriodEnd).toBe("2025-11-01");
+  expect(earnings.map((row) => row.period)).toEqual(["Oct 2025", "Oct 2026"]);
+  expect(fiscalPeriodText("2026-10", { fiscalYear: 2027, fiscalQuarter: 3 })).toBe("Q3 FY2027");
+  expect(fiscalPeriodText(null)).toBe(MISSING_VALUE);
+});
 
 test("ADR reported EPS and company revenue keep their distinct currencies", () => {
   const rows = buildEventRows({ symbol: "TSM", currency: "USD", dividends: [], splits: [],
@@ -331,6 +345,11 @@ test("spinoff adjustment factors are not presented as verified share splits", ()
   expect(row).toMatchObject({ status: "Factor", value: "1253:1000", adjustmentFactor: 1.253,
     detail: "Split/adjustment", providerDescription: "1253:1000 split" });
   expect(row?.qEps).toBeUndefined();
+  // DBS's 1-for-10 bonus issue of 2024 is a factor of whole share counts: a split, in its terms.
+  const [bonus] = buildEventRows({ symbol: "D05", earnings: [], dividends: [],
+    splits: [{ date: "2024-04-22", fromFactor: 10, toFactor: 11, ratio: 1.1, description: "11:10" }],
+  }, null, null, "SGD");
+  expect(bonus).toMatchObject({ status: "Split", value: "11:10", detail: "11-for-10, 1 new share for every 10 held" });
 
 });
 
@@ -500,7 +519,8 @@ describe("event rows", () => {
     expect(rows).toMatchObject([
       { id: "div:2026-02-10", status: "Dividend", value: "$0.26" },
       { id: "earn:2026-01-30", status: "Earnings" },
-      { id: "split:2025-12-01:4-for-1 split", status: "Factor", value: "4:1" },
+      // Whole share counts are a split, in its terms.
+      { id: "split:2025-12-01:4-for-1 split", status: "Split", value: "4:1", detail: "4-for-1" },
     ]);
     expect(rows[0]?.qEps).toBeUndefined();
     expect(rows[0]?.annualEps).toBeUndefined();
@@ -553,11 +573,13 @@ describe("event source notice", () => {
   });
 });
 
-test("a fund lists its distributions but no earnings, whatever EPS a feed sends for its symbol", () => {
+test("a fund lists its distributions but no earnings or estimates, whatever a feed sends for its symbol", () => {
   const actions = { symbol: "SPY", currency: "USD", splits: [], dividends: [{ exDate: "2026-09-18", amount: 1.889 }],
     earnings: [{ date: "2026-07-29", dateType: "announcement" as const, epsActual: 1.35, epsEstimate: 1.19 }] };
-  const statuses = (financials: EventFinancials) => buildEventRows(actions, null, financials, "USD").map((row) => row.status);
+  const estimates = { symbol: "SPY", recommendations: [], ratings: [], revenueEstimates: [],
+    earningsEstimates: [{ date: "2027-03-31", period: "next quarter", average: 4, growth: 0.25, currency: "USD" }] };
+  const statuses = (financials: EventFinancials) => buildEventRows(actions, estimates, financials, "USD").map((row) => row.status);
   expect(statuses({ quarterlyStatements: [], quote: { currency: "USD", instrumentType: "ETF" } })).toEqual(["Dividend"]);
   expect(statuses({ quarterlyStatements: [], quoteMetadata: { instrumentType: "ETF" } })).toEqual(["Dividend"]);
-  expect(statuses({ quarterlyStatements: [], quote: { currency: "USD", instrumentType: "EQUITY" } })).toContain("Earnings");
+  expect(statuses({ quarterlyStatements: [], quote: { currency: "USD", instrumentType: "EQUITY" } })).toEqual(expect.arrayContaining(["Earnings", "Q Est"]));
 });

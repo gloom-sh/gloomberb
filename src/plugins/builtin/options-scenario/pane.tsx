@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { splitDelayedStatus, Button, ChoiceDialog, confirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
   usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
@@ -35,7 +36,7 @@ import { collarStatItems, scenarioCollar } from "./collar";
 import { useAssetData } from "../../runtime";
 import { extendedSession, formatSpotTime } from "../options/model-spot";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
-import { buildScenario, currencyLabel, scenarioCurrency, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
+import { buildScenario, currencyLabel, EMPTY_POSITION_TITLE, scenarioCurrency, scenarioDateLabels, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
   type ScenarioControls, validatePosition } from "./model";
 import { EMPTY_SAVED_STRATEGIES, restoreSavedStrategies, type SavedScenarioStrategy } from "./state";
 import { useScenarioEvidence } from "./evidence";
@@ -53,6 +54,7 @@ const money = (value: number | null) => value == null || !Number.isFinite(value)
 
 export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
+  const displayScope = useCloudDisplayScope();
   const dialog = useDialog();
   const { notify } = usePluginAppActions();
   const { symbol, ticker } = usePaneTicker();
@@ -93,7 +95,10 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   }, [underlying, exchange, expiration, brokerInstrument]);
   // Fully specified calculations and screenshot snapshots never need a quote refresh.
   const needsMarket = !frozen && (!["spot", "rate", "dividendYield"].every((key) => settings[key] != null && settings[key] !== "") || detail === "chain");
-  const resource = useAsyncResource(underlying && needsMarket ? loadMarket : null);
+  const resource = useAsyncResource(underlying && needsMarket && displayScope !== null ? loadMarket : null, {
+    savedCopy: displayScope === null || brokerInstrument ? null : { key: ["scenario-market", displayScope, underlying, exchange, expiration] },
+    shouldSave: (market) => market.spot !== null || market.chain !== null,
+  });
   useEffect(() => () => controller.current?.abort(), [loadMarket]);
   const rawMarket = frozenMarket ?? resource.data;
   const market = rawMarket?.symbol === underlying ? rawMarket : null;
@@ -166,7 +171,9 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const earningsLoader = useCallback(() => loadNextEarningsDate(assetData, underlying), [assetData, underlying]);
   // A screenshot keeps the date its report read.
   const frozenEarnings = Object.hasOwn(settings, "scenarioEarningsDate");
-  const earnings = useAsyncResource(cspStrategy && underlying && !frozenEarnings ? earningsLoader : null);
+  const earnings = useAsyncResource(cspStrategy && underlying && !frozenEarnings && displayScope !== null ? earningsLoader : null, {
+    savedCopy: displayScope === null ? null : { key: ["scenario-earnings", displayScope, underlying, exchange] },
+  });
   const earningsDate = frozenEarnings ? settings.scenarioEarningsDate as string | null : earnings.data;
   // A position following the market is at the live print, which the footer names with its feed.
   const spotBasis = scenario && !live ? scenarioSpotBasis(settings, scenario.position, market) : null;
@@ -385,7 +392,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       emptyStateTitle="No scenario values." getItemKey={(row) => `${row.landmark ?? "step"}:${row.spot}`}
       columns={[{ id: "spot", label: `Spot ${position?.currency ?? ""}`, width: 14, align: "right" }, { id: "move", label: "Move %", width: 10, align: "right" },
         { id: "mark", label: "", width: 10, align: "left" },
-        ...scenario.dates.map((date, i) => ({ id: String(i), label: dateLabel(date).slice(5), width: 13, align: "right" as const }))]}
+        ...scenarioDateLabels(scenario.dates).map((label, i) => ({ id: String(i), label: label.slice(5), width: 13, align: "right" as const }))]}
       renderCell={(row, column) => {
         const atSpot = row.move != null && Math.abs(row.move) < 1e-9;
         if (column.id === "spot") return { text: money(row.spot), color: row.landmark ? colors.warning : atSpot ? colors.textBright : colors.text };
@@ -413,8 +420,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         width={width}
         filters={[
           { id: "date", label: "Scenario date", controlRef: dateControl, value: String(scenario.controls.date),
-            options: [...new Set([...scenario.dates, scenario.controls.date])].sort((a, b) => a - b)
-              .map((date) => ({ value: String(date), label: `${dateLabel(date)} +${((date - scenario.position.asOf) / 86_400_000).toFixed(1)}d` })),
+            options: scenario.dates.map((date) => ({ value: String(date), label: `${dateLabel(date)} +${((date - scenario.position.asOf) / 86_400_000).toFixed(1)}d` })),
             onChange: (value: string) => setControls({ ...scenario.controls, date: Number(value) }) },
           // No shift reads as the "0" placeholder, so the field offers its reset only once there is a shift.
           { id: "vol", kind: "text", label: "Vol shift (pts)", width: 12, placeholder: "0", debounceMs: 0,
@@ -429,7 +435,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       {collarItems.length > 0 && <StatGrid items={collarItems} width={width} />}
     </>}
     {!position?.legs.length && !scenario ? <PaneStatusBody loading={!!resource.loading && !market} error={seeded.error} subject="scenario inputs">
-      <Box paddingX={1}><EmptyState title="Build an options position." actions={<Button label="Add leg" onPress={addTyped} />} /></Box>
+      <Box paddingX={1}><EmptyState title={EMPTY_POSITION_TITLE} actions={<Button label="Add leg" onPress={addTyped} />} /></Box>
     </PaneStatusBody> : !scenario && tab !== "legs" ? <Box paddingX={1}><EmptyState title="Scenario unavailable." hint={error ?? undefined}
       actions={<Button label="Edit inputs" onPress={() => setDetail("inputs")} />} /></Box> : activeContent}
   </>;

@@ -3,7 +3,8 @@ import type { CloudRiskReportListPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { attachRiskFactorsPersistence, resetRiskFactorsPersistence, loadRiskReportsWithClient, loadRiskReportWithClient } from "./data";
+import { attachRiskFactorsPersistence, getSavedRiskReport, resetRiskFactorsPersistence, loadRiskReportsWithClient, loadRiskReportWithClient } from "./data";
+import { savedCopyAt } from "../../../data/saved-copies";
 import { list, report } from "./test-fixtures";
 
 afterEach(resetRiskFactorsPersistence);
@@ -16,6 +17,18 @@ function client() {
     getRiskReport: async (_ticker: string, year: number) => report(year),
   };
 }
+
+test("the reader can open only the exact listing, year and account's saved report", async () => {
+  attachRiskFactorsPersistence(new MemoryPluginPersistence());
+  const request = { displayScope: "subscriber-one", exchange: "NYSE" };
+  const loaded = await loadRiskReportWithClient(client(), "ACME", 2025, request);
+
+  expect(savedCopyAt(getSavedRiskReport("ACME", 2025, request))).toBe(loaded.fetchedAt);
+  expect(getSavedRiskReport("ACME", 2026, request)).toBeNull();
+  expect(getSavedRiskReport("ACME", 2025, { ...request, exchange: "NASDAQ" })).toBeNull();
+  expect(getSavedRiskReport("ACME", 2025, { ...request, displayScope: "subscriber-two" })).toBeNull();
+  expect(getSavedRiskReport("ACME", 2025, { ...request, displayScope: null })).toBeNull();
+});
 
 test("failed forced discovery retains its original timestamp and retries on reopen before normal cache TTL", async () => {
   const store = new MemoryPluginPersistence();

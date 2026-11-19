@@ -36,8 +36,8 @@ export interface ToggleListProps {
   remoteMetadata?: Record<string, unknown>;
   /**
    * The terminal row's width in cells. With it, a label and detail that do
-   * not both fit are cut with an ellipsis, the label first down to a few
-   * words' room, and a two-cell gap always parts them; without it they are
+   * not both fit are cut with an ellipsis, the detail first, and a
+   * two-cell gap always parts them; without it they are
    * drawn whole.
    */
   width?: number;
@@ -46,8 +46,6 @@ export interface ToggleListProps {
 /** The checkbox's `> [ ] ` before a label, and the gap kept before the detail. */
 const CHECKBOX_PREFIX = 6;
 const DETAIL_GAP = 2;
-/** The label keeps this much before the detail is cut. */
-const LABEL_MIN = 10;
 
 /** Words that fit `width`, then an ellipsis: a list of codes is never cut inside one. */
 function clipWords(text: string, width: number): string {
@@ -64,15 +62,15 @@ function clipWords(text: string, width: number): string {
 
 /**
  * A terminal toggle row's label and detail, cut to fit `width` with an
- * ellipsis: the label gives way first, down to `LABEL_MIN` cells, then the
- * detail, at a word. Whole when they fit.
+ * ellipsis: the detail gives way first, at a word. Whole when they fit.
  */
 export function fitToggleRow(label: string, detail: string | undefined, width: number): { label: string; detail: string | undefined } {
   const room = Math.max(0, width - CHECKBOX_PREFIX);
   if (!detail) return { label: clipToDisplayWidth(label, room), detail };
   const available = Math.max(0, room - DETAIL_GAP);
-  const labelWidth = Math.min(displayWidth(label), Math.max(Math.min(LABEL_MIN, displayWidth(label)), available - displayWidth(detail)));
-  return { label: clipToDisplayWidth(label, labelWidth), detail: clipWords(detail, Math.max(0, available - labelWidth)) };
+  const labelWidth = Math.min(displayWidth(label), available);
+  const fittedDetail = clipWords(detail, Math.max(0, available - labelWidth));
+  return { label: clipToDisplayWidth(label, fittedDetail ? labelWidth : room), detail: fittedDetail || undefined };
 }
 
 function DesktopToggleRow({

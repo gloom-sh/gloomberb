@@ -2,13 +2,12 @@ import { logFailure } from "../../../utils/log-failure";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { Quote, QuoteIndexSession } from "../../../types/financials";
 import { isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
-import { delayedFeedLagMs, readIndexSession } from "../../../market-data/market/freshness";
+import { quoteFeedDelayMinutes, readIndexSession } from "../../../market-data/market/freshness";
 import { quoteHeadlineTime } from "../../../market-data/market/status";
 import { indexLevelMarketState } from "../../../market-data/market/index-level";
 import { barSizeFromGap, medianBarGap } from "../../../time-series/bar-spacing";
 import { apiClient } from "../../../api-client";
-import { isPerpetualExchange } from "../../../tickers/perpetual-listing";
-import { CLOUD_NEWS_DELAY_HOURS, hasProAccess } from "../../../api-client/plan-rules";
+import { hasProAccess } from "../../../api-client/plan-rules";
 import { savedCopyMark } from "../../../data/saved-copies";
 
 /**
@@ -74,10 +73,7 @@ export const REFERENCE_DATA: HeadlessPaneFreshness = { status: "not-a-feed", bas
 export const REPORTED_DATA: HeadlessPaneFreshness = { status: "not-a-feed", basis: "reported data" };
 
 /** What a news list's as-of is: its newest story, not the time it was read. */
-export const NEWEST_STORY = "newest story";
-
-/** Gloom Cloud's delayed quotes run behind each venue by a lag the app knows (`delayedFeedLagMs`). */
-const CLOUD_QUOTE_PROVIDER_ID = "gloomberb-cloud";
+const NEWEST_STORY = "newest story";
 
 interface QuoteFreshnessFields {
   dataSource?: "live" | "delayed";
@@ -104,8 +100,7 @@ export function quoteFreshnessFields(
 ): QuoteFreshnessFields {
   if (!quote) return {};
   const exchange = quote.listingExchangeName || quote.exchangeName;
-  // A perpetual's venue is read about once a minute, not held back by a feed lag.
-  const delayed = quote.dataSource === "delayed" && quote.providerId === CLOUD_QUOTE_PROVIDER_ID && !isPerpetualExchange(exchange);
+  const delayMinutes = quoteFeedDelayMinutes(quote);
   const sessionCalendar = readIndexSession(quote.indexSession);
   // A print older than its venue's latest session says nothing of where that market stands now (no "markets open" beside it);
   // a nominal price is that session's, its last trade older.
@@ -116,7 +111,7 @@ export function quoteFreshnessFields(
     ...(quote.dataSource === "live" || quote.dataSource === "delayed" ? { dataSource: quote.dataSource } : {}),
     stale: isQuoteStaleForCurrentSession(quote, now),
     ...(quote.nominalPrice ? { nominal: true as const } : {}),
-    ...(delayed ? { delayMinutes: delayedFeedLagMs(exchange) / 60_000 } : {}),
+    ...(delayMinutes != null ? { delayMinutes } : {}),
     ...(exchange && session ? { sessionExchange: exchange } : {}),
     // An index's final close reads as a close, not after hours.
     ...(quote.marketState && session ? { marketState: indexLevelMarketState(quote) } : {}),
@@ -163,6 +158,5 @@ export async function cloudRealtimeAccess(): Promise<boolean | null> {
 export function cloudNewsFreshness(realtime: boolean | null): HeadlessPaneFreshness {
   const stories: HeadlessPaneFreshness = { observedKey: "publishedAt", oldest: null, asOfLabel: NEWEST_STORY };
   if (realtime === true) return { ...stories, status: "live" };
-  if (realtime === false) return { ...stories, status: "delayed", delayMinutes: CLOUD_NEWS_DELAY_HOURS * 60 };
   return { ...stories, status: "not-a-feed", basis: "published stories" };
 }

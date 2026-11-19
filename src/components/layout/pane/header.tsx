@@ -29,6 +29,17 @@ export const PANE_HEADER_ASK_MIN_WIDTH = 32;
 export const PANE_HEADER_RESTORE = " - ";
 const PANE_HEADER_LOCK = " 🔒 ";
 const HIDDEN_HEADER_BUTTON = { visibility: "hidden" } as const;
+/**
+ * Desktop and web: how far the active title-bar tab reaches past the header's
+ * bottom rule into the pane. A strip wider than its pane scrolls, and WebKit
+ * (the macOS app, Safari) draws a scrolling box as a layer of its own that it
+ * places on a whole device pixel: in a title bar that sits a fraction of a
+ * pixel off the grid (a pane moved or split to a fraction of a cell), the tab
+ * then ends a device pixel above the rule and the rule's last row shows under
+ * it. Reaching a pixel past the rule, the tab still covers it, and the part
+ * in the pane is the colour of what is under it.
+ */
+const HEADER_TAB_OVERHANG_PX = 1;
 /** Terminal: between two tabs of a stack, and the most of a title one tab shows. */
 const STACK_TAB_SEPARATOR = " │ ";
 const STACK_TAB_MAX_WIDTH = 16;
@@ -447,14 +458,17 @@ export function PaneHeader({
     // Focused, the rule is the accent; otherwise the one hairline.
     const ruleColor = visuallyFocused ? colors.borderFocused : "var(--gloom-hairline)";
     // Title-bar tabs, the pane's own and a stack's alike: the strip hangs over
-    // the header's rules so the active tab's box opens into the pane.
+    // the header's rules, and past the bottom one into the pane, so the active
+    // tab's box opens into the pane (styles.css).
     const headerTabStripStyle = {
       alignSelf: "stretch",
       marginTop: -topInset,
-      marginBottom: -1,
+      marginBottom: -(1 + HEADER_TAB_OVERHANG_PX),
       // Undoes the negative top margin for what is centred in the strip:
       // the overflow chevron, and the tab labels (styles.css).
       "--pane-tab-top-inset": `${topInset}px`,
+      // How far the active tab reaches past the rule into the pane.
+      "--pane-tab-overhang": `${HEADER_TAB_OVERHANG_PX}px`,
       // The active tab's box opens into the pane over the bottom rule
       // (styles.css), drawn in the rule's colour so the two are one line.
       "--pane-tab-border": ruleColor,

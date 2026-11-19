@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import {
-  buildScenario, expiryRisk, optionExpirationClose, parseLegs, scenarioLegsText, scenarioValue, validatePosition,
+  buildScenario, expiryRisk, optionExpirationClose, parseLegs, scenarioDateLabels, scenarioLegsText, scenarioValue, validatePosition,
   type ScenarioLeg, type ScenarioPosition,
 } from "./model";
 import { scenarioCollar } from "./collar";
@@ -169,6 +169,20 @@ describe("scenario controls and dates", () => {
       expect(scenario.dates[i]! - scenario.dates[i - 1]!).toBe((scenario.expiryDate - AS_OF) / 4);
     }
     expect(optionExpirationClose(Date.UTC(2026, 8, 25, 23) / 1000)).toBe(Date.UTC(2026, 8, 25, 20));
+  });
+
+  test("the scenario date is a grid column, and no two columns read the same day", () => {
+    // Valued on 5 Oct: that day is a column beside the even steps, and the valuation is at it.
+    const date = Date.UTC(2026, 9, 5);
+    const valued = buildScenario(position(), { date });
+    expect(valued.dates).toContain(date);
+    expect(scenarioDateLabels(valued.dates)).toContain("2026-10-05");
+    // Three days out, the last even step falls on the close's day and gives way to it.
+    const near = buildScenario(position([leg({ expiration: Date.UTC(2026, 8, 25) / 1000 })]));
+    expect(scenarioDateLabels(near.dates)).toEqual(["2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25"]);
+    // On its expiry day the origin and the close share the day and say their times.
+    const sameDay = buildScenario(position([leg({ expiration: Date.UTC(2026, 8, 22) / 1000 })], { asOf: Date.UTC(2026, 8, 22, 14, 30) }));
+    expect(scenarioDateLabels(sameDay.dates)).toEqual(["2026-09-22 14:30", "2026-09-22 20:00"]);
   });
 
   test("clamps selected dates to the supported horizon but rejects unsafe direct valuations", () => {

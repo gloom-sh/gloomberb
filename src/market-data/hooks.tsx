@@ -1,4 +1,5 @@
 import { logFailure } from "../utils/log-failure";
+import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 import { fxRateCurrencies } from "../utils/currency-units";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { SecFilingDocument, SecFilingItem } from "../types/data-provider";
@@ -26,8 +27,8 @@ import {
 } from "./selectors";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
 import { createBaselineChartRequest } from "./coordinator/chart";
-import { fateListing, LATE_CHANGE_WAIT_MS, listingFateGate, type ListingFateGate } from "../tickers/listing-fate";
-import type { TickerChangeLookup } from "../tickers/ticker-changes";
+import { fateListing, LATE_CHANGE_WAIT_MS, listingChangeLine, listingFateGate, tradingListing, type ListingFateGate } from "../tickers/listing-fate";
+import { describeFormerIssuer, describeTickerChange, type TickerChangeLookup } from "../tickers/ticker-changes";
 import type { TickerChanges } from "../types/ticker-changes";
 
 const TICKER_FINANCIALS_LOAD_DELAY_MS = 250;
@@ -108,6 +109,8 @@ export function useTickerFinancials(symbol: string | null | undefined, ticker: T
   const financials = coordinator && instrument
     ? coordinator.getTickerFinancialsSync(instrument)
     : null;
+  const snapshot = coordinator && instrument ? coordinator.getSnapshotEntry(instrument) : null;
+  useSavedCopyFooter(snapshot?.savedCopyAt, snapshot?.error == null);
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
@@ -146,7 +149,7 @@ export function useTickerSnapshotState(symbol: string | null | undefined, ticker
   const failed = !!entry && (entry.phase === "error" || entry.phase === "ready") && entry.error != null;
   return {
     // Idle is a load the hook is about to start.
-    loading: !!entry && (entry.phase === "idle" || entry.phase === "loading" || entry.phase === "refreshing"),
+    loading: !!entry && entry.savedCopyAt == null && (entry.phase === "idle" || entry.phase === "loading" || entry.phase === "refreshing"),
     error: failed ? entry.error!.message : null,
     retry,
   };
@@ -426,6 +429,37 @@ export function useListingFateGate(symbol: string | null | undefined, ticker: Ti
 }
 
 /**
+ * What `quote` says beside a symbol whose company left it while something
+ * else lists there now ("FB now lists ProShares S&P 500 Dynamic Buffer ETF;
+ * FB was Meta Platforms before, now META (changed 2022-06-09)"), or whose
+ * company merged into another, for a pane that shows the listing there now.
+ * Null for a symbol nothing became of, and until its changes are read.
+ */
+export function useTickerChangeNote(symbol: string | null | undefined, ticker: TickerRecord | null | undefined, quote: Quote | null | undefined): string | null {
+  const coordinator = getSharedMarketDataCoordinator();
+  const instrument = useTickerInstrument(symbol, ticker);
+  const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;
+  const listing = useMemo(() => (instrument ? fateListing(instrument) : null), [instrumentKey]);
+  const lookup = useMemo(
+    () => (coordinator && instrument && listing ? coordinator.lookupTickerChanges(instrument) : null),
+    [coordinator, instrumentKey],
+  );
+  const [answer, setAnswer] = useState<{ lookup: TickerChangeLookup; changes: TickerChanges | null } | null>(null);
+  const changes = !lookup ? null : answer?.lookup === lookup ? answer.changes : lookup.peek();
+  useEffect(() => {
+    if (!lookup || lookup.peek() !== undefined) return;
+    let current = true;
+    lookup.settle(LATE_CHANGE_WAIT_MS).then((value) => {
+      if (current) setAnswer({ lookup, changes: value });
+    }, logFailure("market-data.hooks", "Read a symbol's ticker changes failed"));
+    return () => { current = false; };
+  }, [lookup]);
+  if (!listing || !changes) return null;
+  const now = tradingListing(quote);
+  return listingChangeLine({ change: describeTickerChange(listing.symbol, changes, now), formerIssuer: describeFormerIssuer(listing.symbol, changes, now) });
+}
+
+/**
  * Observe quote entries already populated by the shared stream without issuing
  * one HTTP snapshot request per instrument.
  */
@@ -479,6 +513,10 @@ export function useChartQueries(
       ? requests.map((request) => [buildChartKey(request), coordinator.getChartEntry(request)] as const)
       : [] as Array<readonly [string, QueryEntry<PricePoint[]>]>
   ), [coordinator, keys, keysVersion, requestKey]);
+  const saved = entries.reduce<QueryEntry<PricePoint[]> | null>((oldest, [, entry]) => (
+    entry.savedCopyAt != null && (oldest?.savedCopyAt == null || entry.savedCopyAt < oldest.savedCopyAt) ? entry : oldest
+  ), null);
+  useSavedCopyFooter(saved?.savedCopyAt, saved?.error == null);
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
@@ -524,6 +562,7 @@ export function useOptionsQuery(
   useCoordinatorKeysVersion(requestKey ? [requestKey] : []);
   const coordinator = getSharedMarketDataCoordinator();
   const entry = coordinator && request ? coordinator.getOptionsEntry(request) : null;
+  useSavedCopyFooter(entry?.savedCopyAt, entry?.error == null);
   // The refresh feeds a display: it rests while the pane is covered or the app
   // is hidden, and catches up at once if a refresh came due meanwhile.
   const visible = usePaneVisible();
@@ -565,6 +604,7 @@ export function useSecFilingsQuery(request: SecFilingsRequest | null | undefined
     () => coordinator && request ? coordinator.getSecFilingsEntry(request) : null,
     [coordinator, requestKey, version],
   );
+  useSavedCopyFooter(entry?.savedCopyAt, entry?.error == null);
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();

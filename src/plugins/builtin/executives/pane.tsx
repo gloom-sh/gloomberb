@@ -27,14 +27,14 @@ import {
 } from "../../../ui";
 import { isPermanentClientError } from "../../../api-client/errors";
 import type { IssuerListingParams } from "../../../api-client/paths";
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { useCloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useFilingYearReader } from "../shared/filing-year-reader";
 import { UpgradeLabel } from "../shared/locked-rows";
 import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
 import { useBoundTicker, useIssuerListing } from "../shared/ticker-request";
 import { SplitBar } from "../../../components/ui/split-bar";
-import { loadProxyStatement, loadProxyStatements, type ProxyTier } from "./data";
+import { loadProxyStatement, loadProxyStatements, readProxyStatement, readProxyStatements, type ProxyTier } from "./data";
 import {
   equityShare,
   formatChange,
@@ -256,20 +256,21 @@ export function ExecutivesPane({
   // total pay, so only its refusal (an older server, an expired session) walls it.
   const { wall, guard } = useProFeatureWall(EXEC_WALL, { width, height }, { preview: true });
   const tier: ProxyTier = usePlanAccess().hasProAccess ? "full" : "preview";
-  const { symbol, ticker: boundTicker } = useBoundTicker();
+  const { symbol, exchange, ticker: boundTicker } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
   const listing = useIssuerListing(boundTicker);
   if (wall) return wall;
   if (!ticker) return <EmptyState title="Select a ticker." />;
-  return <ExecutiveResearch key={ticker} ticker={ticker} listing={listing} tier={tier} focused={focused} width={width} nested={nested} guard={guard} />;
+  return <ExecutiveResearch key={`${ticker}:${exchange}`} ticker={ticker} exchange={exchange} listing={listing} tier={tier} focused={focused} width={width} nested={nested} guard={guard} />;
 }
 
 export function ExecutivesResearchTab(props: { focused: boolean; width: number; height: number }) {
   return <ExecutivesPane {...props} nested />;
 }
 
-function ExecutiveResearch({ ticker, listing, tier, focused, width, nested, guard }: {
+function ExecutiveResearch({ ticker, exchange, listing, tier, focused, width, nested, guard }: {
   ticker: string;
+  exchange: string;
   listing: IssuerListingParams;
   tier: ProxyTier;
   focused: boolean;
@@ -281,15 +282,21 @@ function ExecutiveResearch({ ticker, listing, tier, focused, width, nested, guar
   const rendererHost = useRendererHost();
   const openUpgrade = useCloudUpgradeAction("exec");
   const [selectedYear, setYear] = usePaneStateValue<number | null>("proxyYear", null);
-  const loadYears = useCallback((force: boolean) => guard(loadProxyStatements(ticker, { force, listing, tier })), [guard, listing, ticker, tier]);
-  const list = useAsyncResource(loadYears, { clearOnError: isPermanentClientError });
+  const scope = useCloudDisplayScope();
+  const options = useMemo(() => ({ listing, tier, displayIdentity: [scope, exchange] }), [listing, tier, scope, exchange]);
+  const loadYears = useCallback((force: boolean) => guard(loadProxyStatements(ticker, { ...options, force })), [guard, ticker, options]);
+  const list = useAsyncResource(scope ? loadYears : null, {
+    initialData: () => readProxyStatements(ticker, options), clearOnError: isPermanentClientError,
+  });
   const years = useMemo(() => (list.data?.data?.proxies ?? []).map((entry) => entry.proxyYear), [list.data]);
   // Without Pro only the latest proxy is served: an earlier pick from a Pro
   // session waits for Pro again rather than asking for a year that is refused.
   const year = tier === "full" && selectedYear !== null && years.includes(selectedYear)
     ? selectedYear : years[0] ?? null;
-  const loadStatement = useCallback((force: boolean) => guard(loadProxyStatement(ticker, year!, { force, listing, tier })), [guard, listing, ticker, year, tier]);
-  const detail = useAsyncResource(year === null ? null : loadStatement, { clearOnError: isPermanentClientError });
+  const loadStatement = useCallback((force: boolean) => guard(loadProxyStatement(ticker, year!, { ...options, force })), [guard, ticker, year, options]);
+  const detail = useAsyncResource(year !== null && scope ? loadStatement : null, {
+    initialData: () => year === null ? null : readProxyStatement(ticker, year, options), clearOnError: isPermanentClientError,
+  });
   const statement = detail.data?.data ?? null;
   // The free preview: each executive's total pay; the breakdown and earlier years are Pro.
   const preview = statement?.access === "preview" || list.data?.data?.access === "preview";

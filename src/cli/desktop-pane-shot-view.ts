@@ -63,7 +63,6 @@ export async function packShotView(dir: string): Promise<Uint8Array> {
 
 /**
  * Serve the page from the archive at `archivePath` rather than building it.
- * @knipignore Called by the entry scripts/build.ts writes for the release binary.
  */
 export function usePrebuiltShotView(archivePath: string): void {
   prebuiltArchive = archivePath;

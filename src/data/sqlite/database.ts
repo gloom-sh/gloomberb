@@ -54,6 +54,20 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_resource_cache_recency
     ON resource_cache (last_accessed_at, fetched_at);
 
+  CREATE TABLE IF NOT EXISTS resource_pro_candidates (
+    account TEXT NOT NULL,
+    resource_id INTEGER NOT NULL,
+    PRIMARY KEY (account, resource_id)
+  ) WITHOUT ROWID;
+  CREATE INDEX IF NOT EXISTS idx_resource_pro_id ON resource_pro_candidates (resource_id);
+  CREATE TABLE IF NOT EXISTS resource_pro_backfill (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    covered_through INTEGER NOT NULL,
+    legacy_end INTEGER NOT NULL
+  );
+  CREATE TRIGGER IF NOT EXISTS resource_pro_delete AFTER DELETE ON resource_cache
+    BEGIN DELETE FROM resource_pro_candidates WHERE resource_id = OLD.rowid; END;
+
   CREATE TABLE IF NOT EXISTS plugin_state (
     plugin_id TEXT NOT NULL,
     key TEXT NOT NULL,
@@ -78,7 +92,7 @@ export interface SqliteDatabaseOptions {
    * another program's lock (see access.ts). Commands and tests wait it out.
    */
   interactive?: boolean;
-  /** Tests only: the WAL checkpointer's thread and how long it may go silent. */
+  /** Tests only: the WAL checkpointer's thread, how long it may go silent, and what it reports. */
   checkpointer?: WalCheckpointerOptions;
 }
 
@@ -123,6 +137,10 @@ export class SqliteDatabase {
     this.connection.exec(wal ? "PRAGMA synchronous=NORMAL" : "PRAGMA synchronous=FULL");
     withSqliteBusyRetry("initialize sqlite schema", () => {
       this.connection.exec(SCHEMA);
+      if (!this.connection.query("SELECT 1 FROM resource_pro_backfill WHERE id = 1").get()) {
+        this.connection.exec(`INSERT OR IGNORE INTO resource_pro_backfill
+          SELECT 1, 0, COALESCE((SELECT MAX(rowid) FROM resource_cache), 0)`);
+      }
     });
     // The app's statements choose how long to wait for a lock themselves.
     if (options.interactive) this.connection.exec("PRAGMA busy_timeout=0");

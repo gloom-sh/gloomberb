@@ -409,6 +409,10 @@ export class AssetDataRouter implements DataProvider {
     return this.searchRoutes.searchBatch(queries, options);
   }
 
+  knownUsStock(symbol: string): boolean {
+    return this.providersInPriorityOrder().some((provider) => provider.knownUsStock?.(symbol) === true);
+  }
+
   /** The first source that answers a batch of symbol changes; null when none can or it fails. */
   async getTickerChangesBatch(symbols: string[], options?: { signal?: AbortSignal }): Promise<Map<string, TickerChanges | null> | null> {
     const provider = this.providersInPriorityOrder().find((candidate) => candidate.getTickerChangesBatch);

@@ -6,7 +6,7 @@ import { NOT_MEANINGFUL_TEXT } from "../../../../utils/growth";
 import type { ServedRate } from "../../../../utils/served-rates";
 import type { CedearRatio, CompanyProfile, DepositaryPair, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
 import { adrRatioText } from "../../../../utils/depositary-receipt";
-import { cedearRatioText, ratioCount } from "../../../../market-data/depositary-pair";
+import { cedearRatioText, premiumText, ratioCount } from "../../../../market-data/depositary-pair";
 import { ADR_PAIR_TAB_ID, ADR_PAIR_TEMPLATE_ID } from "../adr-pair/model";
 import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
 import type { BrokerInstanceConfig } from "../../../../types/config";
@@ -158,7 +158,9 @@ export function buildOverviewStats({
   nextEarnings,
   depositaryReceipt = false,
   depositaryPair = null,
+  ahPair = null,
   cedearRatio = null,
+  boardLot = null,
   today,
   dividend,
   bond = null,
@@ -179,8 +181,15 @@ export function buildOverviewStats({
   depositaryReceipt?: boolean;
   /** The receipt pair the listing is a side of, as Gloom Cloud serves it; `receiptSide` when the listing is the receipt. */
   depositaryPair?: { pair: DepositaryPair; receiptSide: boolean } | null;
+  /**
+   * An A+H company's other line (`useAhPair`): the A share on the H line's DES, the H share on the A line's, with
+   * the H price over the A price at spot. `linked` when this DES has the ADR vs Home tab that shows them.
+   */
+  ahPair?: { other: string; side: "h" | "a"; premiumPercent: number | null; linked: boolean } | null;
   /** A Buenos Aires CEDEAR's ratio in its company's shares, as Gloom Cloud serves it. */
   cedearRatio?: CedearRatio | null;
+  /** The shares one lot of the listing trades in, as its exchange states it (an HKEX or SGX line). */
+  boardLot?: number | null;
   /** The listing's calendar day, YYYY-MM-DD; dates before it are left out. */
   today?: string;
   /** The history the dividend yield reads (useOverviewDividend): a trailing one is measured from its cash, a forward one stops with it; without it the yield stands. */
@@ -247,6 +256,10 @@ export function buildOverviewStats({
   if (finite(fundamentals?.floatShares) && fundamentals.floatShares > 0) {
     stats.push({ label: "Float", value: formatCompact(fundamentals.floatShares), ...counted(fundamentals.floatSharesAsOf) });
   }
+  // The shares one lot trades in, which an order on the venue is sized by.
+  if (boardLot != null && Number.isSafeInteger(boardLot) && boardLot > 0) {
+    stats.push({ label: "Board Lot", value: boardLot.toLocaleString("en-US"), detail: ["shares", "sh"] });
+  }
   // A receipt says how many shares it holds and a home line which receipt holds it, both opening ADR vs Home.
   if (depositaryPair) {
     const { pair, receiptSide } = depositaryPair;
@@ -254,6 +267,16 @@ export function buildOverviewStats({
     stats.push(receiptSide
       ? { label: "ADR Ratio", value: `1:${count}`, detail: [adrRatioText(pair.ratio, pair.ordinary[0])!, `${count} sh per ADR`], link: ADR_PAIR }
       : { label: "ADR", value: pair.receipt, detail: [`1 ADR = ${count} of these shares`, `1:${count}`], link: ADR_PAIR });
+  }
+  // An A+H company's other line, and the H price over the A price at spot, as ADR vs Home shows them.
+  if (ahPair) {
+    const premium = ahPair.premiumPercent == null ? null : premiumText(ahPair.premiumPercent);
+    stats.push({
+      label: ahPair.side === "h" ? "A Share" : "H Share",
+      value: ahPair.other,
+      ...(premium ? { detail: [`H ${premium} at spot`, `H ${premium.replace(/ (?:premium|discount|at par)$/, "")}`] } : {}),
+      ...(ahPair.linked ? { link: ADR_PAIR } : {}),
+    });
   }
   if (cedearRatio) {
     const receipts = ratioCount(cedearRatio.receipts);
@@ -320,7 +343,10 @@ export function buildOverviewStats({
     });
   }
   if (fundamentals?.revenue != null) {
-    stats.push({ label: "Revenue", ...money(fundamentals.revenue) });
+    // Which twelve months the revenue, net income and margin are, as Financials' TTM column names them.
+    const end = fundamentals.trailingPeriodEnd;
+    const revenue = money(fundamentals.revenue);
+    stats.push({ label: "Revenue", ...revenue, ...(end && ISO_DATE.test(end) && !revenue.detail ? { detail: [`TTM to ${end}`, `to ${end}`] } : {}) });
   }
   if (fundamentals?.netIncome != null) {
     stats.push({ label: "Net Income", ...money(fundamentals.netIncome) });

@@ -238,7 +238,7 @@ test("a bare symbol read on its company's home listing names no other company fo
   });
   const read = await runQuote(["DHL"], { dataProvider, batches: [], searches: () => 0 });
   expect(read.rows.map((item) => [item.target.symbol, item.quote?.listingExchangeName])).toEqual([["DHL", "XETRA"]]);
-  expect(read.warnings).toEqual(["DHL -> XETRA"]);
+  expect(read.warnings).toEqual(["DHL has no US listing; it trades on Xetra (XETRA), in EUR."]);
 });
 
 test("ticker asks for an exchange for a code several companies list, as quote does, rather than calling it no ticker", async () => {
@@ -304,7 +304,8 @@ test("a bare symbol the service read on its home listing abroad names the venue"
 
   const bare = await runQuote(["SXR8"], source);
   expect(bare.rows.map((row) => row.target.symbol)).toEqual(["SXR8"]);
-  expect(bare.warnings).toEqual(["SXR8 -> XETRA"]);
+  // Said in words, as `watchlist add` says it, never a bare "SXR8 -> XETRA".
+  expect(bare.warnings).toEqual(["SXR8 has no US listing; it trades on Xetra (XETRA), in EUR."]);
   // A named venue, a US or OTC listing, a futures venue and an index say nothing more.
   for (const symbol of ["SXR8:XETRA", "AAPL", "TCEHY", "CL1", "^GDAXI"]) {
     expect((await runQuote([symbol], source)).warnings).toEqual([]);

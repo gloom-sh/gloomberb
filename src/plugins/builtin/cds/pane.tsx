@@ -14,6 +14,7 @@ import {
   type StatItem
 } from "../../../components";
 import type { CloudCdsHistoryPointPayload } from "../../../api-client";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { signedMoveColor } from "../../../components/market-board";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneSettingValue } from "../../../public/react";
@@ -327,6 +328,7 @@ export function CdsPane({
 }: CdsPaneProps) {
   const { symbol, ticker } = usePaneTickerIdentity();
   const issuerQuery = useMemo(() => resolveIssuerQuery(symbol, ticker), [symbol, ticker]);
+  const scope = useCloudDisplayScope();
 
   // `CDS --sort 1m` (and its shot) opens the list on that order; the headers re-sort it from there, and a reload keeps theirs.
   const [openingSort] = usePaneSettingValue<string>("sort", "trades");
@@ -343,7 +345,9 @@ export function CdsPane({
   loadActivityRef.current = loadActivity;
 
   const request = useCallback(() => loadActivityRef.current(issuerQuery), [issuerQuery]);
-  const { data: activity, status, error, updatedAt: fetchedAt, load } = useAsyncResource(request);
+  const { data: activity, status, error, updatedAt: fetchedAt, load } = useAsyncResource(request, {
+    savedCopy: scope !== null ? { key: ["cds-activity", scope, issuerQuery, symbol, ticker?.metadata.exchange] } : null,
+  });
   useAutoRefresh(fetchedAt, load);
 
   const trades = activity?.trades ?? NO_TRADES;
@@ -352,7 +356,9 @@ export function CdsPane({
   const loadLevelsRef = useRef(loadLevels);
   loadLevelsRef.current = loadLevels;
   const levelsRequest = useCallback(() => loadLevelsRef.current(), []);
-  const levels = useAsyncResource(issuerQuery ? null : levelsRequest);
+  const levels = useAsyncResource(issuerQuery ? null : levelsRequest, {
+    savedCopy: scope !== null ? { key: ["cds-levels", scope] } : null,
+  });
   useAutoRefresh(levels.updatedAt, levels.load);
   const issuers = useMemo(
     () => (issuerQuery ? [] : sortIssuers(withSpreadLevels(summaries, levels.data), issuerSort)),
@@ -372,7 +378,9 @@ export function CdsPane({
   const loadHistoryRef = useRef(loadHistory);
   loadHistoryRef.current = loadHistory;
   const historyRequest = useCallback(() => loadHistoryRef.current(historyIssuer!), [historyIssuer]);
-  const history = useAsyncResource(historyIssuer ? historyRequest : null);
+  const history = useAsyncResource(historyIssuer ? historyRequest : null, {
+    savedCopy: scope !== null ? { key: ["cds-history", scope, historyIssuer] } : null,
+  });
   useAutoRefresh(history.updatedAt, history.load);
   const spreadLine = history.data ?? NO_LINE;
   const spreadPoints = spreadLine.points;

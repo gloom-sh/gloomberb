@@ -312,7 +312,7 @@ describe("normalized market price comparison", () => {
     expect(result.series.map((s) => s.points.at(-1)?.rawValue)).toEqual([180, 60]);
   });
 
-  test("a preset range measures each leg from its close on or before the same date a range before, and to its own newest close", async () => {
+  test("a daily preset ends every line and return on the latest shared date, including a forming bar only when all have it", async () => {
     const weekdays = (to: string) => {
       const out: [string, number][] = [];
       for (let time = Date.parse("2026-07-01"); time <= Date.parse(to); time += 86_400_000) {
@@ -320,19 +320,30 @@ describe("normalized market price comparison", () => {
       }
       return out;
     };
-    // NEWER's saved copy stops on Fri 16 Oct; OLDER trades on Tue 20 Oct, whose session is open.
-    const data = { OLDER: weekdays("2026-10-20"), NEWER: weekdays("2026-10-16") };
+    const data = { OLDER: weekdays("2026-10-20"), NEWER: weekdays("2026-10-19") };
     const chart: ChartSpec = { ...spec(), viewport: { range: "1M", resolution: "1d" } };
-    const result = await resolveChartSpecData(chart, { ...sources({ OLDER: rows(data.OLDER), NEWER: rows(data.NEWER) }), now: date("2026-10-20T18:00:00Z") });
-    // A month before Tue 20 Oct is Sun 20 Sep: both legs run from Fri 18 Sep's close, and NEWER does not cut OLDER short.
-    expect(result.priceComparison?.legs).toEqual({
-      OLDER: { baseDay: "2026-09-18", endDay: "2026-10-20", intraday: true },
-      NEWER: { baseDay: "2026-09-18", endDay: "2026-10-16", intraday: false },
-    });
-    expect(result.priceComparison?.notice).toContain("From Fri 18 Sep close to Tue 20 Oct, latest, intraday (NEWER Fri 16 Oct close);");
-    const close = (leg: [string, number][], day: string) => leg.find(([key]) => key === day)![1];
-    expect(result.series[0]!.points.at(-1)!.value!).toBeCloseTo((close(data.OLDER, "2026-10-20") / close(data.OLDER, "2026-09-18") - 1) * 100, 10);
-    expect(result.series[1]!.points.at(-1)!.value!).toBeCloseTo((close(data.NEWER, "2026-10-16") / close(data.NEWER, "2026-09-18") - 1) * 100, 10);
+    for (const state of ["missing", "forming", "mixed"] as const) {
+      const intraday = state === "forming";
+      const endDay = intraday ? "2026-10-20" : "2026-10-19";
+      const older = rows(data.OLDER);
+      if (state === "mixed") older.at(-1)!.partial = true;
+      const result = await resolveChartSpecData(chart, {
+        ...sources({ OLDER: older, NEWER: rows(state === "missing" ? data.NEWER : data.OLDER) }),
+        now: date(state === "mixed" ? "2026-10-20T21:00:00Z" : "2026-10-20T18:00:00Z"),
+      });
+      const expected = { baseDay: "2026-09-18", endDay, intraday };
+      expect(result.priceComparison?.legs).toEqual({ OLDER: expected, NEWER: expected });
+      expect(result.priceComparison?.notice).toContain(intraday
+        ? "From Fri 18 Sep close to Tue 20 Oct, latest, intraday;"
+        : "From Fri 18 Sep close to Mon 19 Oct close;");
+      const close = (day: string) => data.OLDER.find(([key]) => key === day)![1];
+      for (const collection of [result.series, result.legendSeries!]) {
+        for (const line of collection) {
+          expect(line.points.at(-1)?.date.toISOString()).toBe(`${endDay}T00:00:00.000Z`);
+          expect(line.points.at(-1)!.value!).toBeCloseTo((close(endDay) / close("2026-09-18") - 1) * 100, 10);
+        }
+      }
+    }
   });
 
   test("a leg that is not a ticker is left out, named as asked and pointed at its index, not by its id", async () => {

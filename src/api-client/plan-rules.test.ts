@@ -102,4 +102,20 @@ describe("the delay a price is shown with", () => {
     expect(freeQuotesDelayMinutes(free, [live, null, live])).toBeNull();
     expect(freeQuotesDelayMinutes(free, [live, delayed])).toBe(15);
   });
+
+  test("is the quote's own feed delay when it states one, as its footer says it; whose prices are late is unchanged", () => {
+    const cloud = (exchange: string) => ({ dataSource: "delayed" as const, providerId: "gloomberb-cloud", listingExchangeName: exchange });
+    // D05:SGX's footer said "20 min delayed" while its mark said 15m.
+    for (const name of ["signed out", "free", "lapsed trial"] as const) {
+      expect(freeQuoteDelayMinutes(accounts[name], cloud("SGX"))).toBe(20);
+      expect(freeQuoteDelayMinutes(accounts[name], cloud("NASDAQ"))).toBe(15);
+    }
+    for (const name of ["trial", "Pro"] as const) expect(freeQuoteDelayMinutes(accounts[name], cloud("SGX"))).toBeNull();
+    // Another source's delayed quote, and a perpetual's, state no lag: the free tier's applies.
+    expect(freeQuoteDelayMinutes(accounts.free, { dataSource: "delayed", providerId: "other", listingExchangeName: "SGX" })).toBe(15);
+    expect(freeQuoteDelayMinutes(accounts.free, cloud("HYPERLIQUID"))).toBe(15);
+    expect(freeQuoteDelayMinutes(accounts.free, { ...cloud("SGX"), dataSource: "live" })).toBeNull();
+    // A board's clock says the longest any of its prices is late.
+    expect(freeQuotesDelayMinutes(accounts.free, [cloud("NASDAQ"), cloud("ASX"), live])).toBe(20);
+  });
 });

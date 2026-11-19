@@ -152,3 +152,14 @@ export function sanitizeHeaderMarketChoice(value: unknown): HeaderMarketChoice |
   const exchange = typeof value.exchange === "string" ? value.exchange.trim() : "";
   return exchange ? { symbol, exchange } : { symbol };
 }
+
+/**
+ * The venue of the market the user works in, as the header shows it: a
+ * benchmark's (HKEX for the Hang Seng), or a listing's own exchange. Search
+ * leads with this venue's line of the company a word names
+ * (`withHomeVenueLead`). Null when the header names no venue.
+ */
+export function homeMarketVenue(choice: HeaderMarketChoice | undefined, timeZone: string | null | undefined): string | null {
+  const target = resolveHeaderMarket(choice, timeZone);
+  return target.venue ?? (target.exchange || null);
+}

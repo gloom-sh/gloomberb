@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
+import { DataServiceUnreachableError } from "../../../utils/network-failure";
 import type { IpoCalendarParams, IpoCalendarPayload, IpoDeal } from "../../../api-client/ipo";
 import type { HeadlessPaneContext, HeadlessPaneOptionValues } from "../../../types/plugin";
 import { fetchIpoCalendar, validateIpoCalendar } from "./client";
@@ -64,4 +65,23 @@ test("fn IPO pending lists the deals not priced yet, as the pane's search does",
   const load = (argument: string) => ipoCalendarHeadless.load({ rawArgument: argument, argument, symbols: [], options: {} }, ctx);
   expect((await load("pending")).rows.map((row) => row.id)).toEqual(["upcoming"]);
   expect((await load("listed")).rows.map((row) => row.id)).toEqual(["listed"]);
+});
+test("a cold calendar retries one failed read and stops if the caller cancels", async () => {
+  const payload = board([ipoDeal({ id: "recovered" })]);
+  for (const failure of [new DataServiceUnreachableError(new Error("No answer")), new ApiRequestError("Bad gateway", 502)]) {
+    const controller = new AbortController();
+    let attempts = 0;
+    const client = { getCloudIpoCalendar: async () => {
+      if (++attempts === 1) throw failure;
+      return payload;
+    } };
+    expect(await fetchIpoCalendar(client, controller.signal)).toEqual(payload);
+    expect(attempts).toBe(2);
+    await expect(fetchIpoCalendar({ getCloudIpoCalendar: async () => {
+      controller.abort(failure);
+      attempts += 1;
+      throw failure;
+    } }, controller.signal)).rejects.toBe(failure);
+    expect(attempts).toBe(3);
+  }
 });

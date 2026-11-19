@@ -167,6 +167,7 @@ export function useAppStartupRuntime({
         });
       } catch (err) {
         logFailure("app.runtime.startup", "Workspace startup hydration failed")(err);
+        dispatch({ type: "SET_INITIALIZED" });
       }
       // The workspace has its data (or gave up on it): stalls from here on are not startup ones.
       markStartupComplete();

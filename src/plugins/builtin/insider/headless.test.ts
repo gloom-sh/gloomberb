@@ -223,6 +223,45 @@ describe("insider headless model", () => {
   });
 });
 
+// `fn SEC NVDA` and `fn INS NVDA` named no story about Mark Stevens' sales, which named no filing either.
+test("a filing's rows name the stories that report it, once under its last line, and say nothing when they cannot be asked", async () => {
+  const filing = (accessionNumber: string, day: string, shares: number): ParsedInsiderFiling => ({
+    ...parsed[1]!,
+    filing: { ...parsed[1]!.filing, accessionNumber, filingDate: new Date(`${day}T00:00:00.000Z`) },
+    transaction: { ...parsed[1]!.transaction!, reportedName: "STEVENS MARK A", shares },
+  });
+  const rows = [filing("0001199039-26-000016", "2026-09-22", 1_356_000), filing("0001199039-26-000016", "2026-09-22", 10_000), filing("0001696841-26-000014", "2026-09-23", 12_500)];
+  const asked: string[][] = [];
+  const headless = createInsiderHeadless({
+    loadParsed: async () => ({ parsed: rows, foreignPrivateIssuer: false, noFilings: false }),
+    loadFilingStories: async (accessions) => {
+      asked.push([...accessions]);
+      return new Map([
+        ["0001199039-26-000016", [{ id: "3224efb6-4d68-4526-8ab2-455771f8898a", headline: "Q3 2026 insider stock sales: Nvidia's Mark Stevens tops AI sellers", publishedAt: "2026-10-07T13:35:57.000Z", publisher: "Quartz" }]],
+        ["0001696841-26-000014", []],
+      ]);
+    },
+  });
+  const result = await headless.load(args("", 3), createTestHeadlessContext());
+  // One request for the report's filings, each once.
+  expect(asked).toEqual([["0001199039-26-000016", "0001696841-26-000014"]]);
+  expect(result.rows.map((row) => [(row.stories as unknown[] | undefined)?.length, row.note ?? null])).toEqual([
+    [1, null],
+    [1, "Story 3224efb6 (7 Oct 2026 · Quartz): Q3 2026 insider stock sales: Nvidia's Mark Stevens tops AI sellers"],
+    [0, null],
+  ]);
+
+  const unreachable = createInsiderHeadless({
+    loadParsed: async () => ({ parsed: rows, foreignPrivateIssuer: false, noFilings: false }),
+    loadFilingStories: async () => { throw new Error("Gloom Cloud unavailable"); },
+  });
+  const read = await unreachable.load(args("", 3), createTestHeadlessContext());
+  // The lookup is a lead, not the report's data: its failure leaves the rows as they were, unremarked.
+  expect(read.rows.every((row) => row.stories === undefined && row.note == null)).toBe(true);
+  expect(read.notes ?? []).toEqual([]);
+  expect(read.errors).toEqual(result.errors);
+});
+
 // `fn INS JNJ` with a CAD base printed $6.19M and $61.99M with no currency in text or JSON.
 test("every value carries its currency, and a CAD base adds each value in CAD at its transaction day's USD/CAD close", async () => {
   const headless = createInsiderHeadless({

@@ -463,6 +463,8 @@ export interface HeadlessPaneFreshness {
    * open is not read as how far the data runs.
    */
   barMinutes?: number;
+  /** Session coverage for a bar that reaches the regular close, if the market has one. */
+  barSession?: "regular" | "extended" | "unreported";
   /**
    * Say when the rows were retrieved too, after the newest one's date: a list
    * dated by its newest filing was not read then (`newest filing Tue 27 Oct
@@ -704,6 +706,7 @@ export interface HeadlessBundleResult extends HeadlessPaneResultBase {
 
 export interface HeadlessSeriesPoint extends HeadlessPaneRow {
   date: string | number | Date;
+  nativeAmount?: { value: number; currency: string };
   value?: number | null;
   open?: number | null;
   high?: number | null;

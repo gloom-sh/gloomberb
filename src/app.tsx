@@ -9,7 +9,7 @@ import {
   useAppStateRef,
   type AppState,
 } from "./state/app/context";
-import { bindAppActivity, isAppVisible, subscribeAppVisibility, useAppActive, useAppVisible } from "./state/app/activity";
+import { bindAppActivity, isAppVisible, setAppActive, subscribeAppVisibility, useAppActive, useAppVisible } from "./state/app/activity";
 import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
 import { useAppChromeShown } from "./components/layout/presentation";
@@ -20,6 +20,8 @@ import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
+import { getOnboardingProgress } from "./components/onboarding/wizard-model";
+import { HeardFromQuestionHost } from "./account/heard-from-question";
 import { useRunSetupAgain } from "./components/onboarding/run-setup-again";
 import { CompanyPickerHost } from "./plugins/builtin/cloud/company-picker";
 import { TerminalRelayHost } from "./plugins/builtin/cloud/terminal-relay/host";
@@ -50,6 +52,7 @@ import { AppDialogBridge } from "./app/dialog-bridge";
 import { KeybindingsProvider, useResolvedKeybindings } from "./app/keybindings";
 import { useAppPaneRuntime } from "./app/pane-runtime";
 import { bindPluginRegistryRuntimeAccess } from "./app/runtime/plugin-bindings";
+import { useExternalProfileChanges } from "./app/runtime/external-profile-changes";
 import { useAppStartupRuntime } from "./app/runtime/startup";
 import { useTickerRefreshRuntime } from "./app/runtime/ticker-refresh";
 import { useAppUpdateRuntime } from "./app/runtime/update";
@@ -79,6 +82,8 @@ import { reportTelemetryConfig } from "./telemetry/live-config";
 import { AttentionCountsNotice } from "./app/attention-notice";
 import { useSinceLastVisit } from "./app/since-last-visit/use-since-last-visit";
 import { SinceLastVisitStrip } from "./app/since-last-visit/strip";
+import { useProWelcome } from "./app/pro-welcome/use-pro-welcome";
+import { ProWelcomeRow } from "./app/pro-welcome/row";
 import { recordFunctionOpen } from "./telemetry/usage-counts";
 import { logFailure } from "./utils/log-failure";
 
@@ -228,6 +233,10 @@ function AppInner({
   const appWideWorkElsewhere = isDetachedWindow || desktopWindowBridge?.primary === false;
   // Not while setup is already showing.
   const runSetupAgain = useRunSetupAgain(onboardingActive ? undefined : onRunSetupAgain);
+  // A setup card holds the keyboard over the whole window; the workspace coach
+  // after the cards floats over a live workspace, whose "Ctrl+P adds more"
+  // needs the command bar's prompt (and Help) where they always are.
+  const setupCardShown = onboardingActive && getOnboardingProgress(config).stage !== "research";
   const detachedPaneId = isDetachedWindow ? desktopWindowBridge.paneId ?? null : null;
   const focusDetachedPane = useMemo(() => {
     const focus = desktopWindowBridge?.kind === "main" ? desktopWindowBridge.focusDetachedPane : undefined;
@@ -271,6 +280,7 @@ function AppInner({
       else toastId = toast.info(notification.body, options);
     },
     desktop: rendererHost.supportsNativeDesktopNotifications ? rendererHost : undefined,
+    notifyInBackground: rendererHost.notifyInBackground,
   }), [rendererHost, toast]);
   const notify = useCallback((body: string, options?: { type?: "info" | "success" | "error" }) => {
     pluginRegistry.notify({ body, ...options });
@@ -423,6 +433,16 @@ function AppInner({
     scheduleConfigSave(nextConfig);
   }, []);
   useTeamCollectionsSync({ persistConfig, tickerRepository });
+  // A `gloom` command run beside the app writes the same profile: take its
+  // changes in, so none is written over. A popped-out window leaves that to the main one.
+  useExternalProfileChanges({
+    enabled: !appWideWorkElsewhere,
+    dataDir: config.dataDir,
+    dispatch,
+    stateRef,
+    pluginRegistry,
+    tickerRepository,
+  });
 
   useAppPaneRuntime({
     dataProvider,
@@ -498,6 +518,15 @@ function AppInner({
     notify: notifyRequest,
   });
   const showSinceLastVisit = !!sinceLastVisit.recap && state.config.presentationMode !== true;
+  // A new Pro payer's first two weeks: Pro functions they have not opened, on
+  // their own tickers. Its own row under the strip, never part of it.
+  const proWelcome = useProWelcome({
+    active: !appWideWorkElsewhere && !onboardingActive && !signInGateActive,
+    pluginState: pluginRegistry.persistence.pluginState,
+    pluginRegistry,
+    pluginsReady,
+  });
+  const showProWelcome = !!proWelcome.chips && state.config.presentationMode !== true;
 
   const chrome = useAppChromeShown();
   const keybindingHost = useUiHost().kind === "opentui" ? "terminal" : "desktop";
@@ -553,7 +582,8 @@ function AppInner({
         <ThemedAppRoot>
           {chrome.header && (
             <Header
-              onOpenHelp={() => {
+              commandInputAvailable={!setupCardShown}
+              onOpenHelp={setupCardShown ? undefined : () => {
                 recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
                 pluginRegistry.showPane("help");
               }}
@@ -561,20 +591,22 @@ function AppInner({
             />
           )}
           {showSinceLastVisit ? <SinceLastVisitStrip strip={sinceLastVisit} /> : null}
+          {showProWelcome ? <ProWelcomeRow welcome={proWelcome} /> : null}
           <TransientLayoutProvider>
-            <Shell
+            {(!sessionSnapshot || initialized) && <Shell
               pluginRegistry={pluginRegistry}
               dataProvider={dataProvider}
               tickerRepository={tickerRepository}
               desktopWindowBridge={desktopWindowBridge}
               desktopDockPreview={desktopDockPreview}
               commandBarNativeOccluder={commandBarNativeOccluder}
-              topBandRows={showSinceLastVisit ? 1 : 0}
-            />
+              topBandRows={(showSinceLastVisit ? 1 : 0) + (showProWelcome ? 1 : 0)}
+            />}
             <StatusBar />
           </TransientLayoutProvider>
           {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}
           {initialized && !onboardingActive && !signInGateActive ? <AttentionCountsNotice notify={notifyRequest} /> : null}
+          {initialized && !onboardingActive && !signInGateActive ? <HeardFromQuestionHost /> : null}
           <TerminalRelayHost device={remoteControlAdapter?.terminalDevice} />
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard
@@ -650,6 +682,7 @@ export function App({
   useAppLanguage();
   const externalPlugins = providedExternalPlugins ?? EMPTY_EXTERNAL_PLUGINS;
   const renderer = useNativeRenderer();
+  const rendererHost = useRendererHost();
   const effectiveInitialConfig = useMemo(() => {
     return resolveInitialAppConfig({
       initialConfig,
@@ -691,7 +724,7 @@ export function App({
 
   const showSetup = useCallback(() => setShowOnboarding(true), []);
 
-  useEffect(() => bindAppActivity(renderer), [renderer]);
+  useEffect(() => rendererHost.subscribeAppActivity?.(setAppActive) ?? bindAppActivity(renderer), [renderer, rendererHost]);
 
   const services = useMemo(() => {
     return measurePerf("startup.app.create-services", () => (

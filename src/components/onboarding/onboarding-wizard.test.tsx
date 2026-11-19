@@ -485,6 +485,23 @@ describe("OnboardingWizard", () => {
     expect(watching).toEqual(["SPY", "QQQ", "NVDA", "AMZN", "TSLA"]);
   });
 
+  test("the setup quote preview dates its price even in a narrow terminal", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-"));
+    const tickerRepository = new JsonTickerRepository();
+    const marketData = createMarketData();
+    const readQuote = marketData.getQuote.bind(marketData);
+    marketData.getQuote = async (...args) => {
+      const quote = await readQuote(...args);
+      return quote ? { ...quote, lastUpdated: Date.parse("2026-11-13T16:30:00Z") } : quote;
+    };
+    await tui.render(
+      <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={{ ...createPluginRegistry({ tickerRepository }), marketData }} />,
+      { width: 60, height: 32 },
+    );
+    await typeText("MSFT");
+    expect(await waitForFrame("As of")).toContain("2026-11-13 16:30 UTC");
+  });
+
   test("each position takes its listing's currency unless one is typed, and blank falls back to the portfolio's", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-currency-"));
     const tickerRepository = new JsonTickerRepository();
@@ -767,9 +784,23 @@ describe("OnboardingWizard", () => {
     await emitKeypress({ name: "f10" });
     // Review, 12 Nov 2026: skipping setup took F10 here and s on the next step; Skip is F10 on both.
     expect(await waitForFrame("What do you trade most?")).toMatch(/Skip\s+F10/);
-    await emitKeypress({ name: "f10" });
-    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
+    await pressEscape();
+    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "Esc skips the desks step");
     expect(capturedConfig?.onboardingProgress).toMatchObject({ desks: [] });
+    expect(completionCount).toBe(0);
+  });
+
+  test("Esc leaves an edited holding field before skipping an empty first-run portfolio", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-escape-"));
+    let completionCount = 0;
+    await tui.render(<WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry()} onComplete={() => { completionCount += 1; }} />, { width: 52, height: 40 });
+    await tui.setup().renderOnce();
+    await typeText("AAPL");
+    await pressEscape();
+    expect(capturedConfig?.onboardingProgress?.stage ?? "portfolio").toBe("portfolio");
+    await pressEscape();
+    await waitForFrame("What do you trade most?");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "desks", positionsImported: 0 });
     expect(completionCount).toBe(0);
   });
 
@@ -807,14 +838,18 @@ describe("OnboardingWizard", () => {
     expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "desks", tickerSymbol: "AAPL" });
   });
 
-  test("from Settings, F10 in the Ticker field leaves setup as before, and Skip shows no key there", async () => {
+  test.each(["f10", "escape"])("from Settings, %s leaves setup without changing holdings", async (key) => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-rerun-f10-"));
     let completionCount = 0;
     const config = { ...createDefaultConfig(tempDataDir), onboardingProgress: { version: 1 as const, stage: "portfolio" as const, rerun: true } };
     await tui.render(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} onComplete={() => { completionCount += 1; }} />, { width: 80, height: 30 });
     expect(await waitForFrame("What do you hold?")).toMatch(/Skip\s+Continue/);
-    await emitKeypress({ name: "f10" });
-    await waitUntil(() => completionCount === 1, "F10 to leave setup");
+    if (key === "escape") {
+      await pressEscape();
+      expect(completionCount).toBe(0);
+    }
+    await emitKeypress({ name: key });
+    await waitUntil(() => completionCount === 1, `${key} to leave setup`);
   });
 
   test("remote control reads the terminal card as the setup form, adds and removes a position through it, and sends the step", async () => {
@@ -1856,6 +1891,35 @@ describe("OnboardingWizard", () => {
     await tui.emitKeypress({ name: "backspace", meta: true }, { trackPropagation: true });
     expect(reached).toEqual(["backspace"]);
     await waitUntil(() => capturedConfig?.onboardingComplete === true, "the dismiss key finishes onboarding");
+  });
+
+  // Ctrl+P, as the card says, opened the command bar under the card: what was typed there went nowhere,
+  // Enter ran the first suggestion, and Esc closed the bar with the card still up.
+  test("the research coach steps aside while the command bar is open, and leaves it the typing and Esc", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-coach-bar-"));
+    const reached: string[] = [];
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "research" as const, path: "manual" as const, portfolioId: "main", tickerSymbol: "AAPL" },
+    };
+    await tui.render(
+      <WizardHarness config={config} pluginRegistry={createPluginRegistry()} after={<KeyProbe seen={reached} />} />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+    await waitForFrame("Built around AAPL");
+
+    await act(async () => { capturedDispatch!({ type: "SET_COMMAND_BAR", open: true, query: "" }); });
+    await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
+    expect(tui.frame()).not.toContain("Built around AAPL");
+    await tui.emitKeypress({ name: "m", sequence: "m" }, { trackPropagation: true });
+    await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { trackPropagation: true });
+    expect(reached).toEqual(["m", "escape"]);
+    expect(capturedConfig?.onboardingComplete).not.toBe(true);
+
+    // Closed without opening anything: the card is back where it was.
+    await act(async () => { capturedDispatch!({ type: "SET_COMMAND_BAR", open: false }); });
+    await waitForFrame("Built around AAPL");
   });
 
   // The card's Alt+Backspace ran in the field a pane had focused, finishing onboarding instead of deleting a word.

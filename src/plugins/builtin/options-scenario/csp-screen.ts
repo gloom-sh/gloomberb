@@ -50,6 +50,8 @@ export interface CspScreenRow {
   wideSpread: boolean;
   /** Why the name has no put to rank. */
   note: string | null;
+  /** That reason as its row's few words (`no price`, `no chain`). */
+  state: string | null;
 }
 
 export interface CspScreen {
@@ -163,11 +165,33 @@ export async function loadScreenMarket(
   }
   const expiration = nearestListedExpiry(first.expirationDates, target);
   if (expiration == null) {
-    throw new Error(first.warnings.find((warning) => warning.startsWith("Options chain")) ?? "No listed option expiries");
+    throw new ScreenNameError(first.warnings.find((warning) => warning.startsWith("Options chain")) ?? "No listed option expiries", "no chain");
   }
   const loaded = first.chain ? [...first.chain.puts, ...first.chain.calls][0]?.expiration : undefined;
-  return loaded != null && expiryIsoDate(loaded) === expiryIsoDate(expiration)
-    ? first : await loadScenarioMarket({ instrument, expiration, signal }, dependencies);
+  return requireScreenInputs(loaded != null && expiryIsoDate(loaded) === expiryIsoDate(expiration)
+    ? first : await loadScenarioMarket({ instrument, expiration, signal }, dependencies));
+}
+
+/**
+ * Why a screened name has nothing to rank, in full (`note`) and as its row's
+ * few words (`state`). The screens type no spot, rate or yield, so a missing
+ * one is said as what the market lacks, never as OSA's flag to supply it.
+ */
+export class ScreenNameError extends Error {
+  constructor(message: string, readonly state: string) {
+    super(message);
+  }
+}
+
+/** The market a name's trade is valued at, or why it cannot be: its chain, price, Treasury rate and dividend yield, in that order. */
+function requireScreenInputs(market: ScenarioMarketSnapshot): ScenarioMarketSnapshot {
+  if (!market.chain || market.warnings.includes("Options chain is stale")) {
+    throw new ScreenNameError(market.missingExpiry ?? "No current options chain", "no chain");
+  }
+  if (market.spot == null) throw new ScreenNameError("No current price for the underlying", "no price");
+  if (market.rate == null) throw new ScreenNameError("No Treasury rate to value its options at", "no rate");
+  if (market.dividendYield == null) throw new ScreenNameError("No dividend yield to value its options at", "no yield");
+  return market;
 }
 
 /** One name's put: OSA's csp seed at `--delta` on the listed expiry nearest the target, read as OSA reads it. */
@@ -215,8 +239,8 @@ function screenFreshness(markets: readonly ScenarioMarketSnapshot[], now: number
   };
 }
 
-/** One name of a screen: what it found, or why it found nothing, with its IV rank either way. */
-interface ScreenedName<T> { symbol: string; ivRank: number | null; value: T | null; note: string | null }
+/** One name of a screen: what it found, or why it found nothing (in full and in a few words), with its IV rank either way. */
+interface ScreenedName<T> { symbol: string; ivRank: number | null; value: T | null; note: string | null; state: string | null }
 
 export interface ScreenedNames<T> {
   names: ScreenedName<T>[];
@@ -229,10 +253,12 @@ export interface ScreenedNames<T> {
  * Each name screened by `screen`, four at a time: one IV rank request, one
  * earnings calendar request and one Treasury curve for all of them. A name
  * `screen` throws on is kept with the error as its note (`fallback` when the
- * error has no message). `screen` returns the market that dates its row.
+ * error has no message) and its state (a ScreenNameError's, else
+ * `fallbackState`). `screen` returns the market that dates its row.
  */
 export async function screenNames<T>(
-  instruments: readonly InstrumentRef[], dependencies: CspScreenDependencies, signal: AbortSignal | undefined, fallback: string,
+  instruments: readonly InstrumentRef[], dependencies: CspScreenDependencies, signal: AbortSignal | undefined,
+  { fallback, fallbackState }: { fallback: string; fallbackState: string },
   screen: (instrument: InstrumentRef, earningsDate: string | null, scenario: ScenarioLoaderDependencies) => Promise<{ value: T; market: ScenarioMarketSnapshot }>,
 ): Promise<ScreenedNames<T>> {
   const now = dependencies.scenario.now?.() ?? Date.now();
@@ -259,10 +285,11 @@ export async function screenNames<T>(
         const reason = ivRankReason(ivRow);
         missingRanks.push(reason ? `${symbol} (${reason})` : symbol);
       }
-      return { symbol, ivRank, value: screened.value, note: null };
+      return { symbol, ivRank, value: screened.value, note: null, state: null };
     } catch (error) {
       if (signal?.aborted) throw error;
-      return { symbol, ivRank, value: null, note: errorMessage(error) ?? fallback };
+      return { symbol, ivRank, value: null, note: errorMessage(error) ?? fallback,
+        state: error instanceof ScreenNameError ? error.state : fallbackState };
     }
   });
   return { names, missingRanks: missingRanks.sort(), ivRankError: ivRanks.error, freshness: screenFreshness(markets, now) };
@@ -273,13 +300,13 @@ export async function loadCspScreen(
   instruments: readonly InstrumentRef[], criteria: CspScreenCriteria, dependencies: CspScreenDependencies, signal?: AbortSignal,
 ): Promise<CspScreen> {
   const target = cspTargetDate(criteria, dependencies.scenario.now?.() ?? Date.now());
-  const screened = await screenNames(instruments, dependencies, signal, "No put to sell", async (instrument, earningsDate, scenario) => {
+  const screened = await screenNames(instruments, dependencies, signal, { fallback: "No put to sell", fallbackState: "no put" }, async (instrument, earningsDate, scenario) => {
     const put = await screenPut(instrument, criteria, scenario, target, earningsDate, signal);
     return { value: put, market: put.market };
   });
-  const rows = screened.names.map(({ symbol, ivRank, value, note }): Omit<CspScreenRow, "rank"> => ({
+  const rows = screened.names.map(({ symbol, ivRank, value, note, state }): Omit<CspScreenRow, "rank"> => ({
     symbol, csp: value?.csp ?? null, delta: value?.delta ?? null, ivRank,
-    wideSpread: value ? cspWideSpread(value.csp, criteria.maxSpreadPercent) : false, note }));
+    wideSpread: value ? cspWideSpread(value.csp, criteria.maxSpreadPercent) : false, note, state }));
   return { rows: rankCspScreen(rows), criteria, missingRanks: screened.missingRanks, ivRankError: screened.ivRankError,
     freshness: screened.freshness };
 }

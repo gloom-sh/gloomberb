@@ -4,7 +4,7 @@ import { ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, format
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
-import { dropColumnsToFit } from "../../../components/ui/table-layout";
+import { dropColumnsToFit, hiddenTableColumnRows } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
@@ -24,7 +24,7 @@ import { useIndexCloseSettled, useLiveSessionRefresh, useThrottledValue } from "
 import { DAY_SO_FAR_TEXT } from "../../../time-series/session-bar";
 import { getCachedVolatilityData, loadVolatilityData, type VolatilityLoadResult } from "./client";
 import { VOLATILITY_CURVE_INDICES, VOLATILITY_INDICES } from "../shared/volatility-indices";
-import { boardOrder, buildVolatilityData, IMPLIED_CORRELATION_ROWS, termStateLabel, volatilityCurveLookbacks, withLiveVolatilityLevels, type VolatilityBoardRow, type VolatilityIndexId, type VolatilityLiveLevel } from "./model";
+import { boardOrder, buildVolatilityData, curvePointWarnings, IMPLIED_CORRELATION_ROWS, termStateLabel, volatilityCurveLookbacks, volatilityPaneWarnings, withLiveVolatilityLevels, type VolatilityBoardRow, type VolatilityIndexId, type VolatilityLiveLevel } from "./model";
 import { VolatilityHistoryChart, VolatilityIndexHistoryChart } from "./charts";
 import { volatilityCurveRows, volatilityCurveSeries, type VolatilityCurveRow } from "./chart-model";
 import { useVolatilityEvidence } from "./evidence";
@@ -141,8 +141,9 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   }, [data?.board, sort, loading]);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   useVolatilityEvidence(result, tab, selected, resource.loading);
-  const notices = [resource.error, levelRefresh.error, ...(result?.errors ?? []), ...(data?.warnings ?? []),
-    ...(selected?.warnings ?? [])].filter((notice): notice is string => !!notice);
+  // The footer's notes are the pane's; a board row's or a curve point's are that row's (rowNote).
+  const notices = [resource.error, levelRefresh.error, ...(result?.errors ?? []), ...(data ? volatilityPaneWarnings(data) : [])]
+    .filter((notice): notice is string => !!notice);
   usePaneNoticeFooter({ registrationId: "volatility-notices", notices, focused });
   // From the tab the press finds, so the footer's hint never holds an old one.
   const cycleTab = useCallback(() => setTab((current) =>
@@ -183,8 +184,9 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, result?.savedAt, data, asOf, observationTime, observationBasis, cycleTab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const contentHeight = Math.max(5, height - tabRows);
+  const boardColumns = useMemo(() => dropColumnsToFit(BOARD_COLUMNS, width - 1, BOARD_DROP_ORDER), [width]);
   // The board needs only its rows; the selected index history takes the rest.
-  const boardHeight = Math.max(5, Math.min(rows.length + 2, Math.floor(contentHeight * 0.62)));
+  const boardHeight = Math.max(5, Math.min(rows.length + 2 + hiddenTableColumnRows(boardColumns, rows.length), Math.floor(contentHeight * 0.62)));
   const curve = data?.curve;
   // The week- and month-back curves come from the histories the board already loaded.
   const lookbacks = useMemo(() => data ? volatilityCurveLookbacks(data) : [], [data]);
@@ -207,7 +209,6 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     { id: "spread", label: "Spread", value: `${number(curve.slope, true)} pts` },
   ] : [];
   const ready = !!data && (data.board.some((row) => row.value != null) || data.fred.metrics.some((metric) => metric.value != null));
-  const boardColumns = useMemo(() => dropColumnsToFit(BOARD_COLUMNS, width - 1, BOARD_DROP_ORDER), [width]);
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     {tabStrip}
     <PaneStatusBody subject="volatility" loading={resource.loading && !ready} error={!ready ? resource.error ?? result?.errors[0] ?? null : null} empty={!resource.loading && !ready}>
@@ -216,6 +217,10 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
         emptyStateTitle="VIX curve unavailable." getItemKey={curveRowKey}
         selection={{ kind: "id", selectedId: curveSelectedId, getId: curveRowKey, onChange: setSelectedId }}
         onActivate={(row) => { setSelectedId(row.id); setTab("board"); }}
+        rowNote={(row) => {
+          const notes = curvePointWarnings(data, row.label);
+          return notes.length ? `${row.label}: ${notes.join("; ")}.` : null;
+        }}
         sortColumnId={null} sortDirection="asc"
         getExportMetadata={() => [["as of", data.curve.date], ["source", data.curve.source === "fred" ? "FRED" : "Cboe"], ["units", "IV percent"], ["warnings", ...notices]]}
         renderCell={(row, column) => {
@@ -237,11 +242,15 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
         <DataTableView<VolatilityBoardRow> focused={focused} columns={boardColumns} items={rows} rootWidth={width} rootHeight={boardHeight}
           emptyStateTitle="Volatility indices unavailable." getItemKey={(row) => row.id} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (row) => row.id, onChange: setSelectedId }}
           onActivate={(row) => setSelectedId(row.id)} sortable
+          rowNote={(row) => row.warnings.length ? `${row.label}: ${row.warnings.join("; ")}.` : null}
           sortColumnId={sort.columnId} sortDirection={sort.direction}
           onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id, { resetTo: { columnId: null, direction: "asc" } }))}
           onSortChange={(columnId, direction) => setSort({ columnId, direction })}
           getExportMetadata={() => [["basis", "daily history; sparse observations retain their timestamp"], ["percentile", "one year, at least 200 observations and 300 calendar days"], ["warnings", ...notices]]}
-          renderCell={(row, column) => ({ text: column.id === "id" ? row.id.toUpperCase()
+          renderCell={(row, column) => column.id === "id" && row.warnings.length
+            // A row with a note under the table when selected says so on its symbol.
+            ? { text: row.id.toUpperCase(), color: colors.warning }
+            : ({ text: column.id === "id" ? row.id.toUpperCase()
             : column.id === "label" ? row.label
             : column.id === "percentile1y" ? percentile(row.percentile1y)
             : ["value", "change1d", "change1dPercent"].includes(column.id)

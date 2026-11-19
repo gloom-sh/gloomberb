@@ -1,11 +1,10 @@
 import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
 import { formatPriceEarnings } from "../../../utils/price-earnings";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
   DataTableView,
   usePaneStatusFooter,
-  usePaneNoticeFooter,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -29,10 +28,10 @@ import { parseDisplayDate } from "../../../utils/datetime-format";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import { apiClient } from "../../../api-client";
-import { errorMessage } from "../../../utils/errors";
 import { formatTickerListInput } from "../../../tickers/list";
 import { handleRefreshKey, useClampSelectedIndex } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -183,6 +182,17 @@ interface PeerSnapshot {
   error?: string;
 }
 
+/** What concerns one peer's row, each a sentence: why its figures failed or are old, and why its EV/Sales reads as it does. */
+function relativeRowNotes(row: RelativeRow): string[] {
+  return [
+    row.error ? `${row.error.replace(/\.$/, "")}.` : null,
+    row.quoteStale ? "Its quote is stale." : null,
+    row.fundamentalsProvenance?.stale ? `${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.` : null,
+    row.evSalesUnavailable ?? null,
+    row.evSalesNote ?? null,
+  ].filter((note): note is string => !!note);
+}
+
 function peerQuoteKey(symbol: string): string {
   return buildQuoteKey({ symbol: normalizeSymbol(symbol), exchange: "", instrument: null });
 }
@@ -197,33 +207,38 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const settings = pane?.settings;
   // A pane opened on one ticker compares it with the peers `fn RV <ticker> --peers` picks, by the same
   // method, and keeps them in its settings with how they were chosen.
-  const peerSelection = useMemo(() => peerSelectionOf(settings?.[PEER_SELECTION_SETTING], listed), [listed, settings]);
-  const peerSubject = settings?.[AUTO_PEERS_SETTING] === true && listed.length === 1 && !peerSelection ? listed[0]! : null;
+  const configuredPeers = useMemo(() => peerSelectionOf(settings?.[PEER_SELECTION_SETTING], listed), [listed, settings]);
+  const peerSubject = settings?.[AUTO_PEERS_SETTING] === true && listed.length === 1 && !configuredPeers ? listed[0]! : null;
   const dataProvider = useAssetData();
+  const scope = useCloudDisplayScope();
   const updateSettings = useUpdatePaneSettings();
-  const [peerAttempt, setPeerAttempt] = useState(0);
-  const [peerFailure, setPeerFailure] = useState<{ subject: string; message: string } | null>(null);
-  useEffect(() => {
-    if (!peerSubject || !dataProvider) return;
-    const controller = new AbortController();
-    setPeerFailure(null);
-    findPeers(peerSubject, { marketData: dataProvider, apiClient, signal: controller.signal }).then((selection) => {
-      if (controller.signal.aborted) return;
-      const compared = [selection.subject, ...selection.peers];
-      updateSettings({ symbols: compared, symbolsText: formatTickerListInput(compared), [PEER_SELECTION_SETTING]: selection });
-    }, (failure: unknown) => {
-      if (controller.signal.aborted) return;
-      setPeerFailure({ subject: peerSubject, message: failure instanceof PeerPickError ? failure.reason : `No peers: ${errorMessage(failure)}` });
+  const controller = useRef<AbortController | null>(null);
+  const find = useCallback(() => {
+    controller.current?.abort();
+    const current = new AbortController();
+    controller.current = current;
+    return findPeers(peerSubject!, { marketData: dataProvider!, apiClient, signal: current.signal }).catch((error: unknown) => {
+      if (error instanceof PeerPickError) throw new Error(error.reason, { cause: error });
+      throw error;
     });
-    return () => controller.abort();
-  }, [dataProvider, peerAttempt, peerSubject, updateSettings]);
-  const peerError = peerSubject && peerFailure?.subject === peerSubject ? peerFailure.message : null;
+  }, [dataProvider, peerSubject, scope]);
+  useEffect(() => () => controller.current?.abort(), [find]);
+  const discovery = useAsyncResource(peerSubject && dataProvider ? find : null, {
+    savedCopy: scope && dataProvider ? { key: ["relative-valuation-peer-selection", scope, dataProvider.id, peerSubject] } : null,
+  });
+  const peerError = discovery.error && (discovery.error.startsWith("No peers") ? discovery.error : `No peers: ${discovery.error}`);
+  const discoveredSymbols = useMemo(() => discovery.data ? [discovery.data.subject, ...discovery.data.peers] : null, [discovery.data]);
+  useEffect(() => {
+    if (!discovery.data || discovery.savedAt != null || !discoveredSymbols) return;
+    updateSettings({ symbols: discoveredSymbols, symbolsText: formatTickerListInput(discoveredSymbols), [PEER_SELECTION_SETTING]: discovery.data });
+  }, [discovery.data, discovery.savedAt, discoveredSymbols, updateSettings]);
   // The table waits for the peers, so it fills once; without any it shows the ticker alone.
-  const pickingPeers = peerSubject != null && peerError == null;
-  const symbols = pickingPeers ? NO_SYMBOLS : listed;
+  const pickingPeers = peerSubject != null && !discoveredSymbols && peerError == null;
+  const comparison = discoveredSymbols?.join(",") ?? symbolList;
+  const symbols = useMemo(() => comparison ? comparison.split(",") : NO_SYMBOLS, [comparison]);
   // The title says how the peers were chosen, or lists the tickers; a title the user gave the pane stays.
   const ownsTitle = /^RV(?:\s|$)/.test(pane?.title ?? "");
-  usePaneTitle(ownsTitle && listed.length > 0 ? relativeValuationTitle(listed, peerSelection) : null);
+  usePaneTitle(ownsTitle && listed.length > 0 && !peerSubject ? relativeValuationTitle(listed, configuredPeers) : null);
   const { navigateTicker } = usePluginTickerActions();
   const loadPeers = useCallback(async (forceRefresh: boolean): Promise<PeerSnapshot[]> => {
     const coordinator = getSharedMarketDataCoordinator();
@@ -236,22 +251,25 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       const financials = entry?.data ?? entry?.lastGoodData ?? null;
       return {
         symbol: peer,
-        financials: financials ? await withBalanceSheetRate(financials) : null,
+        financials: financials ? await withBalanceSheetRate({ ...financials, priceHistory: [] }) : null,
         error: entry?.error?.message,
       };
     }));
   }, [symbols]);
   // Fundamentals come from one batched snapshot; prices stream on top of it.
-  // A changed peer list keeps the last snapshot up until its own answer.
-  const peerSnapshot = useAsyncResource(symbols.length > 0 ? loadPeers : null, { keepPreviousData: true });
+  const peerSnapshot = useAsyncResource(symbols.length > 0 ? loadPeers : null, {
+    keepPreviousData: scope,
+    savedCopy: scope && dataProvider ? { key: ["relative-valuation", scope, dataProvider.id, symbols] } : null,
+    deferLoad: pickingPeers,
+  });
   const { data: peers, updatedAt, reload: reloadSnapshot } = peerSnapshot;
-  const loading = peerSnapshot.loading || pickingPeers;
+  const loading = peerSnapshot.loading || (pickingPeers && peers === null);
   const error = symbols.length > 0 ? peerSnapshot.error : pickingPeers ? null : "No tickers selected";
   // Refreshing asks for the peers again when picking them failed.
   const reload = useCallback(() => {
-    if (peerError) setPeerAttempt((attempt) => attempt + 1);
+    if (peerError) discovery.reload();
     reloadSnapshot();
-  }, [peerError, reloadSnapshot]);
+  }, [discovery.reload, peerError, reloadSnapshot]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sortPreference, setSortPreference] = useState<RelativeSortPreference>(DEFAULT_RELATIVE_SORT);
   const appBaseCurrency = useAppSelector((state) => state.config.baseCurrency);
@@ -342,21 +360,9 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     [comparableRows, order],
   );
 
-  const staleSymbols = rows.filter((row) => row.quoteStale).map((row) => row.symbol);
-  const rowErrors = rows.filter((row) => row.error).map((row) => `${row.symbol}: ${row.error}`);
-  const status = [error, peerError, ...rowErrors, staleSymbols.length ? `Stale quotes: ${staleSymbols.join(", ")}` : null,
-    missingFx ? "Market-cap FX unavailable" : null].filter(Boolean).join(" · ") || null;
-
-  usePaneNoticeFooter({
-    registrationId: "relative-valuation-notices",
-    notices: [
-      ...rows.filter((row) => row.fundamentalsProvenance?.stale)
-        .map((row) => `${row.symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.`),
-      ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
-      ...rows.flatMap((row) => row.evSalesNote ? [`${row.symbol}: ${row.evSalesNote}`] : []),
-    ],
-    focused,
-  });
+  // The footer says what concerns the whole comparison; what concerns one peer is on its row (its symbol
+  // in the warning colour) and, for the selected row, under the table (`rowNote`).
+  const status = [error, peerError, missingFx ? "Market-cap FX unavailable" : null].filter(Boolean).join(" · ") || null;
 
   useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
 
@@ -387,7 +393,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
         if (row.notMeaningful.forwardPE) return notMeaningfulCell();
         return { text: `${formatPriceEarnings(row.reportedMultiples.forwardPE)}${row.forwardPEPeriod ? ` ${row.forwardPEPeriod}` : ""}`, color: colors.text };
       case "evSales":
-        // A withdrawn EV says so, one at or below zero reads N/M as a P/E over a loss does; the footer says why.
+        // A withdrawn EV says so, one at or below zero reads N/M as a P/E over a loss does; the row's note says why.
         if (row.evSales == null && row.notMeaningful.evSales) return notMeaningfulCell();
         return row.evSales == null && row.evSalesUnavailable
           ? { text: "EV n/a", color: colors.textDim }
@@ -437,6 +443,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       onHeaderClick={handleHeaderClick}
       getItemKey={(row) => row.symbol}
       renderCell={renderCell}
+      rowNote={(row) => {
+        const notes = relativeRowNotes(row);
+        return notes.length ? `${canonicalTickerKey(row.symbol)}: ${notes.join(" ")}` : null;
+      }}
       selectedTextOverridesCellColor
       getExportMetadata={() => sortedRows.flatMap((row) => [
         [row.symbol, "Quote as of", parseDisplayDate(row.quoteAsOf)?.toISOString() ?? "unavailable", "Stale", String(row.quoteStale ?? "unknown")],

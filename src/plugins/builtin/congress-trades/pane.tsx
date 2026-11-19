@@ -24,7 +24,6 @@ import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import {
-  type CloudCongressHousePayload,
   type CloudCongressMemberPayload,
   type CloudCongressTradePayload,
   type CloudCongressTickerPayload,
@@ -37,7 +36,6 @@ import {
   CONGRESS_TRADE_LIMIT,
   CONGRESS_TRADES_PANE_ID,
   canLoadMoreCongress,
-  mergeCongressPages,
   nextCongressPage,
   buildMemberColumns,
   buildTradeColumns,
@@ -52,7 +50,6 @@ import {
   type TickerColumnId,
   type CongressTab,
   type DetailMode,
-  type LoadStatus,
   type MemberColumn,
   type MemberColumnId,
   type TradeColumn,
@@ -66,7 +63,7 @@ import {
   renderCongressTradeCell,
   renderCongressTickerCell,
 } from "./table";
-import { loadCongressHouse } from "./client";
+import { useCongressFeed } from "./use-feed";
 import { useMineTickers } from "../shared/mine-tickers";
 import { aggregateLoadedCongress } from "./aggregates";
 import { CongressFilterBar, type CongressFilters } from "./filters";
@@ -99,11 +96,13 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const assetControl = useRef<SelectControl | null>(null);
   const amountControl = useRef<SelectControl | null>(null);
   const filterKey = JSON.stringify(filters);
-  const [payload, setPayload] = useState<CloudCongressHousePayload | null>(null);
-  const [status, setStatus] = useState<LoadStatus>("loading");
-  const [error, setError] = useState<string | null>(null);
-  const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const { payload, status, error, updatedAt, loadingMore, loadPage, reload: refresh } = useCongressFeed({
+    ...filters,
+    chamber: filters.chamber ?? "all",
+    limit: CONGRESS_TRADE_LIMIT,
+    filingLimit: CONGRESS_FILING_LIMIT,
+    ticker: tickerFilter,
+  });
   const tradeScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [savedTab, setActiveTab] = usePluginPaneState<CongressTab>(`${statePrefix}activeTab`, "trades");
@@ -121,73 +120,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     columnId: "trades",
     direction: "desc",
   });
-  const fetchGenRef = useRef(0);
   const openFiltersRef = useRef<() => Promise<void>>(async () => {});
-  const pageBusy = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
-
-  const load = useCallback((refresh = false) => {
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setStatus((current) => (current === "loaded" && !refresh ? "loaded" : "loading"));
-    setError(null);
-    setLoadingMore(false);
-    pageBusy.current = false;
-    loadCongressHouse({
-      ...filters,
-      chamber: filters.chamber ?? "all",
-      limit: CONGRESS_TRADE_LIMIT,
-      filingLimit: CONGRESS_FILING_LIMIT,
-      refresh,
-      ticker: tickerFilter,
-    }, undefined, abortRef.current.signal)
-      .then((nextPayload) => {
-        if (fetchGenRef.current !== gen) return;
-        setPayload((current) => (
-          refresh && current ? { ...current, asOf: nextPayload.asOf, trades: mergeCongressPages(current, nextPayload).trades } : nextPayload
-        ));
-        setStatus("loaded");
-        setLastLoadedAt(Date.now());
-      })
-      .catch((loadError) => {
-        if (fetchGenRef.current !== gen) return;
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-        setStatus("error");
-      });
-  }, [tickerFilter, filterKey]);
-
-  const loadPage = useCallback((request: ReturnType<typeof nextCongressPage>) => {
-    if (!request || !payload || pageBusy.current) return;
-    pageBusy.current = true;
-    const gen = fetchGenRef.current;
-    setLoadingMore(true);
-    loadCongressHouse({
-      ...filters,
-      chamber: filters.chamber ?? "all",
-      ...request,
-      limit: CONGRESS_TRADE_LIMIT,
-      filingLimit: CONGRESS_FILING_LIMIT,
-      ticker: tickerFilter,
-    }, undefined, abortRef.current?.signal)
-      .then((nextPayload) => {
-        if (fetchGenRef.current !== gen) return;
-        setPayload((current) => {
-          if (!current) return nextPayload;
-          return mergeCongressPages(current, nextPayload);
-        });
-      })
-      .catch((loadError) => {
-        if (fetchGenRef.current !== gen) return;
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-      })
-      .finally(() => {
-        if (fetchGenRef.current !== gen) return;
-        setLoadingMore(false);
-        pageBusy.current = false;
-      });
-  }, [payload, tickerFilter, filterKey]);
 
   const loadMore = useCallback(() => {
     if (!payload || loadingMore || status !== "loaded") return;
@@ -209,16 +142,6 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     loadMore,
   );
 
-  useEffect(() => {
-    setPayload(null);
-    load(false);
-    return () => { fetchGenRef.current += 1; abortRef.current?.abort(); };
-  }, [load]);
-
-  // Filings would otherwise age indefinitely in an open pane.
-  const refresh = useCallback(() => {
-    load(true);
-  }, [load]);
   useShortcut((event) => {
     if (!focused || event.targetEditable) return;
     if (tickerFilter && detailMode && isDetailBackNavigationKey(event)) {
@@ -230,7 +153,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     // Without a table there is no row handler, and a failing filter must stay changeable.
     if (!payload && isPlainKey(event, "f")) { event.preventDefault?.(); event.stopPropagation?.(); void openFiltersRef.current(); }
   }, { phase: "before" });
-  useAutoRefresh(lastLoadedAt, refresh);
+  useAutoRefresh(updatedAt, refresh);
 
   const trades = payload?.trades ?? [];
   const visibleTrades = useMemo(() => mine ? trades.filter((trade) => trade.ticker && mineTickers.has(trade.ticker)) : trades, [trades, mine, mineTickers]);
@@ -323,7 +246,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const { handleRootKeyDown } = useCongressTradesKeyboard({
     detailMode,
     focused,
-    load,
+    load: refresh,
     selectTab: tickerFilter ? () => {} : selectTab,
   });
   usePaneMenuItems(`${CONGRESS_TRADES_PANE_ID}:tabs`, () => (tickerFilter || detailMode ? null

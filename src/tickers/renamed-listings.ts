@@ -16,15 +16,27 @@ export interface RenamedListing {
   exchange: string;
   /** Its name now. */
   name: string;
-  /** The names people still search for, the one it went by first: its brand, then its legal name. */
-  formerNames: readonly [string, ...string[]];
+  /**
+   * The names people still search for, the one it went by first: its brand, then its legal name. Empty when the
+   * old name went with another company (Tata Motors Limited is now the demerged commercial-vehicle business), so
+   * only the old symbol, never a name, leads to this line.
+   */
+  formerNames: readonly string[];
+  /** What the old line is called in a sentence when no former name leads to it: "Tata Motors". */
+  formerLabel?: string;
+  /** How the new line is written in the app's own key (`TMPV:NSE`), where the venue's suffix is not how it is read. */
+  shownAs?: string;
   /** The day a class that no longer trades was converted into the `to` line (YYYY-MM-DD). */
   convertedOn?: string;
+  /** The day the venue renamed the line, when its notice says so (YYYY-MM-DD). */
+  renamedOn?: string;
+  /** A business demerged out of the line around the rename, listed on its own: the old symbol is never that company. */
+  demerged?: { symbol: string; name: string; business: string };
 }
 
 /** The name it went by: "Eletrobras". */
 function renamedListingFormerName(listing: RenamedListing): string {
-  return listing.formerNames[0];
+  return listing.formerNames[0] ?? listing.formerLabel ?? listing.from;
 }
 
 /**
@@ -40,10 +52,22 @@ function renamedListingFormerName(listing: RenamedListing): string {
  */
 const ELETROBRAS = ["Eletrobras", "Centrais Elétricas Brasileiras"] as const;
 const AXIA_PREFERRED_CONVERTED = "2026-06-05";
+/**
+ * NSE renamed Tata Motors' line, TATAMOTORS, to TMPV (Tata Motors Passenger
+ * Vehicles Limited) effective 24 Oct 2025 (NSE circular CML70875; NSE's
+ * symbol change list has the same row), and BSE renamed it the same day. The
+ * commercial-vehicle business was demerged out of it (record date 14 Oct
+ * 2025) and listed as TMCV on 12 Nov 2025; that company took the legal name
+ * Tata Motors Limited, so the old code follows the line, TMPV, never the
+ * name, and no name leads here.
+ */
+const TATA_MOTORS = { to: "TMPV", name: "Tata Motors Passenger Vehicles", formerNames: [], formerLabel: "Tata Motors", renamedOn: "2025-10-24" } as const;
 const RENAMED_LISTINGS: readonly RenamedListing[] = [
   { from: "ELET3", to: "AXIA3", suffix: ".SA", exchange: "B3", name: "AXIA Energia", formerNames: ELETROBRAS },
   ...["ELET6", "AXIA6", "ELET5", "AXIA5"].map((from): RenamedListing => ({ from, to: "AXIA3", suffix: ".SA", exchange: "B3",
     name: "AXIA Energia", formerNames: ELETROBRAS, convertedOn: AXIA_PREFERRED_CONVERTED })),
+  { ...TATA_MOTORS, from: "TATAMOTORS", suffix: ".NS", exchange: "NSE", shownAs: "TMPV:NSE", demerged: { symbol: "TMCV:NSE", name: "Tata Motors Limited", business: "commercial-vehicle" } },
+  { ...TATA_MOTORS, from: "TATAMOTORS", suffix: ".BO", exchange: "BSE", shownAs: "TMPV:BSE", demerged: { symbol: "TMCV:BSE", name: "Tata Motors Limited", business: "commercial-vehicle" } },
 ];
 
 /** "5 Jun 2026". */
@@ -53,7 +77,7 @@ function conversionDay(date: string): string {
 
 /** `AXIA3.SA`: the new listing as `quote` takes it. */
 export function renamedListingSymbol(listing: RenamedListing): string {
-  return `${listing.to}${listing.suffix}`;
+  return listing.shownAs ?? `${listing.to}${listing.suffix}`;
 }
 
 /**
@@ -78,9 +102,14 @@ export function renamedListingFor(query: string): RenamedListing | null {
 export function renamedListingHint(listing: RenamedListing): string {
   const now = renamedListingSymbol(listing);
   const named = `${now} (${listing.name}, formerly ${renamedListingFormerName(listing)})`;
-  return listing.convertedOn
-    ? `It was converted into ${named} on ${conversionDay(listing.convertedOn)}: \`gloom quote ${now}\`.`
-    : `It is now ${named}: \`gloom quote ${now}\`.`;
+  if (listing.convertedOn) return `It was converted into ${named} on ${conversionDay(listing.convertedOn)}: \`gloom quote ${now}\`.`;
+  return `It is now ${named}${listing.demerged ? `; ${demergedClause(listing)}` : ""}: \`gloom quote ${now}\`.`;
+}
+
+/** "its commercial-vehicle business was demerged into TMCV:NSE (Tata Motors Limited)": the company the old code is not. */
+function demergedClause(listing: RenamedListing): string {
+  const { business, symbol, name } = listing.demerged!;
+  return `its ${business} business was demerged into ${symbol} (${name})`;
 }
 
 /** What search says the new line was: "Eletrobras (ELET3)", or "Eletrobras (ELET6, converted 5 Jun 2026)". */
@@ -100,7 +129,11 @@ export function renamedListingReadAs(typed: string, listing: RenamedListing): st
   // A name is quoted, as every name read as a listing is; the CLI puts it back in the user's spelling.
   const shown = listing.formerNames.some((name) => normalizeSearchText(word) === normalizeSearchText(name)) ? `"${word}"` : word;
   const now = renamedListingSymbol(listing);
-  return listing.convertedOn
-    ? `Read ${shown} as ${now}: those preferred shares were converted into ${listing.name}'s common shares on ${conversionDay(listing.convertedOn)}.`
-    : `Read ${shown} as ${now}: ${renamedListingFormerName(listing)} is ${listing.name} now.`;
+  if (listing.convertedOn) return `Read ${shown} as ${now}: those preferred shares were converted into ${listing.name}'s common shares on ${conversionDay(listing.convertedOn)}.`;
+  // One line: the rename, and the company the old code is not.
+  if (listing.renamedOn) {
+    return `Read ${shown} as ${now}: ${listing.exchange} renamed ${listing.from} ${listing.to} (${listing.name}) on ${conversionDay(listing.renamedOn)}`
+      + `${listing.demerged ? `; ${demergedClause(listing)}` : ""}.`;
+  }
+  return `Read ${shown} as ${now}: ${renamedListingFormerName(listing)} is ${listing.name} now.`;
 }

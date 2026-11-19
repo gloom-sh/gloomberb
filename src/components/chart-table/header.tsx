@@ -10,6 +10,7 @@ import { PriceSparkline } from "../price-sparkline/view";
 import { StatGrid, type StatItem } from "../ui/stat-grid";
 import type { TableWidthColumn } from "../ui/table-layout";
 import { CHART_COMPACT_ROWS, chartTableChromeRows, chartTableLayout, type ChartTableLayout } from "./layout";
+import { useRemoteUiNode } from "../../remote/semantic-tree";
 
 const DAY_MS = 86_400_000;
 /** Daily series shorter than this still span two weeks, so the axis reads days, not hours. */
@@ -75,7 +76,7 @@ export interface ChartTableHeaderProps {
   height: number;
   /** Body rows the table holds. */
   tableRows: number;
-  /** Table header rows, plus one when its columns overflow into a scrollbar. */
+  /** Rows occupied by the table header, disclosure and scrollbars. */
   tableChromeRows?: number;
   /** The table's columns, to count its scrollbar row when `tableChromeRows` is not given. */
   tableColumns?: readonly TableWidthColumn[];
@@ -180,7 +181,7 @@ export function useChartTableLayout(props: ChartTableHeaderProps): ChartTableLay
     figures: props.figures,
     tableRows: props.tableRows,
     tableChromeRows: props.tableChromeRows
-      ?? (props.tableColumns ? chartTableChromeRows(props.tableColumns, props.width) : undefined),
+      ?? (props.tableColumns ? chartTableChromeRows(props.tableColumns, props.width, props.tableRows) : undefined),
     chart: hasChart
       ? {
         minRows: chart.minRows,
@@ -205,6 +206,14 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
   const { width, query, chart } = props;
   const colors = useThemeColors();
   const layout = useChartTableLayout(props);
+  const essential = props.figures?.filter((item) => item.essential === true) ?? [];
+  useRemoteUiNode(essential.length ? {
+    role: "figure-layout", label: "Essential figures",
+    metadata: {
+      figures: essential.map(({ label, value }) => ({ label, value })),
+      omitted: essential.filter((item) => !layout.figures.includes(item)).map((item) => item.label),
+    },
+  } : null);
   const series = chart?.series;
   const viewport = useMemo(() => {
     if (chart?.viewport || !series?.length) return chart?.viewport;

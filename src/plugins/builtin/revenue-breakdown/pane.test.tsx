@@ -86,6 +86,27 @@ test("a company without a breakdown is empty, not failed", async () => {
   expect(frame).not.toContain("[$]upgrade");
 });
 
+test("the header and filing footer keep the fiscal year from a trimmed annual column", async () => {
+  const filing = { filed: "2025-11-25", url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/1125/2025112501051.pdf", page: 17 };
+  const reported: RevenueBreakdownPayload = {
+    ...preview,
+    cik: undefined,
+    currency: "CNY",
+    periods: [
+      { kind: "annual", end: "2025-03-31", label: "Year ended 31 March 2025", revenueLabel: "Revenue", filing },
+      { kind: "interim", end: "2025-09-30", label: "Six months ended 30 September 2025", revenueLabel: "Revenue", filing },
+    ],
+    rows: [{ ...preview.rows[0]!, values: [null, 272.65e9] }],
+    total: [null, 272.65e9],
+    access: "full",
+    lockedRows: 0,
+  };
+  setCloudApiFetchTransport(async () => Response.json(reported));
+  const frame = await mount();
+  expect(frame).toMatch(/PRODUCT +H1 2026[^\n]*% TOTAL/);
+  expect(frame).toContain("H1 2026 filed 2025-11-25");
+});
+
 test("hovering a quarter reads out its value, and an unreported one says so", async () => {
   const gapped = {
     ...preview,

@@ -1,7 +1,9 @@
 import { apiClient } from "../../../api-client";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { usListingSymbol } from "../../../utils/sec";
-import { loadCloudResource, type CloudResource } from "../shared/cloud-resource";
+import { logFailure } from "../../../utils/log-failure";
+import { cachedCloudResource, loadCloudResource, type CloudResource } from "../shared/cloud-resource";
 
 export interface ExpiryOpenInterest {
   date: string;
@@ -139,6 +141,24 @@ const cacheOptions = { source: "gloom-cloud", schemaVersion: 1, policy: { staleM
 export const openInterestCache = createPluginCache<OpenInterestPayload>({ ...cacheOptions, kind: "options-positioning-open-interest" });
 export const gammaCache = createPluginCache<GammaPayload>({ ...cacheOptions, kind: "options-positioning-gamma" });
 
+const cacheKey = (scope: string, symbol: string, request: string) => JSON.stringify([scope, symbol, request]);
+
+export function readOpenInterest(scope: string, symbol: string, expiry: string | null) {
+  try {
+    return cachedCloudResource(openInterestCache, cacheKey(scope, symbol, query(symbol, expiry)));
+  } catch (error) {
+    return logFailure("options-positioning", "Read saved open interest failed", null)(error);
+  }
+}
+
+export function readGamma(scope: string, symbol: string, expiry: string | null) {
+  try {
+    return cachedCloudResource(gammaCache, cacheKey(scope, symbol, query(symbol, expiry)));
+  } catch (error) {
+    return logFailure("options-positioning", "Read saved dealer gamma failed", null)(error);
+  }
+}
+
 interface PositioningLoadOptions {
   signal?: AbortSignal;
   /** Ask the service even when another load of the same answer is under way. */
@@ -157,8 +177,10 @@ export function loadOpenInterest(
   api: OptionsPositioningApi = apiClient,
 ): Promise<CloudResource<OpenInterestPayload>> {
   const key = query(symbol, expiry);
-  return loadCloudResource(openInterestCache, key,
-    () => api.optionsPositioning<OpenInterestPayload>(`open-interest?${key}`, { signal: options.signal }),
+  const scope = cloudDisplayScope();
+  const fetch = () => api.optionsPositioning<OpenInterestPayload>(`open-interest?${key}`, { signal: options.signal });
+  if (scope === null) return fetch().then((payload) => ({ payload, stale: false, refreshError: null }));
+  return loadCloudResource(openInterestCache, cacheKey(scope, symbol, key), fetch,
     { force: options.force, signal: options.signal });
 }
 
@@ -170,7 +192,9 @@ export function loadGamma(
   api: OptionsPositioningApi = apiClient,
 ): Promise<CloudResource<GammaPayload>> {
   const key = query(symbol, expiry);
-  return loadCloudResource(gammaCache, key,
-    () => api.optionsPositioning<GammaPayload>(`gamma?${key}`, { signal: options.signal }),
+  const scope = cloudDisplayScope();
+  const fetch = () => api.optionsPositioning<GammaPayload>(`gamma?${key}`, { signal: options.signal });
+  if (scope === null) return fetch().then((payload) => ({ payload, stale: false, refreshError: null }));
+  return loadCloudResource(gammaCache, cacheKey(scope, symbol, key), fetch,
     { force: options.force, signal: options.signal });
 }

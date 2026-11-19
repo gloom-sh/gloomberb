@@ -156,7 +156,11 @@ export function pairTimeText(time: number, now = Date.now()): string {
   return `${formatUtcDayTime({ time, dateOnly: false }, now)} UTC`;
 }
 
-function timingNote(receipt: PairPriceInput, home: PairPriceInput, now: number): string | null {
+/**
+ * Said when two prices compared were not set together (one market closed, or
+ * both closed half an hour or more apart); null when they were.
+ */
+export function pricesTimingNote(receipt: PairPriceInput, home: PairPriceInput, now: number): string | null {
   if (receipt.open && home.open) return null;
   if (receipt.observedAt == null || home.observedAt == null) return null;
   const gap = Math.abs(receipt.observedAt - home.observedAt);
@@ -181,7 +185,7 @@ export function compareDepositaryPair(
   const impliedFx = (home.price * ratio) / receipt.price;
   if (!Number.isFinite(impliedFx) || impliedFx <= 0) return null;
   const premiumPercent = spot ? (spot.rate / impliedFx - 1) * 100 : null;
-  return { ratio, receipt, home, impliedFx, spot, premiumPercent, timingNote: timingNote(receipt, home, now) };
+  return { ratio, receipt, home, impliedFx, spot, premiumPercent, timingNote: pricesTimingNote(receipt, home, now) };
 }
 
 /** `1,651.28`, `28.4942`, `0.890625`: a dollar rate to its useful digits. */

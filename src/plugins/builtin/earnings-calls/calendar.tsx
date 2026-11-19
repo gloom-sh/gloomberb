@@ -1,7 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CloudEarningsCallPayload } from "../../../api-client";
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { cloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
 import {
   buildSectionedRows,
   DataTableStackView,
@@ -22,7 +22,7 @@ import {
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { isPermanentClientError } from "../../../api-client/errors";
-import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
+import { markHiddenTableColumns, TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAgeClock, useAutoRefresh } from "../../../react/auto-refresh";
 import { colors } from "../../../theme/colors";
@@ -80,13 +80,14 @@ const SORTABLE: Partial<Record<CalendarColumnId, CalendarSort["column"]>> = {
 function calendarColumns(width: number, { localClock }: { localClock: boolean }): CalendarColumn[] {
   const fixed = (list: CalendarColumn[]) =>
     list.reduce((sum, column) => sum + (column.id === "company" ? 0 : tableColumnWidth(column)) + TABLE_COLUMN_GAP, 2);
-  let columns = localClock ? ALL_COLUMNS : ALL_COLUMNS.filter((column) => column.id !== "local");
+  const original = localClock ? ALL_COLUMNS : ALL_COLUMNS.filter((column) => column.id !== "local");
+  let columns = original;
   for (const id of DROP_ORDER) {
     if (fixed(columns) + COMPANY_MIN_WIDTH <= width) break;
     columns = columns.filter((column) => column.id !== id);
   }
   const companyWidth = Math.max(COMPANY_MIN_WIDTH, width - fixed(columns));
-  return columns.map((column) => (column.id === "company" ? { ...column, width: companyWidth } : column));
+  return markHiddenTableColumns(original, columns.map((column) => (column.id === "company" ? { ...column, width: companyWidth } : column)));
 }
 
 function renderCalendarCell(row: CalendarRow, column: CalendarColumn, now: number): DataTableCell {
@@ -144,6 +145,7 @@ const NO_CALLS: CloudEarningsCallPayload[] = [];
  */
 export function UpcomingCallsView({ focused, width, height, view, renderCompany }: UpcomingCallsViewProps) {
   const access = usePlanAccess();
+  const displayScope = cloudDisplayScope();
   const entitled = access.signedIn && access.emailVerified && access.hasProAccess;
   // The days move at New York's midnight; the countdowns on a coarse clock.
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
@@ -162,9 +164,9 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
       refusal.current = statusOf(error);
       throw error;
     }
-  }, [range]);
+  }, [displayScope, range]);
   const resource = useAsyncResource(entitled ? loader : null, {
-    keepPreviousData: true,
+    keepPreviousData: displayScope,
     // A refusal asking again will not change takes the calendar off screen, for its wall or its error.
     clearOnError: isPermanentClientError,
     initialData: () => cachedUpcomingCalls(range),

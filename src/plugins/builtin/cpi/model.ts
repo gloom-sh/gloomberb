@@ -124,11 +124,22 @@ function releaseTime(iso: string): string {
  * 14 Oct 08:30 ET". A release past its time and not in yet reads "due".
  */
 export function cpiHeaderLine(release: CpiReleaseStatus, now = Date.now()): string | undefined {
+  const stamp = cpiReleaseStamp(release);
+  if (!stamp) return undefined;
+  const next = cpiNextRelease(release, now);
+  return next ? `${stamp} · ${next}` : stamp;
+}
+
+/** The month the data covers and when it came out: "Aug 2026 · released Fri 11 Sep 08:30 ET". What the pane's bar keeps whole. */
+export function cpiReleaseStamp(release: CpiReleaseStatus): string | undefined {
   if (!release.period) return undefined;
-  const parts = [cpiMonth(release.period)];
-  if (release.releasedAt) parts.push(`released ${releaseTime(release.releasedAt)}`);
-  if (release.nextReleaseAt) parts.push(`${Date.parse(release.nextReleaseAt) <= now ? "due" : "next"} ${releaseTime(release.nextReleaseAt)}`);
-  return parts.join(" · ");
+  return release.releasedAt ? `${cpiMonth(release.period)} · released ${releaseTime(release.releasedAt)}` : cpiMonth(release.period);
+}
+
+/** When the next release is due, "next Wed 14 Oct 08:30 ET" ("due" once past its time): what gives way in a narrow pane. */
+export function cpiNextRelease(release: CpiReleaseStatus, now = Date.now()): string | undefined {
+  if (!release.nextReleaseAt) return undefined;
+  return `${Date.parse(release.nextReleaseAt) <= now ? "due" : "next"} ${releaseTime(release.nextReleaseAt)}`;
 }
 
 /** The first of the month a change is for, which the chart plots it on. */

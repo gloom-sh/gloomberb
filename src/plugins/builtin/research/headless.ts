@@ -53,6 +53,12 @@ function matchesKind(row: EventRow, kind: string): boolean {
   return row.status === "Earnings" && row.earningsState === "reported";
 }
 
+/** The newest of the sources' read times (ISO instants); null when none says. */
+function newestRead(...times: Array<string | undefined>): string | null {
+  const read = times.filter((time): time is string => !!time && Number.isFinite(Date.parse(time)));
+  return read.length ? read.reduce((newest, time) => (Date.parse(time) > Date.parse(newest) ? time : newest)) : null;
+}
+
 function projectEarningsEstimatesHeadless(
   sources: EarningsEstimateSources,
   args: HeadlessPaneLoadArgs,
@@ -76,13 +82,14 @@ function projectEarningsEstimatesHeadless(
   });
   const errors = [...(sources.errors ?? []), ...(notice?.failed ? [notice.text] : [])];
   const unmatchedReportedPeriods = matching.filter((row) => row.earningsState === "reported" && !row.fiscalPeriodEnd).map((row) => row.date);
-  if (unmatchedReportedPeriods.length) errors.push(`No statement period identified for ${unmatchedReportedPeriods.length} reported earnings row(s); quarterly revenue is unavailable.`);
 
   return {
     columns: ESTIMATE_COLUMNS,
     rows,
     errors: errors.length ? errors : undefined,
     metadata: {
+      // When Gloom Cloud read the figures (the newer of the earnings rows' and the estimates' reads): the export's as_of.
+      asOf: newestRead(sources.actions?.fetchedAt, sources.estimates?.fetchedAt),
       currency: sources.currency,
       kind,
       total: matching.length,

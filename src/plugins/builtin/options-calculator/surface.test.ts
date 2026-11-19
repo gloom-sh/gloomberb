@@ -1,4 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
+import { MemoryResourceStore } from "../../../data/memory-resource-store";
+import { readSavedCopy, setSavedCopyStore, writeSavedCopy } from "../../../data/pane-saved-copies";
 import { MarketDataCoordinator } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { OptionsChain, OptionContract, Quote } from "../../../types/financials";
@@ -7,7 +11,32 @@ import { buildSurfaceGrid } from "../vol-surface/model";
 import { loadVolatilitySurface } from "../vol-surface/client";
 import { DEFAULT_OPTION_CALC_DRAFT } from "./model";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
-import { loadCalculatorSurfaceVol, projectCalculatorSurfaceVol, type CalculatorSurfaceDependencies } from "./surface";
+import { calculatorSurfaceCopy, loadCalculatorSurfaceVol, projectCalculatorSurfaceVol, type CalculatorSurfaceDependencies } from "./surface";
+
+test("a saved calculator input belongs to its listing, surface request and account access", () => {
+  const store = new MemoryResourceStore();
+  const previous = setSavedCopyStore(store);
+  const full = { id: "surface-account", emailVerified: true, plan: "pro" } as NonNullable<ReturnType<typeof apiClient.getCurrentUser>>;
+  const user = spyOn(apiClient, "getCurrentUser").mockReturnValue(full);
+  const signedIn = spyOn(apiClient, "isSignedIn").mockReturnValue(true);
+  const request = { symbol: "SPY:ARCX", spot: 600, strike: 610, daysToExpiry: 30 };
+  const key = (overrides = {}) => calculatorSurfaceCopy(cloudDisplayScope(), { ...request, ...overrides });
+  try {
+    writeSavedCopy(key()!, { volatility: 0.23 });
+    expect(readSavedCopy(key()!)?.value).toEqual({ volatility: 0.23 });
+    expect(readSavedCopy(key({ symbol: "SPY:NYSE" })!)).toBeNull();
+    expect(readSavedCopy(key({ daysToExpiry: 60 })!)).toBeNull();
+    expect(readSavedCopy(key({ strike: 615 })!)).toBeNull();
+    user.mockReturnValue({ ...full, plan: "free" });
+    expect(readSavedCopy(key()!)).toBeNull();
+    user.mockReturnValue({ ...full, id: "other-account" });
+    expect(readSavedCopy(key()!)).toBeNull();
+    user.mockReturnValue(null);
+    expect(key()).toBeNull();
+    signedIn.mockReturnValue(false);
+    expect(readSavedCopy(key()!)).toBeNull();
+  } finally { setSavedCopyStore(previous); user.mockRestore(); signedIn.mockRestore(); }
+});
 
 const now = Date.UTC(2026, 8, 22, 14);
 const expirations = [Date.UTC(2026, 9, 9), Date.UTC(2026, 10, 20), Date.UTC(2026, 11, 18)].map((ms) => ms / 1000);
