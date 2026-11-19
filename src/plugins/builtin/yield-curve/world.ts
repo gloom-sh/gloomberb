@@ -1,5 +1,6 @@
 import { apiClient } from "../../../api-client";
-import type { CloudCurvePoint, CloudWorldCurves } from "../../../api-client/yield-curves";
+import { ApiRequestError } from "../../../api-client/errors";
+import type { CloudCurveId, CloudCurvePoint, CloudWorldCurves } from "../../../api-client/yield-curves";
 import { isCurveId, type CurveId } from "./curves";
 import type { CurveBasis } from "./forward";
 
@@ -29,6 +30,23 @@ const MARKETS: Record<string, string> = {
   us: "US", de: "Germany", gb: "UK", jp: "Japan", ca: "Canada", "eu-aaa": "Euro AAA", mx: "Mexico", br: "Brazil",
 };
 
+/** How far before a date asked for a market's last session still answers it, as Gloom Cloud reads a curve. */
+const SESSION_WINDOW_DAYS = 10;
+
+/**
+ * What a board as of a date says of the markets it has no row for, those with
+ * no session near enough the date: `No session on or in the 10 days before
+ * 2001-01-02: Mexico and Brazil.` Null for the latest board, and when every
+ * market has a row.
+ */
+export function worldMissingNote(rows: readonly Pick<WorldRow, "id">[], requestedDate: string): string | null {
+  if (!requestedDate) return null;
+  const missing = Object.entries(MARKETS).filter(([id]) => !rows.some((row) => row.id === id)).map(([, name]) => name);
+  if (missing.length === 0) return null;
+  const names = missing.length > 1 ? `${missing.slice(0, -1).join(", ")} and ${missing.at(-1)}` : missing[0]!;
+  return `No session on or in the ${SESSION_WINDOW_DAYS} days before ${requestedDate}: ${names}.`;
+}
+
 const valueAt = (points: readonly CloudCurvePoint[] | undefined, tenor: string) => {
   const value = points?.find((point) => point.tenor === tenor)?.yield;
   return value != null && Number.isFinite(value) ? value : null;
@@ -54,6 +72,41 @@ function worldRows(payload: CloudWorldCurves): WorldRow[] {
   });
 }
 
-export async function loadWorldRows(client: Pick<typeof apiClient, "getCloudWorldCurves"> = apiClient): Promise<WorldRow[]> {
-  return worldRows(await client.getCloudWorldCurves());
+type WorldCurve = CloudWorldCurves["curves"][number];
+
+/**
+ * One market as of a date from its own curve, with the session before as its
+ * 1D look-back has it; null when it has none on or within ten days before.
+ */
+async function curveOnOrBefore(client: Pick<typeof apiClient, "getCloudCurve">, id: CloudCurveId, date: string): Promise<WorldCurve | null> {
+  try {
+    const view = await client.getCloudCurve(id, date);
+    if (view.asOf > date) return null;
+    const day = view.lookbacks.find((lookback) => lookback.id === "1D");
+    return {
+      curve: view.curve, asOf: view.asOf, points: view.points, checkedAt: view.checkedAt,
+      previous: day?.asOf && day.points ? { asOf: day.asOf, points: day.points } : null,
+    };
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/**
+ * Each market's latest curve, or with `requestedDate` its last session on or
+ * before that day (within ten days). Never a session after the date: a market
+ * a server answers with a later one (one older than dated reads, which sends
+ * the latest) is read as of the date from its own curve instead, and a market
+ * with no session near enough is left out.
+ */
+export async function loadWorldRows(
+  client: Pick<typeof apiClient, "getCloudWorldCurves" | "getCloudCurve"> = apiClient,
+  requestedDate = "",
+): Promise<WorldRow[]> {
+  const payload = await client.getCloudWorldCurves(requestedDate || null);
+  if (!requestedDate) return worldRows(payload);
+  const curves = await Promise.all(payload.curves.map((entry) => entry.asOf <= requestedDate
+    ? entry : curveOnOrBefore(client, entry.curve.id, requestedDate)));
+  return worldRows({ curves: curves.filter((entry): entry is WorldCurve => entry !== null) });
 }
