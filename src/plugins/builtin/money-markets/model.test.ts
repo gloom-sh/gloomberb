@@ -1,12 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { MoneyMarketRow, MoneyMarketsPayload } from "../../../api-client/money-markets";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { fetchMoneyMarkets, validateHongKongMoneyMarkets, validateMoneyMarkets } from "./client";
+import { fetchMoneyMarkets, hongKongMoneyMarketsCache, moneyMarketsCache, validateHongKongMoneyMarkets, validateMoneyMarkets } from "./client";
 import { moneyMarketsHeadless } from "./headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import type { HongKongMoneyMarketsPayload } from "../../../api-client/money-markets";
 import { moneyMarketAxis, moneyMarketCurves, moneyMarketHistory, moneyMarketNotices, moneyMarketObservations, moneyMarketRateChange, moneyMarketRows } from "./model";
+
+afterEach(() => {
+  moneyMarketsCache.reset();
+  hongKongMoneyMarketsCache.reset();
+});
 
 function row(id = "sofr", overrides: Partial<MoneyMarketRow> = {}): MoneyMarketRow {
   return { id, label: id, seriesId: "SOFR", sourceSeriesIds: ["SOFR"], sourceUrl: null,
@@ -79,7 +84,7 @@ test("fn BTMM --tab bills shows Treasury's posted day with its discount and coup
   data.rows.push(row("bill-3m", { label: "3M bill", group: "bills", seriesId: "DTB3", sourceSeriesIds: ["DTB3"], value: 4.14, asOf: "2026-11-12",
     couponEquivalent: 4.24, couponEquivalentAsOf: "2026-11-12", sourceName: "U.S. Treasury" }));
   const bills = await moneyMarketsHeadless.load(createTestHeadlessArgs({ options: { tab: "bills" } }),
-    createTestHeadlessContext({ apiClient: { getCloudMoneyMarkets: async () => data } as never }));
+    createTestHeadlessContext({ refresh: true, apiClient: { getCloudMoneyMarkets: async () => data } as never }));
   expect(bills.freshness).toMatchObject({ source: "U.S. Treasury", status: "not-a-feed" });
   const section = (bills as { sections: Array<{ columns: Array<{ key: string; header: string; format?: (value: unknown, row: Record<string, unknown>) => string }>; rows: Array<Record<string, unknown>> }> }).sections[0]!;
   expect(section.columns.slice(0, 3).map((column) => column.header)).toEqual(["Instrument", "Discount", "Coupon eq"]);
@@ -88,7 +93,7 @@ test("fn BTMM --tab bills shows Treasury's posted day with its discount and coup
   expect(section.rows[0]).toMatchObject({ value: 4.14, asOf: "2026-11-12" });
   // A rate is not a bill: its view keeps its Level column and no coupon equivalent.
   const rates = await moneyMarketsHeadless.load(createTestHeadlessArgs({ options: { tab: "rates" } }),
-    createTestHeadlessContext({ apiClient: { getCloudMoneyMarkets: async () => data } as never }));
+    createTestHeadlessContext({ refresh: true, apiClient: { getCloudMoneyMarkets: async () => data } as never }));
   expect((rates as typeof bills & { sections: typeof section[] }).sections[0]!.columns.map((column) => column.header)).not.toContain("Coupon eq");
   expect(() => validateMoneyMarkets({ ...data, rows: [row("bill-3m", { group: "bills", couponEquivalent: Number.NaN })] })).toThrow();
 });
@@ -103,7 +108,7 @@ describe("Hong Kong's bill-yield board", () => {
   test("fn BTMM --tab hk reads Hong Kong's own payload, each yield dated by its day, and says HKMA is its source", async () => {
     let asked = 0;
     const args = createTestHeadlessArgs({ options: { tab: "hk" } });
-    const result = await moneyMarketsHeadless.load(args, createTestHeadlessContext({ apiClient: {
+    const result = await moneyMarketsHeadless.load(args, createTestHeadlessContext({ refresh: true, apiClient: {
       getCloudHongKongMoneyMarkets: async () => hongKong(),
       getCloudMoneyMarkets: async () => { asked++; return payload(); } } as never }));
     expect(asked).toBe(0);

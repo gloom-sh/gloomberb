@@ -309,14 +309,11 @@ the origin of a number. The one count the kit draws is the
 - Info is what changes. If a segment reads the same on every render of every
   instance, delete it.
 - Static pane captures print warning text instead of an icon that opens a
-  dialog, as one note line (`noteLineParts`): the first note, whole or cut
-  after its last whole word that fits, and how many more there are (`+3
-  more`), which the app opens from the ⚠. A note never cuts a word, and
-  neither does a status a narrow row shortens. Beside a capture's status
-  line the note keeps at least 60% of the row while it needs it; the status
-  line steps down to its shorter forms first, and as a last resort drops
-  whole words from its middle (`Newest filing Fri 6 Nov … (Form 4
-  filings)`). `usePaneNoticeFooter` supplies the notices (`notes`).
+  dialog: the first note in full, wrapped separately from the status line,
+  and how many more there are (`+3 more`), which the app opens from the ⚠.
+  The status line still steps down to its shorter forms first, and as a last
+  resort drops whole words from its middle (`Newest filing Fri 6 Nov …
+  (Form 4 filings)`). `usePaneNoticeFooter` supplies the notices (`notes`).
   Warnings remain visible with `--no-status` too. A pane whose capture
   segments already say what some notices explain at length (what its
   numbers leave out) passes the rest as `captureNotes`; the dialog still

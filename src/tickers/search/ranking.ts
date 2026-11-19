@@ -844,6 +844,11 @@ export function answersToFutureName(
   ));
 }
 
+export function answersToFutureCode(item: Pick<TickerSearchRankableItem, "label"> & Partial<Pick<TickerSearchRankableItem, "symbol">>, query: string): boolean {
+  const future = futuresContractByCode(query);
+  return !!future && parsePublicTickerKey(item.symbol || item.label).symbol === future.symbol;
+}
+
 function scoreSymbolMatchRank(
   intent: SearchQueryIntent,
   item: Pick<TickerSearchRankableItem, "label"> & Partial<TickerSearchRankableItem>,
@@ -856,6 +861,7 @@ function scoreSymbolMatchRank(
   // The benchmark future of a commodity named as such leads even the symbol of that name (GOLD is
   // a company before it is a metal, and still follows right behind the future).
   if (answersToFutureName(item, intent.rawQuery)) return BENCHMARK_FUTURE_RANK;
+  if (answersToFutureCode(item, intent.rawQuery)) return 2;
   if (isCryptoInstrumentType(item.instrumentType)) return 0;
   if (isExplicitMarketSymbol(item.symbol || item.label)) return 0;
   if (!intent.normalizedQuery && !intent.compactQuery) return 0;

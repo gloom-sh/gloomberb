@@ -107,11 +107,11 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "XAR=F", code: "XAR", name: "S&P Real Estate", sector: "equity-sectors", venue: "CME", tick: 0.05 },
   { symbol: "RX=F", code: "RX", name: "Dow Jones U.S. Real Estate", sector: "equity-sectors", venue: "CBT", tick: 0.1 },
 
-  { symbol: "ZT=F", code: "ZT", name: "2-Year T-Note", sector: "rates", venue: "CBT", bareCode: true },
-  { symbol: "ZF=F", code: "ZF", name: "5-Year T-Note", sector: "rates", venue: "CBT", bareCode: true },
-  { symbol: "ZN=F", code: "ZN", name: "10-Year T-Note", sector: "rates", venue: "CBT", bareCode: true },
-  { symbol: "ZB=F", code: "ZB", name: "30-Year T-Bond", sector: "rates", venue: "CBT", bareCode: true },
-  { symbol: "UB=F", code: "UB", name: "Ultra T-Bond", sector: "rates", venue: "CBT", bareCode: true },
+  { symbol: "ZT=F", code: "ZT", name: "2-Year T-Note", sector: "rates", venue: "CBT", unit: "% of par", bareCode: true },
+  { symbol: "ZF=F", code: "ZF", name: "5-Year T-Note", sector: "rates", venue: "CBT", unit: "% of par", bareCode: true },
+  { symbol: "ZN=F", code: "ZN", name: "10-Year T-Note", sector: "rates", venue: "CBT", unit: "% of par", bareCode: true },
+  { symbol: "ZB=F", code: "ZB", name: "30-Year T-Bond", sector: "rates", venue: "CBT", unit: "% of par", bareCode: true },
+  { symbol: "UB=F", code: "UB", name: "Ultra T-Bond", sector: "rates", venue: "CBT", unit: "% of par", bareCode: true },
 
   { symbol: "CL=F", code: "CL", name: "WTI Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01, unit: "USD / barrel", aliases: ["oil"] },
   // NYMEX's Brent, cash-settled to the ICE Brent futures settlement; ICE's own contract (B) is not carried.

@@ -1,24 +1,22 @@
 import type { HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
-import { resolveHeadlessInstrument } from "../shared/headless-market-data";
+import { logFailure } from "../../../utils/log-failure";
+import { loadHeadlessContractPriceUnit, resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createBacktestDependencies, loadBacktestHistory } from "./client";
 import { BACKTEST_PRESETS, CUSTOM_PRESET_ID, DEFAULT_PRESET, lookbackYears, presetRulesConflict, resolveRules } from "./presets";
 import { BACKTEST_FRESHNESS, backtestPriceUnit, backtestReport } from "./report";
 import { parseRule, RULE_SYNTAX } from "./rules";
 import { runHistoryBacktest } from "./window";
 
-/** The listing's price unit, as `history` reads it from the quote; null when no quote says. */
+/** The listing's price unit, as `history` reads it from its contract terms or quote. */
 async function priceUnit(ctx: HeadlessPaneContext, instrument: InstrumentRef): Promise<string | null> {
-  try {
-    const quote = ctx.marketData.getQuoteMetadata
-      ? await ctx.marketData.getQuoteMetadata(instrument.symbol, instrument.exchange)
-      : await ctx.marketData.getQuote(instrument.symbol, instrument.exchange);
-    return backtestPriceUnit(instrument.symbol, quote);
-  } catch {
-    // Intentional ignore: without a quote the rows stay unlabelled, as `history` leaves them.
-    return backtestPriceUnit(instrument.symbol, null);
-  }
+  const quote = await (ctx.marketData.getQuoteMetadata
+    ? ctx.marketData.getQuoteMetadata(instrument.symbol, instrument.exchange)
+    : ctx.marketData.getQuote(instrument.symbol, instrument.exchange))
+    .catch(logFailure("backtest.headless", "Read listing facts for a price unit failed", null));
+  const unit = await loadHeadlessContractPriceUnit(ctx, instrument.symbol, quote?.instrumentType);
+  return backtestPriceUnit(instrument.symbol, quote, unit);
 }
 
 export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
@@ -51,7 +49,7 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "include-partial", settingKey: "includePartial", type: "boolean", defaultValue: false,
       description: "Keep a session still forming (partial), which is left out by default because its close moves until the day ends" },
     { key: "equity", shot: { reportOnly: "prints the daily equity curve in place of the summary" }, type: "boolean", defaultValue: false, example: "--csv --equity --output curve.csv",
-      description: "Report the daily curve instead: date, close in the listing's currency, position (1 long, 0 flat), strategy and"
+      description: "Report the daily curve instead: date, close in the listing's price unit, position (1 long, 0 flat), strategy and"
         + " buy-and-hold growth of 1 on the price alone (distributions not included) and drawdown in percent, every digit in --csv and --json" },
     { key: "tab", type: "enum", defaultValue: "summary", values: [{ value: "summary" }, { value: "trades" }], description: "Initial view",
       pluginState: { pluginId: "ticker-research", key: "backtest:view" } },

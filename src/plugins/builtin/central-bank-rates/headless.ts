@@ -1,7 +1,8 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { CENTRAL_BANKS, centralBankNames } from "../../../utils/central-banks";
-import { fetchCentralBankRates } from "./client";
+import { savedCopyMark, unansweredRefreshError } from "../../../data/saved-copies";
+import { loadCentralBankRates } from "./client";
 import {
   hasNoPolicyRate, policyExportRow, policyLastDecisionText, policyNextMeetingText, policyNotices, policyObservations, policyRate,
   policyUnlistedNote,
@@ -50,8 +51,10 @@ export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { source: "BIS, FRED and central banks", publisher: "each row's central_bank, via BIS, FRED or its own published decisions", status: "not-a-feed",
     basis: "published policy rates", citeOldest: true },
   async load(args, ctx) {
-    const data = await fetchCentralBankRates(ctx.apiClient);
-    const errors = policyNotices(data);
+    const result = await loadCentralBankRates(ctx.refresh, ctx.apiClient);
+    const data = result.payload;
+    const refreshError = unansweredRefreshError(result);
+    const errors = [...policyNotices(data), ...refreshError ? [refreshError] : []];
     const complete = data.status === "available" && errors.length === 0;
     // Hand the report its rows' staleness so its status line and a capture count them.
     const observations = policyObservations(data);
@@ -76,7 +79,7 @@ export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
       }),
     }], errors, unavailableSymbols: data.rows.filter((row) => row.status === "unavailable" && !hasNoPolicyRate(row)).map((row) => row.id),
     // A year of daily history per row is most of the payload, so JSON carries it only on request.
-    metadata: args.options.history === true ? { ...data, complete }
-      : { generatedAt: data.generatedAt, status: data.status, gaps: data.gaps, complete } };
+    metadata: { ...savedCopyMark(result), complete, ...(args.options.history === true ? data
+      : { generatedAt: data.generatedAt, status: data.status, gaps: data.gaps }) } };
   },
 };

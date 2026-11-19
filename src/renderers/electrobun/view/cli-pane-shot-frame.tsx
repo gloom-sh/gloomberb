@@ -5,6 +5,8 @@ import { CaptureDatesDataContext, PaneCaptureContext } from "../../../components
 import { PaneFooterProvider, datesPaneData, hasPaneFooterContent, type PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { noteLineParts } from "../../../components/layout/pane/footer/model";
 import { resolvePaneBodyFrame } from "../../../components/layout/pane/sizing";
+import { Prose } from "../../../components/ui/prose";
+import { useThemeColors } from "../../../theme/theme-context";
 
 /** What a capture's status line dates (`CaptureStatusLine`): the pane's own data, the quotes on screen, or neither. */
 type ShotLineDates = "data" | "quotes" | null;
@@ -160,8 +162,8 @@ function useShotStatusLine(enabled: boolean, hasAsOf: () => boolean): ShotStatus
 }
 
 /**
- * Static captures retain warnings, as one note line (the first note, cut
- * after a whole word, and how many more there are), what a filter leaves out (`capture`) and
+ * Static captures retain the first warning in full and say how many more there
+ * are. The warning wraps independently of the status line. Captures also retain what a filter leaves out (`capture`) and
  * optional source status without action shortcuts. With `statusLine` the footer also carries the capture's dated
  * status line (`Fri 9 Oct close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET`),
  * inside the requested size: the body gives up the footer row for it. The
@@ -183,19 +185,25 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
   const hasAsOf = useCallback(() => shownAsOf.current, []);
   const { text: statusText, dates, crowded } = useShotStatusLine(statusLine, hasAsOf);
   const datesData = statusLine && dates === "data";
+  const palette = useThemeColors();
+  const [noteHeight, setNoteHeight] = useState(0);
+  const noteObserver = useRef<ResizeObserver | null>(null);
+  const measureNotes = useCallback((element: HTMLDivElement | null) => {
+    noteObserver.current?.disconnect();
+    noteObserver.current = null;
+    const measure = () => setNoteHeight(element?.getBoundingClientRect().height ?? 0);
+    measure();
+    if (!element || typeof ResizeObserver === "undefined") return;
+    noteObserver.current = new ResizeObserver(measure);
+    noteObserver.current.observe(element);
+  }, []);
   return <PaneFooterProvider>{(registeredFooter) => {
     const status: PaneFooterSegment[] = statusLine && statusText !== null ? [{ id: "shot-status", parts: [{ text: statusText, tone: "label" }] }] : [];
-    // A warning whose pane gives a picture no notes to print (`captureNotes` empty) leaves no segment.
-    const info = registeredFooter.info.filter((segment) => !(segment.icon === "warning" && segment.notes?.length === 0)
-      && (preserveStatus || segment.icon === "warning" || segment.capture)
+    const warnings = registeredFooter.info.filter((segment) => segment.icon === "warning" && segment.notes?.length !== 0);
+    const info = registeredFooter.info.filter((segment) => segment.icon !== "warning"
+      && (preserveStatus || segment.capture)
       && !(datesPaneData(segment) && (datesData || crowded))
-      && !(segment.quoteStatus && statusLine && dates !== null))
-      // Nothing opens a picture's ⚠: its notes are the footer's one note line (noteLineParts).
-      .map((segment): PaneFooterSegment => {
-        if (segment.icon !== "warning") return segment;
-        const notes = segment.notes?.length ? segment.notes : [segment.label ?? segment.title ?? segment.parts.map((part) => part.text).join(" ")];
-        return { ...segment, icon: undefined, onPress: undefined, notes, parts: noteLineParts(notes, Number.POSITIVE_INFINITY) };
-      });
+      && !(segment.quoteStatus && statusLine && dates !== null));
     shownAsOf.current = info.some(datesPaneData);
     const footer = { info: [...info, ...status], hints: [], menu: [], keys: [] };
     const bodyFrame = resolvePaneBodyFrame({
@@ -204,6 +212,7 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
       nativePaneChrome: true,
       footerVisible: hasPaneFooterContent(footer),
       reserveFooter: false,
+      chromeSupplementPx: warnings.length ? noteHeight : 0,
     });
     return <FloatingPaneWrapper
       paneId={paneId}
@@ -216,6 +225,15 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
       focused
       showActions={false}
       footer={footer}
+      footerSupplement={warnings.length > 0 ? <div ref={measureNotes} style={{ flexShrink: 0, padding: "var(--gloom-space-xs) var(--gloom-space-sm)" }}>
+        {warnings.map((segment) => {
+          const notes = segment.notes ?? [segment.label ?? segment.title ?? segment.parts.map((part) => part.text).join(" ")];
+          const text = noteLineParts(notes, Number.POSITIVE_INFINITY).map((part) => part.text).join(" ");
+          return <div key={segment.id} data-gloom-role="pane-footer-notes">
+            <Prose text={text} width={width} color={palette.warning} figures={false} />
+          </div>;
+        })}
+      </div> : null}
     >
       <PaneCaptureContext.Provider value>
         <CaptureDatesDataContext.Provider value={datesData}>{children(bodyFrame)}</CaptureDatesDataContext.Provider>

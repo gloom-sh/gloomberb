@@ -853,12 +853,15 @@ async function searchProviderResults(
 
   // Catalogues can omit exact market symbols or return a crypto pair from a
   // different venue. Verify the requested quote before accepting an alias.
-  const requested = parsePublicTickerKey(normalizeTickerSymbol(query));
+  const futureSymbol = assetClass?.code === "FUT" ? assetClassMarketSymbol(assetClass)
+    : !assetClass ? futuresContractByCode(query)?.symbol : null;
+  const exactQuery = futureSymbol ?? query;
+  const requested = parsePublicTickerKey(normalizeTickerSymbol(exactQuery));
   const possibleCryptoPair = /^[A-Z0-9]{1,15}-[A-Z]{3,5}$/.test(requested.symbol);
-  if ((isExplicitMarketSymbol(query) || possibleCryptoPair)
+  if ((isExplicitMarketSymbol(exactQuery) || possibleCryptoPair)
     && !findExactTickerSearchMatch([...byKey.values()].map((result) => ({
       label: getSearchResultSymbol(result), instrumentType: result.type, right: result.exchange,
-    })), query)) {
+    })), exactQuery)) {
     const { symbol, exchange } = requested;
     const marketType = /=F$/.test(symbol) ? "FUTURE"
       : /^(?:[A-Z]{3}(?:\/[A-Z]{3}|(?:[A-Z]{3})?=X))$/.test(symbol) ? "CURRENCY"

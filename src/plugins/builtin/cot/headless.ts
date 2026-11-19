@@ -1,7 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { CotClass, CotClassSummary, CotContractPayload, CotFamily, CotHistoryPoint } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
-import { fetchCotBoard, fetchCotContract } from "./client";
+import { loadCotBoard, fetchCotContract } from "./client";
 import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotDefaultFamily, cotFamily, cotInteger, cotMarketName, cotPositions, cotPositionsText, cotProxyFor, cotProxyNote, cotReleaseTime, cotRoot, cotScope, cotUnknownMarketMessage } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { REPORT_ROWS } from "../shared/headless-options";
@@ -164,7 +164,7 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
     const traderClass = cotClass(family, args.options.traderClass);
     if (args.options.traderClass && traderClass !== args.options.traderClass) throw new Error("Trader class does not belong to this report family");
     const scope = cotScope(args.options.scope);
-    const data = await fetchCotBoard(family, traderClass, ctx.apiClient, positions);
+    const data = await loadCotBoard(family, traderClass, ctx.refresh, positions, ctx.apiClient);
     const rows = data.rows.filter((row) => scope === "all" || COT_MAJOR_CODES.has(row.contractCode));
     const publishedAt = cotPublishedAt(data);
     return { sections: [{ title: positions === "combined" ? `Positioning extremes  ·  ${cotPositionsText(positions)}` : "Positioning extremes",

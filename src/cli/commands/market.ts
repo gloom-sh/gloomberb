@@ -89,7 +89,7 @@ import type { FuturesContractTermsPayload } from "../../api-client/futures-curve
 import { currencyCodeLabel, currencyUnitLabel, resolveCurrencyUnit } from "../../utils/currency-units";
 import { fxRateDigits, quotedFxPair } from "../../utils/currency-pair";
 import {
-  futuresContractLines, futuresPricePer, futuresPriceUnit, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu,
+  futuresContractLines, futuresPricePer, futuresPriceUnit, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadFuturesPriceUnit, loadUsdPerMmbtu,
   usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
 import {
@@ -2184,7 +2184,7 @@ async function loadListingHistory(
   const quoteAnswer = loadListingQuoteAnswer(market.dataProvider, listing);
   // A future's contract terms, asked beside the bars: its prices are in its contract's unit (US cents / bushel), as FUT
   // and G spell it, and a continuous symbol on the most traded month (GC=F) says so, as `quote` does.
-  const futures = isFuturesInstrument(symbol, null);
+  const futures = isFuturesInstrument(symbol, listing.saved?.metadata.assetCategory);
   const futuresTerms = futures ? settleWithin(loadFuturesContractTerms(symbol), HISTORY_PRICE_UNIT_WAIT_MS) : Promise.resolve(null);
   const priceUnit = futures ? futuresTerms.then((terms) => futuresPriceUnit(futuresBoardContract(symbol), terms)) : Promise.resolve(null);
   const quoted = quoteAnswer.then((answer) => answer.quote);
@@ -2220,8 +2220,10 @@ async function loadListingHistory(
   const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(logFailure("cli.commands-market", "Read quote metadata for history failed", null));
   // With neither, the currency the listing was saved with from search (TMPV on NSE trades in INR) still names the unit.
   const savedCurrency = listing.saved?.metadata.currency?.trim();
+  const contractUnit = futures ? await priceUnit : isFuturesInstrument(symbol, listed?.instrumentType ?? quote?.instrumentType)
+    ? await settleWithin(loadFuturesPriceUnit(symbol), HISTORY_PRICE_UNIT_WAIT_MS) : null;
   const unit = historyUnit(listing.key, listed?.currency || quote?.currency || !savedCurrency ? listed ?? quote
-    : { ...listed ?? quote ?? {}, currency: savedCurrency }, await priceUnit);
+    : { ...listed ?? quote ?? {}, currency: savedCurrency }, contractUnit);
   const mostTraded = /=F$/i.test(listing.symbol) && (await futuresTerms)?.roll?.mostTraded === true;
   const traded = {
     listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,

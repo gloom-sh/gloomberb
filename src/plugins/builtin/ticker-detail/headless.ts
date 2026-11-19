@@ -50,7 +50,7 @@ import {
   type RatioTabDef,
 } from "./financials/ratios";
 import {
-  loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
+  loadHeadlessContractPriceUnit, loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
 import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
 import {
@@ -98,7 +98,7 @@ function reportWindowText(options: HeadlessPaneOptionValues): string | null {
  * points`): by its quote, else by the listing facts research reads, as `history` falls back to them. Null when neither says.
  */
 async function barPriceUnit(
-  ctx: Pick<HeadlessContext, "marketData">,
+  ctx: Pick<HeadlessContext, "marketData" | "apiClient">,
   key: string,
   listing: string,
   exchange: string | undefined,
@@ -106,7 +106,8 @@ async function barPriceUnit(
 ): Promise<string | null> {
   const listed = quote?.currency ? quote
     : await ctx.marketData.getQuoteMetadata?.(listing, exchange ?? "").catch(logFailure("ticker-detail.headless", "Read listing facts for a bar unit failed", null));
-  return historyExportUnit(historyUnit(key, listed ?? quote));
+  const facts = listed ?? quote;
+  return historyExportUnit(historyUnit(key, facts, await loadHeadlessContractPriceUnit(ctx, listing, facts?.instrumentType)));
 }
 
 /** Bars of a window that closed before today: the history asked for, which no later bar makes stale. */

@@ -52,7 +52,7 @@ const SETTLEMENT_TYPE: Readonly<Record<FuturesContractSpec["settlement"], string
 
 /** Whether a symbol is a futures contract, an alias (GC=F) or a generic (CL1), whose contract terms are worth asking for. */
 export function isFuturesInstrument(symbol: string, instrumentType: string | null | undefined): boolean {
-  return classifyInstrumentType(instrumentType) === "future" || /=F$/i.test(symbol.trim());
+  return classifyInstrumentType(instrumentType) === "future" || /=F$/i.test(parsePublicTickerKey(symbol).symbol.trim());
 }
 
 function decimals(value: number): number {
@@ -516,10 +516,11 @@ export async function loadFuturesContractTerms(
  * else null. FUT's Unit column and the chart composer read it the same way.
  */
 export function futuresPriceUnit(
-  contract: Pick<FuturesContract, "unit"> | null | undefined,
+  contract: Pick<FuturesContract, "unit" | "sector"> | null | undefined,
   terms?: Pick<FuturesContractTermsPayload, "spec"> | null,
 ): string | null {
-  return terms?.spec?.unit ?? contract?.unit ?? null;
+  return terms?.spec?.unit ?? contract?.unit
+    ?? (contract?.sector === "equity-index" || contract?.sector === "equity-sectors" ? "index points" : null);
 }
 
 /** The terms change with a roll, and a roll is decided once a day. */

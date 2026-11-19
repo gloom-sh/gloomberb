@@ -1,6 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { RatePathPayload } from "../../../api-client/rates";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { unansweredRefreshError, withSavedCopyMarkOf } from "../../../data/saved-copies";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 export const ratePathCache = createPluginCache<RatePathPayload>({
@@ -46,7 +47,9 @@ export function getCachedRatePath(): RatePathPayload | null {
   return cached?.data ?? null;
 }
 
-export async function loadRatePath(force = false): Promise<RatePathPayload> {
-  const { payload, stale, refreshError } = await loadCloudResource(ratePathCache, "usd", () => fetchRatePath(), { force });
-  return { ...payload, stale: stale || payload.stale, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])] };
+export async function loadRatePath(force = false, client: Pick<typeof apiClient, "getCloudRatePath"> = apiClient): Promise<RatePathPayload> {
+  const result = await loadCloudResource(ratePathCache, "usd", () => fetchRatePath(client), { force });
+  const { payload, stale } = result;
+  const error = unansweredRefreshError(result);
+  return withSavedCopyMarkOf({ ...payload, stale: stale || payload.stale, gaps: [...payload.gaps, ...error ? [error] : []] }, result);
 }

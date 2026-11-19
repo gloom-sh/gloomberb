@@ -124,6 +124,21 @@ test("a column only the exports carry (FUT's 3M, 6M and 1Y) is in the JSON and C
   expect((report.data.rows as typeof screenshot.render.rows).at(-1)!.cells.at(-1)).toMatchObject({ columnId: "return1y", value: 14.1 });
   // No row of its own: the sector closes each row under it, after every column an earlier export had.
   expect(renderReportCsv(report.tables).split("\n").slice(0, 2)).toEqual(["SYM,1W (%),1Y (%),Group", "ES,-0.71,14.1,Equity Index"]);
+
+  screenshot.render.visibleText = "ES NG";
+  screenshot.render.reportRows!.push(
+    { ...sector, rowIndex: 2, cells: [{ ...sector.cells[0]!, text: "Energy" }] },
+    { ...row, rowIndex: 3, key: "NG=F", cells: [{ ...cells[0]!, text: "NG" }] },
+  );
+  const limited = await buildDomPaneReportFromRender({ ...resolved, rowWindow: { limit: 1 } }, screenshot);
+  expect(limited.data).toMatchObject({ rowCount: 1, complete: true, visibleText: "", rows: [{ key: "ES=F" }] });
+  expect(limited.data.everyRow).toBeUndefined();
+  expect(limited.text).not.toMatch(/\bNG\b/);
+  expect(renderReportCsv(limited.tables).split("\n").slice(0, 2)).toEqual(["SYM,1W (%),1Y (%),Group", "ES,-0.71,14.1,Equity Index"]);
+  const tail = await buildDomPaneReportFromRender({ ...resolved, rowWindow: { tail: 1 } }, screenshot);
+  expect(renderReportCsv(tail.tables).split("\n").slice(0, 2)).toEqual(["SYM,1W (%),1Y (%),Group", "NG,,,Energy"]);
+  const prose = { ...screenshot, render: { ...screenshot.render, reportRows: undefined, rows: [], visibleText: "Only prose." } };
+  await expect(buildDomPaneReportFromRender({ ...resolved, rowWindow: { limit: 1 } }, prose)).rejects.toThrow("--limit requires a rendered table");
 });
 
 test("a time the pane draws as a date, at 00:00 UTC, prints as the date; one it draws with a time of day keeps it", async () => {

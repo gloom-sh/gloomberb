@@ -47,6 +47,7 @@ interface FloatingPaneWrapperProps {
   onResizeMouseDrag?: (event: any) => void;
   onResizeMouseDragEnd?: (event: any) => void;
   footer?: CombinedPaneFooter | null;
+  footerSupplement?: ReactNode;
   /** The pane's frame, which a desktop resize sizes outside React; its header, body and footer stretch with it. */
   frameRef?: RefObject<BoxRenderable | null>;
   /** Windows stacked as tabs here: their tabs replace the title. */
@@ -112,6 +113,7 @@ export function FloatingPaneWrapper({
   onResizeMouseDrag,
   onResizeMouseDragEnd,
   footer,
+  footerSupplement,
   frameRef,
   stack = null,
   children,
@@ -182,6 +184,7 @@ export function FloatingPaneWrapper({
         <PaneHeaderTabsProvider value={headerTabsContext}>{children}</PaneHeaderTabsProvider>
       </PaneBodyFrame>
 
+      {footerSupplement}
       {renderFooter && (
         <PaneFooterBar
           footer={footer}

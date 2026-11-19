@@ -48,7 +48,7 @@ test("selected futures and public listing survive actual templates, chart models
       marketData: provider, config: state.config, apiClient: {} as any, signal: new AbortController().signal, settings: chart.settings,
     });
     expect(model.series[0]?.points.at(-1)?.value).toBe(result.brokerContract!.lastTradeDateOrContractMonth === "20261218" ? 10 : 20);
-    expect(model.series[0]?.unit).toBe("USD");
+    expect(model.series[0]?.unit).toBe("unknown");
     expect(chartComposerModule.paneTemplates!.find(t => t.id === "chart-composer-pane")!.publicShare!.serialize({ pane: chart, paneState: {} })).toBeNull();
   }
   const publicResult: InstrumentSearchResult = { providerId: "public", symbol: "ACME", name: "ACME common stock", exchange: "CBOE", currency: "EUR", type: "STK" };

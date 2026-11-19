@@ -5,7 +5,7 @@ import { createTestTicker } from "../../test-support/ticker";
 import { ProviderBusyError } from "../../sources/provider-errors";
 import { DataServiceUnreachableError } from "../../utils/network-failure";
 import type { TickerRecord } from "../../types/ticker";
-import { quotableSearchSymbol, search } from "./search";
+import { quotableSearchSymbol, search, searchCandidatesForCli } from "./search";
 
 const originalExitCode = process.exitCode ?? 0;
 afterEach(() => { process.exitCode = originalExitCode; });
@@ -188,6 +188,17 @@ test("Other Listings keep the primary listing's company's lines, its nameless on
     "DK:NYSE:Primary Listing", "DK:IEX:Other Listings", "DK:BYMA:Other Listings",
     "DKC1O:BYMA:Other Matches", "DKIMA:SFB:Other Matches", "DKCLF:OTC:Other Matches", "DKL:NYSE:Other Matches",
   ]);
+});
+
+test("similar stocks do not crowd a root's exact future out of CLI search", async () => {
+  const rows = [
+    { symbol: "CL", name: "Colgate-Palmolive Company", exchange: "NYSE", type: "Common Stock" },
+    ...Array.from({ length: 30 }, (_, index) => ({ symbol: `CL${index}`, name: `Unrelated company ${index}`, exchange: "XETRA", type: "Common Stock" })),
+    { symbol: "CL=F", name: "WTI Crude Oil", exchange: "NYM", type: "FUTURE" },
+  ].map((row) => ({ providerId: "test", ...row }));
+  const dataProvider = createTestDataProvider({ search: async () => rows });
+  const listed = await searchCandidatesForCli({ query: "CL", tickers: [], dataProvider, totalLimit: 2 });
+  expect(listed.map(({ symbol, category }) => [symbol, category])).toEqual([["CL", "Primary Listing"], ["CL=F", "Funds & Derivatives"]]);
 });
 
 /**

@@ -1,5 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
-import { cleanFloat32Price, historyUnit } from "../../../cli/history-rows";
+import { cleanFloat32Price, historyExportUnit, historyUnit } from "../../../cli/history-rows";
 import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import { ROLLS_BACK_ADJUSTED } from "../../../market-data/futures-roll-returns";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneFreshness, HeadlessPaneRow } from "../../../types/headless";
@@ -33,9 +33,8 @@ export interface BacktestReportInput {
 }
 
 /** What the closes are in, as `history` names it: the quote's currency, a pair's counter currency, or index points. */
-export function backtestPriceUnit(symbol: string, quote: { currency?: string; instrumentType?: string } | null | undefined): string | null {
-  const unit = historyUnit(symbol, quote);
-  return unit.currency ?? unit.unit;
+export function backtestPriceUnit(symbol: string, quote: { currency?: string; instrumentType?: string } | null | undefined, contractUnit?: string | null): string | null {
+  return historyExportUnit(historyUnit(symbol, quote, contractUnit));
 }
 
 const fixed = (digits: number) => (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : MISSING_VALUE;

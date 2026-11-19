@@ -3,7 +3,7 @@ import { futuresSpecLines } from "../../../market-data/futures-contract";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, HeadlessPaneFreshness } from "../../../types/plugin";
 import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
-import { fetchFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
+import { loadFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
 import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curveIncompleteDetail, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSessionNote, curveSettleShown, curveStandIn, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { knownGapMessage } from "../../../cli/known-gaps";
@@ -196,7 +196,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     const now = Date.now();
     // The quote names the spot and its feed; the one-minute bars price each trade's own minute.
     const [data, spot, bars, closes] = await Promise.all([
-      date ? loadFuturesCurveAsOf(root, date, ctx.apiClient) : fetchFuturesCurve(root, ctx.apiClient),
+      date ? loadFuturesCurveAsOf(root, date, ctx.apiClient) : loadFuturesCurve(root, ctx.refresh, ctx.apiClient),
       spotSymbol ? loadCurveSpot(spotSymbol, ctx.marketData, now) : null,
       spotSymbol ? loadCurveSpotBars(spotSymbol, ctx.marketData, ctx.refresh === true) : null,
       indexSymbol ? loadCurveSpotCloses(indexSymbol, ctx.marketData, ctx.refresh === true) : null,
