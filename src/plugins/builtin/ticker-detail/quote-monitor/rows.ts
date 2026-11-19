@@ -10,7 +10,7 @@ import { quoteExportFeed, quoteExportUnit, quoteSourceName, type BrokerNameOf } 
 import { isYieldIndexSymbol } from "../../../../tickers/index-roots";
 import { toBasisPoints } from "../../../../utils/basis-points";
 import { MISSING_VALUE, formatPercentRaw } from "../../../../utils/format";
-import { parsePublicTickerKey } from "../../../../utils/exchanges";
+import { isUsListingExchange, parsePublicTickerKey } from "../../../../utils/exchanges";
 import { quoteFreshnessFields } from "../../shared/report-freshness";
 
 /**
@@ -93,6 +93,11 @@ export const QUOTE_MONITOR_BASE_COLUMNS: HeadlessPaneColumn[] = [...QUOTE_MONITO
 /** The row fields an export reads each row's identity from: its listing, unit, source and as-of. */
 export const QUOTE_MONITOR_ROW_KEYS = { rowSymbolKey: "symbol", rowUnitKey: "unit", rowAsOfKey: "updatedAt", rowSourceKey: "source" } as const;
 
+export function quoteMonitorMissingChangeLabel(quote: Quote | null | undefined): string | null {
+  return quote?.changeBasis === "none" && !quote.delisting && isUsListingExchange(quote.listingExchangeName || quote.exchangeName)
+    ? "No previous close" : null;
+}
+
 /**
  * One card as a row: the regular session's Last, change and percent change,
  * any extended print, what the move is from, the session and feed, and each
@@ -112,7 +117,7 @@ export function quoteMonitorRow(symbol: string, quote: Quote, now = Date.now(), 
     ...(yieldIndex && change != null && Number.isFinite(change) ? { changeBasisPoints: toBasisPoints(change, 1) } : {}),
     session: quoteSessionStateLabel(quote, now) ?? "",
     feed: quoteExportFeed(quote, now),
-    changeBasis: basis ? changeBasisLabel(basis, now) : "",
+    changeBasis: basis ? changeBasisLabel(basis, now) : quoteMonitorMissingChangeLabel(quote) ?? "",
     source: quoteSourceName(quote, brokerName),
     marketCap: quote.marketCap ?? null, updatedAt: quoteHeadlineTime(quote),
     ...quoteFreshnessFields(quote, now),

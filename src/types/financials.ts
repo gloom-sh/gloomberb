@@ -161,7 +161,8 @@ export interface Quote extends DepositaryReceiptFacts {
    * What change and changePercent measure from when it is not previousClose,
    * as Gloom Cloud says of a coin whose previous close it cannot date to the
    * last two days: the last 24 hours ("24h", previousClose absent), or
-   * nothing ("none", no move). Absent on every other quote.
+   * nothing ("none", no move). A live US quote with no previous close also
+   * has no move.
    */
   changeBasis?: "24h" | "none";
   previousClose?: number;
