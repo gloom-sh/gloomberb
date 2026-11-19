@@ -1,4 +1,5 @@
 import type { PaneTemplateDef } from "../../../types/plugin";
+import { logFailure } from "../../../utils/log-failure";
 import { getPaneShortcutArgKind } from "../routes/root/shortcuts";
 
 /**
@@ -55,8 +56,9 @@ export function acceptsFunctionArg(fn: { arg: string; choices?: () => readonly s
       const wanted = arg.toUpperCase();
       try {
         return fn.choices?.().some((value) => value.toUpperCase() === wanted) ?? false;
-      } catch {
-        return false;
+      } catch (error) {
+        // A plugin's list that throws names no value, so the argument is not one of them.
+        return logFailure("command-bar.function-arg", "Reading a function's argument values failed", false)(error);
       }
     }
     default:
