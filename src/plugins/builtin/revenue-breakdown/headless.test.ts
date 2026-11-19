@@ -6,6 +6,7 @@ import { renderReportCsv, renderReportNdjson } from "../../../cli/report-tables"
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { revenueBreakdownHeadless } from "./headless";
+import { revenueColumns } from "./model";
 
 const payload: RevenueBreakdownPayload = {
   symbol: "CORZ", cik: "0001839341", currency: "USD", view: "product", views: ["product", "segment"],
@@ -61,4 +62,26 @@ test("the text report names each table's scale in its heading; JSON, CSV and NDJ
   } finally {
     setCliColorEnabledOverride(null);
   }
+});
+
+test("reported periods have filed dates and links, not quarter or TTM labels", async () => {
+  const url = "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0318/2026031800388.pdf";
+  const annual = { end: "2025-12-31", kind: "annual" as const, label: "Year ended 31 December 2025", revenueLabel: "Revenue", filing: { filed: "2026-03-18", url, page: 33 } };
+  const hk: RevenueBreakdownPayload = {
+    ...payload, cik: undefined, symbol: "0700", currency: "CNY", view: "segment", views: ["segment"],
+    periods: [annual, {
+      ...annual, kind: "interim", end: "2026-06-30", label: "Six months ended 30 June 2026",
+      filing: { ...annual.filing, url: `${url}#page=4`, page: 27 },
+    }],
+    rows: [{ ...payload.rows[0]!, label: "Single operating segment", share: 1, values: payload.total }],
+  };
+  const args = createTestHeadlessArgs({ symbols: ["0700:HKEX"], argument: "0700:HKEX", rawArgument: "0700:HKEX", options: {} });
+  const result = await revenueBreakdownHeadless.load(args, createTestHeadlessContext({
+    apiClient: { getCloudRevenueBreakdown: async () => hk } as never,
+  }));
+  expect(result.sections[0]?.columns?.map((column) => column.header)).toEqual(["Segment", "FY 2025", "H1 2026", "Share"]);
+  expect(result.sections[1]?.rows?.[0]).toMatchObject({ filed: "2026-03-18", filing: `${url}#page=33` });
+  expect(result.sections[1]?.rows?.[1]).toMatchObject({ filing: `${url}#page=27` });
+  expect(deriveHeadlessFreshness(revenueBreakdownHeadless, result).source).toBe("Company filings");
+  expect(revenueColumns(hk, "trend").map((column) => column.label)).toEqual(["Segment", "FY 2025", "H1 2026", "% Total"]);
 });

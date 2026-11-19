@@ -56,7 +56,7 @@ describe("revenue breakdown model", () => {
       rows: [row("a", [null, 4, 5])],
     } as unknown as RevenueBreakdownPayload;
     const span = reportedSpan(payload);
-    expect(span.periods.map((period) => period.fiscalQuarter)).toEqual([2, 3]);
+    expect(span.periods).toEqual(payload.periods.slice(1));
     expect(span.rows[0]!.values).toEqual([4, 5]);
   });
 });

@@ -1,6 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 import { MISSING_VALUE, pickUnit } from "../../../utils/format";
 import type {
+  ReportedRevenueBreakdownPeriod,
   RevenueBreakdownPayload,
   RevenueBreakdownPeriod,
   RevenueBreakdownRow,
@@ -31,7 +32,17 @@ export interface RevenueSort {
 }
 
 export const quarterLabel = (period: RevenueBreakdownPeriod) =>
-  `Q${period.fiscalQuarter} ${period.fiscalYear}`;
+  "kind" in period ? `${period.kind === "annual" ? "FY" : "H1"} ${period.end.slice(0, 4)}` : `Q${period.fiscalQuarter} ${period.fiscalYear}`;
+
+export function reportedPeriods(payload: RevenueBreakdownPayload) {
+  return payload.periods.flatMap((period) => "kind" in period ? [period] : []);
+}
+
+export function filingPageUrl(filing: ReportedRevenueBreakdownPeriod["filing"]): string {
+  const url = new URL(filing.url);
+  url.hash = `page=${filing.page}`;
+  return url.href;
+}
 
 /**
  * Drop leading quarters no row was reported for, so a young company, or rows
@@ -154,7 +165,8 @@ export function revenueColumns(
   const labelWidth = Math.min(34, Math.max(12, ...payload.rows.map((row) => row.label.length + 2)));
   const latest = payload.periods.at(-1)!;
   const first = payload.periods[0]!;
-  const history: DataTableColumn[] = mode === "text"
+  const reported = "kind" in latest;
+  const history: DataTableColumn[] = mode === "text" || reported
     ? payload.periods.slice(0, -1).map((period, index) => ({
       id: `q${index}`,
       label: quarterLabel(period),
@@ -170,11 +182,11 @@ export function revenueColumns(
       flexGrow: 1,
     }];
   return [
-    { id: "label", label: VIEW_NOUNS[payload.view].label, width: labelWidth, align: "left", ...(mode === "text" ? { flexGrow: 1 } : {}) },
+    { id: "label", label: VIEW_NOUNS[payload.view].label, width: labelWidth, align: "left", ...(mode === "text" || reported ? { flexGrow: 1 } : {}) },
     ...history,
     { id: "revenue", label: quarterLabel(latest), width: NUMBER_WIDTH, align: "right" },
-    { id: "ttm", label: "TTM", width: NUMBER_WIDTH - 1, align: "right" },
+    ...(!reported ? [{ id: "ttm", label: "TTM", width: NUMBER_WIDTH - 1, align: "right" as const }] : []),
     { id: "share", label: "% Total", width: NUMBER_WIDTH, align: "right" },
-    { id: "yoy", label: "YoY", width: NUMBER_WIDTH - 1, align: "right" },
+    ...(!reported ? [{ id: "yoy", label: "YoY", width: NUMBER_WIDTH - 1, align: "right" as const }] : []),
   ];
 }
