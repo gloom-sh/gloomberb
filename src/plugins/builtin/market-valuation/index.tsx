@@ -56,7 +56,7 @@ export const marketValuationModule: PluginModule = {
     shortcut: {
       prefix: "VAL",
       argPlaceholder: "indicator",
-      argKind: "text",
+      argKind: "text", argOnlySelects: true,
       argOptional: true,
       argOptions: () => INDICATORS.map((indicator) => ({
         value: indicator.id,

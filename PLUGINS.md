@@ -1474,6 +1474,8 @@ ctx.registerPaneTemplate({
 
 A shortcut that sets neither `argKind` nor `argPlaceholder` takes the argument the template's `headless` definition declares, so the command bar reads `PF Family` as `gloom fn PF Family` does. `shortcut.argError(arg, context)` says why a typed argument opens nothing, or returns null: for `PF Nope` it returns `{ message: 'No portfolio or watchlist named "Nope"', detail: "Try Main Portfolio or Family" }`. The bar shows the message in place of the function's row, disabled, with the function's code where its row has it and the detail on the line under it, and the pane does not open for that argument.
 
+Links (`gloomberb://fn/CODE?arg=...`, `term.gloom.sh/?fn=CODE&arg=...`) and function codes in chat messages pass an argument from somebody else's words. A ticker, a ticker list or one of `argOptions` opens the pane at once. Other text only does when the shortcut sets `argOnlySelects: true`, saying the text only picks what the pane shows; without it a link waits for a click on a notice that shows the command, and a chat message draws no chip. Leave it out when `createInstance` acts on the text (asks it, starts something, saves it).
+
 If `createInstance` fetches live data or has side effects, set `catalogSettings` to the settings the catalog should describe, or `{}` when they depend on the user's argument. Catalog discovery reads that object without opening the pane; actual launches still call `createInstance`. Without `catalogSettings`, discovery derives settings by calling `createInstance` with a sample argument.
 
 Create pane instances programmatically:

@@ -22,6 +22,7 @@ import { openPaneShare } from "../../shares/pane";
 import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { materializeMarketplaceLayout } from "../../shares/portable-layout";
 import { settleTypedListingKey } from "../../tickers/listing-venues";
+import { acceptsFunctionArg, paneTemplateFunctionArg } from "../../components/command-bar/pane-templates/function-arg";
 
 type CloudDeepLinkRoute = {
   kind: "cloud-alerts" | "cloud-emails" | "cloud-roundup" | "cloud-success" | "cloud-teams";
@@ -337,10 +338,10 @@ function notifySuccess(pluginRegistry: PluginRegistry, body: string): void {
 
 /**
  * A link that changes something (creates an alert, adds a layout, starts a
- * conversation) waits for a click on a toast that says what it asks: any web
- * page can open a gloomberb:// link, and a browser told to always allow them
- * asks nothing more. Links that only show something, a shared pane among
- * them, run at once.
+ * conversation, runs a function on free text) waits for a click on a toast
+ * that says what it asks: any web page can open a gloomberb:// link, and a
+ * browser told to always allow them asks nothing more. Links that only show
+ * something, a shared pane among them, run at once.
  */
 function askBeforeRunning(pluginRegistry: PluginRegistry, body: string, label: string, run: () => void): void {
   pluginRegistry.notify({
@@ -444,20 +445,31 @@ function handleOpenTicker(
  * A function link opens the pane its code names, as typing the code and its
  * argument in the command bar would. Only codes that open a pane run; a code
  * for a command (settings, sign out) is refused, so a link only adds a view.
+ * An argument runs at once only when it says what to open on (a ticker, a
+ * list of them, one of the values the function names), as a code in a chat
+ * message does (function-arg.ts). Free text is what some functions act on as
+ * they open (ASKG asks it), so a link with any other argument waits for a
+ * click on a toast that shows the command.
  */
 function handleOpenFunction(
   action: Extract<DesktopDeepLinkAction, { type: "open-function" }>,
   pluginRegistry: PluginRegistry,
 ): void {
-  const opensPane = [...pluginRegistry.paneTemplates.values()].some(({ shortcut }) => (
+  const templates = [...pluginRegistry.paneTemplates.values()].filter(({ shortcut }) => (
     shortcut?.prefix.toUpperCase() === action.code
     || shortcut?.aliases?.some((alias) => alias.toUpperCase() === action.code)
   ));
-  if (!opensPane) {
+  if (templates.length === 0) {
     notifyError(pluginRegistry, `${action.code} is not a function this version of Gloom opens from a link.`);
     return;
   }
-  pluginRegistry.runCommandBarQuery(action.arg ? `${action.code} ${action.arg}` : action.code);
+  const { arg } = action;
+  const query = arg ? `${action.code} ${arg}` : action.code;
+  if (arg && !templates.every((template) => acceptsFunctionArg(paneTemplateFunctionArg(template), arg))) {
+    askBeforeRunning(pluginRegistry, `Run ${query}?`, "Run", () => pluginRegistry.runCommandBarQuery(query));
+    return;
+  }
+  pluginRegistry.runCommandBarQuery(query);
 }
 
 function handleOpenCollection(
@@ -658,7 +670,8 @@ export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHa
       handleOpenTicker(action, options.pluginRegistry);
       return;
     case "open-function":
-      // Like a ticker link, it only opens a view, so it runs at once.
+      // Like a ticker link, it only opens a view, so it runs at once; one
+      // whose argument is free text asks first (handleOpenFunction).
       handleOpenFunction(action, options.pluginRegistry);
       return;
     case "open-collection":

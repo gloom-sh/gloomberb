@@ -157,7 +157,7 @@ const newsWirePaneTemplates: PluginModule["paneTemplates"] = [
     shortcut: {
       prefix: "NI",
       argPlaceholder: "code",
-      argKind: "text",
+      argKind: "text", argOnlySelects: true,
       argOptional: true,
       openWithoutArg: true,
       argOptions: () => NEWS_INDUSTRY_CODES

@@ -3,6 +3,7 @@ import type { GloomPlugin, PluginTarget } from "../types/plugin";
 import { ABSORBED_PLUGINS } from "./absorbed";
 import { highlightedCodes, pluginFunctions } from "./plugin-functions";
 import { BUILTIN_EDITORIAL } from "./builtin-editorial";
+import { EXTRACTED_PLUGINS } from "./extracted-plugins";
 import { getPluginCatalog } from "./catalog";
 import { browserBuiltinPlugins } from "./catalog-browser";
 
@@ -60,6 +61,12 @@ interface BuiltinPluginManifestEntry {
 export interface BuiltinManifest {
   version: 1;
   plugins: BuiltinPluginManifestEntry[];
+  /**
+   * Plugins that used to ship inside Gloomberb and now live in their own
+   * repositories (extracted-plugins.ts). The app installs them by id, so the
+   * directory keeps each id for its repository.
+   */
+  extracted: Array<{ id: string; repo: string }>;
   /** Built-in ids with no editorial entry; a non-empty list fails generation. */
   uncategorised: string[];
   /** Editorial highlights or screenshots naming a code the plugin lacks, as `id:CODE`; these fail generation too. */
@@ -140,5 +147,6 @@ export function buildBuiltinManifest(): BuiltinManifest {
     })
     .sort((left, right) => left.id.localeCompare(right.id));
 
-  return { version: 1, plugins, uncategorised: uncategorised.sort(), unknownCodes };
+  const extracted = EXTRACTED_PLUGINS.map(({ id, repo }) => ({ id, repo })).sort((left, right) => left.id.localeCompare(right.id));
+  return { version: 1, plugins, extracted, uncategorised: uncategorised.sort(), unknownCodes };
 }

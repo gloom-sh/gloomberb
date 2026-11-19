@@ -54,7 +54,7 @@ export const docsModule: PluginModule = {
       label: "Docs",
       description: "Read the docs and Academy lessons in the app: search them, or open a function's entry.",
       keywords: ["docs", "documentation", "manual", "guide", "academy", "learn", "lesson", "what is"],
-      shortcut: { prefix: "DOCS", argPlaceholder: "function", argKind: "text", argOptional: true },
+      shortcut: { prefix: "DOCS", argPlaceholder: "function", argKind: "text", argOnlySelects: true, argOptional: true },
       createInstance(context, options) {
         return {
           instanceId: DOCS_INSTANCE_ID,

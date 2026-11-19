@@ -63,7 +63,7 @@ export const openFdaPlugin: GloomPlugin = {
       shortcut: {
         prefix: "FDA",
         argPlaceholder: "drug, device or firm",
-        argKind: "text",
+        argKind: "text", argOnlySelects: true,
         argOptional: true,
       },
       createInstance: (_context, options) => createOpenFdaPaneInstance(options),

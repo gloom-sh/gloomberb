@@ -1,5 +1,6 @@
 import { join } from "path";
 import { handleRequest } from "../../src/renderers/cloudflare/worker";
+import { isLocalRequest, isOwnPageSocket } from "./local-guard";
 import { installWarmStartNetwork } from "./network";
 
 export interface WarmStartWebServer {
@@ -13,6 +14,10 @@ export interface WarmStartWebServer {
  * The web build served by the Worker's own request handler (static files,
  * `/api` to the data service, the plugin HTTP proxy), on 127.0.0.1, with the
  * benchmark's network under the handler's `fetch`. The quote stream is relayed as is.
+ * The build is served from its root as the Worker serves it (its API and
+ * assets are at absolute paths), so instead of a secret folder only requests
+ * that name the server as 127.0.0.1:<port> and come from no other page get an
+ * answer, and only the page's own socket is relayed (local-guard.ts).
  */
 export async function startWarmStartWebServer({ webRoot, networkDir }: { webRoot: string; networkDir: string }): Promise<WarmStartWebServer> {
   const counts: Record<string, number> = { kept: 0, fetched: 0, refused: 0, streamed: 0 };
@@ -38,8 +43,10 @@ export async function startWarmStartWebServer({ webRoot, networkDir }: { webRoot
     hostname: "127.0.0.1",
     port: 0,
     async fetch(request, bun) {
+      if (!isLocalRequest(request, bun.port)) return new Response("Forbidden", { status: 403 });
       const url = new URL(request.url);
       if (url.pathname === "/api/cloud/ws") {
+        if (!isOwnPageSocket(request, bun.port)) return new Response("Forbidden", { status: 403 });
         if (replayOnly) return new Response(null, { status: 503 });
         if (bun.upgrade(request, { data: { upstream: null, queued: [] } })) return undefined as unknown as Response;
       }

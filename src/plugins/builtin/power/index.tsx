@@ -19,7 +19,7 @@ export const powerModule: PluginModule = {
   paneTemplates: [{ id: "power-pane", paneId: "power", label: "Power & Grid",
     description: "Pro: interconnection queues, historical MW and outcomes, datacenter loads, utility exposure and generation capacity, with primary evidence.",
     keywords: ["power", "electricity", "interconnection", "grid", "datacenter", "utility", "renewables", "storage", "capacity"],
-    shortcut: { prefix: "POWER", argKind: "text", argPlaceholder: "ticker", argOptional: true }, headless: powerHeadless,
+    shortcut: { prefix: "POWER", argKind: "text", argOnlySelects: true, argPlaceholder: "ticker", argOptional: true }, headless: powerHeadless,
     createInstance: (_context, options) => {
       const symbol = options?.symbol ?? options?.arg?.trim().toUpperCase() ?? "";
       return { placement: "floating", params: { symbol }, ...(symbol ? { title: `POWER ${symbol}` } : {}) };
@@ -30,7 +30,7 @@ export const powerModule: PluginModule = {
       "spot power", "baseload", "europe", "european", "eur/mwh", "carbon", "eu carbon", "eua", "eu ets", "carbon price",
       "carbon allowance", "emission allowances", "co2", "eur/tco2", "gas storage", "european gas storage", "eu gas storage",
       "gas inventories", "storage fullness", "filling level", "agsi", "injection", "withdrawal"],
-    shortcut: { prefix: "EPWR", argKind: "text", argPlaceholder: "market", argOptional: true,
+    shortcut: { prefix: "EPWR", argKind: "text", argOnlySelects: true, argPlaceholder: "market", argOptional: true,
       argOptions: () => [{ value: "EUA", label: "EU carbon allowance" }, ...POWER_PRICE_MARKETS.map(({ code, name }) => ({ value: code, label: name })),
         ...GAS_STORAGE_AREAS.map(({ code, name }) => ({ value: code === "EU" ? "GAS" : `GAS ${code}`, label: `${name} gas storage` }))] },
     headless: powerPricesHeadless,

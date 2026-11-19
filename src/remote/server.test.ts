@@ -55,6 +55,18 @@ describe("remote control server", () => {
 
     const response = await sendRemoteControlRequest({ type: "schema" }, { dataDir, appKind: "tui" });
     expect(response).toEqual({ ok: true, data: { type: "schema" } });
+
+    // Only the exact token: not one of the same length, a prefix, nor none.
+    const { port, token } = server.endpoint;
+    const wrong = `${token.slice(0, -1)}${token.endsWith("0") ? "1" : "0"}`;
+    for (const authorization of [`Bearer ${wrong}`, `Bearer ${token.slice(0, 8)}`, token, undefined]) {
+      const refused = await fetch(`http://127.0.0.1:${port}/rpc`, {
+        method: "POST",
+        headers: authorization ? { authorization } : {},
+        body: JSON.stringify({ type: "schema" }),
+      });
+      expect(refused.status).toBe(401);
+    }
   });
 
   test("removes endpoint files on close", async () => {

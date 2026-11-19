@@ -1,26 +1,15 @@
 import { useSyncExternalStore } from "react";
 import { commands as coreCommands, getCommandPrefixes, type Command } from "../../../../components/command-bar/commands/registry";
+import { acceptsFunctionArg, paneTemplateFunctionArg, type FunctionArgKind } from "../../../../components/command-bar/pane-templates/function-arg";
 import { getPaneTemplateDisplayLabel, paneTemplateShortcutPrefixes } from "../../../../components/command-bar/pane-templates/items";
-import { getPaneShortcutArgKind } from "../../../../components/command-bar/routes/root/shortcuts";
 import type { CommandDef, PaneTemplateDef } from "../../../../types/plugin";
 
 /**
- * What a function takes after its code in a message. Only an argument that
- * names something to look at: free text is what some functions act on as they
- * open (ASKG asks it, THESIS starts one), which one click on somebody else's
- * message must never do, so those take none here.
+ * What a function takes after its code in a message: what a pane function
+ * takes from somebody else's words (function-arg.ts, which links share), or a
+ * function's code for HELP (`HELP OMON`).
  */
-type ChatFunctionArg =
-  /** Nothing: the code alone. */
-  | "none"
-  /** One ticker: `DES AAPL`. */
-  | "ticker"
-  /** One or more tickers: `CMP AAPL MSFT`. */
-  | "tickers"
-  /** A function's code: `HELP OMON`. */
-  | "code"
-  /** One of the values the function names: `NI CRYPTO`. */
-  | "choice";
+type ChatFunctionArg = FunctionArgKind | "code";
 
 /**
  * A function a message can name in backticks (`NI CRYPTO`, `DES AAPL`,
@@ -67,15 +56,6 @@ function upperCodes(codes: readonly string[]): string[] {
   return codes.map((code) => code.trim().toUpperCase()).filter(Boolean);
 }
 
-function templateArg(template: PaneTemplateDef): Pick<ChatFunction, "arg" | "choices"> {
-  const kind = getPaneShortcutArgKind(template);
-  if (kind === "ticker") return { arg: "ticker" };
-  if (kind === "ticker-list") return { arg: "tickers" };
-  const options = template.shortcut?.argOptions;
-  if (kind === "text" && options) return { arg: "choice", choices: () => options().map((option) => option.value) };
-  return { arg: "none" };
-}
-
 /**
  * The functions of the app's own panes and plugins, by every code that runs
  * them, as the command bar matches its first word. A code the bar runs as a
@@ -110,7 +90,7 @@ export function chatFunctionsFrom(source: ChatFunctionSource, core: readonly Com
     if (source.isTemplateOff?.(template.id)) continue;
     add(upperCodes(paneTemplateShortcutPrefixes(template)), {
       name: getPaneTemplateDisplayLabel(template),
-      ...templateArg(template),
+      ...paneTemplateFunctionArg(template),
       ...(template.listed === false ? { unlisted: true as const } : {}),
     });
   }
@@ -127,7 +107,7 @@ function sourceSignature(source: ChatFunctionSource): string {
   for (const [id, template] of source.paneTemplates) {
     const shortcut = template.shortcut;
     if (!shortcut?.prefix) continue;
-    signature += `\n${id} ${shortcut.prefix} ${shortcut.aliases?.join(",") ?? ""} ${shortcut.argKind ?? shortcut.argPlaceholder ?? ""}${shortcut.argOptions ? " ?" : ""}`;
+    signature += `\n${id} ${shortcut.prefix} ${shortcut.aliases?.join(",") ?? ""} ${shortcut.argKind ?? shortcut.argPlaceholder ?? ""}${shortcut.argOptions ? " ?" : ""}${shortcut.argOnlySelects ? " =" : ""}`;
   }
   for (const command of source.commands.values()) {
     if (command.shortcut) signature += `\n:${command.shortcut}`;
@@ -215,36 +195,12 @@ export function runChatCommand(query: string): void {
 
 /** Past this a span in backticks is a sentence or code, not a function and its argument. */
 const MAX_COMMAND_LENGTH = 48;
-const MAX_TICKERS = 12;
 /** Marks that change how text reads without being seen: direction overrides, zero-width joiners, controls. */
 const INVISIBLE_RE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
-/** A symbol as written: AAPL, BRK.B, BTC-USD, ES=F, SMSN:LSE, ^GSPC. With a letter, so `GP 100` is not one. */
-const TICKER_RE = /^\^?[A-Z0-9][A-Z0-9.:=/!-]{0,23}$/;
 const CODE_RE = /^[A-Z][A-Z0-9]{0,11}$/;
 
-const isTicker = (word: string) => TICKER_RE.test(word) && /[A-Z]/.test(word);
-
 function acceptsArg(fn: ChatFunction, arg: string): boolean {
-  switch (fn.arg) {
-    case "ticker":
-      return isTicker(arg);
-    case "tickers": {
-      const words = arg.split(/[\s,]+/).filter(Boolean);
-      return words.length > 0 && words.length <= MAX_TICKERS && words.every(isTicker);
-    }
-    case "code":
-      return CODE_RE.test(arg);
-    case "choice": {
-      const wanted = arg.toUpperCase();
-      try {
-        return fn.choices?.().some((value) => value.toUpperCase() === wanted) ?? false;
-      } catch {
-        return false;
-      }
-    }
-    default:
-      return false;
-  }
+  return fn.arg === "code" ? CODE_RE.test(arg) : acceptsFunctionArg(fn, arg);
 }
 
 /**

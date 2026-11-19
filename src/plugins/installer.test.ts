@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, wri
 import { homedir, tmpdir } from "os";
 import { delimiter, join } from "path";
 
-import { describeOlderCommit, hasLocalChanges, installPlugin, linkPlugin, parseGitHubRef, parseRemoteHead, readPluginRemoteAsync, validatePinRef, validatePluginDirectoryName } from "./installer";
+import { describeOlderCommit, hasLocalChanges, installPlugin, linkPlugin, parseGitHubRef, parseRemoteHead, pinMatches, readPluginRemoteAsync, validatePinCommit, validatePinRef, validatePluginDirectoryName } from "./installer";
 
 /**
  * `git ls-remote` is the only way to know whether a plugin the registry does
@@ -371,6 +371,21 @@ test("a registry pin's ref is a tag or branch name, never an option or a range",
   for (const ref of ["-x", "--upload-pack=touch pwned", "v1..v2", "a//b", "v1/", "v1.", "v1.lock", "a@{1}", "a b", "v1\n", ""]) {
     expect(() => validatePinRef(ref)).toThrow("Invalid ref");
   }
+});
+
+// A prefix is cheap to match with a commit made for it, so only the whole commit the registry reviewed passes.
+test("a registry pin's commit is a whole one, and the checkout must be exactly it", () => {
+  const reviewed = "4ad845bf0285bb073f55b63bc1d9603434d4c60d";
+  expect(validatePinCommit(reviewed)).toBe(reviewed);
+  for (const commit of ["4ad845b", reviewed.slice(0, 39), `${reviewed}0`, `-${reviewed.slice(1)}`, `${reviewed.slice(0, 39)}g`, ""]) {
+    expect(() => validatePinCommit(commit)).toThrow("Invalid commit");
+  }
+  expect(pinMatches(reviewed.toUpperCase(), reviewed)).toBe(true);
+  expect(pinMatches(`4ad845b${"0".repeat(33)}`, "4ad845b")).toBe(false);
+  expect(pinMatches(`${reviewed.slice(0, 39)}e`, reviewed)).toBe(false);
+  expect(pinMatches(null, reviewed)).toBe(false);
+  // A ref alone takes whatever the ref names.
+  expect(pinMatches(reviewed, undefined)).toBe(true);
 });
 
 test("plugin names and references consume the complete name, including a trailing line ending", () => {

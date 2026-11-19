@@ -1,5 +1,6 @@
 import { commandBarResultsFromNodes } from "../../../../remote/command-bar";
 import { findCommandBarResult, findMatchingUiNode } from "../../../../remote/matching";
+import { namesSecret } from "../../../../remote/secrets";
 import { remoteMenuItemId, resolveRemoteListIndex, resolveRemoteRowIndex } from "../../../../remote/semantic-helpers";
 import type { RemoteSideEffectLevel, RemoteUiNodeSnapshot } from "../../../../remote/types";
 import { logFailure } from "../../../../utils/log-failure";
@@ -197,6 +198,46 @@ export interface UiCallContext {
   read(resource: string): Promise<unknown>;
   /** One of the caller's own confirmations waits for the person. */
   promptOpen: boolean;
+  /** The fields this assistant set in its turn: a setValue call adds to them, a press lists them. */
+  edits?: FieldEdits;
+}
+
+/** Roles of the nodes that hold what was typed or picked: what a press can send. */
+const EDITABLE_FIELD_ROLES: ReadonlySet<string> = new Set([
+  "form-field",
+  "text-field",
+  "input",
+  "textarea",
+  "select",
+  "checkbox",
+  "message-composer",
+]);
+/** Past this many, the rest of the fields set are named in one line. */
+const MAX_FIELD_LINES = 6;
+const MAX_FIELD_NAME = 32;
+/** How many fields one turn remembers; the oldest go first. */
+const MAX_FIELD_EDITS = 32;
+
+/**
+ * The fields an assistant set with setValue, which run without asking (they
+ * only type inside the app). A later press or submit in the same pane (or the
+ * same dialog) may send them, so its confirmation lists each with what it
+ * holds then: "Press Save" says what it saves. Ask Gloom keeps one per turn,
+ * the relay one per assistant while it is connected.
+ */
+export class FieldEdits {
+  /** Node id to the value the call set, oldest first. */
+  private readonly set = new Map<string, unknown>();
+
+  note(nodeId: string, value: unknown): void {
+    this.set.delete(nodeId);
+    this.set.set(nodeId, value);
+    if (this.set.size > MAX_FIELD_EDITS) this.set.delete(this.set.keys().next().value!);
+  }
+
+  entries(): Array<[nodeId: string, value: unknown]> {
+    return [...this.set];
+  }
 }
 
 type ReadResource = UiCallContext["read"];
@@ -253,6 +294,59 @@ function pickedItemLabel(role: string, metadata: Record<string, unknown> | undef
   return textOf(items[resolveRemoteListIndex(input, items)]?.label);
 }
 
+function isSecretField(node: RemoteUiNodeSnapshot): boolean {
+  const metadata = node.metadata ?? {};
+  const password = [metadata.fieldType, metadata.inputType, metadata.type].includes("password");
+  return password || namesSecret(node.label, metadata.fieldId, metadata.placeholder);
+}
+
+/** What a field holds now, as it reads on screen; what the call set when the node does not say. */
+function fieldValue(node: RemoteUiNodeSnapshot, set: unknown): unknown {
+  const metadata = node.metadata ?? {};
+  if (typeof metadata.summary === "string" && metadata.summary) return metadata.summary;
+  if ("value" in metadata) return metadata.value;
+  if ("checked" in metadata) return metadata.checked;
+  return set;
+}
+
+function fieldName(node: RemoteUiNodeSnapshot): string {
+  const metadata = node.metadata ?? {};
+  const name = [node.label, metadata.fieldId, metadata.placeholder].find((text) => typeof text === "string" && text.trim());
+  const single = shortValue(name ?? node.role);
+  return single.length > MAX_FIELD_NAME ? `${single.slice(0, MAX_FIELD_NAME - 1)}…` : single;
+}
+
+interface FieldsSet {
+  lines: CallSummary["lines"];
+  /** Changes when any of them holds something else, a hidden one included. */
+  fingerprint: string;
+}
+
+/**
+ * The fields the assistant set that are still on screen beside the control,
+ * each with its value now. A password, or a field named for a credential
+ * (relay redaction's rule), reads "hidden". A value is never hidden for how
+ * it looks: the assistant chose it, and could make one look like a key.
+ */
+function fieldsSet(target: RemoteUiNodeSnapshot, nodes: RemoteUiNodeSnapshot[], edits: FieldEdits | undefined): FieldsSet {
+  if (!edits) return { lines: [], fingerprint: "" };
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const fields = edits.entries().flatMap(([nodeId, set]) => {
+    const node = byId.get(nodeId);
+    return node && (node.paneId ?? null) === (target.paneId ?? null) ? [{ node, value: fieldValue(node, set) }] : [];
+  });
+  const shown = fields.length > MAX_FIELD_LINES ? fields.slice(0, MAX_FIELD_LINES - 1) : fields;
+  const lines = shown.map(({ node, value }) => ({
+    label: fieldName(node),
+    value: value === undefined || value === null || value === ""
+      ? "empty"
+      : isSecretField(node) ? "hidden" : shortValue(value),
+  }));
+  const rest = fields.slice(shown.length);
+  if (rest.length > 0) lines.push({ label: "Other fields", value: shortValue(rest.map(({ node }) => fieldName(node)).join(", ")) });
+  return { lines, fingerprint: fields.map(({ node, value }) => `${node.id}=${JSON.stringify(value) ?? ""}`).join("|") };
+}
+
 /** One node with its pane's title and its detail (a table's rows); null when unreadable. */
 async function readNodeDetail(nodeId: string, read: ReadResource): Promise<Record<string, unknown> | null> {
   try {
@@ -273,13 +367,14 @@ interface TargetDescription {
 
 /**
  * What a UI action that runs something is asked as: the control by label and
- * role, the pane it is in, and for a row or item the label it shows.
+ * role, the pane it is in, for a row or item the label it shows, and the
+ * fields the assistant set beside it (fieldsSet).
  */
 async function describeTarget(
   node: RemoteUiNodeSnapshot | undefined,
   action: string,
   input: unknown,
-  read: ReadResource,
+  { read, nodes, edits }: { read: ReadResource; nodes: RemoteUiNodeSnapshot[]; edits?: FieldEdits },
 ): Promise<TargetDescription> {
   const inputLine = input !== undefined ? [{ label: "Input", value: shortValue(input) }] : [];
   if (!node) {
@@ -297,13 +392,15 @@ async function describeTarget(
   const title = item
     ? `Choose "${shortValue(item)}" ${node.role === "menu" ? "from" : "in"} ${control}`
     : action === "press" ? `Press ${control}` : `Run "${shortValue(action)}" on ${control}`;
+  const fields = fieldsSet(node, nodes, edits);
   return {
     title,
     lines: [
       ...(paneTitle ? [{ label: "Pane", value: paneTitle }] : []),
+      ...fields.lines,
       ...(item ? [] : inputLine),
     ],
-    fingerprint: [node.id, node.role, node.label ?? "", paneTitle ?? "", item ?? ""].join("|"),
+    fingerprint: [node.id, node.role, node.label ?? "", paneTitle ?? "", item ?? "", fields.fingerprint].join("|"),
   };
 }
 
@@ -328,17 +425,20 @@ export async function planUiCall(
 async function planLocalUiCall(
   operation: string,
   input: Record<string, unknown>,
-  { read, promptOpen }: UiCallContext,
+  { read, promptOpen, edits }: UiCallContext,
 ): Promise<UiCallPlan> {
   const action = typeof input.action === "string" && input.action ? input.action : "press";
-  const find = async () => {
+  const look = async () => {
     const nodes = await readUiTree(read);
-    return operation === "ui.invoke"
+    const target = operation === "ui.invoke"
       ? nodes.find((node) => node.id === input.nodeId)
       : findMatchingUiNode(nodes, input);
+    return { nodes, target };
   };
-  const target = await find();
+  const find = async () => (await look()).target;
+  const { nodes, target } = await look();
   if (promptOpen || isPromptNode(target)) throw new UiCallRefusal("not_allowed", PROMPT_OPEN);
+  if (action === "setValue" && target && EDITABLE_FIELD_ROLES.has(target.role)) edits?.note(target.id, input.input);
   if (!actionRunsSomething(target, action)) {
     return {
       confirm: null,
@@ -352,13 +452,13 @@ async function planLocalUiCall(
       },
     };
   }
-  const asked = await describeTarget(target, action, input.input, read);
+  const asked = await describeTarget(target, action, input.input, { read, nodes, edits });
   return {
     confirm: { title: asked.title, lines: asked.lines },
     recheck: async (open) => {
-      const now = await find();
-      if (open || isPromptNode(now)) return PROMPT_OPEN;
-      const current = await describeTarget(now, action, input.input, read);
+      const screen = await look();
+      if (open || isPromptNode(screen.target)) return PROMPT_OPEN;
+      const current = await describeTarget(screen.target, action, input.input, { read, nodes: screen.nodes, edits });
       return current.fingerprint === asked.fingerprint ? null : TARGET_CHANGED;
     },
   };

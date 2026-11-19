@@ -7,6 +7,7 @@ import {
   type CrashReportsPayload,
   type UpdateFailureReport,
 } from "../api-client";
+import { redactText } from "../feedback/redact";
 import type { TelemetryConfig } from "../types/config";
 import { isSleepRpcTimeout, RpcTimeoutError } from "../utils/rpc-timeout-error";
 import { VERSION } from "../version";
@@ -22,7 +23,8 @@ import { VERSION } from "../version";
  * plugin's files to the message (see `CrashReportContext.detail`). Nothing
  * from the workspace goes along: no portfolio, config,
  * query, ticker list or layout. The user's home directory is replaced by `~`
- * before sending.
+ * before sending, and messages and stacks are scrubbed the way feedback is
+ * (feedback/redact.ts): a key in a URL an error quotes never leaves the machine.
  *
  * The renderer installs a host that says which surface this is and where the
  * off switch lives; until then reports are held in memory, so a failure
@@ -335,8 +337,8 @@ function takeBatch(queue: PendingError[], current: CrashReporterHost): PendingEr
 function scrub(error: CrashReportError, homeDir: string | null | undefined): CrashReportError {
   return {
     ...error,
-    message: stripHomeDir(error.message, homeDir),
-    ...(error.stack ? { stack: stripHomeDir(error.stack, homeDir) } : {}),
+    message: redactText(stripHomeDir(error.message, homeDir)),
+    ...(error.stack ? { stack: redactText(stripHomeDir(error.stack, homeDir)) } : {}),
   };
 }
 

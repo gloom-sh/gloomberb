@@ -10,7 +10,7 @@ export const gpuModule: PluginModule = {
   paneTemplates: [{ id: "gpu-pane", paneId: "gpu", label: "GPU Rental Prices",
     description: "Pro GPU rental list prices, provider-declared spot and marketplace asks, with sourced price history and related equities. Free preview available.",
     keywords: ["gpu", "h100", "h200", "b200", "gb200", "compute", "rental", "neocloud", "hourly"],
-    shortcut: { prefix: "GPU", argKind: "text", argPlaceholder: "GPU", argOptional: true,
+    shortcut: { prefix: "GPU", argKind: "text", argOnlySelects: true, argPlaceholder: "GPU", argOptional: true,
       argOptions: () => GPU_MODELS.map((value) => ({ value, label: value })) }, headless: gpuHeadless,
     createInstance: (_context, options) => ({ placement: "floating", params: { gpuModel: gpuArgument(options?.arg) } }) }],
   series: GPU_SERIES,

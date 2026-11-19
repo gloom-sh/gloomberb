@@ -85,6 +85,22 @@ describe("reportCrash", () => {
     expect(error!.stack).not.toContain("/home/user");
   });
 
+  // A failed request's error quotes its URL, and some data services take the key in the query.
+  test("credentials an error quotes are scrubbed from its message and stack, as feedback scrubs them", async () => {
+    const { host, sent } = fakeHost();
+    installCrashReporter(host);
+    const key = "q8Zr2vK1x0Lp9sT4";
+    const error = new Error(`GET https://api.example.com/v1/quote?symbol=AAPL&apikey=${key} failed: 401`);
+    error.stack = `Error: request failed with Authorization: Bearer ${key}\n    at load (file:///home/user/app.ts:4:2)`;
+    reportCrash(error, { kind: "uncaught" });
+    await flushCrashReports({ timeoutMs: 500 });
+
+    const [sentError] = sent[0]!.errors;
+    expect(sentError!.message).toBe("GET https://api.example.com/v1/quote?symbol=AAPL&apikey=[redacted] failed: 401");
+    expect(sentError!.stack).toContain("at load (file://~/app.ts:4:2)");
+    expect(JSON.stringify(sent)).not.toContain(key);
+  });
+
   // A plugin load failure carries the state of the plugin's files in
   // `detail`, which can quote a second error with its Windows path.
   test("a plugin's detail is sent in the message, without the home folder", async () => {

@@ -46,7 +46,11 @@ function ensurePluginsDir() {
 }
 
 const GITHUB_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?![\s\S])/;
-const COMMIT_PATTERN = /^[0-9a-f]{7,40}$/i;
+/**
+ * A whole commit id. A registry pin names its commit in full: a prefix would
+ * let a different commit made to share it pass for the one reviewed.
+ */
+const COMMIT_PATTERN = /^[0-9a-f]{40}$/i;
 /**
  * A tag or branch name as git spells one: never starting with a dash, which
  * git would read as an option, and without `..`, `//`, `@{`, a trailing slash
@@ -58,6 +62,12 @@ const PIN_REF_PATTERN = /^(?!.*\.\.)(?!.*\/\/)(?!.*@\{)(?!.*\.lock$)(?!.*[./]$)[
 export function validatePinRef(ref: string): string {
   if (ref.length > 200 || !PIN_REF_PATTERN.test(ref)) throw new Error(`Invalid ref in registry pin: ${JSON.stringify(ref)}.`);
   return ref;
+}
+
+/** The registry pin's commit, refused unless it is a whole one. */
+export function validatePinCommit(commit: string): string {
+  if (!COMMIT_PATTERN.test(commit)) throw new Error(`Invalid commit in registry pin: ${JSON.stringify(commit)}.`);
+  return commit;
 }
 
 export function validatePluginDirectoryName(name: string): string {
@@ -288,9 +298,10 @@ function isOnBranch(dir: string): Promise<boolean> {
   return gitSucceedsAsync(["symbolic-ref", "-q", "HEAD"], dir);
 }
 
-function pinMatches(commit: string | null, expected: string | undefined): boolean {
-  if (!expected || !commit) return true;
-  return commit.toLowerCase().startsWith(expected.toLowerCase());
+/** Whether the checkout is the commit the pin names; a pin without one (a ref alone) takes what the ref names. */
+export function pinMatches(commit: string | null, expected: string | undefined): boolean {
+  if (!expected) return true;
+  return commit !== null && commit.toLowerCase() === expected.toLowerCase();
 }
 
 /**
@@ -302,7 +313,7 @@ async function fetchPin(targetDir: string, pin: PluginPin, quiet: boolean, timeo
   const wanted = pin.ref ?? pin.commit;
   if (!wanted) throw new Error("The registry pin names no ref or commit.");
   if (pin.ref) validatePinRef(pin.ref);
-  if (pin.commit && !COMMIT_PATTERN.test(pin.commit)) throw new Error(`Invalid commit in registry pin: ${pin.commit}`);
+  if (pin.commit) validatePinCommit(pin.commit);
   await git(["fetch", "--depth", "1", "origin", "--", wanted], targetDir, quiet, `Could not fetch ${wanted}`, timeoutMs);
   const commit = await git(["rev-parse", "FETCH_HEAD^{commit}"], targetDir, quiet, `Could not read ${wanted}`, timeoutMs);
   if (!pinMatches(commit, pin.commit)) {
@@ -463,6 +474,7 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
   const timeoutMs = options.timeouts?.gitMs;
   const pin = options.pin ?? {};
   try {
+    if (pin.commit) validatePinCommit(pin.commit);
     const cloneArgs = ["clone", "--depth", "1"];
     if (pin.ref) cloneArgs.push(`--branch=${validatePinRef(pin.ref)}`);
     cloneArgs.push("--", url, stagingDir);

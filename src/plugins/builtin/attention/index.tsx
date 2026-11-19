@@ -10,7 +10,7 @@ export const attentionModule: PluginModule = {
     { id: "attention-trending", reportFreshness: { status: "not-a-feed", basis: "hourly publication" }, name: "Gloom Trending", icon: "A", get component(): typeof import("./trending").TrendingPane { const { TrendingPane } = require("./trending"); return TrendingPane; }, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 58, height: 12 } }],
   paneTemplates: [{ id: "attention-pane", paneId: "attention", label: "Research Attention", listed: ATTENTION_LISTED,
     description: "Pro research attention: rankings, abnormal activity, sectors, countries and privacy-qualified hourly history.",
-    keywords: ["attention", "trending", "research", "activity"], shortcut: { prefix: "ATTN", argKind: "text", argPlaceholder: "TICKER", argOptional: true },
+    keywords: ["attention", "trending", "research", "activity"], shortcut: { prefix: "ATTN", argKind: "text", argOnlySelects: true, argPlaceholder: "TICKER", argOptional: true },
     headless: attentionHeadless, createInstance: (_ctx, options) => ({ placement: "floating", settings: { window: attentionWindow(options?.values?.window), symbol: (options?.arg ?? options?.symbol)?.trim().toUpperCase() ?? "" } }) },
     { id: "attention-trending-pane", paneId: "attention-trending", label: "Gloom Trending", description: "Compact daily research attention for a home workspace.", keywords: ["trending", "home"], createInstance: () => ({ placement: "floating" }) }],
   series: ATTENTION_SERIES,
