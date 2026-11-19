@@ -9,8 +9,10 @@ describe("the curve argument", () => {
     expect(parseCurveArgument("Oct 1 2026 gilt", now)).toEqual({ curve: "gb", date: "2026-10-01" });
     expect(parseCurveArgument("latest", now)).toEqual({ curve: null, date: "" });
     expect(parseCurveArgument("mbono 2026-10-09", now)).toEqual({ curve: "mx", date: "2026-10-09" });
-    for (const words of ["world", "South Africa"]) {
-      expect(() => parseCurveArgument(words, now)).toThrow("the curves are ust, tips, breakeven, euro, bund, gilt, jgb, canada, mexico and brazil. "
+    // Beside a date too: the market is what GC lacks, not the date.
+    for (const [words, named] of [["world", "world"], ["South Africa", "South Africa"], ["australia 2026-10-09", "australia"],
+      ["Oct 1 2026 South Africa", "South Africa"], ["australia 9/10/2026", "australia"]]) {
+      expect(() => parseCurveArgument(words, now)).toThrow(`Unknown curve "${named}"; the curves are ust, tips, breakeven, euro, bund, gilt, jgb, canada, mexico and brazil. `
         + "The world tab sets their 2- and 10-year yields side by side: gloom fn GC --tab world.");
     }
     // Two markets are the world tab's, not a curve and a stray word.
@@ -28,9 +30,10 @@ describe("the compare input", () => {
   });
 
   test("anything else gets the help for both forms, whether or not it looks like a date", () => {
-    for (const input of ["latest", "nope", "1X", "0D", "1996", "2026-13-40", "10/02/2026"]) {
+    for (const input of ["latest", "nope", "1X", "0D", "1996", "2026-13-40"]) {
       expect(() => parseCompareInput(input, now)).toThrow("Compare with a date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026, or a span such as 1D, 1W, 3M or 1Y.");
     }
+    expect(() => parseCompareInput("10/02/2026", now)).toThrow("or 1Y: 10/02/2026 is 10 Feb or 2 Oct; type 2026-02-10 for 10 Feb or 2026-10-02 for 2 Oct.");
     // A date written day first says what to type, as the as-of field does.
     expect(() => parseCompareInput("22/09/2026", now, "--compare")).toThrow("or 1Y: type --compare 2026-09-22 for 22/09/2026.");
     // A real date still cannot be in the future.
