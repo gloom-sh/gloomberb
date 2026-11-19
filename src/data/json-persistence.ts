@@ -46,8 +46,9 @@ export class JsonPersistence implements AppPersistencePort {
         delete next[resourceRecordKey(key)];
         this.resourceData.set(next);
       },
-      purgeProResources: (account) => {
-        sink?.purgeProResources(account);
+      setProResourceAccess: (account, allowed) => {
+        sink?.setProResourceAccess(account, allowed);
+        if (allowed) return;
         const current = this.resourceData.get();
         const matches = proResourceMatcher(account);
         const kept = Object.entries(current).filter(([, record]) => isRecord(record) && !matches(record));

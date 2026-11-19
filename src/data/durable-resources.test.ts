@@ -1,10 +1,12 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { createTempDbPath, removeTempDbFiles } from "../test-support/temp-db";
 import { AppPersistence } from "./app-persistence";
 import { applyResourceSync, createBatchedResourceSink } from "./durable-resources";
 import { MemoryResourceStore, WriteThroughResourceStore } from "./memory-resource-store";
 import { readSavedCopy, setSavedCopyStore, writeSavedCopy } from "./pane-saved-copies";
 import type { ResourceCacheKey } from "./resource-store";
+import { handleDesktopViewResourceRequest } from "../renderers/electrobun/bun/desktop/view-resources";
 
 afterEach(removeTempDbFiles);
 
@@ -60,7 +62,9 @@ test("a large record cannot hide smaller saved copies that still fit in the view
 test.each(["terminal", "desktop"] as const)("%s purges only the downgraded account's paid records, even outside the warm set", async (renderer) => {
   const path = createTempDbPath("revoked-pro");
   const persistence = new AppPersistence(path);
-  const sink = createBatchedResourceSink((batch) => applyResourceSync(persistence.resources, batch));
+  const sink = createBatchedResourceSink((payload) => handleDesktopViewResourceRequest({ persistence }, {
+    method: "resources.sync", payload,
+  }));
   const options = { cachePolicy: { staleMs: 0, expireMs: 30_000 } };
   const account = 'test"account';
   const scope = (id: string | null, pro: boolean) => JSON.stringify([id, id !== null, pro]);
@@ -69,7 +73,11 @@ test.each(["terminal", "desktop"] as const)("%s purges only the downgraded accou
   const plugin = { namespace: "plugin:earnings", kind: "earnings-history", entityKey: `AAPL|${JSON.stringify([account, true])}:pro`, sourceKey: "gloom-cloud" };
   const paid = pane(JSON.stringify(["quote", JSON.stringify(["router", scope(account, true)]), "AAPL"]));
   const legacy = pane(JSON.stringify(["catalysts", {}, `${JSON.stringify([account, true])}:full`]));
-  const preserved = [pane(JSON.stringify(["risk", scope(account, false)])), pane(JSON.stringify(["risk", scope(`${account}-other`, true)])), pane(JSON.stringify(["risk", scope(null, false)]))];
+  const preserved = [
+    pane(JSON.stringify(["risk", scope(account, false)])), pane(JSON.stringify(["risk", scope(`${account}-other`, true)])),
+    pane(JSON.stringify(["risk", scope(null, false)])), pane("unscoped"),
+    { ...paid, namespace: "plugin:test-broker", kind: "account-snapshot" },
+  ];
   try {
     for (const key of [market, plugin, legacy, ...preserved, paid]) persistence.resources.set(key, "original", options);
     const store = renderer === "terminal" ? persistence.resources : new WriteThroughResourceStore(
@@ -96,6 +104,88 @@ test.each(["terminal", "desktop"] as const)("%s purges only the downgraded accou
   } finally {
     await sink.flush();
     persistence.close();
+  }
+});
+
+const proAccount = "queued-pro";
+const proKey = { namespace: "pane:test", kind: "data", entityKey: JSON.stringify([proAccount, true, true]) };
+const cacheOptions = { cachePolicy: { staleMs: 0, expireMs: 30_000 } };
+
+test("a Free launch does not read resource_cache for revocation, even with another account's paid copies", () => {
+  const path = createTempDbPath("free-launch");
+  const seed = new AppPersistence(path);
+  seed.resources.set(proKey, "other account", cacheOptions);
+  seed.close();
+  const reopened = new AppPersistence(path);
+  const query = spyOn(reopened.database.connection, "query");
+  try {
+    reopened.resources.setProResourceAccess("never-pro", false);
+    expect(query.mock.calls.some(([sql]) => /\bresource_cache\b/i.test(sql))).toBe(false);
+  } finally {
+    query.mockRestore();
+    reopened.close();
+  }
+});
+
+test("a SQLite purge queued behind a writer cannot delete a refreshed Pro copy", async () => {
+  const path = createTempDbPath("queued-pro");
+  const app = new AppPersistence(path, { interactive: true });
+  const writer = new Database(path);
+  try {
+    const { resources } = app;
+    resources.set(proKey, "old copy", cacheOptions);
+    await Bun.sleep(5);
+    writer.exec("BEGIN IMMEDIATE");
+    resources.setProResourceAccess(proAccount, false);
+    expect(resources.get(proKey)).toBeNull();
+    resources.setProResourceAccess(proAccount, true);
+    writer.exec("COMMIT");
+    resources.set(proKey, "fresh copy", cacheOptions);
+    expect(app.database.access.flush()).toBe(true);
+    expect(resources.get(proKey)?.value).toBe("fresh copy");
+  } finally {
+    writer.close();
+    app.close();
+  }
+});
+
+test("a desktop batch supersedes a downgrade before saving the renewed subscription's copy", async () => {
+  const persistence = new AppPersistence(":memory:");
+  const sink = createBatchedResourceSink((batch) => applyResourceSync(persistence.resources, batch));
+  const view = new WriteThroughResourceStore([], sink, () => true);
+  try {
+    view.set(proKey, "old copy", cacheOptions);
+    await sink.flush();
+    view.setProResourceAccess(proAccount, false);
+    view.setProResourceAccess(proAccount, true);
+    view.set(proKey, "fresh copy", cacheOptions);
+    await sink.flush();
+    expect(persistence.resources.get(proKey)?.value).toBe("fresh copy");
+  } finally {
+    persistence.close();
+  }
+});
+
+test("legacy SQLite copies are cleaned off the launch path and the index persists", async () => {
+  const path = createTempDbPath("legacy-pro");
+  const seed = new AppPersistence(path);
+  seed.resources.set(proKey, "paid", cacheOptions);
+  seed.resources.set({ ...proKey, entityKey: "unscoped" }, "public", cacheOptions);
+  seed.database.connection.exec("DELETE FROM resource_pro_backfill; DELETE FROM resource_pro_candidates");
+  seed.close();
+  const reopened = new AppPersistence(path);
+  try {
+    reopened.resources.setProResourceAccess(proAccount, false);
+    const db = reopened.database.connection;
+    const present = () => db.query("SELECT 1 FROM resource_cache WHERE entity_key = ?").get(proKey.entityKey);
+    expect(present()).not.toBeNull();
+    const deadline = performance.now() + 2_000;
+    while (present() && performance.now() < deadline) await Bun.sleep(25);
+    expect(present()).toBeNull();
+    expect(db.query("SELECT 1 FROM resource_pro_backfill WHERE covered_through = legacy_end").get()).not.toBeNull();
+    expect(reopened.resources.get({ ...proKey, entityKey: "unscoped" })?.value).toBe("public");
+  } finally {
+    reopened.close();
   }
 });
 

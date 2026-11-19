@@ -8,7 +8,7 @@ import type {
 import { safeParseJson, serializeJson } from "./sqlite/json";
 import { packJson, unpackJson } from "./packed-json";
 import { logFailure } from "../utils/log-failure";
-import { ProResourceAccess } from "./pro-resource-access";
+import { proResourceAccounts, ProResourceAccess } from "./pro-resource-access";
 
 const DEFAULT_RESOURCE_SCHEMA_VERSION = 1;
 const encoder = new TextEncoder();
@@ -56,6 +56,8 @@ function isStale(record: CachedResourceRecord): boolean {
 
 export class MemoryResourceStore {
   private readonly records = new Map<string, CachedResourceRecord>();
+  private readonly proCandidates = new Map<string, Set<string>>();
+  private readonly proAccountsByKey = new Map<string, string[]>();
   protected readonly proAccess = new ProResourceAccess();
   private bytes = 0;
 
@@ -66,6 +68,12 @@ export class MemoryResourceStore {
     if (!record) return;
     this.bytes -= record.sizeBytes;
     this.records.delete(key);
+    for (const account of this.proAccountsByKey.get(key) ?? []) {
+      const keys = this.proCandidates.get(account)!;
+      keys.delete(key);
+      if (keys.size === 0) this.proCandidates.delete(account);
+    }
+    this.proAccountsByKey.delete(key);
   }
 
   private remember(record: CachedResourceRecord): void {
@@ -73,6 +81,13 @@ export class MemoryResourceStore {
     this.forget(key);
     if (record.sizeBytes > this.budget.maxBytes) return;
     this.records.set(key, record);
+    const accounts = proResourceAccounts(record);
+    if (accounts.length) this.proAccountsByKey.set(key, accounts);
+    for (const account of accounts) {
+      let keys = this.proCandidates.get(account);
+      if (!keys) this.proCandidates.set(account, keys = new Set());
+      keys.add(key);
+    }
     this.bytes += record.sizeBytes;
     while (this.records.size > this.budget.maxRows || this.bytes > this.budget.maxBytes) {
       const oldest = this.records.keys().next();
@@ -151,13 +166,12 @@ export class MemoryResourceStore {
   }
 
   setProResourceAccess(account: string, allowed: boolean): void {
-    const matches = this.proAccess.update(account, allowed);
-    if (!matches) return;
-    for (const [id, record] of this.records) if (matches(record)) this.forget(id);
-    this.purgeProResources(account);
+    if (!this.proAccess.update(account, allowed)) return;
+    if (!allowed) for (const id of this.proCandidates.get(account) ?? []) this.forget(id);
+    this.onProResourceAccessChanged(account, allowed);
   }
 
-  protected purgeProResources(_account: string): void {}
+  protected onProResourceAccessChanged(_account: string, _allowed: boolean): void {}
 
   delete(key: ResourceCacheKey): void {
     this.forget(buildMapKey(key));
@@ -199,7 +213,7 @@ const touchedAt = new WeakMap<object, number>();
 export interface ResourceRecordSink {
   set(record: CachedResourceRecord): void;
   delete(key: ResourceCacheKey): void;
-  purgeProResources(account: string): void;
+  setProResourceAccess(account: string, allowed: boolean): void;
   /** A read moved the record up the eviction order, so a record read every launch is not the first to go. */
   touch?(key: ResourceCacheKey, at: number): void;
 }
@@ -246,7 +260,7 @@ export class WriteThroughResourceStore extends MemoryResourceStore {
     if (this.durable(key)) this.sink.delete(key);
   }
 
-  protected override purgeProResources(account: string): void {
-    this.sink.purgeProResources(account);
+  protected override onProResourceAccessChanged(account: string, allowed: boolean): void {
+    this.sink.setProResourceAccess(account, allowed);
   }
 }

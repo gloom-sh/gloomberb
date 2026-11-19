@@ -30,7 +30,7 @@ test("serialized bootstrap data decodes only when read and a live write replaces
   const snapshot = packWarmResource(initial.set(key, { price: 1 }, options));
   expect(snapshot).toHaveProperty("valueJson", '{"price":1}');
   expect(snapshot).not.toHaveProperty("value");
-  const view = new WriteThroughResourceStore([snapshot], { set() {}, delete() {} }, () => true);
+  const view = new WriteThroughResourceStore([snapshot], { set() {}, delete() {}, setProResourceAccess() {} }, () => true);
   expect(view.get(key)?.value).toEqual({ price: 1 });
   const live = { price: 2 };
   view.set(key, live, options);
