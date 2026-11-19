@@ -29,8 +29,8 @@ import { loadExchangeResultsNotes } from "./financials/exchange-results";
 import { boardKey, newYorkToday } from "../earnings/board-model";
 import { fetchEarningsHistory } from "../earnings/client";
 import { fiscalPeriodText, fiscalQuarterOf } from "../earnings/fiscal-quarter";
-import { latestBalanceSheetDate, loadOfferingNote } from "./financials/offerings";
-import { formatRunwayMonths, reportsShortTermTotal, runwayMethod } from "../../../utils/cash-runway";
+import { latestBalanceSheetDate, loadOfferingNote, loadRunwayOfferings } from "./financials/offerings";
+import { burnsCash, cashRunway, formatRunwayMonths, reportsShortTermTotal, runwayMethod, runwayOfferingNote, type OfferingFiling } from "../../../utils/cash-runway";
 import { formatPerShareNumber } from "../../../utils/reported-money";
 import { logFailure } from "../../../utils/log-failure";
 import { loadStatementCurrency } from "../shared/statement-currency";
@@ -556,7 +556,13 @@ async function loadRatioReport(
       .then(({ symbol: bare, exchange }) => loadPeriodEndHistory(ctx.marketData, bare, exchange ?? "", oldest))
       .catch(logFailure("ticker-detail.headless", "Load valuation price history failed", null))
     : null;
-  const table = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period, history) : null;
+  const runway = tab.key === "liquidity" && hasRequestedStatements ? cashRunway(financials) : null;
+  const periodEnd = burnsCash(runway) ? runway.periodEnd : null;
+  const filings = periodEnd ? await resolveHeadlessInstrument(ctx, symbol)
+    .then((listing) => loadRunwayOfferings(ctx.apiClient, listing, periodEnd, ctx.signal))
+    .catch(logFailure("ticker-detail.headless", "Reading the offering filings failed", [] as OfferingFiling[])) : [];
+  const table = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period, history,
+    periodEnd ? { periodEnd, filings } : undefined) : null;
   const statementCurrency = financialStatementCurrency(financials, [
     ...financials.annualStatements, ...financials.quarterlyStatements,
   ]);
@@ -604,7 +610,8 @@ async function loadRatioReport(
   // Liquidity's runway says how it counts months, and that the cash predates an offering since.
   const liquidity = tab.key === "liquidity" && table;
   const runwayPeriodEnd = liquidity ? latestRunwayPeriodEnd(table) : null;
-  const offering = liquidity ? await reportOfferingNote(ctx, symbol, runwayPeriodEnd ?? latestBalanceSheetDate(financials)) : null;
+  const offering = periodEnd ? runwayOfferingNote(filings, periodEnd, runway?.currency)
+    : !runway && runwayPeriodEnd ? await reportOfferingNote(ctx, symbol, runwayPeriodEnd) : null;
   const periodDates = dates.map(({ date }) => date);
   const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, period, hasRequestedStatements, tab.key);
   return {

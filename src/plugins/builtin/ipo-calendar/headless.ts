@@ -37,7 +37,8 @@ const COLUMNS: HeadlessPaneColumn[] = [
   { key: "status", header: "Status" },
   { key: "price", header: "Price", align: "right" },
   { key: "offerSizeUsd", header: "Size", align: "right", format: (value) => formatIpoSize(value as number | null) },
-  { key: "firstDayReturn", header: "Return", align: "right", format: (value) => formatIpoReturn(value as number | null) },
+  { key: "firstDayReturn", header: "Return", align: "right", format: (value, row) => formatIpoReturn((value ?? row.openingReturn) as number | null),
+    textFormat: (value, row) => value == null && row.openingReturn != null ? `${formatIpoReturn(row.openingReturn as number)} open` : formatIpoReturn(value as number | null) },
   // A US IPO's estimated lock-up end: "~2026-11-02".
   { key: "lockupEnds", header: "Lockup ends", format: (value) => formatIpoLockupEnd(typeof value === "string" ? value : null) },
 ];
@@ -94,6 +95,8 @@ function toRow(deal: IpoDeal, now: Date) {
     offerSizeUsd: deal.offerSizeUsd,
     firstDayClose: deal.firstDay?.close ?? null,
     firstDayReturn: deal.firstDay?.returnPct ?? null,
+    openingPrice: deal.opening?.price ?? null,
+    openingReturn: deal.opening?.returnPct ?? null,
     filedDate: deal.filedDate,
     lockupEnds: deal.lockup?.endsOn ?? null,
     lockupBasis: deal.lockup?.basis ?? null,
@@ -172,7 +175,7 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
   },
   discovery: {
     dataRequirements: ["Gloom Cloud IPO calendar, merged from each exchange's own listings"],
-    limitations: ["First-day return needs an offer price and the first session's close."],
+    limitations: ["Return from the offer price uses the first trade until the first session's close is available."],
   },
   options: [
     {

@@ -250,6 +250,7 @@ export function cloudCreditBoardPath(board: "cdx" | "sovr", params: { days?: num
 }
 
 export type CloudSecFilingsParams = {
+  proceedsSince?: string;
   ticker: string;
   /** The listing's venue. Sent only for a venue outside the US, with `name`. */
   exchange?: string;
@@ -466,6 +467,7 @@ export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
   if (params.forms?.length) search.set("form", params.forms.join(","));
+  if (params.proceedsSince) search.set("proceedsSince", params.proceedsSince);
   setListingAbroad(search, abroad);
   return appendQuery("/cloud/sec/filings", search);
 }

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { FinancialStatement } from "../types/financials";
-import { cashRunway, fetchOfferingFilings, formatRunwayMonths, offeringNote, offeringsAfter, trailingOperatingCashFlow } from "./cash-runway";
+import { burnsCash, cashRunway, fetchOfferingFilings, formatRunwayMonths, offeringNote, offeringsAfter, trailingOperatingCashFlow } from "./cash-runway";
 
-const quarter = (date: string, fields: Partial<FinancialStatement>): FinancialStatement => ({ date, currency: "USD", ...fields });
+const quarter = (date: string, fields: Partial<FinancialStatement>): FinancialStatement => ({ date, currency: "USD", capitalExpenditure: 0, ...fields });
 
 // Viking Therapeutics' four quarters to 2026-06-30, in USD millions.
 const vktx = [
@@ -13,6 +13,17 @@ const vktx = [
 ];
 
 describe("cashRunway", () => {
+  test("uses cash flow after capex, counts filing proceeds once, and ignores non-operating losses", () => {
+    const statement = quarter("2026-09-30", { operatingCashFlow: 2.64e9, capitalExpenditure: -2.398e9, netIncome: -120.9e9,
+      cashCashEquivalentsAndShortTermInvestments: 41e9 });
+    const filings = [{ form: "424B4", filed: "2026-11-19", netProceedsUsd: 104.8e9 },
+      { form: "424B4/A", filed: "2026-11-20", netProceedsUsd: 104.8e9 },
+      { form: "424B5", filed: "2026-09-30", netProceedsUsd: 2e9 }];
+    const financials = { quarterlyStatements: [statement], annualStatements: [] };
+    expect(burnsCash(cashRunway(financials, filings))).toBe(false);
+    const runway = cashRunway({ ...financials, quarterlyStatements: [{ ...statement, capitalExpenditure: 5.64e9 }] }, filings);
+    expect(runway).toMatchObject({ liquidity: 145.8e9, proceeds: 104.8e9, quarter: { kind: "months", monthlyBurn: 1e9, months: 145.8 } });
+  });
   test("reads months of cash and ST investments at the quarter's burn and the trailing year's", () => {
     const runway = cashRunway({ quarterlyStatements: vktx, annualStatements: [] })!;
     expect(runway).toMatchObject({ periodEnd: "2026-06-30", liquidity: 501.66e6, includesShortTerm: true });
@@ -25,7 +36,7 @@ describe("cashRunway", () => {
   test("operating cash coming in is no burn, not a negative runway", () => {
     const profitable = vktx.map((row) => ({ ...row, operatingCashFlow: Math.abs(row.operatingCashFlow!) }));
     const runway = cashRunway({ quarterlyStatements: profitable, annualStatements: [] })!;
-    expect(runway.quarter).toEqual({ kind: "no-burn", operatingCashFlow: 125.17e6 });
+    expect(runway.quarter).toMatchObject({ kind: "no-burn", operatingCashFlow: 125.17e6 });
     expect(runway.trailing?.kind).toBe("no-burn");
   });
 

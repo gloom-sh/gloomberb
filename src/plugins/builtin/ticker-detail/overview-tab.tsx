@@ -78,8 +78,8 @@ import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 import { ClippedText } from "../../../components/ui/display";
 import { DelayedMark, delayedMarkWidth, useDelayedMarkMinutes } from "../../../components/ui/delayed-mark";
 import { safeExternalUrl } from "../../../utils/external-url";
-import { cashRunway } from "../../../utils/cash-runway";
-import { useOfferingNote } from "./financials/offerings";
+import { burnsCash, cashRunway, runwayOfferingNote } from "../../../utils/cash-runway";
+import { useRunwayOfferings } from "./financials/offerings";
 import { taxEquivalentFields, useOverviewTaxEquivalent } from "./overview/tax-equivalent";
 import { distributionBasis, type TaxRates } from "../../../market-data/tax-equivalent";
 import { currentListingName } from "../../../tickers/listing-name";
@@ -322,8 +322,11 @@ function ResolvedOverviewTab({
   const enterpriseValueNote = enterpriseValueGapIsLarge(pricedForEnterpriseValue)
     ? enterpriseValueReconciliationNote(pricedForEnterpriseValue, undefined, financials ?? undefined) : undefined;
   // Months of cash, for a company that burns it, and an offering since its balance sheet that the cash is not in yet.
-  const runway = useMemo(() => financials ? cashRunway(financials) : null, [financials]);
-  const runwayOfferingNote = useOfferingNote(ticker.metadata.ticker, ticker.metadata.exchange, runway?.periodEnd ?? null, runway?.trailing?.kind === "months");
+  const unadjustedRunway = useMemo(() => financials ? cashRunway(financials) : null, [financials]);
+  const offerings = useRunwayOfferings(ticker.metadata.ticker, ticker.metadata.exchange,
+    burnsCash(unadjustedRunway) ? unadjustedRunway.periodEnd : null);
+  const runway = financials && offerings.length ? cashRunway(financials, offerings) : unadjustedRunway;
+  const offering = burnsCash(runway) ? runwayOfferingNote(offerings, runway.periodEnd, runway.currency) : null;
   // A converted TTM block names what it was converted from, at the pane's rate and its time.
   const ttmNote = [shownFundamentals?.revenue, shownFundamentals?.netIncome, shownFundamentals?.freeCashFlow].some((value) => value != null)
     ? ttmConversionNote(shownFundamentals) : undefined;
@@ -337,7 +340,7 @@ function ResolvedOverviewTab({
     notices: [
       ...(changeNote ? [changeNote] : []),
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
-      ...(runwayOfferingNote ? [runwayOfferingNote] : []),
+      ...(offering ? [offering] : []),
       // A bar with contradictory prices is said only where it leaves a shown return blank: on a chart of years one
       // bar's gap is a hairline that changes no figure, and a return reads only the bars at its ends.
       ...(returnIntegrityNotice ? [returnIntegrityNotice] : []),
