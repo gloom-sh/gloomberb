@@ -136,6 +136,11 @@ test("the morning's European words lead to the index board, a question asked sig
     expect(found.map((entry) => entry.code).sort()).toEqual(["CMP", "WEI"]);
     expect(found.find((entry) => entry.code === "CMP")?.command).toBe("gloom fn CMP <tickers>");
     expect(await functionsForQuestion(registry, "what did it do?")).toEqual([]);
+    // A rates question was offered CBR, then MDAY and FIRST: it gets CBR, GC and ECO, run for the markets it names.
+    expect((await functionsForQuestion(registry, "What did the BoJ and RBA do with policy rates and how did JGB yields react?"))
+      .map((entry) => [entry.command, entry.input ?? null])).toEqual([
+      ["gloom fn CBR", null], ["gloom fn GC jgb", "GC JGB"], ["gloom fn ECO JP,AU", "ECO JP,AU"],
+    ]);
     // VIEW's example is a spec that runs as typed, not only `<spec JSON or empty>`.
     const [example] = entries.find((entry) => entry.token === "VIEW")?.argExamples ?? [];
     expect(parseViewSpec(example!.replace(/^'|'$/g, ""))?.source).toEqual({ kind: "inline", pane: "WEI" });

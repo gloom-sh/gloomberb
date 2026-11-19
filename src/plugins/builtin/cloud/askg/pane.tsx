@@ -155,11 +155,12 @@ const ASKG_WALL_HINT = "Free with a verified Gloom account.";
 /**
  * The wall's hint, with the functions the catalog finds for a question asked
  * behind it: "Without one, these functions answer it: WEI World Equity
- * Indices, CMP Comparison Chart." Each is typed by its code in the command bar.
+ * Indices, CMP Comparison Chart." Each is typed by its code in the command bar,
+ * with the argument the question names (`GC JGB`, `ECO JP,AU`).
  */
 function askgWallHint(found: readonly FunctionForQuestion[]): string {
   if (found.length === 0) return ASKG_WALL_HINT;
-  return `${ASKG_WALL_HINT} Without one, these functions answer it: ${found.map((entry) => `${entry.code} ${entry.label}`).join(", ")}.`;
+  return `${ASKG_WALL_HINT} Without one, these functions answer it: ${found.map((entry) => `${entry.input ?? entry.code} ${entry.label}`).join(", ")}.`;
 }
 
 /** The functions the catalog finds for a question asked behind the sign-in wall (`functionsForQuestion`); none without one. */
