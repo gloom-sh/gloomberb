@@ -66,7 +66,7 @@ export function getMarketplaceHost(): MarketplaceHost | null {
 export interface PluginPin {
   /** A tag or branch name. */
   ref?: string;
-  /** Full or abbreviated commit hash. Verified after checkout when `ref` is also given. */
+  /** The whole 40-character commit hash. Verified after checkout when `ref` is also given. */
   commit?: string;
 }
 
