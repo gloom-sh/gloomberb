@@ -22,7 +22,7 @@ import { clampFontSize } from "../../../theme/font-scale";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
 import { migrateSavedConfig, type ConfigMigrationHost } from "./migrations";
 import { encodeBuiltinDisabledPluginIds, expandBuiltinPluginGroups } from "../../../plugins/ownership";
-import { sanitizeSavedPaneState } from "./pane-state";
+import { hasLegacyPaneSnapshots, sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
 import { normalizeWatchlistGroups } from "../../../portfolio/watchlist-groups";
 import { portfolioCashBalances, withPortfolioCashBalances } from "../../../portfolio/cash-balances";
@@ -125,6 +125,7 @@ export function normalizeLoadedConfig(
 
   const needsSave =
     migration.migrated
+    || (Array.isArray(saved.layouts) && saved.layouts.some((entry) => isRecord(entry) && hasLegacyPaneSnapshots(entry.paneState)))
     || candidate.configVersion !== CURRENT_CONFIG_VERSION
     || !isLayoutConfig(candidate.layout)
     || !Array.isArray((candidate.layout as { instances?: unknown })?.instances)

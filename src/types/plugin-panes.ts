@@ -180,6 +180,15 @@ export interface PaneDef {
   shotFitsReader?: true;
   /** Add an Excel-compatible CSV action for the pane's single active DataTable. */
   tableExport?: true;
+  /**
+   * Pane-state keys that keep a copy of what the pane last showed rather than
+   * a setting (a news list's last articles), so it opens on its last view
+   * instead of loading empty. Pane state is mirrored into every saved layout
+   * and written to `config.json`, so such a snapshot is kept through
+   * `paneResources` instead, in the data directory. The keys are the pane
+   * state keys of that snapshot (`news-top:articles`).
+   */
+  paneSnapshots?: readonly RegExp[];
   settings?: PaneSettingsDef | ((context: PaneSettingsContext) => PaneSettingsDef | null);
   /** Portable sharing is public by default; list the few pane-owned fields that must remain local. */
   portableShare?: PanePortableShareDef;

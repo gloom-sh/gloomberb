@@ -102,7 +102,7 @@ function storyItemsSignature(items: PersistedNewsStoryItem[] | undefined): strin
 }
 
 /**
- * The last fetched articles for `key`, kept in pane state so the pane has
+ * The last fetched articles for `key`, kept in the pane snapshot store so the pane has
  * something to show on restart before the feed answers.
  *
  * A `keyFamily` names a prefix under which the pane keys one entry per symbol
@@ -127,8 +127,11 @@ export function usePersistedNewsArticles(
   const pruneSiblings = usePrunePluginPaneState();
   const { keyFamily } = options;
   useEffect(() => {
-    pruneSiblings((candidate) => candidate === key
-      || (!!keyFamily && candidate !== storageKey && candidate.startsWith(keyFamily)));
+    pruneSiblings((candidate) => {
+      if (candidate.startsWith(keyFamily ?? "\u0000")) return candidate !== storageKey;
+      // Also remove older unversioned snapshots from the layout.
+      return candidate === key || candidate === `${key}-v2`;
+    });
   }, [key, storageKey, keyFamily, pruneSiblings]);
   const restoredArticles = useMemo(
     () => persistedArticles.map(restoreArticle).filter((article): article is MarketNewsItem => !!article),

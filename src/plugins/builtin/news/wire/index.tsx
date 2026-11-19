@@ -66,10 +66,18 @@ let disposeBreakingNewsNotifications: (() => void) | null = null;
 // A rendered news pane is a list of published stories, dated by its newest.
 const NEWS_REPORT_FRESHNESS: PaneDef["reportFreshness"] = { status: "not-a-feed", basis: "published stories" };
 
+// The stories a news pane last showed, so it opens on them while the wire
+// answers. They are a snapshot of the feed, not a setting, so they are kept
+// in the data directory rather than written to `config.json` with every
+// layout change (`PaneDef.paneSnapshots`).
+const NEWS_LIST_PANE_SNAPSHOTS: PaneDef["paneSnapshots"] = [/^(?:[^:]+:)+articles(?::v\d+)?$/];
+const NEWS_STORY_PANE_SNAPSHOTS: PaneDef["paneSnapshots"] = [/^story(?::v\d+)?$/];
+
 const newsWirePanes: PluginModule["panes"] = [
-    { id: "news-top", reportFreshness: NEWS_REPORT_FRESHNESS, name: "Top News", icon: "T", shareItem: { open: true }, component: TopPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 90, height: 30 } },
+    { id: "news-top", reportFreshness: NEWS_REPORT_FRESHNESS, name: "Top News", paneSnapshots: NEWS_LIST_PANE_SNAPSHOTS, icon: "T", shareItem: { open: true }, component: TopPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 90, height: 30 } },
     {
       id: "news-feed",
+      paneSnapshots: NEWS_LIST_PANE_SNAPSHOTS,
       name: "News Feed",
       icon: "N",
       shareItem: { open: true },
@@ -82,6 +90,7 @@ const newsWirePanes: PluginModule["panes"] = [
     {
       id: "news-industry",
       reportFreshness: NEWS_REPORT_FRESHNESS,
+      paneSnapshots: NEWS_LIST_PANE_SNAPSHOTS,
       name: TOPIC_NEWS_TITLE,
       icon: "S",
       shareItem: { open: true, argument: true },
@@ -94,6 +103,7 @@ const newsWirePanes: PluginModule["panes"] = [
     {
       id: NEWS_STORY_PANE_ID,
       reportFreshness: NEWS_REPORT_FRESHNESS,
+      paneSnapshots: NEWS_STORY_PANE_SNAPSHOTS,
       reportArgument: { kind: "free-text", placeholder: "story id", description: "The id of the story to open.", identifier: true },
       name: "Story",
       icon: "A",
@@ -105,6 +115,7 @@ const newsWirePanes: PluginModule["panes"] = [
     },
     {
       id: "news-breaking",
+      paneSnapshots: NEWS_LIST_PANE_SNAPSHOTS,
       reportFreshness: NEWS_REPORT_FRESHNESS,
       name: "Breaking News",
       icon: "!",

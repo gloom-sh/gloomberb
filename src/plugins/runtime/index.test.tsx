@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { act, useEffect, useReducer, type SetStateAction } from "react";
+import { act, useEffect, useReducer, useState, type SetStateAction } from "react";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import {
   AppContext,
@@ -100,6 +100,74 @@ describe("plugin runtime hooks", () => {
     expect(
       stateRef.current?.paneState["prediction-markets:main"]?.pluginState?.["prediction-markets"]?.selectedRowKey,
     ).toBe("row-b");
+  });
+
+  test("a pane-state key the pane declared a snapshot of is kept outside the layout", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-plugin-runtime-snapshot");
+    const stateRef: { current: ReturnType<typeof createInitialState> | null } = { current: null };
+    const dispatchRef: { current: React.Dispatch<any> | null } = { current: null };
+    const store = new Map<string, unknown>([["news-top:main|articles:next:v2", ["next-story"]]]);
+    let switchKey: ((key: string) => void) | undefined;
+    const runtime = {
+      ...createConfigBackedTestPluginRuntime({
+        getConfig: () => stateRef.current?.config,
+        setConfig: (config) => dispatchRef.current?.({ type: "SET_CONFIG", config }),
+      }),
+      paneResources: {
+        isPaneSnapshot: (paneId: string, key: string) => paneId === "news-top:main" && key.startsWith("articles:"),
+        getPaneState: <T,>(paneId: string, key: string) => (store.get(`${paneId}|${key}`) as T | undefined) ?? null,
+        setPaneState: (paneId: string, key: string, value: unknown) => { store.set(`${paneId}|${key}`, value); },
+        deletePaneState: (paneId: string, key: string) => { store.delete(`${paneId}|${key}`); },
+      },
+    };
+
+    function HookHarness() {
+      const [state, dispatch] = useReducer(appReducer, createInitialState(config));
+      stateRef.current = state;
+      dispatchRef.current = dispatch;
+      return (
+        <AppContext value={createStaticAppStore(state, dispatch)}>
+          <PaneInstanceProvider paneId="news-top:main">
+            <PluginRenderProvider pluginId="news" runtime={runtime}>
+              <HookProbe />
+            </PluginRenderProvider>
+          </PaneInstanceProvider>
+        </AppContext>
+      );
+    }
+
+    function HookProbe() {
+      const [key, setKey] = useState("articles:v2");
+      switchKey = setKey;
+      const [articles, setArticles] = usePluginPaneState<string[]>(key, []);
+      const [selected, setSelected] = usePluginPaneState<string | null>("selectedArticleId", null);
+      useEffect(() => {
+        if (articles.length === 0) setArticles(["story"]);
+        if (selected === null) setSelected("story");
+      }, [articles, selected, setArticles, setSelected]);
+      return <text>{`${articles.join(",")}|${selected ?? ""}`}</text>;
+    }
+
+    await tui.render(<HookHarness />, { width: 40, height: 3 });
+    await act(async () => {
+      await tui.setup().renderOnce();
+    });
+
+    expect(tui.frame()).toContain("story|story");
+    expect(store.get("news-top:main|articles:v2")).toEqual(["story"]);
+    expect(stateRef.current?.paneState["news-top:main"]?.pluginState?.news).toEqual({ selectedArticleId: "story" });
+
+    await act(async () => {
+      switchKey?.("articles:next:v2");
+      await tui.setup().renderOnce();
+    });
+    await tui.waitForFrameToContain("next-story|story");
+    await act(async () => {
+      switchKey?.("articles:v2");
+      await tui.setup().renderOnce();
+    });
+    await tui.waitForFrameToContain("story|story");
+    expect(store.get("news-top:main|articles:next:v2")).toEqual(["next-story"]);
   });
 
   test("updates pane, global resume, and config state through the plugin hooks", async () => {

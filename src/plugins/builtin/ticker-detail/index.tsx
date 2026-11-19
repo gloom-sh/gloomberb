@@ -41,6 +41,7 @@ export const tickerDetailModule: PluginModule = {
   panes: [
     {
       id: TICKER_RESEARCH_PANE_ID,
+      paneSnapshots: [/^articles:[^:]+:[^:]*(?::v\d+)?$/],
       name: "Research",
       icon: "D",
       get component(): typeof import("./pane").TickerResearchPane { const { TickerResearchPane } = require("./pane"); return TickerResearchPane; },
