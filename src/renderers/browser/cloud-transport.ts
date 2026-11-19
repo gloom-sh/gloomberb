@@ -3,7 +3,12 @@ import type { CloudApiUploadRequest } from "../../api-client/request";
 import { settleWithin } from "../../utils/async-deadline";
 import { setHttpFetchTransport } from "../../utils/http-transport";
 import { createBrowserHttpProxyTransport } from "./http-proxy-transport";
-import { SESSION_COOKIE_NAMES } from "../../api-client/session-cookie";
+import { NO_SESSION_COOKIE, SESSION_BINDING_HEADER, SESSION_BINDING_META, SESSION_COOKIE_NAMES } from "../../api-client/session-cookie";
+import { logFailure } from "../../utils/log-failure";
+import { readBrowserSessionUser, rememberBrowserSessionUser } from "./session-cache";
+import type { AuthUser } from "../../api-client";
+
+let boundAccount: { binding: string; id: string } | null = null;
 
 function plantBrowserSessionCookies(cookieHeader: string): void {
   if (typeof document === "undefined") return;
@@ -20,7 +25,7 @@ function plantBrowserSessionCookies(cookieHeader: string): void {
   }
 }
 
-export function browserCredentialedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+export async function browserCredentialedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const cookieHeader = headers.get("Cookie");
   if (cookieHeader) plantBrowserSessionCookies(cookieHeader);
@@ -33,7 +38,18 @@ export function browserCredentialedFetch(url: string, init: RequestInit = {}): P
   // waits for the first to finish and then goes to the network anyway: three
   // tabs opened together waited seconds per request that way.
   const read = (init.method ?? "GET").toUpperCase() === "GET" && init.cache === undefined;
-  return fetch(url, { ...init, headers, credentials: "include", ...(read ? { cache: "no-store" as const } : {}) });
+  const response = await fetch(url, { ...init, headers, credentials: "include", ...(read ? { cache: "no-store" as const } : {}) });
+  const binding = response.headers.get(SESSION_BINDING_HEADER);
+  if (binding && response.ok && response.url === `${location.origin}/api/auth/get-session`) {
+    try {
+      const result = await response.clone().json() as { user?: AuthUser } | null;
+      boundAccount = result?.user && binding !== NO_SESSION_COOKIE ? { binding, id: result.user.id } : null;
+      rememberBrowserSessionUser(localStorage, binding, result?.user ?? null);
+    } catch {
+      // Intentional ignore: an unavailable display cache must not affect authentication.
+    }
+  }
+  return response;
 }
 
 function parseResponseHeaders(raw: string): Headers {
@@ -101,6 +117,15 @@ function browserXhrUpload(request: CloudApiUploadRequest): Promise<Response> {
 
 export function installBrowserFetchTransports(): void {
   apiClient.setCookieSessionMode(true);
+  apiClient.subscribeCurrentUser(() => {
+    if (!boundAccount) return;
+    const user = apiClient.getCurrentUser();
+    const matchingUser = user?.id === boundAccount.id ? user : null;
+    try {
+      rememberBrowserSessionUser(localStorage, boundAccount.binding, matchingUser);
+    } catch { /* Intentional ignore: browser display storage may be unavailable. */ }
+    if (!matchingUser) boundAccount = null;
+  });
   // Native fetch, so a response body can be read while it arrives.
   setCloudApiFetchTransport(browserCredentialedFetch, { streaming: true });
   setCloudApiUploadTransport(browserXhrUpload);
@@ -112,5 +137,14 @@ export function installBrowserFetchTransports(): void {
 }
 
 export async function restoreBrowserCloudSession(budgetMs = 5_000): Promise<void> {
+  const binding = document.querySelector<HTMLMetaElement>(`meta[name="${SESSION_BINDING_META}"]`)?.content ?? null;
+  if (binding !== NO_SESSION_COOKIE) apiClient.waitForCookieIdentity();
+  let cachedUser = null;
+  try { cachedUser = readBrowserSessionUser(localStorage, binding); } catch { /* Intentional ignore: browser storage may be blocked. */ }
+  if (cachedUser) {
+    apiClient.restoreCachedUser(cachedUser, false);
+    apiClient.getSession().catch(logFailure("web-session", "Could not verify the restored session"));
+    return;
+  }
   await settleWithin(apiClient.getSession(), budgetMs);
 }

@@ -178,9 +178,15 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const access = usePlanAccess();
   const session = useResearchCloudSession();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "pro" : "free"}`;
-  const highlightLoader = useCallback((force: boolean) => loadEarningsHighlight(highlight!, today, dataProvider, force, accessKey), [accessKey, dataProvider, highlight, today]);
-  const highlightedReport = useAsyncResource(market && highlight ? highlightLoader : null);
-  const range = chosenRange ?? (requestedBoardRange(requestedDate, requestedWeek) || highlightedReport.data?.report.date || "");
+  const highlightLoader = useCallback(async (force: boolean) => ({
+    value: await loadEarningsHighlight(highlight!, today, dataProvider, force, accessKey),
+  }), [accessKey, dataProvider, highlight, today]);
+  const highlightedReport = useAsyncResource(market && highlight ? highlightLoader : null, {
+    savedCopy: session.displayScope ? { key: ["earnings-highlight", highlight, today, session.displayScope] } : null,
+    shouldSave: ({ value }) => !value?.refreshError,
+  });
+  const highlightedData = highlightedReport.data?.value;
+  const range = chosenRange ?? (requestedBoardRange(requestedDate, requestedWeek) || highlightedData?.report.date || "");
   // Keyed by content: ticker records change for many reasons, the board reloads only when the list's names do.
   const collectionKey = useMemo(() => {
     if (scope.kind !== "portfolio" && scope.kind !== "watchlist") return "";
@@ -238,7 +244,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     const extra = fallback.status === "fulfilled"
       ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, owned, today))
       : [];
-    const target = highlightedReport.data?.report;
+    const target = highlightedData?.report;
     if (target && target.date >= read.from && target.date <= read.to && ![...reports, ...extra].some((report) => boardRowOf(report, target.symbol))) {
       extra.push({ ...target, owned: owned.get(target.symbol) ?? null });
     }
@@ -251,7 +257,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
         ? (cloud.reason instanceof Error ? cloud.reason.message : String(cloud.reason))
         : holdings?.refreshError ?? cloud.value.refreshError,
     }, cloud.status === "fulfilled" ? cloud.value : null);
-  }, [calendar, dataProvider, highlightedReport.data, market, named, owned, perTicker, query, queryKey, range, fund, today, session.displayScope]);
+  }, [calendar, dataProvider, highlightedData, market, named, owned, perTicker, query, queryKey, range, fund, today, session.displayScope]);
   const resource = useAsyncResource(highlightedReport.loading ? null : loader, {
     keepPreviousData: session.displayScope,
     savedCopy: session.displayScope ? { key: ["earnings-board", queryKey, accessKey] } : null,
@@ -343,19 +349,19 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const footerInfo = useMemo(() => [
     ...(highlightMissing ? [{ id: "highlight", capture: true, parts: [{
       text: highlightedReport.error ? `${highlight}: report date unavailable`
-        : highlightedReport.data ? `${highlight} reports on ${highlightedReport.data.report.date}; not in this range`
+        : highlightedData ? `${highlight} reports on ${highlightedData.report.date}; not in this range`
           : `No report date for ${highlight}.`,
       tone: "warning" as const,
     }] }] : []),
     ...(data ? [reportFooterSegment(earningsBoardHeadless, { rows: [], metadata: { asOf: data.asOf } }),
       ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : [])] : []),
-  ], [data, highlight, highlightedReport.data, highlightedReport.error, highlightMissing, updatedAgo, utcDay]);
+  ], [data, highlight, highlightedData, highlightedReport.error, highlightMissing, updatedAgo, utcDay]);
   usePaneStatusFooter({
     registrationId: "earnings-board",
     enabled: !open,
     loading: resource.loading || highlightedReport.loading,
-    error: resource.error ?? highlightedReport.error ?? data?.refreshError ?? highlightedReport.data?.refreshError ?? null,
-    stale: !!data?.stale || !!highlightedReport.data?.stale,
+    error: resource.error ?? highlightedReport.error ?? data?.refreshError ?? highlightedData?.refreshError ?? null,
+    stale: !!data?.stale || !!highlightedData?.stale,
     info: footerInfo,
   });
   const symbol = open?.symbol ?? selectedReport?.symbol ?? null;

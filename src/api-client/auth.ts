@@ -27,7 +27,7 @@ interface CloudAuthApiOptions {
   hasSessionCredential(): boolean;
   request: CloudApiRequest;
   requireCapturedSession(message: string): void;
-  setCurrentUser(user: AuthUser | null): void;
+  setCurrentUser(user: AuthUser | null, confirmSession?: boolean): void;
   setSessionToken(token: string | null): void;
   updateCurrentUser(updater: (user: AuthUser) => AuthUser): void;
 }
@@ -35,9 +35,9 @@ interface CloudAuthApiOptions {
 export class CloudAuthApi {
   constructor(private readonly options: CloudAuthApiOptions) {}
 
-  restoreCachedUser(user: PersistedAuthUser | null): void {
+  restoreCachedUser(user: PersistedAuthUser | null, confirmSession = true): void {
     if (!this.options.hasSessionCredential() || !user?.id) {
-      this.options.setCurrentUser(null);
+      this.options.setCurrentUser(null, confirmSession);
       return;
     }
     this.options.setCurrentUser({
@@ -67,7 +67,7 @@ export class CloudAuthApi {
           : null,
       createdAt: typeof user.createdAt === "string" ? user.createdAt : "",
       updatedAt: typeof user.updatedAt === "string" ? user.updatedAt : "",
-    });
+    }, confirmSession);
   }
 
   async signUp(

@@ -47,16 +47,18 @@ export function hydrateChatControllerSession({
   session.hydrated = true;
 
   const storedSession = storage.readSessionState();
-  const restoredUser = apiClient.getCurrentUser() ?? storedSession?.user ?? null;
   session.sessionToken = storedSession?.sessionToken ?? null;
+  const currentToken = apiClient.getSessionToken();
+  const currentUser = currentToken === session.sessionToken ? apiClient.getCurrentUser() : null;
+  const restoredUser = currentUser ?? (session.sessionToken ? storedSession?.user ?? null : null);
   // Installing the credential already in place would discard its session
   // check: the web app, which signs in with a cookie and stores no token,
   // asked the server for its session a second time on every open.
-  if (apiClient.getSessionToken() !== session.sessionToken) apiClient.setSessionToken(session.sessionToken);
+  if (currentToken !== session.sessionToken) apiClient.setSessionToken(session.sessionToken);
   // WebSocket tokens are short-lived connection credentials. Reusing a persisted
   // one can trap reconnects on an expired token even while the session cookie is valid.
   apiClient.setWebSocketToken(null);
-  apiClient.restoreCachedUser(restoredUser);
+  if (session.sessionToken && restoredUser !== apiClient.getCurrentUser()) apiClient.restoreCachedUser(restoredUser);
   session.user = normalizeSessionUser(restoredUser);
   session.sessionChecked = true;
   storage.ensureChannelState(DEFAULT_CHAT_CHANNEL_ID);

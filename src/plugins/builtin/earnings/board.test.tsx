@@ -2,6 +2,8 @@ import { afterAll, beforeAll, expect, setSystemTime, spyOn, test } from "bun:tes
 import { act, useReducer } from "react";
 import { apiClient, type AuthUser } from "../../../api-client";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsCalendarReport } from "../../../api-client/earnings";
+import { MemoryResourceStore } from "../../../data/memory-resource-store";
+import { setSavedCopyStore } from "../../../data/pane-saved-copies";
 import type { CombinedPaneFooter } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
@@ -109,6 +111,39 @@ test.each(["downgrade", "account switch", "sign-out"] as const)("the earnings bo
     userSpy.mockRestore();
     calendarRequests.mockImplementation(defaultCalendar);
     resetEarningsCloudCaches();
+  }
+});
+
+test("EVTS restores the board on its first frame while the highlighted report refresh is pending", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const now = Date.parse("2026-10-14T15:00:00Z");
+  const state = createInitialState(createTestPaneConfig("earnings-test", { paneId: "earnings-calendar", instanceId: PANE }));
+  const board = () => <TestPaneFrame state={state} paneId={PANE} pluginId="earnings" runtime={runtime} width={100} height={16}>
+    {(body, value) => {
+      footer = value;
+      return <EarningsBoard focused scopedSymbols={MARKET} highlight="AAPL" {...body} />;
+    }}
+  </TestPaneFrame>;
+  const held = Promise.withResolvers<Awaited<ReturnType<typeof apiClient.getEarningsHistory>>>();
+  const before = historyRequests.getMockImplementation();
+  try {
+    resetEarningsCloudCaches();
+    await tui.render(board(), { width: 100, height: 16 });
+    await tui.waitForFrameToContain("JPM");
+    await tui.destroy();
+    resetEarningsCloudCaches();
+    historyRequests.mockReturnValue(held.promise);
+    setSystemTime(now + 60_000);
+    await tui.render(board(), { width: 100, height: 16 });
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("JPM");
+    expect(footer.info.some((segment) => segment.savedCopyAt === now)).toBe(true);
+  } finally {
+    await tui.destroy();
+    if (before) historyRequests.mockImplementation(before);
+    setSystemTime(now);
+    resetEarningsCloudCaches();
+    setSavedCopyStore(previous);
   }
 });
 

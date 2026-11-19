@@ -1,4 +1,4 @@
-import { memo, Profiler, useCallback, useMemo, type ReactNode } from "react";
+import { memo, Profiler, useCallback, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useAppLanguage } from "../../../i18n/react";
 import { isPerfTraceEnabled, recordPerfSample } from "../../../utils/perf-marks";
 import { PaneFocusedProvider, PaneInViewProvider } from "../../../state/app/activity";
@@ -10,6 +10,8 @@ import type { PaneDef } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { PaneErrorBoundary } from "./error-boundary";
 import { PaneTickerFateGate } from "./ticker-fate-gate";
+import { apiClient } from "../../../api-client";
+import { PaneStatusBody } from "../../ui/status";
 
 // Under GLOOMBERB_PERF_TRACE every pane commit is reported by pane, which is
 // how a store update that fans out to the whole layout gets attributed. The
@@ -43,6 +45,13 @@ interface PaneContentProps {
   onClose?: (paneId: string) => void;
   /** Takes the pane out of its layout; the failure card offers it. Keep it stable: the content is memoized. */
   closePane?: (paneId: string) => void;
+}
+
+const subscribeSession = (listener: () => void) => apiClient.subscribeCurrentUser(listener);
+const sessionPending = () => apiClient.isDisplayScopePending();
+
+function PaneSessionGate({ children }: { children: ReactNode }) {
+  return useSyncExternalStore(subscribeSession, sessionPending, sessionPending) ? <PaneStatusBody loading /> : children;
 }
 
 export const PaneContent = memo(function PaneContent({
@@ -103,7 +112,7 @@ export const PaneContent = memo(function PaneContent({
               overflow="hidden"
               data-gloom-role="pane-content"
             >
-              {body}
+              <PaneSessionGate>{body}</PaneSessionGate>
             </Box>
           </PaneFocusedProvider>
         </PaneInViewProvider>

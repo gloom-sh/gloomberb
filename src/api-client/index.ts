@@ -143,6 +143,7 @@ class GloomApiClient {
   private sessionRevalidationGeneration = 0;
   private sessionRevalidationTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionChecked = false;
+  private awaitingCookieIdentity = false;
   /** When a session check last answered for the credential in place (`recentSession`). */
   private sessionCheckedAt: number | null = null;
   /** Last few session transitions, content-free, for app://auth. */
@@ -157,7 +158,7 @@ class GloomApiClient {
     hasSessionCredential: () => this.transport.hasSessionCredential(),
     request: (path, options, canApplySession) => this.request(path, options, canApplySession),
     requireCapturedSession: (message) => this.requireCapturedSession(message),
-    setCurrentUser: (user) => this.setCurrentUser(user),
+    setCurrentUser: (user, confirmSession) => this.setCurrentUser(user, confirmSession),
     setSessionToken: (token) => this.installSessionToken(token),
     updateCurrentUser: (updater) => this.updateCurrentUser(updater),
   });
@@ -225,6 +226,7 @@ class GloomApiClient {
     this.cancelSessionRevalidation();
     this.sessionInstallationGeneration += 1;
     this.sessionChecked = false;
+    this.awaitingCookieIdentity = false;
     this.verifiedSessionIdentity = null;
     this.transport.setCookieSessionMode(enabled);
     this.emitCurrentUserChange();
@@ -290,8 +292,17 @@ class GloomApiClient {
     };
   }
 
-  restoreCachedUser(user: PersistedAuthUser | null): void {
-    this.auth.restoreCachedUser(user);
+  restoreCachedUser(user: PersistedAuthUser | null, confirmSession = true): void {
+    this.auth.restoreCachedUser(user, confirmSession);
+  }
+
+  waitForCookieIdentity(): void {
+    this.awaitingCookieIdentity = true;
+    this.emitCurrentUserChange();
+  }
+
+  isDisplayScopePending(): boolean {
+    return !this.getCurrentUser()?.id && (this.awaitingCookieIdentity || this.isSignedIn());
   }
 
   isVerified(): boolean {
@@ -359,6 +370,7 @@ class GloomApiClient {
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
+    if (confirmSession) this.awaitingCookieIdentity = false;
     // Another account, or a plan that changed, reads other answers: no later read joins one sent before.
     if (changed) this.transport.forgetSharedReads();
     if (confirmSession) {
@@ -572,6 +584,10 @@ class GloomApiClient {
             this.sessionChecked = true;
             this.sessionCheckedAt = Date.now();
             this.clearSessionRevalidationTimer();
+            if (this.awaitingCookieIdentity) {
+              this.awaitingCookieIdentity = false;
+              this.emitCurrentUserChange();
+            }
           }
           this.traceAuth(validated ? "getSession:done" : "getSession:retained", user);
           return user;
