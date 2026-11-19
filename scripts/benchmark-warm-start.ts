@@ -64,6 +64,8 @@ const metrics = args.includes("--metrics") || heapSnapshot;
 const settleOption = takeOption(args, "--settle-ms");
 const settleMs = settleOption ? positiveInteger(settleOption, 18_000, "settle-ms") : 0;
 const cold = args.includes("--cold");
+const proFixture = process.env.WARM_START_PRO_FIXTURE === "1";
+if (proFixture && process.env.WARM_START_REPLAY_ONLY !== "1") throw new Error("The synthetic Pro account is replay-only");
 /** The harness's own checkout, for its scripts. */
 const checkout = resolve(join(import.meta.dir, ".."));
 /** The checkout whose app is launched: `--app`, for a before run of the base while this branch changes. */
@@ -95,6 +97,7 @@ interface RunRecord {
   backendHeapBytes?: number;
   cacheKiB?: number;
   cache?: CacheFootprint;
+  authResponseAtMs?: number;
 }
 
 interface CacheFootprint { rows: number; bytes: number; byNamespace: Record<string, number>; }
@@ -160,6 +163,7 @@ interface Launch {
   requests(): Record<string, number> | undefined | Promise<Record<string, number>>;
   heap(snapshot?: string): Promise<{ heapBytes: number; backendHeapBytes?: number }>;
   cacheFootprint?(): Promise<CacheFootprint>;
+  authResponseAtMs?(): Promise<number | undefined>;
   quit(): Promise<void>;
 }
 
@@ -208,6 +212,7 @@ async function launchTui(network: Network | "fill"): Promise<Launch> {
     `WARM_START_NET_DIR=${shellQuote(networkDir)}`,
     `WARM_START_NET_DELAY_MS=${network === "slow" ? SLOW_MS : 0}`,
     `WARM_START_REPLAY_ONLY=${process.env.WARM_START_REPLAY_ONLY === "1" ? 1 : 0}`,
+    ...(proFixture ? ["WARM_START_PRO_FIXTURE=1"] : []),
     `WARM_START_METRICS=${metrics ? 1 : 0}`,
     `GLOOMBERB_PERF_TRACE=${shellQuote(process.env.GLOOMBERB_PERF_TRACE ?? "")}`,
     `BUN_RUNTIME_TRANSPILER_CACHE_PATH=${shellQuote(join(root, "transpiler"))}`,
@@ -309,7 +314,7 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
     if (screenshot && network !== "fill" && !picture && Object.values(entry.panes).some((state) => state !== "blank")) picture = takePicture(screenshot);
   });
   try {
-    await routeDirectReads(browser.cdp, { read: (_key, load) => load() });
+    await routeDirectReads(browser.cdp, { read: (_key, load) => proFixture ? Promise.reject(new Error("The synthetic fixture only uses replayed reads")) : load() });
     await browser.cdp.send("Runtime.addBinding", { name: binding });
     await browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: domProbeSource(binding) });
     await browser.cdp.send("Page.navigate", { url: `${origin}${path}` });
@@ -321,6 +326,13 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
     launchedAt,
     timeline: () => timelines,
     requests: () => server.requests(),
+    ...(target === "web" && proFixture ? { authResponseAtMs: async () => {
+      const responseAt = await evaluate<number | null>(browser.cdp, `(() => {
+        const entry = performance.getEntriesByName(location.origin + "/api/auth/get-session")[0];
+        return entry ? performance.timeOrigin + entry.responseEnd : null;
+      })()`, 3_000);
+      return responseAt === null ? undefined : Math.round(responseAt - launchedAt);
+    } } : {}),
     async heap(snapshot) {
       await browser.cdp.send("HeapProfiler.collectGarbage", {}, 3_000);
       const { usedSize } = await browser.cdp.send<{ usedSize: number }>("Runtime.getHeapUsage", {}, 3_000);
@@ -410,6 +422,7 @@ async function writeLaunchConfig(base: AppConfig, layouts: SavedLayout[], active
   const config = configFor(base, layouts, active);
   if (target === "tui" || target === "desktop") {
     await writeFile(join(profile, "config.json"), `${JSON.stringify(config, null, 2)}\n`);
+    if (proFixture) (await import("./warm-start/pro-fixture")).seedFixtureNativeSession(join(config.dataDir, ".gloomberb-cache.db"));
     return;
   }
   webServer ??= await startWarmStartWebServer({ webRoot, networkDir });
@@ -418,6 +431,10 @@ async function writeLaunchConfig(base: AppConfig, layouts: SavedLayout[], active
   try {
     await browser.cdp.send("Page.navigate", { url: `${webServer.origin}/health` });
     await sleep(500);
+    if (proFixture) {
+      const { fixtureCookie, fixtureSession } = await import("./warm-start/pro-fixture");
+      await browser.cdp.send("Network.setCookie", { url: webServer.origin, name: fixtureCookie, value: fixtureSession, httpOnly: true, expires: Date.now() / 1000 + 3600 });
+    }
     const webConfig = { ...config, dataDir: "browser://local" };
     await evaluate(browser.cdp, `localStorage.setItem("gloomberb.web.config.v1", ${JSON.stringify(JSON.stringify(webConfig))}); true`);
     await sleep(300);
@@ -548,6 +565,7 @@ async function main(): Promise<void> {
         let heap: { heapBytes: number; backendHeapBytes?: number } | undefined;
         let cache: CacheFootprint | undefined;
         let requests: Record<string, number> | undefined;
+        let authResponseAtMs: number | undefined;
         try {
           await settle(started, expected, network, filledPanes);
           if (metrics && !interrupted.signal.aborted) {
@@ -560,13 +578,14 @@ async function main(): Promise<void> {
             cache = await started.cacheFootprint?.().catch(() => undefined);
           }
           requests = await started.requests();
+          authResponseAtMs = await started.authResponseAtMs?.().catch(() => undefined);
         } finally {
           await started.quit();
         }
         if (interrupted.signal.aborted) return;
         if (metrics && target !== "web") cache = sqliteFootprint();
         const entry: RunRecord = { layout, network, run, launchedAt: started.launchedAt, panes: [...started.timeline().values()],
-          requests, ...heap, cache, cacheKiB: metrics ? await cacheKiB() : undefined };
+          requests, authResponseAtMs, ...heap, cache, cacheKiB: metrics ? await cacheKiB() : undefined };
         if (network === "fill") {
           filledPanes = new Set(entry.panes.filter((pane) => pane.states.at(-1)?.state === "content").map((pane) => pane.paneId));
           await rm(filledProfile, { recursive: true, force: true });

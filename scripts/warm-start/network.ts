@@ -54,6 +54,8 @@ export function installWarmStartNetwork(options: WarmStartNetworkOptions): WarmS
   let extraDelayMs = options.extraDelayMs;
   mkdirSync(options.dir, { recursive: true });
   const realFetch = globalThis.fetch.bind(globalThis);
+  const proFixture = options.replayOnly && process.env.WARM_START_PRO_FIXTURE === "1"
+    ? import("./pro-fixture") : null;
   const wait = (ms: number) => ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 
   const wrapped = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -65,6 +67,14 @@ export function installWarmStartNetwork(options: WarmStartNetworkOptions): WarmS
       options.log?.("refused", `${method} ${url.href}`);
       await wait(extraDelayMs);
       return new Response(JSON.stringify({ error: "The benchmark sends reads only." }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    if (proFixture) {
+      const answer = (await proFixture).fixtureProAnswer(request, url);
+      if (answer) {
+        await wait(250 + extraDelayMs);
+        options.log?.("kept", url.href);
+        return answer;
+      }
     }
     const body = method === "POST" ? await request.clone().text() : "";
     const file = join(options.dir, `${keyFor(method, url, body)}.json`);
