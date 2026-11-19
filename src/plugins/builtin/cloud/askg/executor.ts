@@ -47,7 +47,7 @@ import {
   type InProcessRemoteControlHandler,
 } from "./undo";
 import { logFailure } from "../../../../utils/log-failure";
-import { describeConfirmedOperation, planUiCall, UiCallRefusal, type UiCallPlan } from "../terminal-relay/policy";
+import { describeConfirmedOperation, FieldEdits, planUiCall, UiCallRefusal, type UiCallPlan } from "../terminal-relay/policy";
 
 interface HeadlessExecution {
   result: unknown;
@@ -397,6 +397,13 @@ export function createASKGToolExecutor(
     return response.data;
   };
 
+  // The fields set in the turn a call belongs to, for the confirmation of a press that sends them.
+  let turnEdits: { turnId: string; edits: FieldEdits } | null = null;
+  const editsOf = (turnId: string): FieldEdits => {
+    if (turnEdits?.turnId !== turnId) turnEdits = { turnId, edits: new FieldEdits() };
+    return turnEdits.edits;
+  };
+
   const gate = async (
     call: ASKGToolCallEvent,
     { promptOpen, signal }: { promptOpen: boolean; signal?: AbortSignal },
@@ -406,7 +413,7 @@ export function createASKGToolExecutor(
     if (binding?.kind !== "operation") return null;
     const read = (resource: string) => readResource(resource, signal);
     try {
-      const plan = await planUiCall(binding.operation, call.args, { read, promptOpen });
+      const plan = await planUiCall(binding.operation, call.args, { read, promptOpen, edits: editsOf(call.turnId) });
       if (plan) {
         return plan.confirm
           ? {

@@ -10,6 +10,7 @@ import { Menu } from "../../../../components/ui/menu";
 import type { MarketContext } from "../../../../cli/types";
 import type { PluginRegistry } from "../../../registry";
 import { createRemoteResources } from "../../../../remote/resources";
+import { remoteOperationToolName } from "../../../../remote/schema";
 import { createRemoteUiRegistry, RemoteUiPaneScope, RemoteUiRegistryProvider, type RemoteUiRegistry } from "../../../../remote/semantic-tree";
 import type { RemoteUiNodeSnapshot } from "../../../../remote/types";
 import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
@@ -17,7 +18,7 @@ import { AppContext, createInitialState } from "../../../../state/app/context";
 import { createStaticAppStore } from "../../../../test-support/app-store";
 import { createTestPaneConfig } from "../../../../test-support/pane";
 import { Box } from "../../../../ui";
-import { planUiCall, type UiCallContext } from "./policy";
+import { FieldEdits, planUiCall, type UiCallContext } from "./policy";
 
 const tui = createOpenTuiTestHarness();
 
@@ -49,6 +50,91 @@ describe("a UI call that asks nothing", () => {
     expect(await field!.recheck(false)).toBeNull();
     nodes = [menu("none")];
     expect(await field!.recheck(false)).toBe(CHANGED);
+  });
+});
+
+// setValue runs without asking, so a press that sends what the assistant typed
+// (a gateway host, an account) would otherwise be asked as a bare "Press Save".
+describe("a press after the assistant set fields", () => {
+  const field = (id: string, label: string, value: unknown, extra: Record<string, unknown> = {}, paneId = "broker:1"): RemoteUiNodeSnapshot => ({
+    id,
+    role: "form-field",
+    paneId,
+    label,
+    actions: ["setValue", "submit"],
+    metadata: { fieldId: label.toLowerCase(), value, ...extra },
+  });
+  const save: RemoteUiNodeSnapshot = { id: "ui:save", role: "button", paneId: "broker:1", label: "Save", actions: ["press"] };
+
+  test("lists each field it set beside the control with what it holds, hiding a credential's value", async () => {
+    let nodes: RemoteUiNodeSnapshot[] = [
+      field("ui:host", "Host", "127.0.0.1"),
+      field("ui:key", "API key", ""),
+      field("ui:type", "Order type", "LMT", { summary: "Limit" }),
+      field("ui:other", "Search", "", {}, "news:1"),
+      save,
+    ];
+    const edits = new FieldEdits();
+    const context: UiCallContext = { read: async () => nodes, promptOpen: false, edits };
+    const set = async (nodeId: string, value: unknown) => {
+      const plan = await planUiCall("ui.invoke", { nodeId, action: "setValue", input: value as never }, context);
+      expect(plan?.confirm).toBeNull();
+      nodes = nodes.map((node) => node.id === nodeId ? { ...node, metadata: { ...node.metadata, value } } : node);
+    };
+    await set("ui:host", "gateway.example.net");
+    await set("ui:key", "sk-live-0123456789abcdef");
+    await set("ui:type", "MKT");
+    await set("ui:other", "NVDA");
+
+    const press = await planUiCall("ui.invoke", { nodeId: "ui:save", action: "press" }, context);
+    // The summary is how a field reads on screen; one in another pane is not what Save sends.
+    expect(press?.confirm).toEqual({
+      title: "Press \"Save\" (button)",
+      lines: [
+        { label: "Host", value: "gateway.example.net" },
+        { label: "API key", value: "hidden" },
+        { label: "Order type", value: "Limit" },
+      ],
+    });
+    expect(JSON.stringify(press)).not.toContain("sk-live");
+    expect(await press!.recheck(false)).toBeNull();
+
+    // A field that holds something else by the time it runs was not what the person allowed.
+    nodes = nodes.map((node) => node.id === "ui:key" ? { ...node, metadata: { ...node.metadata, value: "sk-live-other" } } : node);
+    expect(await press!.recheck(false)).toBe(CHANGED);
+
+    // Without any set, the press names only its control.
+    const fresh = await planUiCall("ui.invoke", { nodeId: "ui:save", action: "press" }, { ...context, edits: new FieldEdits() });
+    expect(fresh?.confirm?.lines).toEqual([]);
+  });
+
+  test("Ask Gloom lists the fields set in the turn the press belongs to", async () => {
+    const nodes = [field("ui:host", "Host", "gateway.example.net"), save];
+    const catalog: PaneFunctionCatalog = { panes: new Map(), paneTemplates: new Map(), destroy() {} };
+    const tools = buildASKGToolManifests(catalog).tools;
+    const invoke = tools.find((tool) => tool.name === remoteOperationToolName("ui.invoke"))!;
+    const executor = createASKGToolExecutor({
+      manifests: tools,
+      registry: catalog,
+      remoteHandler: async (request) => (request.type === "get" ? { ok: true, data: nodes } : { ok: false, error: { code: "remote_error", message: "read only" } }),
+    });
+    const call = (turnId: string, args: Record<string, string>) => executor.gate({
+      seq: 1,
+      type: "tool-call",
+      turnId,
+      toolCallId: `${turnId}:${args.action}`,
+      name: invoke.name,
+      args,
+      writeTier: invoke.writeTier,
+      requiresConfirmation: false,
+      preview: null,
+      timeoutMs: invoke.timeoutMs,
+      expiresAt: new Date(Date.now() + invoke.timeoutMs).toISOString(),
+    }, { promptOpen: false });
+
+    expect((await call("turn-1", { nodeId: "ui:host", action: "setValue", input: "gateway.example.net" }))?.kind).toBe("silent");
+    expect(await call("turn-1", { nodeId: "ui:save", action: "press" })).toMatchObject({ kind: "ask", lines: ["Host: gateway.example.net"] });
+    expect(await call("turn-2", { nodeId: "ui:save", action: "press" })).toMatchObject({ kind: "ask", lines: [] });
   });
 });
 

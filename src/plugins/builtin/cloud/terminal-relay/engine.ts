@@ -15,6 +15,7 @@ import {
 } from "./manifest";
 import {
   describeConfirmedOperation,
+  FieldEdits,
   operationPolicy,
   patchPolicy,
   planUiCall,
@@ -212,6 +213,8 @@ export class TerminalRelayEngine {
   private readonly seen = new Map<string, number>();
   private promptChain: Promise<unknown> = Promise.resolve();
   private openPrompts = 0;
+  /** The fields each assistant set, by its id, for the confirmation of a press that sends them. */
+  private readonly edits = new Map<string, FieldEdits>();
   private readonly now: () => number;
   private readonly confirmWindowMs: number;
   private readonly executionBudgetMs: number;
@@ -231,6 +234,15 @@ export class TerminalRelayEngine {
   disconnected(): void {
     this.abortAll();
     this.generation += 1;
+  }
+
+  private editsOf(callerId: string): FieldEdits {
+    let edits = this.edits.get(callerId);
+    if (!edits) {
+      edits = new FieldEdits();
+      this.edits.set(callerId, edits);
+    }
+    return edits;
   }
 
   dispose(): void {
@@ -256,6 +268,7 @@ export class TerminalRelayEngine {
   /** The person or Gloom Cloud revoked an assistant: its decision is forgotten and its calls end. */
   revoke(clientId: string): void {
     this.options.grants.forget(clientId);
+    this.edits.delete(clientId);
     for (const call of [...this.live.values()]) {
       if (call.caller.id !== clientId) continue;
       call.controller.abort();
@@ -268,6 +281,7 @@ export class TerminalRelayEngine {
   private abortAll(): void {
     for (const call of this.live.values()) call.controller.abort();
     this.live.clear();
+    this.edits.clear();
   }
 
   private rememberCall(id: string): boolean {
@@ -321,7 +335,7 @@ export class TerminalRelayEngine {
       const input = isRecord(data.input) ? data.input : {};
 
       await this.ensureApproved(call);
-      const plan = await this.plan(binding, input);
+      const plan = await this.plan(binding, input, caller.id);
       if (plan.confirm) await this.confirm(call, plan.confirm, finished);
 
       // Last check before anything runs.
@@ -435,7 +449,7 @@ export class TerminalRelayEngine {
   }
 
   /** The request to run and, for the `confirm` cases, what the person is asked. */
-  private async plan(binding: TerminalRelayToolKind, input: Record<string, unknown>): Promise<PlannedCall> {
+  private async plan(binding: TerminalRelayToolKind, input: Record<string, unknown>, callerId: string): Promise<PlannedCall> {
     switch (binding.kind) {
       case "snapshot":
       case "pane-content":
@@ -474,13 +488,14 @@ export class TerminalRelayEngine {
         };
       }
       case "operation":
-        return this.planOperation(binding, input);
+        return this.planOperation(binding, input, callerId);
     }
   }
 
   private async planOperation(
     binding: Extract<TerminalRelayToolKind, { kind: "operation" }>,
     input: Record<string, unknown>,
+    callerId: string,
   ): Promise<PlannedCall> {
     const { operation } = binding;
     const request: RemoteControlRequest = { type: "call", operation, input, include: [] };
@@ -489,7 +504,11 @@ export class TerminalRelayEngine {
 
     let ui: UiCallPlan | null;
     try {
-      ui = await planUiCall(operation, input, { read: (resource) => this.read(resource), promptOpen: this.promptOpen });
+      ui = await planUiCall(operation, input, {
+        read: (resource) => this.read(resource),
+        promptOpen: this.promptOpen,
+        edits: this.editsOf(callerId),
+      });
     } catch (error) {
       if (error instanceof UiCallRefusal) throw new RelayRefusal(error.code, error.message);
       throw error;
