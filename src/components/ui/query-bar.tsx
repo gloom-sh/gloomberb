@@ -14,6 +14,7 @@ import { Tabs } from "./tabs";
 import { useQueryBarKeys } from "./query-bar-keys";
 import { useCaptureDatesData } from "../layout/pane/capture-status";
 import { useChartViewReset } from "../chart/core/view-reset";
+import { displayWidth } from "../../utils/format";
 
 export interface QueryBarSearch {
   value: string;
@@ -169,6 +170,20 @@ export interface QueryBarProps {
   asOf?: string;
 }
 
+/** Cells a text filter's field takes when it names none. */
+const DEFAULT_TEXT_FIELD_CELLS = 20;
+
+/**
+ * Cells a text filter's field takes: the width it names, or where that is
+ * narrower its value, so a value is never cut. The terminal's field also
+ * needs the cursor after the value and the cell it keeps past the cursor: a
+ * 10-cell Date field there cut 2026-11-13 to "6-11-13". The desktop's field
+ * shows a value as wide as itself.
+ */
+function textFieldCells(filter: Pick<QueryBarTextFilter, "width" | "value">, terminal = true): number {
+  return Math.max(filter.width ?? DEFAULT_TEXT_FIELD_CELLS, displayWidth(filter.value) + (terminal ? 2 : 0));
+}
+
 /** An inline filter of a few short options, drawn as segments: what collapses to its menu when the row runs short. */
 function collapsibleInline(filter: QueryBarFilter): filter is QueryBarSelectFilter {
   return (filter.kind === undefined || filter.kind === "select") && filter.inline === true && filter.options.length <= TERMINAL_SEGMENT_LIMIT;
@@ -184,7 +199,7 @@ function terminalRowCells(width: number, { search, filters = [], view, asOf }: P
   const parts = [
     ...search ? [Math.max(16, Math.min(36, Math.floor(width * 0.3)))] : [],
     ...filters.map((filter) => {
-      if (filter.kind === "text") return (filter.width ?? 20) + filter.label.length + 1;
+      if (filter.kind === "text") return textFieldCells(filter) + filter.label.length + 1;
       if (filter.kind === "toggle") return (filter.short ?? filter.label).length + 4;
       if (filter.kind === "multi") return filter.label.length + 8;
       if (filter.inline) return filter.label.length + 1 + segments(filter.options);
@@ -395,7 +410,7 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
         value={filter.value}
         focused={filter.focused}
         active={filter.active}
-        width={HostQueryBar ? "100%" : (filter.width ?? 20) + filter.label.length + 1}
+        width={HostQueryBar ? "100%" : textFieldCells(filter) + filter.label.length + 1}
         focusToken={filter.focusToken ?? 0}
         inputRef={filter.inputRef ?? fallbackTextRef}
         placeholder={filter.placeholder}
@@ -422,7 +437,7 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
         options: [],
         node: textNodes.get(filter.id),
         active: filter.active,
-        width: filter.width,
+        width: textFieldCells(filter, false),
         onActivate: () => {
           filter.onActiveChange(true);
           filter.inputRef?.current?.focus?.();

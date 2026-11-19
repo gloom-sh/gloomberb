@@ -39,7 +39,7 @@ import { curveAsOf, isYieldObservationDate, type YieldPoint, yieldCurveErrors } 
 import { worldMissingNote, type WorldRow } from "./world";
 import { SwapsTab } from "./swaps";
 import {
-  cachedCurve, cachedWorldRows, curveViewCache, loadSavedCurve, loadSavedWorldRows, swapCurveCache, worldCurvesCache,
+  cachedCurve, cachedWorldBoard, curveViewCache, loadSavedCurve, loadSavedWorldBoard, swapCurveCache, worldCurvesCache,
 } from "./client";
 import { usBondMarketClosedNote } from "../../../market-data/us-bond-market";
 
@@ -116,11 +116,9 @@ function useDraftField(applied: string) {
     setActive(true);
     setFocusToken((token) => token + 1);
   }, []);
+  // The field shows its value from the start once it is left (`InputSearchBar`).
   const leave = useCallback(() => {
     setActive(false);
-    // Show the start of the value once the field is left, not the scrolled tail.
-    if (inputRef.current?.setCursorOffset) inputRef.current.setCursorOffset(0);
-    else if (inputRef.current) inputRef.current.cursorOffset = 0;
     inputRef.current?.blur?.();
   }, []);
   return { draft, setDraft, active, setActive, focusToken, focus, leave, inputRef };
@@ -426,6 +424,7 @@ const WORLD_COLUMNS: DataTableColumn[] = [
   { id: "asOf", label: "As of", width: 10, align: "left" },
 ];
 const worldKey = (row: WorldRow) => row.id;
+const EMPTY_WORLD_ROWS: WorldRow[] = [];
 /** Palette slots far enough apart that the markets' curves on one axis read apart; the orange and green come last. */
 const MARKET_COLOR_SLOTS = [0, 1, 2, 3, 4, 7, 5, 8] as const;
 
@@ -446,10 +445,10 @@ function WorldTab({ onOpen, focused, width, height }: {
   const [fieldError, setFieldError] = useState<string | null>(null);
   const dateField = useDraftField(requestedDate);
   // Each answer names the day it is for, so a board read for one date never shows under another.
-  const loadWorld = useCallback(async () => ({ requestedDate, ...await loadSavedWorldRows(requestedDate) }), [requestedDate]);
+  const loadWorld = useCallback(async () => ({ requestedDate, ...await loadSavedWorldBoard(requestedDate) }), [requestedDate]);
   const { data: answer, loading, error, updatedAt, load } = useAsyncResource(loadWorld, {
     initialData: () => {
-      const cached = cachedWorldRows(requestedDate);
+      const cached = cachedWorldBoard(requestedDate);
       return cached ? { requestedDate, ...cached } : null;
     },
     clearOnError: isPermanentClientError,
@@ -484,7 +483,7 @@ function WorldTab({ onOpen, focused, width, height }: {
       ...(requestedDate ? [{ id: "latest", key: "c", label: "urrent", title: "Latest Curves", onPress: () => selectDate("") }] : []),
     ],
   });
-  const rows = data ?? [];
+  const rows = data?.rows ?? EMPTY_WORLD_ROWS;
   const selectedId = rows.some((row) => row.id === selected) ? selected! : rows[0]?.id ?? null;
   // Every market's latest curve, each in its own colour; the selected row is
   // the primary, so the readout gives the others' spread to it at the cursor.

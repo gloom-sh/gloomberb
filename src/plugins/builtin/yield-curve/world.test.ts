@@ -3,7 +3,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type { CloudCurveId, CloudCurveView, CloudWorldCurves } from "../../../api-client/yield-curves";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { createYieldCurveHeadless } from "./headless";
-import { loadWorldRows, worldMissingNote } from "./world";
+import { loadWorldBoard, worldMissingNote } from "./world";
 
 const points = (ten: number) => [{ tenor: "2Y", years: 2, yield: ten - 0.5 }, { tenor: "10Y", years: 10, yield: ten }];
 const header = (id: CloudCurveId) => ({ id, label: id, country: id.toUpperCase(), basis: "par" as const, couponsPerYear: 2 });
@@ -25,16 +25,32 @@ test("a board as of a date never shows a later session: a market sent one is rea
       };
     },
   };
-  const rows = await loadWorldRows(client, "2026-11-13");
+  const board = await loadWorldBoard(client, "2026-11-13");
+  const rows = board.rows;
   expect(asked).toEqual([["world", "2026-11-13"], ["jp", "2026-11-13"], ["br", "2026-11-13"]]);
   expect(rows.map((row) => [row.id, row.asOf, row.previousAsOf, row.tenYear, row.tenYearChange])).toEqual([
     ["us", "2026-11-13", null, 4.1, null],
     ["jp", "2026-11-13", "2026-11-12", 1.8, expect.closeTo(0.05, 10)],
   ]);
-  expect(worldMissingNote(rows, "2026-11-13")).toBe("No session on or in the 10 days before 2026-11-13: Germany, UK, Canada, Euro AAA, Mexico and Brazil.");
+  expect(worldMissingNote(board, "2026-11-13")).toBe("No session on or in the 10 days before 2026-11-13: Germany, UK, Canada, Euro AAA, Mexico and Brazil.");
   // The latest board asks for no date and reads every market as sent.
-  expect((await loadWorldRows(client)).map((row) => row.asOf)).toEqual(["2026-11-13", "2026-11-18", "2026-11-17"]);
-  expect(worldMissingNote(rows, "")).toBeNull();
+  expect((await loadWorldBoard(client)).rows.map((row) => row.asOf)).toEqual(["2026-11-13", "2026-11-18", "2026-11-17"]);
+  expect(worldMissingNote(board, "")).toBeNull();
+});
+
+// A server error on one market's dated read failed the whole board.
+test("a market whose dated read fails is left out and named, and the others stand", async () => {
+  const world = { curves: [market("us", "2026-11-13", 4.1), market("jp", "2026-11-18", 1.9), market("br", "2026-11-17", 15)] } satisfies CloudWorldCurves;
+  const board = await loadWorldBoard({
+    getCloudWorldCurves: async () => world,
+    getCloudCurve: async (id: CloudCurveId) => {
+      throw id === "jp" ? new ApiRequestError("Service unavailable", 503) : new ApiRequestError("No Brazil curve on or within 10 days before 2026-11-13", 404);
+    },
+  }, "2026-11-13");
+  expect(board.rows.map((row) => row.id)).toEqual(["us"]);
+  expect(board.unread).toEqual(["Japan"]);
+  expect(worldMissingNote(board, "2026-11-13")).toBe("No session on or in the 10 days before 2026-11-13: Germany, UK, Canada, Euro AAA, Mexico and Brazil. "
+    + "Could not be read as of 2026-11-13: Japan.");
 });
 
 test("fn GC --tab world takes the as-of date from --date or the argument, and says which markets it has no session for", async () => {
@@ -43,7 +59,7 @@ test("fn GC --tab world takes the as-of date from --date or the argument, and sa
     load: async () => { throw new Error("The curve tab should not load for the world tab"); },
     world: async (_context, requestedDate) => {
       dates.push(requestedDate);
-      return loadWorldRows({ getCloudWorldCurves: async () => ({ curves: [market("us", "2026-11-13", 4.1)] }), getCloudCurve: async () => { throw new Error("unused"); } }, requestedDate);
+      return loadWorldBoard({ getCloudWorldCurves: async () => ({ curves: [market("us", "2026-11-13", 4.1)] }), getCloudCurve: async () => { throw new Error("unused"); } }, requestedDate);
     },
   });
   const world = (options: Record<string, unknown>, argument: string | null = null) =>

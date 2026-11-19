@@ -4,7 +4,7 @@ import { createPluginCache, savedCopyForTransientFailure, type PluginCacheResult
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { validateSwapCurve } from "./swaps-model";
 import { loadCurveData, type CurveData, type CurveId } from "./curves";
-import { loadWorldRows, type WorldRow } from "./world";
+import { loadWorldBoard, type WorldBoard } from "./world";
 
 export const swapCurveCache = createPluginCache<SwapCurvePayload>({
   kind: "sofr-swap-curve", source: "gloom-cloud", schemaVersion: 1,
@@ -37,8 +37,8 @@ export const curveViewCache = createPluginCache<CurveData>({
   kind: "yield-curve-view", source: "gloom-cloud", schemaVersion: 1,
   policy: { staleMs: 15 * 60_000, expireMs: 30 * DAY_MS },
 });
-export const worldCurvesCache = createPluginCache<WorldRow[]>({
-  kind: "world-curves", source: "gloom-cloud", schemaVersion: 1,
+export const worldCurvesCache = createPluginCache<WorldBoard>({
+  kind: "world-curves", source: "gloom-cloud", schemaVersion: 2,
   policy: { staleMs: 15 * 60_000, expireMs: 30 * DAY_MS },
 });
 
@@ -75,12 +75,12 @@ export function cachedCurve(curve: CurveId, requestedDate: string): SavedCopyAns
  * Each market's latest curve, or its last on or before `requestedDate`; the
  * copy an earlier read of the same day saved when they cannot be read.
  */
-export async function loadSavedWorldRows(requestedDate = "", client?: Parameters<typeof loadWorldRows>[0]): Promise<SavedCopyAnswer<WorldRow[]>> {
-  return answer(await worldCurvesCache.load(requestedDate || "latest", () => loadWorldRows(client, requestedDate), { force: true }));
+export async function loadSavedWorldBoard(requestedDate = "", client?: Parameters<typeof loadWorldBoard>[0]): Promise<SavedCopyAnswer<WorldBoard>> {
+  return answer(await worldCurvesCache.load(requestedDate || "latest", () => loadWorldBoard(client, requestedDate), { force: true }));
 }
 
 /** The saved world board for the day, for the tab's first paint while it is read again. */
-export function cachedWorldRows(requestedDate = ""): SavedCopyAnswer<WorldRow[]> | null {
+export function cachedWorldBoard(requestedDate = ""): SavedCopyAnswer<WorldBoard> | null {
   const cached = worldCurvesCache.get(requestedDate || "latest", { allowExpired: true });
   return cached ? { data: cached.data, savedAt: null } : null;
 }

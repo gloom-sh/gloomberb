@@ -313,6 +313,8 @@ test("the World tab is as of the pane's date: each market's session on or before
     await act(async () => { await tui.render(<Harness width={90} height={28} tab="world" asOfDate="2026-11-13" />, { width: 90, height: 28 }); });
     await settle();
     expect(worldSpy.mock.calls.map((call) => call[0])).toEqual(["2026-11-13"]);
+    // The Date field reads the whole date it opened on: it read "6-11-13".
+    expect(tui.frame()).toMatch(/Date 2026-11-13/);
     expect(tui.frame()).toMatch(/US +3\.50% .* 2026-11-13/);
     expect(tui.frame()).not.toContain("2026-11-18");
     expect(tui.frame()).toContain("[c]urrent");

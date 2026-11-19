@@ -243,9 +243,8 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
       setRequestedDate(nextDate);
       setDraftDate(nextDate);
       setDateError(null);
+      // The field shows the date from its start once it is left (`InputSearchBar`).
       setDateActive(false);
-      if (dateInput.current?.setCursorOffset) dateInput.current.setCursorOffset(0);
-      else if (dateInput.current) dateInput.current.cursorOffset = 0;
       dateInput.current?.blur?.();
       if (nextDate === requestedDate) resource.reload();
     } catch (error) {

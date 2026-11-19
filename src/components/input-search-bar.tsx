@@ -91,6 +91,19 @@ export function InputSearchBar({
     if (focused && active) inputRef.current?.focus?.();
   }, [active, focused, focusToken, inputRef]);
 
+  // The terminal's field scrolls to its cursor. A value set from outside (a pane opened on a date) left the cursor at its
+  // end, which scrolled the start out of view: 2026-11-13 read "6-11-13". A field not being typed in shows its value
+  // from the start; typing picks up at its end.
+  const editing = focused && active;
+  const terminal = nativePaneChrome !== true;
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!terminal || !input) return;
+    const offset = editing ? input.editBuffer.getText().length : 0;
+    if (input.setCursorOffset) input.setCursorOffset(offset);
+    else input.cursorOffset = offset;
+  }, [editing, inputRef, terminal, editing ? null : value]);
+
   useEffect(() => {
     if (normalizeValue(draft) === normalizeValue(value)) return;
     const timer = setTimeout(() => {
@@ -145,6 +158,9 @@ export function InputSearchBar({
         backgroundColor={appearance === "plain" || band ? "transparent" : colors.panel}
         focusedBackgroundColor={appearance === "plain" || band ? "transparent" : colors.panel}
         cursorColor={colors.textBright}
+        // The terminal's field keeps a fifth of its width clear after the cursor by default, so a value as wide as
+        // its field lost its first cells while typed in; it scrolls only once the cursor reaches an edge.
+        {...(terminal ? { scrollMargin: 0 } : {})}
         flexGrow={1}
         onFocus={onFocus}
         onBlur={onBlur}
