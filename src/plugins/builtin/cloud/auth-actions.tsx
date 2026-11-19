@@ -40,7 +40,7 @@ const RESEND_VERIFICATION = "Resend Verification Email";
  * the link is opened. Where no dialog can open, the command bar holds the
  * command, as before.
  */
-export function resendVerification(openCommandBar: (query?: string) => void) {
+function resendVerification(openCommandBar: (query?: string) => void) {
   if (!requestEmailConfirmation()) openCommandBar(RESEND_VERIFICATION);
 }
 
