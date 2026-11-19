@@ -2,6 +2,12 @@ import type { SocialMentionPost, SocialMentionsPayload } from "../../../api-clie
 import type { DataTableColumn } from "../../../components";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 
+/** What the pane says for a ticker that cannot be a cashtag. */
+export const NO_CASHTAG_STATE = {
+  title: "This ticker cannot be searched as a cashtag.",
+  message: "Use a symbol of up to six letters and digits, starting with a letter.",
+};
+
 export interface SocialDayRow {
   day: string;
   mentions: number;

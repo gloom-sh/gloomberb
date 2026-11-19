@@ -6,6 +6,7 @@ import type {
 } from "../../../api-client/estimate-revisions";
 import type { DataTableColumn } from "../../../components";
 import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
+export const NO_ESTIMATE_PERIODS_TITLE = "No covered estimate periods.";
 export const estimateNumber = (value: number | null | undefined) =>
   value == null
     ? MISSING_VALUE

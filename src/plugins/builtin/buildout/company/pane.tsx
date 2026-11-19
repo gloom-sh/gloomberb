@@ -39,6 +39,8 @@ import { CompanyFlow, CompanyFlowList, FLOW_MIN_WIDTH } from "./flow";
 import {
   fetchCompanyProfile,
   fetchCompanySignals,
+  NO_RELATIONSHIPS_TITLE,
+  notInBuildoutTitle,
   totalPowerMw,
   type BuildoutCompanyProfile,
   type BuildoutCompanySite,
@@ -201,7 +203,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
     return frame(<EmptyState title="No company selected." message="Link this pane to TheBuildout or a list, or open TBOC with a ticker." />);
   }
   if (!company) {
-    if (missing) return frame(<EmptyState title={`${symbol} is not in TheBuildout.`} />);
+    if (missing) return frame(<EmptyState title={notInBuildoutTitle(symbol)} />);
     if (profile.error) return frame(<PaneStatusBody error={String(profile.error)} subject="TheBuildout" retry={String(profile.error) === NOT_IN_SCREENSHOTS ? undefined : { onRetry: () => profile.load(true) }} />);
     return frame(<PaneStatusBody loading subject="TheBuildout" />);
   }
@@ -214,7 +216,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
   let body: ReactNode;
   if (tab === "flow") {
     body = company.relations.length === 0
-      ? <EmptyState title="No relationships in TheBuildout yet." />
+      ? <EmptyState title={NO_RELATIONSHIPS_TITLE} />
       : width >= FLOW_MIN_WIDTH
         ? <CompanyFlow profile={company} width={width} height={bodyHeight} focused={focused} onOpen={openRelation} />
         : (

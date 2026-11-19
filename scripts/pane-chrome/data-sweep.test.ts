@@ -4,7 +4,32 @@ import { createDefaultConfig } from "../../src/types/config";
 import { buildPaneCatalogEntries, type PaneCatalogEntry } from "../../src/cli/pane-functions/catalog";
 import { createPaneCatalog } from "../../src/cli/pane-functions/discovery";
 import type { MarketContext } from "../../src/cli/types";
-import { assessCapture, captureEvidence, exampleArgs, planSweep, runCommand, selectCases, type CommandResult } from "./data-sweep";
+import type { AppAttentionPayload } from "../../src/api-client/app-attention";
+import type { AttentionPayload } from "../../src/api-client/attention";
+import type { CatalystResponse } from "../../src/api-client/catalysts";
+import type { LiveScanPayload } from "../../src/api-client/live-scan";
+import { emptyAttention } from "../../src/plugins/builtin/attention/model";
+import { NO_RELATIONSHIPS_TITLE, notInBuildoutTitle } from "../../src/plugins/builtin/buildout/company/model";
+import { catalystEmptyTitle, catalystQuery } from "../../src/plugins/builtin/catalysts/model";
+import { appsUnmappedReason, NO_CURRENT_ROLE_EVIDENCE } from "../../src/plugins/builtin/company-attention/model";
+import { companyEmptyState } from "../../src/plugins/builtin/company-kpis/model";
+import { CREDIT_EMPTY_TITLE } from "../../src/plugins/builtin/credit-documents/model";
+import { noCallsText } from "../../src/plugins/builtin/earnings-calls/format";
+import { rippleEmptyText } from "../../src/plugins/builtin/earnings-ripple/model";
+import { boardRangeWords, noCalendarReportsTitle } from "../../src/plugins/builtin/earnings/calendar-model";
+import { NO_ESTIMATE_PERIODS_TITLE } from "../../src/plugins/builtin/estimate-revisions/model";
+import { PENDING_JOBS_MESSAGE, pendingJobsTitle, uncoveredJobsState } from "../../src/plugins/builtin/jobs/model";
+import { haltsEmptyTitle } from "../../src/plugins/builtin/market-halts/model";
+import { emptyDealsTitle } from "../../src/plugins/builtin/mna/model";
+import { EMPTY_POSITION_TITLE } from "../../src/plugins/builtin/options-scenario/model";
+import { NO_BREAKDOWN_STATE } from "../../src/plugins/builtin/revenue-breakdown/model";
+import { noAnalystActionsText, noAnalystCoverageText } from "../../src/plugins/builtin/research/client";
+import { noRiskFactorsTitle } from "../../src/plugins/builtin/risk-factors/data";
+import { hiloEmptyState } from "../../src/plugins/builtin/scanner/hilo-model";
+import { liveScanEmptyState } from "../../src/plugins/builtin/scanner/live-pane";
+import { shortWatchEmptyTitle } from "../../src/plugins/builtin/short-interest/watch-model";
+import { NO_CASHTAG_STATE } from "../../src/plugins/builtin/social-mentions/model";
+import { assessCapture, captureEvidence, EXPECTED_EMPTY, exampleArgs, planSweep, REVIEWED_EMPTY, runCommand, selectCases, type Assessment, type CommandResult } from "./data-sweep";
 
 const entry = (changes: Partial<PaneCatalogEntry> = {}): PaneCatalogEntry => ({
   token: "ANR", paneId: "analyst-research", label: "Analysts", description: "", paneName: "Analysts", aliases: [], keywords: [], defaultSettings: {},
@@ -139,37 +164,73 @@ test("social handles are data only in visible content, never a state-code exempt
     .toMatchObject({ status: "failure", reasonCodes: ["unusual_whales"] });
 });
 
+// What a pane's empty state reads once drawn: the title, then its message, as the capture joins them.
+const drawn = ({ title, ...rest }: { title: string; hint?: string; message?: string }) => {
+  const body = rest.hint ?? rest.message;
+  return !body ? title : /[.!?:]$/.test(title) ? `${title} ${body}` : `${title}. ${body}`;
+};
+
+const SATURDAY = Date.UTC(2026, 10, 14, 17);
+const WEDNESDAY = Date.UTC(2026, 10, 18, 16);
+const [FROM, TO] = ["2026-11-14", "2026-12-14"];
+const unmappedApps = { symbol: "AAPL", apps: [], page: { total: 0 }, summary: { appCount: 0 }, locked: {}, coverage: { sources: [{ captures: 3 }] } } as unknown as AppAttentionPayload;
+const courts = { coverage: { totalEvents: 19_113, sources: [{ agency: "US courts", jurisdiction: "US", enabled: false }] } } as unknown as CatalystResponse;
+const catalog = { coverage: { totalEvents: 19_113, sources: [] } } as unknown as CatalystResponse;
+const ripple = { holdings: ["AAPL"], from: FROM, to: TO, preview: false };
+
+// Every state is the pane's own builder output, never a copy of its wording.
+const REVIEWED: Array<[token: string, text: string, status: Assessment["status"]]> = [
+  ["APPS", appsUnmappedReason(unmappedApps, false) ?? "", "no-coverage"],
+  ["CALLS", drawn(noCallsText("PLPC")), "no-coverage"],
+  ["CATL", catalystEmptyTitle(catalog, catalystQuery({}, "DWSN"), false), "expected-empty"],
+  ["EM", NO_ESTIMATE_PERIODS_TITLE, "no-coverage"],
+  ["COVN", CREDIT_EMPTY_TITLE.instruments, "no-coverage"],
+  ["COVN", CREDIT_EMPTY_TITLE.issuer, "no-coverage"],
+  ["CRDOC", CREDIT_EMPTY_TITLE.instruments, "no-coverage"],
+  ["CRDOC", CREDIT_EMPTY_TITLE.issuer, "no-coverage"],
+  ...["PLPC", "WMT"].map((symbol): [string, string, Assessment["status"]] => ["GUIDE", drawn(companyEmptyState("guidance", symbol, { tab: "table", hasRows: false })), "no-coverage"]),
+  ["KPIS", drawn(companyEmptyState("kpis", "DWSN", { tab: "table", hasRows: false })), "no-coverage"],
+  ["HIRE", NO_CURRENT_ROLE_EVIDENCE, "no-coverage"],
+  ["JOBS", drawn(uncoveredJobsState("PLPC")), "no-coverage"],
+  ["JOBS", drawn({ title: pendingJobsTitle("1910:HKEX"), message: PENDING_JOBS_MESSAGE }), "expected-empty"],
+  ["LITI", catalystEmptyTitle(courts, catalystQuery({}, "AAPL", true), false), "no-coverage"],
+  ["MA", emptyDealsTitle("7203.T", ""), "expected-empty"],
+  ["RIPL", rippleEmptyText({ ...ripple, checked: 4 }), "expected-empty"],
+  ["RIPL", rippleEmptyText({ ...ripple, checked: 1 }), "expected-empty"],
+  ["RIPL", rippleEmptyText({ ...ripple, checked: 0 }), "no-coverage"],
+  ["RISK", noRiskFactorsTitle("7203:JPX"), "no-coverage"],
+  ["SEG", drawn(NO_BREAKDOWN_STATE), "no-coverage"],
+  ["TBOC", notInBuildoutTitle("DWSN"), "no-coverage"],
+  ["TBOC", NO_RELATIONSHIPS_TITLE, "no-coverage"],
+  ["BUZZ", drawn(NO_CASHTAG_STATE), "unsupported"],
+  ["OSA", EMPTY_POSITION_TITLE, "expected-empty"],
+  ["SIW", shortWatchEmptyTitle(false), "expected-empty"],
+  ["HILO", drawn(hiloEmptyState({ filtered: false, status: "closed", now: SATURDAY })), "market-closed"],
+  ["HILO", drawn(hiloEmptyState({ filtered: false, status: "closed", now: WEDNESDAY })), "market-closed"],
+  ["SCAN", drawn(liveScanEmptyState({ status: "closed" } as LiveScanPayload)), "market-closed"],
+  ["gloom-trending", emptyAttention({ status: "collecting" } as AttentionPayload), "expected-empty"],
+  ["ANR", noAnalystActionsText("AAPL"), "expected-empty"],
+  ["ANR", noAnalystActionsText("7203:JPX"), "no-coverage"],
+  ["ANR", noAnalystCoverageText("DWSN"), "no-coverage"],
+  ["HALT", haltsEmptyTitle("all"), "expected-empty"],
+  ["ERN", noCalendarReportsTitle(boardRangeWords("2026-11-19", "2026-11-19")), "expected-empty"],
+  ["ERN", noCalendarReportsTitle(null), "expected-empty"],
+];
+
+test("reviewed empty states classify from the copy the panes draw, and none is left without a builder-backed case", () => {
+  for (const [token, text] of REVIEWED) expect(text, `${token} builder output`).not.toBe("");
+  for (const [token, expected, status] of [...Object.entries(REVIEWED_EMPTY).map(([token, [status, pattern]]) => [token, pattern, status] as const),
+    ...Object.entries(EXPECTED_EMPTY).map(([token, pattern]) => [token, pattern, "expected-empty"] as const)]) {
+    expect(REVIEWED.some((entry) => entry[0] === token && entry[2] === status && expected.test(entry[1])), `${token} regex matches a drawn ${status} state`).toBe(true);
+  }
+  expect(Object.keys(REVIEWED_EMPTY).length).toBeGreaterThan(20);
+});
+
 test("reviewed source empty states remain findings, while mixed faults and unknown empties fail", () => {
-  const cases = [
-    ["APPS", "AAPL has no mapped apps in the observed App Store and Google Play charts.", "no-coverage"],
-    ["CALLS", "Earnings calls for PLPC are not yet available. Calls appear once the company's investor site or filings list a webcast.", "no-coverage"],
-    ["CATL", "No events linked to DWSN yet.", "expected-empty"],
-    ["EM", "No covered estimate periods.", "no-coverage"],
-    ["COVN", "No debt instrument has been read from this issuer's filings yet.", "no-coverage"],
-    ["CRDOC", "This is not an issuer the credit documents cover.", "no-coverage"],
-    ["GUIDE", "Guidance for PLPC is not yet available. Try GUIDE WMT.", "no-coverage"],
-    ["KPIS", "KPIs for DWSN are not yet available. Try KPIS AAPL.", "no-coverage"],
-    ["HIRE", "No current role evidence has been captured yet.", "no-coverage"],
-    ["JOBS", "No careers system found for PLPC. Gloom reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards.", "no-coverage"],
-    ["JOBS", "Looking for 1910:HKEX's careers system. Roles show here once it is read, usually within a few minutes. This pane checks again on its own.", "expected-empty"],
-    ["LITI", "No cases linked to AAPL. US court dockets are not collected yet, so only agency and regulator actions show.", "no-coverage"],
-    ["MA", "No deals involving 7203.T.", "expected-empty"],
-    ["RIPL", "None of the 4 disclosed customers and suppliers of AAPL reports from 2026-11-14 to 2026-12-14 (the next 30 days).", "expected-empty"],
-    ["RIPL", "No US-listed customer or supplier with a share of revenue is disclosed for PLPC, so no report date was looked up from 2026-11-14 to 2026-12-14 (the next 30 days).", "no-coverage"],
-    ["RISK", "No 10-K risk factors on file for 7203:JPX.", "no-coverage"],
-    ["SEG", "No revenue breakdown. This company's filings do not split revenue by product, segment or region.", "no-coverage"],
-    ["TBOC", "DWSN is not in TheBuildout.", "no-coverage"],
-    ["BUZZ", "This ticker cannot be searched as a cashtag. Use a symbol of up to six letters and digits, starting with a letter.", "unsupported"],
-    ["OSA", "Build an options position.", "expected-empty"],
-    ["SIW", "No US-listed names in your portfolios or watchlists.", "expected-empty"],
-    ["HILO", "Markets closed until Mon 14:30 UTC, 09:30 ET. New highs and lows resume at the open.", "market-closed"],
-    ["SCAN", "Nothing matched at the close. The scan runs again at the open.", "market-closed"],
-    ["gloom-trending", "Waiting for privacy-qualified research activity.", "expected-empty"],
-  ] as const;
   const empty = { usable: false, empty: true, rowCount: 0 };
-  for (const [token, text, status] of cases) {
+  for (const [token, text, status] of REVIEWED) {
     const render = { emptyStateDetected: true, stateText: { empty: [text] } };
-    expect(assessCapture(capture(empty, render, 2), token)).toMatchObject({ status, stateText: render.stateText });
+    expect(assessCapture(capture(empty, render, 2), token), `${token}: ${text}`).toMatchObject({ status, stateText: render.stateText });
     for (const changes of [{ blankColumns: ["Prior"] }, { semanticMismatch: true }]) {
       expect(assessCapture(capture({ ...empty, ...changes }, render, 2), token).status).toBe("failure");
     }

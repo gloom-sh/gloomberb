@@ -69,6 +69,7 @@ import {
   type PostingRow,
   type PostingSort,
   type ShareBarRow,
+  uncoveredJobsState,
 } from "./model";
 import { ShareBars } from "./share-bars";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -577,11 +578,12 @@ function CompanyPanel({
   }
   if (data.kind === "uncovered") {
     // The answer stays on screen while it asks again, so the button says it is asking.
+    const { title, message } = uncoveredJobsState(symbol);
     return (
       <PaneStatusBody
         empty
-        emptyTitle={`No careers system found for ${symbol}.`}
-        emptyMessage="Gloom reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards."
+        emptyTitle={title}
+        emptyMessage={message}
         retry={{ onRetry: reloadAndWait, pending: loading, label: "Look again", pendingLabel: "Looking again...", unchanged: "Still no careers system." }}
       />
     );
