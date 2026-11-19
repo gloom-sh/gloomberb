@@ -10,11 +10,11 @@ import {
 import { yieldTenorRows, type YieldLookbackCurves } from "./chart";
 import { curveAsOf, type YieldPoint, yieldCurveErrors } from "./treasury-data";
 import { loadYieldCurveLookbacks, yieldCurveDate } from "./history";
-import { worldMissingNote, type WorldRow } from "./world";
+import { worldMissingNote, type WorldBoard } from "./world";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { SWAP_TENORS, type SwapCurvePayload, type SwapTenor } from "../../../api-client/swap-curve";
-import { fetchSwapCurve, loadSavedCurve, loadSavedWorldRows } from "./client";
+import { fetchSwapCurve, loadSavedCurve, loadSavedWorldBoard } from "./client";
 import { savedCopyMark } from "../../../data/saved-copies";
 import { formatSwapBp, selectedSwapTenor } from "./swaps-model";
 import { logFailure } from "../../../utils/log-failure";
@@ -87,7 +87,7 @@ export interface YieldCurveHeadlessDependencies {
   /** The 1D, 1W and 1M curves of a session, for a curve loaded without them (the FRED fallback). */
   lookbacks?(session: string, context: HeadlessPaneContext): Promise<YieldLookbackCurves>;
   /** Each market's latest curve, or with a date its last on or before it. */
-  world?(context: HeadlessPaneContext, requestedDate: string): Promise<WorldRow[]>;
+  world?(context: HeadlessPaneContext, requestedDate: string): Promise<WorldBoard>;
   swaps?(tenor: SwapTenor, context: HeadlessPaneContext): Promise<SwapCurvePayload>;
 }
 
@@ -99,7 +99,7 @@ const defaultDependencies: Required<YieldCurveHeadlessDependencies> = {
     (await loadYieldCurveLookbacks(session, (id, options) => context.apiClient.getCloudFredSeries(id, options)))
       .map((lookback) => [lookback.id, lookback.points]),
   ),
-  world: async (context, requestedDate) => (await loadSavedWorldRows(requestedDate, context.apiClient)).data,
+  world: async (context, requestedDate) => (await loadSavedWorldBoard(requestedDate, context.apiClient)).data,
   swaps: (tenor, context) => fetchSwapCurve(tenor, context.apiClient),
 };
 
@@ -193,8 +193,9 @@ export function createYieldCurveHeadless(
       if (args.options.tab === "world") {
         // As of a date (`--date`, or the date in the argument): each market's last session on or before it, never a later one.
         const requestedDate = args.options.date != null ? yieldCurveDate(args.options.date, new Date(), "--date") : parseCurveArgument(args.argument).date;
-        const rows = await loadWorld(context, requestedDate);
-        const missing = worldMissingNote(rows, requestedDate);
+        const board = await loadWorld(context, requestedDate);
+        const rows = board.rows;
+        const missing = worldMissingNote(board, requestedDate);
         return {
           freshness: { source: "Government bond publishers", status: "not-a-feed",
             ...(requestedDate ? { basis: "historical curves" } : { basis: "daily curves" }) },
