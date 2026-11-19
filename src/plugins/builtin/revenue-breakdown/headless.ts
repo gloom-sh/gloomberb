@@ -1,7 +1,7 @@
 import type { RevenueBreakdownView } from "../../../api-client/revenue-breakdown";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRevenueBreakdown } from "./client";
-import { filingPageUrl, growthPercent, quarterLabel, reportedPeriods, reportedSpan, revenueScale, sharePercent } from "./model";
+import { filingPageUrl, growthPercent, reportedPeriods, reportedSpan, revenuePeriodLabeler, revenueScale, sharePercent } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 
@@ -51,12 +51,15 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
   describe: (args) => `Revenue breakdown | ${args.symbols[0]}`,
   async load(args, ctx) {
     const symbol = args.symbols[0]!;
-    const data = reportedSpan(await fetchRevenueBreakdown(
+    const source = await fetchRevenueBreakdown(
       symbol,
       (args.options.view as RevenueBreakdownView | undefined) ?? "product",
       ctx.apiClient,
       await resolveHeadlessIssuerListing(ctx, symbol),
-    ));
+    );
+    const data = reportedSpan(source);
+    const periodLabel = revenuePeriodLabeler(source.periods);
+    const labels = data.periods.map(periodLabel);
     const rowScale = amountScale(data.rows.flatMap((row) => [...row.values, row.ttm]), data.currency);
     const totalScale = amountScale(data.total, data.currency);
     const periods = reportedPeriods(data);
@@ -70,14 +73,14 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...rowScale.section(`${asReported ? "Reported" : "Quarterly"} revenue by ${data.view}`),
           columns: [
             { key: data.view, header: data.view[0]!.toUpperCase() + data.view.slice(1) },
-            ...data.periods.map((period) => rowScale.column(quarterLabel(period), quarterLabel(period))),
+            ...labels.map((label) => rowScale.column(label, label)),
             ...(!asReported ? [rowScale.column("ttm", "TTM")] : []),
             { key: "share", header: "Share", align: "right", textFormat: number(sharePercent) },
             ...(!asReported ? [{ key: "yoy", header: "YoY", align: "right" as const, textFormat: number(growthPercent) }] : []),
           ],
           rows: data.rows.map((row) => ({
             [data.view]: row.label,
-            ...Object.fromEntries(data.periods.map((period, index) => [quarterLabel(period), row.values[index]])),
+            ...Object.fromEntries(labels.map((label, index) => [label, row.values[index]])),
             ...(!asReported ? { ttm: row.ttm } : {}),
             share: row.share,
             ...(!asReported ? { yoy: row.yoy } : {}),
@@ -90,7 +93,7 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
             : [{ key: "quarter", header: "Quarter" }, { key: "end", header: "End" }, totalScale.column("revenue", "Revenue")],
           rows: data.periods.map((period, index) => "kind" in period
             ? { period: period.label, revenue: data.total[index], basis: period.revenueLabel, filed: period.filing.filed, filing: filingPageUrl(period.filing) }
-            : { quarter: quarterLabel(period), end: period.end, revenue: data.total[index] }),
+            : { quarter: periodLabel(period), end: period.end, revenue: data.total[index] }),
         },
       ],
       metadata: {

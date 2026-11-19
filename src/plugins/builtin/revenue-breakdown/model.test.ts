@@ -1,13 +1,27 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
-import type { RevenueBreakdownPayload } from "../../../api-client/revenue-breakdown";
-import { barLevels, reportedSpan, revenueAmount, revenueScale, sortRevenueRows } from "./model";
+import type { ReportedRevenueBreakdownPeriod, RevenueBreakdownPayload } from "../../../api-client/revenue-breakdown";
+import { barLevels, reportedSpan, revenueAmount, revenuePeriodLabeler, revenueScale, sortRevenueRows } from "./model";
 
 const row = (label: string, values: (number | null)[], yoy: number | null = null) => ({
   key: `p:${label}`, label, values, ttm: null, yoy, share: null,
 });
 
 describe("revenue breakdown model", () => {
+  test.each([
+    { filer: "March", annual: "2026-03-31", interim: "2025-09-30", expected: ["H1 2026", "FY 2026"] },
+    { filer: "June", annual: "2026-06-30", interim: "2025-12-31", expected: ["H1 2026", "FY 2026"] },
+    { filer: "December", annual: "2025-12-31", interim: "2026-06-30", expected: ["FY 2025", "H1 2026"] },
+    { filer: "interim only", annual: null, interim: "2025-09-30", expected: ["H1 2025"] },
+  ])("labels reported periods ($filer)", ({ annual, interim, expected }) => {
+    const period = (end: string, kind: ReportedRevenueBreakdownPeriod["kind"]): ReportedRevenueBreakdownPeriod => ({
+      end, kind, label: end, revenueLabel: "Revenue", filing: { filed: end, url: "https://example.test/report.pdf", page: 1 },
+    });
+    const periods = [period(interim, "interim"), ...(annual ? [period(annual, "annual")] : [])]
+      .sort((left, right) => left.end.localeCompare(right.end));
+    expect(periods.map(revenuePeriodLabeler(periods))).toEqual([...expected]);
+  });
+
   test("Trend scales a row to its own range; Actual shares one scale", () => {
     const values = [40, null, 80, 60];
     const rounded = (levels: (number | null)[]) => levels.map((level) => (level === null ? null : Math.round(level * 100) / 100));

@@ -546,7 +546,9 @@ SEG, also the Revenue tab of Ticker Research, reads the revenue splits US filers
 
 Quarters are the company's fiscal quarters. Fiscal Q4 is the 10-K year less the Q3 10-Q's nine months. Rows are the members that add up to reported revenue in the latest quarter, so subtotals such as Apple's "Products" beside iPhone and Mac are left out, and products reported only inside a segment (Alphabet's YouTube ads) sit beside the segments reported without products. When a filer renames a line in its 10-K, the renamed quarter shows as a gap rather than a guessed value. The latest column is that quarter's revenue; TTM needs four reported quarters spanning a year; % Total is the share of the quarter's reported revenue; YoY compares with the same fiscal quarter a year earlier.
 
-Trend scales each row's bars to its own range, so shape is comparable across rows; Actual draws every row on one scale, so size is; Text shows each quarter's value. Values are in USD as filed. Free and signed-out accounts see the two largest rows; Pro shows every row. Companies that tag revenue only with custom axes or concepts, and foreign filers on 20-F, have no breakdown.
+Trend scales each row's bars to its own range, so shape is comparable across rows; Actual draws every row on one scale, so size is; Text shows each reported value. Free and signed-out accounts see the two largest rows; Pro shows every row. US quarterly values are in USD as filed. The quarterly breakdown is unavailable for companies that tag revenue only with custom axes or concepts, and for foreign filers on 20-F.
+
+For Hong Kong listings with a reported breakdown, SEG shows annual and interim periods in the filing's currency. The interim label uses the fiscal year determined by the annual period's end month. For a March year-end, the interim ending in September 2025 is `H1 2026`, beside `FY 2026`. If no annual period is available, `H1` uses the interim end year.
 
 ## Portfolio analytics
 
