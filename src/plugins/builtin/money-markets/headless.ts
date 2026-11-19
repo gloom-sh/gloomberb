@@ -2,7 +2,8 @@ import { MISSING_VALUE } from "../../../utils/format";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { MoneyMarketRow } from "../../../api-client/money-markets";
-import { fetchHongKongMoneyMarkets, fetchMoneyMarkets } from "./client";
+import { savedCopyMark, unansweredRefreshError } from "../../../data/saved-copies";
+import { loadHongKongMoneyMarkets, loadMoneyMarkets } from "./client";
 import { isHongKongTab, MONEY_MARKET_TABS, moneyMarketChange, moneyMarketNotices, moneyMarketRowNotices, moneyMarketRows, moneyMarketValue } from "./model";
 
 const FRED_FRESHNESS = { source: "FRED", status: "not-a-feed", basis: "published daily and weekly data" } as const;
@@ -35,9 +36,12 @@ export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
   describe: (args) => isHongKongTab(args.options.tab) ? "Hong Kong money markets" : "US money markets",
   async load(args, ctx) {
     const hongKong = isHongKongTab(args.options.tab);
-    const data = hongKong ? await fetchHongKongMoneyMarkets(ctx.apiClient) : await fetchMoneyMarkets(ctx.apiClient);
+    const result = hongKong ? await loadHongKongMoneyMarkets(ctx.refresh, ctx.apiClient) : await loadMoneyMarkets(ctx.refresh, ctx.apiClient);
+    const data = result.payload;
     const rows: MoneyMarketRow[] = "billsCurve" in data ? moneyMarketRows(data, String(args.options.tab)) : data.rows;
     const errors = "billsCurve" in data ? moneyMarketNotices(data) : moneyMarketRowNotices(data.rows);
+    const refreshError = unansweredRefreshError(result);
+    if (refreshError) errors.push(refreshError);
     const complete = data.status === "available" && errors.length === 0;
     const report = moneyMarketReport(rows, hongKong);
     return { complete, ...report.freshness ? { freshness: report.freshness } : {},
@@ -53,6 +57,6 @@ export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
       { key: "asOf", header: "As of", shrink: false }, { key: "status", header: "Status", stackPriority: 3 },
     ], rows: report.rows }],
       errors, unavailableSymbols: rows.filter((row) => row.status === "unavailable").flatMap((row) => row.sourceSeriesIds.length ? row.sourceSeriesIds : [row.label]),
-      metadata: { ...data, complete, selectedTab: args.options.tab } };
+      metadata: { ...data, ...savedCopyMark(result), complete, selectedTab: args.options.tab } };
   },
 };

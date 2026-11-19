@@ -67,4 +67,5 @@ export async function fetchCentralBankRates(client: Pick<typeof apiClient, "getC
   catch (error) { throw unavailableOnServer(error, "Central bank rates are not available yet."); }
 }
 export const getCachedCentralBankRates = () => cachedCloudResource(centralBankRatesCache, "g20");
-export const loadCentralBankRates = (force = false) => loadCloudResource(centralBankRatesCache, "g20", () => fetchCentralBankRates(), { force });
+export const loadCentralBankRates = (force = false, client: Pick<typeof apiClient, "getCloudCentralBankRates"> = apiClient) =>
+  loadCloudResource(centralBankRatesCache, "g20", () => fetchCentralBankRates(client), { force });

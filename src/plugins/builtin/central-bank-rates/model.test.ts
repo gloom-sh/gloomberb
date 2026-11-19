@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { CentralBankRatesPayload, CentralBankRow } from "../../../api-client/central-bank-rates";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { HeadlessBundleResult, HeadlessPaneContext } from "../../../types/plugin";
@@ -11,9 +11,11 @@ import { reportShotCoverage, withReportCoverage } from "../../../cli/pane-functi
 import { shotStatusIssues } from "../../../cli/pane-functions/screenshot-assessment";
 import type { PaneScreenshotResult } from "../../../cli/pane-functions/screenshot-types";
 import { createTestHeadlessArgs } from "../../../test-support/headless";
-import { fetchCentralBankRates, validateCentralBankRates } from "./client";
+import { centralBankRatesCache, fetchCentralBankRates, validateCentralBankRates } from "./client";
 import { centralBankRatesHeadless } from "./headless";
 import { policyBoardRow, policyCitation, policyHistory, policyNotices, policySeriesAttribution } from "./model";
+
+afterEach(() => centralBankRatesCache.reset());
 
 function row(overrides: Partial<CentralBankRow> = {}): CentralBankRow {
   return { id: "US", label: "United States", countryCodes: ["US"], centralBank: "Federal Reserve", instrument: "Target midpoint",
@@ -56,7 +58,7 @@ describe("central bank policy boundary", () => {
     data.rows.push(row({ id: "AR", label: "Argentina", ...unavailable, unavailableReason: "no-policy-rate" }),
       row({ id: "african-union", label: "African Union", ...unavailable, unavailableReason: "no-unified-rate" }));
     const load = (body: CentralBankRatesPayload) => centralBankRatesHeadless.load({ rawArgument: "", argument: null, symbols: [], options: {} },
-      { apiClient: { getCloudCentralBankRates: async () => body } } as unknown as HeadlessPaneContext);
+      { refresh: true, apiClient: { getCloudCentralBankRates: async () => body } } as unknown as HeadlessPaneContext);
     expect(await load(data)).toMatchObject({ complete: true, errors: [], unavailableSymbols: [] });
     data.status = "partial";
     data.rows.push(row({ id: "IN", label: "India", ...unavailable, unavailableReason: "source-unavailable" }));
@@ -103,7 +105,7 @@ describe("a board with stale rows", () => {
   };
   const load = async (data: CentralBankRatesPayload) => {
     const args = createTestHeadlessArgs();
-    const result = await centralBankRatesHeadless.load(args, { apiClient: { getCloudCentralBankRates: async () => data } } as unknown as HeadlessPaneContext);
+    const result = await centralBankRatesHeadless.load(args, { refresh: true, apiClient: { getCloudCentralBankRates: async () => data } } as unknown as HeadlessPaneContext);
     return { definition: centralBankRatesHeadless, args, result };
   };
 
@@ -136,7 +138,7 @@ const bis = (id: string, overrides: Partial<CentralBankRow> = {}) => row({ id, l
   sourceUrl: `https://data.bis.org/topics/CBPOL/BIS,WS_CBPOL,1.0/D.${id}`, sourceSeriesIds: [`D.${id}`], value: 3.75, range: null, asOf: "2026-10-05",
   changeBps: -25, previousValue: 4, direction: "cut", notes: ["Change date is the first observed new level, not necessarily the announcement or effective date."], ...overrides });
 const load = (body: CentralBankRatesPayload, history = false) => centralBankRatesHeadless.load({ rawArgument: "", argument: null, symbols: [], options: { history } },
-  { apiClient: { getCloudCentralBankRates: async () => body } } as unknown as HeadlessPaneContext) as Promise<HeadlessBundleResult>;
+  { refresh: true, apiClient: { getCloudCentralBankRates: async () => body } } as unknown as HeadlessPaneContext) as Promise<HeadlessBundleResult>;
 const board = (): CentralBankRatesPayload => ({ generatedAt: "2026-10-12T10:00:00Z", status: "available", gaps: [], rows: [
   row({ asOf: "2026-10-11", value: 3.875, range: { lower: 3.75, upper: 4 }, previousValue: 3.625,
     notes: ["Midpoint of the target range, not the effective federal funds rate.", "Change date is the first observed new level, not necessarily the announcement or effective date."],

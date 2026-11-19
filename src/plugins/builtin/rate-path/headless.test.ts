@@ -1,9 +1,12 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import type { RateContract, RatePathPayload } from "../../../api-client/rates";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { ratePathHeadless } from "./headless";
+import { ratePathCache } from "./client";
+
+afterEach(() => ratePathCache.reset());
 
 const metric = { value: 3.88, asOf: "2026-10-08", percentile: 86, samples: 251, source: "fred" as const, stale: false };
 const payload = {
@@ -17,7 +20,7 @@ const payload = {
 } satisfies RatePathPayload;
 
 test("text names the policy rates and says whether data is stale, while JSON keeps its keys and booleans", async () => {
-  const context = createTestHeadlessContext({ apiClient: { getCloudRatePath: async () => payload } as never });
+  const context = createTestHeadlessContext({ refresh: true, apiClient: { getCloudRatePath: async () => payload } as never });
   const result = await ratePathHeadless.load(createTestHeadlessArgs(), context);
   const text = renderHeadlessPaneText(ratePathHeadless, result, createTestHeadlessArgs(), "WIRP");
   for (const label of ["Effective fed funds rate", "Target range lower", "Target range upper"]) expect(text).toContain(label);
@@ -33,10 +36,10 @@ test("text names the policy rates and says whether data is stale, while JSON kee
   const contract = text.split("\n").find((line) => line.startsWith("ZQV26.CBT"))!;
   expect(contract.trim().endsWith("available")).toBe(true);
   // Nothing stale, nothing said; a stale policy rate is named as the text names it.
-  const fresh = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudRatePath: async () => ({
+  const fresh = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({ refresh: true, apiClient: { getCloudRatePath: async () => ({
     ...payload, fedFunds: [{ ...payload.fedFunds[0], stale: false }] }) } as never }));
   expect(fresh.notes).toBeUndefined();
-  const policyStale = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudRatePath: async () => ({
+  const policyStale = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({ refresh: true, apiClient: { getCloudRatePath: async () => ({
     ...payload, current: { ...payload.current, effr: { ...metric, stale: true } } }) } as never }));
   expect(policyStale.notes).toEqual(["Stale: Effective fed funds rate, ZQV26.CBT."]);
 });
@@ -45,6 +48,7 @@ test("the status line describes the CME futures alone: their newest quote, delay
   const now = Date.parse("2026-10-09T21:00:00Z");
   const line = async (fedFunds: Array<Partial<RateContract>>) => {
     const result = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({
+      refresh: true,
       apiClient: { getCloudRatePath: async () => ({ ...payload, fedFunds: fedFunds.map((contract) => ({ ...payload.fedFunds[0], ...contract })) }) } as never,
     }));
     return formatFreshnessLine(deriveHeadlessFreshness(ratePathHeadless, result, now));
@@ -57,6 +61,7 @@ test("the status line describes the CME futures alone: their newest quote, delay
     .toBe("Source: CME futures · Fri 9 Oct 2026 20:59 UTC (oldest Tue 6 Oct 2026) · 10 min delayed, 1 of 2 stale");
   // A stale policy rate stays in its table and the report's own flags, not in the futures' line.
   const result = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({
+    refresh: true,
     apiClient: { getCloudRatePath: async () => ({ ...payload, current: { ...payload.current, effr: { ...metric, stale: true } },
       fedFunds: [{ ...payload.fedFunds[0], stale: false }] }) } as never,
   }));

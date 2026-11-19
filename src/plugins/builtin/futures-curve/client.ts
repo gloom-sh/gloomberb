@@ -2,6 +2,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { apiClient } from "../../../api-client";
 import type { FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { unansweredRefreshError, withSavedCopyMarkOf } from "../../../data/saved-copies";
 import { isFuturesContractSpec } from "../../../market-data/futures-contract";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { AssetDataProvider, DataProvider } from "../../../types/data-provider";
@@ -87,9 +88,15 @@ export function getCachedFuturesCurve(root: string): FuturesCurvePayload | null 
   return cached?.data ? liveCurve(cached.data) : null;
 }
 
-export async function loadFuturesCurve(root: string, force = false): Promise<FuturesCurvePayload> {
-  const { payload, stale, refreshError } = await loadCloudResource(futuresCurveCache, root, () => fetchFuturesCurve(root), { force });
-  return { ...liveCurve(payload), stale: stale || payload.stale, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])] };
+export async function loadFuturesCurve(root: string, force = false,
+  client: Pick<typeof apiClient, "getCloudFuturesCurve"> = apiClient): Promise<FuturesCurvePayload> {
+  const normalized = normalizeCurveRoot(root);
+  if (!normalized) throw new Error(unsupportedCurveRootMessage(root));
+  const result = await loadCloudResource(futuresCurveCache, normalized, () => fetchFuturesCurve(normalized, client), { force });
+  const { payload, stale } = result;
+  const error = unansweredRefreshError(result);
+  return withSavedCopyMarkOf({ ...liveCurve(payload), stale: stale || payload.stale,
+    gaps: [...payload.gaps, ...error ? [error] : []] }, result);
 }
 
 /** The archived curve on a past date with the curves a week and a month before it. */

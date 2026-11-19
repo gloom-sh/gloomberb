@@ -3,8 +3,11 @@ import type { CentralBankRatesPayload, CentralBankRow } from "../api-client/cent
 import type { MoneyMarketRow, MoneyMarketsPayload } from "../api-client/money-markets";
 import type { RateContract, RateMeeting, RatePathPayload } from "../api-client/rates";
 import { setCloudApiFetchTransport } from "../api-client/request";
+import { centralBankRatesCache } from "../plugins/builtin/central-bank-rates/client";
 import { centralBankRatesHeadless } from "../plugins/builtin/central-bank-rates/headless";
+import { moneyMarketsCache } from "../plugins/builtin/money-markets/client";
 import { moneyMarketsHeadless } from "../plugins/builtin/money-markets/headless";
+import { ratePathCache } from "../plugins/builtin/rate-path/client";
 import { ratePathHeadless } from "../plugins/builtin/rate-path/headless";
 import { createTestCliContext } from "../test-support/cli-context";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../test-support/headless";
@@ -79,12 +82,15 @@ const fredCatalog = { series: [
 ] };
 
 afterEach(() => {
+  centralBankRatesCache.reset();
+  moneyMarketsCache.reset();
+  ratePathCache.reset();
   setCliWidthOverride(null);
   setCloudApiFetchTransport(null);
 });
 
 async function headlessText(definition: HeadlessPaneDefinition, apiClient: object, args: HeadlessPaneLoadArgs = createTestHeadlessArgs()) {
-  const result = await definition.load(args, createTestHeadlessContext({ apiClient: apiClient as never }));
+  const result = await definition.load(args, createTestHeadlessContext({ refresh: true, apiClient: apiClient as never }));
   return renderHeadlessPaneText(definition, result, args, "Report");
 }
 

@@ -1,7 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { RateMeeting, RatePathPayload } from "../../../api-client/rates";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
-import { fetchRatePath } from "./client";
+import { loadRatePath } from "./client";
 import { meetingMoves, moveOddsText, movesPriced, movesText, rateText } from "./model";
 import { finiteOrNull } from "../../../utils/guards";
 
@@ -65,7 +65,7 @@ export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
   // Delayed CME futures quotes.
   freshness: { source: "CME futures", status: "delayed", delayMinutes: CME_FUTURES_DELAY_MINUTES },
   async load(_args, ctx) {
-    const data = await fetchRatePath(ctx.apiClient);
+    const data = await loadRatePath(ctx.refresh, ctx.apiClient);
     const moves = meetingMoves(data.meetings);
     // The line cites CME futures, so the contracts alone date it and count its stale rows. The policy rates
     // (FRED) keep their own date and stale flag in their table, and the meetings are read from the contracts.
