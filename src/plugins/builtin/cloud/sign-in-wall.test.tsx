@@ -147,11 +147,18 @@ test("a short sign-in wall retains the original frame and reports no teaser", as
 test("the verification wall keeps its resend action without reporting an auth CTA", async () => {
   arm(null);
   spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "unverified", plan: "free", emailVerified: false } as AuthUser);
+  // The press sends the link and opens the confirmation dialog; with no dialog to open, the command bar holds the command.
+  const confirm = spyOn(authDialog, "requestEmailConfirmation").mockReturnValue(true);
+  restore.push(() => confirm.mockRestore());
   await renderWall(<Harness original needsVerification />);
   const original = await tui.waitForFrameToContain("Resend Verification Email");
   await renderWall(<Harness needsVerification />);
   await tui.renderFrames(2);
   expect(tui.frame()).toBe(original);
+  await tui.emitKeypress({ name: "return" });
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(openCommandBar).not.toHaveBeenCalled();
+  confirm.mockReturnValue(false);
   await tui.emitKeypress({ name: "return" });
   expect(openCommandBar).toHaveBeenLastCalledWith("Resend Verification Email");
   expect(authDialog.requestAuthDialog).not.toHaveBeenCalled();

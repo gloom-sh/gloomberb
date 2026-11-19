@@ -6,7 +6,7 @@
  * hosted terminal's sign-in gate reuses.
  */
 import { useEffect, useRef, useState } from "react";
-import type { AuthUser } from "../api-client";
+import { apiClient, type AuthUser } from "../api-client";
 import { DialogFrame } from "../components/ui/frame";
 import { useAppLanguage } from "../i18n/react";
 import { useDialog, type PromptContext } from "../ui/dialog";
@@ -19,6 +19,7 @@ import { markHeardFromDue } from "./heard-from";
 function AuthDialog({
   initialMode,
   reason,
+  confirm,
   resolve,
   dismiss,
   onCleanChange,
@@ -26,13 +27,15 @@ function AuthDialog({
 }: PromptContext<AuthUser | undefined> & {
   initialMode: AccountMode;
   reason?: string;
+  /** Opens on the confirmation step for this signed-in account, with a fresh link on its way. */
+  confirm?: AuthUser;
   onCleanChange: (clean: boolean) => void;
   /** The account the form signed in or up, before its email is confirmed too. */
   onAccount: (user: AuthUser) => void;
 }) {
   useAppLanguage();
   const [mode, setMode] = useState<AccountMode>(initialMode);
-  const [verifyingUser, setVerifyingUser] = useState<AuthUser | null>(null);
+  const [verifyingUser, setVerifyingUser] = useState<AuthUser | null>(confirm ?? null);
   const [typed, setTyped] = useState(false);
   // A click outside closes it only while it is clean: never with something typed, nor once the account
   // waits on its emailed code.
@@ -40,7 +43,7 @@ function AuthDialog({
 
   // The close button always closes it, so a mouse is never trapped in it.
   if (verifyingUser) return <DialogFrame title={`Confirm ${verifyingUser.email}`} onClose={dismiss}>
-    <CloudVerificationPanel onVerified={resolve} onContinueFree={() => resolve(verifyingUser)} />
+    <CloudVerificationPanel onVerified={resolve} onContinueFree={() => resolve(verifyingUser)} sendOnOpen={!!confirm} />
   </DialogFrame>;
 
   return (
@@ -67,6 +70,8 @@ export interface AuthDialogRequest {
   onSignedIn?: (user: AuthUser) => void;
   /** The sign-in goes on to a checkout: nothing else is asked before it. */
   checkout?: boolean;
+  /** Set by `requestEmailConfirmation`: the dialog opens on this account's confirmation step. */
+  confirm?: AuthUser;
 }
 
 const authDialogListeners = new Set<(request: AuthDialogRequest) => void>();
@@ -78,6 +83,18 @@ export function requestAuthDialog(request: AuthDialogRequest = {}): boolean {
   if (authDialogListeners.size === 0) return false;
   for (const listener of authDialogListeners) listener(request);
   return true;
+}
+
+/**
+ * Opens the dialog on its confirmation step for the signed-in account whose
+ * email is still unconfirmed, and sends it the link again: the address in the
+ * title, and the terminal carries on by itself once the link is opened. False
+ * when there is no such account or no dialog host, so the caller can fall back.
+ */
+export function requestEmailConfirmation(): boolean {
+  const user = apiClient.getCurrentUser();
+  if (!user || user.emailVerified) return false;
+  return requestAuthDialog({ confirm: user });
 }
 
 /** Whether the dialog is on screen, so a press that would only ask for it again can do nothing. */
@@ -113,6 +130,7 @@ export function AuthDialogHost() {
               {...(context as PromptContext<AuthUser | undefined>)}
               initialMode={request.mode ?? "login"}
               reason={request.reason}
+              confirm={request.confirm}
               onCleanChange={setClean}
               onAccount={(user) => {
                 account = user;
@@ -123,8 +141,9 @@ export function AuthDialogHost() {
         .then((user) => {
           if (user) request.onSignedIn?.(user);
           // Where it heard about Gloom, once the dialog and what follows it have closed.
+          // An account that only came back to confirm its email was asked when it signed up.
           const signedIn = user ?? account;
-          if (signedIn && !request.checkout) markHeardFromDue(signedIn.id);
+          if (signedIn && !request.checkout && !request.confirm) markHeardFromDue(signedIn.id);
         })
         .finally(() => {
           openRef.current = false;
