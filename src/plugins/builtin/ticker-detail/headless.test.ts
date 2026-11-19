@@ -17,6 +17,36 @@ function args(symbols: string[], options: HeadlessPaneLoadArgs["options"] = {}):
   return { symbols, options, argument: symbols, rawArgument: symbols.join(",") };
 }
 
+test("FA points to newer earnings releases without putting preliminary figures in the filed table", async () => {
+  let filedDate = "2026-07-26";
+  const release = {
+    symbol: "NVDA", name: "NVIDIA", date: "2026-11-17", timing: "amc", timingSource: "company", reportedAt: "2026-11-17T21:00:00Z",
+    dateStatus: "reported", fiscalPeriod: "2026-10", fiscalYear: 2027, fiscalQuarter: 3, marketCap: null,
+    epsEstimate: null, epsActual: null, epsAnalysts: null, revenueEstimate: null, revenueAnalysts: null,
+    revenueActual: 115_844_000_000, revenueActualSource: "press-release", implied: null, realized: null,
+  } as const;
+  const ctx = createTestHeadlessContext({
+    marketData: createTestDataProvider({ getTickerFinancials: async () => createTestFinancials({
+      quarterlyStatements: [{ date: filedDate, totalRevenue: 82_000_000_000 }],
+    }) }),
+    apiClient: { getCloudEarningsHistory: async (symbol) => ({ asOf: "2026-11-19", symbol, name: release.name,
+      reports: [{ ...release, date: "2027-02-17", dateStatus: "announced", fiscalPeriod: "2027-01", fiscalQuarter: 4 }, release] }) } as HeadlessPaneContext["apiClient"],
+  });
+  const input = args(["NVDA:NASDAQ"], { period: "quarterly", statement: "income" });
+  const notice = /Q3 FY2027 were reported on 2026-11-17.*See ERN NVDA:NASDAQ/;
+  setSystemTime(new Date("2026-11-19T00:16:00Z"));
+  try {
+    const report = await financialStatementsHeadless.load(input, ctx);
+    expect(report.notes?.find((note) => notice.test(note))).toBeDefined();
+    expect(report.metadata?.columns).toMatchObject([{ date: filedDate }]);
+    expect(JSON.stringify(report.rows)).not.toContain("115844000000");
+    filedDate = "2026-10-25";
+    expect((await financialStatementsHeadless.load(input, ctx)).notes?.join(" ")).not.toContain("Newer results");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("financial statements keep raw values, dated growth cells, and formatted columns without requiring a quote", async () => {
   const requested: string[] = [];
   const ctx = {

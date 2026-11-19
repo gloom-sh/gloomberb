@@ -39,6 +39,20 @@ test("a sparse real capture preserves unknown changes and does not fabricate a t
   expect(model.sections.table.rows[0]!.values.title).toBe(fixture().evidence[0]!.title);
 });
 
+test("a stale company headline dates the role count and compares captures, not measured moves", () => {
+  const data = fixture();
+  data.status = "stale";
+  data.latest = { ...data.latest!, observedAt: "2026-11-10T07:40:00Z", week: "2026-11-09", openCount: 2797, netChange: 123 };
+  data.series = [{ ...data.latest, observedAt: "2026-11-09T04:00:00Z", openCount: 2680, netChange: null }];
+  const model = hiringModel(data);
+  expect(model.figures.slice(0, 2)).toMatchObject([
+    { label: "Open roles", value: "2,797", detail: "10 Nov 2026" },
+    { label: "Capture change", value: "+123", detail: "vs 2,674 roles" },
+  ]);
+  expect(model.sections.chart.rows[0]?.values.net).toBeNull();
+  expect(model.notices).toContain("The latest hiring capture is stale.");
+});
+
 test("rejects malformed numerical evidence and a response for a different issuer", async () => {
   const invalid = fixture();
   invalid.latest!.remoteShare = 2;
