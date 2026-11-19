@@ -35,7 +35,9 @@ export type StatsCloudClient = Pick<typeof apiClient, "getCloudFredSeries">;
 type GdpNowCalendar = (from: string) => Promise<readonly CloudEconEventPayload[]>;
 
 export const gdpNowCalendarFrom = (client: Pick<typeof apiClient, "getCloudEconomicCalendarFrom">): GdpNowCalendar =>
-  async (from) => (await client.getCloudEconomicCalendarFrom(from)).events;
+  async (from) => (await client.getCloudEconomicCalendarFrom(from, { signal: AbortSignal.timeout(4_000) })).events;
+
+const defaultGdpNowCalendar = gdpNowCalendarFrom(apiClient);
 
 export function createStatSeriesLoader(client: StatsCloudClient): StatSeriesLoader {
   const cloudLoader = async (def: StatDef): Promise<DatedObservation[]> => {
@@ -80,7 +82,7 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
     ...(cache ? { cache } : {}) };
 }
 
-async function withGdpNowPrevious(build: StatBuild, calendar: GdpNowCalendar): Promise<StatBuild> {
+export async function getGdpNowPrevious(build: StatBuild, calendar = defaultGdpNowCalendar): Promise<StatPoint | null> {
   const latest = build.points.at(-1)!;
   const quarter = `${latest.date.slice(0, 4)} Q${Math.ceil(Number(latest.date.slice(5, 7)) / 3)}`;
   const from = build.releasedOn ?? latest.date;
@@ -89,7 +91,7 @@ async function withGdpNowPrevious(build: StatBuild, calendar: GdpNowCalendar): P
     && event.referencePeriod === quarter && event.date.slice(0, 10) === from
     && Math.abs((parseEconFigure(event.actual)?.value ?? Infinity) - latest.value) < 0.00005);
   const prior = parseEconFigure(update?.prior);
-  return update?.priorAsOf && prior ? { ...build, previousUpdate: { date: update.priorAsOf, value: prior.value } } : build;
+  return update?.priorAsOf && prior ? { date: update.priorAsOf, value: prior.value } : null;
 }
 
 /**
@@ -183,7 +185,13 @@ export async function loadStatsBundle(options?: {
   if (builds.length === 0) {
     throw new Error(errors[0] ?? "Economic statistics unavailable");
   }
-  const calendar = options?.gdpNowCalendar ?? (!options?.loader ? gdpNowCalendarFrom(apiClient) : null);
-  return bundleFrom(calendar ? await Promise.all(builds.map((made) => made.stat.seriesId === "GDPNOW"
-    ? withGdpNowPrevious(made, calendar) : made)) : builds, errors);
+  const calendar = options?.gdpNowCalendar;
+  if (calendar) {
+    const nowcast = builds.find((made) => made.stat.seriesId === "GDPNOW");
+    if (nowcast) {
+      const previous = await getGdpNowPrevious(nowcast, calendar);
+      if (previous) nowcast.previousUpdate = previous;
+    }
+  }
+  return bundleFrom(builds, errors);
 }

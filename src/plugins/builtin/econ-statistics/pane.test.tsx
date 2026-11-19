@@ -66,6 +66,36 @@ test("the selected Michigan series labels publication lag without warning on the
   expect(tui.frame()).not.toContain("delayed one month");
 });
 
+test("GDPNow renders its current reading before the previous update arrives", async () => {
+  const pending = Promise.withResolvers<Awaited<ReturnType<typeof apiClient.getCloudEconomicCalendarFrom>>>();
+  const calendar = spyOn(apiClient, "getCloudEconomicCalendarFrom").mockReturnValue(pending.promise);
+  const fred = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (series) => ({ info: null,
+    observations: series === "GDPNOW" ? [{ date: "2026-10-01", value: 3.2093, revisedOn: "2026-11-18" }] : [],
+  }));
+  const state = createInitialState(createTestPaneConfig("/tmp/gloom-ecst-previous", {
+    instanceId: "ecst:previous", paneId: "econ-statistics", settings: { stat: "gdpnow", range: "ALL" },
+  }));
+  try {
+    await tui.render(<TestPaneFrame state={state} dispatch={() => {}} paneId="ecst:previous" pluginId="market-overview" runtime={createTestPluginRuntime()} width={160} height={36}>
+      {(body) => <EconStatisticsPane paneId="ecst:previous" paneType="econ-statistics" focused {...body} />}
+    </TestPaneFrame>, { width: 160, height: 36 });
+    await tui.waitForFrameToContain("3.2%");
+    expect(calendar).toHaveBeenCalledWith("2026-11-18", { signal: expect.any(AbortSignal) });
+    expect(tui.frame()).not.toContain("3.4%");
+
+    await act(async () => {
+      pending.resolve({ storedFrom: null, events: [{ id: "atlanta-fed-gdpnow-2026-11-18-2026-Q4",
+        event: "Atlanta Fed GDPNow", date: "2026-11-18T00:00:00.000Z", time: "All Day", country: "US", impact: "medium",
+        referencePeriod: "2026 Q4", actual: "3.2093%", forecast: null, prior: "3.3842%", priorAsOf: "2026-11-17" }] });
+    });
+    await tui.waitForFrameToContain("3.4%");
+  } finally {
+    pending.resolve({ storedFrom: null, events: [] });
+    calendar.mockRestore();
+    fred.mockRestore();
+  }
+});
+
 test.each([
   { width: 48, partial: false },
   { width: 120, partial: false },
