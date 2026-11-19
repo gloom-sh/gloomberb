@@ -162,7 +162,7 @@ export function createController(options: {
     ? options.user ?? null
     : { id: "u0", username: "ada", emailVerified: true };
   persistence.setState("session", {
-    sessionToken: options.sessionToken ?? null,
+    sessionToken: options.sessionToken === undefined ? (user ? "chat-fixture-session" : null) : options.sessionToken,
     user,
   }, { schemaVersion: 1 });
   persistence.setState("channel:everyone", {

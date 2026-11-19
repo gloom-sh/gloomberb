@@ -24,7 +24,8 @@ export async function startWarmStartWebServer({ webRoot, networkDir }: { webRoot
       const path = url.pathname === "/" || !url.pathname.includes(".") ? "/index.html" : url.pathname;
       const file = Bun.file(join(webRoot, path));
       if (!(await file.exists())) return new Response("", { status: 404 });
-      return new Response(file, {
+      const body = file.type.includes("text/html") ? await file.text() : file;
+      return new Response(body, {
         headers: {
           "content-type": file.type,
           "cache-control": path.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache",
