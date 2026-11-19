@@ -15,6 +15,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
+import { rankTickerMatches } from "../../../utils/ticker-match-order";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
@@ -142,7 +143,8 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
       )
       : [];
     const merged = mergeCatalogRows(catalogRows, [...resolvedRows, ...listedCrypto]);
-    return sortRows(filterCatalogRows(merged, filter, searchQuery), sortPreference);
+    const sorted = sortRows(filterCatalogRows(merged, filter, searchQuery), sortPreference);
+    return rankTickerMatches(sorted, searchQuery, (row) => [row.symbol, row.instrumentName, row.seriesName]);
   }, [catalogRows, filter, instruments, listedCrypto, searchQuery, sortPreference, tickerQuery]);
 
   useEffect(() => {

@@ -133,7 +133,7 @@ export function projectIpoCalendarHeadless(
   const limit = Number(args.options.limit ?? 50);
   const keyword = ipoKeyword(query);
   const found = filterIpoDeals(payload.deals, region, query, now).filter((deal) => atStatus(deal, status, now));
-  const matching = keyword === "lockup" ? byLockupEnd(found, now) : sortIpoDeals(found, DEFAULT_IPO_SORT, now);
+  const matching = keyword === "lockup" ? byLockupEnd(found, now) : sortIpoDeals(found, DEFAULT_IPO_SORT, now, query);
   const rows = matching.slice(0, limit).map((deal) => toRow(deal, now));
   const behind = marketsBehindText(marketsBehind(payload.sources, region, payload.deals));
   const single = matching.length === 1 && query && !keyword ? matching[0]! : null;

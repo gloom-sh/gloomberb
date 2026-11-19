@@ -37,6 +37,7 @@ export interface CatalogSeriesRow {
   input?: SeriesInput;
   /** The symbol a row filled in for a typed ticker charts. */
   symbol?: string;
+  instrumentName?: string;
   /** The registered series' own name, and where it asks to be drawn. */
   seriesName?: string;
   placement?: SeriesPlacement;
@@ -275,6 +276,7 @@ export function catalogRowsForResolvedInstruments(
         template: expression,
         input: undefined,
         symbol,
+        instrumentName: instrument.name ?? undefined,
         // Right after the series it fills in, instruments in the order given.
         order: row.order + (index + 1) / (instruments.length + 1),
         searchText: `${symbol.toLowerCase()} ${(instrument.name ?? "").toLowerCase()} ${row.searchText} ${expression.toLowerCase()}`,

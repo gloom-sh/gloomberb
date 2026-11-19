@@ -22,6 +22,7 @@ import { AudioPlayer, useCanPlayAudio } from "../../../components/ui";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
+import { rankTickerMatches } from "../../../utils/ticker-match-order";
 import {
   Box,
   useRendererHost,
@@ -564,7 +565,7 @@ function CallsListView({
       const order = left < right ? -1 : 1;
       return sort.direction === "asc" ? order : -order;
     });
-    return sorted;
+    return rankTickerMatches(sorted, query, (call) => [call.ticker, call.companyName]);
   }, [listedCalls, sort, searchQuery]);
 
   useEffect(() => {
