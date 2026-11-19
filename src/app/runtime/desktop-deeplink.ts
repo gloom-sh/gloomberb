@@ -339,10 +339,9 @@ function notifySuccess(pluginRegistry: PluginRegistry, body: string): void {
 /**
  * A link that changes something (creates an alert, adds a layout, starts a
  * conversation, runs a function on free text) waits for a click on a toast
- * that says what it asks: any web
- * page can open a gloomberb:// link, and a browser told to always allow them
- * asks nothing more. Links that only show something, a shared pane among
- * them, run at once.
+ * that says what it asks: any web page can open a gloomberb:// link, and a
+ * browser told to always allow them asks nothing more. Links that only show
+ * something, a shared pane among them, run at once.
  */
 function askBeforeRunning(pluginRegistry: PluginRegistry, body: string, label: string, run: () => void): void {
   pluginRegistry.notify({
