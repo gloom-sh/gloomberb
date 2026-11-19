@@ -182,9 +182,9 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
       case "size":
         return { text: formatIpoSize(deal.offerSizeUsd), value: deal.offerSizeUsd, color: colors.textDim };
       case "return": {
-        const value = deal.firstDay?.returnPct ?? null;
+        const value = deal.firstDay?.returnPct ?? deal.opening?.returnPct ?? null;
         return {
-          text: formatIpoReturn(value),
+          text: value != null && deal.opening && !deal.firstDay ? `${formatIpoReturn(value)} open` : formatIpoReturn(value),
           value: value == null ? null : value * 100,
           color: value == null ? colors.textMuted : priceColor(value, colors),
         };

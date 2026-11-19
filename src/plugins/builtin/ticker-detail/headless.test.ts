@@ -905,7 +905,7 @@ test("historical prices count a coin's bars without volume as history does, not 
 
 test("FA cash-only runway labels its actual input and caps only formatted values; financials omit runway", async () => {
   const financials = createTestFinancials({
-    annualStatements: [], quarterlyStatements: [{ date: "2026-06-30", totalRevenue: 0, cashAndCashEquivalents: 32_000, operatingCashFlow: -1 }],
+    annualStatements: [], quarterlyStatements: [{ date: "2026-06-30", totalRevenue: 0, cashAndCashEquivalents: 32_000, operatingCashFlow: -1, capitalExpenditure: 0 }],
   });
   const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({ getTickerFinancials: async () => financials }) });
   const request = args(["TEST:XETRA"], { statement: "liquidity", period: "quarterly" });
@@ -936,7 +936,7 @@ test("a quarter-only runway flags an offering since its balance sheet even with 
     annualStatements: [],
     quarterlyStatements: [
       { date: "2026-09-30", currency: "USD", totalRevenue: 50 },
-      { date: "2026-06-30", currency: "USD", totalRevenue: 0, cashAndCashEquivalents: 120, operatingCashFlow: -30 },
+      { date: "2026-06-30", currency: "USD", totalRevenue: 0, cashAndCashEquivalents: 120, operatingCashFlow: -30, capitalExpenditure: 0 },
     ],
   });
   const symbol = "NEWIPO";

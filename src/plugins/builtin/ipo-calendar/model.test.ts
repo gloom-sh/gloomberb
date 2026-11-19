@@ -23,6 +23,12 @@ import { ipoDeal } from "./test-fixture";
 
 const ids = (deals: readonly IpoDeal[]) => deals.map((deal) => deal.id);
 
+test("an opening return is available while the first session is still trading", () => {
+  const deal = ipoDeal({ symbol: "NEW", status: "listed", offerPrice: 83, firstDay: null,
+    opening: { session: "2026-11-19", price: 111.5, returnPct: 111.5 / 83 - 1 } });
+  expect(ipoDetailSentences(deal, null, [])[0]).toContain("opened at $111.50 (+34.3% from the offer)");
+});
+
 describe("IPO calendar tabs and search", () => {
   const deals = [
     ipoDeal({ id: "arm", symbol: "ARM" }),

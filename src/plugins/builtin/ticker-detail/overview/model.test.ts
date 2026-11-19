@@ -241,16 +241,17 @@ test("a bond fund's yield is its distribution yield, not its SEC yield, which fo
 });
 
 
-test("DES shows runway only for a burning TTM, never a seasonal outflow or short history", () => {
+test("DES omits runway for a cash-generating TTM and shows quarter-only burn without inventing a TTM", () => {
   const quarters = ["2025-09-30", "2025-12-31", "2026-03-31", "2026-06-30"].map((date, index) => ({
-    date, currency: "USD", cashAndCashEquivalents: 1_000, operatingCashFlow: index === 3 ? -30 : 20,
+    date, currency: "USD", cashAndCashEquivalents: 1_000, capitalExpenditure: 0, operatingCashFlow: index === 3 ? -30 : 20,
   }));
   const stats = (quarterlyStatements: typeof quarters) => buildOverviewStats({
     quote: undefined, fundamentals: {}, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value,
     runway: cashRunway({ quarterlyStatements, annualStatements: [] }),
   });
   expect(stats(quarters).find((row) => row.label === "Runway")).toBeUndefined();
-  expect(stats(quarters.slice(1)).find((row) => row.label === "Runway")).toBeUndefined();
+  expect(stats(quarters.slice(1)).find((row) => row.label === "Runway")).toMatchObject({ value: "100.0 mo", detail: expect.arrayContaining(["qtr"]) });
+  expect(stats(quarters.slice(0, 3)).find((row) => row.label === "Runway")).toBeUndefined();
   const burning = quarters.map((row) => ({ ...row, operatingCashFlow: -20 }));
   expect(stats(burning).find((row) => row.label === "Runway")).toMatchObject({
     value: "> 120 mo", detail: expect.arrayContaining(["qtr to 06-30 · TTM > 120 mo"]),

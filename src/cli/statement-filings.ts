@@ -47,7 +47,7 @@ export interface StatementReportSources {
   statementFilings(symbol: string): Promise<PeriodicFiling[]>;
   bankFigures(symbol: string): Promise<BankFiguresPayload>;
   /** The company's latest offering prospectuses (424B5, 424B4), newest first. */
-  offeringFilings?(symbol: string): Promise<OfferingFiling[]>;
+  offeringFilings?(symbol: string, proceedsSince?: string): Promise<OfferingFiling[]>;
   /** An HKEX company's results announcements and business updates on HKEXnews, newest first. */
   exchangeAnnouncements?(listing: { symbol: string; exchange: string }): Promise<ExchangeAnnouncementsPayload>;
 }
@@ -70,7 +70,7 @@ export const cloudStatementReportSources: StatementReportSources = {
     });
   },
   bankFigures: (symbol) => apiClient.getCloudBankFigures(symbol),
-  offeringFilings: (symbol) => fetchOfferingFilings(apiClient, symbol),
+  offeringFilings: (symbol, since) => fetchOfferingFilings(apiClient, symbol, undefined, since),
   exchangeAnnouncements: (listing) => apiClient.getCloudExchangeAnnouncements({ ...listing, limit: RESULTS_ANNOUNCEMENT_LIMIT, kind: "results" }),
 };
 
@@ -82,10 +82,10 @@ export const cloudStatementReportSources: StatementReportSources = {
 export async function loadOfferingFilings(
   sources: StatementReportSources | undefined,
   listing: { symbol: string; exchange?: string },
-  wanted: boolean,
+  wanted: boolean | string,
 ): Promise<OfferingFiling[]> {
   if (!wanted || !sources?.offeringFilings || nonUsSecListingVenue(listing.symbol, listing.exchange)) return [];
-  return await settleWithin(sources.offeringFilings(listing.symbol)
+  return await settleWithin(sources.offeringFilings(listing.symbol, typeof wanted === "string" ? wanted : undefined)
     .catch(logFailure("cli.statement-filings", "Reading the offering filings failed", [] as OfferingFiling[])), EXCHANGE_RESULTS_BUDGET_MS) ?? [];
 }
 

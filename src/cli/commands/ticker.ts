@@ -12,7 +12,7 @@ import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { halfYearGrowthPeriod } from "../../utils/financial-statements";
 import { servedRatesNotMeaningful, type ServedRate } from "../../utils/served-rates";
 import { NOT_MEANINGFUL_TEXT } from "../../utils/growth";
-import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
+import { burnsCash, cashRunway, formatRunwayMonths, offeringsAfter, runwayMethod, runwayOfferingNote, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
 import { exportedFundamentals, formatPriceEarnings, forwardFiscalYear, NOT_MEANINGFUL, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, marketCapBasisNote, selectMarketCapitalization, viewMarketCapitalization, withheldMarketCap } from "../../utils/market-capitalization";
 import {
@@ -230,11 +230,9 @@ function wrapProse(text: string): string {
 /** The runway row: months at the latest quarter's burn and at the trailing year's, each with the period it is read over. */
 function cashRunwayText(runway: CashRunway): string {
   const { quarter, trailing, periodEnd } = runway;
-  if (quarter?.kind === "no-burn" && trailing?.kind === "no-burn") return `no burn (quarter and TTM to ${periodEnd})`;
-  const part = (estimate: RunwayEstimate | null, period: string) => estimate
-    ? `${estimate.kind === "no-burn" ? "no burn" : formatRunwayMonths(estimate.months)} (${period} to ${periodEnd})` : null;
-  const ttm = trailing ? part(trailing, "TTM") : runway.trailingGap === "short-history" ? SHORT_RUNWAY_HISTORY : "TTM not reported";
-  return [part(quarter, "quarter"), ttm].filter((text): text is string => !!text).join(" \u00b7 ");
+  const part = (estimate: RunwayEstimate | null, period: string) => estimate?.kind === "months"
+    ? `${formatRunwayMonths(estimate.months)} (${period} to ${periodEnd})` : null;
+  return [part(quarter, "quarter"), part(trailing, "TTM")].filter((text): text is string => !!text).join(" \u00b7 ");
 }
 
 /** The balance sheet lines of a statement: a quarter that ends on the year's closing day shares them with the year. */
@@ -275,7 +273,7 @@ function buildStatementMetrics(
     ["Cash", balance("cashAndCashEquivalents")],
     ["Cash + ST Inv", balance("cashCashEquivalentsAndShortTermInvestments")],
     // The latest quarter's only: months of cash at its burn and the trailing year's.
-    ...runway ? [["Cash Runway", cashRunwayText(runway)] as [string, string]] : [],
+    ...burnsCash(runway) ? [["Cash Runway", cashRunwayText(runway)] as [string, string]] : [],
     ["Total Assets", balance("totalAssets")],
     ["Total Liabilities", balance("totalLiabilities")],
     ["Total Debt", balance("totalDebt")],
@@ -1580,13 +1578,13 @@ export async function buildTickerReport({
   }
 
   if (latestQuarter) {
-    const runway = cashRunway(financials);
+    const runway = cashRunway(financials, offerings);
     appendMetricSection(lines, `Latest Quarter (${statementPeriodText(latestQuarter.date, statementFilings?.latestQuarter ?? null)})`,
       buildStatementMetrics(latestQuarter, statementCurrency(latestQuarter), codes, runway, latestAnnual));
     unsourced(latestQuarter);
     // How the months are counted, and an offering since the balance sheet that the cash does not include yet.
     if (burnsCash(runway)) lines.push(cliStyles.muted(runwayMethod(runway.includesShortTerm)));
-    const offering = runway ? offeringNote(offeringsAfter(offerings, runway.periodEnd), runway.periodEnd) : null;
+    const offering = burnsCash(runway) ? runwayOfferingNote(offerings, runway.periodEnd, runway.currency) : null;
     if (offering) lines.push(cliStyles.muted(offering));
   }
   // The statements stop a quarter short of the results the company has released.
@@ -1674,7 +1672,8 @@ function buildTickerStructuredData({
   const identity = listingIdentity(listing, quote);
   // Market cap and the multiples at the regular session price, as the text report gives them.
   const priced = atLivePriceEarnings(financials);
-  const runway = cashRunway(financials);
+  const computedRunway = cashRunway(financials, offerings);
+  const runway = burnsCash(computedRunway) ? computedRunway : null;
   return {
     symbol,
     listing: { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name },
@@ -1886,7 +1885,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       dataProvider,
     });
     // An offering since the latest balance sheet, read only when the report has a runway to flag.
-    const offerings = loadOfferingFilings(statementSources, { symbol: requestSymbol, exchange }, cashRunway(resolvedFinancials) != null);
+    const runway = cashRunway(resolvedFinancials);
+    const offerings = loadOfferingFilings(statementSources, { symbol: requestSymbol, exchange }, burnsCash(runway) && runway.periodEnd);
     // A stock's IPO of the last year, read beside the rest; it never fails the report.
     const ipoLoad = quote && resolveTickerInstrumentKind(tickerFile, resolvedFinancials) === "equity"
       ? (dependencies.listingIpo ?? loadTickerIpo)({ symbol: requestSymbol, exchange: exchange || quote.listingExchangeName || quote.exchangeName })

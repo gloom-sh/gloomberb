@@ -61,6 +61,14 @@ function latestOpen(session: SessionOpen, time: number): number | null {
   return null;
 }
 
+function sessionVenue(symbol: string | undefined, exchange: string | undefined): string | undefined {
+  if (!symbol?.startsWith("^")) return exchange;
+  const venue = canonicalExchange(exchange);
+  if (/^(?:NASDAQ GIDS|SNP|DJI|WCB|CBOE(?: INDEX)?)$/.test(venue)
+    || (!venue && /^\^(?:IXIC|GSPC|DJI|NDX|RUT|VIX|VXN|NYA|OEX|MID|SPX)$/.test(symbol))) return "NYSE";
+  return exchange;
+}
+
 /**
  * When the trading session holding `time` opened: futures by their venue's
  * published hours, other listings by their regular session. Exchange holidays
@@ -69,7 +77,7 @@ function latestOpen(session: SessionOpen, time: number): number | null {
 export function latestTradingSessionOpen(symbol: string | undefined, exchange: string | undefined, time: number): number | null {
   if (!Number.isFinite(time)) return null;
   const futures = symbol || exchange ? futuresSessionOpen(symbol ?? "", exchange) : null;
-  return futures ? latestOpen(futures, time) : latestRegularSessionOpen(exchange, time);
+  return futures ? latestOpen(futures, time) : latestRegularSessionOpen(sessionVenue(symbol, exchange), time);
 }
 
 /**
@@ -93,7 +101,7 @@ export function futuresSessionOpenMinute(symbol: string | undefined, exchange: s
 export function listingTimeZone(symbol: string | undefined, exchange: string | undefined): string | null {
   const futures = symbol || exchange ? futuresSessionOpen(symbol ?? "", exchange) : null;
   if (futures) return futures.timeZone;
-  const zone = sessionCalendarTimeZone(exchange);
+  const zone = sessionCalendarTimeZone(sessionVenue(symbol, exchange));
   return zone === "UTC" ? null : zone;
 }
 
@@ -116,7 +124,7 @@ export function latestSessionStart(
   options: { extendedHours?: boolean } = {},
 ): number | null {
   const open = latestTradingSessionOpen(symbol, exchange, latest);
-  if (open === null || !options.extendedHours || !isUsListingExchange(exchange)
+  if (open === null || !options.extendedHours || symbol?.startsWith("^") || !isUsListingExchange(exchange)
     || (symbol && futuresSessionOpen(symbol, exchange))) return open;
   const preMarket = (time: number) => {
     const { year, month, day } = zonedDateTimeParts(time, NEW_YORK);
@@ -139,7 +147,7 @@ export function priorSessionClose(
   exchange: string | undefined,
 ): number | null {
   const futures = !!(symbol || exchange) && futuresSessionOpen(symbol ?? "", exchange) !== null;
-  const canonical = canonicalExchange(exchange);
+  const canonical = canonicalExchange(sessionVenue(symbol, exchange));
   for (let index = bars.length - 1; index >= 0; index -= 1) {
     const bar = bars[index]!;
     if (!(bar.time < start) || !Number.isFinite(bar.close)) continue;

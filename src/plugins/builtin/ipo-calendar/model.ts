@@ -302,7 +302,7 @@ function sortValue(columnId: IpoColumnId, deal: IpoDeal, status: IpoBoardStatus)
     case "status": return IPO_BOARD_STATUSES.indexOf(status);
     case "price": return usdPrice(deal);
     case "size": return deal.offerSizeUsd;
-    case "return": return deal.firstDay?.returnPct ?? null;
+    case "return": return deal.firstDay?.returnPct ?? deal.opening?.returnPct ?? null;
   }
 }
 

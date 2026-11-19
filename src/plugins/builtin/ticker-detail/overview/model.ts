@@ -42,7 +42,7 @@ import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { bondFigures } from "../../../../market-data/bond-funds";
 import { quoteStatsBasisText } from "../../../../market-data/quotes/export-identity";
-import { formatRunwayMonths, type CashRunway, type RunwayEstimate } from "../../../../utils/cash-runway";
+import { burnsCash, formatRunwayMonths, type CashRunway, type RunwayEstimate } from "../../../../utils/cash-runway";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
@@ -134,11 +134,13 @@ function runwayText(estimate: RunwayEstimate): string {
  * trailing operating cash flow is nonnegative or unavailable has no row.
  */
 function runwayStat(runway: CashRunway | null | undefined): StatField | null {
-  if (runway?.trailing?.kind !== "months") return null;
-  const { quarter, trailing, periodEnd } = runway;
+  if (!burnsCash(runway)) return null;
+  const { periodEnd } = runway;
+  const quarter = runway.quarter?.kind === "months" ? runway.quarter : null;
+  const trailing = runway.trailing?.kind === "months" ? runway.trailing : null;
   const dates = [periodEnd, periodEnd.slice(5)];
-  if (!quarter) return { label: "Runway", value: runwayText(trailing), detail: [...dates.map((date) => `TTM to ${date}`), "TTM"], link: FINANCIALS };
-  const ttm = ` · TTM ${runwayText(trailing)}`;
+  if (!quarter) return trailing ? { label: "Runway", value: runwayText(trailing), detail: [...dates.map((date) => `TTM to ${date}`), "TTM"], link: FINANCIALS } : null;
+  const ttm = trailing ? ` · TTM ${runwayText(trailing)}` : "";
   return {
     label: "Runway",
     value: runwayText(quarter),
