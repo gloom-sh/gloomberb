@@ -137,6 +137,20 @@ async function withBrowserSession(run: (storage: Pick<Storage, "getItem" | "setI
   }
 }
 
+test.each(["device poll", "password reset email", "sign-out"] as const)("a pending get-session display write across %s", async (operation) => {
+  await withBrowserSession(async (storage) => {
+    const answer = Promise.withResolvers<Response>();
+    globalThis.fetch = (async (url: string) => url === sessionUrl ? answer.promise : Response.json({ status: "pending" })) as typeof fetch;
+    const pending = browserCredentialedFetch(sessionUrl);
+    if (operation === "device poll") await apiClient.pollDeviceSignIn("synthetic-device-code");
+    else if (operation === "password reset email") await apiClient.requestPasswordReset("test@example.invalid");
+    else await apiClient.signOut();
+    answer.resolve(sessionResponse(proUser));
+    await pending;
+    expect(readBrowserSessionUser(storage, sessionBinding)?.id).toBe(operation === "sign-out" ? undefined : proUser.id);
+  });
+});
+
 test.each(["5xx", "offline", "timeout"] as const)("an inconclusive web boot (%s) releases panes and recovers the session", async (failure) => {
   await withBrowserSession(async () => {
     let reads = 0;

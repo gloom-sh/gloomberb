@@ -5,7 +5,7 @@ import type { PackedResourceRecord } from "./memory-resource-store";
 import { createSqliteAccess, type SqliteAccess } from "./sqlite/access";
 import { safeParseJson, serializeJson } from "./sqlite/json";
 import { logFailure } from "../utils/log-failure";
-import { ProResourceAccess, proResourceMatcher } from "./pro-resource-access";
+import { ProResourceAccess, proResourceAccounts } from "./pro-resource-access";
 
 const RESOURCE_CACHE_SOFT_ROW_LIMIT = 25_000;
 const RESOURCE_CACHE_SOFT_SIZE_LIMIT = 100 * 1024 * 1024;
@@ -16,6 +16,7 @@ const RESOURCE_CACHE_MAINTENANCE_BYTE_INTERVAL = Math.floor(
 const RESOURCE_CACHE_MAINTENANCE_TIME_INTERVAL_MS = 5 * 60_000;
 /** Rows read per eviction pass, so a full cache is evicted in slices. */
 const RESOURCE_CACHE_PRUNE_BATCH_SIZE = 512;
+const PRO_BACKFILL_BATCH_SIZE = 256;
 /**
  * A read moves its row up the eviction order in memory, and the rows read
  * since are written in one transaction this often, before an eviction and
@@ -117,6 +118,8 @@ function sortRows(rows: ResourceCacheRow[]): ResourceCacheRow[] {
 }
 
 export class ResourceStore {
+  private proBackfillTimer: ReturnType<typeof setTimeout> | null = null;
+  private closed = false;
   private readonly proAccess = new ProResourceAccess();
   private writesSinceMaintenance = 0;
   private bytesWrittenSinceMaintenance = 0;
@@ -243,6 +246,8 @@ export class ResourceStore {
    * connection still have to close.
    */
   close(): void {
+    this.closed = true;
+    if (this.proBackfillTimer) clearTimeout(this.proBackfillTimer);
     try {
       this.flushTouches();
     } catch (error) {
@@ -460,28 +465,37 @@ export class ResourceStore {
 
     this.pendingTouches.delete(rowMapKey(rowKey));
     const saved = this.proAccess.permits(key) && this.access.writeCache("save cached resource", () => {
-      this.db
-        .query(
-          `INSERT OR REPLACE INTO resource_cache (
+      const accounts = proResourceAccounts(key);
+      const save = this.db.query<{ id: number }, (string | number | null)[]>(
+        `INSERT INTO resource_cache (
             namespace, kind, entity_key, variant_key, source_key, schema_version,
             payload, provenance, fetched_at, stale_at, expires_at, last_accessed_at, size_bytes
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          rowKey.namespace,
-          rowKey.kind,
-          rowKey.entityKey,
-          rowKey.variantKey,
-          rowKey.sourceKey,
-          schemaVersion,
-          payload,
-          provenance,
-          now,
-          staleAt,
-          expiresAt,
-          now,
-          sizeBytes,
-        );
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT (namespace, kind, entity_key, variant_key, source_key) DO UPDATE SET
+            schema_version = excluded.schema_version, payload = excluded.payload, provenance = excluded.provenance,
+            fetched_at = excluded.fetched_at, stale_at = excluded.stale_at, expires_at = excluded.expires_at,
+            last_accessed_at = excluded.last_accessed_at, size_bytes = excluded.size_bytes${accounts.length ? " RETURNING rowid AS id" : ""}`,
+      );
+      const values = [
+        rowKey.namespace,
+        rowKey.kind,
+        rowKey.entityKey,
+        rowKey.variantKey,
+        rowKey.sourceKey,
+        schemaVersion,
+        payload,
+        provenance,
+        now,
+        staleAt,
+        expiresAt,
+        now,
+        sizeBytes,
+      ];
+      if (!accounts.length) save.run(...values);
+      else this.db.transaction(() => {
+        const row = save.get(...values)!;
+        this.indexProResource(row.id, accounts);
+      })();
     });
 
     if (saved) this.maintainCacheAfterWrite(Date.now(), sizeBytes);
@@ -505,19 +519,79 @@ export class ResourceStore {
   }
 
   setProResourceAccess(account: string, allowed: boolean): void {
-    if (this.proAccess.update(account, allowed)) this.purgeProResources(account);
+    if (!this.proAccess.update(account, allowed) || allowed) return;
+    this.scheduleProBackfill();
+    const hasCandidates = this.access.readCache("check indexed Pro resources", () => !!this.db.query(
+      "SELECT 1 FROM resource_pro_candidates WHERE account = ? LIMIT 1",
+    ).get(account));
+    if (hasCandidates === false) return;
+    const matches = this.proAccess.revokedMatcher(account)!;
+    for (const [id, { key }] of this.pendingTouches) if (matches(key)) this.pendingTouches.delete(id);
+    this.access.write("purge revoked Pro resources", () => {
+      if (this.proAccess.revokedMatcher(account) !== matches) return;
+      this.db.transaction(() => {
+        const keys = this.db.query<ResourceCacheKey & { id: number }, [string]>(
+          `SELECT cache.rowid AS id, namespace, kind, entity_key AS entityKey, source_key AS sourceKey
+           FROM resource_pro_candidates CROSS JOIN resource_cache AS cache ON cache.rowid = resource_id
+           WHERE account = ?`,
+        );
+        const remove = this.db.query("DELETE FROM resource_cache WHERE rowid = ?");
+        for (const key of keys.all(account)) if (matches(key)) remove.run(key.id);
+      }).immediate();
+    });
   }
 
-  purgeProResources(account: string): void {
-    const matches = proResourceMatcher(account);
-    for (const [id, { key }] of this.pendingTouches) if (matches(key)) this.pendingTouches.delete(id);
-    this.access.write("purge revoked Pro resources", this.db.transaction(() => {
-      const keys = this.db.query<ResourceCacheKey & { id: number }, []>(
-        `SELECT rowid AS id, namespace, kind, entity_key AS entityKey, source_key AS sourceKey FROM resource_cache`,
+  private indexProResource(id: number, accounts: string[]): void {
+    const insert = this.db.query("INSERT OR IGNORE INTO resource_pro_candidates (account, resource_id) VALUES (?, ?)");
+    for (const account of accounts) insert.run(account, id);
+  }
+
+  /** Index the pre-upgrade rows once, in bounded turns off the launch path. */
+  private scheduleProBackfill(): void {
+    if (this.closed || this.proBackfillTimer || !this.proAccess.hasRevocations) return;
+    const pending = this.db.query("SELECT 1 FROM resource_pro_backfill WHERE covered_through < legacy_end");
+    if (!this.access.readCache("check legacy Pro resource index", () => pending.get())) return;
+    this.proBackfillTimer = setTimeout(() => {
+      this.proBackfillTimer = null;
+      let indexed = false;
+      const index = this.db.transaction(() => this.backfillProResources());
+      try {
+        this.access.write("index legacy Pro resources", () => {
+          index.immediate();
+          indexed = true;
+        }, { settled: () => { if (indexed) this.scheduleProBackfill(); } });
+      } catch (error) {
+        logFailure("data.resource-store", "Could not index older Pro display copies")(error);
+      }
+    }, 50);
+    this.proBackfillTimer.unref();
+  }
+
+  private backfillProResources(): void {
+    if (!this.proAccess.hasRevocations) return;
+    const progress = this.db.query<{ covered_through: number; legacy_end: number }, []>(
+      "SELECT covered_through, legacy_end FROM resource_pro_backfill",
+    ).get()!;
+    const boundary = this.db.query<{ end: number | null }, [number, number, number]>(
+      `SELECT MAX(rowid) AS end FROM (
+         SELECT rowid FROM resource_cache WHERE rowid > ? AND rowid <= ? ORDER BY rowid LIMIT ?
+       )`,
+    ).get(progress.covered_through, progress.legacy_end, PRO_BACKFILL_BATCH_SIZE)?.end;
+    if (boundary != null) {
+      const keys = this.db.query<ResourceCacheKey & { id: number }, { $start: number; $end: number }>(
+        `SELECT rowid AS id, namespace, kind, entity_key AS entityKey, source_key AS sourceKey FROM resource_cache
+         WHERE rowid > $start AND rowid <= $end`,
       );
       const remove = this.db.query("DELETE FROM resource_cache WHERE rowid = ?");
-      for (const key of keys.all()) if (matches(key)) remove.run(key.id);
-    }));
+      for (const key of keys.all({ $start: progress.covered_through, $end: boundary })) {
+        if (!this.proAccess.permits(key)) remove.run(key.id);
+        else {
+          const accounts = proResourceAccounts(key);
+          if (accounts.length) this.indexProResource(key.id, accounts);
+        }
+      }
+    }
+    this.db.query("UPDATE resource_pro_backfill SET covered_through = ? WHERE id = 1").run(boundary ?? progress.legacy_end);
   }
 
   /**

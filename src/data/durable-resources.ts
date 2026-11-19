@@ -3,6 +3,7 @@ import { resourceRecordKey, WARM_RESOURCE_BUDGET } from "./memory-resource-store
 import type { CachedResourceRecord, ResourceCacheKey } from "./resource-store";
 import { logFailure } from "../utils/log-failure";
 import { createPersistScheduler } from "../state/persist-scheduler";
+import { ProResourceAccess } from "./pro-resource-access";
 
 export { WARM_RESOURCE_BUDGET };
 
@@ -11,7 +12,7 @@ export interface ResourceSyncBatch {
   set: CachedResourceRecord[];
   delete: ResourceCacheKey[];
   touch: Array<ResourceCacheKey & { at: number }>;
-  purgePro?: string[];
+  proAccess?: Array<{ account: string; allowed: boolean }>;
 }
 
 export interface BatchedResourceSink extends ResourceRecordSink {
@@ -33,28 +34,29 @@ function keyOf({ namespace, kind, entityKey, variantKey, sourceKey }: ResourceCa
  * dropped: the next launch fetches those again.
  */
 export function createBatchedResourceSink(
-  write: (batch: ResourceSyncBatch) => Promise<unknown> | unknown,
+  write: (batch: ResourceSyncBatch, access: ProResourceAccess) => Promise<unknown> | unknown,
   { delayMs = 500, label = "data.durable-resources" }: { delayMs?: number; label?: string } = {},
 ): BatchedResourceSink {
   const changes = new Map<string, { record: CachedResourceRecord } | { deleted: ResourceCacheKey }>();
   const touches = new Map<string, ResourceCacheKey & { at: number }>();
-  const revoked = new Set<string>();
+  const access = new ProResourceAccess();
+  const accessChanges = new Map<string, boolean>();
   let armed = false;
   const writes = createPersistScheduler<void>({
     delayMs,
     save: async () => {
       armed = false;
-      if (changes.size === 0 && touches.size === 0 && revoked.size === 0) return;
+      if (changes.size === 0 && touches.size === 0 && accessChanges.size === 0) return;
       const batch: ResourceSyncBatch = { set: [], delete: [], touch: [...touches.values()] };
-      if (revoked.size) batch.purgePro = [...revoked];
+      if (accessChanges.size) batch.proAccess = [...accessChanges].map(([account, allowed]) => ({ account, allowed }));
       for (const change of changes.values()) {
         if ("record" in change) batch.set.push(change.record);
         else batch.delete.push(change.deleted);
       }
       changes.clear();
       touches.clear();
-      revoked.clear();
-      await write(batch);
+      accessChanges.clear();
+      await write(batch, access);
     },
     onError: logFailure(label, "Could not save cached resources"),
   });
@@ -77,8 +79,14 @@ export function createBatchedResourceSink(
       touches.delete(id);
       arm();
     },
-    purgeProResources(account) {
-      revoked.add(account);
+    setProResourceAccess(account, allowed) {
+      if (!access.update(account, allowed)) return;
+      accessChanges.set(account, allowed);
+      const matches = access.revokedMatcher(account);
+      if (matches) {
+        for (const [id, change] of changes) if ("record" in change && matches(change.record)) changes.delete(id);
+        for (const [id, touch] of touches) if (matches(touch)) touches.delete(id);
+      }
       armed = true;
       writes.schedule(undefined, 0);
     },
@@ -127,7 +135,7 @@ export function isViewResourceKey(key: Pick<ResourceCacheKey, "namespace">): boo
 interface SyncTarget {
   set(key: ResourceCacheKey, value: unknown, options: { schemaVersion?: number; provenance?: CachedResourceRecord["provenance"]; fetchedAt?: number; cachePolicy: { staleMs: number; expireMs: number } }): unknown;
   delete(key: ResourceCacheKey): void;
-  purgeProResources(account: string): void;
+  setProResourceAccess(account: string, allowed: boolean): void;
   touch?(key: ResourceCacheKey, at: number): void;
 }
 
@@ -142,6 +150,11 @@ function isKey(value: unknown): value is ResourceCacheKey {
  * records, are skipped.
  */
 export function applyResourceSync(store: SyncTarget, batch: Partial<ResourceSyncBatch> | null | undefined, accept: (key: ResourceCacheKey) => boolean = isViewResourceKey): void {
+  for (const update of Array.isArray(batch?.proAccess) ? batch.proAccess : []) {
+    if (update && typeof update.account === "string" && update.account && typeof update.allowed === "boolean") {
+      store.setProResourceAccess(update.account, update.allowed);
+    }
+  }
   for (const record of Array.isArray(batch?.set) ? batch.set : []) {
     if (!isKey(record) || !accept(record) || ![record.fetchedAt, record.staleAt, record.expiresAt].every(Number.isFinite)) continue;
     store.set(record, record.value, {
@@ -156,8 +169,5 @@ export function applyResourceSync(store: SyncTarget, batch: Partial<ResourceSync
   }
   for (const touch of Array.isArray(batch?.touch) ? batch.touch : []) {
     if (isKey(touch) && accept(touch) && Number.isFinite(touch.at)) store.touch?.(touch, touch.at);
-  }
-  for (const account of Array.isArray(batch?.purgePro) ? batch.purgePro : []) {
-    if (typeof account === "string" && account) store.purgeProResources(account);
   }
 }

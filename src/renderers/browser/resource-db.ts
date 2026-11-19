@@ -7,7 +7,7 @@ import {
 } from "../../data/durable-resources";
 import { packWarmResource, resourceRecordKey, type WarmResourceRecord } from "../../data/memory-resource-store";
 import { logFailure } from "../../utils/log-failure";
-import { proResourceMatcher } from "../../data/pro-resource-access";
+import { proResourceAccounts, type ProResourceAccess } from "../../data/pro-resource-access";
 
 /**
  * The web app's saved copies, in the browser's IndexedDB: every cached
@@ -19,13 +19,19 @@ import { proResourceMatcher } from "../../data/pro-resource-access";
  * recently read records.
  */
 const DB_NAME = "gloomberb-cache";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const RECORDS = "records";
 const META = "meta";
+const PRO_CANDIDATES = "pro-candidates";
 /** A launch waits this long at most for its saved copies before it draws without them. */
 const OPEN_TIMEOUT_MS = 1_500;
 
-interface RecordMeta { at: number; size: number }
+interface RecordMeta { at: number; size: number; pro?: string[] }
+
+function unpackKey(key: string) {
+  const [namespace = "", kind = "", entityKey = "", , sourceKey] = key.split("\u0000");
+  return { namespace, kind, entityKey, sourceKey };
+}
 
 export interface BrowserResources {
   records: WarmResourceRecord[];
@@ -55,10 +61,21 @@ function open(factory: IDBFactory): Promise<IDBDatabase> {
       timedOut = true;
       reject(new Error("Opening the saved data timed out"));
     }, OPEN_TIMEOUT_MS);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = ({ oldVersion }) => {
       const db = req.result;
       if (!db.objectStoreNames.contains(RECORDS)) db.createObjectStore(RECORDS);
-      if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
+      const meta = oldVersion === 0 ? db.createObjectStore(META) : req.transaction!.objectStore(META);
+      meta.createIndex(PRO_CANDIDATES, "pro", { multiEntry: true });
+      if (oldVersion === 1) {
+        const walking = meta.openCursor();
+        walking.onsuccess = () => {
+          const cursor = walking.result;
+          if (!cursor) return;
+          const pro = proResourceAccounts(unpackKey(String(cursor.primaryKey)));
+          if (pro.length) cursor.update({ ...cursor.value, pro });
+          cursor.continue();
+        };
+      }
     };
     req.onsuccess = () => {
       clearTimeout(timeout);
@@ -98,19 +115,36 @@ async function readWarm(db: IDBDatabase): Promise<WarmResourceRecord[]> {
   return loaded.filter((record): record is WarmResourceRecord => record !== null);
 }
 
-async function writeBatch(db: IDBDatabase, batch: ResourceSyncBatch): Promise<void> {
+async function writeBatch(db: IDBDatabase, batch: ResourceSyncBatch, access: ProResourceAccess): Promise<void> {
+  const revoked = batch.proAccess?.filter(({ account }) => access.revokedMatcher(account)) ?? [];
+  if (!revoked.length && !batch.set.length && !batch.delete.length && !batch.touch.length) return;
   const transaction = db.transaction([RECORDS, META], "readwrite");
   const records = transaction.objectStore(RECORDS);
   const meta = transaction.objectStore(META);
+  if (revoked.length) {
+    const candidates = await Promise.all(revoked.map(async ({ account }) => ({
+      account, keys: await request(meta.index(PRO_CANDIDATES).getAllKeys(account)),
+    })));
+    for (const { account, keys } of candidates) {
+      if (!access.revokedMatcher(account)) continue;
+      for (const key of keys) {
+        records.delete(key);
+        meta.delete(key);
+      }
+    }
+  }
+  if (!batch.set.length && !batch.delete.length && !batch.touch.length) return done(transaction);
   const existing = await readMetadata(meta);
   const updates = new Map<string, WarmResourceRecord>();
   for (const record of batch.set) {
+    if (!access.permits(record)) continue;
     const key = resourceRecordKey(record);
     const packed = packWarmResource(record);
     const size = sizeOf(packed);
     if (size > WARM_RESOURCE_BUDGET.maxBytes) continue;
     updates.set(key, packed);
-    existing.set(key, { at: record.lastAccessedAt, size });
+    const pro = proResourceAccounts(record);
+    existing.set(key, { at: record.lastAccessedAt, size, pro: pro.length ? pro : undefined });
   }
   for (const key of batch.delete) {
     records.delete(resourceRecordKey(key));
@@ -121,16 +155,6 @@ async function writeBatch(db: IDBDatabase, batch: ResourceSyncBatch): Promise<vo
     const key = resourceRecordKey(touch);
     const entry = existing.get(key);
     if (entry) entry.at = Math.max(entry.at, touch.at);
-  }
-  if (batch.purgePro?.length) {
-    const revoked = batch.purgePro.map(proResourceMatcher);
-    for (const key of existing.keys()) {
-      const [namespace = "", kind = "", entityKey = "", , sourceKey] = key.split("\u0000");
-      if (!revoked.some((matches) => matches({ namespace, kind, entityKey, sourceKey }))) continue;
-      records.delete(key);
-      meta.delete(key);
-      existing.delete(key);
-    }
   }
   const keep = withinBudget(existing);
   for (const key of existing.keys()) {
@@ -166,7 +190,7 @@ export async function openBrowserResources(factory: IDBFactory | undefined = glo
     const records = await Promise.race([readWarm(connection), new Promise<WarmResourceRecord[]>((_, reject) => {
       timeout = setTimeout(() => reject(new Error("Reading the saved data timed out")), OPEN_TIMEOUT_MS);
     })]).finally(() => clearTimeout(timeout));
-    return { records, sink: createBatchedResourceSink((batch) => closed ? undefined : writeBatch(connection, batch), { label: "browser-resources" }) };
+    return { records, sink: createBatchedResourceSink((batch, access) => closed ? undefined : writeBatch(connection, batch, access), { label: "browser-resources" }) };
   } catch (error) {
     db?.close();
     logFailure("browser-resources", "Could not open the saved data")(error);

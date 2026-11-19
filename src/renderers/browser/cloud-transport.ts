@@ -10,6 +10,14 @@ import type { AuthUser } from "../../api-client";
 
 let boundAccount: { binding: string; id: string } | null = null;
 let sessionRead = 0;
+const SESSION_MUTATIONS = new Set([
+  "POST /api/auth/sign-in/email",
+  "POST /api/auth/sign-up/email",
+  "POST /api/auth/one-tap/callback",
+  "POST /api/auth/sign-out",
+  "POST /api/auth/change-password",
+  "DELETE /api/account",
+]);
 const SESSION_READ_TIMEOUT_MS = 15_000;
 
 function plantBrowserSessionCookies(cookieHeader: string): void {
@@ -41,9 +49,11 @@ export async function browserCredentialedFetch(url: string, init: RequestInit = 
   // tabs opened together waited seconds per request that way.
   const method = (init.method ?? "GET").toUpperCase();
   const read = method === "GET" && init.cache === undefined;
-  const authRoute = typeof location !== "undefined" && url.startsWith(`${location.origin}/api/auth/`);
-  const sessionRoute = authRoute && url === `${location.origin}/api/auth/get-session` && method === "GET";
-  if (authRoute && method !== "GET") sessionRead += 1;
+  const pathname = typeof location !== "undefined" && url.startsWith(`${location.origin}/`)
+    ? new URL(url).pathname : "";
+  const authRoute = pathname.startsWith("/api/auth/");
+  const sessionRoute = pathname === "/api/auth/get-session" && method === "GET";
+  if (SESSION_MUTATIONS.has(`${method} ${pathname}`)) sessionRead += 1;
   const request = sessionRoute ? ++sessionRead : sessionRead;
   const signal = sessionRoute ? signalWithTimeout(init.signal ?? undefined, SESSION_READ_TIMEOUT_MS) : init.signal;
   const credentials = !authRoute && !cookieHeader && apiClient.isCookieIdentityUnavailable() ? "omit" : "include";
@@ -137,6 +147,7 @@ export function installBrowserFetchTransports(): void {
     if (!boundAccount) return;
     const user = apiClient.getCurrentUser();
     const matchingUser = user?.id === boundAccount.id ? user : null;
+    if (matchingUser && !apiClient.getConfirmedDisplayUser()) return;
     try {
       rememberBrowserSessionUser(localStorage, boundAccount.binding, matchingUser);
     } catch { /* Intentional ignore: browser display storage may be unavailable. */ }

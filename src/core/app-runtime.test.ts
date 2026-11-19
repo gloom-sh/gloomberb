@@ -58,6 +58,43 @@ test("confirmed Free access purges the account's old Pro copies, not a tentative
   }
 });
 
+test.each(["session read", "socket ready"])("an unverified socket retains paid copies until a %s confirms the downgrade", async (confirmation) => {
+  const originalSocket = globalThis.WebSocket;
+  const sockets = installTestWebSocket();
+  const proUser = { ...verifiedUser, plan: "pro" } as const;
+  const paid = { key: ["risk-factors", JSON.stringify([proUser.id, true, true]), "AAPL"] };
+  apiClient.setSessionToken("pro-session");
+  apiClient.restoreCachedUser(proUser);
+  const services = runtime();
+  const stop = apiClient.subscribeQuotes([{ symbol: "AAPL" }], () => {});
+  try {
+    await services.ready;
+    writeSavedCopy(paid, "paid data");
+    const downgraded = { ...proUser, plan: "free" };
+    const answer = Promise.withResolvers<Response>();
+    setCloudApiFetchTransport(async () => answer.promise);
+    const session = confirmation === "session read" ? apiClient.getSession() : null;
+    sockets.at(-1)!.receive({ type: "auth.unverified" });
+    expect(apiClient.getCurrentUser()?.emailVerified).toBe(false);
+    expect(readSavedCopy(paid)?.value).toBe("paid data");
+    if (session) {
+      answer.resolve(Response.json({ user: downgraded }));
+      await session;
+    } else {
+      sockets.at(-1)!.receive({ type: "ready", user: downgraded });
+    }
+    expect(apiClient.getConfirmedDisplayUser()?.plan).toBe("free");
+    expect(readSavedCopy(paid)).toBeNull();
+  } finally {
+    stop();
+    services.destroy();
+    apiClient.dispose();
+    apiClient.setSessionToken(null);
+    setCloudApiFetchTransport(null);
+    globalThis.WebSocket = originalSocket;
+  }
+});
+
 test("retiring an old runtime cannot disconnect its replacement", async () => {
   const dataProvider = createTestDataProvider();
   const previous = runtime({ dataProvider });
