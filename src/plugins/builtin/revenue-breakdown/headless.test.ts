@@ -6,6 +6,7 @@ import { renderReportCsv, renderReportNdjson } from "../../../cli/report-tables"
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { revenueBreakdownHeadless } from "./headless";
+import { revenueColumns } from "./model";
 
 const payload: RevenueBreakdownPayload = {
   symbol: "CORZ", cik: "0001839341", currency: "USD", view: "product", views: ["product", "segment"],
@@ -61,4 +62,30 @@ test("the text report names each table's scale in its heading; JSON, CSV and NDJ
   } finally {
     setCliColorEnabledOverride(null);
   }
+});
+
+test("reported periods share fiscal-year labels across the pane, text report and exports", async () => {
+  const annualUrl = "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0513/2026051300653.pdf";
+  const interimUrl = "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/1125/2025112501051.pdf";
+  const annual = { end: "2026-03-31", kind: "annual" as const, label: "Year ended 31 March 2026", revenueLabel: "Revenue", filing: { filed: "2026-05-13", url: annualUrl, page: 18 } };
+  const hk: RevenueBreakdownPayload = {
+    ...payload, cik: undefined, symbol: "9988", currency: "CNY", view: "segment", views: ["segment"],
+    periods: [{
+      ...annual, kind: "interim", end: "2025-09-30", label: "Six months ended 30 September 2025",
+      filing: { filed: "2025-11-25", url: `${interimUrl}#page=4`, page: 17 },
+    }, annual],
+  };
+  const args = createTestHeadlessArgs({ symbols: ["9988:HKEX"], argument: "9988:HKEX", rawArgument: "9988:HKEX", options: {} });
+  const result = await revenueBreakdownHeadless.load(args, createTestHeadlessContext({
+    apiClient: { getCloudRevenueBreakdown: async () => hk } as never,
+  }));
+  expect(result.sections[0]?.columns?.map((column) => column.header)).toEqual(["Segment", "H1 2026", "FY 2026", "Share"]);
+  expect(result.sections[1]?.rows?.[0]).toMatchObject({ period: "Six months ended 30 September 2025", filing: `${interimUrl}#page=17` });
+  expect(result.sections[1]?.rows?.[1]).toMatchObject({ filed: "2026-05-13", filing: `${annualUrl}#page=18` });
+  const freshness = deriveHeadlessFreshness(revenueBreakdownHeadless, result);
+  expect(freshness.source).toBe("Company filings");
+  expect(revenueColumns(hk, "trend").map((column) => column.label)).toEqual(["Segment", "H1 2026", "FY 2026", "% Total"]);
+  expect(renderHeadlessPaneText(revenueBreakdownHeadless, result, args, "SEG", freshness)).toMatch(/H1 2026\s+FY 2026/);
+  const tables = headlessReportTables(revenueBreakdownHeadless, result, args, "SEG", freshness, { complete: true, unavailableSymbols: [] });
+  expect(renderReportCsv(tables, freshness)).toContain("Segment,H1 2026,FY 2026,Share");
 });

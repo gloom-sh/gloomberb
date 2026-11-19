@@ -449,6 +449,7 @@ export function cloudRevenueBreakdownPath(symbol: string, view?: RevenueBreakdow
   const search = new URLSearchParams({ symbol: abroad?.symbol ?? symbol });
   setListingAbroad(search, abroad);
   if (view) search.set("view", view);
+  if (abroad?.exchange === "HKEX") search.set("periods", "reported");
   return appendQuery("/cloud/revenue-breakdown", search);
 }
 

@@ -121,13 +121,13 @@ describe("CDS report", () => {
     expect(text).toContain("762.5k USD");
     expect(text).not.toMatch(/\+[\d.]+k USD/);
     // Dated by the last trade, not the fetch, the line the pane and the shot end with.
-    expect(freshness).toMatchObject({ source: "DTCC", asOf: "2026-10-09T13:21:00.000Z", lagDays: 2, observation: "last trade" });
-    expect(text.trimEnd().split("\n").at(-1)).toBe("Source: DTCC · last trade 2026-10-09 · lag 2 days");
+    expect(freshness).toMatchObject({ source: "DTCC", asOf: "2026-10-09T13:21:00.000Z", observation: "last trade" });
+    expect(text.trimEnd().split("\n").at(-1)).toBe("Source: DTCC · last trade 2026-10-09 13:21 UTC · 2 days old");
 
     expect(csv).toContain("5Y spread (bp),157");
     expect(csv).toContain("Date,2026-10-09");
     expect(csv).toContain("2026-10-09T13:21:00Z");
-    expect(csv).toContain("# Source: DTCC · last trade 2026-10-09 · lag 2 days");
+    expect(csv).toContain("# Source: DTCC · last trade 2026-10-09 13:21 UTC · 2 days old");
   });
 
   test("a move without a comparable level reads --, not zero", async () => {
@@ -297,7 +297,7 @@ describe("CDS report", () => {
       ["Ford Motor Company", null],
     ]);
     expect(text).toMatch(/Amazon\.com, Inc\.\s+3\s+2026-10-09 19:55\s+73bp\s+\+3\.0bp\s+\+5\.8bp\s+2026-10-09/);
-    expect(text.trimEnd().split("\n").at(-1)).toBe("Source: DTCC · last trade 2026-10-09 · lag 2 days");
+    expect(text.trimEnd().split("\n").at(-1)).toBe("Source: DTCC · last trade 2026-10-09 19:55 UTC · 43 hours old");
  
     // Each export row is its issuer's, in bp, dated by its own 5Y level (Issuer 7's from two days before its
     // last trade), or by its last trade without one: never the day of the newest row.

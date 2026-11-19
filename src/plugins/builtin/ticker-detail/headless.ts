@@ -2,7 +2,7 @@ import {
   FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote,
   statementHistoryNotes, statementPeriodMonths,
 } from "../../../utils/financial-statements";
-import { canonicalExchange } from "../../../utils/exchanges";
+import { canonicalExchange, isUsEquityExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import { quoteMonitorColumns, quoteMonitorRow, QUOTE_MONITOR_BASE_COLUMNS, QUOTE_MONITOR_ROW_KEYS } from "./quote-monitor/rows";
 import type {
@@ -26,6 +26,9 @@ import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
 import { loadPeriodEndHistory } from "./financials/period-end-history";
 import { loadExchangeResultsNotes } from "./financials/exchange-results";
+import { boardKey, newYorkToday } from "../earnings/board-model";
+import { fetchEarningsHistory } from "../earnings/client";
+import { fiscalPeriodText, fiscalQuarterOf } from "../earnings/fiscal-quarter";
 import { latestBalanceSheetDate, loadOfferingNote } from "./financials/offerings";
 import { formatRunwayMonths, reportsShortTermTotal, runwayMethod } from "../../../utils/cash-runway";
 import { formatPerShareNumber } from "../../../utils/reported-money";
@@ -389,8 +392,11 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
     // said again in the results line.
     const shownFields = table ? financialSubTabFields(table.subTab) : undefined;
     const filled = table ? filledPeriodsNote(table.statements, shownFields) : null;
-    const announced = table ? await reportExchangeResults(ctx, symbol, financials, filledPeriodPublications(table.statements, shownFields)) : [];
     const periodDates = dates.map(({ date }) => date);
+    const [announced, newerRelease] = await Promise.all([
+      table ? reportExchangeResults(ctx, symbol, financials, filledPeriodPublications(table.statements, shownFields)) : [],
+      requestedPeriod === "quarterly" ? newerQuarterRelease(ctx, symbol, financials, periodDates[0]) : null,
+    ]);
     const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, requestedPeriod, hasRequestedStatements, options.statement);
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
@@ -398,7 +404,7 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       // Each exported row names its unit, the statements' period and the newest period end it runs to.
       rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: requestedPeriod,
       // The report closes with how old its latest period is, how far back its periods go, and how to read further.
-      notes: [...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
+      notes: [...newerRelease ? [newerRelease] : [], ...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
         ...statementHistoryNotes(requestedPeriod, periodDates, symbol, await reportOlderStatements(ctx, symbol, requestedPeriod, periodDates)),
         ...table?.subTab.key === "cashflow" ? [CASH_FLOW_NOTE] : [], ...dateSourceNotes(dates)],
       metadata: {
@@ -453,6 +459,23 @@ function quarterlyGrowthNotice(statements: readonly FinancialStatement[]): strin
 }
 
 type HeadlessContext = Parameters<typeof financialStatementsHeadless.load>[1];
+
+async function newerQuarterRelease(ctx: HeadlessContext, symbol: string, financials: Awaited<ReturnType<typeof loadHeadlessFinancials>>, filedEnd: string | undefined): Promise<string | null> {
+  const exchange = parsePublicTickerKey(symbol).exchange ?? financials.quote?.listingExchangeName;
+  if (!filedEnd || !isUsEquityExchange(exchange ?? undefined)) return null;
+  const history = await fetchEarningsHistory(boardKey(symbol), ctx.apiClient, 4)
+    .catch(logFailure("fa", "Earnings release lookup failed", null));
+  if (!history) return null;
+  const today = newYorkToday();
+  const report = history.reports.filter((entry) => entry.date <= today && entry.dateStatus === "reported"
+    && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(entry.fiscalPeriod ?? "") && entry.fiscalPeriod! > filedEnd.slice(0, 7)
+    && (entry.revenueActualSource === "press-release" || entry.epsActualSource === "press-release"))
+    .sort((left, right) => right.fiscalPeriod!.localeCompare(left.fiscalPeriod!) || right.date.localeCompare(left.date))[0];
+  if (!report) return null;
+  const quarter = report.fiscalYear && report.fiscalQuarter
+    ? { fiscalYear: report.fiscalYear, fiscalQuarter: report.fiscalQuarter } : fiscalQuarterOf(report.fiscalPeriod, history.fiscalAnchor);
+  return `Newer results for ${fiscalPeriodText(report.fiscalPeriod, quarter)} were reported on ${report.date} in the company's earnings release. See ERN ${symbol} for the release figures until FA reflects the filing.`;
+}
 
 /** Whether GF, reading the listing's extended statement history, goes back further than the report (statementHistoryNotes). */
 function reportOlderStatements(ctx: HeadlessContext, symbol: string, period: "annual" | "quarterly", dates: readonly string[]) {

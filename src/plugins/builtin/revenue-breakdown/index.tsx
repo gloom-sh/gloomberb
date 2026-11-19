@@ -1,6 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { isKnownNonUsListing } from "../../../utils/sec";
+import { canonicalExchange } from "../../../utils/exchanges";
 import { revenueBreakdownCache } from "./client";
 import { revenueBreakdownHeadless } from "./headless";
 import {
@@ -18,7 +19,7 @@ export const revenueBreakdownModule: PluginModule = {
       order: 22,
       component: RevenueResearchTab,
       instruments: ["equity"],
-      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
+      isVisible: ({ ticker }) => canonicalExchange(ticker?.metadata.exchange) === "HKEX" || !isKnownNonUsListing(ticker),
     });
   },
 
@@ -50,7 +51,7 @@ export const revenueBreakdownModule: PluginModule = {
         paneId: REVENUE_BREAKDOWN_PANE_ID,
         label: "Revenue Breakdown",
         description:
-          "Quarterly revenue by product, segment or region from the company's 10-Q and 10-K filings.",
+          "Reported revenue by product, segment or region from company filings.",
         shortcut: "SEG",
         keywords: ["revenue", "segments", "segment", "products", "product", "geography", "regions", "seg"],
         settings: () => ({ view: "product" }),

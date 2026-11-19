@@ -1,0 +1,59 @@
+name: Install WebKit
+description: >-
+  Install Playwright's pinned WebKit build and its system libraries on an
+  Ubuntu 24.04 runner, for jobs that drive WebKit through playwright-core.
+  Needs the repository's packages installed first (the setup-bun action).
+
+# The browser files come from the Actions cache, keyed by the playwright-core
+# version, so a run after the first downloads nothing. The system libraries
+# are not cached and come from apt, off the runner's slow regional mirror, in
+# a step bounded by `timeout` that tries once more after a hang or failure.
+# Steps of a composite action have no timeout-minutes of their own: the bounds
+# here are `timeout` on each command, and a caller adds timeout-minutes to its
+# step as a backstop.
+runs:
+  using: composite
+  steps:
+    - id: playwright
+      name: Read the pinned Playwright version
+      shell: bash
+      run: |
+        version="$(node -p 'require("playwright-core/package.json").version')"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Cache the pinned Playwright browser files
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-webkit-ubuntu-24.04-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+
+    - name: Install WebKit system libraries (apt)
+      shell: bash
+      run: |
+        mirror_list=/etc/apt/apt-mirrors.txt
+        if [[ -f "$mirror_list" ]] && grep -q 'us-east-2\.ec2\.archive\.ubuntu\.com' "$mirror_list"; then
+          echo "Using Ubuntu's primary archive instead of the slow regional mirror."
+          sudo -n sed -Ei 's|https?://us-east-2\.ec2\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|' "$mirror_list"
+        fi
+
+        bun_path="$(command -v bun)"
+        for attempt in 1 2; do
+          sudo -n timeout -k 10s 120s "$bun_path" "$PWD/node_modules/playwright-core/cli.js" install-deps webkit && exit 0
+          status=$?
+          if [[ "$attempt" == 1 ]]; then
+            echo "::warning::WebKit apt dependencies failed to install (exit $status); retrying once."
+          fi
+        done
+        echo "::error::WebKit apt dependencies failed to install after two attempts (last exit $status)."
+        exit "$status"
+
+    - name: Install the pinned WebKit build
+      shell: bash
+      env:
+        DEBUG: pw:install
+      run: |
+        timeout -k 10s 150s bun node_modules/playwright-core/cli.js install webkit || {
+          status=$?
+          echo "::error::Playwright WebKit browser install failed (exit $status)."
+          exit "$status"
+        }

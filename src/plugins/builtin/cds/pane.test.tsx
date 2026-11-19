@@ -182,7 +182,7 @@ describe("CdsPane", () => {
     expect(frame).toMatch(/Oracle Corporation\s+2\s+2026-08-25 12:00\s+235bp\s+\+28\.1bp\s+\+75\.4bp/);
     expect(frame).toMatch(new RegExp(String.raw`Ford Motor Company\s+1\s+2026-08-25 11:00\s+157bp\s+0\.0bp\s+${MISSING_VALUE}`));
     // The last trade, never the fetch time, with its age in days.
-    expect(frame).toMatch(/Source: DTCC · last trade 2026-08-25 · lag \d+ days/);
+    expect(frame).toMatch(/Source: DTCC · last trade 2026-08-25 12:00 UTC · \d+ days old/);
     expect(frame).not.toContain("as of");
   });
 

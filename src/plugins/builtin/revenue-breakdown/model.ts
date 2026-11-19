@@ -1,6 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 import { MISSING_VALUE, pickUnit } from "../../../utils/format";
 import type {
+  ReportedRevenueBreakdownPeriod,
   RevenueBreakdownPayload,
   RevenueBreakdownPeriod,
   RevenueBreakdownRow,
@@ -30,8 +31,26 @@ export interface RevenueSort {
   direction: "asc" | "desc";
 }
 
-export const quarterLabel = (period: RevenueBreakdownPeriod) =>
-  `Q${period.fiscalQuarter} ${period.fiscalYear}`;
+export function revenuePeriodLabeler(periods: readonly RevenueBreakdownPeriod[]) {
+  const annual = periods.findLast((period) => "kind" in period && period.kind === "annual");
+  const yearEndMonth = annual ? Number(annual.end.slice(5, 7)) : 12;
+  return (period: RevenueBreakdownPeriod): string => {
+    if (!("kind" in period)) return `Q${period.fiscalQuarter} ${period.fiscalYear}`;
+    const year = period.end.slice(0, 4);
+    if (period.kind === "annual") return `FY ${year}`;
+    return `H1 ${Number(period.end.slice(5, 7)) > yearEndMonth ? Number(year) + 1 : year}`;
+  };
+}
+
+export function reportedPeriods(payload: RevenueBreakdownPayload) {
+  return payload.periods.flatMap((period) => "kind" in period ? [period] : []);
+}
+
+export function filingPageUrl(filing: ReportedRevenueBreakdownPeriod["filing"]): string {
+  const url = new URL(filing.url);
+  url.hash = `page=${filing.page}`;
+  return url.href;
+}
 
 /**
  * Drop leading quarters no row was reported for, so a young company, or rows
@@ -150,31 +169,33 @@ const NUMBER_WIDTH = 9;
 export function revenueColumns(
   payload: RevenueBreakdownPayload,
   mode: RevenueMode,
+  periodLabel = revenuePeriodLabeler(payload.periods),
 ): DataTableColumn[] {
   const labelWidth = Math.min(34, Math.max(12, ...payload.rows.map((row) => row.label.length + 2)));
   const latest = payload.periods.at(-1)!;
   const first = payload.periods[0]!;
-  const history: DataTableColumn[] = mode === "text"
+  const reported = "kind" in latest;
+  const history: DataTableColumn[] = mode === "text" || reported
     ? payload.periods.slice(0, -1).map((period, index) => ({
       id: `q${index}`,
-      label: quarterLabel(period),
+      label: periodLabel(period),
       width: NUMBER_WIDTH,
       align: "right" as const,
     }))
     : [{
       id: "trend",
-      label: payload.periods.length > 1 ? `${quarterLabel(first)} – ${quarterLabel(latest)}` : quarterLabel(latest),
+      label: payload.periods.length > 1 ? `${periodLabel(first)} – ${periodLabel(latest)}` : periodLabel(latest),
       width: Math.max(18, payload.periods.length * BAR_CELLS_PER_QUARTER + 1),
       align: "left" as const,
       // Spare width goes to the bars, which sit right after the names.
       flexGrow: 1,
     }];
   return [
-    { id: "label", label: VIEW_NOUNS[payload.view].label, width: labelWidth, align: "left", ...(mode === "text" ? { flexGrow: 1 } : {}) },
+    { id: "label", label: VIEW_NOUNS[payload.view].label, width: labelWidth, align: "left", ...(mode === "text" || reported ? { flexGrow: 1 } : {}) },
     ...history,
-    { id: "revenue", label: quarterLabel(latest), width: NUMBER_WIDTH, align: "right" },
-    { id: "ttm", label: "TTM", width: NUMBER_WIDTH - 1, align: "right" },
+    { id: "revenue", label: periodLabel(latest), width: NUMBER_WIDTH, align: "right" },
+    ...(!reported ? [{ id: "ttm", label: "TTM", width: NUMBER_WIDTH - 1, align: "right" as const }] : []),
     { id: "share", label: "% Total", width: NUMBER_WIDTH, align: "right" },
-    { id: "yoy", label: "YoY", width: NUMBER_WIDTH - 1, align: "right" },
+    ...(!reported ? [{ id: "yoy", label: "YoY", width: NUMBER_WIDTH - 1, align: "right" as const }] : []),
   ];
 }
