@@ -52,6 +52,7 @@ import {
   FINANCIAL_SECTIONS,
   RATIO_TABS,
   buildRatioTableModel,
+  latestRunwayPeriodEnd,
   oldestRatioPeriodEnd,
   periodEndClose,
   ratioOpenings,
@@ -486,7 +487,7 @@ export function ResolvedFinancialsTab({
   // An HKEX company's latest period dated by its results announcement, unless the filled periods already date it, and
   // what was announced after it.
   const exchangeResults = useExchangeResultsNotes(boundSymbol, boundExchange, latestBalanceSheetDate(financials), filledDates);
-  const offeringNote = useOfferingNote(boundSymbol, boundExchange, latestBalanceSheetDate(financials),
+  const offeringNote = useOfferingNote(boundSymbol, boundExchange, latestRunwayPeriodEnd(ratioModel) ?? latestBalanceSheetDate(financials),
     !!financials && (section.key === "balance" || section.key === "liquidity"));
 
   // A latest period over 15 months old says how old it is, beside the data's other limits.

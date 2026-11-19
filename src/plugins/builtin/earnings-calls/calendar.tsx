@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { rankTickerMatches } from "../../../utils/ticker-match-order";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CloudEarningsCallPayload } from "../../../api-client";
 import { cloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
@@ -189,7 +190,10 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const shown = needle ? calls.filter((call) => matches(call, needle)) : calls;
-    return buildSectionedRows(calendarSections(shown, days, sort), (call) => call.id);
+    const sections = calendarSections(shown, days, sort).map((section) => ({
+      ...section, items: rankTickerMatches(section.items, needle, (call) => [call.ticker, call.companyName]),
+    }));
+    return buildSectionedRows(sections, (call) => call.id);
   }, [calls, days, query, sort]);
   const callRows = useMemo(() => rows.filter(isSectionedItemRow), [rows]);
   // The cursor starts on the next call, so the day's calls already over sit above it.

@@ -93,7 +93,7 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
 
   // One clock per board, so a deal's status, its place and a search for it agree.
   const now = useMemo(() => new Date(), [deals, resource.updatedAt]);
-  const rows = useMemo(() => sortIpoDeals(filterIpoDeals(deals, tab, query, now), sort, now), [deals, now, query, sort, tab]);
+  const rows = useMemo(() => sortIpoDeals(filterIpoDeals(deals, tab, query, now), sort, now, query), [deals, now, query, sort, tab]);
   // The cursor starts on the first deal, and moves there when its deal leaves the list.
   const selected = rows.find((deal) => deal.id === selectedId) ?? rows[0] ?? null;
   // Sized on the whole board, so switching tabs does not move the columns.
@@ -213,7 +213,10 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
             width={width}
             search={{
               value: query,
-              onChange: setQuery,
+              onChange: (value) => {
+                setQuery(value);
+                setSelectedId(null);
+              },
               placeholder: "company, ticker or market",
               focused,
               debounceMs: 250,

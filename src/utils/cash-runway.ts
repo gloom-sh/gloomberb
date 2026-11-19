@@ -18,7 +18,7 @@ import { latestFinancialPeriod } from "./latest-financial-period";
 export const QUARTER_MONTHS = 3;
 export const YEAR_MONTHS = 12;
 const MAX_DISPLAY_MONTHS = 120;
-export const SHORT_RUNWAY_HISTORY = "< 4 quarters";
+export const SHORT_RUNWAY_HISTORY = "TTM n/a: <4q data";
 
 /** Financial firms' operating cash flow includes their financing business, not operating burn. */
 export function excludesCashRunway(profile?: Pick<CompanyProfile, "sector" | "industry">): boolean {

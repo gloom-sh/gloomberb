@@ -916,7 +916,7 @@ test("FA cash-only runway labels its actual input and caps only formatted values
     expect.objectContaining({ value: 96_000, formatted: "> 120 mo" }),
   ]);
   expect(report.rows.find((row) => row.id === "runway-ttm")?.cells).toEqual([
-    expect.objectContaining({ gap: "< 4 quarters" }),
+    expect.objectContaining({ gap: "TTM n/a: <4q data", formatted: "TTM n/a: <4q data" }),
   ]);
   // A total outside the displayed quarterly columns still governs the input label and fallback.
   financials.annualStatements = [{ date: "2025-12-31", cashCashEquivalentsAndShortTermInvestments: 50_000 }];
@@ -929,6 +929,33 @@ test("FA cash-only runway labels its actual input and caps only formatted values
   const bank = await financialStatementsHeadless.load(request, ctx);
   expect(bank.rows.some((row) => String(row.id).startsWith("runway-"))).toBe(false);
   expect(bank.notes?.some((note) => note.startsWith("Runway:"))).toBe(false);
+});
+
+test("a quarter-only runway flags an offering since its balance sheet even with a newer partial statement", async () => {
+  const financials = createTestFinancials({
+    annualStatements: [],
+    quarterlyStatements: [
+      { date: "2026-09-30", currency: "USD", totalRevenue: 50 },
+      { date: "2026-06-30", currency: "USD", totalRevenue: 0, cashAndCashEquivalents: 120, operatingCashFlow: -30 },
+    ],
+  });
+  const symbol = "NEWIPO";
+  const apiClient: Pick<HeadlessPaneContext["apiClient"], "getCloudSecFilings"> = {
+    getCloudSecFilings: async () => ({
+      filings: [{ form: "424B4", filingDate: "2026-08-01", accessionNumber: "fixture", cik: "1", filingUrl: "https://example.test/filing" }],
+      hasMore: false,
+      nextOffset: 0,
+    }),
+  };
+  const ctx = createTestHeadlessContext({
+    marketData: createTestDataProvider({ getTickerFinancials: async () => financials }),
+    apiClient: apiClient as HeadlessPaneContext["apiClient"],
+  });
+  const report = await financialStatementsHeadless.load(args([`${symbol}:NASDAQ`], { statement: "liquidity", period: "quarterly" }), ctx);
+  expect(report.rows.find((row) => row.id === "runway-quarter")?.cells).toEqual([
+    expect.objectContaining({ gap: "not reported" }), expect.objectContaining({ value: 12 }),
+  ]);
+  expect(report.notes).toContain("424B4 offering filed 2026-08-01, after the 2026-06-30 balance sheet; cash and runway predate it.");
 });
 
 // A memo of three companies' ROIC: Copart, debt free with its cash in its equity, and the oldest year without the one before it.

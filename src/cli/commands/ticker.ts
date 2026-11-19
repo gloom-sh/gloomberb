@@ -233,7 +233,8 @@ function cashRunwayText(runway: CashRunway): string {
   if (quarter?.kind === "no-burn" && trailing?.kind === "no-burn") return `no burn (quarter and TTM to ${periodEnd})`;
   const part = (estimate: RunwayEstimate | null, period: string) => estimate
     ? `${estimate.kind === "no-burn" ? "no burn" : formatRunwayMonths(estimate.months)} (${period} to ${periodEnd})` : null;
-  return [part(quarter, "quarter"), trailing ? part(trailing, "TTM") : `TTM ${runway.trailingGap === "short-history" ? SHORT_RUNWAY_HISTORY : "not reported"}`].filter((text): text is string => !!text).join(" \u00b7 ");
+  const ttm = trailing ? part(trailing, "TTM") : runway.trailingGap === "short-history" ? SHORT_RUNWAY_HISTORY : "TTM not reported";
+  return [part(quarter, "quarter"), ttm].filter((text): text is string => !!text).join(" \u00b7 ");
 }
 
 /** The balance sheet lines of a statement: a quarter that ends on the year's closing day shares them with the year. */
