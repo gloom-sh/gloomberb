@@ -52,7 +52,7 @@ export function Liquidations({ asset, onAssetChange, accessKey, width, height, f
   const [selectedPrint, setSelectedPrint] = usePluginPaneState<string | null>("perps:liquidation-print", null);
   const base = asset.trim().toUpperCase() || "BTC";
   const loader = useCallback((force: boolean) => loadPerpsLiquidations(base, accessKey, force), [base, accessKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsLiquidations(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: true });
+  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsLiquidations(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
   const data = resource.data?.payload;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });
@@ -123,7 +123,7 @@ export function Depth({ asset, onAssetChange, accessKey, width, height, focused,
   const [selectedId, setSelected] = usePluginPaneState<string | null>("perps:depth-selected", null);
   const base = asset.trim().toUpperCase() || "BTC";
   const loader = useCallback((force: boolean) => loadPerpsDepth(base, accessKey, force), [base, accessKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsDepth(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: true });
+  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsDepth(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
   const data = resource.data?.payload;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 300_000 });
   usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });

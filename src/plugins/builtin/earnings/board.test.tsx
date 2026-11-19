@@ -1,15 +1,17 @@
 import { afterAll, beforeAll, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
-import { apiClient } from "../../../api-client";
+import { apiClient, type AuthUser } from "../../../api-client";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsCalendarReport } from "../../../api-client/earnings";
 import type { CombinedPaneFooter } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { setSharedRegistryForTests } from "../../registry/shared";
 import { EarningsBoard } from "./board";
-import { resetEarningsCloudCaches } from "./client";
+import { boardRangeDays } from "./calendar-model";
+import { attachEarningsCloudCaches, loadEarningsBoard, resetEarningsCloudCaches } from "./client";
 
 const tui = createOpenTuiTestHarness();
 const PANE = "earnings-calendar:test";
@@ -23,11 +25,10 @@ const entry = (symbol: string, date: string): EarningsCalendarReport => ({
   implied: null, realized: null, averageMove: null, averageReports: 0,
 });
 
-const calendarRequests = spyOn(apiClient, "getCloudEarningsCalendar").mockImplementation(
-  async (query: EarningsCalendarQuery): Promise<EarningsCalendarPayload> => ({
-    asOf: "2026-10-14T15:00:00Z", from: query.from, to: query.to, reports: [entry("JPM", "2026-10-14"), entry("NFLX", "2026-10-15")],
-  }),
-);
+const defaultCalendar = async (query: EarningsCalendarQuery): Promise<EarningsCalendarPayload> => ({
+  asOf: "2026-10-14T15:00:00Z", from: query.from, to: query.to, reports: [entry("JPM", "2026-10-14"), entry("NFLX", "2026-10-15")],
+});
+const calendarRequests = spyOn(apiClient, "getCloudEarningsCalendar").mockImplementation(defaultCalendar);
 const historyRequests = spyOn(apiClient, "getCloudEarningsHistory").mockImplementation(async (symbol) => ({ asOf: "2026-10-14T15:00:00Z", symbol, name: null, reports: [] }));
 beforeAll(() => {
   resetEarningsCloudCaches();
@@ -66,6 +67,86 @@ test("the terminal keeps ERN's table and footer: no calendar, even from a layout
   expect(frame).not.toContain("Calendar");
   expect(frame).not.toContain("otify");
   expect(footer.hints.map((hint) => hint.id)).toEqual(["catalysts", "ticker", "estimates", "calls", "analysts"]);
+});
+
+test.each(["downgrade", "account switch", "sign-out"] as const)("the earnings board clears old reports on %s, even if the new read fails", async (transition) => {
+  resetEarningsCloudCaches();
+  attachEarningsCloudCaches(new MemoryPluginPersistence());
+  let user: AuthUser | null = { id: "earnings-test", emailVerified: true, plan: "pro" } as AuthUser;
+  const listeners = new Set<() => void>();
+  const userSpy = spyOn(apiClient, "getCurrentUser").mockImplementation(() => user);
+  const subscription = spyOn(apiClient, "subscribeCurrentUser").mockImplementation((listener) => {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+  });
+  const nextRead = Promise.withResolvers<EarningsCalendarPayload>();
+  const requested = Promise.withResolvers<void>();
+  calendarRequests.mockImplementation((query) => {
+    if (user?.id === "earnings-test" && user.plan === "pro") return defaultCalendar(query);
+    requested.resolve();
+    return nextRead.promise;
+  });
+  try {
+    const state = createInitialState(createTestPaneConfig("earnings-test", { paneId: "earnings-calendar", instanceId: PANE }));
+    await tui.render(<TestPaneFrame state={state} paneId={PANE} pluginId="earnings" runtime={runtime} width={100} height={16}>
+      {(body) => <EarningsBoard focused scopedSymbols={MARKET} {...body} />}
+    </TestPaneFrame>, { width: 100, height: 16 });
+    await tui.waitForFrameToContain("JPM");
+    await act(async () => {
+      user = transition === "downgrade" ? { ...user!, plan: "free" }
+        : transition === "account switch" ? { ...user!, id: "other-earnings-test" } : null;
+      for (const listener of listeners) listener();
+    });
+    await requested.promise;
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).not.toContain("JPM");
+    await act(async () => { nextRead.reject(new Error("Offline")); });
+    const failed = await tui.waitForFrameToContain("Offline");
+    expect(failed).not.toContain("JPM");
+  } finally {
+    await tui.destroy();
+    subscription.mockRestore();
+    userSpy.mockRestore();
+    calendarRequests.mockImplementation(defaultCalendar);
+    resetEarningsCloudCaches();
+  }
+});
+
+test("the earnings board dates a restored calendar by when it was fetched", async () => {
+  const store = new MemoryPluginPersistence();
+  const now = Date.parse("2026-10-14T15:00:00Z");
+  const fetchedAt = now - 60_000;
+  resetEarningsCloudCaches();
+  attachEarningsCloudCaches(store);
+  const fresh = Promise.withResolvers<EarningsCalendarPayload>();
+  try {
+    setSystemTime(fetchedAt);
+    const days = boardRangeDays("", "2026-10-14");
+    const query = { from: days[0]!.from, to: days.at(-1)!.to, perDay: 200, symbols: [], markets: "all" } as const;
+    await loadEarningsBoard(query, true);
+    resetEarningsCloudCaches();
+    attachEarningsCloudCaches(store);
+    setSystemTime(now);
+    calendarRequests.mockReturnValue(fresh.promise);
+    const state = createInitialState(createTestPaneConfig("earnings-test", { paneId: "earnings-calendar", instanceId: PANE }));
+    await tui.render(<TestPaneFrame state={state} paneId={PANE} pluginId="earnings" runtime={runtime} width={100} height={16}>
+      {(body, value) => {
+        footer = value;
+        return <EarningsBoard focused scopedSymbols={MARKET} {...body} />;
+      }}
+    </TestPaneFrame>, { width: 100, height: 16 });
+    await tui.waitForFrameToContain("JPM");
+    expect(footer.info.find((segment) => segment.savedCopyAt != null)?.savedCopyAt).toBe(fetchedAt);
+    const live = await defaultCalendar(query);
+    await act(async () => { fresh.resolve({ ...live, reports: [entry("LIVE", "2026-10-14")] }); });
+    await tui.waitForFrameToContain("LIVE");
+    expect(footer.info.some((segment) => segment.savedCopyAt != null)).toBe(false);
+  } finally {
+    await tui.destroy();
+    setSystemTime(now);
+    calendarRequests.mockImplementation(defaultCalendar);
+    resetEarningsCloudCaches();
+  }
 });
 
 /** The board with the app's reducer, so the row it selects stays selected. */

@@ -19,6 +19,7 @@ import { useAppSelector, usePaneAppConfig, usePaneSettingValue } from "../../../
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { useUtcDay } from "../../../react/auto-refresh";
+import { withSavedCopyMarkOf } from "../../../data/saved-copies";
 import { reportFooterSegment } from "../shared/source-footer";
 import { earningsBoardHeadless } from "./headless";
 import type { EarningsEvent } from "../../../types/data-provider";
@@ -240,7 +241,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     if (target && target.date >= read.from && target.date <= read.to && ![...reports, ...extra].some((report) => boardRowOf(report, target.symbol))) {
       extra.push({ ...target, owned: owned.get(target.symbol) ?? null });
     }
-    return {
+    return withSavedCopyMarkOf({
       queryKey,
       reports: [...reports, ...extra],
       asOf: cloud.status === "fulfilled" ? cloud.value.payload.asOf : null,
@@ -248,16 +249,16 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
       refreshError: cloud.status === "rejected"
         ? (cloud.reason instanceof Error ? cloud.reason.message : String(cloud.reason))
         : holdings?.refreshError ?? cloud.value.refreshError,
-    };
-  }, [calendar, dataProvider, highlightedReport.data, market, named, owned, perTicker, query, queryKey, range, fund, today]);
+    }, cloud.status === "fulfilled" ? cloud.value : null);
+  }, [calendar, dataProvider, highlightedReport.data, market, named, owned, perTicker, query, queryKey, range, fund, today, session.displayScope]);
   const resource = useAsyncResource(highlightedReport.loading ? null : loader, {
-    keepPreviousData: true,
+    keepPreviousData: session.displayScope,
     savedCopy: session.displayScope ? { key: ["earnings-board", queryKey, accessKey] } : null,
     initialData: () => {
       const holdings = fund ? cachedMembers(fund.etf) : null;
       if (fund && !holdings) return null;
       const cached = cachedEarningsCalendar(holdings ? { ...query, symbols: fundNames(holdings.payload.members) } : query);
-      return cached ? { queryKey, reports: cached.payload.reports.map((report) => boardReport(report, owned)), asOf: cached.payload.asOf, stale: !!holdings?.payload.stale, refreshError: null } : null;
+      return cached ? withSavedCopyMarkOf({ queryKey, reports: cached.payload.reports.map((report) => boardReport(report, owned)), asOf: cached.payload.asOf, stale: !!holdings?.payload.stale, refreshError: null }, cached) : null;
     },
   });
   // A new fund or range never shows the previous scope while its holdings load or fail.

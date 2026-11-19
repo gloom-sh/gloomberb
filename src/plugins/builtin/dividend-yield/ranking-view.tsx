@@ -97,8 +97,8 @@ export function DividendRankingView({ symbols, focused, width, height, loadData 
     } };
   }, [loadData, marketData]);
   // A sign-in or a verified email reads the ranking again.
-  const request = useCallback(() => readDividendRanking(key.split(","), reads), [key, reads, cloudSession.requestKey]);
-  const resource = useAsyncResource(request, { keepPreviousData: true });
+  const request = useCallback(() => readDividendRanking(key.split(","), reads), [key, reads, cloudSession.displayScope]);
+  const resource = useAsyncResource(request, { keepPreviousData: cloudSession.displayScope });
   const authWall = needsSignIn(resource.data);
   const { createPaneFromTemplate } = usePluginAppActions();
   const section = useMemo(() => resource.data ? projectDividendRanking(resource.data).sections[0] ?? null : null, [resource.data]);

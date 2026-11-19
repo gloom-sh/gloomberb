@@ -70,7 +70,7 @@ export function HiringMovesView({ symbol, width, height, focused, accessKey, com
     }
   }, [snapshotSetting, symbol]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadMoves(symbol, accessKey, filter, force), [snapshot, symbol, accessKey, filter]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedMoves(symbol, accessKey, filter), clearOnError: isAccessDenied, keepPreviousData: true });
+  const resource = useAsyncResource(loader, { initialData: () => cachedMoves(symbol, accessKey, filter), clearOnError: isAccessDenied, keepPreviousData: accessKey });
   const data = resource.data?.payload;
   const model = useMemo(() => !data ? null : "moves" in data ? movesBoardModel(data, filter) : companyMovesModel(data), [data, filter]);
   const sectionId = symbol ? view : "board";

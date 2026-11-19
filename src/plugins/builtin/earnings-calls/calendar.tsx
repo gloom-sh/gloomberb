@@ -1,7 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CloudEarningsCallPayload } from "../../../api-client";
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { cloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
 import {
   buildSectionedRows,
   DataTableStackView,
@@ -145,6 +145,7 @@ const NO_CALLS: CloudEarningsCallPayload[] = [];
  */
 export function UpcomingCallsView({ focused, width, height, view, renderCompany }: UpcomingCallsViewProps) {
   const access = usePlanAccess();
+  const displayScope = cloudDisplayScope();
   const entitled = access.signedIn && access.emailVerified && access.hasProAccess;
   // The days move at New York's midnight; the countdowns on a coarse clock.
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
@@ -163,9 +164,9 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
       refusal.current = statusOf(error);
       throw error;
     }
-  }, [range]);
+  }, [displayScope, range]);
   const resource = useAsyncResource(entitled ? loader : null, {
-    keepPreviousData: true,
+    keepPreviousData: displayScope,
     // A refusal asking again will not change takes the calendar off screen, for its wall or its error.
     clearOnError: isPermanentClientError,
     initialData: () => cachedUpcomingCalls(range),

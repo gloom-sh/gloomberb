@@ -67,7 +67,7 @@ export function HiringSignalsView({ group, symbol, width, height, focused, acces
     }
   }, [snapshotSetting, symbol, group]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadSignals(group, symbol, accessKey, filter, force), [snapshot, group, symbol, accessKey, filter]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedSignals(group, symbol, accessKey, filter), clearOnError: isAccessDenied, keepPreviousData: true });
+  const resource = useAsyncResource(loader, { initialData: () => cachedSignals(group, symbol, accessKey, filter), clearOnError: isAccessDenied, keepPreviousData: accessKey });
   const data = resource.data?.payload;
   const model = useMemo(() => !data ? null : "group" in data ? signalsBoardModel(data, filter) : companySignalsModel(data, group), [data, filter, group]);
   const sectionId = symbol ? view : "board";

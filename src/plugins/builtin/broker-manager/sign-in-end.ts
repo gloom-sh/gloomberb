@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { apiClient } from "../../../api-client";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import {
   type BrokerReplacePrompt,
   fetchSignedInBrokerConnection,
@@ -81,6 +82,7 @@ export function useSignInReads(
   // One read per broker, however many profiles name it.
   const brokers = useMemo(() => [...new Set(profiles.map((profile) => profile.broker).filter(Boolean))].sort(), [profiles]);
   const brokerKey = brokers.join(",");
+  const displayScope = useCloudDisplayScope();
   const signedIn = useSyncExternalStore(
     (listener) => apiClient.subscribeCurrentUser(listener),
     () => apiClient.isSignedIn(),
@@ -97,8 +99,8 @@ export function useSignInReads(
       }));
       return new Map(reads);
     }
-    : null, [brokerKey, signedIn]);
-  const { data, reload } = useAsyncResource(loader, { keepPreviousData: true });
+    : null, [brokerKey, displayScope, signedIn]);
+  const { data, reload } = useAsyncResource(loader, { keepPreviousData: displayScope });
 
   const reads = useMemo<SignInReads>(() => {
     const byInstance = new Map<string, SignInRead>();
