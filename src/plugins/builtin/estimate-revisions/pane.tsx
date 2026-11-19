@@ -51,6 +51,7 @@ import {
   estimateNumber as number,
   estimatePercent as percent,
   estimatePoints,
+  NO_ESTIMATE_PERIODS_TITLE,
   PERIOD_COLUMNS,
   periodLabel,
   pinnedEstimatePeriods,
@@ -472,7 +473,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
                 color: colors.text,
               };
             }}
-            emptyStateTitle="No covered estimate periods."
+            emptyStateTitle={NO_ESTIMATE_PERIODS_TITLE}
           />
         ) : null}
         {data && tab === "surprises" ? (

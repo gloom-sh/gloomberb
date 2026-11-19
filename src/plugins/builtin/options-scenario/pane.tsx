@@ -36,7 +36,7 @@ import { collarStatItems, scenarioCollar } from "./collar";
 import { useAssetData } from "../../runtime";
 import { extendedSession, formatSpotTime } from "../options/model-spot";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
-import { buildScenario, currencyLabel, scenarioCurrency, scenarioDateLabels, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
+import { buildScenario, currencyLabel, EMPTY_POSITION_TITLE, scenarioCurrency, scenarioDateLabels, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
   type ScenarioControls, validatePosition } from "./model";
 import { EMPTY_SAVED_STRATEGIES, restoreSavedStrategies, type SavedScenarioStrategy } from "./state";
 import { useScenarioEvidence } from "./evidence";
@@ -435,7 +435,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       {collarItems.length > 0 && <StatGrid items={collarItems} width={width} />}
     </>}
     {!position?.legs.length && !scenario ? <PaneStatusBody loading={!!resource.loading && !market} error={seeded.error} subject="scenario inputs">
-      <Box paddingX={1}><EmptyState title="Build an options position." actions={<Button label="Add leg" onPress={addTyped} />} /></Box>
+      <Box paddingX={1}><EmptyState title={EMPTY_POSITION_TITLE} actions={<Button label="Add leg" onPress={addTyped} />} /></Box>
     </PaneStatusBody> : !scenario && tab !== "legs" ? <Box paddingX={1}><EmptyState title="Scenario unavailable." hint={error ?? undefined}
       actions={<Button label="Edit inputs" onPress={() => setDetail("inputs")} />} /></Box> : activeContent}
   </>;

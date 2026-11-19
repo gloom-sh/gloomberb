@@ -25,7 +25,7 @@ import { usePluginPaneState } from "../../runtime";
 import { useFilingYearReader } from "../shared/filing-year-reader";
 import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
 import { useBoundTicker, useIssuerListing } from "../shared/ticker-request";
-import { getSavedRiskReport, getSavedRiskReports, loadRiskReport, loadRiskReports } from "./data";
+import { getSavedRiskReport, getSavedRiskReports, loadRiskReport, loadRiskReports, noRiskFactorsTitle } from "./data";
 
 export const RISK_FACTORS_PANE_ID = "risk-factors";
 
@@ -180,7 +180,7 @@ function RiskFactorsReader({
   if (!ticker) return <EmptyState title="Select a ticker." />;
   if (!report && !list.data && list.loading) return <PaneStatusBody loading align="center" loadingLabel="Loading risk factors..." />;
   if (!list.data && listError && year === null) return <PaneStatusBody error={listError} errorTitle="Could not load risk reports." />;
-  if (year === null) return <EmptyState title={`No 10-K risk factors on file for ${ticker}.`} />;
+  if (year === null) return <EmptyState title={noRiskFactorsTitle(ticker)} />;
 
   const diff = report?.diff ?? null;
   // A smaller reporting company's 10-K need not list risk factors. Its report

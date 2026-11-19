@@ -12,6 +12,11 @@ export const MISSING = MISSING_VALUE;
 
 const MS_PER_DAY = 86_400_000;
 
+/** What the deal table says with no rows: the search that matched none, or the company with no deal. */
+export function emptyDealsTitle(symbol: string | null, query: string): string {
+  return query ? "No matching deals." : symbol ? `No deals involving ${symbol}.` : "No deals.";
+}
+
 const CURRENCY_SIGNS: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CNY: "¥", INR: "₹", KRW: "₩" };
 
 /** "$10.50", "€4.20", "1,250p", "CHF 88.00". */

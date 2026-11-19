@@ -85,3 +85,10 @@ in the reports). The caller can deduplicate/file findings using its existing too
 Inspect screenshots before sharing evidence; keep task output out of the repo.
 
 Offline regression checks: `bun test scripts/pane-chrome/data-sweep.test.ts`.
+
+Each reviewed empty state (`REVIEWED_EMPTY`, `EXPECTED_EMPTY`) has a case in that
+test whose text comes from the pane's own empty-state builder or exported copy
+constant, never from a copy of the wording. A pane that rewords an empty state
+fails the test until the sweep's pattern follows, instead of turning an honest
+empty into a failure in the next live run. A new entry needs a case built the
+same way, and a pane that draws its wording inline exports it first.

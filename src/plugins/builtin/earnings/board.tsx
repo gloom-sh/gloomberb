@@ -60,6 +60,7 @@ import {
   calendarWeekDates,
   calendarWeekLabel,
   isBoardRangeDay,
+  noCalendarReportsTitle,
   requestedBoardRange,
   type BoardRange,
 } from "./calendar-model";
@@ -427,7 +428,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   );
   // "last week", "on Thu Oct 15", "in the week of Nov 2": the days the empty board or week is of.
   const rangeWords = calendar ? boardRangeWords(String(weekOffset), today) : boardRangeWords(range, today);
-  const emptyStateTitle = market ? `No reports on the calendar ${rangeWords ?? "these days"}.`
+  const emptyStateTitle = market ? noCalendarReportsTitle(rangeWords)
     : scope.kind === "mine" && named.length === 0 ? "No portfolio or watchlist names."
       : (scope.kind === "portfolio" || scope.kind === "watchlist") && named.length === 0 ? `No tickers in ${scope.name}.`
         : rangeWords ? `No reports from these companies ${rangeWords}.` : "No upcoming reports.";

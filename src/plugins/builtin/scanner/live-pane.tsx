@@ -190,7 +190,7 @@ function sortMatches(
     .map(({ match }) => match);
 }
 
-function emptyState(payload: LiveScanPayload | null): { title: string; hint?: string } {
+export function liveScanEmptyState(payload: LiveScanPayload | null): { title: string; hint?: string } {
   if (payload?.status === "starting") return { title: "The scanner is starting.", hint: "Matches appear within a minute." };
   if (payload?.status === "closed") return { title: "Nothing matched at the close.", hint: "The scan runs again at the open." };
   return { title: "Nothing matches right now." };
@@ -575,8 +575,8 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
             : !payload ? { loading: true, loadingLabel: "Waiting for the scanner..." }
               : undefined
       }
-      emptyStateTitle={emptyState(payload).title}
-      emptyStateHint={emptyState(payload).hint}
+      emptyStateTitle={liveScanEmptyState(payload).title}
+      emptyStateHint={liveScanEmptyState(payload).hint}
     />
   );
 

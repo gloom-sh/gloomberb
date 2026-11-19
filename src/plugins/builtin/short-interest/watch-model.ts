@@ -23,6 +23,9 @@ const CROWDED_DAYS_MIN_FLOAT_PERCENT = 5;
 const SYMBOL = /^[A-Z][A-Z0-9.]{0,9}$/;
 const LISTED_TYPES = new Set(["", "STK", "EQUITY", "COMMONSTOCK", "ADR", "ETF", "FUND"]);
 
+/** What the watch says with no names: custom symbols still to enter, or portfolios and watchlists with no US-listed name. */
+export const shortWatchEmptyTitle = (custom: boolean) => custom ? "Add symbols to watch." : "No US-listed names in your portfolios or watchlists.";
+
 export type ShortWatchSetup = "crowded-rising" | "crowded";
 
 export function setupLabel(setup: ShortWatchSetup | null): string {

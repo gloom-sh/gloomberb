@@ -10,6 +10,10 @@ import type { BuildoutUpdate, RawObject } from "../model/types";
 import { metricNumber, tickerSymbol } from "../format";
 import { parsePublicTickerKey } from "../../../../utils/exchanges";
 
+/** What the pane says for a company TheBuildout does not list, and for one it lists with no relationships. */
+export const notInBuildoutTitle = (symbol: string) => `${symbol} is not in TheBuildout.`;
+export const NO_RELATIONSHIPS_TITLE = "No relationships in TheBuildout yet.";
+
 export type RelationRole = "power" | "supplier" | "customer" | "competitor";
 
 export interface BuildoutRelation {

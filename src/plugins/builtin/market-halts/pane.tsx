@@ -32,6 +32,7 @@ import {
   formatHaltAge,
   formatHaltDuration,
   haltStatusColor,
+  haltsEmptyTitle,
   haltStatusLabel,
   nextHaltFilter,
   nextHaltSort,
@@ -234,7 +235,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
         getItemKey={(row) => row.id}
         onActivate={openTicker}
         renderCell={renderCell}
-        emptyStateTitle={filter === "all" ? "No trading halts reported." : "No halts match this filter."}
+        emptyStateTitle={haltsEmptyTitle(filter)}
       />
     </Box>
   );

@@ -18,7 +18,7 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { usePaneInstance } from "../../../state/app/context";
 import { SocialOutliersView, type SocialOpenedTicker } from "./outliers";
 import { asSessionRequired, cachedSocialMentions, loadSocialMentionPosts, loadSocialMentions } from "./client";
-import { SOCIAL_COLUMNS, socialChartPoints, socialCount, socialDayRows, socialRatio, socialStance, socialSummary, sortedSocialRows, stanceWord, topPostCell, type SocialColumn, type SocialDayRow, type SocialSort } from "./model";
+import { NO_CASHTAG_STATE, SOCIAL_COLUMNS, socialChartPoints, socialCount, socialDayRows, socialRatio, socialStance, socialSummary, sortedSocialRows, stanceWord, topPostCell, type SocialColumn, type SocialDayRow, type SocialSort } from "./model";
 
 const PANELS = [{ id: "main" }];
 const WITH_WIKI_PANELS = [{ id: "main", height: 2 }, { id: "wiki", height: 1 }];
@@ -143,7 +143,7 @@ function SocialMentionsTickerView({ width, height, focused, listingKey, onDetail
   });
   if (signInWall) return <SignInWall placement="social-mentions-signin" action="view social mentions" needsVerification={session.needsVerification} />;
   if (!listing?.symbol) return <EmptyState title="No ticker selected." message="Select a ticker to view social mentions." />;
-  if (!symbol) return <EmptyState title="This ticker cannot be searched as a cashtag." message="Use a symbol of up to six letters and digits, starting with a letter." />;
+  if (!symbol) return <EmptyState title={NO_CASHTAG_STATE.title} message={NO_CASHTAG_STATE.message} />;
   const latest = summary?.latest ?? null;
   return <Box flexDirection="column" width={width} height={height}>
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} subject="social mentions"

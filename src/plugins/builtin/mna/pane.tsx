@@ -42,6 +42,7 @@ import { DistressBoard } from "./distress/pane";
 import {
   dealSpread,
   dealsSymbol,
+  emptyDealsTitle,
   expectedCloseDate,
   formatDealValue,
   formatExpectedClose,
@@ -491,7 +492,7 @@ function MnaDealsView({ focused, width, height, symbol }: {
       scrollRef={scrollRef}
       onBodyScrollActivity={onScroll}
       resetScrollKey={paramsKey}
-      emptyStateTitle={query ? "No matching deals." : symbol ? `No deals involving ${symbol}.` : "No deals."}
+      emptyStateTitle={emptyDealsTitle(symbol, query)}
       detailOpen={!!openId}
       onBack={() => setOpen("")}
       detailTitle={openDeal ? mnaDealTitle(openDeal) : undefined}

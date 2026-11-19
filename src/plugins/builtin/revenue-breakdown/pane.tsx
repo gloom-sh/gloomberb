@@ -43,6 +43,7 @@ import {
   barLevels,
   filingPageUrl,
   growthPercent,
+  NO_BREAKDOWN_STATE,
   nextRevenueSort,
   REVENUE_MODES,
   reportedPeriods,
@@ -218,7 +219,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
 
   if (!symbol) return <EmptyState title="Select a ticker." />;
   if (!payload && resource.error === NO_BREAKDOWN) {
-    return <EmptyState title="No revenue breakdown." hint="This company's filings do not split revenue by product, segment or region." />;
+    return <EmptyState title={NO_BREAKDOWN_STATE.title} hint={NO_BREAKDOWN_STATE.hint} />;
   }
 
   return (
