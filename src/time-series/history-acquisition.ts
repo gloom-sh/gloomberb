@@ -1,6 +1,6 @@
 import { SnapshotHistoryUnavailableError } from "../market-data/snapshot-provider";
 import { HistoryCoverageError, historyCoverageNotice } from "../sources/history-coverage";
-import { notATickerSymbol, ProviderMissError } from "../sources/provider-errors";
+import { isUnservedHistory, notATickerSymbol, ProviderMissError } from "../sources/provider-errors";
 import { indexRootSuggestion } from "../tickers/index-roots";
 import {
   HISTORY_RETENTION_MAX_AGE_MS,
@@ -53,6 +53,21 @@ export interface PriceHistoryRequest {
 
 export class PriceHistoryAcquisitionError extends Error {
   constructor(message: string, readonly retryAt: number) { super(message); }
+}
+
+/** How long a chart keeps a "no bars" answer before asking again: a new listing's first daily bar can land at any time. */
+const NO_PRICE_HISTORY_RECHECK_MS = 5 * 60_000;
+
+/**
+ * Every source asked answered that it holds no bars of the listing at this
+ * size, rather than failing: a listing with no history, or one in its first
+ * session that has intraday bars and no daily bar yet.
+ */
+export class NoPriceHistoryError extends PriceHistoryAcquisitionError {
+  constructor(label: string) {
+    super(`No price history for ${label}.`, Date.now() + NO_PRICE_HISTORY_RECHECK_MS);
+    this.name = "NoPriceHistoryError";
+  }
 }
 
 /** Compatible intervals from different source/session contracts cannot share a capture. */
@@ -369,11 +384,14 @@ export async function loadPriceHistory(
   let retentionError: HistoryRetentionError | null = null;
   // No source has a listing for the symbol: no bar size would help, so the failure says that instead.
   let notATicker: string | null = null;
+  // Whether every read so far found its sources holding no bars, none failing or saying why.
+  let unservedOnly = true;
   const observeFailure = (error: unknown) => {
     if (error instanceof SnapshotHistoryUnavailableError) throw error;
     if (error instanceof HistoryCoverageError) coverageNotice ??= error.message;
     if (isHistoryRetentionError(error)) retentionError ??= error;
     notATicker ??= notATickerText(error);
+    if (!isUnservedHistory(error)) unservedOnly = false;
   };
   const observeCoverage = (result: PriceHistoryResult) => {
     coverageNotice ??= historyCoverageNotice(result.coverageStart, request.visibleBounds.start);
@@ -485,6 +503,8 @@ export async function loadPriceHistory(
     if (source.period && source.period !== "auto" && isMarketFieldId(source.fieldId)
       && (result.resolution === null || !isResolutionFineEnoughForMarketPeriod(result.resolution, source.period))) return fail(unavailable());
   } catch (error) {
+    // The router's "No history provider available" when its source answered that it has no bars: say that.
+    if (!coverageNotice && unservedOnly && isUnservedHistory(error)) throw new NoPriceHistoryError(instrumentLabel(source));
     return fail(coverageNotice ?? notATickerText(error) ?? (error instanceof Error ? error.message : String(error)));
   }
   const { points } = result;

@@ -2,10 +2,13 @@ import type { BrokerContractRef } from "../types/instrument";
 import { FINANCIAL_VINTAGE_NOTICE } from "../utils/financial-statements";
 import { describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../api-client";
+import { ApiRequestError } from "../api-client/errors";
+import type { CloudHistoryParams } from "../api-client/paths";
+import { AssetDataRouter } from "../sources/provider-router";
 import { GloomberbCloudProvider } from "../sources/gloomberb-cloud";
 import { chartSeriesSourceKey } from "../capabilities";
 import type { FredSeriesData, FredSeriesLoadResult } from "../sources/gloomberb-cloud/fred-series";
-import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/presets";
+import { buildCustomChartPreset, buildPriceChartPreset } from "../plugins/builtin/chart-composer/presets";
 import { createTestDataProvider, createTestFinancials } from "../test-support/data-provider";
 import type { TickerFinancials } from "../types/financials";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
@@ -14,6 +17,8 @@ import { ChartResolveCache } from "./resolve-context";
 import { seedChartResolutionResult } from "./chart-seed";
 import { mergePriceHistoryWindows, priceHistoryWindowsAgree } from "./history-acquisition";
 import { CHART_SPEC_VERSION, type ChartSeriesSpec, type ChartSpec } from "./types";
+import type { TimeRange } from "./range";
+import firstSessionBars from "./fixtures/first-session-bars.json";
 
 function chartSeries(input: Pick<ChartSeriesSpec, "source"> & Partial<ChartSeriesSpec>): ChartSeriesSpec {
   return { id: "price", style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none", ...input };
@@ -3098,5 +3103,62 @@ describe("Auto charts a young listing over the range it has traded", () => {
     expect(all.result.resolution).toBe("1mo");
     expect(all.result.viewport).toBeUndefined();
     expect([...all.requested]).toEqual(["1mo"]);
+  });
+});
+
+describe("Auto charts a listing in its first session from its intraday bars", () => {
+  // What Gloom Cloud answered, signed out, for a NASDAQ listing at 20:24 UTC on its first day of trading
+  // (19 Nov 2026): bars at every intraday size, and nothing at daily, weekly or monthly size.
+  const NOW = Date.parse("2026-11-19T20:24:00Z");
+  const served = firstSessionBars as Record<string, Array<[string, number, number, number, number, number]>>;
+  const noData = { status: "empty", data: null, reasonCode: "NO_DATA" } as const;
+  const resolveFirstSession = async (range: TimeRange, options: { coarse?: () => Promise<unknown>; intraday?: boolean } = {}) => {
+    const asked: string[] = [];
+    const original = apiClient.getCloudHistory;
+    apiClient.getCloudHistory = (async (symbol: string, exchange: string, params: CloudHistoryParams = {}) => {
+      const interval = params.interval ?? "";
+      asked.push(interval);
+      const bars = options.intraday === false ? undefined : served[interval];
+      if (!bars) return options.coarse ? options.coarse() : noData;
+      return { status: "success", asOf: bars.at(-1)![0],
+        data: bars.map(([date, open, high, low, close, volume]) => ({ date, open, high, low, close, volume })),
+        historySession: { version: 1, kind: "regular", calendar: "us-equity", timeZone: "America/New_York", symbol, exchange, interval,
+          source: "gloom", timestampConvention: "bar-open", barAlignment: "session-open", observedAt: NOW } };
+    }) as typeof apiClient.getCloudHistory;
+    setSystemTime(NOW);
+    try {
+      const router = new AssetDataRouter(new GloomberbCloudProvider());
+      const result = await resolveChartSpecData(buildPriceChartPreset("NEWCO:NASDAQ", range), {
+        dataProvider: createTestDataProvider({
+          getChartResolutionSupport: (...args) => router.getChartResolutionSupport(...args),
+          getPriceHistoryWithMetadata: (...args) => router.getPriceHistoryWithMetadata(...args),
+          getPriceHistoryForResolutionWithMetadata: (...args) => router.getPriceHistoryForResolutionWithMetadata(...args),
+        }),
+        now: new Date(NOW), loadFredSeries: async () => fredLoad(),
+      }, undefined, { awaitResolutionSupport: true });
+      return { result, asked };
+    } finally {
+      apiClient.getCloudHistory = original;
+      setSystemTime();
+    }
+  };
+
+  test("every range charts the session's one-minute bars from the first trade, not an error", async () => {
+    for (const range of ["5Y", "ALL", "1Y", "3M", "1M"] as const) {
+      const { result } = await resolveFirstSession(range);
+      expect(result.errors, range).toEqual([]);
+      expect(result.resolution, range).toBe("1m");
+      expect(result.series[0]?.points, range).toHaveLength(served["1min"]!.length);
+      expect(result.viewport?.start, range).toEqual(new Date("2026-11-19T16:48:00Z"));
+    }
+  });
+
+  test("a listing with no bars at any size says so, and a failing source still reads as a failure", async () => {
+    const none = await resolveFirstSession("5Y", { intraday: false });
+    expect(none.result.errors).toEqual(["NEWCO:NASDAQ: No price history for NEWCO:NASDAQ."]);
+    const failing = await resolveFirstSession("5Y", { coarse: async () => { throw new ApiRequestError("Service unavailable", 503); } });
+    expect(failing.result.errors).toEqual(["NEWCO:NASDAQ: No source could load history for NEWCO just now"]);
+    // A failure says nothing about the listing's age: its intraday bars are not asked for in place of the range.
+    expect(failing.asked.filter((interval) => served[interval])).toEqual([]);
   });
 });

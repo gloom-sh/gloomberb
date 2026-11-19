@@ -224,6 +224,19 @@ export function isUnservedWithoutReason(error: unknown): boolean {
   return error instanceof NoProviderError && error.failure === undefined;
 }
 
+const UNSERVED_HISTORY = /^No (?:resolution-aware )?history provider available for /;
+
+/**
+ * The router's answer that every history source it asked holds no bars of a
+ * listing at the size asked, none failing or giving a reason: a source that
+ * failed makes it say "No source could load history", and one that gave a
+ * reason says that. Read from the message, which is all that crosses the
+ * desktop and screenshot bridges.
+ */
+export function isUnservedHistory(error: unknown): boolean {
+  return error instanceof Error && UNSERVED_HISTORY.test(error.message);
+}
+
 /**
  * Whether a failed read means no source has what was asked for: a source's
  * miss, or the router's answer that none served it when none failed another
