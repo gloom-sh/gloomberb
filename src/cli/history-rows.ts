@@ -976,7 +976,7 @@ export function historyFacts(unit: HistoryUnit, rows: readonly Pick<HistoryRow, 
   const unbroken = historyUnbrokenFrom(rows);
   return [
     unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? unit.unit === YIELD_INDEX_EXPORT_UNIT ? "Yield, percent" : INDEX_POINTS_LABEL
-      : unit.kind === "contract" ? `Unit ${unit.unit}` : `Currency ${unit.unit ?? "unknown"}`,
+      : unit.kind === "contract" ? `Unit ${unit.unit ?? "unknown"}` : `Currency ${unit.unit ?? "unknown"}`,
     interval ? `${BAR_INTERVAL_LABELS[interval]} bars` : "",
     first && last ? (first === last ? historyDate(first) : `${historyDate(first)} to ${historyDate(last)}`) : "",
     `${rows.length} ${rows.length === 1 ? "bar" : "bars"}`,

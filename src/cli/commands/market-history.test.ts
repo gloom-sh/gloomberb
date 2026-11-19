@@ -2,6 +2,8 @@ import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { apiClient } from "../../api-client";
+import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { collectSavedCopies, servedFromSavedCopy } from "../../data/saved-copies";
 import { createDefaultConfig } from "../../types/config";
 import { createTestDataProvider, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
@@ -974,6 +976,32 @@ const sessionBars = (days: string[], volumes: number[], time = "T00:00:00Z", con
   const close = 100 + index;
   return { date: new Date(`${day}${time}`), open: close, high: close, low: close, close, volume: volumes[index]!,
     ...(contracts[index] ? { contract: contracts[index] } : {}) };
+});
+
+test("history keeps a future's unit unknown when terms have no spec or miss the deadline", async () => {
+  pinClosedSession();
+  const symbol = "QO=F";
+  const noSpec: FuturesContractTermsPayload = {
+    symbol, root: "QO", name: "E-mini Gold Futures", contract: null, contractSymbol: null, deliveryMonth: null,
+    spec: null, lastTrade: null, firstNotice: null, inDelivery: false, settlement: null,
+  };
+  const slow = Promise.withResolvers<FuturesContractTermsPayload>();
+  const terms = spyOn(apiClient, "getCloudFuturesContract").mockResolvedValueOnce(noSpec).mockImplementationOnce(() => slow.promise);
+  try {
+    for (const attempt of [1, 2]) {
+      const { text, csv, result } = await historyOutputs([symbol], sessionBars(["2026-11-06"], [22]),
+        { symbol, instrumentType: "FUTURE", currency: "USD", listingExchangeName: "CMX" });
+      const [header, bar] = csv.split("\n");
+      expect(terms).toHaveBeenCalledTimes(attempt);
+      expect(text).toContain("Unit unknown  ·  daily bars");
+      expect(header).toBe(`${HISTORY_CSV_HEADER},${IDENTITY}`);
+      expect(bar).toContain(`,${symbol},,1d,`);
+      expect(result.metadata?.unit).toBeNull();
+    }
+  } finally {
+    slow.resolve(noSpec);
+    terms.mockRestore();
+  }
 });
 const OCT_DAYS = ["2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30"];
 const QUIET_VOLUMES = [160_000, 150_000, 140_000, 155_000, 145_000, 150_000, 148_000, 15, 152_000, 0];
