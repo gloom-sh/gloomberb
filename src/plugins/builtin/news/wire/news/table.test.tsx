@@ -1,10 +1,12 @@
 import { TextAttributes } from "@opentui/core";
 import { describe, expect, test } from "bun:test";
-import { act, useState } from "react";
-import { Box } from "../../../../../ui";
+import { act, useReducer, useRef, useState, type RefObject } from "react";
+import { Box, type ScrollBoxRenderable } from "../../../../../ui";
+import { QueryBar } from "../../../../../components";
 import { createOpenTuiTestHarness } from "../../../../../renderers/opentui/test-utils";
 import {
   AppContext,
+  appReducer,
   PaneInstanceProvider,
   createInitialState,
 } from "../../../../../state/app/context";
@@ -14,8 +16,60 @@ import type { MarketNewsItem } from "../../../../../types/news-source";
 import { createTestArticle } from "../../../../../test-support/news";
 import { NewsArticleStackView, buildColumns, type NewsSortPreference } from "./table";
 import { useTabCursorLink } from "../../../../../state/app/tab-cursor";
+import { TestPaneProvider } from "../../../../../test-support/pane";
+import { createTestPluginRuntime } from "../../../../../test-support/plugin-runtime";
+import { useNewsListSearch } from "./list-search";
 
 const tui = createOpenTuiTestHarness();
+
+test("the next mount restores the filter and viewport, even with a selected story offscreen", async () => {
+  const articles = Array.from({ length: 40 }, (_, index) => createTestArticle(`story-${index}`, {
+    title: index % 2 ? `Gold story ${index}` : `Silver story ${index}`,
+    publishedAt: new Date(Date.UTC(2026, 10, 19, 0, -index)),
+  }));
+  const initial = createInitialState(createDefaultConfig(":memory:"));
+  const runtime = createTestPluginRuntime();
+  let show!: (open: boolean) => void;
+  let filter!: (query: string) => void;
+  let body!: RefObject<ScrollBoxRenderable | null>;
+  let savedScroll: unknown;
+  function List() {
+    const search = useNewsListSearch(articles, "top");
+    filter = search.setSearchQuery;
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    body = scrollRef;
+    return <NewsArticleStackView articles={search.filteredArticles} focused width={90} rootHeight={10}
+      selectedArticleId="story-1" setSelectedArticleId={() => {}} sortPreference={sortPreference} setSortPreference={() => {}}
+      onOpenArticle={() => {}} detailOpen={false} onBack={() => {}} detailContent={<Box />}
+      columns={["time", "title"]} emptyStateTitle="No stories" scrollRef={scrollRef}
+      initialScrollIndex={search.initialScrollIndex} visibleRangeKey={search.visibleRangeKey}
+      onVisibleRangeChange={search.onVisibleRangeChange}
+      rootBefore={<QueryBar width={90} search={{ value: search.searchQuery, onChange: search.setSearchQuery, placeholder: "filter stories", focused: true, ...search.searchProps }} />} />;
+  }
+  function Harness() {
+    const [state, dispatch] = useReducer(appReducer, initial);
+    savedScroll = state.paneState["top:test"]?.pluginState?.news?.["top:scroll"];
+    const [open, setOpen] = useState(true);
+    show = setOpen;
+    return <TestPaneProvider state={state} dispatch={dispatch} paneId="top:test" pluginId="news" runtime={runtime}>
+      {open && <List />}
+    </TestPaneProvider>;
+  }
+  await tui.render(<Harness />, { width: 90, height: 10 });
+  await act(async () => { filter("gold"); });
+  await tui.waitForFrameToContain("Gold story 1");
+  await act(async () => { body.current!.scrollTo(7); });
+  await tui.waitForFrameToContain("Gold story 25");
+  expect(tui.frame()).not.toContain("Gold story 1 ");
+  await act(async () => { show(false); });
+  expect(savedScroll).toEqual({ list: "top", query: "gold", index: 7 });
+  await act(async () => { show(true); });
+  await tui.renderFrames(3);
+  const frame = await tui.waitForFrameToContain("Gold story 25");
+  expect(frame).toContain("gold");
+  expect(frame).not.toContain("Silver story");
+  expect(body.current?.scrollTop).toBe(7);
+});
 
 const sortPreference: NewsSortPreference = {
   columnId: "time",

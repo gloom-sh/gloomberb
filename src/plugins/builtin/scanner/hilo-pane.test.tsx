@@ -3,8 +3,9 @@ import { act } from "react";
 import { apiClient, type ScannerFeedEvent, type ScannerHiloPayload } from "../../../api-client";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
-import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
+import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import { formatDetailDate } from "../../../utils/datetime-format";
 import HiloPane from "./hilo-pane";
 
 const PANE_INSTANCE_ID = "scanner-hilo:test";
@@ -47,13 +48,25 @@ async function renderPane(width: number, height = 14) {
     paneId: "scanner-hilo", instanceId: PANE_INSTANCE_ID,
   }));
   await tui.render(
-    <TestPaneProvider state={state} paneId={PANE_INSTANCE_ID} pluginId="scanner" runtime={createTestPluginRuntime()}>
-      <HiloPane paneId="scanner-hilo" paneType="scanner-hilo" focused width={width} height={height} />
-    </TestPaneProvider>,
+    <TestPaneFrame state={state} paneId={PANE_INSTANCE_ID} pluginId="scanner" runtime={createTestPluginRuntime()} width={width} height={height}>
+      {(body) => <HiloPane paneId="scanner-hilo" paneType="scanner-hilo" focused {...body} />}
+    </TestPaneFrame>,
     { width, height },
   );
   await settle();
 }
+
+test("a delayed stream's live status never labels the data live, even after an access change", async () => {
+  await renderPane(110);
+  await deliver(PAYLOAD);
+  expect(tui.frame()).toMatch(/\blive\b/);
+
+  const observed = Date.parse("2026-11-18T14:48:00Z");
+  await deliver({ ...PAYLOAD, access: "delayed", delayMinutes: 15, asOf: observed });
+  expect(tui.frame()).toContain("15m delayed");
+  expect(tui.frame()).toContain(`as of ${formatDetailDate(observed)}`);
+  expect(tui.frame()).not.toMatch(/\blive\b/);
+});
 
 async function deliver(payload: ScannerHiloPayload) {
   await act(async () => {

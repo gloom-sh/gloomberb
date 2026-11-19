@@ -27,6 +27,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { THIRTEENF_TEMPLATE_ID } from "../thirteenf/model";
+import { quarterFallbackFooter } from "../thirteenf/signals";
 import { useInResearchTab } from "../ticker-detail/research-tab-keys";
 import {
   displayDate,
@@ -354,6 +355,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     if (viewMode === "13dg") return null;
     return {
       info: [
+        ...quarterFallbackFooter(indexed ? index.pages[0] : null),
         // One date only when every holder's row is of it; the PERIOD column dates each row.
         ...(periodsDiffer
           ? [{ id: "as-of", parts: [{ text: "latest period per holder", tone: "muted" as const }] }]
@@ -374,7 +376,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         ...(selectedFundMatch ? [{ id: "fund", key: "o", label: "pen 13F", onPress: () => openFundDetail(selectedRow) }] : []),
       ],
     };
-  }, [data, error, fundMatching, index.loadingMore, index.moreError, indexed, indexPending, listData, loading, openFundDetail, periodsDiffer, selectedFundMatch, selectedRow, viewMode]);
+  }, [data, error, fundMatching, index.loadingMore, index.moreError, index.pages, indexed, indexPending, listData, loading, openFundDetail, periodsDiffer, selectedFundMatch, selectedRow, viewMode]);
 
   const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
   // As a research tab, h/l move between research tabs; `s` switches the view.

@@ -30,6 +30,7 @@ export interface IndexedHolderList {
   rows: IndexedHolder[];
   /** The report period the positions are as of. */
   period: string;
+  fallbackFromPeriod?: string;
   /** Every filer that holds the security at the period end. */
   holderCount: number;
   hasMore: boolean;
@@ -90,6 +91,7 @@ export function indexedHolderPage(holdings: TickerHoldings): IndexedHolderList {
   return {
     rows: [...byCik.values()].map(({ previousKnown: _known, ...row }) => row),
     period: holdings.period,
+    ...(holdings.fallbackFromPeriod ? { fallbackFromPeriod: holdings.fallbackFromPeriod } : {}),
     holderCount: holdings.holderCount,
     hasMore: holdings.hasMore && holdings.nextOffset < holdings.holderCount,
     nextOffset: holdings.nextOffset,

@@ -15,7 +15,7 @@ import { buildFundOverlap, buildManagerEtfOverlap, overlapPeriod } from "./overl
 import type { FundMembersPayload, MemberFundsPayload } from "../../../api-client/members";
 import { fetchFunds, fetchMembers } from "../members/client";
 import { coveredFund } from "../members/model";
-import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type CrowdingRow, type TickerHoldings } from "./signals";
+import { appendTickerHoldings, loadCrowding, loadTickerHoldings, quarterFallbackText, type CrowdingRow, type TickerHoldings } from "./signals";
 import {
   AS_FILED_VALUE,
   compareCrowding,
@@ -472,6 +472,11 @@ function isTickerMiss(error: unknown): boolean {
 }
 
 /** What a fund's latest report misses: the quarters since it stopped filing, else what EDGAR shows for the quarter it skipped. */
+function fallbackNotices(data: Parameters<typeof quarterFallbackText>[0]): string[] {
+  const text = quarterFallbackText(data);
+  return text ? [text] : [];
+}
+
 function filingGapNotes(latestPeriod: string | null, gap: ThirteenFFilingGap | null): string[] {
   const quartersBehind = quartersBehindLatest(latestPeriod);
   // A filing EDGAR shows for a later quarter (a 13F-NT) says more than "nothing filed".
@@ -701,7 +706,7 @@ export function createThirteenFHeadless(
         const columns: HeadlessPaneColumn[] = [{ key: "ticker", header: "Ticker" }, { key: "issuer", header: "Issuer" }, { key: "type", header: "Type" }, { key: "holderCount", header: "Funds", align: "right" }, { key: "newCount", header: "New", align: "right" }, { key: "exitCount", header: "Exits", align: "right" }, { key: "weightChange", header: "Weight change", align: "right", format: weightPoints }, { key: "comparedFunds", header: "Compared", align: "right" }, { key: "totalValue", header: "Value (USD)", align: "right", format: money }];
         const cut = cutText(rows.length, limit, "securities");
         return { columns: focus ? [{ key: "rank", header: "Rank", align: "right" }, ...columns] : columns, rows: rows.slice(0, limit).map(row => ({ ...row })),
-          metadata: { ...metadata, view, rank, ...(ticker ? { ticker, found: rows.length > 0, rankedSecurities: ranked.length } : {}), shown: Math.min(rows.length, limit), total: rows.length, truncated: rows.length > limit, notices: [...flagNotices, [sample, cut].filter(Boolean).join(" | "), ...(focus ? [focus.notice] : [])] },
+          metadata: { ...metadata, view, rank, ...(ticker ? { ticker, found: rows.length > 0, rankedSecurities: ranked.length } : {}), shown: Math.min(rows.length, limit), total: rows.length, truncated: rows.length > limit, notices: [...flagNotices, [sample, cut].filter(Boolean).join(" | "), ...(focus ? [focus.notice] : []), ...fallbackNotices(metadata)] },
           freshness: { asOf: metadata.period }, errors: metadata.warnings };
       }
       let holdings: TickerHoldings | null = null;
@@ -757,7 +762,7 @@ export function createThirteenFHeadless(
             totalValue: summary.shownValue,
             valueScope: "shown funds",
             valueBasis: "as reported at period end",
-            notices: [...flagNotices, ...summary.notices, ...(alsoFunds.length ? [shadowedFundsText(query, alsoFunds)] : [])],
+            notices: [...flagNotices, ...summary.notices, ...fallbackNotices(metadata), ...(alsoFunds.length ? [shadowedFundsText(query, alsoFunds)] : [])],
           },
           freshness: { asOf: metadata.period },
           errors: metadata.warnings,

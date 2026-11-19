@@ -20,6 +20,7 @@ import { AssetDataRouter } from "../../../sources/provider-router";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useRegularMarketSession } from "../../../test-support/market-session";
 import { createTestTicker } from "../../../test-support/ticker";
+import { formatDetailDate } from "../../../utils/datetime-format";
 
 useRegularMarketSession();
 
@@ -68,13 +69,20 @@ afterEach(() => {
   resetMarketMoversPersistence(); setHttpFetchTransport(null);
 });
 
-test("switching lists hides old rows while pending or failed and retains only same-list stale rows on refresh", async () => {
+test("switching lists hides old rows and observation time; a failed refresh keeps both from the same list", async () => {
   let rejectLosers!: (reason: Error) => void, fail = false;
   const loserRequest = new Promise((_, reject) => { rejectLosers = reject; });
-  await mount(url => url.searchParams.get("category") === "day_losers" ? loserRequest : fail ? Promise.reject(new Error("Controlled unavailable")) : payload([raw("GAINER")]));
+  const observed = "2026-01-15T18:50:00Z";
+  const gainers = payload([raw("GAINER")]);
+  gainers.data.asOf = observed;
+  const asOf = `as of ${formatDetailDate(observed)}`;
+  await mount(url => url.searchParams.get("category") === "day_losers" ? loserRequest : fail ? Promise.reject(new Error("Controlled unavailable")) : gainers);
   expect(await csv()).toContain("GAINER");
+  expect(JSON.stringify(footer)).toContain(asOf);
+  expect(JSON.stringify(footer)).toContain("checked ");
   await clickLabel("Losers");
   expect(await csv()).not.toContain("GAINER");
+  expect(JSON.stringify(footer)).not.toContain(asOf);
   await act(async () => { rejectLosers(new Error("Controlled unavailable")); });
   await settleFrame(tui.setup(), 6);
   expect(tui.frame()).not.toContain("GAINER");
@@ -85,6 +93,7 @@ test("switching lists hides old rows while pending or failed and retains only sa
   await tui.emitKeypress({ name: "r", sequence: "r" }); await settleFrame(tui.setup(), 6);
   expect(await csv()).toContain("GAINER");
   expect(JSON.stringify(footer)).toContain("stale");
+  expect(JSON.stringify(footer)).toContain(asOf);
   expect(JSON.stringify(footer)).toContain("unavailable");
 });
 
@@ -157,9 +166,9 @@ test("signed out during the pre-market, the pane opens the pre-market list as it
     expect(lists).toEqual(["premarket"]);
     // Dated by when the list was built, never called real-time, and marked delayed.
     const info = (footer as { info: Array<{ id: string; parts: Array<{ text: string }> }> }).info;
-    expect(JSON.stringify(footer)).toContain("as of 07:45 ET");
+    expect(JSON.stringify(footer)).toContain(`as of ${formatDetailDate("2026-09-29T11:45:00.000Z")}`);
     expect(info.flatMap((segment) => segment.parts.map((part) => part.text)).join(" ")).not.toContain("live");
-    expect(info.find((segment) => segment.id === "quote-delay")?.parts[0]?.text).toBe("◷15m");
+    expect(info.find((segment) => segment.id === "list-delay")?.parts[0]?.text).toBe("15m delayed");
     await clickLabel("Gaps");
     expect(tui.frame()).toContain("Sign in");
     expect(lists).toEqual(["premarket"]);
@@ -200,7 +209,7 @@ test("trending failures retain only same-list rows and success time, partial ref
     await tui.waitForFrameToContain("SECOND");
     const successTime = lastSuccessful;
     expect(successTime).not.toBeNull();
-    expect(JSON.stringify(footer)).not.toContain("unavailable");
+    expect(JSON.stringify(footer)).not.toContain("Quotes unavailable");
 
     mode = "failed";
     now += 1_000;
@@ -223,7 +232,7 @@ test("trending failures retain only same-list rows and success time, partial ref
     now += 1_000;
     await tui.emitKeypress({ name: "r", sequence: "r" });
     await tui.waitForFrameToContain("SECOND");
-    expect(JSON.stringify(footer)).not.toContain("unavailable");
+    expect(JSON.stringify(footer)).not.toContain("Quotes unavailable");
     expect(JSON.stringify(footer)).not.toContain('"text":"stale"');
     expect(lastSuccessful!).toBeGreaterThan(successTime!);
 

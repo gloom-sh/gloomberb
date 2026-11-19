@@ -3,9 +3,9 @@ import type {
   CloudSessionMoversCategory,
   CloudSessionMoversSide,
 } from "../../../api-client/market-movers";
-import { useCloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
+import { CLOUD_QUOTE_DELAY_MINUTES, useCloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
 import { isPermanentClientError, sourceDidNotAnswer } from "../../../api-client/errors";
-import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
+import { useListDelayFooter } from "../shared/cloud-upgrade";
 import { DataTableView, EmptyState, QueryBar, usePaneFooter, type DataTableKeyEvent } from "../../../components";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
@@ -24,12 +24,11 @@ import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { loadSessionMovers, SessionMoversAccessError } from "./client";
 import { ANY_FLOAT, minFloatEmptyTitle, minFloatFilter, minFloatShares, partialFloatFooter } from "./min-float";
-import { summaryFooterSegments } from "./footer";
+import { moverFreshnessFooter, summaryFooterSegments } from "./footer";
 import type { MarketSummaryQuote } from "./screener";
 import { isProOnlyTab } from "./model";
 import {
   earlierSessionLabel,
-  listAsOfLabel,
   overlaySessionMovers,
   resolveSide,
   sessionListIsLive,
@@ -168,26 +167,24 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   }, [rows, selectedId]);
 
   const sessionLabel = payload ? earlierSessionLabel(payload.session, session) : null;
-  // While its session trades, a free list says when it was built; a finished one is final and its date says enough.
-  const asOfLabel = payload && delayed && sessionTrading ? listAsOfLabel(payload.asOf, payload.session, session) : null;
-  const quoteDelay = useQuoteDelayFooter(payload && savedAt == null ? [{ dataSource: delayed ? "delayed" : "live" }] : [], "movers-delay");
+  const quoteDelay = useListDelayFooter(delayed ? payload.delayMinutes ?? CLOUD_QUOTE_DELAY_MINUTES : null, "movers-delay");
   usePaneFooter("market-movers", () => ({
     info: [
       ...(loadError ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }] : []),
-      ...summaryFooterSegments(summaryQuotes),
+      ...(quoteDelay ? [quoteDelay] : []),
+      ...(payload ? moverFreshnessFooter(payload.asOf, savedAt == null ? updatedAt : null) : []),
       ...(sessionLabel ? [{ id: "session", parts: [{ text: sessionLabel, tone: "muted" as const }] }] : []),
-      ...(asOfLabel ? [{ id: "as-of", asOf: true, parts: [{ text: asOfLabel, tone: "muted" as const }] }] : []),
       ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(feedStatus ? [{
         id: "feed",
-        parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
+        parts: [{ text: feedStatus === "live" ? "quotes live" : feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
       }] : []),
       ...(payload?.stale && savedAt == null ? [STALE_SEGMENT] : []),
       // A float the source does not date says so once, while the FLOAT column shows.
       ...partialFloatFooter(columns.some((column) => column.id === "floatShares"), rows),
-      ...(quoteDelay ? [quoteDelay] : []),
+      ...summaryFooterSegments(summaryQuotes),
     ],
-  }), [asOfLabel, columns, feedStatus, loadError, loading, payload?.stale, quoteDelay, rows, savedAt, sessionLabel, summaryQuotes]);
+  }), [columns, feedStatus, loadError, loading, payload, quoteDelay, rows, savedAt, sessionLabel, summaryQuotes, updatedAt]);
 
   const openRow = useCallback((row: SessionMoverRow) => {
     pinTicker(rowKey(row), { floating: true, paneType: TICKER_RESEARCH_PANE_ID, instrument: null });

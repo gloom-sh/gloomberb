@@ -13,7 +13,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { actionLabel, formatMoneyCompact, formatShares, formatWeightMaybe } from "./format";
 import { FundDetailView } from "./pane";
-import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type Crowding, type CrowdingRow, type TickerHolderRow } from "./signals";
+import { appendTickerHoldings, loadCrowding, loadTickerHoldings, quarterFallbackFooter, type Crowding, type CrowdingRow, type TickerHolderRow } from "./signals";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 export function ThirteenFTickerPane({ focused, width, height }: Pick<PaneProps, "focused" | "width" | "height">) {
@@ -58,7 +58,7 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
   useEffect(() => { setFund(null); setSelectedId(null); }, [symbol]);
   const more = useTableLoadMore(scrollRef, paged.hasMore && !fund, paged.loadMore);
   usePaneRefreshKey(paged.reload, { focused, enabled: !fund });
-  usePaneStatusFooter({ registrationId: "13f-ticker", enabled: !fund, loading, error, hints });
+  usePaneStatusFooter({ registrationId: "13f-ticker", enabled: !fund, loading, error, hints, info: quarterFallbackFooter(data) });
   usePaneNoticeFooter({ registrationId: "13f-ticker-notice", enabled: !fund, focused, notices: data?.warnings ?? [] });
   const columns: DataTableColumn[] = [
     { id: "fund", label: "FUND", width: 20, align: "left", flexGrow: 1 },
@@ -122,7 +122,7 @@ export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps
   usePaneRefreshKey(() => reload(), { focused });
   useShortcut(event => { if (!focused) return; if (isPlainKey(event, "m")) { event.preventDefault?.(); setMineOnly(value => !value); } if (isPlainKey(event, "c")) { event.preventDefault?.(); setRanking(value => CROWDING_RANKS[(CROWDING_RANKS.indexOf(crowdingRank(value)) + 1) % CROWDING_RANKS.length]!); } });
   // Mine and the ranking sit in the query bar; m and c stay as their keys.
-  usePaneStatusFooter({ registrationId: "13f-crowding", loading, error });
+  usePaneStatusFooter({ registrationId: "13f-crowding", loading, error, info: quarterFallbackFooter(data) });
   usePaneNoticeFooter({ registrationId: "13f-crowding-notice", focused, notices: [
     ...(data && data.loadedFunds < data.sourceFunds ? [`The ranking covers ${data.loadedFunds} of ${data.sourceFunds} funds.`] : []),
     ...(data?.warnings ?? []),

@@ -306,6 +306,7 @@ export interface CloudAccessFooterOptions {
   shortcutScope?: string;
   /** Set false while the pane happens to show data that is not cloud-delayed. */
   degraded?: boolean;
+  showDelayLabel?: boolean;
   segmentId?: string;
   /** The upgrade intent's placement id (see {@link CloudUpgradeOptions.placement}); the segment id when omitted. */
   placement?: string;
@@ -332,6 +333,7 @@ export interface CloudAccessFooter {
 export function useCloudAccessFooter({
   delayLabel,
   degraded = true,
+  showDelayLabel,
   segmentId = "cloud-access",
   shortcutScope,
   placement = segmentId,
@@ -369,6 +371,7 @@ export function useCloudAccessFooter({
         : tf("{delay} delayed · try Pro live", { delay: delayLabel }),
       delay: delayLabel,
       onPress: openUpgrade,
+      showLabel: showDelayLabel,
     });
   }, [
     access.trialDaysLeft,
@@ -380,6 +383,7 @@ export function useCloudAccessFooter({
     shortcutScope,
     showTrial,
     showUpgrade,
+    showDelayLabel,
   ]);
 
   const hint = useMemo<PaneHint | null>(
@@ -413,4 +417,16 @@ export function useQuoteDelayFooter(
     onPress: openUpgrade,
     quoteStatus: true,
   })), [language, minutes, openUpgrade]);
+}
+
+export function useListDelayFooter(delayMinutes: number | null, placement: string): PaneFooterSegment | null {
+  const language = useAppLanguage();
+  const { hasProAccess } = usePlanAccess();
+  const openUpgrade = useCloudUpgradeAction(placement);
+  return useMemo(() => delayMinutes == null ? null : delayedFooterSegment({
+    id: "list-delay",
+    detail: tf("{delay} delayed", { delay: tf("{count}m", { count: delayMinutes }) }),
+    showLabel: true,
+    onPress: hasProAccess ? undefined : openUpgrade,
+  }), [delayMinutes, hasProAccess, language, openUpgrade]);
 }

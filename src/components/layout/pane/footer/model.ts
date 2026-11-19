@@ -113,6 +113,7 @@ export function delayedFooterSegment({
   delay,
   onPress,
   quoteStatus,
+  showLabel,
 }: {
   id: string;
   /** What is late and by how much, in words: the tooltip and the accessible name. */
@@ -121,13 +122,14 @@ export function delayedFooterSegment({
   delay?: string;
   onPress?: () => void;
   quoteStatus?: boolean;
+  showLabel?: boolean;
 }): PaneFooterSegment {
   return {
     id,
-    icon: "clock",
+    ...(showLabel ? {} : { icon: "clock" }),
     label: detail,
     title: detail,
-    parts: [{ text: `${DELAYED_FOOTER_GLYPH}${delay ?? ""}`, tone: "warning" }],
+    parts: [{ text: showLabel ? detail : `${DELAYED_FOOTER_GLYPH}${delay ?? ""}`, tone: "warning" }],
     ...(onPress ? { onPress } : {}),
     ...(quoteStatus ? { quoteStatus } : {}),
   };

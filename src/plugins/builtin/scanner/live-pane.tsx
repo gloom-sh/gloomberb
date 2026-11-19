@@ -420,9 +420,6 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
 
   const footerExtra = useMemo<PaneFooterSegment | null>(() => {
     if (feed.error && payload) return { id: "scanner-live-refresh", parts: [{ text: "refresh failed", tone: "warning" }] };
-    if (payload?.asOf != null && payload.status !== "starting") {
-      return { id: "scanner-live-asof", parts: [{ text: `as of ${formatScanTime(payload.asOf)}`, tone: "muted" }] };
-    }
     return null;
   }, [feed.error, payload]);
   useScannerStatusFooter("scanner-live", { payload, savedAt: feed.savedAt, denied: false, deniedReason: null }, focused, footerExtra);

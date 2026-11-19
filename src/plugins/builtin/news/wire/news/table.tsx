@@ -220,6 +220,9 @@ export function buildColumns(width: number, requestedIds: NewsColumnId[], timeZo
 }
 
 interface NewsArticleStackViewProps extends NewsArticleStackBaseProps {
+  initialScrollIndex?: number | null;
+  onVisibleRangeChange?: (range: { start: number; end: number }) => void;
+  visibleRangeKey?: string;
   detailOpen: boolean;
   onBack: () => void;
   detailContent: ReactNode;
@@ -249,6 +252,9 @@ export function NewsArticleStackView({
   onBack,
   scrollRef,
   onBodyScrollActivity,
+  initialScrollIndex,
+  onVisibleRangeChange,
+  visibleRangeKey,
   detailContent,
   detailTitle,
   rootBefore,
@@ -417,6 +423,9 @@ export function NewsArticleStackView({
       showHorizontalScrollbar={false}
       scrollRef={scrollRef}
       onBodyScrollActivity={onBodyScrollActivity}
+      initialScrollIndex={initialScrollIndex}
+      onVisibleRangeChange={onVisibleRangeChange}
+      visibleRangeKey={visibleRangeKey}
     />
   );
 }

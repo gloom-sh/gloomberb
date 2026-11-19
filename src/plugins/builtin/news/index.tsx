@@ -50,7 +50,7 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
     { keyFamily: "articles:" },
   );
   const news = useNewsMuteFilter(loaded, newsMutesApplyToFeed(newsQuery?.feed));
-  const search = useNewsListSearch(news);
+  const search = useNewsListSearch(news, "ticker-news", symbol);
   const visibleArticles = search.filteredArticles;
   const { readArticleIds, markArticleRead } = useNewsReadState();
   const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(newsQuery, newsState);
@@ -181,6 +181,9 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
       emptyStateHint={emptyCopy.hint}
       scrollRef={scrollRef}
       onBodyScrollActivity={onBodyScrollActivity}
+      initialScrollIndex={search.initialScrollIndex}
+      onVisibleRangeChange={search.onVisibleRangeChange}
+      visibleRangeKey={search.visibleRangeKey}
     />
   );
 }

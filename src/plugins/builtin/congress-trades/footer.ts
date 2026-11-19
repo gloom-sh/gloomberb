@@ -1,5 +1,6 @@
-import { usePaneFooter } from "../../../components";
-import { formatTimeAgo } from "../../../utils/datetime-format";
+import { usePaneFooter, type PaneFooterSegment } from "../../../components";
+import { timestampFooterSegment } from "../../../components/layout/pane/footer/freshness";
+import { formatShortDate } from "../../../utils/datetime-format";
 import type {
   CloudCongressHousePayload,
   CloudCongressTradePayload,
@@ -11,11 +12,27 @@ import {
   type LoadStatus,
 } from "./model";
 
+export function latestCongressFiling(trades: readonly Pick<CloudCongressTradePayload, "filingDate">[]): string | null {
+  return trades.reduce<string | null>((latest, { filingDate }) => !latest || filingDate > latest ? filingDate : latest, null);
+}
+
+export function congressFreshnessFooter(
+  payload: Pick<CloudCongressHousePayload, "asOf" | "fetchedAt"> | null,
+  latestFiling: string | null,
+): PaneFooterSegment[] {
+  const fetched = timestampFooterSegment("fetched-at", "fetched", payload?.fetchedAt ?? payload?.asOf);
+  return [
+    ...(latestFiling ? [{ id: "latest-filing", parts: [{ text: `latest filing ${formatShortDate(latestFiling, { utc: true })}`, tone: "muted" as const }] }] : []),
+    ...(fetched ? [fetched] : []),
+  ];
+}
+
 export function useCongressTradesFooter({
   activeTab,
   detailMode,
   detailTrade,
   error,
+  latestFiling,
   loadPreviousYear,
   loadMore,
   loadingMore,
@@ -32,6 +49,7 @@ export function useCongressTradesFooter({
   detailMode: DetailMode;
   detailTrade: CloudCongressTradePayload | null;
   error: string | null;
+  latestFiling: string | null;
   loadPreviousYear: (() => void) | null;
   loadMore: (() => void) | null;
   loadingMore: boolean;
@@ -46,9 +64,7 @@ export function useCongressTradesFooter({
 }) {
   usePaneFooter(registrationId, () => detailMode?.kind === "member" || detailMode?.kind === "ticker" ? {} : ({
     info: [
-      ...(payload ? [
-        { id: "asof", parts: [{ text: `updated ${formatTimeAgo(payload.asOf)}`, tone: "muted" as const }] },
-      ] : []),
+      ...congressFreshnessFooter(payload, latestFiling),
       ...(status === "loading" ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
       ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
@@ -72,6 +88,7 @@ export function useCongressTradesFooter({
     detailMode,
     detailTrade,
     error,
+    latestFiling,
     loadPreviousYear,
     loadMore,
     loadingMore,
