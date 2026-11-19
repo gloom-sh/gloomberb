@@ -170,7 +170,10 @@ export function HkTendersView({
 }: HkTendersViewProps) {
   const sort = useMemo(() => readHkSort(sortValue), [sortValue]);
   const loadTenders = useCallback((force: boolean) => loadHkTenders(force, historyDays), [historyDays]);
-  const resource = useAsyncResource(loadTenders, { keepPreviousData: true });
+  const resource = useAsyncResource(loadTenders, {
+    keepPreviousData: true,
+    savedCopy: { key: ["treasury-auctions", "hk", historyDays] },
+  });
   const tenders = resource.data?.tenders ?? NO_TENDERS;
   const stale = resource.data?.stale ?? false;
   const fetchedAt = resource.data?.fetchedAt ?? null;

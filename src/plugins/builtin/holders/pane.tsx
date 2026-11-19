@@ -16,6 +16,8 @@ import {
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
+import { cachedValueForDisplay } from "../../../data/cached-query";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useShortcut } from "../../../react/input";
 import { colors, priceColor } from "../../../theme/colors";
 import type { HolderData } from "../../../types/financials";
@@ -99,6 +101,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const { nativePaneChrome } = useUiCapabilities();
   const { symbol, ticker, financials } = usePaneTicker();
   const dataProvider = useAssetData();
+  const scope = useCloudDisplayScope();
   const { createPaneFromTemplate } = usePluginAppActions();
   const [viewMode, setViewMode] = usePluginPaneState<ViewMode>("viewMode", "table");
   const [sortPreference, setSortPreference] = usePluginPaneState<SortPreference>("sortPreference", DEFAULT_SORT);
@@ -118,13 +121,12 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       throw isNoHoldersAnswer(error) ? new Error(noHoldersText(symbol, exchange, savedCurrency)) : error;
     });
   } : null, [dataProvider, exchange, savedCurrency, symbol]);
-  // Another ticker's holders stay up until its own answer, and a failed
-  // refresh keeps the last holders; the failure goes to the footer.
   const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, {
-    initialData: () => symbol && dataProvider?.getCachedQuery
-      ? dataProvider.getCachedQuery("getHolders", [symbol, exchange]).getSnapshot().result?.value ?? null
+    keepPreviousData: scope,
+    initialData: () => scope && symbol && dataProvider?.getCachedQuery
+      ? cachedValueForDisplay(dataProvider.getCachedQuery("getHolders", [symbol, exchange]).getSnapshot().result)
       : null,
-    keepPreviousData: true,
+    savedCopy: scope && dataProvider && symbol ? { key: ["holders", scope, dataProvider.id, symbol, exchange] } : null,
   });
 
   // A US line's 13F holders are every filer in the SEC holder index, paged
@@ -134,8 +136,10 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const loadIndexPage = useMemo(() => indexTicker
     ? ({ offset, signal }: PageRequest) => loadIndexedHolderPage(indexTicker, offset, signal)
     : null, [indexTicker]);
-  const index = usePagedRows(loadIndexPage, { getId: (row) => row.cik });
-  // The source's list kept from the previous ticker must not price this one's filers: they wait for its own.
+  const index = usePagedRows(loadIndexPage, {
+    getId: (row) => row.cik,
+    savedCopy: scope && indexTicker ? { key: ["indexed-holders", scope, symbol, exchange, indexTicker] } : null,
+  });
   const base = data && indexHolderTicker(data.symbol) === indexTicker ? data : null;
   const indexed = index.rows.length > 0 && (!!base || !loading) && indexHolderTicker(symbol, exchange, base) != null;
   const indexPending = !!indexTicker && index.loading && index.rows.length === 0;

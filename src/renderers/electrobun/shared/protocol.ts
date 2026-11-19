@@ -9,7 +9,8 @@ import type {
 } from "../../../types/desktop-window";
 import type { DesktopApplicationMenuCommand } from "../../../types/desktop-menu";
 import type { AppConfig, UpdateChannel } from "../../../types/config";
-import type { CachedResourceRecord, ResourceCacheKey } from "../../../data/resource-store";
+import type { WarmResourceRecord } from "../../../data/memory-resource-store";
+import type { ResourceSyncBatch } from "../../../data/durable-resources";
 import type { TickerRecord } from "../../../types/ticker";
 import type { ReleaseInfo, UpdateCheckResult, UpdateProgress } from "../../../updater";
 import type { CapabilityManifest } from "../../../capabilities";
@@ -28,8 +29,8 @@ export interface ElectrobunBackendInit {
   desktopSnapshot: DesktopSharedStateSnapshot | null;
   desktopThemePreview: DesktopThemePreviewState;
   pluginState: Record<string, Record<string, unknown>>;
-  /** Saved broker account snapshots, which the view's in-memory store starts from. */
-  savedResources?: CachedResourceRecord[];
+  /** The cached resources the view's in-memory store starts from: its most recently read, and every broker account snapshot. */
+  savedResources?: WarmResourceRecord[];
   capabilityManifests: CapabilityManifest[];
   desktopPlatform: string;
   /** The machine name, which a remote assistant sees this desktop app under. */
@@ -288,9 +289,8 @@ interface DesktopBackendRequestMap {
     response: null;
   };
   "session.delete": { request: { sessionId: string }; response: null };
-  /** Saves or drops a broker account snapshot in the cache database; nothing else is accepted. */
-  "resources.set": { request: { record: CachedResourceRecord }; response: null };
-  "resources.delete": { request: { key: ResourceCacheKey }; response: null };
+  /** What the view's plugin and pane caches saved, dropped and read since its last batch. */
+  "resources.sync": { request: ResourceSyncBatch; response: null };
 }
 
 export type DesktopBackendRequestMethod = keyof DesktopBackendRequestMap;
@@ -318,9 +318,10 @@ export type DesktopHostRequest = DesktopBackendRequestFor<Extract<DesktopBackend
 export type DesktopCoreRequest = DesktopBackendRequestFor<
   Extract<
     DesktopBackendRequestMethod,
-    `update.${string}` | `ticker.${string}` | `config.${string}` | `session.${string}` | `resources.${string}`
+    `update.${string}` | `ticker.${string}` | `config.${string}` | `session.${string}`
   >
 >;
+export type DesktopResourceRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `resources.${string}`>>;
 
 interface BackendRequestPayload {
   method: DesktopBackendRequestMethod;

@@ -436,7 +436,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ]);
       return { ...market, brokerOptions };
     },
-    [requests, localTickers, portfolio, cashCurrencies, session.requestKey],
+    [requests, localTickers, portfolio, cashCurrencies, session.displayScope],
   );
   const resource = useAsyncResource(!frozen && portfolio ? loader : null, {
     clearOnError: isAccessDenied,
@@ -454,9 +454,9 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     () => (episodeTargetsKey && portfolio
       ? () => loadRiskEpisodeHistory(JSON.parse(episodeTargetsKey) as RiskEpisodeTarget[], portfolio.currency)
       : null),
-    [episodeTargetsKey, portfolio?.currency, session.requestKey],
+    [episodeTargetsKey, portfolio?.currency, session.displayScope],
   );
-  const episodeResource = useAsyncResource(episodeLoader, { clearOnError: isAccessDenied, keepPreviousData: true });
+  const episodeResource = useAsyncResource(episodeLoader, { clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
   // A reload reads the kept closes again and asks only for those that failed
   // (a rate limit on a large book), so it follows the market data's cadence.
   useAutoRefresh(episodeResource.updatedAt, episodeResource.load);

@@ -29,6 +29,8 @@ export interface QueryEntry<T> {
   /** Chart-only provenance paired with resolved data, including retained lastGoodData. */
   history?: Omit<import("../types/price-history").PriceHistoryResult, "points">;
   fetchedAt: number | null;
+  /** This entry was opened from disk and has not yet received a new answer. */
+  savedCopyAt?: number;
   /** Accepted source response order in this runtime, preserved through cache projections. */
   responseSequence?: number;
   asOf?: number;

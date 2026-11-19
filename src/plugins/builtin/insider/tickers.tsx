@@ -327,10 +327,10 @@ function TickersInsidersView({ symbols, width, height, focused, renderCompany, v
       asOf: read.map((entry) => entry.payload.buy.asOf).filter((at): at is string => !!at).sort().at(-1) ?? null,
       stale: read.some((entry) => entry.stale),
     };
-  }, [key, symbols, window]);
+  }, [key, symbols, window, session.displayScope]);
   const resource = useAsyncResource(loader, {
     clearOnError: (error) => error instanceof Error && isCloudSessionRequired(error.message),
-    keepPreviousData: true,
+    keepPreviousData: session.displayScope,
   });
   const answer = resource.data?.key === key ? resource.data : resource.loading ? resource.data ?? null : null;
   useAutoRefresh(resource.updatedAt, resource.load);

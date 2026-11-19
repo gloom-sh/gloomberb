@@ -59,6 +59,7 @@ export function createCommandPluginPersistence(
         provenance: record.provenance,
         stale: record.stale,
         expired: record.expired,
+        fallbackOnly: true,
       };
     },
     setResource: <T = unknown>(kind: string, key: string, value: T, options: SetResourceOptions) => {

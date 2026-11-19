@@ -3,6 +3,11 @@ import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { useAsyncResource } from "./async-resource";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../core/connection-health";
+import { MemoryResourceStore } from "../data/memory-resource-store";
+import { setSavedCopyFrameGate, setSavedCopyStore, writeSavedCopy } from "../data/pane-saved-copies";
+import { Text } from "../ui";
+import { apiClient } from "../api-client";
+import { useCloudDisplayScope } from "../api-client/plan-access";
 
 type Loader = ((force: boolean) => Promise<string>) | null;
 const tui = createOpenTuiTestHarness({ width: 20, height: 5 });
@@ -38,6 +43,175 @@ test("only the newest request may publish data or an error", async () => {
   await act(async () => { first.reject(new Error("old failure")); });
   expect(forces).toEqual([false, true]);
   expect(resource).toMatchObject({ data: "new", loading: false, error: null });
+});
+
+test("terminal draws the saved result before starting its background refresh", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const savedCopy = { key: ["board", "NYSE"] };
+  const pending = Promise.withResolvers<string>();
+  const drawn = Promise.withResolvers<void>();
+  const loads: boolean[] = [];
+  const loader = (force: boolean) => { loads.push(force); return pending.promise; };
+  const rendered: string[] = [];
+  function Pane() {
+    const view = useAsyncResource(loader, { savedCopy });
+    const text = view.loading ? "Loading" : view.data ?? "Empty";
+    rendered.push(text);
+    return <Text>{text}</Text>;
+  }
+  try {
+    setSavedCopyFrameGate(() => drawn.promise);
+    writeSavedCopy(savedCopy, "Old rows", Date.UTC(2023, 0, 1));
+    await tui.render(<Pane />);
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("Old rows");
+    expect(loads).toEqual([]);
+    await act(async () => { drawn.resolve(); });
+    expect(loads).toEqual([true]);
+    await act(async () => { pending.resolve("New rows"); });
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("New rows");
+    expect(rendered).not.toContain("Loading");
+  } finally {
+    setSavedCopyFrameGate(null);
+    setSavedCopyStore(previous);
+  }
+});
+
+test("terminal starts a cold load even if the saved-copy frame has not drawn", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const savedCopy = { key: ["board", "NYSE"] };
+  const drawn = Promise.withResolvers<void>();
+  const pending = Promise.withResolvers<string>();
+  const loads: boolean[] = [];
+  const loader = (force: boolean) => { loads.push(force); return pending.promise; };
+  function Pane() {
+    const view = useAsyncResource(loader, { savedCopy });
+    return <Text>{view.loading ? "Loading" : view.data ?? "Empty"}</Text>;
+  }
+  try {
+    setSavedCopyFrameGate(() => drawn.promise);
+    await tui.render(<Pane />);
+    expect(loads).toEqual([false]);
+    await act(async () => { pending.resolve("Live rows"); });
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("Live rows");
+  } finally {
+    drawn.resolve();
+    setSavedCopyFrameGate(null);
+    setSavedCopyStore(previous);
+  }
+});
+
+test("an unchanged refresh keeps the display data stable without keeping the saved age", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const savedCopy = { key: ["history", "NYSE", "public"] };
+  const live = { rows: [{ date: new Date("2026-01-01"), value: 42 }] };
+  const pending = Promise.withResolvers<typeof live>();
+  const loader = () => pending.promise;
+  let view: ReturnType<typeof useAsyncResource<typeof live>> | undefined;
+  function Pane() {
+    view = useAsyncResource(loader, { savedCopy });
+    return null;
+  }
+  try {
+    const fetchedAt = Date.UTC(2026, 0, 1);
+    writeSavedCopy(savedCopy, live, fetchedAt);
+    await tui.render(<Pane />);
+    const opening = view?.data;
+    expect(opening).toEqual(live);
+    expect(view?.savedAt).toBe(fetchedAt);
+    await act(async () => { pending.resolve(live); });
+    expect(view?.data).toBe(opening);
+    expect(view?.savedAt).toBeNull();
+    expect(view?.updatedAt).toBeGreaterThan(fetchedAt);
+  } finally {
+    setSavedCopyStore(previous);
+  }
+});
+
+test("a saved result renders before the live request has its inputs", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const savedCopy = { key: ["surface", "SPY", "ARCA"] };
+  const forces: boolean[] = [];
+  const loader = async (force: boolean) => { forces.push(force); return "Live surface"; };
+  let ready!: (value: boolean) => void;
+  function Pane() {
+    const [canLoad, setCanLoad] = useState(false);
+    ready = setCanLoad;
+    const view = useAsyncResource(loader, { savedCopy, deferLoad: !canLoad });
+    return <Text>{view.loading ? "Loading" : view.data}</Text>;
+  }
+  try {
+    writeSavedCopy(savedCopy, "Saved surface", Date.UTC(2023, 0, 1));
+    await tui.render(<Pane />);
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("Saved surface");
+    expect(forces).toEqual([]);
+    await act(async () => { ready(true); });
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("Live surface");
+    expect(forces).toEqual([true]);
+  } finally {
+    setSavedCopyStore(previous);
+  }
+});
+
+test("a deferred cache miss stays idle, even on manual refresh", async () => {
+  let requests = 0;
+  const loader = async () => { requests += 1; return "Unexpected result"; };
+  function Probe() {
+    resource = useAsyncResource(loader, { savedCopy: { key: ["deferred-miss"] }, deferLoad: true });
+    return null;
+  }
+  await tui.render(<Probe />);
+  await act(async () => { await resource.reloadAndWait(); });
+  expect(resource).toMatchObject({ data: null, loading: false, refreshing: false, status: "idle" });
+  expect(requests).toBe(0);
+});
+
+test("listing changes prefer an exact saved copy, then same-access previous data, never another scope", async () => {
+  const previous = setSavedCopyStore(new MemoryResourceStore());
+  const answer = Promise.withResolvers<string>();
+  const loader = () => answer.promise;
+  const pro = { id: "fixture-first", email: "first@example.com", emailVerified: true, plan: "pro" as const };
+  let changeListing!: (value: string) => void;
+  function Probe() {
+    const [listing, setListing] = useState("SPY:ARCX");
+    changeListing = setListing;
+    const scope = useCloudDisplayScope();
+    resource = useAsyncResource(scope ? loader : null, {
+      keepPreviousData: scope,
+      savedCopy: scope ? { key: ["test-history", scope, listing] } : null,
+    });
+    return null;
+  }
+  try {
+    apiClient.setSessionToken("isolated-snapshot-fixture");
+    apiClient.restoreCachedUser(pro);
+    const scope = JSON.stringify([pro.id, true, true]);
+    writeSavedCopy({ key: ["test-history", scope, "SPY:ARCX"] }, "Saved SPY");
+    writeSavedCopy({ key: ["test-history", scope, "QQQ:XNAS"] }, "Saved QQQ");
+    writeSavedCopy({ key: ["test-history", "QQQ:XNAS"] }, "Legacy unscoped data");
+    await tui.render(<Probe />);
+    expect(resource.data).toBe("Saved SPY");
+    await act(async () => { changeListing("QQQ:XNAS"); });
+    expect(resource.data).toBe("Saved QQQ");
+    await act(async () => { changeListing("QQQ:XNYS"); });
+    expect(resource.data).toBe("Saved QQQ");
+    await act(async () => { apiClient.restoreCachedUser({ ...pro, plan: "free" }); });
+    expect(resource.data).toBeNull();
+    await act(async () => { apiClient.restoreCachedUser(pro); });
+    await act(async () => { changeListing("QQQ:XNAS"); });
+    expect(resource.data).toBe("Saved QQQ");
+    await act(async () => { apiClient.restoreCachedUser({ ...pro, id: "fixture-second" }); });
+    expect(resource.data).toBeNull();
+    await act(async () => { apiClient.setSessionToken(null); });
+    expect(resource.data).toBeNull();
+  } finally {
+    apiClient.setSessionToken(null);
+    setSavedCopyStore(previous);
+  }
 });
 
 test("reload starts a forced load and returns nothing; reloadAndWait settles once the answer or failure is in", async () => {

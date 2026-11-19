@@ -20,7 +20,6 @@ import { colors } from "../../../theme/colors";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import type {
-  CloudCongressHousePayload,
   CloudCongressMemberPayload,
   CloudCongressTradePayload,
 } from "../../../api-client";
@@ -30,19 +29,17 @@ import {
   CONGRESS_TRADES_PANE_ID,
   canLoadMoreCongress,
   congressScanNotice,
-  mergeCongressPages,
   nextCongressPage,
   previousCongressYearPage,
   buildMemberTradeColumns,
   formatCongressReturn,
   formatLag,
   sortedTrades,
-  type LoadStatus,
   type TradeColumn,
   type TradeColumnId,
 } from "./model";
 import { congressReturnColor, renderCongressTradeCell } from "./table";
-import { loadCongressHouse } from "./client";
+import { useCongressFeed } from "./use-feed";
 
 const DETAIL_ROW = { labelWidth: 16, emphasis: false } as const;
 
@@ -120,80 +117,25 @@ export function MemberTradesDetail({
 }) {
   const rendererHost = useRendererHost();
   const openTicker = useInlineTickerOpener();
-  const [trades, setTrades] = useState<CloudCongressTradePayload[]>(initialTrades);
   // A member sits in one chamber, so their history comes from that feed alone.
   const chamber = initialTrades[0]?.chamber ?? "all";
-  const [detailPayload, setDetailPayload] = useState<CloudCongressHousePayload | null>(null);
-  const [status, setStatus] = useState<LoadStatus>("loading");
-  const [error, setError] = useState<string | null>(null);
+  const { payload: detailPayload, status, error, loadPage, loadingMore, reload: refresh } = useCongressFeed({
+    chamber,
+    member: member.memberName,
+    limit: CONGRESS_MEMBER_TRADE_LIMIT,
+    filingLimit: Math.max(CONGRESS_MEMBER_FILING_LIMIT, filingLimit),
+  }, member.id);
+  const trades = useMemo(() => {
+    if (!detailPayload) return initialTrades;
+    const exact = detailPayload.trades.filter((trade) => trade.memberName === member.memberName && trade.stateDistrict === member.stateDistrict);
+    return exact.length ? exact : detailPayload.trades;
+  }, [detailPayload, initialTrades, member.memberName, member.stateDistrict]);
   const [selectedTradeId, setSelectedTradeId] = useState<string | null>(initialTrades[0]?.id ?? null);
   const [sortPreference, setSortPreference] = useState<{ columnId: TradeColumnId; direction: "asc" | "desc" }>({
     columnId: "filed",
     direction: "desc",
   });
-  const fetchGenRef = useRef(0);
-  const [loadingMore, setLoadingMore] = useState(false);
   const tradeScrollRef = useRef<ScrollBoxRenderable | null>(null);
-
-  const load = useCallback((refresh = false) => {
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setStatus("loading");
-    setError(null);
-    loadCongressHouse({
-      chamber,
-      member: member.memberName,
-      limit: CONGRESS_MEMBER_TRADE_LIMIT,
-      filingLimit: Math.max(CONGRESS_MEMBER_FILING_LIMIT, filingLimit),
-      refresh,
-    })
-      .then((payload) => {
-        if (fetchGenRef.current !== gen) return;
-        const exactMemberTrades = payload.trades.filter((trade) => (
-          trade.memberName === member.memberName
-          && trade.stateDistrict === member.stateDistrict
-        ));
-        setDetailPayload(payload);
-        setTrades(exactMemberTrades.length > 0 ? exactMemberTrades : payload.trades);
-        setStatus("loaded");
-      })
-      .catch((loadError) => {
-        if (fetchGenRef.current !== gen) return;
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-        setStatus("error");
-      });
-  }, [chamber, filingLimit, member.memberName, member.stateDistrict]);
-
-  const loadPage = useCallback((nextRequest: ReturnType<typeof nextCongressPage>) => {
-    if (!detailPayload || !nextRequest) return;
-    const gen = fetchGenRef.current;
-    setLoadingMore(true);
-    loadCongressHouse({
-      ...nextRequest,
-      chamber,
-      member: member.memberName,
-      limit: CONGRESS_MEMBER_TRADE_LIMIT,
-      filingLimit: Math.max(CONGRESS_MEMBER_FILING_LIMIT, filingLimit),
-    })
-      .then((payload) => {
-        if (fetchGenRef.current !== gen) return;
-        const merged = detailPayload ? mergeCongressPages(detailPayload, payload) : payload;
-        const exactMemberTrades = merged.trades.filter((trade) => (
-          trade.memberName === member.memberName
-          && trade.stateDistrict === member.stateDistrict
-        ));
-        setDetailPayload(merged);
-        setTrades(exactMemberTrades.length > 0 ? exactMemberTrades : merged.trades);
-      })
-      .catch((loadError) => {
-        if (fetchGenRef.current !== gen) return;
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-      })
-      .finally(() => {
-        if (fetchGenRef.current !== gen) return;
-        setLoadingMore(false);
-      });
-  }, [chamber, detailPayload, filingLimit, member.memberName, member.stateDistrict]);
 
   const loadMore = useCallback(() => {
     if (!detailPayload || loadingMore || status !== "loaded") return;
@@ -216,18 +158,8 @@ export function MemberTradesDetail({
   );
 
   useEffect(() => {
-    fetchGenRef.current += 1;
-    setTrades(initialTrades);
-    setDetailPayload(null);
-    setStatus("loading");
-    setError(null);
     setSelectedTradeId(initialTrades[0]?.id ?? null);
   }, [member.id]);
-
-  useEffect(() => {
-    load(false);
-    return () => { fetchGenRef.current += 1; };
-  }, [load]);
 
   const sortedRows = useMemo(() => sortedTrades(trades, sortPreference), [sortPreference, trades]);
   const columns = useMemo(() => buildMemberTradeColumns(width), [width]);
@@ -245,10 +177,6 @@ export function MemberTradesDetail({
     if (selectedTradeId && sortedRows.some((trade) => trade.id === selectedTradeId)) return;
     setSelectedTradeId(sortedRows[0]?.id ?? null);
   }, [selectedTradeId, sortedRows]);
-
-  const refresh = useCallback(() => {
-    load(true);
-  }, [load]);
 
   const openSelectedTicker = useCallback(() => {
     if (selectedTrade?.ticker) openTicker(selectedTrade.ticker);

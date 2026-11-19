@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { MemoryResourceStore } from "../data/memory-resource-store";
+import { setSavedCopyStore } from "../data/pane-saved-copies";
 import { QueryStore } from "./query-store";
 import type { QueryEntry } from "./result-types";
 
@@ -20,6 +22,42 @@ function retainedKeys(store: QueryStore<string>, keys: string[]): string[] {
 }
 
 describe("QueryStore retention", () => {
+  it("releases a decoded snapshot when its last pane leaves without deleting the saved record", () => {
+    const previous = setSavedCopyStore(new MemoryResourceStore());
+    const options = { savedCopies: { name: "watched", scope: () => "public" } };
+    try {
+      new QueryStore<string>(() => {}, options).set("chart", ready("saved"));
+      const reopened = new QueryStore<string>(() => {}, options);
+      expect(reopened.hasSaved("chart")).toBe(true);
+      expect(reopened.size).toBe(0);
+      const firstCopy = reopened.get("chart");
+      expect(firstCopy.data).toBe("saved");
+      reopened.release("chart");
+      expect(reopened.size).toBe(0);
+      const nextCopy = reopened.get("chart");
+      expect(nextCopy).toEqual(firstCopy);
+      expect(nextCopy).not.toBe(firstCopy);
+    } finally {
+      setSavedCopyStore(previous);
+    }
+  });
+
+  it("saves a prefetched answer when a pane starts observing it, not before", () => {
+    const previous = setSavedCopyStore(new MemoryResourceStore());
+    const watched = new Set<string>();
+    const options = { isWatched: (key: string) => watched.has(key), savedCopies: { name: "observed", scope: () => "public", observedOnly: true } };
+    try {
+      const store = new QueryStore<string>(() => {}, options);
+      store.set("chart", ready("answer"));
+      expect(new QueryStore<string>(() => {}, options).get("chart").data).toBeNull();
+      watched.add("chart");
+      store.watch("chart");
+      expect(new QueryStore<string>(() => {}, options).get("chart").data).toBe("answer");
+    } finally {
+      setSavedCopyStore(previous);
+    }
+  });
+
   it("drops the least recently written unwatched entries past the ceiling", () => {
     const evicted: string[] = [];
     const store = new QueryStore<string>(() => {}, { maxRetainedEntries: 2, onEvict: (key) => evicted.push(key) });

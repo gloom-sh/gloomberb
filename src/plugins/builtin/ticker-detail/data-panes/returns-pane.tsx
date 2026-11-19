@@ -180,7 +180,7 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
       forceRefresh,
     });
   }, [dataProvider, range, resolution, supportRequest]);
-  const { data, loading, error, reload } = useTickerRequest(loader, symbol, exchange);
+  const { data, loading, error, reload } = useTickerRequest(loader, symbol, exchange, ["returns", range, resolution]);
   usePaneRefreshKey(reload, { focused: focused && !searchActive });
 
   const returnRows = useMemo(

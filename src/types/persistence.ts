@@ -19,4 +19,6 @@ export interface PersistedResourceValue<T = unknown> extends PersistedResourceMe
   provenance?: unknown | null;
   stale?: boolean;
   expired?: boolean;
+  /** The caller must refresh even if this copy has not expired. */
+  fallbackOnly?: true;
 }

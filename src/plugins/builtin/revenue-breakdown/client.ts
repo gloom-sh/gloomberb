@@ -7,6 +7,7 @@ import type {
 } from "../../../api-client/revenue-breakdown";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { markSavedCopy } from "../../../data/saved-copies";
 import { secListingKey } from "../../../utils/sec";
 import { logFailure } from "../../../utils/log-failure";
 
@@ -104,7 +105,7 @@ export function cachedRevenueBreakdown(
   const cached = revenueBreakdownCache.get(cacheKey(symbol, view, pro, listing), { allowExpired: true });
   if (!cached) return null;
   try {
-    return { payload: validateRevenueBreakdown(cached.data), stale: false, refreshError: null };
+    return markSavedCopy({ payload: validateRevenueBreakdown(cached.data), stale: false, refreshError: null }, cached.fetchedAt);
   } catch (error) {
     return logFailure("revenue-breakdown.client", "Validate cached revenue breakdown failed", null)(error);
   }
@@ -124,9 +125,10 @@ export async function loadRevenueBreakdown(
   );
   // A company that stopped reporting a breakdown must not keep showing an old one.
   if (result.error instanceof Error && result.error.message === NO_BREAKDOWN) throw result.error;
-  return {
+  const resource = {
     payload: validateRevenueBreakdown(result.data),
     stale: result.stale,
     refreshError: result.refreshError ?? null,
   };
+  return result.stale ? markSavedCopy(resource, result.fetchedAt) : resource;
 }

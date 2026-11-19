@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
+import { useAsyncResource } from "../../../react/async-resource";
 import { Box, useUiCapabilities } from "../../../ui";
 import {
   findMetricTreemapNeighbor,
@@ -51,7 +53,6 @@ import {
   heatmapCheckIntervalMs,
   resetMarketHeatmapCache,
   type MarketHeatmapBoard,
-  type MarketHeatmapUniverseId,
 } from "./data";
 import {
   HEATMAP_COLLECTION_KIND_STATE_KEY,
@@ -334,18 +335,25 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   // asked for. It is drawn only under its own tab, so a switch never paints the
   // previous universe's tiles, and its footer names its own count while a new
   // one is on its way.
-  const [board, setBoard] = useState<MarketHeatmapBoard | null>(null);
-  // The first load starts before the effect runs; an empty board is not "no data".
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const scope = useCloudDisplayScope();
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const fetchGenRef = useRef(0);
   const seenCollection = useRef<string | null>(null);
-  const shownBoard = !portfolioTab && board?.universe === activeUniverse ? board : null;
-  const stale = board?.stale === true;
   const requestCount = isRemoteHeatmapUniverse(activeUniverse)
     ? Math.min(MARKET_HEATMAP_REQUEST_COUNT[activeUniverse], nameCount)
     : 0;
+  const loadUniverse = useMemo(() => isRemoteHeatmapUniverse(activeUniverse)
+    ? (forceRefresh: boolean) => fetchMarketHeatmap(activeUniverse, { count: requestCount, forceRefresh })
+    : null, [activeUniverse, requestCount, scope]);
+  const { data: currentBoard, loading, error, reload } = useAsyncResource(loadUniverse, {
+    savedCopy: scope ? { key: ["market-heatmap", scope, activeUniverse, requestCount] } : null,
+  });
+  const previousBoard = useRef<{ scope: string | null; board: MarketHeatmapBoard } | null>(null);
+  if (previousBoard.current?.scope !== scope || previousBoard.current?.board.universe !== activeUniverse) previousBoard.current = null;
+  if (currentBoard) previousBoard.current = { scope, board: currentBoard };
+  const board = currentBoard ?? (loading ? previousBoard.current?.board ?? null : null);
+  const loadError = error ? unavailableText("Market heatmap") : null;
+  const shownBoard = board?.universe === activeUniverse ? board : null;
+  const stale = board?.stale === true;
   const marketAssets = useMemo(
     () => {
       const assets: readonly HeatmapBoardAsset[] = shownBoard?.assets ?? NO_ASSETS;
@@ -455,34 +463,6 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
     ? resolvedAssets.find((asset) => asset.symbol === activeSymbol) ?? null
     : null;
 
-  const loadUniverse = useCallback(async (universe: MarketHeatmapUniverseId, count: number, options?: { forceRefresh?: boolean }) => {
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setLoading(true);
-    setLoadError(null);
-
-    try {
-      const result = await fetchMarketHeatmap(universe, {
-        count,
-        forceRefresh: options?.forceRefresh,
-      });
-      if (fetchGenRef.current !== gen) return;
-      setBoard(result);
-      // Selection is the user's; the effect below only fills it when it is gone.
-    } catch {
-      if (fetchGenRef.current !== gen) return;
-      // A failed refresh keeps the board it had; the footer says it failed.
-      setLoadError(unavailableText("Market heatmap"));
-    } finally {
-      if (fetchGenRef.current === gen) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isRemoteHeatmapUniverse(activeUniverse)) return;
-    void loadUniverse(activeUniverse, requestCount);
-  }, [activeUniverse, loadUniverse, requestCount]);
-
   useEffect(() => {
     const previous = seenCollection.current;
     seenCollection.current = collectionId;
@@ -515,13 +495,8 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
       loadCollectionSnapshots(collectionTickers, collectionId, collectionKind, true);
       return;
     }
-    if (!isRemoteHeatmapUniverse(activeUniverse)) return;
-    void loadUniverse(activeUniverse, requestCount, { forceRefresh: true });
-  }, [activeUniverse, collectionId, collectionKind, collectionTickers, loadUniverse, portfolioTab, requestCount]);
-  // The list's quotes stream; on a timer only the market boards reload.
-  const autoRefresh = useCallback(() => {
-    if (isRemoteHeatmapUniverse(activeUniverse)) void loadUniverse(activeUniverse, requestCount, { forceRefresh: true });
-  }, [activeUniverse, loadUniverse, requestCount]);
+    reload();
+  }, [collectionId, collectionKind, collectionTickers, portfolioTab, reload]);
 
   const selectAdjacentUniverse = useCallback((direction: -1 | 1) => {
     const index = universeTabs.findIndex((tab) => tab.value === activeUniverse);
@@ -634,7 +609,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   // hand back unchanged long after it was put together.
   const checked = useUpdatedAgo(shownBoard?.checkedAt ?? null);
   // The snapshot carries sizes and every name the stream does not: a minute on the server, a quarter of one real-time.
-  useAutoRefresh(board?.checkedAt ?? null, autoRefresh, { intervalMs: heatmapCheckIntervalMs(board) });
+  useAutoRefresh(board?.checkedAt ?? null, reload, { intervalMs: heatmapCheckIntervalMs(board) });
 
   usePaneStatusFooter({ registrationId: "market-heatmap-retained", stale: hasBoard && stale && !portfolioTab });
   // Signed out or free, a market board is the delayed one, and the holdings' quotes are delayed ones.

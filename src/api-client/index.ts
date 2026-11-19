@@ -143,6 +143,7 @@ class GloomApiClient {
   private sessionRevalidationGeneration = 0;
   private sessionRevalidationTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionChecked = false;
+  private cookieIdentity: "ready" | "pending" | "unavailable" = "ready";
   /** When a session check last answered for the credential in place (`recentSession`). */
   private sessionCheckedAt: number | null = null;
   /** Last few session transitions, content-free, for app://auth. */
@@ -155,9 +156,10 @@ class GloomApiClient {
     getCurrentUser: () => this.currentUser,
     getSessionToken: () => this.transport.getSessionToken(),
     hasSessionCredential: () => this.transport.hasSessionCredential(),
+    isCookieSessionMode: () => this.transport.isCookieSessionMode(),
     request: (path, options, canApplySession) => this.request(path, options, canApplySession),
     requireCapturedSession: (message) => this.requireCapturedSession(message),
-    setCurrentUser: (user) => this.setCurrentUser(user),
+    setCurrentUser: (user, confirmSession) => this.setCurrentUser(user, confirmSession),
     setSessionToken: (token) => this.installSessionToken(token),
     updateCurrentUser: (updater) => this.updateCurrentUser(updater),
   });
@@ -225,6 +227,7 @@ class GloomApiClient {
     this.cancelSessionRevalidation();
     this.sessionInstallationGeneration += 1;
     this.sessionChecked = false;
+    this.cookieIdentity = "ready";
     this.verifiedSessionIdentity = null;
     this.transport.setCookieSessionMode(enabled);
     this.emitCurrentUserChange();
@@ -290,8 +293,30 @@ class GloomApiClient {
     };
   }
 
-  restoreCachedUser(user: PersistedAuthUser | null): void {
-    this.auth.restoreCachedUser(user);
+  restoreCachedUser(user: PersistedAuthUser | null, confirmSession = true): void {
+    this.auth.restoreCachedUser(user, confirmSession);
+  }
+
+  waitForCookieIdentity(): void {
+    this.cookieIdentity = "pending";
+    this.emitCurrentUserChange();
+  }
+
+  finishCookieIdentityBoot(): void {
+    if (this.cookieIdentity !== "pending" || this.currentUser) return;
+    const generation = this.sessionRevalidationGeneration;
+    this.cookieIdentity = "unavailable";
+    this.transport.forgetSharedReads();
+    this.emitCurrentUserChange();
+    this.scheduleSessionRevalidation(generation);
+  }
+
+  isCookieIdentityUnavailable(): boolean {
+    return this.cookieIdentity === "unavailable";
+  }
+
+  isDisplayScopePending(): boolean {
+    return !this.getCurrentUser()?.id && (this.cookieIdentity === "pending" || this.isSignedIn());
   }
 
   isVerified(): boolean {
@@ -300,9 +325,13 @@ class GloomApiClient {
 
   /** Null while a replacement credential still awaits its matching user. */
   getVerifiedSessionIdentity(): object | null {
-    return this.sessionTransitions === 0 && this.isVerified()
+    return this.isVerified() && this.getConfirmedDisplayUser() ? this.verifiedSessionIdentity : null;
+  }
+
+  getConfirmedDisplayUser(): AuthUser | null {
+    return this.sessionTransitions === 0 && this.verifiedSessionIdentity !== null
       && this.verifiedSessionCredential === this.transport.getSessionToken()
-      ? this.verifiedSessionIdentity : null;
+      ? this.currentUser : null;
   }
 
   /**
@@ -359,6 +388,7 @@ class GloomApiClient {
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
+    if (confirmSession) this.cookieIdentity = "ready";
     // Another account, or a plan that changed, reads other answers: no later read joins one sent before.
     if (changed) this.transport.forgetSharedReads();
     if (confirmSession) {
@@ -494,7 +524,7 @@ class GloomApiClient {
     this.clearSessionRevalidationTimer();
   }
 
-  /** A failed auth response can replace a cookie even when its recovery read is offline. */
+  /** Revalidate after an inconclusive auth response or browser boot. */
   private scheduleSessionRevalidation(generation: number, delay = SESSION_REVALIDATION_INITIAL_MS): void {
     const isCurrent = () => generation === this.sessionRevalidationGeneration;
     const needsRevalidation = () => isCurrent() && this.sessionTransitions === 0
@@ -572,6 +602,10 @@ class GloomApiClient {
             this.sessionChecked = true;
             this.sessionCheckedAt = Date.now();
             this.clearSessionRevalidationTimer();
+            if (this.cookieIdentity !== "ready") {
+              this.cookieIdentity = "ready";
+              this.emitCurrentUserChange();
+            }
           }
           this.traceAuth(validated ? "getSession:done" : "getSession:retained", user);
           return user;

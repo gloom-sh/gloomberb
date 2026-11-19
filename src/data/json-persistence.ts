@@ -1,10 +1,11 @@
 import type { AppPersistencePort } from "../core/app-service-ports";
 import type { PluginStateRecord } from "./plugin-state-store";
 import type { SessionSnapshotRecord } from "./session-store";
-import { resourceRecordKey, WriteThroughResourceStore } from "./memory-resource-store";
+import { resourceRecordKey, WriteThroughResourceStore, type ResourceRecordSink, type WarmResourceRecord } from "./memory-resource-store";
 import type { CachedResourceRecord, ResourceCacheKey } from "./resource-store";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./json-storage";
 import { isRecord } from "../utils/guards";
+import { proResourceMatcher } from "./pro-resource-access";
 
 type PluginState = Record<string, Record<string, PluginStateRecord>>;
 type Sessions = Record<string, SessionSnapshotRecord>;
@@ -17,19 +18,43 @@ export class JsonPersistence implements AppPersistencePort {
   private readonly sessionData: SafeJsonStorage<Sessions>;
   private readonly resourceData: SafeJsonStorage<SavedResources>;
 
-  constructor(storage?: StorageLike, { keepResource = () => false }: { keepResource?: (key: ResourceCacheKey) => boolean } = {}) {
+  constructor(storage?: StorageLike, { keepResource = () => false, durable }: {
+    keepResource?: (key: ResourceCacheKey) => boolean;
+    /**
+     * Where every cached resource is kept instead of local storage (the web
+     * app's IndexedDB, renderers/browser/resource-db.ts), and the records a
+     * launch starts from. Records selected by `keepResource` stay in local storage.
+     */
+    durable?: { saved: readonly WarmResourceRecord[]; sink: ResourceRecordSink };
+  } = {}) {
     this.pluginStateData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.pluginState, {}, (value): value is PluginState => isRecord(value));
     this.sessionData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.session, {}, (value): value is Sessions => isRecord(value));
     this.resourceData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.resources, {}, (value): value is SavedResources => isRecord(value));
     const saved = Object.values(this.resourceData.get()).filter((record) => isRecord(record) && typeof record.kind === "string");
-    this.resources = new WriteThroughResourceStore(saved, {
-      set: (record) => this.resourceData.set({ ...this.resourceData.get(), [resourceRecordKey(record)]: record }),
+    const sink = durable?.sink;
+    this.resources = new WriteThroughResourceStore([...(durable?.saved ?? []), ...saved], {
+      set: (record) => {
+        if (keepResource(record)) this.resourceData.set({ ...this.resourceData.get(), [resourceRecordKey(record)]: record });
+        else sink?.set(record);
+      },
       delete: (key) => {
+        if (!keepResource(key)) {
+          sink?.delete(key);
+          return;
+        }
         const next = { ...this.resourceData.get() };
         delete next[resourceRecordKey(key)];
         this.resourceData.set(next);
       },
-    }, keepResource);
+      purgeProResources: (account) => {
+        sink?.purgeProResources(account);
+        const current = this.resourceData.get();
+        const matches = proResourceMatcher(account);
+        const kept = Object.entries(current).filter(([, record]) => isRecord(record) && !matches(record));
+        if (kept.length !== Object.keys(current).length) this.resourceData.set(Object.fromEntries(kept));
+      },
+      touch: sink?.touch ? (key, at) => { if (!keepResource(key)) sink.touch?.(key, at); } : undefined,
+    }, (key) => !!sink || keepResource(key));
   }
 
   readonly pluginState = {

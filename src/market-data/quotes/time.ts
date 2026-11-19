@@ -6,6 +6,7 @@ import { formatShortDate } from "../../utils/datetime-format";
 import { quoteFeedDelayMinutes } from "../market/freshness";
 import { quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
 import { dailyNavDate, isQuoteStaleForCurrentSession } from "./freshness";
+import { savedCopyAt } from "../../data/saved-copies";
 
 /** The published NAV session date, independent of local time and receipt time. */
 export function formatQuoteNavAsOf(quote: Quote | null | undefined, now = Date.now()): string | null {
@@ -56,10 +57,11 @@ export function asOfClock(time: number, now = Date.now()): string {
  */
 export function formatQuoteSessionAsOf(quote: Quote | null | undefined, now = Date.now()): string | null {
   if (!quote || quote.delisting || !(quote.lastUpdated > 0) || dailyNavDate(quote, now)) return null;
+  const clock = asOfClock(Math.min(quoteHeadlineTime(quote), now), now);
+  if (savedCopyAt(quote) != null) return clock;
   if (isQuoteStaleForCurrentSession(quote, now)) return null;
   const session = quoteSessionStateLabel(quote, now);
   const state = session === "CLOSED" ? session : quoteFeedWord(quote) ?? session;
-  const clock = asOfClock(Math.min(quoteHeadlineTime(quote), now), now);
   return state ? `${state} · ${clock}` : clock;
 }
 

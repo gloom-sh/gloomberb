@@ -1,4 +1,6 @@
 import { describe, expect, setSystemTime, test } from "bun:test";
+import { apiClient } from "../../api-client";
+import { GLOOMBERB_CLOUD_PROVIDER_ID } from "../gloomberb-cloud/normalizers";
 import { AppPersistence } from "../../data/app-persistence";
 import { MarketDataCoordinator } from "../../market-data/coordinator";
 import { buildArticleSummaryKey } from "../../market-data/selectors";
@@ -11,6 +13,56 @@ import { attachTestRegistry, brokerInstance, createBrokerConfig } from "./test-s
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("shared cached market queries", () => {
+  test("a Cloud cache seed is not returned for another plan or account", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const pro = { id: "cache-fixture-one", email: "one@example.com", emailVerified: true, plan: "pro" as const };
+    const args = ["AAPL", "NASDAQ"] as const;
+    const provider = createTestDataProvider({ id: GLOOMBERB_CLOUD_PROVIDER_ID,
+      getCorporateActions: async () => ({ symbol: "AAPL", dividends: [], splits: [], earnings: [] }),
+    });
+    const open = () => new AssetDataRouter(provider, [], persistence.resources).getCachedQuery("getCorporateActions", [...args]);
+    try {
+      apiClient.setSessionToken("isolated-cache-fixture");
+      apiClient.restoreCachedUser(pro);
+      await open().load();
+      expect(open().getSnapshot().result?.value.symbol).toBe("AAPL");
+      apiClient.restoreCachedUser({ ...pro, plan: "free" });
+      expect(open().getSnapshot().result).toBeNull();
+      apiClient.restoreCachedUser({ ...pro, id: "cache-fixture-two" });
+      expect(open().getSnapshot().result).toBeNull();
+      apiClient.setSessionToken(null);
+      expect(open().getSnapshot().result).toBeNull();
+    } finally {
+      apiClient.setSessionToken(null);
+      persistence.close();
+    }
+  });
+
+  test("a late Cloud answer cannot seed a query after its account changes", async () => {
+    const pro = { id: "late-cloud-fixture", email: "one@example.com", emailVerified: true, plan: "pro" as const };
+    const value = { symbol: "AAPL", dividends: [], splits: [], earnings: [] };
+    const reply = Promise.withResolvers<typeof value>();
+    const started = Promise.withResolvers<void>();
+    const provider = createTestDataProvider({ id: GLOOMBERB_CLOUD_PROVIDER_ID, getCorporateActions: () => {
+      started.resolve();
+      return reply.promise;
+    } });
+    const router = new AssetDataRouter(provider, []);
+    try {
+      apiClient.setSessionToken("isolated-cache-fixture");
+      apiClient.restoreCachedUser(pro);
+      const query = router.getCachedQuery("getCorporateActions", ["AAPL", "NASDAQ"]);
+      const request = query.load();
+      await started.promise;
+      apiClient.restoreCachedUser({ ...pro, id: "new-cloud-fixture" });
+      reply.resolve(value);
+      await expect(request).rejects.toThrow();
+      expect(query.getSnapshot().result).toBeNull();
+    } finally {
+      apiClient.setSessionToken(null);
+    }
+  });
+
   test("USD identity works offline without fetching or expiring from its undated static cache", async () => {
     let calls = 0;
     const provider = createTestDataProvider({ id: "offline", getExchangeRate: async () => { calls++; throw new Error("offline"); } });
@@ -42,6 +94,22 @@ describe("shared cached market queries", () => {
       expect((await router.getCorporateActions("BABA")).coverage?.earnings).toBe("unavailable");
       expect((await router.getCorporateActions("BABA")).coverage?.earnings).toBe("available");
       expect(actionCalls).toBe(2);
+    } finally { persistence.close(); }
+  });
+  test("opening the cache prefers unexpired partial coverage to an expired complete record", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const complete = { symbol: "AAPL", dividends: [], splits: [], earnings: [], coverage: { earnings: "available" as const } };
+    const partial = { ...complete, coverage: { earnings: "unavailable" as const } };
+    const provider = createTestDataProvider({ id: "actions", getCorporateActions: async () => complete });
+    const key = { namespace: "market", kind: "corporateActions-v4", entityKey: "AAPL", sourceKey: "provider:actions" };
+    const options = { schemaVersion: MARKET_METADATA_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 60_000 } };
+    try {
+      persistence.resources.set({ ...key, variantKey: "exchange=NASDAQ" }, partial, options);
+      persistence.resources.set(key, complete, { ...options, fetchedAt: Date.now() - 120_000 });
+      const router = new AssetDataRouter(provider, [], persistence.resources);
+      const query = router.getCachedQuery("getCorporateActions", ["AAPL", "NASDAQ"]);
+      expect(query.getSnapshot().result?.value.coverage).toEqual(partial.coverage);
+      expect((await query.load()).value.coverage).toEqual(complete.coverage);
     } finally { persistence.close(); }
   });
   test("a sub-unit cash history reaches every reader in the major unit, divided once", async () => {

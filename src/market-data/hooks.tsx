@@ -1,4 +1,5 @@
 import { logFailure } from "../utils/log-failure";
+import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 import { fxRateCurrencies } from "../utils/currency-units";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { SecFilingDocument, SecFilingItem } from "../types/data-provider";
@@ -108,6 +109,8 @@ export function useTickerFinancials(symbol: string | null | undefined, ticker: T
   const financials = coordinator && instrument
     ? coordinator.getTickerFinancialsSync(instrument)
     : null;
+  const snapshot = coordinator && instrument ? coordinator.getSnapshotEntry(instrument) : null;
+  useSavedCopyFooter(snapshot?.savedCopyAt, snapshot?.error == null);
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
@@ -146,7 +149,7 @@ export function useTickerSnapshotState(symbol: string | null | undefined, ticker
   const failed = !!entry && (entry.phase === "error" || entry.phase === "ready") && entry.error != null;
   return {
     // Idle is a load the hook is about to start.
-    loading: !!entry && (entry.phase === "idle" || entry.phase === "loading" || entry.phase === "refreshing"),
+    loading: !!entry && entry.savedCopyAt == null && (entry.phase === "idle" || entry.phase === "loading" || entry.phase === "refreshing"),
     error: failed ? entry.error!.message : null,
     retry,
   };
@@ -510,6 +513,10 @@ export function useChartQueries(
       ? requests.map((request) => [buildChartKey(request), coordinator.getChartEntry(request)] as const)
       : [] as Array<readonly [string, QueryEntry<PricePoint[]>]>
   ), [coordinator, keys, keysVersion, requestKey]);
+  const saved = entries.reduce<QueryEntry<PricePoint[]> | null>((oldest, [, entry]) => (
+    entry.savedCopyAt != null && (oldest?.savedCopyAt == null || entry.savedCopyAt < oldest.savedCopyAt) ? entry : oldest
+  ), null);
+  useSavedCopyFooter(saved?.savedCopyAt, saved?.error == null);
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
@@ -555,6 +562,7 @@ export function useOptionsQuery(
   useCoordinatorKeysVersion(requestKey ? [requestKey] : []);
   const coordinator = getSharedMarketDataCoordinator();
   const entry = coordinator && request ? coordinator.getOptionsEntry(request) : null;
+  useSavedCopyFooter(entry?.savedCopyAt, entry?.error == null);
   // The refresh feeds a display: it rests while the pane is covered or the app
   // is hidden, and catches up at once if a refresh came due meanwhile.
   const visible = usePaneVisible();
@@ -596,6 +604,7 @@ export function useSecFilingsQuery(request: SecFilingsRequest | null | undefined
     () => coordinator && request ? coordinator.getSecFilingsEntry(request) : null,
     [coordinator, requestKey, version],
   );
+  useSavedCopyFooter(entry?.savedCopyAt, entry?.error == null);
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();

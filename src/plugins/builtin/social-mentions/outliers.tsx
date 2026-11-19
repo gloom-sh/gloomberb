@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SocialOutlierCap, SocialOutlierRow, SocialOutliersPayload, SocialOutlierWindow } from "../../../api-client/social-mentions";
 import {
   DataTableStackView,
@@ -97,7 +97,7 @@ export function SocialOutliersView({ width, height, focused, renderTicker }: {
   const marketData = useMarketData();
   const loader = useCallback(
     async (force: boolean): Promise<SocialOutliersAnswer> => ({ query, resource: await loadSocialOutliers(query, { force, names: marketData }) }),
-    [marketData, query],
+    [marketData, query, session.displayScope],
   );
   const resource = useAsyncResource(loader, {
     initialData: () => {
@@ -106,7 +106,7 @@ export function SocialOutliersView({ width, height, focused, renderTicker }: {
     },
     clearOnError: (error) => error instanceof Error && isCloudSessionRequired(error.message),
     // Another window or filter keeps the rows on screen, loading, until its own arrive.
-    keepPreviousData: true,
+    keepPreviousData: session.displayScope,
   });
   // Rows another query left stay only while this one loads the first time: once it has failed, the body says so.
   const [failedQuery, setFailedQuery] = useState<SocialOutliersQuery | null>(null);
@@ -119,14 +119,6 @@ export function SocialOutliersView({ width, height, focused, renderTicker }: {
   const detailOpen = !!openSymbol;
   // An opened ticker refreshes itself.
   usePaneRefreshKey(() => resource.reload(), { focused, enabled: !detailOpen });
-  // Signing in or out reads the ranking again for the new session.
-  const sessionKeyRef = useRef(session.requestKey);
-  const reload = resource.reload;
-  useEffect(() => {
-    if (sessionKeyRef.current === session.requestKey) return;
-    sessionKeyRef.current = session.requestKey;
-    reload();
-  }, [reload, session.requestKey]);
 
   const data = shown?.payload ?? null;
   // Rows of the other window, kept on screen while this one loads, keep their own columns.

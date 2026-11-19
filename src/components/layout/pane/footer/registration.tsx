@@ -13,6 +13,7 @@ import {
 } from "react";
 import {
   combinePaneFooterRegistrations,
+  savedCopyFooterSegment,
   samePaneFooterRegistration,
   type CombinedPaneFooter,
   type PaneFooterRegistration,
@@ -30,6 +31,13 @@ interface PaneFooterContextValue {
 
 const PaneFooterContext = createContext<PaneFooterContextValue | null>(null);
 
+export function useSavedCopyFooter(savedAt: number | null | undefined, refreshing: boolean): void {
+  const id = useId();
+  usePaneFooter(`saved-copy:${id}`, () => savedAt == null ? null : {
+    info: [savedCopyFooterSegment(id, savedAt, Date.now(), refreshing)],
+  }, [id, savedAt, refreshing]);
+}
+
 /** Also gates non-footer interaction owned by an inactive pane/tab. */
 export function usePaneFooterScopeActive(): boolean {
   return useContext(PaneFooterContext) !== null;
@@ -44,8 +52,10 @@ export function PaneFooterProvider({
 
   const register = useCallback((registrationId: string, registration: PaneFooterRegistration | null) => {
     setRegistrations((current) => {
+      const hasContent = registration && ((registration.info?.length ?? 0) > 0 || (registration.hints?.length ?? 0) > 0 || (registration.menu?.length ?? 0) > 0 || (registration.keys?.length ?? 0) > 0);
+      if (hasContent ? current.get(registrationId) === registration : !current.has(registrationId)) return current;
       const next = new Map(current);
-      if (registration && ((registration.info?.length ?? 0) > 0 || (registration.hints?.length ?? 0) > 0 || (registration.menu?.length ?? 0) > 0 || (registration.keys?.length ?? 0) > 0)) {
+      if (hasContent) {
         next.set(registrationId, registration);
       } else {
         next.delete(registrationId);

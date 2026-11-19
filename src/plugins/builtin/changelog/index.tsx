@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { usePaneInstance } from "../../../state/app/context";
+import { sourceDidNotAnswer } from "../../../api-client/errors";
+import { useAsyncResource } from "../../../react/async-resource";
 import {
   DataTableStackView,
   DataTableView,
@@ -86,8 +88,6 @@ async function readSummaries(signal: AbortSignal): Promise<string | null> {
 
 type VersionColumn = DataTableColumn & { id: ChangelogVersionColumnId };
 type ReleaseColumn = DataTableColumn & { id: ChangelogColumnId };
-type LoadStatus = "loading" | "loaded" | "error";
-
 const DATE_WIDTH = 12;
 
 function buildVersionColumns(versions: ChangelogVersion[]): VersionColumn[] {
@@ -226,11 +226,6 @@ function VersionDetail({
 export function ChangelogPane({ focused, width, height }: PaneProps) {
   const paneInstance = usePaneInstance();
   const requestedVersion = paneInstance?.params?.version ?? null;
-  const [data, setData] = useState<ChangelogData | null>(() => changelogCache.peek(CHANGELOG, { stale: true }) ?? null);
-  // The mount effect starts the request immediately, so the first paint is a
-  // spinner and never "No changelog entries found".
-  const [status, setStatus] = useState<LoadStatus>(() => (changelogCache.peek(CHANGELOG, { stale: true }) ? "loaded" : "loading"));
-  const [error, setError] = useState<string | null>(null);
   // The selected rows and what is open are pane state, so a reload or a
   // shared layout comes back to the same version and update.
   const [selectedVersionId, setSelectedVersionId] = usePluginPaneState<string | null>("selectedVersionId", null);
@@ -243,14 +238,9 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
   const abortRef = useRef<AbortController | null>(null);
   const requestedVersionOpenedRef = useRef(false);
 
-  const load = useCallback(async (force = false) => {
+  const loader = useCallback(async (force: boolean) => {
     const fresh = force ? undefined : changelogCache.peek(CHANGELOG);
-    if (fresh) {
-      setData(fresh);
-      setError(null);
-      setStatus("loaded");
-      return;
-    }
+    if (fresh) return fresh;
 
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -260,9 +250,6 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
       timedOut = true;
       controller.abort();
     }, CHANGELOG_TIMEOUT_MS);
-    setStatus("loading");
-    setError(null);
-
     try {
       const [releases, summaries] = await Promise.all([
         fetchChangelogReleases(CHANGELOG_LIMIT, controller.signal),
@@ -270,15 +257,10 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
       ]);
       const next = { releases, summaries };
       changelogCache.set(CHANGELOG, next);
-      setData(next);
-      setStatus("loaded");
+      return next;
     } catch (loadError) {
-      // A newer load or an unmount owns the state now; a timeout does not.
-      if (!timedOut && abortRef.current !== controller) return;
-      setError(timedOut
-        ? "GitHub did not answer in time"
-        : loadError instanceof Error ? loadError.message : "Failed to load changelog");
-      setStatus("error");
+      if (timedOut) throw sourceDidNotAnswer("GitHub did not answer in time");
+      throw loadError;
     } finally {
       clearTimeout(timer);
       if (abortRef.current === controller) {
@@ -287,13 +269,11 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    return () => {
-      abortRef.current?.abort();
-      abortRef.current = null;
-    };
-  }, [load]);
+  const { data, error, loading, reload } = useAsyncResource(loader, {
+    initialData: () => changelogCache.peek(CHANGELOG, { stale: true }) ?? null,
+    savedCopy: { key: [CHANGELOG, CHANGELOG_LIMIT] },
+  });
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const versions = useMemo(
     () => data
@@ -340,7 +320,7 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
     setOpenReleaseId(match.id);
   }, [data, requestedVersion, versions]);
 
-  usePaneRefreshKey(() => void load(true), { focused });
+  usePaneRefreshKey(reload, { focused });
 
   const columns = useMemo(() => buildVersionColumns(versions), [versions]);
 
@@ -366,8 +346,8 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
   }, [openRelease]);
 
   const footerInfo = useMemo(
-    () => loadingErrorFooterInfo(status === "loading", status === "error" ? "error" : null),
-    [status],
+    () => loadingErrorFooterInfo(loading, error ? "error" : null),
+    [error, loading],
   );
 
   // The stack title names the release, so the footer offers only [o]pen.
@@ -378,11 +358,11 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
     info: footerInfo,
   });
 
-  if (versions.length === 0 && (status === "loading" || status === "error")) {
+  if (versions.length === 0 && (loading || error)) {
     return (
       <PaneStatusBody
-        loading={status === "loading"}
-        error={status === "error" ? error ?? "unknown error" : null}
+        loading={loading}
+        error={error}
         subject="Changelog"
       />
     );

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { InsiderSignalSide } from "../../../api-client/insider-signals";
 import {
   DataTableView,
@@ -111,7 +111,7 @@ export function InsiderActivityView({ symbol, control, viewBar, width, height, f
   const query = useMemo<InsiderCompanyQuery>(() => ({ ticker: symbol, window }), [symbol, window]);
   const loader = useCallback(
     async (force: boolean): Promise<InsiderCompanyAnswer> => ({ query, resource: await loadInsiderCompany(query, { force }) }),
-    [query],
+    [query, session.displayScope],
   );
   const resource = useAsyncResource(loader, {
     initialData: () => {
@@ -120,19 +120,12 @@ export function InsiderActivityView({ symbol, control, viewBar, width, height, f
     },
     clearOnError: (error) => error instanceof Error && isCloudSessionRequired(error.message),
     // Another window keeps the rows on screen, loading, until its own arrive.
-    keepPreviousData: true,
+    keepPreviousData: session.displayScope,
   });
   const answered = resource.data?.query === query ? resource.data.resource : null;
   const shown = answered ?? (resource.loading ? resource.data?.resource ?? null : null);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });
-  const sessionKeyRef = useRef(session.requestKey);
-  const reload = resource.reload;
-  useEffect(() => {
-    if (sessionKeyRef.current === session.requestKey) return;
-    sessionKeyRef.current = session.requestKey;
-    reload();
-  }, [reload, session.requestKey]);
 
   const activity = shown?.payload ?? null;
   const lines = useMemo(() => (activity ? insiderActivityLines(activity) : []), [activity]);

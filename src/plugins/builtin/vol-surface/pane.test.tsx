@@ -63,7 +63,7 @@ function storedPayload(expirations: number[], now: number) {
         point.contract.bid, point.contract.ask, point.openInterest, point.contract.contractSymbol]) })))) } };
 }
 
-async function mount({ missingSelection = false, holdSecond = false, pinnedSelection = false, optionTicker = false, zeroBids = false, storedDates = false } = {}) {
+async function mount({ missingSelection = false, holdSecond = false, pinnedSelection = false, optionTicker = false, zeroBids = false, storedDates = false, staleQuote = false } = {}) {
   const now = Date.now();
   const date = new Date(now);
   const expirations = (pinnedSelection ? Array.from({ length: 40 }, (_, index) => index + 1) : [45, 120])
@@ -78,7 +78,7 @@ async function mount({ missingSelection = false, holdSecond = false, pinnedSelec
   let changeExpiration: (expiration: number) => void = () => {};
   let commits = 0;
   const financials: TickerFinancials = { quote: { symbol: SYMBOL, price: 100, currency: "USD",
-    change: 0, changePercent: 0, lastUpdated: now, stale: false },
+    change: 0, changePercent: 0, lastUpdated: now, stale: staleQuote },
     annualStatements: [], quarterlyStatements: [], priceHistory: [] };
   const paneFinancials = optionTicker ? { ...financials, quote: { ...financials.quote!, symbol: paneSymbol, price: 5 } } : financials;
   const provider = createTestDataProvider({ id: "surface-pane-fixture",
@@ -276,4 +276,11 @@ test("with no live quote the latest stored close stands in, labelled as such", a
   expect(frame).not.toContain("No two-sided option quotes");
   expect(frame).toContain("Stored close");
   expect(frame).toContain("2026-09-22");
+});
+
+test("without a usable spot or saved surface, the pane settles without asking for a chain", async () => {
+  const { calls } = await mount({ staleQuote: true });
+  expect(calls).toEqual([]);
+  expect(tui.frame()).not.toMatch(/loading volatility surface/i);
+  expect(tui.frame()).toContain("Nothing to show yet.");
 });

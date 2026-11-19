@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { ApiRequestError } from "../../../../api-client/errors";
+import { useCloudDisplayScope } from "../../../../api-client/plan-access";
 import { useAsyncResource } from "../../../../react/async-resource";
 import { useAppSelector } from "../../../../state/app/context";
 import { useAssetData } from "../../../runtime";
@@ -15,10 +16,13 @@ export function useRelationshipHistories(pair: [string, string] | null, range: R
   const tickers = useAppSelector((state) => state.tickers);
   const leftSymbol = pair?.[0] ?? null;
   const rightSymbol = pair?.[1] ?? null;
+  const leftExchange = leftSymbol ? tickers.get(leftSymbol)?.metadata.exchange ?? forceExchange : "";
+  const rightExchange = rightSymbol ? tickers.get(rightSymbol)?.metadata.exchange ?? "" : "";
+  const scope = useCloudDisplayScope();
 
   const request = useCallback(async (forceRefresh = false) => {
     const results = await Promise.allSettled([leftSymbol!, rightSymbol!].map(async (symbol) => {
-      const exchange = tickers.get(symbol)?.metadata.exchange ?? (symbol === leftSymbol ? forceExchange : "");
+      const exchange = symbol === leftSymbol ? leftExchange : rightExchange;
       return {
         symbol,
         points: await loadCorrelationHistory(dataProvider!, symbol, exchange, range,
@@ -36,9 +40,12 @@ export function useRelationshipHistories(pair: [string, string] | null, range: R
       throw error instanceof ApiRequestError ? new ApiRequestError(message, error.status, error.retryAfterMs) : new Error(message);
     }
     return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
-  }, [dataProvider, forceExchange, leftSymbol, range, rightSymbol, tickers]);
+  }, [dataProvider, leftExchange, leftSymbol, range, rightExchange, rightSymbol, scope]);
 
-  const resource = useAsyncResource(leftSymbol && rightSymbol && dataProvider ? request : null, { clearOnError: discardUnavailableHistory });
+  const resource = useAsyncResource(leftSymbol && rightSymbol && dataProvider ? request : null, {
+    clearOnError: discardUnavailableHistory,
+    savedCopy: scope && dataProvider ? { key: ["relationship-history", scope, dataProvider.id, leftSymbol, leftExchange, rightSymbol, rightExchange, range] } : null,
+  });
   const error = leftSymbol && rightSymbol && !dataProvider
     ? "Market data unavailable"
     : resource.error;

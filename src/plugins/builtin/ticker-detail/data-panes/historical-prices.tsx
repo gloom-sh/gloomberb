@@ -268,7 +268,8 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
       forceRefresh ? { cacheMode: "refresh" } : undefined,
     );
   }, [dataProvider, range]);
-  const { data, loading, error, reload } = useTickerRequest<PricePoint[]>(loader, symbol, exchange);
+  const { data, loading, error, reload } = useTickerRequest<PricePoint[]>(loader, symbol, exchange,
+    dataProvider ? ["historical-prices", dataProvider.id, range] : undefined);
   // The quote knows the instrument type even when the saved ticker does not;
   // resolve it the way every quote display does. It also names the venue
   // whose sessions say whether a week or month is still running.

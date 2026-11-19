@@ -10,7 +10,8 @@ import { useAsyncResource, useAutoRefresh, usePluginPaneState } from "../../../p
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { GpuModelQuery, GpuVariantChips } from "./board";
-import { loadGpuEvents } from "./client";
+import { getCachedGpuEvents, loadGpuEvents } from "./client";
+import { isAccessDenied } from "../../../api-client/errors";
 import { gpuBasisLabel, gpuChange, gpuEventDate, gpuEventSections, gpuPrice, gpuShortSource, gpuVariant } from "./model";
 
 type ChangeRow = SectionedRow<GpuEvent>;
@@ -36,7 +37,7 @@ export function GpuChanges({ models, model, setModel, reloadBoard, width, height
 }) {
   const colors = useThemeColors();
   const loader = useCallback((force: boolean) => loadGpuEvents(model || undefined, force), [model]);
-  const resource = useAsyncResource(loader);
+  const resource = useAsyncResource(loader, { initialData: () => getCachedGpuEvents(model || undefined), clearOnError: isAccessDenied });
   const [selected, setSelected] = usePluginPaneState<string | null>("eventSelected", null);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => { reloadBoard(); resource.reload(); }, { focused });

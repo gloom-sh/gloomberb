@@ -254,7 +254,7 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [client, dataset, term, filtersKey],
   );
-  const records = usePagedRows(loadPage, { getId: (record) => record.id, keepPreviousRows: true });
+  const records = usePagedRows(loadPage, { getId: (record) => record.id, keepPreviousRows: true, savedCopy: { key: ["openfda", dataset, term, filtersKey] } });
   const rows = records.rows;
   const firstPage = records.pages[0] ?? null;
   const windowLimited = records.pages[records.pages.length - 1]?.windowLimited ?? false;

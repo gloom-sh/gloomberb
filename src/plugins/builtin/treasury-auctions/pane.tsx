@@ -334,8 +334,10 @@ function UsAuctionsView({
     (force: boolean) => loadTreasuryAuctions(force, undefined, loadWindow).then((result) => ({ ...result, window: loadWindow })),
     [loadWindow],
   );
-  // A new history window keeps the loaded auctions up until its own answer.
-  const resource = useAsyncResource(loadAuctions, { keepPreviousData: true });
+  const resource = useAsyncResource(loadAuctions, {
+    keepPreviousData: true,
+    savedCopy: { key: ["treasury-auctions", "us", view, historyDays] },
+  });
   const auctions = resource.data?.auctions ?? NO_AUCTIONS;
   const stale = resource.data?.stale ?? false;
   const fetchedAt = resource.data?.fetchedAt ?? null;

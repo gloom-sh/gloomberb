@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   CloudSessionMoversCategory,
-  CloudSessionMoversPayload,
   CloudSessionMoversSide,
 } from "../../../api-client/market-movers";
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { useCloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
+import { isPermanentClientError, sourceDidNotAnswer } from "../../../api-client/errors";
 import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import { DataTableView, EmptyState, QueryBar, usePaneFooter, type DataTableKeyEvent } from "../../../components";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
@@ -14,6 +14,7 @@ import {
   resolveScreenerQuoteFeedStatus,
 } from "../../../market-data/quotes/screener-live-quotes";
 import { useAutoRefresh } from "../../../react/auto-refresh";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { Box, useUiCapabilities } from "../../../ui";
@@ -45,11 +46,6 @@ const DEFAULT_SORT: SessionMoverSortPreference = { columnId: null, direction: "a
 const LIST_REFRESH_MS = 60_000;
 const NO_ROWS: SessionMoverRow[] = [];
 const rowKey = (row: Pick<SessionMoverRow, "symbol" | "exchange">) => publicTickerKey(row.symbol, row.exchange);
-
-interface LoadedList {
-  key: string;
-  payload: CloudSessionMoversPayload;
-}
 
 /**
  * Pre-market, after-hours and gap lists. Pre-market and after hours open on
@@ -106,21 +102,30 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   onDenied?: () => void;
 }) {
   const { pinTicker } = usePluginTickerActions();
+  const scope = useCloudDisplayScope();
   const [savedSide, setSavedSide] = usePluginPaneState<CloudSessionMoversSide>("sessionSide", "up");
   const side = resolveSide(view, savedSide);
   const [minFloatValue, setMinFloatValue] = usePluginPaneState<string>("minFloat", ANY_FLOAT);
   const minFloat = minFloatShares(minFloatValue);
-  const listKey = `${view}:${side}:${minFloat ?? ""}`;
-  const [loaded, setLoaded] = useState<LoadedList | null>(null);
-  // The first frame would otherwise claim an empty list.
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
+  const listKey = JSON.stringify([view, side, minFloat, scope]);
+  const loader = useCallback(async (forceRefresh: boolean) => {
+    try {
+      return await loadSessionMovers(view, side, { forceRefresh, minFloat });
+    } catch (error) {
+      if (error instanceof SessionMoversAccessError || isPermanentClientError(error)) throw error;
+      throw sourceDidNotAnswer("Session movers temporarily unavailable");
+    }
+  }, [minFloat, scope, side, view]);
+  const { data: payload, loading, error: loadError, updatedAt, savedAt, load, reload } = useAsyncResource(loader, {
+    savedCopy: scope ? { key: ["session-movers", listKey] } : null,
+    clearOnError: (error) => {
+      if (!(error instanceof SessionMoversAccessError)) return isPermanentClientError(error);
+      onDenied?.();
+      return true;
+    },
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<SessionMoverSortPreference>(DEFAULT_SORT);
-  const fetchGenRef = useRef(0);
-
-  const payload = loaded?.key === listKey ? loaded.payload : null;
   const listRows = payload?.items ?? NO_ROWS;
   // A free account's list is the one built a delay before: no live prices on its rows.
   const delayed = payload?.access === "delayed";
@@ -131,38 +136,10 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   // so it follows the refresh interval the user set.
   const refreshEachMinute = sessionListIsLive(view, session.date, session) || !payload || payload.stale === true;
 
-  const load = useCallback(async (options?: { forceRefresh?: boolean; background?: boolean }) => {
-    const gen = ++fetchGenRef.current;
-    if (!options?.background) {
-      setLoading(true);
-      setLoadError(null);
-    }
-    try {
-      const next = await loadSessionMovers(view, side, { ...options, minFloat });
-      if (fetchGenRef.current !== gen) return;
-      setLoaded({ key: `${view}:${side}:${minFloat ?? ""}`, payload: next });
-      setLoadError(null);
-      setLastLoadedAt(Date.now());
-    } catch (error) {
-      if (fetchGenRef.current !== gen) return;
-      if (error instanceof SessionMoversAccessError && onDenied) {
-        onDenied();
-        return;
-      }
-      setLoadError("Session movers temporarily unavailable");
-    } finally {
-      if (fetchGenRef.current === gen && !options?.background) setLoading(false);
-    }
-  }, [minFloat, onDenied, side, view]);
-
   useEffect(() => {
     setSelectedId(null);
-    void load();
-  }, [load]);
-  const backgroundRefresh = useCallback(() => {
-    void load({ background: true });
-  }, [load]);
-  useAutoRefresh(lastLoadedAt, backgroundRefresh, { intervalMs: refreshEachMinute ? LIST_REFRESH_MS : null });
+  }, [listKey]);
+  useAutoRefresh(updatedAt, load, { intervalMs: refreshEachMinute ? LIST_REFRESH_MS : null });
 
   // A finished list keeps the prices it closed at, so it holds no quote subscriptions.
   const quoteTargets = useMemo(
@@ -193,7 +170,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   const sessionLabel = payload ? earlierSessionLabel(payload.session, session) : null;
   // While its session trades, a free list says when it was built; a finished one is final and its date says enough.
   const asOfLabel = payload && delayed && sessionTrading ? listAsOfLabel(payload.asOf, payload.session, session) : null;
-  const quoteDelay = useQuoteDelayFooter(payload ? [{ dataSource: delayed ? "delayed" : "live" }] : [], "movers-delay");
+  const quoteDelay = useQuoteDelayFooter(payload && savedAt == null ? [{ dataSource: delayed ? "delayed" : "live" }] : [], "movers-delay");
   usePaneFooter("market-movers", () => ({
     info: [
       ...(loadError ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }] : []),
@@ -205,12 +182,12 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
         id: "feed",
         parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
       }] : []),
-      ...(payload?.stale ? [STALE_SEGMENT] : []),
+      ...(payload?.stale && savedAt == null ? [STALE_SEGMENT] : []),
       // A float the source does not date says so once, while the FLOAT column shows.
       ...partialFloatFooter(columns.some((column) => column.id === "floatShares"), rows),
       ...(quoteDelay ? [quoteDelay] : []),
     ],
-  }), [asOfLabel, columns, feedStatus, loadError, loading, payload?.stale, quoteDelay, rows, sessionLabel, summaryQuotes]);
+  }), [asOfLabel, columns, feedStatus, loadError, loading, payload?.stale, quoteDelay, rows, savedAt, sessionLabel, summaryQuotes]);
 
   const openRow = useCallback((row: SessionMoverRow) => {
     pinTicker(rowKey(row), { floating: true, paneType: TICKER_RESEARCH_PANE_ID, instrument: null });
@@ -221,8 +198,8 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   const logos = useUiCapabilities().nativePaneChrome === true;
   const renderCell = useCallback((row: SessionMoverRow, column: SessionMoverColumn) => renderSessionMoverCell(row, column, logos), [logos]);
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
-    handleRefreshKey(event, () => load({ forceRefresh: true }), { stopPropagation: true })
-  ), [load]);
+    handleRefreshKey(event, reload, { stopPropagation: true })
+  ), [reload]);
 
   const sides = sessionSides(view);
   // Until this list's first answer the table is loading, including the frame

@@ -229,7 +229,7 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   // Asset class, search and order are the server's; the venue narrows what it returned.
   const query = useMemo(() => ({ ...(asset !== "all" ? { assetClass: asset } : {}), ...(search.trim() ? { search: boardSearchText(search) } : {}), sort }), [asset, search, sort]);
   const loader = useCallback((force: boolean) => loadPerpsBoard(query, accessKey, force), [query, accessKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsBoard(query, accessKey), clearOnError: isAccessDenied, keepPreviousData: true });
+  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsBoard(query, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
   const data = resource.data?.payload;
   const venues = useMemo(() => venuesOf(data?.rows ?? []), [data]);
   const fetchedRows = useMemo(() => venue === "all" ? data?.rows ?? [] : (data?.rows ?? []).filter((row) => row.venue === venue), [data, venue]);
@@ -282,7 +282,7 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
   const [openingAsset] = usePaneSettingValue("assetClass", "all");
   const [asset, setAsset] = usePluginPaneState<string>("perps:asset", openingAsset);
   const loader = useCallback((force: boolean) => loadPerpsRankings(accessKey, force, asset), [accessKey, asset]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsRankings(accessKey, asset), clearOnError: isAccessDenied, keepPreviousData: true });
+  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsRankings(accessKey, asset), clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
   const data = resource.data?.payload;
   const fetchedItems = useMemo(() => buildSectionedRows(RANKINGS.map((ranking) => ({ label: ranking.label, emptyLabel: "None",
     items: rankingRows(data, ranking.key).map((row): Ranked => ({ list: ranking.key, row })) })), rankedKey), [data]);
@@ -334,7 +334,7 @@ function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPi
   const querySearch = useQueryBarSearch();
   const base = asset.trim().toUpperCase() || "BTC";
   const loader = useCallback((force: boolean) => loadPerpsCompare(base, accessKey, force), [base, accessKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsCompare(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: true });
+  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsCompare(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
   const data = resource.data?.payload;
   const fetchedRows = useMemo(() => data?.rows ?? [], [data]);
   const stream = useLivePerpTableRows(fetchedRows, rowItself, replaced, { pinned: fetchedRows.find((row) => row.marketId === selectedId) ?? null });

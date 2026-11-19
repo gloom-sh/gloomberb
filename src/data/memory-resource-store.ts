@@ -5,8 +5,28 @@ import type {
   ResourceCacheKey,
   SetResourceOptions,
 } from "./resource-store";
+import { safeParseJson, serializeJson } from "./sqlite/json";
+import { packJson, unpackJson } from "./packed-json";
+import { logFailure } from "../utils/log-failure";
+import { ProResourceAccess } from "./pro-resource-access";
 
 const DEFAULT_RESOURCE_SCHEMA_VERSION = 1;
+const encoder = new TextEncoder();
+
+export const WARM_RESOURCE_BUDGET = { maxBytes: 8 * 1024 * 1024, maxRows: 2_000 };
+
+function jsonBytes(value: unknown): number {
+  return encoder.encode(serializeJson(value)).byteLength;
+}
+
+export type PackedResourceRecord = Omit<CachedResourceRecord, "value"> & { valueJson: string };
+export type WarmResourceRecord = CachedResourceRecord | PackedResourceRecord;
+
+export function packWarmResource(record: CachedResourceRecord): WarmResourceRecord {
+  if (!record.namespace.startsWith("plugin:") || record.value === null || typeof record.value !== "object") return record;
+  const { value, ...metadata } = record;
+  return { ...metadata, valueJson: serializeJson(value) };
+}
 
 function normalizeVariantKey(value: string | undefined): string {
   return value ?? "";
@@ -36,17 +56,46 @@ function isStale(record: CachedResourceRecord): boolean {
 
 export class MemoryResourceStore {
   private readonly records = new Map<string, CachedResourceRecord>();
+  protected readonly proAccess = new ProResourceAccess();
+  private bytes = 0;
+
+  constructor(private readonly budget: Readonly<typeof WARM_RESOURCE_BUDGET> = WARM_RESOURCE_BUDGET) {}
+
+  private forget(key: string): void {
+    const record = this.records.get(key);
+    if (!record) return;
+    this.bytes -= record.sizeBytes;
+    this.records.delete(key);
+  }
+
+  private remember(record: CachedResourceRecord): void {
+    const key = buildMapKey(record);
+    this.forget(key);
+    if (record.sizeBytes > this.budget.maxBytes) return;
+    this.records.set(key, record);
+    this.bytes += record.sizeBytes;
+    while (this.records.size > this.budget.maxRows || this.bytes > this.budget.maxBytes) {
+      const oldest = this.records.keys().next();
+      if (oldest.done) break;
+      this.forget(oldest.value);
+    }
+  }
 
   get<T>(key: ResourceCacheKey, options: GetResourceOptions = {}): CachedResourceRecord<T> | null {
-    const record = this.records.get(buildMapKey(key)) as CachedResourceRecord<T> | undefined;
+    const id = buildMapKey(key);
+    const record = this.records.get(id) as CachedResourceRecord<T> | undefined;
     if (!record) return null;
     if (!options.allowExpired && isExpired(record)) return null;
     if (options.schemaVersion != null && record.schemaVersion !== options.schemaVersion) {
       this.delete(key);
       return null;
     }
-    if (options.touch !== false && (options.touchIntervalMs == null || Date.now() - record.lastAccessedAt >= options.touchIntervalMs)) {
-      record.lastAccessedAt = Date.now();
+    if (options.touch !== false) {
+      this.records.delete(id);
+      this.records.set(id, record);
+      if (options.touchIntervalMs == null || Date.now() - record.lastAccessedAt >= options.touchIntervalMs) {
+        record.lastAccessedAt = Date.now();
+      }
     }
     record.stale = isStale(record);
     record.expired = isExpired(record);
@@ -68,9 +117,10 @@ export class MemoryResourceStore {
       return true;
     });
     return records
-      .sort((left, right) => right.lastAccessedAt - left.lastAccessedAt)
+      .sort((left, right) => left.lastAccessedAt - right.lastAccessedAt)
       .map((record) => this.get<T>(record, options))
-      .filter((record): record is CachedResourceRecord<T> => record != null);
+      .filter((record): record is CachedResourceRecord<T> => record != null)
+      .reverse();
   }
 
   set<T>(
@@ -92,21 +142,49 @@ export class MemoryResourceStore {
       staleAt: now + options.cachePolicy.staleMs,
       expiresAt: now + options.cachePolicy.expireMs,
       lastAccessedAt: now,
-      sizeBytes: 0,
+      sizeBytes: jsonBytes(value),
       stale: false,
       expired: false,
     };
-    this.records.set(buildMapKey(record), record);
+    if (this.proAccess.permits(key)) this.remember(record);
     return record;
   }
 
+  setProResourceAccess(account: string, allowed: boolean): void {
+    const matches = this.proAccess.update(account, allowed);
+    if (!matches) return;
+    for (const [id, record] of this.records) if (matches(record)) this.forget(id);
+    this.purgeProResources(account);
+  }
+
+  protected purgeProResources(_account: string): void {}
+
   delete(key: ResourceCacheKey): void {
-    this.records.delete(buildMapKey(key));
+    this.forget(buildMapKey(key));
   }
 
   /** Puts back a record saved elsewhere, with its own times. */
-  protected restore(record: CachedResourceRecord): void {
-    this.records.set(buildMapKey(record), { ...record });
+  protected restore(record: WarmResourceRecord): void {
+    if ("valueJson" in record) {
+      const { valueJson, ...metadata } = record;
+      const packed = record.namespace.startsWith("plugin:") ? packJson(valueJson) : valueJson;
+      let decoded: WeakRef<object> | undefined;
+      const restored = { ...metadata, sizeBytes: metadata.sizeBytes || encoder.encode(valueJson).byteLength, get value() {
+        const current = decoded?.deref();
+        if (current) return current;
+        try {
+          const data = safeParseJson<object>(unpackJson(packed));
+          if (data && typeof data === "object") decoded = new WeakRef(data);
+          return data;
+        } catch (error) {
+          logFailure("data.memory-resource-store", "Reading a packed resource failed")(error);
+          return null;
+        }
+      } };
+      this.remember(restored);
+      return;
+    }
+    this.remember({ ...record, sizeBytes: record.sizeBytes || jsonBytes(record.value) });
   }
 }
 
@@ -114,39 +192,61 @@ export function resourceRecordKey(key: ResourceCacheKey): string {
   return buildMapKey(key);
 }
 
+/** The read time last handed to a sink, per record, so a read that moved nothing sends nothing. */
+const touchedAt = new WeakMap<object, number>();
+
 /** Where a renderer without the cache database keeps the records that must outlive a restart. */
 export interface ResourceRecordSink {
   set(record: CachedResourceRecord): void;
   delete(key: ResourceCacheKey): void;
+  purgeProResources(account: string): void;
+  /** A read moved the record up the eviction order, so a record read every launch is not the first to go. */
+  touch?(key: ResourceCacheKey, at: number): void;
 }
 
 /**
  * The in-memory store, except that the records `durable` picks are handed to
  * a sink as they change and come back from it on the next start. The desktop
- * view and the web app have no cache database: without this a broker
- * account's snapshot lived only until the app closed, while its positions
- * were saved.
+ * view and the web app have no cache database of their own: the desktop's
+ * sink is the Bun process's, the web app's the browser's (see
+ * data/durable-resources.ts), so a pane opens on its saved copy after a
+ * restart as it does in the terminal.
  */
 export class WriteThroughResourceStore extends MemoryResourceStore {
   constructor(
-    saved: readonly CachedResourceRecord[],
+    saved: readonly WarmResourceRecord[],
     private readonly sink: ResourceRecordSink,
     private readonly durable: (key: ResourceCacheKey) => boolean,
+    budget?: Readonly<typeof WARM_RESOURCE_BUDGET>,
   ) {
-    super();
-    for (const record of saved) {
-      if (durable(record)) this.restore(record);
+    super(budget);
+    for (const record of [...saved].sort((left, right) => left.lastAccessedAt - right.lastAccessedAt)) {
+      if (durable(record)) this.restore("valueJson" in record ? record : packWarmResource(record));
     }
+  }
+
+  override get<T>(key: ResourceCacheKey, options: GetResourceOptions = {}): CachedResourceRecord<T> | null {
+    const record = super.get<T>(key, options);
+    const previousTouch = record ? touchedAt.get(record) ?? 0 : 0;
+    if (record && options.touch !== false && this.sink.touch && record.lastAccessedAt - previousTouch >= 30_000 && this.durable(record)) {
+      touchedAt.set(record, record.lastAccessedAt);
+      this.sink.touch(record, record.lastAccessedAt);
+    }
+    return record;
   }
 
   override set<T>(key: ResourceCacheKey, value: T, options: SetResourceOptions): CachedResourceRecord<T> {
     const record = super.set(key, value, options);
-    if (this.durable(key)) this.sink.set(record);
+    if (this.durable(key) && this.proAccess.permits(key)) this.sink.set(record);
     return record;
   }
 
   override delete(key: ResourceCacheKey): void {
     super.delete(key);
     if (this.durable(key)) this.sink.delete(key);
+  }
+
+  protected override purgeProResources(account: string): void {
+    this.sink.purgeProResources(account);
   }
 }

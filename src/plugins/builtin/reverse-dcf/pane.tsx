@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { DataTableView, EmptyState, Notice, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter,
   usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -76,6 +77,7 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
   const [margin, setMargin] = usePaneSettingValue("margin", COMPANY_MARGIN);
   const instrument = instrumentFromTicker(ticker, symbol);
   const instrumentKey = JSON.stringify(instrument);
+  const scope = useCloudDisplayScope();
   const controller = useRef<AbortController | null>(null);
   const loader = useCallback(async (force: boolean) => {
     controller.current?.abort();
@@ -84,7 +86,9 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
     if (!snapshot.financials && snapshot.error) throw new Error(snapshot.error);
     return snapshot;
   }, [instrumentKey]);
-  const inputs = useAsyncResource(instrument ? loader : null);
+  const inputs = useAsyncResource(instrument ? loader : null, {
+    savedCopy: scope && !instrument?.instrument ? { key: ["reverse-dcf", scope, instrumentKey] } : null,
+  });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(inputs.updatedAt, inputs.load);
   usePaneRefreshKey(() => { inputs.reload(); }, { focused });

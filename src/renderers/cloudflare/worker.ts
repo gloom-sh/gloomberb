@@ -1,6 +1,8 @@
 import { handleHttpProxy } from "./http-proxy";
 import { anonymousRateKey, createProxySessionGate } from "./proxy-session";
 import { HTTP_PROXY_PATH, WEB_DIRECT_HOSTS } from "../../utils/plugin-proxy-hosts";
+import { SESSION_BINDING_HEADER, SESSION_BINDING_META } from "../../api-client/session-cookie";
+import { sessionCookieBinding } from "./session-binding";
 
 interface StaticAssetsBinding {
   fetch(request: Request): Promise<Response>;
@@ -168,7 +170,15 @@ async function proxyApi(request: Request, fetchApi: ApiFetch): Promise<Response>
   }
   const upstreamUrl = apiUpstreamUrl(url);
   if (!upstreamUrl) return Response.json({ error: "Not found" }, { status: 404 });
-  return fetchApi(new Request(upstreamUrl, request));
+  const response = await fetchApi(new Request(upstreamUrl, request));
+  if (url.pathname !== "/api/auth/get-session" || request.method !== "GET") return response;
+  const headers = new Headers(response.headers);
+  headers.delete(SESSION_BINDING_HEADER);
+  headers.set("cache-control", "private, no-store");
+  if (response.ok && !request.headers.has("authorization")) {
+    headers.set(SESSION_BINDING_HEADER, await sessionCookieBinding(request));
+  }
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 export async function handleRequest(request: Request, env: WorkerEnv, fetchApi: ApiFetch = fetch): Promise<Response> {
@@ -221,7 +231,12 @@ export async function handleRequest(request: Request, env: WorkerEnv, fetchApi: 
   // bare root stays indexable.
   const deepLink = url.pathname !== "/" || url.search !== "";
   const keep = IMMUTABLE_ASSET_PATH.test(url.pathname) ? "immutable" : DAILY_ASSET_PATH.test(url.pathname) ? "daily" : undefined;
-  return withSecurityHeaders(await env.ASSETS.fetch(request), { noindex: deepLink, keep });
+  const asset = withSecurityHeaders(await env.ASSETS.fetch(request), { noindex: deepLink, keep });
+  if (request.method !== "GET" || !asset.ok || !asset.headers.get("content-type")?.includes("text/html")) return asset;
+  const binding = await sessionCookieBinding(request);
+  return new HTMLRewriter().on("head", {
+    element(head) { head.prepend(`<meta name="${SESSION_BINDING_META}" content="${binding}">`, { html: true }); },
+  }).transform(asset);
 }
 
 export default {

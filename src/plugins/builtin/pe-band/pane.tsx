@@ -6,6 +6,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { blendHex } from "../../../theme/color-utils";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -95,7 +96,10 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
     if (!inputs.financials && inputs.error) throw new Error(inputs.error);
     return inputs;
   }, [instrumentKey, marketData]);
-  const inputs = useAsyncResource(instrument && marketData ? loader : null);
+  const scope = useCloudDisplayScope();
+  const inputs = useAsyncResource(scope && instrument && marketData ? loader : null, {
+    savedCopy: scope && marketData && !instrument?.instrument ? { key: ["pe-band", scope, marketData.id, instrumentKey] } : null,
+  });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(inputs.updatedAt, inputs.load);
   usePaneRefreshKey(() => { inputs.reload(); }, { focused });

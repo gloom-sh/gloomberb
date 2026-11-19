@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ListingArgError, readBareListing, type ListingChoice } from "../../../cli/listing-arg";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
+import { deleteSavedCopy, readSavedCopy, writeSavedCopy } from "../../../data/pane-saved-copies";
 import { shortCompanyName } from "../../../tickers/company-name";
 import type { ListingDeps } from "../../../tickers/listing-venues";
 import { hydrateChartSpecInstruments } from "../../../time-series/hooks";
@@ -68,6 +70,7 @@ function targetKey(symbol: string, exchange: string): string {
  */
 export function useSeriesListings(spec: ChartSpec): SeriesListings {
   const dataProvider = useAssetData();
+  const scope = useCloudDisplayScope();
   const tickers = useAppSelector((state) => state.tickers);
   const hydrated = useMemo(() => hydrateChartSpecInstruments(spec, tickers), [spec, tickers]);
   const tickersRef = useRef<ReadonlyMap<string, TickerRecord>>(tickers);
@@ -91,6 +94,16 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
     }
     return found;
   }, [hydrated]);
+  const saved = useMemo(() => {
+    const copies = new Map<string, SeriesListing>();
+    if (!scope) return copies;
+    for (const [key, { exchange }] of targets) {
+      if (exchange) continue;
+      const copy = readSavedCopy<SeriesListing>({ key: ["chart-listing", scope, key] });
+      if (copy) copies.set(key, copy.value);
+    }
+    return copies;
+  }, [scope, targets]);
 
   useEffect(() => {
     if (!dataProvider) return;
@@ -102,11 +115,12 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
       },
     };
     const settle = (key: string, listing: SeriesListing) => {
-      if (mounted.current) setRead((previous) => new Map(previous).set(key, listing));
+      if (mounted.current) setRead((previous) => new Map(previous).set(JSON.stringify([scope, key]), listing));
     };
     for (const [key, { symbol, exchange }] of targets) {
-      if (started.current.has(key)) continue;
-      started.current.add(key);
+      const readKey = JSON.stringify([scope, key]);
+      if (started.current.has(readKey)) continue;
+      started.current.add(readKey);
       if (exchange) {
         // A named venue is charted as named; its quote names the company.
         void dataProvider.getQuote(symbol, exchange)
@@ -114,14 +128,20 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
           .catch(() => settle(key, { status: "read", symbol, exchange, name: null }));
         continue;
       }
-      settle(key, { status: "pending" });
+      const savedKey = { key: ["chart-listing", scope, key] };
       void readBareListing(symbol, deps, { command: "G", noun: "a quote", retry: null })
         // A symbol no listing carries is left to the chart's own request, which says so, unless the catalog names a series by it.
-        .then((listing) => settle(key, listing && !("notATicker" in listing)
-          ? { status: "read", symbol: listing.symbol, exchange: listing.exchange, name: listing.name }
-          : { status: "read", symbol, exchange: "", name: null, ...listing ? { notATicker: true as const } : {} }))
+        .then((listing) => {
+          if (!listing && saved.has(key)) return;
+          const result: SeriesListing = listing && !("notATicker" in listing)
+            ? { status: "read", symbol: listing.symbol, exchange: listing.exchange, name: listing.name }
+            : { status: "read", symbol, exchange: "", name: null, ...listing ? { notATicker: true as const } : {} };
+          if (scope && listing) writeSavedCopy(savedKey, result);
+          settle(key, result);
+        })
         .catch((error: unknown) => {
           if (error instanceof ListingArgError) {
+            if (scope) deleteSavedCopy(savedKey);
             settle(key, {
               status: "choose",
               message: error.message,
@@ -132,10 +152,10 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
           }
           logFailure("chart-composer.series-listings", "Read a bare series listing failed")(error);
           // The chart's own request speaks for a symbol nothing better is known of.
-          settle(key, { status: "read", symbol, exchange: "", name: null });
+          if (!saved.has(key)) settle(key, { status: "read", symbol, exchange: "", name: null });
         });
     }
-  }, [dataProvider, targets]);
+  }, [dataProvider, saved, scope, targets]);
 
   return useMemo(() => {
     const dropped = new Set<string>();
@@ -155,7 +175,8 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
       }
       if (entry.source.instrument.instrument) return [entry];
       const { symbol, exchange = "" } = entry.source.instrument;
-      const listing = read.get(targetKey(symbol, exchange));
+      const key = targetKey(symbol, exchange);
+      const listing = read.get(JSON.stringify([scope, key])) ?? saved.get(key);
       if (!listing || listing.status === "pending") {
         if (exchange.trim()) return [entry];
         pending = true;
@@ -198,5 +219,5 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
       choices,
       names,
     };
-  }, [hydrated, read]);
+  }, [hydrated, read, saved, scope]);
 }

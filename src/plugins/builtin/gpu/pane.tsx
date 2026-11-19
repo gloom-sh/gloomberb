@@ -1,4 +1,4 @@
-import { usePlanAccess } from "../../../api-client/plan-access";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { isAccessDenied } from "../../../api-client/errors";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
@@ -11,18 +11,18 @@ import { usePaneInstance } from "../../../state/app/context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { GpuBoard } from "./board";
-import { getCachedGpuBoard, gpuCacheScope, GPU_NOT_AVAILABLE, gpuPreviewModels, loadGpuBoard, loadGpuModelPreviews } from "./client";
+import { getCachedGpuBoard, getCachedGpuModelPreviews, GPU_NOT_AVAILABLE, gpuPreviewModels, loadGpuBoard, loadGpuModelPreviews } from "./client";
 import { GpuChanges } from "./changes";
 import { GpuEquities } from "./equities";
 import { GpuHistory } from "./history";
 import { GPU_TABS, gpuEquityModels, gpuFamilies, gpuFamily, gpuNoMatch, gpuTab, gpuTime } from "./model";
 
 export function GpuPane(props: PaneProps) {
-  usePlanAccess();
-  return <GpuView key={gpuCacheScope()} {...props} />;
+  const scope = useCloudDisplayScope();
+  return <GpuView key={scope} accessReady={scope !== null} {...props} />;
 }
 
-function GpuView({ width, height, focused }: PaneProps) {
+function GpuView({ width, height, focused, accessReady }: PaneProps & { accessReady: boolean }) {
   const session = useResearchCloudSession();
   const upgrade = useCloudUpgradeAction("gpu");
   const params = usePaneInstance()?.params;
@@ -31,7 +31,7 @@ function GpuView({ width, height, focused }: PaneProps) {
   const tab = gpuTab(storedTab);
   const [model, setModel] = usePluginPaneState<string>("model", params?.gpuModel ?? "");
   const [selectedId, setSelectedId] = usePluginPaneState<string>("series", "");
-  const resource = useAsyncResource(loadGpuBoard, { initialData: getCachedGpuBoard, clearOnError: isAccessDenied });
+  const resource = useAsyncResource(accessReady ? loadGpuBoard : null, { initialData: getCachedGpuBoard, clearOnError: isAccessDenied });
   const data = resource.data?.payload;
   const { createPaneFromTemplate } = usePluginAppActions();
   const locked = !!data?.access?.locked;
@@ -43,8 +43,10 @@ function GpuView({ width, height, focused }: PaneProps) {
   const previewKey = useMemo(() => data && !unknownModel ? gpuPreviewModels(data, tab === "equities" ? gpuEquityModels(activeModel || "H100")
     : tab === "changes" ? [] : tab === "history" ? [activeModel || "H100"] : [activeModel]).join("\n") : "", [data, unknownModel, tab, activeModel]);
   const previewLoader = useCallback((force: boolean) => loadGpuModelPreviews(previewKey.split("\n"), force), [previewKey]);
-  const preview = useAsyncResource(previewKey ? previewLoader : null);
-  const rows = useMemo(() => data ? [...data.rows, ...(previewKey ? preview.data ?? [] : [])] : [], [data, previewKey, preview.data]);
+  const preview = useAsyncResource(previewKey ? previewLoader : null, {
+    initialData: () => getCachedGpuModelPreviews(previewKey.split("\n")), clearOnError: isAccessDenied,
+  });
+  const rows = useMemo(() => data ? [...data.rows, ...(previewKey ? preview.data?.rows ?? [] : [])] : [], [data, previewKey, preview.data]);
   const models = useMemo(() => locked ? [...families].sort() : [...new Set(rows.map((row) => row.gpuModel))].sort(), [locked, families, rows]);
   // A failed preview is the footer's error; the body does not repeat it.
   const emptyTitle = unknownModel ? gpuNoMatch(model, families)

@@ -1,7 +1,11 @@
 import { MarketDataCoordinator, getSharedMarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
+import { setSavedCopyStore } from "../data/pane-saved-copies";
 import { followDataServiceHealth } from "../market-data/connection-follow";
 import { NewsService, type NewsServiceOptions } from "../news/aggregator";
 import { cloudNewsSession } from "../news/cloud-session";
+import { cloudDisplayScope } from "../api-client/plan-access";
+import { apiClient } from "../api-client";
+import { hasProAccess } from "../api-client/plan-rules";
 import { getSharedNewsService, setSharedNewsService } from "../news/hooks";
 import { PluginRegistry } from "../plugins/registry";
 import { releaseSharedRegistry } from "../plugins/registry/shared";
@@ -10,6 +14,7 @@ import type { GloomPlugin } from "../types/plugin";
 import { reportCrash } from "../telemetry/crash-reports";
 import { rememberBuiltinPlugins } from "../telemetry/usage-counts";
 import { debugLog } from "../utils/debug-log";
+import { logFailure } from "../utils/log-failure";
 import { measurePerfAsync } from "../utils/perf-marks";
 import type { AppRuntimeServices, AppServicesFactoryOptions } from "./app-service-ports";
 
@@ -66,6 +71,7 @@ export function createAppRuntime({
     connectionHealth: pluginRegistry.connectionHealth,
     pollIntervalMs: () => Math.max(1, config.refreshIntervalMinutes) * 60_000,
     session: cloudNewsSession,
+    savedCopyScope: cloudDisplayScope,
     ...newsOptions,
   });
   const modules = { pluginRegistry, marketData, newsService };
@@ -79,6 +85,18 @@ export function createAppRuntime({
   });
   setSharedMarketDataCoordinator(marketData);
   setSharedNewsService(newsService);
+  // The panes' saved copies live with the other cached resources (data/pane-saved-copies.ts).
+  setSavedCopyStore(persistence.resources);
+  const updateProResourceAccess = () => {
+    const user = apiClient.getConfirmedDisplayUser();
+    if (!user?.id || !(user.effectivePlan || user.plan)) return;
+    try {
+      persistence.resources.setProResourceAccess(user.id, hasProAccess(user));
+    } catch (error) {
+      logFailure("app-runtime", "Could not purge revoked Pro display copies")(error);
+    }
+  };
+  const stopFollowingProResourceAccess = apiClient.subscribeCurrentUser(updateProResourceAccess);
 
   let destroyed = false;
   let registering = false;
@@ -97,8 +115,10 @@ export function createAppRuntime({
     destroyed = true;
     if (getSharedMarketDataCoordinator() === marketData) setSharedMarketDataCoordinator(null);
     if (getSharedNewsService() === newsService) setSharedNewsService(null);
+    const savedCopies = setSavedCopyStore(null);
+    if (savedCopies !== persistence.resources) setSavedCopyStore(savedCopies);
     dispose(
-      disposeReady, () => newsService.stop(), stopFollowingHealth, () => marketData.destroy(),
+      disposeReady, () => newsService.stop(), stopFollowingHealth, stopFollowingProResourceAccess, () => marketData.destroy(),
       // An async setup may still use persistence or contribute panes. Dispose it
       // after setup settles, so it cannot write into a closed store or leak late contributions.
       registering ? undefined : disposePlugins,
@@ -107,6 +127,7 @@ export function createAppRuntime({
   };
 
   try {
+    updateProResourceAccess();
     disposeConfigured = configure?.(modules);
     newsService.start();
   } catch (error) {

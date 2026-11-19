@@ -1,5 +1,6 @@
 import { hasUsablePriceHistory } from "../../utils/price-history";
 import { isTransientFailure } from "../../api-client/errors";
+import { savedCopyAt } from "../../data/saved-copies";
 import { isTransientSourceFailure } from "../../sources/provider-errors";
 import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
 import { hasFreshQuoteForCurrentSession, isQuoteStaleForCurrentSession } from "../quotes/freshness";
@@ -50,7 +51,7 @@ export function failureStatus(error: unknown, classified: { message: string }): 
 }
 
 export function hasFreshEntryData<T>(entry: QueryEntry<T>, ttlMs: number, now = Date.now()): boolean {
-  if (resolveEntryData(entry) == null) return false;
+  if (entry.savedCopyAt != null || resolveEntryData(entry) == null) return false;
   return entry.fetchedAt != null && now - entry.fetchedAt < ttlMs;
 }
 
@@ -78,7 +79,7 @@ export function hasFailedLoad<T>(entry: QueryEntry<T>): boolean {
 }
 
 export function hasFreshReadyEntry<T>(entry: QueryEntry<T>, ttlMs: number, now = Date.now()): boolean {
-  return entry.phase === "ready" && entry.fetchedAt != null && now - entry.fetchedAt < ttlMs;
+  return entry.savedCopyAt == null && entry.phase === "ready" && entry.fetchedAt != null && now - entry.fetchedAt < ttlMs;
 }
 
 export function hasFreshQuoteEntry(
@@ -88,7 +89,7 @@ export function hasFreshQuoteEntry(
   now = Date.now(),
 ): boolean {
   const quote = resolveEntryData(entry);
-  if (!quote || entry.fetchedAt == null || now - entry.fetchedAt >= ttlMs) return false;
+  if (entry.savedCopyAt != null || !quote || entry.fetchedAt == null || now - entry.fetchedAt >= ttlMs) return false;
   const quoteForFreshness = instrument.exchange && !quote.listingExchangeName && !quote.exchangeName
     ? { ...quote, listingExchangeName: instrument.exchange }
     : quote;
@@ -150,7 +151,7 @@ export function readyChartEntry(
 ): QueryEntry<PricePoint[]> {
   const entry = readyEntry(current, data, source, attempts, { keepLastGoodOnEmpty: true });
   if (data == null && current.lastGoodData != null) {
-    return { ...entry, source: current.source, fetchedAt: current.fetchedAt, staleAt: current.staleAt,
+    return { ...entry, source: current.source, fetchedAt: current.fetchedAt, savedCopyAt: current.savedCopyAt, staleAt: current.staleAt,
       history: current.history };
   }
   return { ...entry, ...(history ? { history } : {}),
@@ -164,7 +165,7 @@ export function readyChartEntry(
  */
 export function heldQuoteSupersedes(current: QueryEntry<Quote>, incoming: Quote, now = Date.now()): Quote | null {
   const held = current.data ?? current.lastGoodData;
-  if (!held || held === incoming) return null;
+  if (current.savedCopyAt != null || !held || held === incoming) return null;
   if (!Number.isFinite(held.lastUpdated) || !Number.isFinite(incoming.lastUpdated)) return null;
   if (held.lastUpdated <= incoming.lastUpdated) return null;
   return isQuoteStaleForCurrentSession(held, now) ? null : held;
@@ -181,6 +182,10 @@ export function readyQuoteEntry(
   if (held) {
     return readyEntry(current, held, current.source ?? source, attempts, { keepLastGoodOnEmpty: true });
   }
+  const savedAt = savedCopyAt(quote);
+  if (savedAt != null) {
+    return { ...readyEntry(current, quote, source, attempts), fetchedAt: savedAt, savedCopyAt: savedAt, staleAt: 0 };
+  }
   if (isQuoteStaleForCurrentSession(quote)) {
     const keepFreshQuote = hasFreshQuoteForCurrentSession([current.data, current.lastGoodData]);
     // A request answers with a stale quote only when no source has a current
@@ -195,10 +200,14 @@ export function readyQuoteEntry(
 }
 
 export function errorEntry<T>(current: QueryEntry<T>, attempt: ProviderAttempt): QueryEntry<T> {
+  const discard = current.savedCopyAt != null && (attempt.status === "fatal_error" || attempt.status === "empty");
+  const data = discard ? null : current.lastGoodData;
   return {
     ...current,
-    phase: current.lastGoodData ? "ready" : "error",
-    data: current.lastGoodData,
+    phase: data ? "ready" : "error",
+    data,
+    lastGoodData: data,
+    ...(discard ? { savedCopyAt: undefined, fetchedAt: null, staleAt: null } : {}),
     error: {
       reasonCode: attempt.reasonCode ?? "UPSTREAM_ERROR",
       message: attempt.message ?? EMPTY_MESSAGE,

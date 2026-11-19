@@ -19,6 +19,7 @@ import {
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { useAppSelector, useAsyncResource, usePaneSettingValue, usePluginPaneState } from "../../../public/react";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
@@ -62,21 +63,21 @@ export function WorldVenueMapPane(props: PaneProps) {
   // A map without a typed place starts at the home area; the pane never stores it.
   const [initialPlace] = useState(placeSetting ?? homeArea);
   const [startsAtHome] = useState(placeSetting === undefined);
-  const [mapStart, setMapStart] = useState<MapStart | null>(() => initialPlace ? null : { place: null, note: null });
-  useEffect(() => {
-    if (!initialPlace) return;
-    const controller = new AbortController();
-    resolveMapPlace(initialPlace, {
+  const scope = useCloudDisplayScope();
+  const findPlace = useCallback(async (): Promise<MapStart> => {
+    if (!initialPlace) return { place: null, note: null };
+    const start = await resolveMapPlace(initialPlace, {
       venues: async () => (await loadWorldVenues()).venues,
       request: cloudGeoRequest,
-      signal: controller.signal,
-    }).then((start) => {
-      if (!controller.signal.aborted) setMapStart(startsAtHome ? { ...start, home: true } : start);
-    }, () => {
-      if (!controller.signal.aborted) setMapStart({ place: null, note: "Place unavailable; showing world." });
     });
-    return () => controller.abort();
-  }, [initialPlace, startsAtHome]);
+    return startsAtHome ? { ...start, home: true } : start;
+  }, [initialPlace, startsAtHome, scope]);
+  const place = useAsyncResource(initialPlace ? findPlace : null, {
+    savedCopy: scope && initialPlace ? { key: ["map-place", scope, initialPlace, startsAtHome] } : null,
+  });
+  const mapStart: MapStart | null = place.data ?? (place.loading ? null : {
+    place: null, note: place.error ? "Place unavailable; showing world." : null,
+  });
   const [layerSetting] = usePaneSettingValue<unknown>(LAYERS_SETTING_KEY, null);
   const [venuesSetting] = usePaneSettingValue<boolean | undefined>(VENUES_SETTING_KEY, undefined);
   const { catalog, settled } = useGeoCatalog();
@@ -94,8 +95,11 @@ export function WorldVenueMapPane(props: PaneProps) {
 }
 
 function VenueMapView({ focused, width, height, start }: PaneProps & { start: MapStart }) {
+  const scope = useCloudDisplayScope();
   // A background refresh keeps the venues on screen, so loading only shows before the first answer.
-  const { data, loading, error, load } = useAsyncResource(loadWorldVenues);
+  const { data, loading, error, load } = useAsyncResource(scope ? loadWorldVenues : null, {
+    savedCopy: scope ? { key: ["world-venues", scope] } : null,
+  });
   const [query, setQuery] = useState("");
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const mapKeys = useMapKeyboard(searchFocused);

@@ -14,6 +14,7 @@ import { provideKittyServices } from "./kitty-services";
 import { setTerminalReportsControlKeys } from "../../app/keybindings/terminal-keys";
 import { captureRendererFrame } from "./frame-capture";
 import { createFrameHits } from "./frame-hits";
+import { setSavedCopyFrameGate } from "../../data/pane-saved-copies";
 import {
   createTimerFrameDriver,
   installMarketDataFrameDriver,
@@ -116,6 +117,24 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     enableMouseMovement: true,
   });
   const root = createRoot(renderer);
+  let pendingSavedCopyFrame: PromiseWithResolvers<void> | null = null;
+  const finishSavedCopyFrame = () => {
+    const pending = pendingSavedCopyFrame;
+    pendingSavedCopyFrame = null;
+    pending?.resolve();
+  };
+  setSavedCopyFrameGate(() => {
+    if (!pendingSavedCopyFrame) {
+      pendingSavedCopyFrame = Promise.withResolvers<void>();
+      renderer.requestRender();
+    }
+    return pendingSavedCopyFrame.promise;
+  });
+  renderer.on("frame", finishSavedCopyFrame);
+  renderer.once("destroy", () => {
+    setSavedCopyFrameGate(null);
+    finishSavedCopyFrame();
+  });
   // Every mounted ScrollBox listens for `selection` and many components for
   // `resize`, so the counts grow with the panes on screen (14 and 18 with one
   // DES open at 80x24) and fall back when they close. Node's default warning

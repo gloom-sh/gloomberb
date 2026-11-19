@@ -539,6 +539,10 @@ export class CloudApiRequestTransport {
     return this.cookieSessionMode || !!this.sessionToken;
   }
 
+  isCookieSessionMode(): boolean {
+    return this.cookieSessionMode;
+  }
+
   setCookieSessionMode(enabled: boolean): void {
     if (this.cookieSessionMode !== enabled) this.forgetSharedReads();
     this.cookieSessionMode = enabled;

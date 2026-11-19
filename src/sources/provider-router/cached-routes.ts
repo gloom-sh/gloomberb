@@ -1,4 +1,6 @@
 import { logFailure } from "../../utils/log-failure";
+import { cloudDisplayScope } from "../../api-client/plan-access";
+import { GLOOMBERB_CLOUD_PROVIDER_ID } from "../gloomberb-cloud/normalizers";
 import { exchangeRateMetadata, isUsableCachedExchangeRate } from "../../utils/exchange-rate-snapshot";
 import { CachedQuery, type CachedValue } from "../../data/cached-query";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, MarketDataRequestContext, SecFilingItem } from "../../types/data-provider";
@@ -54,7 +56,13 @@ export class ProviderRouterCachedRoutes {
     const brokers = route.brokerRequest
       ? this.deps.getBrokerCandidatesForContext(route.brokerRequest.context, false)
       : [];
-    const sourceKeys = [...brokers.map(this.deps.brokerSourceKey), ...providers.map(this.deps.providerSourceKey)];
+    const scoped = method === "getHolders" || method === "getAnalystResearch"
+      || method === "getCorporateActions" || method === "getOptionsChain";
+    const scope = scoped && providers.some((provider) => provider.id === GLOOMBERB_CLOUD_PROVIDER_ID) ? cloudDisplayScope() : undefined;
+    const providerKey = (provider: DataProvider) => provider.id === GLOOMBERB_CLOUD_PROVIDER_ID && scope !== undefined
+      ? scope === null ? null : `${this.deps.providerSourceKey(provider)}:${scope}` : this.deps.providerSourceKey(provider);
+    const scopeChanged = (provider: DataProvider) => scope !== undefined && provider.id === GLOOMBERB_CLOUD_PROVIDER_ID && cloudDisplayScope() !== scope;
+    const sourceKeys = [...brokers.map(this.deps.brokerSourceKey), ...providers.map(providerKey).filter((key) => key !== null)];
     // Source order and broker instance are part of query identity: disabling a source
     // or changing accounts must never reuse the previous route's memory result.
     const objectId = (value: object) => {
@@ -76,20 +84,23 @@ export class ProviderRouterCachedRoutes {
       const records = listCachedResources<unknown>(this.deps.resources, route.kind, route.entityKey, route.variants, sourceKeys, allowExpired)
         .filter((record) => (route.rank?.(record.value, record.fetchedAt) ?? 0) >= 0)
         .map((record) => ({ ...record, value: route.decode ? route.decode(record.value) : record.value, metadata: route.metadata?.(record.value, record.fetchedAt) }));
-      const record = (route.acceptCached ? records.find((entry) => route.acceptCached!(entry.value)) : null) ?? records[0];
+      const preferred = records[0];
+      const accept = route.acceptCached;
+      const record = (accept ? records.find((entry) => entry.expired === preferred?.expired && accept(entry.value)) : null) ?? preferred;
       if (!record) return null;
       return {
         value: record.value,
         fetchedAt: record.fetchedAt, staleAt: record.staleAt, expiresAt: record.expiresAt,
-        source: record.sourceKey.replace(/^provider:/, ""),
+        source: scope && record.sourceKey === `provider:${GLOOMBERB_CLOUD_PROVIDER_ID}:${scope}`
+          ? GLOOMBERB_CLOUD_PROVIDER_ID : record.sourceKey.replace(/^provider:/, ""),
         ...record.metadata,
       };
     };
-    const store = (value: unknown, sourceKey: string, policy: ReturnType<ProviderRouterCoreDeps["resolveProviderPolicy"]>): CachedValue<unknown> => {
-      this.deps.cacheResource(route.kind, route.entityKey, route.variants[0] ?? "", sourceKey, route.encode ? route.encode(value) : value, policy);
+    const store = (value: unknown, sourceKey: string | null, policy: ReturnType<ProviderRouterCoreDeps["resolveProviderPolicy"]>, source = sourceKey?.replace(/^provider:/, "") ?? ""): CachedValue<unknown> => {
+      if (sourceKey !== null) this.deps.cacheResource(route.kind, route.entityKey, route.variants[0] ?? "", sourceKey, route.encode ? route.encode(value) : value, policy);
       const fetchedAt = Date.now();
       return { value: route.decode ? route.decode(value) : value, fetchedAt, staleAt: fetchedAt + policy.staleMs,
-        expiresAt: fetchedAt + policy.expireMs, source: sourceKey.replace(/^provider:/, ""), ...route.metadata?.(value, fetchedAt) };
+        expiresAt: fetchedAt + policy.expireMs, source, ...route.metadata?.(value, fetchedAt) };
     };
     const query = new CachedQuery({
       read,
@@ -120,12 +131,14 @@ export class ProviderRouterCachedRoutes {
         const misses: ProviderMissNote = {};
         for (const provider of providers) {
           try {
+            if (scopeChanged(provider)) continue;
             const request = route.request(provider, force);
             if (!request) continue;
             const value = await request;
+            if (scopeChanged(provider)) continue;
             const rank = route.rank?.(value) ?? 2;
             if (rank < 0) continue;
-            const result = store(value, this.deps.providerSourceKey(provider), this.deps.resolveProviderPolicy(route.policy, provider));
+            const result = store(value, providerKey(provider), this.deps.resolveProviderPolicy(route.policy, provider), provider.id);
             if (rank === 2) return result;
             if (rank > bestRank) { best = result; bestRank = rank; }
           } catch (error) {

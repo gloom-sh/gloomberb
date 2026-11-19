@@ -593,7 +593,7 @@ function AppInner({
           {showSinceLastVisit ? <SinceLastVisitStrip strip={sinceLastVisit} /> : null}
           {showProWelcome ? <ProWelcomeRow welcome={proWelcome} /> : null}
           <TransientLayoutProvider>
-            <Shell
+            {(!sessionSnapshot || initialized) && <Shell
               pluginRegistry={pluginRegistry}
               dataProvider={dataProvider}
               tickerRepository={tickerRepository}
@@ -601,7 +601,7 @@ function AppInner({
               desktopDockPreview={desktopDockPreview}
               commandBarNativeOccluder={commandBarNativeOccluder}
               topBandRows={(showSinceLastVisit ? 1 : 0) + (showProWelcome ? 1 : 0)}
-            />
+            />}
             <StatusBar />
           </TransientLayoutProvider>
           {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}

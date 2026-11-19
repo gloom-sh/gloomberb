@@ -143,6 +143,7 @@ export interface NewsQueryState {
   articles: NewsArticle[];
   error: string | null;
   updatedAt: number | null;
+  savedAt?: number;
   sourceIds: string[];
   nextCursor: string | null;
   loadingMore: boolean;

@@ -7,6 +7,7 @@ import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -126,7 +127,10 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
     if (!snapshot.history.length && snapshot.error) throw new Error(snapshot.error);
     return { ...snapshot, releases, earnings };
   }, [instrumentKey]);
-  const history = useAsyncResource(instrument ? loader : null);
+  const scope = useCloudDisplayScope();
+  const history = useAsyncResource(scope && instrument ? loader : null, {
+    savedCopy: scope && !instrument?.instrument ? { key: ["macro-day", scope, instrumentKey] } : null,
+  });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(history.updatedAt, history.load);
   usePaneRefreshKey(() => { history.reload(); }, { focused });

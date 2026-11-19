@@ -1,5 +1,7 @@
 import { useCallback, useMemo } from "react";
+import { useCloudDisplayScope } from "../../../../api-client/plan-access";
 import { useAsyncResource } from "../../../../react/async-resource";
+import { cachedValueForDisplay } from "../../../../data/cached-query";
 import type { CorporateActionsData, TickerFinancials } from "../../../../types/financials";
 import { measuresTrailingYield } from "../../../../market-data/quotes/live-valuation";
 import {
@@ -42,14 +44,15 @@ export function useOverviewDividend(
   fundamentals: TickerFinancials["fundamentals"] | undefined,
 ): OverviewDividendState {
   const dataProvider = useAssetData();
+  const scope = useCloudDisplayScope();
   const forward = fundamentals?.dividendYieldBasis === "forward" && fundamentals.dividendYield != null;
   const trailing = measuresTrailingYield(fundamentals);
   const asOf = fundamentals?.exDividendDate;
   const readsHistory = !!symbol && !!dataProvider?.getCorporateActions && (trailing || (forward && forwardDividendMayHaveLapsed(asOf)));
-  const loader = useCallback(() => dataProvider!.getCorporateActions!(symbol!, exchange), [dataProvider, exchange, symbol]);
-  const cached = useMemo(() => readsHistory
-    ? dataProvider?.getCachedQuery?.("getCorporateActions", [symbol!, exchange]).getSnapshot().result?.value ?? null
-    : null, [dataProvider, exchange, readsHistory, symbol]);
+  const loader = useCallback(() => dataProvider!.getCorporateActions!(symbol!, exchange), [dataProvider, exchange, scope, symbol]);
+  const cached = useMemo(() => readsHistory && scope !== null
+    ? cachedValueForDisplay(dataProvider?.getCachedQuery?.("getCorporateActions", [symbol!, exchange]).getSnapshot().result)
+    : null, [dataProvider, exchange, readsHistory, scope, symbol]);
   const resource = useAsyncResource(readsHistory ? loader : null, { initialData: () => cached });
   const actions = readsHistory ? resource.data ?? cached : null;
   if (trailing) return { pending: false, lapse: null, actions };

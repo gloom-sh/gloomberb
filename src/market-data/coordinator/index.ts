@@ -1,4 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
+import { cloudDisplayScope } from "../../api-client/plan-access";
 import { createConcurrencyLimiter } from "../../utils/concurrency";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, SecFilingDocument, SecFilingItem } from "../../types/data-provider";
 import type { CorporateActionsData, OptionsChain, PricePoint, Quote, TickerFinancials } from "../../types/financials";
@@ -7,7 +8,7 @@ import type { ChartRequest, InstrumentRef, OptionsRequest, SecFilingsRequest } f
 import { QueryStore, type QueryStoreRetention } from "../query-store";
 import type { QueryEntry } from "../result-types";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
-import type { CachedQueryHandle } from "../../data/cached-query";
+import { cachedValueSavedAt, type CachedQueryHandle } from "../../data/cached-query";
 import {
   buildArticleSummaryKey,
   buildChartKey,
@@ -87,7 +88,7 @@ import {
   type QuoteSubscriptionHandle,
   type QuoteSubscriptionRequest,
 } from "./quotes";
-import { withSavedCopyMarkOf } from "../../data/saved-copies";
+import { quoteServedFromSavedCopy, withSavedCopyMarkOf } from "../../data/saved-copies";
 import { readsInBatches } from "../batched-reads";
 
 /** How long a streamed tick may reuse the quote fields read from the cache. */
@@ -230,16 +231,24 @@ export class MarketDataCoordinator {
     },
   };
 
-  private readonly quoteStore = new QueryStore<Quote>((key) => this.events.bump(key));
-  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), this.retainedSnapshots);
-  private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), this.retained);
-  private readonly optionsStore = new QueryStore<OptionsChain>((key) => this.events.bump(key), this.retainedCachedQueries);
-  private readonly secFilingsStore = new QueryStore<SecFilingItem[]>((key) => this.events.bump(key), this.retainedCachedQueries);
+  // The answers panes open on after a restart are kept as saved copies: quotes,
+  // snapshots, price histories, option chains and filing lists.
+  private readonly displayScope = () => {
+    const access = cloudDisplayScope();
+    return access == null ? null : JSON.stringify([this.dataProvider.id, access]);
+  };
+  private readonly quoteStore = new QueryStore<Quote>((key) => this.events.bump(key), {
+    savedCopies: { name: "quote", scope: this.displayScope, writeIntervalMs: 30_000, mark: quoteServedFromSavedCopy },
+  });
+  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), { ...this.retainedSnapshots, savedCopies: { name: "snapshot", scope: this.displayScope, observedOnly: true } });
+  private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), { ...this.retained, savedCopies: { name: "chart", scope: this.displayScope, observedOnly: true } });
+  private readonly optionsStore = new QueryStore<OptionsChain>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "options", scope: this.displayScope } });
+  private readonly secFilingsStore = new QueryStore<SecFilingItem[]>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "sec-filings", scope: this.displayScope } });
   private readonly secDocumentsStore = new QueryStore<SecFilingDocument[]>((key) => this.events.bump(key), this.retainedCachedQueries);
   private readonly secContentStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retainedCachedQueries);
   private readonly articleSummaryStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retainedCachedQueries);
   private readonly retainedStores: ReadonlyArray<Pick<QueryStore<unknown>, "watch" | "release">> = [
-    this.snapshotStore, this.chartStore, this.optionsStore, this.secFilingsStore,
+    this.quoteStore, this.snapshotStore, this.chartStore, this.optionsStore, this.secFilingsStore,
     this.secDocumentsStore, this.secContentStore, this.articleSummaryStore,
   ];
   private readonly liveFxRates = new Map<string, { rate: number; observedAt: number; receivedAt: number }>();
@@ -469,8 +478,15 @@ export class MarketDataCoordinator {
 
   prefetchTicker(instrument: InstrumentRef | null | undefined): void {
     if (!instrument) return;
-    void this.loadSnapshot(instrument).catch(logFailure("market-data.coordinator.index", "Loading a financial snapshot failed"));
-    void this.loadChart(createBaselineChartRequest(instrument)).catch(logFailure("market-data.coordinator.index", "Loading chart data failed"));
+    const snapshotKey = buildSnapshotKey(instrument);
+    if (this.events.hasKeyListeners(snapshotKey) || !this.snapshotStore.hasSaved(snapshotKey)) {
+      void this.loadSnapshot(instrument).catch(logFailure("market-data.coordinator.index", "Loading a financial snapshot failed"));
+    }
+    const chartRequest = createBaselineChartRequest(instrument);
+    const chartKey = buildChartKey(chartRequest);
+    if (this.events.hasKeyListeners(chartKey) || !this.chartStore.hasSaved(chartKey)) {
+      void this.loadChart(chartRequest).catch(logFailure("market-data.coordinator.index", "Loading chart data failed"));
+    }
   }
 
   /**
@@ -481,11 +497,11 @@ export class MarketDataCoordinator {
    */
   warmTickerGaps(instrument: InstrumentRef | null | undefined): void {
     if (!instrument) return;
-    if (resolveEntryData(this.getSnapshotEntry(instrument)) == null) {
+    if (!this.snapshotStore.hasSaved(buildSnapshotKey(instrument)) && resolveEntryData(this.getSnapshotEntry(instrument)) == null) {
       void this.loadSnapshot(instrument).catch(logFailure("market-data.coordinator.index", "Loading a financial snapshot failed"));
     }
     const chartRequest = createBaselineChartRequest(instrument);
-    if (resolveEntryData(this.getChartEntry(chartRequest)) == null) {
+    if (!this.chartStore.hasSaved(buildChartKey(chartRequest)) && resolveEntryData(this.getChartEntry(chartRequest)) == null) {
       void this.loadChart(chartRequest).catch(logFailure("market-data.coordinator.index", "Loading chart data failed"));
     }
   }
@@ -848,6 +864,10 @@ export class MarketDataCoordinator {
       // it through errors so old expirations cannot return via lastGoodData.
       const value = result && (!empty || method === "getOptionsChain") ? result.value : null;
       const classified = error ? classifyError(error) : null;
+      if (!result && current.savedCopyAt != null) {
+        store.set(key, { ...current, phase: loading ? "refreshing" : "ready", error: classified });
+        return;
+      }
       store.set(key, {
         phase: loading ? (result ? "refreshing" : "loading") : result ? "ready" : "error",
         data: value,
@@ -856,6 +876,7 @@ export class MarketDataCoordinator {
         lastGoodData: value ?? (method === "getExchangeRate" ? null : current.lastGoodData),
         source: result?.source ?? null,
         fetchedAt: result?.fetchedAt ?? null,
+        savedCopyAt: cachedValueSavedAt(result) ?? undefined,
         responseSequence: result?.responseSequence,
         asOf: result?.asOf,
         delayMinutes: result?.delayMinutes,
@@ -1015,7 +1036,7 @@ export class MarketDataCoordinator {
     // A tick merged onto a saved copy is the stream's answer, not the saved copy.
     const storedQuote = withSavedCopyMarkOf(receivedAt == null ? resolvedQuote : { ...resolvedQuote, receivedAt }, quote);
     const currentQuote = current.data ?? current.lastGoodData;
-    if (areStreamQuotesEquivalent(currentQuote, storedQuote)) {
+    if (current.savedCopyAt == null && areStreamQuotesEquivalent(currentQuote, storedQuote)) {
       const previousReceipt = currentQuote?.receivedAt;
       if (receivedAt == null || (previousReceipt != null && receivedAt - previousReceipt < STREAM_RECEIPT_REFRESH_MS)) return;
     }
@@ -1126,8 +1147,8 @@ export function resolveEntryValue<T>(entry: QueryEntry<T>): T | null {
  * stays the error it is.
  */
 export function savedCopyEntryAt<T>(entry: QueryEntry<T> | null | undefined): number | null {
-  if (!entry?.error || entry.fetchedAt == null || !resolveEntryData(entry)) return null;
-  return entryFailedTransiently(entry) ? entry.fetchedAt : null;
+  if (!entry || resolveEntryData(entry) == null) return null;
+  return entry.savedCopyAt ?? (entryFailedTransiently(entry) ? entry.fetchedAt : null);
 }
 
 /**

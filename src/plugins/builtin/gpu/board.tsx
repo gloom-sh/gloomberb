@@ -1,16 +1,18 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo } from "react";
 import type { GpuBoardRow, GpuSettle } from "../../../api-client/gpu";
+import { isAccessDenied } from "../../../api-client/errors";
 import {
   Badge, buildSectionedRows, ChartTableHeader, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, QueryBar,
   renderSectionedRowHeader, type DataTableCell, type DataTableColumn, type SectionedRow,
 } from "../../../components";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
 import { useAsyncResource } from "../../../public/react";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PricePoint } from "../../../types/financials";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
-import { loadGpuHistory } from "./client";
+import { getCachedGpuHistoryGroup, loadGpuHistoryGroup } from "./client";
 import { GpuPriceLadder } from "./ladder";
 import {
   GPU_SETTLE_SECTION, gpuAvailability, gpuBoardSections, gpuChange, gpuChangeColor, gpuChangesLocked, gpuChangeWindows, gpuHeadline, gpuPrice, gpuPriceLadder,
@@ -51,15 +53,18 @@ export function GpuVariantChips({ row, width, selected = false }: { row: Pick<Gp
 /** Sparklines for the series `gpuSparklineSeries` picks, one bounded request each. */
 function useHeadlineHistory(rows: readonly GpuBoardRow[], model: string): Map<string, PricePoint[]> {
   const ids = useMemo(() => gpuSparklineSeries(rows, model).join("\n"), [rows, model]);
-  const loader = useCallback(async (force: boolean) => new Map(await Promise.all(ids.split("\n").map(async (id) => {
-    const points = (await loadGpuHistory(id, force)).payload.points
+  const loader = useCallback((force: boolean) => loadGpuHistoryGroup(ids.split("\n"), force), [ids]);
+  const scope = useCloudDisplayScope();
+  const resource = useAsyncResource(ids && scope ? loader : null, {
+    initialData: () => getCachedGpuHistoryGroup(ids.split("\n")), clearOnError: isAccessDenied, keepPreviousData: scope,
+  });
+  return useMemo(() => resource.data ? new Map(ids.split("\n").map((id, index) => {
+    const points = (resource.data!.histories[index]?.payload.points ?? [])
       .filter((point) => `${point.source}:${point.skuKey}` === id)
       .sort((a, b) => a.observedAt.localeCompare(b.observedAt))
       .map((point) => ({ date: new Date(point.observedAt), close: point.pricePerGpuHr }));
     return [id, points] as const;
-  }))), [ids]);
-  const resource = useAsyncResource(ids ? loader : null, { keepPreviousData: true });
-  return resource.data ?? EMPTY_HISTORY;
+  })) : EMPTY_HISTORY, [ids, resource.data]);
 }
 
 function boardColumns(width: number, options: { windows: GpuChangeKey[]; trend: boolean; range: boolean; availability: boolean }): DataTableColumn[] {

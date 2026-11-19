@@ -9,7 +9,7 @@ import type {
 } from "../../../api-client/insider-signals";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
+import { cachedCloudResource, cloudDisplayCacheKey, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 
 /** The windows the pane offers, in days; the server takes any from 1 to 90. */
@@ -84,7 +84,7 @@ function cacheKey(query: InsiderSignalsQuery, limit: number): string {
 }
 
 export function cachedInsiderSignals(query: InsiderSignalsQuery, limit = INSIDER_SIGNAL_PANE_ROWS): CloudResource<InsiderSignalsPayload> | null {
-  return cachedCloudResource(insiderSignalsCache, cacheKey(query, limit), validateInsiderSignals);
+  return cachedCloudResource(insiderSignalsCache, cloudDisplayCacheKey(cacheKey(query, limit)), validateInsiderSignals);
 }
 
 export async function loadInsiderSignals(
@@ -103,7 +103,7 @@ export async function loadInsiderSignals(
 ): Promise<CloudResource<InsiderSignalsPayload>> {
   return loadCloudResource(
     insiderSignalsCache,
-    cacheKey(query, limit),
+    cloudDisplayCacheKey(cacheKey(query, limit)),
     () => client.getCloudSecInsiderSignals(insiderSignalsParams(query, limit), { signal }).catch((error: unknown) => {
       // A refused session is the pane's sign-in wall, keyed on the shared gate.
       if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED, { cause: error });
@@ -155,7 +155,7 @@ function bothSides(buy: CloudResource<InsiderSignalsPayload>, sell: CloudResourc
 const SIDES = ["buy", "sell"] as const;
 
 export function cachedInsiderCompany(query: InsiderCompanyQuery): CloudResource<InsiderCompanyActivity> | null {
-  const [buy, sell] = SIDES.map((side) => cachedCloudResource(insiderSignalsCache, companyCacheKey(query, side), companyValidator(query.ticker)));
+  const [buy, sell] = SIDES.map((side) => cachedCloudResource(insiderSignalsCache, cloudDisplayCacheKey(companyCacheKey(query, side)), companyValidator(query.ticker)));
   return buy && sell ? bothSides(buy, sell) : null;
 }
 
@@ -178,7 +178,7 @@ export async function loadInsiderCompany(
 ): Promise<CloudResource<InsiderCompanyActivity>> {
   const [buy, sell] = await Promise.all(SIDES.map((side) => loadCloudResource(
     insiderSignalsCache,
-    companyCacheKey(query, side),
+    cloudDisplayCacheKey(companyCacheKey(query, side)),
     () => client.getCloudSecInsiderSignals({
       ...(side === "sell" ? { side } : {}),
       window: query.window,

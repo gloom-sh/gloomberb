@@ -1,6 +1,8 @@
 import { apiClient } from "../../../api-client";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
 import type { CotBoardPayload, CotClass, CotClassSummary, CotContractPayload, CotFamily, CotPayloadBase, CotPositions } from "../../../api-client/cot";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { withSavedCopyMarkOf } from "../../../data/saved-copies";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { PricePoint } from "../../../types/financials";
 import { COT_CLASSES, cotFrontPriceUnit, cotPriceMapping } from "./model";
@@ -71,20 +73,24 @@ export async function fetchCotBoard(family: CotFamily, traderClass: CotClass, cl
   try { return validateCotBoard(await client.getCloudCotBoard(family, traderClass, positions), family, traderClass, positions); }
   catch (error) { throw unavailable(error); }
 }
-const cotBoardKey = (family: CotFamily, traderClass: CotClass, positions: CotPositions) =>
-  `${family}:${traderClass}${positions === "combined" ? ":combined" : ""}${family === "disaggregated" ? ":ice" : ""}`;
+const cotBoardKey = (scope: string, family: CotFamily, traderClass: CotClass, positions: CotPositions) =>
+  JSON.stringify([scope, family, traderClass, positions, family === "disaggregated" ? "ice" : ""]);
 const presentCotBoard = (payload: CotBoardPayload, stale: boolean, refreshError: string | null) => ({
   ...payload, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])],
   status: stale && payload.status === "available" ? "partial" as const : payload.status,
 });
 export function cachedCotBoard(family: CotFamily, traderClass: CotClass, positions: CotPositions = "futures-only") {
-  const cached = cachedCloudResource(cotBoardCache, cotBoardKey(family, traderClass, positions), (payload) => validateCotBoard(payload, family, traderClass, positions));
-  return cached ? presentCotBoard(cached.payload, false, null) : null;
+  const scope = cloudDisplayScope();
+  if (scope === null) return null;
+  const cached = cachedCloudResource(cotBoardCache, cotBoardKey(scope, family, traderClass, positions), (payload) => validateCotBoard(payload, family, traderClass, positions));
+  return cached ? withSavedCopyMarkOf(presentCotBoard(cached.payload, false, null), cached) : null;
 }
 export async function loadCotBoard(family: CotFamily, traderClass: CotClass, force = false, positions: CotPositions = "futures-only") {
-  const { payload, stale, refreshError } = await loadCloudResource(cotBoardCache, cotBoardKey(family, traderClass, positions),
-    () => fetchCotBoard(family, traderClass, apiClient, positions), { force });
-  return presentCotBoard(payload, stale, refreshError);
+  const scope = cloudDisplayScope();
+  const fetchBoard = () => fetchCotBoard(family, traderClass, apiClient, positions);
+  if (scope === null) return presentCotBoard(await fetchBoard(), false, null);
+  const result = await loadCloudResource(cotBoardCache, cotBoardKey(scope, family, traderClass, positions), fetchBoard, { force });
+  return withSavedCopyMarkOf(presentCotBoard(result.payload, result.stale, result.refreshError), result);
 }
 export async function fetchCotContract(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract"> = apiClient,
   positions: CotPositions = "futures-only", since?: string) {

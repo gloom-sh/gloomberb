@@ -1,4 +1,5 @@
 import { unavailableText } from "../../../components/ui/status";
+import { markSavedCopy } from "../../../data/saved-copies";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import { isContinuousFuture, rollAdjustedHistory } from "../../../market-data/futures-roll-returns";
 import type { ChartRequest, InstrumentRef } from "../../../market-data/request-types";
@@ -83,12 +84,14 @@ export function cachedSeasonalityHistory(
   const served = resolveEntryValue(entry);
   if (!served?.length) return null;
   const now = Date.now();
-  return {
+  const data = {
     ...seasonalitySeries(served, request.instrument.symbol, cadence),
     stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now),
     error: entry.error?.message ?? null,
     fetchedAt: entry.fetchedAt ?? now,
   };
+  const savedAt = entry.savedCopyAt ?? (data.stale ? entry.fetchedAt : null);
+  return savedAt == null ? data : markSavedCopy(data, savedAt);
 }
 
 /**
@@ -114,9 +117,10 @@ export async function loadSeasonalityHistory(
       { forceRefresh: request.forceRefresh }), request.signal, CANCELLED);
     const series = seasonalitySeries(resolveEntryValue(entry) ?? [], request.instrument.symbol, cadence);
     const history = series.history;
-    return { ...series, stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now),
+    const data = { ...series, stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now),
       error: entry.error?.message ?? (history.length ? null : unavailableText(cadence === "daily" ? "Daily price history" : "Monthly price history")),
       fetchedAt: entry.fetchedAt ?? now };
+    return entry.savedCopyAt == null ? data : markSavedCopy(data, entry.savedCopyAt);
   } catch (error) {
     if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
     return { history: [], stale: false, error: errorMessage(error), fetchedAt: now,

@@ -139,16 +139,18 @@ export function delayedFooterSegment({
  * 14:37`, or with its day when saved on another. It says how current the
  * pane's quotes are, so it is a quote status.
  */
-export function savedCopyFooterSegment(id: string, savedAt: number, now = Date.now()): PaneFooterSegment {
+export function savedCopyFooterSegment(id: string, savedAt: number, now = Date.now(), refreshing = false): PaneFooterSegment {
   const saved = new Date(savedAt);
   const time = saved.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-  const when = saved.toDateString() === new Date(now).toDateString() ? time : `${formatShortDate(saved, { year: false })} ${time}`;
+  const today = new Date(now);
+  const year = saved.getFullYear() !== today.getFullYear() ? "numeric" : false;
+  const when = saved.toDateString() === today.toDateString() ? time : `${formatShortDate(saved, { year })} ${time}`;
   const text = `${t("saved copy from")} ${when}`;
   return {
     id,
     quoteStatus: true,
     savedCopyAt: savedAt,
-    title: `${t("Couldn't refresh")}: ${text}`,
+    title: refreshing ? text : `${t("Couldn't refresh")}: ${text}`,
     parts: [{ text, tone: "warning" }],
     variants: [[{ text: t("saved copy"), tone: "warning" }]],
   };

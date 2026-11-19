@@ -73,7 +73,7 @@ export function PeriodEndHistoryLoader({ oldestPeriodEnd, onChange }: {
     if (!provider) throw new Error("Market data unavailable");
     return loadPeriodEndHistory(provider, nextSymbol, nextExchange, oldestPeriodEnd, forceRefresh ? { cacheMode: "refresh" } : undefined);
   }, [oldestPeriodEnd, provider]);
-  const { data, loading, error } = useTickerRequest(loader, symbol, exchange);
+  const { data, loading, error } = useTickerRequest(loader, symbol, exchange, ["period-end-history", oldestPeriodEnd]);
   useEffect(() => onChange({ data: data ?? undefined, loading, error: error ? String(error) : null }), [data, error, loading, onChange]);
   useEffect(() => () => onChange(null), [onChange]);
   return null;

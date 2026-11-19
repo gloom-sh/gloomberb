@@ -1,15 +1,17 @@
 import { useCallback, useMemo } from "react";
 import type { GpuBasis, GpuBoardRow } from "../../../api-client/gpu";
+import { isAccessDenied } from "../../../api-client/errors";
 import {
   buildSectionedRows, ChartTableHeader, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, PaneStatusBody, renderSectionedRowHeader,
   usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn, type SectionedRow, type StatItem,
 } from "../../../components";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState } from "../../../public/react";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { SeriesListDetail, useSeriesList } from "../shared/series-list-detail";
-import { loadGpuHistory, loadGpuReferences } from "./client";
+import { getCachedGpuHistoryGroup, getCachedGpuReferences, loadGpuHistoryGroup, loadGpuReferences } from "./client";
 import {
   GPU_MODELS, gpuBasisLabel, gpuBoardSections, gpuChange, gpuChangeColor, gpuHeadline, gpuHistoryChart, gpuHistoryViewport, gpuProvenanceLabel, gpuMatches, gpuPricePeriods, gpuPrice, gpuReferenceRows, gpuShortSource,
   gpuTime, gpuVariant, type GpuPricePeriod,
@@ -42,12 +44,11 @@ function HistoryDetail({ row, peers, width, height, refreshVersion }: {
     ...peers.filter((peer) => peer.id !== row.id && peer.basis === row.basis && gpuHeadline(peer) && peer.basis !== "list"),
   ].slice(0, MAX_PLOTTED), [row, peers]);
   const ids = plotted.map((entry) => entry.id).join("\n");
-  const loader = useCallback(async (force: boolean) => {
-    const refresh = force || refreshVersion > 0;
-    const histories = await Promise.all(ids.split("\n").map((id) => loadGpuHistory(id, refresh)));
-    return { histories };
-  }, [ids, row.gpuModel, refreshVersion]);
-  const resource = useAsyncResource(loader, { keepPreviousData: true });
+  const loader = useCallback((force: boolean) => loadGpuHistoryGroup(ids.split("\n"), force || refreshVersion > 0), [ids, refreshVersion]);
+  const scope = useCloudDisplayScope();
+  const resource = useAsyncResource(scope ? loader : null, {
+    initialData: () => getCachedGpuHistoryGroup(ids.split("\n")), clearOnError: isAccessDenied, keepPreviousData: scope,
+  });
   useAutoRefresh(resource.updatedAt, resource.load);
   const points = useMemo(() => resource.data?.histories.flatMap((history) => history.payload.points) ?? [], [resource.data]);
   const chart = useMemo(() => gpuHistoryChart(plotted, points, { selected: colors.textBright, marker: colors.warning }), [plotted, points, colors]);
@@ -102,7 +103,10 @@ export function GpuHistory({ rows, models: boardModels, model, setModel, selecte
   const [basis, setBasis] = usePluginPaneState<string>("historyBasis", "all");
   const [refreshVersion, setRefreshVersion] = usePluginPaneState<number>("historyRefresh", 0);
   const referenceLoader = useCallback((force: boolean) => loadGpuReferences(force || refreshVersion > 0), [refreshVersion]);
-  const references = useAsyncResource(referenceLoader, { keepPreviousData: true });
+  const scope = useCloudDisplayScope();
+  const references = useAsyncResource(scope ? referenceLoader : null, {
+    initialData: getCachedGpuReferences, clearOnError: isAccessDenied, keepPreviousData: scope,
+  });
   useAutoRefresh(references.updatedAt, references.load);
   usePaneNoticeFooter({ registrationId: "gpu:reference-notice", focused,
     notices: [references.error, references.data?.refreshError].filter((value): value is string => !!value) });

@@ -3,6 +3,7 @@ import { outage } from "../../../test-support/outage";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudProxyStatementListPayload, type CloudProxyStatementPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, createTestTicker, TestPaneFrame } from "../../../test-support/pane";
@@ -176,21 +177,23 @@ test("a failed single-year request can be retried from the footer without changi
   expect(detail).toHaveBeenCalledTimes(2);
 });
 
-function seedCache(stale = true) {
+function seedCache(stale = true, paneScope?: readonly unknown[]) {
   const persistence = new MemoryPluginPersistence();
   const report = statement("ALPHA", 2026);
   const list = { company: report.company, proxies: [report] };
   const options = { sourceKey: "executives", schemaVersion: 1, stale, expired: stale };
-  persistence.seedResource("proxies", "ALPHA", list, options);
-  persistence.seedResource("proxy", "ALPHA:2026", report, options);
+  const key = (entity: string) => paneScope ? JSON.stringify([entity, null, "full", paneScope]) : entity;
+  persistence.seedResource("proxies", key("ALPHA"), list, options);
+  persistence.seedResource("proxy", key("ALPHA:2026"), report, options);
   attachExecutivesPersistence(persistence);
-  return { persistence, report, list };
+  return { persistence, report, list, key };
 }
 
 test("a list and statement answered from their saved copies say when they were saved, and a refresh clears it", async () => {
-  const { persistence, report, list: payload } = seedCache();
+  const displayIdentity = [cloudDisplayScope(), "NASDAQ"];
+  const { persistence, report, list: payload, key } = seedCache(true, displayIdentity);
   const cacheOptions = { sourceKey: "executives", allowExpired: true };
-  const original = persistence.getResource("proxy", "ALPHA:2026", cacheOptions)!;
+  const original = persistence.getResource("proxy", key("ALPHA:2026"), cacheOptions)!;
   let unavailable = true;
   const list = spyOn(apiClient, "getProxyStatements").mockImplementation(async () => {
     if (unavailable) throw outage("Discovery outage");
@@ -210,14 +213,14 @@ test("a list and statement answered from their saved copies say when they were s
   expect(frame).not.toContain("⚠");
   expect(frame).not.toContain("Discovery outage");
   expect(frame).not.toContain("Statement outage");
-  expect(persistence.getResource("proxy", "ALPHA:2026", cacheOptions)).toEqual(original);
+  expect(persistence.getResource("proxy", key("ALPHA:2026"), cacheOptions)).toEqual(original);
   unavailable = false;
   await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
   frame = tui.frame();
   expect(frame).toContain("ALPHA compensation 2026");
   expect(frame).not.toContain("saved copy");
-  const fresh = await loadProxyStatement("ALPHA", 2026);
+  const fresh = await loadProxyStatement("ALPHA", 2026, { tier: "full", displayIdentity });
   expect(fresh.refreshError).toBeUndefined();
   expect(fresh.fetchedAt).toBeGreaterThan(original.fetchedAt);
   expect(fresh.data?.filedAt).toBe(report.filedAt);

@@ -54,7 +54,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
   const connectionHealth = useConnectionHealth();
   const request = useCallback(() => fetchMarketHalts(connectionHealth), [connectionHealth]);
-  const { data, status, error, updatedAt: fetchedAt, load } = useAsyncResource(request);
+  const { data, status, error, updatedAt: fetchedAt, load } = useAsyncResource(request, { savedCopy: { key: ["market-halts"] } });
   const records = data ?? EMPTY_RECORDS;
   const [initialTab] = usePaneSettingValue("initialTab", "all");
   const [filter, setFilter] = usePluginPaneState<HaltFilter>("filter",
