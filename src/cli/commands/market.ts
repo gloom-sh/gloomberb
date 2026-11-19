@@ -338,7 +338,7 @@ import { isSubMinuteInterval, knownGapMessage, subMinuteDataMessage } from "../k
 import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol, isRoundTheClockCoin } from "../../utils/crypto-pair";
-import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
+import { canonicalExchange, isUsEquityExchange, isUsListingExchange } from "../../utils/exchanges";
 import { listingSuffixVenue } from "../../sources/listing-symbols";
 import { classifyInstrumentType, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import {
@@ -2285,9 +2285,11 @@ async function loadListingHistory(
     ...barHistoryFreshness(intraday ? null : interval ?? barResolutionFromDates(data.map((row) => row.date))),
     observedKey: "date",
     oldest: null,
-    cadenceExchange: venue,
+    cadenceExchange: venue || identity.exchange,
     // An intraday bar is dated by its open, so the line names its span: `last bar 15:00–16:00 UTC`.
     ...(intraday && interval && interval in CHART_RESOLUTION_STEP_MS ? { barMinutes: CHART_RESOLUTION_STEP_MS[interval] / 60_000 } : {}),
+    ...(loaded.extendedHours ? { barSession: "extended" as const } : loaded.session?.kind === "regular" ? { barSession: "regular" as const }
+      : isUsEquityExchange(venue || identity.exchange) ? { barSession: "unreported" as const } : {}),
     ...(forming ? { periodToDate: forming.periodToDate } : closedDay ? { asOf: closedDay } : {}),
     ...(dayToDate ? { basis: "daily bars", ...(quote && Number.isFinite(quote.lastUpdated) ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
     ...(delayedTail ? { status: "delayed" as const, delayMinutes: CLOUD_QUOTE_DELAY_MINUTES } : {}),

@@ -36,6 +36,30 @@ const HISTORY_CSV_HEADER = "Date,Open,High,Low,Close,Volume,Flag,Partial,Filled,
 /** The columns every exported row ends with: what it is, its source and as-of, and when it was retrieved. */
 const IDENTITY = "symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at";
 
+test("an intraday bar reaching the regular close does not imply after-hours without source evidence", async () => {
+  setSystemTime(new Date("2026-11-28T00:16:00Z"));
+  const date = new Date("2026-11-27T17:30:00Z");
+  const read = async (coverage: Partial<PriceHistoryResult>) => {
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "NVDA", currency: "USD", listingExchangeName: "NASDAQ" }),
+        getPriceHistoryWithMetadata: async () => ({ resolution: "1h", points: [{ date, open: 150, high: 151, low: 149, close: 150.87 }], ...coverage }),
+      }),
+    }, { tail: 1 });
+    await history.execute(["NVDA:NASDAQ", "--range", "1W"], cli.context);
+    const [{ result, options }] = cli.printed;
+    return serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, tail: 1 }, options);
+  };
+  const session = { version: 1, kind: "regular", calendar: "us-equity", timeZone: "America/New_York", symbol: "NVDA", exchange: "NASDAQ",
+    interval: "1h", source: "gloom", timestampConvention: "bar-open", barAlignment: "session-open", observedAt: Date.now() } as const;
+  expect(await read({ session })).toContain("last bar 17:30–18:00 UTC (ends at regular close)");
+  expect(await read({ extendedHours: true })).toContain("last bar 17:30–18:30 UTC (includes after-hours)");
+  const unknown = await read({});
+  expect(unknown).toContain("last bar starts 17:30 UTC (regular close 18:00 UTC; bar session not reported)");
+  expect(unknown).not.toContain("17:30–18:30 UTC");
+});
+
 test("history CSV keeps the price columns first, every row ends with its flag, what it is a bar of, its currency, interval and source, and it ends with its source", async () => {
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
