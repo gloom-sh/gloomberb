@@ -32,6 +32,7 @@ import {
 import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
@@ -751,9 +752,10 @@ function CallsListView({
   const columns = useMemo(() => buildColumns(width, !ticker), [width, ticker]);
   const renderRow = useCallback((call: CloudEarningsCallPayload, column: CallColumn) => renderCell(call, column, now), [now]);
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKey = useCallback(
     (event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-      if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+      if (context.selectedIndex <= 0 && isSearchUp(event)) {
         stopSearchFocusNavigation(event);
         focusSearch();
         return true;
@@ -763,7 +765,7 @@ function CallsListView({
         if (lookupTicker) setLookupRefresh((current) => ({ ticker: lookupTicker, request: (current?.request ?? 0) + 1 }));
       }, { stopPropagation: true });
     },
-    [fetchCalls, focusSearch, lookupTicker],
+    [isSearchUp, fetchCalls, focusSearch, lookupTicker],
   );
 
   // `q` is the app's quit key, handled ahead of pane handlers. The reader

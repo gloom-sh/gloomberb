@@ -27,7 +27,8 @@ import { tokenizeInlineContent } from "../../../utils/inline-content-tokenizer";
 import { isPlainKey } from "../../../utils/keyboard";
 import { colors } from "../../../theme/colors";
 import { SignInWall } from "../cloud/auth-actions";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import {
   appendNewTweets,
@@ -419,11 +420,12 @@ export function TweetSearchTable({
     setSort((current) => nextHeaderSort(current, columnId, { firstDirection: "desc" }));
   }, []);
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
   ) => {
-    if (onFocusSearch && context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (onFocusSearch && context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       onFocusSearch();
       return true;
@@ -433,7 +435,7 @@ export function TweetSearchTable({
       return true;
     }
     return handleRefreshKey(event, () => reload(true), { stopPropagation: true });
-  }, [onFocusSearch, openTweetLinks, reload, selectedLinks.length]);
+  }, [isSearchUp, onFocusSearch, openTweetLinks, reload, selectedLinks.length]);
 
   const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
     if (isPlainKey(event, "m") && selectedLinks.length > 0) {

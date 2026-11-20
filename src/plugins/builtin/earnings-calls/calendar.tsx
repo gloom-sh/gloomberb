@@ -28,7 +28,8 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useAgeClock, useAutoRefresh } from "../../../react/auto-refresh";
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { usePluginPaneState } from "../../runtime";
 import { newYorkToday } from "../earnings/board-model";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
@@ -235,14 +236,15 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
     notices: data?.truncated ? [upcomingCutNotice(data.calls)] : [],
   });
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKey = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return handleRefreshKey(event, reload, { stopPropagation: true });
-  }, [focusSearch, reload]);
+  }, [isSearchUp, focusSearch, reload]);
 
   if (signInRequired || verificationRequired) {
     return (

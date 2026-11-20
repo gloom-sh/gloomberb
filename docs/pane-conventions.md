@@ -943,7 +943,7 @@ header, with the detail's height.
   through `onRootKeyDown` and `onDetailKeyDown` (return `true` when handled);
   global shortcuts through `registerShortcut` so Help lists them. These are
   default navigation keys: shared controls honour the configurable `navigate-*`
-  actions. Custom controls use `useKeybindings` and `matchesNavigationKey`
+  actions. Custom controls use `useNavigationKey`
   from `gloomberb/react` rather than checking the default letters directly.
 - A key held down repeats, and an action should run once per press. The
   shortcut registry drops the repeats (`event.repeat`) of command chords

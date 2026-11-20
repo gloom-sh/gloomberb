@@ -10,14 +10,16 @@ export function matchesNavigationKey(
   bindings: ResolvedKeybindings,
   action: NavigationAction,
   event: KeyChordEventLike & { targetEditable?: boolean },
-  { allowEditable = false }: { allowEditable?: boolean } = {},
+  { allowEditable = false, defaultMatches }: { allowEditable?: boolean; defaultMatches?: boolean } = {},
 ): boolean {
   if (event.targetEditable && !allowEditable) return false;
+  const id = `navigate-${action}`;
+  if (defaultMatches !== undefined && !bindings.actionsById.get(id)?.custom) return defaultMatches;
   if (matchKeybinding(bindings, event)) return false;
   // Table order resolves hand-edited conflicts the same way as global bindings.
   const match = bindings.actions.find((entry) => entry.def?.category === "Navigation"
     && entry.chords.some((chord) => (!event.targetEditable || !isTypingChord(chord)) && matchesKeyChord(chord, event)));
-  return match?.id === `navigate-${action}`;
+  return match?.id === id;
 }
 
 /** Keep the existing window-mode hint with defaults, and name the configured keys otherwise. */

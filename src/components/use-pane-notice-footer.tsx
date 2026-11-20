@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { matchesNavigationKey, useKeybindings } from "../app/keybindings";
 import { t } from "../i18n";
 import { useShortcut, useViewport } from "../react/input";
 import { Box, ScrollBox, type ScrollBoxRenderable } from "../ui";
@@ -39,10 +40,11 @@ function NoticeDialog({ notices, title, dismiss, dialogId }: AlertContext & {
     + Math.max(0, notices.length - 1);
   const height = Math.max(1, Math.min(contentHeight, 18, viewport.height - 10));
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const bindings = useKeybindings();
   useDialogKeyboard((event) => {
-    if (event.ctrl || event.alt || event.meta || event.super) return;
     const key = event.name ?? event.key;
-    if (key === "enter" || key === "return" || key === "escape") {
+    const plain = !event.ctrl && !event.alt && !event.meta && !event.super;
+    if (plain && (key === "enter" || key === "return" || key === "escape")) {
       event.preventDefault();
       event.stopPropagation();
       dismiss();
@@ -50,12 +52,13 @@ function NoticeDialog({ notices, title, dismiss, dialogId }: AlertContext & {
     }
     const scroll = scrollRef.current;
     if (!scroll) return;
-    const delta = key === "down" ? 1 : key === "up" ? -1
-      : key === "pagedown" ? height : key === "pageup" ? -height : null;
-    if (delta === null && key !== "home" && key !== "end") return;
+    const down = matchesNavigationKey(bindings, "down", event, { defaultMatches: plain && key === "down" });
+    const up = matchesNavigationKey(bindings, "up", event, { defaultMatches: plain && key === "up" });
+    const delta = down ? 1 : up ? -1 : plain && key === "pagedown" ? height : plain && key === "pageup" ? -height : null;
+    if (delta === null && !(plain && (key === "home" || key === "end"))) return;
     event.preventDefault();
     event.stopPropagation();
-    scroll.scrollTo(key === "home" ? 0 : key === "end" ? scroll.scrollHeight : Math.max(0, scroll.scrollTop + (delta ?? 0)));
+    scroll.scrollTo(delta !== null ? Math.max(0, scroll.scrollTop + delta) : key === "home" ? 0 : scroll.scrollHeight);
   }, { scope: dialogId });
 
   return (

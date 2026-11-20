@@ -176,16 +176,17 @@ export function KeybindingsEditor({
   const rows = useMemo<EditorRow[]>(() => {
     const actionRow = (action: ResolvedKeybindingAction): BindableRow => {
       const conflict = conflictNote(resolved, action.id, describeTarget);
+      const unbound = action.def?.category === "Navigation" && action.chords.length === 0;
       return {
         id: `action:${action.id}`,
         kind: "action",
         chords: action.chords.map(formatChord),
         label: action.def ? t(action.def.description) : action.pluginShortcut?.description ?? action.id,
-        note: conflict
+        note: unbound ? t("No navigation keys bound. Bind a key or restore the defaults.") : conflict
           ?? (action.custom
             ? tf("custom, default {chord}", { chord: action.defaults.map(formatChord).join(", ") || t("none") })
             : ""),
-        noteTone: conflict ? "warning" : "muted",
+        noteTone: unbound || conflict ? "warning" : "muted",
         action,
       };
     };
@@ -321,7 +322,9 @@ export function KeybindingsEditor({
     }
     const action = selectedRow.action!;
     writeKeybindings(applyActionBinding(config, action.id, [], action.defaults));
-    setFeedback({ tone: "info", text: t("Unbound.") });
+    setFeedback(action.def?.category === "Navigation"
+      ? { tone: "warning", text: t("No navigation keys bound. Bind a key or restore the defaults.") }
+      : { tone: "info", text: t("Unbound.") });
   }, [selectedRow, stateRef, writeKeybindings]);
 
   const canReset = selectedRow?.kind === "action" && selectedRow.action?.custom === true;

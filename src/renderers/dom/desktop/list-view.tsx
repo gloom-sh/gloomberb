@@ -266,7 +266,9 @@ export function WebListView({
               return;
             }
             const key = toKeyEventLike(event.nativeEvent);
-            const direction = matchesNavigationKey(navigation, "down", key) ? 1 : matchesNavigationKey(navigation, "up", key) ? -1 : 0;
+            const down = matchesNavigationKey(navigation, "down", key, { defaultMatches: event.key === "ArrowDown" });
+            const up = matchesNavigationKey(navigation, "up", key, { defaultMatches: event.key === "ArrowUp" });
+            const direction = down ? 1 : up ? -1 : 0;
             if (!direction) return;
             event.preventDefault();
             event.stopPropagation();

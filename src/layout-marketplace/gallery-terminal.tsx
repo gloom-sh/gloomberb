@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { matchesNavigationKey, useKeybindings } from "../app/keybindings";
+import { useSearchFocusUp } from "../components/input-search-bar";
 import { Box, Text, TextAttributes, type InputRenderable } from "../ui";
 import { InputSearchBar } from "../components";
 import { ListView, type ListViewItem } from "../components/ui/list-view";
@@ -190,6 +192,8 @@ export function LayoutGalleryTerminal({
     else activateLayout(row.entry);
   }, [activateLayout, installLayout]);
 
+  const bindings = useKeybindings();
+  const isSearchUp = useSearchFocusUp();
   // Unscoped on purpose: a scoped handler would outrank the pane menu opened
   // over the gallery, and j/k/Enter belong to that menu while it is open.
   useShortcut((event) => {
@@ -200,10 +204,10 @@ export function LayoutGalleryTerminal({
       event.stopPropagation();
       action();
     };
-    if (isPlainKey(event, "down", "j")) run(() => moveTo(cursorPosition + 1));
-    else if (isPlainKey(event, "up", "k")) {
+    if (matchesNavigationKey(bindings, "down", event)) run(() => moveTo(cursorPosition + 1));
+    else if (matchesNavigationKey(bindings, "up", event)) {
       run(() => {
-        if (event.name === "up" && cursorPosition <= 0) focusSearch();
+        if (cursorPosition <= 0 && isSearchUp(event)) focusSearch();
         else moveTo(cursorPosition - 1);
       });
     } else if (isPlainKey(event, "home")) run(() => moveTo(0));

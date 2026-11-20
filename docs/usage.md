@@ -177,7 +177,7 @@ Global shortcuts, pane management keys and shared navigation keys can be moved, 
   gloom config set keybindings.actions.navigate-right "Alt+Right Right"
   ```
 
-  Plain letters can also be used for a keyboard layout such as Bépo. A key already bound to a global action must be freed first. Navigation stays local to the active control; text fields keep their typing and editing keys. Pane-specific actions (add, export, open source) and specialized editors retain their own keys.
+  Plain letters can also be used for a keyboard layout such as Bépo. A key already bound to a global action must be freed first. Navigation stays local to the active control; text fields keep their typing and editing keys. Pane-specific actions (add, export, open source) and specialized editors retain their own keys. The shortcut editor and CLI warn if a navigation action has no keys left.
 
 - **Layouts** also lists `switch-layout-1` through `switch-layout-9`, initially unbound. These actions select a layout by position regardless of the key's character. For Bépo, for example:
 
@@ -189,9 +189,9 @@ Global shortcuts, pane management keys and shared navigation keys can be moved, 
   gloom config set keybindings.actions.switch-layout-5 'Ctrl+)'
   ```
 
-  The layout tabs display those bindings. Layout shortcuts stay inactive while a text field, dialog or the command bar owns input.
+  The layout tabs display those bindings. Direct layout bindings stay inactive while a text field, dialog or the command bar owns input.
 
-- Layout numbers also accept `Ctrl+Shift+1`–`9` (`Cmd+Shift+1`–`9` outside a Mac terminal), plus `Alt+Shift+1`–`9` in the terminal, for layouts such as Bépo where Shift produces the number. If Ghostty takes `Alt+number` for its own tabs, use the Control variant or move/unbind the terminal's conflicting shortcut. Gloom cannot receive keys the terminal intercepts.
+- The layout-number defaults are `CmdOrCtrl+Digit` and, in the terminal, `Alt+Digit`. To also accept shifted numbers on Bépo, add `CmdOrCtrl+Shift+Digit` or `Alt+Shift+Digit` to `switch-layout`. If your terminal uses `Alt+number` for its own tabs, use the Control variant or move the conflicting shortcut. Gloom cannot receive keys the terminal intercepts.
 - Where the backtick is a dead key, type after `Ctrl+P` to search symbols, or rebind ticker search.
 
 The table lives in `config.json` and the CLI:

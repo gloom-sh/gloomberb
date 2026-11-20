@@ -137,4 +137,5 @@ export { useAppVisible, usePaneVisible } from "../state/app/activity";
 export { ConnectionHealthRegistry } from "../core/connection-health";
 
 // Shared navigation honours the user's keyboard layout and leaves fields editable.
-export { matchesNavigationKey, useKeybindings, type NavigationAction, type ResolvedKeybindings } from "../app/keybindings";
+export { useNavigationKey } from "../app/keybindings/react";
+export type { NavigationAction } from "../app/keybindings";

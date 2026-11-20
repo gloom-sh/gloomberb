@@ -540,10 +540,12 @@ export function WebSegmentedControl({
             onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
               if (option.disabled) return;
               const key = toKeyEventLike(event.nativeEvent);
-              if (matchesNavigationKey(navigation, "left", key) || matchesNavigationKey(navigation, "right", key)) {
+              const left = matchesNavigationKey(navigation, "left", key, { defaultMatches: event.key === "ArrowLeft" });
+              const right = matchesNavigationKey(navigation, "right", key, { defaultMatches: event.key === "ArrowRight" });
+              if (left || right) {
                 event.preventDefault();
                 event.stopPropagation();
-                selectAdjacent(matchesNavigationKey(navigation, "left", key) ? -1 : 1);
+                selectAdjacent(left ? -1 : 1);
               } else if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 event.stopPropagation();

@@ -234,7 +234,6 @@ function TabsView({
 
   const navigation = useKeybindings();
   useShortcut((event) => {
-    // Shift+arrows scroll a wide table's columns; they never switch tabs.
     if (event.targetEditable) return;
 
     if (matchesNavigationKey(navigation, "left", event)) {

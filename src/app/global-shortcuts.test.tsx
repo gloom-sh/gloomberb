@@ -291,6 +291,15 @@ describe("useAppGlobalShortcuts", () => {
     expect(actions).toEqual([]);
   });
 
+  test("the original layout digit chords still switch layouts during app input capture", async () => {
+    const actions: AppAction[] = [];
+    await renderHarness(layoutState({ inputCaptured: true }), createRegistry(), (action) => actions.push(action));
+    await emitKeypress({ name: "2", ctrl: true });
+    await emitKeypress({ name: "2", super: true });
+    await emitKeypress({ name: "2", alt: true });
+    expect(actions).toEqual(Array.from({ length: 3 }, () => ({ type: "SWITCH_LAYOUT", index: 1 })));
+  });
+
   function stateWithTicker(): AppState {
     const state = baseState();
     state.tickers.set("AAPL", {

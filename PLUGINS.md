@@ -1872,9 +1872,10 @@ Every pane has to work with no mouse, in the terminal and on the desktop. Most o
 
 Shared controls read the `navigate-left`, `navigate-right`, `navigate-up`,
 `navigate-down`, `navigate-prev-view` and `navigate-next-view` actions from the
-user's keybinding table. Custom controls can import `useKeybindings` and
-`matchesNavigationKey` from `gloomberb/react`, then check
-`matchesNavigationKey(bindings, "left", event)` instead of hardcoding `h`.
+user's keybinding table. Custom controls can import `useNavigationKey` and
+the `NavigationAction` type from `gloomberb/react`. Call `useNavigationKey()`
+in the component, then use `isNavigationKey("left", event)` with the returned
+matcher and the event from `useShortcut`, instead of hardcoding `h`.
 Navigation is scoped to the focused control and yields to global shortcuts
 and editable fields. A filtered list that intentionally lets arrows move its
 results while typing can pass `{ allowEditable: true }`; typing chords still

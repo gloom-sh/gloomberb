@@ -792,8 +792,8 @@ export function Shell({
     const index = Math.max(0, choices.findIndex((item) => item.id === hoveredMenuItemIdRef.current));
     const last = choices.length - 1;
     let next: number | null = null;
-    if (matchesNavigationKey(keybindings, "down", event) || (name === "tab" && !event.shift)) next = index >= last ? 0 : index + 1;
-    else if (matchesNavigationKey(keybindings, "up", event) || (name === "tab" && event.shift)) next = index <= 0 ? last : index - 1;
+    if (matchesNavigationKey(keybindings, "down", event, { allowEditable: true, defaultMatches: name === "down" || name === "j" }) || (name === "tab" && !event.shift)) next = index >= last ? 0 : index + 1;
+    else if (matchesNavigationKey(keybindings, "up", event, { allowEditable: true, defaultMatches: name === "up" || name === "k" }) || (name === "tab" && event.shift)) next = index <= 0 ? last : index - 1;
     else if (name === "home" || name === "pageup") next = 0;
     else if (name === "end" || name === "pagedown") next = last;
     if (next !== null) {

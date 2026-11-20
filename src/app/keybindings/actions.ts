@@ -123,12 +123,11 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
     id: "switch-layout",
     category: "Layouts",
     description: "Switch saved layouts by number.",
-    // Bépo and other layouts need Shift to produce the number itself.
-    defaults: ["CmdOrCtrl+Digit", "CmdOrCtrl+Shift+Digit"],
+    defaults: ["CmdOrCtrl+Digit"],
     // A terminal without the kitty protocol never sends Control with a digit
     // (Ctrl+1 arrives as 1, Ctrl+3 as Esc), but it sends Alt+1. A browser
     // keeps Alt+1 for its own tabs, and a Mac types ¡ with it.
-    terminalDefaults: ["Alt+Digit", "Alt+Shift+Digit"],
+    terminalDefaults: ["Alt+Digit"],
   },
   {
     id: "focus-next-pane",

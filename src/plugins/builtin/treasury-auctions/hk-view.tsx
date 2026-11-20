@@ -28,7 +28,8 @@ import { colors } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { formatRelativeAge, formatShortDate } from "../../../utils/datetime-format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import type { AuctionHistoryWindow } from "./client";
@@ -225,14 +226,15 @@ export function HkTendersView({
     }
     return false;
   }, [cycleFilter, cycleSort]);
+  const isSearchUp = useSearchFocusUp();
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return handlePaneKey(event);
-  }, [focusSearch, handlePaneKey]);
+  }, [isSearchUp, focusSearch, handlePaneKey]);
 
   const showYear = useMemo(() => auctionDatesShowYear(rows.map((tender) => tender.date)), [rows]);
   const columns = useMemo(() => buildHkColumns({ showYear, rows, width: width - 1 }), [rows, showYear, width]);

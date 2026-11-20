@@ -2,6 +2,7 @@ import { Box, Text, TextAttributes, useUiHost } from "../../ui";
 import { type ComponentType } from "react";
 import { useThemeColors } from "../../theme/theme-context";
 import { useShortcut } from "../../react/input";
+import { matchesNavigationKey, useKeybindings } from "../../app/keybindings";
 import { isPlainKey } from "../../utils/keyboard";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 
@@ -43,6 +44,7 @@ export function SegmentedControl({
   variant = "default",
 }: SegmentedControlProps) {
   const colors = useThemeColors();
+  const bindings = useKeybindings();
   const ui = useUiHost();
   const HostSegmentedControl = ui.SegmentedControl as ComponentType<SegmentedControlProps> | undefined;
   useRemoteUiNode({
@@ -58,9 +60,9 @@ export function SegmentedControl({
     metadata: { value, options },
   });
   useShortcut((event) => {
-    const direction = isPlainKey(event, "left")
+    const direction = matchesNavigationKey(bindings, "left", event, { allowEditable, defaultMatches: isPlainKey(event, "left") })
       ? -1
-      : isPlainKey(event, "right")
+      : matchesNavigationKey(bindings, "right", event, { allowEditable, defaultMatches: isPlainKey(event, "right") })
         ? 1
         : 0;
     if (!direction) return;

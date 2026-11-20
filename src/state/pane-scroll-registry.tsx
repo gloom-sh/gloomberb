@@ -129,11 +129,13 @@ function arrowScrollLines(scrollBox: ScrollBoxRenderable): number {
 }
 
 function resolveKeyScrollAction(event: PaneScrollKeyEvent, bindings: ResolvedKeybindings): PaneScrollAction | null {
+  const modified = event.ctrl || event.meta || event.alt || event.option;
   const down = matchesNavigationKey(bindings, "down", event);
   const up = matchesNavigationKey(bindings, "up", event);
-  if (!down && !up && (event.ctrl || event.meta || event.alt || event.option)) return null;
+  if (!down && !up && modified) return null;
   const name = down ? "down" : up ? "up" : event.name;
-  if ((name === "down" && !down) || (name === "up" && !up)) return null;
+  if (!down && !up && (name === "down" || name === "up")
+    && (!event.shift || bindings.actionsById.get(`navigate-${name}`)?.custom)) return null;
 
   switch (name) {
     case "down":

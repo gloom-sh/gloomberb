@@ -165,10 +165,10 @@ export function useShellWindowMode({
     // Window mode is modal: a key it does not use must not reach the pane or
     // the app behind the preview (a pane letter, q, ?, Cmd+W on the real
     // layout). Platform chords such as Cmd+Q still go through.
-    if (!modalSurfaceOwnsKey(event, keybindings)) return;
+    const direction = directionFromWindowEditKey(event, keybindings);
+    if (!direction && !modalSurfaceOwnsKey(event, keybindings)) return;
     event.preventDefault();
     event.stopPropagation();
-    const direction = directionFromWindowEditKey(event, keybindings);
     if (direction) {
       setWindowMode((current) => current
         ? applyWindowEditDirection(current, direction, event.shift, bounds, dockGeometryOptions)

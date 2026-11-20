@@ -406,7 +406,10 @@ export function createSystemCliCommands(): CliCommandDef[] {
                 [KEYBINDINGS_CONFIG_KEY]: describeKeybindingsForCli(result.config),
               },
             }, {
-              text: (data) => `Set ${key} to ${describeConfigValue(data.value)}.${dryRunNote(data.dryRun)}`,
+              text: (data) => [
+                `Set ${key} to ${describeConfigValue(data.value)}.${dryRunNote(data.dryRun)}`,
+                ...data[KEYBINDINGS_CONFIG_KEY].issues.map((issue) => cliStyles.warning(issue)),
+              ].join("\n"),
             });
             return;
           }

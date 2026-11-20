@@ -41,6 +41,7 @@ export interface KeybindingCommand {
 export type KeybindingIssue =
   | { kind: "invalid-chord"; target: string; text: string }
   | { kind: "unknown-action"; actionId: string }
+  | { kind: "unbound-navigation"; actionId: string }
   | { kind: "typing-chord"; target: string; text: string }
   | { kind: "conflict"; chord: KeyChord; targets: string[] };
 
@@ -193,6 +194,11 @@ export function resolveKeybindings(
     overrides,
     issues,
   ));
+  for (const action of actions) {
+    if (action.def?.category === "Navigation" && action.chords.length === 0) {
+      issues.push({ kind: "unbound-navigation", actionId: action.id });
+    }
+  }
   for (const shortcut of options.pluginShortcuts ?? []) {
     actions.push(resolveAction(
       undefined,
@@ -308,6 +314,8 @@ export function describeKeybindingIssue(issue: KeybindingIssue): string {
       return `"${issue.text}" is not a key chord (${issue.target}).`;
     case "unknown-action":
       return `"${issue.actionId}" is not a keybinding action.`;
+    case "unbound-navigation":
+      return `No keys bound for ${issue.actionId}. Bind a key or restore the defaults.`;
     case "typing-chord":
       return `"${issue.text}" would fire while typing; command bindings need Ctrl, Cmd, Alt or a function key.`;
     case "conflict":

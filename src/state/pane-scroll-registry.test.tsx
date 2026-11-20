@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { describe, expect, test } from "bun:test";
 import { act, type ReactNode } from "react";
+import { KeybindingsProvider, resolveKeybindings } from "../app/keybindings";
 import { WebInputHostProvider } from "../renderers/dom/input-host";
 import { createDomTestHarness } from "../renderers/dom/test-utils";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
@@ -43,14 +44,14 @@ function PaneHarness({ children }: { children: ReactNode }) {
 describe("terminal", () => {
   const tui = createOpenTuiTestHarness();
 
-  async function mount(props: Record<string, unknown>) {
+  async function mount(props: Record<string, unknown>, bindings = resolveKeybindings(undefined)) {
     let scrollBox: { scrollTop: number; scrollHeight: number; viewport?: { height: number } } | null = null;
     await act(async () => {
-      await tui.render(<PaneHarness>
+      await tui.render(<KeybindingsProvider value={bindings}><PaneHarness>
         <Box width={30} height={10}>
           <ScrollBox ref={(node: typeof scrollBox) => { scrollBox = node; }} width={30} height={8} {...props}><Lines /></ScrollBox>
         </Box>
-      </PaneHarness>, { width: 30, height: 10 });
+      </PaneHarness></KeybindingsProvider>, { width: 30, height: 10 });
     });
     await tui.renderFrames(2);
     return () => scrollBox!;
@@ -64,6 +65,17 @@ describe("terminal", () => {
     await tui.emitKeypress({ name: "down" });
     await tui.renderFrames(1);
     expect(scrollBox().scrollTop > 0).toBe(hostScrolls);
+  });
+
+  test.each([false, true])("Shift+arrows scroll only directions on their default bindings (rebound: %s)", async (rebound) => {
+    const bindings = resolveKeybindings(rebound ? { actions: { "navigate-down": "T" } } : undefined);
+    const scrollBox = await mount({}, bindings);
+    await tui.emitKeypress({ name: "down", shift: true });
+    expect(scrollBox().scrollTop).toBe(rebound ? 0 : 3);
+    if (rebound) await tui.emitKeypress({ name: "t" });
+    expect(scrollBox().scrollTop).toBe(3);
+    await tui.emitKeypress({ name: "up", shift: true });
+    expect(scrollBox().scrollTop).toBe(0);
   });
 
   test("a ScrollBox without scrollY takes Down, PageDown, End, PageUp and Home", async () => {

@@ -16,7 +16,8 @@ import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { rankTickerMatches } from "../../../utils/ticker-match-order";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
@@ -212,17 +213,18 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
 
   // `/` and `g` are footer hints, which bind their own keys; the table only
   // hands the cursor up into the search from its first row.
+  const isSearchUp = useSearchFocusUp();
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
   ) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return false;
-  }, [focusSearch]);
+  }, [isSearchUp, focusSearch]);
 
   const renderCell = useCallback((
     row: CatalogSeriesRow,

@@ -20,7 +20,8 @@ import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { countEscapeTowardClose } from "../../../utils/double-escape-close";
 import { isPlainKey } from "../../../utils/keyboard";
 import { logFailure } from "../../../utils/log-failure";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
@@ -247,29 +248,30 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     ? "Loading 13F funds..."
     : error ?? warning ?? "No 13F funds found.";
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
   ) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return handleRefreshKey(event, refresh, { stopPropagation: true });
-  }, [focusSearch, refresh]);
+  }, [isSearchUp, focusSearch, refresh]);
 
   const handleTickerRootKeyDown = useCallback((
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
   ) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return false;
-  }, [focusSearch]);
+  }, [isSearchUp, focusSearch]);
 
   if (showTickerHoldings) {
     return (

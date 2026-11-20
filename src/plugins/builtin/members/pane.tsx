@@ -12,7 +12,8 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { useMembersMenu, type MemberList } from "../shared/members-menu";
 import { cachedChanges, cachedFunds, cachedMembers, cachedStockFunds, loadChanges, loadFunds, loadMembers, loadStockFunds } from "./client";
 import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, coveredFund, decimal, DEFAULT_SORT, holdingsBasisText, holdingsCaveats, isTab, memberColumns, memberRows,
@@ -32,6 +33,7 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
   const [sort, setSort] = usePluginPaneState<SortPreference<string>>(`sort:${fund}`, DEFAULT_SORT);
   const [selected, setSelected] = usePluginPaneState<string | null>(`member:${fund}`, null);
   const [query, setQuery] = useState("");
+  const isSearchUp = useSearchFocusUp();
   const search = useQueryBarSearch();
   const movers = tab === "movers";
   const rows = useMemo(() => memberRows(data?.members ?? [], tab, query, sort), [data, tab, query, sort]);
@@ -112,7 +114,7 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
       sortColumnId={movers ? null : sort.columnId} sortDirection={sort.direction}
       onHeaderClick={movers ? undefined : (id) => setSort((previous) => nextHeaderSort(previous, id, { firstDirection: (key) => ["symbol", "name", "sector"].includes(key) ? "asc" : "desc", resetTo: DEFAULT_SORT }))}
       onSortChange={movers ? undefined : (columnId, direction) => setSort({ columnId, direction })}
-      onRootKeyDown={(event, context) => { if (context.selectedIndex <= 0 && isPlainArrowUp(event)) { stopSearchFocusNavigation(event); search.focus(); return true; } return false; }}
+      onRootKeyDown={(event, context) => { if (context.selectedIndex <= 0 && isSearchUp(event)) { stopSearchFocusNavigation(event); search.focus(); return true; } return false; }}
       onActivate={(row) => { if (isSectionedItemRow(row) && row.item.symbol) pinTicker(row.item.symbol, { floating: true, instrument: null }); }}
       renderCell={renderCell} selectedTextOverridesCellColor resetScrollKey={`${tab}:${query}`} emptyStateTitle={query ? "No matching holdings." : movers ? "No covered movers." : "No holdings."} />}
   </PaneStatusBody>;

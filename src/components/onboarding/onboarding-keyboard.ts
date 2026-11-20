@@ -165,6 +165,12 @@ export function useOnboardingKeyboard({
     const escape = !chord && (name === "escape" || name === "backspace");
     const letter = (key: string) => !chord && !event.shift && name === key;
     const tab = !chord && name === "tab";
+    const up = () => matchesNavigationKey(keybindings, "up", event, {
+      allowEditable: true, defaultMatches: !chord && (name === "up" || name === "k"),
+    });
+    const down = () => matchesNavigationKey(keybindings, "down", event, {
+      allowEditable: true, defaultMatches: !chord && (name === "down" || name === "j"),
+    });
     const sectionDigit = !chord && !editingField && !event.targetEditable ? SECTION_DIGITS[name] : undefined;
 
     const handled = ((): boolean => {
@@ -253,9 +259,9 @@ export function useOnboardingKeyboard({
           openBrokerConnect();
         } else if (letter(SKIP_PORTFOLIO_KEY) && positionCount === 0) {
           skipPositions();
-        } else if (matchesNavigationKey(keybindings, "up", event)) {
+        } else if (up()) {
           movePositionCursor(-1);
-        } else if (matchesNavigationKey(keybindings, "down", event)) {
+        } else if (down()) {
           movePositionCursor(1);
         } else if (letter(REMOVE_POSITION_KEY) || (!chord && name === "delete")) {
           removePositionAtCursor();
@@ -285,10 +291,10 @@ export function useOnboardingKeyboard({
           continuePortfolio();
         } else if (escape) {
           backPortfolio();
-        } else if (matchesNavigationKey(keybindings, "up", event)) {
+        } else if (up()) {
           if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.max(0, index - 1));
           else if (activeBrokerFields[brokerFieldIdx]?.type === "select") setBrokerSelectIdx((index) => Math.max(0, index - 1));
-        } else if (matchesNavigationKey(keybindings, "down", event)) {
+        } else if (down()) {
           if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.min(brokerChoices.length - 1, index + 1));
           else if (activeBrokerFields[brokerFieldIdx]?.type === "select") {
             const optionCount = activeBrokerFields[brokerFieldIdx]?.options?.length ?? 0;
@@ -311,9 +317,9 @@ export function useOnboardingKeyboard({
           else if (desk) setChosenDesks((current) => toggleDeskChoice(current, desk.key));
         } else if (letter(SKIP_DESKS_KEY) || (!chord && name === "escape")) {
           finishDesks([]);
-        } else if (matchesNavigationKey(keybindings, "up", event)) {
+        } else if (up()) {
           setDeskCursor((index) => Math.max(0, index - 1));
-        } else if (matchesNavigationKey(keybindings, "down", event)) {
+        } else if (down()) {
           setDeskCursor((index) => Math.min(DESKS.length - 1, index + 1));
         } else if (!chord && (name === "space" || event.sequence === " ")) {
           const desk = DESKS[deskCursor];

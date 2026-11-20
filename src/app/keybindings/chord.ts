@@ -405,7 +405,7 @@ export function keyChordDigit(event: KeyChordEventLike): number | null {
   const raw = eventKeyName(event);
   // Kitty reports the unshifted key name plus the character produced with
   // Shift. On Bépo that can be a double-quote name and sequence '1'.
-  const digit = /^[1-9]$/.test(raw) ? raw : event.sequence;
+  const digit = /^[1-9]$/.test(raw) ? raw : event.shift ? event.sequence : undefined;
   return digit && /^[1-9]$/.test(digit) ? Number.parseInt(digit, 10) : null;
 }
 

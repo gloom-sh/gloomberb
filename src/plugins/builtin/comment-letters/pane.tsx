@@ -35,7 +35,8 @@ import { extractFilingContent, PDF_FALLBACK_MESSAGE } from "../../../sources/sec
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { SEC_FILING_FETCH_LIMIT } from "../sec/forms";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor, type StateTone } from "../shared/research-cells";
@@ -189,14 +190,15 @@ export function CommentLettersPane({ width, height, focused }: PaneProps) {
     title: "Comment letters",
   });
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return false;
-  }, [focusSearch]);
+  }, [isSearchUp, focusSearch]);
 
   const renderCell = useCallback((letter: CommentLetter, column: LetterColumn): DataTableCell => {
     switch (column.id) {

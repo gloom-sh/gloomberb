@@ -35,6 +35,13 @@ test("list navigation honours non-US letters and leaves text and editing in a fi
   expect(matchesNavigationKey(defaults, "left", { name: "left", targetEditable: true })).toBe(false);
 });
 
+test("window mode keeps arrows and acceleration over an editable target without taking letters", () => {
+  expect(directionFromWindowEditKey({ name: "left", targetEditable: true })).toBe("left");
+  expect(directionFromWindowEditKey({ name: "up", shift: true, targetEditable: true })).toBe("up");
+  expect(directionFromWindowEditKey({ name: "h", targetEditable: true })).toBeNull();
+  expect(directionFromWindowEditKey({ name: "c", targetEditable: true }, bindings)).toBeNull();
+});
+
 test("navigation conflicts are rejected in the CLI and hand-edited collisions keep global precedence", () => {
   const config = createDefaultConfig(":memory:");
   expect(applyKeybindingCliSet(config, "keybindings.actions.navigate-right", "R")).toMatchObject({ ok: false });
@@ -46,14 +53,18 @@ test("navigation conflicts are rejected in the CLI and hand-edited collisions ke
   expect(matchKeybinding(conflict, { name: "r" })).toMatchObject({ id: "refresh-ticker" });
 });
 
-test("layout switching reads shifted Bépo digits decoded from the terminal protocol", async () => {
+test("only an explicit layout binding accepts shifted Bépo digits decoded from the terminal protocol", async () => {
   const { parseKeypress } = await import("@opentui/core");
   const { toKeyEventLike } = await import("../../renderers/opentui/host");
   const defaults = resolveKeybindings(undefined, { host: "terminal" });
+  const shifted = resolveKeybindings({ actions: { "switch-layout": ["CmdOrCtrl+Shift+Digit", "Alt+Shift+Digit"] } });
   // Unshifted double quote, shifted 1, and Ctrl+Shift in kitty's encoding.
   const parsed = parseKeypress("\x1b[34:49;6u", { useKittyKeyboard: true })!;
   expect(parsed).toMatchObject({ name: '"', sequence: "1", ctrl: true, shift: true });
-  expect(matchKeybinding(defaults, toKeyEventLike(parsed))).toMatchObject({ id: "switch-layout", digit: 1 });
+  expect(matchKeybinding(defaults, toKeyEventLike(parsed))).toBeNull();
+  expect(matchKeybinding(shifted, toKeyEventLike(parsed))).toMatchObject({ id: "switch-layout", digit: 1 });
   const alt = parseKeypress("\x1b[34:49;4u", { useKittyKeyboard: true })!;
-  expect(matchKeybinding(defaults, toKeyEventLike(alt))).toMatchObject({ id: "switch-layout", digit: 1 });
+  expect(matchKeybinding(defaults, toKeyEventLike(alt))).toBeNull();
+  expect(matchKeybinding(shifted, toKeyEventLike(alt))).toMatchObject({ id: "switch-layout", digit: 1 });
+  expect(matchKeybinding(defaults, { name: "1", meta: true, shift: true })).toBeNull();
 });

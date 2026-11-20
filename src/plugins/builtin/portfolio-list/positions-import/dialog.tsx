@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { matchesNavigationKey, useKeybindings } from "../../../../app/keybindings";
 import {
   Button,
   DataTableView,
@@ -212,6 +213,7 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, conf
     if (box) box.scrollTo(Math.max(0, box.scrollTop + rows));
   }, []);
 
+  const bindings = useKeybindings();
   useDialogKeyboard((event) => {
     // The replace's confirm answers its own keys.
     if (confirming) return;
@@ -228,8 +230,8 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, conf
       return;
     }
     const page = Math.max(1, (scrollRef.current?.viewport?.height ?? 10) - 1);
-    const rows = isPlainKey(event, "down", "j") ? 1
-      : isPlainKey(event, "up", "k") ? -1
+    const rows = matchesNavigationKey(bindings, "down", event, { allowEditable: true }) ? 1
+      : matchesNavigationKey(bindings, "up", event, { allowEditable: true }) ? -1
         : isPlainKey(event, "pagedown") ? page
           : isPlainKey(event, "pageup") ? -page
             : 0;
