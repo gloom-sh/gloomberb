@@ -17,10 +17,13 @@ export function formatConvertedAmount(value: number | null | undefined, currency
     : formatCurrency(value, currency, 8);
 }
 
-export function formatDividendRowAmount(row: Pick<DividendRow, "amount" | "currency" | "cashEstimate">, converted = false, subUnit?: string): string {
+export function formatDividendRowAmount(row: Pick<DividendRow, "amount" | "currency" | "cashEstimate" | "combined">, converted = false, subUnit?: string): string {
   const cash = converted ? formatConvertedAmount(row.amount, row.currency, subUnit) : formatDistributionAmount(row.amount, row.currency);
-  return `${row.cashEstimate ? "estimated " : ""}${cash}`;
+  return `${row.cashEstimate ? "estimated " : ""}${row.combined ? `${COMBINED_PAYMENT} ` : ""}${cash}`;
 }
+
+/** A row whose amount is a regular payment and an extra one on the same ex-date (DividendPayment.combined). */
+export const COMBINED_PAYMENT = "combined";
 
 export function forwardEstimateText(metrics: DividendMetrics): string | null {
   const estimate = metrics.forwardEstimate;
@@ -116,6 +119,8 @@ export interface DividendRow {
   declared?: { amount: number; currency: string };
   /** Who published it when not the listing's history: the fund's sponsor (DividendPayment.source). */
   source?: string;
+  /** A regular payment and an extra one on the same ex-date (DividendPayment.combined). */
+  combined?: true;
 }
 
 export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
@@ -127,5 +132,6 @@ export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
     currency: payment.currency,
     ...(payment.declared ? { declared: payment.declared } : {}),
     ...(payment.source ? { source: payment.source.publisher } : {}),
+    ...(payment.combined ? { combined: true as const } : {}),
   }));
 }

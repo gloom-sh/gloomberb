@@ -128,8 +128,9 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${sec.date}` } : {}) }] : []),
     { id: "ttm-rate", essential: false, label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency, !!convertedFrom, convertedSubUnit),
       ...metrics.trailingRate != null ? converted : {} },
+    // The trailing year's total says so here too, as beside the forward yield.
     { id: "forward-rate", essential: false, label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency, !!convertedFrom, convertedSubUnit),
-      ...metrics.forwardRate != null ? converted : {} },
+      ...metrics.forwardRate == null ? {} : metrics.forwardBasis === "uneven" ? { detail: [UNEVEN_REGULAR_PAYMENTS, converted.detail].filter(Boolean).join(", ") } : converted },
     { ...growthItem("growth-1y", short ? "1Y chg" : "1Y growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful), essential: false },
     { ...growthItem("cagr-3y", "3Y CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful), essential: false },
     { id: "payout", essential: false, label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : MISSING_VALUE,

@@ -97,8 +97,9 @@ const askgModule: PluginModule = {
     id: ASKG_PANE_ID,
     reportFreshness: { status: "not-a-feed", basis: "generated answer", local: true },
     reportLockNote: askgLockNote,
-    // Without a session the wall is all there is, so `fn ASKG` prints it at once.
+    // Without a session the wall is all there is, so `fn ASKG` prints it at once, and the catalog says so.
     signInWall: true,
+    reportRequirements: ["Free Gloom sign-in"],
     name: "Ask Gloom",
     personalData: "messages",
     icon: "K",

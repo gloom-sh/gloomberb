@@ -444,6 +444,41 @@ test("a chart of daily bars beside a monthly FRED series draws the newest figure
   }
 });
 
+test("a daily economic series beside monthly bars keeps its days after the newest bar's 1st, each series dated by its own last day", async () => {
+  const monthly = ["2026-09-01", "2026-10-01", "2026-11-01"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 20.4, high: 20.6, low: 20.3, close: 20.4 + index / 100 }));
+  const days = ["2026-10-29", "2026-10-30", "2026-11-02", "2026-11-18", "2026-11-19"];
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("BKLN:NYSEARCA, FRED:BAMLH0A0HYM2"), "chart-composer", { rangePreset: "ALL", chartResolution: "1mo" });
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "BKLN:NYSEARCA, FRED:BAMLH0A0HYM2", rawArgument: "BKLN:NYSEARCA, FRED:BAMLH0A0HYM2", symbols: [], options: {} };
+  const context = createTestHeadlessContext({
+    marketData: createTestDataProvider({
+      getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+      getChartResolutionSupport: () => [{ resolution: "1mo", maxRange: "ALL" }],
+      getPriceHistoryForResolution: async () => monthly,
+    }),
+    apiClient: { getCloudFredSeries: async () => ({ info: null, observations: days.map((date, index) => ({ date, value: 330 + index })) }) } as never,
+    settings: { chartSpec: spec },
+  });
+  try {
+    // Fri 20 Nov 2026, the US session trading: November's bar is dated the 1st and runs through today.
+    setSystemTime(new Date("2026-11-20T16:00:00Z"));
+    const result = await definition.load(args, context) as ChartPaneModel;
+    const fredId = spec.series.find((entry) => entry.source.kind === "economic")!.id;
+    expect(result.series.find((entry) => entry.id === fredId)!.points.map((point) => new Date(point.date).toISOString().slice(0, 10))).toEqual(days);
+    // A day apart is still named: the spread is published a day after the prices it sits beside.
+    expect(result.freshness).toMatchObject({ asOf: "2026-11-20", oldest: "2026-11-19" });
+    const text = renderHeadlessPaneText(definition, result, args, "Custom Chart");
+    expect(text).toContain("Fri 20 Nov 2026 (oldest Thu 19 Nov 2026)");
+    const freshness = deriveHeadlessFreshness(definition, result);
+    const csv = renderReportCsv(headlessReportTables(definition, result, args, "G", freshness, { complete: true, unavailableSymbols: [] }), freshness);
+    // Each series' rows carry its own last day.
+    expect(csv).toContain("2026-11-01,20.42,20.4,20.6,20.3,20.42,BKLN:ARCA,currency,1mo,Gloom Cloud,2026-11-20,");
+    expect(csv).toContain("2026-11-19,334,BAMLH0A0HYM2,value,daily,Gloom Cloud,2026-11-19,");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("fn G on an ICE credit spread says the publisher's 3-year limit when the range asks for more, and says nothing inside it", async () => {
   const { applyChartComposerCapabilityOptions } = await import("./cli-options");
   const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
@@ -720,9 +755,9 @@ test("an economic chart is dated by its observations' day, and by their period w
   expect(periodChartDates([cpi], fred("CPIAUCSL"))).toEqual({ asOf: "2026-08-01", periodicity: "monthly" });
   const gdp = { id: "gdp", label: "GDP", points: ["2025-04-01", "2025-07-01", "2025-10-01", "2026-01-01", "2026-04-01"].map((date) => ({ date, value: 1 })) };
   expect(periodChartDates([gdp], fred("GDP"))).toEqual({ asOf: "2026-04-01", periodicity: "quarterly" });
-  // A daily series is dated by its day; series that end apart name the oldest, and mixed periods name none.
+  // A daily series is dated by its day; series that end apart name the oldest, even a day apart, and mixed periods name none.
   expect(periodChartDates([cpi, { id: "dgs10", label: "10Y", points: days }], fred("CPIAUCSL", "DGS10")))
-    .toEqual({ asOf: "2026-10-09", oldest: "2026-08-01" });
+    .toEqual({ asOf: "2026-10-09", oldest: "2026-08-01", oldestAnyDay: true });
   // An observation time, or a price series, keeps the chart's own dating; a catalog series of days is dated as FRED's are.
   expect(periodChartDates([{ id: "x", label: "x", points: [{ date: "2026-10-09T20:00:00.000Z", value: 1 }] }], fred("X"))).toEqual({});
   const catalog = (seriesId: string) => ({ source: { kind: "capability" as const, capabilityId: "c", seriesId } });

@@ -4,7 +4,7 @@ import { historyIntervalsByRange } from "../../../cli/history-rows";
 import { HISTORY_DEFAULT_RANGE } from "./data-panes/history-bars";
 import { RETURN_INTERVAL_VALUES, RETURN_RANGES } from "./data-panes/returns-model";
 import { PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP } from "../../../utils/price-window";
-import type { HeadlessPaneOptionDef } from "../../../types/headless";
+import type { HeadlessPaneOptionDef, HeadlessPaneOptionValue } from "../../../types/headless";
 import { QUOTE_MONITOR_MAX_TICKERS } from "../../../tickers/list";
 import { STATEMENT_CURRENCY_OPTION } from "../shared/statement-currency";
 
@@ -17,6 +17,18 @@ const WINDOW_OPTIONS: HeadlessPaneOptionDef[] = [
     shot: { reportOnly: "reads the report's bars for those dates" }, replaces: ["range"] },
   { key: "to", type: "string", placeholder: "year|date", description: PRICE_WINDOW_TO_HELP,
     shot: { reportOnly: "reads the report's bars for those dates" } },
+];
+
+/** The financials tab's statements and ratio tabs, as FA and DES's `--statement` name them. */
+export const FINANCIAL_STATEMENT_VALUES: HeadlessPaneOptionValue[] = [
+  { value: "income", aliases: ["income statement", "is"] },
+  { value: "balance", aliases: ["balance sheet", "bs"] },
+  { value: "cashflow", aliases: ["cash flow", "cash flow statement", "cf", "cashflows"] },
+  { value: "profitability", aliases: ["ratios", "returns", "profit"] },
+  { value: "leverage", aliases: ["coverage", "credit"] },
+  { value: "liquidity" },
+  { value: "efficiency", aliases: ["working capital"] },
+  { value: "valuation", aliases: ["multiples"] },
 ];
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
@@ -37,16 +49,7 @@ export const paneSchemas = {
         description: "Statement or ratio tab to display.",
         type: "enum",
         aliases: ["tab", "financialStatement"],
-        values: [
-          { value: "income", aliases: ["income statement", "is"] },
-          { value: "balance", aliases: ["balance sheet", "bs"] },
-          { value: "cashflow", aliases: ["cash flow", "cash flow statement", "cf", "cashflows"] },
-          { value: "profitability", aliases: ["ratios", "returns", "profit"] },
-          { value: "leverage", aliases: ["coverage", "credit"] },
-          { value: "liquidity" },
-          { value: "efficiency", aliases: ["working capital"] },
-          { value: "valuation", aliases: ["multiples"] },
-        ],
+        values: FINANCIAL_STATEMENT_VALUES,
         defaultValue: "income",
       },
       {

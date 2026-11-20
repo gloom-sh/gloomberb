@@ -8,11 +8,11 @@ import { fetchDividendData, requestDividendHistory, statedForwardRate, TOKEN_YIE
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
 import {
-  cashEstimateText, convertedFromText, formatConvertedAmount, formatDividendYield, forwardEstimateText, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
+  cashEstimateText, COMBINED_PAYMENT, convertedFromText, formatConvertedAmount, formatDividendYield, forwardEstimateText, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
 } from "./view";
 import { MISSING_VALUE, formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
-import { forwardDividendBasis, historyEndsText, noCurrentDividend, TRAILING_DIVIDEND_BASIS, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
+import { forwardDividendBasis, historyEndsText, noCurrentDividend, TRAILING_DIVIDEND_BASIS, TRAILING_REGULAR_PAYMENTS, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
 import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
@@ -42,7 +42,9 @@ function paymentColumns(converted: boolean, subUnit?: string) {
       format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.currency === "string" && row.currency
         ? `${row.cashEstimate ? "estimated " : ""}${amount(value, row.currency)}` : value == null ? MISSING_VALUE : String(value) },
     { key: "currency", header: "CCY" },
-    { key: "type", header: "Type" },
+    // A regular payment and an extra one on one ex-date are one row of the history, which says so.
+    { key: "type", header: "Type", format: (value: unknown, row: Record<string, unknown>) => typeof value !== "string" ? MISSING_VALUE
+      : row.combined === true ? `${value}, ${COMBINED_PAYMENT}: regular + extra` : value },
   ];
 }
 
@@ -191,6 +193,7 @@ export function projectDividendYieldHeadless(
       paymentDate: payment?.paymentDate?.toISOString() ?? null,
       declarationDate: payment?.declarationDate?.toISOString() ?? null,
       type: payment?.type ?? null,
+      ...(payment?.combined ? { combined: true } : {}),
       ...(row.declared ? { declared: row.declared.amount, declaredCurrency: row.declared.currency } : {}),
       ...(payment?.source ? { source: payment.source.publisher, sourceUrl: payment.source.url } : {}),
     };
@@ -221,6 +224,9 @@ export function projectDividendYieldHeadless(
   const trailingLabel = bond ? `Trailing distribution yield (${NOT_SEC_YIELD})` : "Trailing yield";
   const forwardLabel = bond ? `Forward distribution yield (${NOT_SEC_YIELD})` : "Forward yield";
   const forwardText = metrics.lapse ? noCurrentDividend(metrics.lapse) : null;
+  // A forward rate that is the trailing year's total (forwardBasis: uneven) says so beside each figure, in exports by its label.
+  const trailingForward = metrics.forwardRate != null && metrics.forwardBasis === "uneven";
+  const trailingForwardLabel = trailingForward ? ` (${TRAILING_REGULAR_PAYMENTS})` : "";
   const lastEx = isoDay(metrics.lastExDividendDate);
   const growthEntry = (label: string, value: number | null, payments: GrowthPayments | null | undefined, notMeaningful?: boolean) =>
     ({ label, value: roundedRatio(value), formatted: growthText(value, payments, notMeaningful) });
@@ -261,7 +267,8 @@ export function projectDividendYieldHeadless(
             formatted: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
           })),
           { label: "Trailing rate", value: metrics.trailingRate, formatted: `${cashRate(metrics.trailingRate)}${trailingEstimate ? ` (${trailingEstimate})` : ""}` },
-          { label: "Forward rate", value: metrics.forwardRate, formatted: `${cashRate(metrics.forwardRate)}${metrics.forwardEstimate ? ` (${forwardEstimateText(metrics)})` : ""}` },
+          { label: "Forward rate", value: metrics.forwardRate, formatted: `${cashRate(metrics.forwardRate)}${metrics.forwardEstimate ? ` (${forwardEstimateText(metrics)})`
+            : trailingForward ? ` (${UNEVEN_REGULAR_PAYMENTS})` : ""}` },
           { label: "Payout (basis/date unstated)", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio) },
           growthEntry("1Y Cash Growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful),
           growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),
@@ -276,14 +283,14 @@ export function projectDividendYieldHeadless(
           ...(priceStatusText ? [{ label: "Price status", value: priceStatusText, asOf: data.priceAsOf ?? null }] : []),
           { label: trailingLabel, value: roundedRatio(metrics.trailingYield), formatted: formatDividendYield(metrics.trailingYield),
             exportUnit: "pct", asOf: metrics.trailingYield == null ? null : data.priceAsOf ?? null },
-          { label: forwardLabel, value: roundedRatio(metrics.forwardYield), formatted: metrics.forwardYield == null ? forwardText ?? "—" : formatDividendYield(metrics.forwardYield),
+          { label: `${forwardLabel}${trailingForwardLabel}`, value: roundedRatio(metrics.forwardYield), formatted: metrics.forwardYield == null ? forwardText ?? "—" : formatDividendYield(metrics.forwardYield),
             exportUnit: "pct", asOf: metrics.forwardYield == null ? null : data.priceAsOf ?? null },
           ...figures.map((figure) => figure.key === "duration"
             ? { label: figureLabel(figure), value: figure.value, unit: "years", asOf: bond?.duration?.asOf ?? null }
             : { label: figureLabel(figure), value: figure.value, formatted: figure.text, exportUnit: "pct", asOf: bond?.[figure.key]?.asOf ?? null }),
           { label: "Trailing rate", value: metrics.trailingRate, ...(metrics.trailingRate != null && currency && !convertedFrom ? { unit: currency } : { formatted: cashRate(metrics.trailingRate) }),
             asOf: metrics.trailingRate == null ? null : lastEx },
-          { label: "Forward rate", value: metrics.forwardRate, ...(metrics.forwardRate != null && currency && !convertedFrom ? { unit: currency } : { formatted: cashRate(metrics.forwardRate) }),
+          { label: `Forward rate${trailingForwardLabel}`, value: metrics.forwardRate, ...(metrics.forwardRate != null && currency && !convertedFrom ? { unit: currency } : { formatted: cashRate(metrics.forwardRate) }),
             asOf: metrics.forwardRate == null ? null : metrics.forwardRateAsOf },
           { label: "Payout (basis/date unstated)", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio),
             exportUnit: "pct", asOf: null },

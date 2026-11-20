@@ -353,7 +353,7 @@ describe("createPaneTemplateOrThrow", () => {
 
     await open("financial-analysis-pane", "financial-analysis", { title: "FA AAPL", binding: { kind: "fixed", symbol: "AAPL" } }, { statement: "liquidity" });
     expect(created).toHaveLength(1);
-    expect(actions).toEqual([{ type: "UPDATE_PANE_STATE", paneId: "fa:AAPL", patch: { financialSubTab: "liquidity" } }]);
+    expect(actions).toEqual([{ type: "UPDATE_PANE_STATE", paneId: "fa:AAPL", patch: { activeTabId: "financials", financialSubTab: "liquidity" } }]);
   });
 });
 

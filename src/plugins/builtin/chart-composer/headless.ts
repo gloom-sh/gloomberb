@@ -304,13 +304,13 @@ function seriesPeriodicity(dates: readonly Date[]): Periodicity | null {
  * The dates of a chart of economic and catalog series whose observations are
  * days or periods, never instants (FRED's series, a plugin's daily closes): it
  * is dated by the day of its newest observation, with the oldest series'
- * newest when they end apart, and by the period when every series publishes
+ * newest when they end apart, even a day apart, and by the period when every series publishes
  * in the same one: `Aug 2026 (monthly)`, not `Sat 1 Aug 2026 00:00 UTC`;
  * with the newest figure's release when its points say it (`releasedOn`):
  * `Sep 2026, released Tue 20 Oct`. Nothing for a chart with a price series
  * or a series observed at a time of day.
  */
-export function periodChartDates(series: readonly HeadlessSeries[], spec: Pick<ChartSpec, "series">): Pick<HeadlessPaneFreshness, "asOf" | "oldest" | "periodicity" | "releasedOn"> {
+export function periodChartDates(series: readonly HeadlessSeries[], spec: Pick<ChartSpec, "series">): Pick<HeadlessPaneFreshness, "asOf" | "oldest" | "oldestAnyDay" | "periodicity" | "releasedOn"> {
   if (!spec.series.length || spec.series.some(({ source }) => source.kind !== "economic" && source.kind !== "capability")) return {};
   const ends: Array<{ day: string; releasedOn: string | null }> = [];
   const periods = new Set<Periodicity | null>();
@@ -333,7 +333,7 @@ export function periodChartDates(series: readonly HeadlessSeries[], spec: Pick<C
   const [releasedOn] = releases.size === 1 ? [...releases] : [null];
   return {
     asOf,
-    ...(ends[0]!.day !== asOf ? { oldest: ends[0]!.day } : {}),
+    ...(ends[0]!.day !== asOf ? { oldest: ends[0]!.day, oldestAnyDay: true } : {}),
     ...(periodicity ? { periodicity } : {}),
     ...(releasedOn ? { releasedOn } : {}),
   };
@@ -441,10 +441,14 @@ function chartFreshness(
  * The dates of a chart of price bars beside reported series (`G DHI,
  * FRED:PERMIT`): as of its newest daily point, as a chart of the prices alone
  * is, and when the reported series end before it, the oldest is their newest
- * period: `Fri 23 Oct 2026 (oldest Sep 2026)`. Bars of a time of day keep the
- * line's own dating; only the oldest is named.
+ * period: `Fri 23 Oct 2026 (oldest Sep 2026)`. A weekly or monthly bar still
+ * forming is dated by the last day it covers, not the 1st its month starts on,
+ * and reported series that run past the prices date the line, the prices'
+ * day then the oldest: each series is dated by its own last day, even a day
+ * apart. Bars of a time of day keep the line's own dating; only the oldest is
+ * named.
  */
-function mixedChartDates(series: readonly HeadlessSeries[], spec: ChartSpec, quoteTimes: ReadonlyMap<string, number>): Pick<HeadlessPaneFreshness, "asOf" | "oldest" | "oldestPeriodicity"> {
+function mixedChartDates(series: readonly HeadlessSeries[], spec: ChartSpec, quoteTimes: ReadonlyMap<string, number>): Pick<HeadlessPaneFreshness, "asOf" | "oldest" | "oldestPeriodicity" | "periodicity" | "oldestAnyDay"> {
   const withResolution = series as ReadonlyArray<HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution">>>;
   const priced = withResolution.filter((entry) => entry.historyResolution);
   const reported = withResolution.filter((entry) => !entry.historyResolution);
@@ -453,13 +457,19 @@ function mixedChartDates(series: readonly HeadlessSeries[], spec: ChartSpec, quo
   const daily = priced.every((entry) => ["1d", "1wk", "1mo"].includes(entry.historyResolution!));
   const asOf = !daily ? null
     : priced.every((entry) => entry.historyResolution === "1d") ? newestDailyPoint(priced, closedPriceBarDay(priced), quoteTimes)
-    : closedPriceBarDay(priced);
+    : closedPriceBarDay(priced) ?? formingPriceBar(priced)?.through ?? null;
   const newestPrice = asOf ?? priced.flatMap((entry) => entry.points.at(-1)?.date ?? []).map((date) => new Date(date).toISOString()).sort().at(-1);
-  const oldest = typeof ends.asOf === "string" && newestPrice && ends.asOf < newestPrice.slice(0, 10) ? ends.asOf : null;
-  return {
-    ...(asOf ? { asOf } : {}),
-    ...(oldest ? { oldest, oldestPeriodicity: ends.periodicity ?? null } : {}),
-  };
+  const reportedEnd = typeof ends.asOf === "string" ? ends.asOf : null;
+  const reportedOldest = typeof ends.oldest === "string" ? ends.oldest : reportedEnd;
+  if (!reportedEnd || !reportedOldest || !newestPrice) return asOf ? { asOf } : {};
+  const priceDay = newestPrice.slice(0, 10);
+  // A series published after the prices' last bar (a closed month's) dates the line; the prices can then be the oldest.
+  const reportedLeads = !!asOf && reportedEnd > priceDay;
+  const newest = reportedLeads ? { asOf: reportedEnd, ...(ends.periodicity ? { periodicity: ends.periodicity } : {}) }
+    : asOf ? { asOf } : {};
+  const oldest = reportedOldest < priceDay ? { oldest: reportedOldest, oldestPeriodicity: ends.periodicity ?? null }
+    : reportedLeads ? { oldest: priceDay, oldestPeriodicity: null } : null;
+  return { ...newest, ...(oldest ? { ...oldest, oldestAnyDay: true } : {}) };
 }
 
 /**

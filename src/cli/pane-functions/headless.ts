@@ -512,6 +512,21 @@ function seriesLatestDate(series: HeadlessSeries, date: SeriesPointDate): string
   return barLastSession(observationDate(time, calendar), period, venue, Date.now()) ?? series.latestDate ?? seriesPointDate(series, date);
 }
 
+/**
+ * Each series' own last day, as its exported rows' `as_of`, when the series of
+ * a report end on different days (a price through Fri 20 Nov beside a spread
+ * published through Thu 19 Nov): the closing lines date the newest, which is
+ * not every series' day. Nothing for series that end on one day or at a time.
+ */
+function seriesLastDays(series: readonly HeadlessSeries[]): Array<string | undefined> {
+  const days = series.map((entry) => {
+    const latest = [...entry.points].reverse().find((point) => point.value != null || point.close != null);
+    const day = entry.notMeaningful ? null : latest ? seriesLatestDate(entry, latest.date) : null;
+    return day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : undefined;
+  });
+  return new Set(days.filter(Boolean)).size > 1 ? days : series.map(() => undefined);
+}
+
 /** The same date for a spreadsheet: the trading date, the calendar date, or the ISO instant. */
 function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, days: boolean): string {
   const time = seriesPointTime(date);
@@ -953,7 +968,11 @@ export function headlessReportTables(
       break;
     case "series": {
       const seriesResult = result as HeadlessSeriesResult;
-      tables = seriesResult.series.map((series) => seriesTable(series));
+      const days = seriesLastDays(seriesResult.series);
+      tables = seriesResult.series.map((series, index) => {
+        const table = seriesTable(series);
+        return days[index] ? { ...table, identity: { ...table.identity, asOf: days[index] } } : table;
+      });
       if (seriesResult.stats) tables.push(exportEntriesTable("Statistics", statisticsEntries(seriesResult.stats)));
       break;
     }

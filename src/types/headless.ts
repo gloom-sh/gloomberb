@@ -322,6 +322,14 @@ export interface HeadlessPaneFreshness {
   /** Oldest observation, mentioned when it is far older than `asOf`; `null` when the rows are a history. */
   oldest?: string | number | Date | null;
   /**
+   * Name a declared `oldest` whenever it is from an earlier day than `asOf`,
+   * not only when it is more than a day older: a chart of several series,
+   * each of which ends on its own day (a price through Fri 20 Nov beside a
+   * spread published through Thu 19 Nov), reads `Fri 20 Nov 2026 (oldest Thu
+   * 19 Nov 2026)`.
+   */
+  oldestAnyDay?: boolean;
+  /**
    * The row field that says when each row was observed, when it is not one of
    * the standard names (`asOf`, `observedAt`, `lastUpdated`...). The report is
    * then dated by that field alone, not by metadata stamps.

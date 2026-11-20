@@ -1,5 +1,5 @@
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
-import { companyLines, companyNameExtraWords, companyNameMatch, namedByService, type CompanyLineFacts } from "../company-name";
+import { companyLines, companyNameExtraWords, companyNameMatch, namedByService, otherLegalFormCompany, runTogether, type CompanyLineFacts } from "../company-name";
 import { answersOnlyByKeyword, classifyInstrumentKind, getIssuerGroupKey, isPlaceholderLine, isQualifiedTickerQuery, normalizeTickerSymbol, readsAsUsTicker } from "./ranking";
 import type { TickerSearchCandidate } from "./types";
 
@@ -117,6 +117,43 @@ function lineFacts(candidate: TickerSearchCandidate): CompanyLineFacts {
   };
 }
 
+/**
+ * The rows of another company than a name typed with its legal form means
+ * (`otherLegalFormCompany`): Blue Owl Capital Inc.'s lines for "Blue Owl
+ * Capital Corporation", which is Blue Owl Capital Corp (OBDC).
+ */
+export function otherLegalFormRows<T extends TickerSearchCandidate>(items: readonly T[], query: string): Set<T> {
+  const other = otherLegalFormCompany(query, items.map(candidateName));
+  return new Set(items.filter((item) => other(candidateName(item))));
+}
+
+/**
+ * Search's rows with those of another company than a name typed with its
+ * legal form means (`otherLegalFormRows`) stripped of the marks the service
+ * gave them for the name: it compares names without their legal forms, so it
+ * can mark OWL (Blue Owl Capital Inc.) with "Blue Owl Capital Corporation"
+ * as typed, and as the home line, when the name is OBDC's. They rank as a
+ * near name, after the company the name is.
+ */
+export function withoutOtherLegalFormMarks<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
+  const other = otherLegalFormRows(items, query);
+  if (other.size === 0) return items;
+  const typed = runTogether(query);
+  const unmarked = (aliases: string[] | undefined) => aliases?.filter((alias) => runTogether(alias) !== typed);
+  return items.map((item) => {
+    if (!other.has(item)) return item;
+    const { homeListing: _home, nameAliases, result, ...rest } = item;
+    const names = unmarked(nameAliases);
+    const { homeListing: _resultHome, ...row } = result ?? {};
+    return {
+      ...rest,
+      searchAliases: unmarked(item.searchAliases) ?? [],
+      ...names?.length ? { nameAliases: names } : {},
+      ...result ? { result: { ...row, searchAliases: unmarked(result.searchAliases) } } : {},
+    } as T;
+  });
+}
+
 /** The rows of `lead`'s company among `items` (`companyLines`): never a line of another business its name is in (Siemens Energy for Siemens). */
 function companyRows<T extends TickerSearchCandidate>(lead: T, items: readonly T[]): T[] {
   return companyLines(lead, items.filter((item) => item === lead || isListedEquity(item)), lineFacts);
@@ -207,7 +244,9 @@ export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[],
       || undefined;
   if (homeOfSymbol) return moveAhead(items, homeOfSymbol, lead);
   const name = candidateName(lead);
-  const lines = companyRows(lead, items).filter((item) => item !== lead);
+  // Another company's lines under the name typed with another legal form never stand for the lead's (OWL for OBDC).
+  const otherForm = otherLegalFormRows(items, query);
+  const lines = companyRows(lead, items).filter((item) => item !== lead && (otherForm.has(lead) || !otherForm.has(item)));
   const nearest = (candidates: T[]) => [...candidates].sort((a, b) => nameGap(name, candidateName(a)) - nameGap(name, candidateName(b))
     || items.indexOf(a) - items.indexOf(b))[0];
   const marked = lines.filter((item) => item.result?.homeListing === true);

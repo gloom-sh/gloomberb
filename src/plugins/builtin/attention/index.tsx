@@ -7,7 +7,8 @@ import { ATTENTION_LISTED } from "./listing";
 export const attentionModule: PluginModule = {
   panes: [{ id: "attention", name: "Research Attention", icon: "A", get component(): typeof import("./pane").AttentionPane { const { AttentionPane } = require("./pane"); return AttentionPane; }, defaultPosition: "right", defaultMode: "floating",
     defaultFloatingSize: { width: 126, height: 32 }, tableExport: true, headless: attentionHeadless },
-    { id: "attention-trending", reportFreshness: { status: "not-a-feed", basis: "hourly publication" }, name: "Gloom Trending", icon: "A", get component(): typeof import("./trending").TrendingPane { const { TrendingPane } = require("./trending"); return TrendingPane; }, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 58, height: 12 } }],
+    // Signed out, the pane asks for a sign-in (SignInWall), so the catalog says so.
+    { id: "attention-trending", reportFreshness: { status: "not-a-feed", basis: "hourly publication" }, reportRequirements: ["Free Gloom sign-in"], name: "Gloom Trending", icon: "A", get component(): typeof import("./trending").TrendingPane { const { TrendingPane } = require("./trending"); return TrendingPane; }, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 58, height: 12 } }],
   paneTemplates: [{ id: "attention-pane", paneId: "attention", label: "Research Attention", listed: ATTENTION_LISTED,
     description: "Pro research attention: rankings, abnormal activity, sectors, countries and privacy-qualified hourly history.",
     keywords: ["attention", "trending", "research", "activity"], shortcut: { prefix: "ATTN", argKind: "text", argOnlySelects: true, argPlaceholder: "TICKER", argOptional: true },

@@ -4,12 +4,12 @@ import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { DividendMetrics, DividendPayment, GrowthPayments } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
-import { cashDistribution, dividendReferencePrice, dividendYieldAt, inferCadence, trailingCashAt, trailingDividendRate, trailingPayments as countedTrailingPayments, trailingPaymentShortfall, unevenRegularPayments } from "../../../utils/trailing-dividend";
+import { cashDistribution, combinedPaymentTimes, dividendReferencePrice, dividendYieldAt, inferCadence, trailingCashAt, trailingDividendRate, trailingPayments as countedTrailingPayments, trailingPaymentShortfall, unevenRegularPayments } from "../../../utils/trailing-dividend";
 import { dividendQuotePriceMetadata } from "./reference-price";
 import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { declaredDividends } from "../../../utils/declared-dividends";
-import { cashInMajorUnits } from "../../../utils/dividend-cash";
+import { atSourcePrecision, cashInMajorUnits } from "../../../utils/dividend-cash";
 import { lapsedDividend, monthlyHistoryEnd } from "../../../utils/forward-dividend";
 import type { DeclaredCash, DeclaredDividendAction, TickerFinancials } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
@@ -237,7 +237,7 @@ export async function fetchDividendData(
   const convertedSubUnit = convertedFrom && sourceUnit && resolveCurrencyUnit(sourceUnit).divisor !== 1 ? sourceUnit : undefined;
   const declared = actions && cashCurrency ? declaredDividends(actions) : [];
   const distributions = actions ? [...actions.dividends, ...declared.filter((row) => declaredCash.has(row.exDate) && Date.parse(row.exDate) <= Date.now())] : [];
-  const payments = cashCurrency ? distributions.flatMap(action => {
+  const listed = cashCurrency ? distributions.flatMap(action => {
     const payment = toDividendPayment(action.exDate, action.amount, cashCurrency);
     const declared = declaredCash.get(action.exDate);
     const source = distributionSource("source" in action ? action.source : undefined);
@@ -246,6 +246,9 @@ export async function fetchDividendData(
       ...(declared ? { declared } : {}), ...("cashEstimate" in action && action.cashEstimate ? { cashEstimate: action.cashEstimate } : {}),
       ...(source ? { source } : {}) }] : [];
   }).sort((a, b) => b.exDate.getTime() - a.exDate.getTime()) : [];
+  // A regular payment and an extra one on one ex-date are one row of the history: the row says it is both.
+  const combined = combinedPaymentTimes(listed);
+  const payments = combined.size ? listed.map((payment) => combined.has(payment.exDate.getTime()) ? { ...payment, combined: true as const } : payment) : listed;
   if (!historyError && actions && (actions.coverage?.dividends === "unavailable" || payments.length !== distributions.length)) {
     // A read with no rows is not an incomplete one.
     historyError = actions.dividends.length === 0 ? unavailableDividendHistory(triedAt) : incompleteDividendHistory(triedAt);
@@ -272,12 +275,22 @@ export async function fetchDividendData(
   const annualCount = { monthly: 12, quarterly: 4, "semi-annual": 2, annual: 1, irregular: 0 }[metrics.paymentFrequency ?? "irregular"];
   const announcedCash = declared.find((row) => row.exDate === announced?.exDate);
   const announcedAmount = announced?.paidAmount ?? announcedCash?.amount;
-  const announcedUneven = announcedCash && historyAvailable && !metrics.lapse ? unevenRegularPayments(payments, new Date()) : null;
+  const announcedUneven = announcedCash && historyAvailable && !metrics.lapse
+    ? unevenRegularPayments(payments, new Date(), announcedAmount != null && annualCount > 0
+      ? { exDate: new Date(`${announced!.exDate}T00:00:00Z`), annualRate: announcedAmount * annualCount } : null)
+    : null;
   if (announcedUneven) {
     metrics = repriceDividendMetrics({ ...metrics, forwardRate: announcedUneven.total, forwardBasis: "uneven",
       forwardRateAsOf: announcedUneven.latest.toISOString().slice(0, 10) }, price);
   } else if (announced && announcedAmount != null && !metrics.lapse && metrics.forwardBasis !== "uneven" && annualCount > 0) {
     metrics = repriceDividendMetrics({ ...metrics, forwardRate: announcedAmount * annualCount, forwardRateAsOf: announced.exDate }, price);
+  } else if (!metrics.lapse && metrics.forwardRate != null && metrics.forwardBasis !== "uneven" && annualCount > 0) {
+    // A stated rate dated by a declared regular distribution is that amount at the payer's cadence, as its basis
+    // says: OXLC's declared $0.20 monthly is $2.40 a year, where the stated rate read $1.20.
+    const row = declared.find((entry) => entry.exDate === metrics.forwardRateAsOf && !entry.special && !entry.cashEstimate);
+    if (row && Number.isFinite(row.amount) && row.amount > 0) {
+      metrics = repriceDividendMetrics({ ...metrics, forwardRate: atSourcePrecision(row.amount * annualCount) }, price);
+    }
   }
   if (!summary && metrics.forwardRate != null) {
     summaryError = unavailableDividendSummary(triedAt, { forward: true, payDate: !!announced?.payDate });
@@ -369,7 +382,9 @@ export function buildDividendMetrics(
     : lapsedDividend([statedAsOf, latestExDate?.toISOString().slice(0, 10)]
       .filter((day): day is string => !!day).sort().at(-1), { exDates: null, declared }, now);
   // A year whose regular payments differ widely (HSBC's final beside its interims) has no one payment to annualize: its total stands.
-  const uneven = statedRate != null && !lapse && options.historyAvailable !== false ? unevenRegularPayments(eligible, now) : null;
+  // A cut or a raise that held (ECC's $0.14 monthly, then $0.06) is the new rate, which the stated one annualizes.
+  const uneven = statedRate != null && !lapse && options.historyAvailable !== false
+    ? unevenRegularPayments(eligible, now, statedAsOf ? { exDate: new Date(`${statedAsOf}T00:00:00Z`), annualRate: statedRate } : null) : null;
   const forwardRate = lapse ? null : uneven ? uneven.total : statedRate;
   const forwardRateAsOf = lapse ? null : uneven ? uneven.latest.toISOString().slice(0, 10) : statedAsOf;
   const growth1Y = options.historyAvailable !== false ? computeGrowth(eligible, 1, now) : null;

@@ -98,13 +98,20 @@ describe("pane function CLI args", () => {
     });
   });
 
-  test("maps financial statement options into reusable pane state", () => {
+  test("maps financial statement options into reusable pane state, on the financials tab they belong to", () => {
     expect(optionPaneState({
       statement: "balance sheet",
       period: "quarterly",
     })).toEqual({
+      activeTabId: "financials",
       financialSubTab: "balance",
       financialPeriod: "quarterly",
     });
+    // `fn DES ARCC --tab financials --statement income --period quarterly` once opened the overview: the tab was dropped.
+    expect(optionPaneState({ tab: "financials", statement: "income", period: "quarterly" }))
+      .toEqual({ activeTabId: "financials", financialSubTab: "income", financialPeriod: "quarterly" });
+    expect(optionPaneState({ tab: "cf" })).toEqual({ activeTabId: "financials", financialSubTab: "cashflow" });
+    expect(optionPaneState({ period: "q" })).toEqual({ activeTabId: "financials", financialPeriod: "quarterly" });
+    expect(optionPaneState({ tab: "risk-factors" })).toEqual({ activeTabId: "risk-factors" });
   });
 });
