@@ -23,8 +23,8 @@ function unquotedRow(symbol: string): HeadlessPaneRow {
 /**
  * The board's Export CSV, the file `fn QQ --csv` writes for the same tickers:
  * each card's listing with its venue (0005:HKEX), name, Last, the change and
- * percent change to the digits the board shows, what the move is from, its
- * session and feed, a yield's move in bp, then its unit, source and the time
+ * percent change to the digits the board shows, what the move is from, any
+ * extended print, its session and feed, a yield's move in bp, then its unit, source and the time
  * its own price was observed. The closing source lines are left out, as every
  * pane export leaves them.
  */

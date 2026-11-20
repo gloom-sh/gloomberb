@@ -1,9 +1,8 @@
-import { formatShortDate } from "../../../utils/datetime-format";
+import { formatMonthYear, formatShortDate } from "../../../utils/datetime-format";
 import type { EarningsTiming } from "../../../api-client/earnings";
 import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 import { isNotMeaningful, NOT_MEANINGFUL_TEXT, type NotMeaningful } from "../../../utils/growth";
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 const utcDate = (date: string) => new Date(`${date}T00:00:00Z`);
@@ -17,7 +16,7 @@ export function shortDate(date: string): string {
 
 /** "29 Oct '26" */
 export function datedYear(date: string): string {
-  return `${shortDate(date)} '${date.slice(2, 4)}`;
+  return formatShortDate(utcDate(date), { year: "2-digit", utc: true });
 }
 
 /** "Wed" */
@@ -27,8 +26,7 @@ export function weekday(date: string): string {
 
 /** Fiscal quarter end month: "Sep '26". */
 export function fiscalMonth(period: string | null): string {
-  if (!period) return MISSING_VALUE;
-  return `${MONTHS[Number(period.slice(5, 7)) - 1]} '${period.slice(2, 4)}`;
+  return formatMonthYear(period);
 }
 
 /** An implied move, priced in either direction: "±6.1%". */
