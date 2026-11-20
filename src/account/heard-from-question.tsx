@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { apiClient } from "../api-client";
-import { HEARD_FROM_ANSWERS, type HeardFromAnswer } from "../api-client/heard-from";
+import {
+  HEARD_FROM_ANSWERS,
+  HEARD_FROM_NOTE_MAX_LENGTH,
+  type HeardFromAnswer,
+  heardFromAsksForNote,
+} from "../api-client/heard-from";
 import { useKeybindings } from "../app/keybindings";
 import {
   OnboardingActions,
@@ -42,7 +47,6 @@ const LABELS: Record<HeardFromAnswer, string> = {
 };
 const UNTRANSLATED: ReadonlySet<HeardFromAnswer> = new Set(["youtube", "tiktok", "instagram", "x", "reddit"]);
 const OTHER_INDEX = HEARD_FROM_ANSWERS.indexOf("other");
-const NOTE_MAX_LENGTH = 120;
 const CARD_WIDTH = 56;
 
 function choiceLabel(answer: HeardFromAnswer): string {
@@ -55,9 +59,15 @@ function choiceLabel(answer: HeardFromAnswer): string {
  * row. Other opens a short note under the list, sent with Enter (empty is
  * fine). Esc, or Skip, skips; from the note, Esc (Back) goes back to the
  * list. The card holds the keyboard while it is up, as setup does.
+ *
+ * Instagram, TikTok, YouTube and X are kept the moment they are picked
+ * (`onPicked`), then ask "Which account or post?" under the list: Enter
+ * sends the note (empty is fine), Esc or Skip closes the card. Either way the
+ * answer is already kept.
  */
-function HeardFromCard({ onShown, onDone }: {
+function HeardFromCard({ onShown, onPicked, onDone }: {
   onShown: () => void;
+  onPicked: (answer: HeardFromAnswer) => void;
   onDone: (choice: HeardFromChoice) => void;
 }) {
   useAppLanguage();
@@ -65,6 +75,9 @@ function HeardFromCard({ onShown, onDone }: {
   const keybindings = useKeybindings();
   const [cursor, setCursor] = useState(0);
   const [noteOpen, setNoteOpen] = useState(false);
+  // The answer kept ahead of its "Which account or post?" note.
+  const [kept, setKept] = useState<HeardFromAnswer | null>(null);
+  const keptRef = useRef<HeardFromAnswer | null>(null);
   const [note, setNote] = useState("");
   const noteRef = useRef<InputRenderable>(null);
   // Enter can arrive with the typing, ahead of the render that holds it.
@@ -85,34 +98,54 @@ function HeardFromCard({ onShown, onDone }: {
 
   const choose = useCallback((index: number) => {
     const answer = HEARD_FROM_ANSWERS[index];
-    if (!answer) return;
+    if (!answer || keptRef.current) return;
     moveCursor(index);
     if (answer === "other") {
       setNoteOpen(true);
       return;
     }
+    if (heardFromAsksForNote(answer)) {
+      keptRef.current = answer;
+      noteValue.current = "";
+      setNote("");
+      setNoteOpen(false);
+      setKept(answer);
+      onPicked(answer);
+      return;
+    }
     done({ answer });
-  }, [done, moveCursor]);
+  }, [done, moveCursor, onPicked]);
 
   const sendNote = useCallback(() => {
+    const answer = keptRef.current ?? "other";
     const text = noteValue.current.trim();
-    done(text ? { answer: "other", note: text } : { answer: "other" });
+    done(text ? { answer, note: text } : { answer });
   }, [done]);
+
+  // Closes the card: after a kept answer that keeps it, from Other's note it
+  // goes back to the list, and from the list it skips.
+  const back = useCallback(() => {
+    if (keptRef.current) done({ answer: keptRef.current });
+    else if (noteOpen) setNoteOpen(false);
+    else done(null);
+  }, [done, noteOpen]);
+
+  const fieldOpen = noteOpen || kept !== null;
 
   const shownRef = useRef(onShown);
   useEffect(() => shownRef.current(), []);
 
   useEffect(() => {
-    if (!noteOpen) return;
+    if (!fieldOpen) return;
     const timer = setTimeout(() => noteRef.current?.focus?.(), 10);
     return () => clearTimeout(timer);
-  }, [noteOpen]);
+  }, [fieldOpen]);
 
   useShortcut((event) => {
     const handled = ((): boolean => {
-      if (noteOpen) {
+      if (fieldOpen) {
         if (isPlainKey(event, "enter", "return")) { sendNote(); return true; }
-        if (isPlainKey(event, "escape")) { setNoteOpen(false); return true; }
+        if (isPlainKey(event, "escape")) { back(); return true; }
         return false;
       }
       const last = HEARD_FROM_ANSWERS.length - 1;
@@ -132,24 +165,25 @@ function HeardFromCard({ onShown, onDone }: {
   }, { phase: "before", allowEditable: true, scope: "heard-from" });
 
   const items = HEARD_FROM_ANSWERS.map((answer) => ({ id: answer, label: choiceLabel(answer) }));
+  const selectedIndex = kept ? HEARD_FROM_ANSWERS.indexOf(kept) : noteOpen ? OTHER_INDEX : cursor;
   return (
-    <OnboardingModal width={CARD_WIDTH} height={18 + (noteOpen ? 2 : 0)} desktopWidth="min(440px, 100%)">
+    <OnboardingModal width={CARD_WIDTH} height={18 + (fieldOpen ? 2 : 0)} desktopWidth="min(440px, 100%)">
       <OnboardingTitle standalone title={t("Where did you hear about Gloom?")} />
       <Box flexDirection="column" style={desktop ? { marginTop: 14 } : undefined} paddingTop={desktop ? undefined : 1}>
         <OnboardingChoiceList
           items={items}
-          selectedIndex={noteOpen ? OTHER_INDEX : cursor}
+          selectedIndex={selectedIndex}
           onSelect={moveCursor}
           onActivate={choose}
         />
       </Box>
-      {noteOpen ? (
+      {fieldOpen ? (
         <Box flexDirection="column" style={desktop ? { marginTop: 10 } : undefined} paddingTop={desktop ? undefined : 1}>
           <TextField
             inputRef={noteRef}
             value={note}
-            placeholder={t("Where?")}
-            maxLength={NOTE_MAX_LENGTH}
+            placeholder={kept ? t("Which account or post?") : t("Where?")}
+            maxLength={HEARD_FROM_NOTE_MAX_LENGTH}
             focused
             width={desktop ? undefined : CARD_WIDTH - 6}
             onChange={(value) => {
@@ -161,18 +195,18 @@ function HeardFromCard({ onShown, onDone }: {
       ) : null}
       {desktop ? null : <Box height={1} />}
       <OnboardingActions>
-        {/* From the note, Esc goes back to the list; from the list, it skips. */}
+        {/* From Other's note, Esc goes back to the list; from the list it skips; after a kept answer it closes. */}
         <OnboardingButton
           label={noteOpen ? "Back" : "Skip"}
           variant="ghost"
           shortcut="Esc"
-          onPress={() => (noteOpen ? setNoteOpen(false) : done(null))}
+          onPress={back}
         />
         <OnboardingButton
-          label={noteOpen ? "Send" : "Continue"}
+          label={fieldOpen ? "Send" : "Continue"}
           variant="primary"
           shortcut="Enter"
-          onPress={() => (noteOpen ? sendNote() : choose(cursorRef.current))}
+          onPress={() => (fieldOpen ? sendNote() : choose(cursorRef.current))}
         />
       </OnboardingActions>
     </OnboardingModal>
@@ -200,7 +234,11 @@ export function HeardFromQuestionHost() {
     currentAccountId,
     currentAccountId,
   );
-  const [asking, setAsking] = useState<{ shown: () => void; resolve: (choice: HeardFromChoice) => void } | null>(null);
+  const [asking, setAsking] = useState<{
+    shown: () => void;
+    picked: (answer: HeardFromAnswer) => void;
+    resolve: (choice: HeardFromChoice) => void;
+  } | null>(null);
   // Drawn once nothing else is up, and kept up from then on (it is a setup card itself).
   const [drawn, setDrawn] = useState(false);
   const busy = useRef(false);
@@ -220,7 +258,7 @@ export function HeardFromQuestionHost() {
       reportShown: () => apiClient.reportHeardFromShown(),
       answer: (answer, note) => apiClient.answerHeardFrom(answer, note),
       skip: () => apiClient.skipHeardFrom(),
-      ask: (shown) => new Promise<HeardFromChoice>((resolve) => setAsking({ shown, resolve })),
+      ask: (shown, picked) => new Promise<HeardFromChoice>((resolve) => setAsking({ shown, picked, resolve })),
     }).then(finished, finished);
   }, [account, cardOpen, commandBarOpen, dialogOpen, due]);
 
@@ -231,5 +269,5 @@ export function HeardFromQuestionHost() {
   }, [asking, cardOpen, commandBarOpen, dialogOpen, drawn]);
 
   if (!asking || !drawn) return null;
-  return <HeardFromCard onShown={asking.shown} onDone={asking.resolve} />;
+  return <HeardFromCard onShown={asking.shown} onPicked={asking.picked} onDone={asking.resolve} />;
 }
