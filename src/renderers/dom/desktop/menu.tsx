@@ -6,7 +6,11 @@ import { toKeyEventLike } from "../input-host";
 import { CheckboxBox } from "./controls";
 import { WebIcon } from "./icons";
 
-const MENU_KEYS = new Set(["Home", "End", "PageUp", "PageDown", "Enter", " "]);
+const MENU_KEYS = {
+  down: new Set(["ArrowDown", "j"]),
+  up: new Set(["ArrowUp", "k"]),
+  fixed: new Set(["Home", "End", "PageUp", "PageDown", "Enter", " "]),
+};
 
 function selectable(item: HostMenuItem): boolean {
   return item.kind !== "divider" && item.kind !== "heading" && !item.disabled;
@@ -43,9 +47,9 @@ export function WebMenu({ items, onSelect, selection = "none", title, label, onC
     if (controlled) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = toKeyEventLike(event);
-      const down = matchesNavigationKey(navigation, "down", key, { defaultMatches: event.key === "ArrowDown" });
-      const up = matchesNavigationKey(navigation, "up", key, { defaultMatches: event.key === "ArrowUp" });
-      if (!down && !up && !MENU_KEYS.has(event.key)) return;
+      const down = matchesNavigationKey(navigation, "down", key, { defaultMatches: MENU_KEYS.down.has(event.key) });
+      const up = matchesNavigationKey(navigation, "up", key, { defaultMatches: MENU_KEYS.up.has(event.key) });
+      if (!down && !up && !MENU_KEYS.fixed.has(event.key)) return;
       event.preventDefault();
       event.stopPropagation();
       const index = enabled.findIndex((item) => item.id === highlighted);
