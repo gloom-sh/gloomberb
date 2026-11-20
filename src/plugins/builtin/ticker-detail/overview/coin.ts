@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { isAccessDenied } from "../../../../api-client/errors";
 import { usePaneFooter } from "../../../../components";
 import { t } from "../../../../i18n";
@@ -14,13 +15,21 @@ import { coinIdentityOf, findCoinAsset } from "../../crypto-board/coin";
 export function useCoinOverview(ticker: TickerRecord | null, financials: TickerFinancials | null, focused: boolean) {
   const config = usePaneAppConfig();
   const identity = config.disabledPlugins.includes(cryptoPluginMeta.id) ? null : coinIdentityOf({ ticker, financials });
+  const enabled = identity !== null;
   const visible = usePaneVisible();
-  const active = identity !== null && visible && focused;
-  const { data, error, load, updatedAt, savedAt } = useAsyncResource(identity ? loadCryptoMarketsForOverview : null, {
-    deferLoad: !active,
+  const [opened, setOpened] = useState(false);
+  const { data, error, load, reload, updatedAt, savedAt } = useAsyncResource(enabled ? loadCryptoMarketsForOverview : null, {
+    manual: true,
     clearOnError: isAccessDenied,
   });
-  useAutoRefresh(updatedAt, load, { enabled: active, intervalMs: CRYPTO_OVERVIEW_REFRESH_MS });
+  useEffect(() => {
+    if (!enabled) setOpened(false);
+    else if (visible && !opened) {
+      setOpened(true);
+      load();
+    }
+  }, [enabled, visible, opened, load]);
+  useAutoRefresh(updatedAt, reload, { enabled: enabled && focused, intervalMs: CRYPTO_OVERVIEW_REFRESH_MS });
   usePaneFooter("crypto-overview", () => error && savedAt === null ? {
     info: [{ id: "refresh", parts: [{ text: t("Couldn't refresh"), tone: "warning" }] }],
   } : null, [error, savedAt]);
