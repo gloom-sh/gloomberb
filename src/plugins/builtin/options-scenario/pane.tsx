@@ -393,7 +393,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     ...(impliedEntry != null ? [{ id: "implied-entry", label: "Implied entry spot", value: money(impliedEntry), detail: "earlier option session" }] : []),
     ...(scenario?.position.unhedgedShares ? [{ id: "odd-lot", label: "Unhedged odd lot", value: `${scenario.position.unhedgedShares} shares` }] : []),
   ];
-  const fxItems: StatItem[] = needsFx ? [{ id: "fx", label: "FX", value: fx?.mark ? baseConversionLabel(fx.mark)
+  const fxItems: StatItem[] = needsFx ? [{ id: "fx", label: "FX", wide: true, value: fx?.mark ? baseConversionLabel(fx.mark)
     : fx ? "Fixed unit conversion" : fxResource.loading ? "Loading rate…" : "Rate unavailable" },
   ...(fx && scenario ? scenarioMoneyTotals(scenario).map(({ key, label, value, unlimited }) => ({ id: `base-${key}`, label,
     value: unlimited ? "Unlimited" : money(value == null ? null : value * fx.factor), detail: baseCurrency })) : [])] : [];

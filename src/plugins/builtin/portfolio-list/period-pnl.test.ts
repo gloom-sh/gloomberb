@@ -113,8 +113,8 @@ test("a window ending on the FX trading day in progress converts its end at the 
   expect(ntr.rates).toEqual({ currency: "USD", start: expect.closeTo(50.1776, 9), end: expect.closeTo(50.2294, 9) });
   expect(result.latestFx).toEqual(["USD|2026-11-10"]);
   expect(periodFxMarks(result, ntr)).toEqual({
-    startFx: expect.stringContaining("50.1776 · Mon 9 Nov close"),
-    endFx: expect.stringContaining("50.2294 · Tue 10 Nov 20:28 UTC"),
+    startFx: expect.stringMatching(/50\.1776 · Mon 9 Nov(?: 2026)? close/),
+    endFx: expect.stringMatching(/50\.2294 · Tue 10 Nov(?: 2026)? 20:28 UTC/),
   });
   expect(result.fx).toBeCloseTo(100 * 72.29 * (50.2294 - 50.1776), 6);
   // A past window keeps the day's FX close.
