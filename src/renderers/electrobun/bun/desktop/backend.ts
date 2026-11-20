@@ -487,6 +487,7 @@ export class DesktopBackend {
       config,
       ...backendPlugins,
     });
+    services.pluginRegistry.seedLegacyNewsSnapshots(nextConfig);
     this.services = services;
     await services.ready;
     this.syncConfigAccessors();

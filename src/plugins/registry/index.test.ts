@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { assetDataProvider } from "../../capabilities";
+import { materializeDetachedLayouts } from "../../core/state/app/layout";
 import { AppPersistence } from "../../data/app-persistence";
+import { normalizeConfigForSave, normalizeLoadedConfig } from "../../data/config/store/normalize";
 import { TickerRepository } from "../../data/ticker-repository";
 import { createDefaultConfig, createPaneInstance } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
@@ -21,6 +23,9 @@ import { filingsPlugin } from "../builtin/composite/filings";
 import { optionsVolatilityPlugin } from "../builtin/composite/options-volatility";
 import { ownershipPlugin } from "../builtin/composite/ownership";
 import { tickerCorePlugin } from "../builtin/composite/ticker-core";
+import { newsPlugin } from "../builtin/news";
+import { hashString } from "../../news/rss-hash";
+import { createTestArticle } from "../../test-support/news";
 import { registeredStateNamespace } from "../test-fixture";
 import { resolveShellVisibleLayout } from "../../components/layout/shell/visible-layout";
 import { expandBuiltinPluginGroups } from "../ownership";
@@ -33,6 +38,54 @@ import { createTestDataProvider, createTestFinancials, createTestQuote } from ".
 const dataProvider: DataProvider = createTestDataProvider({
   getTickerFinancials: async () => createTestFinancials(),
   getQuote: async (symbol) => createTestQuote({ symbol, price: 1 }),
+});
+
+test("upgrading seeds public legacy headlines from real saved owners but keeps Story content and controls in the layout", async () => {
+  const registry = createRegistry();
+  await registry.register(newsPlugin);
+  await registry.register(tickerCorePlugin);
+  expect(registeredStateNamespace(registry.panes.get("ticker-research")!.component)).toBe("ticker-research");
+  const config = createDefaultConfig("/tmp/gloom-news-upgrade");
+  const top = createPaneInstance("news-top", { instanceId: "custom-top" });
+  const ticker = createPaneInstance("ticker-research", { instanceId: "ticker-detail:test" });
+  const story = createPaneInstance("news-story", { instanceId: "news-story:test" });
+  const article = createTestArticle("legacy-rss");
+  const rss = { ...article, id: hashString(`${article.url}|${article.title}`), publishedAt: article.publishedAt.toISOString() };
+  const wire = { ...rss, id: "unscoped-cloud-story", items: [] };
+  const storyState = { pluginState: { news: { "story:v2": [rss] } } };
+  const topState = { pluginState: { news: { "top:curated:selectedArticleId": rss.id, "top:curated:search": "market" } } };
+  const tickerState = { activeTabId: "news", pluginState: { "ticker-research": { "selectedArticleId:AAPL": rss.id } } };
+  const layout = {
+    dockRoot: null,
+    instances: [top, ticker, story],
+    detached: [],
+    floating: [top, ticker, story].map((pane, index) => ({ instanceId: pane.instanceId, x: 0, y: index * 20, width: 80, height: 20 })),
+  };
+  const saved = { ...config, layout, activeLayoutIndex: 0, layouts: [{ name: "News", layout, paneState: {
+    [top.instanceId]: { pluginState: { news: { ...topState.pluginState.news, "top:curated:articles:v2": [wire, rss], "top:curated:articles": [wire] } } },
+    [ticker.instanceId]: { ...tickerState, pluginState: { "ticker-research": {
+      ...tickerState.pluginState["ticker-research"], "articles:AAPL::v2": [rss],
+    } } },
+    [story.instanceId]: storyState,
+  } }] };
+  const { config: loaded, needsSave } = normalizeLoadedConfig(JSON.parse(JSON.stringify(saved)), config.dataDir);
+  expect(needsSave).toBe(true);
+  const kept = { [top.instanceId]: topState, [ticker.instanceId]: tickerState, [story.instanceId]: storyState };
+  expect(loaded.layouts[0]?.paneState).toEqual(kept);
+  expect(normalizeConfigForSave(saved).layouts[0]?.paneState).toEqual(kept);
+  expect(normalizeConfigForSave(loaded).layouts[0]?.paneState).toEqual(kept);
+  registry.seedLegacyNewsSnapshots(materializeDetachedLayouts(loaded));
+  const scope = JSON.stringify([null, false, false]);
+  expect(registry.newsPaneSnapshots.read(top, "news", "top:curated:articles:v2", scope)).toMatchObject([rss]);
+  expect(registry.newsPaneSnapshots.read(ticker, "news", "articles:AAPL::v2", scope)).toMatchObject([rss]);
+
+  await expect(registry.register({
+    id: "duplicate-news-pane", name: "Conflicting pane", version: "1.0.0", panes: [newsPlugin.panes![0]!],
+  })).rejects.toThrow();
+  registry.unregister("duplicate-news-pane");
+  registry.unregister("ticker-core");
+  expect(registry.newsPaneSnapshots.read(top, "news", "top:curated:articles:v2", scope)).toMatchObject([rss]);
+  expect(registry.newsPaneSnapshots.read(top, "duplicate-news-pane", "top:curated:articles:v2", scope)).toBeNull();
 });
 
 let currentRegistry: PluginRegistry | null = null;

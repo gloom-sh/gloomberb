@@ -21,7 +21,7 @@ import { newsMuteSettingsDef } from "./mutes";
 import { createNewsPresetPane } from "./news/preset-pane";
 import { createNewsStoryPaneTemplate, NEWS_STORY_PANE_ID, NewsStoryPane } from "./news/pop-out";
 import { createLoadedStorySearchProvider } from "./news/command-bar-search";
-import { NEWS_INDUSTRY_CODES, NEWS_QUERY_PRESETS, parseNewsIndustryCode } from "./news/query-presets";
+import { NEWS_INDUSTRY_CODES, NEWS_QUERY_PRESETS, parseNewsIndustryCode } from "../../../../news/query-presets";
 import { createRssNewsCapability } from "./rss/source";
 import { rssCliCommand } from "./rss/cli";
 import { newsFeedHeadless } from "../headless";

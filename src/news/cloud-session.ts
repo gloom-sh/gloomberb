@@ -1,6 +1,14 @@
 import { apiClient } from "../api-client";
+import { cloudDisplayScope } from "../api-client/plan-access";
 import { hasProAccess } from "../api-client/plan-rules";
 import type { NewsSessionSignal } from "./aggregator";
+
+export function cloudNewsSnapshotScope(): string | null {
+  if (apiClient.isChangingSession() || apiClient.isCookieIdentityUnavailable()) return null;
+  const user = apiClient.getCurrentUser();
+  if (user && apiClient.getConfirmedDisplayUser() !== user) return null;
+  return cloudDisplayScope();
+}
 
 /**
  * What decides which news Gloom Cloud answers with: whether requests carry a

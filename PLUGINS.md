@@ -985,6 +985,8 @@ A plugin has two local stores. Both persist across restarts; they differ in who 
 - `ctx.persistence` holds versioned state and cached resources with TTLs. Nothing is notified when it changes, so use it for data that code reads when it runs: `setup()`, commands, capability handlers. `createPluginCache` from `gloomberb/utils` is built on it.
 - `ctx.resume` holds state that panes render. `ctx.resume.getState`/`setState` is the plugin-global store behind `usePluginState`, and a write re-renders every pane reading that key. `ctx.resume.getPaneState`/`setPaneState` is the per-pane store behind `usePluginPaneState`; it belongs to the active layout and can travel with a shared layout. Use the `ctx.resume` methods outside render, such as in a command handler, and the hooks inside a pane.
 
+Pane state is mirrored into saved layouts and written to `config.json`. Keep choices, tabs, selections, and content that belongs to the layout (such as a Story pane's article) there. Keep replaceable feed data in a cache instead, using resources with an expiry through `ctx.persistence`.
+
 The stores have separate keys: `ctx.persistence.setState("draft")` is not visible to `usePluginState("draft")`.
 
 `ctx.persistence` state stores versioned plugin-local data; resources add cache metadata and TTLs:

@@ -26,7 +26,9 @@ import type {
   SyncTransport,
 } from "../../sync/types";
 import type { BrokerAdapter } from "../../types/broker";
-import { resolvePaneInstance } from "../../types/config";
+import { resolvePaneInstance, type AppConfig } from "../../types/config";
+import { readNewsPaneSnapshot, seedLegacyNewsSnapshots, writeNewsPaneSnapshot } from "../../data/news-pane-snapshots";
+import { cloudNewsSnapshotScope } from "../../news/cloud-session";
 import type { ContextMenuContext, ContextMenuItem } from "../../types/context-menu";
 import type { DataProvider } from "../../types/data-provider";
 import type {
@@ -284,6 +286,19 @@ export class PluginRegistry implements PluginRuntimeAccess {
   }
 
   get panes(): ReadonlyMap<string, PaneDef> { return this.contributions.panesMap; }
+
+  seedLegacyNewsSnapshots(config: AppConfig): void {
+    seedLegacyNewsSnapshots(this.persistence.resources, config.layouts, config.activeLayoutIndex);
+  }
+
+  readonly newsPaneSnapshots: NonNullable<PluginRuntimeAccess["newsPaneSnapshots"]> = {
+    read: (pane, owner, key, scope) => scope === cloudNewsSnapshotScope()
+      ? readNewsPaneSnapshot(this.persistence.resources, { pane, owner, key }, scope)
+      : null,
+    write: (pane, owner, key, scope, articles) => {
+      if (scope === cloudNewsSnapshotScope()) writeNewsPaneSnapshot(this.persistence.resources, { pane, owner, key }, scope, articles);
+    },
+  };
   get paneTemplates(): ReadonlyMap<string, PaneTemplateDef> { return this.contributions.paneTemplatesMap; }
   get commands(): ReadonlyMap<string, CommandDef> { return this.contributions.commandsMap; }
   get commandBarSearchProviders(): ReadonlyMap<string, CommandBarSearchProvider> {

@@ -11,7 +11,7 @@ import { abortable, settleWithin } from "../../../../../utils/async-deadline";
 import { formatFeedTime } from "../../../../../utils/datetime-format";
 import { logFailure } from "../../../../../utils/log-failure";
 import { openNewsStoryPane } from "./pop-out";
-import { NEWS_QUERY_PRESETS } from "./query-presets";
+import { NEWS_QUERY_PRESETS } from "../../../../../news/query-presets";
 
 /** The corpus News section shows four as well, and each costs a row of the sheet. */
 const STORY_ROW_LIMIT = 4;

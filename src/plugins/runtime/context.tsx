@@ -10,6 +10,7 @@ import type { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { CapabilityInvoker, PluginCapability } from "../../capabilities";
 import type { DataProvider } from "../../types/data-provider";
 import type { PluginRuntimeHostActions } from "../registry/host-actions";
+import type { PaneInstanceConfig } from "../../types/config";
 
 export interface PluginRuntimeAccess extends CapabilityInvoker, PluginRuntimeHostActions {
   getMarketData(): DataProvider | null;
@@ -27,6 +28,11 @@ export interface PluginRuntimeAccess extends CapabilityInvoker, PluginRuntimeHos
   getResumeState<T = unknown>(pluginId: string, key: string, schemaVersion?: number): T | null;
   setResumeState(pluginId: string, key: string, value: unknown, schemaVersion?: number): void;
   deleteResumeState(pluginId: string, key: string): void;
+  /** @internal The built-in news lists' renderer-local warm copies, not layout state. */
+  newsPaneSnapshots?: {
+    read<T>(pane: PaneInstanceConfig, owner: string, key: string, scope: string | null): T[] | null;
+    write(pane: PaneInstanceConfig, owner: string, key: string, scope: string, articles: unknown[]): void;
+  };
   getConfigState<T = unknown>(pluginId: string, key: string): T | null;
   setConfigState(pluginId: string, key: string, value: unknown): Promise<void>;
   setConfigStates(pluginId: string, values: Record<string, unknown>): Promise<void>;
