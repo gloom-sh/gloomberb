@@ -1,5 +1,6 @@
 import { Box, Text, useActionShortcut, useNativeRenderer, useRendererHost, useUiCapabilities } from "../../../ui";
-import { useCallback, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import type { PaneQuickSettingIcon } from "../../../types/plugin";
 import { colors, floatingPaneTitleBg, paneTitleBg, paneTitleText } from "../../../theme/colors";
 import { paneTitleTone } from "../../../theme/tone-contrast";
 import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
@@ -286,24 +287,115 @@ function quickSettingText(setting: { icon: PaneHeaderQuickSetting["icon"] }): st
 
 export interface PaneHeaderQuickSetting {
   key: string;
-  icon: "zap" | "sqrt";
+  icon: PaneQuickSettingIcon;
   label: string;
   description?: string;
   active: boolean;
   onMouseDown?: (event: any) => void;
 }
 
+/**
+ * What a quick setting says it is: its name and whether it is on. The
+ * desktop's tooltip and the terminal's hover label read the same.
+ */
+function quickSettingTitle(setting: Pick<PaneHeaderQuickSetting, "label" | "active">): string {
+  return `${setting.label}: ${setting.active ? "on" : "off"}`;
+}
+
+/** Terminal: a hover label shorter than this (its padding and a letter with the ellipsis) is not drawn. */
+const QUICK_SETTING_LABEL_MIN_WIDTH = 4;
+
+/**
+ * Terminal: where the label of the quick setting under the pointer goes in
+ * its header's row, in cells from the header's left edge, and its text with
+ * a space either side. It sits over the row beside the glyph, so nothing in
+ * the header moves and the title keeps its width: after the glyph when it
+ * fits before the frame's corner, else before it, else on the roomier side,
+ * cut to fit. It never covers the glyph, which keeps the pointer.
+ */
+export function quickSettingLabelPlacement(
+  label: string,
+  { buttonStart, buttonWidth, width, framed }: {
+    /** Cells from the header's left edge to the setting's button (its glyph and the space either side). */
+    buttonStart: number;
+    buttonWidth: number;
+    width: number;
+    /** A focused, floating or fullscreen pane: the row starts and ends in the frame's corners. */
+    framed: boolean;
+  },
+): { left: number; text: string } | null {
+  const corner = framed ? 2 : 0;
+  const after = Math.max(0, width - corner - (buttonStart + buttonWidth));
+  const before = Math.max(0, buttonStart - corner);
+  const text = ` ${label} `;
+  const textWidth = displayWidth(text);
+  if (textWidth <= after) return { left: buttonStart + buttonWidth, text };
+  if (textWidth <= before) return { left: buttonStart - textWidth, text };
+  const room = Math.max(after, before);
+  if (room < QUICK_SETTING_LABEL_MIN_WIDTH) return null;
+  const cut = ` ${truncateToDisplayWidth(label, room - 2)} `;
+  return after >= before
+    ? { left: buttonStart + buttonWidth, text: cut }
+    : { left: buttonStart - displayWidth(cut), text: cut };
+}
+
+/** Terminal: where each quick setting's button starts, in cells from the header's left edge, after `start`. */
+function quickSettingButtonStarts(quickSettings: readonly PaneHeaderQuickSetting[], start: number): number[] {
+  let at = start;
+  return quickSettings.map((setting) => {
+    const buttonStart = at;
+    at += displayWidth(quickSettingText(setting));
+    return buttonStart;
+  });
+}
+
+/**
+ * Terminal: the hovered quick setting's name and state, drawn over the
+ * header's own row (`quickSettingLabelPlacement`) in the tooltip surface.
+ */
+function TerminalQuickSettingLabel({ setting, buttonStart, width, framed }: {
+  setting: PaneHeaderQuickSetting;
+  buttonStart: number;
+  width: number;
+  framed: boolean;
+}) {
+  const placement = quickSettingLabelPlacement(t(quickSettingTitle(setting)), {
+    buttonStart,
+    buttonWidth: displayWidth(quickSettingText(setting)),
+    width,
+    framed,
+  });
+  if (!placement) return null;
+  return (
+    <Box
+      position="absolute"
+      top={0}
+      left={placement.left}
+      height={1}
+      width={displayWidth(placement.text)}
+      zIndex={1}
+      backgroundColor={colors.panel}
+      data-gloom-role="pane-quick-setting-label"
+    >
+      <Text fg={colors.textBright} selectable={false}>{placement.text}</Text>
+    </Box>
+  );
+}
 
 function TerminalPaneButton({
   text,
   fg,
   role,
   onMouseDown,
+  onMouseOver,
+  onMouseOut,
 }: {
   text: string;
   fg: string;
   role: string;
   onMouseDown?: (event: any) => void;
+  onMouseOver?: () => void;
+  onMouseOut?: () => void;
 }) {
   return (
     <Box
@@ -313,6 +405,8 @@ function TerminalPaneButton({
       data-gloom-role={role}
       data-gloom-interactive={onMouseDown ? "true" : undefined}
       onMouseDown={onMouseDown}
+      onMouseOver={onMouseOver}
+      onMouseOut={onMouseOut}
     >
       <Text fg={fg} selectable={false}>{text}</Text>
     </Box>
@@ -409,6 +503,8 @@ export function PaneHeader({
   const fullscreenShortcut = useActionShortcut("pane-fullscreen");
   const askShortcut = useActionShortcut("pane-ask");
   const terminalHeaderRef = useRef<unknown>(null);
+  // Terminal: the quick setting under the pointer, whose label the header shows.
+  const [hoveredQuickSetting, setHoveredQuickSetting] = useState<string | null>(null);
   const visuallyFocused = focused || windowModeSelected;
   const backgroundColor = floating ? floatingPaneTitleBg(visuallyFocused) : paneTitleBg(visuallyFocused);
   const actionText = showActions ? PANE_HEADER_ACTION : "     ";
@@ -607,7 +703,7 @@ export function PaneHeader({
           <Box key={setting.key} data-gloom-role="pane-quick-setting" data-setting-key={setting.key}>
             <IconButton
               icon={setting.icon}
-              label={`${setting.label}: ${setting.active ? "on" : "off"}`}
+              label={quickSettingTitle(setting)}
               pressed={setting.active}
               onPress={setting.onMouseDown ? (event) => setting.onMouseDown?.(event) : undefined}
             />
@@ -668,6 +764,29 @@ export function PaneHeader({
     );
   }
 
+  // Terminal: the quick settings' buttons, the first `start` cells in, and
+  // the label of the one under the pointer, which the header draws last.
+  const terminalQuickSettings = (start: number, framed: boolean) => {
+    const starts = quickSettingButtonStarts(quickSettings, start);
+    const hovered = quickSettings.findIndex((setting) => setting.key === hoveredQuickSetting);
+    return {
+      buttons: quickSettings.map((setting) => (
+        <TerminalPaneButton
+          key={setting.key}
+          text={quickSettingText(setting)}
+          fg={setting.active ? paneTitleTone(colors.warning, visuallyFocused, floating) : colors.textDim}
+          role="pane-quick-setting"
+          onMouseDown={setting.onMouseDown}
+          onMouseOver={() => setHoveredQuickSetting(setting.key)}
+          onMouseOut={() => setHoveredQuickSetting((current) => (current === setting.key ? null : current))}
+        />
+      )),
+      label: hovered >= 0
+        ? <TerminalQuickSettingLabel setting={quickSettings[hovered]!} buttonStart={starts[hovered]!} width={width} framed={framed} />
+        : null,
+    };
+  };
+
   if (visuallyFocused || floating || fullscreen) {
     // Build: ┌─:: Title ─────────── ... x─┐
     // Fullscreen draws "-" in that corner. Reserve 2 for the frame.
@@ -676,8 +795,11 @@ export function PaneHeader({
     const titleWidth = terminalHeaderTitleWidth(width, { framed: true, corner: closeText.length > 0, trailing: terminalQuickSettingsWidth });
     const clippedTitle = truncateToDisplayWidth(title, titleWidth);
     const spans = stack ? stackTabSpans(stack.tabs.map((tab) => tab.title), stackActiveIndex(stack), titleWidth) : null;
-    const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - (spans ? Math.min(titleWidth, stackSpansWidth(spans)) : displayWidth(clippedTitle)) - terminalQuickSettingsWidth - actionText.length - closeText.length);
+    const titleShown = spans ? Math.min(titleWidth, stackSpansWidth(spans)) : displayWidth(clippedTitle);
+    const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - titleShown - terminalQuickSettingsWidth - actionText.length - closeText.length);
     const fill = "─".repeat(fillLen);
+    // After the frame's corner, the grip and the title.
+    const terminalSettings = terminalQuickSettings(2 + PANE_HEADER_GRIP.length + titleShown, true);
 
     return (
       <Box
@@ -700,15 +822,7 @@ export function PaneHeader({
         ) : (
           <Text fg={textColor} selectable={false}>{`${PANE_HEADER_GRIP}${clippedTitle}`}</Text>
         )}
-        {quickSettings.map((setting) => (
-          <TerminalPaneButton
-            key={setting.key}
-            text={quickSettingText(setting)}
-            fg={setting.active ? paneTitleTone(colors.warning, visuallyFocused, floating) : colors.textDim}
-            role="pane-quick-setting"
-            onMouseDown={setting.onMouseDown}
-          />
-        ))}
+        {terminalSettings.buttons}
         {fill && <Text fg={borderColor} selectable={false}>{fill}</Text>}
         {locked && (
           <TerminalPaneButton text={lockText} fg={colors.textMuted} role="pane-lock" />
@@ -731,6 +845,7 @@ export function PaneHeader({
           />
         )}
         <Text fg={borderColor} selectable={false}>{"─┐"}</Text>
+        {terminalSettings.label}
       </Box>
     );
   }
@@ -739,6 +854,8 @@ export function PaneHeader({
   const clippedTitle = truncateToDisplayWidth(title, titleWidth);
   const spans = stack ? stackTabSpans(stack.tabs.map((tab) => tab.title), stackActiveIndex(stack), titleWidth) : null;
   const padding = " ".repeat(Math.max(0, titleWidth - displayWidth(clippedTitle)));
+  // After the grip and the title padded to its width.
+  const terminalSettings = terminalQuickSettings(PANE_HEADER_GRIP.length + titleWidth, false);
 
   return (
     <Box
@@ -762,15 +879,7 @@ export function PaneHeader({
           {`${PANE_HEADER_GRIP}${clippedTitle}${padding}`}
         </Text>
       )}
-      {quickSettings.map((setting) => (
-        <TerminalPaneButton
-          key={setting.key}
-          text={quickSettingText(setting)}
-          fg={setting.active ? paneTitleTone(colors.warning, visuallyFocused, floating) : colors.textDim}
-          role="pane-quick-setting"
-          onMouseDown={setting.onMouseDown}
-        />
-      ))}
+      {terminalSettings.buttons}
       {locked && (
         <TerminalPaneButton text={lockText} fg={colors.textMuted} role="pane-lock" />
       )}
@@ -791,6 +900,7 @@ export function PaneHeader({
           onMouseDown={onCornerMouseDown}
         />
       )}
+      {terminalSettings.label}
     </Box>
   );
 }

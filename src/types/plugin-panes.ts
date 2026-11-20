@@ -233,10 +233,19 @@ export interface PaneShareItemDef {
  */
 export type PanePersonalData = "holdings" | "account" | "messages" | "personal";
 
+/**
+ * The glyph a quick setting draws in the pane header, each with one meaning:
+ * `zap` (⚡) live data, and nothing else; `bell` (⍾) the pane notifies you
+ * of something new; `marker` (⌖) a reading marked over the data, such as the
+ * current IV on a volatility history; `sqrt` (√) sizes or scales by the
+ * square root. A toggle none of them names stays in the pane's settings.
+ */
+export type PaneQuickSettingIcon = "zap" | "bell" | "marker" | "sqrt";
+
 export interface PaneQuickSettingDef {
   type: "toggle";
   key: string;
-  icon: "zap" | "sqrt";
+  icon: PaneQuickSettingIcon;
   label?: string;
   /**
    * For a two-option select field: the option the control turns on. Turning

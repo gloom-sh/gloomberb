@@ -39,7 +39,7 @@ export interface PaneMenuEntry {
   action: () => void;
 }
 
-/** A pane's header toggle (the zap), repeated in its menu so the keyboard reaches it. */
+/** A pane's header toggle (a quick setting), repeated in its menu so the keyboard reaches it. */
 export interface PaneMenuQuickSetting {
   key: string;
   label: string;

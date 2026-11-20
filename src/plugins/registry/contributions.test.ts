@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import type { PaneDef, TickerResearchTabDef } from "../../types/plugin";
 import { getLoadablePlugins } from "../catalog";
+import { LIVE_STREAMING_SETTING_KEY } from "../../state/hooks/live-streaming";
 import { RegistryContributions } from "./contributions";
 
 type Component = (props: never) => ReactNode;
@@ -125,5 +126,14 @@ describe("registered panes and research tabs", () => {
     for (const { pluginId, pane } of declared) {
       expect(wrapped.find((entry) => entry.component === pane.component)?.pluginId, pane.id).toBe(pluginId);
     }
+  });
+
+  // ⚡ in a pane header reads as live data, so every other toggle there takes a glyph of its own.
+  test("no built-in quick setting but live streaming draws the live glyph", () => {
+    const zaps = getLoadablePlugins().flatMap((plugin) => (plugin.panes ?? []).flatMap((pane) => (
+      (pane.quickSettings ?? []).filter((setting) => setting.icon === "zap").map((setting) => `${pane.id}: ${setting.key}`)
+    )));
+    expect(zaps.length).toBeGreaterThan(0);
+    expect(zaps.filter((entry) => !entry.endsWith(`: ${LIVE_STREAMING_SETTING_KEY}`))).toEqual([]);
   });
 });
