@@ -2,6 +2,7 @@ import { forwardFiscalYear, forwardPEAsked, formatPriceEarnings, NOT_MEANINGFUL 
 import { convertMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
 import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
+import type { CryptoMarketAsset } from "../../../../api-client/crypto-markets";
 import { NOT_MEANINGFUL_TEXT } from "../../../../utils/growth";
 import type { ServedRate } from "../../../../utils/served-rates";
 import type { CedearRatio, CompanyProfile, DepositaryPair, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
@@ -153,6 +154,7 @@ function runwayStat(runway: CashRunway | null | undefined): StatField | null {
 export function buildOverviewStats({
   quote,
   fundamentals,
+  coin,
   financialCurrency,
   quoteCurrency,
   baseCurrency,
@@ -172,6 +174,7 @@ export function buildOverviewStats({
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
+  coin?: CryptoMarketAsset | null;
   /** The currency the statements report in, for fundamentals that declare none on a listing that trades in it. */
   financialCurrency?: TickerFinancials["financialCurrency"];
   quoteCurrency: string;
@@ -220,13 +223,14 @@ export function buildOverviewStats({
   const money = (value: number) => reported(value, fundamentalsCurrency({ fundamentals, financialCurrency, quote }));
 
   // An index's 0 is volume nobody counts, not a quiet session: no Volume row.
-  const volume = reportedQuoteVolume(quote);
+  const quoteVolume = reportedQuoteVolume(quote);
+  const volume = quoteVolume ?? coin?.volume24h;
   if (volume != null) {
     // Live figures keep their decimals (12.30M, not 12.3M) so the digits hold still.
     // A coin's volume is the value it traded in its quote currency, written as the chart's volume reads ($47.94B),
     // and the composite's or one exchange's own day, said beside it as its range's is.
-    const basis = quoteStatsBasisText(quote, false);
-    const currency = quoteVolumeCurrency(quote);
+    const basis = quoteVolume == null ? "24h" : quoteStatsBasisText(quote, false);
+    const currency = quoteVolume == null ? "USD" : quoteVolumeCurrency(quote);
     const value = currency ? formatChartLegendValue(volume, currency, "volume") : formatCompact(volume, { fixedDecimals: true });
     stats.push({ label: "Volume", value, ...(basis ? { detail: basis } : {}) });
   }
@@ -238,7 +242,8 @@ export function buildOverviewStats({
     const converted = convertMarketCapitalization(value, currency, baseCurrency, marketCapExchangeRates);
     return converted == null ? undefined : formatCompactCurrency(converted, baseCurrency, { fixedDecimals: true });
   };
-  const capitalization = liveMarketCapitalization(quote, fundamentals);
+  const capitalization = liveMarketCapitalization(quote, fundamentals)
+    ?? (coin?.marketCap == null ? null : { value: coin.marketCap, currency: "USD" });
   if (capitalization) {
     stats.push({
       label: "Market Cap",
@@ -246,6 +251,9 @@ export function buildOverviewStats({
       detail: inBase(capitalization.value, capitalization.currency),
     });
   }
+  if (coin?.circulatingSupply != null) stats.push({ label: "Circ Supply", value: formatCompact(coin.circulatingSupply) });
+  if (coin?.maxSupply != null) stats.push({ label: "Max Supply", value: formatCompact(coin.maxSupply) });
+  if (coin) stats.push({ label: "Rank", value: `#${coin.rank}`, detail: coin.kind === "stablecoin" ? "stablecoins" : ["by market cap", "mkt cap"] });
   // A count read off a 10-K or 10-Q cover says when it was counted; the source's own is undated.
   const counted = (asOf: string | undefined) => (asOf ? { detail: [`as of ${asOf}`, `as of ${asOf.slice(5)}`] } : {});
   if (fundamentals?.sharesOutstanding) {

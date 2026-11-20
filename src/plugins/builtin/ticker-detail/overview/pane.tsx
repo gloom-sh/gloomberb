@@ -25,6 +25,7 @@ import { taxRatesFromSettings } from "../../../../market-data/tax-equivalent";
 import { PaneLinkMenu } from "../../../../components";
 import { FunctionLinkRow } from "./components";
 import { OVERVIEW_CHART_SCALE_SETTING, parseOverviewChartScaleChoice } from "./chart-scale";
+import { useCoinOverview } from "./coin";
 
 /** Registered by the chart composer, in the same plugin as this tab. */
 const CHART_TAB_ID = "chart";
@@ -33,6 +34,7 @@ const NEWS: OverviewFunctionLink = { name: "News", tabId: TICKER_NEWS_TAB_ID, te
 
 export function OverviewResearchTab({ width, height, focused }: TickerResearchTabProps) {
   const { symbol, ticker, financials } = usePaneTicker();
+  const coin = useCoinOverview(ticker, financials, focused);
   const snapshot = useTickerSnapshotState(symbol, ticker);
   const dispatch = useAppDispatch();
   const paneId = useOptionalPaneInstanceId();
@@ -66,6 +68,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       focused={focused}
       ticker={ticker}
       financials={financials}
+      coin={coin}
       onOpenChart={paneId && !lockedToOneTab ? openChart : undefined}
       onOpenFunction={openFunction}
       dividend={dividend}

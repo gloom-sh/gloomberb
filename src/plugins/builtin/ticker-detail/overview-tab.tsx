@@ -72,6 +72,7 @@ import { resolveOptionsTarget } from "../../../utils/options";
 import { buildOverviewStats, buildPositionRows, buildProfileFields, FINANCIALS } from "./overview/model";
 import { hasStatementFinancials } from "./financials/model";
 import type { OverviewFunctionLink, StatField } from "./overview/types";
+import type { CryptoMarketAsset } from "../../../api-client/crypto-markets";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../../../market-data/quotes/live-valuation";
 import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
@@ -113,6 +114,7 @@ function contractField(line: FuturesContractLine): StatField {
 }
 
 interface OverviewTabProps {
+  coin?: CryptoMarketAsset | null;
   /** The contracts on the security, given the width of the overview's content. */
   perpetuals?: ReactNode | ((contentWidth: number) => ReactNode);
   /** The company's latest news, given the width of the overview's content; it draws nothing while there is none. */
@@ -173,7 +175,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({
-  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, ah = null, boardLot = null, tax = null,
+  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, coin, dividend, ah = null, boardLot = null, tax = null,
   chartScale: chartScaleChoice = "auto", onChartScaleChange,
 }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
@@ -500,6 +502,7 @@ function ResolvedOverviewTab({
     ahPair: ah ? { other: ah.side === "h" ? ah.pair.a : ah.pair.h, side: ah.side, premiumPercent: ah.comparison?.premiumPercent ?? null, linked: !!depositaryPair } : null,
     quote,
     fundamentals: shownFundamentals,
+    coin,
     financialCurrency: financials?.financialCurrency,
     quoteCurrency,
     baseCurrency,
