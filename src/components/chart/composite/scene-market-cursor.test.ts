@@ -207,3 +207,31 @@ test("a cursor is shared as its bar's last instant, so a daily and an intraday c
   expect(applyCompositeChartCursor(dailyScene, new Date(compositeCursorAsOf(monthlyScene, new Date("2026-01-01"))), "linked").cursorDate?.toISOString())
     .toBe("2026-01-08T00:00:00.000Z");
 });
+
+test("a daily spread published after the newest monthly bar opened is drawn, read by the idle legend and reachable by the cursor", () => {
+  const months = ["2026-09-01", "2026-10-01", "2026-11-01"];
+  const fund = createTestResolvedSeries({
+    id: "fund", timeBasis: { kind: "market", timeZone: "America/New_York", cadenceMs: 30 * 86_400_000 },
+    points: months.map((month, index) => ({ date: new Date(month), value: 20 + index })),
+  });
+  const days = ["2026-10-29", "2026-10-30", "2026-11-17", "2026-11-18", "2026-11-19"];
+  const spread = createTestResolvedSeries({
+    id: "spread", unit: "bp", unitGroup: "basis-points", axis: "right",
+    points: days.map((day, index) => ({ date: new Date(day), value: 340 + index * 3 })),
+  });
+  // The chart opens on all loaded data, which ends at the spread's newest day.
+  const viewport = { start: new Date(months[0]!), end: new Date(days.at(-1)!) };
+  const scene = buildCompositeChartScene([fund, spread], [{ id: "main" }], { width: 101, height: 20, viewport })!;
+  const drawn = scene.panels[0]!.series.find(entry => entry.source.id === "spread")!.points;
+  // November's spread once had no market slot after it and was dropped: the line and legend stopped on Oct 30.
+  expect(drawn.map(point => new Date(point.timestamp).toISOString().slice(0, 10))).toEqual(days);
+  expect(drawn.at(-1)!.xRatio).toBeGreaterThan(drawn.at(-3)!.xRatio);
+  expect(drawn.at(-1)!.xRatio).toBeLessThanOrEqual(1);
+  expect(scene.cursorValues.find(value => value.seriesId === "spread")?.value).toBe(352);
+  expect(scene.cursorValues.find(value => value.seriesId === "fund")?.value).toBe(22);
+  const end = resolveAdjacentCompositeCursorDate(scene, null, -1)!;
+  expect(end.toISOString()).toBe("2026-11-19T00:00:00.000Z");
+  const inspected = applyCompositeChartCursor(scene, end);
+  expect(inspected.cursorValues.find(value => value.seriesId === "spread")?.value).toBe(352);
+  expect(inspected.cursorValues.find(value => value.seriesId === "fund")?.value).toBe(22);
+});

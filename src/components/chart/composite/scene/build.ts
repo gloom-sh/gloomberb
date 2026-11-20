@@ -91,16 +91,22 @@ export function buildCompositeChartScene(
     ? dataSeries.map((entry) => ({ ...entry, points: [] }))
     : scopedSeries;
   const visibleTimes = uniqueTimes.filter((time) => time >= startTime && time <= plotEndTime);
+  const lastAnchorTime = timeScale.kind === "market" ? timeScale.anchors.at(-1)?.timestamp ?? Number.POSITIVE_INFINITY : 0;
   const marketTimes = timeScale.kind === "market"
     // The first market controls session spacing, but every plotted market
     // observation must remain inspectable. Other exchanges can trade before
     // or after its anchors. Nonmarket source dates stay excluded: filings
     // retain their availability-based placement on eligible market slots.
+    // Past the last bar there is no slot, so an observation newer than it is
+    // read at its own time.
     ? mergeSortedTimestamps([
       timeScale.anchors.map(({ timestamp }) => timestamp),
       ...scopedSeries.filter(isMarketObservationSeries)
         .map((entry) => timestampsOf(normalizedSourcePoints(entry)
           .filter(({ value, point }) => value !== null || point.provenance?.priceHistoryIntegrity))),
+      ...scopedSeries.filter((entry) => !isMarketObservationSeries(entry))
+        .map((entry) => timestampsOf(normalizedSourcePoints(entry, timeScale)
+          .filter(({ value, timestamp }) => value !== null && timestamp > lastAnchorTime))),
     ]).filter((time) => time >= startTime && time <= plotEndTime)
     : [];
   const cursorTimes = timeScale.kind === "market" ? marketTimes : visibleTimes;
