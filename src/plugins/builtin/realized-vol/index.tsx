@@ -9,12 +9,13 @@ export const realizedVolModule: PluginModule = {
     defaultPosition: "right", shareItem: { ticker: true }, tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 112, height: 36 },
     tableExport: true,
     quickSettings: [{ type: "toggle", key: "showIv", icon: "marker", label: "Current ATM IV" }],
-    settings: { title: "Realized Volatility Settings", fields: [
+    // The pane draws the IV until it is turned off, so its header control and settings read it as on.
+    settings: (context) => ({ title: "Realized Volatility Settings", values: { showIv: context.settings.showIv !== false }, fields: [
       { key: "estimator", label: "Estimator", type: "select", options: ESTIMATOR_OPTIONS },
       { key: "windows", label: "Graph windows", type: "multi-select", options: WINDOW_OPTIONS },
       { key: "lookbackYears", label: "Lookback", type: "select", options: [{ value: "1", label: "1 year" }, { value: "2", label: "2 years" }] },
       { key: "showIv", label: "Current ATM IV", type: "toggle" },
-    ] },
+    ] }),
   }],
   paneTemplates: [
     { ...createTickerSurfacePaneTemplate({
