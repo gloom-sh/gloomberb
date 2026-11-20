@@ -85,13 +85,13 @@ export interface ChartPaneModel extends HeadlessSeriesResult {
  */
 function headlessCapabilityResolver(context: HeadlessPaneContext) {
   const registry = context.capabilities ? createChartSeriesResolver(context.capabilities) : null;
-  return async (source: CapabilitySeriesSource, viewport: ChartViewportSpec, spec: ChartSeriesSpec) => {
+  return async (source: CapabilitySeriesSource, viewport: ChartViewportSpec, spec: ChartSeriesSpec, barSize?: ChartBarSize) => {
     if (source.capabilityId === GEO_SERIES_CAPABILITY_ID) {
       const request = <T,>(path: string, init?: RequestInit) => context.apiClient.geo<T>(path, { ...init, signal: init?.signal ?? context.signal });
       return resolveGeoChartSeries(request, source.seriesId, viewport, context.signal);
     }
     if (!registry) throw new Error(uncoveredCapabilityMessage(source.capabilityId, source.seriesId));
-    return registry(source, viewport, spec);
+    return registry(source, viewport, spec, barSize);
   };
 }
 

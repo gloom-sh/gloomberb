@@ -8,6 +8,7 @@ import type {
   SeriesStyle,
   SeriesTransform,
 } from "../time-series/types";
+import type { ChartBarSize } from "../time-series/resolution";
 
 type CapabilityOperationKind = "read" | "query" | "action" | "stream";
 type CapabilitySideEffectLevel = "none" | "local-write" | "network-write" | "external-trade" | "external-side-effect";
@@ -91,7 +92,19 @@ export interface ChartSeriesCatalogRequest {
 
 export interface ChartSeriesResolveRequest {
   seriesId: string;
+  /**
+   * The chart's range, dates and bars. Its `resolution` is `auto` or a bar
+   * size sources serve (`1h`, `1d`), never one the chart builds: a 4h chart
+   * asks for the `1h` bars it builds from and says `barSize: 4h`.
+   */
   viewport: ChartViewportSpec;
+  /**
+   * Set when the chart builds its bars from `viewport.resolution` ones rather
+   * than drawing those (`4h` from `1h`, `2d` from `1d`): the size it draws. A
+   * series computed from a ticker's bars builds them the same way with
+   * `aggregatePriceBars`, as a loaded series does (`SeriesLoadRequest`).
+   */
+  barSize?: ChartBarSize;
   signal?: AbortSignal;
 }
 

@@ -800,6 +800,38 @@ describe("resolveChartSpecData", () => {
     expect(fallback.warnings).toContain("4H data is unavailable for this range. Auto resolution was used instead.");
   });
 
+  test("a plugin series on a 4h chart is asked for the hourly bars the chart builds from, the 4h size and the chart's session", async () => {
+    const asked: Array<{ viewport: ChartSpec["viewport"]; barSize?: string }> = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [{ resolution: "1h", maxRange: "1Y" }, { resolution: "1d", maxRange: "5Y" }],
+      getPriceHistoryForResolution: async () => Array.from({ length: 7 }, (_, index) => ({
+        date: new Date(Date.parse("2026-10-16T13:30:00Z") + index * 3_600_000), open: 100, high: 101, low: 99, close: 100.5, volume: 10,
+      })),
+    });
+    const result = await resolveChartSpecData(chartSpec({
+      viewport: { range: "1W", resolution: "4h", extendedHours: true, totalReturn: true },
+      series: [
+        chartSeries({ source: { kind: "security", instrument: { symbol: "AAPL", exchange: "NASDAQ" }, fieldId: "market.close" } }),
+        chartSeries({ id: "plugin", source: { kind: "capability", capabilityId: "charts.test", seriesId: "close/AAPL" } }),
+      ],
+    }), {
+      dataProvider: provider, now: new Date("2026-10-16T21:00:00Z"), loadFredSeries: async () => fredLoad(),
+      resolveCapabilitySeries: async (_source, viewport, _spec, barSize) => {
+        asked.push({ viewport, ...(barSize ? { barSize } : {}) });
+        return { id: "plugin", label: "Plugin", color: "#fff", unit: "value", unitGroup: "value", nativeFrequency: "auto", dataShape: "scalar",
+          style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none", points: [] };
+      },
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.barSize).toBe("4h");
+    // Only what a chart-series request carries: a total return is the chart's securities' own.
+    expect(asked).toEqual([{
+      viewport: { range: "1W", resolution: "1h", dateWindow: expect.objectContaining({ start: expect.any(String) }), extendedHours: true },
+      barSize: "4h",
+    }]);
+  });
+
   test("picks a supported interval when the range preset is unsupported", async () => {
     const requestedResolutions: string[] = [];
     const provider = createTestDataProvider({
@@ -2997,6 +3029,26 @@ describe("one-day charts show the latest session", () => {
     expect((await resolveExtended("AAPL", "SMART", true, routed)).viewport?.start).toEqual(new Date("2026-10-02T08:00:00Z"));
     await resolveExtended("AAPL261218C00300000", "", true, { ...routed, localSymbol: "AAPL261218C00300000", secType: "OPT", right: "C", strike: 300, lastTradeDateOrContractMonth: "20261218", multiplier: "100" });
     expect(requests).toEqual(["extended", undefined]);
+  });
+
+  test("4h bars with extended hours start at the 04:00 pre-market open, on first paint as once the chart lands", async () => {
+    const bars = hourlyBars("2026-10-02T08:00:00Z", "2026-10-02T23:00:00Z", 333);
+    const spec = chartSpec({
+      viewport: { range: "1W", resolution: "4h", extendedHours: true },
+      series: [chartSeries({ style: "candles", source: { kind: "security", instrument: { symbol: "AAPL", exchange: "NASDAQ" }, fieldId: "market.ohlcv" } })],
+    });
+    const settled = await resolveChartSpecData(spec, {
+      dataProvider: createTestDataProvider({
+        getChartResolutionSupport: () => [{ resolution: "1h", maxRange: "1Y" }],
+        getPriceHistoryForResolutionWithMetadata: async (_symbol, _exchange, _range, resolution) => ({ points: bars, resolution, extendedHours: true }),
+      }),
+      now: new Date("2026-10-03T12:00:00Z"), loadFredSeries: async () => fredLoad(),
+    });
+    const times = (result: { series: Array<{ points: Array<{ date: Date }> }> } | null) => result?.series[0]?.points.map((point) => point.date.toISOString());
+    const anchored = ["2026-10-02T08:00:00.000Z", "2026-10-02T12:00:00.000Z", "2026-10-02T16:00:00.000Z", "2026-10-02T20:00:00.000Z"];
+    expect(times(settled)).toEqual(anchored);
+    const seeded = seedChartResolutionResult(spec, new Map([[chartQuoteOverrideKeyForSource(spec.series[0]!.source), bars]]), new Date("2026-10-03T12:00:00Z"));
+    expect(times(seeded)).toEqual(anchored);
   });
 
   /** GP QQQ 1D extended printed $654.41 -0.28%: the last bar's price beside a quote's move read a moment apart, -0.39% from the 656.95 close. */

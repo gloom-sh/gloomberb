@@ -10,7 +10,7 @@ import type {
   TimeSeriesPoint,
 } from "../time-series/types";
 import { TIME_RANGES } from "../time-series/range";
-import { isChartResolution } from "../time-series/resolution";
+import { chartBarSizeSource, isChartResolution, isCustomChartResolution, type ChartBarSize } from "../time-series/resolution";
 import type {
   CapabilityInvoker,
   CapabilitySchema,
@@ -121,10 +121,11 @@ function catalogRequest(value: unknown): ChartSeriesCatalogRequest {
 
 function viewport(value: unknown): ChartViewportSpec {
   const input = object(value, "resolve viewport");
-  onlyKeys(input, "resolve viewport", ["range", "resolution", "dateWindow", "maxPoints"]);
+  onlyKeys(input, "resolve viewport", ["range", "resolution", "dateWindow", "maxPoints", "extendedHours"]);
   const range = enumValue<ChartViewportSpec["range"]>(input.range, "viewport range", ranges);
   if (!isChartResolution(input.resolution)) fail("viewport resolution", `unsupported value ${String(input.resolution)}.`);
   const resolution = input.resolution;
+  if (input.extendedHours !== undefined && typeof input.extendedHours !== "boolean") fail("viewport extended hours", "expected a boolean.");
   let dateWindow: ChartViewportSpec["dateWindow"];
   if (input.dateWindow !== undefined) {
     const window = object(input.dateWindow, "viewport date window");
@@ -145,15 +146,26 @@ function viewport(value: unknown): ChartViewportSpec {
     }
     maxPoints = input.maxPoints as number;
   }
-  return { range, resolution, ...(dateWindow ? { dateWindow } : {}), ...(maxPoints ? { maxPoints } : {}) };
+  return {
+    range, resolution, ...(dateWindow ? { dateWindow } : {}), ...(maxPoints ? { maxPoints } : {}),
+    ...(input.extendedHours === true ? { extendedHours: true } : {}),
+  };
 }
 
 function resolveRequest(value: unknown): ChartSeriesResolveRequest {
   const input = object(value, "resolve request");
-  onlyKeys(input, "resolve request", ["seriesId", "viewport"]);
+  onlyKeys(input, "resolve request", ["seriesId", "viewport", "barSize"]);
   const seriesId = boundedString(input.seriesId, "series ID", 240);
   if (!isValidChartSeriesId(seriesId)) fail("series ID", "contains unsupported characters.");
-  return { seriesId, viewport: viewport(input.viewport) };
+  if (input.barSize !== undefined && !isCustomChartResolution(input.barSize)) fail("bar size", `unsupported value ${String(input.barSize)}.`);
+  const view = viewport(input.viewport);
+  // A caller that names a built size as the resolution (4h) asks for the bars it is built from, as a chart does.
+  const barSize = input.barSize ?? (isCustomChartResolution(view.resolution) ? view.resolution : undefined);
+  return {
+    seriesId,
+    viewport: isCustomChartResolution(view.resolution) ? { ...view, resolution: chartBarSizeSource(barSize!) } : view,
+    ...(barSize !== undefined ? { barSize } : {}),
+  };
 }
 
 function catalogItem(value: unknown, index: number): ChartSeriesCatalogItem {
@@ -351,6 +363,7 @@ export async function searchChartSeriesCapabilities(
 export function chartSeriesSourceKey(
   source: CapabilitySeriesSource,
   viewport?: ChartViewportSpec,
+  barSize?: ChartBarSize,
 ): string {
   return JSON.stringify([
     "chart-series",
@@ -361,6 +374,8 @@ export function chartSeriesSourceKey(
       resolution: viewport.resolution,
       dateWindow: viewport.dateWindow ?? null,
       maxPoints: viewport.maxPoints ?? null,
+      ...(viewport.extendedHours ? { extendedHours: true } : {}),
+      ...(barSize ? { barSize } : {}),
     } : null,
   ]);
 }
@@ -370,10 +385,11 @@ export function createChartSeriesResolver(invoker: CapabilityInvoker) {
     source: CapabilitySeriesSource,
     viewport: ChartViewportSpec,
     _spec: ChartSeriesSpec,
+    barSize?: ChartBarSize,
   ): Promise<ResolvedSeries> => invoker.invokeCapability<ResolvedSeries>(
     source.capabilityId,
     "resolve",
-    { seriesId: source.seriesId, viewport } satisfies ChartSeriesResolveRequest,
+    { seriesId: source.seriesId, viewport, ...(barSize ? { barSize } : {}) } satisfies ChartSeriesResolveRequest,
   ).catch((error: unknown) => {
     // No source registered under the id: it is not covered. A source turned off still says to turn it on.
     if (error instanceof Error && error.message === `Capability "${source.capabilityId}" is not available.`) {
