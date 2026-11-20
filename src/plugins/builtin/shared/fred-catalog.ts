@@ -186,6 +186,8 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
       ["WCOILWTICO", "WTI crude oil spot (weekly)", "USD/barrel", "weekly", "U.S. Energy Information Administration", ["oil", "crude"]],
       ["DCOILBRENTEU", "Brent crude oil spot", "USD/barrel", "daily", "U.S. Energy Information Administration", ["oil", "crude"]],
       ["DHHNGSP", "Henry Hub natural gas spot", "USD/MMBtu", "daily", "U.S. Energy Information Administration", ["natural gas"]],
+      ["DJFUELUSGULF", "US Gulf Coast jet fuel spot", "USD/gallon", "daily", "U.S. Energy Information Administration",
+        ["jet fuel", "kerosene", "aviation fuel", "jet kerosene"]],
       ["NATURALGAS", "Natural gas consumption", "billion cubic feet", "monthly", "U.S. Energy Information Administration", ["natural gas"]],
     ],
   },

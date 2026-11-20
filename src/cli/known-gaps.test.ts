@@ -91,10 +91,10 @@ test("LME and Shanghai metals are said to be uncovered, pointing at COMEX curves
   expect(knownGapMessage("copper")).toBeNull();
 });
 
-test("jet fuel and kerosene lead to heating oil's price and COT, and the EIA's jet fuel stocks, not POWER", () => {
-  // `catalog "jet fuel"` opened POWER, and `catalog kerosene` found nothing.
+test("jet fuel and kerosene lead to its spot price, heating oil's price and COT, and the jet fuel stocks, not POWER", () => {
+  // `catalog "jet fuel"` opened POWER, and `catalog kerosene` found nothing; `search 'jet fuel'` said no price series.
   const gap = knownGapMessage("jet fuel")!;
-  expect(gap).toStartWith("Jet fuel (kerosene): no price series; heating oil (NY Harbor ULSD) is the usual proxy");
+  expect(gap).toStartWith("Jet fuel (kerosene): a spot price only, the US Gulf Coast's, daily in USD/gallon: gloom fred DJFUELUSGULF.");
   for (const route of ["gloom quote HO=F", "gloom fn G CAP:doe:jet", "gloom fn COT HO"]) expect(gap).toContain(route);
   for (const query of ["kerosene", "Jet Fuel", "jet fuel prices", "aviation fuel", "airline jet fuel"]) expect(knownGapMessage(query), query).toBe(gap);
   for (const query of ["fuel", "jet", "fuel cells"]) expect(knownGapMessage(query), query).toBeNull();
