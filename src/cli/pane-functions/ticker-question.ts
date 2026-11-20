@@ -1,3 +1,4 @@
+import { majorListings } from "../../tickers/search/major-listings";
 import { isUsListingExchange } from "../../utils/exchanges";
 
 /**
@@ -35,7 +36,7 @@ let majorUsSymbols: Promise<ReadonlySet<string>> | null = null;
 
 /** The US listings shipped with the app, read the first time a question names a symbol, so a launch never loads them. */
 function knownUsSymbols(): Promise<ReadonlySet<string>> {
-  majorUsSymbols ??= import("../../tickers/search/major-listings.chunk").then(({ MAJOR_LISTINGS }) => new Set(MAJOR_LISTINGS
+  majorUsSymbols ??= majorListings().then((listings) => new Set(listings
     .filter(([, , exchange]) => isUsListingExchange(exchange)).map(([symbol]) => symbol.toUpperCase())));
   return majorUsSymbols;
 }
