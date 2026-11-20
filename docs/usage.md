@@ -166,10 +166,32 @@ Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or 
 
 ### Custom keybindings
 
-Every global and pane management key can be moved, and any command bar text can be put on a key.
+Global shortcuts, pane management keys and shared navigation keys can be moved, and any command bar text can be put on a key.
 
 - `HELP` > Shortcuts: press Enter on a row (or double-click) to capture the next chord. `x` unbinds, `0` restores the default, `N` starts a command binding. Typing a command such as `DES AAPL` in the command bar also offers a `Bind a key` row.
 - A chord a built-in action already uses (`Ctrl+P` for the command bar, `Ctrl+W` to close a pane, `Q` to quit) is refused with the action it belongs to (`Ctrl+P is taken: Open the command bar.`), and the capture waits for another key. Unbind or move that action first to free its key. `gloom config set keybindings...` refuses such a chord with the same message and saves nothing; since the table serves the terminal and the desktop app, a key either one's built-in action uses (`Q` quits the terminal) stays taken. A plugin's shortcut is not protected: the capture binds and says `Also bound to` it.
+- **Navigation** in the Shortcuts editor remaps the directions used by shared tabs, table rows, lists, forms, pane scrolling and window movement. `navigate-prev-view` and `navigate-next-view` change the nested-view keys (defaults `{` and `}`). Overrides replace all defaults for that action, so include the arrow if you want to keep it. For example:
+
+  ```bash
+  gloom config set keybindings.actions.navigate-left "Alt+Left Left"
+  gloom config set keybindings.actions.navigate-right "Alt+Right Right"
+  ```
+
+  Plain letters can also be used for a keyboard layout such as Bépo. A key already bound to a global action must be freed first. Navigation stays local to the active control; text fields keep their typing and editing keys. Pane-specific actions (add, export, open source) and specialized editors retain their own keys. The shortcut editor and CLI warn if a navigation action has no keys left.
+
+- **Layouts** also lists `switch-layout-1` through `switch-layout-9`, initially unbound. These actions select a layout by position regardless of the key's character. For Bépo, for example:
+
+  ```bash
+  gloom config set keybindings.actions.switch-layout-1 'Ctrl+"'
+  gloom config set keybindings.actions.switch-layout-2 'Ctrl+«'
+  gloom config set keybindings.actions.switch-layout-3 'Ctrl+»'
+  gloom config set keybindings.actions.switch-layout-4 'Ctrl+('
+  gloom config set keybindings.actions.switch-layout-5 'Ctrl+)'
+  ```
+
+  The layout tabs display those bindings. Direct layout bindings stay inactive while a text field, dialog or the command bar owns input.
+
+- The layout-number defaults are `CmdOrCtrl+Digit` and, in the terminal, `Alt+Digit`. To also accept shifted numbers on Bépo, add `CmdOrCtrl+Shift+Digit` or `Alt+Shift+Digit` to `switch-layout`. If your terminal uses `Alt+number` for its own tabs, use the Control variant or move the conflicting shortcut. Gloom cannot receive keys the terminal intercepts.
 - Where the backtick is a dead key, type after `Ctrl+P` to search symbols, or rebind ticker search.
 
 The table lives in `config.json` and the CLI:

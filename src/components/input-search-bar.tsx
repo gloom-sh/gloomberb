@@ -4,7 +4,15 @@ import { colors, placeholderText } from "../theme/colors";
 import { Icon } from "./ui/icon";
 import { useAppInputCapture } from "../state/app/input-capture";
 import { useShortcut } from "../react/input";
-import { isPlainArrowDown, stopSearchFocusNavigation } from "../utils/search-focus-navigation";
+import { matchesNavigationKey, useKeybindings } from "../app/keybindings";
+import { isPlainArrowDown, isPlainArrowUp, stopSearchFocusNavigation, type SearchFocusNavigationEvent } from "../utils/search-focus-navigation";
+
+export function useSearchFocusUp() {
+  const bindings = useKeybindings();
+  return useCallback((event: SearchFocusNavigationEvent) => (
+    matchesNavigationKey(bindings, "up", event, { defaultMatches: isPlainArrowUp(event) })
+  ), [bindings]);
+}
 
 export function InputSearchBar({
   value,
@@ -58,9 +66,12 @@ export function InputSearchBar({
   // query bar's search segment: the band, the pane's inset, the hairline under it.
   const band = nativePaneChrome === true && appearance === "strip";
   useAppInputCapture(focused && active);
+  const bindings = useKeybindings();
 
   useShortcut((event) => {
-    if (!onNavigateDown || !isPlainArrowDown(event)) return;
+    if (!onNavigateDown || !matchesNavigationKey(bindings, "down", { ...event, targetEditable: true }, {
+      allowEditable: true, defaultMatches: isPlainArrowDown(event),
+    })) return;
     stopSearchFocusNavigation(event);
     onNavigateDown();
   }, {

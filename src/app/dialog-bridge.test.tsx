@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { act, useEffect } from "react";
 import { Button } from "../components/ui/button";
+import { ChoiceDialog } from "../components/ui/choice-dialog";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "../remote/semantic-tree";
 import { AppContext, createInitialState, useAppSelector } from "../state/app/context";
@@ -9,6 +10,7 @@ import { createDefaultConfig } from "../types/config";
 import { Text } from "../ui";
 import { useDialog } from "../ui/dialog";
 import { AppDialogBridge } from "./dialog-bridge";
+import { KeybindingsProvider, resolveKeybindings } from "./keybindings";
 
 const tui = createOpenTuiTestHarness();
 
@@ -52,4 +54,25 @@ test("dialog content reads the app store and registers with the app's remote reg
 
   expect(tui.frame()).toContain("query:bridged");
   expect(registry.snapshot().some((node) => node.role === "button" && node.label === "Save")).toBe(true);
+});
+
+test("the mounted choice dialog uses the app's custom directions, not the host defaults", async () => {
+  const chosen: string[] = [];
+  function OpenChoice() {
+    const dialog = useDialog();
+    useEffect(() => {
+      void dialog.prompt<string>({ content: (context) => <ChoiceDialog {...context} title="Pick a letter" choices={[
+        { id: "a", label: "Alpha" }, { id: "b", label: "Bravo" }, { id: "c", label: "Charlie" },
+      ]} /> }).then((value) => { if (value != null) chosen.push(value); });
+    }, [dialog]);
+    return null;
+  }
+  const bindings = resolveKeybindings({ actions: { "navigate-down": "T" } });
+  await tui.render(<KeybindingsProvider value={bindings}><AppDialogBridge /><OpenChoice /></KeybindingsProvider>);
+  await tui.waitForFrameToContain("Charlie");
+  await tui.emitKeypress({ name: "j" });
+  await tui.emitKeypress({ name: "down" });
+  await tui.emitKeypress({ name: "t" });
+  await tui.emitKeypress({ name: "return" });
+  expect(chosen).toEqual(["b"]);
 });

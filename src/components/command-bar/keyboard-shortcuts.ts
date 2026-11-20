@@ -7,8 +7,7 @@ import {
   handleRouteBackShortcut,
   handleThemePickerShortcut,
   isCommitShortcut,
-  isMoveDownShortcut,
-  isMoveUpShortcut,
+  commandBarListStep,
   isPlainTab,
   resolveListJump,
   type RefLike,
@@ -107,10 +106,12 @@ export function useCommandBarKeyboardShortcuts({
       return;
     }
 
+    const listStep = commandBarListStep(event, keybindings);
     if (handlePickerRouteShortcut({
       activateListSelection,
       currentRoute,
       event,
+      listStep,
       moveListSelection,
     })) {
       return;
@@ -118,6 +119,7 @@ export function useCommandBarKeyboardShortcuts({
 
     if (handleThemePickerShortcut({
       event,
+      listStep,
       themePickerActive,
       themePickerRef,
     })) {
@@ -127,15 +129,9 @@ export function useCommandBarKeyboardShortcuts({
     const activeListState = visibleListStateRef.current;
     if (!activeListState) return;
 
-    if (isMoveDownShortcut(event)) {
+    if (listStep) {
       consumeShortcutEvent(event);
-      moveListSelection(1);
-      return;
-    }
-
-    if (isMoveUpShortcut(event)) {
-      consumeShortcutEvent(event);
-      moveListSelection(-1);
+      moveListSelection(listStep);
       return;
     }
 

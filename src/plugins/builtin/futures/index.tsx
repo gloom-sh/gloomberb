@@ -19,7 +19,8 @@ import { useOptionalPaneSettingUpdater, usePaneInstance, usePaneSettingValue } f
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { isPlainKey } from "../../../utils/keyboard";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
@@ -288,17 +289,18 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     return false;
   }, [cycleSort, refresh]);
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
   ) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return handlePaneKey(event);
-  }, [focusSearch, handlePaneKey]);
+  }, [isSearchUp, focusSearch, handlePaneKey]);
 
   // `fn FUT` and `shot FUT` are dated by the quotes the board shows, as `quote` dates them:
   // the newest, its delay, and whether the markets are open.

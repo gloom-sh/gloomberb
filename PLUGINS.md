@@ -1881,6 +1881,20 @@ Every pane has to work with no mouse, in the terminal and on the desktop. Most o
 - **Key labels follow the host.** On a Mac (the desktop app and a Mac browser) keys read in Apple's notation, `⇧⌘F`, `⌃S`, `⇧↩`; the terminal, Windows and Linux spell them out, `Ctrl+Shift+F`. Write keys in the keybinding grammar (`Ctrl+S`, `Shift+Enter`, `CmdOrCtrl+F`): footer hints, `Button` and `IconButton` shortcuts, menu accelerators and dialog key hints show them in the host's notation. A key named inside a sentence goes through `useShortcutLabel()` from `gloomberb/ui`: `` `press ${useShortcutLabel()("Ctrl+S")} to save` ``. Never write `Cmd+` or `Ctrl+` into copy.
 - Pane keys are single unmodified letters that the app has not reserved. The reserved keys are listed in [pane conventions](docs/pane-conventions.md#8-sidebars-loading-input).
 
+### Configurable navigation
+
+Shared controls read the `navigate-left`, `navigate-right`, `navigate-up`,
+`navigate-down`, `navigate-prev-view` and `navigate-next-view` actions from the
+user's keybinding table. Custom controls can import `useNavigationKey` and
+the `NavigationAction` type from `gloomberb/react`. Call `useNavigationKey()`
+in the component, then use `isNavigationKey("left", event)` with the returned
+matcher and the event from `useShortcut`, instead of hardcoding `h`.
+Navigation is scoped to the focused control and yields to global shortcuts
+and editable fields. A filtered list that intentionally lets arrows move its
+results while typing can pass `{ allowEditable: true }`; typing chords still
+stay with the field. Do not register navigation as a global shortcut.
+
+
 ## UI guidelines for plugins
 
 The full set of pane conventions (anatomy, where actions and status go, table + detail stacks, load-more lists, tabs, forms, density, and a checklist) is in [docs/pane-conventions.md](docs/pane-conventions.md). The short version:

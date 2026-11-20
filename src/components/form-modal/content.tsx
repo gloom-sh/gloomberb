@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useKeybindings } from "../../app/keybindings";
 import { apiClient } from "../../api-client";
 import type { SignedInBroker } from "../../brokers/signed-in/client";
 import { runBrokerSignIn, type BrokerSignInOutcome } from "../../brokers/signed-in/sign-in";
@@ -23,8 +24,7 @@ import type {
   CommandBarWorkflowField,
 } from "../command-bar/workflow/types";
 import {
-  isMoveDownShortcut,
-  isMoveUpShortcut,
+  commandBarListStep,
   isPlainTab,
   isWorkflowSubmitShortcut,
 } from "../command-bar/keyboard-handlers";
@@ -98,14 +98,6 @@ function isCommit(event: KeyEventLike): boolean {
 
 function isSpace(event: KeyEventLike): boolean {
   return event.name === "space" || event.sequence === " ";
-}
-
-/** Up/Down, or Ctrl+P/Ctrl+N as in the bar's lists: the field above or below. */
-function fieldStep(event: KeyEventLike): number {
-  if ((event.name === "up" || event.name === "down") && (event.ctrl || event.meta || event.alt)) return 0;
-  if (isMoveUpShortcut(event)) return -1;
-  if (isMoveDownShortcut(event)) return 1;
-  return 0;
 }
 
 function consume(event: KeyEventLike): void {
@@ -501,6 +493,7 @@ export function FormModalContent({
     return () => nativeRenderer.off("frame", onFrame);
   }, [bodyRows, desktop, nativeRenderer, onSubmitStop, route.activeFieldId, scrollIntoView]);
 
+  const bindings = useKeybindings();
   useDialogKeyboard((event) => {
     // Esc belongs to the dialog host, which closes the form.
     if (event.name === "escape") return;
@@ -527,7 +520,10 @@ export function FormModalContent({
       setFocus(moveFormFocus(current, { fieldId: activeField?.id ?? null, onSubmit: onButton }, event.shift ? -1 : 1, true));
       return;
     }
-    const delta = inTextarea ? 0 : fieldStep(event);
+    const delta = inTextarea ? 0 : commandBarListStep(event, bindings, {
+      targetEditable: event.targetEditable === true || isWorkflowTextField(activeField),
+      defaultArrows: !event.ctrl && !event.meta && !event.alt,
+    });
     if (delta !== 0) {
       consume(event);
       setFocus(moveFormFocus(current, { fieldId: activeField?.id ?? null, onSubmit: onButton }, delta, false));

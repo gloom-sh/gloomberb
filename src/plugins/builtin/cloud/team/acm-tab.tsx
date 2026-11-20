@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { matchesNavigationKey, useKeybindings } from "../../../../app/keybindings";
 import { EmptyState, Notice, Spinner, loadingText } from "../../../../components";
 import { ListView, type ListViewItem } from "../../../../components/ui/list-view";
 import { useShortcut } from "../../../../react/input";
@@ -64,13 +65,14 @@ export function TeamsAccountTab({ focused, width }: { focused: boolean; width: n
     if (team) openTeamPane(createPaneFromTemplate, { teamId: team.id });
   };
 
+  const bindings = useKeybindings();
   useShortcut((event) => {
     if (!focused || event.targetEditable) return;
-    if (isPlainKey(event, "down", "j")) {
+    if (matchesNavigationKey(bindings, "down", event)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       setSelectedIndex((index) => Math.min(items.length - 1, index + 1));
-    } else if (isPlainKey(event, "up", "k")) {
+    } else if (matchesNavigationKey(bindings, "up", event)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       setSelectedIndex((index) => Math.max(0, index - 1));

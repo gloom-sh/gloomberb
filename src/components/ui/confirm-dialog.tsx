@@ -1,3 +1,4 @@
+import { useKeybindings } from "../../app/keybindings";
 import { useCallback, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Box, Text, TextAttributes, useUiHost } from "../../ui";
 import { colors } from "../../theme/colors";
@@ -258,6 +259,7 @@ function isTabKey(event: KeyEventLike): boolean {
 }
 
 function useQuestionAnswer(question: ConfirmDialogQuestion | undefined): QuestionAnswer {
+  const navigation = useKeybindings();
   const items = useMemo<ListViewItem[]>(() => (question?.choices ?? []).map(({ id, label }) => ({ id, label: t(label) })), [question?.choices]);
   const [choiceIndex, setChoiceIndex] = useState(-1);
   const [note, setNoteState] = useState("");
@@ -329,7 +331,7 @@ function useQuestionAnswer(question: ConfirmDialogQuestion | undefined): Questio
         if (cursorRef.current >= 0) toggle(cursorRef.current);
         return true;
       }
-      const move = listCursorMove(event, items.length);
+      const move = listCursorMove(event, items.length, navigation);
       if (!move) return false;
       event.preventDefault();
       setChoice(move(items, choiceRef.current >= 0 ? choiceRef.current : cursorRef.current));

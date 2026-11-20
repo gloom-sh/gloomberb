@@ -1,3 +1,4 @@
+import { useKeybindings } from "../../../app/keybindings";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import { Badge, Button, DialogFrame, DisclosureMarker, ListView, type SelectControl } from "../../../components";
@@ -32,13 +33,14 @@ export function accountModeLabel(mode: BrokerTradingMode | undefined): string {
 
 function BrokerAccountChoiceDialog({ accounts, value, resolve }: PromptContext<string> & Pick<BrokerAccountPickerProps, "accounts" | "value">) {
   const colors = useThemeColors();
+  const navigation = useKeybindings();
   const [index, setIndex] = useState(() => accounts.findIndex((account) => account.value === value));
   // Read the latest key movement, not the last rendered account, on Enter.
   const cursor = useRef(index);
   const selectIndex = (next: number) => { cursor.current = next; setIndex(next); };
   useDialogKeyboard((event) => {
     event.stopPropagation();
-    const move = listCursorMove(event, 5);
+    const move = listCursorMove(event, 5, navigation);
     if (move) { event.preventDefault(); selectIndex(move(accounts, cursor.current)); }
     else if (event.name === "return" || event.name === "enter") { event.preventDefault(); const selected = accounts[cursor.current]; if (selected) resolve(selected.value); }
     else if (event.name === "escape") { event.preventDefault(); resolve(""); }

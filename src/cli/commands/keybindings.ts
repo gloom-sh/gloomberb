@@ -23,7 +23,7 @@ const UNBIND_WORDS = new Set(["null", "none", "off", "unbind"]);
 const DEFAULT_WORDS = new Set(["default", "defaults", "reset"]);
 
 /** The effective table with defaults filled in, plus anything that needs fixing. */
-export function describeKeybindingsForCli(config: AppConfig): Record<string, unknown> {
+export function describeKeybindingsForCli(config: AppConfig) {
   const resolved = resolveKeybindings(config.keybindings);
   return {
     actions: Object.fromEntries(resolved.actions.map((action) => [

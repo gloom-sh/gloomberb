@@ -135,3 +135,7 @@ export { useAppVisible, usePaneVisible } from "../state/app/activity";
 // The class behind `useConnectionHealth()`. A value export so a plugin test
 // can construct one to exercise its own connection-status registration.
 export { ConnectionHealthRegistry } from "../core/connection-health";
+
+// Shared navigation honours the user's keyboard layout and leaves fields editable.
+export { useNavigationKey } from "../app/keybindings/react";
+export type { NavigationAction } from "../app/keybindings";

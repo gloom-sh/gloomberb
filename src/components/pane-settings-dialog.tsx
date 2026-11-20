@@ -1,9 +1,9 @@
+import { matchesNavigationKey, useKeybindings } from "../app/keybindings";
 import { useUiCapabilities } from "../ui";
 import { type AlertContext, useDialog, useDialogKeyboard } from "../ui/dialog";
 import { useEffect, useRef, useState } from "react";
 import type { PaneSettingField, PaneSettingRowNote } from "../types/plugin";
 import type { PluginRegistry } from "../plugins/registry";
-import { isPlainKey } from "../utils/keyboard";
 import { openSelectField, type SelectFieldHandle } from "./ui/select-field";
 import { listCursorMove, stepListCursor } from "./ui/list-view";
 import {
@@ -46,6 +46,7 @@ export function PaneSettingsDialogContent({
 }: PaneSettingsDialogContentProps) {
   const dialog = useDialog();
   const isDesktop = useUiCapabilities().nativePaneChrome === true;
+  const navigation = useKeybindings();
   const descriptor = pluginRegistry.resolvePaneSettings(paneId);
   const fields = descriptor?.settingsDef.fields ?? [];
   // The cursor steps over action rows that cannot run, as the mouse does.
@@ -189,16 +190,16 @@ export function PaneSettingsDialogContent({
     event.stopPropagation();
     const plain = !event.ctrl && !event.meta && !event.alt;
     // The dialog grows to fit its fields, so a page is the whole list.
-    const move = listCursorMove(event, fields.length);
+    const move = listCursorMove(event, fields.length, navigation);
     if (move) {
       event.preventDefault();
       setSelectedIndex((index) => move(rows, index));
     } else if (plain && event.name === "tab") {
       event.preventDefault();
       setSelectedIndex((index) => stepListCursor(rows, index, event.shift ? -1 : 1, 1, true));
-    } else if (isPlainKey(event, "left", "h", "right", "l")) {
+    } else if (matchesNavigationKey(navigation, "left", event) || matchesNavigationKey(navigation, "right", event)) {
       event.preventDefault();
-      stepField(fields[selectedIndex], event.name === "left" || event.name === "h" ? -1 : 1);
+      stepField(fields[selectedIndex], matchesNavigationKey(navigation, "left", event) ? -1 : 1);
     } else if (event.name === "escape") dismiss();
     else if (event.name === "enter" || event.name === "return" || isSpaceKey(event)) {
       event.preventDefault();

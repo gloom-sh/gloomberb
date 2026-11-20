@@ -4,11 +4,18 @@
  * as the keys they happen to sit on today.
  */
 export type CoreKeybindingActionId =
+  | "navigate-left"
+  | "navigate-right"
+  | "navigate-up"
+  | "navigate-down"
+  | "navigate-prev-view"
+  | "navigate-next-view"
   | "command-bar"
   | "ticker-search"
   | "help"
   | "function-help"
   | "switch-layout"
+  | `switch-layout-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
   | "focus-next-pane"
   | "focus-prev-pane"
   | "refresh-ticker"
@@ -38,7 +45,7 @@ export type CoreKeybindingActionId =
   | "window-move-mode"
   | "window-resize-mode";
 
-type KeybindingActionCategory = "Global Keys" | "Pane Management";
+type KeybindingActionCategory = "Global Keys" | "Pane Management" | "Navigation" | "Layouts";
 
 export interface KeybindingActionDef {
   id: CoreKeybindingActionId;
@@ -46,6 +53,8 @@ export interface KeybindingActionDef {
   /** Help text. Kept in English here; the help pane translates it. */
   description: string;
   defaults: readonly string[];
+  /** A direct saved-layout binding; zero based, independent of the key pressed. */
+  layoutIndex?: number;
   /** Default chords the terminal adds after `defaults`, for keys only a terminal needs. */
   terminalDefaults?: readonly string[];
   /** Only the desktop app has this action; the terminal hides the row. */
@@ -112,7 +121,7 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
   },
   {
     id: "switch-layout",
-    category: "Global Keys",
+    category: "Layouts",
     description: "Switch saved layouts by number.",
     defaults: ["CmdOrCtrl+Digit"],
     // A terminal without the kitty protocol never sends Control with a digit
@@ -303,6 +312,49 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
     category: "Pane Management",
     description: "Enter window resize mode.",
     defaults: ["CmdOrCtrl+Shift+R"],
+  },
+  ...Array.from({ length: 9 }, (_, index): KeybindingActionDef => ({
+    id: `switch-layout-${index + 1}` as CoreKeybindingActionId,
+    category: "Layouts",
+    description: `Switch to saved layout ${index + 1}.`,
+    defaults: [],
+    layoutIndex: index,
+  })),
+  {
+    id: "navigate-left",
+    category: "Navigation",
+    description: "Move left or select the previous tab.",
+    defaults: ["H", "Left"],
+  },
+  {
+    id: "navigate-right",
+    category: "Navigation",
+    description: "Move right or select the next tab.",
+    defaults: ["L", "Right"],
+  },
+  {
+    id: "navigate-up",
+    category: "Navigation",
+    description: "Move up through rows, fields or content.",
+    defaults: ["K", "Up"],
+  },
+  {
+    id: "navigate-down",
+    category: "Navigation",
+    description: "Move down through rows, fields or content.",
+    defaults: ["J", "Down"],
+  },
+  {
+    id: "navigate-prev-view",
+    category: "Navigation",
+    description: "Show the previous nested view.",
+    defaults: ["{"],
+  },
+  {
+    id: "navigate-next-view",
+    category: "Navigation",
+    description: "Show the next nested view.",
+    defaults: ["}"],
   },
 ];
 

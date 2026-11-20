@@ -1,8 +1,8 @@
+import { matchesNavigationKey, useKeybindings } from "../../app/keybindings";
 import { useShortcut } from "../../react/input";
 import { useCallback, useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { scrollByLines } from "../../state/pane-scroll-registry";
 import type { ScrollBoxRenderable } from "../../ui";
-import { isPlainKey } from "../../utils/keyboard";
 import {
   DataTableView,
   type DataTableKeyEvent,
@@ -58,6 +58,7 @@ export function DataTableStackView<
   onCursorChange,
   ...tableProps
 }: DataTableStackViewProps<T, C>) {
+  const navigation = useKeybindings();
   useShortcut((event) => {
     if (!focused || !detailOpen || !keyboardNavigation) return;
     if (onDetailKeyDown?.(event) === true) {
@@ -65,7 +66,7 @@ export function DataTableStackView<
       return;
     }
     const scrollBox = detailScrollRef?.current;
-    const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
+    const delta = matchesNavigationKey(navigation, "down", event) ? 1 : matchesNavigationKey(navigation, "up", event) ? -1 : 0;
     if (!scrollBox || !delta) return;
     // Claimed at either end too, so the pane scroll keys never page it on.
     event.stopPropagation();

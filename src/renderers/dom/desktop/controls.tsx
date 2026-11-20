@@ -1,4 +1,6 @@
 /** @jsxImportSource react */
+import { matchesNavigationKey, useKeybindings } from "../../../app/keybindings";
+import { toKeyEventLike } from "../input-host";
 import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type RefObject } from "react";
 import { Box, Input, Text, Textarea, editableTextContextMenuItems, useRendererHost, useUiCapabilities } from "../../../ui";
 import { TextAttributes, type InputRenderable } from "../../../ui";
@@ -479,6 +481,7 @@ export function WebSegmentedControl({
   wrap = false,
   size = "default",
 }: SegmentedControlProps) {
+  const navigation = useKeybindings();
   const colors = useThemeColors();
   const enabled = options.filter((option) => !option.disabled);
   const large = size === "large";
@@ -536,10 +539,13 @@ export function WebSegmentedControl({
             tabIndex={option.disabled ? -1 : 0}
             onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
               if (option.disabled) return;
-              if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+              const key = toKeyEventLike(event.nativeEvent);
+              const left = matchesNavigationKey(navigation, "left", key, { defaultMatches: event.key === "ArrowLeft" });
+              const right = matchesNavigationKey(navigation, "right", key, { defaultMatches: event.key === "ArrowRight" });
+              if (left || right) {
                 event.preventDefault();
                 event.stopPropagation();
-                selectAdjacent(event.key === "ArrowLeft" ? -1 : 1);
+                selectAdjacent(left ? -1 : 1);
               } else if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 event.stopPropagation();

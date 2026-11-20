@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { matchesNavigationKey, useKeybindings } from "../../../app/keybindings";
 import {
   Tabs,
   usePaneHeaderTabs,
@@ -9,7 +10,6 @@ import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { scrollByLines } from "../../../state/pane-scroll-registry";
-import { isPlainKey } from "../../../utils/keyboard";
 
 export interface FilingYearReaderOptions {
   /** Filing years in the order the strip shows them. */
@@ -61,13 +61,14 @@ export function useFilingYearReader({
     onSelectYear(years[(index + 1) % years.length]!);
   }, [onSelectYear, year, years]);
 
+  const bindings = useKeybindings();
   // The pane footer binds the `o` and `y` hints.
   useShortcut(
     (event) => {
       if (handleRefreshKey(event, refresh)) return;
       // One line per press; marked handled so the pane scroll keys, which
       // page the document, do not scroll it again.
-      const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
+      const delta = matchesNavigationKey(bindings, "down", event) ? 1 : matchesNavigationKey(bindings, "up", event) ? -1 : 0;
       if (!delta) return;
       event.preventDefault();
       if (scrollRef.current) scrollByLines(scrollRef.current, delta);

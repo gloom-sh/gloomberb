@@ -4,6 +4,7 @@ import {
   getDefaultKeybindings,
   isPaneKeybindingAction,
   matchKeybinding,
+  matchesNavigationKey,
   menuAcceleratorFor,
   serializeKeyChord,
   type CoreKeybindingActionId,
@@ -123,7 +124,8 @@ export function modalSurfaceOwnsKey(
   keybindings: ResolvedKeybindings = getDefaultKeybindings(),
 ): boolean {
   if (!event.ctrl && !event.meta && !event.super && !event.alt) return true;
-  return matchKeybinding(keybindings, event) !== null;
+  return matchKeybinding(keybindings, event) !== null
+    || (["left", "right", "up", "down", "prev-view", "next-view"] as const).some((action) => matchesNavigationKey(keybindings, action, event));
 }
 
 export function inputCaptureAllowsPaneManagementShortcut(

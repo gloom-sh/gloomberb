@@ -1,3 +1,4 @@
+import { KeybindingsProvider, resolveKeybindings } from "../../app/keybindings";
 import { describe, expect, jest, test } from "bun:test";
 import { act, useState } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
@@ -251,6 +252,19 @@ const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event);
 const emitKeypressBatch = (events: TestKeyEvent[]) => tui.emitKeypress(events);
 
 describe("DataTableView", () => {
+  test("configured row keys move the cursor and commit it before a row action", async () => {
+    const navigation = resolveKeybindings({ actions: { "navigate-down": "è", "navigate-up": "é" } });
+    await tui.render(<KeybindingsProvider value={navigation}><Harness /></KeybindingsProvider>, { width: 100, height: 12 });
+    await renderSettled();
+    await emitKeypress({ name: "j", sequence: "j" });
+    await renderSettled();
+    expect(tui.frame()).toContain("cursor=First row selected=First row");
+    await emitKeypressBatch([{ name: "è", sequence: "è" }, { name: "è", sequence: "è" }, { name: "x", sequence: "x" }]);
+    await renderSettled();
+    expect(tui.frame()).toContain("cursor=Third row selected=Third row");
+    expect(tui.frame()).toContain("acted=Third row");
+  });
+
   test("owns row keyboard navigation and skips section headers", async () => {
     await tui.render(<Harness />, { width: 60, height: 12 });
 

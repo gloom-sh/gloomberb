@@ -16,7 +16,7 @@ import { recordFunctionOpen } from "../telemetry/usage-counts";
 import { createOneShots } from "../utils/one-shot";
 import { DOCS_PANE_TEMPLATE_ID } from "../docs/content";
 import { registerPaneDocsHandler } from "../docs/requests";
-import { isMoveDownShortcut, isMoveUpShortcut } from "../components/command-bar/keyboard-handlers";
+import { commandBarListStep } from "../components/command-bar/keyboard-handlers";
 import { pressStarPromptKey } from "./star-prompt/runtime";
 import { pressSinceLastVisitKey } from "./since-last-visit/keys";
 import { pressProWelcomeKey } from "./pro-welcome/keys";
@@ -165,10 +165,15 @@ export function useAppGlobalShortcuts({
     // keyboard the digit must not move layouts, but it still has to be
     // swallowed there or the webview hands Cmd-digit to the browser's own tab
     // switcher.
-    if (!isDetachedWindow && action === "switch-layout" && match?.kind === "action" && match.digit !== null) {
+    const directLayoutIndex = match?.kind === "action" ? match.action.def?.layoutIndex : undefined;
+    const layoutIndex = match?.kind === "action"
+      ? directLayoutIndex ?? (action === "switch-layout" && match.digit !== null ? match.digit - 1 : null)
+      : null;
+    if (!isDetachedWindow && layoutIndex !== null) {
       const layouts = state.config.layouts ?? [];
-      const idx = match.digit - 1;
+      const idx = layoutIndex;
       const uiOwnsKeyboard = dialogOpen || state.commandBarOpen || event.targetEditable === true;
+      if (directLayoutIndex !== undefined && (uiOwnsKeyboard || state.inputCaptured)) return;
       if (!uiOwnsKeyboard && idx < layouts.length && idx !== state.config.activeLayoutIndex) {
         dispatch({ type: "SWITCH_LAYOUT", index: idx });
       }
@@ -216,7 +221,7 @@ export function useAppGlobalShortcuts({
     if (!isDetachedWindow && action === "command-bar") {
       // Ctrl+P and Ctrl+N move the open bar's selection, so a bar chord that
       // is one of them only opens it; Esc and the bar's other chords close it.
-      if (state.commandBarOpen && (isMoveUpShortcut(event) || isMoveDownShortcut(event))) return;
+      if (state.commandBarOpen && commandBarListStep(event, keybindings)) return;
       if (ranAlready(action)) return;
       event.preventDefault();
       event.stopPropagation();

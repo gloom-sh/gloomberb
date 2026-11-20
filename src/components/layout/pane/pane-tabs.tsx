@@ -1,3 +1,4 @@
+import { serializeKeyChord, useKeybindings } from "../../../app/keybindings";
 import { useCallback, useId, useRef, type ReactNode } from "react";
 import { useUiCapabilities } from "../../../ui";
 import { QueryBar } from "../../ui/query-bar";
@@ -6,13 +7,6 @@ import { usePaneFooter, usePaneFooterScopeActive, usePaneViewKeys } from "./foot
 import { useNestedTabsDepth, usePaneHeaderTabs } from "./header-tabs";
 import { chromeBarRows } from "./sizing";
 
-/**
- * The keys that walk a nested strip's choices, as `h` and `l` walk the strip
- * above it. Both are free in every pane: `[` and `]` cycle a sort or an expiry,
- * and Shift+H and Shift+L are a chart's.
- */
-const PREVIOUS_VIEW_KEY = "{";
-const NEXT_VIEW_KEY = "}";
 /** After the view's own hints. */
 const VIEW_KEYS_FOOTER_ORDER = 50;
 
@@ -79,6 +73,12 @@ export function usePaneTabs(options: PaneTabsOptions | null): PaneTabs {
  * Their hint joins the pane's own; it never adds a footer row of its own.
  */
 function useNestedViewKeys(options: PaneTabsOptions | null) {
+  const bindings = useKeybindings();
+  const previousKeys = bindings.actionsById.get("navigate-prev-view")?.chords.map(serializeKeyChord) ?? [];
+  const nextKeys = bindings.actionsById.get("navigate-next-view")?.chords.map(serializeKeyChord) ?? [];
+  const hint = previousKeys.length === 1 && nextKeys.length === 1 && previousKeys[0]!.length === 1 && nextKeys[0]!.length === 1
+    ? previousKeys[0]! + nextKeys[0]!
+    : [...previousKeys, ...nextKeys].join("/");
   const scopeActive = usePaneFooterScopeActive();
   const choices = options ? options.tabs.filter((tab) => !tab.disabled).length : 0;
   const owns = usePaneViewKeys(!!options?.focused && scopeActive && choices > 1);
@@ -95,10 +95,10 @@ function useNestedViewKeys(options: PaneTabsOptions | null) {
   const registrationId = `nested-view-keys:${useId()}`;
   usePaneFooter(registrationId, () => owns ? {
     order: VIEW_KEYS_FOOTER_ORDER,
-    hints: [{ id: "nested-view", key: `${PREVIOUS_VIEW_KEY}${NEXT_VIEW_KEY}`, label: "view", title: "Next View", onPress: () => step(1), besideOthers: true }],
+    hints: hint ? [{ id: "nested-view", key: hint, label: "view", title: nextKeys.length ? "Next View" : "Previous View", onPress: () => step(nextKeys.length ? 1 : -1), besideOthers: true }] : [],
     keys: [
-      { id: "previous-view", key: PREVIOUS_VIEW_KEY, label: "", title: "Previous View", onPress: () => step(-1) },
-      { id: "next-view", key: NEXT_VIEW_KEY, label: "", title: "Next View", onPress: () => step(1) },
+      ...previousKeys.map((key, index) => ({ id: `previous-view:${index}`, key, label: "", title: "Previous View", onPress: () => step(-1) })),
+      ...nextKeys.map((key, index) => ({ id: `next-view:${index}`, key, label: "", title: "Next View", onPress: () => step(1) })),
     ],
-  } : null, [owns, step]);
+  } : null, [owns, step, bindings]);
 }

@@ -21,7 +21,8 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
 import { COUNTRY_FLAG_CELLS, withCountryFlag } from "../../../components/ui/country-flag";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginTickerActions } from "../../runtime";
 import { useCommandValue } from "../shared/command-tab";
@@ -141,14 +142,15 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
     hints,
   });
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return false;
-  }, [focusSearch]);
+  }, [isSearchUp, focusSearch]);
 
   const renderCell = useCallback((deal: IpoDeal, column: IpoColumn): DataTableCell => {
     switch (column.id) {

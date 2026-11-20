@@ -1,3 +1,4 @@
+import { matchesNavigationKey, type ResolvedKeybindings } from "../../app/keybindings";
 import type { KeyEventLike } from "../../react/input";
 import { isPlainBackspace } from "../../utils/back-navigation";
 import type { ListJump } from "./list/model";
@@ -11,12 +12,17 @@ export function consumeShortcutEvent(event: KeyEventLike): void {
   event.preventDefault();
 }
 
-export function isMoveUpShortcut(event: KeyEventLike): boolean {
-  return event.name === "up" || (event.ctrl && event.name === "p");
-}
-
-export function isMoveDownShortcut(event: KeyEventLike): boolean {
-  return event.name === "down" || (event.ctrl && event.name === "n");
+export function commandBarListStep(
+  event: KeyEventLike,
+  bindings: ResolvedKeybindings,
+  { targetEditable = true, defaultArrows = true } = {},
+): -1 | 0 | 1 {
+  if (event.ctrl && event.name === "p") return -1;
+  if (event.ctrl && event.name === "n") return 1;
+  const key = { ...event, targetEditable };
+  if (matchesNavigationKey(bindings, "up", key, { allowEditable: true, defaultMatches: defaultArrows && event.name === "up" })) return -1;
+  if (matchesNavigationKey(bindings, "down", key, { allowEditable: true, defaultMatches: defaultArrows && event.name === "down" })) return 1;
+  return 0;
 }
 
 export function isCommitShortcut(event: KeyEventLike): boolean {
@@ -73,23 +79,20 @@ export function handlePickerRouteShortcut({
   activateListSelection,
   currentRoute,
   event,
+  listStep,
   moveListSelection,
 }: {
   activateListSelection: (options?: { secondary?: boolean }) => void;
   currentRoute: CommandBarRoute | null;
   event: KeyEventLike;
+  listStep: number;
   moveListSelection: (delta: number) => void;
 }): boolean {
   if (currentRoute?.kind !== "picker") return false;
 
-  if (isMoveUpShortcut(event)) {
+  if (listStep) {
     consumeShortcutEvent(event);
-    moveListSelection(-1);
-    return true;
-  }
-  if (isMoveDownShortcut(event)) {
-    consumeShortcutEvent(event);
-    moveListSelection(1);
+    moveListSelection(listStep);
     return true;
   }
   if (isCommitShortcut(event)) {
@@ -101,23 +104,20 @@ export function handlePickerRouteShortcut({
 
 export function handleThemePickerShortcut({
   event,
+  listStep,
   themePickerActive,
   themePickerRef,
 }: {
   event: KeyEventLike;
+  listStep: number;
   themePickerActive: boolean;
   themePickerRef: RefLike<ThemePickerHandle | null>;
 }): boolean {
   if (!themePickerActive) return false;
 
-  if (isMoveUpShortcut(event)) {
+  if (listStep) {
     consumeShortcutEvent(event);
-    themePickerRef.current?.move(-1);
-    return true;
-  }
-  if (isMoveDownShortcut(event)) {
-    consumeShortcutEvent(event);
-    themePickerRef.current?.move(1);
+    themePickerRef.current?.move(listStep);
     return true;
   }
   if (isCommitShortcut(event)) {

@@ -165,9 +165,16 @@ export function useShellWindowMode({
     // Window mode is modal: a key it does not use must not reach the pane or
     // the app behind the preview (a pane letter, q, ?, Cmd+W on the real
     // layout). Platform chords such as Cmd+Q still go through.
-    if (!modalSurfaceOwnsKey(event, keybindings)) return;
+    const direction = directionFromWindowEditKey(event, keybindings);
+    if (!direction && !modalSurfaceOwnsKey(event, keybindings)) return;
     event.preventDefault();
     event.stopPropagation();
+    if (direction) {
+      setWindowMode((current) => current
+        ? applyWindowEditDirection(current, direction, event.shift, bounds, dockGeometryOptions)
+        : current);
+      return;
+    }
     if (event.ctrl || event.meta || event.super || event.alt) return;
     const name = (event.name ?? event.key ?? "").toLowerCase();
 
@@ -236,13 +243,6 @@ export function useShellWindowMode({
       setWindowMode((current) => current
         ? snapWindowEditPane(current, rect, bounds, dockGeometryOptions)
         : current);
-    } else {
-      const direction = directionFromWindowEditKey(event);
-      if (direction) {
-        setWindowMode((current) => current
-          ? applyWindowEditDirection(current, direction, event.shift, bounds, dockGeometryOptions)
-          : current);
-      }
     }
   }, { phase: "capture", scope: "window-mode", allowEditable: true, enabled: !!windowMode });
 

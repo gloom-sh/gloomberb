@@ -8,6 +8,8 @@ import type { SelectFieldHandle, SelectFieldProps } from "../../../components/ui
 import { withChoiceGroupHeadings } from "../../../components/ui/choice-groups";
 import { WebIcon } from "./icons";
 import { isInsideDialogSurface } from "../host/focus-scope";
+import { matchesNavigationKey, useKeybindings } from "../../../app/keybindings";
+import { toKeyEventLike } from "../input-host";
 
 const UNSET_VALUE = "\u0000unset";
 
@@ -36,6 +38,7 @@ export function WebSelectField({
   onChange,
 }: SelectFieldProps) {
   const colors = useThemeColors();
+  const bindings = useKeybindings();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const inline = variant === "inline";
@@ -100,7 +103,9 @@ export function WebSelectField({
         else openMenu();
       }}
       onKeyDown={(event) => {
-        if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown") return;
+        if (event.key !== "Enter" && event.key !== " " && !matchesNavigationKey(bindings, "down", toKeyEventLike(event.nativeEvent), {
+          defaultMatches: event.key === "ArrowDown",
+        })) return;
         event.preventDefault();
         event.stopPropagation();
         openMenu();

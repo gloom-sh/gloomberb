@@ -384,7 +384,7 @@ export function matchesKeyChord(chord: KeyChord, event: KeyChordEventLike): bool
   const raw = eventKeyName(event);
   const shift = event.shift === true;
   if (chord.key === "digit") {
-    return /^[1-9]$/.test(raw) && chord.shift === shift;
+    return keyChordDigit(event) !== null && chord.shift === shift;
   }
   const named = NAMED_KEY_BY_ALIAS.get(chord.key);
   if (named) {
@@ -403,7 +403,10 @@ export function matchesKeyChord(chord: KeyChord, event: KeyChordEventLike): bool
 /** The digit an event pressed, for chords on the `digit` family. */
 export function keyChordDigit(event: KeyChordEventLike): number | null {
   const raw = eventKeyName(event);
-  return /^[1-9]$/.test(raw) ? Number.parseInt(raw, 10) : null;
+  // Kitty reports the unshifted key name plus the character produced with
+  // Shift. On Bépo that can be a double-quote name and sequence '1'.
+  const digit = /^[1-9]$/.test(raw) ? raw : event.shift ? event.sequence : undefined;
+  return digit && /^[1-9]$/.test(digit) ? Number.parseInt(digit, 10) : null;
 }
 
 /**
