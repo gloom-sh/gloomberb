@@ -68,7 +68,8 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     const skewByDay = new Map(model.skew.map((point) => [point.date.getTime(), point.value]));
     const rows = model.iv30.map((point, index) => {
       const skew = skewByDay.get(point.date.getTime()) ?? null;
-      return { date: point.date.toISOString().slice(0, 10), iv30: point.value,
+      const date = point.date.toISOString().slice(0, 10);
+      return { date, iv30: point.value, offMarket: model.offMarket.has(date),
         iv90: model.iv90.find((entry) => entry.date.getTime() === point.date.getTime())?.value ?? null,
         iv365: iv365ByDay.get(point.date.getTime()) ?? null,
         hv: hvByDay.get(point.date.getTime()) ?? null, spread: model.spread[index]?.value ?? null,
@@ -84,7 +85,7 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     // With nothing served, the fate is why: no "not a ticker" or missing-history errors beside it.
     const { notes: fateNotes, errors } = listingFateReport(fate, { served },
       [prices.error, ...model.warnings].filter((value): value is string => !!value));
-    const notes = [...fateNotes, ...[model.oneYearNote, model.skewNote, model.riskReversalNote, model.staleNote]
+    const notes = [...fateNotes, ...[model.oneYearNote, model.skewNote, model.riskReversalNote, model.staleNote, model.offMarketNote]
       .filter((note): note is string => !!note)];
     if (event && releases) {
       const lookback = String(args.options.lookback) as IvLookback;
@@ -150,8 +151,11 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
         { title: "Statistics", columns: [...statColumns, { key: "basis", header: "Basis" }, { key: "stale", header: "Stale" }], textColumns: statTextColumns,
           rows: model.stats.map((row) => ({ ...row })) },
         // Exports always carry the skew columns, so a script's header never moves; the text table drops them when none has a value.
+        // An off-market close keeps its stored figures: the text marks its session, as a stale measure's date is marked,
+        // JSON says it in `offMarket`, and the notes date it for every format.
         { title: "Daily history", columns: [...historyColumns, ...skewColumns], rows,
-          ...(rows.some((row) => row.skew25d != null) ? {} : { textColumns: historyColumns }) },
+          textColumns: [{ ...historyColumns[0]!, textFormat: (value: unknown, row: unknown) => (row as { offMarket: boolean }).offMarket
+            ? `${String(value)} off-market` : String(value) }, ...historyColumns.slice(1), ...rows.some((row) => row.skew25d != null) ? skewColumns : []] },
       ],
       complete: payload.status === "ready" && errors.length === 0,
       unavailableSymbols: model.iv30.length ? [] : [instrument.symbol], errors,

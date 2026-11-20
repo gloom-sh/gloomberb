@@ -424,6 +424,14 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   try {
     // --output without a format is refused once the command is known: a plugin's own --output is not the export's.
     parsed = parseCliGlobalArgs(args, { deferOutputCheck: true });
+    if (!parsed.help && parsed.literalStart >= 2 && normalizeCliCommandToken(foldTypedText(parsed.args[0] ?? "")) === "fn"
+      && foldTypedText(parsed.args[1] ?? "").toUpperCase() === "ECO") {
+      parsed = parseCliGlobalArgs(args, { deferOutputCheck: true, ownsOutput: false });
+      const rest = parsed.args.slice(2);
+      const positionalCountry = parsed.literalStart > 2 && rest[0] && !rest[0].startsWith("-");
+      parsed.args = ["econ", ...(positionalCountry ? ["--country", ...rest] : rest)];
+      if (!positionalCountry) parsed.literalStart -= 1;
+    }
   } catch (error) {
     printCliError(asUsageError(error), inferCliErrorOptions(args));
     process.exitCode = 1;

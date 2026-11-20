@@ -54,6 +54,9 @@ export interface ScenarioPosition {
   /** Valuation origin in Unix milliseconds. */
   asOf: number;
   legs: ScenarioLeg[];
+  optionQuotesAt?: number | null;
+  unhedgedShares?: number;
+  stockOnlyExpiry?: number;
   /** Shares held with the legs; absent for an options-only position. */
   underlying?: ScenarioUnderlying;
 }
@@ -220,7 +223,8 @@ export function scenarioLegsText(position: Pick<ScenarioPosition, "symbol" | "le
 
 /** Also validates restored persistence values at the model boundary. */
 export function validatePosition(position: ScenarioPosition): string | null {
-  return validateScenarioInputs(position) ?? (position.legs.length ? null : "Add at least one option leg.");
+  return validateScenarioInputs(position) ?? (position.legs.length || (position.underlying && validDate(position.stockOnlyExpiry ?? NaN))
+    ? null : "Add at least one option leg.");
 }
 
 const DECIMAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
@@ -265,7 +269,7 @@ function prepare(position: ScenarioPosition): PreparedPosition {
   const problem = validatePosition(position);
   if (problem) throw new Error(problem);
   const closes = position.legs.map((leg) => optionExpirationClose(leg.expiration));
-  return { position, closes, expiryDate: Math.min(...closes) };
+  return { position, closes, expiryDate: closes.length ? Math.min(...closes) : position.stockOnlyExpiry! };
 }
 
 function aggregate(prepared: PreparedPosition, spot: number, date: number, volShift: number): ScenarioValuation {
@@ -319,7 +323,7 @@ export function expiryRisk(position: ScenarioPosition): ScenarioExpiryRisk {
   const problem = validatePosition(position);
   if (problem) return unavailableRisk(problem);
   const expiries = new Set(position.legs.map((leg) => optionExpirationClose(leg.expiration)));
-  if (expiries.size !== 1) return unavailableRisk("Mixed expirations: terminal breakevens and maximum profit/loss need an exercise and settlement path.");
+  if (expiries.size > 1) return unavailableRisk("Mixed expirations: terminal breakevens and maximum profit/loss need an exercise and settlement path.");
   const knots = [...new Set([0, ...position.legs.map((leg) => leg.strike)])].sort((a, b) => a - b);
   const values = knots.map((spot) => terminalPnl(position, spot));
   if (!values.every(Number.isFinite)) return unavailableRisk("Position exceeds model precision.");

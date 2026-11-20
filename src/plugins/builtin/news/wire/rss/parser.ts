@@ -1,6 +1,6 @@
 import type { MarketNewsItem } from "../../../../../types/news-source";
 import { decodeHtmlEntities } from "../../../../../utils/html-entities";
-import { hashString } from "../hash";
+import { hashString } from "../../../../../news/rss-hash";
 import { feedChildren, feedText, parseFeedXml, resolveFeedUrl, type FeedElement } from "./feed-xml";
 import { isManagedNewsFeedUrl } from "./managed-feed";
 

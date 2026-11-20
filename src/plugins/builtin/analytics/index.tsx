@@ -494,7 +494,7 @@ export const portfolioAnalyticsModule: PluginModule = {
       description: "Benchmark-relative risk, factor betas, stress shifts and local account evidence.",
       keywords: ["risk", "analytics", "sharpe", "beta", "sector", "allocation", "portfolio", "style", "quality", "factor tilt"],
       shortcut: {
-        prefix, argKind: "text", argOptional: true, argPlaceholder: "portfolio-id",
+        prefix, argKind: "text", argOnlySelects: true, argOptional: true, argPlaceholder: "portfolio-id",
         // `PORT Nope` names no portfolio: the bar says so, not the first portfolio's risk.
         argError: (arg, context) => unknownCollectionArgError(arg, context.config.portfolios, "portfolio", undefined, { prefix: true }),
       },

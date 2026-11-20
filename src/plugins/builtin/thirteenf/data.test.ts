@@ -108,16 +108,17 @@ describe("13F data cache", () => {
       const request = new URL(String(url));
       const path = request.pathname.split("/").at(-1);
       if (path === "tickers") return json([{ cusip: "111111111", ticker: "AAA" }]);
-      if (path === "holders") return json({ period_of_report: "2026-06-30", ciks: ["1", "2"] });
+      if (path === "holders") return json({ period_of_report: "2026-06-30", fallbackFromPeriod: "2026-09-30", ciks: ["1", "2"] });
       if (path === "forms" && request.searchParams.get("cik") === "0000000002") return new Response("unavailable", { status: 503 });
       return json([{ accession_number: "healthy", cik: "1", company_name: "Healthy Fund", period_of_report: "2026-06-30", filed_as_of_date: "2026-08-14", submission_type: "13F-HR", table_value_total: 100, table_entry_total: 1 }]);
     });
     const result = await loadBrowserRows("byTicker", "AAA");
+    expect(result.warning).toContain("30 Sep quarter not complete yet; showing 30 Jun");
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({ cik: "0000000001", name: "Healthy Fund", tableValueTotal: 100 });
     expect(result.rows[1]).toMatchObject({ cik: "0000000002", name: "0000000002" });
     expect(result.rows[1]?.tableValueTotal).toBeUndefined();
-    expect(result.warning).toBe("0000000002: filing metadata unavailable.");
+    expect(result.warning).toContain("0000000002: filing metadata unavailable.");
   });
 
   test("keeps performance returns and latest filing metadata in their own reporting periods", async () => {

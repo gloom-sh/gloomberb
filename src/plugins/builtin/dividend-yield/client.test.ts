@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { buildDividendMetrics, fetchDividendData, repriceDividendMetrics, toDividendPayment } from "./client";
-import { dividendReferencePrice } from "../../../utils/trailing-dividend";
+import { combinedPaymentTimes, dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment } from "./types";
 import type { DividendSummary } from "../../../api-client/market-discovery";
 import type { HeadlessPaneContext } from "../../../types/plugin";
@@ -313,11 +313,82 @@ describe("cash distribution calculations", () => {
       { rawArgument: "HSBA:LSE", argument: "HSBA:LSE", symbols: ["HSBA:LSE"], options: {} }).sections[0]!.textEntries!;
     expect(entries.find((entry) => entry.label === "Forward yield")?.formatted).toBe("4.08% (trailing regular payments: uneven interims)");
 
+    // Exports and the forward rate say the figure is the trailing year's, not a forward one.
+    const report = projectDividendYieldHeadless({ payments: hsba, metrics, price: 13.654, currency: "GBP" },
+      { rawArgument: "HSBA:LSE", argument: "HSBA:LSE", symbols: ["HSBA:LSE"], options: {} }).sections[0]!;
+    expect(report.entries!.map((entry) => entry.label)).toContain("Forward yield (trailing regular payments)");
+    expect(report.entries!.map((entry) => entry.label)).toContain("Forward rate (trailing regular payments)");
+    expect(report.textEntries!.find((entry) => entry.label === "Forward rate")?.formatted).toBe("£0.556718 (trailing regular payments: uneven interims)");
+    // A declared interim the size of the others is no new level: the final stands beside them.
+    expect(buildDividendMetrics(hsba, { ...stated, forwardRateAsOf: "2026-11-05" }, 13.654, { now: late }).forwardBasis).toBe("uneven");
+
     // Even quarters, and a year with a hole in it, keep the stated rate.
     const even = hsba.map((entry) => ({ ...entry, amount: 0.075 }));
     expect(buildDividendMetrics(even, stated, 13.654, { now: late })).toMatchObject({ forwardRate: 0.296536, forwardRateAsOf: "2026-08-13" });
     expect(buildDividendMetrics(even, stated, 13.654, { now: late }).forwardBasis).toBeUndefined();
     expect(buildDividendMetrics(hsba.filter((entry) => entry.amount !== 0.075079), stated, 13.654, { now: late }).forwardRate).toBe(0.296536);
+  });
+
+  test("a cut that held is the new rate, which the declared distribution annualizes, not the trailing year's total", () => {
+    const late = new Date("2026-11-20T12:00:00Z");
+    // ECC: $0.14 a month to March 2026, $0.06 from April; the next $0.06 is declared, ex 11 Dec.
+    const months = ["2025-12-11", "2026-01-12", "2026-02-09", "2026-03-11", "2026-04-10", "2026-05-11", "2026-06-10", "2026-07-13",
+      "2026-08-11", "2026-09-10", "2026-10-13", "2026-11-10"];
+    const ecc = months.map((date, index) => payment(date, index < 4 ? 0.14 : 0.06));
+    const stated: DividendSummary = { trailingAnnualDividendRate: 1.68, trailingAnnualDividendYield: null, payoutRatio: null,
+      exDividendDate: null, dividendDate: null, currency: "USD", forwardAnnualDividendRate: 0.72, forwardRateAsOf: "2026-12-11" };
+    const metrics = buildDividendMetrics(ecc, stated, 2.47, { now: late });
+    expect(metrics).toMatchObject({ forwardRate: 0.72, forwardRateAsOf: "2026-12-11", trailingRate: 1.04 });
+    expect(metrics.forwardBasis).toBeUndefined();
+    // A quarterly cut paid once so far is a new level only once the next one is declared at it.
+    const quarters = ["2025-12-01", "2026-03-02", "2026-06-01", "2026-09-01"].map((date, index) => payment(date, index < 3 ? 1 : 0.5));
+    const quarterly = (asOf: string) => buildDividendMetrics(quarters, { ...stated, forwardAnnualDividendRate: 2, forwardRateAsOf: asOf }, 50, { now: late });
+    expect(quarterly("2026-12-01")).toMatchObject({ forwardRate: 2 });
+    expect(quarterly("2026-09-01")).toMatchObject({ forwardRate: 3.5, forwardBasis: "uneven" });
+  });
+
+  test("a stated rate dated by a declared regular distribution is that amount at the payer's cadence", async () => {
+    setSystemTime(new Date("2026-11-20T12:00:00Z"));
+    // OXLC: $0.40 a month to March 2026, $0.20 from April, the next $0.20 declared; the stated rate read $1.20.
+    const months = ["2025-12-17", "2026-01-16", "2026-02-13", "2026-03-17", "2026-04-16", "2026-05-15", "2026-06-16", "2026-07-17",
+      "2026-08-17", "2026-09-16", "2026-10-16", "2026-11-16"];
+    const read = (declaredDividends: readonly Record<string, unknown>[]) => Response.json({ status: "success", data: { quote: null,
+      summary: { currency: "USD", trailingAnnualDividendRate: 3.2, trailingAnnualDividendYield: null, payoutRatio: null,
+        forwardAnnualDividendRate: 1.2, forwardRateAsOf: "2026-12-17", exDividendDate: null, dividendDate: null },
+      actions: { symbol: "OXLC", currency: "USD", coverage: { dividends: "available" }, splits: [], earnings: [],
+        dividends: months.map((exDate, index) => ({ exDate, amount: index < 4 ? 0.4 : 0.2 })), declaredDividends } } });
+    setHttpFetchTransport(async () => read([{ exDate: "2026-12-17", payDate: "2026-12-31", amount: 0.2 }]));
+    const data = await fetchDividendData("OXLC", 4.91, "NASDAQ", "USD");
+    expect(data.metrics).toMatchObject({ forwardRate: 2.4, forwardRateAsOf: "2026-12-17", paymentFrequency: "monthly" });
+    expect(data.metrics.forwardYield).toBeCloseTo(2.4 / 4.91, 10);
+    // A one-off declared on that date, or none at all, leaves the stated rate.
+    setHttpFetchTransport(async () => read([{ exDate: "2026-12-17", payDate: "2026-12-31", amount: 0.2, special: true }]));
+    expect((await fetchDividendData("OXLC", 4.91, "NASDAQ", "USD")).metrics.forwardRate).toBe(1.2);
+    setHttpFetchTransport(async () => read([]));
+    expect((await fetchDividendData("OXLC", 4.91, "NASDAQ", "USD")).metrics.forwardRate).toBe(1.2);
+  });
+
+  test("a regular payment and an extra one on one ex-date are labelled as one row of both", () => {
+    // ECC's $0.39 of 7 Oct 2022 is October's $0.14 and an extra $0.25; the $0.50 of 22 Dec has its own ex-date.
+    const history = [["2021-09-09", 0.1], ["2021-10-08", 0.12], ["2021-11-09", 0.12], ["2021-12-10", 0.12], ["2021-12-22", 0.5],
+      ["2022-01-10", 0.12], ["2022-02-07", 0.12], ["2022-03-10", 0.12], ["2022-04-08", 0.14], ["2022-05-10", 0.14], ["2022-06-09", 0.14],
+      ["2022-07-08", 0.14], ["2022-08-10", 0.14], ["2022-09-09", 0.14], ["2022-10-07", 0.39], ["2022-11-09", 0.14], ["2022-12-09", 0.14],
+      ["2022-12-22", 0.5], ["2023-01-10", 0.14], ["2023-02-07", 0.14], ["2023-03-10", 0.14], ["2023-04-06", 0.16], ["2023-05-10", 0.16],
+      ["2023-06-09", 0.16], ["2023-07-10", 0.16], ["2023-08-10", 0.16], ["2023-09-08", 0.16], ["2023-10-10", 0.16], ["2023-11-10", 0.16]] as const;
+    const payments = history.map(([date, amount]) => payment(date, amount));
+    expect([...combinedPaymentTimes(payments)].map((time) => new Date(time).toISOString().slice(0, 10))).toEqual(["2022-10-07"]);
+    // A final that is large every year (HSBC's) is no extra payment.
+    const finals = [["2024-08-15", 0.07], ["2024-11-07", 0.07], ["2025-03-13", 0.3], ["2025-05-15", 0.07], ["2025-08-14", 0.07],
+      ["2025-11-06", 0.075], ["2026-03-12", 0.33], ["2026-05-14", 0.074], ["2026-08-13", 0.074]] as const;
+    expect(combinedPaymentTimes(finals.map(([date, amount]) => payment(date, amount, "GBP"))).size).toBe(0);
+    const marked = payments.map((entry) => entry.exDate.toISOString().startsWith("2022-10-07") ? { ...entry, combined: true as const } : entry)
+      .sort((left, right) => right.exDate.getTime() - left.exDate.getTime());
+    const metrics = buildDividendMetrics(marked, null, 2.47, { now: new Date("2023-11-20T12:00:00Z") });
+    const table = projectDividendYieldHeadless({ payments: marked, metrics, price: 2.47, currency: "USD" },
+      { rawArgument: "ECC", argument: "ECC", symbols: ["ECC"], options: {} }).sections.find((section) => section.title === "Dividend history")!;
+    expect(table.rows?.find((row) => row.exDate === "2022-10-07")).toMatchObject({ amount: 0.39, combined: true });
+    const typeColumn = table.columns?.find((column) => column.key === "type");
+    expect(typeColumn?.format?.("cash", { combined: true })).toBe("cash, combined: regular + extra");
   });
 
   test("a London line of a dollar payer retains paid pence precision beside each declared amount, and a kept history is dated", async () => {

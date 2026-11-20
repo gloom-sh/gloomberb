@@ -21,7 +21,7 @@ import {
   NEWS_QUERY_PRESETS,
   type NewsIndustryCode,
   parseNewsIndustryCode,
-} from "./news/query-presets";
+} from "../../../../news/query-presets";
 
 export const TOPIC_NEWS_TITLE = "Topic News";
 
@@ -57,7 +57,6 @@ function useIndustryArticles(entry: NewsIndustryCode | null): IndustryArticles {
   const topicArticles = usePersistedNewsArticles(
     `industry:topic:${entry?.topic ?? "none"}:articles`,
     topicState.articles,
-    { keyFamily: "industry:topic:" },
   );
   const allArticles = usePersistedNewsArticles("industry:sector:all:articles", sectorState.articles);
   const sector = entry?.sector;
@@ -118,6 +117,7 @@ function IndustryNewsBody({ focused, width, height, entry, code, codeFilter }: P
   const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(loaded.query, loaded.newsState);
   const { search, searchQuery, ...stack } = useNewsArticleStack({
     paneKey: "industry",
+    listKey: code,
     articles,
     focused,
     width,

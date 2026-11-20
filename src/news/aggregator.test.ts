@@ -639,10 +639,12 @@ describe("NewsService across a session change", () => {
 
   it("replaces the stories when the session changes instead of merging the two feeds", async () => {
     const session = testSession("pro");
-    const service = new NewsService({ session: session.signal, visibility: alwaysVisible });
+    let trialExpired = false;
+    const scope = () => trialExpired ? "expired" : session.signal.key();
+    const service = new NewsService({ session: session.signal, savedCopyScope: scope, visibility: alwaysVisible });
     service.register(newsProvider({ id: "cloud", name: "cloud", provider: {
       fetchNews: async () => [],
-      fetchNewsPage: async () => (session.signal.key() === "pro"
+      fetchNewsPage: async () => (scope() === "pro"
         ? { articles: [live], access: "realtime" as const }
         : { articles: [heldBack], access: "delayed" as const }),
     } }));
@@ -652,6 +654,7 @@ describe("NewsService across a session change", () => {
     expect(service.getQueryState(query).articles.map((article) => article.id)).toEqual(["live"]);
 
     session.change("none");
+    expect(service.getQueryState(query).articles).toEqual([]);
     await Bun.sleep(0);
     const signedOut = service.getQueryState(query);
     expect(signedOut.articles.map((article) => article.id)).toEqual(["held-back"]);
@@ -661,6 +664,10 @@ describe("NewsService across a session change", () => {
     session.change("pro");
     await Bun.sleep(0);
     expect(service.getQueryState(query).articles.map((article) => article.id)).toEqual(["live"]);
+    trialExpired = true;
+    expect(service.getQueryState(query).articles).toEqual([]);
+    await service.poll(query);
+    expect(service.getQueryState(query).articles.map((article) => article.id)).toEqual(["held-back"]);
     dispose();
     service.stop();
   });

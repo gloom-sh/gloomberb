@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createChartSeriesResolver } from "../../capabilities";
+import { chartSeriesProvider, createChartSeriesResolver, type ChartSeriesResolveRequest } from "../../capabilities";
 import { AppPersistence } from "../../data/app-persistence";
 import { TickerRepository } from "../../data/ticker-repository";
 import { SERIES_CATALOG_CAPABILITY_ID } from "../../series/capability";
@@ -81,6 +81,42 @@ describe("plugin series", () => {
     registry.unregister("garden");
     expect(registry.series.catalog()).toEqual([]);
     expect(registry.capabilities.get("garden")).toBeUndefined();
+  });
+
+  test("a plugin is asked for bars its source serves, the size the chart builds from them and the chart's session", async () => {
+    const { registry } = createRegistry();
+    const asked: SeriesLoadRequest[] = [];
+    await registry.register({
+      id: "bars", name: "Bars", version: "1.0.0",
+      series: [{ id: "bars:close", name: "Close", unit: "number", frequency: "intraday", input: "ticker", load: (request) => { asked.push(request); return []; } }],
+    });
+    const raw: ChartSeriesResolveRequest[] = [];
+    registry.capabilities.register("raw", chartSeriesProvider({ id: "raw", name: "Raw", provider: { resolve: (request) => {
+      raw.push(request);
+      return { id: "raw", label: "Raw", color: "#fff", unit: "number", unitGroup: "number", nativeFrequency: "auto", dataShape: "scalar",
+        style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none", points: [] };
+    } } }));
+    const resolve = createChartSeriesResolver(registry);
+    const spec = { id: "s", source: { kind: "capability", capabilityId: "bars", seriesId: "close/AAPL" }, style: "line", transform: "raw", axis: "auto", panelId: "main", interpolation: "none" } as const;
+    const series = (seriesId: string) => ({ kind: "capability", capabilityId: "bars", seriesId }) as const;
+
+    // A 4h chart with extended hours asks for its 1h source bars and says it draws 4h ones.
+    await resolve(series("close/AAPL"), { range: "1M", resolution: "1h", extendedHours: true }, spec, "4h");
+    // A caller that names the built size as the resolution gets the same split.
+    await resolve(series("close/MSFT"), { range: "1M", resolution: "4h" }, spec);
+    // 45m bars would straddle a CME future's 17:00 open in 90m ones: its own source bars divide the open.
+    await resolve(series("close/ES:CME"), { range: "1M", resolution: "45m" }, spec, "90m");
+    expect(asked.map(({ ticker, resolution, barSize, extendedHours }) => ({ ticker, resolution, barSize, extendedHours }))).toEqual([
+      { ticker: "AAPL", resolution: "1h", barSize: "4h", extendedHours: true },
+      { ticker: "MSFT", resolution: "1h", barSize: "4h", extendedHours: undefined },
+      { ticker: "ES:CME", resolution: "30m", barSize: "90m", extendedHours: undefined },
+    ]);
+
+    // A plugin answering chart series itself never sees a built size as the viewport's resolution.
+    await resolve({ kind: "capability", capabilityId: "raw", seriesId: "x" }, { range: "1W", resolution: "2d", extendedHours: true }, spec);
+    expect(raw.map(({ viewport, barSize }) => ({ viewport, barSize }))).toEqual([
+      { viewport: { range: "1W", resolution: "1d", extendedHours: true }, barSize: "2d" },
+    ]);
   });
 
   test("a switched-off plugin's series says what to turn on", async () => {

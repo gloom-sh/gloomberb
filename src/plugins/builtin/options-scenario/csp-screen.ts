@@ -8,7 +8,7 @@ import { errorMessage } from "../../../utils/errors";
 import { expirationHint, expiredExpiryText, expiryIsoDate, isLiveOptionExpiry, readOptionExpiration } from "../../../utils/option-expiry";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { ivRankReason, loadIvScreen, type ImpliedVolatilityApi, type IvScreenRow } from "../iv-history/client";
-import { quoteObservation } from "../shared/report-freshness";
+import { scenarioFreshness, scenarioQuoteTimes, type ScenarioQuoteTimes } from "./freshness";
 import { loadScenarioMarket, scenarioPositionFromSettings, scenarioSpotBasis, type ScenarioLoaderDependencies, type ScenarioMarketSnapshot } from "./client";
 import { cashSecuredPut, EARNINGS_CALENDAR_UNAVAILABLE, loadNextEarningsDates, type CashSecuredPut } from "./csp";
 import { seededLegQuotes } from "./hedge";
@@ -39,6 +39,7 @@ const CONCURRENCY = 4;
 
 export interface CspScreenRow {
   symbol: string;
+  quoteTimes?: ScenarioQuoteTimes;
   /** 1 for the highest yield at the bid; null for a name with no put to rank. */
   rank: number | null;
   csp: CashSecuredPut | null;
@@ -231,7 +232,7 @@ function screenFreshness(markets: readonly ScenarioMarketSnapshot[], now: number
   const delayed = chains.some((chain) => chain.dataSource === "delayed");
   const live = chains.length > 0 && chains.every((chain) => chain.dataSource === "live");
   const delayMinutes = Math.max(0, ...chains.map((chain) => chain.delayMinutes ?? 0));
-  const observations = markets.flatMap((market) => market.underlyingQuote ? [{ ...quoteObservation(market.underlyingQuote, now) }] : []);
+  const observations = markets.flatMap((market) => scenarioFreshness(market, false, now).observations ?? []);
   return {
     ...(delayed ? { status: "delayed" as const } : live ? { status: "live" as const } : {}),
     ...(delayed && delayMinutes ? { delayMinutes } : {}),
@@ -240,7 +241,7 @@ function screenFreshness(markets: readonly ScenarioMarketSnapshot[], now: number
 }
 
 /** One name of a screen: what it found, or why it found nothing (in full and in a few words), with its IV rank either way. */
-interface ScreenedName<T> { symbol: string; ivRank: number | null; value: T | null; note: string | null; state: string | null }
+interface ScreenedName<T> { symbol: string; ivRank: number | null; value: T | null; note: string | null; state: string | null; quoteTimes?: ScenarioQuoteTimes }
 
 export interface ScreenedNames<T> {
   names: ScreenedName<T>[];
@@ -259,7 +260,9 @@ export interface ScreenedNames<T> {
 export async function screenNames<T>(
   instruments: readonly InstrumentRef[], dependencies: CspScreenDependencies, signal: AbortSignal | undefined,
   { fallback, fallbackState }: { fallback: string; fallbackState: string },
-  screen: (instrument: InstrumentRef, earningsDate: string | null, scenario: ScenarioLoaderDependencies) => Promise<{ value: T; market: ScenarioMarketSnapshot }>,
+  screen: (instrument: InstrumentRef, earningsDate: string | null, scenario: ScenarioLoaderDependencies) => Promise<{
+    value: T; market: ScenarioMarketSnapshot; farMarket?: ScenarioMarketSnapshot;
+  }>,
 ): Promise<ScreenedNames<T>> {
   const now = dependencies.scenario.now?.() ?? Date.now();
   // Every name reads the same curve, up to twice (the catalogue, then its expiry): asked for once, when the first name needs it.
@@ -281,11 +284,14 @@ export async function screenNames<T>(
     try {
       const screened = await screen(instrument, earnings === EARNINGS_CALENDAR_UNAVAILABLE ? earnings : earnings.get(symbol) ?? null, scenario);
       markets.push(screened.market);
+      if (screened.farMarket) markets.push({ ...screened.farMarket, underlyingQuote: null });
       if (ivRank == null && !ivRanks.error) {
         const reason = ivRankReason(ivRow);
         missingRanks.push(reason ? `${symbol} (${reason})` : symbol);
       }
-      return { symbol, ivRank, value: screened.value, note: null, state: null };
+      const quoteTimes = scenarioQuoteTimes(screened.market);
+      if (screened.farMarket) quoteTimes.farOptions = scenarioQuoteTimes(screened.farMarket).options;
+      return { symbol, ivRank, value: screened.value, note: null, state: null, quoteTimes };
     } catch (error) {
       if (signal?.aborted) throw error;
       return { symbol, ivRank, value: null, note: errorMessage(error) ?? fallback,
@@ -304,8 +310,8 @@ export async function loadCspScreen(
     const put = await screenPut(instrument, criteria, scenario, target, earningsDate, signal);
     return { value: put, market: put.market };
   });
-  const rows = screened.names.map(({ symbol, ivRank, value, note, state }): Omit<CspScreenRow, "rank"> => ({
-    symbol, csp: value?.csp ?? null, delta: value?.delta ?? null, ivRank,
+  const rows = screened.names.map(({ symbol, ivRank, value, note, state, quoteTimes }): Omit<CspScreenRow, "rank"> => ({
+    symbol, csp: value?.csp ?? null, delta: value?.delta ?? null, ivRank, quoteTimes,
     wideSpread: value ? cspWideSpread(value.csp, criteria.maxSpreadPercent) : false, note, state }));
   return { rows: rankCspScreen(rows), criteria, missingRanks: screened.missingRanks, ivRankError: screened.ivRankError,
     freshness: screened.freshness };

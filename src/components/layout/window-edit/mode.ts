@@ -1,3 +1,4 @@
+import { getDefaultKeybindings, matchKeybinding, matchesNavigationKey, type KeyChordEventLike, type ResolvedKeybindings } from "../../../app/keybindings";
 import {
   applyDrop,
   bringToFront,
@@ -113,12 +114,22 @@ export function snapWindowEditPane(
   };
 }
 
-export function directionFromWindowEditKey(event: { name?: string; key?: string }): WindowEditDirection | null {
-  const name = (event.name ?? event.key ?? "").toLowerCase();
-  if (name === "left" || name === "h") return "left";
-  if (name === "right" || name === "l") return "right";
-  if (name === "up" || name === "k") return "up";
-  if (name === "down" || name === "j") return "down";
+export function directionFromWindowEditKey(
+  event: KeyChordEventLike & { targetEditable?: boolean },
+  bindings: ResolvedKeybindings = getDefaultKeybindings(),
+): WindowEditDirection | null {
+  // Shift accelerates movement in window mode; it is not a different direction.
+  const options = { allowEditable: true };
+  const directions = ["left", "right", "up", "down"] as const;
+  for (const direction of directions) {
+    if (matchesNavigationKey(bindings, direction, event, options)) return direction;
+  }
+  if (event.shift && !matchKeybinding(bindings, event)) {
+    const accelerated = { ...event, name: (event.name ?? event.key ?? "").toLowerCase(), shift: false };
+    for (const direction of directions) {
+      if (matchesNavigationKey(bindings, direction, accelerated, options)) return direction;
+    }
+  }
   return null;
 }
 

@@ -22,7 +22,7 @@ runs:
         echo "version=$version" >> "$GITHUB_OUTPUT"
 
     - name: Cache the pinned Playwright browser files
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.cache/ms-playwright
         key: playwright-webkit-ubuntu-24.04-${{ runner.arch }}-${{ steps.playwright.outputs.version }}

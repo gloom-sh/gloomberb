@@ -28,6 +28,7 @@ export interface CloudCongressTradePayload {
   sourceUrl: string;
   returnSinceTx?: number | null;
   returnSinceFiling?: number | null;
+  returnUnavailable?: { transaction?: CloudCongressReturnUnavailable; filing?: CloudCongressReturnUnavailable };
   /** SPY's return over the same days as returnSinceTx, percent. */
   spyReturnSinceTx?: number | null;
   spyReturnSinceFiling?: number | null;
@@ -38,6 +39,8 @@ export interface CloudCongressTradePayload {
   party?: string | null;
   committees?: string[];
 }
+
+export type CloudCongressReturnUnavailable = "no_ticker" | "unsupported_asset" | "no_date" | "awaiting_close" | "insufficient_history";
 
 export interface CloudCongressMemberPayload {
   id: string;
@@ -79,6 +82,7 @@ export interface CloudCongressTickerPayload {
 
 export interface CloudCongressHousePayload {
   asOf: string;
+  fetchedAt?: string;
   /** "all" pages both chambers' filings as one date-ordered index. */
   chamber: "house" | "senate" | "all";
   source: "house-clerk" | "senate-efd" | "congress";

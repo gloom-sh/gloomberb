@@ -406,19 +406,20 @@ export function optionPaneState(options: PaneOptionValues | NormalizedPaneFuncti
   if (activeTab) state.activeTabId = activeTab;
 
   const tab = optionString(options, "tab");
+  // `--tab income` names a statement; `--tab financials --statement income` names both, and the tab stands.
+  const tabStatement = normalizeFinancialSubTabOption(tab);
   const financialTab = normalizeFinancialSubTabOption(
     optionString(options, "statement")
-      ?? optionString(options, "financialStatement")
-      ?? tab,
-  );
-  if (financialTab) {
-    state.financialSubTab = financialTab;
-  } else if (tab) {
-    state.activeTabId = tab;
-  }
+      ?? optionString(options, "financialStatement"),
+  ) ?? tabStatement;
+  if (financialTab) state.financialSubTab = financialTab;
+  if (tab && !tabStatement) state.activeTabId = tab;
 
   const period = resolveFinancialPeriodOption(optionString(options, "period") ?? optionString(options, "financialPeriod"));
   if (period) state.financialPeriod = period;
+
+  // A statement or a period is the financials tab's: DES opens on it, not on the overview.
+  if ((financialTab || period) && !state.activeTabId) state.activeTabId = "financials";
 
   return state;
 }

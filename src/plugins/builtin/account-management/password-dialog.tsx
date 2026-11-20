@@ -1,11 +1,11 @@
 import { useCallback, useState } from "react";
+import { matchesNavigationKey, useKeybindings } from "../../../app/keybindings";
 import { logFailure } from "../../../utils/log-failure";
 import { Button, TextField } from "../../../components";
 import { DialogFrame } from "../../../components/ui/frame";
 import { Box } from "../../../ui";
 import { useDialogKeyboard, type AlertContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
-import { isPlainKey } from "../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { t } from "../../../i18n";
 import { MIN_ACCOUNT_PASSWORD_LENGTH } from "../../../account/auth-model";
@@ -136,6 +136,7 @@ export function PasswordChangeDialog({
     });
   }, []);
 
+  const bindings = useKeybindings();
   useDialogKeyboard((event) => {
     if (event.name === "escape") {
       event.stopPropagation?.();
@@ -143,10 +144,12 @@ export function PasswordChangeDialog({
       return;
     }
     const tab = event.name === "tab" && !event.ctrl && !event.meta && !event.alt;
-    if (tab || (!event.targetEditable && isPlainKey(event, "down", "j", "up", "k"))) {
+    const up = matchesNavigationKey(bindings, "up", event);
+    const down = matchesNavigationKey(bindings, "down", event);
+    if (tab || up || down) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      cycleDialogField((tab ? event.shift : event.name === "up" || event.name === "k") ? -1 : 1);
+      cycleDialogField((tab ? event.shift : up) ? -1 : 1);
     }
   }, { allowEditable: true });
 

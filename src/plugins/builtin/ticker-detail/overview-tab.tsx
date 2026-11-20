@@ -72,18 +72,20 @@ import { resolveOptionsTarget } from "../../../utils/options";
 import { buildOverviewStats, buildPositionRows, buildProfileFields, FINANCIALS } from "./overview/model";
 import { hasStatementFinancials } from "./financials/model";
 import type { OverviewFunctionLink, StatField } from "./overview/types";
+import type { CryptoMarketAsset } from "../../../api-client/crypto-markets";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../../../market-data/quotes/live-valuation";
 import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 import { ClippedText } from "../../../components/ui/display";
 import { DelayedMark, delayedMarkWidth, useDelayedMarkMinutes } from "../../../components/ui/delayed-mark";
 import { safeExternalUrl } from "../../../utils/external-url";
-import { cashRunway, SHORT_RUNWAY_HISTORY } from "../../../utils/cash-runway";
-import { useOfferingNote } from "./financials/offerings";
+import { burnsCash, cashRunway, runwayOfferingNote } from "../../../utils/cash-runway";
+import { useRunwayOfferings } from "./financials/offerings";
 import { taxEquivalentFields, useOverviewTaxEquivalent } from "./overview/tax-equivalent";
 import { distributionBasis, type TaxRates } from "../../../market-data/tax-equivalent";
 import { currentListingName } from "../../../tickers/listing-name";
 import { isYieldIndexSymbol } from "../../../tickers/index-roots";
+import { formatBasisPoints } from "../../../utils/basis-points";
 import { coinPriceVenueText, quoteStatsBasisText } from "../../../market-data/quotes/export-identity";
 import { hiddenOnLogScale, logScaleHiddenWarning } from "../../../time-series/log-scale";
 import type { AhPairState } from "./adr-pair/ah";
@@ -112,6 +114,7 @@ function contractField(line: FuturesContractLine): StatField {
 }
 
 interface OverviewTabProps {
+  coin?: CryptoMarketAsset | null;
   /** The contracts on the security, given the width of the overview's content. */
   perpetuals?: ReactNode | ((contentWidth: number) => ReactNode);
   /** The company's latest news, given the width of the overview's content; it draws nothing while there is none. */
@@ -172,7 +175,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({
-  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, ah = null, boardLot = null, tax = null,
+  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, coin, dividend, ah = null, boardLot = null, tax = null,
   chartScale: chartScaleChoice = "auto", onChartScaleChange,
 }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
@@ -268,6 +271,7 @@ function ResolvedOverviewTab({
 
   const contentWidth = Math.max((width || Math.floor(termWidth * 0.5)) - (fractionalViewport ? 2 : 4), 20);
   const chartWidth = contentWidth;
+  const yieldIndex = isYieldIndexSymbol(quote?.symbol ?? ticker.metadata.ticker);
   const hasHistory = (financials?.priceHistory?.length ?? 0) > 2;
   const unknownHistoryBasis = hasUnknownBondHistoryBasis(quote, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType);
   const historyQuote = unknownHistoryBasis ? undefined : quote;
@@ -276,10 +280,10 @@ function ResolvedOverviewTab({
   const returnInstrument = useMemo(() => instrumentFromTicker(ticker), [ticker]);
   const returnWindowDay = new Date().toISOString().slice(0, 10);
   const dailyReturnsRequest = useMemo<ChartRequest | null>(() => {
-    if (!returnInstrument || unknownHistoryBasis) return null;
+    if (!returnInstrument || unknownHistoryBasis || yieldIndex) return null;
     const { start, end } = priceReturnDailyWindow(Date.parse(`${returnWindowDay}T12:00:00Z`));
     return { instrument: returnInstrument, bufferRange: "5Y", granularity: "detail", barSize: "1d", startDate: start, endDate: end };
-  }, [returnInstrument, returnWindowDay, unknownHistoryBasis]);
+  }, [returnInstrument, returnWindowDay, unknownHistoryBasis, yieldIndex]);
   const dailyReturnEntries = useChartQueries(dailyReturnsRequest ? [dailyReturnsRequest] : []);
   const dailyReturnBars = useResolvedEntryValue(dailyReturnsRequest ? dailyReturnEntries.get(buildChartKey(dailyReturnsRequest)) ?? null : null);
   const chartDelta = (chartHistory.at(-1)?.close ?? 0) - (chartHistory[0]?.close ?? 0);
@@ -288,9 +292,10 @@ function ResolvedOverviewTab({
   );
   const priceSeries = pricePointsToResolvedSeries(chartHistory, {
     id: `${ticker.metadata.ticker}:price`,
-    label: `${ticker.metadata.ticker} Price`,
+    label: `${ticker.metadata.ticker} ${yieldIndex ? "Yield" : "Price"}`,
     color: priceColor(chartDelta),
-    unit: unknownHistoryBasis ? "unknown" : priceSeriesUnit(quoteCurrency, instrumentType, quote?.priceBasis),
+    unit: yieldIndex ? "%" : unknownHistoryBasis ? "unknown" : priceSeriesUnit(quoteCurrency, instrumentType, quote?.priceBasis),
+    ...(yieldIndex ? { unitGroup: "price:%" } : {}),
     style: "area",
     axis: "right",
     panelId: "price",
@@ -299,14 +304,14 @@ function ResolvedOverviewTab({
   // Each horizon runs from the daily close on its start date to the headline's close, as CMP and `history` measure
   // it; the chart's weekly bars stand in until the daily ones are in. Bars and the quote are dated on the listing's clock.
   const returnVenue = ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
-  const performanceFields = buildPriceReturnFields(
+  const performanceFields = yieldIndex ? [] : buildPriceReturnFields(
     dailyReturnBars?.length ? dailyReturnBars : financials?.priceHistory ?? [],
     returnVenue,
     undefined,
     historyQuote ? headlinePriceReturnEnd(historyQuote, returnVenue) : null,
   );
   // Years of history from a few dollars to hundreds read on a log axis, the Chart tab's own, so the early ones do not lie flat.
-  const autoChartScale = autoOverviewChartScale(priceSeries.points, { rate: isYieldIndexSymbol(ticker.metadata.ticker) });
+  const autoChartScale = autoOverviewChartScale(priceSeries.points, { rate: yieldIndex });
   const chartScale = resolveOverviewChartScale(chartScaleChoice, autoChartScale);
   const hiddenOnLog = hasHistory && chartScale === "log"
     ? priceSeries.points.filter((point) => hiddenOnLogScale(point.value)).length : 0;
@@ -322,8 +327,11 @@ function ResolvedOverviewTab({
   const enterpriseValueNote = enterpriseValueGapIsLarge(pricedForEnterpriseValue)
     ? enterpriseValueReconciliationNote(pricedForEnterpriseValue, undefined, financials ?? undefined) : undefined;
   // Months of cash, for a company that burns it, and an offering since its balance sheet that the cash is not in yet.
-  const runway = useMemo(() => financials ? cashRunway(financials) : null, [financials]);
-  const runwayOfferingNote = useOfferingNote(ticker.metadata.ticker, ticker.metadata.exchange, runway?.periodEnd ?? null, runway?.trailing?.kind === "months");
+  const unadjustedRunway = useMemo(() => financials ? cashRunway(financials) : null, [financials]);
+  const offerings = useRunwayOfferings(ticker.metadata.ticker, ticker.metadata.exchange,
+    burnsCash(unadjustedRunway) ? unadjustedRunway.periodEnd : null);
+  const runway = financials && offerings.length ? cashRunway(financials, offerings) : unadjustedRunway;
+  const offering = burnsCash(runway) ? runwayOfferingNote(offerings, runway.periodEnd, runway.currency) : null;
   // A converted TTM block names what it was converted from, at the pane's rate and its time.
   const ttmNote = [shownFundamentals?.revenue, shownFundamentals?.netIncome, shownFundamentals?.freeCashFlow].some((value) => value != null)
     ? ttmConversionNote(shownFundamentals) : undefined;
@@ -337,8 +345,7 @@ function ResolvedOverviewTab({
     notices: [
       ...(changeNote ? [changeNote] : []),
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
-      ...(runwayOfferingNote ? [runwayOfferingNote] : []),
-      ...(runway?.trailingGap === "short-history" ? [`Runway TTM: ${SHORT_RUNWAY_HISTORY}.`] : []),
+      ...(offering ? [offering] : []),
       // A bar with contradictory prices is said only where it leaves a shown return blank: on a chart of years one
       // bar's gap is a hairline that changes no figure, and a return reads only the bars at its ends.
       ...(returnIntegrityNotice ? [returnIntegrityNotice] : []),
@@ -358,18 +365,20 @@ function ResolvedOverviewTab({
   const quoteBookWidth = quoteBookInline ? Math.min(32, Math.max(24, Math.floor(contentWidth * 0.3))) : Math.min(contentWidth, 32);
   const quoteSummaryWidth = quoteBookInline ? Math.max(20, contentWidth - quoteBookWidth - 2) : contentWidth;
   // Price, change and ranges keep the instrument's decimals on every streamed tick.
-  const moneyOptions = liveQuoteFormatOptions(quote, quote?.currency, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType);
+  const moneyOptions = { ...liveQuoteFormatOptions(quote, quote?.currency, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType), yieldIndex };
   // The headline is the regular session, which stops at the close; extended trading is the line below it.
   // A future's move that nothing confirms is measured from its last confirmed settlement, as `quote` reads it.
   const movedQuote = futuresQuoteFromSettle(quote, contractTerms);
   const sessionQuote = getRegularSessionDisplay(movedQuote);
-  const extendedQuote = getExtendedSessionDisplay(quote);
+  const extendedQuote = yieldIndex ? null : getExtendedSessionDisplay(quote);
   // A price in cents says what it is per (314.95¢/lb), and the move what it is measured from (vs Fri 16 Oct close).
   const quotePriceText = sessionQuote
-    ? `${formatMarketPriceWithCurrency(sessionQuote.price, quote?.currency, moneyOptions)}${futuresPricePer(contractTerms, quote?.currency)}` : "";
+    ? `${yieldIndex ? `${t("Yield")} ` : ""}${formatMarketPriceWithCurrency(sessionQuote.price, quote?.currency, moneyOptions)}${futuresPricePer(contractTerms, quote?.currency)}` : "";
   // Nor a move: the close it ended on is where it stays.
-  const quoteChangeText = sessionQuote && !delisted ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
-  const quotePercentText = sessionQuote && !delisted ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
+  const quoteChangeText = sessionQuote && !delisted
+    ? yieldIndex && sessionQuote.change != null ? formatBasisPoints(sessionQuote.change, 1) : formatSignedMarketPrice(sessionQuote.change, moneyOptions)
+    : "";
+  const quotePercentText = sessionQuote && !delisted && !yieldIndex ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
   const changeBasis = delisted ? null : quoteChangeBasis(movedQuote, { terms: contractTerms });
   // Once the session is over the headline is its close, dated apart from the extended print below it:
   // "Tue 17 Nov close · vs Mon 16 Nov close". A future's settle is dated on its own line.
@@ -439,7 +448,7 @@ function ResolvedOverviewTab({
       formatPercentRaw(extendedQuote.changePercent),
     ].find((move) => displayWidth(extendedLabelText) + 2 + displayWidth(extendedPriceText) + 2 + displayWidth(move) <= quoteTextWidth) ?? ""
     : "";
-  const quoteChangeCells = delisted ? 0 : figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub");
+  const quoteChangeCells = delisted ? 0 : figureCells(quoteChangeText, "sub") + (quotePercentText ? 1 + figureCells(quotePercentText, "sub") : 0);
   const stackQuoteChange = quoteChangeCells > quoteTextWidth;
   const stackQuoteSummary = figureCells(quotePriceText) + 2 + quoteChangeCells > quoteTextWidth;
   // What the move is from follows it on its line when there is room; otherwise it takes the line
@@ -493,6 +502,7 @@ function ResolvedOverviewTab({
     ahPair: ah ? { other: ah.side === "h" ? ah.pair.a : ah.pair.h, side: ah.side, premiumPercent: ah.comparison?.premiumPercent ?? null, linked: !!depositaryPair } : null,
     quote,
     fundamentals: shownFundamentals,
+    coin,
     financialCurrency: financials?.financialCurrency,
     quoteCurrency,
     baseCurrency,
@@ -595,7 +605,7 @@ function ResolvedOverviewTab({
                   <Box flexDirection={stackQuoteChange ? "column" : "row"} gap={stackQuoteChange ? 0 : 1}
                     alignItems={changeBasisInline ? "baseline" : undefined}>
                     <FigureText part="sub" change={sessionQuote.change}>{quoteChangeText}</FigureText>
-                    <FigureText part="sub" change={sessionQuote.change}>{quotePercentText}</FigureText>
+                    {quotePercentText && <FigureText part="sub" change={sessionQuote.change}>{quotePercentText}</FigureText>}
                     {changeBasisInline ? <Text flexShrink={0} fg={colors.textDim}>{changeBasisText}</Text> : null}
                   </Box>
                 )}

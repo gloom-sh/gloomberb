@@ -8,6 +8,7 @@ import type {
 import type { CloudCongressHousePayload } from "../../../api-client";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { loadCongressHouse } from "./client";
+import { latestCongressFiling } from "./footer";
 import {
   CONGRESS_FILING_LIMIT,
   CONGRESS_TRADE_LIMIT,
@@ -197,7 +198,8 @@ export function createCongressHeadless(
       const payload = await dependencies.loadHouse(args, ctx);
       const limit = Number(args.options.limit);
       const metadata = {
-        asOf: payload.asOf,
+        asOf: latestCongressFiling(payload.trades),
+        fetchedAt: payload.fetchedAt ?? payload.asOf,
         chamber: payload.chamber,
         source: payload.source,
         year: payload.year,

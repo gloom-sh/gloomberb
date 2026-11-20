@@ -5,6 +5,7 @@ import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createScenarioDependencies } from "./client";
 import { formatHedgePrice } from "./hedge";
 import { exportPercent } from "./model";
+import { scenarioQuoteTimesLabel, type ScenarioQuoteTimes } from "./freshness";
 import {
   CSP_SCREEN_DEFAULTS, CSP_SCREEN_LIMIT, cspEarningsText, cspScreenCriteriaText, loadCspScreen, readCspScreenCriteria,
   type CspScreen, type CspScreenRow,
@@ -24,7 +25,17 @@ export type CspScreenReportRow = {
   bid: number | null; ask: number | null; spread: number | null; wide: boolean | null; delta: number | null; otm: number | null;
   midYield: number | null; bidYield: number | null; ivRank: number | null;
   earnings: string; earningsBeforeExpiry: boolean | null; earningsDate: string | null; spot: number | null; note: string | null;
+  optionQuotesAt?: string | null; underlyingQuoteAt?: string | null;
 };
+
+function quoteTimeFields(times: ScenarioQuoteTimes | undefined) {
+  const iso = (time: number | null) => time != null && Number.isFinite(time) && time > 0 ? new Date(time).toISOString() : null;
+  return times ? { optionQuotesAt: iso(times.options), underlyingQuoteAt: iso(times.underlying),
+    ...(times.farOptions !== undefined ? { farOptionQuotesAt: iso(times.farOptions) } : {}) } : {};
+}
+
+const quoteTimeNotes = (rows: readonly (CspScreenRow | StrategyScreenRow)[]) => rows.flatMap((row) =>
+  row.quoteTimes ? [`${row.symbol}: ${scenarioQuoteTimesLabel(row.quoteTimes)}`] : []);
 
 export function cspScreenReportRow(row: CspScreenRow): CspScreenReportRow {
   const { csp } = row;
@@ -35,7 +46,7 @@ export function cspScreenReportRow(row: CspScreenRow): CspScreenReportRow {
     delta: row.delta, otm: exportPercent(csp?.outOfTheMoney), midYield: exportPercent(csp?.annualizedYield),
     bidYield: exportPercent(csp?.quote?.bidAnnualizedYield), ivRank: row.ivRank,
     earnings: cspEarningsText(csp), earningsBeforeExpiry: csp ? csp.earnings.beforeExpiry : null, earningsDate: csp?.earnings.date ?? null,
-    spot: csp?.spot ?? null, note: row.note,
+    spot: csp?.spot ?? null, note: row.note, ...quoteTimeFields(row.quoteTimes),
   };
 }
 
@@ -63,6 +74,8 @@ const EXPORT_ONLY: HeadlessPaneColumn[] = [
   { key: "earningsBeforeExpiry", header: "Earnings before expiry", format: (value) => value === true ? "yes" : value === false ? "no" : "unknown" },
   { key: "earningsDate", header: "Earnings date" },
   { key: "spot", header: "Spot", format: priceCell },
+  { key: "optionQuotesAt", header: "Option quotes (UTC)" },
+  { key: "underlyingQuoteAt", header: "Underlying quote (UTC)" },
 ];
 
 /** `A`, `A and B`, `A, B and C`. */
@@ -99,6 +112,7 @@ export type StrategyScreenReportRow = {
   breakEven: number | null; secondBreakEven: number | null; breakEvens: string; pop: number | null; returnToExpiry: number | null;
   returnPerYear: number | null; rewardRisk: number | null; ivRank: number | null; spread: number | null; wide: boolean | null;
   earnings: string; earningsBeforeExpiry: boolean | null; earningsDate: string | null; spot: number | null; note: string | null;
+  optionQuotesAt?: string | null; farOptionQuotesAt?: string | null; underlyingQuoteAt?: string | null;
 };
 
 export function strategyScreenReportRow(row: StrategyScreenRow): StrategyScreenReportRow {
@@ -113,7 +127,7 @@ export function strategyScreenReportRow(row: StrategyScreenRow): StrategyScreenR
     returnPerYear: exportPercent(trade?.annualizedReturn), rewardRisk: trade?.rewardToRisk ?? null,
     ivRank: row.ivRank, spread: exportPercent(trade?.quote?.spreadOfMid), wide: trade?.quote ? row.wideSpread : null,
     earnings: cspEarningsText(trade), earningsBeforeExpiry: trade ? trade.earnings.beforeExpiry : null, earningsDate: trade?.earnings.date ?? null,
-    spot: trade?.spot ?? null, note: row.note,
+    spot: trade?.spot ?? null, note: row.note, ...quoteTimeFields(row.quoteTimes),
   };
 }
 
@@ -154,7 +168,7 @@ function strategyScreenColumns(strategy: ScreenFamily): { text: HeadlessPaneColu
   return {
     text: [...lead, ...body, breakEven, ...odds, NOTE],
     exported: [...lead, ...farExpiry, ...body, breakEven, { key: "secondBreakEven", header: "Second break-even", format: priceCell }, ...odds,
-      ...toExpiry, ...EXPORT_ONLY, NOTE],
+      ...toExpiry, ...EXPORT_ONLY, ...(strategy === "calendar" ? [{ key: "farOptionQuotesAt", header: "Far option quotes (UTC)" }] : []), NOTE],
   };
 }
 
@@ -201,7 +215,7 @@ export const cspScreenHeadless: HeadlessPaneDefinition<"rows"> = {
         + "buys and a debit spread sells. Default 0.15 (0.30 for debit verticals, 0.10 for condors), or half --delta when that is not below it" },
     { key: "days", type: "string", placeholder: "days", example: "--days 45",
       description: `Each name's expiry is its listed one nearest this many calendar days out. Default ${CSP_SCREEN_DEFAULTS.days}` },
-    { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2026-11-20",
+    { key: "expiration", aliases: ["expiry"], type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2026-11-20",
       description: `Each name's expiry is its listed one nearest this date, in place of --days, as ${OPTION_EXPIRATION_FORMAT}`,
       normalize: (value) => expirationOptionSeconds(value) },
     { key: "maxSpread", aliases: ["max-spread"], type: "string", placeholder: "percent", example: "--max-spread 15",
@@ -228,7 +242,7 @@ export const cspScreenHeadless: HeadlessPaneDefinition<"rows"> = {
       complete: unavailable.length === 0 && !screen.ivRankError,
       unavailableSymbols: unavailable.map((row) => row.symbol),
       errors: screen.ivRankError ? [`IV rank unavailable: ${screen.ivRankError}`] : [],
-      notes: cspScreenNotes(screen),
+      notes: [...cspScreenNotes(screen), ...quoteTimeNotes(screen.rows)],
       metadata: { criteria: screen.criteria, rankedBy: "annualized yield on cash at the bid", unit: "percent; prices per share",
         methodology: "docs/research-data.md#cash-secured-put-screen" },
     };
@@ -254,7 +268,7 @@ async function loadStrategyReport(
     complete: unavailable.length === 0 && !screen.ivRankError,
     unavailableSymbols: unavailable.map((row) => row.symbol),
     errors: screen.ivRankError ? [`IV rank unavailable: ${screen.ivRankError}`] : [],
-    notes: cspScreenNotes(screen, strategyRankedBy(strategy)),
+    notes: [...cspScreenNotes(screen, strategyRankedBy(strategy)), ...quoteTimeNotes(screen.rows)],
     metadata: strategyMetadata(screen),
   };
 }

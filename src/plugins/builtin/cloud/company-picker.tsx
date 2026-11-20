@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient, type AuthUser } from "../../../api-client";
-import { useKeybindings } from "../../../app/keybindings";
+import { matchesNavigationKey, useKeybindings, type NavigationAction } from "../../../app/keybindings";
 import { resolveCompanyLogoSrc } from "../../../components/company-logo";
 import {
   keyReachesPastOnboardingModal,
@@ -343,10 +343,13 @@ export function CompanyPicker({
   // Required, so nothing behind the card takes a key. Arrows walk the grid
   // (or the results while searching), Space picks, Enter adds or finishes.
   useShortcut((event) => {
+    const navigate = (action: NavigationAction) => matchesNavigationKey(keybindings, action, event, {
+      allowEditable: true, defaultMatches: isPlainKey(event, action),
+    });
     const handled = ((): boolean => {
       if (showingResults) {
-        if (isPlainKey(event, "down")) { setResultIndex((index) => Math.min(results.length - 1, index + 1)); return true; }
-        if (isPlainKey(event, "up")) { setResultIndex((index) => Math.max(0, index - 1)); return true; }
+        if (navigate("down")) { setResultIndex((index) => Math.min(results.length - 1, index + 1)); return true; }
+        if (navigate("up")) { setResultIndex((index) => Math.max(0, index - 1)); return true; }
         if (isPlainKey(event, "enter", "return")) {
           const result = results[resultIndex];
           if (result) addResult(result);
@@ -362,10 +365,10 @@ export function CompanyPicker({
         });
         return true;
       };
-      if (isPlainKey(event, "right")) return move(1);
-      if (isPlainKey(event, "left")) return move(-1);
-      if (isPlainKey(event, "down")) return move(desktop ? GRID_COLUMNS : 6);
-      if (isPlainKey(event, "up")) return move(desktop ? -GRID_COLUMNS : -6);
+      if (navigate("right")) return move(1);
+      if (navigate("left")) return move(-1);
+      if (navigate("down")) return move(desktop ? GRID_COLUMNS : 6);
+      if (navigate("up")) return move(desktop ? -GRID_COLUMNS : -6);
       if (isPlainKey(event, "space", " ") && cursor !== null) {
         const suggestion = COMPANY_SUGGESTIONS[cursor];
         if (suggestion) toggleSuggestion(suggestion);

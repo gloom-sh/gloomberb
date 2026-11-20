@@ -9,15 +9,13 @@ import { futuresQuantityText, isFuturesTicker, type PortfolioFuturesTerms } from
 import type { PeriodPnlRow } from "../../../../portfolio/period-pnl";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { Quote } from "../../../../types/financials";
-import { formatFxRate } from "../../../../cli/fx-pair";
-import { quotedFxPair } from "../../../../utils/currency-pair";
 import type { CliCommandContext } from "../../../../types/plugin";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import { cliStyles, colorBySign, renderTable } from "../../../../utils/cli-output";
 import type { PriceWindow } from "../../../../utils/price-window";
 import { apiClient } from "../../../../api-client";
 import { inflationMethodText, loadPeriodInflation, monthText, realReturn } from "../../../../portfolio/real-return";
-import { loadPeriodPnl, periodBasisText, periodBoughtText, periodCurrencyParts, periodFxLabel, periodSharedDay, periodUnpricedText, type LoadedPeriodPnl } from "../period-pnl";
+import { loadPeriodPnl, periodBasisText, periodBoughtText, periodCurrencyParts, periodFxLabel, periodFxMarks, periodSharedDay, periodUnpricedText, type LoadedPeriodPnl } from "../period-pnl";
 
 const signedPercent = (value: number | null) => value == null || !Number.isFinite(value) ? "—"
   : `${value > 0 ? "+" : value < 0 ? "-" : ""}${Math.abs(value).toFixed(2)}%`;
@@ -29,7 +27,7 @@ const dayText = (day: string, year: number) => periodDayText(day, year);
  * `retrieved_at` so none it had moves: what a row is (holding, fx, subtotal,
  * total), its P&L with FX, and whether it counts every holding and why not.
  */
-const PERIOD_APPENDED_KEYS = ["rowType", "total", "status", "reason"] as const;
+const PERIOD_APPENDED_KEYS = ["rowType", "total", "status", "reason", "startFx", "endFx"] as const;
 
 /**
  * `portfolio show <name> --from <date> [--to <date>]`: P&L and contribution
@@ -117,6 +115,7 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
         // for a holding with no P&L why, which the totals leave it out for.
         rowType: "holding", total: counted ? row.pnl! + row.fx! : null,
         status: counted ? "counted" : "left out", reason: counted ? null : reasons.get(row.symbol) ?? "no P&L",
+        ...periodFxMarks(result, row),
       };
     });
     // Each currency's FX line (its pnl the move, as the one FX line's was, and in fx), then each currency's part of the
@@ -215,13 +214,9 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
   }
   console.log("");
   const notes: string[] = [];
-  // As markets quote the pair, as `portfolio show` writes its FX line: USD/HKD 7.7531 on Fri 23 Oct, 7.7502 on Fri 30 Oct.
   const rateText = (row: PeriodPnlRow) => {
-    const start = quotedFxPair(row.rates!.currency, currency, row.rates!.start);
-    const end = quotedFxPair(row.rates!.currency, currency, row.rates!.end);
-    // The FX trading day in progress has no close yet: its end is the latest rate, as the live book converts.
-    const latest = result.latestFx.includes(`${row.rates!.currency}|${row.end!.day}`);
-    return `${start.pair} ${formatFxRate(start.rate)} on ${dayText(row.start!.day, year)}, ${formatFxRate(end.rate)} ${latest ? "latest" : `on ${dayText(row.end!.day, year)}`}`;
+    const { startFx, endFx } = periodFxMarks(result, row);
+    return `${startFx} → ${endFx}`;
   };
   if (fxRows.length) notes.push(`FX: ${[...new Set(fxRows.map(rateText))].join("; ")}. P&L converts at the end's rate; ${parts.filter((part) => !part.own).length > 1 ? "each FX line is its currency's move" : "the FX line is the currency's move"} on the start value.`);
   if (contributionNote) notes.push(contributionNote);

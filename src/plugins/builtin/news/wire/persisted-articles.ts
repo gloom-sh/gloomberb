@@ -1,6 +1,10 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { apiClient } from "../../../../api-client";
+import { cloudNewsSnapshotScope } from "../../../../news/cloud-session";
+import { usePaneInstance } from "../../../../state/app/context";
 import type { MarketNewsItem, NewsStoryItem } from "../../../../types/news-source";
-import { usePluginPaneState, usePrunePluginPaneState } from "../../../runtime";
+import { usePluginPaneState } from "../../../runtime";
+import { usePluginRenderContext } from "../../../runtime/context";
 
 const MAX_PERSISTED_ARTICLES = 200;
 const EMPTY_PERSISTED_ARTICLES: PersistedNewsArticle[] = [];
@@ -101,46 +105,41 @@ function storyItemsSignature(items: PersistedNewsStoryItem[] | undefined): strin
   return JSON.stringify(items?.map((item) => [item.id, item.publishedAt, item.sourceName, item.sourceKey, item.url]) ?? []);
 }
 
-/**
- * The last fetched articles for `key`, kept in pane state so the pane has
- * something to show on restart before the feed answers.
- *
- * A `keyFamily` names a prefix under which the pane keys one entry per symbol
- * it visits. Only the current member is kept: the feed cache already covers a
- * revisit within the session, and the copy on disk is only ever read for the
- * symbol the pane restarts on. Left alone, a ticker pane accumulated tens of
- * kilobytes per symbol that every pane-state update then copied into the
- * saved layout.
- */
-export function usePersistedNewsArticles(
-  key: string,
-  articles: MarketNewsItem[],
-  options: { keyFamily?: string } = {},
-): MarketNewsItem[] {
-  // Refetch snapshots from before article-level publisher attribution. A new
-  // key keeps layouts readable by older clients that expect an article array.
-  const storageKey = `${key}:v2`;
-  const [persistedArticles, setPersistedArticles] = usePluginPaneState<PersistedNewsArticle[]>(
-    storageKey,
-    EMPTY_PERSISTED_ARTICLES,
-  );
-  const pruneSiblings = usePrunePluginPaneState();
-  const { keyFamily } = options;
-  useEffect(() => {
-    pruneSiblings((candidate) => candidate === key
-      || (!!keyFamily && candidate !== storageKey && candidate.startsWith(keyFamily)));
-  }, [key, storageKey, keyFamily, pruneSiblings]);
-  const restoredArticles = useMemo(
-    () => persistedArticles.map(restoreArticle).filter((article): article is MarketNewsItem => !!article),
-    [persistedArticles],
-  );
+function restoreArticles(articles: PersistedNewsArticle[]): MarketNewsItem[] {
+  return articles.map(restoreArticle).filter((article): article is MarketNewsItem => !!article);
+}
 
+function serializeArticles(articles: MarketNewsItem[]): PersistedNewsArticle[] {
+  return articles.slice(0, MAX_PERSISTED_ARTICLES).map(serializeArticle)
+    .filter((article): article is PersistedNewsArticle => !!article);
+}
+
+const subscribeToSession = (listener: () => void) => apiClient.subscribeCurrentUser(listener);
+
+export function usePersistedNewsArticles(key: string, articles: MarketNewsItem[]): MarketNewsItem[] {
+  const { pluginId, runtime } = usePluginRenderContext();
+  const pane = usePaneInstance();
+  const scope = useSyncExternalStore(subscribeToSession, cloudNewsSnapshotScope, cloudNewsSnapshotScope);
+  const snapshots = runtime.newsPaneSnapshots;
+  const storageKey = `${key}:v2`;
+  const cached = useMemo(() => {
+    if (articles.length || !pane) return [];
+    return restoreArticles(snapshots?.read<PersistedNewsArticle>(pane, pluginId, storageKey, scope) ?? []);
+  }, [articles, pane, pluginId, scope, snapshots, storageKey]);
+  useEffect(() => {
+    if (articles.length && pane && scope != null) {
+      snapshots?.write(pane, pluginId, storageKey, scope, serializeArticles(articles));
+    }
+  }, [articles, pane, pluginId, scope, snapshots, storageKey]);
+  return articles.length ? articles : cached;
+}
+
+export function usePersistedStory(articles: MarketNewsItem[]): MarketNewsItem[] {
+  const [persistedArticles, setPersistedArticles] = usePluginPaneState("story:v2", EMPTY_PERSISTED_ARTICLES);
+  const restoredArticles = useMemo(() => restoreArticles(persistedArticles), [persistedArticles]);
   useEffect(() => {
     if (articles.length === 0) return;
-    const next = articles
-      .slice(0, MAX_PERSISTED_ARTICLES)
-      .map(serializeArticle)
-      .filter((article): article is PersistedNewsArticle => !!article);
+    const next = serializeArticles(articles);
     setPersistedArticles((current) => samePersistedArticles(current, next) ? current : next);
   }, [articles, setPersistedArticles]);
 

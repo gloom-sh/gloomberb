@@ -1,6 +1,7 @@
 import { hasUnknownBondHistoryBasis } from "../time-series/chart-data";
 import type { Fundamentals, TickerFinancials } from "../types/financials";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "./performance";
+import { isYieldIndexSymbol } from "../tickers/index-roots";
 
 /** Summary return fields have no dated coverage. Rebuild them from observations,
  * including when an older cached summary supplied a since-inception return. */
@@ -8,6 +9,7 @@ export function computeTickerPriceReturns(
   financials: TickerFinancials | null,
   assetCategory?: string,
 ): Pick<Fundamentals, "return1Y" | "return3Y"> {
+  if (isYieldIndexSymbol(financials?.quote?.symbol ?? "")) return { return1Y: undefined, return3Y: undefined };
   const quote = hasUnknownBondHistoryBasis(financials?.quote, assetCategory, financials?.quoteMetadata?.instrumentType)
     ? undefined : financials?.quote;
   // Bars and the quote are dated on the listing's clock.

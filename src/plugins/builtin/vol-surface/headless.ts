@@ -13,7 +13,7 @@ import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
 import { approximatePercent, loadSurfaceEvents, surfaceEventHistory, surfaceEventReadings, surfaceReadingLabel, type SurfaceEventReading,
   type SurfaceEvents } from "./events";
 import { buildSurfaceGrid, TERM_SLOPE_MIN_GAP_DAYS, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
-import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
+import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, storedSurfaceFreshness, type DatedSurfaceSnapshot } from "./stored";
 import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
 import { coinOptionsAlias, coinWithoutOptionsRefusal, fxVolatilityRefusal, listedCoinOptions } from "../../../market-data/options-alternatives";
 import { formatUtcTime } from "../../../utils/utc-time";
@@ -217,7 +217,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "axis", type: "enum", values: ["spot", "forward", "delta", "strike"].map((value) => ({ value })), defaultValue: "spot", description: "Surface coordinates" },
     { key: "tenors", type: "enum", values: [{ value: "listed" }, { value: "fixed" }], defaultValue: "listed", description: "Listed or interpolated tenors" },
     { key: "limit", type: "integer", minimum: 1, maximum: 100, defaultValue: 18, description: "Representative expiry request limit; selected expiry may add one", pluginState: { pluginId: "ticker-research", key: "expiryLimit" } },
-    { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2027-01-15 --tab smile",
+    { key: "expiration", aliases: ["expiry"], type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2027-01-15 --tab smile",
       description: `Selected expiry, as ${OPTION_EXPIRATION_FORMAT}; the first at least four weeks out when omitted`,
       settingKey: "expiration", normalize: (value) => expirationOptionSeconds(value) },
     { key: "date", type: "string", placeholder: "date", example: "--date 2026-10-09 --tab skew",
@@ -346,7 +346,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
           + "it weights every strike, so it sits above the IV at the forward when the wings are bid."] : [],
         ...tab === "skew" ? SKEW_NOTES : [], ...readings.length ? EVENT_NOTES : [], ...events?.notes ?? []] } : {}),
       // A stored close is dated by its session, whichever view prints it.
-      ...(stored ? { freshness: { status: "not-a-feed" as const, basis: "stored close capture", asOf: stored.sessionDate } }
+      ...(stored ? { freshness: storedSurfaceFreshness(stored.sessionDate) }
         : smile?.freshness ? { freshness: smile.freshness } : {}),
       metadata: savedCopy({ ...snapshot, ...quote ? { underlyingQuote: quote } : {}, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations",
         ...dvol && !(dvol instanceof Error) ? { dvol: { currency: dvol.currency, venue: dvol.venue, latest: dvol.latest, unit: "vol points",

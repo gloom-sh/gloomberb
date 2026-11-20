@@ -455,12 +455,14 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       notes: [...(requestedView === "performance" && model.performanceEstimate ? [] : riskCoverageNotices(model.coverage)), ...model.notes.filter((note) => note !== fallback),
         ...(!requestedView || requestedView === "performance" ? model.performanceEstimate?.warnings ?? [] : [])],
       // A view with nothing to show says why in one line.
-      sections: shown.map(({ view, rows }) => ({ title: view, columns: RISK_COLUMNS, rows, ...(rows.length === 0 ? { empty: riskSectionEmpty(view, {
+      sections: [...(model.notionalFx.length && (!requestedView || BASKET_VIEWS.has(requestedView)) ? [{ title: "Notional FX",
+        entries: model.notionalFx.map((value, index) => ({ key: `fx${index}`, label: "Rate", value })) }] : []),
+      ...shown.map(({ view, rows }) => ({ title: view, columns: RISK_COLUMNS, rows, ...(rows.length === 0 ? { empty: riskSectionEmpty(view, {
         name: local.portfolio.name,
         brokerLinked: !!(local.portfolio.brokerId || local.portfolio.brokerInstanceId),
         unvaluedOptions: (model.greeks?.warnings.length ?? 0) > 0,
         failedHistories: failedHistories(model.coverage),
-      }) } : {}) })),
+      }) } : {}) }))],
       metadata: { coverage: coverageSummary(model.coverage), model, benchmark: model.benchmark, window: model.window,
         notices: [...(shortfall ? [shortfall] : []), ...notices] },
     };

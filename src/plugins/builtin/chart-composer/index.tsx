@@ -330,7 +330,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     description: "Chart arbitrary market, fundamental, valuation, and FRED series together.",
     // Futures formulas chart here: a crack spread is `42*HO=F - CL=F`.
     keywords: ["chart", "graph", "custom", "series", "fred", "fundamental", "crack spread", "refining margin"],
-    shortcut: { prefix: "G", argPlaceholder: "series", argKind: "text", argOptional: true },
+    shortcut: { prefix: "G", argPlaceholder: "series", argKind: "text", argOnlySelects: true, argOptional: true },
     wizard: [{
       key: "series",
       label: "Chart Series",
@@ -418,7 +418,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
       "sentiment",
       "positioning",
     ],
-    shortcut: { prefix: "CAT", argPlaceholder: "query", argKind: "text", argOptional: true },
+    shortcut: { prefix: "CAT", argPlaceholder: "query", argKind: "text", argOnlySelects: true, argOptional: true },
     reportFreshness: { status: "not-a-feed", basis: "series catalog", local: true },
     canCreate: () => true,
     createInstance: (_context, options) => {

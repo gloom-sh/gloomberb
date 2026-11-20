@@ -1,5 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
-import { describe, expect, setSystemTime, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { ApiRequestError } from "../../../api-client/errors";
+import { collectSavedCopies, savedCopyShownAt } from "../../../data/saved-copies";
 import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
@@ -8,8 +10,12 @@ import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderReportCsv } from "../../../cli/report-tables";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessBundleResult } from "../../../types/plugin";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { futuresCurveCache } from "./client";
 import { futuresCurveHeadless } from "./headless";
 import { daysToExpiry } from "./model";
+
+afterEach(() => futuresCurveCache.reset());
 
 // Expiries sit a fixed number of days from the spot's UTC date, so the fields never depend on the day the suite runs.
 const NOW = Date.now();
@@ -52,8 +58,33 @@ function context(options: { quote?: (symbol: string) => Promise<ReturnType<typeo
   const apiClient = { getCloudFuturesCurve: async (root: string) => root === "BTC" ? (options.btc ?? ((payload) => payload))(curve(root, BTC))
     : curve(root, [contract("ES", "Z26", 30, 6600)]),
     getCloudFuturesCurveAsOf: async () => options.asOf! } as never;
-  return { reads, ctx: createTestHeadlessContext({ marketData, apiClient }) };
+  return { reads, ctx: createTestHeadlessContext({ marketData, apiClient, refresh: true }) };
 }
+
+test("a timed-out CTM refresh uses the dated copy saved by another command, but a refusal does not", async () => {
+  const store = new MemoryPluginPersistence();
+  const read = (root: string, refresh: boolean, response: () => Promise<FuturesCurvePayload>) => futuresCurveHeadless.load(
+    createTestHeadlessArgs({ rawArgument: root, argument: root }),
+    createTestHeadlessContext({ refresh, apiClient: { getCloudFuturesCurve: response } as never }),
+  );
+  const before = Date.now();
+  futuresCurveCache.attach(store);
+  const warm = await read("CL", false, async () => curve("CL", [contract("CL", "Z26", 30, 68.51)]));
+  const after = Date.now();
+  futuresCurveCache.reset();
+  futuresCurveCache.attach(store);
+  const timeout = async () => { throw new DOMException("Timed out", "TimeoutError"); };
+  await collectSavedCopies(async () => {
+    const saved = await read("CL", true, timeout);
+    expect(saved.sections[0]!.rows).toEqual(warm.sections[0]!.rows);
+    expect(saved.errors).toEqual([]);
+    expect(saved.metadata).toMatchObject({ asOf: new Date(NOW).toISOString(), stale: true });
+    expect(savedCopyShownAt(saved)).toBeGreaterThanOrEqual(before);
+    expect(savedCopyShownAt(saved)).toBeLessThanOrEqual(after);
+  });
+  await expect(read("GC", true, timeout)).rejects.toThrow("Timed out");
+  await expect(read("CL", true, async () => { throw new ApiRequestError("Missing", 404); })).rejects.toThrow("Futures curves are not available yet");
+});
 async function run(root: string, ctxOptions: Parameters<typeof context>[0] = {}, options: Record<string, string> = {}) {
   const { reads, ctx } = context(ctxOptions);
   const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: root, argument: root, symbols: [], options }), ctx) as HeadlessBundleResult;

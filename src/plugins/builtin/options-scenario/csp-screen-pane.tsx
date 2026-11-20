@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { scenarioQuoteTimesLabel } from "./freshness";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -321,7 +322,8 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
   const selectedSymbol = selected ?? firstSymbol;
   const selection = { kind: "id" as const, selectedId: selectedSymbol, getId: (row: { symbol: string }) => row.symbol, onChange: (id: string) => setSelected(id) };
   // The selected name's whole reason, under the table: the row has room for its few words only.
-  const rowNote = (row: ScreenRow | TradeRow) => row.source.note ? `${row.symbol}: ${row.source.note}` : null;
+  const rowNote = (row: ScreenRow | TradeRow) => row.source.note ? `${row.symbol}: ${row.source.note}`
+    : row.source.quoteTimes ? scenarioQuoteTimesLabel(row.source.quoteTimes) : null;
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     {tabStrip}
     <QueryBar width={width} filters={filters} meta={strategy === "csp" ? undefined : STRATEGY_MONEY_UNIT} />

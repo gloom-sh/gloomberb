@@ -10,6 +10,17 @@ test("sorting keeps gaps last in either direction and movers separate positive a
   expect(memberRows(rows, "movers", "", { columnId: "weight", direction: "desc" }).map((row) => row.key)).toEqual(["section:Contributors", "C", "section:Detractors", "B"]);
   expect(rows[0]?.id).toBe("A");
 });
+test("member search ranks tickers above name and sector matches, then sorts by weight", () => {
+  const rows = [
+    { ...member("FN", 0, 0.9), sector: "Biotechnology" },
+    { ...member("TCH", 0, 0.8), name: "Microtech" },
+    { ...member("DEV", 0, 0.7), name: "Example Tech" },
+    member("TECHB", 0, 0.4), member("TECHA", 0, 0.3), member("TECH", 0, 0.1),
+  ];
+  const sort = { columnId: "weight", direction: "desc" } as const;
+  expect(memberRows(rows, "members", "tech", sort).map((row) => row.key)).toEqual(["TECH", "TECHB", "TECHA", "DEV", "FN", "TCH"]);
+  expect(memberRows(rows, "members", " ", sort).map((row) => row.key)).toEqual(["FN", "TCH", "DEV", "TECHB", "TECHA", "TECH"]);
+});
 test("narrow columns retain weight and daily move; missing observations do not shift numeric edges", () => {
   for (const width of [39, 55, 90, 165, 250]) for (const movers of [false, true]) {
     const columns = memberColumns(width, movers);

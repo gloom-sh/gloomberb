@@ -1,3 +1,4 @@
+import { matchesNavigationKey, useKeybindings, type ResolvedKeybindings } from "../../app/keybindings";
 import {
   useCallback,
   useEffect,
@@ -46,8 +47,9 @@ function stopTableKey(event: DataTableKeyEvent) {
 const DATA_TABLE_SELECTION_COMMIT_DELAY_MS = 150;
 
 /** The keys that step the cursor: a burst of them is what the commit delay collapses. */
-function isCursorStepKey(event: DataTableKeyEvent): boolean {
-  return isPlainKey(event, "j", "k", "down", "up", "home", "end", "pageup", "pagedown");
+function isCursorStepKey(event: DataTableKeyEvent, bindings: ResolvedKeybindings): boolean {
+  return matchesNavigationKey(bindings, "down", event) || matchesNavigationKey(bindings, "up", event)
+    || isPlainKey(event, "home", "end", "pageup", "pagedown");
 }
 
 /** Shift+Left/Right or Ctrl+Left/Right, with no other modifier. */
@@ -186,6 +188,7 @@ export interface DataTableViewProps<
     context: DataTableRootKeyContext,
   ) => boolean | void;
   resetScrollKey?: unknown;
+  initialScrollIndex?: number | null;
   /**
    * A column to bring to the middle of a table too wide for its pane: on
    * first draw and whenever it changes. A grid whose reading is in its middle
@@ -225,7 +228,10 @@ export function DataTableView<
   resetScrollKey,
   revealColumnId,
   scrollToIndex,
+  scrollToIndexAlign,
   scrollToIndexVersion = 0,
+  initialScrollIndex,
+  onVisibleRangeChange,
   ...tableProps
 }: DataTableViewProps<T, C>) {
   const onHeaderClick = tableProps.onHeaderClick;
@@ -264,6 +270,7 @@ export function DataTableView<
     scrollRef,
     syncHeaderScroll,
   });
+  const navigation = useKeybindings();
   const [cursorIndex, setCursorIndex] = useState<number | null>(null);
   const pendingCommitRef = useRef(false);
   const pendingCommitTargetRef = useRef<SelectionCommitTarget | null>(null);
@@ -341,7 +348,16 @@ export function DataTableView<
       lastControlledScrollRequestRef.current.index !== scrollToIndex
       || lastControlledScrollRequestRef.current.version !== scrollToIndexVersion
     );
-  const effectiveScrollToIndex = controlledScrollRequestChanged
+  const [restoreIndex, setRestoreIndex] = useState(initialScrollIndex ?? null);
+  const restoring = restoreIndex !== null && scrollToIndex == null && selectionScrollTarget === null;
+  const reportVisibleRange = useCallback<NonNullable<DataTableProps<T, C>["onVisibleRangeChange"]>>((range) => {
+    if (restoring) {
+      if (range.end === 0 || (range.start !== restoreIndex && range.end < tableProps.items.length)) return;
+      setRestoreIndex(null);
+    }
+    onVisibleRangeChange?.(range);
+  }, [onVisibleRangeChange, restoreIndex, restoring, tableProps.items.length]);
+  const effectiveScrollToIndex = restoring ? restoreIndex : controlledScrollRequestChanged
     ? scrollToIndex
     : selectionScrollTarget ?? scrollToIndex;
 
@@ -434,7 +450,7 @@ export function DataTableView<
       clearSelectionScrollTarget();
       return;
     }
-    if (effectiveSelectedIndex < 0) return;
+    if (restoring || effectiveSelectedIndex < 0) return;
 
     const selectionChanged = !previous
       || previous.kind !== current.kind
@@ -451,6 +467,7 @@ export function DataTableView<
     defaultCursorIndex,
     effectiveSelectedIndex,
     requestSelectionScroll,
+    restoring,
     scrollToIndex,
     selectedIndexFromSelection,
     selection.kind,
@@ -529,7 +546,7 @@ export function DataTableView<
   // under the cursor, so a step still waiting commits before the key reaches
   // a handler, which reads the selection the pane holds.
   useBeforeShortcut((event) => {
-    if (event.defaultPrevented || event.propagationStopped || isCursorStepKey(event)) return;
+    if (event.defaultPrevented || event.propagationStopped || isCursorStepKey(event, navigation)) return;
     flushPendingCommitRef.current();
   });
 
@@ -831,13 +848,13 @@ export function DataTableView<
     // free for the pane scroll keys to scroll the rows.
     if (tableProps.items.length === 0 || selection.kind === "none") return;
 
-    if (isPlainKey(event, "j", "down")) {
+    if (matchesNavigationKey(navigation, "down", event)) {
       stopTableKey(event);
       selectByOffset(1);
       return;
     }
 
-    if (isPlainKey(event, "k", "up")) {
+    if (matchesNavigationKey(navigation, "up", event)) {
       stopTableKey(event);
       selectByOffset(-1);
       return;
@@ -878,7 +895,9 @@ export function DataTableView<
         scrollRef={effectiveScrollRef}
         syncHeaderScroll={effectiveSyncHeaderScroll}
         onBodyScrollActivity={handleBodyScrollActivity}
+        onVisibleRangeChange={restoring || onVisibleRangeChange ? reportVisibleRange : undefined}
         scrollToIndex={effectiveScrollToIndex}
+        scrollToIndexAlign={restoring ? "start" : scrollToIndexAlign}
         scrollToIndexVersion={scrollToIndexVersion + selectionScrollVersion}
         isSelected={isItemSelected}
         onSelect={handleTableSelect}

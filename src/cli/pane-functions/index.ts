@@ -83,7 +83,7 @@ async function withPaneRuntime<T>(
     registry: PaneFunctionCatalog;
     resolved: ResolvedPaneFunction;
   }) => Promise<T>,
-  settings: { strictHeadlessOptions?: boolean; tableSection?: boolean; rowWindow?: boolean; command?: "fn" | "shot" } = {},
+  settings: { strictHeadlessOptions?: boolean; strictRenderedOptions?: boolean; tableSection?: boolean; rowWindow?: boolean; command?: "fn" | "shot" } = {},
 ): Promise<T> {
   return withMarketData(ctx, async (market) => {
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
@@ -91,16 +91,18 @@ async function withPaneRuntime<T>(
     const plugins = settings.command === "shot" ? [...ctx.plugins, ...desktopOnlyPlugins(ctx)] : await pluginsOfFunction(ctx, context, args);
     const registry = await createPaneCatalog(context, plugins);
     try {
-      let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
-      const resolution = { ...settings, seriesSources: () => ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
-      let resolved = await resolvePaneFunction(registry, context, parsed, resolution);
-      // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
-      const expansion = await withPersistedCloudSession(context, () => expandResolvedArgument(resolved, context, parsed.arg));
-      if (expansion) {
-        parsed = { ...parsed, arg: expansion.argument };
-        resolved = withExpansion(await resolvePaneFunction(registry, context, parsed, resolution), expansion);
-      }
-      return await run({ parsed, context, registry, resolved });
+      return await withPersistedCloudSession(context, async () => {
+        let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
+        const resolution = { ...settings, seriesSources: () => ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
+        let resolved = await resolvePaneFunction(registry, context, parsed, resolution);
+        // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
+        const expansion = await expandResolvedArgument(resolved, context, parsed.arg);
+        if (expansion) {
+          parsed = { ...parsed, arg: expansion.argument };
+          resolved = withExpansion(await resolvePaneFunction(registry, context, parsed, resolution), expansion);
+        }
+        return await run({ parsed, context, registry, resolved });
+      });
     } finally {
       registry.destroy();
     }
@@ -472,15 +474,12 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const buildReport = () => buildFunctionReport(resolved, context, parsed.arg, registry);
       // A report still loading after a few seconds (a chain the server reads cold) says so, so it never looks stuck.
       const progress = progressNotice(ctx, [resolved.token, parsed.arg].filter(Boolean).join(" "), FN_PROGRESS_AFTER_MS);
-      const report = await refuseMovedListing(fate, moved, () => withPersistedCloudSession(
+      const report = await refuseMovedListing(fate, moved, () => loadForListing(
+        parsed.listing ?? [],
         context,
-        () => loadForListing(
-          parsed.listing ?? [],
-          context,
-          ctx,
-          outputPath ? () => buildForFile(buildReport) : buildReport,
-          (built) => built.data.empty || !built.data.complete,
-        ),
+        ctx,
+        outputPath ? () => buildForFile(buildReport) : buildReport,
+        (built) => built.data.empty || !built.data.complete,
       )).catch(async (error: unknown) => {
         // A bare code several companies list (3988 in Hong Kong and Tokyo) asks which, as `quote` does, rather than "Not a ticker".
         if (listing) await failUnchosenListing(listing, context, ctx, { ...moved, noun: "data" }, error);
@@ -550,7 +549,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       }
       ctx.printResult(result, render);
       if (failure) process.exitCode = CLI_EXIT_CODES.error;
-    }, { strictHeadlessOptions: true, tableSection: true, rowWindow: true });
+    }, { strictHeadlessOptions: true, strictRenderedOptions: true, tableSection: true, rowWindow: true });
   });
 }
 

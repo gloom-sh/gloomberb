@@ -50,3 +50,5 @@ export {
   subscribeKeybindingCapture,
   takeKeybindingCaptureRequest,
 } from "./capture-request";
+
+export { matchesNavigationKey, navigationDirectionLabel, type NavigationAction } from "./navigation";

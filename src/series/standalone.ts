@@ -48,7 +48,7 @@ export function standaloneSeriesInvoker(
       if (operationId !== "resolve") throw new Error(`Capability "${capabilityId}" is not available.`);
       registry ??= build();
       const request = chartSeriesResolveRequestSchema.parse(payload);
-      const resolved = await resolveRegisteredSeries(await registry, capabilityId, request.seriesId, request.viewport, options?.signal);
+      const resolved = await resolveRegisteredSeries(await registry, capabilityId, request, options?.signal);
       if (!resolved) throw new Error(uncoveredCapabilityMessage(capabilityId, request.seriesId));
       return resolved as T;
     },

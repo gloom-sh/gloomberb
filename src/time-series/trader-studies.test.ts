@@ -156,11 +156,11 @@ test("anchored VWAP draws one line per anchor and skips an anchor before the loa
     Date.parse("2026-09-28T15:00:00Z"),
   ];
   const result = resolveStudies([price(TWO_SESSIONS)], [study("anchored-vwap", withVwapAnchors({}, anchors))]);
-  expect(result.series.map((output) => output.label)).toEqual(["AVWAP Sep 29 09:35", "AVWAP Sep 30 09:30"]);
+  expect(result.series.map((output) => output.label)).toEqual(["AVWAP 29 Sep 09:35", "AVWAP 30 Sep 09:30"]);
   const [first, second] = result.series;
   expect(first!.points.map((point) => point.value)).toEqual([11, 11.25, 5500 / 450]);
   expect(second!.points.map((point) => point.value)).toEqual([20]);
-  expect(result.warnings).toEqual(["AVWAP Sep 28 11:00 starts before the loaded history; choose a longer range."]);
+  expect(result.warnings).toEqual(["AVWAP 28 Sep 11:00 starts before the loaded history; choose a longer range."]);
 
   // Daily bars are stamped at midnight UTC: an anchor picked on the 09:35 bar
   // still starts on its own day.
@@ -170,6 +170,6 @@ test("anchored VWAP draws one line per anchor and skips an anchor before the loa
     ohlcv("2026-09-30T00:00:00Z", 13, 11, 12, 100),
   ], { historyResolution: "1d", timeBasis: { ...NASDAQ_5M.timeBasis, cadenceMs: 86_400_000 } });
   const [onDaily] = resolveStudies([daily], [study("anchored-vwap", withVwapAnchors({}, [anchors[0]!]))]).series;
-  expect(onDaily!.label).toBe("AVWAP Sep 29 2026");
+  expect(onDaily!.label).toBe("AVWAP 29 Sep 2026");
   expect(onDaily!.points.map((point) => point.value)).toEqual([11, 11.25]);
 });

@@ -9,6 +9,9 @@ import { futuresContractByWord } from "../../../market-data/futures-board";
 import { isFuturesInstrument } from "../../../market-data/futures-contract";
 import { readMove } from "./move";
 import type { AlertRule } from "./types";
+import { createBaseConverter } from "../../../cli/base-converter";
+import { baseConversionLabel } from "../../../cli/base-conversion-label";
+import { alertPriceWithCurrency } from "./price-text";
 
 export function normalizeAlertSymbol(value: string | null | undefined): string {
   return value?.trim().toUpperCase() ?? "";
@@ -176,6 +179,26 @@ export function farTargetMessage(symbol: string, target: number, last: number | 
   return `A target of ${text(target)} is ${how} ${symbol}'s last price of ${text(last)}. ${coinNote ?? "Check the price and the symbol."}`;
 }
 
+export function alertCurrencyMismatch(typed: string | undefined, quoted: string | undefined, listing: string): string | null {
+  const currency = quoted?.trim().toUpperCase();
+  if (!typed || typed === currency) return null;
+  return currency ? `${listing} is quoted in ${currency}, not ${typed}. Set the target in ${currency}.`
+    : `Cannot verify the ${typed} target: the quote currency for ${listing} is unavailable.`;
+}
+
+export async function assertAlertCurrency(level: { price: number; currency?: string }, quote: Quote, listing: string,
+  marketData: Pick<DataProvider, "getExchangeRate" | "getCachedQuery" | "revalidatesInBackground" | "getQuotesBatch">): Promise<void> {
+  const mismatch = alertCurrencyMismatch(level.currency, quote.currency, listing);
+  if (!mismatch) return;
+  if (!quote.currency || !level.currency) throw new Error(mismatch);
+  const convert = createBaseConverter(marketData, quote.currency);
+  const amount = await convert(level.price, level.currency);
+  const mark = convert.conversions()[0];
+  if (!Number.isFinite(amount) || mark?.asOf == null) throw new Error(mismatch);
+  const suggested = alertPriceWithCurrency({ symbol: quote.symbol, lastQuoteCurrency: quote.currency, lastQuotePence: isPenceQuotedLine(quote) }, amount);
+  throw new Error(`${mismatch} About ${suggested} (${baseConversionLabel(mark)}).`);
+}
+
 /**
  * A level read in the unit its line's quote shows. On a London line quoted
  * in pence, `70p` is £0.70, and so is a bare 70 when 70 in pounds is ten
@@ -183,10 +206,12 @@ export function farTargetMessage(symbol: string, target: number, last: number | 
  * was read. Pence on a line not quoted in them is refused, naming its unit.
  */
 export function levelInQuoteUnit(
-  level: { price: number; pence?: boolean; typed?: string },
+  level: { price: number; pence?: boolean; typed?: string; currency?: string },
   quote: Pick<Quote, "currency" | "providerPriceDivisor" | "price">,
   listing: string,
 ): { price: number; pence: boolean; note: string | null } {
+  const mismatch = alertCurrencyMismatch(level.currency, quote.currency, listing);
+  if (mismatch) throw new Error(mismatch);
   const pence = isPenceQuotedLine(quote);
   if (level.pence && !pence) {
     const currency = quote.currency?.trim().toUpperCase() || "";
@@ -195,7 +220,7 @@ export function levelInQuoteUnit(
     const typed = Number((level.price * 100).toPrecision(12));
     throw new Error(`${listing} is quoted in pounds (GBP), not pence: type ${typed / 100} for ${typed}p.`);
   }
-  if (!pence || level.pence) return { price: level.price, pence, note: null };
+  if (!pence || level.pence || level.currency) return { price: level.price, pence, note: null };
   const inPence = Number((level.price / 100).toPrecision(12));
   if (!farTargetMessage(listing, level.price, quote.price, null) || farTargetMessage(listing, inPence, quote.price, null)) return { price: level.price, pence, note: null };
   const typed = level.typed ?? String(level.price);

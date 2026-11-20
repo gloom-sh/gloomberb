@@ -5,11 +5,14 @@ import { getSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { getSharedNewsService } from "../news/hooks";
 import { getSharedRegistry, getSharedMarketData } from "../plugins/registry";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { createDefaultConfig } from "../types/config";
+import { createDefaultConfig, createPaneInstance } from "../types/config";
 import { createAppRuntime } from "./app-runtime";
 import { apiClient, setCloudApiFetchTransport } from "../api-client";
 import { installTestWebSocket, verifiedUser } from "../test-support/cloud-api";
 import { readSavedCopy, writeSavedCopy } from "../data/pane-saved-copies";
+import { MemoryResourceStore } from "../data/memory-resource-store";
+import { applyResourceSync, createBatchedResourceSink } from "../data/durable-resources";
+import { cloudNewsSnapshotScope } from "../news/cloud-session";
 
 const runtimes: ReturnType<typeof createAppRuntime>[] = [];
 function runtime(overrides: Partial<Parameters<typeof createAppRuntime>[0]> = {}) {
@@ -26,6 +29,68 @@ function runtime(overrides: Partial<Parameters<typeof createAppRuntime>[0]> = {}
 }
 
 afterEach(() => { for (const services of runtimes.splice(0).reverse()) services.destroy(); });
+
+test.each(["downgrade", "sign-out", "switch account"])("news snapshots are purged on %s and reject late writes", async (change) => {
+  const proUser = { ...verifiedUser, plan: "pro" } as const;
+  apiClient.setSessionToken("news-session");
+  apiClient.restoreCachedUser(proUser);
+  const durable = new MemoryResourceStore();
+  const sink = createBatchedResourceSink((batch) => applyResourceSync(durable, batch));
+  const persistence = new JsonPersistence(undefined, { durable: { saved: [], sink } });
+  const services = runtime({ persistence });
+  try {
+    await services.ready;
+    const pane = createPaneInstance("news-feed", { instanceId: "news-feed:private" });
+    const key = "feed:articles:v2";
+    const scope = cloudNewsSnapshotScope()!;
+    expect(scope).toBe(JSON.stringify([proUser.id, true, true]));
+    const snapshots = services.pluginRegistry.newsPaneSnapshots;
+    snapshots.write(pane, "news", key, scope, ["paid data"]);
+    expect(snapshots.read(pane, "news", key, scope)).toEqual(["paid data"]);
+    const resource = { namespace: "pane:news", kind: "list", entityKey: JSON.stringify([pane.paneId, pane.instanceId]), sourceKey: scope };
+    await sink.flush();
+    expect(durable.get(resource)).not.toBeNull();
+    if (change === "sign-out") apiClient.setSessionToken(null);
+    else apiClient.restoreCachedUser(change === "downgrade" ? { ...proUser, plan: "free" } : { ...proUser, id: "another-account" });
+    expect(snapshots.read(pane, "news", key, cloudNewsSnapshotScope()!)).toBeNull();
+    snapshots.write(pane, "news", key, scope, ["late paid data"]);
+    await sink.flush();
+    expect(durable.get(resource)).toBeNull();
+    if (change === "sign-out") apiClient.setSessionToken("news-session");
+    apiClient.restoreCachedUser(proUser);
+    expect(snapshots.read(pane, "news", key, scope)).toBeNull();
+  } finally {
+    services.destroy();
+    apiClient.dispose();
+    apiClient.setSessionToken(null);
+  }
+});
+
+test("topic and ticker changes reuse a bounded cache slot, and removed panes can be evicted", async () => {
+  const resources = new MemoryResourceStore({ maxRows: 2, maxBytes: 1024 * 1024 });
+  const services = runtime({ persistence: { ...new JsonPersistence(), resources, close() {} } });
+  await services.ready;
+  const scope = cloudNewsSnapshotScope()!;
+  const snapshots = services.pluginRegistry.newsPaneSnapshots;
+  const industry = createPaneInstance("news-industry", { instanceId: "topics" });
+  const ticker = createPaneInstance("ticker-news", { instanceId: "ticker:old" });
+  const nextTicker = createPaneInstance("ticker-news", { instanceId: "ticker:new" });
+  snapshots.write(ticker, "news", "articles:AAPL::v2", scope, ["old symbol"]);
+  snapshots.write(ticker, "news", "articles:NVDA::v2", scope, ["new symbol"]);
+  expect(snapshots.read(ticker, "news", "articles:AAPL::v2", scope)).toBeNull();
+  for (const topic of ["mna", "metals", "energy", "earn"]) {
+    snapshots.write(industry, "news", `industry:topic:${topic}:articles:v2`, scope, Array.from({ length: 220 }, () => topic));
+  }
+  expect(snapshots.read(industry, "news", "industry:topic:earn:articles:v2", scope)).toHaveLength(200);
+  snapshots.write(industry, "news", "industry:topic:earn:articles:v2", scope, ["fits", "x".repeat(256 * 1024)]);
+  expect(snapshots.read(industry, "news", "industry:topic:earn:articles:v2", scope)).toEqual(["fits"]);
+  expect(snapshots.read(industry, "news", "industry:topic:energy:articles:v2", scope)).toBeNull();
+  expect(snapshots.read(ticker, "news", "articles:NVDA::v2", scope)).toEqual(["new symbol"]);
+  expect(snapshots.read(industry, "news", "industry:topic:earn:articles:v2", scope)).not.toBeNull();
+  snapshots.write(nextTicker, "news", "articles:META::v2", scope, ["new pane"]);
+  expect(snapshots.read(ticker, "news", "articles:NVDA::v2", scope)).toBeNull();
+  expect(snapshots.read(nextTicker, "news", "articles:META::v2", scope)).toEqual(["new pane"]);
+});
 
 test("confirmed Free access purges the account's old Pro copies, not a tentative boot identity or sign-out", async () => {
   const socket = globalThis.WebSocket;

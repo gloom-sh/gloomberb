@@ -135,15 +135,17 @@ test("a filled IV leads with ~, still fits the column at 100% and over, and an u
 });
 
 test("a narrow chain gives up the same fields on both sides, quotes last, so the puts stay beside the calls", () => {
-  // Counted as the table draws them: "C LAST" takes 8 cells with its header, not its field's 7.
-  const width = (fields: readonly string[]) => getTableWidth(createOptionColumns(fields as never), 0, 0);
-  expect(width(DEFAULT_OPTION_FIELD_IDS)).toBe(103);
+  // Counted as the table draws them: "C LAST" takes 8 cells with its header, not its field's 7, and a
+  // blank after each column, so a value as wide as its column ("261.4%") never runs into the next
+  // ("-.035261.4%" at 80 columns, 20 Nov 2026).
+  const width = (fields: readonly string[]) => getTableWidth(createOptionColumns(fields as never), 1, 0);
+  expect(width(DEFAULT_OPTION_FIELD_IDS)).toBe(118);
   expect(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 200)).toEqual(DEFAULT_OPTION_FIELD_IDS);
-  expect(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 102)).not.toContain("last");
-  // A floating OMON at 120x36 is 75 cells wide: the last trade and volume go.
-  expect(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 75)).toEqual(["bid", "ask", "iv", "delta", "openInterest"]);
-  for (const cells of [50, 75, 99, 102, 103]) expect(width(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, cells))).toBeLessThanOrEqual(cells);
+  expect(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 117)).not.toContain("last");
+  // A fullscreen chain in an 80x24 terminal is 77 cells wide: the last trade, volume and delta go.
+  expect(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 77)).toEqual(["bid", "ask", "iv", "openInterest"]);
+  for (const cells of [50, 77, 84, 99, 117, 118]) expect(width(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, cells))).toBeLessThanOrEqual(cells);
   // Settings' order is kept, a put-only field counts once, and the bid never goes.
-  expect(fitOptionFieldIds(["iv", "costOfSpot", "ask", "bid"], 50)).toEqual(["iv", "ask", "bid"]);
+  expect(fitOptionFieldIds(["iv", "costOfSpot", "ask", "bid"], 56)).toEqual(["iv", "ask", "bid"]);
   expect(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 10)).toEqual(["bid"]);
 });

@@ -23,7 +23,8 @@ import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatRelativeAge, formatShortDate } from "../../../utils/datetime-format";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -431,17 +432,18 @@ function UsAuctionsView({
     return false;
   }, [cycleFilter, cycleSort]);
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
   ) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return handlePaneKey(event);
-  }, [focusSearch, handlePaneKey]);
+  }, [isSearchUp, focusSearch, handlePaneKey]);
 
   const showYear = useMemo(() => auctionDatesShowYear(rows.map((auction) => auction.auctionDate)), [rows]);
   // A table that scrolls down keeps a cell for its scrollbar.

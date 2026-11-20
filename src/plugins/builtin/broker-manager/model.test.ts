@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createRemoteBrokerAdapter } from "../../../brokers/remote-broker-adapter";
 import type { BrokerAdapter } from "../../../types/broker";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
 import { testBroker } from "../../../test-support/broker";
@@ -28,6 +29,20 @@ function createAdapter(state: "connected" | "error" = "connected"): BrokerAdapte
 }
 
 describe("broker manager rows", () => {
+  test("keeps an on-demand desktop broker configured and surfaces an explicit sync failure", () => {
+    const instance = createInstance({ lastSyncedAt: 900_000 });
+    const config = { ...createDefaultConfig("/tmp/gloomberb-broker-manager"), brokerInstances: [instance] };
+    const adapter = createRemoteBrokerAdapter({ ...createAdapter(), getStatus: undefined });
+    const adapters = new Map([[instance.brokerType, adapter]]);
+
+    expect(buildBrokerProfileRows(config, adapters, {})[0]).toMatchObject({
+      state: "configured",
+      lastSyncedAt: 900_000,
+    });
+    expect(buildBrokerProfileRows(config, adapters, {}, undefined, undefined, { [instance.id]: "Session expired" })[0])
+      .toMatchObject({ state: "error", message: "Session expired" });
+  });
+
   test("derives live status and account summary", () => {
     const config = {
       ...createDefaultConfig("/tmp/gloomberb-broker-manager"),

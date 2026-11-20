@@ -267,6 +267,28 @@ test("a broker's chain says nothing of Gloom Cloud's delay: a free account sees 
   }
 });
 
+test("a spot FX pair's chain is not served: the pane names the listed proxy, offers no upgrade, and its report fails with the same answer", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getOptionsChain: async (symbol) => { throw new Error(`No options provider available for ${symbol}`); },
+  })));
+  const registry = createRemoteUiRegistry();
+  await act(async () => {
+    await tui.render(<RemoteUiRegistryProvider registry={registry}>
+      <OptionsHarness ticker={createTestTicker("EURUSD=X", "EUR/USD", { assetCategory: "CASH" })} quotePrice={1.097} showFooter height={20} width={160} />
+    </RemoteUiRegistryProvider>, { width: 160, height: 20 });
+  });
+  await renderSettled();
+  const frame = tui.frame();
+  expect(frame).toContain("Options on spot FX pairs (EURUSD=X) are not served.");
+  expect(frame).toContain("Nearest listed alternative: FXE");
+  // No plan serves it: no delay clock, no upgrade, and not the routing error.
+  for (const absent of ["upgrade", "◷15m", "provider"]) expect(frame).not.toContain(absent);
+  expect(renderedReportFailure(registry.snapshot())).toEqual({
+    message: "Options on spot FX pairs (EURUSD=X) are not served.",
+    details: "Nearest listed alternative: FXE (Invesco CurrencyShares Euro Trust), gloom fn OMON FXE. Strategy payoffs: gloom fn OSA FXE",
+  });
+});
+
 test("reads a put's cost as a percent of spot from its quote midpoint, on the put side alone", async () => {
   const chain = makeChain([700, 780], 780);
   chain.puts = chain.puts.map((put) => put.strike === 700 ? { ...put, bid: 5.48, ask: 5.51 }
@@ -566,7 +588,7 @@ test("a chain that gives up fields fits as drawn, its last put column whole, and
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
     getOptionsChain: async () => makeChain([100, 101], 101),
   })));
-  for (const width of [100, 103, 105, 106]) {
+  for (const width of [115, 118, 120, 121]) {
     await act(async () => {
       await tui.render(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} showFooter width={width} height={16} />,
         { width, height: 16 });
@@ -577,10 +599,25 @@ test("a chain that gives up fields fits as drawn, its last put column whole, and
     expect(header.trimEnd()).toMatch(/P ASK\s+P BID$/);
     const bodyScroll = tui.setup().renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable | undefined;
     expect(bodyScroll?.horizontalScrollBar.visible).toBe(false);
-    // Below 106 columns the last trade gives way on both sides, and the footer says one field is hidden.
-    expect(header.includes("C LAST")).toBe(width >= 106);
-    expect(/1 (field )?hidden/.test(lines.join("\n"))).toBe(width < 106);
+    // Below 121 columns the last trade gives way on both sides, and the footer says one field is hidden.
+    expect(header.includes("C LAST")).toBe(width >= 121);
+    expect(/1 (field )?hidden/.test(lines.join("\n"))).toBe(width < 121);
   }
+});
+
+// The chain packed its columns with no gap, so a value as wide as its column ran into the one before it
+// (DES UAL at 80 columns: "-.035189.0%", a put's delta and IV read as one number).
+test("a value as wide as its column keeps a blank before the next", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getOptionsChain: async () => makeChain([12_345, 12_350], 12_350),
+  })));
+  await act(async () => {
+    await tui.render(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={12_350} width={80} height={16}
+      settings={{ optionColumnIds: ["bid", "ask"] }} />, { width: 80, height: 16 });
+  });
+  await renderSettled();
+  // Each quote takes all 7 cells of its column.
+  expect(tui.frame()).toMatch(/1234\.45 1234\.55 +12,345 1234\.55 1234\.45/);
 });
 
 /** `shot OMON SPY --columns gamma,openInterest,volume` printed OI counts with no session: the date gave way in a crowded footer. */

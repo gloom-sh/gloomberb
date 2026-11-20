@@ -1214,7 +1214,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
           const body = root.querySelector('[data-gloom-role="pane-body"]') || root;
           const states = [...body.querySelectorAll('[data-gloom-ui="empty-state"]')].filter(isVisible);
           if (states.length !== 1) return [];
-          const chrome = '[data-gloom-role="query-bar"], [data-gloom-role="data-table-header-row"], [data-gloom-role="tab-list"], [data-gloom-role="page-stack-header"], [data-gloom-role="pane-footer"], [data-gloom-ui="empty-state"]';
+          const chrome = '[data-gloom-role="query-bar"], [data-gloom-role="data-table-header-row"], [data-gloom-role="tab-list"], [data-gloom-role="page-stack-header"], [data-gloom-role="pane-footer"], [data-gloom-role="pane-footer-notes"], [data-gloom-ui="empty-state"]';
           const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
           for (let node = walker.nextNode(); node; node = walker.nextNode()) {
             const parent = node.parentElement;

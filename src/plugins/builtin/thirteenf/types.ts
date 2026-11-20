@@ -65,6 +65,7 @@ export interface ThirteenFTickerInfo {
 export interface ThirteenFTickerHolders {
   cusip: string;
   periodOfReport: string;
+  fallbackFromPeriod?: string;
   ciks: string[];
 }
 

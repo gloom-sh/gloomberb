@@ -1,3 +1,4 @@
+import type { HeadlessPaneFreshness } from "../../../types/headless";
 import { surfaceSheetSnapshot, surfaceSheetTenors, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
 
 /** In session, while visible, a real-time surface reloads at this cadence. */
@@ -57,4 +58,20 @@ export function surfaceFreshnessLabel(snapshot: SurfaceSnapshot, defaultDelayMin
   const basis = realtime === loaded.length ? "real-time" : realtime > 0 ? "mixed real-time and delayed" : `${delay}m delayed`;
   const observed = loaded.map((entry) => entry.asOf ? Date.parse(entry.asOf) : Number.NaN).filter(Number.isFinite);
   return observed.length ? `${basis} · as of ${UTC_TIME.format(Math.min(...observed))} UTC` : basis;
+}
+
+/**
+ * The same facts as `surfaceFreshnessLabel`, as a report dates them: the
+ * oldest loaded expiry's quote time, real-time only when every slice is, else
+ * delayed by the most any slice is, and stale when one is.
+ */
+export function surfaceFeedFreshness(snapshot: SurfaceSnapshot, defaultDelayMinutes: number): Pick<HeadlessPaneFreshness, "asOf" | "status" | "delayMinutes"> | null {
+  const loaded = snapshot.expiries.filter((entry) => entry.state !== "loading");
+  if (!loaded.length) return null;
+  const observed = loaded.map((entry) => entry.asOf ? Date.parse(entry.asOf) : Number.NaN).filter(Number.isFinite);
+  const asOf = observed.length ? { asOf: new Date(Math.min(...observed)).toISOString() } : {};
+  if (loaded.some((entry) => entry.stale)) return { ...asOf, status: "stale" };
+  if (loaded.every((entry) => entry.dataSource === "live")) return { ...asOf, status: "live" };
+  const delay = Math.max(0, ...loaded.map((entry) => entry.dataSource === "live" ? 0 : entry.delayMinutes ?? 0)) || defaultDelayMinutes;
+  return { ...asOf, status: "delayed", delayMinutes: delay };
 }

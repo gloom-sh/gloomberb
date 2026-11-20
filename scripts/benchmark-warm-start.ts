@@ -338,7 +338,7 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
       const { usedSize } = await browser.cdp.send<{ usedSize: number }>("Runtime.getHeapUsage", {}, 3_000);
       let backendHeapBytes: number | undefined;
       if (standIn) {
-        const response = await fetch(`${origin}/__warm-heap`, { signal: AbortSignal.timeout(3_000) });
+        const response = await fetch(standIn.endpoint("__warm-heap"), { signal: AbortSignal.timeout(3_000) });
         if (!response.ok) throw new Error(`Desktop heap request failed: ${response.status}`);
         backendHeapBytes = Number(await response.text());
       }
@@ -351,7 +351,7 @@ async function launchView(network: Network | "fill", screenshot?: string): Promi
           await writer.end();
         }
         if (standIn) {
-          const response = await fetch(`${origin}/__warm-heap-snapshot`, { signal: AbortSignal.timeout(45_000) });
+          const response = await fetch(standIn.endpoint("__warm-heap-snapshot"), { signal: AbortSignal.timeout(45_000) });
           if (!response.ok) throw new Error(`Desktop heap snapshot failed: ${response.status}`);
           await Bun.write(`${snapshot}-backend.heapsnapshot`, response);
         }

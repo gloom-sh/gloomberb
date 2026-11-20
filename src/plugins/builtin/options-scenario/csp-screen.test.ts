@@ -160,7 +160,8 @@ test("a name demand coverage could not take is just not ranked yet: the server's
   try {
     const result = await cspScreenHeadless.load({ symbols: ["AAA", "BBB"], rawArgument: "AAA BBB", argument: ["AAA", "BBB"], options: {} }, ctx);
     // A name whose history is still short says why; one that is not collected promises nothing.
-    expect(result.notes?.slice(1)).toEqual(["No IV rank: BBB (fewer than 120 sessions).", "No IV rank for AAA yet."]);
+    expect(result.notes?.slice(1, 3)).toEqual(["No IV rank: BBB (fewer than 120 sessions).", "No IV rank for AAA yet."]);
+    expect(result.notes?.[3]).toMatch(/AAA: Option quotes .* UTC · Underlying .* UTC/);
   } finally {
     setSystemTime();
   }

@@ -6,7 +6,7 @@ import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
 import { statementNopat } from "./nopat";
 import { debtAndLeases, leaseBasis, type LeaseBasis } from "../../../../utils/lease-liabilities";
-import { cashAndShortTermInvestments, excludesCashRunway, formatRunwayMonths, SHORT_RUNWAY_HISTORY, monthlyOperatingBurn, QUARTER_MONTHS, reportsShortTermTotal, runwayMonths, YEAR_MONTHS } from "../../../../utils/cash-runway";
+import { cashAndShortTermInvestments, cashFlowAfterCapex, excludesCashRunway, formatRunwayMonths, SHORT_RUNWAY_HISTORY, monthlyOperatingBurn, netProceedsAfter, QUARTER_MONTHS, reportsShortTermTotal, runwayMonths, YEAR_MONTHS, type OfferingFiling } from "../../../../utils/cash-runway";
 import {
   buildPreviousStatementMap,
   trailingFourQuarters,
@@ -37,7 +37,7 @@ export const RATIO_GAP_TEXT: Record<RatioGap, string> = {
   // An average of the opening and closing balance with no opening balance sheet on file: the oldest column's, a year's
   // whose prior year is missing, a TTM column's without the quarter a year earlier.
   "no-opening": "needs prior period",
-  "short-history": SHORT_RUNWAY_HISTORY,
+  "short-history": "< 4 quarters",
   "no-burn": "no burn",
   "not-meaningful": "N/M",
   "no-price": "no price",
@@ -353,7 +353,7 @@ const DPO: RatioDef = {
 
 /** Cash used by operations per month: a quarter's operating cash flow over 3 months, a year's over 12. */
 const monthlyBurn = (months: number) => ({ statement }: RatioPeriod): RatioAmount => (
-  monthlyOperatingBurn(finite(statement.operatingCashFlow), months) ?? "not-reported"
+  monthlyOperatingBurn(cashFlowAfterCapex(statement), months) ?? "not-reported"
 );
 
 
@@ -660,16 +660,20 @@ function ratioInputLabel(input: RatioInputDef, quarterly: boolean): string {
   return input.operator ? `${input.operator} ${label}` : label;
 }
 
+export function ratioGapText(gap: RatioGap, format?: RatioFormat): string {
+  return gap === "short-history" && format === "months" ? SHORT_RUNWAY_HISTORY : RATIO_GAP_TEXT[gap];
+}
+
 export function formatRatioValue(format: RatioFormat, amount: RatioAmount): string {
-  if (isGap(amount)) return RATIO_GAP_TEXT[amount];
+  if (isGap(amount)) return ratioGapText(amount, format);
   if (format === "percent") return `${formatNumber(amount * 100, 1)}%`;
   if (format === "months") return formatRunwayMonths(amount, "");
   if (format === "days") return formatNumber(amount, 1);
   return `${formatNumber(amount, Math.abs(amount) < 10 ? 2 : 1)}x`;
 }
 
-export function formatRatioInput(format: RatioInputFormat, amount: RatioAmount, divisor: number): string {
-  if (isGap(amount)) return RATIO_GAP_TEXT[amount];
+export function formatRatioInput(format: RatioInputFormat, amount: RatioAmount, divisor: number, ratioFormat?: RatioFormat): string {
+  if (isGap(amount)) return ratioGapText(amount, ratioFormat);
   if (format === "perShare") return formatPerShareNumber(amount);
   if (format === "days") return formatNumber(amount, 1);
   const scaled = amount / divisor;
@@ -823,6 +827,18 @@ export interface RatioTableModel {
   rows: RatioTableRow[];
 }
 
+export function latestRunwayPeriodEnd(table: RatioTableModel | null | undefined): string | null {
+  const runway = table?.ratios.filter((def) => def.format === "months");
+  if (!table || !runway?.length) return null;
+  let latest: string | null = null;
+  for (const [index, { statement }] of table.periods.entries()) {
+    if (!runway.some((def) => typeof table.cells.get(def.id)?.[index]?.value === "number")) continue;
+    const date = ratioPeriodEnd(statement);
+    if (date !== "TTM" && (!latest || date > latest)) latest = date;
+  }
+  return latest;
+}
+
 const UNIT_WORDS: Record<string, string> = { K: "k", M: "mn", B: "bn", T: "tn" };
 
 /** The ratios a tab shows for quarterly or annual columns. */
@@ -835,14 +851,19 @@ export function buildRatioTableModel(
   periods: RatioPeriod[],
   expandedRatioIds: ReadonlySet<string> | "all",
   profile?: CompanyProfile,
+  proceeds?: { periodEnd: string; filings: readonly OfferingFiling[] },
 ): RatioTableModel {
   const quarterly = periods.some((period) => period.quarterly);
   const totalOnFile = periods.some((period) => period.shortTermTotalOnFile);
   const leases = periods.find((period) => period.leaseBasis)?.leaseBasis;
   const ratios = visibleRatios(tab, quarterly)
     .filter((def) => def.format !== "months" || !excludesCashRunway(profile))
-    .map((def) => def.format === "months" && !totalOnFile
-      ? { ...def, inputs: def.inputs.map((input, index) => index === 0 ? { ...input, label: "Cash" } : input) }
+    .map((def) => def.format === "months"
+      ? { ...def, inputs: def.inputs.map((input, index) => index === 0 ? { ...input, label: totalOnFile ? input.label : "Cash", value: (period: RatioPeriod) => {
+        const cash = runwayCash(period);
+        return proceeds && typeof cash === "number" && ratioPeriodEnd(period.statement) === proceeds.periodEnd
+          ? cash + netProceedsAfter(proceeds.filings, proceeds.periodEnd, period.statement.currency) : cash;
+      } } : input) }
       : withLeaseRow(def, leases));
   const cells = new Map(ratios.map((def) => [def.id, periods.map((period) => evaluateRatio(def, period))]));
   const inputs = ratios.flatMap((def) => def.inputs.map((input, index) => {
@@ -900,6 +921,7 @@ export function ratioTableForFinancials(
   tab: RatioTabDef,
   period: FinancialPeriod,
   history?: readonly PricePoint[] | null,
+  proceeds?: { periodEnd: string; filings: readonly OfferingFiling[] },
 ): RatioTableModel {
   const annual = byDate(financials.annualStatements);
   const quarterly = byDate(financials.quarterlyStatements);
@@ -909,5 +931,5 @@ export function ratioTableForFinancials(
     const close = history ? periodEndClose(history, ratioPeriodEnd(statement)) : undefined;
     return (close === undefined ? null : currencies.priceInStatementUnits(statement, close)) ?? "no-price";
   };
-  return buildRatioTableModel(tab, ratioPeriods(statements, ratioOpenings(period, annual, quarterly), period, price, { annual, quarterly }), "all", financials.profile);
+  return buildRatioTableModel(tab, ratioPeriods(statements, ratioOpenings(period, annual, quarterly), period, price, { annual, quarterly }), "all", financials.profile, proceeds);
 }

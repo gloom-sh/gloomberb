@@ -15,7 +15,7 @@ import {
 import type { ResolvedPaneFunction } from "./resolver";
 import type { MarketContext } from "../types";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
-import { declaredReportFreshness, renderedReportFreshness, renderedReportObservations } from "./report-notices";
+import { declaredReportFreshness, renderedReportFreshness, renderedReportObservations, renderedReportOptions } from "./report-notices";
 import {
   captureStatusLine,
   deriveCaptureReport,
@@ -180,6 +180,22 @@ export function withReportCoverage(result: PaneScreenshotResult, coverage: ShotR
 const SHOT_REPORT_WAIT_MS = 20_000;
 
 /**
+ * The report options for what the capture shows, where that is not what it
+ * was asked for: the tab it shows (`shownReportTab`), and the view the pane
+ * says it stands in (`renderedReportOptions`: OVDV's stored close while the
+ * chain is closed). Undefined when it shows what was asked.
+ */
+export function shownReportOptions(
+  resolved: Pick<ResolvedPaneFunction, "headless" | "options">,
+  semanticUi: readonly RemoteUiNodeSnapshot[],
+): Record<string, string> | undefined {
+  const tab = shownReportTab(resolved, semanticUi);
+  const published = Object.entries(renderedReportOptions(semanticUi))
+    .filter(([key, value]) => resolved.headless?.options.some((option) => option.key === key) && String(resolved.options[key] ?? "") !== value);
+  return tab || published.length ? { ...tab ? { tab } : {}, ...Object.fromEntries(published) } : undefined;
+}
+
+/**
  * The value of the report's `tab` option for the tab the capture shows, when
  * it was asked for another: `DOE --tab all` draws Crude, so it is dated by
  * Wednesday's petroleum report, not by Thursday's gas storage. Undefined when
@@ -293,6 +309,13 @@ export async function renderDesktopShot({
   apiClient.setSessionToken(apiProxy.sessionToken);
   try {
     const loadModel = onceLoader(() => loadReport(resolved));
+    // The report of what the capture shows, where that is another view than asked: loaded once, for its date and coverage.
+    let shownModel: { key: string; load: () => Promise<LoadedHeadlessPaneModel> } | undefined;
+    const shownLoader = (options: Record<string, string>) => {
+      const key = JSON.stringify(options);
+      if (shownModel?.key !== key) shownModel = { key, load: onceLoader(() => loadReport({ ...resolved, options: { ...resolved.options, ...options } })) };
+      return shownModel.load;
+    };
     payload = await buildDesktopShotPayload(
       resolved,
       context,
@@ -329,8 +352,8 @@ export async function renderDesktopShot({
           abandonReports();
           return null;
         }
-        const tab = report && shownReportTab(resolved, rendered.semanticUi);
-        const shown = tab ? reportShotFreshness(resolved, () => loadReport({ ...resolved, options: { ...resolved.options, tab } })) : report;
+        const options = report && shownReportOptions(resolved, rendered.semanticUi);
+        const shown = options ? reportShotFreshness(resolved, shownLoader(options)) : report;
         const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, shown && await settledWithin(shown, SHOT_REPORT_WAIT_MS),
           Date.now(), context.dataProvider.sourceNameOf);
         abandonReports();
@@ -341,6 +364,9 @@ export async function renderDesktopShot({
           dateEvidence: statusDateEvidence(line.freshness) };
       },
     }));
+    // A pane that shows another view than asked (a stored close while the chain is closed) covers that view's report.
+    const shownOptions = captureImage ? shownReportOptions(resolved, render.semanticUi ?? []) : undefined;
+    if (shownOptions) coverage = reportShotCoverage(resolved, shownLoader(shownOptions));
     covered = coverage && await settledWithin(coverage, SHOT_REPORT_WAIT_MS);
   } finally {
     apiClient.setSessionToken(previousSessionToken);

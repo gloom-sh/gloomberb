@@ -41,7 +41,7 @@ import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTermin
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
-import { withFundReceiptsAsFunds, withHomeListingLead, withHomeVenueLead, withNamedCompanyAfterUsLead } from "./home-listing";
+import { withFundReceiptsAsFunds, withHomeListingLead, withHomeVenueLead, withNamedCompanyAfterUsLead, withoutOtherLegalFormMarks } from "./home-listing";
 import { answeredInFull, rememberSearchAnswer, withKnownListings } from "./listing-index";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
 import { delistingLabel, parseListingWithdrawal, withdrawalLabel } from "../../market-data/quotes/delisting";
@@ -58,7 +58,7 @@ export {
   rankTickerSearchItems,
 } from "./ranking";
 export { upsertTickerFromSearchResult } from "./upsert";
-export { candidateExchange, listingDistance, primaryCompanyLine } from "./home-listing";
+export { candidateExchange, listingDistance, otherLegalFormRows, primaryCompanyLine } from "./home-listing";
 
 const MAX_NAMED_LISTINGS = 6;
 
@@ -369,7 +369,11 @@ export function buildTickerSearchCandidates({
     query,
   );
   // A receipt on a fund is the fund's line, never a company's primary listing over it (HK01 on SET for the Tracker Fund).
-  const providerItems = withFundReceiptsAsFunds(createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions));
+  // A name typed with its legal form is never another company's that the service marked for the name without it.
+  const providerItems = withoutOtherLegalFormMarks(
+    withFundReceiptsAsFunds(createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions)),
+    query,
+  );
   const ranked = withHomeVenueLead(withNamedCompanyAfterUsLead(
     withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query),
     query,
@@ -853,12 +857,15 @@ async function searchProviderResults(
 
   // Catalogues can omit exact market symbols or return a crypto pair from a
   // different venue. Verify the requested quote before accepting an alias.
-  const requested = parsePublicTickerKey(normalizeTickerSymbol(query));
+  const futureSymbol = assetClass?.code === "FUT" ? assetClassMarketSymbol(assetClass)
+    : !assetClass ? futuresContractByCode(query)?.symbol : null;
+  const exactQuery = futureSymbol ?? query;
+  const requested = parsePublicTickerKey(normalizeTickerSymbol(exactQuery));
   const possibleCryptoPair = /^[A-Z0-9]{1,15}-[A-Z]{3,5}$/.test(requested.symbol);
-  if ((isExplicitMarketSymbol(query) || possibleCryptoPair)
+  if ((isExplicitMarketSymbol(exactQuery) || possibleCryptoPair)
     && !findExactTickerSearchMatch([...byKey.values()].map((result) => ({
       label: getSearchResultSymbol(result), instrumentType: result.type, right: result.exchange,
-    })), query)) {
+    })), exactQuery)) {
     const { symbol, exchange } = requested;
     const marketType = /=F$/.test(symbol) ? "FUTURE"
       : /^(?:[A-Z]{3}(?:\/[A-Z]{3}|(?:[A-Z]{3})?=X))$/.test(symbol) ? "CURRENCY"

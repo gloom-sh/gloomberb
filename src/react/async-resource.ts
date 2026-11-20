@@ -51,18 +51,21 @@ export function useAsyncResource<T>(
     shouldSave?: (data: T) => boolean;
     /** The request is identified, but its live inputs are not ready yet. */
     deferLoad?: boolean;
+    /** Load only on explicit calls, not on mount or connection recovery. */
+    manual?: boolean;
   } = {},
 ) {
   const requestedKey = loader ? options.savedCopy ?? null : null;
   const savedId = requestedKey ? `${savedCopyId(requestedKey)}#${requestedKey.version ?? 1}` : null;
   const savedKey = useMemo(() => requestedKey, [savedId]);
   const deferLoad = options.deferLoad === true;
+  const manual = options.manual === true;
   const retainWithin = options.keepPreviousData || null;
   const open = (): ResourceState<T> & { owner: typeof loader; ownerKey: string | null; retainWithin: typeof retainWithin } => {
     const saved = savedKey ? readSavedCopy<T>(savedKey) : null;
     const data = loader ? saved?.value ?? options.initialData?.() ?? null : null;
     const savedAt = saved?.fetchedAt ?? savedCopyAt(data);
-    return { owner: loader, ownerKey: savedId, retainWithin, data, savedAt, updatedAt: savedAt, loading: !!loader, error: null };
+    return { owner: loader, ownerKey: savedId, retainWithin, data, savedAt, updatedAt: savedAt, loading: !!loader && !manual, error: null };
   };
   // `ownerKey`: the saved-copy key of the question the data answers. A new
   // loader for the same key (a session restored, a callback remade) asks the
@@ -147,6 +150,8 @@ export function useAsyncResource<T>(
   useSavedCopyFooter(savedAt, loading || deferLoad);
   useEffect(() => {
     if (deferLoad || !loader) return;
+    const invalidate = () => { generation.current += 1; };
+    if (manual) return invalidate;
     const restored = savedAt !== null && !view.placeholder;
     const frame = restored ? afterSavedCopyFrame() : undefined;
     const openingGeneration = generation.current;
@@ -155,8 +160,8 @@ export function useAsyncResource<T>(
         if (generation.current === openingGeneration) load(true);
       }).catch(logFailure("react.async-resource", "Refresh after the saved copy failed"));
     } else load(restored);
-    return () => { generation.current += 1; };
-  }, [deferLoad, load, loader]);
+    return invalidate;
+  }, [deferLoad, load, loader, manual]);
 
   // A load that failed is asked again once the data service (or the desktop
   // bridge) answers after an outage, so a pane recovers by itself instead of
@@ -164,11 +169,11 @@ export function useAsyncResource<T>(
   const failedRef = useRef(false);
   failedRef.current = !!loader && error !== null && !loading;
   useEffect(() => {
-    if (!loader) return;
+    if (manual || !loader) return;
     return connectionHealth.subscribeRecovery((sourceId) => {
       if (recoversDataRequests(sourceId) && failedRef.current) load();
     });
-  }, [load, loader]);
+  }, [load, loader, manual]);
   const status: "error" | "loaded" | "loading" | "idle" = error !== null ? "error" : data !== null ? "loaded" : loading ? "loading" : "idle";
   return { data, loading: loading && savedAt === null, refreshing: loading && data !== null, error, updatedAt, savedAt, status, load, reload, reloadAndWait };
 }

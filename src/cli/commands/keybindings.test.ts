@@ -55,6 +55,14 @@ describe("config set keybindings", () => {
     expect(applyKeybindingCliSet(moved.config, "keybindings.actions.ticker-search", "Ctrl+P")).toMatchObject({ ok: true });
   });
 
+  test("warns about unbound navigation, but not intentionally empty layout slots", () => {
+    const result = applyKeybindingCliSet(config, "keybindings.actions.navigate-down", "null");
+    if (!result.ok) throw new Error(result.message);
+    expect(describeKeybindingsForCli(result.config).issues).toEqual([
+      "No keys bound for navigate-down. Bind a key or restore the defaults.",
+    ]);
+  });
+
   test("rejects unknown actions, bad chords and bad sections with a usable message", () => {
     expect(applyKeybindingCliSet(config, "keybindings.actions.nope", "F1")).toMatchObject({ ok: false, message: expect.stringContaining("not a keybinding action") });
     expect(applyKeybindingCliSet(config, "keybindings.actions.quit", "Hyper+Q")).toMatchObject({ ok: false, message: expect.stringContaining("not a key chord") });

@@ -10,7 +10,7 @@ import { cachedCloudResource, loadCloudResource } from "../../shared/cloud-resou
 
 /** A prospectus is filed days before the cash lands; an hour-old list is recent enough for the note. */
 export const offeringFilingsCache = createPluginCache<OfferingFiling[]>({
-  kind: "offering-filings", source: "gloom-cloud", schemaVersion: 1,
+  kind: "offering-filings", source: "gloom-cloud", schemaVersion: 2,
   policy: { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
 });
 
@@ -39,6 +39,18 @@ export async function loadOfferingNote(
   return offeringNote(offeringsAfter(payload, periodEnd), periodEnd);
 }
 
+export async function loadRunwayOfferings(
+  client: Parameters<typeof fetchOfferingFilings>[0],
+  listing: { symbol: string; exchange?: string },
+  periodEnd: string | null,
+  signal?: AbortSignal,
+): Promise<OfferingFiling[]> {
+  const symbol = offeringSymbol(listing.symbol, listing.exchange);
+  if (!symbol || !periodEnd) return [];
+  const { payload } = await loadCloudResource(offeringFilingsCache, `${symbol}:${periodEnd}`, () => fetchOfferingFilings(client, symbol, signal, periodEnd), { signal });
+  return payload;
+}
+
 /**
  * The same note for a pane: read only while `enabled` (the views that show
  * cash), from the cached list first. Nothing while it loads or when the read
@@ -53,4 +65,15 @@ export function useOfferingNote(symbol: string | null | undefined, exchange: str
   const { data } = useAsyncResource(key ? loader : null, { initialData: () => cached });
   const filings = data ?? cached;
   return key && periodEnd && filings ? offeringNote(offeringsAfter(filings, periodEnd), periodEnd) : null;
+}
+
+export function useRunwayOfferings(symbol: string | null | undefined, exchange: string | undefined, periodEnd: string | null): readonly OfferingFiling[] {
+  const ticker = periodEnd ? offeringSymbol(symbol, exchange) : null;
+  const key = ticker ? `${ticker}:${periodEnd}` : null;
+  const loader = useCallback(async (force: boolean) => (
+    await loadCloudResource(offeringFilingsCache, key!, () => fetchOfferingFilings(apiClient, ticker!, undefined, periodEnd!), { force })
+  ).payload, [key, ticker, periodEnd]);
+  const cached = useMemo(() => key ? cachedCloudResource(offeringFilingsCache, key)?.payload ?? null : null, [key]);
+  const { data } = useAsyncResource(key ? loader : null, { initialData: () => cached });
+  return key ? data ?? cached ?? [] : [];
 }

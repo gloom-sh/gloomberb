@@ -6,7 +6,15 @@ import type {
   SeriesPeriod,
   TimeSeriesPoint,
 } from "../time-series/types";
-import { chartBarSizeSource, getPresetResolution, isCustomChartResolution } from "../time-series/resolution";
+import {
+  chartBarSizeSource,
+  getPresetResolution,
+  isCustomChartResolution,
+  isIntradayResolution,
+  isManualChartResolution,
+  type ChartBarSize,
+  type ManualChartResolution,
+} from "../time-series/resolution";
 import { futuresSessionOpenMinute } from "../market-data/market/trading-sessions";
 import { SERIES_COLORS } from "../theme/series-colors";
 import type {
@@ -80,13 +88,32 @@ function seriesColor(id: string, lineIndex = 0): string {
  * size it was set to, else its range's default. A size the source does not
  * serve (4h) goes as the source bars it is built from (`resolution: 1h`) and
  * the size itself (`barSize: 4h`), so a series that knows only the source
- * sizes still gets one it knows.
+ * sizes still gets one it knows. `barSize` is that size when the viewport
+ * already names the source bars (a chart-series request). The chart's
+ * session goes with minute and hour bars (`extendedHours`).
  */
-function viewportBars(viewport: ChartViewportSpec, ticker: string | undefined): Pick<SeriesLoadRequest, "resolution" | "barSize"> {
-  if (viewport.resolution === "auto") return { resolution: getPresetResolution(viewport.range) };
-  if (!isCustomChartResolution(viewport.resolution)) return { resolution: viewport.resolution };
+function viewportBars(
+  viewport: ChartViewportSpec,
+  ticker: string | undefined,
+  barSize?: ChartBarSize,
+): Pick<SeriesLoadRequest, "resolution" | "barSize" | "extendedHours"> {
+  const bars = viewportBarSizes(viewport, ticker, barSize);
+  return { ...bars, ...(viewport.extendedHours === true && isIntradayResolution(bars.resolution) ? { extendedHours: true } : {}) };
+}
+
+function viewportBarSizes(
+  viewport: ChartViewportSpec,
+  ticker: string | undefined,
+  barSize?: ChartBarSize,
+): { resolution: ManualChartResolution; barSize?: ChartBarSize } {
+  const size = barSize ?? viewport.resolution;
+  if (size === "auto") return { resolution: getPresetResolution(viewport.range) };
+  if (!isCustomChartResolution(size)) return { resolution: size };
   const openMinute = ticker ? futuresSessionOpenMinute(splitTicker(ticker).symbol, splitTicker(ticker).exchange) : null;
-  return { resolution: chartBarSizeSource(viewport.resolution, [], openMinute), barSize: viewport.resolution };
+  // The chart's own source bars, unless a bar of them would straddle this ticker's session open.
+  const stated = isManualChartResolution(viewport.resolution) ? viewport.resolution : null;
+  const builds = stated !== null && chartBarSizeSource(size, [{ resolution: stated, maxRange: "ALL" }], openMinute) === stated;
+  return { resolution: builds ? stated : chartBarSizeSource(size, [], openMinute), barSize: size };
 }
 
 /** `NESN:XSWX` as its symbol and listing. */
@@ -149,7 +176,8 @@ function loadSeries(definition: LoadedSeriesDefinition, request: SeriesLoadReque
   if (signal?.aborted) return Promise.reject(signal.reason);
   // A window measured back from now moves by milliseconds between the lines' requests.
   const minute = (date: Date | undefined) => date ? Math.floor(date.getTime() / 60_000) : null;
-  const key = JSON.stringify([shared.ticker ?? null, minute(shared.start), minute(shared.end), shared.resolution ?? null, shared.barSize ?? null]);
+  const key = JSON.stringify([shared.ticker ?? null, minute(shared.start), minute(shared.end), shared.resolution ?? null, shared.barSize ?? null,
+    shared.extendedHours === true]);
   let byKey = sharedLoads.get(definition);
   if (!byKey) sharedLoads.set(definition, byKey = new Map());
   let load = byKey.get(key);
@@ -190,7 +218,7 @@ function loadSeries(definition: LoadedSeriesDefinition, request: SeriesLoadReque
 
 export async function resolveLoadedSeries(
   definition: LoadedSeriesDefinition,
-  request: { viewport: ChartViewportSpec; ticker?: string; line?: SeriesLine; signal?: AbortSignal },
+  request: { viewport: ChartViewportSpec; barSize?: ChartBarSize; ticker?: string; line?: SeriesLine; signal?: AbortSignal },
   now = new Date(),
 ): Promise<ResolvedSeries> {
   const ticker = request.ticker?.trim().toUpperCase() || undefined;
@@ -198,7 +226,7 @@ export async function resolveLoadedSeries(
   const { points, edge, warning, savedAt, attribution } = loadResult(await loadSeries(definition, {
     ...seriesLoadWindow(request.viewport, now),
     ...(ticker ? { ticker } : {}),
-    ...viewportBars(request.viewport, ticker),
+    ...viewportBars(request.viewport, ticker, request.barSize),
     ...(request.signal ? { signal: request.signal } : {}),
   }), line);
   const seriesId = ticker ? `${definition.id}/${ticker}` : definition.id;

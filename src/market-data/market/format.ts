@@ -5,8 +5,16 @@ import { isIndexLevel } from "./index-level";
 import { MISSING_VALUE, currencyPriceDigits, formatCompact, formatCurrency, formatCurrencyCode } from "../../utils/format";
 import { BIDI_MARKS, isDrawableCurrencySign, minorUnitSign } from "../../utils/currency-units";
 import { fxRateDigits } from "../../utils/currency-pair";
+import { classifyInstrumentType, kindFromListingSyntax } from "../../tickers/instrument-kind";
+import { isUsEquityExchange } from "../../utils/exchanges";
 
 export type AssetDisplayKind = "cash" | "crypto" | "equity" | "contract" | "other";
+
+export function isSharePriceQuote(quote: Quote): boolean {
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  const kind = classifyInstrumentType(quote.instrumentType) ?? kindFromListingSyntax(quote.symbol, exchange);
+  return kind === "equity" || kind === "fund" || (kind == null && isUsEquityExchange(exchange));
+}
 
 export interface AssetDisplayContext {
   /** The price's currency; the thousandth currencies (OMR, KWD) keep three decimals above one unit. */
@@ -27,6 +35,7 @@ export interface AssetDisplayContext {
 }
 
 export interface MarketFormatOptions extends AssetDisplayContext {
+  yieldIndex?: boolean;
   maxWidth?: number;
   minimumFractionDigits?: number;
   precisionOffset?: number;
@@ -404,6 +413,10 @@ function tickFractionDigits(tick: number | undefined): number | undefined {
 
 export function formatMarketPrice(value: number | undefined, options: MarketFormatOptions = {}): string {
   if (value === undefined || value === null || Number.isNaN(value)) return MISSING_VALUE;
+  if (options.yieldIndex) {
+    const maxWidth = options.maxWidth == null ? undefined : Math.max(1, options.maxWidth - 1);
+    return `${formatVariableNumber(value, 3, maxWidth, Math.min(options.minimumFractionDigits ?? 0, 3))}%`;
+  }
   const basis = resolvePriceBasis(options.priceBasis, options.assetCategory);
   if (basis === null) return MISSING_VALUE;
   if (basis === "thirty-seconds") return formatThirtySeconds(value);
@@ -745,7 +758,7 @@ export function formatMarketPriceWithCurrency(
   options: MarketFormatOptions = {},
 ): string {
   if (value === undefined || value === null || Number.isNaN(value)) return MISSING_VALUE;
-  if (isIndexLevel(options.assetCategory) || resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return formatMarketPrice(value, options);
+  if (options.yieldIndex || isIndexLevel(options.assetCategory) || resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return formatMarketPrice(value, options);
   const normalizedCurrency = currency.trim().toUpperCase() || "USD";
   const sign = value < 0 ? "-" : "";
   const { prefix, suffix } = currencyMarks(currency, normalizedCurrency, options.currencyCode);

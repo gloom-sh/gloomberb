@@ -454,6 +454,7 @@ export function formatChartLegendValue(
   const trimmed = unit.trim();
   const group = unitGroup.toLowerCase();
   const compact = compactNumber(value);
+  if (group === "price:%") return formatMarketPrice(value, { yieldIndex: true });
   if (group.includes("percent") || trimmed === "%" || trimmed.toLowerCase().includes("percent")) {
     return `${compact}%`;
   }

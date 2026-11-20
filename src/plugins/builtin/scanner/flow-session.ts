@@ -4,6 +4,7 @@ import {
   type ScannerFlowSessionStrike,
 } from "../../../api-client";
 import { signalWithTimeout } from "../../../utils/async-deadline";
+import { formatWeekdayDay } from "../../../utils/datetime-format";
 import { formatFlowPremium } from "./flow-model";
 
 /**
@@ -134,6 +135,6 @@ export function formatFlowSessionDate(session: string | null | undefined): strin
   if (!session) return null;
   const date = new Date(`${session}T12:00:00Z`);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })
-    .replace(/^(\w+), (\w+) (\d+)$/, "$1 $3 $2");
+  // Written from the formatter's parts, never by reordering its en-US text ("Mon, Oct 26").
+  return formatWeekdayDay(date, { timeZone: "UTC" });
 }

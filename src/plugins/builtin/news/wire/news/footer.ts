@@ -5,7 +5,8 @@ import type { NewsAccess } from "../../../../../news/types";
 import { t, tf } from "../../../../../i18n";
 import { useAppLanguage } from "../../../../../i18n/react";
 import { useCloudAccessFooter } from "../../../shared/cloud-upgrade";
-import { cloudNewsFreshness } from "../../../shared/report-freshness";
+import { cloudNewsFreshness, cloudPlanRealtimeAccess } from "../../../shared/report-freshness";
+import { apiClient } from "../../../../../api-client";
 import { CLOUD_NEWS_DELAY_HOURS } from "../../../../../api-client/plan-access";
 import { usePaneStatusLinkFooter } from "../../../../../components/layout/pane/status-footer";
 import { useRemoteUiNode } from "../../../../../remote/semantic-tree";
@@ -40,9 +41,10 @@ interface UseNewsArticleFooterOptions {
  * it said; otherwise held back for an account without real-time news, and
  * not said at all for one with it. The plan never claims the live wire.
  */
-function newsFeedRealtime(feedAccess: NewsAccess | null | undefined, hasProAccess: boolean): boolean | null {
+function newsFeedRealtime(feedAccess: NewsAccess | null): boolean | null {
   if (feedAccess) return feedAccess === "realtime";
-  return hasProAccess ? null : false;
+  if (!apiClient.isSignedIn() && !apiClient.isDisplayScopePending()) return false;
+  return cloudPlanRealtimeAccess(apiClient.getCurrentUser()) === false ? false : null;
 }
 
 export function useNewsArticleFooter({
@@ -57,16 +59,15 @@ export function useNewsArticleFooter({
 }: UseNewsArticleFooterOptions) {
   const language = useAppLanguage();
   const delayLabel = tf("{count}h", { count: CLOUD_NEWS_DELAY_HOURS });
+  const realtime = newsFeedRealtime(feedAccess);
   const { access, hint: upgradeHint, segment } = useCloudAccessFooter({
     delayLabel,
     focused,
-    // A feed the service answered live has nothing to upgrade.
-    degraded: feedAccess !== "realtime",
+    degraded: realtime === false,
     segmentId: "news-access",
     placement: "news-footer",
     shortcutScope: `${registrationId}:news-upgrade`,
   });
-  const realtime = newsFeedRealtime(feedAccess, access.hasProAccess);
   const storyPastDelay = publishedBeforeNewsDelay(article);
 
   // A report or capture dates the list by its newest story, named so it is not read as the time now.

@@ -7,6 +7,8 @@ import { barSessionDay, periodDayText } from "../../../market-data/market/period
 import { quoteHeadlineTime } from "../../../market-data/market/status";
 import { formatUtcDayTime } from "../../../utils/utc-time";
 import { cleanFloat32Price } from "../../../cli/history-rows";
+import { createBaseConverter, type BaseConversion } from "../../../cli/base-converter";
+import { baseConversionLabel } from "../../../cli/base-conversion-label";
 import type { DataProvider } from "../../../types/data-provider";
 import type { TickerRecord } from "../../../types/ticker";
 import { mapWithConcurrency } from "../../../utils/concurrency";
@@ -45,6 +47,7 @@ export interface LoadedPeriodPnl extends PeriodPnl {
    * ending on the FX trading day in progress, which has no FX close yet.
    */
   latestFx: string[];
+  fxMarks: Record<string, { conversion: BaseConversion; close: boolean }>;
 }
 
 /**
@@ -128,9 +131,15 @@ export async function loadPeriodPnl({
   const fxDay = fxPrintTradingDay(now);
   const lastClosedFxDay = fxTradingDayAt(now - DAY_MS);
   const latestFx: string[] = [];
+  const fxMarks: LoadedPeriodPnl["fxMarks"] = {};
+  const convert = createBaseConverter(provider, currency);
+  const base = heldCurrencyUnit(currency);
   const latest = async (key: string, from: string) => {
-    const rate = await latestFxRate(provider, from, currency);
-    if (rate != null) latestFx.push(key);
+    const rate = await convert(1, from);
+    const conversion = convert.conversions().find((mark) => mark.currency === from);
+    if (!Number.isFinite(rate) || !conversion) return null;
+    latestFx.push(key);
+    fxMarks[key] = { conversion, close: false };
     return rate;
   };
   const rates = new Map(await mapWithConcurrency([...needed], 4, async ([key, { from, day }]) => {
@@ -141,7 +150,12 @@ export async function loadPeriodPnl({
     const reading = await loadCostFxRate(from, currency, day, fxHistory, new Date(now))
       .catch(logFailure("portfolio.period-pnl", "Reading a window's FX close failed", null));
     const unposted = lastClosedFxDay != null && day >= lastClosedFxDay && (!reading || reading.date < day);
-    return [key, (unposted ? await latest(key, from) : null) ?? reading?.rate ?? null] as const;
+    const live = unposted ? await latest(key, from) : null;
+    if (live != null) return [key, live] as const;
+    if (reading) fxMarks[key] = { close: true, conversion: {
+      currency: from, baseCurrency: base.currency, rate: reading.rate / base.divisor, asOf: Date.parse(reading.date), stale: false,
+    } };
+    return [key, reading?.rate ?? null] as const;
   }));
   const rate = (from: string, day: string) => rates.get(`${from}|${day}`) ?? null;
   const result = periodPnl(holdings.map((holding) => Number.isFinite(holding.priceUnits) ? holding : { ...holding, start: null }), currency, rate);
@@ -160,21 +174,16 @@ export async function loadPeriodPnl({
   return {
     ...result, window, failures: failures.sort((a, b) => a.symbol.localeCompare(b.symbol)), unpricedReasons, boughtInWindow,
     latestPriceAt: latestTimes.length ? Math.max(...latestTimes) : null,
-    latestFx: latestFx.sort(),
+    latestFx: latestFx.sort(), fxMarks,
   };
 }
 
-/**
- * One unit of `from` (a major currency) in `into` at the latest FX print, as
- * the live book converts it: both dollar rates the data provider holds. Null
- * when either is unusable.
- */
-async function latestFxRate(provider: Pick<DataProvider, "getExchangeRate">, from: string, into: string): Promise<number | null> {
-  const intoUnit = heldCurrencyUnit(into);
-  const [fromUsd, intoUsd] = await Promise.all([from, intoUnit.currency].map((code) => code === "USD" ? Promise.resolve(1)
-    : provider.getExchangeRate(code).catch(logFailure("portfolio.period-pnl", "Reading the latest FX rate failed", null))));
-  const rate = fromUsd != null && intoUsd != null && intoUsd > 0 ? (fromUsd / intoUsd) * intoUnit.divisor : Number.NaN;
-  return Number.isFinite(rate) && rate > 0 ? rate : null;
+export function periodFxMarks(result: LoadedPeriodPnl, row: PeriodPnlRow) {
+  const label = (point: PeriodClose | null) => {
+    const mark = row.rates && point ? result.fxMarks[`${row.rates.currency}|${point.day}`] : null;
+    return mark ? baseConversionLabel(mark.conversion, mark.close) : null;
+  };
+  return { startFx: label(row.start), endFx: label(row.end) };
 }
 
 /** The one day every priced row shares at an end of the window, or null when they differ (a holiday on one venue). */

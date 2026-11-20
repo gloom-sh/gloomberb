@@ -84,7 +84,10 @@ export function seedChartResolutionResult(
     if (!history?.length) return;
     const facts = readSeedListingFacts(seriesSpec.source.instrument);
     const { symbol, exchange } = seriesSpec.source.instrument;
-    const bars = builtBarSize ? aggregatePriceBars(history, builtBarSize, { symbol, exchange }) : history;
+    // Anchored as the settled chart anchors them, so its bars do not move when it lands.
+    const bars = builtBarSize
+      ? aggregatePriceBars(history, builtBarSize, { symbol, exchange, resolution, extendedHours: spec.viewport.extendedHours === true })
+      : history;
     const base = baseSecuritySeries(seriesSpec, emptyFinancials(bars), index, resolution, facts?.quoteMetadata ?? undefined, facts?.contractUnit);
     const resolved = base && builtBarSize ? withBuiltBarSize(base, builtBarSize) : base;
     if (!resolved?.points.length) return;
@@ -117,7 +120,8 @@ export function seedChartResolutionResult(
   const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds));
   // Calculate studies from raw buffered inputs, then use the same presentation
   // and visible-window rules as the network result.
-  const studies = resolveStudies([...series, ...hiddenInputs], spec.studies, resolution, undefined, studyAnchors(series, priceComparison, comparisonBounds));
+  const studies = resolveStudies([...series, ...hiddenInputs], spec.studies, resolution, undefined,
+    studyAnchors(series, priceComparison, comparisonBounds), builtBarSize ?? undefined);
   const axisWarnings: string[] = [];
   const bufferedSeries = assignAxes([
     ...baseSeries,

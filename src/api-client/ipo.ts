@@ -84,6 +84,7 @@ export interface IpoDeal {
   listingType: IpoListingType;
   filedDate: string | null;
   firstDay: IpoFirstDay | null;
+  opening?: { session: string; price: number; returnPct: number | null };
   /** A priced or listed US IPO's estimated lock-up end; absent elsewhere, and from a server without the estimate. */
   lockup?: IpoLockup | null;
   updatedAt: string;

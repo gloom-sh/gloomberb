@@ -22,8 +22,19 @@ export const HEARD_FROM_ANSWERS = [
 
 export type HeardFromAnswer = (typeof HEARD_FROM_ANSWERS)[number];
 
-/** The longest "Other" note the service keeps, in characters. */
-const HEARD_FROM_NOTE_MAX_LENGTH = 120;
+/**
+ * The answers that name a feed: after one of them the app offers one optional
+ * field, "Which account or post?". The answer is kept the moment it is picked;
+ * the note is sent after it, with the same answer, if written.
+ */
+const HEARD_FROM_NOTE_ANSWERS: ReadonlySet<HeardFromAnswer> = new Set(["youtube", "tiktok", "instagram", "x"]);
+
+export function heardFromAsksForNote(answer: HeardFromAnswer): boolean {
+  return HEARD_FROM_NOTE_ANSWERS.has(answer);
+}
+
+/** The longest note the service keeps (Other's, or the account or post), in characters. */
+export const HEARD_FROM_NOTE_MAX_LENGTH = 120;
 
 export interface HeardFromState {
   /** Show the question now. */
@@ -57,13 +68,16 @@ export class CloudHeardFromApi {
     await this.request<unknown>("/account/heard-from/shown?unconfirmed=1", { method: "POST" });
   }
 
-  /** An answer; the note only goes with Other. A repeat or a later answer changes nothing. */
+  /**
+   * An answer, with Other's text or the account or post an Instagram, TikTok,
+   * YouTube or X answer names. A repeat or a later answer changes nothing; the
+   * same answer again with its note adds the note (a service without notes
+   * refuses it, and the answer stays).
+   */
   async answerHeardFrom(answer: HeardFromAnswer, note?: string): Promise<void> {
-    const other = answer === "other" && note ? heardFromNote(note) : "";
-    await this.request<unknown>("/account/heard-from", {
-      method: "POST",
-      body: JSON.stringify(other ? { answer, other } : { answer }),
-    });
+    const text = note && (answer === "other" || heardFromAsksForNote(answer)) ? heardFromNote(note) : "";
+    const body = !text ? { answer } : answer === "other" ? { answer, other: text } : { answer, note: text };
+    await this.request<unknown>("/account/heard-from", { method: "POST", body: JSON.stringify(body) });
   }
 
   async skipHeardFrom(): Promise<void> {

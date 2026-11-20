@@ -17,6 +17,7 @@ import {
   candidateExchange,
   LISTING_SEARCH_LIMIT,
   listingDistance,
+  otherLegalFormRows,
   primaryCompanyLine,
   searchTickerCandidates,
   type TickerSearchCandidate,
@@ -43,7 +44,7 @@ import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../ser
 import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, selectPaneCatalogMatches } from "../pane-functions/catalog";
-import { normalizeSearchText } from "../../tickers/search/ranking";
+import { answersToFutureCode, normalizeSearchText } from "../../tickers/search/ranking";
 import { hasNonLatinLetters } from "../../utils/typed-text";
 import { isKanjiOnlyName, japaneseNameReadAs, readExactJapaneseName, readJapaneseName, type JapaneseNameListing } from "../../tickers/search/japanese-names";
 
@@ -143,7 +144,7 @@ export async function searchCandidatesForCli({
     const ordered = withLiveCompanyPrimary(symbol,
       withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, named ? null : quote))), quote),
       quote);
-    return cutKeepingCompanies(withOtherCompaniesApart(ordered, named ? trimmedQuery : null), totalLimit, symbol);
+    return cutKeepingCompanies(withOtherCompaniesApart(ordered, symbol, named ? trimmedQuery : null), totalLimit, symbol);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);
@@ -424,9 +425,12 @@ function withHomeListingPrimary(query: string, candidates: TickerSearchCandidate
     || primary.symbol.toUpperCase() === query.toUpperCase()) return candidates;
   const company = resolveSearchName(primary);
   const marked = !!primary.result && namedByService(query, primary.result);
-  // Never a line of another business its name is in (`companyLines`): Siemens Energy AG is not Siemens AG's.
+  // Never a line of another business its name is in (`companyLines`): Siemens Energy AG is not Siemens AG's, nor
+  // OWL (Blue Owl Capital Inc.) OBDC's for "Blue Owl Capital Corporation" (`otherLegalFormRows`).
+  const otherForm = otherLegalFormRows(candidates, query);
   const lines = companyLines(primary, candidates.filter((candidate) => candidate === primary || (candidate.kind === "search"
-    && candidate.category !== "Funds & Derivatives" && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"))),
+    && candidate.category !== "Funds & Derivatives" && !otherForm.has(candidate)
+    && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"))),
   (candidate) => ({
     name: resolveSearchName(candidate), exchange: candidateExchange(candidate),
     receipt: listingDistance(candidate) === 2, home: candidate.result?.homeListing === true,
@@ -498,7 +502,7 @@ const baseSymbol = (symbol: string) => symbol.toUpperCase().replace(/[:.][A-Z]{1
  * company named it (`leadsWithNamedCompany`), a company named more words
  * (AEON Biopharma beside Aeon Co., Ltd.) is another company.
  */
-function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord: string | null = null): TickerSearchCandidate[] {
+function withOtherCompaniesApart(candidates: TickerSearchCandidate[], symbol: string, namedWord: string | null): TickerSearchCandidate[] {
   // A line search names no company for: no name, or only its symbol (DKC1O).
   const nameless = (candidate: TickerSearchCandidate) =>
     isLowQualityTickerName(candidate.result ? candidate.result.name ?? "" : resolveSearchName(candidate), candidate.symbol);
@@ -523,11 +527,14 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord:
     receipt: listingDistance(candidate) === 2, home: candidate.result?.homeListing === true,
   })));
   const primaryName = resolveSearchName(primary);
+  // The name typed with its legal form is the primary's, so the same name under another form is another company's.
+  const otherForm = otherLegalFormRows(candidates, symbol);
   const elsewhere = candidates.filter((candidate) => candidate !== primary && !lines.has(candidate)
     && candidate.kind === "search" && sameCompany(resolveSearchName(candidate), primaryName));
   // Its other lines however a venue spells them: "MITSUBISHI HEAVY IND." goes with Mitsubishi Heavy Industries Ltd.
   const otherLeads = new Set(elsewhere.map((candidate) => addedCompanyWords(resolveSearchName(candidate), primaryName)[0]).filter(Boolean));
   const anotherBusiness = (candidate: TickerSearchCandidate) => elsewhere.includes(candidate)
+    || (otherForm.has(candidate) && !otherForm.has(primary))
     || otherLeads.has(addedCompanyWords(resolveSearchName(candidate), primaryName)[0] ?? "");
   const ownLine = (candidate: TickerSearchCandidate) => id && candidate.result?.companyId ? sameId(candidate)
     : nameless(candidate)
@@ -538,7 +545,8 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord:
   const others = candidates.filter((candidate) => candidate.category === "Other Listings" && !ownLine(candidate));
   if (others.length === 0) return candidates;
   const kept = candidates.filter((candidate) => !others.includes(candidate));
-  const at = kept.findLastIndex((candidate) => candidate === primary || candidate.category === "Other Listings") + 1;
+  const at = kept.findLastIndex((candidate) => candidate === primary || candidate.category === "Other Listings"
+    || answersToFutureCode(candidate, symbol)) + 1;
   const apart = others.map((candidate) => ({ ...candidate, category: "Other Matches" as const }));
   return [...kept.slice(0, at), ...apart, ...kept.slice(at)];
 }

@@ -71,7 +71,7 @@ export const clinicalTrialsPlugin: GloomPlugin = {
       shortcut: {
         prefix: "TRIAL",
         argPlaceholder: "condition, drug, or sponsor",
-        argKind: "text",
+        argKind: "text", argOnlySelects: true,
         argOptional: true,
       },
       createInstance(_context, options) {

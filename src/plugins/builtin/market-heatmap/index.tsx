@@ -89,6 +89,7 @@ import { marketHeatmapHeadless } from "./headless";
 import {
   HEATMAP_NAME_COUNTS,
   heatmapBoardCaption,
+  heatmapExtendedPrintTime,
   heatmapMove,
   heatmapNameCount,
   heatmapSessionBasis,
@@ -628,6 +629,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   });
 
   usePaneFooter("market-heatmap", () => {
+    const printTime = selectedAsset ? heatmapExtendedPrintTime(selectedAsset) : null;
     const selected: PaneFooterSegment[] = selectedAsset ? [{
       id: "selected",
       parts: [
@@ -638,7 +640,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
           color: heatmapMove(selectedAsset) == null ? undefined : priceColor(heatmapMove(selectedAsset)!),
           bold: true,
         },
-        ...(sessionMark(selectedAsset) ? [{ text: sessionMark(selectedAsset)!, tone: "muted" as const }] : []),
+        ...(printTime ? [{ text: `${sessionMark(selectedAsset)} · ${printTime}`, tone: "muted" as const }] : []),
         ...(selectedAsset.price > 0
           ? [{ text: formatCurrency(selectedAsset.price, selectedAsset.currency), tone: "value" as const }]
           : []),

@@ -432,15 +432,15 @@ function projectMarketTimestamp(
 ): ProjectedTimestamp | null {
   let position: number;
   let xSlot: number | undefined;
-  if (placement === "next-market-slot") {
-    const anchor = scale.anchors[index];
-    if (!anchor) return null;
+  const anchor = scale.anchors[index];
+  if (placement === "next-market-slot" && anchor) {
     position = anchor.position;
     xSlot = index;
   } else {
-    const exact = scale.anchors[index];
+    // An observation newer than the last bar (a spread published after the
+    // month's bar opened) has no slot after it yet: it stands at its own time.
     position = positionAtAnchor(scale, timestamp, index);
-    if (exact?.timestamp === timestamp) xSlot = index;
+    if (anchor?.timestamp === timestamp) xSlot = index;
   }
   return { ratio: (position - scale.startPosition) / span, xSlot };
 }

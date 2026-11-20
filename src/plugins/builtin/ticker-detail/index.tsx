@@ -1,6 +1,7 @@
 import { publicTickerBindingSymbol } from "../../../tickers/selection";
 import { TAX_RATE_PANE_OPTIONS } from "../../../market-data/tax-equivalent";
 import type { PluginModule } from "../plugin-module";
+import type { PaneReportOptionDef } from "../../../types/plugin";
 import { holdsActiveTicker } from "../../../shares/pane-image";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { normalizeTickerInput } from "../../../tickers/search";
@@ -9,6 +10,8 @@ import { futuresContractCache } from "./overview/futures-contract";
 import { offeringFilingsCache } from "./financials/offerings";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
+import { FINANCIAL_STATEMENT_VALUES } from "./headless-schema";
+import { FINANCIAL_PERIOD_OPTION } from "../shared/headless-options";
 import {
   buildQuoteMonitorSettingsDef,
   buildQuoteMonitorPaneTitle,
@@ -24,6 +27,22 @@ import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
 } from "../../../state/hooks/live-streaming";
+
+/**
+ * `fn T AAPL --tab risk-factors`: the research tab or view the rendered pane
+ * opens on, by the id a link's `?tab=` names it with; a Financials statement
+ * and period open that tab on them.
+ */
+// `--statement` and `--period` open the financials tab on them; a value the tab has none of is refused.
+const RESEARCH_VIEW_REPORT_OPTIONS: PaneReportOptionDef[] = [
+  { key: "tab", aliases: ["activeTab", "activeTabId", "paneTab"], type: "string", placeholder: "view",
+    description: "Tab or view to open, by its id (overview, chart, financials, risk-factors); one the ticker has no tab for fails, naming the ones it has.",
+    example: "--tab risk-factors" },
+  { key: "statement", aliases: ["financialStatement"], type: "enum", values: FINANCIAL_STATEMENT_VALUES,
+    description: "Financials statement or ratio tab to open; opens the financials tab." },
+  { key: "period", aliases: ["financialPeriod"], type: "enum", values: FINANCIAL_PERIOD_OPTION.values,
+    description: "Financials period; opens the financials tab." },
+];
 
 export const tickerDetailModule: PluginModule = {
   setup(ctx) {
@@ -58,7 +77,7 @@ export const tickerDetailModule: PluginModule = {
       },
       defaultMode: "floating",
       // `fn DES MUB --tax-rate 40.8`: a muni fund's tax-equivalent yield and muni/Treasury ratio under its fundamentals.
-      reportOptions: TAX_RATE_PANE_OPTIONS,
+      reportOptions: [...TAX_RATE_PANE_OPTIONS, ...RESEARCH_VIEW_REPORT_OPTIONS],
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(
         buildTickerResearchSettingsDef(getTickerResearchPaneSettings(context.settings)),

@@ -3,7 +3,7 @@ import { describe, expect, jest, test } from "bun:test";
 import type { DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
-import { createTestDataProvider } from "../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import {
   AmbiguousTickerError,
   buildTickerSearchCandidates,
@@ -611,6 +611,28 @@ describe("ticker-search utilities", () => {
     });
     expect(asked).toContain("BTC-USD");
     expect(asked).not.toContain("BTC CRYP");
+  });
+
+  test.each(["CL", "ES", "GC", "NG", "SI"])("%s keeps the stock first and the exact future above prefix matches", async (root) => {
+    const future = `${root}=F`;
+    const verified: string[] = [];
+    let listed = false;
+    const dataProvider = createTestDataProvider({
+      search: async (query) => query === future ? listed ? [makeSearchResult(future, `${root} continuous`, { exchange: "CME", type: "FUTURE" })] : [] : [
+        makeSearchResult(root, `${root} stock`, { exchange: "NYSE" }),
+        ...Array.from({ length: 26 }, (_, index) => makeSearchResult(`${root}${index}`, `${root} prefix ${index}`)),
+      ],
+      getQuote: async (symbol) => {
+        verified.push(symbol);
+        return createTestQuote({ symbol, name: `${root} continuous`, exchangeName: "CME", instrumentType: "FUTURE" });
+      },
+    });
+    const lookup = (query: string) => searchTickerCandidates({ query, tickers: new Map(), dataProvider, includeOptionContracts: false, totalLimit: 2 });
+    for (listed of [false, true]) {
+      expect((await lookup(root)).map((row) => row.symbol)).toEqual([root, future]);
+      expect((await lookup(`${root} FUT`)).map((row) => row.symbol)).toEqual([future]);
+    }
+    expect(verified).toEqual([future, future]);
   });
 
   test("a name ending in Fund keeps every fund, and ETF only exchange-traded ones", () => {

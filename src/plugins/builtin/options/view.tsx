@@ -15,7 +15,8 @@ import {
 } from "../../../utils/option-expiry";
 import { canonicalTickerKey } from "../../../utils/exchanges";
 import {
-  COIN_OPTIONS_HINT, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
+  COIN_OPTIONS_HINT, coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative,
+  optionsUnavailableDetails, optionsUnavailableHint, optionsUnavailableTitle,
 } from "../../../market-data/options-alternatives";
 import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
 import { savedCopyEntryAt } from "../../../market-data/coordinator";
@@ -403,6 +404,19 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     ?? (expirationSavedAt == null ? expirationChainEntry?.error?.message : null)
     ?? (initialChainEntry?.phase === "error" || expirationChainEntry?.phase === "error"
       ? "Failed to load options" : null);
+  // Nothing lists a chain here for the instrument (a spot FX pair, a future, a coin other than BTC and ETH): the body
+  // says what is not served and what to read instead. No plan changes it, so it is no error and offers no upgrade.
+  const unserved = !chain && !!error && isOptionsUnavailableError(error);
+  // `fn OMON EUR/USD` fails with the same answer, and the commands that read the alternative.
+  useRemoteUiNode(unserved && effectiveTicker ? {
+    role: "report-failure",
+    label: "Options not served",
+    getMetadata: () => ({
+      message: optionsUnavailableTitle(effectiveTicker),
+      details: isCoinWithoutOptions(effectiveTicker) ? coinOptionsAlternativesText("fn OMON")
+        : optionsUnavailableDetails(effectiveTicker, (symbol) => `gloom fn OMON ${symbol}`),
+    }),
+  } : null);
 
   const selectExpiration = useCallback((expiration: number) => {
     updatePaneSettings({ expiration, expirationTargetKey: selectionTargetKey });
@@ -898,7 +912,8 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   useOptionsAccessFooter({
     broker: !!optionQuoteBroker,
     chain,
-    error: [error, underlyingStale ? "Underlying quote stale: Greeks and calculator unavailable" : null,
+    unserved,
+    error: unserved ? null : [error, underlyingStale ? "Underlying quote stale: Greeks and calculator unavailable" : null,
       selectedContract && strikeChain && !selectedContractAvailable
         ? `Selected ${formatStrikeLabel(selectedContract.strike)} ${selectedContract.side} unavailable` : null,
       summary?.historicalVolatilityUnavailableReason, dailyHistoryEntry?.error?.message].filter(Boolean).join(" · ") || null,
@@ -986,12 +1001,12 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     );
   }
   if (error && !chain && isOptionsUnavailableError(error)) {
-    // A future or commodity with no chain of its own: the listed fund whose options stand in, and OSA on it.
+    // A future, commodity or FX pair with no chain of its own: the listed fund whose options stand in, and OSA on it.
     const alternative = listedOptionsAlternative(effectiveTicker);
     return (
       <EmptyState
         title={optionsUnavailableTitle(effectiveTicker)}
-        hint={alternative ? `Nearest listed alternative: ${alternative.symbol} (${alternative.name}).` : "OSA builds strategy payoffs on a listed underlying."}
+        hint={optionsUnavailableHint(effectiveTicker)}
         actions={alternative ? <>
           <Button label={`${alternative.symbol} options`} onPress={() => createPaneFromTemplate("options-pane", { symbol: alternative.symbol })} />
           <Button label={`OSA ${alternative.symbol}`} onPress={() => createPaneFromTemplate("options-scenario-pane", { symbol: alternative.symbol })} />
@@ -1103,7 +1118,6 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         reportEveryRow
         rootWidth={Math.max(1, width - 2 + inset * 2)}
         rootHeight={tableHeight}
-        columnGap={0}
         horizontalPadding={inset}
         scrollToIndex={selectedStrikeIdx >= 0 ? selectedStrikeIdx : undefined}
         scrollToIndexAlign={scrollToIndexAlign}

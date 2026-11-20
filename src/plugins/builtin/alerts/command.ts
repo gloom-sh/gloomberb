@@ -1,7 +1,7 @@
 import { metricFormInput, metricShortcut, parseMetricAlert } from "./metric-command";
 import { isRelativeMetric, type AlertMetric } from "./metric-model";
 import type { AlertCondition } from "./types";
-import { isPenceLevel, parseAlertPrice, readAlertLevel, readAlertPrice } from "./price";
+import { hasAlertCurrency, isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
 import { normalizeAlertSymbol } from "./quotes";
 import { moveCondition, parseMovePercent } from "./move";
 import type { WizardStep } from "../../../types/plugin";
@@ -27,6 +27,7 @@ export interface AlertCommandInput {
   move?: true;
   /** Typed in pence (`70p`): `price` is in pounds, for a London line quoted in pence. */
   pence?: true;
+  currency?: string;
   metric?: AlertMetric;
 }
 
@@ -65,7 +66,7 @@ export function parseAlertShortcutValues(
   }
   // The price is the rest of the line, as one: `$ 757.75`, `1 000.50` and `757.75 USD` read as `alerts add` reads them quoted.
   const priceText = parts.slice(2).join(" ");
-  if (parts.length > 3 && !isPenceLevel(priceText) && parseAlertPrice(priceText).kind === "invalid") {
+  if (parts.length > 3 && !isPenceLevel(priceText) && !hasAlertCurrency(priceText) && parseAlertPrice(priceText).kind === "invalid") {
     throw new Error("Use SA SYMBOL above|below|crosses PRICE.");
   }
 
@@ -90,7 +91,10 @@ export function parseAlertShortcutValues(
 
   // The price reads as `alerts add` reads it: 81k is 81000, 81,000 asks which was meant ($81,000 does not), and text that is no
   // number says what to type. `70p`, pence on a London line, stays as typed for the add to hold to its line.
-  if (priceText) values.price = isPenceLevel(priceText) ? (readAlertLevel(priceText), priceText.trim()) : String(readAlertPrice(priceText));
+  if (priceText) {
+    const level = readAlertLevel(priceText);
+    values.price = level.currency || level.pence ? priceText.trim() : String(level.price);
+  }
 
   return values;
 }

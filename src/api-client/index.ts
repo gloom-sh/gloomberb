@@ -318,6 +318,10 @@ class GloomApiClient {
     return this.cookieIdentity === "unavailable";
   }
 
+  isChangingSession(): boolean {
+    return this.sessionTransitions > 0;
+  }
+
   isDisplayScopePending(): boolean {
     return !this.getCurrentUser()?.id && (this.cookieIdentity === "pending" || this.isSignedIn());
   }

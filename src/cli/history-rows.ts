@@ -13,6 +13,7 @@ import {
 import { classifyInstrumentType } from "../tickers/instrument-kind";
 import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode } from "../utils/currency-pair";
+import { parsePublicTickerKey } from "../utils/exchanges";
 import { currencyUnitLabel, resolveCurrencyUnit } from "../utils/currency-units";
 import { dailyBarDate, getPricePointTimestamp } from "../utils/price-history";
 import {
@@ -28,8 +29,7 @@ import { isRegularSessionTime, sessionCalendarTimeZone } from "../market-data/ma
 import { zonedDateKey } from "../utils/zoned-date-time";
 import { cleanFloat32Price, decimalPlaces } from "../utils/float32-price";
 import { futuresBoardContract } from "../market-data/futures-board";
-import { isFuturesInstrument } from "../market-data/futures-contract";
-import { contractPriceUnit } from "../time-series/price-units";
+import { futuresPriceUnit, isFuturesInstrument } from "../market-data/futures-contract";
 import { DEMERGER_FLAG } from "./history-demergers";
 
 /** A float32 price as the decimal it is, which a quote's dated close is cleaned with too (utils/float32-price). */
@@ -938,12 +938,12 @@ export function historyUnit(
   }
   // A Cboe yield index is a yield in percent, the unit `quote` exports it in, not index points.
   if (isYieldIndexSymbol(listing)) return { kind: "points", currency: null, unit: YIELD_INDEX_EXPORT_UNIT };
-  if (isIndexLevel(quote?.instrumentType)) return { kind: "points", currency: null, unit: INDEX_POINTS_EXPORT_UNIT };
   const code = quote?.currency?.trim();
-  // A future is priced in its contract's unit, spelled one way in the text, CSV and JSON.
-  const future = !!code && isFuturesInstrument(listing, quote?.instrumentType);
-  const contractUnit = future ? contractPriceUnit(priceUnit ?? futuresBoardContract(listing.trim().toUpperCase())?.unit, code) : null;
-  if (code && contractUnit) return { kind: "contract", currency: code, unit: contractUnit };
+  if (isFuturesInstrument(listing, quote?.instrumentType)) {
+    const unit = priceUnit ?? futuresPriceUnit(futuresBoardContract(parsePublicTickerKey(listing).symbol));
+    return { kind: "contract", currency: code || null, unit };
+  }
+  if (isIndexLevel(quote?.instrumentType)) return { kind: "points", currency: null, unit: INDEX_POINTS_EXPORT_UNIT };
   return code
     ? { kind: "currency", currency: code, unit: currencyUnitLabel(code, { ofMajor: true }) }
     : { kind: "unknown", currency: null, unit: null };
@@ -976,7 +976,7 @@ export function historyFacts(unit: HistoryUnit, rows: readonly Pick<HistoryRow, 
   const unbroken = historyUnbrokenFrom(rows);
   return [
     unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? unit.unit === YIELD_INDEX_EXPORT_UNIT ? "Yield, percent" : INDEX_POINTS_LABEL
-      : unit.kind === "contract" ? `Unit ${unit.unit}` : `Currency ${unit.unit ?? "unknown"}`,
+      : unit.kind === "contract" ? `Unit ${unit.unit ?? "unknown"}` : `Currency ${unit.unit ?? "unknown"}`,
     interval ? `${BAR_INTERVAL_LABELS[interval]} bars` : "",
     first && last ? (first === last ? historyDate(first) : `${historyDate(first)} to ${historyDate(last)}`) : "",
     `${rows.length} ${rows.length === 1 ? "bar" : "bars"}`,

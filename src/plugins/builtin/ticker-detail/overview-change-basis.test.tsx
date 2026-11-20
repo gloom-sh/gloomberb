@@ -10,6 +10,30 @@ import { OverviewTab } from "./overview-tab";
 
 const config = createDefaultConfig("/tmp/gloom-overview-change-basis-unused");
 const tui = createOpenTuiTestHarness();
+
+test.each([
+  ["^IRX", "INDEX", "Yield 4.125%", "+2.5bp"],
+  ["^FVX", "INDEX", "Yield 4.125%", "+2.5bp"],
+  ["^TNX", "INDEX", "Yield 4.125%", "+2.5bp"],
+  ["^TYX", "INDEX", "Yield 4.125%", "+2.5bp"],
+  ["^VIX", "INDEX", "4.13", "(+0.61%)"],
+  ["TEST", "EQUITY", "$4.13", "(+0.61%)"],
+] as const)("renders the correct level and session move for %s", async (symbol, instrumentType, level, move) => {
+  const quote = createTestQuote({ symbol, instrumentType, currency: "USD", price: 4.125, change: 0.025, changePercent: 0.61, marketState: "REGULAR" });
+  await tui.render(
+    <AppContext value={createStaticAppStore(createInitialState(config))}>
+      <OverviewTab ticker={createTestTicker(symbol, "Test listing", { currency: "USD", assetCategory: instrumentType })}
+        financials={createTestFinancials({ quote })} width={100} height={16} />
+    </AppContext>, { width: 100, height: 16 },
+  );
+  await settleFrame(tui.setup(), 10);
+  const frame = tui.frame();
+  expect(frame).toContain(move);
+  const headline = frame.split("\n").find((line) => line.includes(move))!;
+  expect(headline).toContain(level);
+  if (move.endsWith("bp")) expect(headline).not.toContain("(+0.61%)");
+  if (symbol === "^VIX") expect(headline).not.toContain("4.13%");
+});
 // 3042.HK's Tue 20 Oct move ran from Fri 16 Oct's close: HKEX was shut Mon 19 Oct. An HKEX
 // fund under 10 prints its tick's three decimals.
 const hk = createTestQuote({

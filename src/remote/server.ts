@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID, timingSafeEqual } from "crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import type { RemoteAppKind, RemoteControlRequest, RemoteControlResponse, RemoteEndpoint } from "./types";
 import { REMOTE_CONTROL_PROTOCOL_VERSION } from "./types";
@@ -102,7 +102,7 @@ async function handleHttpRequest(
       sendJson(response, 404, { ok: false, error: { code: "not_found", message: "Unknown remote control endpoint." } });
       return;
     }
-    if (request.headers.authorization !== `Bearer ${token}`) {
+    if (!hasToken(request.headers.authorization, token)) {
       sendJson(response, 401, { ok: false, error: { code: "unauthorized", message: "Invalid remote control token." } });
       return;
     }
@@ -119,6 +119,17 @@ async function handleHttpRequest(
       },
     });
   }
+}
+
+/**
+ * Whether the request carries the bearer token, compared in constant time so
+ * how long a refusal takes says nothing about how much of a guess was right.
+ * Both sides are hashed first: equal lengths for the compare, whatever was sent.
+ */
+function hasToken(authorization: string | undefined, token: string): boolean {
+  if (typeof authorization !== "string") return false;
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(authorization), digest(`Bearer ${token}`));
 }
 
 async function readBody(request: IncomingMessage): Promise<string> {

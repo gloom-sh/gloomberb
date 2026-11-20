@@ -37,7 +37,7 @@ export const cryptoBoardModule: PluginModule = {
       ],
       // `CRYP stablecoin` and `CRYP tvl` open those lists; CRYP alone opens on the list the pane was last on.
       shortcut: {
-        prefix: "CRYP", argKind: "text", argPlaceholder: "list", argOptional: true, openWithoutArg: true,
+        prefix: "CRYP", argKind: "text", argOnlySelects: true, argPlaceholder: "list", argOptional: true, openWithoutArg: true,
         argOptions: () => [
           { value: "coin", label: "Coins" },
           { value: "stablecoin", label: "Stablecoins" },

@@ -28,7 +28,7 @@ export const perpsModule: PluginModule = {
     // The venues it collects, so a venue's name (and "binance futures") finds PERP.
     // Crypto and bitcoin carry are what most readers come for, so those words find PERP beside CRYP and CTM.
     keywords: ["perp", "perpetual", "perpetuals", "perpetual futures", "crypto", "bitcoin", "btc", "funding", "funding rate", "open interest", "hip-3", "stock perps", "basis", "basis trade", "carry", "venue", ...VENUES, "funding spread", "long short ratio", "long/short", "positioning", "liquidations", "liquidation", "order book depth", "market depth", "liquidity"],
-    shortcut: { prefix: "PERP", argKind: "text", argOptional: true, argPlaceholder: "market" }, headless: perpsHeadless,
+    shortcut: { prefix: "PERP", argKind: "text", argOnlySelects: true, argOptional: true, argPlaceholder: "market" }, headless: perpsHeadless,
     createInstance: (_ctx, options) => perpsInstance(options?.arg) }],
   setup(ctx) {
     for (const cache of PERP_CACHES) cache.attach(ctx.persistence);

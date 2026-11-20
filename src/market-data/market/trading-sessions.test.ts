@@ -40,6 +40,12 @@ describe("a one-day chart's session", () => {
     return value === null ? null : new Date(value).toISOString();
   };
 
+  test("index feeds use their regular session even with extended hours enabled", () => {
+    expect(start("^IXIC", "NASDAQ GIDS", "2026-11-19T19:02:00Z")).toBe("2026-11-19T14:30:00.000Z");
+    expect(start("^IXIC", "NASDAQ GIDS", "2026-11-19T13:20:00Z", true)).toBe("2026-11-18T14:30:00.000Z");
+    expect(start("^GSPC", "SNP", "2026-11-21T19:00:00Z")).toBe("2026-11-20T14:30:00.000Z");
+  });
+
   test("is the latest session of the venue, also when the market is closed", () => {
     expect(start("AAPL", "NASDAQ", "2026-10-02T18:30:00Z")).toBe("2026-10-02T13:30:00.000Z");
     // Over the weekend the last bar is Friday's, so the chart shows Friday.

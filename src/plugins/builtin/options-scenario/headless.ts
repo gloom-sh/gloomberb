@@ -10,7 +10,9 @@ import {
   createScenarioDependencies, loadScenarioMarket, SCENARIO_STRATEGIES, scenarioControlsFromSettings, scenarioPositionFromSettings,
   scenarioSpotBasis, scenarioSpotStamp, suppliedScenarioInputs, type ScenarioMarketSnapshot,
 } from "./client";
-import { scenarioFreshness } from "./freshness";
+import { earlierOptionSession, scenarioFreshness, scenarioQuoteTime } from "./freshness";
+import { baseConversionLabel } from "../../../cli/base-conversion-label";
+import { loadScenarioFx, netPremiumTotal, scenarioMoneyTotals, scenarioNeedsFx } from "./base-totals";
 import { cashSecuredPut, cspReportEntries, loadNextEarningsDate } from "./csp";
 import { formatSpotTime } from "../options/model-spot";
 import { amountUnit, buildScenario, currencyLabel, exportPercent, parseLegs, scenarioDateLabels, scenarioValueUnit } from "./model";
@@ -71,13 +73,13 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "shares", type: "string", example: "--strategy collar --shares 0",
       description: "Shares of the underlying held with the options; negative for short. Typed --legs buy them at the position's spot (--spot when typed), "
         + "a --strategy seed at the spot its quotes imply, where --spot is a what-if. "
-        + "A collar holds the shares its contracts cover (100 per contract); 0 values the options alone" },
-    { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--strategy vertical --expiration 2027-01-15",
+        + "A collar defaults to 100 shares. With nonzero shares, a collar or protective put uses whole contracts and reports any unhedged remainder; 0 values the options alone" },
+    { key: "expiration", aliases: ["expiry"], type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--strategy vertical --expiration 2027-01-15",
       description: `Chain expiry for --strategy, as ${OPTION_EXPIRATION_FORMAT}`, normalize: (value) => expirationOptionSeconds(value) },
     { key: "spot", type: "string", description: "Underlying price override, per share" },
     { key: "rate", type: "string", description: "Continuously compounded annual risk-free rate, percent" },
     { key: "dividendYield", aliases: ["dividend-yield"], type: "string", description: "Continuous annual dividend yield, percent" },
-    { key: "currency", type: "string", description: "Currency of the inputs, such as USD; the underlying's when omitted" },
+    { key: "currency", type: "string", description: "Currency of typed inputs; must match the chain for a seed. Chain-seeded totals also show your profile base currency" },
     { key: "asOf", aliases: ["as-of"], type: "string", description: `Position valuation date, as ${DATE_OPTION_EXAMPLES}, or a UTC ISO timestamp` },
     { key: "date", type: "string", description: `Scenario date, as ${DATE_OPTION_EXAMPLES}, or a UTC ISO timestamp` },
     { key: "volShift", aliases: ["vol-shift"], type: "string", defaultValue: "0", description: "Parallel volatility shift, percentage points" },
@@ -118,6 +120,9 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     const position = scenarioPositionFromSettings(settings, market);
     const controls = position ? scenarioControlsFromSettings(settings, position) : null;
     const scenario = position && controls ? buildScenario(position, controls) : null;
+    const base = ctx.config?.baseCurrency ?? position?.currency ?? "";
+    const needsFx = !!position && position.optionQuotesAt !== undefined && scenarioNeedsFx(position.currency, base);
+    const fx = needsFx ? await loadScenarioFx(ctx.marketData, position.currency, base) : null;
     const hedge = scenarioHedgeBudget(settings, position, market);
     // A typed rate or yield stands in for the source that could not supply one.
     const marketWarnings = market.warnings.filter((warning) => !(supplied(settings.dividendYield) && warning.startsWith("Dividend yield unavailable"))
@@ -140,6 +145,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     const collar = position && (settings.strategy === "collar" || position.underlying) ? scenarioCollar(position, spotBasis!) : null;
     const lastSession = market.underlyingQuote && spotBasis === "implied by option quotes"
       ? scenarioSpotBasis({}, { spot: market.spot!, legs: [] }, market) : null;
+    const earlierSession = spotBasis === "implied by option quotes" && earlierOptionSession(position?.optionQuotesAt, market.underlyingQuote);
     const currency = position ? currencyLabel(position.currency) : null;
     const dividendNote = supplied(settings.dividendYield) ? null
       : modelDividendYieldNote({ basis: market.dividendYieldBasis ?? "stated", lastPaid: market.dividendLastPaid, historyEnds: market.dividendHistoryEnds });
@@ -163,11 +169,18 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...(midVolatility ? { volatilityFrom: leg.volatilitySource === "mid" ? "quote mid" : "provider" } : {}) })) },
         { title: "Inputs", entries: [
           { key: "spot", label: lastPrint != null ? "Spot implied by option quotes" : "Spot", value: position!.spot, unit: perShare,
-            formatted: `${money(position!.spot)} ${PRICE_UNIT}${lastPrint == null && spotBasis !== "last price" ? ` (${scenarioSpotStamp(spotBasis!, position!.asOf)})` : ""}` },
+            formatted: `${money(position!.spot)} ${PRICE_UNIT}${earlierSession ? " (earlier option session)"
+              : lastPrint == null && spotBasis !== "last price" ? ` (${scenarioSpotStamp(spotBasis!, position!.asOf)})` : ""}` },
           ...(lastPrint != null ? [{ key: "last", label: "Last price", value: lastPrint, unit: perShare,
-            formatted: `${money(lastPrint)} ${PRICE_UNIT}${lastSession && lastSession !== "last price" ? ` (${scenarioSpotStamp(lastSession, market.asOf)})` : ""}` }] : []),
+            formatted: `${money(lastPrint)} ${PRICE_UNIT}${lastSession && lastSession !== "last price" ? ` (${scenarioSpotStamp(lastSession, market.underlyingQuote?.lastUpdated ?? market.asOf)})` : ""}` }] : []),
+          ...(position!.optionQuotesAt !== undefined ? [
+            { key: "optionQuotesAt", label: "Option quotes", value: position!.optionQuotesAt == null ? null : new Date(position!.optionQuotesAt).toISOString(), formatted: scenarioQuoteTime(position!.optionQuotesAt) },
+            { key: "underlyingQuoteAt", label: "Underlying quote", value: market.underlyingQuote?.lastUpdated ? new Date(market.underlyingQuote.lastUpdated).toISOString() : null,
+              formatted: scenarioQuoteTime(market.underlyingQuote?.lastUpdated) },
+          ] : []),
           ...(position!.underlying ? [{ key: "shares", label: "Shares held", value: position!.underlying.quantity, unit: "shares",
             formatted: `${position!.underlying.quantity.toLocaleString("en-US")} at ${money(position!.underlying.price)} ${PRICE_UNIT}` }] : []),
+          ...(position!.unhedgedShares ? [{ key: "unhedgedShares", label: "Unhedged odd lot", value: position!.unhedgedShares, unit: "shares" }] : []),
           // The figures are valued at the scenario date; its spot, IVs and rate are as of the position's own time.
           ...(scenario.controls.date !== position!.asOf ? [
             { key: "asOf", label: "As of", value: new Date(position!.asOf).toISOString(), formatted: formatSpotTime(position!.asOf) },
@@ -182,9 +195,11 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(hedge ? [{ title: "Hedge budget", entries: hedgeReportEntries(hedge) }] : []),
         ...(csp ? [{ title: "Cash-secured put", entries: cspReportEntries(csp) }] : []),
         ...(collar ? [{ title: "Collar", entries: collarReportEntries(collar) }] : []),
-        { title: `Valuation (${per})`, entries: Object.entries(scenario.valuation).map(([key, value]) => ({ key,
+        { title: `Valuation (${per})`, entries: [
+          ...(position!.optionQuotesAt === undefined ? [] : [{ key: "netPremiumTotal", label: "Net premium total", value: netPremiumTotal(position!), formatted: money(netPremiumTotal(position!)), unit: exportPer }]),
+          ...Object.entries(scenario.valuation).map(([key, value]) => ({ key,
           label: VALUATION_LABELS[key]?.(currency!) ?? key, value, formatted: money(value),
-          ...(VALUATION_UNITS[key] ? { unit: VALUATION_UNITS[key]!(exportCurrency, exportPer) } : {}) })) },
+          ...(VALUATION_UNITS[key] ? { unit: VALUATION_UNITS[key]!(exportCurrency, exportPer) } : {}) }))] },
         { title: `Expiry risk (${per})`, entries: [
           { key: "breakevens", label: "Breakevens (spot)", value: scenario.expiryRisk.breakevens, unit: perShare,
             formatted: scenario.expiryRisk.breakevens.map(money).join(", ") || "none" },
@@ -198,10 +213,20 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...scenarioDateLabels(scenario.dates).map((label, index) => ({ key: `date${index}`, header: label, format: money })),
         ], rows: scenario.grid.map((row) => ({ spot: row.spot, move: row.move,
           ...Object.fromEntries(row.values.map((value, index) => [`date${index}`, value])) })) },
+        ...(needsFx ? [{ title: `Base totals (${base})`, entries: [
+          { key: "fx", label: "FX", value: fx?.mark ? baseConversionLabel(fx.mark) : fx ? "Fixed unit conversion" : "Rate unavailable" },
+          ...(fx ? scenarioMoneyTotals(scenario).map(({ key, label, value, unlimited }) => ({ key, label,
+            value: value == null ? null : value * fx.factor, unit: base, formatted: unlimited ? "Unlimited" : money(value == null ? null : value * fx.factor) })) : []),
+        ] }] : []),
+        ...(fx ? [{ title: `Scenario grid (P&L, ${base})`, columns: [
+          { key: "spot", header: `Spot/share (${exportCurrency})`, format: money },
+          ...scenarioDateLabels(scenario.dates).map((label, index) => ({ key: `date${index}`, header: label, format: money })),
+        ], rows: scenario.grid.map((row) => ({ spot: row.spot,
+          ...Object.fromEntries(row.values.map((value, index) => [`date${index}`, value * fx.factor])) })) }] : []),
       ] : [],
       complete: scenario != null && errors.length === 0,
       unavailableSymbols: scenario ? [] : [symbol], errors, ...(fate?.empty ? { empty: fate.empty } : {}),
-      metadata: { scenario, position, controls, market, ...(hedge ? { hedge } : {}), ...(csp ? { csp } : {}), ...(collar ? { collar } : {}),
+      metadata: { scenario, position, controls, market, ...(needsFx ? { fx } : {}), ...(hedge ? { hedge } : {}), ...(csp ? { csp } : {}), ...(collar ? { collar } : {}),
         ...(position ? { spot: { price: position.spot, basis: spotBasis, valuedAt: new Date(position.asOf).toISOString() } } : {}),
         inputSource: suppliedInputs ? "user" : "market",
         unit: position?.currency || "currency unspecified",

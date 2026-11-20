@@ -1,7 +1,7 @@
 import { effectiveTimeSeriesPointTime } from "../alignment";
 import { mergePriceHistoryIntegrity } from "../../utils/price-history-integrity";
 import { isRealizedVolatilityEstimator, realizedVolatilityCadenceIssue } from "../../market-data/realized-volatility";
-import type { ManualChartResolution } from "../resolution";
+import type { ChartBarSize, ManualChartResolution } from "../resolution";
 import type { ChartStudyKind, ChartStudySpec, ResolvedSeries, TimeSeriesPoint } from "../types";
 import { studyMessageName } from "../series-name";
 import { isLeverageFactor, leverageFactorLabel, leverageSymbol, type StudyAnchor } from "../leverage";
@@ -164,7 +164,9 @@ export function activeStudyInputSeriesIds(
  * `anchors`: where each input series is measured from and to, for studies
  * that read returns over the chart's period (a leveraged fund's daily line and
  * its decay start where a comparison starts its legs). Without one, a series'
- * own first and last observations.
+ * own first and last observations. `barSize`: the size the chart builds its
+ * bars in from `marketResolution` ones (2D from 1D), which studies of
+ * sessions refuse.
  */
 export function resolveStudies(
   baseSeries: readonly ResolvedSeries[],
@@ -172,11 +174,12 @@ export function resolveStudies(
   marketResolution?: ManualChartResolution,
   historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
   anchors?: ReadonlyMap<string, StudyAnchor>,
+  barSize?: ChartBarSize,
 ): StudyResolutionResult {
   // With one security on the chart its volume is just "Volume"; beside a
   // comparison the legend names whose volume it is.
   const nameVolumeInput = baseSeries.filter((series) => series.observationKind === "market").length > 1;
-  return resolveStudySpecs(baseSeries, studySpecs, nameVolumeInput, marketResolution, historicalPriceSeries, anchors);
+  return resolveStudySpecs(baseSeries, studySpecs, nameVolumeInput, marketResolution, historicalPriceSeries, anchors, barSize);
 }
 
 function resolveStudySpecs(
@@ -186,6 +189,7 @@ function resolveStudySpecs(
   marketResolution?: ManualChartResolution,
   historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
   anchors?: ReadonlyMap<string, StudyAnchor>,
+  barSize?: ChartBarSize,
 ): StudyResolutionResult {
   const byId = new Map(baseSeries.map((series) => [series.id, series]));
   // A formula never takes a colour a series on the chart has: a crack in euros is not drawn in its EURUSD leg's yellow.
@@ -236,7 +240,7 @@ function resolveStudySpecs(
         errors.push(`${studyMessageName(spec)}: choose a nonzero leverage factor of at most 5.`);
         return;
       }
-      const issue = inputs.map((entry) => dailyBarsIssue(spec, entry!, marketResolution)).find(Boolean);
+      const issue = inputs.map((entry) => dailyBarsIssue(spec, entry!, marketResolution, barSize)).find(Boolean);
       if (issue) {
         warnings.push(issue);
         return;
@@ -258,8 +262,11 @@ function resolveStudySpecs(
         return;
       }
       const inputResolution = input.historyResolution === undefined ? marketResolution : input.historyResolution;
+      // A chart that builds 2D bars reads daily closes here, but its bars are not daily: the study's points would not fall on them.
+      const built = byId.get(input.id)?.barSize ?? input.barSize ?? barSize;
       if (input.nativeFrequency !== "daily"
         || (inputResolution !== undefined && inputResolution !== "1d")
+        || (built !== undefined && built !== "1d")
         || (input.timeBasis?.cadenceMs !== undefined && input.timeBasis.cadenceMs !== 86_400_000)
         || !(input.unitGroup === "price" || input.unitGroup.startsWith("price:"))) {
         errors.push(`${studyMessageName(spec)}: realized volatility requires daily prices. Choose Auto or 1D resolution and a daily price source.`);

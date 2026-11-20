@@ -6,6 +6,7 @@ import { getTableWidth } from "../../../components/ui/table-layout";
 import { isRegularSessionTime, latestRegularSessionClose } from "../../../market-data/market/freshness";
 import { isUsListingExchange } from "../../../utils/exchanges";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
+import { rankTickerMatches } from "../../../utils/ticker-match-order";
 import { closeLabel } from "../themes/model";
 export type MembersTab = "members" | "movers" | "changes" | "breadth";
 export const TABS = [{ value: "members", label: "Members" }, { value: "movers", label: "Movers" }, { value: "changes", label: "Changes" }, { value: "breadth", label: "Breadth" }];
@@ -152,11 +153,12 @@ export function sortMembers(rows: readonly FundMember[], sort: SortPreference<st
 export function memberRows(rows: readonly FundMember[], tab: MembersTab, query: string, sort: SortPreference<string>): SectionedRow<FundMember>[] {
   const needle = query.trim().toLowerCase();
   const filtered = rows.filter((row) => `${row.symbol ?? ""} ${row.name} ${row.sector ?? ""}`.toLowerCase().includes(needle));
-  if (tab !== "movers") return sortMembers(filtered, sort).map((item) => ({ kind: "item", key: item.id, item }));
+  const fields = (row: FundMember) => [row.symbol, row.name] as const;
+  if (tab !== "movers") return rankTickerMatches(sortMembers(filtered, sort), query, fields).map((item) => ({ kind: "item", key: item.id, item }));
   const ranked = sortMembers(filtered.filter((row) => row.contribution !== null), { columnId: "contribution", direction: "desc" });
   return buildSectionedRows([
-    { label: "Contributors", items: ranked.filter((row) => row.contribution! > 0).slice(0, 10) },
-    { label: "Detractors", items: ranked.filter((row) => row.contribution! < 0).reverse().slice(0, 10) },
+    { label: "Contributors", items: rankTickerMatches(ranked.filter((row) => row.contribution! > 0), query, fields).slice(0, 10) },
+    { label: "Detractors", items: rankTickerMatches(ranked.filter((row) => row.contribution! < 0).reverse(), query, fields).slice(0, 10) },
   ], (row) => row.id);
 }
 const column = (id: string, label: string, width: number, align: "left" | "right" = "right"): DataTableColumn => ({ id, label, width, align });

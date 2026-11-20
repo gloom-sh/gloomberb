@@ -20,6 +20,34 @@ async function report(financials: TickerFinancials): Promise<string> {
     .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
 }
 
+test("the ticker report gives yield levels and session changes the same units in text and JSON", async () => {
+  for (const symbol of ["^IRX", "^FVX", "^TNX", "^TYX", "^VIX", "UNITTEST"]) {
+    const instrumentType = symbol.startsWith("^") ? "INDEX" : "EQUITY";
+    const isYield = instrumentType === "INDEX" && symbol !== "^VIX";
+    const financials: TickerFinancials = { quote: { ...quote, symbol, instrumentType, price: 4.25, change: 0.045, changePercent: 1.07,
+      low: 4.20, high: 4.29, marketState: "REGULAR" }, annualStatements: [], quarterlyStatements: [], priceHistory: [] };
+    const text = plainText(await buildTickerReport({ symbol, tickerFile: null, financials, config, toBase: async (value) => value }));
+    expect(text).toContain(isYield ? "Yield 4.25%" : instrumentType === "INDEX" ? "Last 4.25" : "Last $4.25");
+    expect(text).toContain(isYield ? "Change +4.5bp" : "(+1.07%)");
+    if (isYield) {
+      expect(text).toMatch(/Day Range 4\.2\d*% - 4\.29%/);
+      expect(text).not.toContain("(+1.07%)");
+      expect(text).not.toContain("Index points");
+    }
+    const outputs: unknown[] = [];
+    await ticker(symbol, {
+      initMarketData: async () => ({ config, dataDir: "/tmp/gloom-ticker-units-unused",
+        dataProvider: createTestDataProvider({ getTickerFinancials: async () => financials, getNews: async () => [] }),
+        store: { loadTicker: async () => null, loadAllTickers: async () => [] }, persistence: { close: () => {} },
+      }) as unknown as MarketContext,
+      fail: (message) => { throw new Error(message); },
+      printResult: (result) => outputs.push(result.data),
+    });
+    expect(outputs[0]).toMatchObject({ quote: isYield ? { price: 4.25, unit: "percent", changeBasisPoints: 4.5, changePercent: null }
+      : { price: 4.25, changePercent: 1.07 } });
+  }
+});
+
 test("ticker monetary fundamentals keep reported units across foreign, minor and unknown currencies", async () => {
   // Nothing declared and no statements, on a US listing in dollars: the listing's own USD.
   for (const [currency, eps] of [["CNY", "CN¥2.50"], ["GBp", "2.50 GBp"], ["GBX", "2.50 GBX"], ["ILA", "2.50 ILA"], ["ZAc", "2.50 ZAc"], [" ", "$2.50"]] as const) {

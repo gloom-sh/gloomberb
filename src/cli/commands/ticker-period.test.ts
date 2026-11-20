@@ -4,11 +4,12 @@ import type { TickerFinancials } from "../../types/financials";
 import type { MarketContext } from "../types";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { buildFinancialTableModel } from "../../plugins/builtin/ticker-detail/financials/model";
+import type { OfferingFiling } from "../../utils/cash-runway";
 import { buildTickerReport, ticker } from "./ticker";
 
 const config = createDefaultConfig("/tmp/gloom-ticker-period-unused");
-async function reports(financials: TickerFinancials) {
-  const text = (await buildTickerReport({ symbol: "PERIOD", tickerFile: null, financials, config, toBase: async value => value }))
+async function reports(financials: TickerFinancials, offerings?: readonly OfferingFiling[]) {
+  const text = (await buildTickerReport({ symbol: "PERIOD", tickerFile: null, financials, config, toBase: async value => value, offerings }))
     .replace(/\u001b\[[0-9;]*m/g, "");
   let data: any;
   await ticker("PERIOD", {
@@ -62,12 +63,13 @@ test("unqualified or absent periods never become a latest-period report", async 
 });
 
 
-test("ticker caps displayed runway while exporting raw months, labels a short TTM and skips financials", async () => {
+test("ticker caps displayed runway while exporting raw months and skips financial firms", async () => {
   const financials: TickerFinancials = { annualStatements: [], priceHistory: [], quarterlyStatements: [{
-    date: "2026-06-30", cashAndCashEquivalents: 32_000, operatingCashFlow: -1,
+    date: "2026-06-30", cashAndCashEquivalents: 32_000, operatingCashFlow: -1, capitalExpenditure: 0,
   }] };
-  const { text, data } = await reports(financials);
-  expect(text).toContain("Cash Runway          > 120 mo (quarter to 2026-06-30) · TTM < 4 quarters");
+  const { text, data } = await reports(financials, [{ form: "424B4", filed: "2026-08-01" }]);
+  expect(text).toMatch(/Cash Runway.*> 120 mo \(quarter to 2026-06-30\)/);
+  expect(text).toContain("cash and runway predate it.");
   expect(text).toContain("cash (no ST investments reported)");
   expect(data.cashRunway.quarter.months).toBe(96_000);
   financials.profile = { industry: "Insurance - Life" };

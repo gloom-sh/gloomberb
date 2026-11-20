@@ -1,4 +1,6 @@
-import { Box, Text } from "../../../ui";
+import { navigationDirectionLabel, useKeybindings } from "../../../app/keybindings";
+import { getShortcutDisplayMode } from "../../../utils/shortcut-labels";
+import { Box, Text, useUiHost } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { higherContrast } from "../../../theme/color-utils";
 import { truncateToDisplayWidth } from "../../../utils/format";
@@ -89,11 +91,12 @@ export function NativeWindowEditStatus({
   targetTitle?: string;
   zIndex: number;
 }) {
+  const directions = navigationDirectionLabel(useKeybindings(), getShortcutDisplayMode(useUiHost().kind));
   const lineWidth = Math.max(1, rect.width - 2);
   const status = windowEditStatusLine(mode, title, bounds, dockGeometryOptions, targetTitle);
   const hasPending = windowEditHasPendingCommit(mode, bounds, dockGeometryOptions);
   const pending = hasPending ? " - pending" : "";
-  const help = wrapWindowEditHelp(windowEditHelpItems(mode, hasPending), lineWidth, Math.max(0, rect.height - 1));
+  const help = wrapWindowEditHelp(windowEditHelpItems(mode, hasPending, directions), lineWidth, Math.max(0, rect.height - 1));
   const textColor = higherContrast("#ffffff", "#000000", colors.borderFocused);
 
   return (

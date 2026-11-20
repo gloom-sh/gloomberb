@@ -1,4 +1,5 @@
 import { currencyRateUnitText } from "../../time-series/price-units";
+import { formatBasisPoints } from "../../utils/basis-points";
 import { getSharedRegistry } from "../../plugins/registry";
 import { seriesExpression, seriesNamedBy } from "../../series/registry";
 import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
@@ -511,6 +512,21 @@ function seriesLatestDate(series: HeadlessSeries, date: SeriesPointDate): string
   return barLastSession(observationDate(time, calendar), period, venue, Date.now()) ?? series.latestDate ?? seriesPointDate(series, date);
 }
 
+/**
+ * Each series' own last day, as its exported rows' `as_of`, when the series of
+ * a report end on different days (a price through Fri 20 Nov beside a spread
+ * published through Thu 19 Nov): the closing lines date the newest, which is
+ * not every series' day. Nothing for series that end on one day or at a time.
+ */
+function seriesLastDays(series: readonly HeadlessSeries[]): Array<string | undefined> {
+  const days = series.map((entry) => {
+    const latest = [...entry.points].reverse().find((point) => point.value != null || point.close != null);
+    const day = entry.notMeaningful ? null : latest ? seriesLatestDate(entry, latest.date) : null;
+    return day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : undefined;
+  });
+  return new Set(days.filter(Boolean)).size > 1 ? days : series.map(() => undefined);
+}
+
 /** The same date for a spreadsheet: the trading date, the calendar date, or the ISO instant. */
 function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, days: boolean): string {
   const time = seriesPointTime(date);
@@ -649,6 +665,7 @@ function renderSeries(result: HeadlessSeriesResult, showPoints: boolean): string
       latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestDate(series, latest.date) : MISSING_VALUE,
       value: series.notMeaningful ? "N/M" : seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
+      move: series.latestChangeBasisPoints === undefined ? null : formatBasisPoints(series.latestChangeBasisPoints / 100, 1),
       native: latest?.nativeAmount ? `${seriesValue(series, latest.nativeAmount.value)} ${latest.nativeAmount.currency}` : null,
       ...trailingCells(series.trailing),
       ...(mixedBars ? { bars: barSizes[index] ?? MISSING_VALUE } : {}),
@@ -664,6 +681,7 @@ function renderSeries(result: HeadlessSeriesResult, showPoints: boolean): string
     { key: "value", header: "Value", align: "right" },
     ...(trailing ? TRAILING_COLUMNS : []),
     ...(rows.some((row) => row.unit) ? [{ key: "unit", header: "Unit" }] : []),
+    ...(rows.some((row) => row.move) ? [{ key: "move", header: "Session move", align: "right" as const }] : []),
     ...(mixedBars ? [{ key: "bars", header: "Bars" }] : []),
     ...(rows.some((row) => row.native) ? [{ key: "native", header: "Native", align: "right" as const }] : []),
     // Beside the averages, the count of points is the first thing a narrow table drops.
@@ -950,7 +968,11 @@ export function headlessReportTables(
       break;
     case "series": {
       const seriesResult = result as HeadlessSeriesResult;
-      tables = seriesResult.series.map((series) => seriesTable(series));
+      const days = seriesLastDays(seriesResult.series);
+      tables = seriesResult.series.map((series, index) => {
+        const table = seriesTable(series);
+        return days[index] ? { ...table, identity: { ...table.identity, asOf: days[index] } } : table;
+      });
       if (seriesResult.stats) tables.push(exportEntriesTable("Statistics", statisticsEntries(seriesResult.stats)));
       break;
     }

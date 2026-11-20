@@ -1,3 +1,4 @@
+import { useKeybindings } from "../../../app/keybindings";
 import { Box, Text, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { TextAttributes } from "../../../ui";
 import { useShortcut, useViewport } from "../../../react/input";
@@ -246,6 +247,7 @@ export function MultiSelectDialogContent({
   rowAction,
   searchable = false,
 }: MultiSelectDialogContentProps) {
+  const navigation = useKeybindings();
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const optionByValue = useMemo(() => new Map(options.map((option) => [option.value, option])), [options]);
   const [selectedValues, setSelectedValues] = useState(() => normalizeDialogSelectedValues(options, selectedValuesProp, ordered));
@@ -388,7 +390,7 @@ export function MultiSelectDialogContent({
       if (isSpaceKey(event)) event.preventDefault();
     }
     event.stopPropagation();
-    const move = listCursorMove(event, pageSize);
+    const move = listCursorMove(event, pageSize, navigation);
     if (move) {
       if (isDesktopWeb && !searchable) releaseFocusOutsideList();
       setSelectedOptionId(visibleOptions[move(visibleOptions, selectedIndex)]?.value ?? selectedOptionId);

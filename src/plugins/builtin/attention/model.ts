@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { rankTickerMatches } from "../../../utils/ticker-match-order";
 import type { AttentionPayload, AttentionPoint, AttentionRow, AttentionWindow } from "../../../api-client/attention";
 import type { DataTableColumn } from "../../../components";
 import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
@@ -26,14 +27,15 @@ export const GROUP_COLUMNS: DataTableColumn[] = [{ id: "name", label: "Group", w
 export const HISTORY_COLUMNS: DataTableColumn[] = [{ id: "bucketStart", label: "Hour (UTC)", width: 22, flexGrow: 1, align: "left" },
   { id: "researchUnits", label: "Research hrs", width: 14, align: "right" }, { id: "change", label: "Change", width: 11, align: "right" }];
 export function attentionRows(rows: readonly AttentionRow[], tab: AttentionTab, query: string, column: string, direction: "asc" | "desc") {
-  const filtered = rows.filter((row) => (tab !== "abnormal" || row.zScore !== null)
-    && [row.symbol, row.name, row.country, row.sector].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
-  return [...filtered].sort((a, b) => {
+  const needle = query.trim().toLowerCase();
+  const sorted = rows.filter((row) => (tab !== "abnormal" || row.zScore !== null)
+    && (!needle || [row.symbol, row.name, row.country, row.sector].join(" ").toLowerCase().includes(needle))).sort((a, b) => {
     const left = a[column as keyof AttentionRow], right = b[column as keyof AttentionRow];
     if (left == null || right == null) return left == null ? right == null ? a.symbol.localeCompare(b.symbol) : 1 : -1;
     const result = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right));
     return (direction === "asc" ? result : -result) || a.symbol.localeCompare(b.symbol);
   });
+  return rankTickerMatches(sorted, query, (row) => [row.symbol, row.name]);
 }
 export function rowCell(row: AttentionRow, column: string) {
   const value = row[column as keyof AttentionRow];

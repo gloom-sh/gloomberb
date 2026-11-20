@@ -1,5 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { OptionContract } from "../../../types/financials";
+import type { HeadlessPaneFreshness } from "../../../types/headless";
 import { logForwardMoneyness, type ExpectedMove, type SkewMetrics, type SmileFit } from "../shared/volatility";
 import { ivSymbol, loadStoredSurface, loadSurfaceDates, type ImpliedVolatilityApi, type StoredSurfacePayload } from "../iv-history/client";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -44,6 +45,15 @@ interface StoredSurface {
 
 interface StoredSurfaceInfo { sessionDate: string; capturedAt: string }
 export type DatedSurfaceSnapshot = SurfaceSnapshot & { stored?: StoredSurfaceInfo };
+
+/**
+ * A stored close as every line dates it: its session, and no feed. The
+ * report, the pane's footer and a capture's status line say the same,
+ * whichever view shows it: `Tue 17 Nov 2026 · not a live feed (stored close capture)`.
+ */
+export function storedSurfaceFreshness(sessionDate: string): HeadlessPaneFreshness {
+  return { status: "not-a-feed", basis: "stored close capture", asOf: sessionDate };
+}
 
 function storedExpiry(entry: StoredExpiry, spot: number, capturedAt: number, source: string | null): SurfaceExpiry {
   const expiry: SurfaceExpiry = {

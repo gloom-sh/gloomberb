@@ -1,7 +1,7 @@
 import { metricDescription, readAlertMetric, validMetricRule } from "./metric-model";
 import type { AlertCondition, AlertRule } from "./types";
 import { alertListing } from "./format";
-import { alertListingKey, alertPriceText } from "./price-text";
+import { alertListingKey, alertPriceWithCurrency } from "./price-text";
 import { moveRuleWords } from "./move";
 import { logFailure } from "../../../utils/log-failure";
 
@@ -114,7 +114,7 @@ export function formatAlertDescription(alert: AlertRule): string {
   const prefix = alert.condition === "above" ? ">"
     : alert.condition === "below" ? "<" : "↕";
   // The listing as it was kept (7203:JPX, AAPL), its target at the instrument's precision (1.33750, 70.00p).
-  return `${alertListing({ symbol: alert.symbol, exchange: alert.exchange })} ${prefix} ${alertPriceText(alert, alert.targetPrice)}`;
+  return `${alertListing({ symbol: alert.symbol, exchange: alert.exchange })} ${prefix} ${alertPriceWithCurrency(alert, alert.targetPrice)}`;
 }
 
 export function serializeAlerts(alerts: AlertRule[]): string {

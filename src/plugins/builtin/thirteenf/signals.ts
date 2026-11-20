@@ -1,4 +1,6 @@
 import { apiClient } from "../../../api-client";
+import type { PaneFooterSegment } from "../../../components";
+import { formatShortDate } from "../../../utils/datetime-format";
 import type { HoldingAction } from "./types";
 
 export interface TickerHolderRow {
@@ -35,8 +37,21 @@ interface SignalsBase {
   quarter: string;
   period: string;
   previousPeriod: string;
+  fallbackFromPeriod?: string;
   warnings: string[];
   asOf: string;
+}
+
+export function quarterFallbackText(data: Pick<SignalsBase, "period" | "fallbackFromPeriod"> | null | undefined): string | null {
+  if (!data?.fallbackFromPeriod || data.fallbackFromPeriod <= data.period) return null;
+  const year = data.fallbackFromPeriod.slice(0, 4) !== data.period.slice(0, 4) ? "numeric" : false;
+  const date = (period: string) => formatShortDate(period, { utc: true, year });
+  return `${date(data.fallbackFromPeriod)} quarter not complete yet; showing ${date(data.period)}`;
+}
+
+export function quarterFallbackFooter(data: Parameters<typeof quarterFallbackText>[0]): PaneFooterSegment[] {
+  const text = quarterFallbackText(data);
+  return text ? [{ id: "quarter-fallback", parts: [{ text, tone: "warning" }] }] : [];
 }
 export interface TickerHoldings extends SignalsBase {
   ticker: string;

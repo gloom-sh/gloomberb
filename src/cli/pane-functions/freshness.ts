@@ -29,7 +29,7 @@ import { releasedText } from "../../utils/release-date";
  * for a report that cannot tell: a rendered view whose footer names no state,
  * or a plugin that declares nothing and carries no feed signal.
  */
-type ReportFreshnessStatus = HeadlessFreshnessStatus | "unreported";
+type ReportFreshnessStatus = HeadlessFreshnessStatus;
 
 /** What every `fn` report cites about its data, in its JSON and its last text line. */
 export interface ReportFreshness {
@@ -48,7 +48,7 @@ export interface ReportFreshness {
    * reads `Sep 2026, released Tue 20 Oct`.
    */
   referencePeriod?: string;
-  /** Oldest observation, when it is more than a day older than `asOf`. */
+  /** Oldest observation, when it is more than a day older than `asOf`, or from an earlier day with a declared `oldestAnyDay`. */
   oldest?: string;
   /**
    * How often the oldest observation publishes, when its rows say and it is
@@ -548,7 +548,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
       status = "not-a-feed";
     }
   } else {
-    const feed = worstFeedStatus([
+    const feed = declared.status === "unreported" ? null : worstFeedStatus([
       ...(declared.status ? [declared.status] : []),
       ...(signals.live ? ["live" as const] : []),
       ...(signals.delayed ? ["delayed" as const] : []),
@@ -619,14 +619,17 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const oldestRelease = !declared.periodicity && oldestTime ? observations.releases?.get(oldestTime) : undefined;
   const oldestPeriodicity = declared.oldestPeriodicity !== undefined ? declared.oldestPeriodicity
     : oldestRelease ? oldestRelease.periodicity ?? null : unitRelease?.periodicity ? null : undefined;
+  // Series that each end on their own day name the oldest one's day even a day apart (`oldestAnyDay`).
+  const namesOldest = !!asOf && !!oldestTime && (asOf.time - oldestTime.time > OLDEST_GAP_MS
+    || (declared.oldestAnyDay === true && declared.oldest != null && isoTime(oldestTime).slice(0, 10) < isoTime(asOf).slice(0, 10)));
   return {
     // A declared blank source says the data has no name to give, which is left out rather than called Gloom Cloud.
     source: declared.source !== undefined ? declared.source.trim()
       : sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE,
     asOf: released ? isoTime(released) : asOf ? isoTime(asOf) : null,
     ...(released && asOf ? { referencePeriod: isoTime(asOf) } : {}),
-    ...(asOf && oldestTime && asOf.time - oldestTime.time > OLDEST_GAP_MS ? {
-      oldest: isoTime(oldestTime),
+    ...(namesOldest ? {
+      oldest: isoTime(oldestTime!),
       ...(oldestPeriodicity !== undefined && (oldestPeriodicity ?? undefined) !== periodicity ? { oldestPeriodicity } : {}),
     } : {}),
     ...(asOf && oldestUnit && oldestUnit.time < asOf.time ? { oldestObservation: isoTime(oldestUnit) } : {}),

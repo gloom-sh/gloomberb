@@ -148,7 +148,7 @@ export function financialRatioRenderMismatches(
       const amounts = model.cells.get(row.def.id)![index]!;
       const expected = row.kind === "ratio"
         ? formatRatioValue(row.def.format, amounts.value)
-        : formatRatioInput(row.def.inputs[row.index]!.format, amounts.inputs[row.index]!, row.divisor);
+        : formatRatioInput(row.def.inputs[row.index]!.format, amounts.inputs[row.index]!, row.divisor, row.def.format);
       compared += 1;
       if (cell.text.trim() !== expected.trim()) {
         mismatches.push(`${tab.name} ${row.label} ${header} reads "${cell.text.trim()}", the captured data gives "${expected.trim()}"`);

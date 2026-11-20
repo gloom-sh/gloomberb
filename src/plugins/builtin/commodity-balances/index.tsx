@@ -29,7 +29,7 @@ export const commodityBalancesModule: PluginModule = {
         "usda", "wasde", "grain", "grains"],
       shortcut: {
         prefix: "PSD",
-        argKind: "text",
+        argKind: "text", argOnlySelects: true,
         argPlaceholder: "crop",
         argOptional: true,
         openWithoutArg: true,

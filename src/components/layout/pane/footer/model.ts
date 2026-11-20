@@ -62,10 +62,8 @@ export interface PaneFooterSegment {
   holdsPlace?: boolean;
   /**
    * The notes behind a warning icon (usePaneNoticeFooter), each in full. The
-   * icon opens them in the app. A picture of the pane cannot, so it draws a
-   * segment carrying `notes` and no icon as its one note line
-   * ({@link noteLineParts}): the first note, cut after a whole word when the
-   * row is short, and how many more there are.
+   * icon opens them in the app. A picture of the pane instead wraps the
+   * first note in full and says how many more there are.
    */
   notes?: readonly string[];
   /**
@@ -113,6 +111,7 @@ export function delayedFooterSegment({
   delay,
   onPress,
   quoteStatus,
+  showLabel,
 }: {
   id: string;
   /** What is late and by how much, in words: the tooltip and the accessible name. */
@@ -121,13 +120,14 @@ export function delayedFooterSegment({
   delay?: string;
   onPress?: () => void;
   quoteStatus?: boolean;
+  showLabel?: boolean;
 }): PaneFooterSegment {
   return {
     id,
-    icon: "clock",
+    ...(showLabel ? {} : { icon: "clock" }),
     label: detail,
     title: detail,
-    parts: [{ text: `${DELAYED_FOOTER_GLYPH}${delay ?? ""}`, tone: "warning" }],
+    parts: [{ text: showLabel ? detail : `${DELAYED_FOOTER_GLYPH}${delay ?? ""}`, tone: "warning" }],
     ...(onPress ? { onPress } : {}),
     ...(quoteStatus ? { quoteStatus } : {}),
   };

@@ -7,6 +7,7 @@ import {
   isCalendarResolution,
   liveQuoteObservation,
   MIN_LIVE_QUOTE_TAIL_GAP_MS,
+  onSameVenueDay,
   quoteBelongsToLatestBar,
   quoteSessionRange,
 } from "./chart-data";
@@ -340,10 +341,14 @@ export class LiveBarAccumulator {
       const step = CHART_RESOLUTION_STEP_MS[resolution];
       const watched = options.liveSince !== undefined && latestBarTime + step >= options.liveSince;
       if (!watched && time - latestBarTime > Math.max(MIN_LIVE_QUOTE_TAIL_GAP_MS, 3 * step)) {
-        // Bars in between are missing, not quiet. Ask for the recent history instead.
-        this.closeFormingVolume(previous);
+        // Bars in between are missing, not quiet: ask for the recent history.
         this.gapPending = true;
-        return;
+        // On the bars' own day the quote is still the price, in a bar of its own after the missing ones
+        // (onSameVenueDay); a later day's waits for that day's history.
+        if (!onSameVenueDay(latestBarTime, time, exchange)) {
+          this.closeFormingVolume(previous);
+          return;
+        }
       }
       barTime = latestBarTime + Math.floor((time - latestBarTime) / step) * step;
     }

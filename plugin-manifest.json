@@ -1718,5 +1718,47 @@
         "FA"
       ]
     }
+  ],
+  "extracted": [
+    {
+      "id": "byok-ai",
+      "repo": "gloom-sh/gloom-byok-ai"
+    },
+    {
+      "id": "ibkr",
+      "repo": "gloom-sh/gloom-ibkr"
+    },
+    {
+      "id": "ibkr-gateway",
+      "repo": "gloom-sh/gloom-ibkr-gateway"
+    },
+    {
+      "id": "polls",
+      "repo": "gloom-sh/gloom-polls"
+    },
+    {
+      "id": "prediction-markets",
+      "repo": "gloom-sh/gloom-prediction-markets"
+    },
+    {
+      "id": "public",
+      "repo": "gloom-sh/gloom-public"
+    },
+    {
+      "id": "robinhood",
+      "repo": "gloom-sh/gloom-robinhood"
+    },
+    {
+      "id": "simplefin",
+      "repo": "gloom-sh/gloom-simplefin"
+    },
+    {
+      "id": "substack",
+      "repo": "gloom-sh/gloom-substack"
+    },
+    {
+      "id": "tv",
+      "repo": "gloom-sh/gloom-tv"
+    }
   ]
 }

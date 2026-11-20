@@ -10,7 +10,7 @@ import { quoteExportFeed, quoteExportUnit, quoteSourceName, type BrokerNameOf } 
 import { isYieldIndexSymbol } from "../../../../tickers/index-roots";
 import { toBasisPoints } from "../../../../utils/basis-points";
 import { MISSING_VALUE, formatPercentRaw } from "../../../../utils/format";
-import { parsePublicTickerKey } from "../../../../utils/exchanges";
+import { isUsListingExchange, parsePublicTickerKey } from "../../../../utils/exchanges";
 import { quoteFreshnessFields } from "../../shared/report-freshness";
 
 /**
@@ -52,12 +52,18 @@ const QUOTE_MONITOR_COLUMNS: HeadlessPaneColumn[] = [
 ];
 
 /**
+ * What the regular session's move is from ("vs Wed 18 Nov close"), set right
+ * after Change % as `quote` sets it after Chg%. After an extended print it
+ * read as that print's basis, which is the later close the headline shows.
+ */
+const CHANGE_BASIS_COLUMN: HeadlessPaneColumn = { key: "changeBasis", header: "Chg Basis", optional: true, dropPriority: 1 };
+
+/**
  * What each row's figures are as of, as `quote --csv` says it: the session
- * (CLOSED, REGULAR, PRE-MKT), whether the feed is live, delayed or stale, and
- * what the move is from. A narrow terminal drops them before it cuts a name.
+ * (CLOSED, REGULAR, PRE-MKT) and whether the feed is live, delayed or stale.
+ * A narrow terminal drops them, and Chg Basis, before it cuts a name.
  */
 const QUOTE_MONITOR_SESSION_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "changeBasis", header: "Chg Basis", optional: true, dropPriority: 1 },
   { key: "session", header: "Session", optional: true, dropPriority: 3 },
   { key: "feed", header: "Feed", optional: true, dropPriority: 2 },
 ];
@@ -78,24 +84,33 @@ function extendedSessionColumn(session: ExtendedSession): HeadlessPaneColumn {
   };
 }
 
-/** Every column a board's rows draw: an extended session's only when a row has its print, Chg bp only beside a yield. */
+/**
+ * Every column a board's rows draw: Chg Basis beside the move it dates, then
+ * an extended session's print only when a row has one, Chg bp only beside a
+ * yield.
+ */
 export function quoteMonitorColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneColumn[] {
   const extended = (["PRE", "POST", "OVERNIGHT"] as const)
     .filter((session) => rows.some((row) => row.extendedSession === session))
     .map(extendedSessionColumn);
   const yields = rows.some((row) => row.changeBasisPoints != null);
-  return [...QUOTE_MONITOR_COLUMNS, ...extended, ...QUOTE_MONITOR_SESSION_COLUMNS, ...yields ? [CHANGE_BP_COLUMN] : []];
+  return [...QUOTE_MONITOR_COLUMNS, CHANGE_BASIS_COLUMN, ...extended, ...QUOTE_MONITOR_SESSION_COLUMNS, ...yields ? [CHANGE_BP_COLUMN] : []];
 }
 
 /** The columns a board starts with, before its rows say which sessions and yields it holds. */
-export const QUOTE_MONITOR_BASE_COLUMNS: HeadlessPaneColumn[] = [...QUOTE_MONITOR_COLUMNS, ...QUOTE_MONITOR_SESSION_COLUMNS];
+export const QUOTE_MONITOR_BASE_COLUMNS: HeadlessPaneColumn[] = [...QUOTE_MONITOR_COLUMNS, CHANGE_BASIS_COLUMN, ...QUOTE_MONITOR_SESSION_COLUMNS];
 
 /** The row fields an export reads each row's identity from: its listing, unit, source and as-of. */
 export const QUOTE_MONITOR_ROW_KEYS = { rowSymbolKey: "symbol", rowUnitKey: "unit", rowAsOfKey: "updatedAt", rowSourceKey: "source" } as const;
 
+export function quoteMonitorMissingChangeLabel(quote: Quote | null | undefined): string | null {
+  return quote?.changeBasis === "none" && !quote.delisting && isUsListingExchange(quote.listingExchangeName || quote.exchangeName)
+    ? "No previous close" : null;
+}
+
 /**
  * One card as a row: the regular session's Last, change and percent change,
- * any extended print, what the move is from, the session and feed, and each
+ * what that move is from, any extended print, the session and feed, and each
  * row's own as-of (Hong Kong's close beside New York's), its unit and source.
  * `symbol` is the listing with its venue (0005:HKEX).
  */
@@ -112,7 +127,7 @@ export function quoteMonitorRow(symbol: string, quote: Quote, now = Date.now(), 
     ...(yieldIndex && change != null && Number.isFinite(change) ? { changeBasisPoints: toBasisPoints(change, 1) } : {}),
     session: quoteSessionStateLabel(quote, now) ?? "",
     feed: quoteExportFeed(quote, now),
-    changeBasis: basis ? changeBasisLabel(basis, now) : "",
+    changeBasis: basis ? changeBasisLabel(basis, now) : quoteMonitorMissingChangeLabel(quote) ?? "",
     source: quoteSourceName(quote, brokerName),
     marketCap: quote.marketCap ?? null, updatedAt: quoteHeadlineTime(quote),
     ...quoteFreshnessFields(quote, now),

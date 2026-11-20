@@ -1,6 +1,7 @@
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
 import type { Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
+import { rankTickerMatches } from "../../../utils/ticker-match-order";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import {
   FUTURES_BOARD_ROWS, FUTURES_SECTOR_ORDER, futuresBoardCode, futuresBoardContract, futuresGroupFilter, futuresNameKey,
@@ -369,7 +370,10 @@ export function buildFuturesRows(
     if (contracts.length === 0) continue;
     rows.push({ type: "header", sector });
     if (collapsed.has(sector)) continue;
-    for (const contract of contracts) rows.push({ type: "row", contract });
+    const ranked = rankTickerMatches(contracts, query, (contract) => [
+      contract.symbol, contract.name, futuresContractName(contract, quotes.get(contract.symbol)?.quote),
+    ]);
+    for (const contract of ranked) rows.push({ type: "row", contract });
   }
   return rows;
 }

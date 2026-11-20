@@ -80,6 +80,14 @@ const dayLabel = (day: string) => formatShortDate(day, { year: false, utc: true,
 const isTimestamp = (value: number | null | undefined): value is number =>
   typeof value === "number" && Number.isFinite(value) && value > 0;
 
+export function heatmapExtendedPrintTime(asset: { extendedSession?: string | null; lastUpdated?: number | null }): string | null {
+  if (!asset.extendedSession) return null;
+  if (!isTimestamp(asset.lastUpdated)) return "print time unavailable";
+  const day = dayLabel(zonedDateKey(asset.lastUpdated, NEW_YORK));
+  const { hour, minute } = zonedDateTimeParts(asset.lastUpdated, NEW_YORK);
+  return `${day} ${twoDigits(hour)}:${twoDigits(minute)} ET`;
+}
+
 /**
  * What a market board covers and when it is from, for the footer: how many of
  * the largest names it holds, the completed regular session it shows outside

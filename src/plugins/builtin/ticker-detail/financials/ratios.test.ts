@@ -262,10 +262,10 @@ describe("financial ratios", () => {
   test("liquidity's runway reads the months ticker reads, at the quarter's burn and the trailing year's", () => {
     // A fiscal year to December, its last quarter's year on file, and an inflow quarter that turns the burn off.
     const quarter = (date: string, operatingCashFlow: number, cash: number): FinancialStatement => ({
-      date, totalRevenue: 0, operatingCashFlow, cashCashEquivalentsAndShortTermInvestments: cash, currentLiabilities: 50,
+      date, totalRevenue: 0, operatingCashFlow, capitalExpenditure: 0, cashCashEquivalentsAndShortTermInvestments: cash, currentLiabilities: 50,
     });
     const financials = createTestFinancials({
-      annualStatements: [{ date: "2025-12-31", totalRevenue: 0, operatingCashFlow: -300, cashCashEquivalentsAndShortTermInvestments: 700 }],
+      annualStatements: [{ date: "2025-12-31", totalRevenue: 0, operatingCashFlow: -300, capitalExpenditure: 0, cashCashEquivalentsAndShortTermInvestments: 700 }],
       quarterlyStatements: [
         quarter("2025-09-30", -94, 715), quarter("2025-12-31", -85.3, 700), quarter("2026-03-31", 20, 603),
         quarter("2026-06-30", -125.17, 501.66),

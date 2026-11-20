@@ -52,6 +52,7 @@ import {
   FINANCIAL_SECTIONS,
   RATIO_TABS,
   buildRatioTableModel,
+  latestRunwayPeriodEnd,
   oldestRatioPeriodEnd,
   periodEndClose,
   ratioOpenings,
@@ -63,7 +64,8 @@ import {
 } from "./ratios";
 import { PeriodEndHistoryLoader, RatioTable, ratioMetricColumn, type PeriodEndHistoryState, type RatioTableColumn } from "./ratio-table";
 import { useExchangeResultsNotes } from "./exchange-results";
-import { latestBalanceSheetDate, useOfferingNote } from "./offerings";
+import { latestBalanceSheetDate, useOfferingNote, useRunwayOfferings } from "./offerings";
+import { burnsCash, cashRunway, runwayOfferingNote } from "../../../../utils/cash-runway";
 import { useBoundTicker } from "../../shared/ticker-request";
 import { createValuationCurrencyContext } from "../../../../time-series/valuation-currency";
 
@@ -457,6 +459,10 @@ export function ResolvedFinancialsTab({
   const [loadedHistory, setHistory] = useState<PeriodEndHistoryState | null>(null);
   const history: PeriodEndHistoryState = isValuation && loadedHistory ? loadedHistory : { data: undefined, loading: isValuation, error: null };
   const currencies = useMemo(() => financials ? createValuationCurrencyContext(financials) : null, [financials]);
+  const { symbol: boundSymbol, exchange: boundExchange } = useBoundTicker();
+  const latestRunway = financials && ratioTab?.key === "liquidity" ? cashRunway(financials) : null;
+  const runwayPeriodEnd = burnsCash(latestRunway) ? latestRunway.periodEnd : null;
+  const runwayFilings = useRunwayOfferings(boundSymbol, boundExchange, runwayPeriodEnd);
   const ratioModel = useMemo(() => {
     if (!ratioTab) return null;
     const openings = ratioOpenings(resolvedPeriod, annualStatements, quarterlyStatements);
@@ -467,10 +473,11 @@ export function ResolvedFinancialsTab({
       return (close === undefined ? null : currencies?.priceInStatementUnits(statement, close)) ?? "no-price";
     };
     const expanded = new Set(ratioTab.ratios.map((ratio) => ratio.id).filter((id) => !collapsedGroups.has(id)));
-    return buildRatioTableModel(ratioTab, ratioPeriods(displayStatements, openings, resolvedPeriod, price, { annual: annualStatements, quarterly: quarterlyStatements }), expanded, financials?.profile);
+    return buildRatioTableModel(ratioTab, ratioPeriods(displayStatements, openings, resolvedPeriod, price, { annual: annualStatements, quarterly: quarterlyStatements }), expanded, financials?.profile,
+      runwayPeriodEnd ? { periodEnd: runwayPeriodEnd, filings: runwayFilings } : undefined);
   }, [
     annualStatements, collapsedGroups, currencies, displayStatements, history.data, history.error, history.loading,
-    isValuation, quarterlyStatements, ratioTab, resolvedPeriod, financials?.profile,
+    isValuation, quarterlyStatements, ratioTab, resolvedPeriod, financials?.profile, runwayPeriodEnd, runwayFilings,
   ]);
   const ratioColumns = useMemo<RatioTableColumn[]>(() => [
     ratioMetricColumn(width),
@@ -478,7 +485,6 @@ export function ResolvedFinancialsTab({
   ], [columns, width]);
 
   // The Balance Sheet and Liquidity show cash, which an offering filed since the latest balance sheet is not in yet.
-  const { symbol: boundSymbol, exchange: boundExchange } = useBoundTicker();
   // Years filled from the listing's exchange, with the lines this table shows.
   const filledFields = useMemo(() => ratioTab ? undefined : financialSubTabFields(subTab), [ratioTab, subTab]);
   const filledPeriods = useMemo(() => filledPeriodsNote(displayStatements, filledFields), [displayStatements, filledFields]);
@@ -486,8 +492,9 @@ export function ResolvedFinancialsTab({
   // An HKEX company's latest period dated by its results announcement, unless the filled periods already date it, and
   // what was announced after it.
   const exchangeResults = useExchangeResultsNotes(boundSymbol, boundExchange, latestBalanceSheetDate(financials), filledDates);
-  const offeringNote = useOfferingNote(boundSymbol, boundExchange, latestBalanceSheetDate(financials),
-    !!financials && (section.key === "balance" || section.key === "liquidity"));
+  const balanceOfferingNote = useOfferingNote(boundSymbol, boundExchange, latestBalanceSheetDate(financials), !!financials && section.key === "balance");
+  const historicalOfferingNote = useOfferingNote(boundSymbol, boundExchange, latestRunwayPeriodEnd(ratioModel), !latestRunway && section.key === "liquidity");
+  const offeringNote = runwayPeriodEnd ? runwayOfferingNote(runwayFilings, runwayPeriodEnd, latestRunway?.currency) : balanceOfferingNote ?? historicalOfferingNote;
 
   // A latest period over 15 months old says how old it is, beside the data's other limits.
   const stalePeriod = useMemo(

@@ -12,7 +12,7 @@ import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { halfYearGrowthPeriod } from "../../utils/financial-statements";
 import { servedRatesNotMeaningful, type ServedRate } from "../../utils/served-rates";
 import { NOT_MEANINGFUL_TEXT } from "../../utils/growth";
-import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
+import { burnsCash, cashRunway, formatRunwayMonths, offeringsAfter, runwayMethod, runwayOfferingNote, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
 import { exportedFundamentals, formatPriceEarnings, forwardFiscalYear, NOT_MEANINGFUL, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, marketCapBasisNote, selectMarketCapitalization, viewMarketCapitalization, withheldMarketCap } from "../../utils/market-capitalization";
 import {
@@ -65,6 +65,8 @@ import { quoteStatsBasisText } from "../../market-data/quotes/export-identity";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import { INDEX_POINTS_LABEL, isIndexLevel, quoteVolumeCurrency, reportedQuoteVolume } from "../../market-data/market/index-level";
+import { isYieldIndexSymbol } from "../../tickers/index-roots";
+import { toBasisPoints } from "../../utils/basis-points";
 import type { SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle } from "../../news/types";
 import { summaryRestatesHeadline } from "../../news/news-model";
@@ -230,10 +232,9 @@ function wrapProse(text: string): string {
 /** The runway row: months at the latest quarter's burn and at the trailing year's, each with the period it is read over. */
 function cashRunwayText(runway: CashRunway): string {
   const { quarter, trailing, periodEnd } = runway;
-  if (quarter?.kind === "no-burn" && trailing?.kind === "no-burn") return `no burn (quarter and TTM to ${periodEnd})`;
-  const part = (estimate: RunwayEstimate | null, period: string) => estimate
-    ? `${estimate.kind === "no-burn" ? "no burn" : formatRunwayMonths(estimate.months)} (${period} to ${periodEnd})` : null;
-  return [part(quarter, "quarter"), trailing ? part(trailing, "TTM") : `TTM ${runway.trailingGap === "short-history" ? SHORT_RUNWAY_HISTORY : "not reported"}`].filter((text): text is string => !!text).join(" \u00b7 ");
+  const part = (estimate: RunwayEstimate | null, period: string) => estimate?.kind === "months"
+    ? `${formatRunwayMonths(estimate.months)} (${period} to ${periodEnd})` : null;
+  return [part(quarter, "quarter"), part(trailing, "TTM")].filter((text): text is string => !!text).join(" \u00b7 ");
 }
 
 /** The balance sheet lines of a statement: a quarter that ends on the year's closing day shares them with the year. */
@@ -274,7 +275,7 @@ function buildStatementMetrics(
     ["Cash", balance("cashAndCashEquivalents")],
     ["Cash + ST Inv", balance("cashCashEquivalentsAndShortTermInvestments")],
     // The latest quarter's only: months of cash at its burn and the trailing year's.
-    ...runway ? [["Cash Runway", cashRunwayText(runway)] as [string, string]] : [],
+    ...burnsCash(runway) ? [["Cash Runway", cashRunwayText(runway)] as [string, string]] : [],
     ["Total Assets", balance("totalAssets")],
     ["Total Liabilities", balance("totalLiabilities")],
     ["Total Debt", balance("totalDebt")],
@@ -580,11 +581,11 @@ function boughtRateCurrencies(tickerFile: TickerRecord | null, quoteCurrency: st
 function conversionNotes(toBase: ReportBaseConverter, currencies: ReadonlySet<string>, rates: ReportRateNotes): string[] {
   return (toBase.conversions?.() ?? [])
     .filter((conversion) => currencies.has(conversion.currency) && conversion.currency !== conversion.baseCurrency && !rates.noted.has(conversion.currency))
-    .map(({ currency, baseCurrency, rate, asOf }) => {
+    .map(({ currency, baseCurrency, rate, asOf, stale }) => {
       rates.noted.add(currency);
       const quoted = quotedFxPair(currency, baseCurrency, rate);
       const except = rates.boughtAt.has(currency) ? ", except a cost basis at the rate it was bought at" : "";
-      return `${baseCurrency} figures at ${quoted.pair} ${formatFxRate(quoted.rate)}${asOf != null ? `, as of ${formatTimestamp(asOf)}` : ""}${except}.`;
+      return `${baseCurrency} figures at ${quoted.pair} ${formatFxRate(quoted.rate)}${asOf != null ? `, as of ${formatTimestamp(asOf)}` : ", time unavailable"}${stale ? " (stale)" : ""}${except}.`;
     });
 }
 
@@ -1369,13 +1370,14 @@ export async function buildTickerReport({
 }): Promise<string> {
   // A future's move that nothing confirms is measured from its last confirmed settlement, as `quote` reads it.
   const quote = futuresQuoteFromSettle(financials.quote, futuresContract);
+  const yieldIndex = isYieldIndexSymbol(quote?.symbol ?? symbol);
   const fundamentals = financials.fundamentals;
   const priceReturns = computeTickerPriceReturns(financials, tickerFile?.metadata.assetCategory);
   const profile = financials.profile;
   const name = quote?.name || tickerFile?.metadata.name || symbol;
   // A contract prints to its tick, as `quote` prints it.
   const baseQuoteOptions = { ...quoteFormatOptions(quote, tickerFile?.metadata.assetCategory, financials.quoteMetadata?.instrumentType),
-    ...futuresTickOption(futuresContract) };
+    ...futuresTickOption(futuresContract), yieldIndex };
   const baseCurrency = config.baseCurrency.trim().toUpperCase();
   const codes = writesCurrencyCodes(config);
   const rates: ReportRateNotes = {
@@ -1397,7 +1399,7 @@ export async function buildTickerReport({
   const indexLevel = isIndexLevel(quote?.instrumentType?.trim() || financials.quoteMetadata?.instrumentType?.trim() || tickerFile?.metadata.assetCategory);
   const summaryParts = [
     listingVenueLabel(listingExchange, quote, financials, tickerFile) || undefined,
-    indexLevel ? INDEX_POINTS_LABEL : quoteCurrency ? `Currency ${currencyCodeLabel(quoteCurrency)}` : undefined,
+    yieldIndex ? undefined : indexLevel ? INDEX_POINTS_LABEL : quoteCurrency ? `Currency ${currencyCodeLabel(quoteCurrency)}` : undefined,
     quoteMarketStateLabel(quote) ?? undefined,
     // A listing that no longer trades has no delay to speak of: its quote is its last session's close.
     quote?.dataSource && !quote.delisting ? `Source ${quote.dataSource.toUpperCase()}` : undefined,
@@ -1476,7 +1478,7 @@ export async function buildTickerReport({
   if (quote) {
     // As the Overview reads it: the regular session, then the extended-hours print against its close.
     const session = getRegularSessionDisplay(quote)!;
-    const extended = getExtendedSessionDisplay(quote);
+    const extended = yieldIndex ? null : getExtendedSessionDisplay(quote);
     // Each price says when it is from: Last a completed session's close by its day, the extended print by its time.
     const closeDate = futuresContract ? null : headlineCloseDate(quote);
     const extendedTime = extendedPrintTime(quote);
@@ -1498,7 +1500,7 @@ export async function buildTickerReport({
     // A futures price is its latest trade; the exchange settlement is its own row, dated by its session.
     appendMetricSection(lines, "Quote", [
       // A price in cents says what it is per: 314.95¢/lb.
-      ["Last", `${colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${futuresPricePer(futuresContract, quote.currency)}`, session.change)}${closeDate ? cliStyles.muted(` (${closeDayLabel(closeDate)})`) : ""}`],
+      [yieldIndex ? "Yield" : "Last", `${colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${futuresPricePer(futuresContract, quote.currency)}`, session.change)}${closeDate ? cliStyles.muted(` (${closeDayLabel(closeDate)})`) : ""}`],
       ...futuresContract
         ? [["Settle", quoteSettleText(quote, futuresContract)] as [string, string]]
         : [],
@@ -1579,13 +1581,13 @@ export async function buildTickerReport({
   }
 
   if (latestQuarter) {
-    const runway = cashRunway(financials);
+    const runway = cashRunway(financials, offerings);
     appendMetricSection(lines, `Latest Quarter (${statementPeriodText(latestQuarter.date, statementFilings?.latestQuarter ?? null)})`,
       buildStatementMetrics(latestQuarter, statementCurrency(latestQuarter), codes, runway, latestAnnual));
     unsourced(latestQuarter);
     // How the months are counted, and an offering since the balance sheet that the cash does not include yet.
     if (burnsCash(runway)) lines.push(cliStyles.muted(runwayMethod(runway.includesShortTerm)));
-    const offering = runway ? offeringNote(offeringsAfter(offerings, runway.periodEnd), runway.periodEnd) : null;
+    const offering = burnsCash(runway) ? runwayOfferingNote(offerings, runway.periodEnd, runway.currency) : null;
     if (offering) lines.push(cliStyles.muted(offering));
   }
   // The statements stop a quarter short of the results the company has released.
@@ -1673,7 +1675,10 @@ function buildTickerStructuredData({
   const identity = listingIdentity(listing, quote);
   // Market cap and the multiples at the regular session price, as the text report gives them.
   const priced = atLivePriceEarnings(financials);
-  const runway = cashRunway(financials);
+  const computedRunway = cashRunway(financials, offerings);
+  const runway = burnsCash(computedRunway) ? computedRunway : null;
+  const yieldIndex = isYieldIndexSymbol(quote?.symbol ?? symbol);
+  const session = getQuoteSessionFields(quote);
   return {
     symbol,
     listing: { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name },
@@ -1682,7 +1687,9 @@ function buildTickerStructuredData({
       instrumentType: quote.instrumentType,
       name: quote.name,
       // Last and Change as the text report reads them, then the extended print from that close.
-      ...getQuoteSessionFields(quote),
+      ...session,
+      ...(yieldIndex ? { unit: "percent", changePercent: null,
+        changeBasisPoints: session.change == null ? null : toBasisPoints(session.change, 1) } : {}),
       // What Change is measured from ("vs Fri 16 Oct close"), and the quote's previous close with its exchange-local date.
       changeBasis: changeBasisJson(quoteChangeBasis(quote, { terms: futuresContract })),
       previousClose: quote.previousClose ?? null,
@@ -1885,7 +1892,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       dataProvider,
     });
     // An offering since the latest balance sheet, read only when the report has a runway to flag.
-    const offerings = loadOfferingFilings(statementSources, { symbol: requestSymbol, exchange }, cashRunway(resolvedFinancials) != null);
+    const runway = cashRunway(resolvedFinancials);
+    const offerings = loadOfferingFilings(statementSources, { symbol: requestSymbol, exchange }, burnsCash(runway) && runway.periodEnd);
     // A stock's IPO of the last year, read beside the rest; it never fails the report.
     const ipoLoad = quote && resolveTickerInstrumentKind(tickerFile, resolvedFinancials) === "equity"
       ? (dependencies.listingIpo ?? loadTickerIpo)({ symbol: requestSymbol, exchange: exchange || quote.listingExchangeName || quote.exchangeName })

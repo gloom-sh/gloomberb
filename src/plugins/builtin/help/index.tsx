@@ -285,9 +285,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
     {
       label: "Navigation",
       items: [
-        keyEntry("rows", ["Up/Down", "j/k"], "Move through focused table and list rows."),
+        entry("rows", [...actionBadges("navigate-up"), ...actionBadges("navigate-down")], "Move through focused table and list rows."),
         keyEntry("activate", ["Enter"], "Open or activate the selected row."),
-        keyEntry("tabs", ["Left/Right", "h/l"], "Switch tabs when a tab bar is focused."),
+        entry("tabs", [...actionBadges("navigate-left"), ...actionBadges("navigate-right")], "Switch tabs when a tab bar is focused."),
         keyEntry("back", ["Esc", "Backspace"], "Go back from a detail view."),
         entry("pane-menu", actionBadges("pane-menu"), "Open the focused pane's menu: every action in the pane with its key, sorting, filters, tabs, toggles and the pane actions."),
         ...(functionHelpBadges.length > 0
@@ -387,13 +387,13 @@ function HelpPane({ focused, width, height }: PaneProps) {
           : []),
         keyEntry("mode", ["m", "r"], "Switch between move and resize."),
         keyEntry("float", ["d"], "Float the selected window, or return it to the layout."),
-        keyEntry("move", ["Arrows", "h/j/k/l"], "Move, resize, or choose where it goes in the layout."),
+        entry("move", ["left", "down", "up", "right"].flatMap((direction) => actionBadges(`navigate-${direction}`)), "Move, resize, or choose where it goes in the layout."),
         keyEntry("step", ["Shift"], "Use larger move and resize steps with direction keys."),
         keyEntry("cycle", ["Tab", "w"], "Cycle windows or resize handles."),
         keyEntry("commit", ["Enter", "Esc"], "Commit pending changes or exit window mode."),
       ],
     },
-  ], [askBadges, commandBarBadges, copyBadges, functionHelpBadges, keyLabel, openLayoutActions, pasteBadges, tickerSearchBadges, trialDays, windowMoveBadges, windowResizeBadges]);
+  ], [askBadges, commandBarBadges, copyBadges, functionHelpBadges, keyLabel, openLayoutActions, pasteBadges, tickerSearchBadges, trialDays, windowMoveBadges, windowResizeBadges, keybindings]);
 
   // One key column for every key table in Help, wide enough for the longest group of chips, so the descriptions
   // line up from table to table. A narrow pane caps it, and a row past the cap shows the chips that fit whole.

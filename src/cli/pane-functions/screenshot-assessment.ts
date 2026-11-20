@@ -159,9 +159,12 @@ export function assessPaneScreenshot(
     ...intradayChartEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...paneEvidenceMismatches(resolved, payload, render),
     ...financialRatioRenderMismatches(resolved, payload, render),
-    ...surfaceNotDrawnMismatches(render),
+    // The 2D grid that stands in for a sheet too few expiries can make draws every quoted value: no picture of the
+    // 3D surface asked for, so not usable, but neither empty nor at odds with the data.
+    ...surfaceNotDrawnMismatches(render).filter((gap) => gap !== SURFACE_GRID_STAND_IN),
     ...figureGaps,
   ];
+  const standIn = surfaceNotDrawnMismatches(render).includes(SURFACE_GRID_STAND_IN);
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
     || chartEvidenceMismatches.length > 0;
@@ -184,7 +187,7 @@ export function assessPaneScreenshot(
     || refused
     || (!interactive && (render.emptyStateDetected || (rowCount === 0 && !contentShown)))
     || semanticMismatch;
-  const usable = isPaneScreenshotUsable({
+  const usable = !standIn && isPaneScreenshotUsable({
     interactive,
     rowCount,
     contentShown,
@@ -471,9 +474,10 @@ export function surfaceNotDrawnMismatches(render: Pick<DesktopPaneShotRenderResu
   const surfaces = render.surfaces ?? [];
   return [
     ...(surfaces.some((surface) => surface.state === "blank") ? ["the 3D surface drew no mesh"] : []),
-    ...(surfaces.some((surface) => surface.renderer === "grid") ? ["the 3D surface was replaced by a 2D grid"] : []),
+    ...(surfaces.some((surface) => surface.renderer === "grid") ? [SURFACE_GRID_STAND_IN] : []),
   ];
 }
+const SURFACE_GRID_STAND_IN = "the 3D surface was replaced by a 2D grid";
 
 export function shotUnusableReasonFor(
   resolved: ResolvedPaneFunction,

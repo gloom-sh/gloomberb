@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo, useState } from "react";
 import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
@@ -41,9 +42,9 @@ const CONTRACT_COLUMNS: DataTableColumn[] = [
 ];
 
 const CAPTION = "Implied EFFR % by FOMC meeting";
-/** "Oct 28", the meeting's day without its year. */
+/** "28 Oct", the meeting's day without its year, day first as every date is written. */
 function formatMeetingDay(date: string): string {
-  return `${meetingLabel(date).slice(0, 3)} ${Number(date.slice(8, 10))}`;
+  return formatShortDate(date, { year: false, utc: true, fallback: date });
 }
 const meetingKey = (row: RateMeeting) => row.date;
 // Left and Right step along the meetings, the way the path reads.

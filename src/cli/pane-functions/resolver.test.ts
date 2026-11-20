@@ -110,7 +110,7 @@ test("a pair option reads the words after its flag, and a refused option is name
     .catch((error: Error) => error.message);
   expect(refused).toBe("WEI does not support --fx-shift. It has no options.");
   await expect(fn(["MARS", "book", "--fx-shfit", "TRY"])).rejects.toThrow(
-    "MARS does not support --fx-shfit. Supported options: --view, --since, --weights, --evidence, --equity-shift, --rate-shift, --vol-shift, --fx-shift, --asset-shift.",
+    "MARS does not support --fx-shfit. Did you mean --fx-shift? Supported options: --view, --since, --weights, --evidence, --equity-shift, --rate-shift, --vol-shift, --fx-shift, --asset-shift.",
   );
   await expect(resolvePaneFunction(registry, context, parsePaneFunctionArgsFor(registry, ["MARS", "--fx-shift", "USD", "10"]), { strictHeadlessOptions: true }))
     .rejects.toThrow("--fx-shift moves a currency against USD");
@@ -141,6 +141,30 @@ test("a rendered view that takes only its declared options refuses any other, an
   const inventories = await open(["FUT", "--tab", "inventories"]);
   expect(inventories.instance.settings).toEqual({ workspaceTab: "inventories" });
   expect(capabilityPluginState(inventories.capability, inventories.options)).toEqual({ "board-state": { "board:tab": "inventories" } });
+});
+
+test("fn refuses a flag a rendered view neither declares nor has a setting for, naming the option it is a slip from", async () => {
+  // OMON's shape: declared options, one with an alias, and a settings dialog.
+  const chain: PaneDef = { ...pane("chain"), reportOptions: [
+    { key: "expiration", aliases: ["expiry"], type: "string", description: "Expiry", settingKey: "expiration" },
+    { key: "strikes", aliases: ["delta"], type: "string", description: "Strikes" },
+  ], settings: () => ({ title: "Chain", fields: [{ key: "chainRefreshMinutes", label: "Refresh", type: "select", options: [] }] }) };
+  const catalog: PaneFunctionCatalog = {
+    panes: new Map([["chain", chain]]),
+    paneTemplates: new Map([["chain-pane", { id: "chain-pane", paneId: "chain", label: "OMON", description: "OMON", shortcut: { prefix: "OMON", argPlaceholder: "ticker", argKind: "ticker" } }]]),
+    destroy: () => {},
+  };
+  const open = (args: string[]) => resolvePaneFunction(catalog, context, parsePaneFunctionArgs(args), { strictHeadlessOptions: true, strictRenderedOptions: true });
+  await expect(open(["OMON", "FXY", "--foo", "bar"])).rejects
+    .toThrow("OMON does not support --foo. Supported options: --expiration, --strikes. Pane state can be set with --state.<key> value.");
+  await expect(open(["OMON", "FXY", "--expirtion", "2026-12-18"])).rejects.toThrow("OMON does not support --expirtion. Did you mean --expiration?");
+  // The alias reads as the option; typed beside it, it is the same option given twice.
+  expect((await open(["OMON", "FXY", "--expiry", "2026-12-18"])).instance.settings).toMatchObject({ expiration: "2026-12-18" });
+  await expect(open(["OMON", "FXY", "--expiry", "2026-12-18", "--expiration", "2027-01-15"])).rejects.toThrow("--expiry is --expiration; give one of them.");
+  // Its own settings and raw pane state stay flags it takes; a capture still takes any pane setting.
+  expect((await open(["OMON", "FXY", "--chainRefreshMinutes", "5", "--state.view", "puts"])).instance.settings).toMatchObject({ chainRefreshMinutes: 5 });
+  expect((await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["OMON", "FXY", "--foo", "bar"]), { command: "shot" })).instance.settings)
+    .toMatchObject({ foo: "bar" });
 });
 
 test("a bar size under a minute points at GIP's 1-minute bars for the ticker asked about", async () => {

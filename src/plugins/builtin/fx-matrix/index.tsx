@@ -550,7 +550,7 @@ export const fxMatrixModule: PluginModule = {
       // `FXC TRY` and `FXC USD,TRY` add those currencies to it.
       shortcut: {
         prefix: "FXC",
-        argKind: "text",
+        argKind: "text", argOnlySelects: true,
         argPlaceholder: "amount or currencies",
         argOptional: true,
         openWithoutArg: true,

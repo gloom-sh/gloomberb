@@ -145,8 +145,8 @@ test("a meeting already past prints its date instead of today", async () => {
   data.meetings[0] = { ...data.meetings[0]!, date: "2020-01-15" };
   spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue(data);
   const frame = (await render(120, 40)).join("\n");
-  expect(frame).toContain("Jan 15 · 2020-01-15");
-  expect(frame).not.toContain("Jan 15 · today");
+  expect(frame).toContain("15 Jan · 2020-01-15");
+  expect(frame).not.toContain("15 Jan · today");
 });
 
 test("the first screen leads with the next meeting's odds and prices every meeting in moves", async () => {
@@ -154,7 +154,7 @@ test("the first screen leads with the next meeting's odds and prices every meeti
   const lines = await render(120, 40);
   const frame = lines.join("\n");
   // Every meeting prices 10bp more cutting than the one before: 40% odds of a cut at each.
-  expect(frame).toMatch(/Next FOMC +40% cut +Oct 28 · /);
+  expect(frame).toMatch(/Next FOMC +40% cut +28 Oct · /);
   expect(frame).toMatch(/Oct '26 to Sep '27 +-70\.0bp +20 pctl 1Y/);
   expect(frame).not.toContain("Last-first");
   const header = lines.findIndex((line) => line.includes("MEETING"));

@@ -519,6 +519,8 @@ export async function resolvePaneFunction(
   parsedArgs: ParsedPaneFunctionArgs,
   resolutionSettings: {
     strictHeadlessOptions?: boolean;
+    /** `fn`: a rendered view refuses a flag it neither declares nor has a setting for (`normalizeCapabilityOptions`). */
+    strictRenderedOptions?: boolean;
     tableSection?: boolean;
     /** `fn`: a `--limit` or `--tail` the function takes no option for picks the report's rows (`rowWindow`). */
     rowWindow?: boolean;
@@ -581,6 +583,7 @@ export async function resolvePaneFunction(
     strict: args.requireBotSafe || capability.strictOptions === true || (!!headless && resolutionSettings.strictHeadlessOptions === true),
     code: token,
     argument: args.arg || null,
+    strictRendered: resolutionSettings.strictRenderedOptions === true,
   });
   const settings = {
     // A view that takes only its declared options gets only their settings.

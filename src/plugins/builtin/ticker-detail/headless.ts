@@ -30,8 +30,8 @@ import { loadExchangeResultsNotes } from "./financials/exchange-results";
 import { boardKey, newYorkToday } from "../earnings/board-model";
 import { fetchEarningsHistory } from "../earnings/client";
 import { fiscalPeriodText, fiscalQuarterOf } from "../earnings/fiscal-quarter";
-import { latestBalanceSheetDate, loadOfferingNote } from "./financials/offerings";
-import { formatRunwayMonths, reportsShortTermTotal, runwayMethod } from "../../../utils/cash-runway";
+import { latestBalanceSheetDate, loadOfferingNote, loadRunwayOfferings } from "./financials/offerings";
+import { burnsCash, cashRunway, formatRunwayMonths, reportsShortTermTotal, runwayMethod, runwayOfferingNote, type OfferingFiling } from "../../../utils/cash-runway";
 import { formatPerShareNumber } from "../../../utils/reported-money";
 import { logFailure } from "../../../utils/log-failure";
 import { loadStatementCurrency } from "../shared/statement-currency";
@@ -40,7 +40,9 @@ import {
   findRatioTab,
   formatRatioInput,
   formatRatioValue,
+  latestRunwayPeriodEnd,
   oldestRatioPeriodEnd,
+  ratioGapText,
   ratioPeriodEnd,
   ratioStatements,
   ratioTableForFinancials,
@@ -49,7 +51,7 @@ import {
   type RatioTabDef,
 } from "./financials/ratios";
 import {
-  loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
+  loadHeadlessContractPriceUnit, loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
 import { barHistoryFreshness, brokerNameOf, REPORTED_DATA } from "../shared/report-freshness";
 import {
@@ -97,7 +99,7 @@ function reportWindowText(options: HeadlessPaneOptionValues): string | null {
  * points`): by its quote, else by the listing facts research reads, as `history` falls back to them. Null when neither says.
  */
 async function barPriceUnit(
-  ctx: Pick<HeadlessContext, "marketData">,
+  ctx: Pick<HeadlessContext, "marketData" | "apiClient">,
   key: string,
   listing: string,
   exchange: string | undefined,
@@ -105,7 +107,8 @@ async function barPriceUnit(
 ): Promise<string | null> {
   const listed = quote?.currency ? quote
     : await ctx.marketData.getQuoteMetadata?.(listing, exchange ?? "").catch(logFailure("ticker-detail.headless", "Read listing facts for a bar unit failed", null));
-  return historyExportUnit(historyUnit(key, listed ?? quote));
+  const facts = listed ?? quote;
+  return historyExportUnit(historyUnit(key, facts, await loadHeadlessContractPriceUnit(ctx, listing, facts?.instrumentType)));
 }
 
 /** Bars of a window that closed before today: the history asked for, which no later bar makes stale. */
@@ -386,7 +389,7 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       ...dates.map(({ date, label }, index) => financialPeriodColumn(date, label, index, true)),
     ];
     // The balance sheet's cash, when an offering since is not in it yet.
-    const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, financials) : null;
+    const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, latestBalanceSheetDate(financials)) : null;
     // A latest period over 15 months old says how old it is; an HKEX company's, the announcement its results came in.
     const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
     // Years filled from the listing's exchange, with the lines this table shows; an announcement that dates one is not
@@ -519,9 +522,8 @@ async function missingPeriodsError(
 async function reportOfferingNote(
   ctx: Parameters<typeof financialStatementsHeadless.load>[1],
   symbol: string,
-  financials: Awaited<ReturnType<typeof loadHeadlessFinancials>>,
+  periodEnd: string | null,
 ): Promise<string | null> {
-  const periodEnd = latestBalanceSheetDate(financials);
   if (!periodEnd) return null;
   return resolveHeadlessInstrument(ctx, symbol)
     .then((listing) => loadOfferingNote(ctx.apiClient, listing, periodEnd, ctx.signal))
@@ -555,7 +557,13 @@ async function loadRatioReport(
       .then(({ symbol: bare, exchange }) => loadPeriodEndHistory(ctx.marketData, bare, exchange ?? "", oldest))
       .catch(logFailure("ticker-detail.headless", "Load valuation price history failed", null))
     : null;
-  const table = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period, history) : null;
+  const runway = tab.key === "liquidity" && hasRequestedStatements ? cashRunway(financials) : null;
+  const periodEnd = burnsCash(runway) ? runway.periodEnd : null;
+  const filings = periodEnd ? await resolveHeadlessInstrument(ctx, symbol)
+    .then((listing) => loadRunwayOfferings(ctx.apiClient, listing, periodEnd, ctx.signal))
+    .catch(logFailure("ticker-detail.headless", "Reading the offering filings failed", [] as OfferingFiling[])) : [];
+  const table = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period, history,
+    periodEnd ? { periodEnd, filings } : undefined) : null;
   const statementCurrency = financialStatementCurrency(financials, [
     ...financials.annualStatements, ...financials.quarterlyStatements,
   ]);
@@ -577,10 +585,10 @@ async function loadRatioReport(
       return {
         date: dates[index]!.date,
         value: reportAmount(amount),
-        gap: typeof amount === "number" ? null : RATIO_GAP_TEXT[amount],
+        gap: typeof amount === "number" ? null : ratioGapText(amount, row.def.format),
         formatted: row.kind === "ratio"
           ? formatRatioValue(row.def.format, amount)
-          : formatRatioInput(row.def.inputs[row.index]!.format, amount, row.divisor),
+          : formatRatioInput(row.def.inputs[row.index]!.format, amount, row.divisor, row.def.format),
       };
     });
     const figure: FigureFormat = row.kind === "ratio" ? row.def.format : row.def.inputs[row.index]!.format;
@@ -602,9 +610,9 @@ async function loadRatioReport(
   const needsOpening = rows.some((row) => row.cells.some((cell) => cell.gap === RATIO_GAP_TEXT["no-opening"]));
   // Liquidity's runway says how it counts months, and that the cash predates an offering since.
   const liquidity = tab.key === "liquidity" && table;
-  const runwayShown = liquidity && table.ratios.some((def) => def.format === "months"
-    && table.cells.get(def.id)!.some((cell) => typeof cell.value === "number"));
-  const offering = liquidity ? await reportOfferingNote(ctx, symbol, financials) : null;
+  const runwayPeriodEnd = liquidity ? latestRunwayPeriodEnd(table) : null;
+  const offering = periodEnd ? runwayOfferingNote(filings, periodEnd, runway?.currency)
+    : !runway && runwayPeriodEnd ? await reportOfferingNote(ctx, symbol, runwayPeriodEnd) : null;
   const periodDates = dates.map(({ date }) => date);
   const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, period, hasRequestedStatements, tab.key);
   return {
@@ -617,7 +625,7 @@ async function loadRatioReport(
       ...[stalePeriodNote(dates.map(({ periodEnd }) => ({ date: periodEnd, lead: true })))].filter((note): note is string => !!note),
       ...[filledPeriodsNote(table?.periods.map(({ statement }) => statement) ?? [])].filter((note): note is string => !!note),
       ...offering ? [offering] : [],
-      ...runwayShown ? [runwayMethod(reportsShortTermTotal([...financials.quarterlyStatements, ...financials.annualStatements]))] : [],
+      ...runwayPeriodEnd ? [runwayMethod(reportsShortTermTotal([...financials.quarterlyStatements, ...financials.annualStatements]))] : [],
       ...statementHistoryNotes(period, periodDates, symbol, await reportOlderStatements(ctx, symbol, period, periodDates)),
       ...tab.key === "profitability" && rows.length ? PROFITABILITY_NOTES : [],
       ...needsOpening ? [NEEDS_OPENING_NOTE] : [],

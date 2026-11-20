@@ -32,6 +32,27 @@ const args: HeadlessPaneLoadArgs = {
 };
 
 describe("economic statistics headless model", () => {
+  test("the latest official yield keeps its publication date separate from its observation and cutoff", async () => {
+    const input = { ...args, rawArgument: "10y yield", argument: "10y yield" };
+    const report = await econStatisticsHeadless.load(input, createTestHeadlessContext({ apiClient: {
+      getCloudFredSeries: async () => ({ observations: [
+        { date: "2026-10-13", value: null },
+        { date: "2026-10-12", value: 4.25, publisher: "U.S. Treasury", publishedAt: "2026-10-13" },
+        { date: "2026-10-09", value: 4.20 },
+        { date: "2026-10-08", value: 4.19 },
+      ] }),
+    } as unknown as HeadlessPaneContext["apiClient"] }));
+    const freshness = deriveHeadlessFreshness(econStatisticsHeadless, report, Date.parse("2026-10-13T12:00:00Z"));
+    expect(freshness).toMatchObject({ asOf: "2026-10-12", schedule: "15:30 ET", publisher: "U.S. Treasury", publishedAt: "2026-10-13" });
+    expect(renderHeadlessPaneText(econStatisticsHeadless, report, input, "ECST", freshness))
+      .toContain("Source: U.S. Treasury, published 2026-10-13 · Mon 12 Oct 2026 · 15:30 ET");
+    const tables = headlessReportTables(econStatisticsHeadless, report, input, "ECST", freshness, { complete: true, unavailableSymbols: [] });
+    const csv = renderReportCsv(tables, freshness);
+    expect(csv).toContain("published_at");
+    expect(csv).toContain('"U.S. Treasury, published 2026-10-13",2026-10-12,2026-10-12,,');
+    expect(csv).not.toContain("via FRED");
+  });
+
   test("loads through the injected cloud client and produces category sections", async () => {
     const requested: string[] = [];
     const apiClient = {
@@ -184,7 +205,7 @@ test("a quarterly statistic's lines, and a daily rate's, are as of their own rel
   };
   const quarter = await lines(gdpnow, [{ date: "2026-01-01", value: 1 }, { date: "2026-04-01", value: 2 }, { date: "2026-07-01", value: 3 }]);
   expect(quarter("Latest")).toEqual(["2026-07-01", "", ""]);
-  expect(quarter("Previous")).toEqual(["2026-04-01", "", ""]);
+  expect(quarter("Previous")).toEqual(["", "", ""]);
   // With no reading a year back there is no period to name, rather than the latest's.
   expect(quarter("1Y ago")).toEqual(["", "", ""]);
   const daily = await lines(tenYear, [{ date: "2026-10-21", value: 4.9 }, { date: "2026-10-22", value: 4.95 }, { date: "2026-10-23", value: 5 }]);
@@ -222,6 +243,26 @@ test("nowcasts retain published rates and signed indexes, ranked against their o
       latest: item.values[2], formattedLatest: item.formatted, reading: item.reading,
     });
   }
+});
+
+test("GDPNow dates the revision and compares it with the preceding update of the same quarter", async () => {
+  const observations = [
+    { date: "2026-07-01", value: 3.2721 },
+    { date: "2026-10-01", value: 3.2093, firstReleased: "2026-10-29", revisedOn: "2026-11-18", firstReleaseValue: 3.2217 },
+  ];
+  const bundle = await loadStatsBundle({
+    stats: [resolveStatArg("gdpnow")!], loader: async () => observations,
+    gdpNowCalendar: async (from) => {
+      expect(from).toBe("2026-11-18");
+      return [{ id: "atlanta-fed-gdpnow-2026-11-18-2026-Q4", event: "Atlanta Fed GDPNow", date: "2026-11-18T00:00:00.000Z",
+        country: "US", time: "All Day", impact: "medium", actual: "3.2093%", forecast: null, prior: "3.3842%", priorAsOf: "2026-11-17", referencePeriod: "2026 Q4" }];
+    },
+  });
+  const report = projectStatsHeadlessBundle(bundle, "ALL", "gdpnow");
+  expect(report.sections[0]?.rows?.[0]).toMatchObject({ latest: 3.2093, reading: "Q4 2026", previous: 3.3842, previousPeriod: "2026-10-01",
+    previousReleased: "2026-11-17", releasedOn: "2026-11-18", firstReleased: "2026-10-29" });
+  const withoutCalendar = await loadStatsBundle({ stats: [resolveStatArg("gdpnow")!], loader: async () => observations });
+  expect(projectStat(withoutCalendar.builds[0]!, "ALL")).toMatchObject({ releasedOn: "2026-11-18", previous: null });
 });
 
 // `fn ECST "nigeria inflation"` read as an unknown statistic with no word that ECST is the US's, nor where another country's is.

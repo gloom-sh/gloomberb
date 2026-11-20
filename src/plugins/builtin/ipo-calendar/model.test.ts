@@ -23,6 +23,12 @@ import { ipoDeal } from "./test-fixture";
 
 const ids = (deals: readonly IpoDeal[]) => deals.map((deal) => deal.id);
 
+test("an opening return is available while the first session is still trading", () => {
+  const deal = ipoDeal({ id: "new", symbol: "NEW", status: "listed", offerPrice: 83, firstDay: null,
+    opening: { session: "2026-11-19", price: 111.5, returnPct: 111.5 / 83 - 1 } });
+  expect(ipoDetailSentences(deal, null, [])[0]).toContain("opened at $111.50 (+34.3% from the offer)");
+});
+
 describe("IPO calendar tabs and search", () => {
   const deals = [
     ipoDeal({ id: "arm", symbol: "ARM" }),
@@ -58,6 +64,25 @@ describe("IPO calendar tabs and search", () => {
     // A US deal is found by its country as before, and a company's own name still counts.
     expect(ids(filterIpoDeals(deals, "all", "us"))).toEqual(["arm"]);
     expect(ids(filterIpoDeals([...deals, ipoDeal({ id: "named", company: "Europe Holdings" })], "all", "europe"))).toEqual(["csg", "named"]);
+  });
+
+  test("an exact ticker beats name substrings without replacing the calendar sort within a match group", () => {
+    const listed = (symbol: string, company: string, day: number) => ipoDeal({
+      id: symbol, symbol, company, status: "listed", listingDate: `2026-09-${day}`,
+    });
+    const deals = [
+      listed("ANT", "Anthropic", 10),
+      listed("RGS", "Ramsay Generale de Sante", 19),
+      listed("XYZ", "Example Antenna", 18),
+      listed("ANTB", "Beta", 17),
+      listed("ANTA", "Alpha", 16),
+    ];
+    const now = new Date("2026-09-20T15:00:00Z");
+    const query = " aNt ";
+    const filtered = filterIpoDeals(deals, "all", query, now);
+    expect(ids(sortIpoDeals(filtered, DEFAULT_IPO_SORT, now, query))).toEqual(["ANT", "ANTB", "ANTA", "XYZ", "RGS"]);
+    expect(ids(sortIpoDeals(filtered, { columnId: "ticker", direction: "asc" }, now, query))).toEqual(["ANT", "ANTA", "ANTB", "XYZ", "RGS"]);
+    expect(ids(sortIpoDeals(deals, DEFAULT_IPO_SORT, now))).toEqual(["RGS", "XYZ", "ANTB", "ANTA", "ANT"]);
   });
 
   test("pending lists the deals not priced yet, which no status is called", () => {

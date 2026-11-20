@@ -22,7 +22,8 @@ import { usePaneInstance } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginPaneState } from "../../runtime";
 import {
@@ -165,17 +166,18 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
     }));
   }, [setSort, sharedIssuer]);
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
   ) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return false;
-  }, [focusSearch]);
+  }, [isSearchUp, focusSearch]);
 
   const renderCell = useCallback((row: CorporateBond, column: BondColumn): DataTableCell => {
     switch (column.id) {

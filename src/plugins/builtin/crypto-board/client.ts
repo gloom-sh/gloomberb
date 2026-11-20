@@ -165,6 +165,27 @@ export function loadCryptoMarkets(force = false) {
   return loadCloudResource(cryptoMarketsCache, "usd", () => fetchCryptoMarkets(), { force, validate: validateCryptoMarkets });
 }
 
+export const CRYPTO_OVERVIEW_REFRESH_MS = 65_000;
+
+let overviewRefresh: { startedAt: number; result: ReturnType<typeof loadCryptoMarkets> } | undefined;
+
+export async function loadCryptoMarketsForOverview(refresh: boolean) {
+  const now = Date.now();
+  const cached = cryptoMarketsCache.get("usd");
+  if (cached && now - cached.fetchedAt < CRYPTO_OVERVIEW_REFRESH_MS) {
+    return { payload: validateCryptoMarkets(cached.data), stale: false, refreshError: null };
+  }
+  if (!refresh) {
+    const saved = cachedCryptoMarkets();
+    if (saved) return saved;
+  }
+  if (overviewRefresh && now >= overviewRefresh.startedAt && now - overviewRefresh.startedAt < CRYPTO_OVERVIEW_REFRESH_MS) {
+    return overviewRefresh.result;
+  }
+  overviewRefresh = { startedAt: now, result: loadCryptoMarkets() };
+  return overviewRefresh.result;
+}
+
 // Stablecoin supply ------------------------------------------------------------
 
 const stablecoinSupplyCache = createPluginCache<StablecoinSupplyPayload>({

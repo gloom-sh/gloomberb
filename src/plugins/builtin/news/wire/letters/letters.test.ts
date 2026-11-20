@@ -3,7 +3,7 @@ import { ApiRequestError } from "../../../../../api-client/errors";
 import type { Letter } from "../../../../../api-client/letters";
 import { fetchLetters, letterPageLoader, parseLetters } from "./client";
 import { DEFAULT_KIND_VIEW, LETTER_KIND_OPTIONS, LETTER_KIND_VIEWS, letterColumns, letterKindView } from "./model";
-import { NEWS_INDUSTRY_CODES, parseNewsIndustryCode } from "../news/query-presets";
+import { NEWS_INDUSTRY_CODES, parseNewsIndustryCode } from "../../../../../news/query-presets";
 
 const letter = (overrides: Partial<Letter> = {}): Letter => ({
   id: "1",

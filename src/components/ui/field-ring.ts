@@ -1,3 +1,4 @@
+import { matchesNavigationKey, useKeybindings } from "../../app/keybindings";
 import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import { useShortcut } from "../../react/input";
 import type { BoxRenderable, ScrollBoxRenderable } from "../../ui";
@@ -53,6 +54,7 @@ function step<Id>(ids: readonly Id[], current: Id | null, delta: 1 | -1, wrap: b
  * text field (j, k, Space, Enter) stay with the field.
  */
 export function useFieldRing<Id extends string>(options: FieldRingOptions<Id>): FieldRing<Id> {
+  const bindings = useKeybindings();
   const optionsRef = useRef(options);
   optionsRef.current = options;
   // Where the ring is, ahead of the render that shows it, so a key that
@@ -89,9 +91,9 @@ export function useFieldRing<Id extends string>(options: FieldRingOptions<Id>): 
       return;
     }
     if (event.targetEditable) return;
-    if (isPlainKey(event, "down", "j", "up", "k")) {
+    if (matchesNavigationKey(bindings, "down", event) || matchesNavigationKey(bindings, "up", event)) {
       consume();
-      move(step(ids, activeId, isPlainKey(event, "down", "j") ? 1 : -1, wrapArrows));
+      move(step(ids, activeId, matchesNavigationKey(bindings, "down", event) ? 1 : -1, wrapArrows));
       return;
     }
     if (activeId !== null && isPlainKey(event, "enter", "return", "space")) {

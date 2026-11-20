@@ -1,3 +1,5 @@
+import { KeybindingsProvider, resolveKeybindings } from "../../../app/keybindings";
+import type { KeybindingsConfig } from "../../../types/config";
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -45,14 +47,14 @@ function Section({ width, choices, viewNested, ownHints }: { width: number; choi
   return <Box flexDirection="column">{strip}{viewNested ? <NestedPaneTabs><View width={width} /></NestedPaneTabs> : <View width={width} />}</Box>;
 }
 
-async function render(choices: string[], { viewNested = true, detail = false, ownHints = true } = {}): Promise<void> {
+async function render(choices: string[], { viewNested = true, detail = false, ownHints = true, keybindings = undefined as KeybindingsConfig | undefined } = {}): Promise<void> {
   const config = createTestPaneConfig("/tmp/gloomberb-test", { instanceId: PANE_ID, paneId: "test-pane", binding: { kind: "none" } });
   const state = createInitialState(config);
   state.focusedPaneId = PANE_ID;
   await tui.render(
-    <TestPaneFrame state={state} paneId={PANE_ID} pluginId="test" runtime={runtime} width={60} height={8} footerKeys>
+    <KeybindingsProvider value={resolveKeybindings(keybindings)}><TestPaneFrame state={state} paneId={PANE_ID} pluginId="test" runtime={runtime} width={60} height={8} footerKeys>
       {({ width }) => <NestedPaneTabs detail={detail}><Section width={width} choices={choices} viewNested={viewNested} ownHints={ownHints} /></NestedPaneTabs>}
-    </TestPaneFrame>,
+    </TestPaneFrame></KeybindingsProvider>,
     { width: 60, height: 8 },
   );
   await act(async () => { await tui.setup().renderOnce(); });
@@ -102,4 +104,18 @@ test("a pane with no hints of its own gets no footer for [{}]view, and the keys 
   expect(tui.frame()).not.toContain("[{}]view");
   await press("}");
   expect(shown.section).toBe("b");
+});
+
+
+test("nested-view bindings and the footer follow remapped keys and remove defaults", async () => {
+  await render(["a", "b", "c"], { keybindings: { actions: {
+    "navigate-prev-view": ";", "navigate-next-view": ":",
+  } } });
+  expect(tui.frame()).toContain("[;:]view");
+  await press("}");
+  expect(shown.section).toBe("a");
+  await press(":");
+  expect(shown.section).toBe("b");
+  await press(";");
+  expect(shown.section).toBe("a");
 });

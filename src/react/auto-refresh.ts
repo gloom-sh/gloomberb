@@ -72,6 +72,7 @@ export interface AutoRefreshOptions {
    * pane follows the refresh interval the user configured.
    */
   intervalMs?: number | null;
+  enabled?: boolean;
 }
 
 /**
@@ -115,7 +116,7 @@ export function useAutoRefresh(
     : intervalMinutes > 0 ? intervalMinutes * 60_000 : 0;
 
   useEffect(() => {
-    if (!(intervalMs > 0) || !visible) return;
+    if (options.enabled === false || !(intervalMs > 0) || !visible) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
       const delay = nextAutoRefreshAt(lastUpdated, lastAttemptRef.current, intervalMs) - Date.now();
@@ -132,5 +133,5 @@ export function useAutoRefresh(
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [intervalMs, lastUpdated, visible]);
+  }, [intervalMs, lastUpdated, options.enabled, visible]);
 }

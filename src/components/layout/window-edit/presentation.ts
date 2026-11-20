@@ -73,28 +73,28 @@ export function windowEditStatusLine(
 /**
  * The keys window mode answers to, most needed first: how to leave comes
  * before how to move, so a narrow banner or panel that cuts the list short
- * still says it. Arrows stand for hjkl too, and Tab for w where they match.
+ * still says it. Callers supply configured direction labels; Tab stands for w too.
  */
-export function windowEditHelpItems(state: WindowEditState, pending: boolean): string[] {
+export function windowEditHelpItems(state: WindowEditState, pending: boolean, directions = "arrows"): string[] {
   const leave = pending ? ["Enter apply", "Esc cancel"] : ["Esc exit"];
   const snap = ["1-4 quarter", "5-8 half"];
   if (state.mode === "move") {
     if (state.focus.kind === "dock-move") {
-      return [...leave, "arrows side", "Tab target", "m window", "d float", "r resize", ...snap];
+      return [...leave, `${directions} side`, "Tab target", "m window", "d float", "r resize", ...snap];
     }
     const floating = state.previewLayout.floating.some((entry) => entry.instanceId === state.paneId);
     return floating
-      ? [...leave, "arrows move", "Shift fast", "Tab window", "d layout", "r resize", ...snap]
-      : [...leave, "arrows target", "Tab window", "d float", "r resize", ...snap];
+      ? [...leave, `${directions} move`, "Shift fast", "Tab window", "d layout", "r resize", ...snap]
+      : [...leave, `${directions} target`, "Tab window", "d float", "r resize", ...snap];
   }
   if (state.focus.kind === "floating-resize") {
-    return [...leave, "arrows resize", "Shift fast", "Tab corner", "w window", "m move"];
+    return [...leave, `${directions} resize`, "Shift fast", "Tab corner", "w window", "m move"];
   }
-  return [...leave, "arrows divider", "Shift fast", "Tab divider", "w window", "m move"];
+  return [...leave, `${directions} divider`, "Shift fast", "Tab divider", "w window", "m move"];
 }
 
-export function windowEditHelpText(state: WindowEditState, pending: boolean): string {
-  return windowEditHelpItems(state, pending).join("  ");
+export function windowEditHelpText(state: WindowEditState, pending: boolean, directions = "arrows"): string {
+  return windowEditHelpItems(state, pending, directions).join("  ");
 }
 
 export function resolveWindowEditDockMovePreview(

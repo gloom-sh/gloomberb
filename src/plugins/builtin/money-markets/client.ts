@@ -66,7 +66,8 @@ export async function fetchMoneyMarkets(client: Pick<typeof apiClient, "getCloud
 }
 
 export const getCachedMoneyMarkets = () => cachedCloudResource(moneyMarketsCache, "usd");
-export const loadMoneyMarkets = (force = false) => loadCloudResource(moneyMarketsCache, "usd", () => fetchMoneyMarkets(), { force });
+export const loadMoneyMarkets = (force = false, client: Pick<typeof apiClient, "getCloudMoneyMarkets"> = apiClient) =>
+  loadCloudResource(moneyMarketsCache, "usd", () => fetchMoneyMarkets(client), { force });
 
 /** Hong Kong's bill-yield board, refused whole when a row is not a dated Exchange Fund Bill yield. */
 export function validateHongKongMoneyMarkets(payload: HongKongMoneyMarketsPayload): HongKongMoneyMarketsPayload {
@@ -82,4 +83,5 @@ export async function fetchHongKongMoneyMarkets(client: Pick<typeof apiClient, "
 }
 
 export const getCachedHongKongMoneyMarkets = () => cachedCloudResource(hongKongMoneyMarketsCache, "hkd");
-export const loadHongKongMoneyMarkets = (force = false) => loadCloudResource(hongKongMoneyMarketsCache, "hkd", () => fetchHongKongMoneyMarkets(), { force });
+export const loadHongKongMoneyMarkets = (force = false, client: Pick<typeof apiClient, "getCloudHongKongMoneyMarkets"> = apiClient) =>
+  loadCloudResource(hongKongMoneyMarketsCache, "hkd", () => fetchHongKongMoneyMarkets(client), { force });

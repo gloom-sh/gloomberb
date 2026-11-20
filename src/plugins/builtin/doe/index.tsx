@@ -18,7 +18,7 @@ function doeInstance(tab: DoeTab, options?: PaneTemplateCreateOptions): PaneTemp
 }
 
 const shortcut = (prefix: string, tab: DoeTab | null) => ({
-  prefix, argKind: "text" as const, argPlaceholder: "series", argOptional: true,
+  prefix, argKind: "text" as const, argOnlySelects: true, argPlaceholder: "series", argOptional: true,
   argOptions: () => DOE_SERIES_OPTIONS.filter((option) => !tab || option.tab === tab).map(({ value, label }) => ({ value, label })),
 });
 

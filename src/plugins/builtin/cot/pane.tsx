@@ -14,6 +14,7 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { Box } from "../../../ui";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
+import { rankTickerMatches } from "../../../utils/ticker-match-order";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCotBoard, loadCotBoard, loadCotDetail, loadCotPriceUnit } from "./client";
 import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotChartSeries, cotClass, cotContractUnitText, cotFamily, cotInteger, cotLegendValue, cotMarketName, cotPositions, cotPositionsText, cotScope, type CotScope } from "./model";
@@ -88,13 +89,14 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const data = resource.data?.traderClass === traderClass && resource.data.scope === positions ? resource.data : null;
   const rows = useMemo(() => {
     // A typed query searches every market; the scope only shapes the unsearched board.
-    const result = (data?.rows ?? []).filter((row) => query ? `${row.marketName} ${row.contractCode}`.toLowerCase().includes(query.toLowerCase())
+    const needle = query.trim().toLowerCase();
+    const result = (data?.rows ?? []).filter((row) => needle ? `${row.marketName} ${row.contractCode}`.toLowerCase().includes(needle)
       : scope === "all" || COT_MAJOR_CODES.has(row.contractCode));
-    if (!sort.columnId) return result;
     const value = (row: CotBoardRow) => ({ name: cotMarketName(row.marketName), code: row.contractCode, net: row.position.net, change: row.position.weeklyChange,
       one: row.position.percentile1Y.value, three: row.position.percentile3Y.value, all: row.position.percentileAll?.value ?? null,
       asOf: row.reportDate })[sort.columnId as "name"];
-    return [...result].sort((a, b) => compareSortValues(value(a), value(b), sort.direction));
+    if (sort.columnId) result.sort((a, b) => compareSortValues(value(a), value(b), sort.direction));
+    return rankTickerMatches(result, query, (row) => [row.contractCode, row.marketName]);
   }, [data, query, scope, sort]);
   useAutoRefresh(resource.updatedAt, resource.load);
   // The class, scope and search controls live in the board's query bar, so

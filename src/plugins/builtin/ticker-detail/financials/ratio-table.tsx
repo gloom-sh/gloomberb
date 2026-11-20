@@ -141,7 +141,7 @@ export function RatioTable({
       const amount = cell.inputs[row.index]!;
       const input = row.def.inputs[row.index]!;
       return {
-        text: padTo(formatRatioInput(input.format, amount, row.divisor), FINANCIAL_COL_W, "right"),
+        text: padTo(formatRatioInput(input.format, amount, row.divisor, row.def.format), FINANCIAL_COL_W, "right"),
         color: amountColor(amount, colors.textDim),
       };
     }

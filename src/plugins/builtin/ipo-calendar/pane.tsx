@@ -21,7 +21,8 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
 import { COUNTRY_FLAG_CELLS, withCountryFlag } from "../../../components/ui/country-flag";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginTickerActions } from "../../runtime";
 import { useCommandValue } from "../shared/command-tab";
@@ -93,7 +94,7 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
 
   // One clock per board, so a deal's status, its place and a search for it agree.
   const now = useMemo(() => new Date(), [deals, resource.updatedAt]);
-  const rows = useMemo(() => sortIpoDeals(filterIpoDeals(deals, tab, query, now), sort, now), [deals, now, query, sort, tab]);
+  const rows = useMemo(() => sortIpoDeals(filterIpoDeals(deals, tab, query, now), sort, now, query), [deals, now, query, sort, tab]);
   // The cursor starts on the first deal, and moves there when its deal leaves the list.
   const selected = rows.find((deal) => deal.id === selectedId) ?? rows[0] ?? null;
   // Sized on the whole board, so switching tabs does not move the columns.
@@ -141,14 +142,15 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
     hints,
   });
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return false;
-  }, [focusSearch]);
+  }, [isSearchUp, focusSearch]);
 
   const renderCell = useCallback((deal: IpoDeal, column: IpoColumn): DataTableCell => {
     switch (column.id) {
@@ -182,9 +184,9 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
       case "size":
         return { text: formatIpoSize(deal.offerSizeUsd), value: deal.offerSizeUsd, color: colors.textDim };
       case "return": {
-        const value = deal.firstDay?.returnPct ?? null;
+        const value = deal.firstDay?.returnPct ?? deal.opening?.returnPct ?? null;
         return {
-          text: formatIpoReturn(value),
+          text: value != null && deal.opening && !deal.firstDay ? `${formatIpoReturn(value)} open` : formatIpoReturn(value),
           value: value == null ? null : value * 100,
           color: value == null ? colors.textMuted : priceColor(value, colors),
         };
@@ -213,7 +215,10 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
             width={width}
             search={{
               value: query,
-              onChange: setQuery,
+              onChange: (value) => {
+                setQuery(value);
+                setSelectedId(null);
+              },
               placeholder: "company, ticker or market",
               focused,
               debounceMs: 250,

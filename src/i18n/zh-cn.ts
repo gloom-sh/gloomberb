@@ -1618,6 +1618,7 @@ export const zhCN: Record<string, string> = {
   "Friend or colleague": "朋友或同事",
   "Article or newsletter": "文章或新闻通讯",
   "Where?": "在哪里？",
+  "Which account or post?": "哪个账号或帖子？",
   "Skip": "跳过",
   "Equities": "股票",
   "Futures & commodities": "期货与大宗商品",

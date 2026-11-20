@@ -383,7 +383,7 @@ describe("13F headless model", () => {
       const offsets: number[] = [];
       spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (_view: string, params: { offset: number }) => {
         offsets.push(params.offset);
-        return page(params.offset, 25, params.offset < 50);
+        return { ...page(params.offset, 25, params.offset < 50), fallbackFromPeriod: "2026-09-30" };
       }) as never);
       const headless = createThirteenFHeadless({ loadBrowser: async () => ({ rows: [] }), loadDetail: async () => detail });
       const loadArgs = { ...args("auto", 40), argument: "KO", rawArgument: "KO" };
@@ -395,6 +395,7 @@ describe("13F headless model", () => {
       expect(result.metadata?.notices).toEqual([
         "Period 2026-06-30 vs 2026-03-31 | 60 holders (0 new), 0 exited | Value (USD) as reported at period end, not today's price",
         "Showing 40 of 60 funds; the 40 shown hold $4.0k | more: --offset 40 or --limit 200",
+        "30 Sep quarter not complete yet; showing 30 Jun",
       ]);
       expect(typeof headless.describe === "function" ? headless.describe(loadArgs, result) : null).toBe("13F Holders | KO");
     });

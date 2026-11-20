@@ -560,7 +560,7 @@ export const yieldCurveModule: PluginModule = {
     description: "Government bond curves, a world grid, and USD SOFR swap rates, swap spreads and tenor history.",
     keywords: ["yield", "curve", "treasury", "bonds", "rates", "gc", "interest", "tips", "breakeven", "bund", "bunds", "germany", "german", "gilt", "jgb",
       "mbono", "cetes", "prefixado", "sovereign", "world", "forward", "swaps", "sofr", "ois", "swap spread", "2s10s", "steepener", "flattener"],
-    shortcut: { prefix: "GC", argPlaceholder: "[curve] [date]", argKind: "text", argOptional: true },
+    shortcut: { prefix: "GC", argPlaceholder: "[curve] [date]", argKind: "text", argOnlySelects: true, argOptional: true },
     headless: yieldCurveHeadless,
     createInstance: (_context, options) => {
       const { curve, date } = parseCurveArgument(options?.arg);

@@ -4,8 +4,9 @@ import { deriveHeadlessFreshness, paneSourceLineVariants, type ReportFreshness }
 import { quotesFreshness } from "../../../cli/freshness";
 import { quoteHeadlineTime } from "../../../market-data/market/status";
 import type { Quote } from "../../../types/financials";
-import type { HeadlessPaneDefinition, HeadlessPaneResult } from "../../../types/headless";
+import type { HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneResult } from "../../../types/headless";
 import { getSharedRegistry } from "../../registry";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
 /**
  * The footer's one form for where a pane's data comes from and how current it
@@ -65,4 +66,23 @@ export function quoteSourceFooterSegment(
   if (!freshness) return null;
   const newest = Math.max(...shown.map((quote) => quoteHeadlineTime(quote)));
   return sourceFooterSegment(freshness, { id, feed: false, ...Number.isFinite(newest) && newest > 0 ? { time: compactTime(newest, now) } : {} });
+}
+
+/**
+ * A pane that shows a stored, past or dated observation in place of its live
+ * data (OVDV's stored close) dates that observation once for every reader, as
+ * its report declares it (`{ status: "not-a-feed", basis, asOf }`): the
+ * footer's source line, the `report-freshness` a capture's status line and a
+ * rendered report read, and the report `options` that print the same view
+ * (`report-options`, read by `shot` for what the capture covers). None of them
+ * is dated by the live quote of the underlying beside it. Null while the pane
+ * shows its live data, which dates itself.
+ */
+export function useShownObservationFooter(
+  shown: { freshness: HeadlessPaneFreshness; options?: Readonly<Record<string, string>> } | null,
+  { id = "source" }: { id?: string } = {},
+): PaneFooterSegment | null {
+  useRemoteUiNode(shown ? { role: "report-freshness", label: "Shown observation", getMetadata: () => ({ ...shown.freshness }) } : null);
+  useRemoteUiNode(shown?.options ? { role: "report-options", label: "Shown view", getMetadata: () => ({ options: { ...shown.options } }) } : null);
+  return shown ? reportFooterSegment({ shape: "bundle", freshness: shown.freshness }, { sections: [] }, { id }) : null;
 }

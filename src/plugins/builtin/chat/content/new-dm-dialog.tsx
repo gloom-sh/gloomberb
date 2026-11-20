@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { matchesNavigationKey, useKeybindings } from "../../../../app/keybindings";
 import { Button, DialogFrame, Icon, ListView, TextField, type ListViewItem } from "../../../../components/ui";
 import { stepListCursor } from "../../../../components/ui/list-view";
 import { modalSurfaceStyle } from "../../../../components/ui/frame";
@@ -234,6 +235,7 @@ export function NewDmDialog({
     }
   };
 
+  const bindings = useKeybindings();
   useShortcut((event) => {
     if (event.name === "escape") {
       event.preventDefault?.();
@@ -241,10 +243,12 @@ export function NewDmDialog({
       onCancel();
       return;
     }
-    if (isPlainKey(event, "up", "down")) {
+    const up = matchesNavigationKey(bindings, "up", event, { allowEditable: true, defaultMatches: isPlainKey(event, "up") });
+    const down = matchesNavigationKey(bindings, "down", event, { allowEditable: true, defaultMatches: isPlainKey(event, "down") });
+    if (up || down) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      setSelectedIndex((current) => (items.length === 0 ? 0 : stepListCursor(items, current, event.name === "up" ? -1 : 1)));
+      setSelectedIndex((current) => (items.length === 0 ? 0 : stepListCursor(items, current, up ? -1 : 1)));
       return;
     }
     if (event.name === "tab" && highlightedItem) {

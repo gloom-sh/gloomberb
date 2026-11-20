@@ -6,7 +6,11 @@ import { backtestHeadless } from "./headless";
 import { backtestModule } from "./index";
 import { resolveRules } from "./presets";
 import { formatTradePrice } from "./format";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import { headlessReportTables } from "../../../cli/pane-functions/headless";
+import { renderReportCsv } from "../../../cli/report-tables";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { resetFuturesPriceUnits } from "../../../market-data/futures-contract";
 import type { PricePoint } from "../../../types/financials";
 
 const ENTRY = "close > sma(50)";
@@ -97,4 +101,29 @@ test("a trade's prices print at its instrument's precision: a currency pair's fi
   expect(formatTradePrice(1.18, "EURUSD=X")).toBe("1.18000");
   expect(formatTradePrice(0.123456, "PENNY")).toBe("0.1235");
   expect(formatTradePrice(null, "EURUSD=X")).toBe(MISSING_VALUE);
+});
+
+test("BTST exports a Treasury future's price in percent of par, not its quote currency", async () => {
+  resetFuturesPriceUnits();
+  const points = Array.from({ length: 260 }, (_, index) => {
+    const close = 110 + index / 32;
+    return { date: new Date(Date.UTC(2025, 0, 1 + index)), open: close, high: close, low: close, close };
+  });
+  const marketData = createTestDataProvider({
+    getQuote: async () => createTestQuote({ symbol: "ZN=F", instrumentType: "FUTURE", currency: "USD" }),
+    getPriceHistoryForResolutionWithMetadata: async () => ({ points, resolution: "1d" }),
+    getPriceHistoryWithMetadata: async () => ({ points, resolution: "1d" }),
+  });
+  const args = createTestHeadlessArgs({ argument: "ZN=F", rawArgument: "ZN=F", symbols: ["ZN=F"], options: typed({ preset: "trend-200", equity: "true" }) });
+  try {
+    const report = await backtestHeadless.load(args, createTestHeadlessContext({ marketData }));
+    const freshness = deriveHeadlessFreshness(backtestHeadless, report);
+    const tables = headlessReportTables(backtestHeadless, report, args, "BTST", freshness, { complete: true, unavailableSymbols: [] });
+    const [header, row] = renderReportCsv(tables, freshness).split("\n");
+    expect(report.metadata?.unit).toBe("% of par");
+    expect(header).toMatch(/Close(?: \(back-adjusted\))? \(% of par\)/);
+    expect(row).toContain(",ZN=F,% of par,1d,");
+  } finally {
+    resetFuturesPriceUnits();
+  }
 });

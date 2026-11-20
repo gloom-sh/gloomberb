@@ -166,10 +166,32 @@ Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or 
 
 ### Custom keybindings
 
-Every global and pane management key can be moved, and any command bar text can be put on a key.
+Global shortcuts, pane management keys and shared navigation keys can be moved, and any command bar text can be put on a key.
 
 - `HELP` > Shortcuts: press Enter on a row (or double-click) to capture the next chord. `x` unbinds, `0` restores the default, `N` starts a command binding. Typing a command such as `DES AAPL` in the command bar also offers a `Bind a key` row.
 - A chord a built-in action already uses (`Ctrl+P` for the command bar, `Ctrl+W` to close a pane, `Q` to quit) is refused with the action it belongs to (`Ctrl+P is taken: Open the command bar.`), and the capture waits for another key. Unbind or move that action first to free its key. `gloom config set keybindings...` refuses such a chord with the same message and saves nothing; since the table serves the terminal and the desktop app, a key either one's built-in action uses (`Q` quits the terminal) stays taken. A plugin's shortcut is not protected: the capture binds and says `Also bound to` it.
+- **Navigation** in the Shortcuts editor remaps the directions used by shared tabs, table rows, lists, forms, pane scrolling and window movement. `navigate-prev-view` and `navigate-next-view` change the nested-view keys (defaults `{` and `}`). Overrides replace all defaults for that action, so include the arrow if you want to keep it. For example:
+
+  ```bash
+  gloom config set keybindings.actions.navigate-left "Alt+Left Left"
+  gloom config set keybindings.actions.navigate-right "Alt+Right Right"
+  ```
+
+  Plain letters can also be used for a keyboard layout such as Bépo. A key already bound to a global action must be freed first. Navigation stays local to the active control; text fields keep their typing and editing keys. Pane-specific actions (add, export, open source) and specialized editors retain their own keys. The shortcut editor and CLI warn if a navigation action has no keys left.
+
+- **Layouts** also lists `switch-layout-1` through `switch-layout-9`, initially unbound. These actions select a layout by position regardless of the key's character. For Bépo, for example:
+
+  ```bash
+  gloom config set keybindings.actions.switch-layout-1 'Ctrl+"'
+  gloom config set keybindings.actions.switch-layout-2 'Ctrl+«'
+  gloom config set keybindings.actions.switch-layout-3 'Ctrl+»'
+  gloom config set keybindings.actions.switch-layout-4 'Ctrl+('
+  gloom config set keybindings.actions.switch-layout-5 'Ctrl+)'
+  ```
+
+  The layout tabs display those bindings. Direct layout bindings stay inactive while a text field, dialog or the command bar owns input.
+
+- The layout-number defaults are `CmdOrCtrl+Digit` and, in the terminal, `Alt+Digit`. To also accept shifted numbers on Bépo, add `CmdOrCtrl+Shift+Digit` or `Alt+Shift+Digit` to `switch-layout`. If your terminal uses `Alt+number` for its own tabs, use the Control variant or move the conflicting shortcut. Gloom cannot receive keys the terminal intercepts.
 - Where the backtick is a dead key, type after `Ctrl+P` to search symbols, or rebind ticker search.
 
 The table lives in `config.json` and the CLI:
@@ -313,6 +335,8 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 
 #### Which tabs Ticker Research shows
 
+For Treasury yield indices such as `^TNX`, Overview and Chart show yield levels in percent. The session move is the change from the previous close in basis points, not a relative return. The same units apply in reports.
+
 A company's page has eleven tabs, and a tab with several views shows them as choices under the strip (a second row in the terminal):
 
 | Tab | Views |
@@ -371,7 +395,7 @@ A quote whose last print is older than its venue's latest completed regular sess
 
 #### What a change is measured from
 
-Every change line says what its move is measured from, in muted words after it: the Overview headline, `ticker`'s Change line, `quote` and `compare` (a Chg Basis column), the portfolio header's Day (a watchlist's Avg Day) and the `Day's move` line of `portfolio show`.
+Every change line says what its move is measured from, in muted words after it: the Overview headline, `ticker`'s Change line, `quote`, `compare` and `fn QQ` (a Chg Basis column, right after the move it dates and before any pre-market, after-hours or overnight column, whose print moves from the later close Last shows), the portfolio header's Day (a watchlist's Avg Day) and the `Day's move` line of `portfolio show`.
 
 - **Listings:** the close of the venue's previous session, dated by its calendar (`vs Fri 16 Oct close`), with a line under it naming the days the venue was shut (`HKEX closed Mon 19 Oct, holiday`). On a venue with no holiday calendar (most of Europe), the close is dated by the listing's own daily closes, on every surface above: the latest one before the move's session, when it is the quote's previous close (`SHEL.L` and `NESTE.HE` read `vs Thu 22 Oct close`). They are read once per listing and session from the data providers (a connected broker is not asked for them), so a refresh asks for nothing more. The app never holds a quote for them: a pane that shows a listing before they arrive reads `vs prev close` until its next update, which a live quote brings at once. The CLI waits up to a few seconds for them, and only in commands that print the basis (`quote`, `compare`, `ticker`, `portfolio show --close`). Where those closes do not settle it, the line reads `vs prev close`, never a guessed date. A thinly traded share or fund (under 50,000 units in its last session) may not have traded in the session the calendar names, so its daily closes are read too: when its last trade before the move's session was earlier and closed at the previous close, the line names that day (`vs Thu 22 Oct close`), and when the closes do not hold the previous close it reads `vs prev close` (B95 on SGX).
 - **Futures:** one session's move, labelled by the session before it, the same in `quote`, `ticker`, the Overview, FUT and the portfolio. A move from that session's settlement reads `vs Thu 15 Oct settle`, and so does a settled session's own settlement once it heads the quote (Friday's 5,155 for cocoa reads `-0.50% vs Thu 5 Nov settle` over the weekend); a move the source measured from anything else is measured again from that settlement when the terms hold it for the contract the quote prices. After the CME Globex reopen at 17:00 Central, until the night's settlement arrives, the move is the next trade date's from the close that has not settled yet (`+14 vs Wed 4 Nov close`), never two sessions from the settlement before it. Around a roll, when the terms still name the month before, or while they lag a session behind, the source's move stands and reads `vs prev close`.
@@ -669,7 +693,7 @@ A yen pair's price chart (`G USDJPY=X`, `G EURJPY=X`) marks each intervention Ja
 
 #### Session low and high
 
-`gloom fn GIP <ticker>` ends with the session's low and high and the UTC time each traded (`USDT-USD:CCC session low  0.99833 at 2026-10-17 11:30 UTC`; over several sessions they read low and high). `GIP` dates sessions on the listing's exchange clock, read from its exchange or its suffix (`RMS.AX` is the ASX). A bare symbol with no known exchange is dated in UTC.
+`gloom fn GIP <ticker>` ends with the session's low and high and the UTC time each traded (`USDT-USD:CCC session low  0.99833 at 2026-10-17 11:30 UTC`; over several sessions they read low and high). `GIP` dates sessions on the listing's exchange clock, read from its exchange or its suffix (`RMS.AX` is the ASX). A bare symbol with no known exchange is dated in UTC. A session asked for by its date (`--session 2026-11-10`) that the live quote does not carry on is dated by that session in the report and its capture alike (`Tue 10 Nov 2026 · not a live feed (intraday bars of a past session)`), never by today's quote or as stale.
 
 A US listing's bars are the regular session only, from the 09:30 New York open, and the report says so (with `--csv`, as a `note:` line on stderr): an 08:30 release falls before its first bar. `--csv` writes each price as the decimal it traded at (`85.1`, not the feed's `85.099998`; a sub-penny print such as `86.3775` stays), under `Open,High,Low,Close,Volume` with no `Value` column repeating Close; `--json` keeps `value` beside `close`.
 
@@ -784,6 +808,8 @@ An open theme in `THEM` and the Members tab of `MEMB` add two entries to the pan
 
 #### News, Congress and bond tools
 
+Free news is delayed by 12 hours, including when signed out. `gloom fn TOP` and `gloom news --feed latest` report the delay separately from the newest story's publication time. When access is unknown, the report does not guess the delay or call the feed live.
+
 News rows credit the article's publisher and open its original URL. The managed news feed includes only articles whose publisher and original link can be verified, and custom RSS and Atom feeds use each item's source when supplied. If a feed fails, News keeps any available stories and shows the failure in its footer.
 
 A story opened from `SRCH` or a news pane is set for reading: headline, source and time, the tickers it names as chips (click one, or `t`), then the text. A long `SRCH` story shows a **Key facts** list and about a screen of text, with the rest behind **Read more**.
@@ -848,6 +874,8 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 `PERP` opens the [perpetuals board](perpetuals.md), and `PERP [market]` that market's History.
 
 **`CRYP`** opens the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows. Enter or click opens the coin in the ticker pane, column headers sort and `r` refreshes. `gloom fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins with their supply ([stablecoin supply](research-data.md#stablecoin-supply)). A list's name after the code opens it, in the command bar and with `fn`: `CRYP stablecoin`, `CRYP tvl` (DeFi TVL), and `fn TVL` and `fn STABLECOINS` open CRYP on those lists. A name it has no list for is refused with the ones it has. `--limit 10` keeps the first 10 rows of a list; `fn PERP --limit 10` the first 10 of each table.
+
+For coins on `CRYP`, visible `DES` overviews use the shared board for supply, rank and missing market cap or 24h volume in USD, with refreshes about once a minute only while focused.
 
 ### Workspace and App Controls
 
@@ -1190,7 +1218,7 @@ Human-readable output is the default: tables fit the terminal width, and a singl
 - `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything; `--output <file>` writes it to a file in UTF-8 (`gloom history LMT --csv --output lmt.csv`), where `>` would write UTF-16 in Windows PowerShell 5.1. JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows. All three write a figure without binary floating-point noise: a change is `-1.8`, never `-1.8000000000000114`. That is twelve significant digits, and eight decimals on figures of ten thousand or more up to fifteen digits, so sub-penny prices, FX rates, yields and coin holdings keep every digit their source gives.
 - `--output <path>` (or `--out`) writes a `--csv`, `--json` or `--ndjson` export to a file in UTF-8 (`gloom financials MSFT --csv --output msft.csv`) and prints `Saved` with its absolute path; the source and note lines a CSV closes with still go to the terminal. Use it on Windows: Windows PowerShell 5.1 writes a `>` redirect as UTF-16, which a spreadsheet misreads. Without `--csv`, `--json` or `--ndjson` the flag is refused, and a command that printed no export writes no file.
 - `gloom fn <function> --output <path>` (or `--out`) writes the report to a file in the format asked for, text included (`fn RV NEE,FSLR --csv --output rv.csv`), as a redirect would, and prints `Saved` with the file's absolute path. The path can be relative, absolute or under `~`, and folders it names are created. The file is readable by you alone (mode 600 on macOS and Linux), and a path that names a link, a device or anything else that is not a plain file is refused. A report with no data writes nothing and fails. `fn` refuses what only `shot` draws (`--theme`, `--height`, `--scale`, `--watermark`, `--no-status`) rather than ignore it.
-- Common global flags: `--limit`, `--tail`, `--width`, `--output`, `--decimal`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--no-plain`, `--dry-run`, `--yes`. `--limit` and `--tail` work on every `fn` report: a function with no option of that name of its own (`fn CTM CL --limit 3`) keeps the first or last rows of each table and says what it cut in its notes.
+- Common global flags: `--limit`, `--tail`, `--width`, `--output`, `--decimal`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--no-plain`, `--dry-run`, `--yes`. For `fn` reports with tables, a function with no option of that name of its own (`fn CTM CL --limit 3`, `fn FUT --tab markets --limit 1`) keeps the first or last rows of each table and says what it cut. Rendered views that only contain prose reject row limits.
 - `--decimal comma` writes a `--csv` export for a spreadsheet in a decimal-comma locale (German, French, Brazilian): numbers as `17,2`, cells split by `;`, so `17.2` is never read as 17 February. Text, dates, headers and JSON stay as they are. `gloom config set csvDecimal comma` makes it the default for every CSV the CLI and the app export (a table's Export CSV included), and `--decimal dot` goes back to the dot for one command. Without `--csv` the flag is refused.
 - Text tables group thousands with a comma (`27,256,037`, `163,504`), whatever the command; exports write the bare number.
 
@@ -1286,9 +1314,9 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 **Names**
 
-- `--search <words>` keeps the events whose name or publisher has every word typed, case, spaces and hyphens aside: `econ --search nonfarm` lists `Non Farm Payrolls` and `Nonfarm Payrolls Private`, `econ --search "fed funds"` the Fed's rate. Separate alternatives with `OR`: `econ --search "housing OR mortgage OR NAHB"`. Each alternative still requires all its words. `--json` has `metadata.search`.
+- `--search <words>` keeps the events whose name or publisher has every word typed, case, spaces and hyphens aside: `econ --search nonfarm` lists `Non Farm Payrolls` and `Nonfarm Payrolls Private`, and `econ --country CN --search Caixin` finds RatingDog PMIs. Separate alternatives with `OR`: `econ --search "housing OR mortgage OR NAHB"`. Each alternative still requires all its words. `--json` has `metadata.search`. In ECO, `/` searches the calendar with the same names and aliases.
 - The Fed's rate decision reads `Federal Funds Rate (upper bound)`: its figures are the top of the target range (4.00% for 3.75-4.00%), the range `WIRP` shows. Alerts take the name either way.
-- A release still to come with a prior and no forecast has no consensus yet: text ends with a note that the dash under Forecast means just that, and the ECO pane says it in its footer on that row.
+- A blank Forecast means the calendar has no consensus for that row. The ECO pane also notes this in its footer on a selected upcoming release with a prior but no forecast.
 - A release past its time whose figure is not in yet reads `due 07:00 UTC, awaiting figure` under Actual for a day after its time, not a dash: `--json` and the exports carry it as `actualStatus` (`actual_status`), with `actual` still null, and the ECO pane shows `awaiting` in the warning color, with the time it was due in the row's detail and its footer. A row with no release time, a tentative one off the five-minute grid (a feed's `09:03 UTC` for a release not yet timed), or with no forecast or prior to come out against (a speech), is not awaited.
 
 **Dates**
@@ -1307,7 +1335,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 **Countries**
 
-- `--country` takes the ECO pane's regions (`US`, `G7`, `EU`, `all`) or any country by its ISO two-letter code, several comma separated. `UK` reads as `GB`, and `G7,MX` adds Mexico to the G7. `econ --country TR` lists Türkiye's CPI releases, and `ECO MX,BR` and `fn ECO --country MX,BR` open the pane on the same countries.
+- `--country` takes the ECO pane's regions (`US`, `G7`, `EU`, `all`) or any country by its ISO two-letter code, several comma separated. `UK` reads as `GB`, and `G7,MX` adds Mexico to the G7. In the terminal, `ECO MX,BR` opens the pane on those countries. At the shell, `fn ECO MX,BR` or `fn ECO --country MX,BR` runs the same report as `econ --country MX,BR`, with the same filters and export columns.
 - `econ --country BR` lists IBGE's IPCA and IPCA-15 as `IPCA CPI m/m` and `IPCA-15 Mid-Month CPI m/m`: the actual and prior from the central bank's SGS series 433 and 7478 once the release time has passed, the forecast where the calendar has a consensus. The series chart as `FRED:BRAIPCAMOM` and `FRED:BRAIPCA15MOM`; `catalog IPCA` finds them.
 - A national release in the euro area is its member's: the calendar shows the German Ifo as `DE`. The ECB's and the euro area's own releases stay `EU`, and `EU` still lists the members' releases.
 - A country with nothing in the window says `No scheduled releases for MX in this window.` A code that is no country (`TUR`, `XQ`) fails with `Unknown country`.
@@ -1317,10 +1345,10 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 **Exports for scripts.** The text table draws Actual, Forecast and Prior as the calendar prints them (`3%`, `30.3K`, `-4.1M bbl`); `--csv`, `--ndjson` and `--json` carry them as numbers, the same on all three.
 
 - `actual`, `forecast` and `prior` are numbers with the scale multiplied out (`30.3K` is `30300`, `-0.987M bbl` is `-987000`, `3%` is `3`), and null, an empty CSV cell, where the calendar has none or it is not one figure (`<1.25%`, a bound). Every figure the table can read is a number here (`1,250`, `30k`). `unit` says what they count (`%`, `bbl`, `b/d`, `Bcf`; the currency an amount is in, `JPY` for Japan's current account and `USD` for its reserves, where Gloom Cloud states it; empty for a plain count or an index level) and is shared by the three: a figure drawn in another unit is null. The text table shows that currency beside the amount (`-556.5B JPY`); a server that states none leaves the amount bare. `scale` is the multiplier the row's first figure (actual, else forecast, else prior) was drawn in, `1000` for `K` and `1` for none, so `30.3K` is `actual` 30300 with `scale` 1000. It only says how the row was drawn: each figure is already multiplied out by its own scale, so `950K` beside `1.2M` is 950000 and 1200000 under `scale` 1000. The text as it was drawn stays in `actualText`, `forecastText` and `priorText` (`actual_text`, `forecast_text` and `prior_text` in CSV), so a bound like `<1.25%` that is no number keeps its words. The unit is also the row's `currency_or_unit`, where a percent is `pct` as in the other exports; `unit` keeps the `%`.
-- `released` is when the figure came out: the row's time (a day alone for a row that states no time), empty until the row has an actual. A row with no figures at all (a speech, a meeting) has come out once its time has passed, so it carries its own time; one still to come, and a release with a forecast and no actual yet, leave it empty. It is the row's `as_of`. `period` is the reference period as its publisher words it (`Sep 2026`, `Q3 2026`, `22 Oct 2026`), `retrieved` when this export read the calendar. `--json` has `referencePeriod` and `released` on the row, and the retrieval time in `metadata.freshness.retrievedAt`.
+- `released` is when the figure came out: the row's time (a day alone when the publisher gives no time), empty until the row has an actual. A past speech or meeting with no figures carries its own time. `released` is the row's `as_of`. `period` is the reference period (`Sep 2026`, `Q3 2026`, `22 Oct 2026`), and `retrieved` is when this export read the calendar, not when the publisher released a figure. `prior_as_of` gives the prior's date where known. JSON has `referencePeriod`, `released` and `priorAsOf` on the row, and the retrieval time in `metadata.freshness.retrievedAt`.
 - `indicatorId` (`symbol_or_series` in CSV and NDJSON) names the indicator a row is a release of: `us-unemployment-rate`, `gb-services-pmi-flash`. It is the same every month and whichever listing the row comes from; a row's own id changes when it moves from the week's listing to the stored calendar, so it is not kept. It is empty for a row the server sends none for.
 - `consensusFeed` and `consensusReadAt` (`consensus_feed` and `consensus_read_at` in CSV) say which feed the forecast was read from, `week-feed` or `release-calendar`, and when that feed was read. They are empty for a row with no forecast and for one kept before the read was recorded.
-- A window the default cap of 50 rows cut says so on stderr with `--csv` and `--ndjson` (`note: showing the oldest 50 of 751 rows; --tail 50 for the latest`), as the text and `--json` do, with `--limit` to raise it, so stdout stays rows. The lines the text prints under the table (where the stored calendar starts, a bank that gives no time) are `note:` lines on stderr too.
+- Text lists the first 50 matching rows by default and says if it cut any. Machine-readable exports include all matching rows unless given `--limit` or `--tail`. Calendar coverage and timing caveats go to stderr as `note:` lines, not extra CSV rows.
 
 **Central banks and CPI dates.** The calendar also lists the rate decisions of the central banks `fn CBR` follows (Banxico, Copom, SARB, CBRT, RBI, BoK and the rest), each with the policy rate before it as Prior, and the CPI release dates INEGI (Mexico) and IBGE (Brazil) publish.
 
@@ -1347,6 +1375,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - `financials` lists fiscal years, so `gloom financials WFC --quarterly` (or `--period`, `--freq`) points at `fn GF WFC --period quarterly --periods 40` (one metric over time) and `fn FA WFC --period quarterly` (the statements).
 - A command that takes one symbol or currency fails on a second (`gloom fx NGN ZAR`; write a pair as `fx ZAR/NGN`), and `econ` fails on a country or impact it does not filter by.
 - Everything after a bare `--` is an argument, never an option.
+- `fn` does the same for every function: `gloom fn OMON FXY --foo bar` fails with the options OMON takes, and a slip of one names it (`OVDV does not support --expirty. Did you mean --expiration?`). A function drawn from its pane also takes the settings in its settings dialog and `--state.<key>`. Wherever a function takes `--expiration`, `--expiry` reads the same, as it does for `gloom options`; typed together they fail.
 
 ### `history`
 
@@ -1478,7 +1507,7 @@ By rating, AAA to BBB: `BAMLC0A1CAAAEY`, `BAMLC0A2CAAEY`, `BAMLC0A3CAEY`, `BAMLC
 
 - Every value to the series' own precision (FRED's `5.1` prints as `5.10` beside `5.09`). Exports keep the value as FRED gives it. Spreads (`T10Y2Y`, `T10Y3M`, `MORTGAGE30US10Y`, the ICE BofA option-adjusted spreads) print in basis points.
 - A monthly or quarterly series is dated by its period in the closing line (`Aug 2026 (monthly)`), and by the day its newest figure was released when Gloom Cloud sends it (`Sep 2026, released Tue 20 Oct`). A flow at a seasonally adjusted annual rate says so in its value header (`Value (Billions of Dollars, annual rate)`). A series FRED publishes late (`UMCSENT`) carries a note saying where the newer reading is.
-- A Treasury yield whose newest session Gloom Cloud read from the Treasury before FRED listed it says `Source: U.S. Treasury via FRED, published 2026-10-09`, and the row carries `publisher` and `publishedAt` in every export. Values FRED lists stay `Source: FRED`.
+- When the newest Treasury yield is an official Treasury observation, the report says `Source: U.S. Treasury, published 2026-10-09`. Exports keep `publisher` and `publishedAt` separate from the observation date. Other observations retain their series attribution.
 - Exports date each row three ways beyond `date`, which is the period it covers (`2026-09-01` for September): `period` (the same date), `released` (the day or time FRED's source released it, where Gloom Cloud sends it, which is the newest figure of a weekly to annual series; empty otherwise) and `retrieved`. `as_of` is the release. A figure with none stated is as of its own day only when the series says it is daily or weekly, and is empty for any other series (monthly, quarterly, a frequency it does not name, or none stated), never the first day of its period. `--json` rows carry `released` where it is known.
 
 **Türkiye's CPI.** FRED does not carry it, so it is served as `TURCPIYOY` (percent change from a year earlier) and `TURCPIMOM` (from the month before), under Inflation, with TurkStat's figures as the Central Bank of the Republic of Türkiye publishes them (`Source: TurkStat via the CBRT`). The data catalog charts them as `FRED:TURCPIYOY` and `FRED:TURCPIMOM`.
@@ -1679,6 +1708,7 @@ In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate hist
 - Text (`news "european gas"`), a single word no listing answers to, or a futures board code such as `news TTF` lists the stories that have every word of it as a whole word (`price` and `prices` alike, never Arabia for arabica), those with every word in the headline first.
 - A commodity name (`coffee`, `arabica`, `sugar`, `wheat`, `crude oil`, `natural gas`) also lists the stories filed under its future, and a commodity's future (`news KC=F`) lists the stories of its commodity. A metal's future, name or board code (`news GC=F`, `news SI=F`, `news gold`, `news GC`) lists that metal's market news (stories tagged `METALS`).
 - Text that matches no story says `No stories match "<text>"`, with the commodity's future (`gloom news SB=F`) when the text names one whose news has stories.
+- `--from` and `--to` (or `--start` and `--end`) take the same years and dates as `history`: `news DAL --from 2026-11-09 --to 2026-11-13` lists the stories dated on those days in UTC, newest first, and the market feed takes them too (`news --from 2026-11-12`). Each row is dated by its latest report, so a story still being reported after the window ends is not in it. A window with no story says `No stories for <name> from <from> to <to> (UTC).` and never searches the text instead. A text search, `--feed top` and `--feed breaking` take no window: a search reads its best matches, and top and breaking rank the last day.
 
 **The others.** `13f` is the holders list without insiders (`fn 13F` has 13F filings). A fund (`holders XLE`, `13f SPY`, `fn HDS EWJ`) has no ownership breakdown: they say so and fail with code `no_data`, naming for a US-listed fund `fn 13F` for the 13F filers that hold it, `fn MEMB` for what it holds when MEMB covers it, and `fn ETF` for its fund facts. `holders --form 13d|13g|all` lists 13D/13G beneficial owners. `filings` leaves out what `fn SEC` leaves out, a bank's pricing supplements and a fund trust's filings for its other funds, and says how many (`330 pricing supplements hidden, --all to show`; in `--json`, `pricingSupplementsHidden` and `otherFundFilingsHidden`, present only when some were); `--all` lists them. `filings --form <form>` keeps one form, with an Items column naming each 8-K's items (`2.02 Results of operations`). `--json` and `--csv` keep the codes in `items` (`Items`) and add the names as `itemsLabel` (`Item names`).
 
@@ -2291,16 +2321,19 @@ In `PF`, a portfolio with targets shows `WEIGHT`, `TGT WT`, `DRIFT`, `TRADE` (sh
 
 ## Broker position sync
 
-Press `a` in the **Brokers** pane (`BR`), or run **Add Broker Account**, to connect a broker (**New Portfolio** can start from one too). Gloom imports positions from Interactive Brokers, Public, Robinhood and SimpleFIN. Each broker is a plugin with its own repository, installed on first launch and updatable on its own, from the plugin directory or `gloom install gloom-sh/gloom-public` and friends.
+Press `a` in the **Brokers** pane (`BR`), or run **Add Broker Account**, to connect a broker (**New Portfolio** can start from one too). **SnapTrade** connects the brokerages it supports and is built in, so there is no plugin to install. Gloom also imports positions from Interactive Brokers, Public, Robinhood and SimpleFIN. Each of those is a plugin with its own repository, installed on first launch and updatable on its own, from the plugin directory or `gloom install gloom-sh/gloom-public` and friends.
 
+- **SnapTrade** opens a browser sign-in page for your SnapTrade account, so link your brokerages there first (it is free, at [dashboard.snaptrade.com](https://dashboard.snaptrade.com)). Gloom asks you to sign in to your Gloom account first when you are signed out. It reads the accounts, balances, positions and orders of every brokerage you linked, and places stock and ETF orders from the order ticket (market, limit, stop and stop limit, Day or GTC) where the brokerage allows trading: see [Trading](trading.md). It runs in the terminal and the desktop app, not the browser version.
 - **Interactive Brokers** opens a browser sign-in page through Gloom and ends that sign-in seven days after you approve it, however often it syncs. A day before, the profile's status in `BR` shows when it ends. `c` signs in again and the seven days start over.
 - **Robinhood** opens a browser sign-in page and uses only the read-only account and equity-position tools of the Robinhood Trading MCP server.
 - **Public** needs an API secret from Public API settings, and only the account and portfolio endpoints are used.
 - **SimpleFIN** needs a one-time setup token from SimpleFIN Bridge and imports only accounts that contain holdings.
 
-The connection data is saved on the local device and is not included in Gloom Cloud synchronization. A later position sync updates the managed portfolios and removes positions the broker no longer reports.
+The connection data is saved on the local device and is not included in Gloom Cloud synchronization. SnapTrade's sign-in is kept with your Gloom account instead. A later position sync updates the managed portfolios and removes positions the broker no longer reports.
 
 Each profile's row in `BR` shows its `STATUS`: `Sign-in needed`, `Sync failed` or `Connect failed` when the last action did not work (`Enter` shows the reason in full), and what is running (`Syncing…`). A `Disabled` profile is never connected or synced: press `b` to enable it, which also syncs it.
+
+Profiles that import on demand without reporting a connection status show `Configured`. Their row still shows the time of the last successful sync.
 
 **When a broker is offline.** While a broker is disconnected, failing, or missing its plugin, its portfolio in `PF` keeps the positions from its last sync, and the footer says when and why (`as of 17 Oct 14:02  IBKR disconnected`).
 

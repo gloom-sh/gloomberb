@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { matchesNavigationKey, useKeybindings } from "../app/keybindings";
+import { useSearchFocusUp } from "../components/input-search-bar";
 import {
   getPaneSidebarWidth,
   getPaneSidebarWidthRange,
@@ -376,6 +378,8 @@ export function LayoutGalleryDesktop({
   ], [collapsed, controller.community, controller.owned, controller.teamSections]);
 
   const focusSearch = search?.focus ?? (() => setLocalSearchActive(true));
+  const bindings = useKeybindings();
+  const isSearchUp = useSearchFocusUp();
 
   // Unscoped on purpose: a scoped handler would outrank the pane menu opened
   // over the gallery, and j/k belong to that menu while it is open.
@@ -383,8 +387,8 @@ export function LayoutGalleryDesktop({
     if (event.targetEditable || searchActive || visibleEntries.length === 0) return;
     const index = visibleEntries.findIndex((entry) => entry.id === selected?.id);
     const step = (delta: number) => (index < 0 ? 0 : index + delta);
-    const target = isPlainKey(event, "down", "j") ? step(1)
-      : isPlainKey(event, "up", "k") ? step(-1)
+    const target = matchesNavigationKey(bindings, "down", event) ? step(1)
+      : matchesNavigationKey(bindings, "up", event) ? step(-1)
       : isPlainKey(event, "home") ? 0
       : isPlainKey(event, "end") ? visibleEntries.length - 1
       : isPlainKey(event, "pageup") ? step(-PAGE_STEP)
@@ -394,7 +398,7 @@ export function LayoutGalleryDesktop({
     event.preventDefault();
     event.stopPropagation();
     // Up from the first row goes back to the search above the list.
-    if (event.name === "up" && index === 0) {
+    if (index === 0 && isSearchUp(event)) {
       focusSearch();
       return;
     }

@@ -601,19 +601,16 @@ describe("pane catalog search", () => {
     expect(hidden).toBe(0);
   });
 
-  test("fx vol lists the functions named for fx or vol without --all, volatility before volume", async () => {
+  test("fx vol leads with OVDV, which answers it for a pair with its listed proxy, and vol ranks volatility before volume", async () => {
     const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
     const registry = await createPaneCatalog(context, getLoadablePlugins());
     try {
       const entries = await buildPaneCatalogEntries(registry, context);
-      const { shown, loose } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, "fx vol"), "fx vol", 25);
-      const tokens = shown.map(({ token }) => token);
-      expect(loose).toBe(true);
-      // Not ADR (a fund's implied FX rate), ALRT (volume alerts) or ATS (OTC volume), which only mention a word.
-      expect(tokens).toEqual(expect.arrayContaining(["FXC", "OVDV", "VOLS", "HVT", "VCA"]));
-      expect(tokens).not.toEqual(expect.arrayContaining(["ADR"]));
-      expect(tokens).not.toContain("ALRT");
-      expect(tokens).not.toContain("ATS");
+      for (const query of ["fx vol", "FX volatility"]) {
+        const { shown, loose } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, 25);
+        expect(loose).toBe(false);
+        expect(shown[0]?.token).toBe("OVDV");
+      }
       // One word: the volatility functions before the two about volume.
       const vol = filterPaneCatalogEntries(entries, "vol").map(({ token }) => token);
       for (const volatility of ["VOLS", "OVDV", "HVT", "VCA"]) {

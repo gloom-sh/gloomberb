@@ -59,7 +59,7 @@ Charts draw as images in Kitty-compatible terminals such as Ghostty, Kitty and W
 
 Press `Ctrl+P` for the command bar, or `` ` `` to search for a ticker. `HELP` lists every command and shortcut, and the [function catalog](https://gloom.sh/docs/functions) shows them all.
 
-From your shell, `gloom quote AAPL` prints a quote; add `--json` for scripts. The [user guide](docs/usage.md) covers charts, brokers, shortcuts and the CLI.
+From your shell, `gloom quote AAPL` prints a quote; add `--json` for scripts. The [user guide](docs/usage.md) covers charts, shortcuts, the CLI and connecting your brokerages with SnapTrade.
 
 ## Data and privacy
 

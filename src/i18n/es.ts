@@ -1621,6 +1621,7 @@ export const es: Record<string, string> = {
   "Friend or colleague": "Un amigo o colega",
   "Article or newsletter": "Un artículo o newsletter",
   "Where?": "¿Dónde?",
+  "Which account or post?": "¿Qué cuenta o publicación?",
   "Skip": "Omitir",
   "Equities": "Renta variable",
   "Futures & commodities": "Futuros y materias primas",

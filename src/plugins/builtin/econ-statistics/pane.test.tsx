@@ -18,6 +18,34 @@ afterEach(() => {
   statsCache.reset();
 });
 
+test("the selected yield cites its latest observation while other statistics still cite their own series", async () => {
+  const series = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (id) => ({ observations: [
+    { date: "2026-11-17", value: 4.2 },
+    { date: "2026-11-18", value: 4.21 },
+    { date: "2026-11-19", value: 4.25, ...(id === "DGS10" ? { publisher: "U.S. Treasury", publishedAt: "2026-11-20" } : {}) },
+  ], info: null }));
+  const initial = createInitialState(createTestPaneConfig("/tmp/gloom-ecst-attribution-unused", {
+    instanceId: "ecst:attribution", paneId: "econ-statistics", settings: { stat: "ten-year" },
+  }));
+  initial.focusedPaneId = "ecst:attribution";
+  function Harness() {
+    const [state, dispatch] = useReducer(appReducer, initial);
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId="ecst:attribution" pluginId="market-overview" runtime={createTestPluginRuntime()} width={160} height={38}>
+      {(body) => <EconStatisticsPane paneId="ecst:attribution" paneType="econ-statistics" focused {...body} />}
+    </TestPaneFrame>;
+  }
+  try {
+    await act(async () => { await tui.render(<Harness />, { width: 160, height: 38 }); });
+    await tui.waitForFrameToContain("U.S. Treasury, published 2026-11-20");
+    expect(tui.frame()).toContain("reading for 2026-11-19 15:30 ET");
+    await tui.emitKeypress({ name: "down" });
+    await tui.waitForFrameToContain("Federal Reserve Board via FRED");
+    expect(tui.frame()).not.toContain("published 2026-11-20");
+  } finally {
+    series.mockRestore();
+  }
+});
+
 test("housing chart ticks use the table's millions and the period keeps its year", async () => {
   statsCache.hydrate(STATS.map((stat) => [stat.seriesId, Array.from({ length: 25 }, (_, index) => ({
     date: new Date(Date.UTC(2024, index, 1)).toISOString().slice(0, 10), value: 500 + index * 50,
@@ -64,6 +92,36 @@ test("the selected Michigan series labels publication lag without warning on the
   await tui.emitKeypress({ name: "down" });
   await act(async () => { await tui.setup().renderOnce(); });
   expect(tui.frame()).not.toContain("delayed one month");
+});
+
+test("GDPNow renders its current reading before the previous update arrives", async () => {
+  const pending = Promise.withResolvers<Awaited<ReturnType<typeof apiClient.getCloudEconomicCalendarFrom>>>();
+  const calendar = spyOn(apiClient, "getCloudEconomicCalendarFrom").mockReturnValue(pending.promise);
+  const fred = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (series) => ({ info: null,
+    observations: series === "GDPNOW" ? [{ date: "2026-10-01", value: 3.2093, revisedOn: "2026-11-18" }] : [],
+  }));
+  const state = createInitialState(createTestPaneConfig("/tmp/gloom-ecst-previous", {
+    instanceId: "ecst:previous", paneId: "econ-statistics", settings: { stat: "gdpnow", range: "ALL" },
+  }));
+  try {
+    await tui.render(<TestPaneFrame state={state} dispatch={() => {}} paneId="ecst:previous" pluginId="market-overview" runtime={createTestPluginRuntime()} width={160} height={36}>
+      {(body) => <EconStatisticsPane paneId="ecst:previous" paneType="econ-statistics" focused {...body} />}
+    </TestPaneFrame>, { width: 160, height: 36 });
+    await tui.waitForFrameToContain("3.2%");
+    expect(calendar).toHaveBeenCalledWith("2026-11-18", { signal: expect.any(AbortSignal) });
+    expect(tui.frame()).not.toContain("3.4%");
+
+    await act(async () => {
+      pending.resolve({ storedFrom: null, events: [{ id: "atlanta-fed-gdpnow-2026-11-18-2026-Q4",
+        event: "Atlanta Fed GDPNow", date: "2026-11-18T00:00:00.000Z", time: "All Day", country: "US", impact: "medium",
+        referencePeriod: "2026 Q4", actual: "3.2093%", forecast: null, prior: "3.3842%", priorAsOf: "2026-11-17" }] });
+    });
+    await tui.waitForFrameToContain("3.4%");
+  } finally {
+    pending.resolve({ storedFrom: null, events: [] });
+    calendar.mockRestore();
+    fred.mockRestore();
+  }
 });
 
 test.each([

@@ -53,6 +53,7 @@ import {
   createQuoteErrorMessage,
   farTargetMessage,
   levelInQuoteUnit,
+  assertAlertCurrency,
   moveQuoteFields,
   quoteAlertFields,
   quoteErrorAlertFields,
@@ -66,8 +67,8 @@ import {
   saveAlerts,
 } from "./storage";
 import { createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream } from "./live";
-import { alertPriceText } from "./price-text";
-import { isPenceQuotedLine } from "../../../market-data/market/format";
+import { isPenceQuotedLine, isSharePriceQuote } from "../../../market-data/market/format";
+import { alertPriceText, alertPriceWithCurrency, alertQuoteTime } from "./price-text";
 import { judgeMove, moveBasisText, moveFiredText, MOVE_DELIVERY } from "./move";
 import { MOVE_REARM, moveNowText, planMoveAlerts } from "./cli-move";
 import { alertListing, readingSessionWords } from "./format";
@@ -268,7 +269,7 @@ export const alertsPlugin: GloomPlugin = {
           key: "price",
           label: "Target Price",
           placeholder: "200.00",
-          type: "number",
+          type: "text",
         },
         ...moveWizardFields,
         ...metricWizardFields,
@@ -346,7 +347,10 @@ export const alertsPlugin: GloomPlugin = {
           if (!validMetricRule({ metric, condition: input.condition, targetPrice: input.price })) throw new Error(`${benchmark} cannot be a benchmark: relative strength alerts compare two US listings.`);
         }
         // A London line's level is in the pence its quote shows: 70p, or 70 where 70 in pounds is far off.
-        if (!input.metric) input = { ...input, price: levelInQuoteUnit(input, quote, symbol).price };
+        if (!input.metric) {
+          await assertAlertCurrency(input, quote, symbol, ctx.marketData);
+          input = { ...input, price: levelInQuoteUnit(input, quote, symbol).price };
+        }
         // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
         // GOLD is Gold.com: a target at gold's price names the future, as `alerts add` does.
         const named = input.symbol.includes(":");
@@ -391,7 +395,7 @@ export const alertsPlugin: GloomPlugin = {
         // What delivers it and what became of the symbol, as `alerts add` says them.
         ctx.notify({
           body: [
-            `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : ` (current ${alertPriceText(alert, quote.price)}${readingSessionWords(alert)}${met})`}.`,
+            `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : `${isSharePriceQuote(quote) ? " per share" : ""} (current ${alertPriceWithCurrency(alert, quote.price)}${readingSessionWords(alert)} · ${alertQuoteTime(alert.lastQuoteUpdatedAt)}${met})`}.`,
             `${PRICE_DELIVERY.charAt(0).toUpperCase()}${PRICE_DELIVERY.slice(1)}.`,
             ...notes.map((note) => /[.?!]$/.test(note) ? note : `${note}.`),
           ].join(" "),

@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { rankTickerMatches } from "../../../utils/ticker-match-order";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CloudEarningsCallPayload } from "../../../api-client";
 import { cloudDisplayScope, usePlanAccess } from "../../../api-client/plan-access";
@@ -27,7 +28,8 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useAgeClock, useAutoRefresh } from "../../../react/auto-refresh";
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
-import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { usePluginPaneState } from "../../runtime";
 import { newYorkToday } from "../earnings/board-model";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
@@ -189,7 +191,10 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const shown = needle ? calls.filter((call) => matches(call, needle)) : calls;
-    return buildSectionedRows(calendarSections(shown, days, sort), (call) => call.id);
+    const sections = calendarSections(shown, days, sort).map((section) => ({
+      ...section, items: rankTickerMatches(section.items, needle, (call) => [call.ticker, call.companyName]),
+    }));
+    return buildSectionedRows(sections, (call) => call.id);
   }, [calls, days, query, sort]);
   const callRows = useMemo(() => rows.filter(isSectionedItemRow), [rows]);
   // The cursor starts on the next call, so the day's calls already over sit above it.
@@ -231,14 +236,15 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
     notices: data?.truncated ? [upcomingCutNotice(data.calls)] : [],
   });
 
+  const isSearchUp = useSearchFocusUp();
   const handleRootKey = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
     }
     return handleRefreshKey(event, reload, { stopPropagation: true });
-  }, [focusSearch, reload]);
+  }, [isSearchUp, focusSearch, reload]);
 
   if (signInRequired || verificationRequired) {
     return (

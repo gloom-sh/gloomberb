@@ -118,6 +118,7 @@ import {
 } from "./chart-bounds";
 import {
   type PriceHistoryRequest,
+  NoPriceHistoryError,
   PriceHistoryAcquisitionError,
   priceHistoryAcquisitionIdentity,
   priceHistoryTailAcquisition,
@@ -187,7 +188,7 @@ function tradesUsExtendedHours(exchange: string | undefined, contract: BrokerCon
     || (!!contract && canonicalExchange(venue) === "SMART" && (!contract.currency || contract.currency.toUpperCase() === "USD"));
 }
 
-/** Fewer daily or coarser bars than this make a line or two, not a chart. */
+/** Fewer bars than this make a line or two, not a chart. */
 const SHORT_HISTORY_MAX_BARS = 20;
 
 /**
@@ -261,16 +262,20 @@ async function resolveChartSpecWindow(
   const now = sources.now ?? new Date();
   let captured: Capture[] = [];
   let shownSpec = spec;
-  let result = await resolveChartSpecPass(spec, capturing(captured), cache, options);
-  // A listing younger than the range has a bar or two at weekly or monthly
-  // size. When its sources serve finer bars, Auto charts the shortest range
-  // that holds them all, at that range's interval. Coarse bars are dated at
-  // their period's start, so the finer bars can place the first trade in a
-  // shorter range still.
-  const coarse = !!result.resolution && !isIntradayResolution(result.resolution)
-    && !!result.resolutionSupport?.some((entry) => isIntradayResolution(entry.resolution));
-  let shown = coarse ? visibleMarketBars(result) : { count: 0, first: Number.POSITIVE_INFINITY };
+  let noPriceHistory = false;
+  let result = await resolveChartSpecPass(spec, capturing(captured), cache, options, () => { noPriceHistory = true; });
+  const servesIntraday = !!result.resolutionSupport?.some((entry) => isIntradayResolution(entry.resolution));
+  // A listing younger than the range has a few bars at its size: a bar or two
+  // at weekly or monthly size, a handful of hourly ones. When its sources
+  // serve finer bars, Auto charts the shortest range that holds them all, at
+  // that range's interval. Coarse bars are dated at their period's start, so
+  // the finer bars can place the first trade in a shorter range still.
+  let shown = result.resolution && servesIntraday ? visibleMarketBars(result) : { count: 0, first: Number.POSITIVE_INFINITY };
   let range = shown.count > 0 && shown.count < SHORT_HISTORY_MAX_BARS ? coveringRange(shown.first, now) : null;
+  // A listing in its first session has no daily bar yet, so no bar at all at
+  // the range's size: its sources said they hold none. The month's intraday
+  // bars place its first trade.
+  if (!range && noPriceHistory && servesIntraday && visibleMarketBars(result).count === 0) range = "1M";
   while (range && TIME_RANGES.indexOf(range) < TIME_RANGES.indexOf(shownSpec.viewport.range)) {
     const liveTails = cache.liveTails;
     const narrowedCaptured: Capture[] = [];
@@ -330,6 +335,8 @@ async function resolveChartSpecPass(
   sources: ChartResolveSources,
   cache: ChartResolveCache,
   options: ChartResolveOptions,
+  /** Called when a series' sources answered that they hold no bars at the pass's size. */
+  onNoPriceHistory?: () => void,
 ): Promise<ChartResolutionResult> {
   const errors: string[] = [];
   const warnings: string[] = spec.series.some((entry) => entry.visible !== false
@@ -877,21 +884,24 @@ async function resolveChartSpecPass(
           throw new Error(uncoveredCapabilityMessage(seriesSpec.source.capabilityId, seriesSpec.source.seriesId));
         }
         const capabilityBounds = capabilityRequestBounds(requestVisibleBounds, initialVisibleBounds, movedWindow);
+        const dateWindow = capabilityBounds.start !== null && capabilityBounds.end !== null
+          ? { start: new Date(capabilityBounds.start).toISOString(), end: new Date(capabilityBounds.end).toISOString() }
+          : spec.viewport.dateWindow && { start: spec.viewport.dateWindow.start, end: spec.viewport.dateWindow.end };
+        // What a plugin can answer for: bars sources serve, so a size the chart builds (4h) goes as the bars it
+        // builds it from (1h) and the size itself, and the session whose bars the chart draws. A loaded series
+        // is asked the same (`SeriesLoadRequest`). Currency and total return are the chart's securities' own.
         const capabilityViewport: ChartSpec["viewport"] = {
-          ...spec.viewport,
-          ...(capabilityBounds.start !== null && capabilityBounds.end !== null
-            ? {
-                dateWindow: {
-                  start: new Date(capabilityBounds.start).toISOString(),
-                  end: new Date(capabilityBounds.end).toISOString(),
-                },
-              }
-            : {}),
+          range: spec.viewport.range,
+          resolution: isCustomChartResolution(spec.viewport.resolution) ? initialResolution : spec.viewport.resolution,
+          ...(dateWindow ? { dateWindow } : {}),
+          ...(spec.viewport.maxPoints !== undefined ? { maxPoints: spec.viewport.maxPoints } : {}),
+          ...(spec.viewport.extendedHours === true ? { extendedHours: true } : {}),
         };
-        const key = chartSeriesSourceKey(seriesSpec.source, capabilityViewport);
+        const barSize = builtBarSize ?? undefined;
+        const key = chartSeriesSourceKey(seriesSpec.source, capabilityViewport, barSize);
         let pending = cache.capabilitySeriesByRequest.get(key);
         if (!pending) {
-          pending = sources.resolveCapabilitySeries(seriesSpec.source, capabilityViewport, seriesSpec);
+          pending = sources.resolveCapabilitySeries(seriesSpec.source, capabilityViewport, seriesSpec, barSize);
           cache.capabilitySeriesByRequest.set(key, pending);
           cache.revision += 1;
         }
@@ -1018,7 +1028,7 @@ async function resolveChartSpecPass(
       if (builtBars) {
         merged = { ...merged, priceHistory: aggregatePriceBars(merged.priceHistory, builtBars, {
           symbol: resolvedSource.instrument.symbol, exchange: resolvedSource.instrument.exchange,
-          extendedHours: history?.extendedHours === true,
+          extendedHours: history?.extendedHours === true, resolution: initialResolution,
         }) };
       }
       if ((source.fieldId === "fundamental.eps" || source.fieldId === "valuation.trailingPE")
@@ -1088,6 +1098,7 @@ async function resolveChartSpecPass(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(`${seriesMessageName(seriesSpec)}: ${message}`);
+      if (error instanceof NoPriceHistoryError) onNoPriceHistory?.();
       return unloadableSeries(seriesSpec, index, message);
     }
   }));
@@ -1203,7 +1214,7 @@ async function resolveChartSpecPass(
   // Study outputs are appended by the pure engine before the final viewport clip.
   if (spec.studies.length > 0) {
     const studyResult = resolveStudies(calculationSeries, spec.studies, resolution, historicalPriceSeries,
-      studyAnchors(calculationSeries, priceComparison, comparisonBounds));
+      studyAnchors(calculationSeries, priceComparison, comparisonBounds), builtBarSize ?? undefined);
     resolved = [
       ...resolved,
       ...applyStudyPresentationTransforms(

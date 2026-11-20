@@ -12,7 +12,7 @@ import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors"
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
-import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
+import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 import type { SessionTabId } from "./model";
 
 const NEW_YORK = "America/New_York";
@@ -233,17 +233,4 @@ function shortDay(date: string): string | null {
 export function earlierSessionLabel(listSession: string | null, session: UsSession): string | null {
   if (!listSession || listSession === session.date) return null;
   return shortDay(listSession);
-}
-
-/**
- * When a free account's list was built, New York time: "as of 07:42 ET", and
- * "as of Oct 19 19:58 ET" when that is not on the list's own session day.
- */
-export function listAsOfLabel(asOf: string, listSession: string | null, session: UsSession): string | null {
-  const at = Date.parse(asOf);
-  if (!Number.isFinite(at)) return null;
-  const { hour, minute } = zonedDateTimeParts(at, NEW_YORK);
-  const clock = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ET`;
-  const day = zonedDateKey(at, NEW_YORK);
-  return day === (listSession ?? session.date) ? `as of ${clock}` : `as of ${shortDay(day) ?? day} ${clock}`;
 }

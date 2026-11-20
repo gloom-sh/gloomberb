@@ -1,3 +1,4 @@
+import { KeybindingsProvider, resolveKeybindings } from "../../app/keybindings";
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { setLanguage } from "../../i18n";
@@ -353,4 +354,40 @@ test("renders tab actions for editable tab sets", async () => {
     await tui.setup().renderOnce();
   });
   expect(addedTab).toBe(true);
+});
+
+
+test("tab navigation uses configured letters, keeps arrow aliases and updates with config", async () => {
+  let selected = "a";
+  let changeBindings: ((useDefault: boolean) => void) | undefined;
+  function Harness() {
+    const [active, setActive] = useState("a");
+    const [useDefault, setUseDefault] = useState(false);
+    changeBindings = setUseDefault;
+    selected = active;
+    return <KeybindingsProvider value={resolveKeybindings(useDefault ? undefined : { actions: {
+      "navigate-left": ["C", "Left"], "navigate-right": "T",
+    } })}>
+      <Tabs focused tabs={[{ value: "a", label: "First" }, { value: "b", label: "Second" }]}
+        activeValue={active} onSelect={setActive} />
+    </KeybindingsProvider>;
+  }
+  await tui.render(<Harness />, { width: 40, height: 3 });
+  const press = async (name: string) => {
+    await act(async () => {
+      await tui.emitKeypress({ name, sequence: name });
+      await tui.setup().renderOnce();
+    });
+  };
+  await press("l");
+  expect(selected).toBe("a");
+  await press("t");
+  expect(selected).toBe("b");
+  await press("left");
+  expect(selected).toBe("a");
+  await act(async () => { changeBindings?.(true); });
+  await press("t");
+  expect(selected).toBe("a");
+  await press("l");
+  expect(selected).toBe("b");
 });

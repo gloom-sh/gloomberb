@@ -1,3 +1,4 @@
+import { useKeybindings } from "../../app/keybindings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useUiHost, type InputRenderable } from "../../ui";
 import { type PromptContext, useDialogKeyboard } from "../../ui/dialog";
@@ -88,6 +89,7 @@ export function ChoiceDialog({
   bgColor,
 }: ChoiceDialogProps) {
   const colors = useThemeColors();
+  const navigation = useKeybindings();
   const desktop = useUiHost().kind === "desktop-web";
   // A list longer than its rows gets a filter box over it in the terminal, as a long
   // multi-select has (review, 12 Nov 2026: EQS's forty fields had none).
@@ -160,7 +162,7 @@ export function ChoiceDialog({
       }
     }
     event.stopPropagation();
-    const move = listCursorMove(event, MAX_VISIBLE_CHOICE_ROWS - 1);
+    const move = listCursorMove(event, MAX_VISIBLE_CHOICE_ROWS - 1, navigation);
     const rows = shown.current;
     if (move) {
       selectIndex(move(rows, cursor.current));

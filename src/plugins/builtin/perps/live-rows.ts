@@ -24,11 +24,27 @@ function perpQuoteTarget(marketId: string, surface: Surface = "detail", visible 
   return listing ? { symbol: listing.key, exchange: listing.exchange, route: "auto", surface, ...(visible ? { visible: true } : {}) } : null;
 }
 
+// A board tick recomputes every visible row. Keep the merged row for an
+// unchanged quote so a different market's tick cannot reselect this row and
+// rerender the whole PERP pane. Both keys are weak: replaced snapshots and
+// quotes can be collected as soon as the coordinator lets them go.
+const mergedReadings = new WeakMap<PerpBoardRow, WeakMap<NonNullable<Quote["perpetual"]>, PerpBoardRow>>();
+
 /** A fetched row with the newer reading a quote of its market brought; the row itself when the quote has none newer. */
 export function withLiveReading(row: PerpBoardRow, quote: Quote | null | undefined): PerpBoardRow {
   const live = quote?.perpetual;
   if (!live || live.marketId.toLowerCase() !== row.marketId.toLowerCase()) return row;
-  return Date.parse(live.observedAt) > Date.parse(row.observedAt) ? { ...row, ...live, marketId: row.marketId } : row;
+  if (!(Date.parse(live.observedAt) > Date.parse(row.observedAt))) return row;
+  let readings = mergedReadings.get(row);
+  if (!readings) {
+    readings = new WeakMap();
+    mergedReadings.set(row, readings);
+  }
+  const cached = readings.get(live);
+  if (cached) return cached;
+  const merged = { ...row, ...live, marketId: row.marketId };
+  readings.set(live, merged);
+  return merged;
 }
 
 /** As Gloom Cloud rules it: a market with no mark from its venue for a minute is no longer live. */

@@ -1,4 +1,5 @@
 import { logFailure } from "../../../utils/log-failure";
+import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { usePaneSharePreparation } from "../../../shares/prepare";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -269,6 +270,8 @@ function levelListing(spec: ChartSpec, series: readonly ResolvedSeries[]): {
   target: AlertTarget;
   instrument: InstrumentRef;
   lastPrice: number | null;
+  unit: string;
+  convertedFrom?: string;
 } | null {
   const entry = rawPriceEntry(spec);
   const resolved = entry ? series.find((candidate) => candidate.id === entry.id) : undefined;
@@ -281,6 +284,8 @@ function levelListing(spec: ChartSpec, series: readonly ResolvedSeries[]): {
     target: { symbol: entry.source.instrument.symbol, exchange },
     instrument: entry.source.instrument,
     lastPrice: last ? last.close ?? last.value : null,
+    unit: resolved.unit,
+    convertedFrom: resolved.convertedFrom,
   };
 }
 
@@ -581,11 +586,18 @@ function ChartComposerSurface({
   const alertAtLevel = useCallback(async (price: number) => {
     const current = listingRef.current;
     if (!current) return;
+    if (current.convertedFrom) {
+      notify({ body: `Set the alert in ${current.convertedFrom}, the listing's quote currency.`, type: "error" });
+      return;
+    }
+    const quote = resolveEntryData(getSharedMarketDataCoordinator()?.getQuoteEntry(current.instrument));
+    const currency = quote?.currency || (/^[A-Z]{3}$/.test(current.unit) ? current.unit : "");
     const result = addLevelAlert(
       runtime.getConfigState<string>(PRICE_ALERTS_STORE.pluginId, PRICE_ALERTS_STORE.key),
       current.target,
       price,
       currentListingPrice(current),
+      currency ? { currency, pence: isPenceQuotedLine(quote) } : undefined,
     );
     if ("error" in result) {
       notify({ body: `Saved alerts could not be read: ${result.error}`, type: "error" });

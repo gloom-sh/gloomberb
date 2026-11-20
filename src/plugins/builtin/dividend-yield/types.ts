@@ -15,6 +15,8 @@ export interface DividendPayment {
   cashEstimate?: DividendCashEstimate;
   /** Who published it when not the listing's history: the fund's sponsor (DividendAction.source). */
   source?: { publisher: string; url: string };
+  /** The amount is a regular payment and an extra one on the same ex-date, which the history keeps as one row (combinedPaymentTimes). */
+  combined?: true;
 }
 
 /** A short year a growth figure would compare: its payments, and the day it ends (absent for the trailing year). */

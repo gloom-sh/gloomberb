@@ -16,6 +16,7 @@ import type { Watchlist, TickerRecord } from "../types/ticker";
 import { isFiniteNumber } from "../utils/guards";
 import { formatUtcTime } from "../utils/utc-time";
 import { findNamedCollection } from "../portfolio/collection-name";
+import { formatBasisPoints } from "../utils/basis-points";
 
 /** A signed amount with its sign ($), or with `code` its code (+12.50 CAD) as a report for another base currency writes it. */
 export function formatSignedCurrency(value: number, currency: string, code = false): string {
@@ -42,8 +43,10 @@ export function quoteChangeText(
   const basis = quoteChangeBasis(quote, { terms });
   // A print older than what its move is from (a coin's before 00:00 UTC) has no move as of now, as `quote` says.
   if (printPredatesChangeBasis(quote, basis, now)) return "—";
+  if (options.yieldIndex && !isFiniteNumber(session.change)) return "—";
   const move = colorBySign(
-    `${formatMarketChangeWithCurrency(session.change, quote.currency ?? "USD", options, session.price)} (${formatPercentRaw(session.changePercent)})`,
+    options.yieldIndex ? formatBasisPoints(session.change!, 1)
+      : `${formatMarketChangeWithCurrency(session.change, quote.currency ?? "USD", options, session.price)} (${formatPercentRaw(session.changePercent)})`,
     session.change,
   );
   if (!basis) return move;

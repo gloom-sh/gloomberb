@@ -13,6 +13,7 @@ import { researchModule } from "../../plugins/builtin/research";
 import { filingEventsModule } from "../../plugins/builtin/filing-events";
 import { renderReportCsv } from "../report-tables";
 import { formatFreshnessLine } from "./freshness";
+import { cloudNewsFreshness } from "../../plugins/builtin/shared/report-freshness";
 import { reportFailure } from ".";
 import * as paneCatalog from "./catalog";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, DataServiceUnreachableError, isNetworkFailure } from "../../utils/network-failure";
@@ -69,7 +70,8 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
     symbols: [],
     render: {
       visibleText: "",
-      footerText: "15m delayed",
+      footerText: "12h delayed",
+      semanticUi: [{ id: "ui:1", role: "report-freshness", actions: [], metadata: cloudNewsFreshness(false) }],
       rows: [
         // The pane shortens times to fit, on the host's clock its header names; the cell keeps the instant behind them.
         { tableIndex: 0, rowIndex: 0, selected: false, cells: [cell("time", "TIME HKT", "Wed 19:27", "2026-10-07T11:27:00.000Z"), cell("title", "HEADLINE", "Deal"), cell("tickers", "TICKERS", "PSKY"), cell("categories", "CATEGORY", "M&A")] },
@@ -95,15 +97,15 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
   // `fn TOP` headed those UTC times "TIME HKT": the header names the report's zone, not the clock the pane drew.
   expect(header).toStartWith("TIME UTC ");
   expect(row).toContain("2026-10-02 14:00 UTC");
-  // The pane's declaration says what the data is; a footer phrase does not turn it into a feed.
-  expect(report.data.freshness).toMatchObject({ source: "Gloom Cloud", asOf: "2026-10-07T11:27:00.000Z", status: "not-a-feed" });
+  expect(report.data.freshness).toMatchObject({ source: "Gloom Cloud", asOf: "2026-10-07T11:27:00.000Z", status: "delayed", delayMinutes: 720 });
+  expect(formatFreshnessLine(report.data.freshness!)).toBe("Source: Gloom Cloud · newest story Wed 7 Oct 2026 11:27 UTC · 12 h delayed");
   // --csv writes the same columns, the blank cell empty and each time as the instant behind it.
   expect(renderReportCsv(report.tables).split("\n").slice(0, 5)).toEqual([
     "TIME UTC,HEADLINE,TICKERS,CATEGORY",
     "2026-10-07T11:27:00.000Z,Deal,PSKY,M&A",
     "2026-10-02T14:00:00.000Z,Sanctions,,Regulatory",
     "",
-    "# Source: Gloom Cloud · Wed 7 Oct 2026 11:27 UTC · not a live feed (published stories)",
+    "# Source: Gloom Cloud · newest story Wed 7 Oct 2026 11:27 UTC · 12 h delayed",
   ]);
 });
 
@@ -124,6 +126,21 @@ test("a column only the exports carry (FUT's 3M, 6M and 1Y) is in the JSON and C
   expect((report.data.rows as typeof screenshot.render.rows).at(-1)!.cells.at(-1)).toMatchObject({ columnId: "return1y", value: 14.1 });
   // No row of its own: the sector closes each row under it, after every column an earlier export had.
   expect(renderReportCsv(report.tables).split("\n").slice(0, 2)).toEqual(["SYM,1W (%),1Y (%),Group", "ES,-0.71,14.1,Equity Index"]);
+
+  screenshot.render.visibleText = "ES NG";
+  screenshot.render.reportRows!.push(
+    { ...sector, rowIndex: 2, cells: [{ ...sector.cells[0]!, text: "Energy" }] },
+    { ...row, rowIndex: 3, key: "NG=F", cells: [{ ...cells[0]!, text: "NG" }] },
+  );
+  const limited = await buildDomPaneReportFromRender({ ...resolved, rowWindow: { limit: 1 } }, screenshot);
+  expect(limited.data).toMatchObject({ rowCount: 1, complete: true, visibleText: "", rows: [{ key: "ES=F" }] });
+  expect(limited.data.everyRow).toBeUndefined();
+  expect(limited.text).not.toMatch(/\bNG\b/);
+  expect(renderReportCsv(limited.tables).split("\n").slice(0, 2)).toEqual(["SYM,1W (%),1Y (%),Group", "ES,-0.71,14.1,Equity Index"]);
+  const tail = await buildDomPaneReportFromRender({ ...resolved, rowWindow: { tail: 1 } }, screenshot);
+  expect(renderReportCsv(tail.tables).split("\n").slice(0, 2)).toEqual(["SYM,1W (%),1Y (%),Group", "NG,,,Energy"]);
+  const prose = { ...screenshot, render: { ...screenshot.render, reportRows: undefined, rows: [], visibleText: "Only prose." } };
+  await expect(buildDomPaneReportFromRender({ ...resolved, rowWindow: { limit: 1 } }, prose)).rejects.toThrow("--limit requires a rendered table");
 });
 
 test("a time the pane draws as a date, at 00:00 UTC, prints as the date; one it draws with a time of day keeps it", async () => {

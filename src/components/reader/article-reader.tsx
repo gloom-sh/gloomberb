@@ -1,3 +1,4 @@
+import { matchesNavigationKey, useKeybindings } from "../../app/keybindings";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useShortcut } from "../../react/input";
 import { scrollByLines } from "../../state/pane-scroll-registry";
@@ -332,10 +333,11 @@ function ArticleReaderView({
     if (direction > 0 && scrollBox.scrollTop === before && hiddenCount > 0) setExpanded(true);
   }, [height, hiddenCount]);
 
+  const navigation = useKeybindings();
   useShortcut((event) => {
     if (event.defaultPrevented || event.targetEditable) return;
     let handled = true;
-    const line = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
+    const line = matchesNavigationKey(navigation, "down", event) ? 1 : matchesNavigationKey(navigation, "up", event) ? -1 : 0;
     if (line && scrollRef.current) scrollByLines(scrollRef.current, line);
     else if (event.name === "space" && !event.ctrl && !event.meta && !event.alt) page(event.shift ? -1 : 1);
     else if (isPlainKey(event, "]")) jump(1);

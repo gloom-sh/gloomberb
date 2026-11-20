@@ -858,7 +858,7 @@ Plugins contribute data and services through capabilities. A capability declares
 
 - `asset-data` for quotes, financials, search, FX, price history, options, filings, holders, analyst research, corporate actions, earnings calendars, article summaries, and quote streams.
 - `news` for ticker and global news feeds.
-- `chart-series` for searchable provider-owned time series that resolve into normal chart data. To put a series in the data catalog, register it as a [data catalog series](#data-catalog-series) instead; the registry gives it a `chart-series` capability of its own. A raw `chartSeriesProvider` is for an index too large to list, such as the map's place series, whose entries are found by search.
+- `chart-series` for searchable provider-owned time series that resolve into normal chart data. To put a series in the data catalog, register it as a [data catalog series](#data-catalog-series) instead; the registry gives it a `chart-series` capability of its own. A raw `chartSeriesProvider` is for an index too large to list, such as the map's place series, whose entries are found by search. Its `resolve` is asked as a loaded series is: `viewport.resolution` is `auto` or a size sources serve, `barSize` the size the chart builds from it (`1h` and `4h`), and `viewport.extendedHours` says the chart draws pre-market and after-hours bars.
 - `plugin-service` for narrow renderer-safe service escape hatches.
 
 To connect your own entitled feed API, see [Bring your own licensed market data](docs/market-data-plugins.md): one synthetic quote adapter, contract/venue mapping, fallback and an isolated CLI check.
@@ -961,7 +961,7 @@ export default {
 | `limitation` | One sentence on a limit the publisher sets on the data, such as a cap on how far back its history goes (`History limited to 3 years by the publisher.`). The catalog shows it as a warning on the selected series. |
 | `input` | `ticker`, `option` or `crypto`: the series is one per symbol. The catalog asks for the symbol, typing a ticker in the catalog fills it in, and `load` receives it as `ticker`. |
 | `placement` | Where a chart draws the series when it is added: `price` over its ticker's price, on the price's axis (a moving average, a band; needs `input: "ticker"` and is in the ticker's currency, unit `currency`), or `panel` in a panel of its own under the price (an oscillator). CAT then opens the ticker's price with the series placed. Without it, the series joins the main panel when it fits. |
-| `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning, attribution }`. `request.resolution` is the bar size the chart draws prices in (`1d`, `1wk`, `5m`), so a series computed from a ticker's bars can use the same bars. When the chart builds its bars from shorter ones (`4h` from `1h`, `2d` from `1d`), `request.resolution` is the size it loads and `request.barSize` the size it draws; `aggregatePriceBars` from `gloomberb/time-series` builds them the same way, from the session's open, and a series that ignores `barSize` still gets bars it knows. `request.signal` aborts when the chart no longer needs the load; for a series with `lines`, once none of its lines does. `attribution: { source, publisher? }` names the dataset a report of the series alone cites (`FRED series ECBDFR`, published by the European Central Bank) in place of Gloom Cloud. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
+| `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning, attribution }`. `request.resolution` is the bar size the chart draws prices in (`1d`, `1wk`, `5m`), so a series computed from a ticker's bars can use the same bars. When the chart builds its bars from shorter ones (`4h` from `1h`, `2d` from `1d`), `request.resolution` is the size it loads and `request.barSize` the size it draws; `aggregatePriceBars` from `gloomberb/time-series` builds them the same way, from the session's open, and a series that ignores `barSize` still gets bars it knows. Pass it `request.resolution` too, so a thinly traded ticker's bars are read at their size. `request.extendedHours` is set when the chart draws minute or hour bars with pre-market and after-hours trading, whose sessions start at 04:00 New York: ask for that session and pass `extendedHours` to `aggregatePriceBars`, and the series' bars start where the chart's do. `request.signal` aborts when the chart no longer needs the load; for a series with `lines`, once none of its lines does. `attribution: { source, publisher? }` names the dataset a report of the series alone cites (`FRED series ECBDFR`, published by the European Central Bank) in place of Gloom Cloud. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
 | `lines` | Several lines drawn together, such as a band's middle and edges: up to sixteen `{ id, name, style?, color?, fill? }`, all added to a chart at once. `color` is `#rrggbb`. `fill` names another line: the area between the two is shaded in this line's colour, under the lines. `load` then returns `{ lines: { [id]: points } }` (`SeriesLinesLoadResult`) and runs once for all of them. A chart names one line as `CAP:namespace:name~id`. |
 | `refreshMs` | For a series that moves during the day: how often a chart showing it loads it again, at least 60000. |
 | `style` | `line` (the default), `area`, `step`, `columns` or `points`. |
@@ -984,6 +984,8 @@ A plugin has two local stores. Both persist across restarts; they differ in who 
 
 - `ctx.persistence` holds versioned state and cached resources with TTLs. Nothing is notified when it changes, so use it for data that code reads when it runs: `setup()`, commands, capability handlers. `createPluginCache` from `gloomberb/utils` is built on it.
 - `ctx.resume` holds state that panes render. `ctx.resume.getState`/`setState` is the plugin-global store behind `usePluginState`, and a write re-renders every pane reading that key. `ctx.resume.getPaneState`/`setPaneState` is the per-pane store behind `usePluginPaneState`; it belongs to the active layout and can travel with a shared layout. Use the `ctx.resume` methods outside render, such as in a command handler, and the hooks inside a pane.
+
+Pane state is mirrored into saved layouts and written to `config.json`. Keep choices, tabs, selections, and content that belongs to the layout (such as a Story pane's article) there. Keep replaceable feed data in a cache instead, using resources with an expiry through `ctx.persistence`.
 
 The stores have separate keys: `ctx.persistence.setState("draft")` is not visible to `usePluginState("draft")`.
 
@@ -1099,6 +1101,8 @@ await ctx.updateBrokerInstance(instance.id, { token: "new-token" });
 await ctx.syncBrokerInstance(instance.id);  // Trigger position import
 await ctx.removeBrokerInstance(instance.id);
 ```
+
+An adapter that imports on demand can omit `getStatus` and `subscribeStatus`. Gloom shows the profile as **Configured** and uses its sync result to report failures.
 
 #### Shared order ticket
 
@@ -1367,7 +1371,20 @@ function LivePricesPane() {
 }
 ```
 
-Quick settings currently support toggle fields with the `zap` icon. Unknown keys and non-toggle fields are ignored.
+The header draws a quick setting as its glyph alone, in the warning tone while it is on. Its name and state (`Live streaming: on`) are in its tooltip on the desktop and the web, and in a label over the header row while the pointer is on it in the terminal. The pane menu lists every quick setting as a toggle, so the keyboard reaches them too.
+
+Each glyph means one thing in every pane, so a reader who learned it in one pane can trust it in the next:
+
+| `icon` | Glyph | Means | Built-in panes |
+| --- | --- | --- | --- |
+| `zap` | ⚡ | Live data: quotes stream while it is on and refresh once a minute while it is off | Live streaming in Portfolio, Ticker Research, Quote Monitor, Chart, Options, Market Movers, Crypto Board and Market Heatmap |
+| `bell` | ⍾ | The pane notifies you when something new arrives | New awards above 1% of annual revenue, in Government Awards |
+| `marker` | ⌖ | A reading drawn over the data, such as today's figure over its history | Current ATM IV, in Realized Volatility |
+| `sqrt` | √ | Sizes or scales by the square root | Size by square root of market cap, in Market Heatmap |
+
+`⚡` means live data and nothing else. Use it only for a live-streaming toggle, and declare that one as `LIVE_STREAMING_QUICK_SETTING` (from `gloomberb/quotes`) so it shares its key with every other live pane. For any other toggle, pick the glyph whose meaning is what turning it on does. When none of them says that, leave the toggle in the pane's settings rather than borrowing a glyph: the settings dialog has its name and description, and a glyph that means something else tells the reader something false. A new glyph is added to the host's icon set, one terminal cell wide (no emoji) and with a desktop drawing, with the toggle that needs it.
+
+Unknown keys, and fields that are neither a toggle nor a two-option select named with `onValue`, are ignored.
 
 A setting that only applies to some of what the pane shows can say where with `visible(context)`, which gets the same context as `settings`: the control is left out of the header and the pane menu where it returns false, and the field stays in the settings dialog.
 
@@ -1473,6 +1490,8 @@ ctx.registerPaneTemplate({
 ```
 
 A shortcut that sets neither `argKind` nor `argPlaceholder` takes the argument the template's `headless` definition declares, so the command bar reads `PF Family` as `gloom fn PF Family` does. `shortcut.argError(arg, context)` says why a typed argument opens nothing, or returns null: for `PF Nope` it returns `{ message: 'No portfolio or watchlist named "Nope"', detail: "Try Main Portfolio or Family" }`. The bar shows the message in place of the function's row, disabled, with the function's code where its row has it and the detail on the line under it, and the pane does not open for that argument.
+
+Links (`gloomberb://fn/CODE?arg=...`, `term.gloom.sh/?fn=CODE&arg=...`) and function codes in chat messages pass an argument from somebody else's words. A ticker, a ticker list or one of `argOptions` opens the pane at once. Other text only does when the shortcut sets `argOnlySelects: true`, saying the text only picks what the pane shows; without it a link waits for a click on a notice that shows the command, and a chat message draws no chip. Leave it out when `createInstance` acts on the text (asks it, starts something, saves it).
 
 If `createInstance` fetches live data or has side effects, set `catalogSettings` to the settings the catalog should describe, or `{}` when they depend on the user's argument. Catalog discovery reads that object without opening the pane; actual launches still call `createInstance`. Without `catalogSettings`, discovery derives settings by calling `createInstance` with a sample argument.
 
@@ -1852,7 +1871,7 @@ export default {
 Every pane has to work with no mouse, in the terminal and on the desktop. Most of it comes from the kit, as long as the pane uses it:
 
 - **Footer hints are key bindings.** `usePaneFooter("my-pane", () => ({ hints: [{ id: "add", key: "a", label: "dd", onPress: add }] }), [add])` both draws the hint and binds `a` while the pane is focused and no field owns the keyboard. `label` is what the terminal writes after `[key]`: the rest of the word when the key is its first letter (`label: "dd"` is `[a]dd`), and a space and the words when it is not (`{ key: "x", label: " remove" }` is `[x] remove`); a key that is not one letter (`Enter`, `Esc`, `/`, `Ctrl+S`) is followed by its words (`label: "pick"`). The desktop app and the web draw the key in a keycap before the whole words, "add" and "remove", read from that label. A whole word right after a letter key (`{ key: "m", label: "re-arm" }`) needs a `title` or an `id` that names it (`title: "Re-arm"`, or `id: "rearm"`), or it reads "mre-arm". A pane does not bind a hinted key a second time. If it must (the key does something slightly different in one mode), its handler calls `event.preventDefault()` when it acts, or the footer fires the hint again. Keys use the keybinding grammar: `a`, `!`, `/`, `Enter`, `Ctrl+S`.
-- **The pane menu lists everything.** `.`, `Shift+F10` or the Menu key (and the `...` button) open the focused pane's menu: every enabled footer hint with its key, then entries the pane's kit controls add, the zap quick settings as toggles, then Settings, Fullscreen, Move to New Layout (or Move Back), Float, Lock, Close and the window actions. Give a hint a `title` when its key is not the first letter of the action (`{ key: "x", label: "port all", title: "Export All" }`); otherwise the menu reads `[a]dd` as "Add".
+- **The pane menu lists everything.** `.`, `Shift+F10` or the Menu key (and the `...` button) open the focused pane's menu: every enabled footer hint with its key, then entries the pane's kit controls add, the quick settings as toggles, then Settings, Fullscreen, Move to New Layout (or Move Back), Float, Lock, Close and the window actions. Give a hint a `title` when its key is not the first letter of the action (`{ key: "x", label: "port all", title: "Export All" }`); otherwise the menu reads `[a]dd` as "Add".
 - **Actions without a key** go in the pane menu with `usePaneMenuItems(id, () => items, deps)`. The items follow `PaneFooterScope` like hints, so an inactive tab's items drop out.
 - **Kit controls register themselves.** A focused `DataTableView` whose headers sort (it has `onHeaderClick`) offers "Sort by…" and "Reverse Sort" (`isColumnSortable` leaves out a column its header click ignores; `onSortChange` makes Reverse Sort flip a header that also cycles through unsorted), one whose columns move offers "Move Column…" and, once the reader has moved one, "Reset Columns", and it moves its cursor on `Home`/`End`/`PageUp`/`PageDown`. A `QueryBar` binds `/` to its search and lists every filter, the view and "Clear Filters". A focused `Tabs` strip lists New/Close/Move Tab for the handlers it has. The first kit `Button` in an `EmptyState` or `PaneStatusBody` `actions` answers `Enter` and shows it; every action there is in the pane menu.
 - An inline action that has to stay a body button (an action beside a failure) goes in `ButtonActionScope`, which gives its first kit `Button` Enter and lists every one in the pane menu. Links and ticker badges in a detail go in `PaneLinkMenu`, which lists each as "Open …" in the pane menu.
@@ -1863,6 +1882,20 @@ Every pane has to work with no mouse, in the terminal and on the desktop. Most o
 - `useActionShortcut("pane-menu")` from `gloomberb/ui` returns the key the host advertises for an action (or `plugin:<id>`), for a tooltip or a `Button`/`IconButton` `shortcut`. Desktop `IconButton` tooltips show the shortcut.
 - **Key labels follow the host.** On a Mac (the desktop app and a Mac browser) keys read in Apple's notation, `⇧⌘F`, `⌃S`, `⇧↩`; the terminal, Windows and Linux spell them out, `Ctrl+Shift+F`. Write keys in the keybinding grammar (`Ctrl+S`, `Shift+Enter`, `CmdOrCtrl+F`): footer hints, `Button` and `IconButton` shortcuts, menu accelerators and dialog key hints show them in the host's notation. A key named inside a sentence goes through `useShortcutLabel()` from `gloomberb/ui`: `` `press ${useShortcutLabel()("Ctrl+S")} to save` ``. Never write `Cmd+` or `Ctrl+` into copy.
 - Pane keys are single unmodified letters that the app has not reserved. The reserved keys are listed in [pane conventions](docs/pane-conventions.md#8-sidebars-loading-input).
+
+### Configurable navigation
+
+Shared controls read the `navigate-left`, `navigate-right`, `navigate-up`,
+`navigate-down`, `navigate-prev-view` and `navigate-next-view` actions from the
+user's keybinding table. Custom controls can import `useNavigationKey` and
+the `NavigationAction` type from `gloomberb/react`. Call `useNavigationKey()`
+in the component, then use `isNavigationKey("left", event)` with the returned
+matcher and the event from `useShortcut`, instead of hardcoding `h`.
+Navigation is scoped to the focused control and yields to global shortcuts
+and editable fields. A filtered list that intentionally lets arrows move its
+results while typing can pass `{ allowEditable: true }`; typing chords still
+stay with the field. Do not register navigation as a global shortcut.
+
 
 ## UI guidelines for plugins
 

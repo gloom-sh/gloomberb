@@ -251,6 +251,11 @@ export function comparisonDisplayBounds(bounds: DateBounds, comparison: PriceCom
  * after the reference time moves it on; a closed market (a night, a weekend)
  * moves it back, so the plot does not end in an empty stretch that the first
  * pan would then collapse.
+ *
+ * It never moves back past a newer observation of another series: a weekly or
+ * monthly bar is dated at its period's start (BKLN's November bar at 1 Nov), and
+ * a daily series beside it (a high-yield spread, observed through 19 Nov)
+ * would otherwise lose every day after that date.
  */
 export function followLatestMarketObservation(
   bounds: DateBounds,
@@ -258,18 +263,23 @@ export function followLatestMarketObservation(
 ): DateBounds {
   if (bounds.end === null) return bounds;
   let latest = Number.NEGATIVE_INFINITY;
+  let other = Number.NEGATIVE_INFINITY;
   for (const entry of series) {
-    if (entry.timeBasis?.kind !== "market") continue;
+    const market = entry.timeBasis?.kind === "market";
     for (const point of entry.points) {
       const timestamp = point.date.getTime();
-      if (Number.isFinite(timestamp) && timestamp > latest) latest = timestamp;
+      if (!Number.isFinite(timestamp)) continue;
+      if (market) latest = Math.max(latest, timestamp);
+      else if (point.value !== null && timestamp <= bounds.end) other = Math.max(other, timestamp);
     }
   }
-  if (!Number.isFinite(latest) || latest === bounds.end) return bounds;
-  const shift = latest - bounds.end;
+  if (!Number.isFinite(latest)) return bounds;
+  const end = Math.max(latest, other);
+  if (end === bounds.end) return bounds;
+  const shift = end - bounds.end;
   return {
     start: bounds.start === null ? null : bounds.start + shift,
-    end: latest,
+    end,
   };
 }
 

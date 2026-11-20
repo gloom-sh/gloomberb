@@ -13,8 +13,10 @@ import { declaredDividendCash, declaredDividends } from "./declared-dividends";
  * the rate divided back.
  */
 export const LATEST_DISTRIBUTION = "latest distribution annualized";
+/** What a forward rate is when it is the trailing year's regular payments: the label exports give it. */
+export const TRAILING_REGULAR_PAYMENTS = "trailing regular payments";
 /** The basis of a forward rate that is the year's regular payments, which differ too widely for one to be annualized (unevenRegularPayments). */
-export const UNEVEN_REGULAR_PAYMENTS = "trailing regular payments: uneven interims";
+export const UNEVEN_REGULAR_PAYMENTS = `${TRAILING_REGULAR_PAYMENTS}: uneven interims`;
 
 /**
  * What a trailing dividend yield is everywhere it shows (DVD, a fund's in

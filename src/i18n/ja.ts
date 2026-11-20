@@ -1618,6 +1618,7 @@ export const ja: Record<string, string> = {
   "Friend or colleague": "友人・同僚",
   "Article or newsletter": "記事・ニュースレター",
   "Where?": "どこで？",
+  "Which account or post?": "どのアカウントや投稿ですか？",
   "Skip": "スキップ",
   "Equities": "株式",
   "Futures & commodities": "先物・コモディティ",

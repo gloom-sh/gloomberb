@@ -31,7 +31,11 @@ test("surface evidence requires finite plotted quads backed by source observatio
   expect(evidence.expiries[0]!.asOf).toBe("2026-09-22T13:45:00Z");
   const singleRow = { ...rendered, grid: { ...rendered.grid!, rows: rendered.grid!.rows.slice(0, 1),
     tenors: rendered.grid!.tenors.slice(0, 1), volatilities: rendered.grid!.volatilities.slice(0, 1) } };
-  expect(readVolSurfaceEvidence(volSurfaceSemanticEvidence(singleRow))).toBeNull();
+  // One expiry makes no sheet: the surface view draws its values as the 2D grid, and says so, never as a sheet.
+  const single = volSurfaceSemanticEvidence(singleRow);
+  expect([single.renderer, single.plottedValueCount]).toEqual(["grid", 3]);
+  expect(readVolSurfaceEvidence(single)).not.toBeNull();
+  expect(readVolSurfaceEvidence({ ...single, renderer: "bitmap" })).toBeNull();
   expect(readVolSurfaceEvidence(volSurfaceSemanticEvidence({ ...singleRow, bitmapAvailable: false }))).not.toBeNull();
   expect(readVolSurfaceEvidence({ ...evidence, plottedValueCount: 99 })).toBeNull();
   expect(readVolSurfaceEvidence({ ...evidence, sourcePointCount: 0 })).toBeNull();

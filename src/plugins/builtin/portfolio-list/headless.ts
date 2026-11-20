@@ -1,4 +1,6 @@
 import { createBaseConverter } from "../../../cli/base-converter";
+import { baseConversionLabel } from "../../../cli/base-conversion-label";
+import { heldCurrencyUnit } from "../../../utils/currency-units";
 import type {
   HeadlessPaneColumn,
   HeadlessPaneContext,
@@ -56,7 +58,7 @@ import { describeCollections } from "../../../portfolio/collection-name";
 import { currentListingName } from "../../../tickers/listing-name";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { readPriceWindow, type PriceWindow } from "../../../utils/price-window";
-import { loadPeriodPnl, periodBasisText, periodBoughtText, periodCurrencyParts, periodFxLabel, periodUnpricedText } from "./period-pnl";
+import { loadPeriodPnl, periodBasisText, periodBoughtText, periodCurrencyParts, periodFxLabel, periodFxMarks, periodUnpricedText } from "./period-pnl";
 
 /** An extended print without a known regular close cannot supply a regular-session change. */
 function regularChangeFields(quote: Quote | undefined, change: unknown) {
@@ -357,6 +359,8 @@ async function portfolioHoldings(
   });
   const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: resolved.portfolio, account: resolved.account, toBase });
   ctx.signal.throwIfAborted();
+  const fxMarks = toBase.conversions();
+  const fxByCurrency = new Map(fxMarks.map((mark) => [mark.currency, baseConversionLabel(mark)]));
 
   const allocationBySymbol = new Map(allocation.rows.map((row) => [row.symbol, row]));
   const held = valuation.positions.filter((entry) => entry.position);
@@ -479,6 +483,12 @@ async function portfolioHoldings(
   const positionColumns = allocation.weightBasis === "gross"
     ? POSITION_COLUMNS.map((column) => column.key === "weight" ? { ...column, description: GROSS_WEIGHT_DESCRIPTION } : column)
     : POSITION_COLUMNS;
+  for (const row of shown) {
+    const quoteCurrency = typeof row.valuationCurrency === "string" ? row.valuationCurrency : row.priceCurrency;
+    if (typeof quoteCurrency !== "string") continue;
+    const from = heldCurrencyUnit(quoteCurrency).currency;
+    if (from !== heldCurrencyUnit(currency).currency) row.fxMark = fxByCurrency.get(from) ?? "Rate unavailable";
+  }
   const columns = withListingLabels(
     withExtendedColumns(withBookCurrency([...positionColumns, ...(showTargets ? TARGET_COLUMNS : []), VALUATION_TIME_COLUMN], currency), extendedSessions),
     tickers,
@@ -493,7 +503,9 @@ async function portfolioHoldings(
       citeOldest: true,
       note: `priced at ${valuationBasisText(basis, holdsFutures(valuation), marketsStillTrading(valuation))}`,
     },
-    columns,
+    columns: shown.some((row) => row.fxMark) ? [...columns, { key: "fxMark", header: "Market-value FX" }] : columns,
+    notes: fxMarks.length ? [`Market-value FX: ${[...fxByCurrency.values()].join("; ")}`] : undefined,
+    ...(!lotted && shown.some((row) => row.fxMark) ? { textColumns: columns } : {}),
     rows: shown,
     ...(lotted ? { textColumns: lotted.columns, textRows: lotted.rows } : {}),
     complete: errors.length === 0,
@@ -502,6 +514,7 @@ async function portfolioHoldings(
       collection: { kind: "portfolio", id: target.id, name: target.name, broker },
       ...(target.portfolio.importedFrom ? { importedFrom: target.portfolio.importedFrom } : {}),
       currency,
+      ...(fxMarks.length ? { fxMarks } : {}),
       valuationBasis: basis,
       positions: rows.length,
       totals: {
@@ -597,6 +610,7 @@ async function portfolioPeriodHoldings(
       pnl: row.pnl,
       fx: row.fx,
       contribution: row.contribution,
+      ...periodFxMarks(result, row),
     };
   });
   // An FX line per currency, then the total; the book by currency under them, as portfolio show --from prints it.
@@ -631,7 +645,8 @@ async function portfolioPeriodHoldings(
       status: "not-a-feed",
       basis: `daily closes, ${window.from} to ${window.to}`,
     },
-    columns: withListingLabels(withBookCurrency(PERIOD_COLUMNS, currency), tickers),
+    columns: withListingLabels(withBookCurrency(rows.some((row) => row.startFx || row.endFx) ? [...PERIOD_COLUMNS,
+      { key: "startFx", header: "Start FX" }, { key: "endFx", header: "End FX" }] : PERIOD_COLUMNS, currency), tickers),
     rows,
     ...(byCurrency.length ? {
       textSections: [{ title: "By currency", columns: byCurrencyColumns, rows: byCurrency }],

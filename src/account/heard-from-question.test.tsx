@@ -48,9 +48,9 @@ describe("the question in the app", () => {
     await act(async () => markHeardFromDue("u1"));
     const frame = await tui.waitForFrameToContain(TITLE);
     expect(frame).toContain("Friend or colleague");
-    await press("down", "enter");
+    await press("down", "down", "down", "down", "down", "enter");
     await tui.waitForFrameToExclude(TITLE);
-    expect(calls).toEqual(["shown", "youtube"]);
+    expect(calls).toEqual(["shown", "reddit"]);
   });
 
   test("Esc skips it for good", async () => {
@@ -80,6 +80,32 @@ describe("the question in the app", () => {
     await press("a podcast", "enter");
     await tui.waitForFrameToExclude(TITLE);
     expect(calls).toEqual(["shown", "other: a podcast"]);
+  });
+
+  test("Instagram is kept at once, then asks which account or post", async () => {
+    const calls = signedInAs(true);
+    await tui.render(<HeardFromQuestionHost />, { width: 100, height: 40 });
+    await act(async () => markHeardFromDue("u1"));
+    await tui.waitForFrameToContain(TITLE);
+    await press("down", "down", "down", "enter");
+    await tui.waitForFrameToContain("Which account or post?");
+    // Kept before a word of the note is written.
+    expect(calls).toEqual(["shown", "instagram"]);
+    await press("@la_bourse", "enter");
+    await tui.waitForFrameToExclude(TITLE);
+    expect(calls).toEqual(["shown", "instagram", "instagram: @la_bourse"]);
+  });
+
+  test("Esc from which account or post closes the card and keeps the answer", async () => {
+    const calls = signedInAs(true);
+    await tui.render(<HeardFromQuestionHost />, { width: 100, height: 40 });
+    await act(async () => markHeardFromDue("u1"));
+    await tui.waitForFrameToContain(TITLE);
+    await press("down", "down", "enter");
+    await tui.waitForFrameToContain("Which account or post?");
+    await press("escape");
+    await tui.waitForFrameToExclude(TITLE);
+    expect(calls).toEqual(["shown", "tiktok"]);
   });
 
   test("waits for the card already up (the companies to follow) to close", async () => {

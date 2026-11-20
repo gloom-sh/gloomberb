@@ -4,7 +4,6 @@ import type {
   HeadlessPaneEntry,
 } from "../../../types/plugin";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
-import { fredCitation, fredPublisher } from "../../../sources/gloomberb-cloud/fred-publisher";
 import { FRED_CATALOG_SERIES } from "../econ/fred-catalog";
 import { FRED_VINTAGE_NOTE, laggingSeriesNote } from "../../../cli/commands/fred-series";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
@@ -12,6 +11,7 @@ import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import type { StatDef } from "./defs";
 import {
   createStatSeriesLoader,
+  gdpNowCalendarFrom,
   loadStatsBundle,
   unansweredErrors,
   type StatsBundle,
@@ -50,9 +50,11 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
       label: "Previous",
       value: view.previous?.value ?? null,
       formatted: view.previous ? `${format(view.previous.value)}${text && view.previousReading ? ` (${view.previousReading})` : ""}` : MISSING_VALUE,
-      ...earlierDating(view, view.previous),
+      ...(view.stat.seriesId === "GDPNOW" && view.previous
+        ? { period: view.latest.date, released: view.previous.date, asOf: view.previous.date }
+        : earlierDating(view, view.previous)),
     },
-    ...!text && view.previous ? [{ label: "Previous period", value: view.previous.date, formatted: view.previousReading ?? view.previous.date, ...earlierDating(view, view.previous) }] : [],
+    ...!text && view.previous && view.stat.seriesId !== "GDPNOW" ? [{ label: "Previous period", value: view.previous.date, formatted: view.previousReading ?? view.previous.date, ...earlierDating(view, view.previous) }] : [],
     {
       label: "1Y ago",
       value: view.yearAgo?.value ?? null,
@@ -93,7 +95,7 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
     // A Treasury yield adds when in the day it was taken, so it is not read against ^TNX's earlier close.
     // A figure dated by its period also says when it was released: "Sep 2026, released Tue 20 Oct".
     { label: "Period", value: view.latest.date, formatted: view.stat.cutoff && !cutoffShown ? `${view.reading} ${view.stat.cutoff}` : view.readingReleased },
-    { label: "Source", value: fredCitation(view.stat.seriesId) },
+    { label: "Source", value: view.attribution.source },
   ];
 }
 
@@ -142,6 +144,7 @@ export function projectStatsHeadlessBundle(
   const sections = STAT_CATEGORIES.flatMap((category) => {
     const categoryViews = views.filter((view) => view.stat.category === category.id);
     if (categoryViews.length === 0) return [];
+    const hasPublication = categoryViews.some((view) => view.attribution.publishedAt);
     // The text table keeps the columns a terminal has room for; exports add what each figure is of.
     const columns = (text: boolean) => [
       { key: "indicator", header: "Indicator" },
@@ -159,6 +162,7 @@ export function projectStatsHeadlessBundle(
       },
       // Which period Previous is: exports carry it beside the figure, the text table has its Period column for the latest.
       ...text ? [] : [{ key: "previousPeriod", header: "Previous period" }],
+      ...(!text && views.some((view) => view.stat.seriesId === "GDPNOW") ? [{ key: "previousReleased", header: "previous_released", literalHeader: true }] : []),
       {
         key: "percentile",
         header: "%ile",
@@ -179,6 +183,7 @@ export function projectStatsHeadlessBundle(
         { key: "revisedOn", header: "revised_on", literalHeader: true },
         { key: "firstReleaseValue", header: "first_release_value", literalHeader: true,
           format: (_value: unknown, row: Record<string, unknown>) => typeof row.formattedFirstRelease === "string" ? row.formattedFirstRelease : "" },
+        ...(hasPublication ? [{ key: "publishedAt", header: "published_at", literalHeader: true }] : []),
       ],
     ];
     return [{
@@ -191,19 +196,20 @@ export function projectStatsHeadlessBundle(
       rowUnitKey: "unit",
       rowIntervalKey: "interval",
       rowSourceKey: "source",
-      appendedColumns: 3,
+      appendedColumns: hasPublication ? 4 : 3,
       rows: categoryViews.map((view) => savedCopyRow(view, {
         id: view.stat.id,
         indicator: view.stat.shortLabel,
         seriesId: view.stat.seriesId,
         unit: exportUnit(view.stat),
         interval: FRED_CATALOG_SERIES.find((series) => series.id === `fred:${view.stat.seriesId}`)?.frequency ?? (view.periodicity ?? "daily"),
-        source: fredCitation(view.stat.seriesId),
+        ...view.attribution,
         latest: view.latest.value,
         formattedLatest: reportFormat(view.stat)(view.latest.value),
         previous: view.previous?.value ?? null,
         formattedPrevious: view.previous ? reportFormat(view.stat)(view.previous.value) : MISSING_VALUE,
-        previousPeriod: view.previous?.date ?? null,
+        previousPeriod: view.previous ? view.stat.seriesId === "GDPNOW" ? view.latest.date : view.previous.date : null,
+        previousReleased: view.stat.seriesId === "GDPNOW" ? view.previous?.date ?? null : null,
         // A spread's values stay in percentage points; these carry the figures its text shows.
         ...(view.stat.basisPoints ? {
           latestBasisPoints: toBasisPoints(view.latest.value),
@@ -237,7 +243,7 @@ export function projectStatsHeadlessBundle(
   const cutoff = cutoffs.size === 1 ? [...cutoffs][0] : undefined;
   return {
     freshness: { ...ECST_FRESHNESS, ...(cutoff ? { schedule: cutoff } : {}),
-      ...(selected ? { source: fredCitation(selected.stat.seriesId), publisher: fredPublisher(selected.stat.seriesId) ?? undefined } : {}) },
+      ...selected?.attribution },
     sections: [
       ...sections,
       ...(selected ? [{
@@ -245,7 +251,7 @@ export function projectStatsHeadlessBundle(
         symbol: selected.stat.seriesId,
         unit: exportUnit(selected.stat),
         interval: FRED_CATALOG_SERIES.find((series) => series.id === `fred:${selected.stat.seriesId}`)?.frequency ?? (selected.periodicity ?? "daily"),
-        source: fredCitation(selected.stat.seriesId),
+        source: selected.attribution.source,
         entries: detailEntries(selected, cutoff != null, false),
         textEntries: detailEntries(selected, cutoff != null, true),
         ...exportDating(selected),
@@ -327,6 +333,7 @@ export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const range = args.options.range as StatRangeId;
     const bundle = await loadStatsBundle({
       loader: createStatSeriesLoader(ctx.apiClient),
+      gdpNowCalendar: gdpNowCalendarFrom(ctx.apiClient),
       ...(requested ? { stats: [requested] } : {}),
     });
     const report = projectStatsHeadlessBundle(bundle, range, requested?.id ?? DEFAULT_STAT_ID);

@@ -474,6 +474,21 @@ describe("CompositeChart", () => {
     expect(frame).toContain("$2.55");
   });
 
+  test("a yield chart redraws its absolute session move even when the last level does not change", async () => {
+    let setMove: ((value: number) => void) | undefined;
+    const base = { ...series("yield", "main", "left", "%", [4.089, 4.125]), label: "^TNX Yield", unitGroup: "price:%" };
+    function YieldChart() {
+      const [move, set] = useState(3.6);
+      setMove = set;
+      return <CompositeChart width={78} height={12} series={[{ ...base, latestChangeBasisPoints: move }]}
+        panels={[{ id: "main" }]} showLatestChangePercent />;
+    }
+    await tui.render(<YieldChart />, { width: 80, height: 14 });
+    await tui.waitForFrameToContain("^TNX Yield 4.125% +3.6bp");
+    await act(async () => { setMove?.(-2.1); });
+    await tui.waitForFrameToContain("^TNX Yield 4.125% -2.1bp");
+  });
+
   test("a statement value names the fiscal period under the cursor, and a market price names none", async () => {
     const revenue = series("revenue", "main", "left", "USD", [90, 110, 100]);
     revenue.points = revenue.points.map((entry, index) => ({ ...entry, fiscalPeriod: ["Q1 FY26", "Q2 FY26", "Q3 FY26"][index] }));

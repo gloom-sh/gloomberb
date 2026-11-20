@@ -33,10 +33,12 @@ import { optionsClosedNotice, useLiveSessionRefresh, useOptionsSessionOpen, usOp
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { hasFreshReadyEntry } from "../../../market-data/coordinator/entries";
 import { createSurfaceDependencies, loadVolatilitySurface, withReusedYieldCurve, type SurfaceLoadRequest } from "./client";
-import { stableSurfaceSheet, SURFACE_LIVE_RELOAD_MS, surfaceFreshnessLabel, type SurfaceSheetAxes } from "./live";
+import { stableSurfaceSheet, SURFACE_LIVE_RELOAD_MS, surfaceFeedFreshness, surfaceFreshnessLabel, type SurfaceSheetAxes } from "./live";
 import { loadStoredSurface, loadSurfaceDates } from "../iv-history/client";
 import { useIvRank } from "../iv-history/rank";
-import { formatCaptureTime, storedSurfaceSnapshot, type DatedSurfaceSnapshot } from "./stored";
+import { formatCaptureTime, storedSurfaceFreshness, storedSurfaceSnapshot, type DatedSurfaceSnapshot } from "./stored";
+import { useShownObservationFooter } from "../shared/source-footer";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useVolSurfaceEvidence } from "./evidence";
 import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, surfaceFilterSummary, totalSurfaceFilterCounts, windowSurfaceGrid,
   type SurfaceExpiry, type SurfaceGridRow, type SurfaceSettings, type SurfaceSnapshot } from "./model";
@@ -452,8 +454,15 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     ...(active.error ? [active.error] : []), ...(liveRefresh.error ? [liveRefresh.error] : [])];
   const spotBasis = snapshot && !snapshot.stored ? surfaceSpotBasisLabel(snapshot) : null;
   // What the quotes are and when they were observed; a reload moves the time.
-  const freshness = !snapshot ? null : snapshot.stored ? `stored close ${snapshot.stored.sessionDate}`
+  const freshness = !snapshot || snapshot.stored ? null
     : active.savedAt == null ? surfaceFreshnessLabel(snapshot, CLOUD_QUOTE_DELAY_MINUTES) : null;
+  // A stored close, picked or standing in while the chain is closed, is dated by its session wherever the pane is read:
+  // its footer, `fn OVDV --date` and a capture's status line all say it, never the live quote of the underlying.
+  const storedDate = snapshot?.stored?.sessionDate ?? null;
+  const storedSource = useShownObservationFooter(storedDate ? { freshness: storedSurfaceFreshness(storedDate), options: { date: storedDate } } : null);
+  // A live chain is dated by its quotes, the oldest loaded expiry's, as every view of it is: the smile's report and OMON's.
+  const liveFeed = snapshot && !snapshot.stored ? surfaceFeedFreshness(snapshot, CLOUD_QUOTE_DELAY_MINUTES) : null;
+  useRemoteUiNode(liveFeed ? { role: "report-freshness", label: "Surface freshness", getMetadata: () => ({ ...liveFeed }) } : null);
   // The cell under the cursor on the views that have one: the quoted contract it came from, or the fitted value.
   const selectionStatus = !snapshot || !["surface", "table", "smile"].includes(activeTab) ? null
     : selectedCell?.point
@@ -469,7 +478,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     info: [
       ...(active.loading ? [{ id: "loading", parts: [{ text: snapshot && snapshot.loaded < snapshot.requested
         ? `loading ${snapshot.loaded}/${snapshot.requested} expiries` : "loading", tone: "muted" as const }] }] : []),
-      ...(freshness ? splitDelayedStatus({ id: "source", parts: [{ text: freshness, tone: "muted" }] }) : []),
+      ...(storedSource ? [storedSource] : freshness ? splitDelayedStatus({ id: "source", parts: [{ text: freshness, tone: "muted" }] }) : []),
       // Chains (and a coin's DVOL) kept from an earlier load say when they were saved; anything else old says stale.
       ...(savedAt != null ? [savedCopyFooterSegment("saved-copy", savedAt)]
         : snapshot?.expiries.some((entry) => entry.stale) ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
@@ -490,7 +499,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         { id: "older", key: "<", label: "older", title: "Older Stored Date", onPress: () => stepHistory(1) },
         { id: "newer", key: ">", label: "newer", title: "Newer Stored Date", onPress: () => stepHistory(-1) }] : []),
     ],
-  }), [snapshot, freshness, active.loading, historyDate, storedDates, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, selectionStatus, openChain, deltaSurface, savedAt]);
+  }), [snapshot, freshness, storedSource, active.loading, historyDate, storedDates, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, selectionStatus, openChain, deltaSurface, savedAt]);
   // Keys that move the selection without a footer hint of their own, listed in
   // the pane menu with their keys.
   const menuActions = useRef({ nextExpiry, stepSurfacePoint, zoomCamera });

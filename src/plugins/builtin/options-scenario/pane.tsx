@@ -30,7 +30,9 @@ import { ScenarioPayoffChart } from "./charts";
 import { ScenarioLegEditor, ScenarioSaveForm, ScenarioInputsForm } from "./editor";
 import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, scenarioSpotBasis, scenarioSpotStamp, scenarioSpotStampVariants, suppliedScenarioInputs,
   type ScenarioMarketSnapshot } from "./client";
-import { scenarioFreshness } from "./freshness";
+import { earlierOptionSession, scenarioFreshness, scenarioQuoteTime } from "./freshness";
+import { loadScenarioFx, scenarioMoneyTotals, scenarioNeedsFx } from "./base-totals";
+import { baseConversionLabel } from "../../../cli/base-conversion-label";
 import { cashSecuredPut, cspStatItems, loadNextEarningsDate } from "./csp";
 import { collarStatItems, scenarioCollar } from "./collar";
 import { useAssetData } from "../../runtime";
@@ -186,6 +188,18 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const collarStrategy = settings.strategy === "collar";
   const collar = useMemo(() => scenario && (collarStrategy || scenario.position.underlying)
     ? scenarioCollar(scenario.position, live?.basis ?? spotBasis ?? "last price") : null, [collarStrategy, scenario, live?.basis, spotBasis]);
+  const { baseCurrency, brokerInstances } = usePaneAppConfig();
+  const seedCurrency = scenario?.position.optionQuotesAt !== undefined ? scenario?.position.currency : undefined;
+  const needsFx = scenarioNeedsFx(seedCurrency, baseCurrency);
+  const loadFx = useCallback(() => seedCurrency && assetData ? loadScenarioFx(assetData, seedCurrency, baseCurrency) : Promise.resolve(null),
+    [assetData, seedCurrency, baseCurrency]);
+  const fxResource = useAsyncResource(needsFx && !frozen ? loadFx : null);
+  const quoteFx = frozen ? settings.scenarioFx as Awaited<ReturnType<typeof loadScenarioFx>> : fxResource.data;
+  const fx = needsFx && quoteFx?.currency === seedCurrency && quoteFx?.base === baseCurrency ? quoteFx : null;
+  const quoteTime = scenario?.position.optionQuotesAt;
+  const earlierSession = earlierOptionSession(quoteTime, market?.underlyingQuote ?? null);
+  const impliedEntry = earlierSession && live && storedPosition && scenarioSpotBasis(settings, storedPosition, market) === "implied by option quotes"
+    ? storedPosition.spot : null;
   // A report or capture of the pane is dated as `fn OSA` dates the same position: by the underlying's quote, its delay and where its market stands.
   const inputsOnly = suppliedScenarioInputs(settings);
   useRemoteUiNode(scenario && (market || inputsOnly) ? { role: "report-freshness", label: "Scenario freshness",
@@ -266,7 +280,6 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   // live mids, else the entry prices, say whether it opens for a debit or a credit.
   const { pinTicker } = usePluginTickerActions();
   const { getBrokerAdapter } = usePluginBrokerActions();
-  const { brokerInstances } = usePaneAppConfig();
   const tradeIntent = useMemo(() => {
     const legs = position?.legs ?? [];
     if (frozen || !underlying || !legs.length || legs.length > MAX_STRATEGY_LEGS || legs.some((leg) => leg.multiplier !== 100 || !legSymbols.get(leg.id))) return null;
@@ -327,7 +340,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       : position ? [{ id: "asof", parts: [{ text: `${spotText}${spotTimed ? "" : ` · ${formatSpotTime(position.asOf)}`} · ${market?.source ? "market" : "input assumptions"}${midVolatility}`, tone: "muted" as const }],
         variants: [[{ text: shortSpotText, tone: "muted" as const }]] }] : []),
   ], hints }), [hints, position, market?.source, resource.loading, error, hedge.error, live?.basis, live?.observedAt, midVolatility, spotText, shortSpotText]);
-  useScenarioEvidence({ scenario, view: tab, loading: !!resource.loading && !scenario, error: error ?? (snapshotErrors.join("; ") || null), notices });
+  useScenarioEvidence({ scenario, view: tab === "base-grid" ? "grid" : tab, loading: !!resource.loading && !scenario, error: error ?? (snapshotErrors.join("; ") || null), notices });
   // A choice dialog (scenario date, saved strategies) owns the keys while open.
   const dialogOpen = useDialogState((state) => state.isOpen);
   // The footer binds the hint keys. While the vol field is open, Enter, Esc and
@@ -341,11 +354,13 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       return;
     }
     if (detail && detail !== "chain" || event.targetEditable) return;
-    if (isPlainKey(event, "r")) resource.reload();
+    if (isPlainKey(event, "r")) { resource.reload(); fxResource.reload(); }
   }, { enabled: focused && !dialogOpen, phase: "before", scope: "osa-actions", allowEditable: true });
   // A detail covers the tabs, so they stop answering h/l until it closes.
   const tabsFocused = focused && !volActive && !detail;
-  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused, dense: true });
+  const displayTab = tab === "base-grid" && !fx ? "grid" : tab;
+  const tabs = fx ? [...TABS, { value: "base-grid", label: `P&L grid (${baseCurrency})` }] : TABS;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs, activeValue: displayTab, onSelect: setTab, focused: tabsFocused, dense: true });
   const risk = scenario?.expiryRisk;
   // Value and P&L add every contract; spot and entry prices are per share.
   const valueUnit = scenario ? `${currencyLabel(scenario.position.currency)} ${scenarioValueUnit(scenario.position)}` : "";
@@ -354,7 +369,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       tone: cents(scenario.valuation.pnl) >= 0 ? "positive" : "negative" },
     // A spot other than the last price says what it is: the one the quote mids imply, or a typed what-if.
     { id: "spot", label: "Spot", value: money(scenario.position.spot),
-      detail: spotBasis === "implied by option quotes" ? "per share, implied" : spotBasis === "typed" ? "per share, typed"
+      detail: spotBasis === "implied by option quotes" ? earlierSession ? "implied · earlier option session" : "per share, implied" : spotBasis === "typed" ? "per share, typed"
         : spotTimed ? `per share, ${spotStamp}` : "per share",
       // The band keeps its columns: the stamp's day, its time, then the stamp give way first.
       ...(spotTimed ? { detailVariants: [...scenarioSpotStampVariants(spotBasis!, scenario.position.asOf)
@@ -372,17 +387,28 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const hedgeItems = hedge.value ? hedgeStatItems(hedge.value) : [];
   const cspItems = csp ? cspStatItems(csp) : [];
   const collarItems = collar ? collarStatItems(collar) : [];
+  const quoteItems: StatItem[] = quoteTime === undefined ? [] : [
+    { id: "option-quotes", label: "Option quotes", value: scenarioQuoteTime(quoteTime) },
+    { id: "underlying-quote", label: "Underlying quote", value: scenarioQuoteTime(live?.observedAt ?? market?.underlyingQuote?.lastUpdated) },
+    ...(impliedEntry != null ? [{ id: "implied-entry", label: "Implied entry spot", value: money(impliedEntry), detail: "earlier option session" }] : []),
+    ...(scenario?.position.unhedgedShares ? [{ id: "odd-lot", label: "Unhedged odd lot", value: `${scenario.position.unhedgedShares} shares` }] : []),
+  ];
+  const fxItems: StatItem[] = needsFx ? [{ id: "fx", label: "FX", wide: true, value: fx?.mark ? baseConversionLabel(fx.mark)
+    : fx ? "Fixed unit conversion" : fxResource.loading ? "Loading rate…" : "Rate unavailable" },
+  ...(fx && scenario ? scenarioMoneyTotals(scenario).map(({ key, label, value, unlimited }) => ({ id: `base-${key}`, label,
+    value: unlimited ? "Unlimited" : money(value == null ? null : value * fx.factor), detail: baseCurrency })) : [])] : [];
   // The query bar and the stat band sit above the content only once a scenario prices.
   const bodyHeight = Math.max(3, height - tabRows - (scenario ? 1 + statGridRows(stats, width) : 0)
     - (hedgeItems.length ? statGridRows(hedgeItems, width) : 0) - (cspItems.length ? statGridRows(cspItems, width) : 0)
-    - (collarItems.length ? statGridRows(collarItems, width) : 0));
+    - (collarItems.length ? statGridRows(collarItems, width) : 0)
+    - (quoteItems.length ? statGridRows(quoteItems, width) : 0) - (fxItems.length ? statGridRows(fxItems, width) : 0));
   const legColumns: DataTableColumn[] = [{ id: "quantity", label: "Contracts", width: 10, align: "right" },
     { id: "side", label: "Option", width: 7, align: "left" }, { id: "strike", label: "Strike", width: 11, align: "right" },
     { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / share", width: 14, align: "right" },
     { id: "volatility", label: "IV %", width: 9, align: "right" }, { id: "multiplier", label: "Units", width: 7, align: "right" }];
   const activeContent = scenario && tab === "payoff" ? <ScenarioPayoffChart scenario={scenario} width={width} height={bodyHeight} focused={tabsFocused} session={valuedSession} />
     // Valuation dates in time order across the spot rows.
-    : scenario && tab === "grid" ? <DataTableView focused={focused && !volActive} rootWidth={width} columnReorder={false}
+    : scenario && (displayTab === "grid" || displayTab === "base-grid") ? <DataTableView focused={focused && !volActive} rootWidth={width} columnReorder={false}
       rootHeight={bodyHeight} items={scenario.grid.toSorted((a, b) => { const value = (row: typeof a) => gridSort.columnId === "spot" ? row.spot : gridSort.columnId === "move" ? row.move ?? 0 : row.values[Number(gridSort.columnId)] ?? 0; return (value(a) - value(b)) * (gridSort.direction === "asc" ? 1 : -1); })}
       sortColumnId={gridSort.columnId} sortDirection={gridSort.direction} onHeaderClick={(id) => {
         // The landmark column has no label and no order of its own.
@@ -398,7 +424,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         if (column.id === "spot") return { text: money(row.spot), color: row.landmark ? colors.warning : atSpot ? colors.textBright : colors.text };
         if (column.id === "move") return { text: row.move == null ? MISSING_VALUE : `${row.move > 0 ? "+" : ""}${(row.move * 100).toFixed(1)}`, color: colors.textMuted };
         if (column.id === "mark") return { text: row.landmark ?? (atSpot ? "spot" : ""), color: row.landmark ? colors.warning : colors.textMuted };
-        const value = cents(row.values[Number(column.id)] ?? 0);
+        const value = cents((row.values[Number(column.id)] ?? 0) * (displayTab === "base-grid" ? fx!.factor : 1));
         // Shade by size so the profit zone and the wings read at a glance.
         const peak = Math.max(1, ...scenario.grid.flatMap((entry) => entry.values.map(Math.abs)));
         return { text: money(value), color: value >= 0 ? colors.positive : colors.negative,
@@ -430,9 +456,11 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         ]}
       />
       <StatGrid items={stats} width={width} />
+      {quoteItems.length > 0 && <StatGrid items={quoteItems} width={width} />}
       {hedgeItems.length > 0 && <StatGrid items={hedgeItems} width={width} />}
       {cspItems.length > 0 && <StatGrid items={cspItems} width={width} />}
       {collarItems.length > 0 && <StatGrid items={collarItems} width={width} />}
+      {fxItems.length > 0 && <StatGrid items={fxItems} width={width} />}
     </>}
     {!position?.legs.length && !scenario ? <PaneStatusBody loading={!!resource.loading && !market} error={seeded.error} subject="scenario inputs">
       <Box paddingX={1}><EmptyState title={EMPTY_POSITION_TITLE} actions={<Button label="Add leg" onPress={addTyped} />} /></Box>

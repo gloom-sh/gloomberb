@@ -74,7 +74,7 @@ import {
   nominalSessionLabel,
 } from "../../market-data/quotes/freshness";
 import {
-  coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
+  coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, optionsUnavailableDetails, optionsUnavailableTitle,
 } from "../../market-data/options-alternatives";
 import {
   atReportTtmRate, cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions,
@@ -89,7 +89,7 @@ import type { FuturesContractTermsPayload } from "../../api-client/futures-curve
 import { currencyCodeLabel, currencyUnitLabel, resolveCurrencyUnit } from "../../utils/currency-units";
 import { fxRateDigits, quotedFxPair } from "../../utils/currency-pair";
 import {
-  futuresContractLines, futuresPricePer, futuresPriceUnit, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu,
+  futuresContractLines, futuresPricePer, futuresPriceUnit, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadFuturesPriceUnit, loadUsdPerMmbtu,
   usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
 import {
@@ -155,7 +155,7 @@ import {
 } from "../../market-data/fx-interventions";
 import { maxDrawdownText, maxRunUp, maxRunUpText, measuredUntil } from "../../utils/max-drawdown";
 import { ALL_HISTORY_REACH_MONTHS, subtractTimeRange } from "../../time-series/date-window";
-import { historyFirstBarDay, isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowInterval, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
+import { historyFirstBarDay, isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FORMATS, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowInterval, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
   BAR_INTERVAL_LABELS,
   closedPeriodBarDay,
@@ -2187,7 +2187,7 @@ async function loadListingHistory(
   const quoteAnswer = loadListingQuoteAnswer(market.dataProvider, listing);
   // A future's contract terms, asked beside the bars: its prices are in its contract's unit (US cents / bushel), as FUT
   // and G spell it, and a continuous symbol on the most traded month (GC=F) says so, as `quote` does.
-  const futures = isFuturesInstrument(symbol, null);
+  const futures = isFuturesInstrument(symbol, listing.saved?.metadata.assetCategory);
   const futuresTerms = futures ? settleWithin(loadFuturesContractTerms(symbol), HISTORY_PRICE_UNIT_WAIT_MS) : Promise.resolve(null);
   const priceUnit = futures ? futuresTerms.then((terms) => futuresPriceUnit(futuresBoardContract(symbol), terms)) : Promise.resolve(null);
   const quoted = quoteAnswer.then((answer) => answer.quote);
@@ -2223,8 +2223,10 @@ async function loadListingHistory(
   const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(logFailure("cli.commands-market", "Read quote metadata for history failed", null));
   // With neither, the currency the listing was saved with from search (TMPV on NSE trades in INR) still names the unit.
   const savedCurrency = listing.saved?.metadata.currency?.trim();
+  const contractUnit = futures ? await priceUnit : isFuturesInstrument(symbol, listed?.instrumentType ?? quote?.instrumentType)
+    ? await settleWithin(loadFuturesPriceUnit(symbol), HISTORY_PRICE_UNIT_WAIT_MS) : null;
   const unit = historyUnit(listing.key, listed?.currency || quote?.currency || !savedCurrency ? listed ?? quote
-    : { ...listed ?? quote ?? {}, currency: savedCurrency }, await priceUnit);
+    : { ...listed ?? quote ?? {}, currency: savedCurrency }, contractUnit);
   const mostTraded = /=F$/i.test(listing.symbol) && (await futuresTerms)?.roll?.mostTraded === true;
   const traded = {
     listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,
@@ -2489,12 +2491,16 @@ const HISTORY_FLAG_TEXT_COLUMN: CliResultColumn = {
   ].filter(Boolean).join(" "),
 };
 
-/** The dates `--from` and `--to` (or `--start` and `--end`) name, each given once. */
-function historyWindowOption(args: string[], rangeOption: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): PriceWindow | null {
+/**
+ * The dates `--from` and `--to` (or `--start` and `--end`) name, each given
+ * once, with the start's option as typed; `usage` is the command's, for the
+ * messages.
+ */
+function dateWindowOption(args: string[], usage: string, ctx: Parameters<CliCommandDef["execute"]>[1]): { window: PriceWindow; fromFlag: string } | null {
   const bound = (flag: string, alias: string) => {
     const value = takeOption(args, flag);
     const aliased = takeOption(args, alias);
-    if (value != null && aliased != null) ctx.fail(`${alias} is ${flag}; give one of them.`, `Usage: gloom ${HISTORY_USAGE}`);
+    if (value != null && aliased != null) ctx.fail(`${alias} is ${flag}; give one of them.`, `Usage: gloom ${usage}`);
     return { value: value ?? aliased, flag: aliased != null ? alias : flag };
   };
   const typedFrom = bound("--from", "--start");
@@ -2506,10 +2512,16 @@ function historyWindowOption(args: string[], rangeOption: string | undefined, ct
   try {
     window = readPriceWindow(from.value, to.value, new Date(), undefined, { from: from.flag, to: to.flag });
   } catch (error) {
-    return ctx.fail(errorMessage(error) ?? `Invalid ${from.flag} or ${to.flag}.`, `Usage: gloom ${HISTORY_USAGE}`);
+    return ctx.fail(errorMessage(error) ?? `Invalid ${from.flag} or ${to.flag}.`, `Usage: gloom ${usage}`);
   }
-  if (window && rangeOption != null) ctx.fail(`${from.flag} replaces --range; give one of them.`, `Usage: gloom ${HISTORY_USAGE}`);
-  return window;
+  return window ? { window, fromFlag: from.flag } : null;
+}
+
+/** The dates `--from` and `--to` (or `--start` and `--end`) name, each given once. */
+function historyWindowOption(args: string[], rangeOption: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): PriceWindow | null {
+  const typed = dateWindowOption(args, HISTORY_USAGE, ctx);
+  if (typed && rangeOption != null) ctx.fail(`${typed.fromFlag} replaces --range; give one of them.`, `Usage: gloom ${HISTORY_USAGE}`);
+  return typed?.window ?? null;
 }
 
 /** How many symbols of a list load at once: enough that a few hundred take a minute or two, not one call after another. */
@@ -3392,14 +3404,46 @@ async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Paramet
   });
 }
 
+const NEWS_WINDOW_USAGE = "news [symbol] --from <year|date> [--to <year|date>]";
+
+/** A window's days as the instants a story's time is read against: its first day from midnight UTC to its last day's end. */
+function newsWindowBounds(window: PriceWindow): { since: Date; until: Date } {
+  return { since: new Date(`${window.from}T00:00:00.000Z`), until: new Date(`${window.to}T23:59:59.999Z`) };
+}
+
+/**
+ * The stories dated inside the window, as their rows print them. The service
+ * reads the window by when it last saw each story, which can fall a day after
+ * the story's last report, and another source may not read it at all.
+ */
+function inNewsWindow(articles: NewsArticle[], { since, until }: { since: Date; until: Date }): NewsArticle[] {
+  return articles.filter((article) => {
+    const at = new Date(article.publishedAt as Date | string | number).getTime();
+    return at >= since.getTime() && at <= until.getTime();
+  });
+}
+
 async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const feed = parseNewsFeed(takeOption(args, "--feed"));
   const exchangeOption = takeOption(args, "--exchange");
+  // --from 2026-11-09 --to 2026-11-13: the stories published on those days, as history takes the dates.
+  const typedWindow = dateWindowOption(args, NEWS_WINDOW_USAGE, ctx);
+  const window = typedWindow?.window ?? null;
+  const bounds = window ? newsWindowBounds(window) : null;
+  // Top and breaking rank what matters in the last day, so a past week has none of them.
+  if (window && (feed === "top" || feed === "breaking")) {
+    ctx.fail(`--feed ${feed} ranks the stories of the last day, so it takes no ${typedWindow!.fromFlag}. Those days' stories: gloom news ${typedWindow!.fromFlag} ${window.from}${window.from === window.to ? "" : ` ${typedWindow!.fromFlag === "--start" ? "--end" : "--to"} ${window.to}`}`,
+      `Usage: gloom ${NEWS_WINDOW_USAGE}`);
+  }
   // Stories come newest first, so the newest n are the first n either way.
   const limit = ctx.cliOptions.tail ?? ctx.cliOptions.limit ?? 20;
   const text = newsSearchText(args);
   if (text != null) {
+    if (typedWindow) {
+      ctx.fail(`${typedWindow.fromFlag} goes with a symbol or the market feed, not with text to search stories for: a search reads its best matches, not a window of days.`,
+        `Usage: gloom ${NEWS_WINDOW_USAGE}`);
+    }
     if (exchangeOption || feed) ctx.fail(`${exchangeOption ? "--exchange" : "--feed"} goes with a symbol, not with text to search stories for.`, "Usage: gloom news <query>");
     const problem = newsSearchTextProblem(text);
     if (problem) ctx.fail(problem);
@@ -3414,7 +3458,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     return;
   }
   // A metal's future or name is its market's news, not a company's: GOLD in capitals stays Gold.com's.
-  const metal = args.length === 1 && !exchangeOption && !feed ? metalNewsRoute(args[0]!) : null;
+  // That news is a search, so a window of days reads the listing's own.
+  const metal = args.length === 1 && !exchangeOption && !feed && !window ? metalNewsRoute(args[0]!) : null;
   if (metal) {
     await printMetalNews(metal, limit, ctx);
     return;
@@ -3426,7 +3471,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     // A bank's short name typed on its own (ECB, FED, RBI) is the bank's stories ahead of a listing outside the US
     // that trades under it (ECB S.A. on the WSE, "No news" on 7 Nov 2026), which its venue still reaches (ECB:WSE).
     // A US listing (RBA, RB Global) keeps the name.
-    const shortBank = listing && !listing.exchange && !feed && args.length === 1 ? centralBankShortNamed(args[0]!) : null;
+    const shortBank = listing && !listing.exchange && !feed && !window && args.length === 1 ? centralBankShortNamed(args[0]!) : null;
     if (shortBank) {
       const quote = await quoteLoad;
       const identity = listingIdentity(listing!, quote);
@@ -3454,8 +3499,9 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       ticker: listing?.request.symbol,
       exchange: listing?.request.exchange || undefined,
       limit,
+      ...(bounds ?? {}),
       ...(coin ? { listingName: (await quoteLoad)?.name || listing!.saved?.metadata.name || undefined } : {}),
-    });
+    }).then((found) => bounds ? inNewsWindow(found, bounds) : found);
     const [articles, quote] = await Promise.all([
       listing ? loadForListing(listing, market, ctx, loadNews, (found) => found.length === 0) : loadNews(),
       quoteLoad,
@@ -3475,7 +3521,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     }
     const identity = listing ? listingIdentity(listing, quote) : null;
     const resolved = quote !== null || identity?.name != null;
-    const unfiled = !!listing && !listing.exchange && !feed && articles.length === 0;
+    // A window of days with no story in it says so: the searches below read the newest stories, not those days'.
+    const unfiled = !!listing && !listing.exchange && !feed && !window && articles.length === 0;
     // A future's news is its commodity's: news is filed under company tickers, so KC=F (or a bare code
     // no security keeps, CT) searches the stories of coffee, which the service matches to KC=F's links too.
     const future = unfiled && isFuturesInstrument(listing!.symbol, quote?.instrumentType)
@@ -3513,14 +3560,20 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
         empty: emptyMessage(searched && !commodity), commodity: !commodity, failure: search.failure }, ctx);
       return;
     }
-    const empty = emptyMessage(false);
+    // A window says which days it read, in its heading and when none of its stories came back.
+    const days = window ? `${window.from === window.to ? window.from : priceWindowText(window)} (UTC)` : null;
+    const windowEmpty = window && days && (!listing || resolved)
+      ? `No ${identity ? `stories for ${listingTitle(identity)}` : "market stories"} ${window.from === window.to ? "on" : "from"} ${days}.`
+      : null;
+    const empty = windowEmpty ?? emptyMessage(false);
+    const heading = identity ? listingHeading(identity) : days ? cliStyles.bold("Market stories") : null;
     // A bare coin ticker read as another listing (ETH, the Grayscale fund) says where the coin is, as `quote` does.
     const read = listing ? [...listingReadNotes(listing), ...coinListingNotes(listing, quote)] : [];
     // A word that is also the company's name ("gold" for Gold.com Inc., "peso" for PesoRama on the TSX Venture)
     // says once which ticker it found and how to search the stories that mention it instead, when those stories
     // are mostly about something else. The word is bare, so a listing abroad is one the lookup found, not one typed.
     const typed = args[0]?.trim() ?? "";
-    const wordHint = listing && resolved && !feed && !exchangeOption && commonWordCandidate(typed, identity?.name)
+    const wordHint = listing && resolved && !feed && !exchangeOption && !window && commonWordCandidate(typed, identity?.name)
       && wordMeansMore(await searchNewsStories(typed, 20).catch(logFailure("cli.commands-market", "Search news stories for a ticker word failed", [])), listing.symbol,
         listing.exchange ? `${listing.symbol}:${listing.exchange}` : listing.symbol)
       ? `${typed} ${cliArrow("→")} ${identity?.name ?? listing.symbol} (ticker ${listing.symbol}). For stories that mention ${typed.toLowerCase()}, try: ${quotedSearchCommand(typed.toLowerCase())}`
@@ -3528,10 +3581,11 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     ctx.printResult({
       data: articles,
       ...(read.length > 0 ? { warnings: read } : {}),
-      metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null, ...(wordHint ? { textSearch: quotedSearchCommand(typed.toLowerCase()) } : {}) },
+      metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null,
+        ...(window ? { from: window.from, to: window.to } : {}), ...(wordHint ? { textSearch: quotedSearchCommand(typed.toLowerCase()) } : {}) },
       freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
     }, {
-      ...(identity ? { heading: listingHeading(identity) } : {}),
+      ...(heading ? { heading: days ? `${heading}${cliStyles.muted(`  ·  ${days}`)}` : heading } : {}),
       rows: newsRows,
       columns: NEWS_EXPORT_COLUMNS,
     textColumns: NEWS_COLUMNS,
@@ -4252,14 +4306,11 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       if (!isOptionsUnavailableError(error)) throw error;
       // A coin other than BTC and ETH: say which coins have options, and the bitcoin-linked listings.
       if (isCoinWithoutOptions(listing.key)) return ctx.fail(optionsUnavailableTitle(listing.key), coinOptionsAlternativesText("options"));
-      // A future or commodity with no chain of its own: name the listed fund whose options stand in.
-      const alternative = listedOptionsAlternative(listing.key);
+      // A future, commodity or FX pair with no chain of its own: name the listed fund whose options stand in.
       // A name read as a fund or an index asks about the company's stock it means, whose options are listed.
       const meant = meantQuestion(listing);
-      return ctx.fail(meant ? `${optionsUnavailableTitle(listing.key)} ${meant}` : optionsUnavailableTitle(listing.key), alternative
-        ? `Nearest listed alternative: ${alternative.symbol} (${alternative.name}), gloom options ${alternative.symbol}.`
-          + ` Strategy payoffs: gloom fn OSA ${alternative.symbol}`
-        : "Strategy payoffs on a listed underlying: gloom fn OSA <ticker>");
+      return ctx.fail(meant ? `${optionsUnavailableTitle(listing.key)} ${meant}` : optionsUnavailableTitle(listing.key),
+        optionsUnavailableDetails(listing.key, (symbol) => `gloom options ${symbol}`));
     });
     const loaded = withLiveExpiryList(read, now, expiryVenue);
     const inputs = await inputsPromise;
@@ -5237,9 +5288,11 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
     description: "Fetch market headlines, news for one symbol, or stories matching text",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
-      usage: ["news [symbol] [--feed <feed>]", "news <query>"],
+      usage: ["news [symbol] [--feed <feed>]", NEWS_WINDOW_USAGE, "news <query>"],
       options: [
         { flags: "--feed <feed>", description: "latest, top, or breaking for market news (default latest)" },
+        { flags: "--from <year|date>, --start <year|date>", description: `First day of the stories, as ${PRICE_WINDOW_FORMATS}, in UTC; only stories dated inside the window print, newest first. Not with a text search, --feed top or --feed breaking` },
+        { flags: "--to <year|date>, --end <year|date>", description: "Last day of the stories, with --from (default today)" },
         EXCHANGE_OPTION,
       ],
       sections: [{

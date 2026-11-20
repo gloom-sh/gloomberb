@@ -239,11 +239,20 @@ the browser, which the command bar also lists (Download Desktop App).
 
 - Header: the title (pane def, template `createInstance`, or `usePaneTitle`
   for content-derived titles). The only place the pane names itself. Quick
-  settings (`quickSettings`, `zap` icon) sit beside it; the `...` menu opens
-  settings, lock, share, close. In a pane that shows one ticker (see
-  `tickerFollower`) the host draws the ticker in the title as a ghost button
-  with a chevron on the desktop and the web; it opens ticker search for the
-  pane (`layout/ticker-retarget.ts`). The terminal says the key in the footer.
+  settings (`quickSettings`) sit beside it as a glyph each, which says what
+  it toggles in every pane: `⚡` (`zap`) is live data and nothing else, `⍾`
+  (`bell`) the pane notifies you of something new, `⌖` (`marker`) a reading
+  drawn over the data, `√` (`sqrt`) square-root sizing. A toggle none of them
+  names stays in the pane's settings rather than borrowing a glyph
+  ([PLUGINS.md](../PLUGINS.md#pane-quick-settings) has the table). The glyph
+  takes no label beside it, since that width is the title's: the desktop
+  names it and its state in its tooltip, the terminal in a label over the
+  header row while the pointer is on it, and the pane menu lists it. The
+  `...` menu opens settings, lock, share, close. In a pane that shows one
+  ticker (see `tickerFollower`) the host draws the ticker in the title as a
+  ghost button with a chevron on the desktop and the web; it opens ticker
+  search for the pane (`layout/ticker-retarget.ts`). The terminal says the
+  key in the footer.
 - Body: content only. Tabs, tables, details, forms, charts.
 - Header zone: the top of the body, in this order and nothing else: the
   `QueryBar` (search, filters, view), then a `StatGrid` of summary figures,
@@ -309,14 +318,11 @@ the origin of a number. The one count the kit draws is the
 - Info is what changes. If a segment reads the same on every render of every
   instance, delete it.
 - Static pane captures print warning text instead of an icon that opens a
-  dialog, as one note line (`noteLineParts`): the first note, whole or cut
-  after its last whole word that fits, and how many more there are (`+3
-  more`), which the app opens from the ⚠. A note never cuts a word, and
-  neither does a status a narrow row shortens. Beside a capture's status
-  line the note keeps at least 60% of the row while it needs it; the status
-  line steps down to its shorter forms first, and as a last resort drops
-  whole words from its middle (`Newest filing Fri 6 Nov … (Form 4
-  filings)`). `usePaneNoticeFooter` supplies the notices (`notes`).
+  dialog: the first note in full, wrapped separately from the status line,
+  and how many more there are (`+3 more`), which the app opens from the ⚠.
+  The status line still steps down to its shorter forms first, and as a last
+  resort drops whole words from its middle (`Newest filing Fri 6 Nov …
+  (Form 4 filings)`). `usePaneNoticeFooter` supplies the notices (`notes`).
   Warnings remain visible with `--no-status` too. A pane whose capture
   segments already say what some notices explain at length (what its
   numbers leave out) passes the rest as `captureNotes`; the dialog still
@@ -944,7 +950,10 @@ header, with the detail's height.
   `u` restart into a downloaded update or retry a failed one, `$` Pro upgrade, Ctrl+P command bar. `q`, `u`, `r`,
   `Shift+R`, `?` and `` ` `` reach the app before any pane. Table keys go
   through `onRootKeyDown` and `onDetailKeyDown` (return `true` when handled);
-  global shortcuts through `registerShortcut` so Help lists them.
+  global shortcuts through `registerShortcut` so Help lists them. These are
+  default navigation keys: shared controls honour the configurable `navigate-*`
+  actions. Custom controls use `useNavigationKey`
+  from `gloomberb/react` rather than checking the default letters directly.
 - A key held down repeats, and an action should run once per press. The
   shortcut registry drops the repeats (`event.repeat`) of command chords
   (Ctrl, Cmd or Super with a key), Esc, function keys and the menu key before
@@ -1076,7 +1085,7 @@ template, or add it with its reason.
 6. Paged sources load more on scroll, abort stale pages, reset on a new query.
 7. Tabs use `Tabs`, persist the active tab, scope their footers, mount lazily.
 8. Forms use kit fields, one Save per form at its bottom, Enter/Esc, busy and result in the footer, destructive actions confirmed. What concerns one row of a list is said on that row ([Row messages](#row-messages)).
-9. Per-instance configuration is a pane setting; important toggles are `quickSettings`.
+9. Per-instance configuration is a pane setting; important toggles are `quickSettings`, each with the glyph that means what it does (`⚡` only for live streaming), or none in the header when no glyph does.
 10. Methodology and usage text is in `docs/`.
 11. Data panes have a `headless` definition; fetching is in `client.ts`. It declares `freshness` (source, status, schedule) wherever "Gloom Cloud" and the status read from the rows would be wrong, so the report's source, as-of and status line is true. A pane of the user's own state (notes, connections, documentation, an account) adds `local: true` to its `reportFreshness`: a `gloom shot` of it draws no status line, since it has no market or feed to date, and a capture of any pane with nothing loaded (a sign-in wall, an empty state) draws none either.
 12. No `@opentui`, Electrobun or DOM imports; no cell-drawn chrome on the desktop.

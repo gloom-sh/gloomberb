@@ -4,6 +4,7 @@ import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-la
 import { publicTickerKey } from "../../../utils/exchanges";
 import { MISSING_VALUE, displayWidth, formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
+import { rankTickerMatches } from "../../../utils/ticker-match-order";
 
 export const IPO_CALENDAR_PANE_ID = "ipo-calendar";
 export const MISSING = MISSING_VALUE;
@@ -301,19 +302,19 @@ function sortValue(columnId: IpoColumnId, deal: IpoDeal, status: IpoBoardStatus)
     case "status": return IPO_BOARD_STATUSES.indexOf(status);
     case "price": return usdPrice(deal);
     case "size": return deal.offerSizeUsd;
-    case "return": return deal.firstDay?.returnPct ?? null;
+    case "return": return deal.firstDay?.returnPct ?? deal.opening?.returnPct ?? null;
   }
 }
 
-export function sortIpoDeals(deals: readonly IpoDeal[], sort: IpoSortPreference, now = new Date()): IpoDeal[] {
+export function sortIpoDeals(deals: readonly IpoDeal[], sort: IpoSortPreference, now = new Date(), query = ""): IpoDeal[] {
   const { columnId } = sort;
   const statuses = new Map(deals.map((deal) => [deal, ipoBoardStatus(deal, now)]));
   const boardStatus = (deal: IpoDeal) => statuses.get(deal)!;
   const order = calendarOrder(boardStatus);
-  if (!columnId) return [...deals].sort(order);
-  return [...deals].sort((a, b) => (
+  const sorted = [...deals].sort(!columnId ? order : (a, b) => (
     compareSortValues(sortValue(columnId, a, boardStatus(a)), sortValue(columnId, b, boardStatus(b)), sort.direction) || order(a, b)
   ));
+  return rankTickerMatches(sorted, query, (deal) => [deal.symbol, deal.company, deal.companyLocal]);
 }
 
 /** Names read A to Z first; dates soonest first; numbers largest first. */

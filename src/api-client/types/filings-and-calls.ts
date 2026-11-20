@@ -344,7 +344,7 @@ interface CloudSecDocumentPayload {
 }
 
 export interface CloudSecFilingsResponse {
-  filings: CloudSecFilingPayload[];
+  filings: Array<CloudSecFilingPayload & { netProceedsUsd?: number }>;
   hasMore: boolean;
   nextOffset: number;
   /** The company's home line the filings are read from, when not the listing asked (a foreign line). */

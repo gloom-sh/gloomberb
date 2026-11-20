@@ -74,7 +74,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     const timer = setTimeout(() => { resource.reload(); }, 60_000);
     return () => clearTimeout(timer);
   }, [model?.status, resource.updatedAt]);
-  const notices = [identityError, resource.error, resource.data?.prices.error, ...(model?.warnings ?? []), model?.staleNote]
+  const notices = [identityError, resource.error, resource.data?.prices.error, ...(model?.warnings ?? []), model?.staleNote, model?.offMarketNote]
     .filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "iv-history-notices", notices: [...new Set(notices)], focused });
   const cycleLookback = () => setLookback(lookback === "1Y" ? "2Y" : lookback === "2Y" ? "ALL" : "1Y");

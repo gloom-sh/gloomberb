@@ -8,7 +8,7 @@ import type {
   PaneSettingsContext,
   PaneSettingsDef,
 } from "../../../../types/plugin";
-import { NEWS_QUERY_PRESETS, parseNewsIndustryCode } from "./news/query-presets";
+import { NEWS_QUERY_PRESETS, parseNewsIndustryCode } from "../../../../news/query-presets";
 
 /** Plugin id that owns the news settings in `config.pluginConfig`. */
 const NEWS_PLUGIN_ID = "news";

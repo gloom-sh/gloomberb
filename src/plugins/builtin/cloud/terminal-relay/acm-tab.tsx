@@ -1,4 +1,5 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
+import { matchesNavigationKey, useKeybindings } from "../../../../app/keybindings";
 import { EmptyState, usePaneFooter, type PaneHint } from "../../../../components";
 import { ListView, type ListViewItem } from "../../../../components/ui/list-view";
 import { t, tf } from "../../../../i18n";
@@ -6,7 +7,6 @@ import { useAppLanguage } from "../../../../i18n/react";
 import { useShortcut } from "../../../../react/input";
 import { Box } from "../../../../ui";
 import { formatTimeAgo } from "../../../../utils/datetime-format";
-import { isPlainKey } from "../../../../utils/keyboard";
 import { type AssistantGrant, terminalRelayGrants } from "./grants";
 import { recordRelayActivity } from "./indicator";
 
@@ -48,13 +48,14 @@ export function AgentsAccountTab({ focused, width }: { focused: boolean; width: 
     recordRelayActivity({ type: "revoked", clientId: grant.clientId });
   };
 
+  const bindings = useKeybindings();
   useShortcut((event) => {
     if (!focused || event.targetEditable || items.length === 0) return;
-    if (isPlainKey(event, "down", "j")) {
+    if (matchesNavigationKey(bindings, "down", event)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       setSelectedIndex(Math.min(items.length - 1, index + 1));
-    } else if (isPlainKey(event, "up", "k")) {
+    } else if (matchesNavigationKey(bindings, "up", event)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       setSelectedIndex(Math.max(0, index - 1));

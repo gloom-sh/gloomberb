@@ -55,10 +55,53 @@ function futuresRoot(symbol: string, known: (root: string) => boolean = (root) =
   return contract && known(contract) ? contract : null;
 }
 
-/** The listed fund whose options stand in for an instrument with no chain, if there is one. */
+/**
+ * The listed fund whose options stand in for an instrument with no chain, if
+ * there is one: a future's (GLD for gold), or the currency fund for an FX
+ * pair or currency future (FXE for EUR/USD and 6E, UUP for AUD/USD). A cross
+ * two funds hold (EUR/JPY) has none of its own.
+ */
 export function listedOptionsAlternative(symbol: string): ListedOptionsAlternative | null {
   const root = futuresRoot(symbol);
-  return root ? FUTURES_ALTERNATIVES[root] ?? null : null;
+  const future = root ? FUTURES_ALTERNATIVES[root] ?? null : null;
+  if (future) return future;
+  const pair = fxVolatilityPair(symbol);
+  const fund = pair ? fxVolatilityProxyFund(pair) : null;
+  return fund ? { symbol: fund, name: CURRENCY_FUND_NAMES[fund]! } : null;
+}
+
+/** The currency funds' names, for the one that stands in for a pair. */
+const CURRENCY_FUND_NAMES: Readonly<Record<string, string>> = {
+  FXE: "Invesco CurrencyShares Euro Trust",
+  FXY: "Invesco CurrencyShares Japanese Yen Trust",
+  FXB: "Invesco CurrencyShares British Pound Sterling Trust",
+  UUP: "Invesco DB US Dollar Index Bullish Fund",
+};
+
+/**
+ * What a chain that is not served points to, worded for the CLI: the listed
+ * alternative and the command that reads its chain (`run`), with OSA on it;
+ * the currency funds for a cross no one fund holds; OSA on any listed
+ * underlying otherwise. A coin has its own (`coinOptionsAlternativesText`).
+ */
+export function optionsUnavailableDetails(symbol: string, run: (symbol: string) => string): string {
+  const alternative = listedOptionsAlternative(symbol);
+  if (alternative) {
+    return `Nearest listed alternative: ${alternative.symbol} (${alternative.name}), ${run(alternative.symbol)}.`
+      + ` Strategy payoffs: gloom fn OSA ${alternative.symbol}`;
+  }
+  const pair = fxVolatilityPair(symbol);
+  if (pair) return `Currency funds with listed options: ${fxVolatilityFunds(pair).map(run).join(", ")}.`;
+  return "Strategy payoffs on a listed underlying: gloom fn OSA <ticker>";
+}
+
+/** The same for a pane, which shows the alternative as an action: what to read instead, in a sentence. */
+export function optionsUnavailableHint(symbol: string): string {
+  const alternative = listedOptionsAlternative(symbol);
+  if (alternative) return `Nearest listed alternative: ${alternative.symbol} (${alternative.name}).`;
+  const pair = fxVolatilityPair(symbol);
+  if (pair) return `Currency funds with listed options: ${fxVolatilityFunds(pair).join(", ")}.`;
+  return "OSA builds strategy payoffs on a listed underlying.";
 }
 
 /** Whether an options request failed because nothing lists options on the instrument. */
@@ -69,12 +112,15 @@ export function isOptionsUnavailableError(error: unknown): boolean {
 
 /**
  * "Options are not available for GC=F.": the dead end itself, before any
- * follow-up. A CME currency future says what is not served: "Options on CME
- * yen futures (6J=F) are not served." CME lists them; this app does not.
+ * follow-up. A currency says what is not served: "Options on CME yen futures
+ * (6J=F) are not served." CME lists them; this app does not. Nor does it
+ * serve options on a spot pair: "Options on spot FX pairs (EURUSD=X) are not
+ * served." No plan changes either.
  */
 export function optionsUnavailableTitle(symbol: string): string {
   const typed = symbol.trim().toUpperCase();
-  return currencyFutureName(typed) ? fxVolatilityLead(typed) : `Options are not available for ${typed}.`;
+  if (currencyFutureName(typed)) return fxVolatilityLead(typed);
+  return fxVolatilityPair(typed) ? `Options on spot FX pairs (${typed}) are not served.` : `Options are not available for ${typed}.`;
 }
 
 /**

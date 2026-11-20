@@ -1,5 +1,7 @@
 import { useCallback } from "react";
-import { Box, Text } from "../../../../ui";
+import { navigationDirectionLabel, useKeybindings } from "../../../../app/keybindings";
+import { getShortcutDisplayMode } from "../../../../utils/shortcut-labels";
+import { Box, Text, useUiHost } from "../../../../ui";
 import type {
   DockGeometryOptions,
   DockLeafLayout,
@@ -80,6 +82,7 @@ export function ShellWindowModeOverlays({
   windowMode,
   windowModeDockMovePreview,
 }: ShellWindowModeOverlaysProps) {
+  const directions = navigationDirectionLabel(useKeybindings(), getShortcutDisplayMode(useUiHost().kind));
   const highlightedPaneId = getHighlightedPaneId(windowMode, focusedPaneId);
   const highlightedFloatingPane = highlightedPaneId
     ? visibleFloatingPanes.find((entry) => entry.pane.instance.instanceId === highlightedPaneId)
@@ -177,7 +180,7 @@ export function ShellWindowModeOverlays({
         const targetPane = windowMode.focus.kind === "dock-move" ? paneMap.get(windowMode.focus.targetId) : undefined;
         const targetTitle = targetPane ? getPaneTitle(targetPane) : undefined;
         const pending = windowEditHasPendingCommit(windowMode, bounds, dockGeometryOptions);
-        const text = `${windowEditStatusLine(windowMode, title, bounds, dockGeometryOptions, targetTitle)} · ${windowEditHelpText(windowMode, pending)}`;
+        const text = `${windowEditStatusLine(windowMode, title, bounds, dockGeometryOptions, targetTitle)} · ${windowEditHelpText(windowMode, pending, directions)}`;
         const bannerWidth = Math.max(1, width);
         const bannerText = truncateToDisplayWidth(text, bannerWidth).padEnd(bannerWidth, " ");
         return (

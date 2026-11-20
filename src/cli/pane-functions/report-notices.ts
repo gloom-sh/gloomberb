@@ -64,7 +64,7 @@ export function renderedLoadError(semanticUi: readonly RemoteUiNodeSnapshot[]): 
   return typeof message === "string" && message.trim() ? message.trim() : null;
 }
 
-const FRESHNESS_STATUSES: readonly HeadlessFreshnessStatus[] = ["live", "delayed", "stale", "not-a-feed"];
+const FRESHNESS_STATUSES: readonly HeadlessFreshnessStatus[] = ["live", "delayed", "stale", "not-a-feed", "unreported"];
 
 /** The `sources` a pane publishes: each a name and a time. */
 function publishedSources(value: unknown): NonNullable<HeadlessPaneFreshness["sources"]> | null {
@@ -128,4 +128,17 @@ export function renderedReportFreshness(
 export function renderedReportObservations(semanticUi: readonly RemoteUiNodeSnapshot[]): Record<string, unknown>[] {
   const observations = semanticUi.find((node) => node.role === "report-freshness")?.metadata?.observations;
   return Array.isArray(observations) ? observations.filter(isRecord) : [];
+}
+
+/**
+ * The report options that print what a rendered pane shows, when it shows
+ * another view than it was opened on, from the `report-options` node it
+ * publishes: `{ options: { date: "2026-11-17" } }` for OVDV standing in its
+ * stored close while the chain is closed. A capture reads its report with
+ * them, so what it says it covers is what it shows. Empty when none.
+ */
+export function renderedReportOptions(semanticUi: readonly RemoteUiNodeSnapshot[]): Record<string, string> {
+  const options = semanticUi.find((node) => node.role === "report-options")?.metadata?.options;
+  if (!isRecord(options)) return {};
+  return Object.fromEntries(Object.entries(options).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1] !== ""));
 }

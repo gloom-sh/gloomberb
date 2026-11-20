@@ -96,6 +96,7 @@ export const scenarioScreenshotEvidence: PaneScreenshotEvidenceHook<ScenarioEvid
     return {
       settings: {
         scenarioSnapshot: metadata?.scenario ?? null,
+        scenarioFx: loaded.result.metadata?.fx ?? null,
         scenarioMarketSnapshot: metadata?.market ?? null,
         scenarioSnapshotErrors: loaded.result.errors ?? [],
         // A cash-secured put shows the earnings date the report read, or that it could not read one, not another lookup's.

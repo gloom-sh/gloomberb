@@ -14,13 +14,12 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { SeriesListDetail, useSeriesList } from "../shared/series-list-detail";
-import { getCachedStatsBundle, loadStatsBundle, unansweredErrors } from "./client";
+import { getCachedStatsBundle, getGdpNowPrevious, loadStatsBundle, unansweredErrors } from "./client";
 import { categoryLabel, changeColor, type StatCategoryId } from "./defs";
 import { StatDetail } from "./detail";
 import { DEFAULT_STAT_ID } from "./stats";
 import { selectStatViews, type StatRangeId, type StatViewModel } from "./view";
 import { laggingSeriesNote } from "../../../cli/commands/fred-series";
-import { fredCitation } from "../../../sources/gloomberb-cloud/fred-publisher";
 
 const loadBundle = (force: boolean) => loadStatsBundle({ force });
 
@@ -136,10 +135,16 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
   const { data: bundle, load: refresh, reload, updatedAt: lastUpdated } = resource;
   useAutoRefresh(lastUpdated, refresh);
 
-  const views = useMemo(
-    () => (bundle ? selectStatViews(bundle.builds, range) : []),
-    [bundle, range],
-  );
+  const nowcast = statId === "gdpnow" ? bundle?.builds.find(({ stat }) => stat.id === statId) : undefined;
+  const loadPrevious = useMemo(() => nowcast ? () => getGdpNowPrevious(nowcast) : null, [nowcast]);
+  const { data: previousUpdate } = useAsyncResource(loadPrevious);
+  const views = useMemo(() => {
+    if (!bundle) return [];
+    const builds = nowcast && previousUpdate
+      ? bundle.builds.map((build) => build === nowcast ? { ...build, previousUpdate } : build)
+      : bundle.builds;
+    return selectStatViews(builds, range);
+  }, [bundle, nowcast, previousUpdate, range]);
   const list = useSeriesList({
     focused,
     items: views,
@@ -160,7 +165,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     // A Treasury yield names when in the day it was taken, as GC does, so it is not read against ^TNX's earlier close.
     const cutoff = selected.stat.cutoff ? ` ${selected.stat.cutoff}` : "";
     const info: PaneFooterSegment[] = [
-      { id: "publisher", parts: [{ text: fredCitation(selected.stat.seriesId), tone: "muted" }] },
+      { id: "publisher", parts: [{ text: selected.attribution.source, tone: "muted" }] },
       { id: "as-of", parts: [{ text: `reading for ${cutoff ? selected.reading : selected.readingReleased}${cutoff}`, tone: "muted" }] },
     ];
     const lag = laggingSeriesNote(selected.stat.seriesId);

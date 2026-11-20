@@ -40,16 +40,18 @@ import {
 } from "./model";
 import { congressReturnColor, renderCongressTradeCell } from "./table";
 import { useCongressFeed } from "./use-feed";
+import { congressFreshnessFooter, latestCongressFiling } from "./footer";
+import { congressReturnUnavailableText } from "./return-status";
 
 const DETAIL_ROW = { labelWidth: 16, emphasis: false } as const;
 
 /** A window's return, or its excess with SPY's own return beside it. */
-function ReturnRow({ label, value, spy }: { label: string; value: number | null | undefined; spy?: number | null }) {
+function ReturnRow({ label, value, spy, unavailable }: { label: string; value: number | null | undefined; spy?: number | null; unavailable?: string }) {
   return (
     <KeyValueRow
       {...DETAIL_ROW}
       label={label}
-      value={formatCongressReturn(value)}
+      value={value == null && unavailable ? unavailable : formatCongressReturn(value)}
       color={congressReturnColor(value)}
       detail={spy == null ? undefined : `SPY ${formatCongressReturn(spy)}`}
     />
@@ -79,11 +81,11 @@ export function TradeDetail({
         <KeyValueRow {...DETAIL_ROW} label="asset" value={fit(trade.assetName)} />
         <KeyValueRow {...DETAIL_ROW} label="amount" value={trade.amount} color={colors.textBright} />
         <KeyValueRow {...DETAIL_ROW} label="owner" value={trade.owner} />
-        <ReturnRow label="tx return" value={trade.returnSinceTx} />
-        <ReturnRow label="tx vs SPY" value={trade.excessSinceTx} spy={trade.spyReturnSinceTx} />
-        <ReturnRow label="filed return" value={trade.returnSinceFiling} />
-        <ReturnRow label="filed vs SPY" value={trade.excessSinceFiling} spy={trade.spyReturnSinceFiling} />
-        <KeyValueRow {...DETAIL_ROW} label="price as of" value={trade.returnAsOf ?? MISSING_VALUE} />
+        <ReturnRow label="tx return" value={trade.returnSinceTx} unavailable={congressReturnUnavailableText(trade, "transaction")} />
+        <ReturnRow label="tx vs SPY" value={trade.excessSinceTx} spy={trade.spyReturnSinceTx} unavailable={trade.returnSinceTx == null ? "No trade return" : "No matching SPY close"} />
+        <ReturnRow label="filed return" value={trade.returnSinceFiling} unavailable={congressReturnUnavailableText(trade, "filing")} />
+        <ReturnRow label="filed vs SPY" value={trade.excessSinceFiling} spy={trade.spyReturnSinceFiling} unavailable={trade.returnSinceFiling == null ? "No filed return" : "No matching SPY close"} />
+        {trade.returnAsOf && <KeyValueRow {...DETAIL_ROW} label="price as of" value={trade.returnAsOf} />}
         <KeyValueRow {...DETAIL_ROW} label="tx date" value={trade.transactionDate ?? MISSING_VALUE} />
         <KeyValueRow {...DETAIL_ROW} label="notification" value={trade.notificationDate ?? MISSING_VALUE} />
         <KeyValueRow {...DETAIL_ROW} label="filed" value={trade.filingDate} />
@@ -202,6 +204,7 @@ export function MemberTradesDetail({
 
   usePaneFooter(`${CONGRESS_TRADES_PANE_ID}:member-detail`, () => ({
     info: [
+      ...congressFreshnessFooter(detailPayload, latestCongressFiling(trades)),
       ...(status === "loading" ? [{ id: "member-loading", parts: [{ text: "loading member trades", tone: "muted" as const }] }] : []),
       ...(loadingMore ? [{ id: "member-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
       ...(error ? [{ id: "member-error", parts: [{ text: error, tone: "warning" as const }] }] : []),
@@ -217,6 +220,7 @@ export function MemberTradesDetail({
         : []),
     ],
   }), [
+    trades,
     error,
     detailPayload,
     loadMore,

@@ -1,3 +1,4 @@
+import { matchesNavigationKey, useKeybindings } from "../../app/keybindings";
 import { useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { Box, Text, TextAttributes, useUiHost, type HostMenuProps, type HostMenuItem } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
@@ -48,6 +49,7 @@ function selectable(item: MenuItem): boolean {
 
 /** Cell-drawn fallback for the terminal, where menus usually open as dialogs. */
 function TerminalMenu({ items, onSelect, selection = "none", title, onClose }: MenuProps) {
+  const navigation = useKeybindings();
   const colors = useThemeColors();
   const enabled = useMemo(() => items.filter(selectable), [items]);
   const [highlighted, setHighlighted] = useState<string | null>(
@@ -60,8 +62,8 @@ function TerminalMenu({ items, onSelect, selection = "none", title, onClose }: M
   useShortcut((event) => {
     const index = enabled.findIndex((item) => item.id === highlighted);
     const key = event.name;
-    if (key === "down" || key === "j") setHighlighted(enabled[Math.min(enabled.length - 1, index + 1)]?.id ?? null);
-    else if (key === "up" || key === "k") setHighlighted(enabled[Math.max(0, index - 1)]?.id ?? null);
+    if (matchesNavigationKey(navigation, "down", event, { defaultMatches: key === "down" || key === "j" })) setHighlighted(enabled[Math.min(enabled.length - 1, index + 1)]?.id ?? null);
+    else if (matchesNavigationKey(navigation, "up", event, { defaultMatches: key === "up" || key === "k" })) setHighlighted(enabled[Math.max(0, index - 1)]?.id ?? null);
     else if (key === "home" || key === "pageup") setHighlighted(enabled[0]?.id ?? null);
     else if (key === "end" || key === "pagedown") setHighlighted(enabled[enabled.length - 1]?.id ?? null);
     else if ((key === "return" || key === "enter" || key === "space") && highlighted) choose(highlighted);

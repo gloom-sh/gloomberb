@@ -1,3 +1,4 @@
+import { getDefaultKeybindings, matchesNavigationKey, type ResolvedKeybindings } from "../../app/keybindings";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, ScrollBox, Text, useUiHost } from "../../ui";
 import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
@@ -135,13 +136,13 @@ export type ListCursorMove = (items: readonly ListCursorItem[], index: number) =
  * page, Home/End to the first or last row, always skipping disabled rows.
  * Null for any other key, so the caller handles it.
  */
-export function listCursorMove(event: KeyboardModifierEventLike, pageSize: number): ListCursorMove | null {
+export function listCursorMove(event: KeyboardModifierEventLike & { targetEditable?: boolean }, pageSize: number, bindings: ResolvedKeybindings = getDefaultKeybindings()): ListCursorMove | null {
   const page = Math.max(1, Math.floor(pageSize));
   const move = (direction: -1 | 1, steps?: number): ListCursorMove => (items, index) => (
     stepListCursor(items, index, direction, steps ?? items.length)
   );
-  if (isPlainKey(event, "up", "k")) return move(-1, 1);
-  if (isPlainKey(event, "down", "j")) return move(1, 1);
+  if (matchesNavigationKey(bindings, "up", event, { allowEditable: true })) return move(-1, 1);
+  if (matchesNavigationKey(bindings, "down", event, { allowEditable: true })) return move(1, 1);
   if (isPlainKey(event, "pageup")) return move(-1, page);
   if (isPlainKey(event, "pagedown")) return move(1, page);
   if (isPlainKey(event, "home")) return move(-1);

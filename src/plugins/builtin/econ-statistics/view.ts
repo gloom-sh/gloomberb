@@ -3,6 +3,8 @@ import { latestMoveRank, MOVE_HORIZONS, type MoveRank } from "../shared/move-ran
 import { periodsPerYear, type StatPoint } from "../shared/stat-transform";
 import { sigmaVsTrend } from "../shared/trend";
 import { periodReleasedText, periodStartPeriodicity, releasedText } from "../../../utils/release-date";
+import type { FredProvenance } from "../../../sources/gloomberb-cloud/fred-attribution";
+import { fredCitation, fredPublisher } from "../../../sources/gloomberb-cloud/fred-publisher";
 import type { StatBuild } from "./client";
 import type { StatDef } from "./defs";
 
@@ -20,6 +22,7 @@ export interface StatViewModel {
   stat: StatDef;
   range: StatRangeId;
   latest: StatPoint;
+  attribution: FredProvenance;
   /** The latest print's period at the series' own cadence: "Sep 21", "Aug", "Q2". */
   period: string;
   /** What the latest print is a reading of, in full: "Aug 2026", "Q2 2026", "week ending 2026-10-03", "2026-10-09". */
@@ -127,7 +130,8 @@ export function projectStat(
   const { stat, points, trend } = build;
   const latest = points[points.length - 1]!;
   const nowMs = opts.nowMs ?? Date.now();
-  const perYear = periodsPerYear(points.map((point) => ({ date: point.date, value: point.value })));
+  const nowcast = stat.seriesId === "GDPNOW";
+  const perYear = nowcast ? 4 : periodsPerYear(points.map((point) => ({ date: point.date, value: point.value })));
   const yearEarlier = new Date(latest.date);
   const year = yearEarlier.getUTCFullYear() - 1;
   const month = yearEarlier.getUTCMonth();
@@ -140,7 +144,7 @@ export function projectStat(
     ? points.find((point) => point.date.slice(0, 7) === target.slice(0, 7)) ?? null
     : [...points].reverse().find((point) => point.date <= target &&
       Date.parse(target) - Date.parse(point.date) <= (perYear === 52 ? 7 : 4) * 86_400_000) ?? null;
-  const previous = points[points.length - 2] ?? null;
+  const previous = nowcast ? build.previousUpdate ?? null : points[points.length - 2] ?? null;
   // High, low, mean and percentile describe the selected window, like the chart.
   const visible = sliceByRange(points, range);
   const atOrBelow = visible.filter((point) => point.value <= latest.value).length;
@@ -151,6 +155,7 @@ export function projectStat(
     stat,
     range,
     latest,
+    attribution: build.attribution ?? { source: fredCitation(stat.seriesId), publisher: fredPublisher(stat.seriesId) ?? undefined },
     period: formatStatPeriod(latest.date, perYear),
     reading,
     releasedOn,
@@ -161,7 +166,7 @@ export function projectStat(
     readingReleased: periodReleasedText(reading, releasedOn, latest.date),
     periodicity: periodStartPeriodicity(latest.date, perYear),
     previous,
-    previousReading: previous ? formatStatReading(previous.date, perYear) : null,
+    previousReading: previous ? nowcast ? previous.date : formatStatReading(previous.date, perYear) : null,
     yearAgo,
     changeOnPrevious: previous ? latest.value - previous.value : null,
     percentile: visible.length === 0 ? 0 : (100 * atOrBelow) / visible.length,

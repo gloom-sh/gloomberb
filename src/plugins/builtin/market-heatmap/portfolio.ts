@@ -86,6 +86,7 @@ export interface HeatmapBoardAsset extends MarketHeatmapAsset {
   weight?: number;
   /** The price and move are this open pre-market or after-hours session's, from the regular close. */
   extendedSession?: ExtendedSession;
+  lastUpdated?: number;
 }
 
 export interface HeatmapPortfolioPane {
@@ -285,7 +286,7 @@ export function buildPortfolioHeatmapAssets({
       change: display?.change != null && Number.isFinite(display.change) ? display.change : 0,
       changePercent: hasChange ? display.changePercent! : 0,
       hasChange,
-      ...(display?.session ? { extendedSession: display.session } : {}),
+      ...(display?.session ? { extendedSession: display.session, lastUpdated: quote?.lastUpdated } : {}),
       size,
       weight: byMove
         ? dayMoveWeight(move)
