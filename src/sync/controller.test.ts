@@ -1265,6 +1265,13 @@ function createSharedCloud() {
   let revision = 0;
   return {
     config: () => snapshot?.contributors["core.config"]?.payload as AppState["config"] | undefined,
+    updateConfig: (update: (config: AppState["config"]) => AppState["config"]) => {
+      const contributor = snapshot!.contributors["core.config"]!;
+      snapshot = { ...snapshot!, contributors: { ...snapshot!.contributors, "core.config": {
+        ...contributor, payload: update(contributor.payload as AppState["config"]),
+      } } };
+      revision += 1;
+    },
     transport: (device: { online: boolean; duringPull?: () => void; beforePush?: () => Promise<void> }): SyncTransport => ({
       id: "shared-cloud",
       isAvailable: () => true,
@@ -1334,6 +1341,32 @@ function createDevice(cloud: ReturnType<typeof createSharedCloud>, name: string,
 }
 
 const DEFAULT_LAYOUT_NAMES = createDefaultConfig("/devices/defaults").layouts.map((layout) => layout.name);
+
+test("legacy news refreshes on either device do not change the synced workspace", async () => {
+  const cloud = createSharedCloud();
+  const current = createDevice(cloud, "current");
+  await current.sync("startup");
+  expect(cloud.config()?.layouts).toBeDefined();
+  let pushes = 0;
+  current.beforePush = async () => { pushes += 1; };
+  const newsState = (title: string) => ({ pluginState: { news: { "top:curated:articles:v2": [{ title }] } } });
+  const incoming = (title: string) => cloud.updateConfig((config) => ({
+    ...config, layouts: config.layouts.map((layout) => ({ ...layout, paneState: { "news-top:main": newsState(title) } })),
+  }));
+
+  for (const title of ["first refresh", "next refresh"]) {
+    incoming(title);
+    const layout = current.state.config.layout;
+    const local = current.state.paneState["news-top:main"];
+    await current.sync("poll");
+    expect(current.state.config.layout).toBe(layout);
+    expect(current.state.paneState["news-top:main"]).toBe(local);
+    current.dispatch({ type: "UPDATE_PANE_STATE", paneId: "news-top:main", patch: newsState(`local ${title}`) });
+    await current.sync("state-change");
+    expect(cloud.config()?.layouts[0]?.paneState).toEqual({ "news-top:main": newsState(title) });
+  }
+  expect(pushes).toBe(0);
+});
 
 function cloudLayoutNames(cloud: ReturnType<typeof createSharedCloud>): string[] | undefined {
   return cloud.config()?.layouts.map((layout) => layout.name);

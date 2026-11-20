@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { assetDataProvider } from "../../capabilities";
+import { materializeDetachedLayouts } from "../../core/state/app/layout";
 import { AppPersistence } from "../../data/app-persistence";
+import { normalizeConfigForSave, normalizeLoadedConfig } from "../../data/config/store/normalize";
 import { TickerRepository } from "../../data/ticker-repository";
 import { createDefaultConfig, createPaneInstance } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
@@ -20,12 +22,14 @@ import { screenersPlugin } from "../builtin/composite/screeners";
 import { filingsPlugin } from "../builtin/composite/filings";
 import { optionsVolatilityPlugin } from "../builtin/composite/options-volatility";
 import { ownershipPlugin } from "../builtin/composite/ownership";
-import { newsPlugin } from "../builtin/news";
 import { tickerCorePlugin } from "../builtin/composite/ticker-core";
+import { newsPlugin } from "../builtin/news";
+import { hashString } from "../../news/rss-hash";
+import { createTestArticle } from "../../test-support/news";
 import { registeredStateNamespace } from "../test-fixture";
 import { resolveShellVisibleLayout } from "../../components/layout/shell/visible-layout";
 import { expandBuiltinPluginGroups } from "../ownership";
-import { composeBuiltinPlugin, type PluginModule } from "../builtin/plugin-module";
+import { composeBuiltinPlugin } from "../builtin/plugin-module";
 import { useAssetData, usePluginAppActions } from "../runtime";
 import { usePluginRenderContext } from "../runtime/context";
 import { PluginRegistry } from "./index";
@@ -34,6 +38,54 @@ import { createTestDataProvider, createTestFinancials, createTestQuote } from ".
 const dataProvider: DataProvider = createTestDataProvider({
   getTickerFinancials: async () => createTestFinancials(),
   getQuote: async (symbol) => createTestQuote({ symbol, price: 1 }),
+});
+
+test("upgrading seeds public legacy headlines from real saved owners but keeps Story content and controls in the layout", async () => {
+  const registry = createRegistry();
+  await registry.register(newsPlugin);
+  await registry.register(tickerCorePlugin);
+  expect(registeredStateNamespace(registry.panes.get("ticker-research")!.component)).toBe("ticker-research");
+  const config = createDefaultConfig("/tmp/gloom-news-upgrade");
+  const top = createPaneInstance("news-top", { instanceId: "custom-top" });
+  const ticker = createPaneInstance("ticker-research", { instanceId: "ticker-detail:test" });
+  const story = createPaneInstance("news-story", { instanceId: "news-story:test" });
+  const article = createTestArticle("legacy-rss");
+  const rss = { ...article, id: hashString(`${article.url}|${article.title}`), publishedAt: article.publishedAt.toISOString() };
+  const wire = { ...rss, id: "unscoped-cloud-story", items: [] };
+  const storyState = { pluginState: { news: { "story:v2": [rss] } } };
+  const topState = { pluginState: { news: { "top:curated:selectedArticleId": rss.id, "top:curated:search": "market" } } };
+  const tickerState = { activeTabId: "news", pluginState: { "ticker-research": { "selectedArticleId:AAPL": rss.id } } };
+  const layout = {
+    dockRoot: null,
+    instances: [top, ticker, story],
+    detached: [],
+    floating: [top, ticker, story].map((pane, index) => ({ instanceId: pane.instanceId, x: 0, y: index * 20, width: 80, height: 20 })),
+  };
+  const saved = { ...config, layout, activeLayoutIndex: 0, layouts: [{ name: "News", layout, paneState: {
+    [top.instanceId]: { pluginState: { news: { ...topState.pluginState.news, "top:curated:articles:v2": [wire, rss], "top:curated:articles": [wire] } } },
+    [ticker.instanceId]: { ...tickerState, pluginState: { "ticker-research": {
+      ...tickerState.pluginState["ticker-research"], "articles:AAPL::v2": [rss],
+    } } },
+    [story.instanceId]: storyState,
+  } }] };
+  const { config: loaded, needsSave } = normalizeLoadedConfig(JSON.parse(JSON.stringify(saved)), config.dataDir);
+  expect(needsSave).toBe(true);
+  const kept = { [top.instanceId]: topState, [ticker.instanceId]: tickerState, [story.instanceId]: storyState };
+  expect(loaded.layouts[0]?.paneState).toEqual(kept);
+  expect(normalizeConfigForSave(saved).layouts[0]?.paneState).toEqual(kept);
+  expect(normalizeConfigForSave(loaded).layouts[0]?.paneState).toEqual(kept);
+  registry.seedLegacyNewsSnapshots(materializeDetachedLayouts(loaded));
+  const scope = JSON.stringify([null, false, false]);
+  expect(registry.newsPaneSnapshots.read(top, "news", "top:curated:articles:v2", scope)).toMatchObject([rss]);
+  expect(registry.newsPaneSnapshots.read(ticker, "news", "articles:AAPL::v2", scope)).toMatchObject([rss]);
+
+  await expect(registry.register({
+    id: "duplicate-news-pane", name: "Conflicting pane", version: "1.0.0", panes: [newsPlugin.panes![0]!],
+  })).rejects.toThrow();
+  registry.unregister("duplicate-news-pane");
+  registry.unregister("ticker-core");
+  expect(registry.newsPaneSnapshots.read(top, "news", "top:curated:articles:v2", scope)).toMatchObject([rss]);
+  expect(registry.newsPaneSnapshots.read(top, "duplicate-news-pane", "top:curated:articles:v2", scope)).toBeNull();
 });
 
 let currentRegistry: PluginRegistry | null = null;
@@ -776,91 +828,4 @@ test("ticker actions follow their owner's live enabled state and unregister clea
   expect(registry.getEnabledTickerActions()).toHaveLength(1);
   registry.unregister("action-owner");
   expect(registry.getEnabledTickerActions()).toEqual([]);
-});
-
-describe("pane snapshots kept outside the layout", () => {
-  const ARTICLES = [{ id: "story", title: "Nvidia tops estimates" }];
-
-  function registryWith(layoutPanes: Record<string, unknown> | null): PluginRegistry {
-    const persistence = new AppPersistence(":memory:");
-    const registry = new PluginRegistry(dataProvider, new TickerRepository(persistence.tickers), persistence);
-    registry.bindHost({
-      getConfig: () => ({
-        ...createDefaultConfig("/tmp/gloomberb-pane-snapshots-test"),
-        layouts: [{ name: "Monitor", layout: { dockRoot: null, instances: [], floating: [], detached: [] }, paneState: {} }],
-      }),
-      updatePaneRuntimeState: () => {},
-      getPaneRuntimeState: (paneId) => (layoutPanes as never)?.[paneId] ?? null,
-    });
-    currentRegistry = registry;
-    currentPersistence = persistence;
-    return registry;
-  }
-
-  function snapshotsPlugin(): GloomPlugin {
-    const declaring: PluginModule = {
-      panes: [
-        { id: "news-top", name: "Top News", component: () => null, defaultPosition: "right", paneSnapshots: [/^articles(?::v\d+)?$/] },
-      ],
-    };
-    return composeBuiltinPlugin({ id: "news", name: "News", version: "1.0.0", modules: [declaring] });
-  }
-
-  test("every news surface stores its actual article keys outside the layout and removes old ticker snapshots", async () => {
-    const registry = registryWith(null);
-    await registry.register(newsPlugin);
-    await registry.register(tickerCorePlugin);
-    const snapshots = [
-      ["news-top:main", "top:curated:articles:v2"],
-      ["news-feed:main", "feed:articles:v2"],
-      ["news-breaking:main", "breaking:articles:v2"],
-      ["news-industry:main", "industry:topic:MNA:articles:v2"],
-      ["news-industry:main", "industry:sector:all:articles:v2"],
-      ["news-story:main", "story:v2"],
-      ["ticker-news:main", "articles:BTC-USD:CCC:v2"],
-      ["ticker-research:main", "articles:AAPL::v2"],
-    ];
-    for (const [paneId, key] of snapshots) {
-      expect(registry.paneResources.isPaneSnapshot(paneId!, key!)).toBe(true);
-      registry.paneResources.setPaneState(paneId!, key!, ARTICLES);
-      expect(registry.paneResources.getPaneState(paneId!, key!)).toEqual(ARTICLES);
-    }
-    registry.paneResources.deletePaneState("ticker-news:main", "articles:BTC-USD:CCC:v2");
-    expect(registry.paneResources.getPaneStateKeys?.("ticker-news:main")).toEqual([]);
-    registry.unregister("news");
-    expect(registry.paneResources.isPaneSnapshot("news-top:main", "top:curated:articles:v2")).toBe(false);
-  });
-
-  test("a declaring pane's snapshot is kept in the data directory, and another pane's key is not", async () => {
-    const registry = registryWith(null);
-    await registry.register(snapshotsPlugin());
-
-    registry.paneResources.setPaneState("news-top:main", "articles:v2", ARTICLES);
-    registry.paneResources.setPaneState("portfolio-list:main", "positions", ARTICLES);
-
-    expect(registry.paneResources.getPaneState("news-top:main", "articles:v2")).toEqual(ARTICLES);
-    expect(registry.paneResources.getPaneState("portfolio-list:main", "positions")).toBeNull();
-    expect(registry.persistence.pluginState.get("portfolio-list", "positions")).toBeNull();
-  });
-
-  test("another pane's state, and another key of a declaring pane, never leaves the layout", async () => {
-    const registry = registryWith({ "portfolio-list:main": { pluginState: { portfolio: { selected: "main" } } } });
-    await registry.register(snapshotsPlugin());
-
-    expect(registry.paneResources.isPaneSnapshot("portfolio-list:main", "selected")).toBe(false);
-    expect(registry.paneResources.isPaneSnapshot("news-top:main", "selectedArticleId")).toBe(false);
-    expect(registry.paneResources.isPaneSnapshot("news-top:main", "articles:v2")).toBe(true);
-    expect(registry.paneResources.getPaneState("portfolio-list:main", "selected")).toBeNull();
-    expect(registry.paneResources.getPaneState("news-top:main", "selectedArticleId")).toBeNull();
-  });
-
-  test("a launch with no database snapshot yet opens on the layout's copy, until it keeps its own", async () => {
-    const registry = registryWith({ "news-top:main": { pluginState: { news: { "articles:v2": ARTICLES } } } });
-    await registry.register(snapshotsPlugin());
-
-    expect(registry.paneResources.getPaneState("news-top:main", "articles:v2")).toEqual(ARTICLES);
-
-    registry.paneResources.setPaneState("news-top:main", "articles:v2", []);
-    expect(registry.paneResources.getPaneState("news-top:main", "articles:v2")).toEqual([]);
-  });
 });

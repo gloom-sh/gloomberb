@@ -2,8 +2,7 @@ import { MarketDataCoordinator, getSharedMarketDataCoordinator, setSharedMarketD
 import { setSavedCopyStore } from "../data/pane-saved-copies";
 import { followDataServiceHealth } from "../market-data/connection-follow";
 import { NewsService, type NewsServiceOptions } from "../news/aggregator";
-import { cloudNewsSession } from "../news/cloud-session";
-import { cloudDisplayScope } from "../api-client/plan-access";
+import { cloudNewsSession, cloudNewsSnapshotScope } from "../news/cloud-session";
 import { apiClient } from "../api-client";
 import { hasProAccess } from "../api-client/plan-rules";
 import { getSharedNewsService, setSharedNewsService } from "../news/hooks";
@@ -71,7 +70,7 @@ export function createAppRuntime({
     connectionHealth: pluginRegistry.connectionHealth,
     pollIntervalMs: () => Math.max(1, config.refreshIntervalMinutes) * 60_000,
     session: cloudNewsSession,
-    savedCopyScope: cloudDisplayScope,
+    savedCopyScope: cloudNewsSnapshotScope,
     ...newsOptions,
   });
   const modules = { pluginRegistry, marketData, newsService };
@@ -87,11 +86,19 @@ export function createAppRuntime({
   setSharedNewsService(newsService);
   // The panes' saved copies live with the other cached resources (data/pane-saved-copies.ts).
   setSavedCopyStore(persistence.resources);
+  let previousAccount: string | undefined;
   const updateProResourceAccess = () => {
     const user = apiClient.getConfirmedDisplayUser();
-    if (!user?.id || !(user.effectivePlan || user.plan)) return;
     try {
-      persistence.resources.setProResourceAccess(user.id, hasProAccess(user));
+      const signedOut = !apiClient.getCurrentUser() && !apiClient.isDisplayScopePending();
+      if (previousAccount && (signedOut || (user?.id && user.id !== previousAccount))) {
+        persistence.resources.setProResourceAccess(previousAccount, false);
+        previousAccount = undefined;
+      }
+      if (user?.id && (user.effectivePlan || user.plan)) {
+        persistence.resources.setProResourceAccess(user.id, hasProAccess(user));
+        previousAccount = user.id;
+      }
     } catch (error) {
       logFailure("app-runtime", "Could not purge revoked Pro display copies")(error);
     }
@@ -128,6 +135,7 @@ export function createAppRuntime({
 
   try {
     updateProResourceAccess();
+    pluginRegistry.seedLegacyNewsSnapshots(config);
     disposeConfigured = configure?.(modules);
     newsService.start();
   } catch (error) {

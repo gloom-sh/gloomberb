@@ -6,7 +6,7 @@ import { PaneStatusBody } from "../../../../../components";
 import { usePaneInstance } from "../../../../../state/app/context";
 import type { PaneProps, PaneTemplateCreateOptions, PaneTemplateDef } from "../../../../../types/plugin";
 import { usePluginAppActions } from "../../../../runtime";
-import { usePersistedNewsArticles } from "../persisted-articles";
+import { usePersistedStory } from "../persisted-articles";
 import { storyIdMatches } from "../../../../../news/story-id";
 import { NewsDetailView } from "./detail-view";
 import { useNewsArticleFooter } from "./footer";
@@ -89,7 +89,7 @@ export function NewsStoryPane({ focused, width }: PaneProps) {
   // it at once, including a story from an RSS feed that cannot be fetched by id.
   // A story opened by its short id (`fn news-story-pane 6067684e`) is the one whose id starts with it.
   const story = useMemo(() => (loaded && storyIdMatches(loaded.id, articleId) ? [loaded] : NO_STORY), [articleId, loaded]);
-  const kept = usePersistedNewsArticles("story", story);
+  const kept = usePersistedStory(story);
   const article = kept.find((entry) => storyIdMatches(entry.id, articleId)) ?? null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

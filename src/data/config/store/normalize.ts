@@ -22,7 +22,8 @@ import { clampFontSize } from "../../../theme/font-scale";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
 import { migrateSavedConfig, type ConfigMigrationHost } from "./migrations";
 import { encodeBuiltinDisabledPluginIds, expandBuiltinPluginGroups } from "../../../plugins/ownership";
-import { hasLegacyPaneSnapshots, sanitizeSavedPaneState } from "./pane-state";
+import { sanitizeSavedPaneState } from "./pane-state";
+import { stripLegacyNewsSnapshots } from "../../news-pane-snapshots";
 import { isRecord } from "../../../utils/guards";
 import { normalizeWatchlistGroups } from "../../../portfolio/watchlist-groups";
 import { portfolioCashBalances, withPortfolioCashBalances } from "../../../portfolio/cash-balances";
@@ -70,6 +71,7 @@ export function normalizeLoadedConfig(
       ? { ...entry, layout: cloneLayout(layout), paneState: sanitizeSavedPaneState(entry.paneState, layout) }
       : entry
   ));
+  const cleanedLayouts = syncedLayouts.map((entry) => stripLegacyNewsSnapshots(entry, true));
 
   // After the migrations, which read retired group ids as they were saved.
   const disabledPlugins = expandBuiltinPluginGroups(
@@ -92,7 +94,7 @@ export function normalizeLoadedConfig(
     portfolios: sanitizePortfolios(candidate.portfolios, defaults.portfolios),
     watchlists: sanitizeWatchlists(candidate.watchlists, defaults.watchlists),
     layout,
-    layouts: syncedLayouts,
+    layouts: cleanedLayouts,
     activeLayoutIndex,
     brokerInstances: sanitizeBrokerInstances(candidate.brokerInstances),
     disabledPlugins,
@@ -125,7 +127,7 @@ export function normalizeLoadedConfig(
 
   const needsSave =
     migration.migrated
-    || (Array.isArray(saved.layouts) && saved.layouts.some((entry) => isRecord(entry) && hasLegacyPaneSnapshots(entry.paneState)))
+    || cleanedLayouts.some((entry, index) => entry !== syncedLayouts[index])
     || candidate.configVersion !== CURRENT_CONFIG_VERSION
     || !isLayoutConfig(candidate.layout)
     || !Array.isArray((candidate.layout as { instances?: unknown })?.instances)
@@ -154,7 +156,7 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
     index === activeLayoutIndex
       ? { ...entry, layout: cloneLayout(layout), paneState: sanitizeSavedPaneState(entry.paneState, layout) }
       : entry
-  ));
+  )).map((entry) => stripLegacyNewsSnapshots(entry));
 
   const onboardingProgress = sanitizeOnboardingProgress(config.onboardingProgress);
   const persisted: AppConfig = {

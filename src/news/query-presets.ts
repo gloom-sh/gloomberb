@@ -1,4 +1,4 @@
-import type { NewsQuery } from "../../../../../news/types";
+import type { NewsQuery } from "./types";
 
 export const SECTOR_NEWS_SECTORS = [
   "information_technology",

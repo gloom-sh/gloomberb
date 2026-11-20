@@ -1,5 +1,5 @@
 import type { MarketNewsItem } from "../../../../../types/news-source";
-import { SECTOR_NEWS_SECTORS, sectorNewsLabel } from "../news/query-presets";
+import { SECTOR_NEWS_SECTORS, sectorNewsLabel } from "../../../../../news/query-presets";
 
 export const BREAKING_NEWS_NOTIFICATIONS_ENABLED_KEY = "breakingNewsNotificationsEnabled";
 export const BREAKING_NEWS_SCOPE_KEY = "breakingNewsScope";

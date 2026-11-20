@@ -26,7 +26,9 @@ import type {
   SyncTransport,
 } from "../../sync/types";
 import type { BrokerAdapter } from "../../types/broker";
-import { resolvePaneInstance } from "../../types/config";
+import { resolvePaneInstance, type AppConfig } from "../../types/config";
+import { readNewsPaneSnapshot, seedLegacyNewsSnapshots, writeNewsPaneSnapshot } from "../../data/news-pane-snapshots";
+import { cloudNewsSnapshotScope } from "../../news/cloud-session";
 import type { ContextMenuContext, ContextMenuItem } from "../../types/context-menu";
 import type { DataProvider } from "../../types/data-provider";
 import type {
@@ -99,29 +101,6 @@ export type { WindowEditMode } from "./host-actions";
 /** The owner the series catalog capability is registered under; no plugin can switch it off. */
 const SERIES_CATALOG_OWNER = "gloomberb";
 
-/**
- * The pane a pane-resource call names (`news-top:main`): the type that
- * declared `paneSnapshots`, and the id the layout knows it by.
- */
-function paneStateSnapshotPaneId(paneId: string): { type: string; instanceId: string } {
-  const separator = paneId.indexOf(":");
-  return separator > 0
-    ? { type: paneId.slice(0, separator), instanceId: paneId }
-    : { type: paneId, instanceId: paneId };
-}
-
-/** True for a key a pane type's `paneSnapshots` names: the only pane state kept outside the saved layout. */
-function isDeclaredPaneSnapshot(
-  declaring: ReadonlyMap<string, readonly RegExp[]>,
-  pane: { type: string; instanceId: string },
-  key: string,
-): boolean {
-  return declaring.get(pane.type)?.some((pattern) => {
-    pattern.lastIndex = 0;
-    return pattern.test(key);
-  }) ?? false;
-}
-
 /** A switched-off plugin, named for a "Turn on" offer. */
 export interface DisabledPluginOwner {
   id: string;
@@ -168,10 +147,6 @@ export class PluginRegistry implements PluginRuntimeAccess {
     payload: unknown,
     options?: { signal?: AbortSignal },
   ) => Promise<T>;
-  /** Pane types declaring `paneSnapshots`: the only ones whose pane state may leave the layout. */
-  private readonly paneSnapshotPanes = new Map<string, readonly RegExp[]>();
-  /** What the saved layout carries of a pane; null until read, and after this renderer writes it. */
-  private readonly paneSnapshotFallbacks = new Map<string, unknown>();
 
   getMarketData = () => this.marketData;
   getConnectionHealth = () => this.connectionHealth;
@@ -300,8 +275,6 @@ export class PluginRegistry implements PluginRuntimeAccess {
    * a shell or window that unmounts does not undo what mounted after it.
    */
   bindHost(actions: Partial<PluginHostActions>): () => void {
-    // The new host reads another config: the layout copies taken for snapshots are stale.
-    this.paneSnapshotFallbacks.clear();
     const bound = Object.entries(actions).filter(([, action]) => action !== undefined);
     Object.assign(this.hostActions, Object.fromEntries(bound));
     return () => {
@@ -313,6 +286,19 @@ export class PluginRegistry implements PluginRuntimeAccess {
   }
 
   get panes(): ReadonlyMap<string, PaneDef> { return this.contributions.panesMap; }
+
+  seedLegacyNewsSnapshots(config: AppConfig): void {
+    seedLegacyNewsSnapshots(this.persistence.resources, config.layouts, config.activeLayoutIndex);
+  }
+
+  readonly newsPaneSnapshots: NonNullable<PluginRuntimeAccess["newsPaneSnapshots"]> = {
+    read: (pane, owner, key, scope) => scope === cloudNewsSnapshotScope()
+      ? readNewsPaneSnapshot(this.persistence.resources, { pane, owner, key }, scope)
+      : null,
+    write: (pane, owner, key, scope, articles) => {
+      if (scope === cloudNewsSnapshotScope()) writeNewsPaneSnapshot(this.persistence.resources, { pane, owner, key }, scope, articles);
+    },
+  };
   get paneTemplates(): ReadonlyMap<string, PaneTemplateDef> { return this.contributions.paneTemplatesMap; }
   get commands(): ReadonlyMap<string, CommandDef> { return this.contributions.commandsMap; }
   get commandBarSearchProviders(): ReadonlyMap<string, CommandBarSearchProvider> {
@@ -453,58 +439,6 @@ export class PluginRegistry implements PluginRuntimeAccess {
     this.persistence.pluginState.delete(stateId, resumeStateKey(key));
     this.resumeStateListeners.emit(stateId, key);
   }
-
-  /**
-   * Where a renderer keeps the snapshots of the panes that declare
-   * `paneSnapshots` (`news-top:articles`), in the data directory beside the
-   * Cloud session rather than in the saved layout. Only a declaring pane's
-   * keys are kept through the renderer persistence adapter; other keys
-   * stay part of the layout.
-   */
-  private snapshotPane(paneId: string): { type: string; instanceId: string } {
-    const instance = resolvePaneInstance(this.getLayout(), paneId);
-    return instance
-      ? { type: instance.paneId, instanceId: instance.instanceId }
-      : paneStateSnapshotPaneId(paneId);
-  }
-
-  readonly paneResources: NonNullable<PluginRuntimeAccess["paneResources"]> = {
-    getPaneStateKeys: (paneId: string): string[] => {
-      const pane = this.snapshotPane(paneId);
-      return this.persistence.pluginState.keys(pane.instanceId)
-        .filter((key) => isDeclaredPaneSnapshot(this.paneSnapshotPanes, pane, key));
-    },
-    isPaneSnapshot: (paneId: string, key: string): boolean =>
-      isDeclaredPaneSnapshot(this.paneSnapshotPanes, this.snapshotPane(paneId), key),
-    getPaneState: <T = unknown>(paneId: string, key: string): T | null => {
-      const pane = this.snapshotPane(paneId);
-      if (!isDeclaredPaneSnapshot(this.paneSnapshotPanes, pane, key)) return null;
-      const fallbackKey = `${pane.instanceId}\u0000${key}`;
-      if (!this.paneSnapshotFallbacks.has(fallbackKey)) {
-        // Read a layout fallback once for state supplied by older hosts.
-        const snapshotState = this.hostActions.getPaneRuntimeState(pane.instanceId);
-        const layoutCopy = Object.values(snapshotState?.pluginState ?? {})
-          .map((values) => values?.[key])
-          .find((value) => value !== undefined);
-        this.paneSnapshotFallbacks.set(fallbackKey, layoutCopy);
-      }
-      const stored = this.persistence.pluginState.get<T>(pane.instanceId, key)?.value;
-      if (stored !== undefined) return stored;
-      return (this.paneSnapshotFallbacks.get(fallbackKey) as T | undefined) ?? null;
-    },
-    setPaneState: (paneId: string, key: string, value: unknown): void => {
-      const pane = this.snapshotPane(paneId);
-      if (!isDeclaredPaneSnapshot(this.paneSnapshotPanes, pane, key)) return;
-      this.paneSnapshotFallbacks.delete(`${pane.instanceId}\u0000${key}`);
-      this.persistence.pluginState.set(pane.instanceId, key, value);
-    },
-    deletePaneState: (paneId: string, key: string): void => {
-      const pane = this.snapshotPane(paneId);
-      if (!isDeclaredPaneSnapshot(this.paneSnapshotPanes, pane, key)) return;
-      this.paneSnapshotFallbacks.delete(`${pane.instanceId}\u0000${key}`);
-      this.persistence.pluginState.delete(pane.instanceId, key);
-    },
-  };
 
   getConfigState<T = unknown>(pluginId: string, key: string): T | null {
     return this.getPluginConfigValue<T>(this.stateNamespace(pluginId), key);
@@ -766,7 +700,6 @@ export class PluginRegistry implements PluginRuntimeAccess {
       if (plugin.panes) {
         for (const pane of plugin.panes) {
           this.contributions.registerPane(plugin.id, pane);
-          if (pane.paneSnapshots) this.paneSnapshotPanes.set(pane.id, pane.paneSnapshots);
         }
       }
 
@@ -840,7 +773,6 @@ export class PluginRegistry implements PluginRuntimeAccess {
     let cleanupError: unknown;
     try { plugin.dispose?.(); } catch (error) { cleanupError = error; }
     try { this.slots.unregister(pluginId); } catch (error) { cleanupError ??= error; }
-    for (const pane of plugin.panes ?? []) this.paneSnapshotPanes.delete(pane.id);
     try { this.contributions.unregister(pluginId); } catch (error) { cleanupError ??= error; }
     this.plugins.delete(pluginId);
     if (cleanupError) throw cleanupError;

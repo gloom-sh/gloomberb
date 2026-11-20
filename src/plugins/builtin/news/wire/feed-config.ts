@@ -1,7 +1,7 @@
 import type { PluginConfigState } from "../../../../types/plugin";
 import { logFailure } from "../../../../utils/log-failure";
 import { DEFAULT_FEEDS } from "./default-feeds";
-import { hashString } from "./hash";
+import { hashString } from "../../../../news/rss-hash";
 import type { RssFeedConfig } from "./rss/parser";
 import { isManagedNewsFeedUrl, MANAGED_NEWS_FEED } from "./rss/managed-feed";
 

@@ -1,6 +1,6 @@
 import type { CommandDef, GloomPluginContext } from "../../../../../types/plugin";
 import type { MarketNewsItem, NewsQueryState } from "../../../../../types/news-source";
-import { NEWS_QUERY_PRESETS } from "../news/query-presets";
+import { NEWS_QUERY_PRESETS } from "../../../../../news/query-presets";
 import {
   BREAKING_NEWS_MUTED_SECTORS_KEY,
   BREAKING_NEWS_NOTIFICATIONS_ENABLED_KEY,

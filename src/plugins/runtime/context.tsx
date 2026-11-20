@@ -10,6 +10,7 @@ import type { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { CapabilityInvoker, PluginCapability } from "../../capabilities";
 import type { DataProvider } from "../../types/data-provider";
 import type { PluginRuntimeHostActions } from "../registry/host-actions";
+import type { PaneInstanceConfig } from "../../types/config";
 
 export interface PluginRuntimeAccess extends CapabilityInvoker, PluginRuntimeHostActions {
   getMarketData(): DataProvider | null;
@@ -27,20 +28,10 @@ export interface PluginRuntimeAccess extends CapabilityInvoker, PluginRuntimeHos
   getResumeState<T = unknown>(pluginId: string, key: string, schemaVersion?: number): T | null;
   setResumeState(pluginId: string, key: string, value: unknown, schemaVersion?: number): void;
   deleteResumeState(pluginId: string, key: string): void;
-  /**
-   * Where a renderer keeps the pane state a pane type declared a snapshot of
-   * (`PaneDef.paneSnapshots`: a news list's last articles), in the data
-   * directory beside the Cloud session rather than in the saved layout. It
-   * uses the renderer persistence adapter. Its other pane
-   * state is a setting, and stays in the layout through `usePluginPaneState`.
-   */
-  paneResources?: {
-    /** True for a key the pane's type declared a snapshot of: it is kept outside the layout, and never in it. */
-    isPaneSnapshot(paneId: string, key: string): boolean;
-    getPaneState<T = unknown>(paneId: string, key: string): T | null;
-    setPaneState(paneId: string, key: string, value: unknown): void;
-    deletePaneState(paneId: string, key: string): void;
-    getPaneStateKeys?(paneId: string): string[];
+  /** @internal The built-in news lists' renderer-local warm copies, not layout state. */
+  newsPaneSnapshots?: {
+    read<T>(pane: PaneInstanceConfig, owner: string, key: string, scope: string): T[] | null;
+    write(pane: PaneInstanceConfig, owner: string, key: string, scope: string, articles: unknown[]): void;
   };
   getConfigState<T = unknown>(pluginId: string, key: string): T | null;
   setConfigState(pluginId: string, key: string, value: unknown): Promise<void>;

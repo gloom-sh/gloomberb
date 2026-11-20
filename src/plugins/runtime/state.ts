@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -28,17 +27,13 @@ export { deletePluginPaneStateValue, getPluginPaneStateValue, setPluginPaneState
  * grows with every ticker visited and every update pays for copying it.
  */
 export function usePrunePluginPaneState(paneId?: string): (shouldDrop: (key: string) => boolean) => void {
-  const { pluginId, runtime } = usePluginRenderContext();
+  const { pluginId } = usePluginRenderContext();
   const contextPaneId = useOptionalPaneInstanceId();
   const scopedPaneId = paneId ?? contextPaneId;
   if (!scopedPaneId) throw new Error("usePrunePluginPaneState requires a pane id or PaneInstanceProvider");
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   return useCallback((shouldDrop: (key: string) => boolean) => {
-    const resources = runtime.paneResources;
-    for (const key of resources?.getPaneStateKeys?.(scopedPaneId) ?? []) {
-      if (shouldDrop(key)) resources?.deletePaneState(scopedPaneId, key);
-    }
     let paneState = stateRef.current.paneState[scopedPaneId];
     const keys = Object.keys(paneState?.pluginState?.[pluginId] ?? {}).filter(shouldDrop);
     if (keys.length === 0) return;
@@ -46,64 +41,23 @@ export function usePrunePluginPaneState(paneId?: string): (shouldDrop: (key: str
       paneState = { ...paneState, pluginState: deletePluginPaneStateValue(paneState, pluginId, key) };
     }
     dispatch({ type: "UPDATE_PANE_STATE", paneId: scopedPaneId, patch: { pluginState: paneState?.pluginState } });
-  }, [dispatch, pluginId, runtime, scopedPaneId, stateRef]);
+  }, [dispatch, pluginId, scopedPaneId, stateRef]);
 }
 
 export function usePluginPaneState<T>(key: string, fallback: T, paneId?: string): [T, (value: SetStateAction<T>) => void] {
-  const { pluginId, runtime } = usePluginRenderContext();
+  const { pluginId } = usePluginRenderContext();
   const contextPaneId = useOptionalPaneInstanceId();
   const scopedPaneId = paneId ?? contextPaneId;
+  if (!scopedPaneId) throw new Error("usePluginPaneState requires a pane id or PaneInstanceProvider");
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const fallbackRef = useRef(fallback);
   fallbackRef.current = fallback;
-  // A snapshot the renderer keeps outside the layout (the news panes'
-  // articles, `PaneDef.paneSnapshots`) is read and written there, or not at
-  // all: the pane opens on its fallback rather than write it with every change.
-  const resources = runtime.paneResources;
-  const snapshot = useMemo(() => resources
-    ? {
-      get: (target: string) => resources.getPaneState<T>(target, key),
-      set: (target: string, value: T) => resources.setPaneState(target, key, value),
-    }
-    : null, [key, resources]);
-  const snapshotPaneId = snapshot && scopedPaneId && resources?.isPaneSnapshot(scopedPaneId, key) ? scopedPaneId : null;
-  const [savedSnapshot, setSavedSnapshot] = useState(() => ({
-    snapshot,
-    paneId: snapshotPaneId,
-    value: snapshot && snapshotPaneId ? snapshot.get(snapshotPaneId) ?? fallback : fallback,
-  }));
-  let currentSnapshot = savedSnapshot;
-  if (savedSnapshot.snapshot !== snapshot || savedSnapshot.paneId !== snapshotPaneId) {
-    currentSnapshot = {
-      snapshot,
-      paneId: snapshotPaneId,
-      value: snapshot && snapshotPaneId ? snapshot.get(snapshotPaneId) ?? fallback : fallback,
-    };
-    setSavedSnapshot(currentSnapshot);
-  }
-  const snapshotValueRef = useRef(currentSnapshot.value);
-  snapshotValueRef.current = currentSnapshot.value;
-
-  if (!scopedPaneId) throw new Error("usePluginPaneState requires a pane id or PaneInstanceProvider");
-
-  const layoutValue = useAppSelector((state) => (
-    scopedPaneId ? getPluginPaneStateValue(state.paneState[scopedPaneId], pluginId, key, fallback) : fallback
+  const value = useAppSelector((state) => (
+    getPluginPaneStateValue(state.paneState[scopedPaneId], pluginId, key, fallback)
   ));
 
   const setValue = useCallback((nextValue: SetStateAction<T>) => {
-    if (snapshot && snapshotPaneId) {
-      const currentValue = snapshotValueRef.current as T;
-      const resolved = typeof nextValue === "function"
-        ? (nextValue as (previousValue: T) => T)(currentValue)
-        : nextValue;
-      if (Object.is(resolved, currentValue)) return;
-      snapshot.set(snapshotPaneId, resolved);
-      snapshotValueRef.current = resolved;
-      setSavedSnapshot({ snapshot, paneId: snapshotPaneId, value: resolved });
-      return;
-    }
-    if (!scopedPaneId) return;
     const currentPaneState = stateRef.current.paneState[scopedPaneId];
     const currentValue = getPluginPaneStateValue(
       currentPaneState,
@@ -126,12 +80,9 @@ export function usePluginPaneState<T>(key: string, fallback: T, paneId?: string)
       key,
       value: resolved,
     });
-  }, [dispatch, key, pluginId, resources, scopedPaneId, snapshot, snapshotPaneId, stateRef]);
+  }, [dispatch, key, pluginId, scopedPaneId, stateRef]);
 
-  if (snapshot && snapshotPaneId) {
-    return [currentSnapshot.value, setValue];
-  }
-  return [layoutValue, setValue];
+  return [value, setValue];
 }
 
 /**

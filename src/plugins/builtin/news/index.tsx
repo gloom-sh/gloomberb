@@ -47,7 +47,6 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
   const loaded = usePersistedNewsArticles(
     `articles:${instrument?.symbol ?? "none"}:${instrument?.exchange ?? ""}`,
     newsState.articles,
-    { keyFamily: "articles:" },
   );
   const news = useNewsMuteFilter(loaded, newsMutesApplyToFeed(newsQuery?.feed));
   const search = useNewsListSearch(news, "ticker-news", symbol);
@@ -196,9 +195,6 @@ export const tickerNewsModule: PluginModule = {
       icon: "C",
       component: TickerNewsView,
       defaultPosition: "right",
-      // The stories the tab last showed load before the wire answers; a
-      // snapshot belongs in the data directory, not in every saved layout.
-      paneSnapshots: [/^articles:[^:]+:[^:]*(?::v\d+)?$/],
       shareItem: { open: true, ticker: true },
       tickerFollower: true,
       defaultMode: "floating",

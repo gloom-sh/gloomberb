@@ -9,22 +9,22 @@ import { createDefaultConfig } from "../../../../types/config";
 import type { MarketNewsItem } from "../../../../types/news-source";
 import { Text } from "../../../../ui";
 import { listedHeadline } from "../../../../news/news-model";
-import { usePersistedNewsArticles } from "./persisted-articles";
+import { usePersistedStory } from "./persisted-articles";
 
 const tui = createOpenTuiTestHarness({ width: 100, height: 5 });
-const paneId = "news-feed:test";
-const key = "feed:articles";
+const paneId = "news-story:test";
+const key = "story:v2";
 
-function harness(snapshot: unknown, fresh: MarketNewsItem[] = [], legacy = false) {
+function harness(snapshot: unknown, fresh: MarketNewsItem[] = []) {
   const initial = createInitialState(createDefaultConfig("/tmp/gloom-news-publisher-test"));
-  initial.paneState[paneId] = { pluginState: { news: { [legacy ? key : `${key}:v2`]: snapshot } } };
+  initial.paneState[paneId] = { pluginState: { news: { [key]: snapshot } } };
   const stateRef: { current: AppState } = { current: initial };
   let setArticles: (articles: MarketNewsItem[]) => void = () => {};
   const runtime = createTestPluginRuntime();
   function Probe() {
     const [articles, update] = useState(fresh);
     setArticles = update;
-    const visible = usePersistedNewsArticles(key, articles);
+    const visible = usePersistedStory(articles);
     return <Text>{visible.map((article) => article.source).join(", ") || "No articles"}</Text>;
   }
   function Harness() {
@@ -35,19 +35,8 @@ function harness(snapshot: unknown, fresh: MarketNewsItem[] = [], legacy = false
     </TestPaneProvider>;
   }
   return { Harness, setArticles: (articles: MarketNewsItem[]) => setArticles(articles),
-    snapshot: () => stateRef.current.paneState[paneId]?.pluginState?.news?.[`${key}:v2`],
-    legacySnapshot: () => stateRef.current.paneState[paneId]?.pluginState?.news?.[key] };
+    snapshot: () => stateRef.current.paneState[paneId]?.pluginState?.news?.[key] };
 }
-
-test("old pane snapshots cannot restore intermediary publisher credits while news is unavailable", async () => {
-  const article = createTestArticle("story", { source: "Old delivery service" });
-  const scenario = harness([{ ...article, publishedAt: article.publishedAt.toISOString() }], [], true);
-  await tui.render(<scenario.Harness />);
-  expect(await tui.waitForFrameToContain("No articles")).not.toContain("Old delivery service");
-  await tui.renderFrames(1);
-  expect(scenario.legacySnapshot()).toBeUndefined();
-  expect(scenario.snapshot()).toBeUndefined();
-});
 
 test("publisher and original-link corrections survive a restart with unchanged story identity and time", async () => {
   const article = createTestArticle("story", { source: "Actual Publisher", url: "https://publisher.example/story" });
@@ -78,9 +67,9 @@ test("a folded row of routine notices restored from the pane's state reads its n
   await tui.destroy();
   let restored: MarketNewsItem[] = [];
   const initial = createInitialState(createDefaultConfig("/tmp/gloom-news-publisher-test"));
-  initial.paneState[paneId] = { pluginState: { news: { [`${key}:v2`]: saved } } };
+  initial.paneState[paneId] = { pluginState: { news: { [key]: saved } } };
   function Probe() {
-    restored = usePersistedNewsArticles(key, []);
+    restored = usePersistedStory([]);
     return <Text>{restored.map((item) => listedHeadline(item)).join(", ") || "No articles"}</Text>;
   }
   function Harness() {

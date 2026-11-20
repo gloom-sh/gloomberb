@@ -93,6 +93,8 @@ function combineNewsAccess(values: ReadonlyArray<NewsAccess | null | undefined>)
   return null;
 }
 
+const HIDDEN_QUERY_STATE = createIdleNewsQueryState();
+
 function newsCapabilityPriority(source: NewsCapability): number {
   return source.priority ?? 1000;
 }
@@ -219,16 +221,17 @@ export class NewsService {
     const key = this.session.key();
     const scope = this.savedCopyScope?.() ?? null;
     if (key === this.sessionKey && scope === this.displayScope) return;
+    const scopeChanged = scope !== this.displayScope;
     this.sessionKey = key;
     this.displayScope = scope;
     this.sessionGeneration++;
-    let droppedSaved = false;
+    let droppedArticles = false;
     for (const entry of this.queries.values()) {
-      if (entry.state.savedAt == null) continue;
+      if (!scopeChanged && entry.state.savedAt == null) continue;
       entry.state = createIdleNewsQueryState();
-      droppedSaved = true;
+      droppedArticles = true;
     }
-    if (droppedSaved) {
+    if (droppedArticles) {
       this.rebuildArticlePool();
       this.notify();
     }
@@ -326,6 +329,7 @@ export class NewsService {
   }
 
   getQueryState(query: NewsQuery): NewsQueryState {
+    if (this.polling && this.session && this.savedCopyScope && this.savedCopyScope() !== this.displayScope) return HIDDEN_QUERY_STATE;
     const normalized = normalizeNewsQuery(query);
     return this.getOrCreateQueryEntry(normalized).state;
   }
@@ -341,6 +345,7 @@ export class NewsService {
 
   /** `loadMore` for a caller that waits until the page or its failure is in state. */
   async loadMoreAndWait(query: NewsQuery): Promise<void> {
+    if (this.polling) this.handleSessionChange();
     const normalized = normalizeNewsQuery(query);
     const entry = this.queries.get(buildNewsQueryKey(normalized));
     if (!entry || entry.loadMoreInFlight || !entry.state.nextCursor || entry.state.loadingMore) return;
@@ -359,6 +364,7 @@ export class NewsService {
           ...normalized,
           cursor: entry.state.nextCursor ?? undefined,
         });
+        if (this.polling) this.handleSessionChange();
         // An older page from another session must not join the list the new session read.
         if (generation !== this.sessionGeneration || entry.generation !== generation) {
           entry.state = { ...entry.state, loadingMore: false };
@@ -456,6 +462,7 @@ export class NewsService {
     query: NewsQuery,
     showLoading: boolean,
   ): Promise<NewsQueryState> {
+    if (this.polling) this.handleSessionChange();
     const entry = this.getOrCreateQueryEntry(query);
     const generation = this.sessionGeneration;
     // A read that went out under an older session answers for that session: a new one goes out beside it.
@@ -476,6 +483,7 @@ export class NewsService {
     const promise = (async () => {
       try {
         const result = await this.fetchFromSources(query);
+        if (this.polling) this.handleSessionChange();
         if (generation !== this.sessionGeneration) return this.currentRead(entry);
         denied = result.denied === true;
         if (savedKey && result.denied) deleteSavedCopy(savedKey);
