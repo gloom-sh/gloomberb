@@ -19,7 +19,7 @@ import type { Quote } from "../../../types/financials";
 type Surface = NonNullable<QuoteSubscriptionTarget["surface"]>;
 
 /** The quote target of a market, as its saved listing is quoted; null for a venue the app has no listing for. */
-function perpQuoteTarget(marketId: string, surface: Surface = "detail", visible = true): QuoteSubscriptionTarget | null {
+export function perpQuoteTarget(marketId: string, surface: Surface = "detail", visible = true): QuoteSubscriptionTarget | null {
   const listing = perpetualListingOfMarket(marketId);
   return listing ? { symbol: listing.key, exchange: listing.exchange, route: "auto", surface, ...(visible ? { visible: true } : {}) } : null;
 }

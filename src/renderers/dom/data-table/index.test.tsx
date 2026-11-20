@@ -358,3 +358,36 @@ test("a section header's action is its own control: a click presses it, not the 
   });
   expect(pressed).toEqual(["action"]);
 });
+
+
+test("an external quote update redraws only its desktop row", async () => {
+  const data = [{ id: "btc", text: "BTC 10" }, { id: "eth", text: "ETH 20" }];
+  const values = new Map(data.map((row) => [row.id, row]));
+  const versions = new Map<string, number>();
+  const listeners = new Map<string, Set<() => void>>();
+  const source = {
+    subscribe(row: typeof data[number], listener: () => void) {
+      const set = listeners.get(row.id) ?? new Set(); set.add(listener); listeners.set(row.id, set);
+      return () => { set.delete(listener); };
+    },
+    version: (row: typeof data[number]) => versions.get(row.id) ?? 0,
+    read: (row: typeof data[number]) => values.get(row.id) ?? row,
+  };
+  const counts = new Map<string, number>();
+  const renderCell = (row: typeof data[number]) => { counts.set(row.id, (counts.get(row.id) ?? 0) + 1); return { text: row.text }; };
+  const state = createInitialState(createDefaultConfig(":memory:"));
+  function Harness() {
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return <AppContext value={createStaticAppStore(state)}><WebDataTable items={data}
+      columns={[{ id: "name", label: "Name", width: 12 }]} sortColumnId={null} sortDirection="asc"
+      headerScrollRef={scrollRef} scrollRef={scrollRef} syncHeaderScroll={() => {}} onBodyScrollActivity={() => {}}
+      getItemKey={(row) => row.id} isSelected={() => false} onSelect={() => {}} renderCell={renderCell}
+      rowSource={source} emptyStateTitle="No rows" virtualize={false} /></AppContext>;
+  }
+  const container = await render(<Harness />);
+  counts.clear();
+  await act(async () => { values.set("btc", { id: "btc", text: "BTC 11" }); versions.set("btc", 1); for (const listener of listeners.get("btc") ?? []) listener(); });
+  expect(container.textContent).toContain("BTC 11");
+  expect(counts.get("btc") ?? 0).toBeGreaterThan(0);
+  expect(counts.get("eth") ?? 0).toBe(0);
+});

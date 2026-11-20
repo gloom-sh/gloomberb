@@ -1,3 +1,4 @@
+import { ObservedTableRow } from "../observed-row";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer, type BoxRenderable } from "../../../../ui";
 import { capturePointerDrag, releasePointerDrag } from "../../../../ui/pointer-drag";
@@ -367,6 +368,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   renderCell,
   selectedTextOverridesCellColor = false,
   getRowVersion,
+  rowSource,
   renderSectionHeader,
   getRowBackgroundColor,
   emptyContent,
@@ -1024,7 +1026,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
               () => visibleItems.map((item, visibleIndex) => {
                 const index = startIndex + visibleIndex;
                 const itemKey = getItemKey(item, index);
-                return (
+                const renderRow = (item: T) => (
                   <OpenTuiDataTableRow<T, C>
                     key={itemKey}
                     colors={colors}
@@ -1058,6 +1060,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     columnsKey={columnsKey}
                   />
                 );
+                return rowSource ? <ObservedTableRow key={itemKey} item={item} source={rowSource}>{renderRow}</ObservedTableRow> : renderRow(item);
               }),
               {
                 columnCount: displayColumns.length,

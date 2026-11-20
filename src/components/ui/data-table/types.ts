@@ -180,6 +180,18 @@ export interface DataTableVisibleRange {
   wholeEnd?: number;
 }
 
+/**
+ * A row can follow independent external data without invalidating its table.
+ * `version` is stable between notifications and changes when the row does.
+ * `read` is pure and keeps the row key, order and geometry; change `items`
+ * when those or omitWhenEmpty columns change.
+ */
+export interface DataTableRowSource<T> {
+  subscribe(item: T, listener: () => void): () => void;
+  version(item: T): number;
+  read(item: T): T;
+}
+
 export interface DataTableProps<
   T,
   C extends DataTableColumn = DataTableColumn,
@@ -245,6 +257,8 @@ export interface DataTableProps<
    * data, so one symbol's tick redraws one row instead of every visible cell.
    */
   getRowVersion?: (item: T, index: number) => unknown;
+  /** Independent updates for visible rows; `read` also supplies exports and reports. */
+  rowSource?: DataTableRowSource<T>;
   renderSectionHeader?: (
     item: T,
     index: number,
