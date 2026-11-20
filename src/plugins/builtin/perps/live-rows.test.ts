@@ -10,6 +10,11 @@ test("a fetched row takes a streamed reading of its market only when the reading
   const newer = { ...fetched, marketId: "HYPERLIQUID:default:BTC", markPrice: 81_750, observedAt: "2026-10-20T02:00:02.000Z" };
   // The quote's casing of the id is the venue's; the view keeps its own.
   expect(withLiveReading(fetched, quote(newer))).toEqual({ ...newer, marketId: fetched.marketId });
+  // Another market's tick leaves this row and its selection unchanged.
+  const merged = withLiveReading(fetched, quote(newer));
+  expect(withLiveReading(fetched, quote(newer))).toBe(merged);
+  const next = { ...newer, markPrice: 81_751, observedAt: "2026-10-20T02:00:04.000Z" };
+  expect(withLiveReading(fetched, quote(next))).not.toBe(merged);
   // A refetch that landed after the last tick is not rolled back by it.
   const refetched = { ...fetched, markPrice: 81_760, observedAt: "2026-10-20T02:00:03.000Z" };
   expect(withLiveReading(refetched, quote(newer))).toBe(refetched);
