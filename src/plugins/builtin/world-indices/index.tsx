@@ -186,9 +186,10 @@ export const worldIndicesModule: PluginModule = {
       paneId: "world-indices",
       label: "World Equity Indices",
       description: "Monitor global equity indices grouped by region.",
-      // The European indices people search the board by: `catalog dax`, `catalog stoxx`, `catalog european indices`.
+      // The European indices people search the board by: `catalog dax`, `catalog stoxx`, `catalog european indices`;
+      // and the dollar index it lists, which a question names as DXY ("How did DXY do?").
       keywords: ["world", "indices", "global", "equity", "markets", "international", "dax", "xetra", "stoxx", "euro stoxx", "ftse", "cac",
-        "germany", "european indices"],
+        "germany", "european indices", "dxy", "dollar index"],
       shortcut: { prefix: "WEI" },
       headless: worldIndicesHeadless,
       publicShare: createPublicPaneShare("World Equity Indices"),

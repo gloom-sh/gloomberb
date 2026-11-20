@@ -4,7 +4,7 @@ import { createTestCliContext } from "../../test-support/cli-context";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
-import type { NewsArticle } from "../../news/types";
+import type { NewsArticle, NewsQuery } from "../../news/types";
 import { cloudNewsReadArticles, mapCloudNewsArticle, readCloudNews } from "../../sources/gloomberb-cloud/news";
 import { apiClient } from "../../api-client";
 import type { AuthUser } from "../../api-client/types/auth";
@@ -451,6 +451,57 @@ test("a real listing, with or without stories, never falls back to a text search
   await news.execute(["TTF", "--exchange", "NYSE"], unknown.context);
   await news.execute(["TTF", "--feed", "top"], unknown.context);
   expect(requests).toHaveLength(0);
+});
+
+test("a window of days asks for those days and prints only the stories dated inside them, as history takes its dates", async () => {
+  // `news DAL --from 2026-11-09 --to 2026-11-13` answered "Unknown option --from for news."
+  const queries: NewsQuery[] = [];
+  const at = (iso: string) => new Date(iso);
+  const cli = createTestCliContext({
+    dataProvider: {
+      getNews: async (query) => {
+        queries.push(query);
+        // A source that reads no window: the story before it and the one after it never print.
+        return [
+          createTestArticle("after", { title: "Airlines recover after the ground stop", publishedAt: at("2026-11-14T00:00:00Z") }),
+          createTestArticle("last-day", { title: "Delta adds Thanksgiving flights", publishedAt: at("2026-11-13T23:59:00Z") }),
+          createTestArticle("first-day", { title: "Delta names a new CFO", publishedAt: at("2026-11-09T00:00:00Z") }),
+          createTestArticle("before", { title: "Delta material agreement", publishedAt: at("2026-11-08T23:59:59Z") }),
+        ];
+      },
+      getQuote: async () => ({ symbol: "DAL", name: "Delta Air Lines", exchangeName: "NYSE" }),
+    },
+  });
+  await news.execute(["DAL", "--from", "2026-11-09", "--to", "2026-11-13"], cli.context);
+  expect(queries[0]).toMatchObject({ since: at("2026-11-09T00:00:00.000Z"), until: at("2026-11-13T23:59:59.999Z") });
+  const text = render(cli.printed[0]!);
+  expect(text.split("\n")[0]).toContain("2026-11-09 to 2026-11-13 (UTC)");
+  expect(text).toContain("Delta adds Thanksgiving flights");
+  expect(text).toContain("Delta names a new CFO");
+  expect(text).not.toContain("ground stop");
+  expect(text).not.toContain("material agreement");
+
+  // --start and --end are the same window.
+  await news.execute(["DAL", "--start", "2026-11-09", "--end", "2026-11-13"], cli.context);
+  expect(queries[1]).toMatchObject({ since: queries[0]!.since, until: queries[0]!.until });
+});
+
+test("a window with no story in it says so plainly, never a text search of the newest stories", async () => {
+  const requests = serveSearch(STORIES);
+  const cli = createTestCliContext({
+    dataProvider: {
+      getNews: async () => [createTestArticle("later", { publishedAt: new Date("2026-11-15T01:19:00Z") })],
+      getQuote: async () => ({ symbol: "CORN", name: "Teucrium Corn Fund", exchangeName: "ARCA" }),
+    },
+  });
+  await news.execute(["corn", "--from", "2026-11-09", "--to", "2026-11-13"], cli.context);
+  expect(render(cli.printed[0]!)).toContain("No stories for Teucrium Corn Fund (ARCA) from 2026-11-09 to 2026-11-13 (UTC).");
+  expect(requests).toHaveLength(0);
+
+  // A search reads its best matches and the top and breaking feeds the last day: none takes a window.
+  await expect(news.execute(["european gas", "--from", "2026-11-09"], cli.context)).rejects.toThrow("--from goes with a symbol or the market feed");
+  await expect(news.execute(["--feed", "top", "--start", "2026-11-12", "--end", "2026-11-13"], cli.context))
+    .rejects.toThrow("Those days' stories: gloom news --start 2026-11-12 --end 2026-11-13");
 });
 
 test("a word that resolves to a ticker with no stories says so and lists the stories that mention the word", async () => {

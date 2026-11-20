@@ -40,14 +40,14 @@ export function isPastPriceWindow(window: PriceWindow, now = new Date()): boolea
 }
 
 /** Both date forms a reader types: ISO, or day first with dots as most of Europe writes it. */
-const FORMATS = "a year (2007) or a date (2008-09-15, or day first as 15.9.2008)";
+export const PRICE_WINDOW_FORMATS = "a year (2007) or a date (2008-09-15, or day first as 15.9.2008)";
 
 function readBound(value: string, edge: "start" | "end", flag: string, now: Date): string {
   const text = value.trim();
   if (YEAR.test(text)) return edge === "start" ? `${text}-01-01` : `${text}-12-31`;
   const date = text ? readCalendarDate(text) : null;
   if (date) return date;
-  throw new Error(`Invalid ${flag} "${value}". ${dateOptionError(text, flag, { now, subject: `the window's ${edge}`, formats: FORMATS, example: edge === "start" ? "2007" : "2009" })}`);
+  throw new Error(`Invalid ${flag} "${value}". ${dateOptionError(text, flag, { now, subject: `the window's ${edge}`, formats: PRICE_WINDOW_FORMATS, example: edge === "start" ? "2007" : "2009" })}`);
 }
 
 /**
@@ -164,5 +164,5 @@ export async function historyFirstBarDay(provider: DataProvider, symbol: string,
 }
 
 /** Shared help text for `--from` and `--to`. */
-export const PRICE_WINDOW_FROM_HELP = `First year or date of the window, as ${FORMATS}; replaces --range`;
+export const PRICE_WINDOW_FROM_HELP = `First year or date of the window, as ${PRICE_WINDOW_FORMATS}; replaces --range`;
 export const PRICE_WINDOW_TO_HELP = "Last year or date of the window, with --from (default today)";

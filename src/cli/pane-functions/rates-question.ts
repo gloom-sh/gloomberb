@@ -34,10 +34,21 @@ const BANKS = CENTRAL_BANKS.map((bank) => ({
   id: bank.id, names: centralBankNames(bank).map((name) => name.toLowerCase()), place: bank.place.toLowerCase(),
 }));
 
-const RATES = /\b(?:policy rates?|rate decisions?|central banks?|interest rates?|cash rate|bank rate|base rate|key rate|rate (?:hikes?|cuts?)|hike[sd]?|hiking|cuts?|easing|tightening|monetary policy)\b/;
+const RATES = /\b(?:policy rates?|rate decisions?|central banks?|interest rates?|cash rate|bank rate|base rate|key rate|rate (?:hikes?|cuts?)|(?:cut|cuts|hike|hikes|raise|raises|lower|lowers)(?: interest| policy)? rates|monetary policy)\b/;
+/**
+ * A hike or a cut is a policy rate's only where the question names a market
+ * or its bank ("Will the ECB cut?"): "Did UAL raise or cut its guidance?" is
+ * a company's.
+ */
+const RATE_MOVES = /\b(?:hike[sd]?|hiking|cuts?|easing|tightening)\b/;
 /** A dividend or earnings yield is a stock's, not a bond's. */
 const CURVE = /(?<!(?:dividend|earnings|fcf) )\b(?:yields?|curves?|bonds?|govvies|2s10s|5s30s|\d+-?(?:y|yr|year)s?|tenors?|steepen\w*|flatten\w*|invert\w*|inversion)\b/;
-const CALENDAR = /\b(?:calendar|releases?|cpi|inflation|gdp|payrolls?|nfp|pmis?|schedule[ds]?|meetings?|this week|next week|upcoming)\b/;
+/** The macro calendar by what it lists: "this week" alone is any question's week ("Why did airline stocks fall this week?"). */
+const CALENDAR = /\b(?:calendar|releases?|cpi|inflation|gdp|payrolls?|nfp|pmis?|meetings?|economic data|macro data)\b/;
+/** Macro figures by name; not "release" or "meeting", which a company has too. */
+const MACRO = /\b(?:cpi|ppi|pce|inflation|gdp|payrolls?|nfp|pmis?|unemployment|jobless|recession|economy|economic data|macro data)\b/;
+/** A bond's yield or a curve: a dividend or earnings yield is a stock's, and a tenor alone ("over 5 years") any question's. */
+const BONDS = /(?<!(?:dividend|earnings|fcf) )\b(?:yields?|curves?|bonds?|govvies|2s10s|5s30s)\b/;
 
 /** Where `name` first stands as a whole word or phrase in `text`; -1 when it does not. */
 function wordAt(text: string, name: string): number {
@@ -56,6 +67,22 @@ export function questionMarkets(question: string): string[] {
   for (const [word, code] of MARKET_WORDS) add(code, wordAt(text, word));
   for (const [pattern, code] of CASED_MARKET_WORDS) add(code, pattern.exec(question)?.index ?? -1);
   return [...first].sort((left, right) => left[1] - right[1]).map(([code]) => code);
+}
+
+/** Whether a question asks about a policy rate, a central bank, government bonds or macro figures. */
+function asksAboutRates(question: string, text: string): boolean {
+  return RATES.test(text) || BANKS.some((bank) => bank.names.some((name) => wordAt(text, name) >= 0))
+    || (RATE_MOVES.test(text) && questionMarkets(question).length > 0);
+}
+
+/**
+ * Whether a question is the rates or macro desk's ("How has the RBNZ cash
+ * rate moved?", "What did CPI do to bonds?"), where the words it writes in
+ * capitals are banks, indices and indicators far more often than companies.
+ */
+export function asksAboutRatesOrMacro(question: string): boolean {
+  const text = question.toLowerCase();
+  return asksAboutRates(question, text) || BONDS.test(text) || BOND_WORDS.some(([word]) => wordAt(text, word) >= 0) || MACRO.test(text);
 }
 
 /** A function a rates question is answered with, and how to run it for the markets named. */
@@ -79,13 +106,13 @@ const RATES_FUNCTIONS = ["CBR", "GC", "ECO"] as const;
  */
 export function ratesQuestionFunctions(question: string): RatesQuestionFunction[] {
   const text = question.toLowerCase();
-  const rates = RATES.test(text) || BANKS.some((bank) => bank.names.some((name) => wordAt(text, name) >= 0));
+  const markets = questionMarkets(question);
+  const rates = asksAboutRates(question, text);
   const curve = CURVE.test(text) || BOND_WORDS.some(([word]) => wordAt(text, word) >= 0);
   const calendar = CALENDAR.test(text);
   const asked = RATES_FUNCTIONS.filter((code) => code === "CBR" ? rates : code === "GC" ? curve : calendar);
   if (asked.length === 0) return [];
   const codes = rates || curve ? [...asked, ...RATES_FUNCTIONS.filter((code) => !asked.includes(code))] : asked;
-  const markets = questionMarkets(question);
   const curves = markets.flatMap((code) => GC_CURVE_WORDS[code] ? [GC_CURVE_WORDS[code]] : []);
   // ECO lists the euro area's own releases as EU.
   const countries = markets.map((code) => code === "EA" ? "EU" : code).join(",");

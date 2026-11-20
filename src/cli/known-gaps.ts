@@ -283,11 +283,12 @@ const TOPIC_POINTERS: ReadonlyArray<{
     closest: [["CTM", "gloom fn CTM HG for copper, gloom fn CTM ALI for aluminium"]],
   },
   {
-    // No source serves a jet fuel (kerosene) price. Heating oil, NY Harbor ULSD, is what airlines hedge it with and
-    // analysts read it by; the EIA's weekly US stocks are a catalog series (checked 2026-10-29: quote HO=F,
-    // fn COT HO and fn G CAP:doe:jet all answer).
+    // Jet fuel (kerosene) has one price, the US Gulf Coast's daily spot series; no futures on it are carried.
+    // Heating oil, NY Harbor ULSD, is what airlines hedge it with and analysts read it by; the weekly US stocks
+    // are a catalog series (checked 2026-10-29: quote HO=F, fn COT HO and fn G CAP:doe:jet all answer).
     topic: "Jet fuel (kerosene)",
-    availability: "no price series; heating oil (NY Harbor ULSD) is the usual proxy, its price: gloom quote HO=F. "
+    availability: "a spot price only, the US Gulf Coast's, daily in USD/gallon: gloom fred DJFUELUSGULF. "
+      + "Heating oil (NY Harbor ULSD), the usual hedge, trades as a future: gloom quote HO=F. "
       + "US jet fuel stocks (EIA, weekly): gloom fn G CAP:doe:jet",
     phrases: ["jet fuel", "jet fuels", "kerosene", "kerosine", "jet kerosene", "aviation fuel", "aviation fuels", "avtur"],
     closestLabel: "positioning",
