@@ -1,5 +1,7 @@
 import { majorListings } from "../../tickers/search/major-listings";
+import { CENTRAL_BANKS, centralBankNames } from "../../utils/central-banks";
 import { isUsListingExchange } from "../../utils/exchanges";
+import { asksAboutRatesOrMacro } from "./rates-question";
 
 /**
  * A question about named tickers, answered without AI by the functions a desk
@@ -14,9 +16,22 @@ import { isUsListingExchange } from "../../utils/exchanges";
  * Words a question writes in capitals that are no company it asks about,
  * whether or not a listing trades under them: AI is C3.ai's ticker and the AI
  * trade, ON onsemi's and a word. Two-letter words, macro and accounting
- * abbreviations, agencies, indices and currencies.
+ * abbreviations, agencies, indices, indicators, rates and currencies; the
+ * central banks' are BANK_WORDS.
  */
 const NOT_TICKERS = new Set([
+  // Indices and their gauges: "How did DXY do?" asks about the dollar.
+  "DXY", "DX", "VXN", "VVIX", "TOPIX", "ASX", "KOSDAQ", "SENSEX", "NIFTY", "CSI", "SSE", "STI", "KLCI", "SET", "JCI", "PSEI", "TAIEX",
+  "TWSE", "IBOV", "MERVAL", "SMI", "AEX", "OMX", "ATX", "MIB", "BIST", "TASI", "JSE", "NZX",
+  // Technical indicators, valuation and airline measures: "What does the RSI of NVDA say?" asks about NVDA.
+  "RSI", "MACD", "EMA", "SMA", "VWAP", "TWAP", "ATR", "ADX", "OBV", "MFI", "ROC", "TRIX", "DMI", "STOCH", "KDJ", "SAR", "PEG", "BVPS",
+  "DPS", "FFO", "AFFO", "GAAP", "CAGR", "WACC", "IRR", "NPV", "NII", "NIM", "ROTCE", "TAM", "LTV", "ASM", "ASMS", "RPM", "RPMS", "RASM",
+  "CASM", "PRASM", "TRASM", "RASK", "CASK", "PRASK",
+  // Macro figures, agencies and reference rates.
+  "HICP", "CPIH", "RPI", "LEI", "GNP", "GDI", "BOP", "NAIRU", "NAHB", "NMI", "TIC", "EIA", "IEA", "DOE", "USDA", "WASDE", "CFTC", "COT",
+  "FINRA", "FDIC", "OCC", "CFPB", "FHFA", "HUD", "NBER", "ESMA", "FCA", "PRA", "ESM", "EBA", "EFFR", "IORB", "RRP", "ONRRP", "TGA",
+  "BTFP", "SLR", "LCR", "TLTRO", "MLF", "SLF", "OCR", "SELIC", "TIIE", "CORRA", "SARON", "STIBOR", "NIBOR", "BBSW", "BKBM", "JIBAR",
+  "KOFR", "TONAR",
   "AM", "AN", "AS", "AT", "BE", "BY", "DO", "GO", "HE", "IF", "IN", "IS", "IT", "ME", "MY", "NO", "OF", "OK", "ON", "OR", "SO", "TO", "UP",
   "US", "WE", "ALL", "AND", "ARE", "CAN", "FOR", "HOW", "LOW", "NEW", "NOT", "NOW", "ONE", "THE", "WHO", "WHY", "YES",
   "AI", "USA", "UK", "EU", "CEO", "CFO", "COO", "CTO", "CPI", "PPI", "PCE", "GDP", "PMI", "ISM", "NFP", "FOMC", "FED", "ECB", "BOJ", "BOE",
@@ -31,6 +46,10 @@ const NOT_TICKERS = new Set([
   "ESTR", "TONA", "HIBOR", "SHIBOR", "RUT", "DJIA", "DJI", "SOX", "NKY", "HSI", "KOSPI", "TSX", "CAC", "IBEX", "STOXX", "RRR", "LPR",
   "ZIRP", "NIRP", "YCC", "SPR",
 ]);
+
+/** The central banks by the one word a question names them with (RBNZ, SARB, CBRT, Banxico, Copom): never a company. */
+const BANK_WORDS = new Set(CENTRAL_BANKS.flatMap((bank) => centralBankNames(bank))
+  .filter((name) => /^[A-Za-z]+$/.test(name)).map((name) => name.toUpperCase()));
 
 let majorUsSymbols: Promise<ReadonlySet<string>> | null = null;
 
@@ -47,15 +66,18 @@ const TICKER_WORD = /(?<![\p{L}\p{N}&/.\-])(\$)?([A-Za-z][A-Za-z0-9]{0,5}(?:\.[A
 /**
  * The tickers a question names, in its order, each once: a cashtag always; a
  * word in capitals in a question that has lower case too, unless it is an
- * abbreviation (NOT_TICKERS), a short word no shipped US listing has, or a
- * function's code no listing has (`functionCodes`: OMON, WEI). A symbol of
- * three letters or more that the shipped listings do not carry (LUV) still
- * counts, as only the large caps ship.
+ * abbreviation (NOT_TICKERS), a central bank (BANK_WORDS), a short word no
+ * shipped US listing has, or a function's code no listing has
+ * (`functionCodes`: OMON, WEI). A symbol of three letters or more that the
+ * shipped listings do not carry (LUV) still counts, as only the large caps
+ * ship, except in a question about rates or macro figures, whose capitals are
+ * banks, indices and indicators ("How has the BCRP policy rate moved?").
  */
 export async function questionTickers(question: string, functionCodes: ReadonlySet<string> = new Set()): Promise<string[]> {
   const mixedCase = /\p{Ll}/u.test(question);
   const found: string[] = [];
   let known: ReadonlySet<string> | null = null;
+  let macro: boolean | null = null;
   for (const match of question.matchAll(TICKER_WORD)) {
     const [, cashtag, word] = match;
     const symbol = word!.toUpperCase();
@@ -65,11 +87,28 @@ export async function questionTickers(question: string, functionCodes: ReadonlyS
       continue;
     }
     // BRK.B, never U.S. nor Q4.
-    if (!mixedCase || word !== symbol || !/^[A-Z]{2,5}(?:\.[A-Z])?$/.test(symbol) || NOT_TICKERS.has(symbol)) continue;
+    if (!mixedCase || word !== symbol || !/^[A-Z]{2,5}(?:\.[A-Z])?$/.test(symbol) || NOT_TICKERS.has(symbol) || BANK_WORDS.has(symbol)) continue;
     known ??= await knownUsSymbols();
-    if (known.has(symbol) || (symbol.length >= 3 && !functionCodes.has(symbol))) found.push(symbol);
+    if (known.has(symbol)) {
+      found.push(symbol);
+      continue;
+    }
+    macro ??= asksAboutRatesOrMacro(question);
+    if (!macro && symbol.length >= 3 && !functionCodes.has(symbol)) found.push(symbol);
   }
   return found;
+}
+
+/**
+ * The ticker a question asks about first, for the functions run on one: the
+ * first it writes as a cashtag or a shipped listing has, ahead of a word in
+ * capitals only its shape made a ticker ("the KST of NVDA" is NVDA's), else
+ * the first named.
+ */
+async function primaryTicker(question: string, tickers: readonly string[]): Promise<string> {
+  const known = await knownUsSymbols();
+  const cashtags = new Set([...question.matchAll(TICKER_WORD)].filter(([, cashtag]) => cashtag).map(([, , word]) => word!.toUpperCase()));
+  return tickers.find((ticker) => known.has(ticker) || cashtags.has(ticker)) ?? tickers[0]!;
 }
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -187,6 +226,8 @@ interface TickerQuestionFunction {
 /** What a question asks of the tickers it names; null when it names none. */
 export interface TickerQuestion {
   tickers: string[];
+  /** The one the functions run on one ticker take (`primaryTicker`). */
+  primary: string;
   functions: TickerQuestionFunction[];
 }
 
@@ -218,12 +259,12 @@ export async function tickerQuestion(
   const tickers = await questionTickers(question, functionCodes);
   if (tickers.length === 0) return null;
   const text = question.toLowerCase();
-  const first = tickers[0]!;
+  const primary = await primaryTicker(question, tickers);
   const window = questionWindow(question, now) ?? questionYear(question, now);
   const span = questionSpan(text);
-  const one = (code: TickerQuestionFunction["code"]): TickerQuestionFunction => ({ code, argument: first, input: first });
+  const one = (code: TickerQuestionFunction["code"]): TickerQuestionFunction => ({ code, argument: primary, input: primary });
   if (window || span || PRICE_MOVE.test(text)) {
-    return { tickers, functions: [priceFunction(tickers, window, span, now), one("CN"), one("ANR")] };
+    return { tickers, primary, functions: [priceFunction(tickers, window, span, now), one("CN"), one("ANR")] };
   }
   const asked: TickerQuestionFunction[] = [
     ...(GUIDANCE.test(text) ? [one("GUIDE")] : []),
@@ -231,5 +272,5 @@ export async function tickerQuestion(
     ...(ANALYSTS.test(text) ? [one("ANR")] : []),
     ...(NEWS.test(text) ? [one("CN")] : []),
   ];
-  return { tickers, functions: asked };
+  return { tickers, primary, functions: asked };
 }

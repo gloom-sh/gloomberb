@@ -159,6 +159,17 @@ test("the morning's European words lead to the index board, a question asked sig
     // A question no function answers gets none, not the closest noise (ECO, ATS and DOE; Time and Sales).
     expect(await ask("Why did airline stocks fall this week?")).toEqual([]);
     expect(await ask("Is now a good time to buy?")).toEqual([]);
+    // A bank, an index or an indicator in capitals took the price functions as a ticker; RSI took the one-ticker functions from NVDA.
+    expect(await ask("How has the RBNZ cash rate moved?")).toEqual([["gloom fn CBR", null], ["gloom fn GC --tab world", null], ["gloom fn ECO NZ", "ECO NZ"]]);
+    expect(await ask("How did DXY do?")).toEqual([["gloom fn WEI", null]]);
+    // The functions "rsi" names (alerts, backtests) run for NVDA, and none for RSI.
+    const rsi = (await ask("What does the RSI of NVDA say?")).map(([command]) => command!);
+    expect(rsi.some((command) => command.endsWith(" NVDA"))).toBe(true);
+    expect(rsi.some((command) => /\bRSI\b/.test(command))).toBe(false);
+    expect(await ask("What does the KST of NVDA say?")).toEqual([["gloom fn DES NVDA", "DES NVDA"], ["gloom fn CN NVDA", "CN NVDA"], ["gloom fn ANR NVDA", "ANR NVDA"]]);
+    // "time" asks about nothing alone, but "time and sales" is the function's name.
+    expect((await ask("time and sales"))[0]).toEqual(["gloom fn TAS <ticker>", null]);
+    expect((await ask("Show me time & sales for AAPL"))[0]).toEqual(["gloom fn TAS AAPL", "TAS AAPL"]);
     // VIEW's example is a spec that runs as typed, not only `<spec JSON or empty>`.
     const [example] = entries.find((entry) => entry.token === "VIEW")?.argExamples ?? [];
     expect(parseViewSpec(example!.replace(/^'|'$/g, ""))?.source).toEqual({ kind: "inline", pane: "WEI" });

@@ -13,6 +13,17 @@ test("a question's tickers are its cashtags and its symbols in capitals, never a
   expect(await questionTickers("WHAT MOVED DAL TODAY")).toEqual([]);
 });
 
+test("a bank, an index or an indicator in capitals is no ticker, and a rates or macro question counts only the shipped listings", async () => {
+  expect(await questionTickers("How has the RBNZ cash rate moved?")).toEqual([]);
+  expect(await questionTickers("How did DXY do?")).toEqual([]);
+  expect(await questionTickers("What does the RSI of NVDA say?")).toEqual(["NVDA"]);
+  // Any bank's word, listed or not: BCRP is in neither list, and the question is about a policy rate.
+  expect(await questionTickers("How has the BCRP policy rate moved?")).toEqual([]);
+  expect(await questionTickers("Did LUV fall on the CPI print?")).toEqual([]);
+  expect(await questionTickers("Did DAL fall on the CPI print?")).toEqual(["DAL"]);
+  expect(await questionTickers("Did LUV fall this week?")).toEqual(["LUV"]);
+});
+
 test("the dates a question names are a window, a year stated once counting for both", () => {
   expect(questionWindow("from November 9 to November 13, 2026", NOW)).toEqual({ from: "2026-11-09", to: "2026-11-13" });
   expect(questionWindow("between 13 Nov and 9 Nov", NOW)).toEqual({ from: "2026-11-09", to: "2026-11-13" });
@@ -36,4 +47,6 @@ test("a move asked about is the prices over those days, then the first ticker's 
   expect(await run("Did UAL raise or cut its guidance?")).toEqual(["GUIDE UAL"]);
   expect(await run("Who holds the most AAL stock?")).toEqual(["HDS AAL"]);
   expect(await run("What did the DAX do yesterday?")).toBeUndefined();
+  // A word only its shape made a ticker does not take the one-ticker functions from a listing: "the KST of NVDA" is NVDA's.
+  expect(await run("What moved the KST of NVDA today?")).toEqual(["QQ KST,NVDA", "CN NVDA", "ANR NVDA"]);
 });
