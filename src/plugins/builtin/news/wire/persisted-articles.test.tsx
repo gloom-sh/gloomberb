@@ -1,19 +1,79 @@
 import { expect, test } from "bun:test";
 import { act, useReducer, useState } from "react";
+import { apiClient } from "../../../../api-client";
+import { createAppRuntime } from "../../../../core/app-runtime";
+import { normalizeLoadedConfig } from "../../../../data/config/store/normalize";
+import { JsonPersistence } from "../../../../data/json-persistence";
+import { JsonTickerRepository } from "../../../../data/json-ticker-repository";
+import { cloudNewsSnapshotScope } from "../../../../news/cloud-session";
 import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../../state/app/context";
+import { verifiedUser } from "../../../../test-support/cloud-api";
+import { createTestDataProvider } from "../../../../test-support/data-provider";
 import { createTestArticle } from "../../../../test-support/news";
-import { TestPaneProvider } from "../../../../test-support/pane";
+import { createTestPaneConfig, TestPaneProvider } from "../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
-import { createDefaultConfig } from "../../../../types/config";
+import { createDefaultConfig, createPaneInstance } from "../../../../types/config";
 import type { MarketNewsItem } from "../../../../types/news-source";
 import { Text } from "../../../../ui";
 import { listedHeadline } from "../../../../news/news-model";
-import { usePersistedStory } from "./persisted-articles";
+import { usePersistedNewsArticles, usePersistedStory } from "./persisted-articles";
 
 const tui = createOpenTuiTestHarness({ width: 100, height: 5 });
 const paneId = "news-story:test";
 const key = "story:v2";
+
+test("an unconfirmed session shows live news or its public upgrade seed, never the account's cached list", async () => {
+  const pane = createPaneInstance("news-top", { instanceId: "news-top:offline" });
+  const newsKey = "top:curated:articles";
+  const legacy = createTestArticle("atom:public", { title: "Public legacy headline" });
+  const paid = createTestArticle("paid", { title: "Cached Pro headline" });
+  const live = createTestArticle("live", { title: "Live headline" });
+  const saved = createTestPaneConfig("/unused/news-upgrade", pane);
+  saved.layouts[0]!.paneState = { [pane.instanceId]: { pluginState: { news: { [`${newsKey}:v2`]: [legacy] } } } };
+  const { config } = normalizeLoadedConfig(JSON.parse(JSON.stringify(saved)), saved.dataDir);
+  const proUser = { ...verifiedUser, plan: "pro" } as const;
+  apiClient.setSessionToken("verified-news-session");
+  apiClient.restoreCachedUser(proUser);
+  const services = createAppRuntime({
+    config, plugins: [], persistence: new JsonPersistence(), tickerRepository: new JsonTickerRepository(),
+    dataProvider: createTestDataProvider(),
+  });
+  try {
+    await services.ready;
+    const registry = services.pluginRegistry;
+    registry.newsPaneSnapshots.write(pane, "news", `${newsKey}:v2`, cloudNewsSnapshotScope()!, [paid]);
+    const state = createInitialState(config);
+    let setArticles!: (articles: MarketNewsItem[]) => void;
+    function Probe() {
+      const [articles, update] = useState<MarketNewsItem[]>([]);
+      setArticles = update;
+      const visible = usePersistedNewsArticles(newsKey, articles);
+      return <Text>{visible.map((article) => article.title).join(", ") || "No headlines"}</Text>;
+    }
+    await tui.render(<TestPaneProvider state={state} paneId={pane.instanceId} pluginId="news" runtime={registry}>
+      <Probe />
+    </TestPaneProvider>);
+    await tui.waitForFrameToContain(paid.title);
+    await act(async () => {
+      apiClient.setSessionToken("unconfirmed-news-session");
+      apiClient.restoreCachedUser(proUser, false);
+    });
+    expect(cloudNewsSnapshotScope()).toBeNull();
+    expect(await tui.waitForFrameToContain(legacy.title)).not.toContain(paid.title);
+    await act(async () => { setArticles([live]); });
+    expect(await tui.waitForFrameToContain(live.title)).not.toContain(paid.title);
+    await act(async () => { setArticles([]); });
+    await tui.waitForFrameToContain(legacy.title);
+    await act(async () => { apiClient.restoreCachedUser(proUser); });
+    expect(await tui.waitForFrameToContain(paid.title)).not.toContain(live.title);
+  } finally {
+    await tui.destroy();
+    services.destroy();
+    apiClient.dispose();
+    apiClient.setSessionToken(null);
+  }
+});
 
 function harness(snapshot: unknown, fresh: MarketNewsItem[] = []) {
   const initial = createInitialState(createDefaultConfig("/tmp/gloom-news-publisher-test"));

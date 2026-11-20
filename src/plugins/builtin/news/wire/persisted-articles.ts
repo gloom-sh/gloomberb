@@ -123,7 +123,7 @@ export function usePersistedNewsArticles(key: string, articles: MarketNewsItem[]
   const snapshots = runtime.newsPaneSnapshots;
   const storageKey = `${key}:v2`;
   const cached = useMemo(() => {
-    if (articles.length || !pane || scope == null) return [];
+    if (articles.length || !pane) return [];
     return restoreArticles(snapshots?.read<PersistedNewsArticle>(pane, pluginId, storageKey, scope) ?? []);
   }, [articles, pane, pluginId, scope, snapshots, storageKey]);
   useEffect(() => {
@@ -131,7 +131,7 @@ export function usePersistedNewsArticles(key: string, articles: MarketNewsItem[]
       snapshots?.write(pane, pluginId, storageKey, scope, serializeArticles(articles));
     }
   }, [articles, pane, pluginId, scope, snapshots, storageKey]);
-  return articles.length && scope != null ? articles : cached;
+  return articles.length ? articles : cached;
 }
 
 export function usePersistedStory(articles: MarketNewsItem[]): MarketNewsItem[] {

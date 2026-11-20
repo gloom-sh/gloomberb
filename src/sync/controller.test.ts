@@ -1345,27 +1345,52 @@ const DEFAULT_LAYOUT_NAMES = createDefaultConfig("/devices/defaults").layouts.ma
 test("legacy news refreshes on either device do not change the synced workspace", async () => {
   const cloud = createSharedCloud();
   const current = createDevice(cloud, "current");
+  const homeTicker = current.state.config.layout.instances.find((pane) => pane.paneId === "ticker-research")!;
+  const monitorTop = current.state.config.layouts.find((entry) => entry.name === "Monitor")!
+    .layout.instances.find((pane) => pane.paneId === "news-top")!;
+  const tickerKey = "articles:AAPL::v2";
+  const topKey = "top:curated:articles:v2";
+  const tickerState = (title: string) => ({ pluginState: { "ticker-research": { [tickerKey]: [{ title }] } } });
+  const monitorState = { pluginState: { news: { [topKey]: [{ title: "Monitor headline" }] } } };
+  current.dispatch({ type: "UPDATE_PANE_STATE", paneId: homeTicker.instanceId, patch: { activeTabId: "news" } });
   await current.sync("startup");
-  expect(cloud.config()?.layouts).toBeDefined();
   let pushes = 0;
   current.beforePush = async () => { pushes += 1; };
-  const newsState = (title: string) => ({ pluginState: { news: { "top:curated:articles:v2": [{ title }] } } });
-  const incoming = (title: string) => cloud.updateConfig((config) => ({
-    ...config, layouts: config.layouts.map((layout) => ({ ...layout, paneState: { "news-top:main": newsState(title) } })),
+  cloud.updateConfig((config) => ({
+    ...config, layouts: config.layouts.map((saved) => ({ ...saved, paneState: {
+      ...(saved.name === "Home" ? { [homeTicker.instanceId]: tickerState("Remote ticker headline") } : {}),
+      ...(saved.name === "Monitor" ? { [monitorTop.instanceId]: monitorState } : {}),
+    } })),
   }));
-
-  for (const title of ["first refresh", "next refresh"]) {
-    incoming(title);
-    const layout = current.state.config.layout;
-    const local = current.state.paneState["news-top:main"];
-    await current.sync("poll");
-    expect(current.state.config.layout).toBe(layout);
-    expect(current.state.paneState["news-top:main"]).toBe(local);
-    current.dispatch({ type: "UPDATE_PANE_STATE", paneId: "news-top:main", patch: newsState(`local ${title}`) });
-    await current.sync("state-change");
-    expect(cloud.config()?.layouts[0]?.paneState).toEqual({ "news-top:main": newsState(title) });
-  }
+  const { layout, layouts, activeLayoutIndex } = current.state.config;
+  const local = current.state.paneState[homeTicker.instanceId];
+  await current.sync("poll");
+  expect(current.state.config.layout).toBe(layout);
+  expect(current.state.config.layouts).toBe(layouts);
+  expect(current.state.paneState[homeTicker.instanceId]).toBe(local);
   expect(pushes).toBe(0);
+
+  for (const title of ["Local ticker headline", "Next local headline"]) {
+    current.dispatch({ type: "UPDATE_PANE_STATE", paneId: homeTicker.instanceId, patch: tickerState(title) });
+    expect(current.state.config.layouts[activeLayoutIndex]?.paneState?.[homeTicker.instanceId])
+      .toMatchObject(tickerState(title));
+    await current.sync("state-change");
+    expect(pushes).toBe(0);
+  }
+
+  const help = createPaneInstance("help", { instanceId: "help:monitor" });
+  cloud.updateConfig((config) => ({
+    ...config, layouts: config.layouts.map((saved) => saved.name === "Monitor" ? { ...saved, layout: {
+      ...saved.layout,
+      instances: [...saved.layout.instances, help],
+      floating: [...saved.layout.floating, { instanceId: help.instanceId, x: 4, y: 3, width: 55, height: 17 }],
+    } } : saved),
+  }));
+  await current.sync("poll");
+  const monitor = current.state.config.layouts.find((saved) => saved.name === "Monitor")!;
+  expect(current.state.config.activeLayoutIndex).toBe(activeLayoutIndex);
+  expect(monitor.layout.instances).toContainEqual(help);
+  expect(monitor.paneState?.[monitorTop.instanceId]).toBeUndefined();
 });
 
 function cloudLayoutNames(cloud: ReturnType<typeof createSharedCloud>): string[] | undefined {

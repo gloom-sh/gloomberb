@@ -30,7 +30,7 @@ export interface PluginRuntimeAccess extends CapabilityInvoker, PluginRuntimeHos
   deleteResumeState(pluginId: string, key: string): void;
   /** @internal The built-in news lists' renderer-local warm copies, not layout state. */
   newsPaneSnapshots?: {
-    read<T>(pane: PaneInstanceConfig, owner: string, key: string, scope: string): T[] | null;
+    read<T>(pane: PaneInstanceConfig, owner: string, key: string, scope: string | null): T[] | null;
     write(pane: PaneInstanceConfig, owner: string, key: string, scope: string, articles: unknown[]): void;
   };
   getConfigState<T = unknown>(pluginId: string, key: string): T | null;

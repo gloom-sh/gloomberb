@@ -37,11 +37,11 @@ function resourceKey({ pane, owner, key }: SnapshotTarget, scope: string) {
   return kind && { namespace: "pane:news", kind, entityKey: JSON.stringify([pane.paneId, pane.instanceId]), sourceKey: scope };
 }
 
-export function readNewsPaneSnapshot<T>(store: AppResourceStorePort, target: SnapshotTarget, scope: string): T[] | null {
-  const resource = resourceKey(target, scope);
+export function readNewsPaneSnapshot<T>(store: AppResourceStorePort, target: SnapshotTarget, scope: string | null): T[] | null {
+  const resource = resourceKey(target, PUBLIC_LEGACY_SCOPE);
   if (!resource) return null;
   try {
-    const record = store.get<string>(resource) ?? store.get<string>({ ...resource, sourceKey: PUBLIC_LEGACY_SCOPE });
+    const record = (scope == null ? null : store.get<string>({ ...resource, sourceKey: scope })) ?? store.get<string>(resource);
     if (!record) return null;
     const [key, articles] = JSON.parse(unpackJson(record.value));
     return key === target.key && Array.isArray(articles) ? articles : null;
