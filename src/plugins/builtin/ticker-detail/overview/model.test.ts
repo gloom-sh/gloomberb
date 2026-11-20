@@ -7,6 +7,8 @@ import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { createTestTicker } from "../../../../test-support/ticker";
 import { servedRatesNotMeaningful } from "../../../../utils/served-rates";
 import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
+import { createTestQuote } from "../../../../test-support/data-provider";
+import { cryptoFixture } from "../../crypto-board/test-fixture";
 
 function overview(fundamentals: Fundamentals, financialCurrency?: string) {
   return Object.fromEntries(overviewFields(fundamentals, financialCurrency).map(({ label, value }) => [label, value]));
@@ -17,6 +19,21 @@ function overviewFields(fundamentals: Fundamentals, financialCurrency?: string) 
     quote: undefined, fundamentals, financialCurrency, quoteCurrency: "HKD", baseCurrency: "USD", toBase: (value) => value,
   });
 }
+
+test("coin board values fill the usual rows in the quote's format without duplicating them", () => {
+  const coin = cryptoFixture().assets[0]!;
+  const stats = (quote: Quote | undefined) => buildOverviewStats({
+    quote, coin, fundamentals: { trailingPE: 25 }, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value,
+  });
+  const fallback = stats(undefined);
+  expect(fallback.map(({ label }) => label)).toEqual(["Volume", "Market Cap", "Circ Supply", "Rank", "P/E (TTM)"]);
+  expect(fallback[0]).toMatchObject({ value: "$5B", detail: "24h" });
+  expect(fallback[1]!.value).toBe("1.00T USD");
+  const quoted = stats(createTestQuote({ symbol: "BTC-USD", exchangeName: "CCC", volume: 6e9, marketCap: 2e12, statsBasis: "composite" }));
+  expect(quoted.map(({ label }) => label)).toEqual(fallback.map(({ label }) => label));
+  expect(quoted[0]).toMatchObject({ value: "$6B", detail: "composite" });
+  expect(quoted[1]!.value).toBe("2.00T USD");
+});
 
 test("summary money with no sourced currency is bare, says so once, and never borrows the listing's", () => {
   const fundamentals: Fundamentals = {

@@ -5,7 +5,6 @@ import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { cryptoFixture } from "./test-fixture";
 import { coinIdentityOf, findCoinAsset } from "./coin";
-import { coinOverviewStats } from "../ticker-detail/overview/coin";
 
 function context(symbol: string, exchange?: string, instrumentType?: string): { ticker: TickerRecord; financials: TickerFinancials | null } {
   return {
@@ -35,10 +34,4 @@ test("the board row is found by code first, then by the name the board prints", 
   expect(findCoinAsset(assets, "USDT")?.code).toBe("USDT");
   // No code and no name on the board: nothing to read, never another coin's row.
   expect(findCoinAsset(assets, "NOPE")).toBeNull();
-});
-
-test("coin figures preserve the board's USD denomination and omit unavailable supply", () => {
-  const fields = coinOverviewStats(cryptoFixture().assets[0]!);
-  expect(fields.find((item) => item.label === "Market Cap")?.value).toContain("USD");
-  expect(fields.find((item) => item.label === "Max Supply")).toBeUndefined();
 });
