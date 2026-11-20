@@ -135,6 +135,45 @@ test("the CLI's primary listing of a name is the company the service marks with 
   expect(await primary("Toyota Motor", toyota)).toMatchObject({ symbol: "7203" });
 });
 
+test("a name typed with its legal form is that company, and the same name under another form a company after it", async () => {
+  // "Blue Owl Capital Corporation", 2026-11-20: comparing names without their legal forms, the service marks OWL
+  // (Blue Owl Capital Inc.) with the name as typed and as the home line, though the name is OBDC's.
+  const answer = [
+    { ...row("OWL | Blue Owl Capital Inc. | NYSE | Common Stock | Blue Owl Capital Corporation"), homeListing: true },
+    row("OBDC | Blue Owl Capital Corp | NYSE | Common Stock |  | 22324"),
+    row("1D6 | Blue Owl Capital Corporation | MUNICH | Common Stock |  | 20001"),
+    row("1D6 | Blue Owl Capital Corporation | FWB2 | Common Stock |  | 20001"),
+    row("OBDC | Blue Owl Capital Corporation | IEX | Common Stock"),
+    row("1D6 | Blue Owl Capital Corporation | XDUS | Common Stock"),
+  ];
+  const service = {
+    id: "gloomberb-cloud",
+    search: async () => answer,
+    getQuote: async () => { throw new Error("no quote"); },
+  } as unknown as DataProvider;
+  const listed = async (query: string) => (await searchCandidatesForCli({ query, tickers: [], dataProvider: service, totalLimit: 7 }))
+    .map((candidate) => `${candidate.category}: ${candidate.symbol}:${candidate.result?.exchange}`);
+  expect(await listed("Blue Owl Capital Corporation")).toEqual([
+    "Primary Listing: OBDC:NYSE", "Other Listings: OBDC:IEX", "Other Listings: 1D6:MUNICH", "Other Listings: 1D6:FWB2",
+    "Other Listings: 1D6:XDUS", "Other Matches: OWL:NYSE",
+  ]);
+  expect(await findListingOfCompanyName(service, "Blue Owl Capital Corporation")).toMatchObject({ symbol: "OBDC", exchange: "NYSE" });
+  // OWL's own form is OWL, with OBDC after it as another company.
+  expect((await listed("Blue Owl Capital Inc."))[0]).toBe("Primary Listing: OWL:NYSE");
+  expect((await listed("Blue Owl Capital Inc."))[1]).toBe("Other Matches: OBDC:NYSE");
+  expect(await findListingOfCompanyName(service, "Blue Owl Capital Inc.")).toMatchObject({ symbol: "OWL", exchange: "NYSE" });
+  // Without a legal form the name is the one the service marks.
+  expect((await listed("Blue Owl Capital"))[0]).toBe("Primary Listing: OWL:NYSE");
+});
+
+test("a company whose name ends in a class word (Fund) is found by its whole name", async () => {
+  // Blackstone Secured Lending Fund is a business development company's stock, not a fund.
+  const bxsl = ["BXSL | Blackstone Secured Lending Fund | NYSE | Common Stock", "GM8 | Blackstone Secured Lending Fund | FWB2 | Common Stock"];
+  const service = serviceAnswering({ "Blackstone Secured Lending Fund": bxsl, "Blackstone Secured Lending": bxsl });
+  expect((await searchCandidatesForCli({ query: "Blackstone Secured Lending Fund", tickers: [], dataProvider: service }))
+    .map((candidate) => `${candidate.category}: ${candidate.symbol}`)).toEqual(["Primary Listing: BXSL", "Other Listings: GM8"]);
+});
+
 test("a ticker's lines named with and without \"The\" are one company's, its listing in the service's order first", async () => {
   // "TJX", 2026-10-23: the service lists NYSE first; Hanover's line, twelfth, spells the name without "The"
   // ("TJX COMPANIES INC.            R"), which made it the closer match for the ticker.

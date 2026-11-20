@@ -8,7 +8,7 @@ import { typedCoinPairListing } from "../../utils/crypto-pair";
 import { canonicalExchange, exchangeCodeVenues, isUsListingExchange, parsePublicTickerKey, typedExchangeCode } from "../../utils/exchanges";
 import { assetClassKeeps, assetClassMarketSymbol, instrumentClassCode, parseAssetClassQuery } from "./asset-classes";
 import { futuresContractByCode } from "../../market-data/futures-board";
-import { sameCompany } from "../company-name";
+import { legalForm, otherLegalFormCompany, sameCompany } from "../company-name";
 
 const FUND_TYPES = new Set(["ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND"]);
 const DERIVATIVE_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "PERP", "PERPETUAL", "WARRANT", "WARRANTS", "RIGHT", "RIGHTS"]);
@@ -199,6 +199,10 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   // The rows the server sent for the whole query as a kind of fund ("spot bitcoin ETF" is IBIT, FBTC, ...)
   // carry it as a keyword: they answer it more than a fund whose name happens to hold the words.
   const categoryKeyword = assetClass ? normalizeSearchText(rawQuery) : "";
+  // A name typed with its legal form matches its lines however a venue spells the form ("Blue Owl Capital Corp"
+  // for "Blue Owl Capital Corporation"), and the same name under another form is another company, a near name.
+  const formFree = legalForm(intent.companyQuery) ? intent.companyQueryKey : "";
+  const otherForm = otherLegalFormCompany(intent.companyQuery, items.map((item) => item.detail.split("|")[0]));
 
   const ranked = (assetClass
     ? items.filter((item) => assetClassKeeps(assetClass.code, instrumentClassCode({
@@ -206,7 +210,7 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       instrumentType: item.instrumentType,
       symbol: item.symbol || item.label,
       exchange: item.exchangeLabel || item.right,
-    })))
+    })) || namesWholeQuery(item.detail.split("|")[0] ?? "", rawQuery))
     : items)
     .map((item, index) => {
       // A saved public key replaces its provider row during deduplication.
@@ -219,7 +223,7 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       const normalizedDetail = normalizeSearchText(item.detail);
       const normalizedRight = normalizeSearchText(item.right || "");
       const companyNameKey = getCompanyNameKey(item.detail);
-      const textQueries = [intent.normalizedQuery, intent.companyQuery].filter(Boolean);
+      const textQueries = [intent.normalizedQuery, intent.companyQuery, formFree].filter(Boolean);
       const labelScore = maxScoreForQueries(textQueries, normalizedLabel, {
         exact: 24_000,
         prefix: 18_000,
@@ -262,10 +266,10 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       const companyAliases = item.instrumentClass === "equity" && !(item.symbol || item.label).startsWith("^")
         ? item.nameAliases ?? []
         : [];
-      const companyMatchRank = Math.max(
+      const companyMatchRank = Math.min(Math.max(
         scoreCompanyNameMatch(intent, companyNameKey),
         ...companyAliases.map((alias) => scoreCompanyNameMatch(intent, normalizeCompanyName(alias))),
-      );
+      ), otherForm(item.detail.split("|")[0]) ? 2 : 3);
       return {
         item,
         index,
@@ -661,6 +665,16 @@ function getItemSearchAliases(item: Pick<TickerSearchRankableItem, "label"> & Pa
     ? item.searchAliases
     : buildSymbolAliases(item.symbol || item.label);
   return aliases.length > 0 ? aliases : [item.label];
+}
+
+/**
+ * Whether a row's name has the words of a query in a run, a class code at its
+ * end included: "Blackstone Secured Lending Fund" is BXSL's name, a company's
+ * stock, whatever FUND reads as after a name.
+ */
+function namesWholeQuery(name: string, query: string): boolean {
+  const typed = normalizeSearchText(query);
+  return typed.includes(" ") && ` ${normalizeSearchText(name)} `.includes(` ${typed} `);
 }
 
 /** A row that answers only to a theme it was sent with (`searchKeywords`), below any name match. */

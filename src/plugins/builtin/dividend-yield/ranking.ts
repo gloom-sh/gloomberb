@@ -5,7 +5,7 @@ import { TOKEN_YIELD_NOTE, type DividendData } from "./client";
 import { formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { NOT_SEC_YIELD } from "../../../market-data/bond-funds";
-import { historyEndsText } from "../../../utils/forward-dividend";
+import { historyEndsText, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
 import {
   analyzeTaxEquivalent, distributionBasis, formatMuniTreasuryRatio, type NoBondFigures, type TaxEquivalentAnalysis, type TaxRates, type TreasuryTenor,
 } from "../../../market-data/tax-equivalent";
@@ -56,16 +56,19 @@ function incompleteNote(entry: DividendRankingEntry): string | null {
 
 /**
  * How a row's trailing yield was counted, when its year holds fewer payments
- * than its cadence pays, or where a monthly payer's history ends; null
- * otherwise.
+ * than its cadence pays, or where a monthly payer's history ends, and a
+ * forward yield that is the trailing year's total (forwardBasis: uneven), as
+ * single-ticker DVD says beside it; null otherwise.
  */
 function yieldBasis(entry: DividendRankingEntry): string | null {
   if (!("data" in entry)) return null;
   if (entry.data.token) return TOKEN_YIELD_NOTE;
-  const lapse = entry.data.metrics.lapse;
+  const metrics = entry.data.metrics;
+  const lapse = metrics.lapse;
   if (lapse?.historyEnds && lapse.lastPaid) return historyEndsText(lapse.lastPaid);
-  const counted = trailingPaymentsText(entry.data.metrics.trailingPayments, { cadence: true });
-  return counted ? `counts ${counted}` : null;
+  const counted = trailingPaymentsText(metrics.trailingPayments, { cadence: true });
+  const forward = metrics.forwardYield != null && metrics.forwardBasis === "uneven" ? `fwd ${UNEVEN_REGULAR_PAYMENTS}` : null;
+  return [counted ? `counts ${counted}` : null, forward].filter(Boolean).join("; ") || null;
 }
 
 /** What a row is missing, in full, for the report's errors; null for a whole read. */
@@ -269,7 +272,7 @@ const NOTE_COLUMN: HeadlessPaneColumn = { key: "note", header: "Note", format: (
 
 /** Shown once a regular payer's trailing year holds fewer payments than its cadence pays, which says nothing is missing from the read itself. */
 const YIELD_BASIS_COLUMN: HeadlessPaneColumn = { key: "yieldBasis", header: "Yield basis", format: (value) => typeof value === "string" ? value : "",
-  description: "How many payments the trailing yield counts when a regular payer's year holds fewer than its cadence pays (a gap in its ex-dates)." };
+  description: "How many payments the trailing yield counts when a regular payer's year holds fewer than its cadence pays (a gap in its ex-dates), and a forward yield that is the trailing year's regular payments when they differ too widely for one to be annualized." };
 
 /** `fn DVD A B C`: one table of every symbol, ranked by trailing yield; with `--tax-rate`, each fund's bond and tax columns. */
 export function projectDividendRanking(entries: readonly DividendRankingEntry[], now = new Date(), tax: RankingTaxOptions | null = null): HeadlessBundleResult {

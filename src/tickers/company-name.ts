@@ -84,6 +84,49 @@ export function sameCompany(left: string | null | undefined, right: string | nul
   return [...fewer].every((word) => more.has(word));
 }
 
+// A legal form's spellings under one name: Corp is Corporation, Inc. is Incorporated, Co. is Company.
+const LEGAL_FORM_NAMES: Readonly<Record<string, string>> = {
+  corp: "corporation", corporation: "corporation", inc: "incorporated", incorporated: "incorporated", co: "company",
+  company: "company", ltd: "limited", limited: "limited", llc: "llc", lp: "lp", plc: "plc", sa: "sa", ag: "ag",
+  aktiengesellschaft: "ag", nv: "nv", se: "se",
+};
+
+/**
+ * The legal form a company's name ends with, before any share wording, one
+ * name for each of its spellings: "corporation" for "Blue Owl Capital Corp"
+ * and "Blue Owl Capital Corporation", "incorporated" for "Blue Owl Capital
+ * Inc.". Null for a name that ends without one, or is nothing else.
+ */
+export function legalForm(name: string | null | undefined): string | null {
+  const words = foldNameLetters(name ?? "").toLowerCase().replace(/\./g, "").split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  let last = words.length - 1;
+  while (last > 0 && SHARE_NOISE.has(words[last]!)) last--;
+  return last > 0 ? LEGAL_FORM_NAMES[words[last]!] ?? null : null;
+}
+
+/**
+ * Which names are another company than the one a name typed with its legal
+ * form means, among `names` (the lines search found): the typed name under
+ * another legal form, once a line bears it under the typed one. "Blue Owl
+ * Capital Corporation" is Blue Owl Capital Corp (OBDC), so Blue Owl Capital
+ * Inc. (OWL) is another company, though one company's venues spell its
+ * legal form many ways and the names are alike without it. Typed without a
+ * legal form, or with one no line bears, no name is.
+ */
+export function otherLegalFormCompany(
+  typed: string,
+  names: readonly (string | null | undefined)[],
+): (name: string | null | undefined) => boolean {
+  const form = legalForm(typed);
+  const key = companyKey(typed);
+  const borne = !!form && !!key && names.some((name) => legalForm(name) === form && companyKey(name ?? "") === key);
+  return (name) => {
+    if (!borne) return false;
+    const own = legalForm(name);
+    return !!own && own !== form && companyKey(name ?? "") === key;
+  };
+}
+
 /**
  * Whether two names are one company's name however each venue writes the legal
  * form and the share wording: "Deutsche Post AG" and "Deutsche Post" are, "DHL

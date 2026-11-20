@@ -143,17 +143,92 @@ const UNEVEN_PAYMENT_RATIO = 1.5;
  * final). Their total is the year's cash, where the latest one annualized is
  * not (HSBA's interim read as 2.17% a year beside the 4.08% it paid). Null for
  * an even year, one with a hole or an extra payment, an annual payer and an
- * irregular one. `latest` is the newest payment's ex-date.
+ * irregular one, and for a year that changed level once and kept it
+ * (steppedPayments): a cut or a raise is a new rate, not interims beside a
+ * final. `next` is the annual rate of a distribution declared after the year's
+ * payments, as the stated forward rate annualizes it. `latest` is the newest
+ * payment's ex-date.
  */
-export function unevenRegularPayments(payments: readonly CashDistribution[], asOf: Date): { total: number; latest: Date } | null {
+export function unevenRegularPayments(payments: readonly CashDistribution[], asOf: Date, next?: { exDate: Date; annualRate: number } | null): { total: number; latest: Date } | null {
   const { counted, perYear } = trailingPayments(payments, asOf);
   if (perYear == null || perYear < 2 || counted.length !== perYear) return null;
-  const amounts = counted.map((payment) => payment.amount);
+  const ordered = [...counted].sort((left, right) => left.exDate.getTime() - right.exDate.getTime());
+  const amounts = ordered.map((payment) => payment.amount);
   if (Math.max(...amounts) <= UNEVEN_PAYMENT_RATIO * Math.min(...amounts)) return null;
+  const latest = ordered.at(-1)!.exDate;
+  const declared = next && next.exDate > latest && Number.isFinite(next.annualRate) && next.annualRate > 0 ? next.annualRate / perYear : null;
+  if (steppedPayments(ordered, payments, declared)) return null;
   return {
     total: atSourcePrecision(amounts.reduce((sum, amount) => sum + amount, 0)),
-    latest: new Date(Math.max(...counted.map((payment) => payment.exDate.getTime()))),
+    latest,
   };
+}
+
+/** No payment of `amounts` over 1.5 times another: one level. */
+function evenAmounts(amounts: readonly number[]): boolean {
+  return Math.max(...amounts) <= UNEVEN_PAYMENT_RATIO * Math.min(...amounts);
+}
+
+/**
+ * A year's payments (`year`, oldest first) that changed level once and kept
+ * it: every one before the change at one level, every one after at another,
+ * the new level paid at least twice, or once and declared again (`declared`,
+ * the next distribution's amount), and not paid in the same periods of the
+ * year before, which `history` holds. ECC's $0.14 monthly to March 2026 and
+ * $0.06 from April is a cut; HSBC's three interims after a final four times
+ * their size are not, being the size of the interims a year earlier, nor is
+ * an interim after a final, whose newest level is paid once.
+ */
+function steppedPayments(year: readonly CashDistribution[], history: readonly CashDistribution[], declared: number | null): boolean {
+  const amounts = year.map((payment) => payment.amount);
+  const halfPeriod = (year.at(-1)!.exDate.getTime() - year[0]!.exDate.getTime()) / Math.max(1, year.length - 1) / 2;
+  for (let change = 1; change < amounts.length; change += 1) {
+    const before = amounts.slice(0, change);
+    const after = amounts.slice(change);
+    if (!evenAmounts(before) || !evenAmounts(after)) continue;
+    if (after.length < 2 && (declared == null || !evenAmounts([...after, declared]))) continue;
+    const yearEarlier = year.slice(change).flatMap((payment) => {
+      const anniversary = new Date(payment.exDate);
+      anniversary.setUTCFullYear(anniversary.getUTCFullYear() - 1);
+      return history.filter((earlier) => Math.abs(earlier.exDate.getTime() - anniversary.getTime()) <= halfPeriod);
+    });
+    if (yearEarlier.every((earlier) => !evenAmounts([...after, earlier.amount]))) return true;
+  }
+  return false;
+}
+
+/**
+ * The ex-dates (as times) of a monthly or quarterly payer's rows whose one
+ * amount is its regular payment and an extra one paid the same day, which a
+ * history keyed by ex-date keeps as a single row: ECC's $0.39 of 7 Oct 2022,
+ * in October's place between $0.14 months. Such a row falls in its period's
+ * place, is over 1.5 times the even payments either side of it, and its period
+ * a year before or after is not as large (a final beside interims, as HSBC's,
+ * is every year), with at least one of those years in the history.
+ */
+export function combinedPaymentTimes(payments: readonly CashDistribution[]): Set<number> {
+  const paid = payments.filter((payment) => Number.isFinite(payment.amount) && payment.amount > 0)
+    .sort((left, right) => left.exDate.getTime() - right.exDate.getTime());
+  const combined = new Set<number>();
+  for (let index = 1; index < paid.length - 1; index += 1) {
+    const [previous, current, next] = [paid[index - 1]!, paid[index]!, paid[index + 1]!];
+    const cadence = inferCadence(paid, next.exDate);
+    if (cadence !== "monthly" && cadence !== "quarterly") continue;
+    const period = 2 * REGULAR_CADENCE[cadence]!.halfPeriodDays * DAY;
+    const inPlace = (gap: number) => gap >= 0.6 * period && gap <= 1.5 * period;
+    if (!inPlace(current.exDate.getTime() - previous.exDate.getTime()) || !inPlace(next.exDate.getTime() - current.exDate.getTime())) continue;
+    const regular = Math.max(previous.amount, next.amount);
+    if (!evenAmounts([previous.amount, next.amount]) || current.amount <= UNEVEN_PAYMENT_RATIO * regular) continue;
+    const counterparts = [-1, 1].flatMap((years) => {
+      const anniversary = new Date(current.exDate);
+      anniversary.setUTCFullYear(anniversary.getUTCFullYear() + years);
+      return paid.filter((payment) => Math.abs(payment.exDate.getTime() - anniversary.getTime()) <= period / 2);
+    });
+    if (counterparts.length > 0 && counterparts.every((payment) => payment.amount <= UNEVEN_PAYMENT_RATIO * regular)) {
+      combined.add(current.exDate.getTime());
+    }
+  }
+  return combined;
 }
 
 /** A history row as a paid distribution; null when its date is not a calendar day or its amount is no cash. */

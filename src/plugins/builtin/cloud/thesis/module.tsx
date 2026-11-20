@@ -13,6 +13,8 @@ export const thesisModule: PluginModule = {
   panes: [{
     id: THESIS_PANE_ID,
     reportFreshness: { source: "Your theses", status: "not-a-feed", basis: "your theses", local: true },
+    // Theses are kept in Gloom Cloud: signed out, the board asks for a sign-in.
+    reportRequirements: ["Free Gloom sign-in"],
     name: "Theses",
     personalData: "holdings",
     icon: "Θ",

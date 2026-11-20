@@ -3,7 +3,7 @@ import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
 import { canonicalExchange, isUsEquityExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
-import { companyLines, companyNameExtraWords, companyNameMatch, foldNameLetters, namedByService, runTogether, sameCompany, shortCompanyName } from "./company-name";
+import { companyLines, companyNameExtraWords, companyNameMatch, foldNameLetters, namedByService, otherLegalFormCompany, runTogether, sameCompany, shortCompanyName } from "./company-name";
 import { LISTING_SEARCH_LIMIT } from "./search";
 import { isFundReceipt, lineDistance, primaryCompanyLine } from "./search/home-listing";
 import { classifyInstrumentKind, isCryptoInstrumentType } from "./search/ranking";
@@ -183,11 +183,17 @@ export async function findListingOfCompanyName(
 
 /** Search's rows that can be the company a name means, nearest the name first (`findListingOfCompanyName`). */
 function rankCompanyLines(name: string, results: readonly InstrumentSearchResult[], options: { oneWord?: boolean }) {
+  // The name typed with its legal form under another form is another company, one word further from the name, and
+  // the marks the service gave it for the name without the form are not its: OWL (Blue Owl Capital Inc.) for
+  // "Blue Owl Capital Corporation", which is OBDC.
+  const otherForm = otherLegalFormCompany(name, results.map((result) => result.name));
   return results.flatMap((result, order) => {
     const exchange = listedExchange(result);
     const type = listedType(result);
-    const named = namedByService(name, result);
-    const match = named ? { extra: 0, abbreviated: 0 } : companyNameMatch(name, result.name);
+    const other = otherForm(result.name);
+    const named = !other && namedByService(name, result);
+    const found = named ? { extra: 0, abbreviated: 0 } : companyNameMatch(name, result.name);
+    const match = found && other ? { ...found, extra: found.extra + 1 } : found;
     if (!exchange || match == null || classifyInstrumentKind(type) === "derivative" || isDebtLine(type, result.name)
       || parsePublicTickerKey(result.symbol).exchange) return [];
     // A word alone names a company by these lines only; the company's other lines are still its lines.
@@ -195,10 +201,10 @@ function rankCompanyLines(name: string, results: readonly InstrumentSearchResult
     // A receipt is a company's shares too, however search types it ("Depositary Receipt" or "American Depositary Receipt"),
     // unless it is one on a fund search lists under its name: the Tracker Fund's Thai receipt is the fund's line.
     const stock = RECEIPT.test(type) ? (isFundReceipt(result, results) ? 1 : 0) : classifyInstrumentKind(type) === "equity" ? 0 : 1;
-    const home = result.homeListing === true;
+    const home = !other && result.homeListing === true;
     const line = home ? 0 : 1 + lineDistance(type, exchange, result.symbol);
     return [{
-      result, exchange, stock, home, namesCompany,
+      result, exchange, stock, home, namesCompany, other,
       // The service's first answer, marked as its company's home, with every word typed in its name word for word.
       served: order === 0 && home && match.abbreviated === 0 && stock === 0 && classifyInstrumentKind(type) === "equity",
       rank: [match.extra, match.abbreviated, stock, line, named ? 0 : 1, isUsListingExchange(exchange) ? 0 : 1, result.symbol.length, order],
@@ -247,7 +253,7 @@ async function settleCompanyListing(
   const firstHomes = otherHomesThan(first);
   // Never a line of another business its name is in (`companyLines`): Siemens Energy AG is not Siemens AG's.
   const lead = first.home ? first : primaryCompanyLine(first, companyLines(first, listed, lineFacts).filter((listing) => listing === first
-    || (!listing.home && !firstHomes.has(plainName(listing.result.name)) && listing.stock === first.stock
+    || (!listing.home && !firstHomes.has(plainName(listing.result.name)) && listing.stock === first.stock && listing.other === first.other
     && (!named || companyNameExtraWords(listing.result.name, first.result.name) != null))),
   ({ result, exchange }) => ({ distance: lineDistance(listedType(result), exchange, result.symbol), score: result.popularity ?? null }),
   { named });

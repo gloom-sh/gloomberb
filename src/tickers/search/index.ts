@@ -41,7 +41,7 @@ import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTermin
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
-import { withFundReceiptsAsFunds, withHomeListingLead, withHomeVenueLead, withNamedCompanyAfterUsLead } from "./home-listing";
+import { withFundReceiptsAsFunds, withHomeListingLead, withHomeVenueLead, withNamedCompanyAfterUsLead, withoutOtherLegalFormMarks } from "./home-listing";
 import { answeredInFull, rememberSearchAnswer, withKnownListings } from "./listing-index";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
 import { delistingLabel, parseListingWithdrawal, withdrawalLabel } from "../../market-data/quotes/delisting";
@@ -58,7 +58,7 @@ export {
   rankTickerSearchItems,
 } from "./ranking";
 export { upsertTickerFromSearchResult } from "./upsert";
-export { candidateExchange, listingDistance, primaryCompanyLine } from "./home-listing";
+export { candidateExchange, listingDistance, otherLegalFormRows, primaryCompanyLine } from "./home-listing";
 
 const MAX_NAMED_LISTINGS = 6;
 
@@ -369,7 +369,11 @@ export function buildTickerSearchCandidates({
     query,
   );
   // A receipt on a fund is the fund's line, never a company's primary listing over it (HK01 on SET for the Tracker Fund).
-  const providerItems = withFundReceiptsAsFunds(createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions));
+  // A name typed with its legal form is never another company's that the service marked for the name without it.
+  const providerItems = withoutOtherLegalFormMarks(
+    withFundReceiptsAsFunds(createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions)),
+    query,
+  );
   const ranked = withHomeVenueLead(withNamedCompanyAfterUsLead(
     withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query),
     query,

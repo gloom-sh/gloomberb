@@ -45,6 +45,7 @@ import { ResearchTabKeysProvider, useResearchTabKeysHost } from "./research-tab-
 import { ResearchTabNavigationProvider } from "./research-tab-navigation";
 import { usePluginAppActions } from "../../../public/react";
 import { useUtcDay } from "../../../react/auto-refresh";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { ResearchTradeWorkspace } from "../broker-trading/dock";
 
@@ -242,6 +243,18 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       proOnly: (tabId) => proOnlyTabIds.has(tabId),
       fallback: allTabs.find((tab) => !proOnlyTabIds.has(tab.id))?.id ?? savedTabId,
     });
+  // `gloom fn DES ARCC --tab x` opens on a tab the ticker has, or fails naming the ones it has: an id no tab has at
+  // once, a tab this ticker does not show (financials of a fund without statements) once its data is in.
+  const missingTab = !paneSettings.hideTabs && !!ticker && !allTabs.some((tab) => tab.id === committedActiveTabId)
+    && (financials != null || !tickerResearchTabs.some((tab) => tab.id === committedActiveTabId));
+  useRemoteUiNode(missingTab ? {
+    role: "report-failure",
+    label: "No such tab",
+    getMetadata: () => ({
+      message: `${ticker!.metadata.ticker} has no ${committedActiveTabId} tab.`,
+      details: `Tabs: ${allTabs.map((tab) => tab.id).join(", ")}.`,
+    }),
+  } : null);
   // The address names the tab on screen, so a copied link opens what was seen.
   useEffect(() => {
     if (!focused || !ticker || getCurrentPluginTarget() !== "web") return;
