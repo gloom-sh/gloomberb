@@ -313,6 +313,8 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 
 #### Which tabs Ticker Research shows
 
+For Treasury yield indices such as `^TNX`, Overview and Chart show yield levels in percent. The session move is the change from the previous close in basis points, not a relative return. The same units apply in reports.
+
 A company's page has eleven tabs, and a tab with several views shows them as choices under the strip (a second row in the terminal):
 
 | Tab | Views |
@@ -783,6 +785,8 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 An open theme in `THEM` and the Members tab of `MEMB` add two entries to the pane menu (`.`): **Open Members In…** opens the members in `RRG` (up to 24), `CORR` (2 to 10), `SIW` (up to 60) or `RIPL` (up to 10), and **Save to Watchlist…** saves the first 100 members to a new watchlist or adds them to one you have. A `MEMB` search narrows both to the holdings it matches.
 
 #### News, Congress and bond tools
+
+Free news is delayed by 12 hours, including when signed out. `gloom fn TOP` and `gloom news --feed latest` report the delay separately from the newest story's publication time. When access is unknown, the report does not guess the delay or call the feed live.
 
 News rows credit the article's publisher and open its original URL. The managed news feed includes only articles whose publisher and original link can be verified, and custom RSS and Atom feeds use each item's source when supplied. If a feed fails, News keeps any available stories and shows the failure in its footer.
 
@@ -1479,7 +1483,7 @@ By rating, AAA to BBB: `BAMLC0A1CAAAEY`, `BAMLC0A2CAAEY`, `BAMLC0A3CAEY`, `BAMLC
 
 - Every value to the series' own precision (FRED's `5.1` prints as `5.10` beside `5.09`). Exports keep the value as FRED gives it. Spreads (`T10Y2Y`, `T10Y3M`, `MORTGAGE30US10Y`, the ICE BofA option-adjusted spreads) print in basis points.
 - A monthly or quarterly series is dated by its period in the closing line (`Aug 2026 (monthly)`), and by the day its newest figure was released when Gloom Cloud sends it (`Sep 2026, released Tue 20 Oct`). A flow at a seasonally adjusted annual rate says so in its value header (`Value (Billions of Dollars, annual rate)`). A series FRED publishes late (`UMCSENT`) carries a note saying where the newer reading is.
-- A Treasury yield whose newest session Gloom Cloud read from the Treasury before FRED listed it says `Source: U.S. Treasury via FRED, published 2026-10-09`, and the row carries `publisher` and `publishedAt` in every export. Values FRED lists stay `Source: FRED`.
+- When the newest Treasury yield is an official Treasury observation, the report says `Source: U.S. Treasury, published 2026-10-09`. Exports keep `publisher` and `publishedAt` separate from the observation date. Other observations retain their series attribution.
 - Exports date each row three ways beyond `date`, which is the period it covers (`2026-09-01` for September): `period` (the same date), `released` (the day or time FRED's source released it, where Gloom Cloud sends it, which is the newest figure of a weekly to annual series; empty otherwise) and `retrieved`. `as_of` is the release. A figure with none stated is as of its own day only when the series says it is daily or weekly, and is empty for any other series (monthly, quarterly, a frequency it does not name, or none stated), never the first day of its period. `--json` rows carry `released` where it is known.
 
 **Türkiye's CPI.** FRED does not carry it, so it is served as `TURCPIYOY` (percent change from a year earlier) and `TURCPIMOM` (from the month before), under Inflation, with TurkStat's figures as the Central Bank of the Republic of Türkiye publishes them (`Source: TurkStat via the CBRT`). The data catalog charts them as `FRED:TURCPIYOY` and `FRED:TURCPIMOM`.

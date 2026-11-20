@@ -1,4 +1,5 @@
 import { apiClient, type CloudEconEventPayload } from "../../../api-client";
+import { fredProvenance, type FredProvenance } from "../../../sources/gloomberb-cloud/fred-attribution";
 import { logFailure } from "../../../utils/log-failure";
 import { parseEconFigure } from "../econ/figures";
 import type { DatedObservation, SeriesCacheLoadResult, SeriesCacheMetadata } from "../shared/series-cache";
@@ -11,6 +12,7 @@ import { STATS } from "./stats";
 export type StatSeriesLoader = (def: StatDef, options?: { force?: boolean }) => Promise<DatedObservation[] | SeriesCacheLoadResult>;
 
 export interface StatBuild {
+  attribution?: FredProvenance;
   stat: StatDef;
   points: StatPoint[];
   trend: TrendFit;
@@ -64,7 +66,8 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
     }));
   const points = applyTransform(scaled, def.transform);
   if (points.length === 0) return null;
-  const release = observations.find((entry) => entry.date === points.at(-1)!.date);
+  const release = observations.find((entry) => entry.date === points.at(-1)!.date && entry.value != null);
+  const attribution = release ? fredProvenance([release], def.seriesId) : null;
   const releasedOn = def.seriesId === "GDPNOW"
     ? release?.revisedOn ?? release?.releasedOn ?? release?.firstReleased
     : release?.firstReleased ?? release?.releasedOn;
@@ -76,6 +79,7 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
   };
   // These go negative routinely, so the fit stays linear.
   return { stat: def, points, trend: fitTrend(points, "linear"), ...(releasedOn ? { releasedOn } : {}),
+    ...(attribution ? { attribution } : {}),
     ...(release?.firstReleased ? { firstReleased: release.firstReleased } : {}),
     ...(release?.revisedOn ? { revisedOn: release.revisedOn } : {}),
     ...(def.transform === "level" && release?.firstReleaseValue != null ? { firstReleaseValue: release.firstReleaseValue * scale } : {}),
@@ -108,7 +112,7 @@ function alignDerivedBuilds(builds: StatBuild[]): StatBuild[] {
     if ((entry.points.at(-1)?.date ?? "") <= cap) return entry;
     const points = entry.points.filter((point) => point.date <= cap);
     if (points.length === 0) return entry;
-    const { releasedOn: _cutRelease, firstReleased: _cutFirst, revisedOn: _cutRevision, firstReleaseValue: _cutValue, ...rest } = entry;
+    const { attribution: _cutAttribution, releasedOn: _cutRelease, firstReleased: _cutFirst, revisedOn: _cutRevision, firstReleaseValue: _cutValue, ...rest } = entry;
     return { ...rest, points, trend: fitTrend(points, "linear") };
   });
 }

@@ -36,6 +36,7 @@ function sameSeriesMeta(left: ResolvedSeries, right: ResolvedSeries): boolean {
     && left.dataShape === right.dataShape
     && left.style === right.style
     && left.transform === right.transform
+    && left.latestChangeBasisPoints === right.latestChangeBasisPoints
     && left.axis === right.axis
     && left.panelId === right.panelId
     && left.interpolation === right.interpolation

@@ -1,4 +1,5 @@
 import { currencyRateUnitText } from "../../time-series/price-units";
+import { formatBasisPoints } from "../../utils/basis-points";
 import { getSharedRegistry } from "../../plugins/registry";
 import { seriesExpression, seriesNamedBy } from "../../series/registry";
 import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
@@ -649,6 +650,7 @@ function renderSeries(result: HeadlessSeriesResult, showPoints: boolean): string
       latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestDate(series, latest.date) : MISSING_VALUE,
       value: series.notMeaningful ? "N/M" : seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
+      move: series.latestChangeBasisPoints === undefined ? null : formatBasisPoints(series.latestChangeBasisPoints / 100, 1),
       native: latest?.nativeAmount ? `${seriesValue(series, latest.nativeAmount.value)} ${latest.nativeAmount.currency}` : null,
       ...trailingCells(series.trailing),
       ...(mixedBars ? { bars: barSizes[index] ?? MISSING_VALUE } : {}),
@@ -664,6 +666,7 @@ function renderSeries(result: HeadlessSeriesResult, showPoints: boolean): string
     { key: "value", header: "Value", align: "right" },
     ...(trailing ? TRAILING_COLUMNS : []),
     ...(rows.some((row) => row.unit) ? [{ key: "unit", header: "Unit" }] : []),
+    ...(rows.some((row) => row.move) ? [{ key: "move", header: "Session move", align: "right" as const }] : []),
     ...(mixedBars ? [{ key: "bars", header: "Bars" }] : []),
     ...(rows.some((row) => row.native) ? [{ key: "native", header: "Native", align: "right" as const }] : []),
     // Beside the averages, the count of points is the first thing a narrow table drops.

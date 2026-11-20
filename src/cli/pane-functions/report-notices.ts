@@ -64,7 +64,7 @@ export function renderedLoadError(semanticUi: readonly RemoteUiNodeSnapshot[]): 
   return typeof message === "string" && message.trim() ? message.trim() : null;
 }
 
-const FRESHNESS_STATUSES: readonly HeadlessFreshnessStatus[] = ["live", "delayed", "stale", "not-a-feed"];
+const FRESHNESS_STATUSES: readonly HeadlessFreshnessStatus[] = ["live", "delayed", "stale", "not-a-feed", "unreported"];
 
 /** The `sources` a pane publishes: each a name and a time. */
 function publishedSources(value: unknown): NonNullable<HeadlessPaneFreshness["sources"]> | null {

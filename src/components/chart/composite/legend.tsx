@@ -3,6 +3,7 @@ import { Box, ScrollBox, Span, Text, useShortcutLabel, useUiCapabilities, type S
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
 import { MISSING_VALUE, displayWidth, formatPercentRaw, formatCompact } from "../../../utils/format";
+import { formatBasisPoints } from "../../../utils/basis-points";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import {
@@ -321,12 +322,10 @@ export function CompositeLegend({
     const cursorValue = cursorValueById.get(entry.id);
     // A stacked layer reads its own amount, not the top of the stack it is drawn to.
     const legendValue = entry.stacked ? cursorValue?.point?.rawValue ?? null : cursorValue?.value ?? null;
-    const changeText = showLatestChangePercent
-        && !scene?.cursorDate
-        && typeof entry.latestChangePercent === "number"
-        && Number.isFinite(entry.latestChangePercent)
-      ? ` ${formatPercentRaw(entry.latestChangePercent)}`
-      : "";
+    const changeText = !showLatestChangePercent || scene?.cursorDate ? ""
+      : entry.latestChangeBasisPoints !== undefined ? ` ${formatBasisPoints(entry.latestChangeBasisPoints / 100, 1)}`
+      : typeof entry.latestChangePercent === "number" && Number.isFinite(entry.latestChangePercent)
+        ? ` ${formatPercentRaw(entry.latestChangePercent)}` : "";
     const ownDate = valueDates.own.get(entry.id);
     // Carried from an earlier observation: another venue's closed session, a coarser series.
     const carried = !!scene?.cursorDate && !!cursorValue?.carried && cursorValue.value != null;

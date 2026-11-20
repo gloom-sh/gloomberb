@@ -3,6 +3,8 @@ import { latestMoveRank, MOVE_HORIZONS, type MoveRank } from "../shared/move-ran
 import { periodsPerYear, type StatPoint } from "../shared/stat-transform";
 import { sigmaVsTrend } from "../shared/trend";
 import { periodReleasedText, periodStartPeriodicity, releasedText } from "../../../utils/release-date";
+import type { FredProvenance } from "../../../sources/gloomberb-cloud/fred-attribution";
+import { fredCitation, fredPublisher } from "../../../sources/gloomberb-cloud/fred-publisher";
 import type { StatBuild } from "./client";
 import type { StatDef } from "./defs";
 
@@ -20,6 +22,7 @@ export interface StatViewModel {
   stat: StatDef;
   range: StatRangeId;
   latest: StatPoint;
+  attribution: FredProvenance;
   /** The latest print's period at the series' own cadence: "Sep 21", "Aug", "Q2". */
   period: string;
   /** What the latest print is a reading of, in full: "Aug 2026", "Q2 2026", "week ending 2026-10-03", "2026-10-09". */
@@ -152,6 +155,7 @@ export function projectStat(
     stat,
     range,
     latest,
+    attribution: build.attribution ?? { source: fredCitation(stat.seriesId), publisher: fredPublisher(stat.seriesId) ?? undefined },
     period: formatStatPeriod(latest.date, perYear),
     reading,
     releasedOn,

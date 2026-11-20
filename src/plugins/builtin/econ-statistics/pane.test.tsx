@@ -18,6 +18,34 @@ afterEach(() => {
   statsCache.reset();
 });
 
+test("the selected yield cites its latest observation while other statistics still cite their own series", async () => {
+  const series = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (id) => ({ observations: [
+    { date: "2026-11-17", value: 4.2 },
+    { date: "2026-11-18", value: 4.21 },
+    { date: "2026-11-19", value: 4.25, ...(id === "DGS10" ? { publisher: "U.S. Treasury", publishedAt: "2026-11-20" } : {}) },
+  ], info: null }));
+  const initial = createInitialState(createTestPaneConfig("/tmp/gloom-ecst-attribution-unused", {
+    instanceId: "ecst:attribution", paneId: "econ-statistics", settings: { stat: "ten-year" },
+  }));
+  initial.focusedPaneId = "ecst:attribution";
+  function Harness() {
+    const [state, dispatch] = useReducer(appReducer, initial);
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId="ecst:attribution" pluginId="market-overview" runtime={createTestPluginRuntime()} width={160} height={38}>
+      {(body) => <EconStatisticsPane paneId="ecst:attribution" paneType="econ-statistics" focused {...body} />}
+    </TestPaneFrame>;
+  }
+  try {
+    await act(async () => { await tui.render(<Harness />, { width: 160, height: 38 }); });
+    await tui.waitForFrameToContain("U.S. Treasury, published 2026-11-20");
+    expect(tui.frame()).toContain("reading for 2026-11-19 15:30 ET");
+    await tui.emitKeypress({ name: "down" });
+    await tui.waitForFrameToContain("Federal Reserve Board via FRED");
+    expect(tui.frame()).not.toContain("published 2026-11-20");
+  } finally {
+    series.mockRestore();
+  }
+});
+
 test("housing chart ticks use the table's millions and the period keeps its year", async () => {
   statsCache.hydrate(STATS.map((stat) => [stat.seriesId, Array.from({ length: 25 }, (_, index) => ({
     date: new Date(Date.UTC(2024, index, 1)).toISOString().slice(0, 10), value: 500 + index * 50,

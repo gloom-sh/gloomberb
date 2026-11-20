@@ -236,11 +236,12 @@ export async function loadChartPaneModel(
       ).map((row) => [row.date, row.growth])) : null;
       // A formula or a converted price prints at its legs' decimals in text; JSON keeps every digit.
       // A coin's dollar price near par prints to four decimals, as `quote`, `ticker` and CRYP print it.
-      const { valueDecimals, ...reported } = series;
-      const textDecimals = valueDecimals ?? (source?.kind === "security" && series.unitGroup === "price:USD"
+      const { valueDecimals, latestChangeBasisPoints, ...reported } = series;
+      const textDecimals = valueDecimals ?? (series.unitGroup === "price:%" ? 3 : source?.kind === "security" && series.unitGroup === "price:USD"
         ? nearParCoinPriceDigits(financials.get(snapshotInstrumentKey(source.instrument))?.quote) : undefined);
       return {
         ...reported,
+        ...(!spec.viewport.dateWindow && spec.viewport.range === "1D" && latestChangeBasisPoints !== undefined ? { latestChangeBasisPoints } : {}),
         ...name ? { name } : {},
         ...textDecimals !== undefined ? { textDecimals } : {},
         // A company's reported total (revenue, market cap) reads as 63.33B in the report, as in the legend and the tables.

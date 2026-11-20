@@ -217,12 +217,13 @@ test("nothing on or after --start names the latest observation, and fails a CSV 
 
   // A start on a day the bond market was shut shows the day before and says why.
   serveSeries((query) => ({
-    observations: query.get("startDate") ? [] : [{ date: "2026-11-10", value: 4.11 }],
+    observations: query.get("startDate") ? [] : [{ date: "2026-11-10", value: 4.11, publisher: "U.S. Treasury", publishedAt: "2026-11-10" }],
     info: { id: "DGS10", units: "Percent", frequency: "Daily", observationStart: "1962-01-02" },
   }));
   const closed = await runFred(["DGS10", "--start", "2026-11-11"]);
   expect(closed.text).toContain("2026-11-10");
   expect(closed.text).toContain("Wed 11 Nov: US bond market closed (Veterans Day); showing Tue 10 Nov");
+  expect(closed.result.freshness).toMatchObject({ source: "U.S. Treasury, published 2026-11-10", publishedAt: "2026-11-10" });
   expect(closed.result.metadata).not.toHaveProperty("latestObservation");
 });
 
@@ -238,12 +239,15 @@ test("a yield ahead of FRED names Treasury and when it published, in the source 
     info,
   }));
   const ahead = await runFred(["DGS10"]);
-  expect(ahead.text.split("\n").at(-1)).toBe("Source: U.S. Treasury via FRED, published 2026-10-09 \u00b7 Fri 9 Oct 2026 \u00b7 not a live feed (published statistics)");
+  expect(ahead.text.split("\n").at(-1)).toBe("Source: U.S. Treasury, published 2026-10-09 \u00b7 Fri 9 Oct 2026 \u00b7 not a live feed (published statistics)");
   expect(ahead.result.data).toEqual([
-    { date: "2026-10-09", value: 5.24, publisher: "U.S. Treasury", publishedAt: "2026-10-09T20:01:09.391Z", released: "2026-10-09T20:01:09.391Z" },
+    { date: "2026-10-09", value: 5.24, publisher: "U.S. Treasury", publishedAt: "2026-10-09T20:01:09.391Z" },
     { date: "2026-10-08", value: 5.22 },
   ]);
-  expect(ahead.result.freshness).toMatchObject({ publisher: "U.S. Treasury", publishedAt: "2026-10-09T20:01:09.391Z" });
+  expect(ahead.result.freshness).toMatchObject({ asOf: "2026-10-09", publisher: "U.S. Treasury", publishedAt: "2026-10-09T20:01:09.391Z" });
+  const csv = serializeCliResult(ahead.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, ahead.options);
+  expect(csv).toContain('"U.S. Treasury, published 2026-10-09",2026-10-09,2026-10-09,,');
+  expect(csv).toContain("Federal Reserve Board via FRED,2026-10-08,2026-10-08,,");
 
   // Once FRED lists it, the line is FRED's again, with FRED's own publication time.
   serveSeries(() => ({ observations: [{ date: "2026-10-09", value: 5.24 }], info: { ...info, observationEnd: "2026-10-09", lastUpdated: "2026-10-12 15:16:37-05" } }));

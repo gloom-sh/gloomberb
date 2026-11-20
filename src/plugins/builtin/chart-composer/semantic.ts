@@ -69,6 +69,7 @@ export function chartComposerSemanticMetadata(
       visible: series.visible !== false,
       pointCount: resolved?.points.length ?? 0,
       latestChangePercent: resolved?.latestChangePercent ?? null,
+      ...(resolved?.latestChangeBasisPoints !== undefined ? { latestChangeBasisPoints: resolved.latestChangeBasisPoints } : {}),
       first: pointEvidence(resolved?.points[0]),
       last: pointEvidence(resolved?.points.at(-1)),
     };
