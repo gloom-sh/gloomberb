@@ -175,7 +175,7 @@ const GUIDANCE = /\b(?:guid(?:e|ed|es|ing|ance)|outlook|forecasts?)\b/;
 const HOLDERS = /\b(?:holds?|holders?|owns?|owners?|ownership|institutions?|institutional|stakes?)\b/;
 
 /** A function a ticker question is answered with, and how to run it for the tickers named. */
-export interface TickerQuestionFunction {
+interface TickerQuestionFunction {
   /** The function's code, as `gloom fn` and the command bar take it. */
   code: "CMP" | "HP" | "QQ" | "CN" | "ANR" | "GUIDE" | "HDS" | "DES";
   /** As `gloom fn` takes it after the code (`DAL,UAL,AAL --from 2026-11-09 --to 2026-11-13`). */
