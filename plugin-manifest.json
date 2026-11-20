@@ -561,6 +561,41 @@
       ]
     },
     {
+      "id": "fear-greed",
+      "name": "Fear & Greed",
+      "description": "CNN Fear & Greed index with the seven indicator charts",
+      "tagline": "The Fear & Greed index and its inputs.",
+      "categories": [
+        "markets",
+        "sentiment"
+      ],
+      "toggleable": true,
+      "icon": "plugin-icons/fear-greed.webp",
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
+      "contributes": {
+        "panes": [
+          "fear-greed"
+        ],
+        "capabilities": [],
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "FNG",
+            "name": "Fear & Greed",
+            "description": "CNN Fear & Greed sentiment gauge with the seven indicator charts."
+          }
+        ]
+      },
+      "highlights": [
+        "FNG"
+      ]
+    },
+    {
       "id": "filings",
       "name": "Filings & Events",
       "description": "SEC filings, risk factors, 8-K events, catalysts and litigation, and M&A and distress.",
@@ -869,6 +904,109 @@
         "CHAT",
         "THESIS",
         "ACM"
+      ]
+    },
+    {
+      "id": "ipo-calendar",
+      "name": "IPO Calendar",
+      "description": "Upcoming and recent IPOs worldwide",
+      "tagline": "Upcoming and recent IPOs worldwide.",
+      "categories": [
+        "macro",
+        "markets"
+      ],
+      "toggleable": true,
+      "icon": "plugin-icons/ipo-calendar.webp",
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
+      "contributes": {
+        "panes": [
+          "ipo-calendar"
+        ],
+        "capabilities": [],
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "IPO",
+            "name": "IPO Calendar",
+            "description": "Upcoming and recent IPOs in the US, Asia-Pacific and Europe: offer price, deal size and first-day return."
+          }
+        ]
+      },
+      "highlights": [
+        "IPO"
+      ]
+    },
+    {
+      "id": "market-halts",
+      "name": "Market Halts",
+      "description": "Current and recent US trading halts from Nasdaq Trader",
+      "tagline": "US trading halts, current and recent.",
+      "categories": [
+        "markets"
+      ],
+      "toggleable": true,
+      "icon": "plugin-icons/market-halts.webp",
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
+      "contributes": {
+        "panes": [
+          "market-halts"
+        ],
+        "capabilities": [],
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "HALT",
+            "name": "Market Halts",
+            "description": "Current and recent US trading halts from Nasdaq Trader, with reason and resumption times."
+          }
+        ]
+      },
+      "highlights": [
+        "HALT"
+      ]
+    },
+    {
+      "id": "market-heatmap",
+      "name": "Market Heatmap",
+      "description": "Largest US stocks and ETFs, or the portfolio pane's list, sized by the day's move, market cap or position value and colored by daily move",
+      "tagline": "The largest US stocks and ETFs as a heatmap.",
+      "categories": [
+        "markets"
+      ],
+      "toggleable": true,
+      "icon": "plugin-icons/market-heatmap.webp",
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
+      "contributes": {
+        "panes": [
+          "market-heatmap"
+        ],
+        "capabilities": [],
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "HM",
+            "name": "Market Heatmap",
+            "description": "Largest US stocks and ETFs, or the portfolio pane's list, sized by the day's move, market cap or position value and colored by daily move."
+          }
+        ]
+      },
+      "highlights": [
+        "HM"
       ]
     },
     {
