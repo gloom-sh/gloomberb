@@ -13,7 +13,7 @@ import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
 import { approximatePercent, loadSurfaceEvents, surfaceEventHistory, surfaceEventReadings, surfaceReadingLabel, type SurfaceEventReading,
   type SurfaceEvents } from "./events";
 import { buildSurfaceGrid, TERM_SLOPE_MIN_GAP_DAYS, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
-import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
+import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, storedSurfaceFreshness, type DatedSurfaceSnapshot } from "./stored";
 import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
 import { coinOptionsAlias, coinWithoutOptionsRefusal, fxVolatilityRefusal, listedCoinOptions } from "../../../market-data/options-alternatives";
 import { formatUtcTime } from "../../../utils/utc-time";
@@ -346,7 +346,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
           + "it weights every strike, so it sits above the IV at the forward when the wings are bid."] : [],
         ...tab === "skew" ? SKEW_NOTES : [], ...readings.length ? EVENT_NOTES : [], ...events?.notes ?? []] } : {}),
       // A stored close is dated by its session, whichever view prints it.
-      ...(stored ? { freshness: { status: "not-a-feed" as const, basis: "stored close capture", asOf: stored.sessionDate } }
+      ...(stored ? { freshness: storedSurfaceFreshness(stored.sessionDate) }
         : smile?.freshness ? { freshness: smile.freshness } : {}),
       metadata: savedCopy({ ...snapshot, ...quote ? { underlyingQuote: quote } : {}, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations",
         ...dvol && !(dvol instanceof Error) ? { dvol: { currency: dvol.currency, venue: dvol.venue, latest: dvol.latest, unit: "vol points",
