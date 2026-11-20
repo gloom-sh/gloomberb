@@ -33,10 +33,16 @@ test("a bare symbol that reads as a future keeps the list's venue when it lists 
   const futures: Record<string, string> = { ES3: "E-Mini S&P 500 3rd generic", NQ1: "E-Mini Nasdaq 100 1st generic", "ES=F": "E-Mini S&P 500" };
   // How each venue answers: "yes", "busy", or once the promise given resolves.
   type Answer = "yes" | "busy" | Promise<void>;
-  // A turn of the event loop that no fake timer holds: every lookup that can answer without the clock answers.
-  const turns = async (count: number) => { for (let turn = 0; turn < count; turn++) await new Promise<void>((resolve) => setImmediate(resolve)); };
-  const run = async (symbols: string[], venues: { SGX: Answer; HKEX?: Answer }, { venueWaitMs, whileAsking, afterAdd }: {
-    venueWaitMs?: number; whileAsking?: () => Promise<void>; afterAdd?: () => Promise<void>;
+  // The lookups each venue has been asked and has answered so far.
+  type Calls = Record<"SGX" | "HKEX", { asked: number; answered: number }>;
+  // One turn of the event loop. These lookups run on microtasks alone (no I/O, and no timer unless the test advances
+  // the fake clock), so by the time it returns every lookup that can answer without the test has answered.
+  const drain = () => new Promise<void>((resolve) => setImmediate(resolve));
+  // The add's next read of a symbol's record, held until opened; `reached` resolves once the add is waiting on it.
+  type Hold = { reached: Promise<void>; open: () => void };
+  // `during` runs beside the add, from the start of it, and may hold the add at its reads of the book.
+  const run = async (symbols: string[], venues: { SGX: Answer; HKEX?: Answer }, { venueWaitMs, during }: {
+    venueWaitMs?: number; during?: (add: { calls: Calls; holdRead: (symbol: string) => Hold }) => Promise<void>;
   } = {}) => {
     const persistence = new AppPersistence(":memory:");
     try {
@@ -44,10 +50,32 @@ test("a bare symbol that reads as a future keeps the list's venue when it lists 
       // The book holds DBS on SGX already, and Tencent on HKEX when asked.
       await store.saveTicker(createTestTicker("D05:SGX", "DBS Group Holdings Ltd", { exchange: "SGX", currency: "SGD", watchlists: ["sg"] }));
       if (venues.HKEX) await store.saveTicker(createTestTicker("0700:HKEX", "Tencent Holdings Ltd", { exchange: "HKEX", currency: "HKD", watchlists: ["sg"] }));
+      const calls: Calls = { SGX: { asked: 0, answered: 0 }, HKEX: { asked: 0, answered: 0 } };
       const answer = async (venue: string | undefined) => {
         const how = venue === "SGX" ? venues.SGX : venue === "HKEX" ? venues.HKEX : "yes";
-        if (how === "busy") throw new ProviderBusyError();
-        if (how instanceof Promise) await how;
+        const tally = venue === "SGX" || venue === "HKEX" ? calls[venue] : undefined;
+        if (tally) tally.asked++;
+        try {
+          if (how === "busy") throw new ProviderBusyError();
+          if (how instanceof Promise) await how;
+        } finally {
+          if (tally) tally.answered++;
+        }
+      };
+      const holds = new Map<string, { reached: PromiseWithResolvers<void>; open: PromiseWithResolvers<void> }>();
+      const holdRead = (symbol: string): Hold => {
+        const hold = { reached: Promise.withResolvers<void>(), open: Promise.withResolvers<void>() };
+        holds.set(symbol, hold);
+        return { reached: hold.reached.promise, open: () => hold.open.resolve() };
+      };
+      const loadTicker = store.loadTicker.bind(store);
+      store.loadTicker = async (symbol) => {
+        const hold = holds.get(symbol);
+        if (hold) {
+          hold.reached.resolve();
+          await hold.open.promise;
+        }
+        return loadTicker(symbol);
       };
       const dataProvider = createTestDataProvider({
         search: async (query) => {
@@ -71,10 +99,12 @@ test("a bare symbol that reads as a future keeps the list's venue when it lists 
         add: (ticker) => ({ ticker: { ...ticker, metadata: { ...ticker.metadata, watchlists: [...new Set([...ticker.metadata.watchlists, "sg"])] } }, changed: true }),
         member: (ticker) => ticker.metadata.watchlists.includes("sg"),
       });
-      await whileAsking?.();
+      try {
+        await during?.({ calls, holdRead });
+      } finally {
+        for (const hold of holds.values()) hold.open.resolve();
+      }
       const rows = await adding;
-      // A venue's lookup that finished after the add is saved nowhere.
-      await afterAdd?.();
       const saved = (await store.loadAllTickers()).map((ticker) => `${ticker.metadata.ticker}@${ticker.metadata.exchange}`).sort();
       return { rows: rows.map((row) => [row.input, row.status, row.listing ?? row.message]), saved };
     } finally {
@@ -91,24 +121,34 @@ test("a bare symbol that reads as a future keeps the list's venue when it lists 
     ["ES3:CME", "added", "ES3:CME"], ["NQ1", "added", "NQ1:CME"], ["ES=F", "added", "ES=F:CME"],
   ]);
   // The venues are asked at once under one deadline: HKEX answers in time that it has no ES3, SGX only after the
-  // deadline has passed. The add asks, and SGX's late answer saves no record of its own. The clock is held, so how fast
-  // the machine is never decides which venue was in time.
+  // deadline has passed. The add asks, and SGX's late answer saves no record of its own. The clock and SGX's answer are
+  // both held by the test, so how fast the machine is never decides which venue was in time. A second symbol gives the
+  // add a read of the book to wait on after its deadline, so SGX answers while the add is still open and could still
+  // write what the late lookup saved.
   jest.useFakeTimers();
   try {
     const sgx = Promise.withResolvers<void>();
-    const late = await run(["ES3"], { SGX: sgx.promise, HKEX: "yes" }, {
+    const late = await run(["ES3", "0700:HKEX"], { SGX: sgx.promise, HKEX: "yes" }, {
       venueWaitMs: 40,
-      whileAsking: async () => {
-        await turns(50);
+      during: async ({ calls, holdRead }) => {
+        await drain();
+        expect(calls.HKEX.asked).toBeGreaterThan(0);
+        expect(calls.HKEX.answered).toBe(calls.HKEX.asked);
+        expect(calls.SGX.asked).toBeGreaterThan(0);
+        expect(calls.SGX.answered).toBe(0);
+        const tencent = holdRead("0700:HKEX");
         jest.advanceTimersByTime(40);
-      },
-      afterAdd: async () => {
+        await tencent.reached;
         sgx.resolve();
-        await turns(50);
+        await drain();
+        expect(calls.SGX.answered).toBe(calls.SGX.asked);
+        tencent.open();
       },
     });
-    expect(late.rows).toEqual([["ES3", "failed",
-      "ES3 may be ES3:SGX, on the list's venue, which did not answer, or the CME future ES3:CME; name the listing"]]);
+    expect(late.rows).toEqual([
+      ["ES3", "failed", "ES3 may be ES3:SGX, on the list's venue, which did not answer, or the CME future ES3:CME; name the listing"],
+      ["0700:HKEX", "added", "0700:HKEX"],
+    ]);
     expect(late.saved).toEqual(["0700:HKEX@HKEX", "D05:SGX@SGX"]);
   } finally {
     jest.useRealTimers();
