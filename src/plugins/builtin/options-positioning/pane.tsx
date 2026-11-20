@@ -66,6 +66,7 @@ import {
   expiryLabel,
   expiryWithTimeLabel,
   formatContracts,
+  gammaCoverageNotice,
   isCoinContract,
   settlementTime,
   wallsByExpiry,
@@ -356,12 +357,11 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     info,
     hints: upgradeHint || flipHint ? [...upgradeHint ? [upgradeHint] : [], ...flipHint ? [flipHint] : []] : undefined,
   });
-  const notices = useMemo(() => [
-    ...(data?.warnings ?? []),
-    ...(tab === "gex" ? gamma.data?.warnings ?? [] : []),
-    ...(tab === "gex" && gamma.data?.missing.length
-      ? [`No volatility for ${gamma.data.missing.map(shortDate).join(", ")}; left out of gamma.`] : []),
-  ], [data?.warnings, gamma.data, tab]);
+  const noticeGamma = tab === "gex" ? gamma.data : columnGamma?.data;
+  const notices = useMemo(() => {
+    const coverage = gammaCoverageNotice(noticeGamma);
+    return [...(data?.warnings ?? []), ...(noticeGamma?.warnings ?? []), ...(coverage ? [coverage] : [])];
+  }, [data?.warnings, noticeGamma]);
   usePaneNoticeFooter({ registrationId: "options-positioning:notices", focused, notices });
 
   const expiryFilter = (value: string, options: { value: string; label: string }[], onChange: (value: string) => void): QueryBarFilter => ({

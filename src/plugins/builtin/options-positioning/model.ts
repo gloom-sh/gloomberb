@@ -24,6 +24,22 @@ export const ALL_EXPIRIES = "all";
 /** What every GEX figure is in, as exports name a unit. */
 export const GAMMA_UNIT = "USD per 1% move";
 
+type GammaCoverage = { expiries: readonly string[]; missing: readonly string[] };
+
+export function gammaCoverageNotice(...payloads: (GammaCoverage | null | undefined)[]): string | null {
+  const covered = new Set<string>();
+  const missing = new Set<string>();
+  for (const payload of payloads) {
+    if (!payload) continue;
+    for (const expiry of payload.expiries) covered.add(expiry);
+    for (const expiry of payload.missing) {
+      covered.add(expiry);
+      missing.add(expiry);
+    }
+  }
+  return missing.size ? `No volatility for ${missing.size} of ${covered.size} ${covered.size === 1 ? "expiry" : "expiries"}; left out of gamma` : null;
+}
+
 /**
  * The call wall is the strike with the most call gamma in the strikes given
  * (one expiry's or every expiry's), the put wall the strike with the most put

@@ -26,6 +26,7 @@ import {
   formatPayout,
   formatRatio,
   GAMMA_UNIT,
+  gammaCoverageNotice,
   gammaWalls,
   netGammaByExpiry,
   POSITIONING_TABS,
@@ -163,13 +164,12 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
     // VIX has no dealer gamma, so its expiries have no column for it.
     const expiryGamma = !(allExpiries instanceof Error) && allExpiries.total ? netGammaByExpiry(allExpiries) : null;
     const gammaColumn = allExpiries instanceof Error || !!allExpiries.total;
+    const coverage = gammaCoverageNotice(dealer instanceof Error ? null : dealer, everyExpiry instanceof Error ? null : everyExpiry);
     const loadErrors = [
       ...openInterest.warnings,
-      ...(dealer instanceof Error ? [`Dealer gamma: ${dealer.message}`] : [
-        ...dealer.warnings,
-        ...(dealer.missing.length ? [`No volatility for ${dealer.missing.join(", ")}; left out of gamma`] : []),
-      ]),
+      ...(dealer instanceof Error ? [`Dealer gamma: ${dealer.message}`] : dealer.warnings),
       ...(everyExpiry instanceof Error ? [`Net GEX by expiry: ${everyExpiry.message}`] : []),
+      ...(coverage ? [coverage] : []),
     ];
     // A symbol with no listed open interest says what became of it when something did (TWTR stopped
     // trading, FB is a fund now) in place of the load's errors.
@@ -257,8 +257,11 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
             bandWithBoxes: dealer.bandWithBoxes ?? null, boxes: dealer.boxes ?? [], flip: dealer.flip,
             callWall: walls?.callWall ?? null, putWall: walls?.putWall ?? null,
             unit: "dollars of dealer delta per 1% move", assumption: "dealers long calls, short puts",
-            gammaAsOf: dealer.gammaAsOf ?? null, quotesAsOf: dealer.quotesAsOf },
+            gammaAsOf: dealer.gammaAsOf ?? null, quotesAsOf: dealer.quotesAsOf, expiries: dealer.expiries, missing: dealer.missing },
         }),
+        ...(everyExpiry && !(everyExpiry instanceof Error) ? {
+          gammaByExpiryCoverage: { expiries: everyExpiry.expiries, missing: everyExpiry.missing },
+        } : {}),
         methodology: METHODOLOGY,
       }),
     };
