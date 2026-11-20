@@ -110,13 +110,14 @@ export async function loadChartPaneModel(
   // beside the histories: a listing named with its venue does not wait for it.
   const quoteOverrides = new Map<string, Quote>();
   const getQuote = context.marketData.getQuote?.bind(context.marketData);
-  const quoteOverridesReady = getQuote && !spec.viewport.dateWindow
-    ? Promise.all(getLiveChartQuoteTargets(spec).map(async (target) => {
+  let quoteOverridesReady: Promise<unknown> | undefined;
+  if (getQuote && !spec.viewport.dateWindow) {
+    quoteOverridesReady = Promise.all(getLiveChartQuoteTargets(spec).map(async (target) => {
       const quote = await Promise.resolve().then(() => getQuote(target.symbol, target.exchange ?? "",
         context.refresh ? { ...target.context, cacheMode: "refresh" } : target.context)).catch(logFailure("chart-composer.headless", "Load chart live quote failed", null));
       if (quote) quoteOverrides.set(chartQuoteOverrideKeyForTarget(target), quote);
-    }))
-    : undefined;
+    }));
+  }
   const chart = await resolveChartSpecData(spec, {
     dataProvider: context.marketData,
     quoteOverrides,
