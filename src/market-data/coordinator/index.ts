@@ -754,8 +754,12 @@ export class MarketDataCoordinator {
       if (request.expirationDate != null && !options.forceRefresh) {
         const defaultKey = buildOptionsKey({ instrument: request.instrument });
         // A concurrent OMON catalogue request already contains one actual slice.
-        // Wait for its identity before requesting the same expiry again.
+        // Wait for its identity before requesting the same expiry again. A
+        // stored catalogue read again in the background is that request too:
+        // a long-lived app's OMON opens on its saved copy, and asking for the
+        // expiry beside it built the chain twice.
         await (this.optionsLoads.get(`${defaultKey}|refresh`) ?? this.optionsLoads.get(defaultKey));
+        await this.backgroundRefresh(defaultKey);
         const catalogue = this.optionsStore.get(defaultKey);
         const contracts = catalogue.data ? [...catalogue.data.calls, ...catalogue.data.puts] : [];
         const now = Date.now();
@@ -845,6 +849,17 @@ export class MarketDataCoordinator {
   }
 
   /** QueryStore is only a renderer projection here; the provider owns age and refreshes. */
+  /** Settles with the background refresh of the stored copy under `key`, when one is running; whatever it answers. */
+  private async backgroundRefresh(key: string): Promise<void> {
+    const query = this.cachedQueries.get(key)?.query;
+    // A load while one runs joins it: no request of its own.
+    if (query?.getSnapshot().loading) {
+      await query.load().catch(() => {
+        // Intentional ignore: a refresh that failed leaves its error on the entry, which the caller reads.
+      });
+    }
+  }
+
   private loadCachedQuery<K extends CachedAssetMethod>(
     method: K,
     args: CachedAssetArgs<K>,

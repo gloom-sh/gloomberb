@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { CachedQuery } from "../../data/cached-query";
 import { createTestDataProvider } from "../../test-support/data-provider";
+import type { DataProvider } from "../../types/data-provider";
 import type { OptionContract, OptionsChain } from "../../types/financials";
 import { MarketDataCoordinator } from "./index";
 
@@ -56,6 +58,54 @@ test("concurrent catalogue and explicit requests share the default slice without
   expect(calls).toEqual(["AAPL:NASDAQ:default"]);
   await coordinator.loadOptions({ instrument: { symbol: "AAPL", exchange: "LSE" }, expirationDate: first });
   expect(calls).toHaveLength(2);
+});
+
+// A long-lived app opens OMON on its stored catalogue and reads it again in
+// the background: the expiry asked beside it built the same chain again.
+test("an explicit expiry waits for the stored catalogue's background refresh and reuses its slice", async () => {
+  const calls: (number | undefined)[] = [];
+  let fail = false;
+  const provider = createTestDataProvider({
+    getOptionsChain: async (_symbol, _exchange, expiration) => {
+      const failing = fail;
+      calls.push(expiration);
+      await Bun.sleep(1);
+      if (failing) throw new Error("refresh failed");
+      return chain(expiration);
+    },
+  });
+  const queries = new Map<string, CachedQuery<OptionsChain>>();
+  provider.getCachedQuery = ((_method, args) => {
+    const [symbol, exchange, expiration] = args as [string, string, number | undefined];
+    const key = `${symbol}:${exchange}:${expiration ?? "default"}`;
+    const now = Date.now();
+    const stored = expiration == null ? { value: chain(), fetchedAt: now - 900_000, staleAt: now - 600_000, expiresAt: now + 3_600_000, source: "test-cache" } : null;
+    if (!queries.has(key)) queries.set(key, new CachedQuery({ read: () => stored, fetch: async () => ({
+      value: await provider.getOptionsChain!(symbol, exchange, expiration), fetchedAt: Date.now(),
+      staleAt: Date.now() + 600_000, expiresAt: Date.now() + 3_600_000, source: "test-cache",
+    }) }));
+    return queries.get(key);
+  }) as DataProvider["getCachedQuery"];
+  const coordinator = new MarketDataCoordinator(provider);
+
+  expect((await coordinator.loadOptions({ instrument })).phase).toBe("refreshing");
+  const explicit = await coordinator.loadOptions({ instrument, expirationDate: first });
+  expect(calls).toEqual([undefined]);
+  expect(explicit.phase).toBe("ready");
+  expect(explicit.data?.calls.map((contract) => contract.expiration)).toEqual([first]);
+  // The live refresh still reads the expiry itself.
+  await coordinator.loadOptions({ instrument, expirationDate: first }, { forceRefresh: true });
+  expect(calls).toEqual([undefined, first]);
+
+  // A background refresh that fails proves nothing: the expiry is read.
+  fail = true;
+  calls.length = 0;
+  queries.clear();
+  const failing = new MarketDataCoordinator(provider);
+  await failing.loadOptions({ instrument });
+  fail = false;
+  await failing.loadOptions({ instrument, expirationDate: first });
+  expect(calls).toEqual([undefined, first]);
 });
 
 test("empty, mixed-expiry, unlisted or stale default slices never prove an explicit expiry", async () => {
