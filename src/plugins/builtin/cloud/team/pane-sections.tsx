@@ -7,7 +7,8 @@ import type {
 } from "../../../../api-client";
 import { Button, Notice } from "../../../../components";
 import { colors } from "../../../../theme/colors";
-import { Box, Text, TextAttributes } from "../../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
+import { NATIVE_CLIP_STYLE } from "../../../../components/ui/clip-style";
 import { WallTeaser } from "../../shared/wall-teaser";
 import {
   canInviteToTeam,
@@ -63,6 +64,11 @@ function FormError({ text, width, indent = LABEL_WIDTH + 1 }: { text: string | n
   );
 }
 
+/** A column's text on the desktop and the web, cut in CSS where its width ends. */
+const CELL_CLIP_STYLE = NATIVE_CLIP_STYLE;
+/** An invite link gives way, cut in CSS, to its uses and expiry beside it. */
+const LINK_CLIP_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
+
 function truncate(value: string, width: number): string {
   if (width <= 0) return "";
   if (value.length <= width) return value;
@@ -88,6 +94,8 @@ export function MembersSection({
   onChangeRole: (member: TeamMember, role: "admin" | "member") => void;
   onRemove: (member: TeamMember) => void;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  const clip = nativePaneChrome ? CELL_CLIP_STYLE : undefined;
   const manage = canManageTeam(team.role);
   const accent = teamAccentHex(team.accentColor);
   const compact = width < 64;
@@ -104,14 +112,15 @@ export function MembersSection({
           const editable = manage && member.role !== "owner" && !self;
           const busy = busyId === member.id;
           const state = rowState(`member:${member.id}`);
+          const displayName = member.user.username ? member.user.displayName : "";
           return (
             <AccentRow key={member.id} accent={member.role === "owner" ? accent : colors.textMuted} width={width} state={state}>
-              <Text width={handleWidth} flexShrink={0} fg={self ? colors.textBright : colors.text} attributes={self ? TextAttributes.BOLD : 0}>
-                {truncate(userHandle(member.user), handleWidth)}
+              <Text width={handleWidth} flexShrink={0} fg={self ? colors.textBright : colors.text} attributes={self ? TextAttributes.BOLD : 0} style={clip}>
+                {nativePaneChrome ? userHandle(member.user) : truncate(userHandle(member.user), handleWidth)}
               </Text>
               {nameWidth > 0 ? (
-                <Text width={nameWidth} fg={colors.textDim}>
-                  {truncate(member.user.username ? member.user.displayName : "", nameWidth)}
+                <Text width={nameWidth} fg={colors.textDim} style={clip}>
+                  {nativePaneChrome ? displayName : truncate(displayName, nameWidth)}
                 </Text>
               ) : null}
               <Text width={7} fg={member.role === "owner" ? accent : colors.textDim}>
@@ -184,6 +193,8 @@ export function InvitesSection({
   onCopyLink: (link: TeamInviteLink) => void;
   onRevokeLink: (link: TeamInviteLink) => void;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  const clip = nativePaneChrome ? CELL_CLIP_STYLE : undefined;
   const manage = canManageTeam(team.role);
   const canLink = canInviteToTeam(team);
   // The link gives up its columns to a row's status first, for every link alike.
@@ -218,10 +229,11 @@ export function InvitesSection({
           {invitationsError ? <Notice tone="negative">{invitationsError}</Notice> : null}
           {invitations.map((invitation) => {
             const state = rowState(`invitation:${invitation.id}`);
+            const invitee = invitation.invitee ? userHandle(invitation.invitee) : "someone by email";
             return (
               <AccentRow key={invitation.id} accent={colors.textMuted} width={width} state={state}>
-                <Text width={18} fg={colors.text}>
-                  {truncate(invitation.invitee ? userHandle(invitation.invitee) : "someone by email", 18)}
+                <Text width={18} fg={colors.text} style={clip}>
+                  {nativePaneChrome ? invitee : truncate(invitee, 18)}
                 </Text>
                 <Text fg={colors.textDim} truncate wrapMode="none" flexShrink={1} minWidth={0}>{`from ${userHandle(invitation.inviter)} · expires ${describeExpiry(invitation.expiresAt)}`}</Text>
                 <Box flexGrow={1} />
@@ -249,7 +261,9 @@ export function InvitesSection({
               const state = rowState(`link:${link.token}`);
               return (
                 <AccentRow key={link.token} accent={colors.textMuted} width={width} state={state}>
-                  <Text fg={colors.text} flexShrink={0}>{truncate(shortenInviteUrl(link.url), Math.max(12, width - 44 - linkStatusRoom))}</Text>
+                  <Text fg={colors.text} flexShrink={0} style={nativePaneChrome ? LINK_CLIP_STYLE : undefined}>
+                    {nativePaneChrome ? shortenInviteUrl(link.url) : truncate(shortenInviteUrl(link.url), Math.max(12, width - 44 - linkStatusRoom))}
+                  </Text>
                   <Text fg={colors.textDim} truncate wrapMode="none" flexShrink={1} minWidth={0}>{`· ${uses} · ${describeExpiry(link.expiresAt)}`}</Text>
                   <Box flexGrow={1} />
                   <RowStatus state={state} />

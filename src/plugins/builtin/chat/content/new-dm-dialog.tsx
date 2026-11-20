@@ -81,7 +81,7 @@ function setUsernameSelected(value: string, username: string, selected: boolean)
   return usernames.map((entry) => `@${entry}`).join(" ") + (usernames.length > 0 ? " " : "");
 }
 
-function clampLines(text: string, width: number, maxLines: number): string[] {
+function terminalClampLines(text: string, width: number, maxLines: number): string[] {
   const lines = wrapTextLines(text, width);
   if (lines.length <= maxLines) return lines.length > 0 ? lines : [""];
   const kept = lines.slice(0, maxLines);
@@ -395,7 +395,7 @@ export function NewDmDialog({
   }
 
   const statusWidth = Math.max(1, contentWidth - START_BUTTON_WIDTH - 1);
-  const statusLines = clampLines(status, statusWidth, MAX_STATUS_ROWS);
+  const statusLines = terminalClampLines(status, statusWidth, MAX_STATUS_ROWS);
   const layout = terminalDialogLayout(height, items.length, statusLines.length);
   return (
     <Box

@@ -1,0 +1,150 @@
+{
+  "src/capabilities/asset-data-inputs.ts": {
+    "uses": 3,
+    "why": "Caps a rejected value quoted in a capability's input error at a length; an error message, not text fitted to a box."
+  },
+  "src/components/chart/composite/legend.tsx": {
+    "uses": 3,
+    "why": "A legend entry gives up whole words (wholeWordsCut, the shortest legend name) so a series always reads by name, never cut mid-word; CSS can only end text at a character. The legend's entries are laid out on the chart's cell grid on every renderer."
+  },
+  "src/components/chart/composite/text-renderer.ts": {
+    "uses": 1,
+    "why": "Pads an axis tick label that already fits its gutter (compositeAxisTickLabels fits it) to the gutter's width so the labels line up; it cuts nothing."
+  },
+  "src/components/layout/pane/error-boundary.tsx": {
+    "uses": 2,
+    "why": "A crashed pane's message is capped at a length for its card and the log; the card wraps it."
+  },
+  "src/components/layout/status-bar.tsx": {
+    "uses": 1,
+    "why": "A layout tab's name runs at most 14 characters on every renderer, by design, with its edited or behind mark after it. The desktop's strip is as wide as its tabs and scrolls; only the terminal fits names to a narrow strip, in its own branch."
+  },
+  "src/components/reader/detail-reader.tsx": {
+    "uses": 1,
+    "why": "The excerpt is data sent with a link to the pane, capped at the share format's length (src/shares/item.ts); it is not drawn here."
+  },
+  "src/layout-marketplace/mini-workspace.tsx": {
+    "uses": 1,
+    "why": "SVG text in a layout preview's miniature, fitted to its tile in pixels at the preview's own character width; SVG text has no text-overflow."
+  },
+  "src/plugins/builtin/chat/attachments/desktop.tsx": {
+    "uses": 2,
+    "why": "An image's alt text quotes its caption up to 120 characters, for screen readers; it is not drawn."
+  },
+  "src/plugins/builtin/chat/controller/utils.ts": {
+    "uses": 3,
+    "why": "A message quoted in a notification (a toast, a system notification) is capped at 72 characters."
+  },
+  "src/plugins/builtin/chat/status-widget.tsx": {
+    "uses": 1,
+    "why": "The chat chip in the status bar takes the face that fits the columns the bar's widgets share, counted in columns on every renderer; the sender's name is capped at 12 of them so the count of others after it stays, which a CSS cut would drop."
+  },
+  "src/plugins/builtin/cloud-tweets/model.ts": {
+    "uses": 2,
+    "why": "A feed's saved title, derived from its query, is capped at 24 characters; stored data."
+  },
+  "src/plugins/builtin/cloud-tweets/pane.tsx": {
+    "uses": 3,
+    "why": "A feed's saved title (deriveFeedTitle, 24 characters), and its tab, which runs at most 18 characters on every renderer by design, as layout tabs do."
+  },
+  "src/plugins/builtin/cloud/askg/controller.ts": {
+    "uses": 1,
+    "why": "A tool's note or error is capped at a length for the transcript and the model (capToolNote, src/plugins/builtin/cloud/askg/notes.ts); the transcript wraps it."
+  },
+  "src/plugins/builtin/cloud/askg/executor.ts": {
+    "uses": 11,
+    "why": "A tool's note or error is capped at a length for the transcript and the model (capToolNote, src/plugins/builtin/cloud/askg/notes.ts); the transcript wraps it."
+  },
+  "src/plugins/builtin/cloud/askg/model.ts": {
+    "uses": 3,
+    "why": "A tool's note or error is capped at a length for the transcript and the model (capToolNote, src/plugins/builtin/cloud/askg/notes.ts); the transcript wraps it."
+  },
+  "src/plugins/builtin/cloud/terminal-relay/engine.ts": {
+    "uses": 6,
+    "why": "A value quoted in a tool call's summary or a policy message is capped at a length (shortValue) for the person approving the call and the model; the approval card wraps it."
+  },
+  "src/plugins/builtin/cloud/terminal-relay/policy.ts": {
+    "uses": 18,
+    "why": "A value quoted in a tool call's summary or a policy message is capped at a length (shortValue) for the person approving the call and the model; the approval card wraps it."
+  },
+  "src/plugins/builtin/cloud/terminal-relay/summary.ts": {
+    "uses": 3,
+    "why": "A value quoted in a tool call's summary or a policy message is capped at a length (shortValue) for the person approving the call and the model; the approval card wraps it."
+  },
+  "src/plugins/builtin/futures/index.tsx": {
+    "uses": 1,
+    "why": "A board's provider error is capped at a length as a message (boardErrorMessage); the footer notice cuts what is left of it in CSS."
+  },
+  "src/plugins/builtin/news/wire/news/detail-view.tsx": {
+    "uses": 1,
+    "why": "The excerpt is data sent with a link to the pane, capped at the share format's length (src/shares/item.ts); it is not drawn here."
+  },
+  "src/plugins/builtin/notes/quick-notes-pane.tsx": {
+    "uses": 1,
+    "why": "A note's title quoted in the delete confirmation runs at most 28 characters; the dialog wraps its body."
+  },
+  "src/plugins/builtin/portfolio-list/cli/shared.ts": {
+    "uses": 1,
+    "why": "Quotes pasted text in a CLI usage message, capped at a length."
+  },
+  "src/plugins/builtin/portfolio-list/header.tsx": {
+    "uses": 3,
+    "why": "Pads a currency code and its figures to their columns so the cash rows line up; the figures are formatted to fit them (formatMarketQuantity's maxWidth, compact values), so nothing is cut."
+  },
+  "src/plugins/builtin/research-search/pane.tsx": {
+    "uses": 1,
+    "why": "The excerpt is data sent with a link to the pane, capped at the share format's length (src/shares/item.ts); it is not drawn here."
+  },
+  "src/plugins/builtin/supply-chain/flow.tsx": {
+    "uses": 2,
+    "why": "The supply chain flow and graph keep their geometry on the cell grid on every renderer; a pixel layout there is a redesign."
+  },
+  "src/plugins/builtin/supply-chain/pane.tsx": {
+    "uses": 1,
+    "why": "The supply chain flow and graph keep their geometry on the cell grid on every renderer; a pixel layout there is a redesign."
+  },
+  "src/plugins/builtin/ticker-detail/financials/model.ts": {
+    "uses": 2,
+    "why": "Pads a figure or a period header to its table column, right-aligned or centred, so a column of figures lines up; the figures are formatted to fit the column."
+  },
+  "src/plugins/builtin/ticker-detail/financials/ratio-table.tsx": {
+    "uses": 2,
+    "why": "Pads a figure or a period header to its table column, right-aligned or centred, so a column of figures lines up; the figures are formatted to fit the column."
+  },
+  "src/plugins/builtin/ticker-detail/financials/tab.tsx": {
+    "uses": 1,
+    "why": "Pads a figure or a period header to its table column, right-aligned or centred, so a column of figures lines up; the figures are formatted to fit the column."
+  },
+  "src/plugins/builtin/world-indices/footer.ts": {
+    "uses": 1,
+    "why": "A board's provider error is capped at a length as a message (boardErrorMessage); the footer notice cuts what is left of it in CSS."
+  },
+  "src/portfolio/positions-import/parse.ts": {
+    "uses": 1,
+    "why": "Caps an imported row's label quoted in the import's report at a length."
+  },
+  "src/renderers/electrobun/view/cli-pane-shot-frame.tsx": {
+    "uses": 2,
+    "why": "Fits a pane shot's caption by measuring it in the page (overflows()) and shortening it in the middle; measured in pixels, not counted in cells."
+  },
+  "src/shares/bug-report-flow.tsx": {
+    "uses": 2,
+    "why": "The pane's name in a bug report is capped at a length as it is posted (bugReportContextLine); the dialog wraps the line."
+  },
+  "src/shares/item.ts": {
+    "uses": 3,
+    "why": "A share's title and excerpt are capped at the share format's lengths; data sent with the link."
+  },
+  "src/sources/provider-errors.ts": {
+    "uses": 1,
+    "why": "A provider's failure reason is capped at a length as data."
+  },
+  "src/sources/sec-edgar.ts": {
+    "uses": 1,
+    "why": "Quotes an SEC response body in an error, capped at 160 characters."
+  },
+  "src/utils/dom-screenshot.ts": {
+    "uses": 1,
+    "why": "Draws the page's own CSS ellipsis into a screenshot's canvas, measured in pixels where the page ended the text (ellipsisEdge)."
+  }
+}

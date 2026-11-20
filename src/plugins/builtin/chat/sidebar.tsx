@@ -23,6 +23,10 @@ import { chatSidebarStore } from "./sidebar-store";
 import { buildChatSidebarRows } from "./sidebar-rows";
 import { formatChannelLabel } from "./channel-labels";
 import { channelPrefix } from "./channels";
+import { NATIVE_CLIP_STYLE } from "../../../components/ui/clip-style";
+
+/** A row's name on the desktop and the web gives way to what follows it, cut in CSS. */
+const LABEL_CLIP_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
 
 const DESKTOP_NOTIFICATION_ICON_WIDTH = 3;
 /** Leading gutter plus the one-column active marker every channel row carries. */
@@ -222,7 +226,7 @@ export function ChannelSidebar({
               backgroundColor={cursor ? cursorBackground : sidebarBg}
             >
               <ActionRow
-                label={truncateWithEllipsis(label, Math.max(1, rowWidth - CHANNEL_ROW_INDENT))}
+                label={nativePaneChrome ? label : truncateWithEllipsis(label, Math.max(1, rowWidth - CHANNEL_ROW_INDENT))}
                 active={unread}
                 expanded={expanded}
                 fg={fg}
@@ -310,7 +314,7 @@ export function ChannelSidebar({
                     <>
                       <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}> </Text>
                       <Text fg={foregroundColor} attributes={unread ? TextAttributes.BOLD : 0} selectable={false} onMouseDown={onMouseDown}>{channelPrefix(channel, active)}</Text>
-                      <Text fg={foregroundColor} attributes={unread ? TextAttributes.BOLD : 0} selectable={false} onMouseDown={onMouseDown}>{truncateWithEllipsis(label, labelWidth)}</Text>
+                      <Text fg={foregroundColor} attributes={unread ? TextAttributes.BOLD : 0} selectable={false} onMouseDown={onMouseDown} style={nativePaneChrome ? LABEL_CLIP_STYLE : undefined}>{nativePaneChrome ? label : truncateWithEllipsis(label, labelWidth)}</Text>
                       <Box flexGrow={1} onMouseDown={onMouseDown} />
                       {canManageNotifications && (
                         <PaneSidebarAction
@@ -340,8 +344,8 @@ export function ChannelSidebar({
                   <>
                     <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}> </Text>
                     <ProfileIcon color={foregroundColor} onMouseDown={onMouseDown} />
-                    <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}>
-                      {` ${truncateWithEllipsis(t("Profile"), Math.max(sidebarWidth - 3, 1))}`}
+                    <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown} style={nativePaneChrome ? LABEL_CLIP_STYLE : undefined}>
+                      {` ${nativePaneChrome ? t("Profile") : truncateWithEllipsis(t("Profile"), Math.max(sidebarWidth - 3, 1))}`}
                     </Text>
                     <Box flexGrow={1} onMouseDown={onMouseDown} />
                   </>

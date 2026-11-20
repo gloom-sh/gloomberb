@@ -42,6 +42,7 @@ import {
 import { relativeLuminance } from "../../../theme/color-utils";
 import { displayWidth } from "../../../utils/format";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
+import { ClippedText } from "../../../components/ui/display";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
@@ -164,6 +165,7 @@ const SelectedEntityHeader = memo(function SelectedEntityHeader({
   width: number;
 }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   if (!row) return <Box height={2} />;
   const seen = typeof row.props.lastSeen === "string" ? ageText(row.props.lastSeen, now) : null;
   const meta = [
@@ -172,8 +174,9 @@ const SelectedEntityHeader = memo(function SelectedEntityHeader({
   ].filter(Boolean).join(" · ");
   return (
     <Box flexDirection="column" height={2} width={width} paddingX={1}>
-      <Box flexDirection="row" justifyContent="space-between" width="100%">
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{truncateWithEllipsis(row.label, Math.max(1, width - 3 - displayWidth(layer.name)))}</Text>
+      {/* The desktop keeps the layer name whole after a gap and cuts the label in CSS. */}
+      <Box flexDirection="row" justifyContent="space-between" width="100%" {...(nativePaneChrome ? { gap: 1 } : {})}>
+        <ClippedText fg={colors.textBright} attributes={TextAttributes.BOLD} text={row.label} width={Math.max(1, width - 3 - displayWidth(layer.name))} cut={truncateWithEllipsis} />
         <Text fg={color}>{layer.name}</Text>
       </Box>
       <Text fg={colors.textMuted}>{meta}</Text>
@@ -465,7 +468,10 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   } : null;
   const scopeLeading = !scoped || scopeFilter ? undefined
     : scopeCompany ? <TickerBadgeList symbols={[scopeCompany.label]} width={displayWidth(scopeCompany.label) + 2} listed />
-      : <Text fg={colors.textDim}>{truncateWithEllipsis(scope.label, Math.max(8, Math.floor(listWidth / 3)))}</Text>;
+      : nativePaneChrome
+        // At most a third of the bar, cut in CSS where that ends.
+        ? <Box flexDirection="row" maxWidth={Math.max(8, Math.floor(listWidth / 3))} minWidth={0} overflow="hidden"><ClippedText fg={colors.textDim} text={scope.label} width={0} /></Box>
+        : <Text fg={colors.textDim}>{truncateWithEllipsis(scope.label, Math.max(8, Math.floor(listWidth / 3)))}</Text>;
   const queryBar = !tableReadable && layers.length < 2 ? undefined : (
     <QueryBar
       width={listWidth}

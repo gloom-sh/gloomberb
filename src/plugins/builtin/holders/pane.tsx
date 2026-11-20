@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import {
   Badge,
   DataTableView,

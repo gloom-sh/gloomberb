@@ -16,7 +16,8 @@ import ts from "typescript";
  * count to what is listed, with why each one stays, and let it only go down.
  *
  * Only the terminal draws:
- * - the terminal renderer and the CLI (TERMINAL_ONLY);
+ * - the terminal renderer and the CLI (TERMINAL_ONLY), the terminal's half of a component and a
+ *   pane's headless text (TERMINAL_FILE);
  * - a function or component whose name starts with `terminal`, `Terminal` or `OpenTui`, and a
  *   `cut` given to ClippedText;
  * - the branch a `nativePaneChrome` test (or a name bound to it) leaves to the
@@ -56,9 +57,10 @@ const TERMINAL_ONLY = [
 ];
 /**
  * The terminal's half of a component: an `opentui` folder (src/components/ui/data-table/opentui) or a
- * `terminal.tsx` / `*-terminal.tsx` beside the desktop's (src/layout-marketplace/gallery-terminal.tsx).
+ * `terminal.tsx` / `*-terminal.tsx` beside the desktop's (src/layout-marketplace/gallery-terminal.tsx);
+ * and a pane's headless text for the CLI (`headless.ts`, `*-headless.ts`).
  */
-const TERMINAL_FILE = /\/opentui\/|(?:\/|-)terminal\.tsx?$/;
+const TERMINAL_FILE = /\/opentui\/|(?:\/|-)(?:terminal|headless)\.tsx?$/;
 const TERMINAL_NAME = /^(?:[Tt]erminal|OpenTui)(?=[A-Z_]|$)/;
 const CAPABILITY = "nativePaneChrome";
 
@@ -356,7 +358,7 @@ function returnedBy(call: ts.Node, fn: ts.FunctionLikeDeclaration): boolean {
 
 /**
  * Every cut in DOM-reachable code under `root`. A named function that returns
- * a cut is a cut itself: its callers count, not the call inside it.
+ * a cut is a cut itself: its callers count, not the cuts inside it.
  */
 export function collectDomTextCuts(root = ROOT): DomTextCut[] {
   const files = sourceFiles(join(root, "src")).sort().map((path) => toPosix(relative(root, path)))
@@ -394,18 +396,24 @@ function findDomTextCuts(files: Scanned[]): DomTextCut[] {
     const local = wrappers.get(file.file)!;
     const visit = (node: ts.Node) => {
       const cut = cutAt(node, file, cuts, local);
-      if (cut && !terminalOnly(node, file.names)) {
-        const fn = enclosingFunction(node);
-        const name = fn && functionName(fn);
-        // A wrapper's own cut is counted where the wrapper is called.
-        const wrapped = !!(fn && name && local.has(name) && returnedBy(node, fn));
-        if (!wrapped) found.push({ file: file.file, line: file.source.getLineAndCharacterOfPosition(node.getStart(file.source)).line + 1, cut });
+      // A wrapper's own cuts, the one it returns and those that build it, are counted where it is called.
+      if (cut && !terminalOnly(node, file.names) && !insideWrapper(node, local)) {
+        found.push({ file: file.file, line: file.source.getLineAndCharacterOfPosition(node.getStart(file.source)).line + 1, cut });
       }
       ts.forEachChild(node, visit);
     };
     visit(file.source);
   }
   return found;
+}
+
+/** Whether `node` sits in a function of its file that returns a cut. */
+function insideWrapper(node: ts.Node, wrappers: Set<string>): boolean {
+  for (let fn = enclosingFunction(node); fn; fn = enclosingFunction(fn)) {
+    const name = functionName(fn);
+    if (name && wrappers.has(name)) return true;
+  }
+  return false;
 }
 
 /** The cuts in source text, for the test's own cases. */

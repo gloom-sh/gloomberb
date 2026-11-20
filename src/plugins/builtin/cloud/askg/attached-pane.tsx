@@ -1,4 +1,5 @@
-import { Box, Text, TextAttributes } from "../../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
+import { ClippedText } from "../../../../components/ui/display";
 import { Badge, Button, IconButton } from "../../../../components";
 import { RemoteUiScope } from "../../../../remote/semantic-tree";
 import { useThemeColors } from "../../../../theme/theme-context";
@@ -35,21 +36,21 @@ export function AttachedPaneBlock({
   onRemove: () => void;
 }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const textWidth = Math.max(10, width - 2);
-  const label = truncateWithEllipsis(attachedPaneLabel(attached.pane), Math.max(8, Math.min(48, width - 12)));
+  // The chip runs at most 48 cells: the terminal cuts the label to them, the desktop and the web in CSS.
+  const labelWidth = Math.max(8, Math.min(48, width - 12));
+  const fullLabel = attachedPaneLabel(attached.pane);
+  const label = nativePaneChrome ? fullLabel : truncateWithEllipsis(fullLabel, labelWidth);
 
   if (attached.consent === "pending") {
     return (
       <Box flexDirection="column" flexShrink={0} paddingX={1} height={attachedPaneBlockHeight(attached)} backgroundColor={colors.panel}>
         <Box flexDirection="row" height={1}>
-          <Text fg={colors.warning} attributes={TextAttributes.BOLD}>
-            {truncateWithEllipsis(`Attach what ${label} shows?`, textWidth)}
-          </Text>
+          <ClippedText fg={colors.warning} attributes={TextAttributes.BOLD} text={`Attach what ${label} shows?`} width={textWidth} cut={truncateWithEllipsis} />
         </Box>
         <Box height={1}>
-          <Text fg={colors.textDim}>
-            {truncateWithEllipsis("It shows your own data. Only what is on screen goes, as text.", textWidth)}
-          </Text>
+          <ClippedText fg={colors.textDim} text="It shows your own data. Only what is on screen goes, as text." width={textWidth} cut={truncateWithEllipsis} />
         </Box>
         {/* The person's answer: no assistant's UI call reaches it (terminal-relay/policy.ts). */}
         <RemoteUiScope scope={ASKG_PROMPT_SCOPE}>
@@ -65,7 +66,7 @@ export function AttachedPaneBlock({
 
   return (
     <Box flexDirection="row" flexShrink={0} height={1} paddingX={1} alignItems="center" data-gloom-role="askg-attached-pane">
-      <Badge label={label} tone="accent" />
+      <Badge label={label} tone="accent" maxWidth={labelWidth + 2} />
       {attached.consent === "declined" ? <Text fg={colors.textMuted}>{"  without what it shows"}</Text> : null}
       <Box width={1} />
       <IconButton icon="close" label="Remove the pane" onPress={onRemove} />
