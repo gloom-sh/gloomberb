@@ -21,7 +21,10 @@ export function isOtherIssuerFiling(filing: SecFilingItem, content: string | nul
 const FOREIGN_PRIVATE_ISSUER_FORM = /^(?:20-F|40-F|6-K)(?:\/A)?$/i;
 const DOMESTIC_REPORT_FORM = /^(?:10-KT?|10-QT?|8-K)(?:\/A)?$/i;
 
-function newestFiled(filings: readonly SecFilingItem[], form: RegExp): number {
+/** A filing as far as the issuer's kind goes: its form and day (a Date, or YYYY-MM-DD as a list's summary dates it). */
+type FiledForm = Pick<SecFilingItem, "form"> & { filingDate: Date | string };
+
+function newestFiled(filings: readonly FiledForm[], form: RegExp): number {
   let newest = Number.NEGATIVE_INFINITY;
   for (const filing of filings) {
     if (!form.test(filing.form.trim())) continue;
@@ -36,7 +39,7 @@ function newestFiled(filings: readonly SecFilingItem[], form: RegExp): number {
  * 20-F, 40-F or 6-K rather than a 10-K, 10-Q or 8-K. Such an issuer's insiders
  * file no Form 4, so its list holds only the forms it filed as an owner.
  */
-export function filesAsForeignPrivateIssuer(filings: readonly SecFilingItem[]): boolean {
+export function filesAsForeignPrivateIssuer(filings: readonly FiledForm[]): boolean {
   const foreign = newestFiled(filings, FOREIGN_PRIVATE_ISSUER_FORM);
   return Number.isFinite(foreign) && foreign > newestFiled(filings, DOMESTIC_REPORT_FORM);
 }
