@@ -85,6 +85,17 @@ export function calendarBarStart(
   return day;
 }
 
+/**
+ * Whether two instants fall on the same trading day at the venue. Intraday
+ * bars that end minutes before a quote of their own day are a source
+ * publishing late (minute bars have come in six minutes behind the trades),
+ * and the quote is still that day's price; bars of an earlier day are a
+ * session the history has not reached yet.
+ */
+export function onSameVenueDay(latestTime: number, quoteTime: number, exchange?: string): boolean {
+  return calendarBarStart(latestTime, "1d", exchange, false) === calendarBarStart(quoteTime, "1d", exchange, false);
+}
+
 export function quoteBelongsToLatestBar(
   latestTime: number,
   quoteTime: number,
@@ -282,10 +293,13 @@ export function appendLiveQuotePoint(
   const beforeDatedBar = quoteTime < latestTime;
   if (beforeDatedBar && !(latestTime > now && latestTime - quoteTime < DAY_MS)) return points;
 
+  const venue = (options.mode === "ohlc" ? options.exchange : undefined) || quote.listingExchangeName || quote.exchangeName;
   if (
     latestInterval > 0
     && latestInterval <= MAX_INTRADAY_BAR_INTERVAL_MS
     && quoteTime - latestTime > Math.max(MIN_LIVE_QUOTE_TAIL_GAP_MS, latestInterval * 3)
+    // Bars missing before a regular-session quote of their own day leave a gap, not a stale last price.
+    && !(quote.marketState === "REGULAR" && onSameVenueDay(latestTime, quoteTime, venue))
   ) {
     return points;
   }
