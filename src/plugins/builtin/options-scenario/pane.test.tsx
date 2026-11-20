@@ -272,7 +272,10 @@ test("the Payoff names the legs it values and the session, and the pane dates it
   expect(tui.frame()).toContain("valued after hours");
   // What a capture reads: the chain's feed and delay, and the quote it values at (its session is read against the clock: freshness.test.ts).
   expect(renderedReportFreshness(registry.snapshot())).toEqual({ status: "delayed", delayMinutes: 15 });
-  expect(renderedReportObservations(registry.snapshot())).toMatchObject([{ updatedAt: base.asOf, dataSource: "delayed", delayMinutes: 15 }]);
+  expect(renderedReportObservations(registry.snapshot())).toMatchObject([
+    { updatedAt: base.asOf, dataSource: "delayed", delayMinutes: 15, series: "Underlying quote" },
+    { updatedAt: Date.parse(base.chain!.asOf!), dataSource: "delayed", delayMinutes: 15, series: "Option quotes" },
+  ]);
   await tui.destroy();
 
   // A typed spot is a what-if, not the print.

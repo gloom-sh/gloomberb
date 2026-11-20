@@ -13,7 +13,7 @@ import {
 import { surfaceTreasuryRate } from "../vol-surface/model";
 import { daysToExpiryFrom, extractImpliedForward, optionDelta, optionMid, solveImpliedVolatility, valueOption } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
-import { parseLegs, scenarioCurrency, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
+import { optionExpirationClose, parseLegs, scenarioCurrency, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
 import { loadModelDividendYield, type ModelDividendYield } from "../../../market-data/model-dividend-yield";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { extendedSession, modelSpotStamp, modelSpotStampVariants, type OptionModelSpot } from "../options/model-spot";
@@ -349,6 +349,10 @@ export function scenarioPositionFromSettings(
     throw new Error("A collar's put strike must be below its call strike");
   }
   const shares = sharesSetting(settings);
+  let optionQuotesAt: number | null | undefined;
+  let unhedgedShares: number | undefined;
+  let stockOnlyExpiry: number | undefined;
+  let currency = scenarioCurrency(settings.currency, market?.currency, exchange ?? market?.exchange);
   // Typed legs buy the shares at the position's spot, a typed --spot when given. A seed buys them where its
   // quotes put the spot, else at the market's, and a typed --spot stays a what-if from there.
   let shareEntry: number | null | undefined;
@@ -362,19 +366,31 @@ export function scenarioPositionFromSettings(
     const seeded = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing, strike, collarStrikes, delta,
       unusableChainText(market, exchange));
     legs = seeded.legs;
+    currency = seedCurrency(market.chain, legs, market.currency, exchange ?? market.exchange, settings.currency);
+    optionQuotesAt = optionQuoteTime(market.chain);
+    if (shares && (settings.strategy === "collar" || settings.strategy === "put")) {
+      const multiplier = legs[0]!.multiplier;
+      const contracts = Math.floor(Math.abs(shares) / multiplier);
+      unhedgedShares = Math.abs(shares) % multiplier;
+      if (contracts) legs = legs.map((leg) => ({ ...leg, quantity: leg.quantity * contracts }));
+      else {
+        stockOnlyExpiry = optionExpirationClose(legs[0]!.expiration);
+        legs = [];
+      }
+    }
     shareEntry = market.spot;
     // Mids priced off the parity forward are worth their cost only at the spot
     // that forward implies on the scenario's own rate and dividend yield. The
     // last print can sit away from it when the quotes are older (the close's
     // chain against an after-hours print), so the origin starts there and the
     // print is a what-if from it. A typed spot is a what-if and is kept.
-    if (seeded.parity && rate != null && dividendYield != null) {
+    if (legs.length && seeded.parity && rate != null && dividendYield != null) {
       const implied = seeded.parity.forward * Math.exp(-(rate - dividendYield) * seeded.parity.daysToExpiry / 365);
       shareEntry = implied;
       if (whatIfSpot == null) spot = implied;
     }
   }
-  if (!legs.length) return null;
+  if (!legs.length && stockOnlyExpiry == null) return null;
   if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
   if (rate == null) throw new Error("Treasury rate unavailable; supply --rate as an annual percentage");
   if (dividendYield == null) throw new Error("Dividend yield unavailable; supply --dividend-yield as an annual percentage");
@@ -384,17 +400,32 @@ export function scenarioPositionFromSettings(
   if (!Number.isSafeInteger(heldShares)) throw new Error("shares must be a whole number of shares");
   const position: ScenarioPosition = {
     symbol, exchange: exchange ?? market?.exchange,
-    currency: scenarioCurrency(settings.currency, market?.currency, exchange ?? market?.exchange),
+    currency,
     spot, rate, dividendYield, asOf: dateSetting(settings, "asOf") ?? market?.asOf ?? Date.now(), legs,
+    optionQuotesAt, unhedgedShares, stockOnlyExpiry,
     ...(heldShares ? { underlying: { quantity: heldShares, price: shareEntry ?? spot } } : {}),
   };
   const error = validatePosition(position);
   if (error) throw new Error(error);
-  if (supplied(settings.strategy) && market?.chain) {
-    const contracts = [...market.chain.calls, ...market.chain.puts].filter((contract) => legs.some((leg) => leg.id === contract.contractSymbol));
-    if (contracts.some((contract) => contract.currency && contract.currency !== position.currency)) throw new Error("Strategy currency differs from the underlying quote currency");
-  }
   return position;
+}
+
+export function optionQuoteTime(chain: Pick<OptionsChain, "asOf"> | null | undefined): number | null {
+  const time = Date.parse(chain?.asOf ?? "");
+  return Number.isFinite(time) ? time : null;
+}
+
+function seedCurrency(chain: OptionsChain, legs: ScenarioLeg[], quoteCurrency: string, exchange?: string, requested?: unknown): string {
+  const underlying = scenarioCurrency(undefined, quoteCurrency, exchange);
+  const currencies = new Set([...chain.calls, ...chain.puts].filter((contract) => legs.some((leg) => leg.id === contract.contractSymbol))
+    .map((contract) => contract.currency?.trim().toUpperCase()).filter(Boolean));
+  if (currencies.size > 1) throw new Error(`The selected option contracts have different quote currencies (${[...currencies].join(", ")}).`);
+  const chainCurrency = [...currencies][0] || underlying;
+  if (supplied(requested) && scenarioCurrency(requested, quoteCurrency, exchange) !== chainCurrency) {
+    throw new Error(`The option chain is quoted in ${chainCurrency}. Omit --currency to see totals in your profile base currency.`);
+  }
+  if (chainCurrency !== underlying) throw new Error(`The option chain is quoted in ${chainCurrency}, but the underlying is quoted in ${underlying}.`);
+  return chainCurrency;
 }
 
 /**
@@ -638,14 +669,13 @@ export function seedScreenPosition(
   const parity = legs.some((leg) => leg.expiration === first && leg.volatilitySource === "mid") ? quoted.parityFor(first) : null;
   const spot = parity ? parity.forward * Math.exp(-(pricing.rate - pricing.dividendYield) * parity.daysToExpiry / 365) : market.spot;
   const position: ScenarioPosition = {
-    symbol: market.symbol, exchange: market.exchange, currency: scenarioCurrency(undefined, market.currency, market.exchange),
+    symbol: market.symbol, exchange: market.exchange, currency: seedCurrency(chain, legs, market.currency, market.exchange),
+    optionQuotesAt: optionQuoteTime(chain),
     spot, rate: pricing.rate, dividendYield: pricing.dividendYield, asOf: market.asOf, legs,
     ...(shares ? { underlying: { quantity: shares, price: spot } } : {}),
   };
   const error = validatePosition(position);
   if (error) throw new Error(error);
-  const contracts = [...chain.calls, ...chain.puts].filter((contract) => legs.some((leg) => leg.id === contract.contractSymbol));
-  if (contracts.some((contract) => contract.currency && contract.currency !== position.currency)) throw new Error("Strategy currency differs from the underlying quote currency");
   return position;
 }
 

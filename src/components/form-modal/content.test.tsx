@@ -360,7 +360,7 @@ describe("form modal", () => {
       ],
     }), { kind: "plugin-command", commandId: "set-alert", values: { symbol: "AMD" } }, { dataProvider });
     await waitForFrameToContain("Advanced Micro Devices");
-    await waitForForm("Current price 201.5; edit to set the target.");
+    await waitForForm("Current price 201.5 USD");
 
     // A target of the user's own, then another symbol.
     await press({ name: "tab" }, { name: "tab" });
@@ -371,7 +371,7 @@ describe("form modal", () => {
     await type("NVDA");
 
     await waitForFrameToContain("NVIDIA Corp.");
-    await waitForFrameToContain("Current price 158.78 After-Hours; edit to set the target.");
+    await waitForFrameToContain("Current price 158.78 USD After-Hours");
     expect(frame().split("\n").some((line) => /^\W*180\W*$/.test(line))).toBe(true);
   });
 
@@ -388,7 +388,7 @@ describe("form modal", () => {
       ],
     }), { kind: "plugin-command", commandId: "set-alert",
       values: { symbol: "SPY", condition: "crosses", price: "757.35", priceNote: "Fixed price: it does not follow the flip." } }, { dataProvider });
-    await waitForForm("Current price 728.02; edit to set the target.");
+    await waitForForm("Current price 728.02 USD");
     await waitForFrameToContain("Fixed price: it does not follow the flip.");
     expect(frame().split("\n").some((line) => /^\W*757\.35\W*$/.test(line))).toBe(true);
   });

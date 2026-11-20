@@ -33,6 +33,8 @@ import {
   serializeAlerts,
 } from "./alert-engine";
 import { parseAlertEdit } from "./command";
+import { levelInQuoteUnit } from "./quotes";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { MOVE_CHECKS_KEY, readMoveChecks, withMoveChecks } from "./move-checks";
 import { ALERT_TABS, ALERTS_KEY } from "./constants";
 import {
@@ -355,13 +357,19 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
             type: "text",
             key: "alert",
             label: "Edit alert",
-            description: selected.move ? "SYMBOL moves|up|down PERCENT" : "SYMBOL above|below|crosses PRICE",
+            description: selected.move ? "SYMBOL moves|up|down PERCENT" : `SYMBOL above|below|crosses PRICE${selected.lastQuoteCurrency && !selected.metric ? ` (${selected.lastQuotePence ? "GBp" : selected.lastQuoteCurrency})` : ""}`,
             placeholder: selected.move ? "GBPUSD=X moves 0.5%" : "AAPL above 200",
           }}
           currentValue={relativeAlertText(selected) ?? (selected.metric ? formatAlertDescription(selected).replace(" (TTM)", "").replace(" · on daily close", "")
-            : selected.move ? `${selected.symbol} ${moveRuleWords(selected)}` : `${selected.symbol} ${selected.condition} ${selected.targetPrice}`)}
+            : selected.move ? `${selected.symbol} ${moveRuleWords(selected)}` : `${selected.symbol} ${selected.condition} ${selected.lastQuotePence ? `${Number((selected.targetPrice * 100).toPrecision(12))}p` : selected.targetPrice}`)}
           onApply={async (value) => {
             const parsed = parseAlertEdit(selected, value);
+            if (!parsed.metric && !parsed.move && (parsed.currency || parsed.pence)) {
+              const listing = parsePublicTickerKey(parsed.symbol);
+              const same = listing.symbol === selected.symbol && (!listing.exchange || listing.exchange === selected.exchange);
+              parsed.price = levelInQuoteUnit(parsed, { currency: same ? selected.lastQuoteCurrency ?? "" : "",
+                providerPriceDivisor: same && selected.lastQuotePence ? 100 : undefined, price: selected.lastCheckedPrice ?? 0 }, parsed.symbol).price;
+            }
             const error = savePaneAlerts(selected.id, (current) => current.map((alert) => (
               alert.id === selected.id
                 ? { ...editAlert(alert, parsed.symbol, parsed.condition, parsed.price), ...(parsed.metric ? { metric: parsed.metric } : {}) }

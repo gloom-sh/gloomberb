@@ -281,8 +281,27 @@ describe("scenario headless inputs", () => {
     const position = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "vertical" }, market)!;
     expect(position.legs.map((leg) => [leg.strike, leg.quantity, leg.price])).toEqual([[100, 1, 5], [110, -1, 2]]);
     expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle" }, market)).toThrow("no complete quoted strategy");
-    expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "vertical", currency: "EUR" }, market)).toThrow("Strategy currency differs");
+    expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "vertical", currency: "EUR" }, market))
+      .toThrow("The option chain is quoted in USD. Omit --currency to see totals in your profile base currency.");
     expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "vertical" }, { ...market, warnings: ["Options chain is stale"] })).toThrow("current options chain");
+  });
+
+  test("chain-seeded collars and protective puts hedge only full lots and still value all the shares", async () => {
+    const contract = (contractSymbol: string, strike: number) => ({ contractSymbol, strike, bid: 4, ask: 6, currency: "USD", expiration,
+      impliedVolatility: .25, lastPrice: 0, change: 0, percentChange: 0, inTheMoney: false, lastTradeDate: now / 1000 });
+    const market = await loadScenarioMarket({ instrument: { symbol: "AAPL" } }, dependencies({ loadOptions: async () => ready({
+      ...chain, puts: [contract("AAPL90P", 90)], calls: [contract("AAPL110C", 110)],
+    }) }));
+    for (const [strategy, contracts] of [["collar", [10, -10]], ["put", [10]]] as const) {
+      const seed = (shares?: string) => scenarioPositionFromSettings({ symbol: "AAPL", strategy, shares }, market)!;
+      const position = seed("1049");
+      expect(position.legs.map((leg) => leg.quantity)).toEqual([...contracts]);
+      expect(position).toMatchObject({ unhedgedShares: 49, underlying: { quantity: 1049 } });
+      for (const shares of [undefined, "0"]) expect(seed(shares).legs.map((leg) => Math.abs(leg.quantity))).toEqual(contracts.map(() => 1));
+      const oddLot = seed("49");
+      expect(oddLot.legs).toEqual([]);
+      expect(buildScenario(oddLot).valuation.price).toBeCloseTo(49 * oddLot.spot);
+    }
   });
 
   test("a seeded leg takes the IV its midpoint implies at the market time, over a provider IV", async () => {
@@ -437,9 +456,12 @@ describe("scenario headless inputs", () => {
     setSystemTime(printAt);
     try {
       const provider = { id: "scenario-test", getQuote: async () => ({ ...quote, price: 100.25, lastUpdated: printAt }),
-        getTickerFinancials: async () => financials, getOptionsChain: async () => close } as unknown as DataProvider;
+        getTickerFinancials: async () => financials, getOptionsChain: async () => close,
+        getCachedQuery: (method: string) => method === "getExchangeRate" ?
+          { load: async () => ({ value: 0.125, asOf: printAt - 60_000, staleAt: printAt + 60_000 }) } : undefined,
+      } as unknown as DataProvider;
       const run = (options: Record<string, unknown>) => optionsScenarioHeadless.load({ symbols: ["AAPL"], rawArgument: "AAPL",
-        argument: "AAPL", options: { strategy: "vertical", ...options } }, { marketData: provider, signal: new AbortController().signal,
+        argument: "AAPL", options: { strategy: "vertical", ...options } }, { config: { baseCurrency: "HKD" }, marketData: provider, signal: new AbortController().signal,
         apiClient: { getCloudYieldCurve: dependencies().loadYieldCurve } } as unknown as HeadlessPaneContext);
       const seeded = await run({});
       expect([seeded.complete, seeded.errors]).toEqual([true, []]);
@@ -449,6 +471,13 @@ describe("scenario headless inputs", () => {
       const pnl = seeded.sections.find((section) => section.title.startsWith("Valuation"))?.entries?.find((entry) => entry.key === "pnl");
       expect(Math.abs(Number(pnl?.value))).toBeLessThan(1e-6);
       expect(pnl?.formatted).toBe("0.00");
+      const totals = seeded.sections.find((section) => section.title === "Base totals (HKD)")?.entries;
+      const native = seeded.sections.find((section) => section.title.startsWith("Valuation"))?.entries;
+      expect(totals?.find((entry) => entry.key === "value")?.value).toBeCloseTo(Number(native?.find((entry) => entry.key === "price")?.value) * 8);
+      expect(totals?.find((entry) => entry.key === "fx")?.value).toContain("USD/HKD 8 ·");
+      const times = seeded.sections.find((section) => section.title === "Inputs")?.entries;
+      expect(times?.find((entry) => entry.key === "optionQuotesAt")?.value).toBe(new Date(quotedAt).toISOString());
+      expect(times?.find((entry) => entry.key === "underlyingQuoteAt")?.value).toBe(new Date(printAt).toISOString());
       expect(spot(await run({ spot: "100.25" }))).toEqual([["Spot", "100.25 per share (typed)"]]);
     } finally { setSystemTime(); }
   });

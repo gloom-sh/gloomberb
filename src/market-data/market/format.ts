@@ -5,8 +5,16 @@ import { isIndexLevel } from "./index-level";
 import { MISSING_VALUE, currencyPriceDigits, formatCompact, formatCurrency, formatCurrencyCode } from "../../utils/format";
 import { BIDI_MARKS, isDrawableCurrencySign, minorUnitSign } from "../../utils/currency-units";
 import { fxRateDigits } from "../../utils/currency-pair";
+import { classifyInstrumentType, kindFromListingSyntax } from "../../tickers/instrument-kind";
+import { isUsEquityExchange } from "../../utils/exchanges";
 
 export type AssetDisplayKind = "cash" | "crypto" | "equity" | "contract" | "other";
+
+export function isSharePriceQuote(quote: Quote): boolean {
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  const kind = classifyInstrumentType(quote.instrumentType) ?? kindFromListingSyntax(quote.symbol, exchange);
+  return kind === "equity" || kind === "fund" || (kind == null && isUsEquityExchange(exchange));
+}
 
 export interface AssetDisplayContext {
   /** The price's currency; the thousandth currencies (OMR, KWD) keep three decimals above one unit. */

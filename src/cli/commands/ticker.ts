@@ -581,11 +581,11 @@ function boughtRateCurrencies(tickerFile: TickerRecord | null, quoteCurrency: st
 function conversionNotes(toBase: ReportBaseConverter, currencies: ReadonlySet<string>, rates: ReportRateNotes): string[] {
   return (toBase.conversions?.() ?? [])
     .filter((conversion) => currencies.has(conversion.currency) && conversion.currency !== conversion.baseCurrency && !rates.noted.has(conversion.currency))
-    .map(({ currency, baseCurrency, rate, asOf }) => {
+    .map(({ currency, baseCurrency, rate, asOf, stale }) => {
       rates.noted.add(currency);
       const quoted = quotedFxPair(currency, baseCurrency, rate);
       const except = rates.boughtAt.has(currency) ? ", except a cost basis at the rate it was bought at" : "";
-      return `${baseCurrency} figures at ${quoted.pair} ${formatFxRate(quoted.rate)}${asOf != null ? `, as of ${formatTimestamp(asOf)}` : ""}${except}.`;
+      return `${baseCurrency} figures at ${quoted.pair} ${formatFxRate(quoted.rate)}${asOf != null ? `, as of ${formatTimestamp(asOf)}` : ", time unavailable"}${stale ? " (stale)" : ""}${except}.`;
     });
 }
 

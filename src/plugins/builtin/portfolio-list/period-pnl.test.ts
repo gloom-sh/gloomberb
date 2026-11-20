@@ -6,7 +6,7 @@ import type { PortfolioFuturesTerms } from "../../../portfolio/futures-positions
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestTicker } from "../../../test-support/ticker";
 import type { PricePoint } from "../../../types/financials";
-import { loadPeriodPnl, periodBasisText, periodUnpricedText } from "./period-pnl";
+import { loadPeriodPnl, periodBasisText, periodFxMarks, periodUnpricedText } from "./period-pnl";
 import { periodSummaryLines } from "./pane/period-pnl";
 
 const day = (date: string, close: number): PricePoint => ({ date: new Date(`${date}T00:00:00Z`), close });
@@ -106,12 +106,16 @@ test("a window ending on the FX trading day in progress converts its end at the 
     provider: createTestDataProvider({
       getDetailedPriceHistoryWithMetadata: async (symbol, _exchange, start, end) => ({
         points: (closes[symbol] ?? []).filter((point) => point.date >= start && point.date <= end), resolution: "1d" }),
-      getExchangeRate: async (currency) => currency === "TRY" ? 1 / 50.2294 : 1,
+      getCachedQuery: (() => ({ load: async () => ({ value: 1 / 50.2294, asOf: tuesday - 60_000, staleAt: Infinity }) })) as unknown as ReturnType<typeof createTestDataProvider>["getCachedQuery"],
     }),
   });
   const ntr = result.rows.find((row) => row.symbol === "NTR")!;
   expect(ntr.rates).toEqual({ currency: "USD", start: expect.closeTo(50.1776, 9), end: expect.closeTo(50.2294, 9) });
   expect(result.latestFx).toEqual(["USD|2026-11-10"]);
+  expect(periodFxMarks(result, ntr)).toEqual({
+    startFx: expect.stringContaining("50.1776 · Mon 9 Nov close"),
+    endFx: expect.stringContaining("50.2294 · Tue 10 Nov 20:28 UTC"),
+  });
   expect(result.fx).toBeCloseTo(100 * 72.29 * (50.2294 - 50.1776), 6);
   // A past window keeps the day's FX close.
   const past = await loadPeriodPnl({

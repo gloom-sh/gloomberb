@@ -83,12 +83,12 @@ export function accountFxReason(currency: string, problem: string): string {
  * close before it across at most MAX_BRIDGED_FX_DAYS weekdays without one
  * (`bridged`). Null when the gap is longer, or no close comes before it.
  */
-export function bridgedFxClose(rateOn: (date: string) => number | undefined, date: string): { rate: number; bridged: boolean } | null {
+export function bridgedFxClose(rateOn: (date: string) => number | undefined, date: string): { date: string; rate: number; bridged: boolean } | null {
   let missing = 0;
   for (let time = Date.parse(`${date}T00:00:00Z`), step = 0; step <= 7 + MAX_BRIDGED_FX_DAYS; step++, time -= DAY_MS) {
     const day = new Date(time).toISOString().slice(0, 10);
     const rate = rateOn(day);
-    if (rate != null && rate > 0) return { rate, bridged: day !== date };
+    if (rate != null && rate > 0) return { date: day, rate, bridged: day !== date };
     const weekday = new Date(time).getUTCDay();
     if (weekday !== 0 && weekday !== 6 && ++missing > MAX_BRIDGED_FX_DAYS) return null;
   }

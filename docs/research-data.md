@@ -1181,7 +1181,9 @@ At 5.51 (the ask), one SPY 700 put costs 551.00; 500,000 buys 907 of them, spend
 
 #### Collar
 
-`--strategy collar` buys one put at `--put-strike` and sells one call at `--call-strike` on the put's expiry of the `--expiration` chain, each at its quote midpoint with the IV that midpoint implies, as the other seeds are. Without a strike the quoted strike nearest 10% below spot is the put and the one nearest 10% above is the call. The position holds the shares the contracts cover, contracts x multiplier (100 for one), bought at the spot the quotes imply; `--shares` sets another count and `--shares 0` values the options alone. A typed put bought and call sold of the same size, expiry and multiplier, held with shares, reads as a collar too. The report's **Collar** section and a row of figures in the pane read the position as entered, per share:
+Chain seeds keep strikes, premiums and spot in the quote currency. When the profile uses another base currency, OSA also shows the position's monetary totals and scenario P&L grid in that currency, with the FX rate and observation time. Leave `--currency` unset to use the chain's currency. OSA dates the option quotes and the underlying print separately and flags an earlier option session beside the implied spot.
+
+`--strategy collar` buys a put at `--put-strike` and sells a call at `--call-strike` on the put's expiry of the `--expiration` chain, each at its quote midpoint with the IV that midpoint implies, as the other seeds are. Without a strike the quoted strike nearest 10% below spot is the put and the one nearest 10% above is the call. The default collar holds 100 shares with one contract per leg. With nonzero `--shares`, a collar or protective put uses the whole number of contracts the holding covers, rounding down, and shows any unhedged shares. `--shares 0` leaves the original options-only seed. A typed put bought and call sold of the same size, expiry and multiplier, held with shares, reads as a collar too. The report's **Collar** section and a row of figures in the pane read the position as entered, per share:
 
 | Figure | Definition |
 |---|---|

@@ -53,15 +53,15 @@ import {
   type ReleaseRename,
 } from "./calendar-events";
 import { createAlert, formatAlertDescription, levelAlreadyMet, rearmAlert, sameLevelRule } from "./alert-engine";
-import { alertPriceText } from "./price-text";
+import { alertPriceText, alertPriceWithCurrency, alertQuoteTime } from "./price-text";
 import { ALERTS_PLUGIN_ID, PRICE_DELIVERY } from "./constants";
 import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
 import { alertKindLabel, fetchAlertHistory, ruleStateText, type AlertRuleState } from "./history";
 import { apiClient } from "../../../api-client";
 import { IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
-import { isDollarMark, isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
-import { commodityFutureNote, farTargetMessage, levelInQuoteUnit } from "./quotes";
-import { isPenceQuotedLine } from "../../../market-data/market/format";
+import { hasAlertCurrency, isDollarMark, isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
+import { alertCurrencyMismatch, assertAlertCurrency, commodityFutureNote, farTargetMessage, levelInQuoteUnit } from "./quotes";
+import { isPenceQuotedLine, isSharePriceQuote } from "../../../market-data/market/format";
 import { MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel } from "./research-builder";
 import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
 import {
@@ -116,6 +116,7 @@ export type AlertAddRequest =
     /** The price as typed, `70p` for a London line in pence (`price` is then in pounds). */
     typed?: string;
     pence?: true;
+    currency?: string;
   }
   /** A move from the previous close, on one symbol, several, or a watchlist's listings. */
   | MoveAddRequest
@@ -280,7 +281,9 @@ export function parseAlertAddArgs(
   if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not price alerts.");
   if (third === undefined) throw new Error(ADD_USAGE);
   // A dollar mark the shell split from its price (`$ 757.75`, `757.75 USD`) is part of it.
-  if (rest.length === 1 && (isDollarMark(third) || isDollarMark(rest[0]!))) return parseAlertAddArgs([first, second, `${third} ${rest[0]}`], days, exchange, country, benchmark, watchlist);
+  if (rest.length === 1 && (isDollarMark(third) || (!hasAlertCurrency(third) && hasAlertCurrency(`${third} ${rest[0]}`)))) {
+    return parseAlertAddArgs([first, second, `${third} ${rest[0]}`], days, exchange, country, benchmark, watchlist);
+  }
   const retype = (price: number) => retypeCommand(first, condition, price, exchange);
   // `81 000` without quotes arrives as 81 and a stray 000; neither reading is taken for granted.
   const spaced = rest.length > 0 && LEADING_GROUP.test(third) ? parsePastedNumber([third, ...rest].join(" ")) : null;
@@ -290,10 +293,10 @@ export function parseAlertAddArgs(
   }
   // A price pasted from a sheet (1.350,5, 1,350.5, 1 350,5) reads as it is written; `1,350` could be either, so it asks.
   // `70p` is pence, a London line's unit, kept in pounds as the line's quote is.
-  const { price, pence } = readAlertLevel(third);
+  const { price, pence, currency } = readAlertLevel(third);
   if (rest.length > 0) throw new Error(`A price alert takes one price, not "${rest.join(" ")}" after ${third}; type ${retype(price)}`);
   const thousandsDot = pence ? null : thousandsDotReadings(third);
-  return { kind: "price", symbol: first, condition, price, typed: third.trim(), ...pence ? { pence } : {},
+  return { kind: "price", symbol: first, condition, price, typed: third.trim(), ...pence ? { pence } : {}, ...currency ? { currency } : {},
     ...(thousandsDot ? { thousandsDot: { ...thousandsDot, text: third.trim() } } : {}) };
 }
 
@@ -1040,8 +1043,14 @@ export const alertsCliCommand: CliCommandDef = {
     }
     // A London line's level is in the pence its quote shows: `70p`, or 70 where 70 in pounds is far off its price.
     let penceNote: string | null = null;
+    if (request?.kind === "price" && request.currency && !priced) ctx.fail(alertCurrencyMismatch(request.currency, undefined, request.symbol)!);
     if (request?.kind === "price" && priced) {
       try {
+        if (alertCurrencyMismatch(request.currency, priced.quote.currency, priced.listing.key)) {
+          const typed = request;
+          const { quote, listing } = priced;
+          await withMarketData(ctx, (market) => assertAlertCurrency(typed, quote, listing.key, market.dataProvider));
+        }
         const level = levelInQuoteUnit(request, priced.quote, priced.listing.key);
         request.price = level.price;
         penceNote = level.note;
@@ -1336,7 +1345,9 @@ export const alertsCliCommand: CliCommandDef = {
         const symbol = requireArg(priceListing?.key, ADD_USAGE, ctx);
         const alert: AlertRule = { ...createAlert(symbol, condition, request.price, priceListing?.exchange), ...(request.kind === "metric" ? { metric: request.metric } : {}),
           // A London line's level is shown in pence from the first, before any check has read its quote.
-          ...request.kind === "price" && priced && isPenceQuotedLine(priced.quote) ? { lastQuotePence: true } : {}, ...reading };
+          ...request.kind === "price" && priced ? {
+            lastQuoteCurrency: priced.quote.currency || undefined, lastQuotePence: isPenceQuotedLine(priced.quote) || undefined,
+          } : {}, ...reading };
         // The same rule on the same listing is one alert: a second add names it and adds nothing.
         const existing = alerts.find((entry) => sameLevelRule(entry, alert));
         if (existing) {
@@ -1361,7 +1372,7 @@ export const alertsCliCommand: CliCommandDef = {
         const goesOffThen = daily && alreadyMet ? ` It goes off then if it is still ${alert.condition}.` : "";
         const notes = [
           alert.metric ? unread ? `Not read yet: ${unread.replace(/\.$/, "")}.` : `${metricReadingNote(alert)}${met}.`
-            : checkedPrice != null ? `Last price ${alertPriceText(alert, checkedPrice)}${readingSessionWords({ lastQuoteSession: extendedPrintSession(priced?.quote, checkedPrice) ?? undefined })}${met}.` : null,
+            : checkedPrice != null ? `Last price ${alertPriceWithCurrency(alert, checkedPrice)}${readingSessionWords({ lastQuoteSession: extendedPrintSession(priced?.quote, checkedPrice) ?? undefined })} · ${alertQuoteTime(alert.lastQuoteUpdatedAt)}${met}.` : null,
           firstCheck ? `First checked on the ${firstCheck.day} ${weekly ? "weekly close" : "close"}, from ${isoUtc(firstCheck.at).slice(11, 16)} UTC.${goesOffThen}`
             : goesOffThen ? `It goes off on the first close it is checked on if it is still ${alert.condition}.` : null,
         ].filter(Boolean).join(" ");
@@ -1372,7 +1383,7 @@ export const alertsCliCommand: CliCommandDef = {
           // The delivery, as docs/usage.md states it, before any full stop, which after the price would read as part of it (below 81.).
           // The listing with its venue, the level at its precision and in its unit: `VOD:LSE below 70.00p`, `GBPUSD=X below 1.33750`.
           text: (data) => `Added alert ${data.alert.id}: ${data.alert.metric ? metricDescription(data.alert)
-            : `${alertListing(data.alert)} ${condition} ${alertPriceText(data.alert, data.alert.targetPrice)}`} (${PRICE_DELIVERY}).${notes ? ` ${notes}` : ""}${dryRunNote(data.dryRun)}`,
+            : `${alertListing(data.alert)} ${condition} ${alertPriceWithCurrency(data.alert, data.alert.targetPrice)}${priced && isSharePriceQuote(priced.quote) ? " per share" : ""}`} (${PRICE_DELIVERY}).${notes ? ` ${notes}` : ""}${dryRunNote(data.dryRun)}`,
         });
         return;
       }

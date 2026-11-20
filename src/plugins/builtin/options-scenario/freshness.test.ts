@@ -4,7 +4,7 @@ import type { HeadlessBundleResult, HeadlessPaneFreshness } from "../../../types
 import { createTestQuote } from "../../../test-support/data-provider";
 import type { OptionsChain, Quote } from "../../../types/financials";
 import type { ScenarioMarketSnapshot } from "./client";
-import { scenarioFreshness } from "./freshness";
+import { earlierOptionSession, scenarioFreshness } from "./freshness";
 import { optionsScenarioHeadless } from "./headless";
 
 const at = (iso: string) => Date.parse(iso);
@@ -47,9 +47,19 @@ test("OSA dates its figures by the underlying's quote, its delay and where its m
     .toBe("Source: Gloom Cloud · US trading day Fri 16 Oct 2026 close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET");
 });
 
-test("OSA with no current quote is dated by its load, and a position typed whole is the reader's own inputs", () => {
+test("OSA retains an earlier option-session time independently from a pre-market underlying print", () => {
+  const print = spy("2026-10-16T11:00:00Z", { marketState: "PRE", extendedSessionPrint: true });
+  const quoteTime = at("2026-10-15T20:14:00Z");
+  expect(earlierOptionSession(quoteTime, print)).toBe(true);
+  expect(earlierOptionSession(at("2026-10-16T10:59:00Z"), print)).toBe(false);
+  expect(scenarioFreshness(market(print), false, print.lastUpdated).observations).toMatchObject([
+    { series: "Underlying quote", updatedAt: print.lastUpdated }, { series: "Option quotes", updatedAt: quoteTime },
+  ]);
+});
+
+test("OSA with no underlying print dates the chain, and a position typed whole is the reader's own inputs", () => {
   expect(lines(market(null), "2026-10-15T23:45:00Z").report)
-    .toBe("Source: Gloom Cloud · Thu 15 Oct 2026 23:44 UTC · 15 min delayed");
+    .toBe("Source: Gloom Cloud · Thu 15 Oct 2026 20:14 UTC · 15 min delayed");
   expect(lines(market(null, null), "2026-10-15T23:45:00Z", true).report)
     .toBe("Source: Your inputs · retrieved Thu 15 Oct 2026 23:45 UTC · not a live feed (scenario)");
 });
