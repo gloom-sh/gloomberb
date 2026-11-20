@@ -83,7 +83,7 @@ async function withPaneRuntime<T>(
     registry: PaneFunctionCatalog;
     resolved: ResolvedPaneFunction;
   }) => Promise<T>,
-  settings: { strictHeadlessOptions?: boolean; tableSection?: boolean; rowWindow?: boolean; command?: "fn" | "shot" } = {},
+  settings: { strictHeadlessOptions?: boolean; strictRenderedOptions?: boolean; tableSection?: boolean; rowWindow?: boolean; command?: "fn" | "shot" } = {},
 ): Promise<T> {
   return withMarketData(ctx, async (market) => {
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
@@ -549,7 +549,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       }
       ctx.printResult(result, render);
       if (failure) process.exitCode = CLI_EXIT_CODES.error;
-    }, { strictHeadlessOptions: true, tableSection: true, rowWindow: true });
+    }, { strictHeadlessOptions: true, strictRenderedOptions: true, tableSection: true, rowWindow: true });
   });
 }
 

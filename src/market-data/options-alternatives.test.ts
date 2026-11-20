@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createTestCliContext } from "../test-support/cli-context";
 import { marketDataCliCommands } from "../cli/commands/market";
-import { fxVolatilityNote, fxVolatilityPair, listedOptionsAlternative } from "./options-alternatives";
+import { fxVolatilityNote, fxVolatilityPair, listedOptionsAlternative, optionsUnavailableDetails } from "./options-alternatives";
 
 test("every spelling of a futures root finds the same listed fund, and a stock finds none", () => {
   const alternative = (symbol: string) => listedOptionsAlternative(symbol)?.symbol ?? null;
@@ -30,6 +30,14 @@ test("options on a future with no chain names the listed alternative and OSA, no
   await expect(marketDataCliCommands.find((command) => command.name === "options")!.execute(["6J=F"], cli.context))
     .rejects.toThrow("Options on CME yen futures (6J=F) are not served.");
   expect(failure!.details).toContain("gloom options FXY");
+  // Nor does it serve options on a spot pair, which no plan changes: the pair's currency fund is the proxy,
+  // a dollar pair with no fund of its own reads the dollar fund, and a cross names the funds that hold it.
+  await expect(marketDataCliCommands.find((command) => command.name === "options")!.execute(["EURUSD=X"], cli.context))
+    .rejects.toThrow("Options on spot FX pairs (EURUSD=X) are not served.");
+  expect(failure!.details).toContain("gloom options FXE");
+  expect(["AUDUSD=X", "6A=F", "EURJPY=X"].map((symbol) => listedOptionsAlternative(symbol)?.symbol ?? null)).toEqual(["UUP", "UUP", null]);
+  expect(optionsUnavailableDetails("EURJPY=X", (symbol) => `gloom fn OMON ${symbol}`))
+    .toBe("Currency funds with listed options: gloom fn OMON FXE, gloom fn OMON FXY.");
 });
 
 test("a spot pair in any spelling and a currency future in any contract are one FX pair; a stock, a coin, spot gold and a fund are none", () => {

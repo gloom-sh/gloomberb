@@ -669,7 +669,7 @@ A yen pair's price chart (`G USDJPY=X`, `G EURJPY=X`) marks each intervention Ja
 
 #### Session low and high
 
-`gloom fn GIP <ticker>` ends with the session's low and high and the UTC time each traded (`USDT-USD:CCC session low  0.99833 at 2026-10-17 11:30 UTC`; over several sessions they read low and high). `GIP` dates sessions on the listing's exchange clock, read from its exchange or its suffix (`RMS.AX` is the ASX). A bare symbol with no known exchange is dated in UTC.
+`gloom fn GIP <ticker>` ends with the session's low and high and the UTC time each traded (`USDT-USD:CCC session low  0.99833 at 2026-10-17 11:30 UTC`; over several sessions they read low and high). `GIP` dates sessions on the listing's exchange clock, read from its exchange or its suffix (`RMS.AX` is the ASX). A bare symbol with no known exchange is dated in UTC. A session asked for by its date (`--session 2026-11-10`) that the live quote does not carry on is dated by that session in the report and its capture alike (`Tue 10 Nov 2026 · not a live feed (intraday bars of a past session)`), never by today's quote or as stale.
 
 A US listing's bars are the regular session only, from the 09:30 New York open, and the report says so (with `--csv`, as a `note:` line on stderr): an 08:30 release falls before its first bar. `--csv` writes each price as the decimal it traded at (`85.1`, not the feed's `85.099998`; a sub-penny print such as `86.3775` stays), under `Open,High,Low,Close,Volume` with no `Value` column repeating Close; `--json` keeps `value` beside `close`.
 
@@ -1347,6 +1347,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - `financials` lists fiscal years, so `gloom financials WFC --quarterly` (or `--period`, `--freq`) points at `fn GF WFC --period quarterly --periods 40` (one metric over time) and `fn FA WFC --period quarterly` (the statements).
 - A command that takes one symbol or currency fails on a second (`gloom fx NGN ZAR`; write a pair as `fx ZAR/NGN`), and `econ` fails on a country or impact it does not filter by.
 - Everything after a bare `--` is an argument, never an option.
+- `fn` does the same for every function: `gloom fn OMON FXY --foo bar` fails with the options OMON takes, and a slip of one names it (`OVDV does not support --expirty. Did you mean --expiration?`). A function drawn from its pane also takes the settings in its settings dialog and `--state.<key>`. Wherever a function takes `--expiration`, `--expiry` reads the same, as it does for `gloom options`; typed together they fail.
 
 ### `history`
 

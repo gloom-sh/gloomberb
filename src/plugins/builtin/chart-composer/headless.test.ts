@@ -541,13 +541,15 @@ describe("GIP headless sessions", () => {
       const past = deriveHeadlessFreshness(definition, await load({ session: "2026-10-20" }));
       expect(past.status).toBe("delayed");
       // A day later, today's quote is within a day of Tuesday's last bar but not of its session.
+      // It is that session's observation, dated by the session asked for, as a stored close or a past curve is: never stale.
       setSystemTime(new Date("2026-10-21T15:00:00Z"));
       const yesterday = await load({ session: "2026-10-20" });
-      expect(yesterday.freshness).toMatchObject({ status: "not-a-feed", basis: "intraday bars" });
+      expect(yesterday.freshness).toEqual({ status: "not-a-feed", basis: "intraday bars of a past session", asOf: "2026-10-20", oldest: null });
       expect(deriveHeadlessFreshness(definition, yesterday).status).not.toBe("delayed");
-      setSystemTime(new Date("2026-10-23T15:00:00Z"));
-      const later = await load({ session: "2026-10-20" });
-      expect(later.freshness).toMatchObject({ status: "not-a-feed", basis: "intraday bars" });
+      setSystemTime(new Date("2026-10-30T15:00:00Z"));
+      const later = deriveHeadlessFreshness(definition, await load({ session: "2026-10-20" }));
+      expect(later).toMatchObject({ status: "not-a-feed", asOf: "2026-10-20" });
+      expect(later.ageMinutes).toBeUndefined();
     } finally {
       setSystemTime();
     }

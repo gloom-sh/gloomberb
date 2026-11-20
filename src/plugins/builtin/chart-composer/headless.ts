@@ -369,6 +369,9 @@ function seriesAttribution(series: readonly HeadlessSeries[]): Pick<HeadlessPane
  * capability series alone (CHOKE's vessel transits) is a dataset, dated by its
  * newest observation and how far behind that is.
  */
+/** What a chart of one past session's intraday bars is, said after its date. */
+const PAST_SESSION_TEXT = "intraday bars of a past session";
+
 function chartFreshness(
   allSeries: readonly HeadlessSeries[],
   spec: ChartSpec,
@@ -1016,6 +1019,11 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       // not the 1st the bar starts on, beside a coin's that runs to today.
       model.series = model.series.map((series) => withLatestQuoteDay(series, quotes.get(series.id)));
       model.freshness = chartFreshness(model.series, model.spec, model.chart.priceComparison, quotes);
+      // A session asked for by its date (`GIP AAPL --session 2026-11-10`) that today's quote does not carry on is a past
+      // observation: dated by that session, as a stored close or a past curve is, never stale and never the live quote.
+      const pastSession = template === "graph-intraday-price-pane" && !model.freshness.observations
+        ? intradayHistories.find((window) => window.requestedSession && window.points.length)?.requestedSession : null;
+      if (pastSession) model.freshness = { status: "not-a-feed", basis: PAST_SESSION_TEXT, asOf: pastSession, oldest: null };
       if (closingPrintsPending.length) {
         model.freshness = { ...model.freshness, note: [model.freshness.note, CLOSING_PRINT_PENDING_TEXT].filter(Boolean).join(", ") };
       }

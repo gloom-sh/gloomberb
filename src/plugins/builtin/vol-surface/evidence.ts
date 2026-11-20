@@ -23,7 +23,8 @@ export interface VolSurfaceEvidence {
   version: 1;
   symbol: string | null;
   view: string;
-  renderer: "bitmap" | "table" | "chart";
+  /** `grid`: the 3D view's 2D stand-in, drawn when too few neighbouring expiries are quoted for a sheet. */
+  renderer: "bitmap" | "grid" | "table" | "chart";
   axis: string;
   tenors: string;
   ivSource: string | null;
@@ -76,8 +77,6 @@ function gridCounts(values: (number | null)[][]): { values: number; quads: numbe
 /** Evidence comes from the active rendered view's model, never from the presence of a canvas. */
 export function volSurfaceSemanticEvidence(input: VolSurfaceEvidenceInput): VolSurfaceEvidence {
   const { snapshot, view, selectedExpiry } = input;
-  const renderer = view === "surface" && input.bitmapAvailable ? "bitmap"
-    : view === "smile" || view === "term" ? "chart" : "table";
   const grid = (view === "surface" || view === "table") && input.grid ? {
     tenors: [...input.grid.tenors], coordinates: [...input.grid.moneyness],
     values: input.grid.volatilities.map((row) => row.map((value) => iv(value) ? value : null)),
@@ -97,14 +96,18 @@ export function volSurfaceSemanticEvidence(input: VolSurfaceEvidenceInput): VolS
       : [skew.put25, skew.call25, skew.riskReversal, skew.butterfly, skew.moneynessSkew, skew.termSlope] };
   }) : [];
   const counts = grid ? gridCounts(grid.values) : { values: 0, quads: 0 };
+  // A sheet needs a face, four quoted corners of neighbouring expiries; without one the surface view draws its values as a grid.
+  const sheet = view === "surface" && input.bitmapAvailable;
+  const renderer = sheet ? counts.quads > 0 ? "bitmap" : "grid"
+    : view === "smile" || view === "term" ? "chart" : "table";
   const plottedValueCount = grid ? counts.values : smile ? smile.points.length : term.length
     || table.reduce((total, row) => total + row.values.filter(isFiniteNumber).length, 0);
   const loading = input.loading || snapshot?.phase === "loading" || (snapshot != null && snapshot.loaded < snapshot.requested);
   const relevantExpiries = view === "smile" ? selectedExpiry ? [selectedExpiry] : [] : snapshot?.expiries ?? [];
   return {
     kind: "volatility-surface", version: 1, symbol: snapshot?.symbol ?? null, view, renderer,
-    axis: renderer === "bitmap" ? "forward" : input.axis,
-    tenors: renderer === "bitmap" ? "listed" : input.tenors,
+    axis: sheet ? "forward" : input.axis,
+    tenors: sheet ? "listed" : input.tenors,
     ivSource: snapshot?.settings.ivSource ?? null, priceSide: snapshot?.settings.priceSide ?? null,
     spot: snapshot?.spot ?? null, spotAsOf: snapshot?.spotAsOf ?? null, loading,
     complete: !loading && !!snapshot && snapshot.phase === "ready" && snapshot.requested > 0
@@ -188,8 +191,9 @@ export const volSurfaceScreenshotEvidence: PaneScreenshotEvidenceHook<VolSurface
     const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
     if (symbol && evidence.symbol !== parsePublicTickerKey(symbol).symbol) mismatches.push("rendered volatility symbol does not match");
     if (evidence.view !== (resolved.options.tab ?? "surface")) mismatches.push("rendered volatility view does not match");
-    const expectedAxis = evidence.renderer === "bitmap" ? "forward" : resolved.options.axis ?? "spot";
-    const expectedTenors = evidence.renderer === "bitmap" ? "listed" : resolved.options.tenors ?? "listed";
+    const sheet = evidence.renderer === "bitmap" || evidence.renderer === "grid";
+    const expectedAxis = sheet ? "forward" : resolved.options.axis ?? "spot";
+    const expectedTenors = sheet ? "listed" : resolved.options.tenors ?? "listed";
     if (evidence.axis !== expectedAxis) mismatches.push("rendered volatility axis does not match");
     if (evidence.tenors !== expectedTenors) mismatches.push("rendered volatility tenors do not match");
     if (evidence.ivSource !== (resolved.options.ivSource ?? "recomputed")) mismatches.push("rendered volatility source does not match");

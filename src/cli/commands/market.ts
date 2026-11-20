@@ -74,7 +74,7 @@ import {
   nominalSessionLabel,
 } from "../../market-data/quotes/freshness";
 import {
-  coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
+  coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, optionsUnavailableDetails, optionsUnavailableTitle,
 } from "../../market-data/options-alternatives";
 import {
   atReportTtmRate, cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions,
@@ -4251,14 +4251,11 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       if (!isOptionsUnavailableError(error)) throw error;
       // A coin other than BTC and ETH: say which coins have options, and the bitcoin-linked listings.
       if (isCoinWithoutOptions(listing.key)) return ctx.fail(optionsUnavailableTitle(listing.key), coinOptionsAlternativesText("options"));
-      // A future or commodity with no chain of its own: name the listed fund whose options stand in.
-      const alternative = listedOptionsAlternative(listing.key);
+      // A future, commodity or FX pair with no chain of its own: name the listed fund whose options stand in.
       // A name read as a fund or an index asks about the company's stock it means, whose options are listed.
       const meant = meantQuestion(listing);
-      return ctx.fail(meant ? `${optionsUnavailableTitle(listing.key)} ${meant}` : optionsUnavailableTitle(listing.key), alternative
-        ? `Nearest listed alternative: ${alternative.symbol} (${alternative.name}), gloom options ${alternative.symbol}.`
-          + ` Strategy payoffs: gloom fn OSA ${alternative.symbol}`
-        : "Strategy payoffs on a listed underlying: gloom fn OSA <ticker>");
+      return ctx.fail(meant ? `${optionsUnavailableTitle(listing.key)} ${meant}` : optionsUnavailableTitle(listing.key),
+        optionsUnavailableDetails(listing.key, (symbol) => `gloom options ${symbol}`));
     });
     const loaded = withLiveExpiryList(read, now, expiryVenue);
     const inputs = await inputsPromise;

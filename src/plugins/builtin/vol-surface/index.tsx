@@ -42,7 +42,7 @@ export const volSurfaceModule: PluginModule = {
   paneTemplates: [createTickerSurfacePaneTemplate({
     id: "vol-surface-pane", paneId: "vol-surface", label: "Volatility Surface",
     description: "Implied volatility surface, smiles, term structure, skew (25-delta risk reversal and butterfly) and forwards; DVOL beside BTC-USD and ETH-USD.",
-    keywords: ["ovdv", "volatility", "vol", "surface", "smile", "skew", "options", "risk reversal", "put skew", "25d put", "25 delta put", "butterfly", "25 delta", "dvol", "deribit", "implied volatility index"],
+    keywords: ["ovdv", "volatility", "vol", "surface", "smile", "skew", "options", "fx vol", "fx volatility", "risk reversal", "put skew", "25d put", "25 delta put", "butterfly", "25 delta", "dvol", "deribit", "implied volatility index"],
     shortcut: "OVDV", publicShare: true,
     settings: (_symbol, _context, options) => options?.values?.expiration
       ? { expiration: Number(options.values.expiration) } : {},

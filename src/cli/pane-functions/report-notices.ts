@@ -129,3 +129,16 @@ export function renderedReportObservations(semanticUi: readonly RemoteUiNodeSnap
   const observations = semanticUi.find((node) => node.role === "report-freshness")?.metadata?.observations;
   return Array.isArray(observations) ? observations.filter(isRecord) : [];
 }
+
+/**
+ * The report options that print what a rendered pane shows, when it shows
+ * another view than it was opened on, from the `report-options` node it
+ * publishes: `{ options: { date: "2026-11-17" } }` for OVDV standing in its
+ * stored close while the chain is closed. A capture reads its report with
+ * them, so what it says it covers is what it shows. Empty when none.
+ */
+export function renderedReportOptions(semanticUi: readonly RemoteUiNodeSnapshot[]): Record<string, string> {
+  const options = semanticUi.find((node) => node.role === "report-options")?.metadata?.options;
+  if (!isRecord(options)) return {};
+  return Object.fromEntries(Object.entries(options).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1] !== ""));
+}
