@@ -2,13 +2,41 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { CapabilityRegistry, NOTES_FILES_CAPABILITY_ID } from "../../../capabilities";
+import { BROKER_CAPABILITY_ID, CapabilityRegistry, NOTES_FILES_CAPABILITY_ID, type BrokerStatusEvent } from "../../../capabilities";
 import type { AppServices } from "../../../core/app-services";
 import { exportSourceLabel } from "../../../plugins/builtin/notes/export";
 import { NotesFiles, remoteNotesFilesIO } from "../../../plugins/builtin/notes/files";
 import { migrateLocalNotes } from "../../../plugins/builtin/notes/migration";
 import type { CloudNotesStore } from "../../../plugins/builtin/notes/store";
+import { createTestBrokerAdapter } from "../../../test-support/broker";
+import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
 import { registerElectrobunCoreCapabilities } from "./core-capabilities";
+
+test("the desktop broker stream distinguishes an absent status from a reported disconnect", async () => {
+  const instance: BrokerInstanceConfig = { id: "demo", brokerType: "demo", label: "Demo", config: {} };
+  const registry = new CapabilityRegistry();
+  const brokers = new Map([[instance.brokerType, createTestBrokerAdapter()]]);
+  const config = { ...createDefaultConfig("/tmp/gloomberb-desktop-brokers"), brokerInstances: [instance] };
+  registerElectrobunCoreCapabilities({
+    getConfig: () => config,
+    getServices: () => ({ pluginRegistry: { capabilities: registry, brokers } }) as unknown as AppServices,
+  });
+  const firstStatus = async () => {
+    const events: BrokerStatusEvent[] = [];
+    const subscription = await registry.subscribe<BrokerStatusEvent>(
+      BROKER_CAPABILITY_ID, "status", { instanceId: instance.id }, (event) => events.push(event),
+      { renderer: true },
+    );
+    registry.unsubscribe(subscription);
+    return events[0]?.status;
+  };
+
+  expect(await firstStatus()).toEqual({ state: "disconnected", reported: false, updatedAt: 0 });
+
+  const disconnected = { state: "disconnected", updatedAt: 0 } as const;
+  brokers.set(instance.brokerType, createTestBrokerAdapter({ getStatus: () => disconnected }));
+  expect(await firstStatus()).toEqual(disconnected);
+});
 
 test("desktop notes reach the terminal's files through the Bun process", async () => {
   const dataDir = mkdtempSync(join(tmpdir(), "gloomberb-desktop-notes-"));

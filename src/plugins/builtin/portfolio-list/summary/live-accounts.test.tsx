@@ -24,7 +24,7 @@ function Harness({ broker }: { broker: BrokerAdapter }) {
 }
 
 test("reloads accounts on connection changes and explicit refreshes, not on status rewrites", async () => {
-  let status: BrokerConnectionStatus = { state: "disconnected", updatedAt: 0 };
+  let status: BrokerConnectionStatus = { state: "disconnected", reported: false, updatedAt: 0 };
   const listeners = new Set<() => void>();
   let loads = 0;
   const broker: BrokerAdapter = {
@@ -60,6 +60,11 @@ test("reloads accounts on connection changes and explicit refreshes, not on stat
   await tui.render(<Harness broker={broker} />, { width: 10, height: 1 });
   await settle();
   expect(loads).toBe(0);
+  expect(latest?.status).toBeNull();
+
+  await act(async () => setStatus({ state: "disconnected" }));
+  await settle();
+  expect(latest?.status?.state).toBe("disconnected");
 
   await act(async () => setStatus({ state: "connected", message: "Connected" }));
   await settle();

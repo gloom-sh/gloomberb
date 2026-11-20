@@ -46,9 +46,9 @@ export function useLiveBrokerAccounts(
 ): LiveBrokerAccounts {
   const [status, setStatus] = useState<BrokerConnectionStatus | null>(null);
   useEffect(() => {
-    const readStatus = () => brokerInstance && broker?.getStatus ? broker.getStatus(brokerInstance) : null;
     const update = () => {
-      const next = readStatus();
+      const status = brokerInstance ? broker?.getStatus?.(brokerInstance) : null;
+      const next = status?.reported === false ? null : status ?? null;
       setStatus((current) => isSameBrokerStatus(current, next) ? current : next);
     };
     update();

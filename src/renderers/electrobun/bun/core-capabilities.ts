@@ -77,8 +77,8 @@ function resolveBrokerInstance(
 
 function brokerStatus(options: CoreCapabilityOptions, broker: BrokerAdapter, instanceId: string) {
   const instance = options.getConfig().brokerInstances.find((entry) => entry.id === instanceId);
-  if (!instance) return { state: "disconnected" as const, updatedAt: Date.now() };
-  return broker.getStatus?.(instance) ?? { state: "disconnected" as const, updatedAt: Date.now() };
+  const status = instance ? broker.getStatus?.(instance) : undefined;
+  return status ?? { state: "disconnected" as const, reported: false, updatedAt: 0 };
 }
 
 function invokeBrokerOperation(

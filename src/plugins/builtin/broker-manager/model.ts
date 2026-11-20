@@ -105,7 +105,7 @@ function resolveState(
       updatedAt: status?.updatedAt ?? 0,
     };
   }
-  if (!status) {
+  if (!status || status.reported === false) {
     return { state: "configured", label: t("Configured"), message: t("Ready to test or sync"), updatedAt: 0 };
   }
 
