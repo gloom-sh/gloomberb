@@ -266,16 +266,21 @@ export function buildBeneficialColumns(width: number): BeneficialColumn[] {
 const LEGAL_SUFFIX = /(?:[,\s]+(?:L\.?L\.?C|L\.?L\.?P|L\.?P|INC|LTD|LIMITED|CORP|CORPORATION|CO|PLC|N\.?A|S\.?A|AG|GMBH)\.?)+$/i;
 
 /**
- * The filer's name in `width` cells, with ` +N` for the other reporting
- * persons of a group. The entity suffix goes first, then the name is cut
- * behind an ellipsis; the count is never cut.
+ * The filer's name for a column `width` cells wide, and ` +N` for the other
+ * reporting persons of a group: the entity suffix goes first. What is left
+ * is cut behind an ellipsis (`formatFilerName` in cells, the desktop's table
+ * by CSS with the count as the cell's `keepEnd`); the count is never cut.
  */
+export function filerNameParts(name: string, otherPersons: number, width: number): { name: string; count: string } {
+  const count = otherPersons > 0 ? ` +${otherPersons}` : "";
+  const room = Math.max(1, width - displayWidth(count));
+  return { name: displayWidth(name) <= room ? name : name.replace(LEGAL_SUFFIX, "").trim() || name, count };
+}
+
+/** The filer's name cut to `width` cells, its count whole (`filerNameParts`). */
 export function formatFilerName(name: string, otherPersons: number, width: number): string {
-  const suffix = otherPersons > 0 ? ` +${otherPersons}` : "";
-  const room = Math.max(1, width - displayWidth(suffix));
-  if (displayWidth(name) <= room) return `${name}${suffix}`;
-  const short = name.replace(LEGAL_SUFFIX, "").trim() || name;
-  return `${clipToDisplayWidth(short, room)}${suffix}`;
+  const parts = filerNameParts(name, otherPersons, width);
+  return `${clipToDisplayWidth(parts.name, Math.max(1, width - displayWidth(parts.count)))}${parts.count}`;
 }
 
 /** The marker after a stake that is not a 5% holding: under the threshold, or reported at zero. */

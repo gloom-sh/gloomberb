@@ -3,6 +3,10 @@ import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
 import { Button, type ButtonProps } from "./button";
 import { DisclosureMarker } from "./disclosure-marker";
+import { NATIVE_CLIP_STYLE } from "./clip-style";
+
+/** The label gives way to what the row puts after it (a count, a mark), which keeps its room. */
+const LABEL_CLIP_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
 
 export type ActionRowProps = Pick<ButtonProps, "label" | "children" | "onPress" | "active" | "disabled" | "expanded" | "width" | "height"> & {
   /** Text color when the row is neither disabled nor active; team headers use their accent. */
@@ -28,7 +32,8 @@ export function ActionRow({ label, children, expanded, active, disabled, fg, ...
       {/* A label of two lines reads from the left; a desktop button would centre the shorter one. */}
       <Box flexDirection="row" width={nativePaneChrome ? undefined : "100%"} flexGrow={nativePaneChrome ? 1 : undefined} minWidth={nativePaneChrome ? 0 : undefined} alignItems="center" gap={1} style={{ textAlign: "left" }}>
         {expanded !== undefined && <DisclosureMarker expanded={expanded} color={foreground} width={2} />}
-        <Text fg={foreground} attributes={active ? TextAttributes.BOLD : 0}>{t(label)}</Text>
+        {/* The desktop cuts a long label where the row ends, in CSS; the terminal caller cuts it to its cells. */}
+        <Text fg={foreground} attributes={active ? TextAttributes.BOLD : 0} style={nativePaneChrome ? LABEL_CLIP_STYLE : undefined}>{t(label)}</Text>
         {children}
       </Box>
     </Button>

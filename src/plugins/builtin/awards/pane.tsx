@@ -234,7 +234,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   if (denied || !data && isCloudSessionRequired(failed?.message)) return <SignInWall placement="awards-signin" action="view government awards" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
-    <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpen(null)} detailTitle={openRow ? truncateToDisplayWidth(openRow.title, Math.max(20, width - 16)) : "Award evidence"}
+    <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpen(null)} detailTitle={openRow ? desktop ? openRow.title : truncateToDisplayWidth(openRow.title, Math.max(20, width - 16)) : "Award evidence"}
         detailContent={openRow ? <AwardDetail key={openRow.id} row={openRow} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} openAward={setOpen} openUpgrade={openUpgrade} attribution={openAttribution} amountNotice={openAmountNotice}
           openChildren={(type) => { setParentId(openRow.id); setTicker(""); setSource(""); setQuery(""); setAgency(""); setSector(""); setCurrency(""); setJurisdiction(""); setRange("all"); setType(type); setOpen(null); setTab("feed"); }} />
           : <PaneStatusBody loading={detail.loading} error={detail.error} empty={!detail.loading && !detail.error} emptyTitle="Award no longer available." subject="award evidence" />}

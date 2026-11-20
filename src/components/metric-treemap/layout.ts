@@ -12,10 +12,16 @@ export interface MetricTreemapItem<T = unknown> {
   group?: string | null;
   /** Second level inside `group` (an industry). */
   subgroup?: string | null;
-  /** Hover lines on the desktop heat map, the first one emphasised. */
-  tooltip?: readonly string[];
+  /**
+   * Hover lines on the desktop heat map, the first one emphasised. A line too
+   * long for the tooltip ends in an ellipsis; one with `keepEnd` keeps that end
+   * whole (a move after a name) and cuts what comes before it.
+   */
+  tooltip?: readonly MetricTreemapTooltipLine[];
   data: T;
 }
+
+export type MetricTreemapTooltipLine = string | { text: string; keepEnd: string };
 
 export interface MetricTreemapTile<T = unknown> {
   item: MetricTreemapItem<T>;

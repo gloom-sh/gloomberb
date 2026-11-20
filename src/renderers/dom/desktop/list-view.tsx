@@ -6,6 +6,7 @@ import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
 import { TextAttributes } from "../../../ui";
 import type { ListRowState, ListViewItem, ListViewProps } from "../../../components/ui/list-view";
 import { ListRowLines } from "../../../components/ui/list-row-lines";
+import { NATIVE_CLIP_STYLE } from "../../../components/ui/clip-style";
 import { hoverBg, type ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
@@ -214,7 +215,7 @@ export function WebListView({
   const rows = items.length === 0
     ? (
       <Box height={1}>
-        <Text fg={colors.textDim}>{emptyMessage}</Text>
+        <Text fg={colors.textDim} style={NATIVE_CLIP_STYLE}>{emptyMessage}</Text>
       </Box>
     )
     : items.map((item, index) => {

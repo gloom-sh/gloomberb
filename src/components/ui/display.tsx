@@ -6,6 +6,7 @@ import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
 import { clipKeepingEnd } from "./table-layout";
+import { NATIVE_CLIP_STYLE } from "./clip-style";
 import { CountryFlagLead } from "./country-flag";
 import { usePaneLinkMenuEntry } from "./external-link";
 import { ICON_GLYPHS, Icon, type IconName } from "./icon";
@@ -30,9 +31,9 @@ export function SectionHeading({ title, marginTop = 0, width, wrap = false }: Se
   const text = translated === title ? titleCase(title) : translated;
   return (
     <Box height={wrap ? undefined : 1} marginTop={marginTop} width={width} overflow="hidden" data-gloom-ui="section-heading">
-      {nativePaneChrome && !wrap ? (
+      {nativePaneChrome ? (
         // The desktop cuts a long heading where its box ends, not at a count of columns.
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD} style={{ ...NATIVE_CLIP_STYLE, flex: "1 1 auto" }}>{text}</Text>
+        <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapText={wrap} style={wrap ? undefined : { ...NATIVE_CLIP_STYLE, flex: "1 1 auto" }}>{text}</Text>
       ) : (
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapText={wrap}>
           {wrap || width === undefined ? text : truncateToDisplayWidth(text, width)}
@@ -76,12 +77,7 @@ export interface KeyValueRowProps {
   country?: string | null;
 }
 
-/**
- * One line of text that ends in an ellipsis where its box ends, in CSS, on the
- * desktop and the web: the browser clips it at the width it is laid out to,
- * which a count of columns cannot match (a cell is wider than a glyph).
- */
-export const NATIVE_CLIP_STYLE = { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre" } as const;
+export { NATIVE_CLIP_STYLE };
 
 export interface ClippedTextProps {
   text: string;

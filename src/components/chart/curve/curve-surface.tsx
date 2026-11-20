@@ -7,6 +7,7 @@ import { EmptyState } from "../../ui";
 import { MISSING_VALUE, displayWidth, formatPercentileRank, truncateToDisplayWidth } from "../../../utils/format";
 import { CompositeChart } from "../composite/composite-chart";
 import type { CompositeAxisValueFormatter } from "../composite/format";
+import { ClippedText } from "../../ui/display";
 import {
   buildCurveChart, curveLegendLayout, curveLegendText, curveLookbackLabel, curvePlotWidth, curvePrimarySeries, curveTableRows,
   isCurveRowSeries, type CurvePoint, type CurveSeries, type CurveTableRow, type CurveXScale,
@@ -270,7 +271,12 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
       onActivate={onActivate} remoteKind="curve-chart" /> : null}
     {showChart ? <Box height={1} flexShrink={0} paddingX={1} flexDirection="row" overflow="hidden">
       {shownReadout.length ? shownReadout.map((part, index) => <Box key={index} flexDirection="row" flexShrink={index ? 0 : 1}>
-        <Text fg={colors.textMuted}>{`${index ? READOUT_GAP : ""}${index ? part.label : truncateToDisplayWidth(part.label, Math.max(1, readoutRoom - displayWidth(part.value) - 1))} `}</Text>
+        {index
+          ? <Text fg={colors.textMuted}>{`${READOUT_GAP}${part.label} `}</Text>
+          // The first label gives way to the values, by CSS on the desktop and the web.
+          : nativePaneChrome
+            ? <><ClippedText fg={colors.textMuted} text={part.label} width={0} /><Text fg={colors.textMuted}> </Text></>
+            : <Text fg={colors.textMuted}>{`${truncateToDisplayWidth(part.label, Math.max(1, readoutRoom - displayWidth(part.value) - 1))} `}</Text>}
         <Text fg={index ? colors.textMuted : colors.text}>{part.value}</Text>
       </Box>) : <Text fg={colors.textMuted}> </Text>}
     </Box> : null}

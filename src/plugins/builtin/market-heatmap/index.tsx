@@ -29,7 +29,7 @@ import type { GloomPlugin, PaneProps, PaneSettingField } from "../../../types/pl
 import type { TickerRecord } from "../../../types/ticker";
 import { t, tf } from "../../../i18n";
 import { priceColor } from "../../../theme/colors";
-import { MISSING_VALUE, clipToDisplayWidth, displayWidth, formatCompact, formatCurrency, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCompact, formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { useAppSelector, usePaneAppConfig, usePaneSettingValue, usePaneStateValue } from "../../../state/app/context";
 import { usePluginTickerActions } from "../../runtime";
@@ -121,7 +121,6 @@ const TERMINAL_PAINT_THROTTLE_MS = 250;
 /** "loading", which comes and goes with each refresh. */
 const LOADING_FOOTER_WIDTH = 7;
 const SELECTION_STREAM_SETTLE_MS = 1_500;
-const TOOLTIP_NAME_WIDTH = 28;
 const SIZE_BY_SETTING_KEY = "sizeBy";
 const SQRT_SIZE_VALUE: HeatmapSizeBy = "sqrt-market-cap";
 const DAY_MOVE_SIZE_VALUE: HeatmapSizeBy = "day-move";
@@ -221,7 +220,8 @@ function paintItem(asset: HeatmapBoardAsset): MetricTreemapItem<HeatmapBoardAsse
     asset.volume != null ? `Vol ${formatCompact(asset.volume)}` : null,
   ].filter((part): part is string => !!part);
   // The move closes the line, so a long name gives way instead of hiding it.
-  const name = asset.name && asset.name !== asset.symbol ? clipToDisplayWidth(asset.name, TOOLTIP_NAME_WIDTH) : null;
+  const name = asset.name && asset.name !== asset.symbol ? asset.name : null;
+  const move = formatMove(asset, change);
   const item: MetricTreemapItem<HeatmapBoardAsset> = {
     id: asset.symbol,
     label: asset.symbol,
@@ -230,7 +230,7 @@ function paintItem(asset: HeatmapBoardAsset): MetricTreemapItem<HeatmapBoardAsse
     primaryText: formatHeatTileMove(change),
     primaryTextSuffix: sessionMark(asset),
     tooltip: [
-      [asset.symbol, name, formatMove(asset, change)].filter(Boolean).join(" · "),
+      name ? { text: [asset.symbol, name, move].join(" · "), keepEnd: ` · ${move}` } : [asset.symbol, move].join(" · "),
       ...(details.length > 0 ? [details.join(" · ")] : []),
     ],
     data: asset,

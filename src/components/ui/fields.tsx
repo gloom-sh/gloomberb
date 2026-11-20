@@ -7,6 +7,7 @@ import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { remoteStringValue } from "../../remote/semantic-helpers";
 import { truncateWithEllipsis } from "../../utils/text-wrap";
 import { Button } from "./button";
+import { NATIVE_CLIP_STYLE } from "./clip-style";
 import { stepNumber } from "./number-step";
 
 export interface FieldLabelProps {
@@ -27,10 +28,13 @@ export interface FieldLabelProps {
 export function FieldLabel({ label, active = false, width, maxWidth }: FieldLabelProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
-  const text = nativePaneChrome ? label : `${active ? "> " : "  "}${label}`;
+  const ink = { fg: active ? colors.textBright : colors.textDim, attributes: active ? TextAttributes.BOLD : 0 };
+  // The desktop cuts a long label where its column (or its most room) ends, in CSS.
+  if (nativePaneChrome) return <Text width={width} maxWidth={maxWidth} {...ink} style={NATIVE_CLIP_STYLE}>{label}</Text>;
+  const text = `${active ? "> " : "  "}${label}`;
   const fit = width ?? maxWidth;
   return (
-    <Text width={width} fg={active ? colors.textBright : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
+    <Text width={width} {...ink}>
       {fit === undefined ? text : truncateWithEllipsis(text, fit)}
     </Text>
   );

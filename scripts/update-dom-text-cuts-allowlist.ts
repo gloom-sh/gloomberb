@@ -17,12 +17,14 @@ import ts from "typescript";
  *
  * Only the terminal draws:
  * - the terminal renderer and the CLI (TERMINAL_ONLY);
- * - a function or component whose name starts with `terminal` / `Terminal`;
+ * - a function or component whose name starts with `terminal`, `Terminal` or `OpenTui`, and a
+ *   `cut` given to ClippedText;
  * - the branch a `nativePaneChrome` test (or a name bound to it) leaves to the
  *   terminal: `nativePaneChrome ? whole : cut(...)`, `if (!nativePaneChrome) ...`,
  *   `!nativePaneChrome && ...`, and what follows `if (nativePaneChrome) return ...`.
  *
- * A function given as a value is not a cut (ClippedText's `cut={truncateWithEllipsis}`
+ * A cut written by hand (`${text.slice(0, width - 1)}…`) counts as one. A
+ * function given as a value is not a cut (ClippedText's `cut={truncateWithEllipsis}`
  * hands the terminal its cut), only a call is.
  *
  *   bun scripts/update-dom-text-cuts-allowlist.ts
@@ -57,14 +59,14 @@ const TERMINAL_ONLY = [
  * `terminal.tsx` / `*-terminal.tsx` beside the desktop's (src/layout-marketplace/gallery-terminal.tsx).
  */
 const TERMINAL_FILE = /\/opentui\/|(?:\/|-)terminal\.tsx?$/;
-const TERMINAL_NAME = /^[Tt]erminal(?=[A-Z_]|$)/;
+const TERMINAL_NAME = /^(?:[Tt]erminal|OpenTui)(?=[A-Z_]|$)/;
 const CAPABILITY = "nativePaneChrome";
 
 /** A cut in code the desktop and the web can draw. */
 export interface DomTextCut {
   file: string;
   line: number;
-  /** The cut called: one of CELL_CUTS or a function of ours that returns one. */
+  /** The cut called: one of CELL_CUTS, a function of ours that returns one, or HAND_CUT. */
   cut: string;
 }
 
@@ -96,11 +98,25 @@ function parse(file: string, text: string): ts.SourceFile {
   return ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
 }
 
-/** The name a function is called by: a declaration's, or the variable or property an arrow or function expression is set to. */
+/** Calls that make a component of a function: `memo(function Row() {...})` is still `Row`. */
+const COMPONENT_WRAPPERS = new Set(["memo", "forwardRef"]);
+
+function calleeName(call: ts.CallExpression): string {
+  const callee = call.expression;
+  return ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : "";
+}
+
+/**
+ * The name a function is called by: a declaration's or a named function
+ * expression's, or the variable or property an arrow or function expression is
+ * set to, directly or through `memo(...)` or `forwardRef(...)`.
+ */
 function functionName(node: ts.Node): string | null {
   if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) && node.name && ts.isIdentifier(node.name)) return node.name.text;
+  if (ts.isFunctionExpression(node) && node.name) return node.name.text;
   if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
-    const parent = node.parent;
+    let parent = node.parent;
+    if (ts.isCallExpression(parent) && parent.arguments[0] === node && COMPONENT_WRAPPERS.has(calleeName(parent))) parent = parent.parent;
     if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) return parent.name.text;
     if (ts.isPropertyAssignment(parent) && ts.isIdentifier(parent.name)) return parent.name.text;
   }
@@ -166,6 +182,24 @@ function capabilitySense(expression: ts.Expression, names: Capability): "native"
   return null;
 }
 
+/**
+ * Whether `condition` being truthy (or, with `whenTruthy` false, falsy) means the
+ * terminal: `!nativePaneChrome`, `open && !nativePaneChrome`, or a falsy
+ * `nativePaneChrome || wide`.
+ */
+function meansTerminal(condition: ts.Expression, whenTruthy: boolean, names: Capability): boolean {
+  const node = unwrap(condition);
+  const sense = capabilitySense(node, names);
+  if (sense === (whenTruthy ? "terminal" : "native")) return true;
+  if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) return meansTerminal(node.operand, !whenTruthy, names);
+  if (ts.isBinaryExpression(node)) {
+    const operator = node.operatorToken.kind;
+    if (whenTruthy && operator === ts.SyntaxKind.AmpersandAmpersandToken) return meansTerminal(node.left, true, names) || meansTerminal(node.right, true, names);
+    if (!whenTruthy && operator === ts.SyntaxKind.BarBarToken) return meansTerminal(node.left, false, names) || meansTerminal(node.right, false, names);
+  }
+  return false;
+}
+
 /** A statement that always leaves its block: a return or a throw, or a block that ends in one. */
 function leaves(statement: ts.Statement): boolean {
   if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return true;
@@ -181,31 +215,30 @@ function terminalOnly(node: ts.Node, names: Capability): boolean {
   let child: ts.Node = node;
   for (let parent = node.parent; parent; child = parent, parent = parent.parent) {
     if (ts.isConditionalExpression(parent)) {
-      const sense = capabilitySense(parent.condition, names);
-      if (sense === "native" && child === parent.whenFalse) return true;
-      if (sense === "terminal" && child === parent.whenTrue) return true;
+      if (child === parent.whenTrue && meansTerminal(parent.condition, true, names)) return true;
+      if (child === parent.whenFalse && meansTerminal(parent.condition, false, names)) return true;
     }
     if (ts.isBinaryExpression(parent) && child === parent.right) {
-      const sense = capabilitySense(parent.left, names);
-      if (parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && sense === "terminal") return true;
-      if (parent.operatorToken.kind === ts.SyntaxKind.BarBarToken && sense === "native") return true;
+      if (parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && meansTerminal(parent.left, true, names)) return true;
+      if (parent.operatorToken.kind === ts.SyntaxKind.BarBarToken && meansTerminal(parent.left, false, names)) return true;
     }
     if (ts.isIfStatement(parent)) {
-      const sense = capabilitySense(parent.expression, names);
-      if (sense === "terminal" && child === parent.thenStatement) return true;
-      if (sense === "native" && child === parent.elseStatement) return true;
+      if (child === parent.thenStatement && meansTerminal(parent.expression, true, names)) return true;
+      if (child === parent.elseStatement && meansTerminal(parent.expression, false, names)) return true;
     }
     if ((ts.isBlock(parent) || ts.isSourceFile(parent)) && ts.isStatement(child as ts.Statement)) {
       const statements: readonly ts.Statement[] = parent.statements;
       const index = statements.indexOf(child as ts.Statement);
       for (const earlier of statements.slice(0, Math.max(0, index))) {
-        if (ts.isIfStatement(earlier) && !earlier.elseStatement && capabilitySense(earlier.expression, names) === "native" && leaves(earlier.thenStatement)) return true;
+        if (ts.isIfStatement(earlier) && !earlier.elseStatement && meansTerminal(earlier.expression, false, names) && leaves(earlier.thenStatement)) return true;
       }
     }
     if (isFunctionLike(parent)) {
       const name = functionName(parent);
       if (name && TERMINAL_NAME.test(name)) return true;
     }
+    // ClippedText calls its `cut` in the terminal only.
+    if (ts.isJsxAttribute(parent) && ts.isIdentifier(parent.name) && parent.name.text === "cut") return true;
   }
   return false;
 }
@@ -248,6 +281,51 @@ function calledCut(call: ts.CallExpression, scanned: Scanned, cuts: Set<string>,
   }
   if (ts.isPropertyAccessExpression(callee) && CELL_CUTS.includes(callee.name.text)) return callee.name.text;
   return null;
+}
+
+/** The name a hand-written cut is listed under. */
+export const HAND_CUT = "slice and …";
+const ELLIPSIS = /\u2026/;
+const SLICES = new Set(["slice", "substring", "substr"]);
+
+/** Whether `node` holds a call that takes part of a string (`.slice(...)`), outside functions inside it. */
+function slices(node: ts.Node): boolean {
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && SLICES.has(node.expression.name.text)) return true;
+  if (isFunctionLike(node)) return false;
+  return ts.forEachChild(node, slices) ?? false;
+}
+
+/**
+ * A cut written by hand: a template or a concatenation that puts `…` after
+ * part of a string (`${text.slice(0, width - 1)}…`). Counted once, at the
+ * outermost concatenation.
+ */
+function isHandCut(node: ts.Node): boolean {
+  if (ts.isTemplateExpression(node)) {
+    const pieces = [node.head.text, ...node.templateSpans.map((span) => span.literal.text)];
+    return pieces.some((piece) => ELLIPSIS.test(piece)) && node.templateSpans.some((span) => slices(span.expression));
+  }
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken
+    && !(ts.isBinaryExpression(node.parent) && node.parent.operatorToken.kind === ts.SyntaxKind.PlusToken)) {
+    const operands: ts.Expression[] = [];
+    const collect = (expression: ts.Expression) => {
+      const inner = unwrap(expression);
+      if (ts.isBinaryExpression(inner) && inner.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+        collect(inner.left);
+        collect(inner.right);
+      } else operands.push(inner);
+    };
+    collect(node);
+    return operands.some((operand) => (ts.isStringLiteral(operand) || ts.isNoSubstitutionTemplateLiteral(operand)) && ELLIPSIS.test(operand.text))
+      && operands.some((operand) => slices(operand));
+  }
+  return false;
+}
+
+/** The cut a node makes: a call to one, or one written by hand. */
+function cutAt(node: ts.Node, scanned: Scanned, cuts: Set<string>, localCuts: Set<string>): string | null {
+  if (ts.isCallExpression(node)) return calledCut(node, scanned, cuts, localCuts);
+  return isHandCut(node) ? HAND_CUT : null;
 }
 
 /** The function a node sits in, nearest first. */
@@ -297,7 +375,7 @@ function findDomTextCuts(files: Scanned[]): DomTextCut[] {
     for (const file of files) {
       const local = wrappers.get(file.file)!;
       const visit = (node: ts.Node) => {
-        if (ts.isCallExpression(node) && calledCut(node, file, cuts, local) && !terminalOnly(node, file.names)) {
+        if (cutAt(node, file, cuts, local) && !terminalOnly(node, file.names)) {
           const fn = enclosingFunction(node);
           const name = fn && functionName(fn);
           if (fn && name && !local.has(name) && returnedBy(node, fn)) {
@@ -315,15 +393,13 @@ function findDomTextCuts(files: Scanned[]): DomTextCut[] {
   for (const file of files) {
     const local = wrappers.get(file.file)!;
     const visit = (node: ts.Node) => {
-      if (ts.isCallExpression(node)) {
-        const cut = calledCut(node, file, cuts, local);
-        if (cut && !terminalOnly(node, file.names)) {
-          const fn = enclosingFunction(node);
-          const name = fn && functionName(fn);
-          // A wrapper's own cut is counted where the wrapper is called.
-          const wrapped = !!(fn && name && local.has(name) && returnedBy(node, fn));
-          if (!wrapped) found.push({ file: file.file, line: file.source.getLineAndCharacterOfPosition(node.getStart(file.source)).line + 1, cut });
-        }
+      const cut = cutAt(node, file, cuts, local);
+      if (cut && !terminalOnly(node, file.names)) {
+        const fn = enclosingFunction(node);
+        const name = fn && functionName(fn);
+        // A wrapper's own cut is counted where the wrapper is called.
+        const wrapped = !!(fn && name && local.has(name) && returnedBy(node, fn));
+        if (!wrapped) found.push({ file: file.file, line: file.source.getLineAndCharacterOfPosition(node.getStart(file.source)).line + 1, cut });
       }
       ts.forEachChild(node, visit);
     };

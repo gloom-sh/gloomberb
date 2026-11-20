@@ -13,6 +13,7 @@ import { getThemeIds, isDarkTheme, themes as themeRegistry } from "../../theme/t
 import { Box, Text, TextAttributes } from "../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { ListView, type ListViewItem } from "../ui";
+import { ClippedText } from "../ui/display";
 import type { ListRowState } from "../ui/list-view";
 import type { ListJump } from "./list/model";
 import { useCommandBarPalette } from "./panel/palette";
@@ -259,7 +260,6 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
   const rowWidth = Math.max(1, labelWidth - GLYPH_GUTTER_WIDTH + trailingWidth);
   const renderRow = useCallback((item: ListViewItem, state: ListRowState) => {
     const layout = themeRowLayout(rowWidth, item.id, item.current === true);
-    const label = truncateToDisplayWidth(item.label, layout.name);
     const subtle = state.selected ? palette.selectedText : palette.subtle;
     return (
       <Box
@@ -276,12 +276,12 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
           </Text>
         </Box>
         <Box width={layout.name}>
-          <Text
+          <ClippedText
             fg={state.selected ? palette.selectedText : palette.text}
             attributes={item.current ? TextAttributes.BOLD : undefined}
-          >
-            {label}
-          </Text>
+            text={item.label}
+            width={layout.name}
+          />
         </Box>
         {layout.id > 0 ? (
           <Box width={ID_GAP + layout.id} paddingLeft={ID_GAP}>
@@ -317,7 +317,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
       // A row of the command bar's list: the chosen one is filled, as the command bar's own rows are.
       selection="fill"
       hoverBgColor={palette.hoverBg}
-      emptyMessage={truncateToDisplayWidth(t("No themes match"), queryDisplayWidth)}
+      emptyMessage={nativePaneChrome ? t("No themes match") : truncateToDisplayWidth(t("No themes match"), queryDisplayWidth)}
       showSelectedDescription={false}
       onSelect={handleSelect}
       onActivate={handleActivate}
