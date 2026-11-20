@@ -2294,14 +2294,15 @@ In `PF`, a portfolio with targets shows `WEIGHT`, `TGT WT`, `DRIFT`, `TRADE` (sh
 
 ## Broker position sync
 
-Press `a` in the **Brokers** pane (`BR`), or run **Add Broker Account**, to connect a broker (**New Portfolio** can start from one too). Gloom imports positions from Interactive Brokers, Public, Robinhood and SimpleFIN. Each broker is a plugin with its own repository, installed on first launch and updatable on its own, from the plugin directory or `gloom install gloom-sh/gloom-public` and friends.
+Press `a` in the **Brokers** pane (`BR`), or run **Add Broker Account**, to connect a broker (**New Portfolio** can start from one too). **SnapTrade** connects the brokerages it supports and is built in, so there is no plugin to install. Gloom also imports positions from Interactive Brokers, Public, Robinhood and SimpleFIN. Each of those is a plugin with its own repository, installed on first launch and updatable on its own, from the plugin directory or `gloom install gloom-sh/gloom-public` and friends.
 
+- **SnapTrade** opens a browser sign-in page for your SnapTrade account, so link your brokerages there first (it is free, at [dashboard.snaptrade.com](https://dashboard.snaptrade.com)). Gloom asks you to sign in to your Gloom account first when you are signed out. It reads the accounts, balances, positions and orders of every brokerage you linked, and places stock and ETF orders from the order ticket (market, limit, stop and stop limit, Day or GTC) where the brokerage allows trading: see [Trading](trading.md). It runs in the terminal and the desktop app, not the browser version.
 - **Interactive Brokers** opens a browser sign-in page through Gloom and ends that sign-in seven days after you approve it, however often it syncs. A day before, the profile's status in `BR` shows when it ends. `c` signs in again and the seven days start over.
 - **Robinhood** opens a browser sign-in page and uses only the read-only account and equity-position tools of the Robinhood Trading MCP server.
 - **Public** needs an API secret from Public API settings, and only the account and portfolio endpoints are used.
 - **SimpleFIN** needs a one-time setup token from SimpleFIN Bridge and imports only accounts that contain holdings.
 
-The connection data is saved on the local device and is not included in Gloom Cloud synchronization. A later position sync updates the managed portfolios and removes positions the broker no longer reports.
+The connection data is saved on the local device and is not included in Gloom Cloud synchronization. SnapTrade's sign-in is kept with your Gloom account instead. A later position sync updates the managed portfolios and removes positions the broker no longer reports.
 
 Each profile's row in `BR` shows its `STATUS`: `Sign-in needed`, `Sync failed` or `Connect failed` when the last action did not work (`Enter` shows the reason in full), and what is running (`Syncing…`). A `Disabled` profile is never connected or synced: press `b` to enable it, which also syncs it.
 
