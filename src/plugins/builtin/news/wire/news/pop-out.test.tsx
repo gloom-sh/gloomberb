@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { apiClient, type CloudNewsPayload } from "../../../../../api-client";
 import { NewsService } from "../../../../../news/aggregator";
@@ -136,4 +136,10 @@ test("an open story from before the free tier's delay has no delay beside it; on
   // An account without real-time news, so the wire is held back 12h.
   expect(await footerOf(150)).not.toContain("12h");
   expect(await footerOf(2)).toContain("12h");
+  const pending = spyOn(apiClient, "isDisplayScopePending").mockReturnValue(true);
+  try {
+    expect(await footerOf(2)).not.toMatch(/12h|real-time news/);
+  } finally {
+    pending.mockRestore();
+  }
 });
