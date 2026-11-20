@@ -88,6 +88,61 @@ export function staleReadingsNote(leftOut: string, items: ReadonlyArray<{ label:
   return `Stale, left out of ${leftOut}: ${listed.join(", ")}${more > 0 ? `, ${more} more` : ""} (over ${STALE_AFTER_SESSIONS} sessions behind).`;
 }
 
+/**
+ * How far from both neighbouring closes, as a ratio, a trade-close IV30 must
+ * stand before its own chain's longer tenor is asked whether it moved with it.
+ */
+const OFF_MARKET_JUMP = 1.35;
+/**
+ * The forward volatility from 30 days to the longer tenor, as a share of the
+ * IV30, below which (or, for a drop, above whose inverse) the longer tenor
+ * did not move with it. A genuine repricing in the next 30 days (an event, a
+ * shock) lifts the 60- and 90-day readings of the same chain too.
+ */
+const OFF_MARKET_FORWARD = 0.6;
+
+/**
+ * The sessions whose trade-close IV30 is off-market: a reading at least 35%
+ * above (or below) the closes either side of it that the same close's IV60
+ * (else IV90) does not follow, so the 30-day figure alone moved, and the next
+ * close no longer shows it. That is a print or quote of one thin expiry, not
+ * the market's vol (FXY's 12.2% on 2026-10-23, between 8.2% and 8.6%, beside
+ * an IV60 of 9.4%). The newest close has no next one, so is never judged.
+ */
+export function offMarketSessions(series: readonly IvPoint[]): Set<string> {
+  const closes = series.filter((point) => point.method === "trade-close" && point.iv30 != null && point.iv30 > 0)
+    .sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
+  const flagged = new Set<string>();
+  closes.forEach((point, index) => {
+    const before = closes[index - 1], after = closes[index + 1];
+    const iv30 = point.iv30!;
+    const back = point.iv60 ?? point.iv90;
+    if (!before || !after || back == null || !(back > 0)) return;
+    const days = point.iv60 != null ? 60 : 90;
+    const forwardVariance = (back * back * days - iv30 * iv30 * 30) / (days - 30);
+    const forward = forwardVariance > 0 ? Math.sqrt(forwardVariance) / iv30 : 0;
+    const above = Math.min(iv30 / before.iv30!, iv30 / after.iv30!);
+    const below = Math.min(before.iv30! / iv30, after.iv30! / iv30);
+    if ((above >= OFF_MARKET_JUMP && forward < OFF_MARKET_FORWARD) || (below >= OFF_MARKET_JUMP && forward > 1 / OFF_MARKET_FORWARD)) {
+      flagged.add(point.sessionDate);
+    }
+  });
+  return flagged;
+}
+
+/**
+ * The off-market readings, dated, in the stale note's wording: "Off-market,
+ * left out of rank: IV30 2026-10-23 12.2% (away from the closes either side
+ * and its own longer tenor)."
+ */
+function offMarketNote(points: ReadonlyArray<{ date: string; value: number }>): string | null {
+  if (!points.length) return null;
+  const listed = points.slice(-STALE_NOTE_LIMIT).map((point) => `${point.date} ${(point.value * 100).toFixed(1)}%`);
+  const more = points.length - listed.length;
+  return `Off-market, left out of rank: IV30 ${listed.join(", ")}${more > 0 ? `, ${more} earlier` : ""} `
+    + "(away from the closes either side and from the same close's longer tenor).";
+}
+
 export interface DatedValue { date: Date; value: number | null }
 export type IvStatUnit = "vol" | "points" | "ratio";
 /** One measure's latest value ranked against its own prior 52 weeks. */
@@ -181,6 +236,13 @@ export interface IvHistoryModel {
   stats: IvStatRow[];
   /** Which measures are stale and what that leaves out, when any is. */
   staleNote: string | null;
+  /**
+   * Sessions whose trade-close IV30 is off-market (`offMarketSessions`):
+   * shown as stored, marked, and left out of every rank and range.
+   */
+  offMarket: Set<string>;
+  /** Which readings are off-market, when any is. */
+  offMarketNote: string | null;
   since: string | null;
   /** Where the 1Y series starts and how deep it is, when that differs from the rest or leaves it unranked. */
   oneYearNote: string | null;
@@ -264,6 +326,9 @@ export function projectIvHistory(
   const window = options.hvWindow ?? 20;
   const warnings = ivHistoryWarnings(payload);
   const tradeIv30 = byMethod(payload.series, "trade-close", "iv30");
+  const offMarket = offMarketSessions(payload.series);
+  // Ranks and ranges read every close but the off-market ones, which stay in the history as stored.
+  const ranked = <T extends { date: Date }>(points: T[]) => offMarket.size ? points.filter((point) => !offMarket.has(day(point.date))) : points;
   const latestDate = [payload.latest?.date, tradeIv30.at(-1) && day(tradeIv30.at(-1)!.date)].filter((value): value is string => !!value).sort().at(-1) ?? null;
   const start = latestDate ? lookbackStart(latestDate, lookback) : null;
   const visible = <T extends { date: Date }>(points: T[]) => start ? points.filter((point) => day(point.date) >= start) : points;
@@ -288,7 +353,14 @@ export function projectIvHistory(
     value: stats?.value ?? null, date: stats?.date ?? null, method: stats?.method ?? null, basis: stats?.basis ?? null,
     low: stats?.low ?? null, high: stats?.high ?? null,
     rank: stats?.rank ?? null, percentile: stats?.percentile ?? null, samples: stats?.samples ?? 0, stale: false, sessionsBehind: null });
-  const stats: IvStatRow[] = [fromServer("iv30", "IV 30d ATM", payload.stats.iv30)];
+  // The server ranks every close; one off-market in the year before the reading is ranked again without it, by the same rules.
+  const iv30Stats = payload.stats.iv30;
+  const iv30Window = iv30Stats ? lookbackStart(iv30Stats.date, "1Y")! : null;
+  const reranked = iv30Stats && [...offMarket].some((date) => date >= iv30Window! && date < iv30Stats.date)
+    ? { ...seriesStat("iv30", "IV 30d ATM", "vol", ranked(tradeIv30).filter((point) => day(point.date) <= iv30Stats.date), iv30Stats.method),
+      method: iv30Stats.method, basis: iv30Stats.basis ?? null }
+    : null;
+  const stats: IvStatRow[] = [reranked ?? fromServer("iv30", "IV 30d ATM", iv30Stats)];
   // A newer quote capture is shown on its own row: its rank would mix methods.
   if (latest?.method === "quote-mid" && latest.iv30 != null && (!payload.stats.iv30 || latest.date > payload.stats.iv30.date)) {
     stats.push({ id: "iv30-quote", label: "IV 30d quote", unit: "vol", value: latest.iv30, date: latest.date, method: "quote-mid", basis: null,
@@ -303,8 +375,8 @@ export function projectIvHistory(
       : fromServer("iv365", "IV 1Y ATM", oneYear),
     ...(payload.stats.rr25 ? [riskReversalRow(payload.stats.rr25)] : []),
     seriesStat("hv", `HV ${window}`, "vol", rolling, "prices"),
-    seriesStat("spread", `IV 30d - HV ${window}`, "points", spreadAll, "trade-close"),
-    seriesStat("term", "IV 30d / 90d", "ratio", termAll, "trade-close"));
+    seriesStat("spread", `IV 30d - HV ${window}`, "points", ranked(spreadAll), "trade-close"),
+    seriesStat("term", "IV 30d / 90d", "ratio", ranked(termAll), "trade-close"));
 
   // The newest session the symbol reaches, by its prices, its backfill and every reading it has: a reading more
   // than STALE_AFTER_SESSIONS behind it is shown as it is, marked stale, and ranks nothing.
@@ -341,6 +413,8 @@ export function projectIvHistory(
     quoteIv30: visible(byMethod(payload.series, "quote-mid", "iv30")),
     hv, spread: visible(spreadAll), skew: visible(skew.points),
     skewSince: skew.points[0] ? day(skew.points[0].date) : null, skewNote: skew.note, stats: measured, staleNote: staleText,
+    offMarket, offMarketNote: offMarketNote(visible(tradeIv30).filter((point) => offMarket.has(day(point.date)))
+      .map((point) => ({ date: day(point.date), value: point.value! }))),
     since, oneYearNote, asOf: latestDate, warnings,
   };
 }

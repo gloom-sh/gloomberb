@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import type { IvHistoryPayload, IvPoint, IvScreenRow, ScreenHv } from "./client";
 import { statSource } from "./format";
-import { hvOn, midrankPercentile, projectIvHistory, projectRichCheap, readingSource, richCheapDates, riskReversalSessionsNote, screenCoverage, screenPaneNotices, screenRiskReversalNote, screenStaleNote, sessionsBehind, staleReadingsNote, verdictFor } from "./model";
+import { hvOn, midrankPercentile, offMarketSessions, projectIvHistory, projectRichCheap, readingSource, richCheapDates, riskReversalSessionsNote, screenCoverage, screenPaneNotices, screenRiskReversalNote, screenStaleNote, sessionsBehind, staleReadingsNote, verdictFor } from "./model";
 
 const DAY = 86_400_000;
 const sessions = (count: number, end = "2026-09-22") => {
@@ -401,5 +401,47 @@ describe("stale readings", () => {
     expect(richCheapDates(rows("print", "mid")).reading).toBeNull();
     expect(readingSource("trade-close", "mixed")).toBe("close mid");
     expect(readingSource("quote-mid", "mid")).toBe("quote");
+  });
+});
+
+describe("off-market closes", () => {
+  /** A trade close with its 30- and 60-day IV, as the server stores them. */
+  const close = (sessionDate: string, iv30: number, iv60: number | null): IvPoint => ({
+    sessionDate, method: "trade-close", capturedAt: `${sessionDate}T22:00:00Z`, spot: 58, iv7: null, iv30, iv60, iv90: null,
+    iv180: null, iv365: null, put25_30: null, call25_30: null, basis: "print",
+  });
+  // FXY's stored closes around 2026-10-23: 12.2% between 8.2% and 8.6%, its own IV60 9.4%.
+  const fxy = [close("2026-10-06", 0.0902, null), close("2026-10-08", 0.0819, 0.0784), close("2026-10-23", 0.1217, 0.0944),
+    close("2026-10-28", 0.0861, 0.0858), close("2026-11-04", 0.0807, 0.0807)];
+
+  test("a close the closes either side and its own longer tenor both contradict is off-market; a repricing the tenor follows is not", () => {
+    expect([...offMarketSessions(fxy)]).toEqual(["2026-10-23"]);
+    // A shock that lifts the 60-day reading with it (a forward vol near the 30-day's) is the market's.
+    expect(offMarketSessions(fxy.map((point) => point.sessionDate === "2026-10-23" ? { ...point, iv60: 0.11 } : point)).size).toBe(0);
+    // Under the jump, or with no next close to say it did not last, nothing is judged.
+    expect(offMarketSessions(fxy.map((point) => point.sessionDate === "2026-10-23" ? { ...point, iv30: 0.105 } : point)).size).toBe(0);
+    expect(offMarketSessions(fxy.slice(0, 3)).size).toBe(0);
+    // A drop the longer tenor does not share is one too.
+    expect([...offMarketSessions(fxy.map((point) => point.sessionDate === "2026-10-23" ? { ...point, iv30: 0.055, iv60: 0.085 } : point))])
+      .toEqual(["2026-10-23"]);
+  });
+
+  test("an off-market close keeps its stored value, is marked, and ranks nothing", () => {
+    // A year of flat 8% closes, then FXY's October: the newest is 7.9%.
+    const year = sessions(240, "2026-10-02").map((date) => close(date, 0.08, 0.08));
+    const series = [...year, ...fxy.slice(2), close("2026-11-19", 0.079, 0.079)];
+    const server = { value: 0.079, date: "2026-11-19", method: "trade-close" as const, rank: 0, percentile: 0.4, low: 0.079, high: 0.1217,
+      samples: 243, windowStart: "2025-11-19" };
+    const model = projectIvHistory(payload(series, { symbol: "FXY", stats: { iv30: server, iv90: null } }), prices(series.map((point) => point.sessionDate)));
+    expect(model.iv30.find((point) => point.date.toISOString().startsWith("2026-10-23"))!.value).toBe(0.1217);
+    expect([...model.offMarket]).toEqual(["2026-10-23"]);
+    expect(model.offMarketNote).toBe("Off-market, left out of rank: IV30 2026-10-23 12.2% (away from the closes either side and from the same close's longer tenor).");
+    // Ranked again without it, by the server's rules: 12.2% is no longer the year's high.
+    const iv30 = model.stats.find((row) => row.id === "iv30")!;
+    const window = series.filter((point) => point.sessionDate >= "2025-11-19" && point.sessionDate < "2026-11-19");
+    expect(iv30).toMatchObject({ value: 0.079, date: "2026-11-19", method: "trade-close", samples: window.length - 1 });
+    expect(iv30.high).toBeCloseTo(0.0861);
+    // Nor does the IV-HV spread it made.
+    expect(model.stats.find((row) => row.id === "spread")!.samples).toBe(model.spread.filter((point) => point.value != null).length - 2);
   });
 });
