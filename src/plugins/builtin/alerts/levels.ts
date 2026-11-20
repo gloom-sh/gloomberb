@@ -46,6 +46,7 @@ export function addLevelAlert(
   target: AlertTarget,
   level: number,
   currentPrice: number | null,
+  unit?: { currency: string; pence: boolean },
 ): { json: string; alert: AlertRule; created: boolean } | { error: string } {
   const error = readAlertsStoreError(storeJson);
   if (error) return { error };
@@ -55,6 +56,7 @@ export function addLevelAlert(
     alert.status === "active" && alert.targetPrice === level && watches(alert, target)
   ));
   if (existing) return { json, alert: existing, created: false };
-  const alert = createAlert(target.symbol, levelAlertCondition(level, currentPrice), level, target.exchange);
+  const alert = { ...createAlert(target.symbol, levelAlertCondition(level, currentPrice), level, target.exchange),
+    ...(unit ? { lastQuoteCurrency: unit.currency, lastQuotePence: unit.pence || undefined } : {}) };
   return { json: serializeAlerts([...alerts, alert]), alert, created: true };
 }

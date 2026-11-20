@@ -4,6 +4,8 @@ import { AlertListingRefusal, resolveAlertListing } from "../../../cli/alert-lis
 import { extendedSessionLineLabel, getLatestPrintDisplay, type SessionPriceDisplay } from "../../../market-data/market/status";
 import type { ListingDeps } from "../../../tickers/listing-venues";
 import type { Quote } from "../../../types/financials";
+import { isPenceQuotedLine, isSharePriceQuote } from "../../../market-data/market/format";
+import { formatUtcDayTime } from "../../../utils/utc-time";
 import { coerceFieldString } from "../helpers";
 import type {
   CommandBarFieldValue,
@@ -31,18 +33,21 @@ function formatAlertWorkflowPrice(value: number): string {
  * extended-hours one named by its session (158.78 After-Hours), as `quote`
  * names it beside Last.
  */
-function formatAlertWorkflowCurrentPrice(print: SessionPriceDisplay): string {
-  const price = formatAlertWorkflowPrice(print.price);
+function formatAlertWorkflowCurrentPrice(print: SessionPriceDisplay, quote: Quote): string {
+  const price = isPenceQuotedLine(quote) ? `${Number((print.price * 100).toPrecision(12))}p`
+    : [formatAlertWorkflowPrice(print.price), quote.currency].filter(Boolean).join(" ");
   const session = print.session;
-  return session ? `${price} ${extendedSessionLineLabel({ ...print, session }, t)}` : price;
+  const time = Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0
+    ? `${formatUtcDayTime({ time: quote.lastUpdated, dateOnly: false })} UTC` : "time unavailable";
+  return [price, session ? extendedSessionLineLabel({ ...print, session }, t) : "",
+    `· ${time}`].filter(Boolean).join(" ");
 }
 
-function formatAlertWorkflowQuote(quote: Quote, print: SessionPriceDisplay): string {
-  const price = formatAlertWorkflowCurrentPrice(print);
+function formatAlertWorkflowQuote(quote: Quote): string {
   const exchange = quote.fullExchangeName || quote.exchangeName || quote.listingExchangeName || "";
   const name = quote.name || quote.symbol;
   const source = quote.dataSource === "delayed" ? "delayed" : quote.dataSource || "";
-  return [quote.symbol, name, exchange, price, source].filter(Boolean).join("  ");
+  return [quote.symbol, name, exchange, source].filter(Boolean).join("  ");
 }
 
 function summarizeAlertWorkflowQuoteError(symbol: string, error: unknown): string {
@@ -63,13 +68,16 @@ function updateAlertWorkflowFieldDescriptions(
   fields: CommandBarWorkflowField[],
   descriptions: Partial<Record<"symbol" | "price", string | undefined>>,
   values: Record<string, CommandBarFieldValue>,
+  quote?: Quote,
 ): CommandBarWorkflowField[] {
   const priceNote = coerceFieldString(values.priceNote).trim();
   return fields.map((field) => {
     if (field.id !== "symbol" && field.id !== "price") return field;
     const own = descriptions[field.id];
     const description = field.id === "price" && priceNote ? [own, priceNote].filter(Boolean).join("\n") : own;
-    return field.description === description ? field : { ...field, description };
+    const currency = quote && (isPenceQuotedLine(quote) ? "GBp" : quote.currency);
+    const label = field.id === "price" ? `${t("Target Price")}${quote && currency ? ` (${currency}${isSharePriceQuote(quote) ? "/share" : ""})` : ""}` : field.label;
+    return field.description === description && field.label === label ? field : { ...field, description, label };
   });
 }
 
@@ -147,7 +155,7 @@ export function useAlertWorkflowQuoteSync({
           throw new Error(tf('No quote found for "{symbol}".', { symbol: alertWorkflowSymbol }));
         }
 
-        const quotePrice = formatAlertWorkflowPrice(print.price);
+        const quotePrice = isPenceQuotedLine(quote) ? `${Number((print.price * 100).toPrecision(12))}p` : formatAlertWorkflowPrice(print.price);
         updateRoute((route) => {
           if (!isSetAlertWorkflow(route)) return route;
           if (normalizeAlertWorkflowSymbol(route.values.symbol) !== alertWorkflowSymbol) return route;
@@ -164,9 +172,9 @@ export function useAlertWorkflowQuoteSync({
             values: nextValues,
             fields: updateAlertWorkflowFieldDescriptions(route.fields, {
               // What became of the symbol goes under its quote, which names the listing: FB is a fund now, and Meta trades as META.
-              symbol: [formatAlertWorkflowQuote(quote, print), ...fate].join("\n"),
-              price: tf("Current price {price}; edit to set the target.", { price: formatAlertWorkflowCurrentPrice(print) }),
-            }, nextValues),
+              symbol: [formatAlertWorkflowQuote(quote), ...fate].join("\n"),
+              price: tf("Current price {price}; edit to set the target.", { price: formatAlertWorkflowCurrentPrice(print, quote) }),
+            }, nextValues, quote),
             payloadMeta: {
               ...(route.payloadMeta ?? {}),
               alertQuoteSymbol: alertWorkflowSymbol,

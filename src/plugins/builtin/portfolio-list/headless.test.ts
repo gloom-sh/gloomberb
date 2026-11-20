@@ -5,6 +5,7 @@ import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResu
 import { createDefaultConfig } from "../../../types/config";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
+import type { DataProvider } from "../../../types/data-provider";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { createTestTicker } from "../../../test-support/ticker";
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
@@ -66,6 +67,20 @@ function context(
 function args(rawArgument: string, options: Record<string, number> = {}) {
   return { rawArgument, argument: rawArgument || null, symbols: [], options };
 }
+
+test("PF dates the FX mark used for foreign holdings in the report and exported row", async () => {
+  const asOf = Date.parse("2026-11-20T11:00:00Z");
+  setSystemTime(asOf + 60_000);
+  const ctx = context([holding("AVGO", 1000, 330, MANUAL.id)], { AVGO: 340 }, { ...MANUAL, currency: "HKD" });
+  ctx.marketData.getCachedQuery = (() => ({ load: async () => ({ value: 0.125, asOf, staleAt: asOf + 120_000 }) })) as unknown as DataProvider["getCachedQuery"];
+  const result = await collectionHoldingsHeadless.load(args("main"), ctx);
+  const table = headlessReportTables(collectionHoldingsHeadless, result, args("main"), "PF", deriveHeadlessFreshness(collectionHoldingsHeadless, result),
+    { complete: true, unavailableSymbols: [] }).tables[0]!;
+  const mark = "USD/HKD 8 · Fri 20 Nov 11:00 UTC";
+  expect(table.rows[0]?.[table.columns.indexOf("Market-value FX")]).toBe(mark);
+  expect(result.rows[0]?.marketValue).toBe(2_720_000);
+  expect(renderHeadlessPaneText(collectionHoldingsHeadless, result, args("main"), "PF")).toContain(`Market-value FX: ${mark}`);
+});
 
 test("a broker portfolio's positions come largest first with weights and totals over every position", async () => {
   const all = await collectionHoldingsHeadless.load(args(BROKER.id), context());

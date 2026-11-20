@@ -152,7 +152,7 @@ test("foreign listings with daily FX closes enter the basket in USD and the foot
   expect(model.holdings.find((row) => row.symbol === "GBP1")!.value).toBeCloseTo(12_500, 6);
   // Converted returns sit on the basket's calendar, so the estimates still have 60 matched sessions.
   expect(model.metrics.every((row) => row.value != null)).toBe(true);
-  expect(model.rows.holdings.find((row) => row.label === "JPY1")?.detail).toContain("from JPY at daily FX");
+  expect(model.rows.holdings.find((row) => row.label === "JPY1")?.detail).toMatch(/Notional FX: USD\/JPY .*; Returns at daily USD\/JPY closes/);
   // The returns are on US trading days, each market abroad carrying its last close over the ones it did not trade, and
   // the tail rows' method says so.
   expect(model.calendar).toBe("US trading days, other markets at their last close");
@@ -180,8 +180,12 @@ test("a TRY account converts each holding's USD returns at its own dates' USD/TR
     { symbol: "SAR1", exchange: "TADAWUL", currency: "SAR", quantity: 100, price: 30 },
   ];
   const tickers = brokerFixtureTickers(holdings);
+  const rateAt = "2026-08-12T13:00:00Z";
+  const client = brokerRiskClient(now, holdings, { fx: true });
   const load = (currency: string) => fetchPortfolioRiskMarket(
-    portfolioRiskRequests(tickers, BROKER_PORTFOLIO.id), brokerRiskClient(now, holdings, { fx: true }) as never, now, undefined, currency,
+    portfolioRiskRequests(tickers, BROKER_PORTFOLIO.id), { ...client, getCloudExchangeRate: async (code: string) => ({
+      ...await client.getCloudExchangeRate(code), asOf: rateAt,
+    }) } as never, now, undefined, currency,
   );
   const [usdMarket, market] = await Promise.all([load("USD"), load("TRY")]);
   const usd = buildPortfolioRisk(BROKER_PORTFOLIO, tickers, usdMarket);
@@ -208,6 +212,8 @@ test("a TRY account converts each holding's USD returns at its own dates' USD/TR
   expect(model.metrics.every((row) => row.value != null)).toBe(true);
   expect(model.factors.every((row) => row.value != null)).toBe(true);
   expect(riskReturnsCurrency(model)).toBe("returns in TRY at daily USD/TRY closes");
+  expect(model.rows.holdings.find((row) => row.label === "US01")?.detail).toMatch(/Notional FX: USD\/TRY 49\.505 · Wed 12 Aug(?: 2026)? 13:00 UTC; Returns to/);
+  expect(model.notionalFx.some((mark) => mark.startsWith("USD/JPY"))).toBe(true);
   expect(riskReturnsCurrency(usd)).toBeNull();
   // Factors stay in USD: quality is QUAL less SPY as they trade, not less SPY restated in lira.
   const usdReturns = (symbol: string) => market.histories.find((row) => row.instrument.symbol === symbol)!.returns;
@@ -327,7 +333,7 @@ test("after the close a holding is marked at its regular close, not its after-ho
   // While the session trades the quote marks it.
   const open = buildPortfolioRisk(portfolio, [holding("SPY", 40)], withSpy({ price: 108, marketState: "REGULAR" }));
   expect(open.coverage.marketValue).toBe(4_320);
-  expect(spy(open)?.detail).toMatch(/^40 shares; 4,320\.00 USD; history /);
+  expect(spy(open)?.detail).toMatch(/^40 shares; 4,320\.00 USD; Returns to /);
 });
 test("only held positions marked at a close raise the close-mark warning", () => {
   // Factor proxies with no current quote never weight a holding.
@@ -363,7 +369,7 @@ test("cash counts in the book the coverage is a share of, by currency, but never
   ]);
   expect(model.rows.holdings.find((row) => row.id === "cash:TRY")).toMatchObject({
     leftOut: "Cash is outside the equity basket; its USD value moves with TRY",
-    detail: "4,400.00 TRY = 110.00 USD; moves with TRY; outside the basket",
+    detail: "4,400.00 TRY = 110.00 USD; moves with TRY; Notional FX: USD/TRY 40 · time unavailable; outside the basket",
   });
   // Concentration divides the holdings alone, and says so.
   expect(model.book?.top).toBe(0.75);

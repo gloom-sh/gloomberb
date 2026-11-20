@@ -77,7 +77,7 @@ test("portfolio show --from prints each position's P&L, the FX line and a total 
   expect(text).toMatch(/FX \(HKD\)\s+\+\$52\.23\s+\+0\.13%/);
   expect(text).toMatch(/TOTAL\s+\+\$538\.59\s+\+1\.30%/);
   expect(text).toContain("Bought inside the window: 2382:HKEX. Its P&L runs from the start close, as if held all along.");
-  expect(text).toContain("FX: USD/HKD 7.8 on Fri 23 Oct, 7.75 on Fri 30 Oct.");
+  expect(text).toMatch(/FX: USD\/HKD 7\.8 · Fri 23 Oct(?: 2026)? close → USD\/HKD 7\.75 · Fri 30 Oct(?: 2026)? close\./);
 
   const json = JSON.parse((await show("json")).out);
   // The rows and the FX line add up to the total.
@@ -110,11 +110,12 @@ test("a book in several currencies gets an FX line per currency and each currenc
   const lines = (await show("csv", {}, book)).out.trim().split("\n");
   const header = lines[0]!.split(",");
   expect(header.slice(0, 19).join(",")).toBe("symbol,listing,shares,priceUnits,currency,startDay,startPrice,endDay,endPrice,endPartial,changePercent,startValue,pnl,fx,fxCurrency,fxStart,fxEnd,contribution,baseCurrency");
-  expect(header.slice(-5)).toEqual(["retrieved_at", "rowType", "total", "status", "reason"]);
+  expect(header.slice(-7)).toEqual(["retrieved_at", "rowType", "total", "status", "reason", "startFx", "endFx"]);
   const rows = lines.slice(1).filter((line) => line && !line.startsWith("#")).map((line) => line.split(","));
   const at = (cells: string[], column: string) => cells[header.indexOf(column)];
   const holdings = rows.filter((cells) => at(cells, "rowType") === "holding");
   expect(holdings.map((cells) => cells[0])).toEqual(["2382", "AAPL", "D05", "GDX"]);
+  expect(at(holdings[0]!, "endFx")).toMatch(/^USD\/HKD 7\.75 · Fri 30 Oct(?: 2026)? close$/);
   const extra = rows.filter((cells) => at(cells, "rowType") !== "holding")
     .map((cells) => [at(cells, "rowType"), at(cells, "currency") || null, Number(Number(at(cells, "fx")).toFixed(2)), Number(Number(at(cells, "total")).toFixed(2))]);
   expect(extra).toEqual([["fx", "HKD", 52.23, 52.23], ["fx", "SGD", 504.81, 504.81],

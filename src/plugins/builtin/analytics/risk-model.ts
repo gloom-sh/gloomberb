@@ -1,4 +1,6 @@
 import { portfolioOptionGreeks } from "./risk-options";
+import { baseConversionLabel } from "../../../cli/base-conversion-label";
+import { parseReportTime } from "../../../utils/utc-time";
 import { manualPortfolioValue } from "./manual-value";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { MISSING_VALUE, formatCurrency, formatNumber } from "../../../utils/format";
@@ -86,6 +88,7 @@ interface PortfolioRiskHolding {
    * its close marks it, not a pre-market or after-hours print.
    */
   markSource?: "quote" | "close" | "regular-close" | null;
+  notionalFx?: string[];
   /** The listing currency its closes were converted from at daily FX closes; null for a USD listing. */
   convertedFrom: string | null;
   historyAsOf: string | null;
@@ -767,6 +770,17 @@ export function buildPortfolioRisk(
       ? { ...market.fxRates, [account.currency]: latestAccountClose }
       : (market.fxRates ?? {});
   const accountRate = account ? rates[account.currency] : undefined;
+  const fxLegLabel = (code: string, intoUsd: boolean, close?: { date: string; rate: number }) => {
+    const currency = resolveCurrencyUnit(code).currency;
+    const rate = close?.rate ?? rates[currency];
+    if (!(rate != null && rate > 0) || currency === "USD") return [];
+    const observation = parseReportTime(close?.date ?? market.fxRateTimes?.[currency]?.asOf);
+    return [baseConversionLabel({ currency: intoUsd ? currency : "USD", baseCurrency: intoUsd ? "USD" : currency,
+      rate: intoUsd ? rate : 1 / rate, asOf: observation?.time ?? null, stale: !close && market.fxRateTimes?.[currency]?.stale === true }, observation?.dateOnly)];
+  };
+  const accountMarkClose = account?.asOf && latestAccountClose && !market.fxRates?.[account.currency]
+    ? { date: account.asOf, rate: latestAccountClose } : undefined;
+  const accountMark = account ? fxLegLabel(account.currency, false, accountMarkClose) : [];
   const holdings: PortfolioRiskHolding[] = portfolioRiskTickers(
     tickers,
     portfolio.id,
@@ -852,6 +866,7 @@ export function buildPortfolioRisk(
           : outsideValue(ticker, portfolio, quote ?? history?.listing ?? null, rates),
       priceAsOf: priceDate,
       markSource: close ? "close" : regularClose ? "regular-close" : quote ? "quote" : null,
+      ...(value != null ? { notionalFx: [...(convertedFrom ? fxLegLabel(convertedFrom, true, close?.fxClose) : []), ...accountMark] } : {}),
       convertedFrom,
       // Converted returns end with the account currency's last daily close.
       historyAsOf: (inAccount ? inAccount.returns.at(-1)?.dateKey : null) ?? history?.asOf ?? null,
@@ -874,6 +889,9 @@ export function buildPortfolioRisk(
     amount,
     value: cashValue({ currency, amount }, portfolio.currency, rates),
   }));
+  const cashMarks = (currency: string) => resolveCurrencyUnit(currency).currency === portfolio.currency ? [] : [...fxLegLabel(currency, true), ...accountMark];
+  const notionalFx = [...new Set([...holdings.flatMap((row) => row.notionalFx ?? []),
+    ...cashHoldings.flatMap((row) => row.value == null ? [] : cashMarks(row.currency))])];
   const qualifying = holdings.filter((row) => row.leftOut == null);
   const valued = holdings.filter((row) => row.marketValue != null);
   const holdingsValue = valued.reduce((sum, row) => sum + row.marketValue!, 0);
@@ -1241,7 +1259,10 @@ export function buildPortfolioRisk(
           asOf: row.priceAsOf,
           detail: row.leftOut
             ? row.leftOut
-            : `${row.quantity} shares; ${formatNumber(row.value ?? undefined)} ${portfolio.currency}${row.markSource === "close" || row.markSource === "regular-close" ? ` at ${row.priceAsOf} close` : ""}${row.convertedFrom ? ` from ${row.convertedFrom} at daily FX` : ""}; history ${row.historyAsOf}`,
+            : [`${row.quantity} shares; ${formatNumber(row.value ?? undefined)} ${portfolio.currency}${row.markSource === "close" || row.markSource === "regular-close" ?
+              row.notionalFx?.length ? ` (stock close ${row.priceAsOf})` : ` at ${row.priceAsOf} close` : ""}`,
+              ...(row.notionalFx?.length ? [`Notional FX: ${row.notionalFx.join("; ")}`] : []),
+              `Returns${row.convertedFrom ? ` at daily ${accountFxPair(resolveCurrencyUnit(row.convertedFrom).currency) ?? "FX"} closes` : ""} to ${row.historyAsOf}`].join("; "),
           ...(row.leftOut ? { leftOut: row.leftOut } : {}),
         } as RiskDisplayRow,
       })),
@@ -1261,6 +1282,7 @@ export function buildPortfolioRisk(
             detail: [
               !foreign ? amount : row.value == null ? `${amount}; no current ${row.currency} rate values it` : `${amount} = ${formatNumber(row.value)} ${portfolio.currency}`,
               ...(foreign ? [`moves with ${row.currency}`] : []),
+              ...(row.value != null && cashMarks(row.currency).length ? [`Notional FX: ${cashMarks(row.currency).join("; ")}`] : []),
               "outside the basket",
             ].join("; "),
             leftOut: cashReason(row, portfolio.currency),
@@ -1486,6 +1508,7 @@ export function buildPortfolioRisk(
     /** The days the basket's returns are on when it mixes markets (`riskReturnCalendar`); null when it trades in the US only. */
     calendar,
     /** The currency a non-USD account's returns converted into, at the daily closes of `pair`; null for USD. */
+    notionalFx,
     accountConversion:
       account && !account.error && account.pair
         ? { currency: account.currency, pair: account.pair, asOf: account.asOf }

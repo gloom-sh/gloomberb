@@ -21,6 +21,7 @@ import { FX_LIVE_RATE_MAX_DEVIATION } from "../../../market-data/coordinator/fx-
 import {
   accountFxPair,
   accountFxReason,
+  bridgedFxClose,
   convertClosesToUsd,
   FX_DISAGREES,
   FX_NO_PAIR,
@@ -57,7 +58,7 @@ interface RiskMarketHistory {
   closes?: Array<{ date: string; close: number }>;
   asOf: string | null;
   /** Latest completed close, used as the mark when no current quote arrived. */
-  closeMark?: { price: number; date: string; currency: string } | null;
+  closeMark?: { price: number; date: string; currency: string; fxClose?: { date: string; rate: number } } | null;
   /** The listing's own price when it does not quote in USD: it values a left-out holding, never a return. */
   listing?: { price: number; currency: string } | null;
   /**
@@ -83,6 +84,7 @@ export interface RiskMarketSnapshot {
   brokerOptions?: import("./risk-options").PortfolioOptionBook;
   /** USD per unit of the account currency, of each listing or position currency of the holdings and of each currency of cash, at load time. */
   fxRates?: Record<string, number>;
+  fxRateTimes?: Record<string, { asOf: string | null; stale: boolean }>;
   /** For an account not in USD: the daily closes its returns convert at, or why they cannot. */
   accountFx?: AccountFx;
   /** The closes the Stress view's historical episodes replay, loaded apart from the rest and only for that view. */
@@ -553,13 +555,18 @@ export async function fetchPortfolioRiskMarket(
         : undefined;
       if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0)
         throw new Error(response.reasonCode ?? "Rate unavailable");
-      return [currency, rate] as const;
+      return [currency, rate, { asOf: response.data?.asOf ?? response.asOf ?? null, stale: response.data?.stale ?? response.stale ?? false }] as const;
     }),
   );
   signal?.throwIfAborted();
   const fxRates: Record<string, number> = {};
+  const fxRateTimes: NonNullable<RiskMarketSnapshot["fxRateTimes"]> = {};
   for (const [index, result] of fx.entries()) {
-    if (result.status === "fulfilled") fxRates[result.value[0]] = result.value[1];
+    if (result.status === "fulfilled") {
+      const [currency, rate, time] = result.value;
+      fxRates[currency] = rate;
+      fxRateTimes[currency] = time;
+    }
     else {
       if (isAccessDenied(result.reason)) throw result.reason;
       warnings.push(`${fxCurrencies[index]} exchange rate: ${message(result.reason)}`);
@@ -689,12 +696,13 @@ export async function fetchPortfolioRiskMarket(
             // A current quote marks at the current rate; without one, or without
             // a rate, the latest close at its own date's FX close does.
             const current = quote && !quote.stale ? usdQuote(instruments[index]![0]) : null;
+            const fxClose = current ? null : bridgedFxClose((day) => fxCloses.closes.get(day), latestClose.date);
             histories[index] = {
               ...entry,
               ...resolved,
               quote: current,
               currency: "USD",
-              closeMark: current ? null : { ...latestClose, currency: "USD" },
+              closeMark: current ? null : { ...latestClose, currency: "USD", ...(fxClose ? { fxClose } : {}) },
               converted: {
                 currency: conversion.listingCurrency, fxAsOf: fxCloses.asOf, ...(fxBridged?.length ? { fxBridged } : {}),
               },
@@ -736,6 +744,7 @@ export async function fetchPortfolioRiskMarket(
     fetchedAt: now.toISOString(),
     warnings,
     fxRates,
+    fxRateTimes,
     ...(accountFx ? { accountFx } : {}),
   };
 }

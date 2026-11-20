@@ -7,6 +7,7 @@ import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchange
 import { isCurrencyPairListing } from "../../../utils/fx-market-hours";
 import { listingSuffixCandidate } from "../../../sources/listing-symbols";
 import type { AlertRule } from "./types";
+import { formatUtcDayTime } from "../../../utils/utc-time";
 
 /** The fields of an alert its prices are written from. */
 export type AlertPriceSubject = Pick<AlertRule, "symbol" | "exchange" | "lastQuoteExchange" | "lastQuoteCurrency" | "lastQuotePence">;
@@ -45,6 +46,15 @@ export function alertPriceText(alert: AlertPriceSubject, value: number, maxWidth
     return `${pence}p`;
   }
   return formatMarketPrice(value, priceOptions(alert, maxWidth));
+}
+
+export function alertPriceWithCurrency(alert: AlertPriceSubject, value: number): string {
+  const formatted = alertPriceText(alert, value);
+  return alert.lastQuotePence || !alert.lastQuoteCurrency ? formatted : `${formatted} ${alert.lastQuoteCurrency}`;
+}
+
+export function alertQuoteTime(time: number | undefined): string {
+  return time != null && Number.isFinite(time) && time > 0 ? `${formatUtcDayTime({ time, dateOnly: false })} UTC` : "time unavailable";
 }
 
 /**

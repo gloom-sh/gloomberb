@@ -1,5 +1,6 @@
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { OptionsChain } from "../../../types/financials";
+import type { ScenarioQuoteTimes } from "./freshness";
 import { expiryIsoDate } from "../../../utils/option-expiry";
 import { probabilityAbove } from "../shared/volatility";
 import {
@@ -432,6 +433,7 @@ function strategyTrade(
 
 export interface StrategyScreenRow {
   symbol: string;
+  quoteTimes?: ScenarioQuoteTimes;
   /** 1 for the first by the family's ranking; null for a name with no trade or nothing to rank it by. */
   rank: number | null;
   trade: StrategyTrade | null;
@@ -481,15 +483,17 @@ const farTarget = (near: number) => new Date(Date.parse(`${expiryIsoDate(near)}T
 async function screenStrategy(
   instrument: InstrumentRef, criteria: StrategyScreenCriteria, dependencies: ScenarioLoaderDependencies, target: string,
   earningsDate: string | null, signal: AbortSignal | undefined,
-): Promise<{ value: StrategyTrade; market: ScenarioMarketSnapshot }> {
+): Promise<{ value: StrategyTrade; market: ScenarioMarketSnapshot; farMarket?: ScenarioMarketSnapshot }> {
   const market = await loadScreenMarket(instrument, criteria, dependencies, target, signal);
   const near = market.chain ? [...market.chain.calls, ...market.chain.puts][0]?.expiration : undefined;
   let merged: OptionsChain | undefined;
   let far: number | undefined;
+  let farMarket: ScenarioMarketSnapshot | undefined;
   if (criteria.strategy === "calendar" && market.chain && near != null) {
     far = nearestListedExpiry(market.expirationDates.filter((expiration) => expiryIsoDate(expiration) > expiryIsoDate(near)), farTarget(near));
     if (far == null) throw new Error(`No expiry listed after ${expiryIsoDate(near)} to buy`);
     const back = await loadScenarioMarket({ instrument, expiration: far, signal }, dependencies);
+    farMarket = back;
     if (!back.chain || back.warnings.includes("Options chain is stale")) {
       throw new ScreenNameError(back.missingExpiry ?? `No current ${expiryIsoDate(far)} chain to buy the calendar on`, "no chain");
     }
@@ -499,7 +503,7 @@ async function screenStrategy(
     merged = { ...market.chain, calls: [...market.chain.calls, ...back.chain.calls], puts: [...market.chain.puts, ...back.chain.puts] };
   }
   const position = seedScreenPosition(market, (quoted, pricing, unusable) => pickStrategyLegs(criteria, quoted, pricing, unusable, near!, far), merged);
-  return { value: strategyTrade(criteria.strategy, position, seededLegQuotes(position, merged ?? market.chain), earningsDate), market };
+  return { value: strategyTrade(criteria.strategy, position, seededLegQuotes(position, merged ?? market.chain), earningsDate), market, farMarket };
 }
 
 /** Each name's trade of the family, ranked. */
@@ -509,8 +513,8 @@ export async function loadStrategyScreen(
   const target = cspTargetDate(criteria, dependencies.scenario.now?.() ?? Date.now());
   const screened = await screenNames(instruments, dependencies, signal, { fallback: "No trade on this chain", fallbackState: "no trade" }, async (instrument, earningsDate, scenario) =>
     screenStrategy(instrument, criteria, scenario, target, earningsDate, signal));
-  const rows = screened.names.map(({ symbol, ivRank, value, note, state }): Omit<StrategyScreenRow, "rank"> => ({
-    symbol, trade: value, ivRank, note, state,
+  const rows = screened.names.map(({ symbol, ivRank, value, note, state, quoteTimes }): Omit<StrategyScreenRow, "rank"> => ({
+    symbol, trade: value, ivRank, note, state, quoteTimes,
     wideSpread: value?.quote != null && value.quote.spreadOfMid * 100 > criteria.maxSpreadPercent }));
   return { rows: rankStrategyScreen(rows, criteria.strategy), criteria, missingRanks: screened.missingRanks,
     ivRankError: screened.ivRankError, freshness: screened.freshness };

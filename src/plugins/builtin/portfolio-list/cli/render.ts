@@ -1,5 +1,6 @@
 import { logFailure } from "../../../../utils/log-failure";
 import { createBaseConverter, type BaseConversion } from "../../../../cli/base-converter";
+import { baseConversionLabel } from "../../../../cli/base-conversion-label";
 import { quotedFxPair } from "../../../../utils/currency-pair";
 import { commandWord } from "../../../../utils/shell-word";
 import { formatFxRate } from "../../../../cli/fx-pair";
@@ -1242,6 +1243,7 @@ async function showCollectionWithMarketData(
       return;
     }
     if (structured) {
+      const fxMarks = toBase.conversions();
       // CSV and NDJSON read the cash and the total as rows; JSON keeps them in the metadata.
       const extraRows: Record<string, unknown>[] = [
         // Several currencies: a CASH row each, the whole line's weight, target, drift and trade on the first as a ticker's
@@ -1286,7 +1288,8 @@ async function showCollectionWithMarketData(
         accountingBasis, ...(manualAccounting ? { manualAccounting } : {}),
         ...(matchedPortfolio.importedFrom ? { importedFrom: matchedPortfolio.importedFrom } : {}),
         ...(explain ? { glossary: glossaryExport(explained) } : {}),
-      }, freshness }, { rows: (data) => [...(data as Record<string, unknown>[]), ...extraRows] });
+      }, freshness }, { rows: (data) => [...(data as Record<string, unknown>[]), ...extraRows],
+        exportNotes: fxMarks.length ? [`FX: ${fxMarks.map((mark) => baseConversionLabel(mark)).join("; ")}`] : [] });
       return;
     }
 

@@ -1,6 +1,7 @@
 import type { HeadlessPaneFreshness } from "../../../types/plugin";
 import { quoteObservation } from "../shared/report-freshness";
-import type { ScenarioMarketSnapshot } from "./client";
+import { optionQuoteTime, type ScenarioMarketSnapshot } from "./client";
+import { extendedSession, formatSpotTime } from "../options/model-spot";
 
 /**
  * How current a scenario's figures are, for its report and for the pane that
@@ -19,9 +20,45 @@ export function scenarioFreshness(
   if (inputsOnly) return { source: "Your inputs", status: "not-a-feed", basis: "scenario" };
   if (!market) return {};
   const { chain, underlyingQuote } = market;
+  const chainTime = optionQuoteTime(chain);
+  const observations = [
+    ...(underlyingQuote ? [{ ...quoteObservation(underlyingQuote, now), series: "Underlying quote" }] : []),
+    ...(chainTime == null ? [] : [{ updatedAt: chainTime, series: "Option quotes", dataSource: chain?.dataSource,
+      delayMinutes: chain?.delayMinutes }]),
+  ];
   return {
     ...(chain?.dataSource === "live" || chain?.dataSource === "delayed" ? { status: chain.dataSource } : {}),
     ...(chain?.delayMinutes ? { delayMinutes: chain.delayMinutes } : {}),
-    ...(underlyingQuote ? { observations: [{ ...quoteObservation(underlyingQuote, now) }] } : { asOf: market.asOf }),
+    ...(observations.length ? { observations } : { asOf: market.asOf }),
   };
+}
+
+const usDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", dateStyle: "short" });
+
+export function earlierOptionSession(optionTime: number | null | undefined, quote: ScenarioMarketSnapshot["underlyingQuote"]): boolean {
+  const printTime = quote?.lastUpdated;
+  if (optionTime == null || !quote || printTime == null || !(printTime > optionTime)) return false;
+  const session = extendedSession(quote);
+  return usDate.format(optionTime) !== usDate.format(printTime) || session === "after hours" || session === "overnight";
+}
+
+export function scenarioQuoteTime(time: number | null | undefined): string {
+  return time != null && Number.isFinite(time) && time > 0 ? formatSpotTime(time) : "time unavailable";
+}
+
+export interface ScenarioQuoteTimes {
+  options: number | null;
+  underlying: number | null;
+  farOptions?: number | null;
+  earlierSession: boolean;
+}
+
+export function scenarioQuoteTimes(market: ScenarioMarketSnapshot): ScenarioQuoteTimes {
+  const options = optionQuoteTime(market.chain);
+  return { options, underlying: market.underlyingQuote?.lastUpdated ?? null, earlierSession: earlierOptionSession(options, market.underlyingQuote) };
+}
+
+export function scenarioQuoteTimesLabel(times: ScenarioQuoteTimes): string {
+  return `Option quotes ${scenarioQuoteTime(times.options)}${times.earlierSession ? " (earlier session)" : ""}`
+    + `${times.farOptions !== undefined ? ` · Far expiry ${scenarioQuoteTime(times.farOptions)}` : ""} · Underlying ${scenarioQuoteTime(times.underlying)}`;
 }

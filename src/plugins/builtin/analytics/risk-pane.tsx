@@ -662,6 +662,10 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const asOfDate = (stressShortfall ? rows : model?.rows[view])?.find((row) => row.asOf)?.asOf?.slice(0, 10) ?? null;
   // The views estimated from returns name the currency a non-USD account's returns were converted into.
   const returnsCurrency = BASKET_VIEWS.has(view) && view !== "holdings" && !stressShortfall ? riskReturnsCurrency(model) : null;
+  const fxFigures: StatItem[] = model && BASKET_VIEWS.has(view) && !basketBody ? [
+    ...(model.notionalFx?.length ? [{ id: "notional-fx", label: "Notional FX", value: model.notionalFx.join("; "), wide: true }] : []),
+    ...(returnsCurrency && model.accountConversion ? [{ id: "returns-fx", label: "Returns FX", value: `daily ${model.accountConversion.pair} closes`, wide: true }] : []),
+  ] : [];
   // What the figures are read from and to when: the basket's daily closes, or the marks and evidence of that day.
   // The shocks alone are repriced at the current marks.
   const sourceText = basketBody || !asOfDate
@@ -685,7 +689,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ...text("source", sourceText, { asOf: true }),
       // The coverage names the currency of its basket value; a non-USD account's returns say what they converted into.
       // An evidence view with nothing in it has no amounts for a currency to describe.
-      ...text("currency", returnsCurrency ?? (coverageText || evidenceMissing ? null : model.portfolio.currency)),
+      ...text("currency", returnsCurrency || coverageText || evidenceMissing ? null : model.portfolio.currency),
       ...text("evidence", EVIDENCE_VIEWS.has(view) && model.evidence ? model.evidence.source : null),
     ];
   }, [asOfDate, basketBody, calendar, coverage, coverageText, evidenceMissing, footerEvidence, model, returnsCurrency, sourceText, tailMethodShort, view]);
@@ -980,7 +984,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
                 }]}
               />
             }
-            figures={holdingsSummary}
+            figures={[...holdingsSummary, ...fxFigures]}
             chart={chart}
           />
         }
