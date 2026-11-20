@@ -41,14 +41,17 @@ const byExpiry = [
   { expiry: "2026-11-20", calls: 518_943.94, puts: 246_946.33, net: 271_997.61 },
 ];
 
-async function report(options: { expiry?: string; withByExpiry?: boolean; olderServer?: boolean }) {
-  const definition = optionsPositioningHeadless("gex");
+async function report(options: { expiry?: string; tab?: "gex" | "strikes"; withByExpiry?: boolean; olderServer?: boolean; missing?: string[] }) {
+  const definition = optionsPositioningHeadless(options.tab ?? "gex");
   const args = createTestHeadlessArgs({ symbols: ["SPY"], options: options.expiry ? { expiry: options.expiry } : {} });
   const apiClient = {
     optionsPositioning: async (path: string) => {
       if (path.startsWith("open-interest")) return openInterest;
       const scope = new URLSearchParams(path.split("?")[1]).get("expiry");
       const payload = gamma(scope, options.withByExpiry === false ? undefined : scope ? [byExpiry[1]!] : byExpiry);
+      payload.missing = (options.missing ?? []).filter((date) => scope == null || date === scope);
+      payload.expiries = openInterest.expiries.map((row) => row.date).filter((date) =>
+        (scope == null || date === scope) && !payload.missing.includes(date));
       if (options.olderServer) delete payload.gammaAsOf;
       return payload;
     },
@@ -58,6 +61,23 @@ async function report(options: { expiry?: string; withByExpiry?: boolean; olderS
   const tables = headlessReportTables(definition, result, args, "GEX", freshness, { complete: true, unavailableSymbols: [] });
   return { result, tables, text: renderHeadlessPaneText(definition, result, args, "GEX", freshness), csv: renderReportCsv(tables, freshness) };
 }
+
+test.each(["gex", "strikes"] as const)("%s reports partial gamma once, with dates only in JSON metadata", async (tab) => {
+  const missing = "2026-11-20";
+  const message = "No volatility for 1 of 3 expiries; left out of gamma";
+  const full = await report({ tab, missing: [missing] });
+  expect(full.result.complete).toBe(false);
+  expect(full.result.errors).toEqual([message]);
+  expect(full.result.metadata).toMatchObject({ gamma: { missing: [missing] } });
+  expect(full.text.split("\n").filter((line) => line.includes("No volatility"))).toHaveLength(1);
+  expect(full.text).toContain(message);
+
+  const scoped = await report({ tab, expiry: "2026-10-30", missing: [missing] });
+  expect(scoped.result.complete).toBe(false);
+  expect(scoped.result.errors).toEqual([message]);
+  expect(scoped.result.metadata).toMatchObject({ gamma: { missing: [] }, gammaByExpiryCoverage: { missing: [missing] } });
+  expect((await report({ tab })).result.complete).toBe(true);
+});
 
 test("the GEX export adds up, names its unit, and opens with spot, gamma and quote times apart from the OI session", async () => {
   const { tables, text, csv } = await report({ expiry: "2026-10-30" });
