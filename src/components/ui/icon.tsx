@@ -10,6 +10,8 @@ export type IconName =
   | "close"
   | "zap"
   | "sqrt"
+  | "bell"
+  | "marker"
   | "lock"
   | "warning"
   | "back"
@@ -46,8 +48,14 @@ export const ICON_GLYPHS: Record<IconName, string> = {
   more: "...",
   help: "?",
   close: "x",
+  // Live data, and nothing else: the live-streaming quick setting.
   zap: "⚡",
   sqrt: "√",
+  // A notice the pane sends you (an alert), and a reading marked over the
+  // data (the current IV on a volatility history). Text symbols, one cell
+  // wide in any terminal, unlike the bell emoji or the bullseye.
+  bell: "⍾",
+  marker: "⌖",
   lock: "🔒",
   warning: "⚠",
   back: "←",

@@ -24,6 +24,21 @@ const ICONS: Record<IconName, ReactNode> = {
   close: <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />,
   zap: <path d="M7.1 1.2 2.7 6.5h3.1l-.7 4.3 4.4-5.5H6.4l.7-4.1Z" fill="currentColor" />,
   sqrt: <path d="M1.5 6.6h1.6l1.8 3.6L7.6 2h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />,
+  // A bell on its rim, with the clapper under it: the pane notifies you.
+  bell: (
+    <>
+      <path d="M3.3 8.7V6a2.7 2.7 0 0 1 5.4 0v2.7" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M2 8.7h8M6 2.1v1.2M5 10.5h2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </>
+  ),
+  // A ring with four ticks and a centre dot: a reading marked over the data.
+  marker: (
+    <>
+      <circle cx="6" cy="6" r="3.2" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M6 1.2v2.4M6 8.4v2.4M1.2 6h2.4M8.4 6h2.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="6" cy="6" r=".9" fill="currentColor" />
+    </>
+  ),
   lock: (
     <>
       <rect x="2.5" y="5.5" width="7" height="5" rx="1.2" fill="currentColor" />

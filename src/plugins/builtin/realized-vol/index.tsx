@@ -8,7 +8,7 @@ export const realizedVolModule: PluginModule = {
     id: "realized-vol", name: "Realized Volatility", icon: "V", get component(): typeof import("./pane").RealizedVolPane { const { RealizedVolPane } = require("./pane"); return RealizedVolPane; },
     defaultPosition: "right", shareItem: { ticker: true }, tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 112, height: 36 },
     tableExport: true,
-    quickSettings: [{ type: "toggle", key: "showIv", icon: "zap", label: "Current ATM IV" }],
+    quickSettings: [{ type: "toggle", key: "showIv", icon: "marker", label: "Current ATM IV" }],
     settings: { title: "Realized Volatility Settings", fields: [
       { key: "estimator", label: "Estimator", type: "select", options: ESTIMATOR_OPTIONS },
       { key: "windows", label: "Graph windows", type: "multi-select", options: WINDOW_OPTIONS },
