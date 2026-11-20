@@ -217,7 +217,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "axis", type: "enum", values: ["spot", "forward", "delta", "strike"].map((value) => ({ value })), defaultValue: "spot", description: "Surface coordinates" },
     { key: "tenors", type: "enum", values: [{ value: "listed" }, { value: "fixed" }], defaultValue: "listed", description: "Listed or interpolated tenors" },
     { key: "limit", type: "integer", minimum: 1, maximum: 100, defaultValue: 18, description: "Representative expiry request limit; selected expiry may add one", pluginState: { pluginId: "ticker-research", key: "expiryLimit" } },
-    { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2027-01-15 --tab smile",
+    { key: "expiration", aliases: ["expiry"], type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2027-01-15 --tab smile",
       description: `Selected expiry, as ${OPTION_EXPIRATION_FORMAT}; the first at least four weeks out when omitted`,
       settingKey: "expiration", normalize: (value) => expirationOptionSeconds(value) },
     { key: "date", type: "string", placeholder: "date", example: "--date 2026-10-09 --tab skew",

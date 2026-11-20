@@ -201,7 +201,7 @@ export const cspScreenHeadless: HeadlessPaneDefinition<"rows"> = {
         + "buys and a debit spread sells. Default 0.15 (0.30 for debit verticals, 0.10 for condors), or half --delta when that is not below it" },
     { key: "days", type: "string", placeholder: "days", example: "--days 45",
       description: `Each name's expiry is its listed one nearest this many calendar days out. Default ${CSP_SCREEN_DEFAULTS.days}` },
-    { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2026-11-20",
+    { key: "expiration", aliases: ["expiry"], type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2026-11-20",
       description: `Each name's expiry is its listed one nearest this date, in place of --days, as ${OPTION_EXPIRATION_FORMAT}`,
       normalize: (value) => expirationOptionSeconds(value) },
     { key: "maxSpread", aliases: ["max-spread"], type: "string", placeholder: "percent", example: "--max-spread 15",

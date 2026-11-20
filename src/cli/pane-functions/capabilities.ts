@@ -4,9 +4,11 @@ import type {
   HeadlessPaneOptionDef,
   HeadlessPaneReference,
   PaneDef,
+  PaneSettingsContext,
   PaneTemplateDef,
 } from "../../types/plugin";
 import { spreadsheetOptionHint } from "../spreadsheet-hint";
+import { suggestCliOption } from "../help";
 
 export type PaneFunctionReadiness = "ready" | "partial" | "live-dom" | "unsupported";
 type PaneFunctionScreenshotReadiness = PaneFunctionReadiness;
@@ -35,6 +37,12 @@ export interface PaneFunctionCapability {
   options: PaneFunctionOptionDef[];
   /** A rendered view that refuses any option it does not declare (PaneDef.reportOptionsOnly), as a headless report does. */
   strictOptions?: boolean;
+  /**
+   * A rendered view's own settings, by key (its settings dialog's fields):
+   * `fn` takes one of them as a flag beside the declared options, and refuses
+   * any other flag rather than set a setting no pane reads.
+   */
+  settingKeys?: string[];
 }
 
 const NON_DATA_PANE_IDS = new Set([
@@ -77,8 +85,34 @@ function fallbackCapability(
       ? RENDERED_VIEW_LIMITATION
       : "This pane is an interactive surface and does not expose a data report."],
     options: [...(pane.reportOptions ?? [])],
-    ...pane.reportOptionsOnly ? { strictOptions: true } : {},
+    ...pane.reportOptionsOnly ? { strictOptions: true } : { settingKeys: paneSettingKeys(pane) },
   };
+}
+
+/**
+ * The keys of a pane's settings dialog. A dialog built from the pane's
+ * current settings is asked with none, which is how a new pane opens; one
+ * that needs more of the app than that names none.
+ */
+function paneSettingKeys(pane: Pick<PaneDef, "settings">): string[] {
+  const { settings } = pane;
+  if (!settings) return [];
+  if (typeof settings !== "function") return settings.fields.map(({ key }) => key);
+  try {
+    return settings({ settings: {}, paneState: {}, activeTicker: null, activeCollectionId: null } as unknown as PaneSettingsContext)
+      ?.fields.map(({ key }) => key) ?? [];
+  } catch {
+    // Intentional ignore: a settings dialog that needs the running app names no flags fn can take.
+    return [];
+  }
+}
+
+/**
+ * Pane state any rendered view opens with, typed as `--state.<key> value`
+ * (or `--state key=value`): the raw form of what a pane keeps, named as such.
+ */
+function isRawPaneStateKey(key: string): boolean {
+  return key === "state" || key.startsWith("state.");
 }
 
 export function isDataPaneForDomFallback(pane: Pick<PaneDef, "id">): boolean {
@@ -303,6 +337,25 @@ function typedFunctionArgs(argument: string | null | undefined, options: Record<
   ];
 }
 
+/**
+ * Why a function refuses a flag: the option it is closest to, when one is a
+ * slip away (`--expirtion` for `--expiration`), then the options it takes.
+ */
+function unsupportedOptionMessage(capability: PaneFunctionCapability, rawKey: string, code: string, hint: string | null): string {
+  const flag = optionFlag(rawKey);
+  const supported = capability.options.map(({ key }) => optionFlag(key));
+  // An alias is a name the option answers to, so a slip from it names the option.
+  const named = new Map(capability.options.flatMap((option) => [option.key, ...option.aliases ?? []]
+    .map((name) => [optionFlag(name), optionFlag(option.key)] as const)));
+  const near = suggestCliOption(flag, named.keys());
+  return [
+    `${code} does not support ${flag}.`,
+    near ? `Did you mean ${named.get(near)}?` : null,
+    supported.length ? `Supported options: ${supported.join(", ")}.` : "It has no options.",
+    hint,
+  ].filter(Boolean).join(" ");
+}
+
 export function normalizeCapabilityOptions(
   capability: PaneFunctionCapability,
   options: Record<string, string | true>,
@@ -310,36 +363,56 @@ export function normalizeCapabilityOptions(
    * `code` is what the user types for the function (`CDX`), which an error names; the capability id stands in when
    * there is none. `argument` is what the function was given (`RMS.AX`), which an option's pointer names.
    */
-  settings: { strict?: boolean; code?: string; argument?: string | null } = {},
+  settings: {
+    strict?: boolean;
+    code?: string;
+    argument?: string | null;
+    /**
+     * `fn`: a rendered view takes its declared options, its own settings and
+     * raw pane state, and refuses any other flag as a report refuses one,
+     * instead of setting a pane setting nothing reads.
+     */
+    strictRendered?: boolean;
+  } = {},
 ): NormalizedPaneFunctionOptions {
-  if (!capability.botSafe && !capability.strictOptions) {
+  if (!capability.botSafe && !capability.strictOptions && !settings.strictRendered) {
     // A rendered view takes any pane setting; the options it declares are checked.
     return Object.fromEntries(Object.entries(options).map(([key, value]) => {
       const option = findCapabilityOption(capability, key);
       return option ? [option.key, normalizeOptionValue(option, value, settings.argument)] : [key, value];
     }));
   }
+  const rendered = !capability.botSafe && !capability.strictOptions;
 
   const normalized: Record<string, string | number | boolean> = {};
-  for (const option of capability.options) {
+  // A rendered view's options have no defaults to report: its pane opens on its own.
+  for (const option of rendered ? [] : capability.options) {
     if (option.defaultValue !== undefined) normalized[option.key] = option.defaultValue;
   }
   // Each option typed, by its key, as the user wrote it (`--window` for RETURN's --range).
   const typed = new Map<string, string>();
   for (const [rawKey, rawValue] of Object.entries(options)) {
     const option = findCapabilityOption(capability, rawKey);
-    if (option) typed.set(option.key, rawKey);
+    if (option) {
+      // An alias typed beside the option's own name (`--expiry` and `--expiration`) is one option given twice.
+      const earlier = typed.get(option.key);
+      if (earlier !== undefined) {
+        const own = optionToken(option.key);
+        const alias = [earlier, rawKey].find((key) => optionToken(key) !== own);
+        throw new Error([earlier, rawKey].every((key) => optionToken(key) !== own)
+          ? `${optionFlag(earlier)} and ${optionFlag(rawKey)} are both ${optionFlag(option.key)}; give one of them.`
+          : `${optionFlag(alias ?? rawKey)} is ${optionFlag(option.key)}; give one of them.`);
+      }
+      typed.set(option.key, rawKey);
+    }
     if (!option) {
-      if (settings.strict === false) {
+      const kept = rendered ? isRawPaneStateKey(rawKey) || capability.settingKeys?.includes(rawKey) === true : settings.strict === false;
+      if (kept) {
         normalized[rawKey] = rawValue;
         continue;
       }
-      const supported = capability.options.map(({ key }) => optionFlag(key)).join(", ");
-      throw new Error(
-        [`${settings.code ?? capability.id} does not support ${optionFlag(rawKey)}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
-          spreadsheetOptionHint(optionFlag(rawKey), `fn ${settings.code ?? capability.id}`, typedFunctionArgs(settings.argument, options))]
-          .filter(Boolean).join(" "),
-      );
+      throw new Error(unsupportedOptionMessage(capability, rawKey, settings.code ?? capability.id,
+        spreadsheetOptionHint(optionFlag(rawKey), `fn ${settings.code ?? capability.id}`, typedFunctionArgs(settings.argument, options))));
     }
     normalized[option.key] = normalizeOptionValue(option, rawValue, settings.argument);
   }

@@ -277,6 +277,13 @@ export const TRIAL_REPORT_OPTIONS: readonly PaneReportOptionDef[] = [
     values: SPONSOR_CLASSES.map(({ value }) => ({ value, aliases: value === "INDIV" ? ["individual"] : value === "FED" ? ["federal"] : [] })),
     example: "--sponsor industry",
   },
+  {
+    key: "open",
+    type: "string",
+    placeholder: "NCT id",
+    description: "Open one study's detail, by its registry ID",
+    example: "--open NCT07868939",
+  },
 ];
 
 type TrialColumnId = "updated" | "phase" | "status" | "title" | "drug" | "sponsor" | "ticker";

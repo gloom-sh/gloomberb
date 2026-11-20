@@ -84,6 +84,7 @@ function optionsSettings(settings: Record<string, unknown>): PaneSettingsDef {
 /** `fn OMON AAPL --expiration 2028-01-21`: the expiry the chain opens at, as the pane setting a handoff sets. */
 const EXPIRATION_REPORT_OPTION: PaneReportOptionDef = {
   key: "expiration",
+  aliases: ["expiry"],
   type: "string",
   placeholder: OPTION_EXPIRATION_PLACEHOLDER,
   description: `The expiry to show, as ${OPTION_EXPIRATION_FORMAT}. Without it, the nearest one.`,

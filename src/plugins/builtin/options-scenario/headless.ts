@@ -72,7 +72,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
       description: "Shares of the underlying held with the options; negative for short. Typed --legs buy them at the position's spot (--spot when typed), "
         + "a --strategy seed at the spot its quotes imply, where --spot is a what-if. "
         + "A collar holds the shares its contracts cover (100 per contract); 0 values the options alone" },
-    { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--strategy vertical --expiration 2027-01-15",
+    { key: "expiration", aliases: ["expiry"], type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--strategy vertical --expiration 2027-01-15",
       description: `Chain expiry for --strategy, as ${OPTION_EXPIRATION_FORMAT}`, normalize: (value) => expirationOptionSeconds(value) },
     { key: "spot", type: "string", description: "Underlying price override, per share" },
     { key: "rate", type: "string", description: "Continuously compounded annual risk-free rate, percent" },
