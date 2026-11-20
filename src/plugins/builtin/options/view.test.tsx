@@ -267,6 +267,28 @@ test("a broker's chain says nothing of Gloom Cloud's delay: a free account sees 
   }
 });
 
+test("a spot FX pair's chain is not served: the pane names the listed proxy, offers no upgrade, and its report fails with the same answer", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getOptionsChain: async (symbol) => { throw new Error(`No options provider available for ${symbol}`); },
+  })));
+  const registry = createRemoteUiRegistry();
+  await act(async () => {
+    await tui.render(<RemoteUiRegistryProvider registry={registry}>
+      <OptionsHarness ticker={createTestTicker("EURUSD=X", "EUR/USD", { assetCategory: "CASH" })} quotePrice={1.097} showFooter height={20} width={160} />
+    </RemoteUiRegistryProvider>, { width: 160, height: 20 });
+  });
+  await renderSettled();
+  const frame = tui.frame();
+  expect(frame).toContain("Options on spot FX pairs (EURUSD=X) are not served.");
+  expect(frame).toContain("Nearest listed alternative: FXE");
+  // No plan serves it: no delay clock, no upgrade, and not the routing error.
+  for (const absent of ["upgrade", "◷15m", "provider"]) expect(frame).not.toContain(absent);
+  expect(renderedReportFailure(registry.snapshot())).toEqual({
+    message: "Options on spot FX pairs (EURUSD=X) are not served.",
+    details: "Nearest listed alternative: FXE (Invesco CurrencyShares Euro Trust), gloom fn OMON FXE. Strategy payoffs: gloom fn OSA FXE",
+  });
+});
+
 test("reads a put's cost as a percent of spot from its quote midpoint, on the put side alone", async () => {
   const chain = makeChain([700, 780], 780);
   chain.puts = chain.puts.map((put) => put.strike === 700 ? { ...put, bid: 5.48, ask: 5.51 }

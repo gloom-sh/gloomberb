@@ -93,6 +93,7 @@ export function useOptionsAccessFooter({
   reference,
   savedAt,
   spreadColumnVisible,
+  unserved = false,
 }: {
   /** The chain is a broker profile's, quoted by that broker: it has no Gloom Cloud delay to report or upgrade from. */
   broker?: boolean;
@@ -108,6 +109,11 @@ export function useOptionsAccessFooter({
   savedAt?: number | null;
   /** Set while the chain prints a SPRD column, so the status bar stops repeating it. */
   spreadColumnVisible?: boolean;
+  /**
+   * No chain is served for the instrument (a spot FX pair, a future): the body says so. There are no quotes to
+   * be late or to upgrade, so the footer offers neither.
+   */
+  unserved?: boolean;
 }): void {
   const delayLabel = resolveOptionsDelayLabel(chain);
   const { access, hint: upgradeHint, segment } = useCloudAccessFooter({
@@ -124,10 +130,11 @@ export function useOptionsAccessFooter({
   const proCoverage = broker || (access.hasProAccess && !access.isTrialActive);
   const coverageDelay = broker && !(chain?.delayMinutes && chain.delayMinutes > 0) ? undefined : delayLabel;
   const accessInfo = useMemo<PaneFooterSegment[]>(() => {
+    if (unserved) return [];
     const coverage = proCoverage ? optionsCoverageSegment(quoteCoverage.status, coverageDelay) : null;
     if (coverage) return [coverage];
     return segment ? [segment] : [];
-  }, [coverageDelay, proCoverage, quoteCoverage.status, segment]);
+  }, [coverageDelay, proCoverage, quoteCoverage.status, segment, unserved]);
 
   // Rebuilt every render so the quote and trade ages keep counting with the
   // stream; the registration compares by value, so only a changed label
@@ -144,6 +151,6 @@ export function useOptionsAccessFooter({
     error,
     info,
     // The pane's own actions keep the right edge they already hold.
-    hints: upgradeHint ? [upgradeHint, ...(hints ?? [])] : hints,
+    hints: upgradeHint && !unserved ? [upgradeHint, ...(hints ?? [])] : hints,
   });
 }
