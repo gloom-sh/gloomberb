@@ -9,7 +9,7 @@ import { dividendQuotePriceMetadata } from "./reference-price";
 import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { declaredDividends } from "../../../utils/declared-dividends";
-import { cashInMajorUnits } from "../../../utils/dividend-cash";
+import { atSourcePrecision, cashInMajorUnits } from "../../../utils/dividend-cash";
 import { lapsedDividend, monthlyHistoryEnd } from "../../../utils/forward-dividend";
 import type { DeclaredCash, DeclaredDividendAction, TickerFinancials } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
@@ -284,6 +284,13 @@ export async function fetchDividendData(
       forwardRateAsOf: announcedUneven.latest.toISOString().slice(0, 10) }, price);
   } else if (announced && announcedAmount != null && !metrics.lapse && metrics.forwardBasis !== "uneven" && annualCount > 0) {
     metrics = repriceDividendMetrics({ ...metrics, forwardRate: announcedAmount * annualCount, forwardRateAsOf: announced.exDate }, price);
+  } else if (!metrics.lapse && metrics.forwardRate != null && metrics.forwardBasis !== "uneven" && annualCount > 0) {
+    // A stated rate dated by a declared regular distribution is that amount at the payer's cadence, as its basis
+    // says: OXLC's declared $0.20 monthly is $2.40 a year, where the stated rate read $1.20.
+    const row = declared.find((entry) => entry.exDate === metrics.forwardRateAsOf && !entry.special && !entry.cashEstimate);
+    if (row && Number.isFinite(row.amount) && row.amount > 0) {
+      metrics = repriceDividendMetrics({ ...metrics, forwardRate: atSourcePrecision(row.amount * annualCount) }, price);
+    }
   }
   if (!summary && metrics.forwardRate != null) {
     summaryError = unavailableDividendSummary(triedAt, { forward: true, payDate: !!announced?.payDate });

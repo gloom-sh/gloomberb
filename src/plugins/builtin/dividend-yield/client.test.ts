@@ -347,6 +347,27 @@ describe("cash distribution calculations", () => {
     expect(quarterly("2026-09-01")).toMatchObject({ forwardRate: 3.5, forwardBasis: "uneven" });
   });
 
+  test("a stated rate dated by a declared regular distribution is that amount at the payer's cadence", async () => {
+    setSystemTime(new Date("2026-11-20T12:00:00Z"));
+    // OXLC: $0.40 a month to March 2026, $0.20 from April, the next $0.20 declared; the stated rate read $1.20.
+    const months = ["2025-12-17", "2026-01-16", "2026-02-13", "2026-03-17", "2026-04-16", "2026-05-15", "2026-06-16", "2026-07-17",
+      "2026-08-17", "2026-09-16", "2026-10-16", "2026-11-16"];
+    const read = (declaredDividends: readonly Record<string, unknown>[]) => Response.json({ status: "success", data: { quote: null,
+      summary: { currency: "USD", trailingAnnualDividendRate: 3.2, trailingAnnualDividendYield: null, payoutRatio: null,
+        forwardAnnualDividendRate: 1.2, forwardRateAsOf: "2026-12-17", exDividendDate: null, dividendDate: null },
+      actions: { symbol: "OXLC", currency: "USD", coverage: { dividends: "available" }, splits: [], earnings: [],
+        dividends: months.map((exDate, index) => ({ exDate, amount: index < 4 ? 0.4 : 0.2 })), declaredDividends } } });
+    setHttpFetchTransport(async () => read([{ exDate: "2026-12-17", payDate: "2026-12-31", amount: 0.2 }]));
+    const data = await fetchDividendData("OXLC", 4.91, "NASDAQ", "USD");
+    expect(data.metrics).toMatchObject({ forwardRate: 2.4, forwardRateAsOf: "2026-12-17", paymentFrequency: "monthly" });
+    expect(data.metrics.forwardYield).toBeCloseTo(2.4 / 4.91, 10);
+    // A one-off declared on that date, or none at all, leaves the stated rate.
+    setHttpFetchTransport(async () => read([{ exDate: "2026-12-17", payDate: "2026-12-31", amount: 0.2, special: true }]));
+    expect((await fetchDividendData("OXLC", 4.91, "NASDAQ", "USD")).metrics.forwardRate).toBe(1.2);
+    setHttpFetchTransport(async () => read([]));
+    expect((await fetchDividendData("OXLC", 4.91, "NASDAQ", "USD")).metrics.forwardRate).toBe(1.2);
+  });
+
   test("a regular payment and an extra one on one ex-date are labelled as one row of both", () => {
     // ECC's $0.39 of 7 Oct 2022 is October's $0.14 and an extra $0.25; the $0.50 of 22 Dec has its own ex-date.
     const history = [["2021-09-09", 0.1], ["2021-10-08", 0.12], ["2021-11-09", 0.12], ["2021-12-10", 0.12], ["2021-12-22", 0.5],
