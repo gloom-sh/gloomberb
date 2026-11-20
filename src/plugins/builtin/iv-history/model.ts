@@ -101,31 +101,66 @@ const OFF_MARKET_JUMP = 1.35;
  */
 const OFF_MARKET_FORWARD = 0.6;
 
+/** Sessions of the underlying's own closes its daily volatility is read over, before a session's move is judged. */
+const OFF_MARKET_MOVE_SESSIONS = 20;
 /**
- * The sessions whose trade-close IV30 is off-market: a reading at least 35%
- * above (or below) the closes either side of it that the same close's IV60
- * (else IV90) does not follow, so the 30-day figure alone moved, and the next
- * close no longer shows it. That is a print or quote of one thin expiry, not
- * the market's vol (FXY's 12.2% on 2026-10-23, between 8.2% and 8.6%, beside
- * an IV60 of 9.4%). The newest close has no next one, so is never judged.
+ * A session's close-to-close move, in daily standard deviations of the
+ * sessions before it, at or past which the underlying itself moved: a jump in
+ * IV that day may be the market's (2024-08-05's shock), whatever its shape.
  */
-export function offMarketSessions(series: readonly IvPoint[]): Set<string> {
-  const closes = series.filter((point) => point.method === "trade-close" && point.iv30 != null && point.iv30 > 0)
+const OFF_MARKET_MOVE_SIGMAS = 2;
+
+/**
+ * Whether the underlying's close barely moved on `date`: its log return under
+ * `OFF_MARKET_MOVE_SIGMAS` daily standard deviations of the 20 sessions before
+ * it. False when its closes do not reach that far, since an IV that cannot be
+ * checked against its underlying is kept.
+ */
+function underlyingStill(closes: ReadonlyMap<string, number>, days: readonly string[], date: string): boolean {
+  const at = days.indexOf(date);
+  if (at < OFF_MARKET_MOVE_SESSIONS + 1) return false;
+  const returns = days.slice(at - OFF_MARKET_MOVE_SESSIONS - 1, at + 1).map((day) => closes.get(day)!)
+    .flatMap((close, index, all) => index === 0 || !(close > 0) || !(all[index - 1]! > 0) ? [] : [Math.log(close / all[index - 1]!)]);
+  if (returns.length !== OFF_MARKET_MOVE_SESSIONS + 1) return false;
+  const move = returns.at(-1)!;
+  const prior = returns.slice(0, -1);
+  const mean = prior.reduce((sum, value) => sum + value, 0) / prior.length;
+  const deviation = Math.sqrt(prior.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (prior.length - 1));
+  return deviation > 0 && Math.abs(move) < OFF_MARKET_MOVE_SIGMAS * deviation;
+}
+
+/**
+ * The sessions whose trade-close IV30 is off-market: the print itself is bad,
+ * not just the move large. Each of these holds:
+ * - the server solved the close partly from quote midpoints (`basis` mid or
+ *   mixed), having found closing prints outside the closing two-sided quote;
+ * - the reading stands at least 35% above (or below) the closes either side
+ *   of it, so the next close no longer shows it;
+ * - the same close's IV60 (else IV90) does not follow it: only the 30-day
+ *   figure moved, where a genuine repricing lifts the whole chain;
+ * - the underlying's own close barely moved that session (`underlyingStill`).
+ * FXY's 12.2% on 2026-10-23 is one: between 8.2% and 8.6%, beside an IV60 of
+ * 9.4%, on a flat session. A shock (SPY on 2024-08-05, down 2.9%) keeps its
+ * rank. The newest close has no next one, so is never judged.
+ */
+export function offMarketSessions(series: readonly IvPoint[], prices: readonly PricePoint[]): Set<string> {
+  const iv = series.filter((point) => point.method === "trade-close" && point.iv30 != null && point.iv30 > 0)
     .sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
+  const closes = new Map(prices.map((price) => [day(price.date), price.close] as const));
+  const days = [...closes.keys()].sort();
   const flagged = new Set<string>();
-  closes.forEach((point, index) => {
-    const before = closes[index - 1], after = closes[index + 1];
+  iv.forEach((point, index) => {
+    const before = iv[index - 1], after = iv[index + 1];
     const iv30 = point.iv30!;
     const back = point.iv60 ?? point.iv90;
-    if (!before || !after || back == null || !(back > 0)) return;
-    const days = point.iv60 != null ? 60 : 90;
-    const forwardVariance = (back * back * days - iv30 * iv30 * 30) / (days - 30);
+    if (!before || !after || back == null || !(back > 0) || (point.basis !== "mid" && point.basis !== "mixed")) return;
+    const tenor = point.iv60 != null ? 60 : 90;
+    const forwardVariance = (back * back * tenor - iv30 * iv30 * 30) / (tenor - 30);
     const forward = forwardVariance > 0 ? Math.sqrt(forwardVariance) / iv30 : 0;
     const above = Math.min(iv30 / before.iv30!, iv30 / after.iv30!);
     const below = Math.min(before.iv30! / iv30, after.iv30! / iv30);
-    if ((above >= OFF_MARKET_JUMP && forward < OFF_MARKET_FORWARD) || (below >= OFF_MARKET_JUMP && forward > 1 / OFF_MARKET_FORWARD)) {
-      flagged.add(point.sessionDate);
-    }
+    const alone = (above >= OFF_MARKET_JUMP && forward < OFF_MARKET_FORWARD) || (below >= OFF_MARKET_JUMP && forward > 1 / OFF_MARKET_FORWARD);
+    if (alone && underlyingStill(closes, days, point.sessionDate)) flagged.add(point.sessionDate);
   });
   return flagged;
 }
@@ -140,7 +175,7 @@ function offMarketNote(points: ReadonlyArray<{ date: string; value: number }>): 
   const listed = points.slice(-STALE_NOTE_LIMIT).map((point) => `${point.date} ${(point.value * 100).toFixed(1)}%`);
   const more = points.length - listed.length;
   return `Off-market, left out of rank: IV30 ${listed.join(", ")}${more > 0 ? `, ${more} earlier` : ""} `
-    + "(away from the closes either side and from the same close's longer tenor).";
+    + "(a close partly from quote midpoints, away from the closes either side and its own longer tenor, on a session the underlying barely moved).";
 }
 
 export interface DatedValue { date: Date; value: number | null }
@@ -326,7 +361,7 @@ export function projectIvHistory(
   const window = options.hvWindow ?? 20;
   const warnings = ivHistoryWarnings(payload);
   const tradeIv30 = byMethod(payload.series, "trade-close", "iv30");
-  const offMarket = offMarketSessions(payload.series);
+  const offMarket = offMarketSessions(payload.series, prices);
   // Ranks and ranges read every close but the off-market ones, which stay in the history as stored.
   const ranked = <T extends { date: Date }>(points: T[]) => offMarket.size ? points.filter((point) => !offMarket.has(day(point.date))) : points;
   const latestDate = [payload.latest?.date, tradeIv30.at(-1) && day(tradeIv30.at(-1)!.date)].filter((value): value is string => !!value).sort().at(-1) ?? null;

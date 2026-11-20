@@ -405,25 +405,59 @@ describe("stale readings", () => {
 });
 
 describe("off-market closes", () => {
-  /** A trade close with its 30- and 60-day IV, as the server stores them. */
-  const close = (sessionDate: string, iv30: number, iv60: number | null): IvPoint => ({
+  /** A trade close with its 30- and 60-day IV and the prices it was solved from, as the server stores them. */
+  const close = (sessionDate: string, iv30: number, iv60: number | null, basis: IvPoint["basis"] = "print"): IvPoint => ({
     sessionDate, method: "trade-close", capturedAt: `${sessionDate}T22:00:00Z`, spot: 58, iv7: null, iv30, iv60, iv90: null,
-    iv180: null, iv365: null, put25_30: null, call25_30: null, basis: "print",
+    iv180: null, iv365: null, put25_30: null, call25_30: null, basis,
   });
-  // FXY's stored closes around 2026-10-23: 12.2% between 8.2% and 8.6%, its own IV60 9.4%.
-  const fxy = [close("2026-10-06", 0.0902, null), close("2026-10-08", 0.0819, 0.0784), close("2026-10-23", 0.1217, 0.0944),
+  // FXY's stored closes around 2026-10-23: 12.2% between 8.2% and 8.6%, its own IV60 9.4%, solved partly from quote midpoints.
+  const fxy = [close("2026-10-06", 0.0902, null), close("2026-10-08", 0.0819, 0.0784), close("2026-10-23", 0.1217, 0.0944, "mixed"),
     close("2026-10-28", 0.0861, 0.0858), close("2026-11-04", 0.0807, 0.0807)];
+  /** Daily closes through `end` that move a tenth of a percent each way, with the day's return in `moves` where it says. */
+  const closes = (end: string, moves: Readonly<Record<string, number>> = {}): PricePoint[] => {
+    let level = 100;
+    return sessions(60, end).map((date, index) => {
+      level *= 1 + (moves[date] ?? (index % 2 ? 0.001 : -0.001));
+      return { date: new Date(`${date}T21:00:00Z`), close: level };
+    });
+  };
+  const still = closes("2026-11-04");
+  const at = (points: IvPoint[], date: string, patch: Partial<IvPoint>) => points.map((point) => point.sessionDate === date ? { ...point, ...patch } : point);
 
-  test("a close the closes either side and its own longer tenor both contradict is off-market; a repricing the tenor follows is not", () => {
-    expect([...offMarketSessions(fxy)]).toEqual(["2026-10-23"]);
+  test("a close partly from quote midpoints, apart from its neighbours and its own longer tenor on a still session, is off-market", () => {
+    expect([...offMarketSessions(fxy, still)]).toEqual(["2026-10-23"]);
     // A shock that lifts the 60-day reading with it (a forward vol near the 30-day's) is the market's.
-    expect(offMarketSessions(fxy.map((point) => point.sessionDate === "2026-10-23" ? { ...point, iv60: 0.11 } : point)).size).toBe(0);
+    expect(offMarketSessions(at(fxy, "2026-10-23", { iv60: 0.11 }), still).size).toBe(0);
     // Under the jump, or with no next close to say it did not last, nothing is judged.
-    expect(offMarketSessions(fxy.map((point) => point.sessionDate === "2026-10-23" ? { ...point, iv30: 0.105 } : point)).size).toBe(0);
-    expect(offMarketSessions(fxy.slice(0, 3)).size).toBe(0);
+    expect(offMarketSessions(at(fxy, "2026-10-23", { iv30: 0.105 }), still).size).toBe(0);
+    expect(offMarketSessions(fxy.slice(0, 3), still).size).toBe(0);
     // A drop the longer tenor does not share is one too.
-    expect([...offMarketSessions(fxy.map((point) => point.sessionDate === "2026-10-23" ? { ...point, iv30: 0.055, iv60: 0.085 } : point))])
-      .toEqual(["2026-10-23"]);
+    expect([...offMarketSessions(at(fxy, "2026-10-23", { iv30: 0.055, iv60: 0.085 }), still)]).toEqual(["2026-10-23"]);
+    // Without the server's sign of a bad print (prices inside the closing quote, or none checked), the shape alone is no reason.
+    for (const basis of ["print", null, undefined] as const) expect(offMarketSessions(at(fxy, "2026-10-23", { basis }), still).size).toBe(0);
+    // Nor when the underlying's closes do not reach the session to say it sat still.
+    expect(offMarketSessions(fxy, []).size).toBe(0);
+  });
+
+  test("an event-day spike on a liquid name keeps its rank, however steep", () => {
+    // SPY's stored closes around 2024-08-05: 27.8% between 19.6% and 22.1%, its IV60 24.5%, solved from prints.
+    const spy = [close("2024-08-01", 0.1575, 0.1592, null), close("2024-08-02", 0.1956, 0.1925, null), close("2024-08-05", 0.2777, 0.2446, null),
+      close("2024-08-06", 0.2212, 0.2062, null), close("2024-08-07", 0.2396, 0.2060, null)];
+    // Its closes that week: 543.01, 532.90, 517.38, 522.15.
+    const shock = closes("2024-08-07", { "2024-08-02": -0.0186, "2024-08-05": -0.0291, "2024-08-06": 0.0092 });
+    expect(offMarketSessions(spy, shock).size).toBe(0);
+    // Steeper, as a sharper shock reads, and solved partly from quote midpoints: 35% over both neighbours, a 26% fall the
+    // next day and an inverted 30-to-60-day forward. The underlying's own 2.9% fall says the market moved with it.
+    const steeper = at(spy, "2024-08-05", { iv30: 0.3, iv60: 0.215, basis: "mixed" });
+    expect(offMarketSessions(steeper, shock).size).toBe(0);
+    const server = { value: 0.2396, date: "2024-08-07", method: "trade-close" as const, rank: 40, percentile: 90, low: 0.1575, high: 0.3,
+      samples: 4, windowStart: "2023-08-07" };
+    const model = projectIvHistory(payload(steeper, { stats: { iv30: server, iv90: null },
+      coverage: { source: "seed", addedAt: "2024-08-08T00:00:00Z", backfilledThrough: "2024-08-07", since: "2024-08-01" } }), shock);
+    expect(model.offMarket.size).toBe(0);
+    expect(model.stats.find((row) => row.id === "iv30")).toMatchObject({ high: 0.3, rank: 40, percentile: 90 });
+    // Only on a session its underlying sat still would the same print be the chain's alone.
+    expect([...offMarketSessions(steeper, closes("2024-08-07"))]).toEqual(["2024-08-05"]);
   });
 
   test("an off-market close keeps its stored value, is marked, and ranks nothing", () => {
@@ -435,7 +469,8 @@ describe("off-market closes", () => {
     const model = projectIvHistory(payload(series, { symbol: "FXY", stats: { iv30: server, iv90: null } }), prices(series.map((point) => point.sessionDate)));
     expect(model.iv30.find((point) => point.date.toISOString().startsWith("2026-10-23"))!.value).toBe(0.1217);
     expect([...model.offMarket]).toEqual(["2026-10-23"]);
-    expect(model.offMarketNote).toBe("Off-market, left out of rank: IV30 2026-10-23 12.2% (away from the closes either side and from the same close's longer tenor).");
+    expect(model.offMarketNote).toBe("Off-market, left out of rank: IV30 2026-10-23 12.2% (a close partly from quote midpoints, "
+      + "away from the closes either side and its own longer tenor, on a session the underlying barely moved).");
     // Ranked again without it, by the server's rules: 12.2% is no longer the year's high.
     const iv30 = model.stats.find((row) => row.id === "iv30")!;
     const window = series.filter((point) => point.sessionDate >= "2025-11-19" && point.sessionDate < "2026-11-19");

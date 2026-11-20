@@ -155,7 +155,8 @@ test("fn refuses a flag a rendered view neither declares nor has a setting for, 
     destroy: () => {},
   };
   const open = (args: string[]) => resolvePaneFunction(catalog, context, parsePaneFunctionArgs(args), { strictHeadlessOptions: true, strictRenderedOptions: true });
-  await expect(open(["OMON", "FXY", "--foo", "bar"])).rejects.toThrow("OMON does not support --foo. Supported options: --expiration, --strikes.");
+  await expect(open(["OMON", "FXY", "--foo", "bar"])).rejects
+    .toThrow("OMON does not support --foo. Supported options: --expiration, --strikes. Pane state can be set with --state.<key> value.");
   await expect(open(["OMON", "FXY", "--expirtion", "2026-12-18"])).rejects.toThrow("OMON does not support --expirtion. Did you mean --expiration?");
   // The alias reads as the option; typed beside it, it is the same option given twice.
   expect((await open(["OMON", "FXY", "--expiry", "2026-12-18"])).instance.settings).toMatchObject({ expiration: "2026-12-18" });

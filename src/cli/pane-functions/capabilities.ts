@@ -339,9 +339,11 @@ function typedFunctionArgs(argument: string | null | undefined, options: Record<
 
 /**
  * Why a function refuses a flag: the option it is closest to, when one is a
- * slip away (`--expirtion` for `--expiration`), then the options it takes.
+ * slip away (`--expirtion` for `--expiration`), then the options it takes,
+ * and for a function drawn from its pane (`paneState`) how to set the state
+ * that pane keeps.
  */
-function unsupportedOptionMessage(capability: PaneFunctionCapability, rawKey: string, code: string, hint: string | null): string {
+function unsupportedOptionMessage(capability: PaneFunctionCapability, rawKey: string, code: string, hint: string | null, paneState = false): string {
   const flag = optionFlag(rawKey);
   const supported = capability.options.map(({ key }) => optionFlag(key));
   // An alias is a name the option answers to, so a slip from it names the option.
@@ -352,6 +354,7 @@ function unsupportedOptionMessage(capability: PaneFunctionCapability, rawKey: st
     `${code} does not support ${flag}.`,
     near ? `Did you mean ${named.get(near)}?` : null,
     supported.length ? `Supported options: ${supported.join(", ")}.` : "It has no options.",
+    paneState ? "Pane state can be set with --state.<key> value." : null,
     hint,
   ].filter(Boolean).join(" ");
 }
@@ -412,7 +415,7 @@ export function normalizeCapabilityOptions(
         continue;
       }
       throw new Error(unsupportedOptionMessage(capability, rawKey, settings.code ?? capability.id,
-        spreadsheetOptionHint(optionFlag(rawKey), `fn ${settings.code ?? capability.id}`, typedFunctionArgs(settings.argument, options))));
+        spreadsheetOptionHint(optionFlag(rawKey), `fn ${settings.code ?? capability.id}`, typedFunctionArgs(settings.argument, options)), rendered));
     }
     normalized[option.key] = normalizeOptionValue(option, rawValue, settings.argument);
   }
