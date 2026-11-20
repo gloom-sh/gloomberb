@@ -63,14 +63,23 @@ describe("LiveBarAccumulator", () => {
     expect(bars.takeReconcileRequest()).toBe(false);
   });
 
-  test("asks for recent history instead of bridging a gap it did not watch", () => {
-    const history = [bar("14:00:00", 100, 101, 99, 100, 5_000), bar("14:01:00", 100, 100.5, 99.5, 100, 800)];
+  test("prices a gap it did not watch with the quote's own bar and asks for the bars it lacks", () => {
+    // Minute bars once came through 12:12 New York while the stock traded at 12:18: dropping the quote left the
+    // 12:12 close as the chart's price.
+    const history = [bar("17:11:00", 85.3, 85.4, 85.2, 85.27, 900), bar("17:12:00", 85.27, 85.3, 84.9, 85.02, 800)];
     const bars = new LiveBarAccumulator();
-    const next = quote("14:20:00", 104, 120_000);
-    const points = bars.apply(history, next, { now: next.lastUpdated, resolution: "1m", exchange: "NASDAQ", liveSince: at("14:19:00") });
-    expect(points).toBe(history);
+    const next = quote("17:18:20", 84.53, 120_000);
+    const points = bars.apply(history, next, { now: next.lastUpdated, resolution: "1m", exchange: "NASDAQ", liveSince: at("17:18:00") });
+    expect(points.slice(0, 2)).toEqual(history);
+    expect(points.slice(2)).toEqual([{ date: new Date(at("17:18:00")), open: 84.53, high: 84.53, low: 84.53, close: 84.53 }]);
     expect(bars.takeReconcileRequest()).toBe(true);
     expect(bars.takeReconcileRequest()).toBe(false);
+
+    // Bars of an earlier day are a session the history has not reached: the quote waits for it.
+    const nextDay = new LiveBarAccumulator();
+    const tomorrow = quote("17:18:20", 84.53, 120_000, { lastUpdated: at("17:18:20") + 24 * 60 * 60_000 });
+    expect(nextDay.apply(history, tomorrow, { now: tomorrow.lastUpdated, resolution: "1m", exchange: "NASDAQ" })).toBe(history);
+    expect(nextDay.takeReconcileRequest()).toBe(true);
   });
 
   test("extended-hours prints never form intraday bars the regular-session history cannot confirm", () => {

@@ -287,24 +287,23 @@ describe("appendLiveQuotePoint", () => {
     expect(extended.at(-1)?.close).toBe(131);
   });
 
-  test("does not bridge a missing intraday history window with one synthetic candle", () => {
+  test("ends intraday bars that lag on their own day at the regular-session quote, not an earlier day's", () => {
+    // Minute bars once came through 12:12 New York while the stock traded at 84.53 at 12:18: dropping the quote
+    // left the 12:12 close as the price.
     const history: PricePoint[] = [
-      { date: new Date("2026-07-22T14:49:00Z"), close: 347.73 },
-      { date: new Date("2026-07-22T14:50:00Z"), close: 347.76 },
-      { date: new Date("2026-07-22T14:51:00Z"), close: 347.68 },
+      { date: new Date("2026-11-20T17:11:00Z"), open: 85.3, high: 85.4, low: 85.2, close: 85.2666 },
+      { date: new Date("2026-11-20T17:12:00Z"), open: 85.27, high: 85.3, low: 84.9, close: 85.02 },
     ];
+    const quote = quoteFixture({ symbol: "ANT", price: 84.53, lastUpdated: Date.parse("2026-11-20T17:18:20Z") });
+    const now = Date.parse("2026-11-20T17:18:21Z");
 
-    const extended = appendLiveQuotePoint(
-      history,
-      quoteFixture({
-        symbol: "GOOG",
-        price: 346.27,
-        lastUpdated: Date.parse("2026-07-22T18:52:00Z"),
-      }),
-      { now: Date.parse("2026-07-22T18:53:00Z") },
-    );
+    expect(appendLiveQuotePoint(history, quote, { now, mode: "ohlc", resolution: "1m", exchange: "NASDAQ" }).at(-1))
+      .toEqual({ date: new Date("2026-11-20T17:18:20Z"), open: 84.53, high: 84.53, low: 84.53, close: 84.53 });
+    expect(appendLiveQuotePoint(history, quote, { now }).at(-1)).toEqual({ date: new Date("2026-11-20T17:18:20Z"), close: 84.53 });
 
-    expect(extended).toBe(history);
+    // Bars that stopped on an earlier day are a session the history has not reached: no one point bridges it.
+    const earlier = history.map((point) => ({ ...point, date: new Date(point.date.getTime() - 24 * 60 * 60_000) }));
+    expect(appendLiveQuotePoint(earlier, quote, { now })).toBe(earlier);
   });
 
   test("does not append a live quote tail with a likely unit mismatch", () => {
