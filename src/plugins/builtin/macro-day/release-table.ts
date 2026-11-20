@@ -5,9 +5,9 @@ export const MACRO_RELEASE_TABLE: {
   coveredThrough: string;
   days: Record<"cpi" | "jobs" | "fomc", Record<number, readonly string[]>>;
 } = {
-  checkedAt: "2026-11-11",
+  checkedAt: "2026-11-20",
   /** The last day the lists are complete for: later sessions are left out, release day or not. */
-  coveredThrough: "2026-11-11",
+  coveredThrough: "2026-11-19",
   days: {
     // BLS Consumer Price Index, 8:30 ET.
     cpi: {
