@@ -166,6 +166,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           )}
           <Text
             fg={state.replyMetaColor}
+            data-gloom-role="chat-message-reply-quote"
             style={{
               flex: "1 1 0",
               minWidth: 0,
