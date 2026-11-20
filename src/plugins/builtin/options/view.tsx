@@ -1118,7 +1118,6 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         reportEveryRow
         rootWidth={Math.max(1, width - 2 + inset * 2)}
         rootHeight={tableHeight}
-        columnGap={0}
         horizontalPadding={inset}
         scrollToIndex={selectedStrikeIdx >= 0 ? selectedStrikeIdx : undefined}
         scrollToIndexAlign={scrollToIndexAlign}

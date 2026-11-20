@@ -588,7 +588,7 @@ test("a chain that gives up fields fits as drawn, its last put column whole, and
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
     getOptionsChain: async () => makeChain([100, 101], 101),
   })));
-  for (const width of [100, 103, 105, 106]) {
+  for (const width of [115, 118, 120, 121]) {
     await act(async () => {
       await tui.render(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} showFooter width={width} height={16} />,
         { width, height: 16 });
@@ -599,10 +599,25 @@ test("a chain that gives up fields fits as drawn, its last put column whole, and
     expect(header.trimEnd()).toMatch(/P ASK\s+P BID$/);
     const bodyScroll = tui.setup().renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable | undefined;
     expect(bodyScroll?.horizontalScrollBar.visible).toBe(false);
-    // Below 106 columns the last trade gives way on both sides, and the footer says one field is hidden.
-    expect(header.includes("C LAST")).toBe(width >= 106);
-    expect(/1 (field )?hidden/.test(lines.join("\n"))).toBe(width < 106);
+    // Below 121 columns the last trade gives way on both sides, and the footer says one field is hidden.
+    expect(header.includes("C LAST")).toBe(width >= 121);
+    expect(/1 (field )?hidden/.test(lines.join("\n"))).toBe(width < 121);
   }
+});
+
+// The chain packed its columns with no gap, so a value as wide as its column ran into the one before it
+// (DES UAL at 80 columns: "-.035189.0%", a put's delta and IV read as one number).
+test("a value as wide as its column keeps a blank before the next", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getOptionsChain: async () => makeChain([12_345, 12_350], 12_350),
+  })));
+  await act(async () => {
+    await tui.render(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={12_350} width={80} height={16}
+      settings={{ optionColumnIds: ["bid", "ask"] }} />, { width: 80, height: 16 });
+  });
+  await renderSettled();
+  // Each quote takes all 7 cells of its column.
+  expect(tui.frame()).toMatch(/1234\.45 1234\.55 +12,345 1234\.55 1234\.45/);
 });
 
 /** `shot OMON SPY --columns gamma,openInterest,volume` printed OI counts with no session: the date gave way in a crowded footer. */

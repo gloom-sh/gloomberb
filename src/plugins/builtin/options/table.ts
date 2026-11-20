@@ -3,7 +3,7 @@ import type { DataTableCell } from "../../../components";
 import type { OptionContract, OptionsChain } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, blendForSeparation, contrastRatio } from "../../../theme/color-utils";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { getTableWidth, TABLE_COLUMN_GAP } from "../../../components/ui/table-layout";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
@@ -130,10 +130,10 @@ const OPTION_FIELD_DROP_ORDER: readonly OptionFieldId[] = [
 /**
  * Cells the terminal chain draws with these fields: each column as the table
  * draws it, widened to its header and sort mark ("C LAST" takes 8 cells, not
- * its field's 7), with no gap or padding between them, as the pane lays it out.
+ * its field's 7), and the table's gap after each, with no padding.
  */
 function optionChainWidth(fields: readonly OptionFieldId[]): number {
-  return getTableWidth(createOptionColumns(fields), 0, 0);
+  return getTableWidth(createOptionColumns(fields), TABLE_COLUMN_GAP, 0);
 }
 
 /**
