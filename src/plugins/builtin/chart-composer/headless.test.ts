@@ -444,7 +444,7 @@ test("a chart of daily bars beside a monthly FRED series draws the newest figure
   }
 });
 
-test("a daily FRED series beside monthly bars keeps its days after the newest bar's 1st, each series dated by its own last day", async () => {
+test("a daily economic series beside monthly bars keeps its days after the newest bar's 1st, each series dated by its own last day", async () => {
   const monthly = ["2026-09-01", "2026-10-01", "2026-11-01"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 20.4, high: 20.6, low: 20.3, close: 20.4 + index / 100 }));
   const days = ["2026-10-29", "2026-10-30", "2026-11-02", "2026-11-18", "2026-11-19"];
   const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("BKLN:NYSEARCA, FRED:BAMLH0A0HYM2"), "chart-composer", { rangePreset: "ALL", chartResolution: "1mo" });

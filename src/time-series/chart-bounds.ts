@@ -254,7 +254,7 @@ export function comparisonDisplayBounds(bounds: DateBounds, comparison: PriceCom
  *
  * It never moves back past a newer observation of another series: a weekly or
  * monthly bar is dated at its period's start (BKLN's November bar at 1 Nov), and
- * a daily series beside it (FRED's high-yield spread, observed through 19 Nov)
+ * a daily series beside it (a high-yield spread, observed through 19 Nov)
  * would otherwise lose every day after that date.
  */
 export function followLatestMarketObservation(
