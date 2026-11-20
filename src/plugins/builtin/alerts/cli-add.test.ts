@@ -201,7 +201,7 @@ test("a price alert says what delivers it, and the app is the one thing that alw
   // A level the price is already past goes off at the next check, judged on the price the alert is checked on
   // (250), not the after-hours print (300); crosses waits for the next move through the level.
   const met = await addAlert(["AAPL", "above", "240"]);
-  expect(met.printed!.options!.text!(met.printed!.result.data)).toContain("Last price 250.00, already above 240.00, so it goes off at the next check.");
+  expect(met.printed!.options!.text!(met.printed!.result.data)).toContain("Last price 250.00 USD · Thu 5 Nov 22:00 UTC, already above 240.00, so it goes off at the next check.");
   expect(met.printed!.result.data).toMatchObject({ alreadyMet: true });
   for (const args of [["AAPL", "above", "260"], ["AAPL", "crosses", "240"]]) {
     const pending = await addAlert(args);
