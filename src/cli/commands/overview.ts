@@ -993,7 +993,7 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
   const observesDays = fredObservesDays(data.info?.frequency);
   const newestDate = rows.reduce<string | null>((newest, row) => (row.value != null && (!newest || row.date > newest) ? row.date : newest), null);
   // A newest value FRED does not list yet names its publisher, Treasury for a yield; FRED's own stay "FRED".
-  const ahead = fredProvenance(data.observations.filter((observation) => observation.date === newestDate), seriesId);
+  const ahead = fredProvenance(rows.filter((row) => row.value != null && row.date === newestDate), seriesId);
   // FRED names the series' publisher when Gloom Cloud passes it on, and when it last updated the series.
   const publisher = ahead?.publisher ?? fredPublisher(seriesId, data.info?.source);
   const publishedAt = ahead ? ahead.publishedAt : fredPublicationTime(data.info, newestDate);

@@ -217,12 +217,13 @@ test("nothing on or after --start names the latest observation, and fails a CSV 
 
   // A start on a day the bond market was shut shows the day before and says why.
   serveSeries((query) => ({
-    observations: query.get("startDate") ? [] : [{ date: "2026-11-10", value: 4.11 }],
+    observations: query.get("startDate") ? [] : [{ date: "2026-11-10", value: 4.11, publisher: "U.S. Treasury", publishedAt: "2026-11-10" }],
     info: { id: "DGS10", units: "Percent", frequency: "Daily", observationStart: "1962-01-02" },
   }));
   const closed = await runFred(["DGS10", "--start", "2026-11-11"]);
   expect(closed.text).toContain("2026-11-10");
   expect(closed.text).toContain("Wed 11 Nov: US bond market closed (Veterans Day); showing Tue 10 Nov");
+  expect(closed.result.freshness).toMatchObject({ source: "U.S. Treasury, published 2026-11-10", publishedAt: "2026-11-10" });
   expect(closed.result.metadata).not.toHaveProperty("latestObservation");
 });
 
