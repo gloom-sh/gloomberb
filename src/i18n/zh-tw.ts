@@ -1618,6 +1618,7 @@ export const zhTW: Record<string, string> = {
   "Friend or colleague": "朋友或同事",
   "Article or newsletter": "文章或電子報",
   "Where?": "在哪裡？",
+  "Which account or post?": "哪個帳號或貼文？",
   "Skip": "略過",
   "Equities": "股票",
   "Futures & commodities": "期貨與大宗商品",

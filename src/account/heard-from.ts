@@ -47,7 +47,10 @@ export function subscribeHeardFromDue(listener: () => void): () => void {
   };
 }
 
-/** What the person picked: an answer (Other with its note), or null for Skip. */
+/**
+ * What the person picked: an answer (Other, or an Instagram, TikTok, YouTube or
+ * X answer, with its note), or null for Skip.
+ */
 export type HeardFromChoice = { answer: HeardFromAnswer; note?: string } | null;
 
 export interface HeardFromQuestionDeps {
@@ -55,8 +58,12 @@ export interface HeardFromQuestionDeps {
   reportShown(): Promise<void>;
   answer(answer: HeardFromAnswer, note?: string): Promise<void>;
   skip(): Promise<void>;
-  /** Shows the question and resolves with the choice; `shown` is called once it is on screen. */
-  ask(shown: () => void): Promise<HeardFromChoice>;
+  /**
+   * Shows the question and resolves with the choice. `shown` is called once it
+   * is on screen; `picked` the moment an answer that asks "Which account or
+   * post?" is picked, so the answer is kept before the note is written.
+   */
+  ask(shown: () => void, picked: (answer: HeardFromAnswer) => void): Promise<HeardFromChoice>;
 }
 
 export type HeardFromOutcome = "not-asked" | "answered" | "skipped";
@@ -65,6 +72,10 @@ export type HeardFromOutcome = "not-asked" | "answered" | "skipped";
  * Asks when the service says to, and keeps the answer. Never throws: a
  * failed read, an older service (its 404) or invalid data ask nothing, and a
  * failed write is only logged, as the question has already closed.
+ *
+ * An answer picked ahead of its note is sent at once. Closing the note then
+ * keeps that answer (never a skip); a written note follows with the same
+ * answer.
  */
 export async function runHeardFromQuestion(deps: HeardFromQuestionDeps): Promise<HeardFromOutcome> {
   let state: HeardFromState;
@@ -81,12 +92,24 @@ export async function runHeardFromQuestion(deps: HeardFromQuestionDeps): Promise
     reported = true;
     deps.reportShown().catch(logFailure("heard-from", "Reporting the question shown failed"));
   };
+  let kept: HeardFromAnswer | null = null;
+  const picked = (answer: HeardFromAnswer) => {
+    if (kept) return;
+    kept = answer;
+    deps.answer(answer).catch(logFailure("heard-from", "Saving the answer failed"));
+  };
   let choice: HeardFromChoice;
   try {
-    choice = await deps.ask(shown);
+    choice = await deps.ask(shown, picked);
   } catch (error) {
     logFailure("heard-from", "Showing the question failed")(error);
-    return "not-asked";
+    return kept ? "answered" : "not-asked";
+  }
+  if (kept) {
+    if (choice?.answer === kept && choice.note) {
+      deps.answer(kept, choice.note).catch(logFailure("heard-from", "Saving the note failed"));
+    }
+    return "answered";
   }
   if (!choice) {
     deps.skip().catch(logFailure("heard-from", "Saving the skip failed"));

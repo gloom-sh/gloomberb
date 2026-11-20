@@ -1616,6 +1616,7 @@ export const ko: Record<string, string> = {
   "Friend or colleague": "친구 또는 동료",
   "Article or newsletter": "기사 또는 뉴스레터",
   "Where?": "어디서?",
+  "Which account or post?": "어떤 계정이나 게시물인가요?",
   "Skip": "건너뛰기",
   "Equities": "주식",
   "Futures & commodities": "선물 및 원자재",
