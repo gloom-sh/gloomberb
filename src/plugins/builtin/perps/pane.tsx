@@ -1,5 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { PerpBoardRow, PerpMarketPayload } from "../../../api-client/perps";
@@ -30,6 +30,13 @@ import { aprFormula, ASSET_FILTERS, BOARD_SORTS, boardColumns, collectedVenueCou
   HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isAssetTab, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
   positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueAprSummary, venueLabel, venueName, venuesOf, type HistoryMetric,
   type PerpColumnId, type PerpTab, type RankingKey } from "./model";
+
+/** Parent actions and tab routing depend on selection identity, not changing quote values. */
+function sameListSelection(a: PerpBoardRow | null, b: PerpBoardRow | null): boolean {
+  return a === b || !!a && !!b
+    && a.marketId === b.marketId && a.baseAsset === b.baseAsset && a.assetClass === b.assetClass
+    && a.sourceUrl === b.sourceUrl && underlyingTicker(a) === underlyingTicker(b);
+}
 
 const NO_ROWS: readonly PerpBoardRow[] = [];
 const rowItself = (row: PerpBoardRow) => row;
@@ -399,7 +406,14 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   // The row under a list's cursor, and the last one any list had: an empty list keeps the market it was given.
   const [listRow, setListRow] = useState<PerpBoardRow | null>(null);
   const [picked, setPicked] = useState<PerpBoardRow | null>(null);
-  const pick = useCallback((row: PerpBoardRow | null) => { setListRow(row); if (row) setPicked(row); }, []);
+  // The board needs every quote tick; its parent only needs selection metadata.
+  // Keep the latest row for actions without rerendering the entire pane on a price tick.
+  const latestListRow = useRef<PerpBoardRow | null>(null);
+  const pick = useCallback((row: PerpBoardRow | null) => {
+    latestListRow.current = row;
+    setListRow((previous) => sameListSelection(previous, row) ? previous : row);
+    if (row) setPicked((previous) => sameListSelection(previous, row) ? previous : row);
+  }, []);
   const [openingRange] = usePaneSettingValue("days", "7");
   const [range, setRange] = usePluginPaneState<string>("perps:range", openingRange);
   const [openingMetric] = usePaneSettingValue("metric", "funding");
@@ -426,6 +440,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
     if (assetOnly && isMarketTab(next)) setSearch(compareAsset);
     else if (carried && isMarketTab(next) && !marketTab) setSearch(carried.marketId);
     if (carried && isAssetTab(next) && !assetOnly) setCompareAsset(carried.baseAsset);
+    latestListRow.current = null;
     setListRow(null);
     setTab(next);
   }, [assetOnly, carried, compareAsset, marketTab, setSearch, setCompareAsset, setTab]);
@@ -442,7 +457,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const underlying = current ? underlyingTicker(current) : null;
   const preview = marketTab ? data?.access === "preview" : !access.hasProAccess;
   const hints: PaneHint[] = [
-    ...(current && marketAction ? [{ id: marketAction.id, key: marketAction.key, label: marketAction.label, onPress: () => marketAction.onPress(current) }] : []),
+    ...(current && marketAction ? [{ id: marketAction.id, key: marketAction.key, label: marketAction.label, onPress: () => marketAction.onPress(marketTab ? current : latestListRow.current ?? current) }] : []),
     ...(current && getSharedRegistry()?.commands.has("set-event-alert") ? [{ id: "alert", key: "a", label: "lert", onPress: () => {
       if (!openFormModal({ kind: "plugin-command", commandId: "set-event-alert", values: { event: "perps_threshold", "perps_threshold:marketId": current.marketId } })) notify({ body: "Open this from the main window.", type: "info" });
     } }] : []),
