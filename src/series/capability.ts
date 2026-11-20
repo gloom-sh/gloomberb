@@ -1,7 +1,7 @@
 import { chartSeriesProvider } from "../capabilities/factories";
 import { chartSeriesResolveOutputSchema, REGISTERED_SERIES_SOURCE_ID } from "../capabilities/chart-series";
-import type { CapabilityOperation, ChartSeriesCapability, PluginCapability } from "../capabilities/types";
-import type { ResolvedSeries, ChartViewportSpec } from "../time-series/types";
+import type { CapabilityOperation, ChartSeriesCapability, ChartSeriesResolveRequest, PluginCapability } from "../capabilities/types";
+import type { ResolvedSeries } from "../time-series/types";
 import type { SeriesRegistry } from "./registry";
 import { resolveLoadedSeries } from "./resolve";
 import type { LoadedSeriesDefinition, SeriesCatalogEntry } from "./types";
@@ -12,14 +12,14 @@ export const SERIES_CATALOG_CAPABILITY_ID = "series-catalog";
 export async function resolveRegisteredSeries(
   registry: SeriesRegistry,
   capabilityId: string,
-  seriesId: string,
-  viewport: ChartViewportSpec,
+  request: Pick<ChartSeriesResolveRequest, "seriesId" | "viewport" | "barSize">,
   signal?: AbortSignal,
 ): Promise<ResolvedSeries | null> {
-  const found = registry.findLoaded(capabilityId, seriesId);
+  const found = registry.findLoaded(capabilityId, request.seriesId);
   if (!found) return null;
   const resolved = await resolveLoadedSeries(found.series.definition as LoadedSeriesDefinition, {
-    viewport,
+    viewport: request.viewport,
+    ...(request.barSize ? { barSize: request.barSize } : {}),
     ...(found.ticker ? { ticker: found.ticker } : {}),
     ...(found.line ? { line: found.line } : {}),
     ...(signal ? { signal } : {}),
@@ -37,9 +37,9 @@ export function registeredSeriesCapability(registry: SeriesRegistry, namespace: 
     id: namespace,
     name: "Registered series",
     provider: {
-      resolve: async ({ seriesId, viewport, signal }) => {
-        const resolved = await resolveRegisteredSeries(registry, namespace, seriesId, viewport, signal);
-        if (!resolved) throw new Error(`No series ${namespace}:${seriesId} is registered.`);
+      resolve: async ({ signal, ...request }) => {
+        const resolved = await resolveRegisteredSeries(registry, namespace, request, signal);
+        if (!resolved) throw new Error(`No series ${namespace}:${request.seriesId} is registered.`);
         return resolved;
       },
     },

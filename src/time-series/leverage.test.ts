@@ -63,6 +63,13 @@ test("the line starts where the comparison does, not at the first bar loaded, an
   const weekly = resolveStudies([closes("fund", "TQQQ", TQQQ), { ...closes("index", "QQQ", QQQ), historyResolution: "1wk" }], studies(3), "1wk");
   expect(weekly.series).toEqual([]);
   expect(weekly.warnings[0]).toContain("3× daily needs daily bars");
+
+  // 2D bars are built from daily ones, so the served cadence still reads 1d: each bar holds two sessions all the same.
+  const built = resolveStudies([{ ...closes("fund", "TQQQ", TQQQ), barSize: "2d" }, { ...closes("index", "QQQ", QQQ), barSize: "2d" }], studies(3), "1d");
+  expect(built.series).toEqual([]);
+  expect(built.warnings).toEqual(expect.arrayContaining([expect.stringContaining("3× daily needs daily bars. Choose D bars.")]));
+  const onBuiltChart = resolveStudies([closes("fund", "TQQQ", TQQQ), closes("index", "QQQ", QQQ)], studies(3), "1d", undefined, undefined, "3d");
+  expect(onBuiltChart.series).toEqual([]);
 });
 
 test("in another currency the daily line moves with the FX once, as the fund does, and the decay is the same as in dollars", async () => {

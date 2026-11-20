@@ -8,7 +8,7 @@ import { mergePriceHistoryIntegrity, pricePointIntegrity, pricePointOpenWithheld
 import { getPricePointTimestamp } from "../utils/price-history";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import { isFiniteNumber } from "../utils/guards";
-import { chartBarSizeParts, chartBarSizeStepMs, type ChartBarSize } from "./resolution";
+import { chartBarSizeParts, chartBarSizeStepMs, type ChartBarSize, type ManualChartResolution } from "./resolution";
 import type { CustomChartResolution } from "./range";
 import type { ResolvedSeries } from "./types";
 
@@ -20,8 +20,18 @@ const SESSION_REUSE_MS = 22 * 3_600_000;
 export interface BarAggregationListing {
   symbol?: string;
   exchange?: string;
-  /** The bars include pre-market and after-hours trading: US sessions then start at 04:00 New York. */
+  /**
+   * The chart draws pre-market and after-hours trading: US sessions then start
+   * at 04:00 New York, the regular session's bars too, so a series built from
+   * the regular session alone falls on the same bars as the chart's.
+   */
   extendedHours?: boolean;
+  /**
+   * The bar size the source bars are in (`1m` for 5m bars), when the caller
+   * knows it: a thinly traded listing's bars are that long even where no two
+   * of them are adjacent. Read from the shortest gap between them otherwise.
+   */
+  resolution?: ManualChartResolution;
 }
 
 /** A built bar. It carries the integrity of a source bar whose prices contradict each other, so the bar is left blank as that one is. */
@@ -95,8 +105,8 @@ function calendarBucketKey(
   return `${weekYear}:${Math.floor((monday - firstMonday(weekYear)) / (7 * DAY_MS) / count)}`;
 }
 
-/** The shortest step between source bars, which says how long one of them is. */
-function sourceStepMs(times: readonly number[]): number {
+/** The shortest step between source bars, which says how long one of them is when nothing else does. */
+function inferredStepMs(times: readonly number[]): number {
   let step = Number.POSITIVE_INFINITY;
   for (let index = 1; index < times.length; index += 1) {
     const gap = times[index]! - times[index - 1]!;
@@ -110,14 +120,17 @@ function sourceStepMs(times: readonly number[]): number {
  * open, the highest high, the lowest low, the last close and the summed volume
  * of the source bars in each. Minute and hour bars start at the session's
  * open and every `size` after it, so a 4h bar on a US stock runs 09:30 to
- * 13:30 and the session's last one is shorter; a future's sessions open at its
+ * 13:30 and the session's last one is shorter (04:00 to 08:00 with extended
+ * hours, whose source bars start on the clock); a future's sessions open at its
  * venue's published time (17:00 Chicago on CME Globex), and a market without
  * known hours starts its days at midnight UTC. Day bars count the venue's
  * trading days from 1 January (every day for a coin), week bars the weeks from
  * the year's first Monday and month bars from January, starting again each
  * year, so a bar never moves when older history loads. A period without source
  * bars has no bar; one whose source bars are all reported gaps stays a gap.
- * A size the bars are already in returns them as they are.
+ * Bars already in `size` or longer (`listing.resolution` says) are returned
+ * as they are; without it, so are bars that each start a bar of `size` alone.
+ * Every other bar starts on its bucket's start, however sparse the source.
  */
 export function aggregatePriceBars(
   points: readonly PricePoint[],
@@ -129,12 +142,14 @@ export function aggregatePriceBars(
     .map((point) => ({ point, time: getPricePointTimestamp(point) }))
     .filter((entry) => Number.isFinite(entry.time))
     .sort((left, right) => left.time - right.time);
-  if (!parts || sorted.length === 0) return sorted.map((entry) => entry.point);
+  const known = listing.resolution ? chartBarSizeStepMs(listing.resolution) : Number.NaN;
+  if (!parts || sorted.length === 0 || known >= chartBarSizeStepMs(size)) return sorted.map((entry) => entry.point);
   const intraday = parts.unit === "m" || parts.unit === "h";
   const sizeMs = parts.count * (parts.unit === "h" ? 3_600_000 : 60_000);
   const times = sorted.map((entry) => entry.time);
-  const step = intraday ? sourceStepMs(times) : 0;
-  if (intraday && step >= sizeMs) return sorted.map((entry) => entry.point);
+  // Inferred, a source bar is never taken to be longer than the bars built
+  // from it: no two of a sparse listing's minute bars may be adjacent.
+  const step = !intraday ? 0 : Number.isFinite(known) ? known : Math.min(inferredStepMs(times), sizeMs);
   const timeZone = listingTimeZone(listing.symbol, listing.exchange) ?? "UTC";
   const tradingDaysBefore = parts.unit === "d" ? tradingDayCounter(listing) : null;
 
@@ -153,6 +168,8 @@ export function aggregatePriceBars(
 
   const buckets: Bucket[] = [];
   let current: Bucket | undefined;
+  // Bars of an unknown size that each start their own bucket may already be in `size`.
+  let alreadyBuilt = intraday && !Number.isFinite(known);
   for (const { point, time } of sorted) {
     let key: string;
     let start = time;
@@ -166,9 +183,13 @@ export function aggregatePriceBars(
     if (!current || current.key !== key) {
       current = { key, time: start, bars: [], gaps: [] };
       buckets.push(current);
+      alreadyBuilt &&= start === time;
+    } else {
+      alreadyBuilt = false;
     }
     (isFiniteNumber(point.close) ? current.bars : current.gaps).push(point);
   }
+  if (alreadyBuilt) return sorted.map((entry) => entry.point);
   return buckets.map((bucket) => buildBar(bucket, intraday));
 }
 

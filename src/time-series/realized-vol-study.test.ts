@@ -134,9 +134,12 @@ test("auto charts fetch daily bars over long ranges and compute warmup before vi
   expect(first.value).toBeCloseTo(realizedVolatility(prices.filter((point) => point.date <= first.date), 30)! * 100, 10);
   const longRange = await resolveChartSpecData({ ...base, viewport: { range: "ALL", resolution: "auto" } }, sources);
   expect(longRange.resolution).toBe("1d");
-  const manual = await resolveChartSpecData({ ...base, viewport: { ...base.viewport, resolution: "1wk" } }, sources);
-  expect(manual.errors.some((error) => error.includes("requires daily prices"))).toBe(true);
-  expect(manual.series.some((series) => series.id === base.studies[0]!.id)).toBe(false);
+  // Weekly bars, and 2D bars built from the daily ones it would read: neither chart is in daily bars.
+  for (const resolution of ["1wk", "2d"] as const) {
+    const manual = await resolveChartSpecData({ ...base, viewport: { ...base.viewport, resolution } }, sources);
+    expect(manual.errors.some((error) => error.includes("requires daily prices"))).toBe(true);
+    expect(manual.series.some((series) => series.id === base.studies[0]!.id)).toBe(false);
+  }
 });
 
 test("provider bars mislabeled as daily cannot annualize weekly or intraday returns", async () => {

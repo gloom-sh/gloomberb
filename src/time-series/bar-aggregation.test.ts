@@ -67,6 +67,35 @@ describe("aggregatePriceBars", () => {
     expect(Number.isNaN(withGap[1]!.close)).toBe(true);
   });
 
+  test("a thinly traded listing's minute bars build bars that start on the open's boundaries, no two of them adjacent", () => {
+    // 2026-10-16 New York: trades at 09:37, 09:52, 10:44 and 11:13 only.
+    const sparse = ["13:37", "13:52", "14:44", "15:13"].map((time, index) => ({
+      date: new Date(`2026-10-16T${time}:00Z`), open: 10 + index, high: 11 + index, low: 9 + index, close: 10.5 + index, volume: 100,
+    }));
+    const listing = { symbol: "TINY", exchange: "NASDAQ" };
+    const fives = ["2026-10-16T13:35:00.000Z", "2026-10-16T13:50:00.000Z", "2026-10-16T14:40:00.000Z", "2026-10-16T15:10:00.000Z"];
+    expect(aggregatePriceBars(sparse, "5m", { ...listing, resolution: "1m" }).map(iso)).toEqual(fives);
+    // Told nothing, the 15 minutes between its closest trades are no bar's length: the bars still start on the boundaries.
+    expect(aggregatePriceBars(sparse, "5m", listing).map(iso)).toEqual(fives);
+    const hours = aggregatePriceBars(sparse, "1h", { ...listing, resolution: "1m" });
+    expect(hours.map(iso)).toEqual(["2026-10-16T13:30:00.000Z", "2026-10-16T14:30:00.000Z"]);
+    expect(hours[1]).toMatchObject({ open: 12, high: 14, low: 11, close: 13.5, volume: 200 });
+  });
+
+  test("with extended hours, 4h bars start at the 04:00 pre-market open, and bars built from the regular session alone fall on them", () => {
+    // The chart's extended-hours source bars start on the clock: 04:00 to 19:00 New York (08:00 to 23:00 UTC).
+    const extended = hourly("2026-10-16T08:00:00Z", Array.from({ length: 16 }, () => [100, 101, 99, 100.5, 10] as [number, number, number, number, number]));
+    const chart = aggregatePriceBars(extended, "4h", { symbol: "AAPL", exchange: "NASDAQ", extendedHours: true, resolution: "1h" });
+    expect(chart.map(iso)).toEqual(["2026-10-16T08:00:00.000Z", "2026-10-16T12:00:00.000Z", "2026-10-16T16:00:00.000Z", "2026-10-16T20:00:00.000Z"]);
+    // A series computed from the regular session's bars (09:30 to 16:00), told the chart's session, lands on the chart's bars.
+    const regular = hourly("2026-10-16T13:30:00Z", Array.from({ length: 7 }, () => [100, 101, 99, 100.5, 10] as [number, number, number, number, number]));
+    const series = aggregatePriceBars(regular, "4h", { symbol: "AAPL", exchange: "NASDAQ", extendedHours: true, resolution: "1h" });
+    expect(series.map(iso)).toEqual(["2026-10-16T12:00:00.000Z", "2026-10-16T16:00:00.000Z"]);
+    // Not told, it starts at 09:30 and falls between them.
+    expect(aggregatePriceBars(regular, "4h", { symbol: "AAPL", exchange: "NASDAQ", resolution: "1h" }).map(iso))
+      .toEqual(["2026-10-16T13:30:00.000Z", "2026-10-16T17:30:00.000Z"]);
+  });
+
   test("10m bars from 5m bars pair up from the open", () => {
     const fives = hourly("2026-10-16T13:30:00Z", [[1, 2, 0.5, 1.5, 1], [1.5, 3, 1, 2, 2], [2, 2.5, 1.8, 2.2, 3]], 5 * 60_000);
     const built = aggregatePriceBars(fives, "10m", { symbol: "AAPL", exchange: "NASDAQ" });

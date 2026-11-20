@@ -884,21 +884,24 @@ async function resolveChartSpecPass(
           throw new Error(uncoveredCapabilityMessage(seriesSpec.source.capabilityId, seriesSpec.source.seriesId));
         }
         const capabilityBounds = capabilityRequestBounds(requestVisibleBounds, initialVisibleBounds, movedWindow);
+        const dateWindow = capabilityBounds.start !== null && capabilityBounds.end !== null
+          ? { start: new Date(capabilityBounds.start).toISOString(), end: new Date(capabilityBounds.end).toISOString() }
+          : spec.viewport.dateWindow && { start: spec.viewport.dateWindow.start, end: spec.viewport.dateWindow.end };
+        // What a plugin can answer for: bars sources serve, so a size the chart builds (4h) goes as the bars it
+        // builds it from (1h) and the size itself, and the session whose bars the chart draws. A loaded series
+        // is asked the same (`SeriesLoadRequest`). Currency and total return are the chart's securities' own.
         const capabilityViewport: ChartSpec["viewport"] = {
-          ...spec.viewport,
-          ...(capabilityBounds.start !== null && capabilityBounds.end !== null
-            ? {
-                dateWindow: {
-                  start: new Date(capabilityBounds.start).toISOString(),
-                  end: new Date(capabilityBounds.end).toISOString(),
-                },
-              }
-            : {}),
+          range: spec.viewport.range,
+          resolution: isCustomChartResolution(spec.viewport.resolution) ? initialResolution : spec.viewport.resolution,
+          ...(dateWindow ? { dateWindow } : {}),
+          ...(spec.viewport.maxPoints !== undefined ? { maxPoints: spec.viewport.maxPoints } : {}),
+          ...(spec.viewport.extendedHours === true ? { extendedHours: true } : {}),
         };
-        const key = chartSeriesSourceKey(seriesSpec.source, capabilityViewport);
+        const barSize = builtBarSize ?? undefined;
+        const key = chartSeriesSourceKey(seriesSpec.source, capabilityViewport, barSize);
         let pending = cache.capabilitySeriesByRequest.get(key);
         if (!pending) {
-          pending = sources.resolveCapabilitySeries(seriesSpec.source, capabilityViewport, seriesSpec);
+          pending = sources.resolveCapabilitySeries(seriesSpec.source, capabilityViewport, seriesSpec, barSize);
           cache.capabilitySeriesByRequest.set(key, pending);
           cache.revision += 1;
         }
@@ -1025,7 +1028,7 @@ async function resolveChartSpecPass(
       if (builtBars) {
         merged = { ...merged, priceHistory: aggregatePriceBars(merged.priceHistory, builtBars, {
           symbol: resolvedSource.instrument.symbol, exchange: resolvedSource.instrument.exchange,
-          extendedHours: history?.extendedHours === true,
+          extendedHours: history?.extendedHours === true, resolution: initialResolution,
         }) };
       }
       if ((source.fieldId === "fundamental.eps" || source.fieldId === "valuation.trailingPE")
@@ -1211,7 +1214,7 @@ async function resolveChartSpecPass(
   // Study outputs are appended by the pure engine before the final viewport clip.
   if (spec.studies.length > 0) {
     const studyResult = resolveStudies(calculationSeries, spec.studies, resolution, historicalPriceSeries,
-      studyAnchors(calculationSeries, priceComparison, comparisonBounds));
+      studyAnchors(calculationSeries, priceComparison, comparisonBounds), builtBarSize ?? undefined);
     resolved = [
       ...resolved,
       ...applyStudyPresentationTransforms(

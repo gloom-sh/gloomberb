@@ -1,7 +1,7 @@
 import type { HistoryRetention } from "../sources/history-retention";
 import type { PriceHistoryResult } from "../types/price-history";
 import { LiveBarAccumulator } from "./live-bars";
-import type { ChartResolutionSupport, ManualChartResolution } from "./resolution";
+import type { ChartBarSize, ChartResolutionSupport, ManualChartResolution } from "./resolution";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
 import type { CorporateActionsData, EarningsAction, Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
 import type { EarningsHistoryPayload } from "../api-client/earnings";
@@ -49,11 +49,16 @@ export interface ChartResolveSources {
     rateNotes?: readonly string[];
     failures: readonly string[];
   }>;
-  /** Provider-neutral boundary for plugin-owned chart series. */
+  /**
+   * Provider-neutral boundary for plugin-owned chart series. `viewport`
+   * names bars sources serve; `barSize` is set when the chart builds its
+   * bars from them (`ChartSeriesResolveRequest`).
+   */
   resolveCapabilitySeries?: (
     source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>,
     viewport: ChartSpec["viewport"],
     spec: ChartSeriesSpec,
+    barSize?: ChartBarSize,
   ) => Promise<ResolvedSeries>;
 }
 

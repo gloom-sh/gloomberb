@@ -1,4 +1,4 @@
-import type { ManualChartResolution } from "../resolution";
+import type { ChartBarSize, ManualChartResolution } from "../resolution";
 import type { ChartStudySpec, ResolvedSeries } from "../types";
 import { studyMessageName } from "../series-name";
 import {
@@ -11,10 +11,21 @@ import {
 } from "../leverage";
 import { DECAY_COLORS, derivedPoint, outputSeries } from "./shared";
 
-/** The objective's line and its decay compound session returns: they need daily bars, whatever the chart's range. */
-export function dailyBarsIssue(spec: ChartStudySpec, input: ResolvedSeries, marketResolution: ManualChartResolution | undefined): string | null {
+/**
+ * The objective's line and its decay compound session returns: they need daily
+ * bars, whatever the chart's range. Bars built from daily ones (2D, 3D) are
+ * not: each holds several sessions. `barSize` is the size the chart builds.
+ */
+export function dailyBarsIssue(
+  spec: ChartStudySpec,
+  input: ResolvedSeries,
+  marketResolution: ManualChartResolution | undefined,
+  barSize?: ChartBarSize,
+): string | null {
   const resolution = input.historyResolution === undefined ? marketResolution : input.historyResolution;
-  if (input.nativeFrequency === "daily" && (resolution === undefined || resolution === "1d")) return null;
+  const built = input.barSize ?? barSize;
+  if (input.nativeFrequency === "daily" && (resolution === undefined || resolution === "1d")
+    && (built === undefined || built === "1d")) return null;
   return `${studyMessageName(spec)}: ${leverageFactorLabel(Number(spec.parameters.factor))} daily needs daily bars. Choose D bars.`;
 }
 

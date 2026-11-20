@@ -236,7 +236,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
       const name = this.plugins.get(found.series.pluginId)?.name ?? found.series.pluginId;
       return Promise.reject(new Error(`Turn on ${name} to chart ${found.series.definition.name}.`));
     }
-    return resolveRegisteredSeries(this.series, namespace, request.seriesId, request.viewport, signal)
+    return resolveRegisteredSeries(this.series, namespace, request, signal)
       .then((resolved) => {
         if (!resolved) throw new Error(`No series ${namespace}:${request.seriesId} is registered.`);
         return resolved;

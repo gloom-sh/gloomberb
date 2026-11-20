@@ -79,6 +79,14 @@ export interface SeriesLoadRequest {
    * `aggregatePriceBars`, so its points fall on the chart's bars.
    */
   barSize?: ChartBarSize;
+  /**
+   * Set when the chart draws minute or hour bars with pre-market and
+   * after-hours trading (a US listing's start at 04:00 New York, on the
+   * clock). A series computed from a ticker's bars asks for the same session
+   * and passes `extendedHours` to `aggregatePriceBars`, so its bars start
+   * where the chart's do, even when the source serves the regular session only.
+   */
+  extendedHours?: boolean;
   signal?: AbortSignal;
 }
 
