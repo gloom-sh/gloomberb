@@ -9,8 +9,15 @@ without a verified Pro entitlement. It never reads a credential file or saves th
 account response.
 
 The CLI catalog discovers the functions. A reviewed read-only pane set excludes
-account, generative, media and action surfaces. New panes or argument kinds need
-review and are reported as **missing**, not silently allowed. Catalog arguments,
+account, portfolio, alert and chat data, generative surfaces that spend model
+tokens, media and app surfaces, each skipped with its own reason. New panes or
+argument kinds need review and are reported as **missing**, not silently allowed.
+The function cards on gloom.sh are checked too, from the docs snapshot the app
+ships (`src/docs/snapshot.json`, refreshed by `scripts/update-docs-snapshot.ts`):
+a card with no catalog function gets a reviewed reason (an action, setting or
+layout command has no pane to capture) or is **missing**. TWIT is the X Feed's
+command-bar code; the catalog and `shot` know the pane as `x-feed`, measured
+with one X search (`$NVDA`) a run. Catalog arguments,
 examples, screenshot capability and the catalog's backing help examples determine
 inputs. Generic compatible equity functions get AAPL, PLPC, DWSN and 7203:JPX
 (large, small, micro and non-US sampling cohorts, not live market-cap assertions).
@@ -20,7 +27,8 @@ extra coverage; tabs, interactive details and all possible instruments are not
 exhaustively visited.
 
 OSA uses a read-only strategy example and SIW explicit symbols instead of an
-unseeded workspace. Numeric exchange-qualified BUZZ samples and unreviewed
+unseeded workspace. CAT searches `fed funds`, and VIEW reads MOST's most-active
+board through a spec of MOST's own columns. Numeric exchange-qualified BUZZ samples and unreviewed
 listed-option-IV cohorts for HVG/HVT are explicit unsupported lanes. Planning
 does not fetch coverage or infer that every small/non-US equity is incompatible.
 
@@ -70,9 +78,11 @@ blank when every row owed a value shows none: a row the pane marks as still
 waiting on it (ECO's ACTUAL before the release) is left out, and released rows
 with no figure still fail. Timeout, invalid output and command errors
 are separate findings. Exit 1 means a failure, missing review/input, or failed Pro
-preflight; skips and unsupported cases are always counted, never passes.
+preflight; skips, exclusions and unsupported cases are always counted, never passes.
 
-Visible social `@handles` are data, not reason codes; this exemption never applies
+Visible social `@handles` are data, not reason codes, and so is the visible text
+of panes made of third-party prose (HN story titles, X Feed posts), where a title
+can name a function such as `EVP_EncodeBlock()`; these exemptions never apply
 to state/error markers. Additional token-specific coverage/empty wording stays a
 non-pass finding. Negative-FCF reverse DCF is a narrowly verified unsupported
 mathematical input, not a general exemption for rendered errors. Missing listed
@@ -92,3 +102,29 @@ constant, never from a copy of the wording. A pane that rewords an empty state
 fails the test until the sweep's pattern follows, instead of turning an honest
 empty into a failure in the next live run. A new entry needs a case built the
 same way, and a pane that draws its wording inline exports it first.
+
+## Plugin lane
+
+`--lanes plugins` runs only the plugin lane, with no session and no Pro claim;
+`--lanes pro,plugins` runs both, the Pro lane first. The default is `pro`.
+Plugin functions come from the registry feed (`plugins.gloom.sh/registry.json`,
+read once without credentials) and from the function cards. A first-party
+plugin on the reviewed list in `data-sweep-plugins.ts` is measured with the
+inputs listed there, or skipped with its reviewed reason (brokers, your own
+accounts, generative or media). A gloom-sh plugin not on the list is
+**missing** until reviewed, like a new pane. A plugin of any other owner, such
+as ADJ, is **excluded**: third-party plugin code never runs in this sweep. A
+plugin built into Gloom again is skipped for its built-in. A feed that cannot
+be read is itself missing; the reviewed plugins still run.
+
+The lane runs in its own freshly created profile under `~/.cache/gloom-smoke/`.
+Its children get an environment built from an allowlist, never a denylist:
+the path, locale, time zone and Chrome location, with the profile as `HOME`, so
+`GLOOMBERB_SESSION_TOKEN`, keys, proxies and agent sockets never sit beside
+plugin code, and git reads no user config. Each reviewed plugin is installed
+with `gloom install` from github.com/gloom-sh only (the installer lands on the
+commit the registry reviewed, where it pins one); anything else is refused, and
+a plugin folder nobody reviewed stops the lane. `results.json` records each
+installed plugin's commit. Captures, assessment and reports are the main
+lane's; a pane that shows its data only with a session is **unsupported**
+there, never given one. The profile is removed in `finally`.

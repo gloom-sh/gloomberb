@@ -29,7 +29,10 @@ import { hiloEmptyState } from "../../src/plugins/builtin/scanner/hilo-model";
 import { liveScanEmptyState } from "../../src/plugins/builtin/scanner/live-pane";
 import { shortWatchEmptyTitle } from "../../src/plugins/builtin/short-interest/watch-model";
 import { NO_CASHTAG_STATE } from "../../src/plugins/builtin/social-mentions/model";
-import { assessCapture, captureEvidence, EXPECTED_EMPTY, exampleArgs, planSweep, REVIEWED_EMPTY, runCommand, selectCases, type Assessment, type CommandResult } from "./data-sweep";
+import { parseViewSpecOr } from "../../src/plugins/builtin/custom-view/view-spec";
+import type { RegistryPlugin } from "../../src/plugins/marketplace/model";
+import { assessCapture, captureEvidence, EXPECTED_EMPTY, exampleArgs, functionCards, planSweep, REVIEWED_EMPTY, runCommand, selectCases, sessionlessAssessment, type Assessment, type CommandResult } from "./data-sweep";
+import { planPlugins, pluginInstallRef, pluginLaneEnv, REVIEWED_PLUGINS } from "./data-sweep-plugins";
 
 const entry = (changes: Partial<PaneCatalogEntry> = {}): PaneCatalogEntry => ({
   token: "ANR", paneId: "analyst-research", label: "Analysts", description: "", paneName: "Analysts", aliases: [], keywords: [], defaultSettings: {},
@@ -37,15 +40,47 @@ const entry = (changes: Partial<PaneCatalogEntry> = {}): PaneCatalogEntry => ({
     reportReadiness: "ready", screenshotReadiness: "live-dom", dataRequirements: [], limitations: [], options: [] }, ...changes,
 });
 
-test("every built-in catalog function has a reviewed safety decision and a concrete compatible input", async () => {
+// The registry feed's non-bundled plugins as it lists them, cut to the fields planning reads.
+const listed = (id: string, repo: string, codes: string[] = []) => ({ id, name: id, repo, tier: "official", bundled: false,
+  contributes: { panes: [], capabilities: [], broker: false, shortcuts: codes.map((code) => ({ code, name: code, description: "" })) } }) as unknown as RegistryPlugin;
+const FEED = [
+  listed("hackernews", "gloom-sh/gloom-hackernews", ["HN"]), listed("crypto-fear-greed", "gloom-sh/gloom-fear-greed-crypto", ["CFNG"]),
+  listed("growthepie", "gloom-sh/gloom-growthepie", ["GTP"]), listed("prediction-markets", "gloom-sh/gloom-prediction-markets", ["PM"]),
+  listed("polls", "gloom-sh/gloom-polls", ["POLL"]), listed("byok-ai", "gloom-sh/gloom-byok-ai"), listed("tv", "gloom-sh/gloom-tv", ["TV"]),
+  listed("substack", "gloom-sh/gloom-substack", ["SUB"]), listed("ibkr", "gloom-sh/gloom-ibkr"), listed("ibkr-gateway", "gloom-sh/gloom-ibkr-gateway"),
+  listed("aries", "gloom-sh/gloom-aries", ["ARA"]), listed("public", "gloom-sh/gloom-public"), listed("robinhood", "gloom-sh/gloom-robinhood"),
+  listed("simplefin", "gloom-sh/gloom-simplefin"), listed("fear-greed", "gloom-sh/gloom-fear-greed", ["FNG"]),
+  listed("adjacent-indices", "Lucas-Kohorst/gloomberb-adjacent"), listed("alpaca-data", "TestRxMD/gloom-alpaca-data"),
+];
+
+test("every gloom.sh function card and built-in function has a reviewed decision and a concrete compatible input", async () => {
   const fetch = spyOn(globalThis, "fetch").mockRejectedValue(new Error("Planning must stay offline"));
   const context = { config: createDefaultConfig("/synthetic/pane-data-sweep") } as MarketContext;
   const registry = await createPaneCatalog(context, getLoadablePlugins());
   try {
     const catalog = await buildPaneCatalogEntries(registry, context);
-    const plan = planSweep(catalog);
+    const cards = functionCards();
+    const plan = [...planSweep(catalog, cards), ...planPlugins(FEED, cards)];
     expect(plan.filter((item) => item.status === "missing")).toEqual([]);
-    expect(new Set(plan.map((item) => item.token)).size).toBe(catalog.length);
+    expect(new Set(planSweep(catalog).map((item) => item.token)).size).toBe(catalog.length);
+    // A card is covered by its own case, or by the catalog function it is an alias of (DES is T's).
+    const aliases = new Map(catalog.flatMap((entry) => entry.aliases.map((alias) => [alias.toUpperCase(), entry.token] as const)));
+    const named = new Set(plan.flatMap((item) => [item.token, item.code]));
+    expect(cards.filter((card) => !named.has(card.code) && !named.has(aliases.get(card.code) ?? "")).map((card) => card.code)).toEqual([]);
+    expect(cards.length).toBeGreaterThan(150);
+    // The surfaces that shared one generic skip: measured where read-only, otherwise each with its own reason.
+    const generic = "Account, action, generative, media, custom or non-market surface";
+    expect(plan.filter((item) => item.reason === generic)).toEqual([]);
+    for (const token of ["DIAG", "PF", "PORT", "ALRT", "CHAT", "ASKG"]) expect(plan.find((item) => item.token === token)).toMatchObject({ status: "skipped", reason: expect.any(String) });
+    for (const token of ["CAT", "MAP", "SRCH", "VIEW"]) expect(plan.find((item) => item.token === token)?.status).toBeUndefined();
+    expect(plan.find((item) => item.token === "CAT")?.args).toEqual(["fed", "funds"]);
+    expect(plan.find((item) => item.token === "SRCH")?.args).toEqual(["data", "center", "capex"]);
+    // TWIT is the X Feed's command-bar code; the catalog and `shot` know the pane as x-feed.
+    expect(plan.find((item) => item.code === "TWIT")).toMatchObject({ id: "TWIT/reviewed-input", token: "x-feed", args: ["$NVDA"] });
+    expect(plan.filter((item) => item.code === "TWIT" || item.token === "TWIT")).toHaveLength(1);
+    const view = parseViewSpecOr(plan.find((item) => item.token === "VIEW")!.args[0]);
+    expect("spec" in view && view.spec.source).toEqual({ kind: "inline", pane: "MOST" });
+    expect(plan.find((item) => item.token === "GL")).toMatchObject({ lane: "card", status: "skipped" });
     expect(plan.filter((item) => item.token === "ANR").map((item) => item.lane)).toEqual(["us-large", "us-small", "us-micro", "non-us"]);
     expect(plan.find((item) => item.token === "G")?.args.length).toBeGreaterThan(0);
     expect(plan.find((item) => item.token === "OSA")?.args).toEqual(["AAPL", "--strategy", "vertical", "--expiration", "2027-01-15"]);
@@ -65,13 +100,73 @@ test("every built-in catalog function has a reviewed safety decision and a concr
 test("new panes and argument kinds cannot silently become passes, and action/generative panes never run", () => {
   expect(planSweep([entry({ paneId: "new-pane" })])[0]?.status).toBe("missing");
   expect(planSweep([entry({ argKind: "new-kind" })])[0]?.status).toBe("missing");
-  for (const paneId of ["askg", "macro-tv", "broker-orders", "account-management", "thesis-board", "custom-view"]) {
+  for (const paneId of ["askg", "macro-tv", "broker-orders", "account-management", "thesis-board", "equity-diagnostic", "portfolio-list", "alerts", "chat"]) {
     expect(planSweep([entry({ paneId })])[0]?.status).toBe("skipped");
   }
+  expect(planSweep([], [{ code: "NEWCMD" }])[0]).toMatchObject({ id: "NEWCMD/card", status: "missing" });
   const unsupported = entry();
   unsupported.capability.screenshotReadiness = "unsupported";
   expect(planSweep([unsupported])[0]?.status).toBe("unsupported");
   expect(planSweep([entry({ token: "UNKNOWN", argKind: "free-text" })])[0]?.status).toBe("missing");
+});
+
+test("plugins: reviewed first-party ones run, an unreviewed gloom-sh one is missing, and third-party code is excluded", () => {
+  const cards = [{ code: "ADJ", plugin: { id: "adjacent-indices" } }, { code: "HN", plugin: { id: "hackernews" } }, { code: "XYZ", plugin: { id: "unlisted" } }];
+  const feed = [...FEED, listed("brand-new", "gloom-sh/gloom-brand-new", ["NEW"]), listed("polls", "gloom-sh/gloom-polls", ["POLL", "POLLX"])];
+  const plan = new Map(planPlugins(feed, cards).map((item) => [item.id, item]));
+  for (const [code, id, args] of [["HN", "hackernews", []], ["CFNG", "crypto-fear-greed", []], ["GTP", "growthepie", []], ["PM", "prediction-markets", ["inflation"]], ["POLL", "polls", []]] as const) {
+    expect(plan.get(`${code}/plugin`)).toEqual({ id: `${code}/plugin`, token: code, lane: `plugin:${id}`, args: [...args], plugin: id });
+  }
+  expect(plan.get("ADJ/plugin")).toMatchObject({ status: "excluded", reason: expect.stringContaining("Lucas-Kohorst/gloomberb-adjacent") });
+  expect(plan.get("alpaca-data/plugin")?.status).toBe("excluded");
+  expect(plan.get("NEW/plugin")).toMatchObject({ status: "missing", reason: expect.stringContaining("not on the reviewed plugin-lane list") });
+  expect(plan.get("POLLX/plugin")).toMatchObject({ status: "missing", reason: "New plugin code needs input review" });
+  expect(plan.get("XYZ/plugin")?.status).toBe("missing");
+  expect(plan.get("FNG/plugin")).toMatchObject({ status: "skipped", reason: expect.stringContaining("built into Gloom") });
+  for (const id of ["ARA/plugin", "TV/plugin", "SUB/plugin", "ibkr/plugin"]) expect(plan.get(id)?.status).toBe("skipped");
+  // A reviewed id the registry now lists from another repository is never installed from either.
+  const moved = planPlugins([listed("hackernews", "someone/gloom-hackernews", ["HN"])], []).find((item) => item.token === "HN");
+  expect(moved).toMatchObject({ status: "missing", reason: expect.stringContaining("someone/gloom-hackernews") });
+  // An unread feed is a finding, and the reviewed plugins still run.
+  const offline = planPlugins(null, cards);
+  expect(offline.find((item) => item.id === "registry/feed")?.status).toBe("missing");
+  expect(offline.find((item) => item.id === "ADJ/plugin")?.status).toBe("missing");
+  expect(offline.find((item) => item.id === "HN/plugin")?.status).toBeUndefined();
+});
+
+test("the plugin lane installs only reviewed github.com/gloom-sh repositories", () => {
+  for (const [id, plugin] of Object.entries(REVIEWED_PLUGINS)) {
+    if (plugin.codes) expect(pluginInstallRef(id)).toBe(`https://github.com/${plugin.repo}`);
+    else expect(() => pluginInstallRef(id), id).toThrow("not a reviewed plugin-lane plugin");
+  }
+  for (const id of ["adjacent-indices", "alpaca-data", "unknown", "constructor", "__proto__"]) expect(() => pluginInstallRef(id), id).toThrow("Refusing");
+  for (const repo of ["Lucas-Kohorst/gloomberb-adjacent", "gloom-sh-evil/gloom-hn", "evil/gloom-sh", "gloom-sh/../evil", "gloom-sh/x/y", "GLOOM-SH/gloom-hn",
+    "https://github.com/gloom-sh/gloom-hn", "github.com/gloom-sh/gloom-hn", "gloom-sh/gloom-hn.git", "gloom-sh/", " gloom-sh/gloom-hn"]) {
+    expect(() => pluginInstallRef("x", { x: { repo, codes: { X: [] } } }), repo).toThrow("installs only from github.com/gloom-sh");
+  }
+});
+
+test("a plugin-lane child sees an allowlisted environment: no session, key, proxy or agent socket", async () => {
+  const secrets = { GLOOMBERB_SESSION_TOKEN: "session-secret", GITHUB_TOKEN: "gh-secret", GH_TOKEN: "gh-secret-2", NPM_TOKEN: "npm-secret",
+    AWS_SECRET_ACCESS_KEY: "aws-secret", ANTHROPIC_API_KEY: "model-secret", OPENAI_API_KEY: "model-secret-2", OP_SESSION_agents: "op-secret",
+    HTTPS_PROXY: "http://user:proxy-secret@proxy:8080", SSH_AUTH_SOCK: "/tmp/agent-secret.sock", GLOOMBERB_API_URL: "http://stand-in-secret", GIT_ASKPASS: "/askpass-secret" };
+  const profile = "/synthetic/gloom-smoke/pane-data-plugins-1";
+  const env = pluginLaneEnv({ ...process.env, ...secrets, PATH: "/usr/bin:/bin", LANG: "en_US.UTF-8" }, profile);
+  expect(Object.keys(env).sort()).toEqual(["DO_NOT_TRACK", "GIT_CONFIG_NOSYSTEM", "GIT_TERMINAL_PROMPT", "GLOOMBERB_HOME", "GLOOMBERB_NO_TELEMETRY",
+    "HOME", "LANG", "PATH", "TEMP", "TMP", "TMPDIR", "USERPROFILE", ...["LC_ALL", "LC_CTYPE", "TZ", "CHROME_PATH"].filter((name) => process.env[name])].sort());
+  expect(env).toMatchObject({ GLOOMBERB_HOME: profile, HOME: `${profile}/home`, TMPDIR: `${profile}/tmp`, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" });
+  const child = await runCommand([process.execPath, "-e", "console.log(JSON.stringify(process.env))"], { ...env, PATH: process.env.PATH ?? "" }, 10_000);
+  for (const value of Object.values(secrets)) expect(child.stdout).not.toContain(value);
+  expect(Object.keys(JSON.parse(child.stdout))).not.toContain("GLOOMBERB_SESSION_TOKEN");
+});
+
+test("a plugin pane gated on a session is unsupported in the sessionless lane, and nothing else changes status", () => {
+  const gated = assessCapture(capture({ usable: false }, { accessGate: "sign-in" }, 2), "HN");
+  expect(sessionlessAssessment(gated)).toMatchObject({ status: "unsupported", reason: expect.stringContaining("never passes") });
+  const signIn = assessCapture({ ...capture(), stdout: JSON.stringify({ ok: false, error: { code: "auth_required", message: "Sign in first" } }) }, "HN");
+  expect(sessionlessAssessment(signIn).status).toBe("unsupported");
+  const blank = assessCapture(capture({ blankColumns: ["Score"] }), "HN");
+  expect(sessionlessAssessment(blank)).toBe(blank);
 });
 
 test("catalog examples remain literal argv, respect shot cardinality and do not pass report-only flags", () => {
@@ -162,6 +257,11 @@ test("social handles are data only in visible content, never a state-code exempt
   }
   expect(assessCapture(capture({}, { visibleText, stateText: { empty: ["@unusual_whales"] } }), "BUZZ"))
     .toMatchObject({ status: "failure", reasonCodes: ["unusual_whales"] });
+  // A story title or post naming a function is prose; the same word in a state marker, or in another pane, is still a code.
+  const title = { visibleText: "359 OpenSSL: Buffer overflow in EVP_EncodeBlock() (CVE-2026-121481, CVSS 9.8) github.com" };
+  for (const token of ["HN", "x-feed"]) expect(assessCapture(capture({}, title), token)).toMatchObject({ status: "pass", reasonCodes: [] });
+  expect(assessCapture(capture({}, { ...title, stateText: { error: ["FETCH_FAILED"] } }), "HN")).toMatchObject({ status: "failure", reasonCodes: ["FETCH_FAILED"] });
+  expect(assessCapture(capture({}, title), "N").status).toBe("failure");
 });
 
 // What a pane's empty state reads once drawn: the title, then its message, as the capture joins them.

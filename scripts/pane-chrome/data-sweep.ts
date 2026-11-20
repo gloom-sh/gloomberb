@@ -5,31 +5,110 @@ import { join, resolve } from "node:path";
 import type { PaneCatalogEntry } from "../../src/cli/pane-functions/catalog";
 import { FUNCTION_HELP } from "../../src/cli/pane-functions/function-help";
 import { PANE_SWEEP_EVIDENCE_PATH, type PaneScreenshotResult } from "../../src/cli/pane-functions/screenshot-types";
+import snapshot from "../../src/docs/snapshot.json";
+import type { RegistryPlugin } from "../../src/plugins/marketplace/model";
 import { isRecord } from "../../src/utils/guards";
+import { pluginDirectory, pluginInstallRef, pluginLaneEnv, planPlugins, type FunctionCard } from "./data-sweep-plugins";
 
 const READ_ONLY = new Set(`adverse-events analyst-research apps attention-trending awards backtest buildout buildout-company
  catalysts central-bank-rates chart-composer comment-letters commodities-energy company-kpis congress-trades corporate-actions
- correlation cpi crypto-board crypto-etf-flows csp-screen dividend-yield earnings-calendar earnings-calls earnings-estimates earnings-ripple
- econ-calendar econ-statistics equity-screener estimate-revisions executives exposure fear-greed filing-events financial-analysis
- fixed-income fx-matrix gpu company-guidance hiring historical-prices holders insider ipo-calendar iv-history iv-screen jobs kelly-sizer litigation
- macro-day market-halts market-heatmap market-movers market-valuation members mna money-markets news-breaking news-feed news-industry
- news-top options options-calculator options-positioning options-scenario pe-band perps power quote-monitor rate-path realized-vol
- relationship-graph relative-rotation relative-valuation returns reverse-dcf revenue-breakdown risk-factors scanner-flow scanner-hilo
- scanner-live seasonality sec sectors short-interest short-watch social-mentions supply-chain thirteenf-funds ticker-news ticker-research
- time-sales trials vol-surface volatility-term-structure world-indices yield-curve`.split(/\s+/));
-const EXCLUDED = new Set(`account-management alerts analytics askg brokers broker-orders chat changelog connections custom-view
- data-catalog docs equity-diagnostic help layout-marketplace local-agent-workspace macro-tv news-story plugin-marketplace portfolio-list
- quick-notes research-search roadmap thesis-board twitter-feed world-venue-map`.split(/\s+/));
+ correlation cpi crypto-board crypto-etf-flows csp-screen custom-view data-catalog dividend-yield earnings-calendar earnings-calls
+ earnings-estimates earnings-ripple econ-calendar econ-statistics equity-screener estimate-revisions executives exposure fear-greed
+ filing-events financial-analysis fixed-income fx-matrix gpu company-guidance hiring historical-prices holders insider ipo-calendar
+ iv-history iv-screen jobs kelly-sizer litigation macro-day market-halts market-heatmap market-movers market-valuation members mna
+ money-markets news-breaking news-feed news-industry news-top options options-calculator options-positioning options-scenario pe-band
+ perps power quote-monitor rate-path realized-vol relationship-graph relative-rotation relative-valuation research-search returns
+ reverse-dcf revenue-breakdown risk-factors scanner-flow scanner-hilo scanner-live seasonality sec sectors short-interest short-watch
+ social-mentions supply-chain thirteenf-funds ticker-news ticker-research time-sales trials twitter-feed vol-surface
+ volatility-term-structure world-indices world-venue-map yield-curve`.split(/\s+/));
+/** Catalog panes the sweep never captures, each with why: account, portfolio, alert and chat data, generative, media and app surfaces. */
+const EXCLUDED: Record<string, string> = {
+  "account-management": "Your Gloom Cloud account: profile, emails, plan and password (account data)",
+  alerts: "Your saved alerts, their trigger state and delivery history (alert data)",
+  analytics: "Risk, stress and performance of your own portfolio holdings (portfolio data)",
+  askg: "Generative: every question spends model tokens",
+  brokers: "Your broker profiles, account sync and connection status (account data)",
+  "broker-orders": "Your broker orders and fills, beside order entry (account data)",
+  chat: "Chat channels and their messages (chat data)",
+  changelog: "Release notes shipped with the app, not market data",
+  connections: "This app's own request and socket health, not market data",
+  docs: "The docs reader, not market data",
+  "equity-diagnostic": "Generative: a report not in the cache is written by a model on demand, which spends model tokens",
+  help: "Keyboard shortcuts and the command reference, not market data",
+  "layout-marketplace": "Saved and published layouts, with actions that add them to the workspace (workspace data)",
+  "local-agent-workspace": "Generative: an AI agent thread on the model account you configure",
+  "macro-tv": "Live television video and audio (media)",
+  "news-story": "One article by its story id, opened from a news list: no stable id to review, and the lists that open stories (N, TOP, CN, NI, FIRST) are measured",
+  "plugin-marketplace": "The plugin directory, with install and remove actions, not market data",
+  "portfolio-list": "Your portfolios and watchlists with positions and P&L (portfolio data)",
+  "quick-notes": "Your own notes (workspace data)",
+  roadmap: "Gloom's product roadmap and its votes, not market data",
+  "thesis-board": "Your and your teams' investment theses; on Pro a model drafts them (account data, generative)",
+};
+/**
+ * Reviewed inputs where the catalog's own example is not the one to measure:
+ * CAT lists a bare code first (an empty search), the X Feed has no help entry
+ * under its catalog name, and VIEW reads a data function its card names,
+ * MOST's most-active board, through MOST's own columns.
+ */
+const MOST_VIEW_SPEC = JSON.stringify({ version: 1, source: { kind: "inline", pane: "MOST" },
+  projection: { columns: ["symbol", "name", "price", "changePercent", "volume"], limit: 20 } });
+const REVIEWED_INPUTS: Record<string, string[]> = {
+  "data-catalog": ["fed", "funds"],
+  // One X search a run.
+  "twitter-feed": ["$NVDA"],
+  "custom-view": [MOST_VIEW_SPEC],
+};
+/**
+ * Function cards whose code the catalog lists under another token. TWIT is the
+ * X Feed's command-bar code, a command's rather than its template's, so the
+ * catalog (and `gloom shot`) knows the pane by its name, `x-feed`.
+ */
+const CARD_PANES: Record<string, string> = { TWIT: "twitter-feed" };
+/** Function cards with no catalog function to capture: commands that act on the workspace, the account or the app. */
+const CARD_ONLY: Record<string, string> = {
+  AW: "Action: adds a ticker to the active watchlist; no pane of its own",
+  AP: "Action: adds a ticker to a manual portfolio; no pane of its own",
+  RW: "Action: removes a ticker from the active watchlist; no pane of its own",
+  RP: "Action: removes a ticker and its positions from the active portfolio; no pane of its own",
+  SA: "Action: creates a price alert; no pane of its own",
+  DM: "Opens or starts a direct message conversation (chat data)",
+  TEAM: "Your teams' members, invites and settings (account data); the command line has no team page to capture",
+  FOCUS: "Narrows the workspace to one team (a workspace setting, no pane)",
+  UPGRADE: "Opens Pro checkout or the billing portal (an account billing action)",
+  GL: "Arranges the open windows into one layout (a layout command, no pane)",
+  DESK: "Adds a ready-made desk as a layout tab (a layout command, no pane)",
+  LMA: "Float, dock, swap, remove and save actions on panes and layouts (a layout command, no pane)",
+  WIN: "Moves or resizes the focused window from the keyboard (a window mode, no pane)",
+  PS: "Opens the focused pane's settings form (no pane of its own)",
+  TH: "Switches the app theme (a setting, no pane)",
+  LANG: "Switches the interface language (a setting, no pane)",
+  "FONT+": "Changes the app font size (a setting, no pane)",
+  SB: "Shows or hides the shortcuts bar (a setting, no pane)",
+  VF: "Turns quote flashing on or off (a setting, no pane)",
+  CR: "Cycles the terminal chart renderer (a setting, no pane)",
+  FB: "Sends feedback with logs and an optional screenshot (an outward action, no pane)",
+};
+
+/** The function cards gloom.sh shows, from the docs snapshot the app ships (refreshed by scripts/update-docs-snapshot.ts). */
+export function functionCards(): FunctionCard[] {
+  return (snapshot.functions as unknown as FunctionCard[]).map(({ code, category, plugin }) => ({ code, category, ...(plugin ? { plugin } : {}) }));
+}
 const EQUITY_MATRIX = new Set(`ADR ANR APPS BT BTST BUZZ CALLS CATL CN COVN CRDOC DDIS EE EM EVT EVTS FA GE GF GIP GP
  GS GUIDE HDS HIRE HP HVG HVT JOBS KELLY KPIS LITI MA PEB RDCF RETURN RIPL RISK RV SEAS SEG SPLC T TBOC`.split(/\s+/));
 const COHORTS = [["us-large", "AAPL"], ["us-small", "PLPC"], ["us-micro", "DWSN"], ["non-us", "7203:JPX"]] as const;
 
 export interface SweepCase {
   id: string;
+  /** What `shot` is given. */
   token: string;
+  /** The function card's code, where the catalog lists the function under another token (TWIT is `x-feed`). */
+  code?: string;
   lane: string;
   args: string[];
-  status?: "missing" | "skipped" | "unsupported";
+  /** The plugin that provides the function: the case runs only in the plugin lane. */
+  plugin?: string;
+  status?: "missing" | "skipped" | "unsupported" | "excluded";
   reason?: string;
 }
 
@@ -69,18 +148,29 @@ function catalogExample(entry: PaneCatalogEntry): string[] | null {
   return entry.argKind === "none" || (!entry.argKind && !entry.argPlaceholder) ? [] : null;
 }
 
-export function planSweep(entries: readonly PaneCatalogEntry[]): SweepCase[] {
-  return [...entries].sort((left, right) => left.token.localeCompare(right.token)).flatMap((entry): SweepCase[] => {
-    const base = { id: `${entry.token}/default`, token: entry.token, lane: "default", args: [] };
-    if (EXCLUDED.has(entry.paneId)) return [{ ...base, status: "skipped", reason: "Account, action, generative, media, custom or non-market surface" }];
+/**
+ * One case or more per catalog function, then one for each function card the
+ * catalog has no function for (plugin cards are `planPlugins`'s): a reviewed
+ * reason, or missing until it has one.
+ */
+export function planSweep(entries: readonly PaneCatalogEntry[], cards: readonly FunctionCard[] = []): SweepCase[] {
+  const functions = [...entries].sort((left, right) => left.token.localeCompare(right.token)).flatMap((entry): SweepCase[] => {
+    const code = Object.keys(CARD_PANES).find((candidate) => CARD_PANES[candidate] === entry.paneId);
+    const name = code ?? entry.token;
+    const base = { id: `${name}/default`, token: entry.token, ...(code ? { code } : {}), lane: "default", args: [] };
+    if (Object.hasOwn(EXCLUDED, entry.paneId)) return [{ ...base, status: "skipped", reason: EXCLUDED[entry.paneId]! }];
     if (!READ_ONLY.has(entry.paneId)) return [{ ...base, status: "missing", reason: "New pane needs read-only safety and input review" }];
     if (entry.capability.screenshotReadiness === "unsupported") return [{ ...base, status: "unsupported", reason: "Catalog screenshot capability is unsupported" }];
     if (!["", "none", "ticker", "tickers", "symbol-list", "text", "free-text"].includes(entry.argKind ?? "")) return [{ ...base, status: "missing", reason: "New argument kind needs input review" }];
+    if (Object.hasOwn(REVIEWED_INPUTS, entry.paneId)) {
+      const args = REVIEWED_INPUTS[entry.paneId]!;
+      return [{ ...base, id: `${name}/${args.length ? "reviewed-input" : "default"}`, lane: args.length ? "reviewed-input" : "default", args }];
+    }
     if (EQUITY_MATRIX.has(entry.token) && ["ticker", "tickers", "symbol-list"].includes(entry.argKind ?? "")) {
       return COHORTS.map(([lane, symbol]) => {
         const reason = entry.token === "BUZZ" && lane === "non-us" ? "Numeric exchange-qualified sample is not a cashtag"
           : ["HVG", "HVT"].includes(entry.token) && lane !== "us-large" ? "Listed-option IV needs a reviewed optionable input; this cohort is unsupported" : null;
-        return { ...base, id: `${entry.token}/${lane}`, lane, args: [symbol], ...(reason ? { status: "unsupported" as const, reason } : {}) };
+        return { ...base, id: `${name}/${lane}`, lane, args: [symbol], ...(reason ? { status: "unsupported" as const, reason } : {}) };
       });
     }
     if (entry.token === "MOST") {
@@ -92,6 +182,15 @@ export function planSweep(entries: readonly PaneCatalogEntry[]): SweepCase[] {
     if (example === null) return [{ ...base, status: "missing", reason: "No safe concrete catalog/help example" }];
     return [{ ...base, lane: example.length ? "catalog-example" : "default", args: example }];
   });
+  const listed = new Set(entries.flatMap((entry) => [entry.token, ...entry.aliases ?? []].map((token) => token.toUpperCase())));
+  const panes = new Set(entries.map((entry) => entry.paneId));
+  const cardOnly = cards.filter((card) => !card.plugin && !listed.has(card.code.toUpperCase())
+    && !(Object.hasOwn(CARD_PANES, card.code) && panes.has(CARD_PANES[card.code]!)));
+  return [...functions, ...cardOnly.map((card): SweepCase => {
+    const reason = Object.hasOwn(CARD_ONLY, card.code) ? CARD_ONLY[card.code] : undefined;
+    return { id: `${card.code}/card`, token: card.code, lane: "card", args: [], status: reason ? "skipped" : "missing",
+      reason: reason ?? "Function card has no catalog function and no reviewed reason" };
+  })];
 }
 
 export interface CommandResult { stdout: string; stderr: string; exitCode: number; timedOut: boolean }
@@ -114,6 +213,13 @@ function candidateCodes(text: string, symbols?: readonly string[]): string[] {
     return !(qualifier && symbols.includes(qualifier)) && !/\b(?:field|expression|formula)\s*[:=]\s*$/i.test(before);
   }).map((match) => match[0]);
 }
+
+/**
+ * Panes whose rows are third-party prose, story titles and posts: an identifier
+ * in that text (`EVP_EncodeBlock()` in an HN title) is the text, not a status
+ * code. Their state and error markers are still read for codes.
+ */
+const PROSE_TOKENS = new Set(["HN", "x-feed"]);
 
 export const REVIEWED_EMPTY: Record<string, ["no-coverage" | "expected-empty" | "unsupported" | "market-closed", RegExp]> = {
   APPS: ["no-coverage", /^\S+ has no mapped apps in the observed App Store and Google Play charts\.$/],
@@ -189,7 +295,8 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
   const reason = shot.unusableReason ?? shot.gaps ?? (truncation || (!shot.complete ? "Strict capture is usable but its report is incomplete" : null));
   const diagnostics = [reason, shot.gaps, ...Object.values(shot.unreadReasons ?? {})].filter((text): text is string => typeof text === "string");
   const markers = [...Object.values(stateText).flat(), ...(render.emptyStateText ?? []), ...(render.errorStateMarkers ?? []), ...(render.emptyStateMarkers ?? [])];
-  const reasonCodes = [...new Set([...candidateCodes(render.visibleText, shot.symbols ?? []), ...candidateCodes([...diagnostics, ...markers].join("\n"))])];
+  const reasonCodes = [...new Set([...PROSE_TOKENS.has(token) ? [] : candidateCodes(render.visibleText, shot.symbols ?? []),
+    ...candidateCodes([...diagnostics, ...markers].join("\n"))])];
   const blankColumns = shot.blankColumns ?? [];
   const hasError = render.errorStateDetected || !!stateText.error?.length || !!render.errorStateMarkers?.length;
   const hasEmpty = render.emptyStateDetected || shot.empty || !!stateText.empty?.length || !!render.emptyStateText?.length || !!render.emptyStateMarkers?.length;
@@ -293,7 +400,7 @@ export function selectCases(plan: SweepCase[], selection: Selection): SweepCase[
     if (item.status) return item;
     let hash = 0;
     for (const character of item.id) hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
-    const reason = selection.only.length && !selection.only.includes(item.token) && !selection.only.includes(item.id) ? "Not selected by --only"
+    const reason = selection.only.length && ![item.token, item.id, item.code].some((name) => name && selection.only.includes(name)) ? "Not selected by --only"
       : hash % selection.shard[1] !== selection.shard[0] - 1 ? "Not selected by deterministic shard"
       : selected >= selection.maxCases ? "Case budget exhausted" : null;
     if (reason) return { ...item, status: "skipped", reason };
@@ -302,20 +409,51 @@ export function selectCases(plan: SweepCase[], selection: Selection): SweepCase[
   });
 }
 
+/** A plugin the plugin lane installed, as results.json records it. */
+interface InstalledPluginRecord {
+  id: string;
+  repo: string;
+  directory: string;
+  /** The tag and commit the registry reviewed, which the installer lands on; null where the registry follows the default branch. */
+  registryRef: string | null;
+  registryCommit: string | null;
+  /** The commit actually checked out, as `gloom plugins` reads it. */
+  commit: string | null;
+  version: string | null;
+  exitCode: number | null;
+  error: string | null;
+}
+
+/**
+ * A plugin-lane capture as reported. The lane never has a session, so a pane
+ * that shows its data only behind a Gloom sign-in or plan is unsupported
+ * there, with that reason; every other status stays the strict one.
+ */
+export function sessionlessAssessment<T extends Pick<Assessment, "status" | "reason" | "states" | "reasonCodes">>(assessment: T): T {
+  const gate = assessment.states.find((state) => state.startsWith("access:"));
+  const signIn = assessment.status === "command-error" && assessment.reasonCodes.includes("auth_required");
+  if (!gate && !signIn) return assessment;
+  return { ...assessment, status: "unsupported", reason: `Shows its data only with a Gloom session (${gate ?? "auth_required"}), which the plugin lane never passes` };
+}
+
+const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes("--help")) {
-    console.log("bun run check:pane-data --out DIR [--only ANR,MOST] [--shard 1/8] [--max-cases 40] [--max-seconds 600] [--timeout-seconds 90] [--cli /path/to/gloom]");
+    console.log("bun run check:pane-data --out DIR [--lanes pro|plugins|pro,plugins] [--only ANR,MOST] [--shard 1/8] [--max-cases 40] [--max-seconds 600] [--timeout-seconds 90] [--cli /path/to/gloom]");
     return;
   }
   const options = new Map<string, string>();
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index]!;
     const value = args[index + 1];
-    if (!["--out", "--only", "--shard", "--max-cases", "--max-seconds", "--timeout-seconds", "--cli"].includes(key) || !value || options.has(key)) throw new Error(`Invalid option ${key}`);
+    if (!["--out", "--lanes", "--only", "--shard", "--max-cases", "--max-seconds", "--timeout-seconds", "--cli"].includes(key) || !value || options.has(key)) throw new Error(`Invalid option ${key}`);
     options.set(key, value);
   }
   if (!options.get("--out")) throw new Error("--out DIR is required; all evidence stays there");
+  const lanes = new Set((options.get("--lanes") ?? "pro").split(","));
+  if ([...lanes].some((lane) => lane !== "pro" && lane !== "plugins")) throw new Error("--lanes must be pro, plugins or pro,plugins");
   const bounded = (key: string, fallback: number, maximum: number) => {
     const value = Number(options.get(key) ?? fallback);
     if (!Number.isInteger(value) || value < 1 || value > maximum) throw new Error(`${key} must be 1..${maximum}`);
@@ -332,96 +470,209 @@ async function main() {
   if ((await readdir(out)).length) throw new Error("--out must be empty to avoid mixing evidence from different runs");
   const root = join(homedir(), ".cache", "gloom-smoke");
   await mkdir(root, { recursive: true });
-  const profile = await mkdtemp(join(root, "pane-data-sweep-"));
   const session = process.env.GLOOMBERB_SESSION_TOKEN?.trim();
   const redact = (text: string) => session ? text.replaceAll(session, "[redacted]") : text;
-  const temp = join(profile, "tmp");
-  const env = { ...process.env, GLOOMBERB_HOME: profile, TMPDIR: temp, TMP: temp, TEMP: temp,
-    GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1", GLOOMBERB_SESSION_TOKEN: session ?? "" };
   const cli = options.has("--cli") ? [resolve(options.get("--cli")!)] : [process.execPath, resolve(import.meta.dir, "../../src/cli/entry.ts")];
   const started = new Date().toISOString();
   const deadline = Date.now() + maxSeconds * 1_000;
-  const results: SweepResult[] = [];
+  const remaining = (limitMs: number) => Math.max(1, Math.min(limitMs, deadline - Date.now()));
+  const results = new Map<string, SweepResult>();
+  const plugins: InstalledPluginRecord[] = [];
+  const fatal: string[] = [];
+  const profiles = new Set<string>();
   let planned: SweepCase[] = [];
   let proVerified = false;
-  let fatal: string | null = null;
-  let profileRemoved = false;
-  const command = async (argv: string[], evidencePath?: string) => {
-    const plugins = join(profile, "plugins");
-    await mkdir(plugins, { recursive: true });
-    if ((await readdir(plugins)).length) throw new Error("Refusing to load external plugins beside credentials");
-    return runCommand([...cli, ...argv], { ...env, [PANE_SWEEP_EVIDENCE_PATH]: evidencePath },
-      Math.max(1, Math.min(timeoutSeconds * 1_000, deadline - Date.now())));
+  let registryError: string | null = null;
+  let captures = 0;
+  const newProfile = async (prefix: string) => {
+    const profile = await mkdtemp(join(root, prefix));
+    profiles.add(profile);
+    await mkdir(join(profile, "tmp"));
+    await writeFile(join(profile, "config.json"), JSON.stringify({ dataDir: profile, onboardingComplete: true }));
+    return profile;
+  };
+  const removeProfile = async (profile: string) => {
+    await rm(profile, { recursive: true, force: true });
+    profiles.delete(profile);
+  };
+  // One strict capture, saved and judged the same way in either lane.
+  const capture = async (item: SweepCase, run: (argv: string[], evidencePath: string) => Promise<CommandResult>) => {
+    if (Date.now() >= deadline) { results.set(item.id, { ...item, status: "skipped", reason: "Global time budget exhausted" }); return; }
+    const stem = String(++captures).padStart(4, "0");
+    const png = `${stem}.png`;
+    const evidencePath = join(out, png);
+    const raw = await run(["shot", item.token, ...item.args, "--strict", "--json", "--width", "1600", "--output", evidencePath], evidencePath);
+    raw.stdout = redact(raw.stdout);
+    raw.stderr = redact(raw.stderr);
+    await writeFile(join(out, `${stem}.json`), raw.stdout);
+    await writeFile(join(out, `${stem}.stderr`), raw.stderr);
+    const file = Bun.file(evidencePath);
+    const assessment = await captureEvidence(raw, item.token, png, await file.exists() ? file : new Blob());
+    results.set(item.id, { ...item, ...(item.plugin ? sessionlessAssessment(assessment) : assessment), exitCode: raw.exitCode });
+    await Bun.sleep(Math.min(500, Math.max(0, deadline - Date.now())));
   };
   try {
-    await mkdir(temp);
-    await writeFile(join(profile, "config.json"), JSON.stringify({ dataDir: profile, onboardingComplete: true }));
-    if (!session) throw new Error("No GLOOMBERB_SESSION_TOKEN; no Pro coverage");
-    const { apiClient } = await import("../../src/api-client");
-    const { resolvePlanAccess } = await import("../../src/api-client/plan-rules");
-    apiClient.setSessionToken(session);
-    let accountTimer: ReturnType<typeof setTimeout> | undefined;
+    // Read once, with no credential: the plugins to plan, and the commit the registry reviewed for each.
+    let feed: RegistryPlugin[] | null = null;
     try {
-      const account = await Promise.race([apiClient.getAccountProfile(), new Promise<never>((resolveAccount, reject) => {
-        accountTimer = setTimeout(() => reject(new Error("Account read timed out; no Pro coverage")), Math.max(1, Math.min(timeoutSeconds * 1_000, deadline - Date.now())));
-      })]);
-      proVerified = resolvePlanAccess(account).hasProAccess;
-    } finally { if (accountTimer) clearTimeout(accountTimer); apiClient.setSessionToken(null); }
-    if (!proVerified) throw new Error("Current account read did not verify Pro; no Pro coverage");
-    const catalog = await command(["catalog", "--all", "--json"]);
-    await writeFile(join(out, "catalog.json"), redact(catalog.stdout));
-    if (catalog.timedOut || catalog.exitCode !== 0) throw new Error("Catalog failed or timed out; no pane coverage");
-    const envelope: unknown = JSON.parse(catalog.stdout);
-    if (!isRecord(envelope) || envelope.ok !== true || !Array.isArray(envelope.data) || !envelope.data.length
-      || envelope.data.some((entry) => !isRecord(entry) || typeof entry.token !== "string" || typeof entry.paneId !== "string" || !isRecord(entry.capability))) throw new Error("Invalid catalog output");
-    const plan = planSweep(envelope.data as PaneCatalogEntry[]);
-    for (const requested of only) if (!plan.some((item) => item.token === requested || item.id === requested)) throw new Error(`Unknown --only selection: ${requested}`);
+      const { readRegistryOnce } = await import("../../src/plugins/marketplace/feed");
+      feed = await readRegistryOnce(remaining(15_000));
+    } catch (error) { registryError = redact(message(error)); }
+
+    // The Pro lane: the session, a verified Pro plan and the built-in catalog, in a profile with no plugins.
+    let pro: { profile: string; env: NodeJS.ProcessEnv } | null = null;
+    let catalog: PaneCatalogEntry[] | null = null;
+    const proCommand = async (argv: string[], evidencePath?: string) => {
+      const pluginsDir = join(pro!.profile, "plugins");
+      await mkdir(pluginsDir, { recursive: true });
+      if ((await readdir(pluginsDir)).length) throw new Error("Refusing to load external plugins beside credentials");
+      return runCommand([...cli, ...argv], { ...pro!.env, [PANE_SWEEP_EVIDENCE_PATH]: evidencePath }, remaining(timeoutSeconds * 1_000));
+    };
+    if (lanes.has("pro")) {
+      try {
+        const profile = await newProfile("pane-data-sweep-");
+        const temp = join(profile, "tmp");
+        pro = { profile, env: { ...process.env, GLOOMBERB_HOME: profile, TMPDIR: temp, TMP: temp, TEMP: temp,
+          GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1", GLOOMBERB_SESSION_TOKEN: session ?? "" } };
+        if (!session) throw new Error("No GLOOMBERB_SESSION_TOKEN; no Pro coverage");
+        const { apiClient } = await import("../../src/api-client");
+        const { resolvePlanAccess } = await import("../../src/api-client/plan-rules");
+        apiClient.setSessionToken(session);
+        let accountTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const account = await Promise.race([apiClient.getAccountProfile(), new Promise<never>((resolveAccount, reject) => {
+            accountTimer = setTimeout(() => reject(new Error("Account read timed out; no Pro coverage")), remaining(timeoutSeconds * 1_000));
+          })]);
+          proVerified = resolvePlanAccess(account).hasProAccess;
+        } finally { if (accountTimer) clearTimeout(accountTimer); apiClient.setSessionToken(null); }
+        if (!proVerified) throw new Error("Current account read did not verify Pro; no Pro coverage");
+        const listing = await proCommand(["catalog", "--all", "--json"]);
+        await writeFile(join(out, "catalog.json"), redact(listing.stdout));
+        if (listing.timedOut || listing.exitCode !== 0) throw new Error("Catalog failed or timed out; no pane coverage");
+        const envelope: unknown = JSON.parse(listing.stdout);
+        if (!isRecord(envelope) || envelope.ok !== true || !Array.isArray(envelope.data) || !envelope.data.length
+          || envelope.data.some((entry) => !isRecord(entry) || typeof entry.token !== "string" || typeof entry.paneId !== "string" || !isRecord(entry.capability))) throw new Error("Invalid catalog output");
+        catalog = envelope.data as PaneCatalogEntry[];
+      } catch (error) {
+        fatal.push(redact(message(error)));
+        if (pro) await removeProfile(pro.profile);
+        pro = null;
+      }
+    }
+
+    const cards = functionCards();
+    const pluginPlan = planPlugins(feed, cards).map((item): SweepCase => item.id === "registry/feed" && registryError ? { ...item, reason: `${item.reason}: ${registryError}` }
+      : !item.status && !lanes.has("plugins") ? { ...item, status: "skipped", reason: "Plugin lane not selected (--lanes plugins)" } : item);
+    const plan = [...(catalog ? planSweep(catalog, cards) : []), ...pluginPlan];
+    for (const requested of only) if (!plan.some((item) => [item.token, item.id, item.code].includes(requested))) throw new Error(`Unknown --only selection: ${requested}`);
     planned = selectCases(plan, { only, shard: [shard[0]!, shard[1]!], maxCases });
     await writeFile(join(out, "plan.json"), JSON.stringify(planned, null, 2));
-    for (const item of planned) {
-      if (item.status) { results.push({ ...item, status: item.status }); continue; }
-      if (Date.now() >= deadline) { results.push({ ...item, status: "skipped", reason: "Global time budget exhausted" }); continue; }
-      const stem = String(results.length + 1).padStart(4, "0");
-      const png = `${stem}.png`;
-      const evidencePath = join(out, png);
-      const raw = await command(["shot", item.token, ...item.args, "--strict", "--json", "--width", "1600", "--output", evidencePath], evidencePath);
-      raw.stdout = redact(raw.stdout);
-      raw.stderr = redact(raw.stderr);
-      await writeFile(join(out, `${stem}.json`), raw.stdout);
-      await writeFile(join(out, `${stem}.stderr`), raw.stderr);
-      const file = Bun.file(evidencePath);
-      const assessment = await captureEvidence(raw, item.token, png, await file.exists() ? file : new Blob());
-      results.push({ ...item, ...assessment, exitCode: raw.exitCode });
-      await Bun.sleep(Math.min(500, Math.max(0, deadline - Date.now())));
+
+    if (pro) {
+      try {
+        for (const item of planned) if (!item.status && !item.plugin) await capture(item, (argv, evidencePath) => proCommand(argv, evidencePath));
+      } catch (error) { fatal.push(redact(message(error))); }
+      finally { await removeProfile(pro.profile); }
+    }
+
+    // The plugin lane: reviewed gloom-sh plugins, installed by the app's own installer into a profile with no session.
+    const pluginItems = planned.filter((item) => !item.status && item.plugin);
+    if (pluginItems.length) {
+      const profile = await newProfile("pane-data-plugins-");
+      try {
+        const env = pluginLaneEnv(process.env, profile);
+        await mkdir(env.HOME!, { recursive: true });
+        const pluginsDir = join(profile, "plugins");
+        const expected = new Set<string>();
+        const pluginCommand = async (argv: string[], limitMs: number, evidencePath?: string) => {
+          await mkdir(pluginsDir, { recursive: true });
+          const unexpected = (await readdir(pluginsDir)).filter((name) => !expected.has(name));
+          if (unexpected.length) throw new Error(`Refusing to run beside plugin folders nobody reviewed: ${unexpected.join(", ")}`);
+          return runCommand([...cli, ...argv], evidencePath ? { ...env, [PANE_SWEEP_EVIDENCE_PATH]: evidencePath } : env, remaining(limitMs));
+        };
+        const failed = new Map<string, string>();
+        const unstarted = new Set<string>();
+        for (const id of new Set(pluginItems.map((item) => item.plugin!))) {
+          const ref = pluginInstallRef(id);
+          const listed = feed?.find((candidate) => candidate.id === id);
+          const record: InstalledPluginRecord = { id, repo: ref.slice("https://github.com/".length), directory: pluginDirectory(id),
+            registryRef: listed?.ref ?? null, registryCommit: listed?.commit ?? null, commit: null, version: null, exitCode: null, error: null };
+          plugins.push(record);
+          if (Date.now() >= deadline) { record.error = "Global time budget exhausted"; unstarted.add(id); continue; }
+          expected.add(record.directory);
+          const install = await pluginCommand(["install", ref], Math.max(timeoutSeconds, 180) * 1_000);
+          await writeFile(join(out, `install-${id}.stdout`), redact(install.stdout));
+          await writeFile(join(out, `install-${id}.stderr`), redact(install.stderr));
+          record.exitCode = install.exitCode;
+          if (install.timedOut || install.exitCode !== 0) {
+            record.error = install.timedOut ? "Install timed out" : redact(install.stderr.trim().split("\n").at(-1) || `Install exited ${install.exitCode}`);
+            failed.set(id, `Install failed: ${record.error}`);
+          }
+        }
+        const listing = await pluginCommand(["plugins", "--json"], timeoutSeconds * 1_000);
+        await writeFile(join(out, "plugins.json"), redact(listing.stdout));
+        const envelope: unknown = JSON.parse(listing.stdout);
+        if (!isRecord(envelope) || envelope.ok !== true || !Array.isArray(envelope.data)) throw new Error("Invalid plugin listing");
+        const rows = envelope.data.filter(isRecord);
+        for (const record of plugins) {
+          if (failed.has(record.id) || unstarted.has(record.id)) continue;
+          const row = rows.find((candidate) => candidate.name === record.directory);
+          const listedCommit = typeof row?.commit === "string" ? row.commit : "";
+          // The listing shortens the commit; the record keeps all of it.
+          const head = await runCommand(["git", "-C", join(pluginsDir, record.directory), "rev-parse", "HEAD"], env, remaining(10_000));
+          const full = head.stdout.trim();
+          record.commit = /^[0-9a-f]{40}$/.test(full) && listedCommit && full.startsWith(listedCommit) ? full : listedCommit || null;
+          record.version = typeof row?.version === "string" && row.version ? row.version : null;
+          const problem = !row ? "Not listed after its install"
+            : row.id !== record.id ? `Installed plugin is ${String(row.id)}, not the reviewed ${record.id}`
+              : typeof row.blocked === "string" && row.blocked ? `Not loaded: ${row.blocked}`
+                : record.registryCommit && record.commit && !record.registryCommit.startsWith(record.commit.slice(0, 7))
+                  ? `Checked out ${record.commit}, not the registry's reviewed ${record.registryCommit}` : null;
+          if (problem) { record.error = problem; failed.set(record.id, problem); }
+        }
+        for (const item of pluginItems) {
+          const problem = failed.get(item.plugin!);
+          if (unstarted.has(item.plugin!)) results.set(item.id, { ...item, status: "skipped", reason: "Global time budget exhausted" });
+          else if (problem) results.set(item.id, { ...item, status: "command-error", reason: problem });
+          else await capture(item, (argv, evidencePath) => pluginCommand(argv, timeoutSeconds * 1_000, evidencePath));
+        }
+      } catch (error) { fatal.push(`Plugin lane: ${redact(message(error))}`); }
+      finally { await removeProfile(profile); }
     }
   } catch (error) {
-    fatal = redact(error instanceof Error ? error.message : String(error));
-    const finished = new Set(results.map((item) => item.id));
-    for (const item of planned) if (!finished.has(item.id)) results.push({ ...item, status: item.status ?? "skipped", reason: item.reason ?? `Run stopped: ${fatal}` });
+    fatal.push(redact(message(error)));
   } finally {
-    await rm(profile, { recursive: true, force: true });
-    profileRemoved = true;
+    for (const profile of [...profiles]) await removeProfile(profile);
   }
+  const stopped = fatal.length ? fatal.join("; ") : null;
+  const ordered = planned.map((item): SweepResult => results.get(item.id)
+    ?? { ...item, status: item.status ?? "skipped", reason: item.reason ?? (stopped ? `Run stopped: ${stopped}` : "Not run") });
   const counts: Record<string, number> = {};
-  for (const result of results) counts[result.status!] = (counts[result.status!] ?? 0) + 1;
-  const report = { started, finished: new Date().toISOString(), proVerified, fatal, profileRemoved,
-    bounds: { maxCases, maxSeconds, timeoutSeconds, only, shard }, counts, results };
+  for (const result of ordered) counts[result.status] = (counts[result.status] ?? 0) + 1;
+  const profileRemoved = profiles.size === 0;
+  const report = { started, finished: new Date().toISOString(), lanes: [...lanes], proVerified, fatal: stopped, profileRemoved,
+    registry: { read: !registryError, error: registryError }, plugins,
+    bounds: { maxCases, maxSeconds, timeoutSeconds, only, shard }, counts, results: ordered };
   await writeFile(join(out, "results.json"), JSON.stringify(report, null, 2));
-  const attempted = results.filter((result) => result.exitCode !== undefined).length;
+  const attempted = ordered.filter((result) => result.exitCode !== undefined).length;
   const breakdown = Object.entries(counts).map(([status, count]) => `${count} ${status}`).join(", ") || "no pane coverage";
-  const total = `${attempted} attempted / ${results.length} planned: ${breakdown}; Pro ${proVerified ? "verified" : "NOT verified"}; profile removed`;
-  const findings = results.filter((result) => result.status !== "pass" || result.evidenceError).map((result) => {
+  const proText = lanes.has("pro") ? `Pro ${proVerified ? "verified" : "NOT verified"}` : "Pro lane not run";
+  const pluginText = lanes.has("plugins") ? `plugin lane without a session (${plugins.filter((plugin) => plugin.commit).length} installed)` : "plugin lane not run";
+  const total = `${attempted} attempted / ${ordered.length} planned: ${breakdown}; ${proText}; ${pluginText}; ${profileRemoved ? "profiles removed" : "profile NOT removed"}`;
+  const findings = ordered.filter((result) => result.status !== "pass" || result.evidenceError).map((result) => {
     const evidence = [result.reason, result.evidenceError, result.states?.length ? `states: ${result.states.join(", ")}` : "", ...Object.values(result.stateText ?? {}).flat(),
       result.states?.some((state) => state === "loading" || state.startsWith("access:")) ? result.visibleText : "",
       result.reasonCodes?.length ? `codes: ${result.reasonCodes.join(", ")}` : "",
       result.blankColumns?.length ? `blank columns: ${result.blankColumns.join(", ")}` : ""].filter(Boolean).join(" | ");
-    return `${result.id}: ${result.status} — ${evidence}`;
+    return { status: result.status, text: `${result.id}: ${result.status} — ${evidence}` };
   });
-  await writeFile(join(out, "results.md"), [`# Rendered pane data sweep`, "", total, ...(fatal ? [`Fatal: ${fatal}`] : []), "", ...findings.map((finding) => `- ${finding.replaceAll("\n", " ")}`)].join("\n"));
+  await writeFile(join(out, "results.md"), [`# Rendered pane data sweep`, "", total, ...(stopped ? [`Fatal: ${stopped}`] : []), "",
+    ...plugins.map((plugin) => `- Plugin ${plugin.repo} at ${plugin.commit ?? "no commit"}${plugin.error ? `: ${plugin.error}` : ""}`),
+    ...findings.map((finding) => `- ${finding.text.replaceAll("\n", " ")}`)].join("\n"));
   console.log(total);
-  if (fatal) console.error(`FATAL: ${fatal}`);
-  for (const finding of findings.filter((finding) => !finding.includes(": skipped "))) console.log(finding);
-  if (fatal || results.some((result) => result.evidenceError || ["failure", "timeout", "invalid-output", "command-error", "missing"].includes(result.status!))) process.exitCode = 1;
+  if (stopped) console.error(`FATAL: ${stopped}`);
+  for (const finding of findings) if (finding.status !== "skipped" && finding.status !== "excluded") console.log(finding.text);
+  if (stopped || ordered.some((result) => result.evidenceError || ["failure", "timeout", "invalid-output", "command-error", "missing"].includes(result.status))) process.exitCode = 1;
 }
 
 if (import.meta.main) await main();
