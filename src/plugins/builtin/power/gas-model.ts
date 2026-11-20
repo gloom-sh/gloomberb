@@ -169,7 +169,7 @@ const DAY_MS = 86_400_000;
 
 /**
  * The seasonal chart's axis: one calendar year, labelled at the quarters, the
- * cursor read as a day ("Oct 12"). An axis of its own also makes the legend
+ * cursor read as a day ("12 Oct"). An axis of its own also makes the legend
  * read the cursor's day across the lines, not each line's last point.
  */
 export function gasYearAxis(year: number) {

@@ -184,10 +184,10 @@ export function resolveVwap(
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** `Sep 30 09:30` on intraday bars, in the exchange's time; `Sep 30 2025` on daily ones. */
+/** `30 Sep 09:30` on intraday bars, in the exchange's time; `30 Sep 2025` on daily ones: day first, as every date is written. */
 function formatAnchor(anchor: number, input: ResolvedSeries, intraday: boolean): string {
   const parts = zonedDateTimeParts(anchor, intraday ? input.timeBasis?.timeZone ?? "UTC" : "UTC");
-  const date = `${MONTHS[parts.month - 1]} ${parts.day}`;
+  const date = `${parts.day} ${MONTHS[parts.month - 1]}`;
   return intraday
     ? `${date} ${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`
     : `${date} ${parts.year}`;

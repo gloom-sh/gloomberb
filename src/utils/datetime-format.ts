@@ -114,6 +114,20 @@ export function formatShortDate(value: DisplayDateValue, options: ShortDateOptio
   return dayFirstParts(formatter, date);
 }
 
+const MONTH_ABBREVIATIONS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+const ISO_MONTH = /^\d{2}(\d{2})-(0[1-9]|1[0-2])(?:$|-)/;
+
+/**
+ * A month and its year as an axis, a fiscal period or a meeting names it:
+ * "Aug '24", the year marked so it never reads as a day ("Aug 24"). Read
+ * from the ISO month or date it is given ("2024-08", "2024-08-22"), so no
+ * time zone moves it and no day-first or month-first date is cut to make it.
+ */
+export function formatMonthYear(value: string | null | undefined, fallback = MISSING_VALUE): string {
+  const match = ISO_MONTH.exec(value ?? "");
+  return match ? `${MONTH_ABBREVIATIONS[Number(match[2]) - 1]} '${match[1]}` : fallback;
+}
+
 const weekdayDayFormatters = new Map<string, Intl.DateTimeFormat>();
 
 /** A weekday and day-first date ("Fri 16 Oct"), with a year only when asked for. */

@@ -2,6 +2,7 @@ import type { EarningsHistoryPayload, EarningsPeriodKind, EarningsTiming } from 
 import type { StatItem } from "../../../components";
 import { scalarPoint } from "../../../components/chart/static/series";
 import type { TimeSeriesPoint } from "../../../time-series/types";
+import { formatMonthYear } from "../../../utils/datetime-format";
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
 import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
@@ -347,11 +348,17 @@ export function chartPoints(bars: readonly HistoryRow[], value: (row: HistoryRow
   ];
 }
 
-/** Each report's month under its bar; reports fall in any month, so calendar ticks would miss them. */
+/**
+ * Each report's month and year under its bar ("Aug '24"); reports fall in any
+ * month, so calendar ticks would miss them. Built from the report's ISO date,
+ * not cut from a formatted day: "29 Oct" cut for its month read "29 24". Where
+ * the bars are too close for every label, the axis drops ticks rather than run
+ * them together.
+ */
 export function chartAxis(bars: readonly HistoryRow[]) {
   const slots = bars.length + 1;
   return {
-    ticks: bars.map((row, index) => ({ label: `${shortDate(row.date).slice(0, 3)} ${row.date.slice(2, 4)}`, ratio: (index + 1) / slots })),
+    ticks: bars.map((row, index) => ({ label: formatMonthYear(row.date), ratio: (index + 1) / slots })),
     formatCursor: (ratio: number) => {
       const row = bars[Math.max(0, Math.min(bars.length - 1, Math.round(ratio * slots) - 1))];
       return row ? datedYear(row.date) : "";

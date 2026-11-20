@@ -1,3 +1,4 @@
+import { formatMonthYear } from "../../../utils/datetime-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { RateMeeting, RatePathPayload } from "../../../api-client/rates";
 import type { CurveSeries } from "../../../components/chart/curve/model";
@@ -30,11 +31,9 @@ const CHART_GHOST_LABELS: ReadonlySet<string> = new Set(["1W", "1M"]);
 /** Colours by role, so the target band never shares the implied path's colour. Ghosts are keyed by look-back. */
 export interface RatePathPalette { path: string; ghosts: Readonly<Record<string, string>>; band: string; projection: string }
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
 /** A meeting as the axis and the readout name it: "Oct '26", so the year never reads as a day. */
 export function meetingLabel(date: string): string {
-  return `${MONTH_NAMES[Number(date.slice(5, 7)) - 1] ?? date.slice(5, 7)} '${date.slice(2, 4)}`;
+  return formatMonthYear(date, date);
 }
 
 /** 25bp moves priced by a meeting: its VS NOW change in steps, `+0.62` for most of one hike. */
