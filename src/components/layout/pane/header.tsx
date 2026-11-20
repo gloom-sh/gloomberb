@@ -298,7 +298,7 @@ export interface PaneHeaderQuickSetting {
  * What a quick setting says it is: its name and whether it is on. The
  * desktop's tooltip and the terminal's hover label read the same.
  */
-export function quickSettingTitle(setting: Pick<PaneHeaderQuickSetting, "label" | "active">): string {
+function quickSettingTitle(setting: Pick<PaneHeaderQuickSetting, "label" | "active">): string {
   return `${setting.label}: ${setting.active ? "on" : "off"}`;
 }
 
