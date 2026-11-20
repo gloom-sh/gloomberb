@@ -37,6 +37,7 @@ import { renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { typoDistance } from "../../utils/typo-distance";
 import { FUNCTION_HELP } from "./function-help";
 import { ratesQuestionFunctions } from "./rates-question";
+import { tickerQuestion } from "./ticker-question";
 import { quotedSearchCommand } from "../commands/news-search";
 
 /**
@@ -804,11 +805,27 @@ const QUESTION_WORDS = new Set([
   "this", "that", "these", "those", "there", "show", "tell", "give", "get", "about", "today", "yesterday", "tonight", "now", "last",
   "latest", "current", "currently", "doing", "happen", "happened", "going", "go", "went", "please", "the", "a", "an", "of", "on", "in",
   "for", "to", "and", "or", "at", "by", "with", "from", "up", "down",
+  // Words that date a question rather than name its topic: "this week" found ATS, the weekly OTC volume.
+  "week", "weeks", "month", "months", "year", "years", "day", "days", "morning", "afternoon", "evening", "since", "after", "before",
+  "between", "ago", "past", "so", "far", "any",
+  // Words of an opinion asked for, which no function gives: "Is now a good time to buy?" found Time and Sales.
+  "good", "bad", "time", "idea", "buy", "sell", "worth", "think", "explain", "mean", "means", "say", "says", "saying", "said",
 ]);
 
-/** A question's topic: its words without the ones it asks with ("dax" for "what did the DAX do yesterday?"); empty when it is all asking. */
-function questionTopic(question: string): string {
-  return question.toLowerCase().replace(/[?!.,;:"]/g, " ").split(/\s+/).filter((word) => word && !QUESTION_WORDS.has(word)).join(" ");
+/** Months and days of the week, and their short forms, which date a question rather than name its topic. */
+const DATE_WORDS = /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|\d+(?:st|nd|rd|th)?|\d{4}-\d{2}-\d{2})$/;
+
+/**
+ * A question's topic: its words without the ones it asks with, its dates and
+ * the tickers it names ("dax" for "what did the DAX do yesterday?", "report
+ * earnings" for "When does NVDA report earnings?"); empty when it is all
+ * asking.
+ */
+function questionTopic(question: string, tickers: readonly string[] = []): string {
+  const named = new Set(tickers.map((ticker) => ticker.toLowerCase()));
+  return question.toLowerCase().replace(/[?!.,;:"]/g, " ").split(/\s+/)
+    .map((word) => word.replace(/^\$/, "").replace(/['’]s$/, ""))
+    .filter((word) => word && !QUESTION_WORDS.has(word) && !DATE_WORDS.test(word) && !named.has(word)).join(" ");
 }
 
 /** A function a question names, as ASKG offers it signed out. */
@@ -822,39 +839,75 @@ export interface FunctionForQuestion {
 }
 
 /**
+ * A question's catalog matches: those that carry every word of its topic, then
+ * those a word of it names (GUIDE for "guidance"). A topic no function carries
+ * every word of gets only the second, never the closest of the rest.
+ */
+function confidentQuestionMatches(entries: PaneCatalogEntry[], topic: string): PaneCatalogEntry[] {
+  const ranked = filterPaneCatalogEntries(entries, topic);
+  const { shown, loose } = selectPaneCatalogMatches(ranked, topic, LOOSE_NAMED_LIMIT);
+  // After those that carry every word, the ones a word names: ERN for "holdings report earnings", which RIPL carries whole.
+  const named = ranked.filter((entry) => scorePaneCatalogEntry(entry, topic).called > 0);
+  return [...new Set([...loose ? [] : shown, ...named])];
+}
+
+/** What a function the catalog found is run with for the tickers a question names: the first, or all of them for a list. */
+function tickerArgument(entry: PaneCatalogEntry, tickers: readonly string[]): string | null {
+  if (tickers.length === 0) return null;
+  if (entry.argKind === "tickers" || entry.argKind === "ticker-list" || /\btickers\b/i.test(entry.argPlaceholder ?? "")) return tickers.join(",");
+  return entry.argKind === "ticker" || /\bticker\b/i.test(entry.argPlaceholder ?? "") ? tickers[0]! : null;
+}
+
+/**
  * The functions `catalog` finds for a question's topic, best first, up to
  * `limit`: what Ask Gloom offers without an account ("what did the DAX do
  * yesterday" finds WEI and CMP). A question about policy rates, curves or the
  * macro calendar gets CBR, GC and ECO first, run for the markets it names
  * (`ratesQuestionFunctions`): "BoJ and RBA policy rates and JGB yields" found
- * CBR, then MDAY and FIRST. Built from the templates alone, without a market
- * context, so the app's pane asks it as the command line does.
+ * CBR, then MDAY and FIRST. A question naming tickers gets their prices, news
+ * and analysts, or what else it asks of them, run for them (`tickerQuestion`),
+ * and one that names only tickers gets DES, CN and ANR. A topic no function
+ * carries every word of gets only the functions a word of it names, so a
+ * question nothing answers gets none, not the closest noise. Built from the
+ * templates alone, without a market context, so the app's pane asks it as the
+ * command line does.
  */
 export async function functionsForQuestion(registry: PaneFunctionCatalog, question: string, limit = 3): Promise<FunctionForQuestion[]> {
-  const topic = questionTopic(question);
-  if (!topic) return [];
+  if (!questionTopic(question)) return [];
   const entries = await buildPaneCatalogEntries(registry, null);
+  const asked = await tickerQuestion(question, { functionCodes: new Set(entries.flatMap((entry) => [entry.token, ...entry.aliases])) });
+  const tickers = asked?.tickers ?? [];
+  // "What moved the market today?" asks for its movers: MOST, not the money markets.
+  const topic = questionTopic(question.replace(/\bmov(?:ed|es|ing)\s+(?:the\s+)?(?:stock\s+)?(?:markets?|stocks)\b/i, "market movers"), tickers);
+  const run = (code: string, argument: string, input: string): FunctionForQuestion[] => {
+    const entry = entries.find((candidate) => candidate.token === code || candidate.aliases.includes(code));
+    return entry ? [{ code, label: entry.label, command: `gloom fn ${code}${argument ? ` ${argument}` : ""}`, ...(input ? { input: `${code} ${input}` } : {}) }] : [];
+  };
+  const forTickers = (asked?.functions ?? []).flatMap(({ code, argument, input }) => run(code, argument, input));
+  // What a question asks of the tickers it names is the answer: "Who holds the most AAL stock?" is HDS, not MOST.
+  if (forTickers.length > 0) return forTickers.slice(0, limit);
   const stats = entries.find(({ token }) => token === "ECST");
   const nowcast = stats && /\b(?:gdp\s*now|nowcasts?|nowcasting)\b/i.test(question)
     ? [{ code: stats.token, label: "Atlanta Fed GDPNow", command: "gloom fn ECST gdpnow", input: "ECST gdpnow" }]
     : [];
-  const rates = ratesQuestionFunctions(question).flatMap(({ code, argument, input }): FunctionForQuestion[] => {
-    const entry = entries.find((candidate) => candidate.token === code);
-    return entry ? [{ code, label: entry.label, command: `gloom fn ${code}${argument ? ` ${argument}` : ""}`, ...(input ? { input: `${code} ${input}` } : {}) }] : [];
-  });
+  const rates = ratesQuestionFunctions(question).flatMap(({ code, argument, input }) => run(code, argument, input));
   const calendar = rates.find(({ code }) => code === "ECO");
   if (calendar && nowcast.length && /\bpmis?\b/i.test(question)) {
     return [{ ...calendar, command: `${calendar.command} --impact all --search PMI` }, ...nowcast].slice(0, limit);
   }
-  const { shown } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, topic), topic, limit);
   const preferred = rates[0]?.code === "ECO"
     ? [rates[0], ...nowcast, ...rates.slice(1)]
     : [...nowcast, ...rates];
-  const found = shown.filter((entry) => !preferred.some((named) => named.code === entry.token)).map((entry) => {
-    const argument = argumentHint(entry);
-    return { code: entry.token, label: entry.label, command: `gloom fn ${entry.token}${argument ? ` ${argument}` : ""}` };
-  });
-  return [...preferred, ...found].slice(0, limit);
+  const found = (topic ? confidentQuestionMatches(entries, topic) : [])
+    .filter((entry) => !preferred.some((named) => named.code === entry.token || entry.aliases.includes(named.code))).map((entry) => {
+      const named = tickerArgument(entry, tickers);
+      const argument = named ?? argumentHint(entry);
+      return { code: entry.token, label: entry.label, command: `gloom fn ${entry.token}${argument ? ` ${argument}` : ""}`, ...(named ? { input: `${entry.token} ${named}` } : {}) };
+    });
+  const answers = [...preferred, ...found];
+  // A question that names tickers and asks nothing a function answers ("Tell me about DAL") is their description, news and analysts.
+  if (answers.length === 0 && asked) return ["DES", "CN", "ANR"].flatMap((code) => run(code, tickers[0]!, tickers[0]!)).slice(0, limit);
+  return answers.slice(0, limit);
 }
 
 const CATALOG_TEXT_WIDTH = 100;
