@@ -106,19 +106,21 @@ export async function loadChartPaneModel(
   const instruments = new Map<string, InstrumentRef>();
   const resolvedSeries = new Map<string, ChartSeriesSpec>();
   // The pane extends settled bars with streamed quotes. A report has no
-  // stream, so a current window takes the latest quote once instead.
+  // stream, so a current window takes the latest quote once instead, read
+  // beside the histories: a listing named with its venue does not wait for it.
   const quoteOverrides = new Map<string, Quote>();
   const getQuote = context.marketData.getQuote?.bind(context.marketData);
-  if (getQuote && !spec.viewport.dateWindow) {
-    await Promise.all(getLiveChartQuoteTargets(spec).map(async (target) => {
-      const quote = await getQuote(target.symbol, target.exchange ?? "",
-        context.refresh ? { ...target.context, cacheMode: "refresh" } : target.context).catch(logFailure("chart-composer.headless", "Load chart live quote failed", null));
+  const quoteOverridesReady = getQuote && !spec.viewport.dateWindow
+    ? Promise.all(getLiveChartQuoteTargets(spec).map(async (target) => {
+      const quote = await Promise.resolve().then(() => getQuote(target.symbol, target.exchange ?? "",
+        context.refresh ? { ...target.context, cacheMode: "refresh" } : target.context)).catch(logFailure("chart-composer.headless", "Load chart live quote failed", null));
       if (quote) quoteOverrides.set(chartQuoteOverrideKeyForTarget(target), quote);
-    }));
-  }
+    }))
+    : undefined;
   const chart = await resolveChartSpecData(spec, {
     dataProvider: context.marketData,
     quoteOverrides,
+    quoteOverridesReady,
     onSecurityData(series, data, includesHistory) {
       const { source } = series;
       if (source.kind !== "security") return;
@@ -174,6 +176,8 @@ export async function loadChartPaneModel(
       source: "network",
     }),
   }, undefined, { awaitResolutionSupport: true });
+  // Settled whether or not a series waited for them, as the report was before.
+  await quoteOverridesReady;
   spec = { ...spec, series: spec.series.map((series) => resolvedSeries.get(series.id) ?? series) };
   const ids = new Set(spec.series.map((series) => series.id));
   const periodCoverage = financialPeriodCoverage(spec, chart.series);
