@@ -542,6 +542,16 @@ test("quote cites quotes from a plugin's provider or a broker by name, and leave
     expect(await quote(quotes, "csv")).not.toContain("acme-feed");
   }
   expect((await quote([quoted("AAPL", "acme-feed")], "csv")).split("\n")[1]!.split(",").at(-3)).toBe("");
+
+  // Neither row of a mixed export takes the other's source: a quote with no provider id is Gloom Cloud's, and
+  // the unnamed provider's cell stays blank, whatever the closing lines say.
+  const implicitCloud: Quote = { ...afterHours, symbol: "AAPL", providerId: undefined };
+  for (const quotes of [[implicitCloud, quoted("MSFT", "acme-feed")], [quoted("MSFT", "acme-feed"), implicitCloud]]) {
+    const rows = (await quote(quotes, "csv")).split("\n").slice(1, 3);
+    const sourceOf = (symbol: string) => rows.find((line) => line.startsWith(symbol))!.split(",").at(-3);
+    expect(sourceOf("AAPL")).toBe("Gloom Cloud");
+    expect(sourceOf("MSFT")).toBe("");
+  }
 });
 
 test("QQ's report cites its quotes' sources by name, and leaves an unnamed one out instead of calling it Gloom Cloud", async () => {

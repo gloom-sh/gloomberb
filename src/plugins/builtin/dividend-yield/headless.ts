@@ -8,7 +8,7 @@ import { fetchDividendData, requestDividendHistory, statedForwardRate, TOKEN_YIE
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
 import {
-  cashEstimateText, COMBINED_PAYMENT, convertedFromText, formatConvertedAmount, formatDividendYield, forwardEstimateText, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
+  COMBINED_PAYMENT, convertedFromText, distinctEstimateTexts, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
 } from "./view";
 import { MISSING_VALUE, formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -209,17 +209,23 @@ export function projectDividendYieldHeadless(
   ];
   const metrics = data.metrics;
   const currency = data.currency ?? data.payments[0]?.currency ?? "";
-  const cashRate = (value: number | null) => !currency ? "—" : !convertedFrom ? formatDistributionAmount(value ?? undefined, currency)
-    : value == null ? formatConvertedAmount(value, currency) : `${formatConvertedAmount(value, currency, subUnit)} (${convertedFromText(convertedFrom)})`;
+  // A rate from an estimated cash amount says so beside the figure; what it is estimated from is said once, below.
+  const cashRate = (value: number | null, estimated = false) => {
+    const mark = estimated && value != null ? " estimated" : "";
+    return !currency ? "—" : !convertedFrom ? `${formatDistributionAmount(value ?? undefined, currency)}${mark}`
+      : value == null ? formatConvertedAmount(value, currency) : `${formatConvertedAmount(value, currency, subUnit)}${mark} (${convertedFromText(convertedFrom)})`;
+  };
   const priceStatus = dividendPriceStatus(data.price, data.priceAsOf, data.priceStale);
   // A regular payer's year with fewer payments than its cadence pays: the yield says how many it counts.
   const shortfall = trailingPaymentsText(metrics.trailingPayments, { cadence: true });
-  const trailingEstimate = metrics.trailingEstimates?.length ? metrics.trailingEstimates.map(cashEstimateText).join("; ") : null;
+  const trailingEstimated = !!metrics.trailingEstimates?.length;
+  const forwardEstimated = !!metrics.forwardEstimate;
+  const estimateTexts = distinctEstimateTexts([...metrics.trailingEstimates ?? [], ...metrics.forwardEstimate ? [metrics.forwardEstimate] : []]);
   const errors = [data.historyError, data.summaryError, data.cashVerificationWarning, tax?.checkError].filter((error): error is string => !!error);
 
   // A monthly payer's history that ends early: its yields and last ex-date stop there, and each says so.
   const historyEnd = metrics.lapse?.historyEnds ? metrics.lapse.lastPaid : null;
-  const trailingNotes = [TRAILING_DIVIDEND_BASIS, shortfall ? `counts ${shortfall}` : null, historyEnd ? historyEndsText(historyEnd) : null, trailingEstimate]
+  const trailingNotes = [TRAILING_DIVIDEND_BASIS, shortfall ? `counts ${shortfall}` : null, historyEnd ? historyEndsText(historyEnd) : null]
     .filter((note): note is string => !!note).join("; ");
   const trailingLabel = bond ? `Trailing distribution yield (${NOT_SEC_YIELD})` : "Trailing yield";
   const forwardLabel = bond ? `Forward distribution yield (${NOT_SEC_YIELD})` : "Forward yield";
@@ -227,6 +233,10 @@ export function projectDividendYieldHeadless(
   // A forward rate that is the trailing year's total (forwardBasis: uneven) says so beside each figure, in exports by its label.
   const trailingForward = metrics.forwardRate != null && metrics.forwardBasis === "uneven";
   const trailingForwardLabel = trailingForward ? ` (${TRAILING_REGULAR_PAYMENTS})` : "";
+  // An estimated forward figure is its estimate's, so it carries no dated basis of its own, only that its payments are uneven.
+  const forwardBasisText = metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS
+    : forwardEstimated ? null : forwardDividendBasis(metrics.forwardRateAsOf, { payDate: forwardPayDate(metrics), declared: data.declared, currency });
+  const forwardYieldContext = forwardBasisText ? ` (${forwardBasisText})` : "";
   const lastEx = isoDay(metrics.lastExDividendDate);
   const growthEntry = (label: string, value: number | null, payments: GrowthPayments | null | undefined, notMeaningful?: boolean) =>
     ({ label, value: roundedRatio(value), formatted: growthText(value, payments, notMeaningful) });
@@ -255,20 +265,19 @@ export function projectDividendYieldHeadless(
           { label: trailingLabel, value: roundedRatio(metrics.trailingYield),
             formatted: metrics.trailingYield == null
               ? data.token ? `${formatDividendYield(null)} (${TOKEN_YIELD_NOTE})` : formatDividendYield(null)
-              : `${formatDividendYield(metrics.trailingYield)} (${trailingNotes})` },
+              : `${formatDividendYield(metrics.trailingYield)}${trailingEstimated ? " estimated" : ""} (${trailingNotes})` },
           { label: forwardLabel, value: roundedRatio(metrics.forwardYield),
             formatted: forwardText
             ?? (metrics.forwardYield == null ? formatDividendYield(null)
-            : `${formatDividendYield(metrics.forwardYield)} (${forwardEstimateText(metrics) ?? (metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS
-              : forwardDividendBasis(metrics.forwardRateAsOf, { payDate: forwardPayDate(metrics), declared: data.declared, currency }))})`) },
+            : `${formatDividendYield(metrics.forwardYield)}${forwardEstimated ? " estimated" : ""}${forwardYieldContext}`) },
           ...figures.map((figure) => ({
             label: figureLabel(figure),
             value: figure.value,
             formatted: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
           })),
-          { label: "Trailing rate", value: metrics.trailingRate, formatted: `${cashRate(metrics.trailingRate)}${trailingEstimate ? ` (${trailingEstimate})` : ""}` },
-          { label: "Forward rate", value: metrics.forwardRate, formatted: `${cashRate(metrics.forwardRate)}${metrics.forwardEstimate ? ` (${forwardEstimateText(metrics)})`
-            : trailingForward ? ` (${UNEVEN_REGULAR_PAYMENTS})` : ""}` },
+          { label: "Trailing rate", value: metrics.trailingRate, formatted: cashRate(metrics.trailingRate, trailingEstimated) },
+          { label: "Forward rate", value: metrics.forwardRate, formatted: `${cashRate(metrics.forwardRate, forwardEstimated)}${trailingForward ? ` (${UNEVEN_REGULAR_PAYMENTS})` : ""}` },
+          ...estimateTexts.map((estimate) => ({ label: "Estimated", value: estimate })),
           { label: "Payout (basis/date unstated)", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio) },
           growthEntry("1Y Cash Growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful),
           growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),

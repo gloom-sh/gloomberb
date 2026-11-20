@@ -41,7 +41,8 @@ export function quotesFreshness(
 ): ReportFreshness | undefined {
   const shown = [...quotes].filter((quote): quote is Quote => quote != null);
   const rows = shown.map((quote) => quoteObservation(quote, now));
-  const source = declared?.source === undefined && !declared?.sources?.length ? quotesSourceName(shown, brokerName) : undefined;
+  const declaresSource = declared?.source === null || !!declared?.source?.trim() || !!declared?.sources?.length;
+  const source = declaresSource ? undefined : quotesSourceName(shown, brokerName) || null;
   return rows.length > 0 ? rowsFreshness(rows, source === undefined ? declared : { ...declared, source }, undefined, now) : undefined;
 }
 

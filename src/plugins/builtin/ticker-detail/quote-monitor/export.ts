@@ -35,15 +35,16 @@ export function quoteMonitorCsv(entries: readonly QuoteMonitorExportEntry[], now
   });
   const table = exportRowsTable("Quote Monitor", quoteMonitorColumns(rows), rows, { status: true, rowUnitKey: "unit" });
   const text = (value: unknown) => typeof value === "string" ? value : null;
-  const rowIdentities = rows.map((row) => ({
+  const rowIdentities = rows.map((row, index) => ({
     symbolOrSeries: text(row.symbol),
     currencyOrUnit: text(row.unit),
     asOf: typeof row.updatedAt === "number" && Number.isFinite(row.updatedAt) ? new Date(row.updatedAt).toISOString() : null,
-    source: text(row.source),
+    // A row with no quote has no source of its own, so it keeps the closing source.
+    source: entries[index]?.quote ? text(row.source) : null,
   }));
   const quotes = entries.flatMap(({ quote }) => quote ? [quote] : []);
   // A row whose source has no name leaves its cell blank, not Gloom Cloud's.
-  const source = quotes.length > 0 ? { source: quotesSourceName(quotes, brokerName) } : {};
+  const source = quotes.length > 0 ? { source: quotesSourceName(quotes, brokerName) || null } : {};
   const freshness = deriveHeadlessFreshness({ shape: "rows", freshness: { datesEachVenue: true, ...source } }, { rows }, now);
   return `${EXCEL_CSV_BOM}${renderReportCsv({ tables: [{ ...table, rowIdentities }], footer: [] }, freshness)}`;
 }

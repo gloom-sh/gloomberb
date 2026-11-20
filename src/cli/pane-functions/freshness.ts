@@ -623,9 +623,9 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const namesOldest = !!asOf && !!oldestTime && (asOf.time - oldestTime.time > OLDEST_GAP_MS
     || (declared.oldestAnyDay === true && declared.oldest != null && isoTime(oldestTime).slice(0, 10) < isoTime(asOf).slice(0, 10)));
   return {
-    // A declared blank source says the data has no name to give, which is left out rather than called Gloom Cloud.
-    source: declared.source !== undefined ? declared.source.trim()
-      : sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE,
+    // A declared null source says the data has no name to give, which is left out rather than called Gloom Cloud.
+    source: declared.source === null ? ""
+      : declared.source?.trim() || (sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE),
     asOf: released ? isoTime(released) : asOf ? isoTime(asOf) : null,
     ...(released && asOf ? { referencePeriod: isoTime(asOf) } : {}),
     ...(namesOldest ? {

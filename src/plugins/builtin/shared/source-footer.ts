@@ -2,6 +2,7 @@ import { formatWeekdayDay } from "../../../utils/datetime-format";
 import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { deriveHeadlessFreshness, paneSourceLineVariants, type ReportFreshness } from "../../../cli/pane-functions/freshness";
 import { quotesFreshness } from "../../../cli/freshness";
+import type { BrokerNameOf } from "../../../market-data/quotes/export-identity";
 import { quoteHeadlineTime } from "../../../market-data/market/status";
 import type { Quote } from "../../../types/financials";
 import type { HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneResult } from "../../../types/headless";
@@ -50,6 +51,8 @@ export function reportFooterSegment(
   return sourceFooterSegment(deriveHeadlessFreshness(definition, result, options.now), options);
 }
 
+const registeredBrokerName: BrokerNameOf = (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name;
+
 /**
  * {@link sourceFooterSegment} for the quotes a pane shows, as `quote` ends: where they are from (Gloom Cloud, a
  * broker by its name) and the newest's session or time, `Gloom Cloud · EGX trading day Thu 12 Nov 2026 close`,
@@ -59,10 +62,10 @@ export function reportFooterSegment(
  */
 export function quoteSourceFooterSegment(
   quotes: Iterable<Quote | null | undefined>,
-  { id = "source", now = Date.now() }: { id?: string; now?: number } = {},
+  { id = "source", now = Date.now(), brokerName = registeredBrokerName }: { id?: string; now?: number; brokerName?: BrokerNameOf } = {},
 ): PaneFooterSegment | null {
   const shown = [...quotes].filter((quote): quote is Quote => quote != null && quote.lastUpdated > 0);
-  const freshness = quotesFreshness(shown, undefined, now, (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name);
+  const freshness = quotesFreshness(shown, undefined, now, brokerName);
   if (!freshness) return null;
   const newest = Math.max(...shown.map((quote) => quoteHeadlineTime(quote)));
   return sourceFooterSegment(freshness, { id, feed: false, ...Number.isFinite(newest) && newest > 0 ? { time: compactTime(newest, now) } : {} });

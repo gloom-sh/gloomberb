@@ -665,7 +665,7 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows,
       // The report cites the sources its rows name, never Gloom Cloud for a quote that is not its own.
-      ...loaded.entries.length > 0 ? { freshness: { source: quotesSourceName(loaded.entries.map(({ data }) => data), brokerName) } } : {},
+      ...loaded.entries.length > 0 ? { freshness: { source: quotesSourceName(loaded.entries.map(({ data }) => data), brokerName) || null } } : {},
       // An extended column or Chg bp only when a row has one, so a closed board stays as narrow as before.
       ...(columns.length > QUOTE_MONITOR_BASE_COLUMNS.length ? { columns } : {}),
       // Each exported row names its ticker, its unit, its source and when its own price was observed.

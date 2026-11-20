@@ -87,8 +87,9 @@ export interface ExportIdentity {
   interval?: string | null;
   /**
    * Who this row is cited to, where a table's rows come from different
-   * publishers (each venue's own contract): blank leaves the closing lines'
-   * source, which names them all.
+   * publishers (each venue's own contract). Blank says its source has no name
+   * to give and stays blank; null or absent leaves the closing lines' source,
+   * which names them all.
    */
   source?: string | null;
   /**
@@ -122,7 +123,7 @@ export function exportIdentityCells(freshness: ReportFreshness, identity: Export
     identity.symbolOrSeries?.trim() ?? "",
     identity.currencyOrUnit?.trim() ?? "",
     identity.interval?.trim() ?? "",
-    identity.source?.trim() || source.name || "",
+    identity.source != null ? identity.source.trim() : source.name ?? "",
     identity.asOf !== undefined ? rowAsOf(identity.asOf) : source.observationDate ?? "",
   ];
 }

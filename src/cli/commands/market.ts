@@ -1500,10 +1500,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     if (ctx.cliOptions.format !== "json") useKnownCoins();
     // Only yield indices: their change is in bp, so the text header drops the percent sign (CSV keeps the percent it holds).
     const yieldsOnly = data.length > 0 && data.every((row) => isYieldIndexSymbol(row.target.symbol));
-    const venued = data.some((row) => row.quote?.priceVenue);
     const sourceNameOf = market.dataProvider.sourceNameOf;
-    // Rows from different sources (a plugin's beside Gloom Cloud's) name their own too.
-    const mixedSources = new Set(data.flatMap((row) => row.quote ? [quoteSourceName(row.quote, sourceNameOf)] : [])).size > 1;
+    // Each quoted row cites its own source, blank when it has no name to give, so a row never takes another's.
+    const rowSources = new Map(data.flatMap((row) => row.quote ? [[quoteRowSymbol(row), quoteSourceName(row.quote, sourceNameOf)] as const] : []));
     ctx.printResult({
       data: rows,
       warnings: warnings.length > 0 ? warnings : undefined,
@@ -1525,8 +1524,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
           : (row.currency && pairExportUnit(row.symbol, row.currency)) || row.currency || (row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : null),
         // Each row as of its own price (^TNX's 19:59 beside ^VIX's 21:15), as Updated says; a row with none is blank.
         asOf: row.updatedAt || null,
-        // Beside a coin priced by one exchange's own trade, which is cited to that exchange, each row names its own.
-        ...venued || (mixedSources && (row.providerId || row.priceVenue)) ? { source: quoteSourceName(row, sourceNameOf) } : {},
+        source: rowSources.get(row.symbol),
       }),
       // A row with no price or move says why in its status column, as the warnings do.
       exportStatus: quoteExportStatus,
