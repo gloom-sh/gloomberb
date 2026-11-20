@@ -102,7 +102,7 @@ function projectNewsHeadless(
     asOf: now.toISOString(),
     items,
     // Dated by the newest story, held back for an account without real-time news.
-    freshness: cloudNewsFreshness(realtime),
+    freshness: cloudNewsFreshness(response.access == null ? realtime : response.access === "realtime"),
     // A coin pair no story is filed under shows the stories that mention the coin, and says so.
     ...(response.searchedFor && args.symbols[0]
       ? { notes: [newsFallbackNotice(parsePublicTickerKey(args.symbols[0]).symbol, response.searchedFor)] }

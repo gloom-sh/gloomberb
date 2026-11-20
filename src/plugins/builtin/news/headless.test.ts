@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudNewsPayload } from "../../../api-client";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import type { NewsQuery } from "../../../news/types";
 import {
@@ -82,6 +83,24 @@ function dependencies(seen: NewsQuery[]): NewsHeadlessDependencies {
 }
 
 describe("news feed headless", () => {
+  test.each([
+    [false, undefined, "delayed", "12 h delayed"],
+    [null, "realtime", "live", "live"],
+    [null, undefined, "unreported", ""],
+  ] as const)("reports story time independently of plan %p and feed access %p", async (realtime, access, status, label) => {
+    const deps = dependencies([]);
+    const definition = createNewsFeedHeadless({ ...deps,
+      loadNews: async () => ({ items: stories, nextCursor: null, access }), realtimeAccess: async () => realtime,
+    });
+    const input = args(null, {});
+    const result = await definition.load(input, context);
+    const freshness = deriveHeadlessFreshness(definition, result, deps.now().getTime());
+    expect(freshness).toMatchObject({ asOf: "2026-09-04T20:00:00.000Z", status });
+    expect(freshness.delayMinutes).toBe(realtime === false ? 720 : undefined);
+    expect(renderHeadlessPaneText(definition, result, input, "Top News", freshness).split("\n").at(-1))
+      .toBe(`Source: Gloom Cloud · newest story Fri 4 Sep 2026 20:00 UTC${label ? ` · ${label}` : ""}`);
+  });
+
   test("maps cloud stories into a point-in-time snapshot", async () => {
     const seen: NewsQuery[] = [];
     const definition = createNewsFeedHeadless(dependencies(seen));

@@ -7,7 +7,7 @@ import { applyChartComposerCapabilityOptions } from "./cli-options";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import { resetFuturesPriceUnits } from "../../../market-data/futures-contract";
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
-import { headlessReportTables } from "../../../cli/pane-functions/headless";
+import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderReportCsv } from "../../../cli/report-tables";
 import { portableCsv } from "../../../cli/csv-export";
@@ -40,6 +40,34 @@ function fixture(bars = history) {
     argument: "AAPL:NASDAQ", rawArgument: "AAPL:NASDAQ", symbols: ["AAPL:NASDAQ"], options,
   }, context) as ChartPaneModel };
 }
+
+test.each([
+  ["^IRX", "INDEX", "%"], ["^FVX", "INDEX", "%"], ["^TNX", "INDEX", "%"], ["^TYX", "INDEX", "%"],
+  ["^VIX", "INDEX", "points"], ["AAPL", "EQUITY", "USD/share"],
+] as const)("reports raw chart levels and session moves in the units for %s", async (symbol, instrumentType, unit) => {
+  setSystemTime(new Date("2026-09-03T15:30:00Z"));
+  try {
+    const bars = history.map((bar) => ({ ...bar, close: bar.date.getUTCDate() === 3 ? 4.25 : 4.2, open: 4.2, high: 4.25, low: 4.18, volume: 0 }));
+    const { context } = fixture(bars);
+    const definition = chartHeadless("graph-price-pane");
+    const input = { rawArgument: symbol, argument: symbol, symbols: [symbol], options: {} };
+    const result = await definition.load(input, {
+      ...context, settings: { chartSpec: buildIntradayPriceChartPreset(symbol) },
+      marketData: { ...context.marketData, getQuote: async () => ({ symbol, instrumentType, currency: "USD",
+        price: 4.25, change: 0.05, changePercent: 1.19, previousClose: 4.2, lastUpdated: Date.now(), marketState: "REGULAR" }) },
+    });
+    const json = serializeHeadlessPaneResult(definition, result);
+    const expectedLabel = unit === "%" ? "Yield" : "Price";
+    expect(json).toMatchObject({ series: expect.arrayContaining([expect.objectContaining({ label: `${symbol} ${expectedLabel}`, unit,
+      ...(unit === "%" ? { latestChangeBasisPoints: 5 } : {}) })]) });
+    const text = renderHeadlessPaneText(definition, result, input, "Chart");
+    expect(text).toContain(`${symbol} ${expectedLabel}`);
+    if (unit === "%") expect(text).toContain("+5.0bp");
+    else expect(text).not.toContain("Session move");
+  } finally {
+    setSystemTime();
+  }
+});
 
 test("CMP requests daily history on the resolved US fund listings, not the unqualified ticker", async () => {
   const listings: Record<string, string> = { IVV: "ARCA", VOO: "ARCA", QQQ: "NASDAQ" };

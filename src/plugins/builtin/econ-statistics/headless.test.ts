@@ -32,6 +32,27 @@ const args: HeadlessPaneLoadArgs = {
 };
 
 describe("economic statistics headless model", () => {
+  test("the latest official yield keeps its publication date separate from its observation and cutoff", async () => {
+    const input = { ...args, rawArgument: "10y yield", argument: "10y yield" };
+    const report = await econStatisticsHeadless.load(input, createTestHeadlessContext({ apiClient: {
+      getCloudFredSeries: async () => ({ observations: [
+        { date: "2026-10-13", value: null },
+        { date: "2026-10-12", value: 4.25, publisher: "U.S. Treasury", publishedAt: "2026-10-13" },
+        { date: "2026-10-09", value: 4.20 },
+        { date: "2026-10-08", value: 4.19 },
+      ] }),
+    } as unknown as HeadlessPaneContext["apiClient"] }));
+    const freshness = deriveHeadlessFreshness(econStatisticsHeadless, report, Date.parse("2026-10-13T12:00:00Z"));
+    expect(freshness).toMatchObject({ asOf: "2026-10-12", schedule: "15:30 ET", publisher: "U.S. Treasury", publishedAt: "2026-10-13" });
+    expect(renderHeadlessPaneText(econStatisticsHeadless, report, input, "ECST", freshness))
+      .toContain("Source: U.S. Treasury, published 2026-10-13 · Mon 12 Oct 2026 · 15:30 ET");
+    const tables = headlessReportTables(econStatisticsHeadless, report, input, "ECST", freshness, { complete: true, unavailableSymbols: [] });
+    const csv = renderReportCsv(tables, freshness);
+    expect(csv).toContain("published_at");
+    expect(csv).toContain('"U.S. Treasury, published 2026-10-13",2026-10-12,2026-10-12,,');
+    expect(csv).not.toContain("via FRED");
+  });
+
   test("loads through the injected cloud client and produces category sections", async () => {
     const requested: string[] = [];
     const apiClient = {

@@ -321,6 +321,8 @@ export interface ResolvedSeries {
   observationKind?: "market" | "dataset";
   /** The move of the series's last bar from the close the latest market quote measures its change from, in percent. */
   latestChangePercent?: number;
+  /** The corresponding absolute move for a yield index, in basis points. */
+  latestChangeBasisPoints?: number;
   /** The previous session's close, set on a one-day chart's price series and drawn as its reference line. */
   priorClose?: number;
   points: TimeSeriesPoint[];

@@ -65,6 +65,8 @@ import { quoteStatsBasisText } from "../../market-data/quotes/export-identity";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import { INDEX_POINTS_LABEL, isIndexLevel, quoteVolumeCurrency, reportedQuoteVolume } from "../../market-data/market/index-level";
+import { isYieldIndexSymbol } from "../../tickers/index-roots";
+import { toBasisPoints } from "../../utils/basis-points";
 import type { SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle } from "../../news/types";
 import { summaryRestatesHeadline } from "../../news/news-model";
@@ -1368,13 +1370,14 @@ export async function buildTickerReport({
 }): Promise<string> {
   // A future's move that nothing confirms is measured from its last confirmed settlement, as `quote` reads it.
   const quote = futuresQuoteFromSettle(financials.quote, futuresContract);
+  const yieldIndex = isYieldIndexSymbol(quote?.symbol ?? symbol);
   const fundamentals = financials.fundamentals;
   const priceReturns = computeTickerPriceReturns(financials, tickerFile?.metadata.assetCategory);
   const profile = financials.profile;
   const name = quote?.name || tickerFile?.metadata.name || symbol;
   // A contract prints to its tick, as `quote` prints it.
   const baseQuoteOptions = { ...quoteFormatOptions(quote, tickerFile?.metadata.assetCategory, financials.quoteMetadata?.instrumentType),
-    ...futuresTickOption(futuresContract) };
+    ...futuresTickOption(futuresContract), yieldIndex };
   const baseCurrency = config.baseCurrency.trim().toUpperCase();
   const codes = writesCurrencyCodes(config);
   const rates: ReportRateNotes = {
@@ -1396,7 +1399,7 @@ export async function buildTickerReport({
   const indexLevel = isIndexLevel(quote?.instrumentType?.trim() || financials.quoteMetadata?.instrumentType?.trim() || tickerFile?.metadata.assetCategory);
   const summaryParts = [
     listingVenueLabel(listingExchange, quote, financials, tickerFile) || undefined,
-    indexLevel ? INDEX_POINTS_LABEL : quoteCurrency ? `Currency ${currencyCodeLabel(quoteCurrency)}` : undefined,
+    yieldIndex ? undefined : indexLevel ? INDEX_POINTS_LABEL : quoteCurrency ? `Currency ${currencyCodeLabel(quoteCurrency)}` : undefined,
     quoteMarketStateLabel(quote) ?? undefined,
     // A listing that no longer trades has no delay to speak of: its quote is its last session's close.
     quote?.dataSource && !quote.delisting ? `Source ${quote.dataSource.toUpperCase()}` : undefined,
@@ -1475,7 +1478,7 @@ export async function buildTickerReport({
   if (quote) {
     // As the Overview reads it: the regular session, then the extended-hours print against its close.
     const session = getRegularSessionDisplay(quote)!;
-    const extended = getExtendedSessionDisplay(quote);
+    const extended = yieldIndex ? null : getExtendedSessionDisplay(quote);
     // Each price says when it is from: Last a completed session's close by its day, the extended print by its time.
     const closeDate = futuresContract ? null : headlineCloseDate(quote);
     const extendedTime = extendedPrintTime(quote);
@@ -1497,7 +1500,7 @@ export async function buildTickerReport({
     // A futures price is its latest trade; the exchange settlement is its own row, dated by its session.
     appendMetricSection(lines, "Quote", [
       // A price in cents says what it is per: 314.95¢/lb.
-      ["Last", `${colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${futuresPricePer(futuresContract, quote.currency)}`, session.change)}${closeDate ? cliStyles.muted(` (${closeDayLabel(closeDate)})`) : ""}`],
+      [yieldIndex ? "Yield" : "Last", `${colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${futuresPricePer(futuresContract, quote.currency)}`, session.change)}${closeDate ? cliStyles.muted(` (${closeDayLabel(closeDate)})`) : ""}`],
       ...futuresContract
         ? [["Settle", quoteSettleText(quote, futuresContract)] as [string, string]]
         : [],
@@ -1674,6 +1677,8 @@ function buildTickerStructuredData({
   const priced = atLivePriceEarnings(financials);
   const computedRunway = cashRunway(financials, offerings);
   const runway = burnsCash(computedRunway) ? computedRunway : null;
+  const yieldIndex = isYieldIndexSymbol(quote?.symbol ?? symbol);
+  const session = getQuoteSessionFields(quote);
   return {
     symbol,
     listing: { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name },
@@ -1682,7 +1687,9 @@ function buildTickerStructuredData({
       instrumentType: quote.instrumentType,
       name: quote.name,
       // Last and Change as the text report reads them, then the extended print from that close.
-      ...getQuoteSessionFields(quote),
+      ...session,
+      ...(yieldIndex ? { unit: "percent", changePercent: null,
+        changeBasisPoints: session.change == null ? null : toBasisPoints(session.change, 1) } : {}),
       // What Change is measured from ("vs Fri 16 Oct close"), and the quote's previous close with its exchange-local date.
       changeBasis: changeBasisJson(quoteChangeBasis(quote, { terms: futuresContract })),
       previousClose: quote.previousClose ?? null,

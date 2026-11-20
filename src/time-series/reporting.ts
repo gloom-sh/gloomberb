@@ -1,4 +1,6 @@
 import type { TickerFinancials } from "../types/financials";
+import { isYieldIndexSymbol } from "../tickers/index-roots";
+import { toBasisPoints } from "../utils/basis-points";
 import { formatCompact, formatNumber } from "../utils/format";
 import { growthRate, rateValue } from "../utils/growth";
 import { getTimeSeriesField } from "./field-catalog";
@@ -122,12 +124,14 @@ export function summarizeResolvedSeries(series: ResolvedSeries) {
   });
   const first = observations[0];
   const last = observations.at(-1);
+  const yieldIndex = isYieldIndexSymbol(series.listing?.symbol ?? "") && (series.rawUnit ?? series.unit) === "%";
   return {
     startDate: first?.date.toISOString() ?? null,
     endDate: last?.date.toISOString() ?? null,
     startValue: first?.value ?? null,
     endValue: last?.value ?? null,
-    return: first && last && first.value !== 0 ? (last.value - first.value) / first.value : null,
+    return: !yieldIndex && first && last && first.value !== 0 ? (last.value - first.value) / first.value : null,
+    ...(yieldIndex && first && last ? { changeBasisPoints: toBasisPoints(last.value - first.value, 1) } : {}),
     unit: series.rawUnit ?? series.unit,
     pointCount: series.points.length,
   };

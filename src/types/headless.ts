@@ -292,8 +292,9 @@ export interface HeadlessPaneEntry {
  * - `not-a-feed`: data that is not a feed at all (filings, fundamentals,
  *   calendars, statistics releases, calculators, local portfolio data). It
  *   never reads stale just because it is old.
+ * - `unreported`: the feed status is unknown and should not be inferred.
  */
-export type HeadlessFreshnessStatus = "live" | "delayed" | "stale" | "not-a-feed";
+export type HeadlessFreshnessStatus = "live" | "delayed" | "stale" | "not-a-feed" | "unreported";
 
 /**
  * What a report can cite about its data. Every field is optional: the report
@@ -748,6 +749,8 @@ export interface HeadlessSeries {
    * quote it ends on (^NDX's November bar by Mon 9 Nov's close).
    */
   latestDate?: string;
+  /** The latest yield bar's move from the previous session's close. */
+  latestChangeBasisPoints?: number;
   /** A formula of futures: its legs as charted (`RB=F`), which name the exported contract columns of its points' `legs`. */
   formulaLegs?: readonly string[];
   /**

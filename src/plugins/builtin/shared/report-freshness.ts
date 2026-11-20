@@ -7,7 +7,7 @@ import { quoteHeadlineTime } from "../../../market-data/market/status";
 import { indexLevelMarketState } from "../../../market-data/market/index-level";
 import { barSizeFromGap, medianBarGap } from "../../../time-series/bar-spacing";
 import { apiClient } from "../../../api-client";
-import { hasProAccess } from "../../../api-client/plan-rules";
+import { CLOUD_NEWS_DELAY_HOURS, hasProAccess, type PlanAccessUser } from "../../../api-client/plan-rules";
 import { savedCopyMark } from "../../../data/saved-copies";
 
 /**
@@ -135,15 +135,18 @@ export function quoteObservation(quote: Quote, now = Date.now()): QuoteFreshness
   };
 }
 
-/**
- * Whether the Gloom Cloud session a report reads with has real-time access:
- * no session reads as a free account; a session is asked for its plan. Null
- * when the plan cannot be read, so the report does not guess a delay.
- */
+/** Null when there is no known entitlement, rather than assuming Free. */
+export function cloudPlanRealtimeAccess(user: PlanAccessUser | null): boolean | null {
+  if (!user) return null;
+  if (hasProAccess(user)) return true;
+  return user.emailVerified === false || user.plan != null || user.effectivePlan != null ? false : null;
+}
+
+/** Signed-out reports read as Free; a signed-in account needs a known plan. */
 export async function cloudRealtimeAccess(): Promise<boolean | null> {
   if (!apiClient.isSignedIn()) return false;
   try {
-    return hasProAccess(apiClient.getCurrentUser() ?? await apiClient.getSession());
+    return cloudPlanRealtimeAccess(apiClient.getCurrentUser() ?? await apiClient.getSession());
   } catch (error) {
     return logFailure("shared.report-freshness", "Read Cloud plan for report freshness failed", null)(error);
   }
@@ -158,5 +161,6 @@ export async function cloudRealtimeAccess(): Promise<boolean | null> {
 export function cloudNewsFreshness(realtime: boolean | null): HeadlessPaneFreshness {
   const stories: HeadlessPaneFreshness = { observedKey: "publishedAt", oldest: null, asOfLabel: NEWEST_STORY };
   if (realtime === true) return { ...stories, status: "live" };
-  return { ...stories, status: "not-a-feed", basis: "published stories" };
+  if (realtime === false) return { ...stories, status: "delayed", delayMinutes: CLOUD_NEWS_DELAY_HOURS * 60 };
+  return { ...stories, status: "unreported" };
 }

@@ -30,7 +30,7 @@ export interface FredProvenance {
  * Cloud carried a value FRED does not list yet and named its publisher. Then
  * the source line names that publisher and when it published, so a reader
  * looking for the figure in FRED's own data knows it is not there yet:
- * `U.S. Treasury via FRED, published 2026-10-09`. Null for FRED's own.
+ * `U.S. Treasury, published 2026-10-09`. Null for FRED's own.
  */
 export function fredProvenance(
   observations: ReadonlyArray<{ date: string; publisher?: string; publishedAt?: string }>,
@@ -41,13 +41,14 @@ export function fredProvenance(
   const publishers = [...new Set(ahead.map((observation) => observation.publisher!.trim()))];
   const times = ahead.flatMap((observation) => {
     const time = parseReportTime(observation.publishedAt);
-    return time ? [new Date(time.time).toISOString()] : [];
+    return time ? [new Date(time.time).toISOString().slice(0, time.dateOnly ? 10 : undefined)] : [];
   }).sort();
   const publishedAt = times.at(-1);
   const publisher = publishers.join(" and ");
+  const via = seriesId ? seriesNotOnFred(seriesId)?.via : null;
   return {
     // A series FRED does not carry names whose publication it is read from instead (TurkStat via the CBRT).
-    source: `${publisher} via ${(seriesId ? seriesNotOnFred(seriesId)?.via : null) ?? "FRED"}${publishedAt ? `, published ${publishedAt.slice(0, 10)}` : ""}`,
+    source: `${publisher}${via ? ` via ${via}` : ""}${publishedAt ? `, published ${publishedAt.slice(0, 10)}` : ""}`,
     publisher,
     ...(publishedAt ? { publishedAt } : {}),
   };

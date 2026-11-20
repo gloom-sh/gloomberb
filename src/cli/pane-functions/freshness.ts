@@ -29,7 +29,7 @@ import { releasedText } from "../../utils/release-date";
  * for a report that cannot tell: a rendered view whose footer names no state,
  * or a plugin that declares nothing and carries no feed signal.
  */
-type ReportFreshnessStatus = HeadlessFreshnessStatus | "unreported";
+type ReportFreshnessStatus = HeadlessFreshnessStatus;
 
 /** What every `fn` report cites about its data, in its JSON and its last text line. */
 export interface ReportFreshness {
@@ -547,7 +547,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
       status = "not-a-feed";
     }
   } else {
-    const feed = worstFeedStatus([
+    const feed = declared.status === "unreported" ? null : worstFeedStatus([
       ...(declared.status ? [declared.status] : []),
       ...(signals.live ? ["live" as const] : []),
       ...(signals.delayed ? ["delayed" as const] : []),

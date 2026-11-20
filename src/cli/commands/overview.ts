@@ -910,7 +910,7 @@ async function printFredAligned(ctx: Parameters<CliCommandDef["execute"]>[1], se
       row[seriesId] = entry.value;
       row[`${seriesId}_unit`] = identity?.currencyOrUnit;
       row[`${seriesId}_interval`] = identity?.interval;
-      row[`${seriesId}_source`] = result.freshness?.source;
+      row[`${seriesId}_source`] = identity?.source ?? result.freshness?.source;
       for (const suffix of suffixes.slice(3)) row[`${seriesId}_${suffix}`] = entry[suffix];
       row[`${seriesId}_as_of`] = identity?.asOf;
       byDate.set(date, row);
@@ -947,8 +947,9 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
   if (mismatch) ctx.fail(mismatch);
   // Each row's change in the unit its value exports in, and the date it is from; a holiday's stays blank.
   const changes = horizon ? fredChanges(seriesId, data.observations, horizon) : null;
+  const elsewhere = notOnFredSource(seriesId);
   const releasedOf = (observation: { publisher?: string; publishedAt?: string; releasedOn?: string; firstReleased?: string }) =>
-    observation.firstReleased ?? observation.releasedOn ?? (observation.publisher?.trim() ? observation.publishedAt : undefined);
+    observation.firstReleased ?? observation.releasedOn ?? (elsewhere && observation.publisher?.trim() ? observation.publishedAt : undefined);
   // A value FRED does not list yet carries its publisher and when it published, in every export.
   // A row from the copy an earlier read saved, the refresh having failed, carries its mark: the source line says so.
   const exportRow = (observation: CloudFredSeriesPayload["observations"][number]) => ({
@@ -990,7 +991,7 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
   }
   const periodicity = periodicityOf(data.info?.frequency);
   const observesDays = fredObservesDays(data.info?.frequency);
-  const newestDate = rows.reduce<string | null>((newest, row) => (!newest || row.date > newest ? row.date : newest), null);
+  const newestDate = rows.reduce<string | null>((newest, row) => (row.value != null && (!newest || row.date > newest) ? row.date : newest), null);
   // A newest value FRED does not list yet names its publisher, Treasury for a yield; FRED's own stay "FRED".
   const ahead = fredProvenance(data.observations.filter((observation) => observation.date === newestDate), seriesId);
   // FRED names the series' publisher when Gloom Cloud passes it on, and when it last updated the series.
@@ -998,6 +999,7 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
   const publishedAt = ahead ? ahead.publishedAt : fredPublicationTime(data.info, newestDate);
   // When the newest figure was released: the report is as of then, `Sep 2026, released Tue 20 Oct`.
   const releasedOn = ahead ? undefined : data.observations.find((observation) => observation.date === newestDate)?.releasedOn;
+  const seriesSource = elsewhere ?? fredCitation(seriesId, data.info?.source);
   ctx.printResult({
     data: rows,
     metadata: {
@@ -1007,7 +1009,8 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
       ...(latest && !closedDay ? { latestObservation: exportRow(latest) } : {}),
     },
     freshness: rowsFreshness(rows, {
-      source: ahead?.source ?? notOnFredSource(seriesId) ?? fredCitation(seriesId, data.info?.source), status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
+      source: ahead?.source ?? seriesSource, status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
+      ...(ahead && newestDate ? { asOf: newestDate } : {}),
       // A monthly or quarterly observation is dated the first of its period, not a day it was seen.
       ...(periodicity ? { periodicity } : {}),
       ...(releasedOn ? { releasedOn } : {}),
@@ -1026,7 +1029,11 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
       const released = typeof row.released === "string" ? row.released : null;
       const revised = typeof row.revised_on === "string" ? row.revised_on : null;
       const date = typeof row.date === "string" ? row.date : null;
-      return { symbolOrSeries: seriesId, currencyOrUnit: unit, interval, asOf: revised ?? released ?? (observesDays ? date : null), period: date, released };
+      const direct = typeof row.publisher === "string" && date ? fredProvenance([{
+        date, publisher: row.publisher, publishedAt: typeof row.publishedAt === "string" ? row.publishedAt : undefined,
+      }], seriesId) : null;
+      return { symbolOrSeries: seriesId, currencyOrUnit: unit, interval, source: direct?.source ?? seriesSource,
+        asOf: revised ?? released ?? (observesDays ? date : null), period: date, released };
     },
     // The release closes the row with the other dating columns, so it is not one of the observation's own.
     columns: [...new Set([...rows.flatMap((row) => Object.keys(row)), "first_released", "revised_on", "first_release_value"])].filter((key) => key !== "released").map((key) => ({ key, header: key })),

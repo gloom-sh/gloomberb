@@ -5,7 +5,8 @@ import type { NewsAccess } from "../../../../../news/types";
 import { t, tf } from "../../../../../i18n";
 import { useAppLanguage } from "../../../../../i18n/react";
 import { useCloudAccessFooter } from "../../../shared/cloud-upgrade";
-import { cloudNewsFreshness } from "../../../shared/report-freshness";
+import { cloudNewsFreshness, cloudPlanRealtimeAccess } from "../../../shared/report-freshness";
+import { apiClient } from "../../../../../api-client";
 import { CLOUD_NEWS_DELAY_HOURS } from "../../../../../api-client/plan-access";
 import { usePaneStatusLinkFooter } from "../../../../../components/layout/pane/status-footer";
 import { useRemoteUiNode } from "../../../../../remote/semantic-tree";
@@ -67,13 +68,17 @@ export function useNewsArticleFooter({
     shortcutScope: `${registrationId}:news-upgrade`,
   });
   const realtime = newsFeedRealtime(feedAccess, access.hasProAccess);
+  const reportRealtime = feedAccess != null ? realtime
+    : apiClient.isSignedIn() || apiClient.isDisplayScopePending()
+      ? cloudPlanRealtimeAccess(apiClient.getCurrentUser()) === false ? false : null
+      : false;
   const storyPastDelay = publishedBeforeNewsDelay(article);
 
   // A report or capture dates the list by its newest story, named so it is not read as the time now.
   useRemoteUiNode({
     role: "report-freshness",
     label: "News freshness",
-    getMetadata: () => ({ ...cloudNewsFreshness(realtime) }),
+    getMetadata: () => ({ ...cloudNewsFreshness(reportRealtime) }),
   });
 
   const accessInfo = useMemo<PaneFooterSegment[]>(() => {

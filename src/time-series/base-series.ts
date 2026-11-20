@@ -29,6 +29,8 @@ import { futuresGenericCaption, futuresGenericListing, futuresListingPriceBasis 
 import { contractPriceUnit, currencyPairPriceUnit } from "./price-units";
 import { INDEX_POINTS_UNIT, INDEX_MEMBERS_VOLUME_LABEL, isIndexLevel } from "../market-data/market/index-level";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
+import { isYieldIndexSymbol } from "../tickers/index-roots";
+import { toBasisPoints } from "../utils/basis-points";
 import { isOhlcSeriesStyle } from "./spec";
 import { SERIES_COLORS } from "../theme/series-colors";
 import type {
@@ -137,6 +139,12 @@ function barMovePercent(bar: TimeSeriesPoint | undefined, reference: number): nu
   return reference > 0 && typeof close === "number" && Number.isFinite(close) ? (close / reference - 1) * 100 : undefined;
 }
 
+function barMoveBasisPoints(bar: TimeSeriesPoint | undefined, reference: number): number | undefined {
+  const close = bar?.close ?? bar?.value;
+  return typeof close === "number" && Number.isFinite(close) && Number.isFinite(reference)
+    ? toBasisPoints(close - reference, 1) : undefined;
+}
+
 /**
  * A bar's move from the close a quote's change is measured from (its price less
  * its change), in percent; the quote's own percent when the quote states no
@@ -156,7 +164,9 @@ function barChangePercent(bar: TimeSeriesPoint | undefined, display: { price: nu
  */
 export function withPriorClose(series: ResolvedSeries, priorClose: number): ResolvedSeries {
   const move = series.latestChangePercent === undefined ? undefined : barMovePercent(series.points.at(-1), priorClose);
-  return { ...series, priorClose, ...move !== undefined ? { latestChangePercent: move } : {} };
+  const basisPoints = series.latestChangeBasisPoints === undefined ? undefined : barMoveBasisPoints(series.points.at(-1), priorClose);
+  return { ...series, priorClose, ...move !== undefined ? { latestChangePercent: move } : {},
+    ...basisPoints !== undefined ? { latestChangeBasisPoints: basisPoints } : {} };
 }
 
 export function baseSecuritySeries(
@@ -216,7 +226,8 @@ export function baseSecuritySeries(
   // An index's level is points too, never the currency its members trade in.
   const indexLevel = field.unitGroup === "price" && isMarketFieldId(field.id)
     && isIndexLevel(financials.quote?.instrumentType || quoteMetadata?.instrumentType);
-  const genericUnit = genericBasis === "points" || indexLevel ? INDEX_POINTS_UNIT : genericBasis === "thirty-seconds" ? "32nds" : null;
+  const yieldIndex = field.unitGroup === "price" && isMarketFieldId(field.id) && isYieldIndexSymbol(spec.source.instrument.symbol);
+  const genericUnit = yieldIndex ? "%" : genericBasis === "points" || indexLevel ? INDEX_POINTS_UNIT : genericBasis === "thirty-seconds" ? "32nds" : null;
   // A future's price in a currency counts what its contract terms say: heating
   // oil is USD / gallon and crude USD / barrel, which a bare USD does not tell apart.
   const statedUnit = !genericUnit && unitTemplate === "currency" ? contractPriceUnit(contractUnit, currency) : null;
@@ -265,9 +276,13 @@ export function baseSecuritySeries(
   const display = marketField && field.unit.startsWith("currency")
     && !unknownBondBasis
     && financials.quote && hasValidQuoteObservationTime(financials.quote)
-    ? (extendedHours ? getActiveQuoteDisplay(financials.quote) : getRegularSessionDisplay(financials.quote))
+    ? (extendedHours && !yieldIndex ? getActiveQuoteDisplay(financials.quote) : getRegularSessionDisplay(financials.quote))
     : null;
-  const latestChangePercent = display ? barChangePercent(points.at(-1), display) : undefined;
+  const latestChangePercent = display && !yieldIndex ? barChangePercent(points.at(-1), display) : undefined;
+  const latestChangeBasisPoints = yieldIndex && spec.transform === "raw" && display?.change != null && Number.isFinite(display.change)
+    ? barMoveBasisPoints(points.at(-1), display.price - display.change) ?? toBasisPoints(display.change, 1) : undefined;
+  const fieldLabel = field.id === "market.volume" && volumeBasis ? INDEX_MEMBERS_VOLUME_LABEL
+    : yieldIndex ? field.id === "market.ohlcv" ? "Yield" : `${field.shortLabel} Yield` : field.seriesLabel ?? field.shortLabel;
   const priceIssues = valuationPriceIssues(financials, spec.source);
   // A source with closes only, such as a generic future, has flat bars (open,
   // high and low filled from the close): nothing to draw as candles.
@@ -276,9 +291,8 @@ export function baseSecuritySeries(
   return {
     id: spec.id,
     label: spec.label?.trim() || (generic ? futuresGenericCaption(generic)
-      : `${symbol} ${field.id === "market.volume" && volumeBasis ? INDEX_MEMBERS_VOLUME_LABEL : field.seriesLabel ?? field.shortLabel}`),
-    legendContext: spec.label?.trim() || generic ? undefined
-      : field.id === "market.volume" && volumeBasis ? INDEX_MEMBERS_VOLUME_LABEL : field.seriesLabel ?? field.shortLabel,
+      : `${symbol} ${fieldLabel}`),
+    legendContext: spec.label?.trim() || generic ? undefined : fieldLabel,
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     unit,
     unitGroup: currencyUnitGroup,
@@ -319,6 +333,7 @@ export function baseSecuritySeries(
     latestChangePercent: typeof latestChangePercent === "number" && Number.isFinite(latestChangePercent)
       ? latestChangePercent
       : undefined,
+    ...(latestChangeBasisPoints !== undefined ? { latestChangeBasisPoints } : {}),
     points,
   };
 }

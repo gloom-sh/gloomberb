@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../api-client/request";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { DEFAULT_CLI_OPTIONS } from "../options";
@@ -7,6 +7,7 @@ import { marketDataCliCommands } from "./market";
 import type { NewsArticle } from "../../news/types";
 import { cloudNewsReadArticles, mapCloudNewsArticle, readCloudNews } from "../../sources/gloomberb-cloud/news";
 import { apiClient } from "../../api-client";
+import type { AuthUser } from "../../api-client/types/auth";
 import { commonWordCandidate, newsSearchText, wordMeansMore } from "./news-search";
 import { setCliWidthOverride } from "../../utils/cli-output";
 import { createTestArticle } from "../../test-support/news";
@@ -44,6 +45,29 @@ function render(printed: ReturnType<typeof createTestCliContext>["printed"][numb
   return serializeCliResult(printed.result, { ...DEFAULT_CLI_OPTIONS, format: "text", color: false }, printed.options)
     .replace(/\u001b\[[0-9;]*m/g, "");
 }
+
+test.each([
+  [false, undefined, "delayed", " · 12 h delayed"],
+  [true, "pro", "live", " · live"],
+  [true, undefined, "unreported", ""],
+] as const)("news --feed latest with signed-in=%s and plan=%s dates the story separately from access", async (authenticated, plan, status, suffix) => {
+  const signedIn = spyOn(apiClient, "isSignedIn").mockReturnValue(authenticated);
+  const user = spyOn(apiClient, "getCurrentUser").mockReturnValue({ emailVerified: true, plan } as AuthUser);
+  try {
+    const cli = createTestCliContext({ dataProvider: {
+      getNews: async () => [createTestArticle("story", { publishedAt: new Date("2026-09-21T00:28:47Z") })],
+    } });
+    await news.execute(["--feed", "latest"], cli.context);
+    const printed = cli.printed[0]!;
+    expect(render(printed).split("\n").at(-1)).toBe(`Source: Gloom Cloud · newest story Mon 21 Sep 2026 00:28 UTC${suffix}`);
+    const json = JSON.parse(serializeCliResult(printed.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, printed.options));
+    expect(json.metadata.freshness).toMatchObject({ asOf: "2026-09-21T00:28:47.000Z", status });
+    expect(json.metadata.freshness.delayMinutes).toBe(status === "delayed" ? 720 : undefined);
+  } finally {
+    signedIn.mockRestore();
+    user.mockRestore();
+  }
+});
 
 /** A data provider for a symbol no listing answers to: no stories, no quote. */
 function unknownSymbol() {

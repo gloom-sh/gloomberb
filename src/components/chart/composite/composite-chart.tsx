@@ -366,7 +366,7 @@ function ThemedCompositeChart({
   const lastTickKey = visibleSeries.map((entry) => {
     const last = entry.points.at(-1);
     if (!last) return entry.id;
-    return `${entry.id}:${last.date.getTime()}:${last.close ?? ""}:${last.value ?? ""}:${last.high ?? ""}:${last.low ?? ""}:${last.volume ?? ""}:${entry.latestChangePercent ?? ""}`;
+    return `${entry.id}:${last.date.getTime()}:${last.close ?? ""}:${last.value ?? ""}:${last.high ?? ""}:${last.low ?? ""}:${last.volume ?? ""}:${entry.latestChangeBasisPoints ?? entry.latestChangePercent ?? ""}`;
   }).join("|");
   const plotHeight = Math.max(panelCount, totalHeight - legendRows - timeAxisRows - xMarkerRows);
   const paneSurface = usePaneSurface();

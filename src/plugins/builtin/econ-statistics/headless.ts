@@ -4,7 +4,6 @@ import type {
   HeadlessPaneEntry,
 } from "../../../types/plugin";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
-import { fredCitation, fredPublisher } from "../../../sources/gloomberb-cloud/fred-publisher";
 import { FRED_CATALOG_SERIES } from "../econ/fred-catalog";
 import { FRED_VINTAGE_NOTE, laggingSeriesNote } from "../../../cli/commands/fred-series";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
@@ -96,7 +95,7 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
     // A Treasury yield adds when in the day it was taken, so it is not read against ^TNX's earlier close.
     // A figure dated by its period also says when it was released: "Sep 2026, released Tue 20 Oct".
     { label: "Period", value: view.latest.date, formatted: view.stat.cutoff && !cutoffShown ? `${view.reading} ${view.stat.cutoff}` : view.readingReleased },
-    { label: "Source", value: fredCitation(view.stat.seriesId) },
+    { label: "Source", value: view.attribution.source },
   ];
 }
 
@@ -145,6 +144,7 @@ export function projectStatsHeadlessBundle(
   const sections = STAT_CATEGORIES.flatMap((category) => {
     const categoryViews = views.filter((view) => view.stat.category === category.id);
     if (categoryViews.length === 0) return [];
+    const hasPublication = categoryViews.some((view) => view.attribution.publishedAt);
     // The text table keeps the columns a terminal has room for; exports add what each figure is of.
     const columns = (text: boolean) => [
       { key: "indicator", header: "Indicator" },
@@ -183,6 +183,7 @@ export function projectStatsHeadlessBundle(
         { key: "revisedOn", header: "revised_on", literalHeader: true },
         { key: "firstReleaseValue", header: "first_release_value", literalHeader: true,
           format: (_value: unknown, row: Record<string, unknown>) => typeof row.formattedFirstRelease === "string" ? row.formattedFirstRelease : "" },
+        ...(hasPublication ? [{ key: "publishedAt", header: "published_at", literalHeader: true }] : []),
       ],
     ];
     return [{
@@ -195,14 +196,14 @@ export function projectStatsHeadlessBundle(
       rowUnitKey: "unit",
       rowIntervalKey: "interval",
       rowSourceKey: "source",
-      appendedColumns: 3,
+      appendedColumns: hasPublication ? 4 : 3,
       rows: categoryViews.map((view) => savedCopyRow(view, {
         id: view.stat.id,
         indicator: view.stat.shortLabel,
         seriesId: view.stat.seriesId,
         unit: exportUnit(view.stat),
         interval: FRED_CATALOG_SERIES.find((series) => series.id === `fred:${view.stat.seriesId}`)?.frequency ?? (view.periodicity ?? "daily"),
-        source: fredCitation(view.stat.seriesId),
+        ...view.attribution,
         latest: view.latest.value,
         formattedLatest: reportFormat(view.stat)(view.latest.value),
         previous: view.previous?.value ?? null,
@@ -242,7 +243,7 @@ export function projectStatsHeadlessBundle(
   const cutoff = cutoffs.size === 1 ? [...cutoffs][0] : undefined;
   return {
     freshness: { ...ECST_FRESHNESS, ...(cutoff ? { schedule: cutoff } : {}),
-      ...(selected ? { source: fredCitation(selected.stat.seriesId), publisher: fredPublisher(selected.stat.seriesId) ?? undefined } : {}) },
+      ...selected?.attribution },
     sections: [
       ...sections,
       ...(selected ? [{
@@ -250,7 +251,7 @@ export function projectStatsHeadlessBundle(
         symbol: selected.stat.seriesId,
         unit: exportUnit(selected.stat),
         interval: FRED_CATALOG_SERIES.find((series) => series.id === `fred:${selected.stat.seriesId}`)?.frequency ?? (selected.periodicity ?? "daily"),
-        source: fredCitation(selected.stat.seriesId),
+        source: selected.attribution.source,
         entries: detailEntries(selected, cutoff != null, false),
         textEntries: detailEntries(selected, cutoff != null, true),
         ...exportDating(selected),
