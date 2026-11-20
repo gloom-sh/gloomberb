@@ -15,6 +15,8 @@ import { relativeValuationHeadless } from "../../plugins/builtin/research/relati
 import { boardHeadlineQuote } from "../../plugins/builtin/shared/use-quote-board";
 import { deriveHeadlessFreshness } from "../pane-functions/freshness";
 import { quotesFreshness, valuationFreshness } from "../freshness";
+import { closeDayLabel } from "../../market-data/market/change-basis";
+import { headlineCloseDate } from "../../market-data/market/status";
 import { marketDataCliCommands } from "./market";
 import { buildTickerReport } from "./ticker";
 
@@ -230,6 +232,40 @@ test("quote gives the overnight session its own column and names it, saying when
   expect(xlk).toMatch(/Fri 9 Oct close$/);
   expect(text.split("\n").find((line) => line.startsWith("XLE"))).toMatch(/\$198\.95 mid \+0\.09% \d{2}:\d{2} UTC +OVERNIGHT/);
   expect(text).not.toMatch(/After Hours|Pre-Market/);
+});
+
+test("QQ sets Chg Basis beside the move it dates, before the extended print, which moves from the later close", async () => {
+  // INTU as Gloom Cloud served it on Fri 20 Nov 2026: Thursday closed at 310.02, -1.03% from Wednesday's 313.24, and
+  // printed 279.74 after hours at 00:59 UTC Friday, 19:59 in New York. Read at 06:37 UTC, 14:37 in Hong Kong.
+  const afterHours: Quote = {
+    symbol: "INTU", name: "Intuit Inc.", currency: "USD", instrumentType: "Common Stock", price: 279.74, change: -33.5,
+    changePercent: -10.6947, previousClose: 313.24, previousCloseDate: "2026-11-18", regularClose: 310.02,
+    regularCloseSessionDate: "2026-11-19", regularChange: -3.22, regularChangePercent: -1.028, changeSessionDate: "2026-11-19",
+    marketState: "PREPRE", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", dataSource: "delayed",
+    lastUpdated: Date.parse("2026-11-20T00:59:54Z"),
+  };
+  // The same quote with the overnight session's trade at 278.40, 01:37 in New York.
+  const overnight: Quote = { ...afterHours, price: 278.4, change: -34.84, changePercent: -11.1225, overnightPrice: 278.4,
+    overnightChange: -31.62, overnightChangePercent: -10.1993, overnightPriceKind: "trade", dataSource: "live",
+    lastUpdated: Date.parse("2026-11-20T06:37:00Z") };
+  const now = Date.parse("2026-11-20T06:37:00Z");
+  setSystemTime(new Date(now));
+  try {
+    for (const [quote, header, print] of [[afterHours, "After Hours", /\$279\.74 -9\.77%/], [overnight, "Overnight", /\$278\.40 -10\.20%/]] as const) {
+      const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({ getQuote: async () => quote }) } as HeadlessPaneContext;
+      const input = { symbols: ["INTU"], argument: ["INTU"], rawArgument: "INTU", options: {} };
+      const board = await quoteComparisonHeadless.load(input, ctx);
+      expect(board.columns?.map((column) => column.header)).toEqual(["Ticker", "Name", "Last", "Change", "Change %", "Chg Basis", header, "Session", "Feed"]);
+      // Thursday's move is from Wednesday's close; the extended print is measured from Thursday's, the close Last shows.
+      expect(board.rows[0]).toMatchObject({ price: 310.02, change: -3.22, changeBasis: "vs Wed 18 Nov close" });
+      expect(board.rows[0]!.extendedChangePercent).toBeCloseTo(((quote.overnightPrice ?? 279.74) / 310.02 - 1) * 100, 6);
+      expect(closeDayLabel(headlineCloseDate(quote)!, now)).toBe("Thu 19 Nov close");
+      const line = renderHeadlessPaneText(quoteComparisonHeadless, board, input, "Quote Monitor").split("\n").find((text) => text.startsWith("INTU"));
+      expect(line).toMatch(new RegExp(String.raw`\$310\.02 +-\$3\.22 +-1\.03% +vs Wed 18 Nov close +${print.source}`));
+    }
+  } finally {
+    setSystemTime();
+  }
 });
 
 // The table sets what Chg% is from beside it; an export adds it after the columns it had.

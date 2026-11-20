@@ -339,6 +339,24 @@ test("a day's move priced at extended-hours prints names their session before th
   expect(dayMoveBasisLabel([null], ["POST"], { now: NOW })).toBeNull();
 });
 
+test("a US print after the close is dated by its New York session, not the UTC or Hong Kong day it is read on", () => {
+  // INTU on Thu 19 Nov 2026 closed at 310.02, -3.22 from Wednesday's 313.24, and printed 279.74 after hours. A quote that
+  // names no session is dated by its print: 23:30 UTC Thursday and 00:59 UTC Friday (07:30 and 08:59 in Hong Kong) are
+  // both Thursday evening in New York, so the move is from Wednesday's close, read at 06:37 UTC (14:37 HKT) Friday too.
+  const now = Date.parse("2026-11-20T06:37:00Z");
+  const undated = (marketState: Quote["marketState"], printedAt: string) => createTestQuote({
+    symbol: "INTU", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", price: 310.02, change: -3.22, changePercent: -1.028,
+    previousClose: 313.24, regularClose: 310.02, postMarketPrice: 279.74, postMarketChange: -30.28, postMarketChangePercent: -9.767,
+    marketState, lastUpdated: Date.parse(printedAt),
+  });
+  for (const quote of [undated("POST", "2026-11-19T23:30:00Z"), undated("POST", "2026-11-20T00:59:54Z"), undated("PREPRE", "2026-11-20T00:59:54Z")]) {
+    const basis = quoteChangeBasis(quote);
+    expect(basis).toEqual({ kind: "close", date: "2026-11-18", venue: "NASDAQ", closed: [] });
+    expect(changeBasisLabel(basis!, now)).toBe("vs Wed 18 Nov close");
+    expect(quotePreviousCloseDate(quote)).toBe("2026-11-18");
+  }
+});
+
 test("--json gives the basis beside the move: kind, dated session, closures, label and note", () => {
   expect(changeBasisJson(quoteChangeBasis(hk), NOW)).toEqual({
     kind: "close", date: "2026-10-16", closed: ["2026-10-19"], label: "vs Fri 16 Oct close", note: "HKEX closed Mon 19 Oct, holiday",
