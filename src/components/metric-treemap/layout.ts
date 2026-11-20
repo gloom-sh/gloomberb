@@ -21,7 +21,7 @@ export interface MetricTreemapItem<T = unknown> {
   data: T;
 }
 
-export type MetricTreemapTooltipLine = string | { text: string; keepEnd: string };
+type MetricTreemapTooltipLine = string | { text: string; keepEnd: string };
 
 export interface MetricTreemapTile<T = unknown> {
   item: MetricTreemapItem<T>;

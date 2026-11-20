@@ -35,7 +35,7 @@ const ROOT = join(import.meta.dir, "..");
 const ALLOWLIST = join(ROOT, "src/architecture/dom-text-cuts-allowlist.json");
 
 /** The cuts that count cells (src/utils/format.ts, src/utils/text-wrap.ts, src/components/ui/table-layout.ts). */
-export const CELL_CUTS: readonly string[] = [
+const CELL_CUTS: readonly string[] = [
   "clipKeepingEnd",
   "clipToDisplayWidth",
   "fitTableCellText",
@@ -286,7 +286,7 @@ function calledCut(call: ts.CallExpression, scanned: Scanned, cuts: Set<string>,
 }
 
 /** The name a hand-written cut is listed under. */
-export const HAND_CUT = "slice and …";
+const HAND_CUT = "slice and …";
 const ELLIPSIS = /\u2026/;
 const SLICES = new Set(["slice", "substring", "substr"]);
 
