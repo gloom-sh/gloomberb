@@ -1,6 +1,5 @@
 import type { FunctionAccess } from "../cli/pane-functions/function-help";
 import type { GloomPlugin, PluginTarget } from "../types/plugin";
-import { ABSORBED_PLUGINS } from "./absorbed";
 import { highlightedCodes, pluginFunctions } from "./plugin-functions";
 import { BUILTIN_EDITORIAL } from "./builtin-editorial";
 import { EXTRACTED_PLUGINS } from "./extracted-plugins";
@@ -97,11 +96,6 @@ export function buildBuiltinManifest(): BuiltinManifest {
   const web = new Map(browserBuiltinPlugins.map((plugin) => [plugin.id, plugin]));
 
   const plugins = getPluginCatalog()
-    // Built in again, but released apps from before that still install these
-    // from their repositories, and the directory drops a repository row whose
-    // id a built-in claims. This build shows that row as its built-in, so they
-    // join the manifest once those releases have updated.
-    .filter(({ plugin }) => !ABSORBED_PLUGINS.some((absorbed) => absorbed.id === plugin.id))
     .map(({ plugin }): BuiltinPluginManifestEntry => {
       const editorial = BUILTIN_EDITORIAL[plugin.id];
       if (!editorial) uncategorised.push(plugin.id);
