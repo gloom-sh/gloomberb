@@ -2330,6 +2330,8 @@ The connection data is saved on the local device and is not included in Gloom Cl
 
 Each profile's row in `BR` shows its `STATUS`: `Sign-in needed`, `Sync failed` or `Connect failed` when the last action did not work (`Enter` shows the reason in full), and what is running (`Syncing…`). A `Disabled` profile is never connected or synced: press `b` to enable it, which also syncs it.
 
+Profiles that import on demand without reporting a connection status show `Configured`. Their row still shows the time of the last successful sync.
+
 **When a broker is offline.** While a broker is disconnected, failing, or missing its plugin, its portfolio in `PF` keeps the positions from its last sync, and the footer says when and why (`as of 17 Oct 14:02  IBKR disconnected`).
 
 - Press `b` there to reconnect (Interactive Brokers asks you to sign in again, as `c` does in `BR`).

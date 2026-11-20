@@ -30,8 +30,8 @@ export function getBrokerRemoteClient(): BrokerRemoteClient | null {
   return brokerRemoteClient;
 }
 
-function disconnectedStatus(): BrokerConnectionStatus {
-  return { state: "disconnected", updatedAt: 0 };
+function unreportedStatus(): BrokerConnectionStatus {
+  return { state: "disconnected", reported: false, updatedAt: 0 };
 }
 
 export function createRemoteBrokerAdapter(adapter: BrokerAdapter): BrokerAdapter {
@@ -50,7 +50,7 @@ export function createRemoteBrokerAdapter(adapter: BrokerAdapter): BrokerAdapter
       : undefined,
     connect: (instance) => invoke<void>(instance, "connect"),
     disconnect: (instance) => invoke<void>(instance, "disconnect"),
-    getStatus: (instance) => getBrokerRemoteClient()?.getStatus(instance.id) ?? adapter.getStatus?.(instance) ?? disconnectedStatus(),
+    getStatus: (instance) => getBrokerRemoteClient()?.getStatus(instance.id) ?? adapter.getStatus?.(instance) ?? unreportedStatus(),
     subscribeStatus: (instance, listener) => getBrokerRemoteClient()?.subscribeStatus(instance.id, listener) ?? (() => {}),
     // The Bun process refuses an operation its adapter lacks, so only offer what the adapter has.
     getPersistedConfigUpdate: adapter.getPersistedConfigUpdate

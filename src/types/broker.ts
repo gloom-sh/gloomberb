@@ -68,6 +68,8 @@ export interface BrokerConfigField {
 
 export interface BrokerConnectionStatus {
   state: "disconnected" | "connecting" | "connected" | "error";
+  /** False when the desktop bridge has no status report from the broker. */
+  reported?: boolean;
   message?: string;
   /**
    * With `error`: only a new sign-in, to Gloom or the broker, gets the profile
