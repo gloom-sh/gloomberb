@@ -27,9 +27,9 @@ const BOARD: DoeBoardPayload = {
   }],
 };
 
-function Harness() {
+function Harness({ query }: { query?: string }) {
   const initial = createInitialState(createTestPaneConfig("/tmp/gloom-doe-test", {
-    instanceId: id, paneId: "doe", binding: { kind: "none" }, settings: { tab: "gas" },
+    instanceId: id, paneId: "doe", binding: { kind: "none" }, settings: { tab: "gas" }, ...(query ? { params: { query } } : {}),
   }));
   initial.focusedPaneId = id;
   const [state, dispatch] = useReducer(appReducer, initial);
@@ -57,4 +57,19 @@ test("offline, the board stays and its footer says when the saved copy is from, 
   expect(tui.frame()).toMatch(/Lower 48 .*3,644/);
   expect(tui.frame()).toMatch(/saved copy from \d\d:\d\d/);
   expect(tui.frame()).not.toMatch(/stale|couldn't reach/i);
+});
+
+// `fn FUT HG --tab inventories` waited for the oil and gas board to show it under a copper note.
+test("opened from a search for a contract it does not cover, it says so without reading the board, until a tab is picked", async () => {
+  doeBoardCache.attach(new MemoryPluginPersistence());
+  board = spyOn(apiClient, "getCloudDoeBoard").mockResolvedValue(BOARD);
+  await act(async () => { await tui.render(<Harness query="HG" />, { width: 100, height: 24 }); });
+  await settle();
+  const note = "Covers US oil and gas inventories only, not Copper (HG) stocks.";
+  expect(tui.frame().split(note)).toHaveLength(2);
+  expect(board).not.toHaveBeenCalled();
+
+  await tui.clickFrameText("Gas");
+  await tui.waitForFrameToContain("Lower 48");
+  expect(board).toHaveBeenCalledTimes(1);
 });

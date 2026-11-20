@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { DoeBoardPayload, DoeSeriesRow, DoeTab } from "../../../api-client/doe";
 import {
   ChartRead,
@@ -134,20 +134,28 @@ export function DoePane({ width, height, focused }: PaneProps) {
   const tab = doeTab(storedTab);
   const params = usePaneInstance()?.params;
   const initialSeries = params?.series ?? null;
-  // Opened from a futures search on a contract this board does not cover (`FUT HG --tab inventories`): it says so.
+  // Opened from a futures search on a contract this board does not cover
+  // (`FUT HG --tab inventories`): it says so at once, in place of the board,
+  // which is read once a tab is picked and then shown under the note.
   const coverage = useMemo(() => doeCoverageNote(params?.query), [params?.query]);
-  useRemoteUiNode(coverage ? { role: "report-notice", label: "Coverage", getMetadata: () => ({ text: coverage }) } : null);
-  const resource = useAsyncResource(loadDoeBoard, { initialData: getCachedDoeBoard });
+  const [browsing, setBrowsing] = useState(false);
+  const covering = coverage != null && !browsing;
+  const selectTab = useCallback((value: string) => {
+    setBrowsing(true);
+    setTab(value);
+  }, [setTab]);
+  useRemoteUiNode(coverage && !covering ? { role: "report-notice", label: "Coverage", getMetadata: () => ({ text: coverage }) } : null);
+  const resource = useAsyncResource(covering ? null : loadDoeBoard, { initialData: getCachedDoeBoard });
   const data = resource.data?.payload ?? null;
   // The server not serving the board yet is a state of the data, not a failure.
   const notAvailable = !data && resource.error === DOE_NOT_AVAILABLE;
-  const { strip, rows: tabRows } = usePaneTabs({ tabs: [...DOE_TABS], activeValue: tab, onSelect: setTab, focused, dense: true });
+  const { strip, rows: tabRows } = usePaneTabs({ tabs: [...DOE_TABS], activeValue: tab, onSelect: selectTab, focused, dense: true });
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });
   // A refresh that failed shows the board an earlier read saved, and says when that copy is from.
   const savedAt = resource.data?.savedAt ?? null;
   usePaneNoticeFooter({ registrationId: "doe:notices", focused,
-    notices: [...(coverage ? [coverage] : []), ...(data?.gaps ?? []), ...(resource.data?.refreshError && savedAt == null ? [resource.data.refreshError] : [])] });
+    notices: [...(coverage && !covering ? [coverage] : []), ...(data?.gaps ?? []), ...(resource.data?.refreshError && savedAt == null ? [resource.data.refreshError] : [])] });
   // What Vs 1Y and Vs 5Y are measured against on this tab: the EIA's published figures for gas storage.
   const basis = useMemo(() => data ? doeComparisonBasis(doeRows(data, tab)) : null, [data, tab]);
   const info = useMemo(() => {
@@ -163,7 +171,7 @@ export function DoePane({ width, height, focused }: PaneProps) {
     <Box width={width} height={height} flexDirection="column">
       {strip}
       <PaneStatusBody loading={resource.loading && !data} error={!data && !notAvailable ? resource.error : null}
-        empty={notAvailable} emptyTitle={DOE_NOT_AVAILABLE} subject="oil and gas inventories">
+        empty={covering || notAvailable} emptyTitle={covering ? coverage : DOE_NOT_AVAILABLE} subject="oil and gas inventories">
         {data ? <DoeBoard payload={data} tab={tab} initialSeries={initialSeries} width={width} height={Math.max(3, height - tabRows)} focused={focused} /> : null}
       </PaneStatusBody>
     </Box>
