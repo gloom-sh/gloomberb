@@ -1,4 +1,5 @@
 /** @jsxImportSource react */
+import { KeybindingsProvider, resolveKeybindings } from "../../../app/keybindings";
 import { expect, test } from "bun:test";
 import { act, useState } from "react";
 import { WebCheckbox, WebSegmentedControl } from "./controls";
@@ -282,4 +283,34 @@ test("clicking a native action uses the value committed by the field blur", asyn
   });
   await act(async () => { button.click(); });
   expect(saved).toEqual(["edited"]);
+});
+
+
+test("desktop controls honour navigation overrides on native focused elements", async () => {
+  const bindings = resolveKeybindings({ actions: { "navigate-right": "T", "navigate-down": "è" } });
+  function Controls() {
+    const [tab, setTab] = useState("a");
+    const [row, setRow] = useState(0);
+    return <KeybindingsProvider value={bindings}>
+      <WebSegmentedControl options={[{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }]}
+        value={tab} onChange={setTab} />
+      <WebListView items={[{ id: "first", label: "First" }, { id: "second", label: "Second" }]}
+        selectedIndex={row} onSelect={setRow} />
+      <output>{`${tab}:${row}`}</output>
+    </KeybindingsProvider>;
+  }
+  const container = await renderDom(<Controls />);
+  const press = async (selector: string, key: string) => {
+    await act(async () => {
+      container.querySelector(selector)!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    });
+  };
+  await press('[role="radio"]', "ArrowRight");
+  expect(container.querySelector("output")?.textContent).toBe("a:0");
+  await press('[role="radio"]', "t");
+  expect(container.querySelector("output")?.textContent).toBe("b:0");
+  await press('[role="option"]', "ArrowDown");
+  expect(container.querySelector("output")?.textContent).toBe("b:0");
+  await press('[role="option"]', "è");
+  expect(container.querySelector("output")?.textContent).toBe("b:1");
 });

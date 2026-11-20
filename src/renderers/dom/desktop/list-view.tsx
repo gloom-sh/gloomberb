@@ -1,4 +1,6 @@
 /** @jsxImportSource react */
+import { matchesNavigationKey, useKeybindings } from "../../../app/keybindings";
+import { toKeyEventLike } from "../input-host";
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
 import { TextAttributes } from "../../../ui";
@@ -134,6 +136,7 @@ export function WebListView({
   onMouseScroll,
   remoteLabel,
 }: ListViewProps) {
+  const navigation = useKeybindings();
   const colors = useThemeColors();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
@@ -262,7 +265,8 @@ export function WebListView({
               onActivate?.(item, index);
               return;
             }
-            const direction = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+            const key = toKeyEventLike(event.nativeEvent);
+            const direction = matchesNavigationKey(navigation, "down", key) ? 1 : matchesNavigationKey(navigation, "up", key) ? -1 : 0;
             if (!direction) return;
             event.preventDefault();
             event.stopPropagation();

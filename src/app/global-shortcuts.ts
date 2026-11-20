@@ -165,10 +165,14 @@ export function useAppGlobalShortcuts({
     // keyboard the digit must not move layouts, but it still has to be
     // swallowed there or the webview hands Cmd-digit to the browser's own tab
     // switcher.
-    if (!isDetachedWindow && action === "switch-layout" && match?.kind === "action" && match.digit !== null) {
+    const layoutIndex = match?.kind === "action"
+      ? match.action.def?.layoutIndex ?? (action === "switch-layout" && match.digit !== null ? match.digit - 1 : null)
+      : null;
+    if (!isDetachedWindow && layoutIndex !== null) {
       const layouts = state.config.layouts ?? [];
-      const idx = match.digit - 1;
-      const uiOwnsKeyboard = dialogOpen || state.commandBarOpen || event.targetEditable === true;
+      const idx = layoutIndex;
+      const uiOwnsKeyboard = dialogOpen || state.commandBarOpen || state.inputCaptured || event.targetEditable === true;
+      if (uiOwnsKeyboard && !event.ctrl && !event.meta && !event.super && !event.alt) return;
       if (!uiOwnsKeyboard && idx < layouts.length && idx !== state.config.activeLayoutIndex) {
         dispatch({ type: "SWITCH_LAYOUT", index: idx });
       }

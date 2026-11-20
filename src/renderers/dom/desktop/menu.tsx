@@ -1,10 +1,12 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { HostMenuItem, HostMenuProps } from "../../../ui/host";
+import { matchesNavigationKey, useKeybindings } from "../../../app/keybindings";
+import { toKeyEventLike } from "../input-host";
 import { CheckboxBox } from "./controls";
 import { WebIcon } from "./icons";
 
-const MENU_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End", "PageUp", "PageDown", "Enter", " ", "j", "k"]);
+const MENU_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End", "PageUp", "PageDown", "Enter", " "]);
 
 function selectable(item: HostMenuItem): boolean {
   return item.kind !== "divider" && item.kind !== "heading" && !item.disabled;
@@ -14,6 +16,7 @@ const LEADING_STYLE: CSSProperties = { display: "inline-flex", flex: "none", ali
 
 /** Desktop Menu: the one list every popover menu in the app renders. */
 export function WebMenu({ items, onSelect, selection = "none", title, label, onClose, highlightedId, onHighlight }: HostMenuProps) {
+  const navigation = useKeybindings();
   const enabled = useMemo(() => items.filter(selectable), [items]);
   const alignLeading = items.find((item) => item.leading !== undefined)?.leading;
   const controlled = highlightedId !== undefined;
@@ -39,19 +42,22 @@ export function WebMenu({ items, onSelect, selection = "none", title, label, onC
   useEffect(() => {
     if (controlled) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!MENU_KEYS.has(event.key)) return;
+      const key = toKeyEventLike(event);
+      const down = matchesNavigationKey(navigation, "down", key);
+      const up = matchesNavigationKey(navigation, "up", key);
+      if (!down && !up && (!MENU_KEYS.has(event.key) || event.key === "ArrowDown" || event.key === "ArrowUp")) return;
       event.preventDefault();
       event.stopPropagation();
       const index = enabled.findIndex((item) => item.id === highlighted);
-      if (event.key === "ArrowDown" || event.key === "j") setHighlighted(enabled[Math.min(enabled.length - 1, index + 1)]?.id ?? null);
-      else if (event.key === "ArrowUp" || event.key === "k") setHighlighted(enabled[Math.max(0, index - 1)]?.id ?? null);
+      if (down) setHighlighted(enabled[Math.min(enabled.length - 1, index + 1)]?.id ?? null);
+      else if (up) setHighlighted(enabled[Math.max(0, index - 1)]?.id ?? null);
       else if (event.key === "Home" || event.key === "PageUp") setHighlighted(enabled[0]?.id ?? null);
       else if (event.key === "End" || event.key === "PageDown") setHighlighted(enabled[enabled.length - 1]?.id ?? null);
       else if (highlighted) choose(highlighted);
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [choose, controlled, enabled, highlighted, setHighlighted]);
+  }, [choose, controlled, enabled, highlighted, navigation, setHighlighted]);
 
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>("[data-highlighted=true]")?.scrollIntoView({ block: "nearest" });

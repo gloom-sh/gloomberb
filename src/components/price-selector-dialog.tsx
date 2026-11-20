@@ -8,7 +8,7 @@ import { colors } from "../theme/colors";
 import { formatMarketPrice } from "../market-data/market/format";
 import { DialogFrame, ListView, NumberField } from "./ui";
 import { padTo } from "../utils/format";
-import { isPlainKey } from "../utils/keyboard";
+import { matchesNavigationKey, useKeybindings } from "../app/keybindings";
 
 interface PricePreset {
   label: string;
@@ -82,6 +82,7 @@ export function PriceSelectorDialog({
 }: PromptContext<string> & PriceSelectorDialogProps) {
   const desktop = useUiHost().kind === "desktop-web";
   const presets = buildPresets(quote);
+  const navigation = useKeybindings();
   const [index, setIndex] = useState(0);
   const [mode, setMode] = useState<"list" | "input">(presets.length > 0 ? "list" : "input");
   const [customValue, setCustomValue] = useState("");
@@ -100,9 +101,9 @@ export function PriceSelectorDialog({
     }
 
     if (mode === "list") {
-      if (isPlainKey(event, "up", "k")) {
+      if (matchesNavigationKey(navigation, "up", event)) {
         setIndex((current) => Math.max(0, current - 1));
-      } else if (isPlainKey(event, "down", "j")) {
+      } else if (matchesNavigationKey(navigation, "down", event)) {
         if (index < presets.length - 1) {
           setIndex((current) => current + 1);
         } else {

@@ -207,6 +207,8 @@ export function KeybindingsEditor({
 
     return buildSectionedRows<BindableRow>([
       { label: "Global Keys", items: core.filter((action) => action.def!.category === "Global Keys").map(actionRow) },
+      { label: "Layouts", items: core.filter((action) => action.def!.category === "Layouts").map(actionRow) },
+      { label: "Navigation", items: core.filter((action) => action.def!.category === "Navigation").map(actionRow) },
       { label: "Pane Management", items: core.filter((action) => action.def!.category === "Pane Management").map(actionRow) },
       {
         label: "Custom Commands",

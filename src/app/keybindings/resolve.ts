@@ -241,6 +241,8 @@ export function resolveKeybindings(
  */
 export function matchKeybinding(resolved: ResolvedKeybindings, event: KeyChordEventLike): KeybindingMatch | null {
   for (const action of resolved.actions) {
+    // Local controls own navigation; it must never dispatch as a global command.
+    if (action.def?.category === "Navigation") continue;
     for (const chord of action.chords) {
       if (!matchesKeyChord(chord, event)) continue;
       const command = chord.key === "digit"

@@ -168,6 +168,13 @@ export function useShellWindowMode({
     if (!modalSurfaceOwnsKey(event, keybindings)) return;
     event.preventDefault();
     event.stopPropagation();
+    const direction = directionFromWindowEditKey(event, keybindings);
+    if (direction) {
+      setWindowMode((current) => current
+        ? applyWindowEditDirection(current, direction, event.shift, bounds, dockGeometryOptions)
+        : current);
+      return;
+    }
     if (event.ctrl || event.meta || event.super || event.alt) return;
     const name = (event.name ?? event.key ?? "").toLowerCase();
 
@@ -236,13 +243,6 @@ export function useShellWindowMode({
       setWindowMode((current) => current
         ? snapWindowEditPane(current, rect, bounds, dockGeometryOptions)
         : current);
-    } else {
-      const direction = directionFromWindowEditKey(event);
-      if (direction) {
-        setWindowMode((current) => current
-          ? applyWindowEditDirection(current, direction, event.shift, bounds, dockGeometryOptions)
-          : current);
-      }
     }
   }, { phase: "capture", scope: "window-mode", allowEditable: true, enabled: !!windowMode });
 

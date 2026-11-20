@@ -1,3 +1,4 @@
+import { matchesNavigationKey, useKeybindings } from "../../app/keybindings";
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePaneMenuItems, usePaneTabStripKeys } from "../layout/pane/footer/registration";
 import type { ContextMenuItem } from "../../types/context-menu";
@@ -231,17 +232,18 @@ function TabsView({
     handleSelect(nextTab.value);
   }, [activeValue, handleSelect, tabs]);
 
+  const navigation = useKeybindings();
   useShortcut((event) => {
     // Shift+arrows scroll a wide table's columns; they never switch tabs.
-    if (event.ctrl || event.meta || event.alt || event.shift || event.targetEditable) return;
+    if (event.targetEditable) return;
 
-    if (event.name === "h" || event.name === "left") {
+    if (matchesNavigationKey(navigation, "left", event)) {
       event.preventDefault();
       event.stopPropagation();
       selectAdjacentTab(-1);
       return;
     }
-    if (event.name === "l" || event.name === "right") {
+    if (matchesNavigationKey(navigation, "right", event)) {
       event.preventDefault();
       event.stopPropagation();
       selectAdjacentTab(1);

@@ -269,6 +269,28 @@ describe("useAppGlobalShortcuts", () => {
     return { ...createInitialState(config), ...options };
   }
 
+  test.each(['"', '«', '»', '(', ')'])("a direct layout binding accepts the Bépo symbol %s", async (symbol) => {
+    const symbols = ['"', '«', '»', '(', ')'];
+    const index = symbols.indexOf(symbol);
+    const state = layoutState();
+    while (state.config.layouts.length < 5) state.config.layouts.push({ name: `Layout ${state.config.layouts.length + 1}`, layout: cloneLayout(state.config.layout) });
+    state.config.activeLayoutIndex = (index + 1) % 5;
+    state.config.keybindings = { actions: { [`switch-layout-${index + 1}`]: `Ctrl+${symbol}` } };
+    const actions: AppAction[] = [];
+    await renderHarness(state, createRegistry(), (action) => actions.push(action));
+    await emitKeypress({ name: symbol, sequence: symbol, ctrl: true });
+    expect(actions).toEqual([{ type: "SWITCH_LAYOUT", index }]);
+  });
+
+  test("direct layout shortcuts leave a captured form on its current layout", async () => {
+    const state = layoutState({ inputCaptured: true });
+    state.config.keybindings = { actions: { "switch-layout-2": "Ctrl+«" } };
+    const actions: AppAction[] = [];
+    await renderHarness(state, createRegistry(), (action) => actions.push(action));
+    await emitKeypress({ name: "«", sequence: "«", ctrl: true });
+    expect(actions).toEqual([]);
+  });
+
   function stateWithTicker(): AppState {
     const state = baseState();
     state.tickers.set("AAPL", {

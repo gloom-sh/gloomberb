@@ -1,3 +1,4 @@
+import { matchesNavigationKey, useKeybindings, type ResolvedKeybindings } from "../app/keybindings";
 import { useImperativeHandle, useLayoutEffect, useRef, type ForwardedRef, type RefObject } from "react";
 import { useShortcut } from "../react/input";
 import { useNativeRenderer, type ScrollBoxRenderable } from "../ui/host";
@@ -127,11 +128,12 @@ function arrowScrollLines(scrollBox: ScrollBoxRenderable): number {
   return Math.max(MIN_ARROW_SCROLL_LINES, Math.floor((scrollBox.viewport?.height ?? 0) / 4));
 }
 
-function resolveKeyScrollAction(event: PaneScrollKeyEvent): PaneScrollAction | null {
-  if (event.ctrl || event.meta || event.alt || event.option) return null;
-  // j and k scroll a plain body as the arrows do; a list that moves a cursor
-  // on them has already used the key by the time this runs.
-  const name = !event.shift && event.name === "j" ? "down" : !event.shift && event.name === "k" ? "up" : event.name;
+function resolveKeyScrollAction(event: PaneScrollKeyEvent, bindings: ResolvedKeybindings): PaneScrollAction | null {
+  const down = matchesNavigationKey(bindings, "down", event);
+  const up = matchesNavigationKey(bindings, "up", event);
+  if (!down && !up && (event.ctrl || event.meta || event.alt || event.option)) return null;
+  const name = down ? "down" : up ? "up" : event.name;
+  if ((name === "down" && !down) || (name === "up" && !up)) return null;
 
   switch (name) {
     case "down":
@@ -202,8 +204,8 @@ function findScrollableEntry(paneId: string, action: PaneScrollAction): {
   return { entry: best.entry, scrollBox: best.scrollBox, target: best.target };
 }
 
-function scrollPaneByKey(paneId: string, event: PaneScrollKeyEvent): boolean {
-  const action = resolveKeyScrollAction(event);
+function scrollPaneByKey(paneId: string, event: PaneScrollKeyEvent, bindings: ResolvedKeybindings): boolean {
+  const action = resolveKeyScrollAction(event, bindings);
   if (!action) return false;
 
   const match = findScrollableEntry(paneId, action);
@@ -275,6 +277,7 @@ export function PaneKeyboardScrollController({
   paneId: string;
   focused: boolean;
 }) {
+  const bindings = useKeybindings();
   const nativeRenderer = useNativeRenderer();
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
   const focusedRef = useRef(focused);
@@ -288,7 +291,7 @@ export function PaneKeyboardScrollController({
   useShortcut((event) => {
     if (!focusedRef.current || inputCapturedRef.current) return;
     if (event.defaultPrevented || event.propagationStopped) return;
-    if (!scrollPaneByKey(paneIdRef.current, event)) return;
+    if (!scrollPaneByKey(paneIdRef.current, event, bindings)) return;
 
     event.preventDefault();
     event.stopPropagation();

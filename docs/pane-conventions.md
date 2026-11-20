@@ -941,7 +941,10 @@ header, with the detail's height.
   `u` restart into a downloaded update or retry a failed one, `$` Pro upgrade, Ctrl+P command bar. `q`, `u`, `r`,
   `Shift+R`, `?` and `` ` `` reach the app before any pane. Table keys go
   through `onRootKeyDown` and `onDetailKeyDown` (return `true` when handled);
-  global shortcuts through `registerShortcut` so Help lists them.
+  global shortcuts through `registerShortcut` so Help lists them. These are
+  default navigation keys: shared controls honour the configurable `navigate-*`
+  actions. Custom controls use `useKeybindings` and `matchesNavigationKey`
+  from `gloomberb/react` rather than checking the default letters directly.
 - A key held down repeats, and an action should run once per press. The
   shortcut registry drops the repeats (`event.repeat`) of command chords
   (Ctrl, Cmd or Super with a key), Esc, function keys and the menu key before

@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { AppConfig, OnboardingProgress, OnboardingStage } from "../../types/config";
 import type { BrokerConfigField } from "../../types/broker";
 import { useShortcut, type KeyEventLike } from "../../react/input";
-import { matchKeybinding, matchesKeybindingAction, type ResolvedKeybindings } from "../../app/keybindings";
+import { matchKeybinding, matchesKeybindingAction, matchesNavigationKey, type ResolvedKeybindings } from "../../app/keybindings";
 import { isPlainKey } from "../../utils/keyboard";
 import { keepEscapeFromClosing } from "../../utils/double-escape-close";
 import { isCopyShortcut, isPasteShortcut } from "../../utils/selection-clipboard";
@@ -253,9 +253,9 @@ export function useOnboardingKeyboard({
           openBrokerConnect();
         } else if (letter(SKIP_PORTFOLIO_KEY) && positionCount === 0) {
           skipPositions();
-        } else if (!chord && (name === "up" || name === "k")) {
+        } else if (matchesNavigationKey(keybindings, "up", event)) {
           movePositionCursor(-1);
-        } else if (!chord && (name === "down" || name === "j")) {
+        } else if (matchesNavigationKey(keybindings, "down", event)) {
           movePositionCursor(1);
         } else if (letter(REMOVE_POSITION_KEY) || (!chord && name === "delete")) {
           removePositionAtCursor();
@@ -285,10 +285,10 @@ export function useOnboardingKeyboard({
           continuePortfolio();
         } else if (escape) {
           backPortfolio();
-        } else if (!chord && (name === "up" || name === "k")) {
+        } else if (matchesNavigationKey(keybindings, "up", event)) {
           if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.max(0, index - 1));
           else if (activeBrokerFields[brokerFieldIdx]?.type === "select") setBrokerSelectIdx((index) => Math.max(0, index - 1));
-        } else if (!chord && (name === "down" || name === "j")) {
+        } else if (matchesNavigationKey(keybindings, "down", event)) {
           if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.min(brokerChoices.length - 1, index + 1));
           else if (activeBrokerFields[brokerFieldIdx]?.type === "select") {
             const optionCount = activeBrokerFields[brokerFieldIdx]?.options?.length ?? 0;
@@ -311,9 +311,9 @@ export function useOnboardingKeyboard({
           else if (desk) setChosenDesks((current) => toggleDeskChoice(current, desk.key));
         } else if (letter(SKIP_DESKS_KEY) || (!chord && name === "escape")) {
           finishDesks([]);
-        } else if (!chord && (name === "up" || name === "k")) {
+        } else if (matchesNavigationKey(keybindings, "up", event)) {
           setDeskCursor((index) => Math.max(0, index - 1));
-        } else if (!chord && (name === "down" || name === "j")) {
+        } else if (matchesNavigationKey(keybindings, "down", event)) {
           setDeskCursor((index) => Math.min(DESKS.length - 1, index + 1));
         } else if (!chord && (name === "space" || event.sequence === " ")) {
           const desk = DESKS[deskCursor];
@@ -376,9 +376,9 @@ export function useOnboardingKeyboard({
           goBack();
         } else if (!planAccess.hasProAccess && letter(KEEP_FREE_KEY)) {
           continueFree();
-        } else if (!planAccess.hasProAccess && (isPlainKey(event, "left") || letter("h"))) {
+        } else if (!planAccess.hasProAccess && matchesNavigationKey(keybindings, "left", event)) {
           setBillingInterval("month");
-        } else if (!planAccess.hasProAccess && (isPlainKey(event, "right") || letter("l"))) {
+        } else if (!planAccess.hasProAccess && matchesNavigationKey(keybindings, "right", event)) {
           setBillingInterval("year");
         } else {
           return false;

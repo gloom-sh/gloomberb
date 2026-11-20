@@ -53,7 +53,7 @@ async function openShortcutsTab(width = 90, runtime?: ReturnType<typeof createTe
   await frame();
   await act(async () => { await tui.clickFrameText("Shortcuts"); });
   // The table measures its viewport before it can lay columns and rows out.
-  await tui.waitForFrameToContain("Global Keys (13)", WAIT_ATTEMPTS);
+  await tui.waitForFrameToContain("Change the focused pane's ticker.", WAIT_ATTEMPTS);
 }
 
 // Rebinding saves the config for real, so each test gets a directory of its own.
@@ -73,8 +73,7 @@ afterEach(async () => {
 test("rebinding from the help pane captures the next chord, shows the way back, and resets", async () => {
   await openShortcutsTab();
   let text = tui.frame();
-  // Sections carry their count, and the actions live in the pane footer.
-  expect(text).toContain("Global Keys (13)");
+  // Rebinding actions stay available through the pane footer.
   expect(text).toContain("KEY");
   expect(text).toContain("Change the focused pane's ticker.");
   expect(text).toContain("[Enter]rebind");

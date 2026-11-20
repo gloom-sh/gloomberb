@@ -148,9 +148,12 @@ export function StatusBar() {
   // A terminal that cannot send Control with a digit names Alt+1 instead.
   const legacyTerminal = useTerminalReportsControlKeys() === false;
   const switchChord = advertisedChord(keybindings, "switch-layout", shortcutMode, { legacyTerminal });
-  const tabKey = (index: number): string => (
-    switchChord?.key === "digit" && index < 9 ? `${compactChordLabel(switchChord, shortcutMode, index + 1)} ` : ""
-  );
+  const tabKey = (index: number): string => {
+    if (index >= 9) return "";
+    const direct = advertisedChord(keybindings, `switch-layout-${index + 1}`, shortcutMode, { legacyTerminal });
+    if (direct) return `${compactChordLabel(direct, shortcutMode)} `;
+    return switchChord?.key === "digit" ? `${compactChordLabel(switchChord, shortcutMode, index + 1)} ` : "";
+  };
 
   const hasMultipleLayouts = layouts.length > 1 || !!transientLayout;
   const showTidyWindows = useMemo(() => shouldShowTidyWindows(layout), [layout])

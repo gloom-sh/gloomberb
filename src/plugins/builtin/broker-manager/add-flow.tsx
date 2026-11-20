@@ -1,3 +1,4 @@
+import { useKeybindings } from "../../../app/keybindings";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { apiClient } from "../../../api-client";
 import {
@@ -485,8 +486,9 @@ function ChoiceList({
 }) {
   const desktop = useUiCapabilities().nativePaneChrome === true;
   const selectedIndex = Math.min(Math.max(0, cursor), Math.max(0, items.length - 1));
+  const navigation = useKeybindings();
   useShortcut((event: KeyEventLike) => {
-    const move = listCursorMove(event, 10);
+    const move = listCursorMove(event, 10, navigation);
     if (move) {
       event.preventDefault();
       event.stopPropagation();

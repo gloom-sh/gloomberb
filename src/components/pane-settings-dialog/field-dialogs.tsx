@@ -1,3 +1,4 @@
+import { useKeybindings } from "../../app/keybindings";
 import { Box, Text, useUiCapabilities } from "../../ui";
 import { t } from "../../i18n";
 import { type AlertContext, useDialogKeyboard } from "../../ui/dialog";
@@ -35,6 +36,7 @@ function useSelectFieldDialogController({
   currentValue,
   onApply,
 }: SelectFieldDialogProps) {
+  const navigation = useKeybindings();
   const initialIndex = Math.max(0, field.options.findIndex((option) => option.value === currentValue));
   const [selectedIndex, setSelectedIndex] = useState(initialIndex);
   const pageSize = useTuiDialogListRows() - 1;
@@ -45,7 +47,7 @@ function useSelectFieldDialogController({
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
-    const move = listCursorMove(event, pageSize);
+    const move = listCursorMove(event, pageSize, navigation);
     if (move) setSelectedIndex((index) => move(field.options, index));
     else if (event.name === "escape") dismiss();
     else if (event.name === "enter" || event.name === "return" || isSpaceKey(event)) {
