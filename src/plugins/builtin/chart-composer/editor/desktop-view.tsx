@@ -80,13 +80,11 @@ export function DesktopSeriesEditorFields({ fields }: { fields: SeriesEditorFiel
               />
             </Box>
           ) : field.kind === "color" ? (
-            <Box height="28px" justifyContent="center">
-              <ChartColorChoice
-                label={field.label}
-                value={field.value === SERIES_EDITOR_AUTO_COLOR ? undefined : field.value}
-                onChange={(color) => field.onChange(color ?? SERIES_EDITOR_AUTO_COLOR)}
-              />
-            </Box>
+            <ChartColorChoice
+              label={field.label}
+              value={field.value === SERIES_EDITOR_AUTO_COLOR ? undefined : field.value}
+              onChange={(color) => field.onChange(color ?? SERIES_EDITOR_AUTO_COLOR)}
+            />
           ) : field.kind === "panel" ? (
             <Box flexDirection="row" width="100%" style={{ gap: 6 }}>
               <Box flexGrow={1} minWidth={0}>

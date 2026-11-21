@@ -74,6 +74,8 @@ export function ChartColorSwatch({
           onPress();
         }
         : undefined}
+      // The chosen one is a ring around a smaller dot, inside the same 14px, so
+      // it reads at a glance without nudging its neighbours.
       style={isDesktopWeb
         ? {
           width: 14,
@@ -81,6 +83,8 @@ export function ChartColorSwatch({
           borderRadius: "var(--gloom-radius-full)",
           backgroundColor: drawn,
           border: `1.5px solid ${active && !disabled ? colors.text : "transparent"}`,
+          padding: active && !disabled ? 1.5 : 0,
+          backgroundClip: active && !disabled ? "content-box" : "border-box",
         }
         : undefined}
     >
