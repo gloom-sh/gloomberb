@@ -90,8 +90,7 @@ import {
 } from "./quotes";
 import { quoteServedFromSavedCopy, withSavedCopyMarkOf } from "../../data/saved-copies";
 import { readsInBatches } from "../batched-reads";
-import { getActiveQuoteDisplay } from "../market/status";
-import { mergeStreamTickRanges, spansOtherPrices, type StreamTickRange } from "../quotes/tick-range";
+import { mergeStreamTickRanges, streamTicksAsShown, type StreamTickRange } from "../quotes/tick-range";
 
 /** How long a streamed tick may reuse the quote fields read from the cache. */
 const STREAM_QUOTE_BASELINE_TTL_MS = 60_000;
@@ -172,6 +171,8 @@ export interface MarketDataCoordinatorOptions {
 export interface StreamTickFollow {
   /** The range of each key's ticks applied since the last take, for keys whose ticks priced other than their applied quote. */
   take(): Map<string, StreamTickRange>;
+  /** Follows these keys instead. The ranges of keys it still follows wait for the next take; a key it lets go of loses its own. */
+  update(keys: readonly string[]): void;
   dispose(): void;
 }
 
@@ -307,29 +308,42 @@ export class MarketDataCoordinator {
    */
   followStreamTicks(keys: readonly string[], listener: () => void): StreamTickFollow {
     const follower = { ranges: new Map<string, StreamTickRange>() };
-    const uniqueKeys = [...new Set(keys)];
-    for (const key of uniqueKeys) {
-      const followers = this.streamTickFollowers.get(key);
-      if (followers) followers.add(follower);
-      else this.streamTickFollowers.set(key, new Set([follower]));
-    }
-    const unsubscribe = this.events.subscribeTicks(uniqueKeys, listener);
+    let followed = new Set<string>();
+    let unsubscribe = () => {};
     let disposed = false;
+    const follow = (next: ReadonlySet<string>) => {
+      for (const key of followed) {
+        if (next.has(key)) continue;
+        follower.ranges.delete(key);
+        const followers = this.streamTickFollowers.get(key);
+        followers?.delete(follower);
+        if (followers?.size === 0) this.streamTickFollowers.delete(key);
+      }
+      for (const key of next) {
+        if (followed.has(key)) continue;
+        const followers = this.streamTickFollowers.get(key);
+        if (followers) followers.add(follower);
+        else this.streamTickFollowers.set(key, new Set([follower]));
+      }
+      followed = new Set(next);
+      // Off before on: a key it stays on keeps the one listener.
+      unsubscribe();
+      unsubscribe = followed.size > 0 ? this.events.subscribeTicks([...followed], listener) : () => {};
+    };
+    follow(new Set(keys));
     return {
       take: () => {
         const taken = follower.ranges;
         follower.ranges = new Map();
         return taken;
       },
+      update: (next) => {
+        if (!disposed) follow(new Set(next));
+      },
       dispose: () => {
         if (disposed) return;
         disposed = true;
-        unsubscribe();
-        for (const key of uniqueKeys) {
-          const followers = this.streamTickFollowers.get(key);
-          followers?.delete(follower);
-          if (followers?.size === 0) this.streamTickFollowers.delete(key);
-        }
+        follow(new Set());
       },
     };
   }
@@ -1102,15 +1116,18 @@ export class MarketDataCoordinator {
   /**
    * Hands a frame's ticks of a key to its followers, before the store skips
    * a quote equal to the one it holds: ticks that crossed and came back leave
-   * the stored quote as it was. They are the stream's own prints, so ones the
-   * applied quote does not show at its newest (a unit the listing's other
-   * quotes refuse, an older print than its snapshot) go unread.
+   * the stored quote as it was. They are the stream's own prints, read as the
+   * applied quote shows its price (an after-hours tick that names no session
+   * at its after-hours print), so ones it does not show at its newest (a unit
+   * the listing's other quotes refuse, an older print than its snapshot) go
+   * unread.
    */
   private passStreamTicks(key: string, ticks: StreamTickRange, applied: Quote): void {
     const followers = this.streamTickFollowers.get(key);
-    if (!followers?.size || !spansOtherPrices(ticks)) return;
-    if (applied.stale === true || getActiveQuoteDisplay(applied)?.price !== ticks.last) return;
-    for (const follower of followers) follower.ranges.set(key, mergeStreamTickRanges(follower.ranges.get(key), ticks));
+    if (!followers?.size) return;
+    const shown = streamTicksAsShown(ticks, applied);
+    if (!shown) return;
+    for (const follower of followers) follower.ranges.set(key, mergeStreamTickRanges(follower.ranges.get(key), shown));
     this.events.markTicks(key);
   }
 

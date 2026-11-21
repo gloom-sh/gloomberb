@@ -1,9 +1,15 @@
 import { expect, test } from "bun:test";
 import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
 import type { Quote } from "../../../../types/financials";
-import { QUOTE_EVENT_BATCH_KIND } from "../../shared/quote-event-batch";
+import { QUOTE_EVENT_BATCH_KIND, QuoteEventBatcher } from "../../shared/quote-event-batch";
+import { decodeRpcValue, encodeRpcValue } from "../../shared/rpc-codec";
 import { subscribeCapability, type CapabilitySubscriptionTransport } from "../capability-subscription";
 import { createBackendQuoteSubscription } from "./backend-quote-subscription";
+import { RemoteQuoteSubscriptionRegistry } from "./quote-subscription-registry";
+import { MarketDataCoordinator } from "../../../../market-data/coordinator";
+import { createManualFrameDriver, DataFrameScheduler } from "../../../../market-data/frame-scheduler";
+import { buildQuoteKey } from "../../../../market-data/selectors";
+import { createTestDataProvider } from "../../../../test-support/data-provider";
 
 function createBackend() {
   const log: string[] = [];
@@ -97,4 +103,44 @@ test("delivers every tick of a batch and forwards the backend clock offset", () 
   listeners.get("quote:1")!({ target: target("AAPL"), quote: quote("AAPL", 232) });
   expect(dispatched).toEqual([["AAPL", 231], ["MSFT", 510], ["AAPL", 232]]);
   expect(offsets).toEqual([1_200]);
+});
+
+test("ticks the backend's batch kept only the newest of still reach the window's tick followers", () => {
+  // The backend's side: one batch per interval, the newest tick per listing, sent as JSON.
+  let deliver: ((event: unknown) => void) | null = null;
+  const batcher = new QuoteEventBatcher((batch) => deliver!(decodeRpcValue(JSON.parse(JSON.stringify(encodeRpcValue(batch))))));
+  // The window's: its quote subscriptions, as the desktop data provider keeps them, under its coordinator.
+  const registry = new RemoteQuoteSubscriptionRegistry(() => backend.sync(registry.backendTargets()));
+  const backend = createBackendQuoteSubscription({
+    subscribe: (_id, _targets, handlers) => { deliver = handlers.onEvent; return () => {}; },
+    dispatch: (target, quote, ticks) => registry.dispatch(target, quote, ticks),
+  });
+  const clock = createManualFrameDriver(100);
+  const coordinator = new MarketDataCoordinator(createTestDataProvider({
+    subscribeQuotes: (targets, onQuote) => registry.subscribe(targets, onQuote),
+  }), { frames: new DataFrameScheduler(clock.driver) });
+  const aapl = { symbol: "AAPL", exchange: "NASDAQ" };
+  const key = buildQuoteKey(aapl);
+  const follow = coordinator.followStreamTicks([key], () => {});
+  coordinator.subscribeQuotes([{ instrument: aapl, priority: { visible: true } }]);
+  const tick = (price: number) => batcher.push({ target: aapl, quote: {
+    symbol: "AAPL", price, change: Number.NaN, changePercent: Number.NaN, currency: "USD", lastUpdated: Date.now(),
+    delivery: "stream", dataSource: "live", marketState: "REGULAR",
+  } });
+  try {
+    tick(230);
+    batcher.flush();
+    clock.advance(0);
+    // Inside one batch interval it crosses 232 and comes back; the batch sends 231.50 alone.
+    tick(231);
+    tick(233);
+    tick(231.5);
+    batcher.flush();
+    clock.advance(100);
+    expect(coordinator.getQuoteEntry(aapl).data?.price).toBe(231.5);
+    expect(follow.take().get(key)).toMatchObject({ low: { price: 231 }, high: { price: 233 }, last: 231.5 });
+  } finally {
+    batcher.dispose();
+    coordinator.destroy();
+  }
 });

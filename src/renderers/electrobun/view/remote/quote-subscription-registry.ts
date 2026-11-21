@@ -3,8 +3,9 @@ import { instrumentFromQuoteTarget } from "../../../../market-data/selectors";
 import { mergeQuoteSubscriptionTargets } from "../../../../market-data/quote-subscription-target";
 import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
 import type { Quote } from "../../../../types/financials";
+import type { StreamTickRange } from "../../../../market-data/quotes/tick-range";
 
-export type RemoteQuoteListener = (target: QuoteSubscriptionTarget, quote: Quote) => void;
+export type RemoteQuoteListener = (target: QuoteSubscriptionTarget, quote: Quote, ticks?: StreamTickRange) => void;
 
 interface RemoteQuoteSubscriptionEntry {
   target: QuoteSubscriptionTarget;
@@ -66,9 +67,9 @@ export class RemoteQuoteSubscriptionRegistry {
     return targets;
   }
 
-  dispatch(target: QuoteSubscriptionTarget, quote: Quote): void {
+  dispatch(target: QuoteSubscriptionTarget, quote: Quote, ticks?: StreamTickRange): void {
     for (const entry of this.entriesByTarget.get(quoteTargetKey(target))?.values() ?? []) {
-      entry.listener(entry.target, quote);
+      entry.listener(entry.target, quote, ticks);
     }
   }
 }

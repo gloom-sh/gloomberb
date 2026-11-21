@@ -56,6 +56,7 @@ import {
   levelInQuoteUnit,
   assertAlertCurrency,
   moveQuoteFields,
+  printedBeforeLastCheck,
   quoteAlertFields,
   quoteErrorAlertFields,
   alertQuote,
@@ -197,11 +198,13 @@ export const alertsPlugin: GloomPlugin = {
       return null;
     };
 
-    // The last price each alert was judged on by the stream. `crosses` needs
-    // it tick to tick, and writing it to the store on every tick would churn
-    // the saved config. An alert with one also judges every tick its symbol's
-    // frames folded in since, so a tick that crossed and came back counts.
-    const streamedBaselines = new Map<string, number>();
+    // The last price each alert was judged on by the stream, and the arming
+    // it was judged in. `crosses` needs it tick to tick, and writing it to the
+    // store on every tick would churn the saved config. An alert with one also
+    // judges every tick its symbol's frames folded in since, so a tick that
+    // crossed and came back counts.
+    const streamedBaselines = new Map<string, { price: number; armedAt: number }>();
+    const armingOf = (alert: AlertRule) => alert.armedAt ?? alert.createdAt;
     let lastStreamPersistAt = 0;
     const evaluateStreamed = () => {
       if (generation !== pollGeneration) return;
@@ -214,9 +217,13 @@ export const alertsPlugin: GloomPlugin = {
       for (const alert of alerts) {
         if (alert.metric || (alert.status !== "active" && !alert.move)) continue;
         const quote = readStreamedAlertQuote(alert, undefined, now);
-        if (!quote) continue;
-        // A new or edited alert's first check judges its quote alone: earlier ticks may be from before it.
-        const ticks = alert.lastCheckedPrice != null && streamedBaselines.has(alert.id)
+        // A quote older than the one the alert was last checked on is no news of its price.
+        if (!quote || printedBeforeLastCheck(alert, quote)) continue;
+        // A new or edited alert's first check judges its quote alone: earlier ticks may be from before it. An edited
+        // move rule is one too, though this device's reading of it (a poll's since the edit) comes back with it.
+        const baseline = streamedBaselines.get(alert.id);
+        const sameArming = baseline?.armedAt === armingOf(alert);
+        const ticks = alert.lastCheckedPrice != null && sameArming
           ? tickRanges.get(buildQuoteKey(alertInstrument(alert))) : undefined;
         if (alert.move) {
           const status = alert.status;
@@ -224,7 +231,7 @@ export const alertsPlugin: GloomPlugin = {
           // Gone off at the tick, the rule still keeps the newest quote's reading.
           const firedAtTick = atTick ? checkMove(alert, atTick, now) : false;
           if (checkMove(alert, quote, now) || firedAtTick || alert.status !== status) persist = true;
-          streamedBaselines.set(alert.id, quote.price);
+          streamedBaselines.set(alert.id, { price: quote.price, armedAt: armingOf(alert) });
           touched = true;
           movesTouched = true;
           continue;
@@ -233,7 +240,7 @@ export const alertsPlugin: GloomPlugin = {
         // tick and store one at once, so `crosses` never compares against a
         // price from before the edit.
         const stored = alert.lastCheckedPrice;
-        const previous = stored == null ? undefined : streamedBaselines.get(alert.id) ?? stored;
+        const previous = stored == null ? undefined : sameArming ? baseline!.price : stored;
         if (stored == null) persist = true;
         const judged = { ...alert, lastCheckedPrice: previous };
         const firesNow = evaluateAlert(judged, quote.price);
@@ -247,7 +254,7 @@ export const alertsPlugin: GloomPlugin = {
           notifyTriggered(alert, firedOn, now);
           persist = true;
         }
-        streamedBaselines.set(alert.id, quote.price);
+        streamedBaselines.set(alert.id, { price: quote.price, armedAt: armingOf(alert) });
         Object.assign(alert, quoteAlertFields(quote, now));
         touched = true;
       }
@@ -258,7 +265,8 @@ export const alertsPlugin: GloomPlugin = {
       if (persist) alertStream?.sync();
     };
     alertStream?.dispose();
-    alertStream = checks ? createAlertQuoteStream({ readAlerts: () => loadAlerts(ctx), onQuotes: evaluateStreamed }) : null;
+    // Followed as judged: a move rule set by symbol alone learns its listing from this device's reading of it.
+    alertStream = checks ? createAlertQuoteStream({ readAlerts: loadJudgedAlerts, onQuotes: evaluateStreamed }) : null;
     ctx.registerCommand({
       id: "set-alert",
       label: "Add Alert",
@@ -612,6 +620,9 @@ export const alertsPlugin: GloomPlugin = {
           changed = true;
           continue;
         }
+        // A cached quote older than the alert's last check (one read before the app last closed) is left alone:
+        // judged, it would set the alert off at a price already gone, or wind its baseline back.
+        if (printedBeforeLastCheck(alert, quote)) continue;
 
         if (alert.move) {
           checkMove(alert, quote, Date.now());
@@ -632,6 +643,8 @@ export const alertsPlugin: GloomPlugin = {
       if (changed) {
         if (!metrics) saveMoveChecks(alerts);
         await saveAlerts(ctx, alerts, metrics ? "metric" : "price");
+        // A rule set by symbol alone now knows the listing its quotes stream on.
+        if (!metrics) alertStream?.sync();
       }
     };
 

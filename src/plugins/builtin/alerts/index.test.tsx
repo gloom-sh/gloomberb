@@ -814,6 +814,174 @@ test("a tick that crosses and comes back before its terminal frame sets off pric
   }
 });
 
+/** A coordinator on the terminal's frame clock whose stream the test feeds, as the plugin's shared one. */
+function createStreamingCoordinator() {
+  let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+  let streamed: QuoteSubscriptionTarget[] = [];
+  const clock = createManualFrameDriver(TERMINAL_DATA_FRAME_INTERVAL_MS);
+  const coordinator = new MarketDataCoordinator(createTestDataProvider({
+    subscribeQuotes: (targets, onQuote) => { streamed = targets; emit = onQuote; return () => {}; },
+  }), { frames: new DataFrameScheduler(clock.driver) });
+  setSharedMarketDataCoordinator(coordinator);
+  return {
+    coordinator,
+    streamed: () => streamed,
+    /** A live tick on one listing's key, as the feed sends it. */
+    tick: (symbol: string, exchange: string, price: number, previousClose = price, currency = "USD") => {
+      const target = streamed.find((candidate) => candidate.symbol === symbol && candidate.exchange === exchange);
+      if (!target) throw new Error(`${symbol}:${exchange} is not streamed`);
+      emit!(target, {
+        symbol, price, change: price - previousClose, changePercent: (price / previousClose - 1) * 100, previousClose, currency,
+        lastUpdated: Date.now(), delivery: "stream", dataSource: "live", marketState: "REGULAR",
+      } as Quote);
+    },
+    advance: (ms: number) => act(async () => { clock.advance(ms); await Bun.sleep(0); }),
+  };
+}
+
+test("an alert set by symbol alone judges the ticks of the listing its quotes stream on: a coin, a stock, a pair, a future and a move", async () => {
+  const { coordinator, streamed, tick, advance } = createStreamingCoordinator();
+  // Watchlist rows on screen stream each listing; a bare symbol would be another key, which a busy feed sends nothing.
+  const listings = [["BTC-USD", "CCC"], ["AAPL", "NASDAQ"], ["EURUSD=X", "CCY"], ["GC=F", "CMX"], ["ETH-USD", "CCC"]] as const;
+  const rows = coordinator.subscribeQuotes(listings.map(([symbol, exchange]) => ({ instrument: { symbol, exchange }, priority: { visible: true } })));
+  const bare = (id: string, symbol: string, venue: string, level: number, lastCheckedPrice: number): AlertRule => ({
+    ...makeAlert(id, symbol, "crosses", level), lastCheckedPrice, lastQuoteExchange: venue,
+  });
+  const store = new Map<string, string>([
+    ["alerts", serializeAlerts([
+      bare("coin", "BTC-USD", "CCC", 100_000, 99_500), bare("stock", "AAPL", "NASDAQ", 200, 199),
+      bare("pair", "EURUSD=X", "CCY", 1.1, 1.099), bare("future", "GC=F", "CMX", 4_000, 3_990),
+    ])],
+    ["moveAlerts", serializeAlerts([{ ...makeAlert("move", "ETH-USD", "above", 3), move: true }])],
+  ]);
+  // This device's reading of the move rule names the venue its quote was from.
+  const device = new Map<string, unknown>([["moveChecks", { move: { armedAt: 1_700_000_000_000, checkedAt: Date.now() - 60_000, percent: 1, exchange: "CCC" } }]]);
+  const notifications: string[] = [];
+  const ctx = {
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: { get: (key: string) => store.get(key) ?? null, set: (key: string, value: string) => { store.set(key, value); } },
+    resume: { getState: (key: string) => device.get(key) ?? null, setState: (key: string, value: unknown) => { device.set(key, value); } },
+    marketData: createTestDataProvider({ getQuote: async () => { throw new Error("no poll expected"); } }),
+    paneSettings: { get: () => "300" },
+    notify: (notification: { body: string }) => { notifications.push(notification.body); },
+    showPane() {}, log: { info() {}, warn() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    // The alerts add no key of their own: each rides its listing's row.
+    expect(streamed().map((target) => `${target.symbol}:${target.exchange}`).sort()).toEqual(listings.map(([symbol, exchange]) => `${symbol}:${exchange}`).sort());
+    tick("BTC-USD", "CCC", 99_600); tick("AAPL", "NASDAQ", 199.5); tick("EURUSD=X", "CCY", 1.0995); tick("GC=F", "CMX", 3_995);
+    tick("ETH-USD", "CCC", 3_030, 3_000);
+    await advance(TERMINAL_DATA_FRAME_INTERVAL_MS);
+    expect(notifications).toEqual([]);
+    tick("BTC-USD", "CCC", 100_100); tick("AAPL", "NASDAQ", 200.5); tick("EURUSD=X", "CCY", 1.1005); tick("GC=F", "CMX", 4_005);
+    tick("ETH-USD", "CCC", 3_100, 3_000);
+    await advance(TERMINAL_DATA_FRAME_INTERVAL_MS);
+    expect(notifications).toHaveLength(5);
+    expect(notifications.at(-1)).toContain("ETH-USD moved +3.33%");
+    expect(deserializeAlerts(store.get("alerts")!).map((alert) => [alert.id, alert.status])).toEqual([
+      ["coin", "triggered"], ["stock", "triggered"], ["pair", "triggered"], ["future", "triggered"],
+    ]);
+  } finally {
+    rows();
+    alertsPlugin.dispose?.();
+    coordinator.destroy();
+    setSharedMarketDataCoordinator(null);
+  }
+});
+
+test("at launch, a cached quote older than an alert's last check neither sets it off nor winds its reading back", async () => {
+  const now = Date.now();
+  // What the poll is served: a quote read two minutes ago, before the app last closed.
+  const cached = {
+    symbol: "AAPL", price: 99, change: -1, changePercent: -1, previousClose: 100, currency: "USD",
+    exchangeName: "NASDAQ", lastUpdated: now - 120_000, dataSource: "live", marketState: "REGULAR",
+  } as Quote;
+  const checked = (id: string, condition: AlertCondition, ago: number): AlertRule => ({
+    ...makeAlert(id, "AAPL", condition, 100), exchange: "NASDAQ", lastCheckedPrice: 101, lastCheckedAt: now - ago, lastQuoteUpdatedAt: now - ago,
+  });
+  const store = new Map<string, unknown>([
+    ["alerts", serializeAlerts([
+      // Checked at 101 ten seconds ago, after the cached quote printed: it is no news of the price.
+      checked("crosses", "crosses", 10_000), checked("below", "below", 10_000),
+      // Checked before it printed, the same quote is news, and crosses.
+      checked("earlier", "crosses", 300_000),
+    ])],
+    ["moveAlerts", serializeAlerts([{ ...makeAlert("move", "AAPL", "below", 0.5), exchange: "NASDAQ", move: true }])],
+  ]);
+  const device = new Map<string, unknown>([["moveChecks", { move: { armedAt: 1_700_000_000_000, checkedAt: now - 10_000, percent: 0.2, quoteAt: now - 10_000 } }]]);
+  const saved = Promise.withResolvers<void>();
+  const notifications: string[] = [];
+  const ctx = {
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: { get: (key: string) => store.get(key) ?? null, set: (key: string, value: unknown) => { store.set(key, value); if (key === "alerts") saved.resolve(); } },
+    resume: { getState: (key: string) => device.get(key) ?? null, setState: (key: string, value: unknown) => { device.set(key, value); } },
+    marketData: createTestDataProvider({ getQuote: async () => cached }),
+    paneSettings: { get: () => "300" },
+    notify: (notification: { body: string }) => { notifications.push(notification.body); },
+    showPane() {}, log: { info() {}, warn() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    await saved.promise;
+    expect(notifications).toEqual(["AAPL:NASDAQ ↕ 100.00 USD triggered at 99.00"]);
+    expect(deserializeAlerts(store.get("alerts")).map((alert) => [alert.id, alert.status, alert.lastCheckedPrice, alert.lastQuoteUpdatedAt])).toEqual([
+      ["crosses", "active", 101, now - 10_000], ["below", "active", 101, now - 10_000], ["earlier", "triggered", 99, now - 120_000],
+    ]);
+    expect(device.get("moveChecks")).toMatchObject({ move: { percent: 0.2, quoteAt: now - 10_000 } });
+    expect((device.get("moveChecks") as Record<string, { fired?: true }>).move?.fired).toBeUndefined();
+  } finally {
+    alertsPlugin.dispose?.();
+  }
+});
+
+test("an edited move rule judges its first quote alone, though a reading of it since the edit comes back from the device", async () => {
+  const { coordinator, tick, advance } = createStreamingCoordinator();
+  const rule = { ...makeAlert("move", "BTC-USD", "above", 7), exchange: "CCC", move: true };
+  const store = new Map<string, string>([["moveAlerts", serializeAlerts([rule])]]);
+  const device = new Map<string, unknown>();
+  const notifications: string[] = [];
+  const ctx = {
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: { get: (key: string) => store.get(key) ?? null, set: (key: string, value: string) => { store.set(key, value); } },
+    resume: { getState: (key: string) => device.get(key) ?? null, setState: (key: string, value: unknown) => { device.set(key, value); } },
+    marketData: createTestDataProvider({ getQuote: async () => { throw new Error("no poll expected"); } }),
+    paneSettings: { get: () => "300" },
+    notify: (notification: { body: string }) => { notifications.push(notification.body); },
+    showPane() {}, log: { info() {}, warn() {} },
+  };
+  const applied = () => coordinator.getQuoteEntry({ symbol: "BTC-USD", exchange: "CCC" }).data?.price;
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    await Bun.sleep(0);
+    // Followed for the alert alone, off screen: a second or more between applies.
+    tick("BTC-USD", "CCC", 101_000, 100_000);
+    await advance(TERMINAL_DATA_FRAME_INTERVAL_MS);
+    expect(device.get("moveChecks")).toMatchObject({ move: { percent: 1 } });
+    const editedAt = Date.now();
+    // Up 6% and back, held for the next apply: under the rule's 7%.
+    tick("BTC-USD", "CCC", 106_000, 100_000);
+    tick("BTC-USD", "CCC", 101_500, 100_000);
+    // Edited to 5% meanwhile, and read since by a poll, whose reading this device kept for the new arming.
+    store.set("moveAlerts", serializeAlerts([{ ...rule, targetPrice: 5, armedAt: editedAt }]));
+    device.set("moveChecks", { move: { armedAt: editedAt, checkedAt: editedAt, percent: 1.5, quoteAt: editedAt } });
+    await advance(2_000);
+    await advance(0);
+    expect(applied()).toBe(101_500);
+    expect(notifications).toEqual([]);
+    // A tick after the edit is judged by the new rule.
+    tick("BTC-USD", "CCC", 105_500, 100_000);
+    await advance(2_000);
+    await advance(0);
+    expect(applied()).toBe(105_500);
+    expect(notifications).toEqual(["BTC-USD moved +5.50% vs prev close, at 105,500.00"]);
+  } finally {
+    alertsPlugin.dispose?.();
+    coordinator.destroy();
+    setSharedMarketDataCoordinator(null);
+  }
+});
+
 
 test("Add Alert refuses unreadable storage, including corruption arriving during its quote lookup", async () => {
   const old = makeAlert("old", "AAPL", "above", 200, "triggered");

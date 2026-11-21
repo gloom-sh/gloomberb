@@ -2,7 +2,8 @@ import { describe, expect, jest, test } from "bun:test";
 import { MarketDataCoordinator } from "./index";
 import { buildQuoteKey } from "../selectors";
 import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
-import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
+import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import { getActiveQuoteDisplay } from "../market/status";
 import type { Quote } from "../../types/financials";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import { MemoryResourceStore } from "../../data/memory-resource-store";
@@ -541,6 +542,41 @@ describe("MarketDataCoordinator key subscriptions", () => {
       expect(heard).toEqual({ key: 1, all: 1, ticks: 1 });
       expect(follow.take().get(key)).toMatchObject({ low: { price: 99 }, high: { price: 101 }, last: 100 });
       expect(follow.take().size).toBe(0);
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
+  test("after-hours ticks that name no session reach a tick follower at the prints the applied quote shows", async () => {
+    const realDateNow = Date.now;
+    // 17:00 in New York: after hours.
+    const at = Date.parse("2026-11-20T22:00:00Z");
+    try {
+      Date.now = () => at;
+      const clock = createManualFrameDriver(100);
+      const { provider, emitQuote } = createProvider();
+      const coordinator = new MarketDataCoordinator({
+        ...provider,
+        getTickerFinancials: async () => createTestFinancials({ quote: quote("AAPL", 100, {
+          previousClose: 99, lastUpdated: at - 60_000, marketState: "POST", postMarketPrice: 100.5, dataSource: "live",
+        }) }),
+      }, { frames: new DataFrameScheduler(clock.driver) });
+      const aapl = { symbol: "AAPL", exchange: "NASDAQ" };
+      const key = buildQuoteKey(aapl);
+      await coordinator.loadSnapshot(aapl);
+      coordinator.subscribeQuotes([{ instrument: aapl, priority: { visible: true } }]);
+      const follow = coordinator.followStreamTicks([key], () => {});
+      // The stream's after-hours tick: its print, with the regular close as its price and no session named.
+      const tick = (print: number) => emitQuote(aapl, quote("AAPL", 100, {
+        postMarketPrice: print, change: 1, changePercent: 1.01, lastUpdated: at, dataSource: "live", delivery: "stream",
+      }));
+      tick(101);
+      clock.advance(100);
+      tick(103);
+      tick(101.5);
+      clock.advance(100);
+      expect(getActiveQuoteDisplay(coordinator.getQuoteEntry(aapl).data)?.price).toBe(101.5);
+      expect(follow.take().get(key)).toMatchObject({ low: { price: 101.5 }, high: { price: 103 }, last: 101.5, fellFromHigh: true });
     } finally {
       Date.now = realDateNow;
     }
