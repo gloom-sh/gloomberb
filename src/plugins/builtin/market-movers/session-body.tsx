@@ -24,7 +24,7 @@ import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { loadSessionMovers, SessionMoversAccessError } from "./client";
 import { ANY_FLOAT, minFloatEmptyTitle, minFloatFilter, minFloatShares, partialFloatFooter } from "./min-float";
-import { moverFreshnessFooter, summaryFooterSegments } from "./footer";
+import { moverFreshnessFooter, SESSION_PART, shownListSession, summaryFooterSegments } from "./footer";
 import type { MarketSummaryQuote } from "./screener";
 import { isProOnlyTab } from "./model";
 import {
@@ -166,13 +166,16 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
     setSelectedId(rows[0] ? rowKey(rows[0]) : null);
   }, [rows, selectedId]);
 
-  const sessionLabel = payload ? earlierSessionLabel(payload.session, session) : null;
+  // A list whose session is over is dated by it (`Fri 20 Nov pre-market`), which also names an earlier session's day.
+  const shownSession = payload?.phase === "closed"
+    ? shownListSession(payload.asOf, freshnessNow, { session: payload.session, ...(SESSION_PART[view] ? { part: SESSION_PART[view] } : {}) }) : null;
+  const sessionLabel = payload && !shownSession ? earlierSessionLabel(payload.session, session) : null;
   const quoteDelay = useListDelayFooter(delayed ? payload.delayMinutes ?? CLOUD_QUOTE_DELAY_MINUTES : null, "movers-delay");
   usePaneFooter("market-movers", () => ({
     info: [
       ...(loadError ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }] : []),
       ...(quoteDelay ? [quoteDelay] : []),
-      ...(payload ? moverFreshnessFooter(payload.asOf, savedAt == null ? updatedAt : null) : []),
+      ...(payload ? moverFreshnessFooter(payload.asOf, savedAt == null ? updatedAt : null, shownSession) : []),
       ...(sessionLabel ? [{ id: "session", parts: [{ text: sessionLabel, tone: "muted" as const }] }] : []),
       ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(feedStatus ? [{

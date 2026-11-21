@@ -409,6 +409,16 @@ export interface HeadlessPaneFreshness {
    * one market's.
    */
   tradingDayMarket?: string;
+  /**
+   * The rows are one market's list from a session (MOST's movers, a scan, a
+   * sector board). Once that market is shut, the report names the session
+   * the list shows, `US trading day Fri 20 Nov 2026 close`, with when the
+   * market reopens, never the time the list was taken after the close
+   * (`shownSessionDay`). `session` is the trading day a list states for
+   * itself; `part` names a list of a part of the session that has ended, a
+   * pre-market or after-hours list, dated `... Fri 20 Nov 2026 pre-market`.
+   */
+  sessionList?: { exchange: string; session?: string; part?: "pre-market" | "after-hours" };
   /** The newest observation is stale once this time (the next scheduled release) has passed by a day. */
   nextExpectedAt?: string | number | Date | null;
   /**
