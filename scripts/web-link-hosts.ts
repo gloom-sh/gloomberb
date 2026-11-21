@@ -97,8 +97,11 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   // Documentation and examples quoted in help text, and references inside libraries.
   "aomedia.org",
   "bun.sh",
+  // SnapTrade's site and dashboard, linked from the offline docs' broker steps; brokers connect through Gloom Cloud.
+  "dashboard.snaptrade.com",
   "example.com",
   "git-scm.com",
   "modelcontextprotocol.io",
   "react.dev",
+  "snaptrade.com",
 ]);
