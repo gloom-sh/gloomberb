@@ -22,6 +22,7 @@ import {
   NO_MATCH,
   reason,
   settled,
+  sharedExchangeChoice,
   summarizeSymbolRows,
   type BulkSymbolsOptions,
   type SymbolRow,
@@ -140,6 +141,16 @@ function choiceLines(rows: readonly SymbolRow[], retry: ((keys: string) => strin
   ];
 }
 
+/**
+ * The add of the codes an add left for a choice of exchange that all list on one (`sharedExchangeChoice`), with that
+ * exchange as `--exchange`: "Add them on JPX: gloom watchlist add Japan --exchange JPX 8058 8306". Empty otherwise.
+ */
+function sharedExchangeLines(rows: readonly SymbolRow[], retry: ((keys: string) => string) | undefined): string[] {
+  const shared = sharedExchangeChoice(rows);
+  if (!shared || !retry) return [];
+  return [cliStyles.muted(`Add them on ${shared.exchange}: ${retry(`--exchange ${shared.exchange} ${shared.inputs.map(shellWord).join(" ")}`)}`)];
+}
+
 interface CollectionRef {
   kind: "watchlist" | "portfolio";
   name: string;
@@ -177,6 +188,7 @@ export function printSymbolRows(
   }, {
     text: () => [
       ...rows.filter((row) => row.status !== "needs_choice" && row.status !== "not_looked_up").map((row) => rowLines(row, verb)),
+      ...verb === "add" ? sharedExchangeLines(rows, retry) : [],
       ...choiceLines(rows, retry),
       ...unansweredLines(rows, retry),
       "",

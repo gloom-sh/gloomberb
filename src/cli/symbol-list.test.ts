@@ -67,6 +67,21 @@ test("one ragged line, or a symbol with a stray separator in its quotes, does no
   expect(table.notes).toEqual(["Read the first column as symbols; ignored the 4 cells beside it: Apple Inc., 336.64, Microsoft, 535.07."]);
 });
 
+test("a ragged list of symbol lines beside a line holding a name reads every symbol, while a value or a name beside a symbol keeps it a table", async () => {
+  // The name's line made the paste a table read by its first column: 8002:TSE, 8053 and msft were left out.
+  const names = { "mitsubishi corp": "8058:JPX" } as Record<string, string>;
+  const pasted = "8058:TSE\n8001.t, 8002:TSE, 8053\nAAPL, msft\n\"Mitsubishi Corp\"\n";
+  expect(await readSymbolList({ args: ["-"], readStdin: async () => pasted, readEntries: async (entries) => entries.map((entry) => names[entry.toLowerCase()] ?? entry) }))
+    .toEqual({ symbols: ["8058:TSE", "8001.t", "8002:TSE", "8053", "AAPL", "msft", "8058:JPX"], repeated: 0, notes: [] });
+  // Numeric codes side by side are listings too, and so is one after a symbol in a list whose lines are codes.
+  expect(parseSymbolText("0700, 9988\nTencent Holdings\n").symbols).toEqual(["0700", "9988", "Tencent Holdings"]);
+  expect(parseSymbolText("9988.HK, 8053\n8058\nMitsubishi Corp\n").symbols).toEqual(["9988.HK", "8053", "8058", "Mitsubishi Corp"]);
+  // A price, a quantity, a rating or a name beside a symbol is a table's row, whatever line beside it holds one entry.
+  for (const row of ["ED, 2582", "AAPL, 150", "AAPL, 2.5", "AAPL, BUY", "AAPL, Apple Inc"]) {
+    expect(parseSymbolText(`${row}\nMitsubishi Corp\n`).symbols, row).toEqual([row.split(", ")[0]!, "Mitsubishi Corp"]);
+  }
+});
+
 test("an argument of words reaches the lookup whole, as a list's line does, and a file's full-width symbols read as ASCII", async () => {
   // "Beyond Meat" was read as the tickers BEYOND and MEAT.
   const read: string[][] = [];

@@ -17,6 +17,20 @@ test("a list add names the rows that landed off the list's main venues, the US e
   expect(summarizeSymbolRows(us, "add", 0)).toBe("10 added.");
 });
 
+test("codes left for a choice of exchange that all list on the list's venue name the one --exchange that adds them", () => {
+  // Each said "Choose an exchange" with its own listings, so the paste's 29 codes had 29 answers to give.
+  const choice = (code: string, ...venues: string[]): SymbolRow => ({
+    input: code, status: "failed", listing: null, symbol: null, exchange: null, name: null, message: `Choose an exchange for ${code}.`,
+    notes: null, hint: null, choices: venues.map((venue) => ({ key: `${code}:${venue}`, name: null })),
+  });
+  const tokyo = [added("8058:JPX", "8058", "JPX"), added("7203.T", "7203", "JPX"), choice("8053", "JPX", "HKEX"), choice("2282", "HKEX", "JPX", "TADAWUL")];
+  expect(summarizeSymbolRows(tokyo, "add", 0))
+    .toBe("2 added; 2 not added: 8053, 2282 (each lists on JPX: add them with --exchange JPX).");
+  // Two venues shared and neither the list's says nothing, as does a code alone.
+  expect(summarizeSymbolRows([choice("8053", "JPX", "HKEX"), choice("8001", "JPX", "HKEX")], "add", 0)).toBe("0 added; 2 not added: 8053, 8001.");
+  expect(summarizeSymbolRows([added("7203.T", "7203", "JPX"), choice("8053", "JPX", "HKEX")], "add", 0)).toBe("1 added; 1 not added: 8053.");
+});
+
 test("a bare symbol that reads as a future keeps the list's venue when it lists there, asks when that venue does not answer, and a future's own spelling stays one", async () => {
   const { AppPersistence } = await import("../data/app-persistence");
   const { TickerRepository } = await import("../data/ticker-repository");

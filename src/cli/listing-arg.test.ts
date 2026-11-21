@@ -50,6 +50,9 @@ test("SYM:EXCH and --exchange name the same listing through the exchange aliases
   expect(() => parseListingArg("SAN:EPA", "LON")).toThrow("SAN:EPA names exchange EPA, but --exchange names LSE.");
   // With several symbols, --exchange only fills in the ones without their own.
   expect(parseListingArg("SAN:EPA", "LSE", { ownExchangeWins: true }).key).toBe("SAN:EPA");
+  // So does a vendor's suffix: 9988.HK in a Tokyo paste added with --exchange JPX was looked for on JPX and not found.
+  expect(parseListingArg("9988.HK", "JPX", { ownExchangeWins: true, listingSuffix: true }).key).toBe("9988:HKEX");
+  expect(parseListingArg("8053", "JPX", { ownExchangeWins: true, listingSuffix: true }).key).toBe("8053:JPX");
 });
 
 test("a separator or quote marks left on a pasted ticker never reach the listing search, and a separator is named", () => {

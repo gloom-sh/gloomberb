@@ -195,7 +195,10 @@ export function parseListingArg(
   const nearMiss = terminal ? null : readNearMissListing(raw) ?? (typedPerpetualListing(raw) ? null : readVenueFirstListing(raw));
   const reading = terminal ?? (nearMiss ? { typed: nearMiss.typed, key: nearMiss.symbol } : null);
   const parsed = parseCleanListingArg(reading?.key ?? raw, exchangeOption, { ownExchangeWins });
-  const listing = listingSuffix ? readListingSuffix(parsed) ?? parsed : parsed;
+  // A vendor's suffix is the symbol's own exchange too: in a list, 9988.HK stays on HKEX under --exchange JPX.
+  const own = listingSuffix && ownExchangeWins && exchangeOption
+    ? readListingSuffix(parseCleanListingArg(reading?.key ?? raw, null, { ownExchangeWins })) : null;
+  const listing = own ?? (listingSuffix ? readListingSuffix(parsed) ?? parsed : parsed);
   const notes = [...stripped.text ? stripped.notes : [], ...reading ? [terminalCodeReadAs(reading)] : []];
   return notes.length > 0 ? { ...listing, readAs: notes.join(" ") } : listing;
 }
