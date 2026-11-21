@@ -15,9 +15,11 @@ on:
   pull_request:
     paths:
       - ".github/actions/inno-setup/**"
+      - ".github/actions/setup-bun/**"
       - ".github/workflows/desktop-shell-check.yml"
       - "electrobun.config.ts"
       - "patches/electrobun-devkit@*.patch"
+      - "scripts/electrobun-toolchain.*"
       - "scripts/patch-electrobun-devkit.ts"
       - "scripts/desktop-measure/**"
       - "src/renderers/electrobun/bun/window/**"
