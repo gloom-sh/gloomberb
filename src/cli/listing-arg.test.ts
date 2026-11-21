@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
+import type { Quote } from "../types/financials";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import {
   joinCompanyNameWords, listCoinNotes, ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, otherCompanyHomeNote,
-  parseListingArg, readShareClassCode, resolveCliListing, usListingsOnlyMessage,
+  parseListingArg, quotedListingChoiceNotes, readShareClassCode, resolveCliListing, usListingsOnlyMessage,
 } from "./listing-arg";
 import { LISTING_SEARCH_LIMIT } from "../tickers/search";
 import { FUTURES_CONTRACTS } from "../market-data/futures-board";
@@ -82,6 +83,81 @@ test("a futures board code no security uses is its future; one a security keeps,
   expect(parseListingArg("ABCX26").key).toBe("ABCX26");
 });
 
+test("a bare code whose own line stopped is read on the line that still trades, and every note names that line", async () => {
+  // /market/search?q=SOL and the bare quote on 2026-11-21: `fn DES SOL` drew Soul Pattinson's ASX row while its
+  // warnings named Emeren Group's NYSE receipt, which last traded on 12 Dec 2025.
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const delisting = { status: "inactive" as const, lastTradeDate: "2025-12-12", historyStart: "2016-01-04" };
+  const emeren = "Emeren Group Ltd American Depositary Shares, each representing 10 shares";
+  const soul = "Washington H. Soul Pattinson and Company Limited";
+  const row = { providerId: "test", symbol: "SOL", type: "Common Stock" };
+  const quotes: Record<string, Quote> = {
+    "SOL": createTestQuote({ symbol: "SOL", name: emeren, listingExchangeName: "NYSE", currency: "USD", instrumentType: "EQUITY", delisting }),
+    "SOL:ASX": createTestQuote({ symbol: "SOL.AX", name: soul, listingExchangeName: "ASX", currency: "AUD", instrumentType: "EQUITY" }),
+  };
+  const dataProvider = createTestDataProvider({
+    search: async () => [
+      { ...row, name: emeren, exchange: "NYSE", currency: "USD", delisting },
+      { ...row, name: soul, exchange: "ASX", currency: "AUD", homeListing: true },
+      { ...row, name: "Solvay SA", exchange: "XETRA", currency: "EUR" },
+    ],
+    // The bare code's own quote is Emeren's; one asked on ASX, by key or by venue, is Soul Pattinson's.
+    getQuote: async (symbol, exchange) => {
+      const quote = quotes[exchange && !symbol.includes(":") ? `${symbol}:${exchange}` : symbol];
+      if (!quote) throw new Error(`No quote for ${symbol}`);
+      return quote;
+    },
+  });
+  const deps = { store, dataProvider };
+
+  // Read by its venue, so a report that loads the store by key draws Soul Pattinson, the listing its notes name.
+  const sol = await resolveCliListing("SOL", undefined, deps);
+  expect(sol).toMatchObject({ key: "SOL:ASX", request: { symbol: "SOL:ASX", exchange: "ASX" }, bareRead: true });
+  expect(await quotedListingChoiceNotes(sol, deps)).toEqual([
+    "SOL:NYSE (Emeren Group): Last traded 12 Dec 2025, so SOL is read as SOL:ASX.",
+    "SOL -> ASX (Washington H. Soul Pattinson); also SOL:XETRA, Solvay",
+    `SOL is ${soul}. Also a coin: SOL-USD.`,
+  ]);
+  // Soul Pattinson saved under the bare key from the command bar stands for it as it is: the stopped US line never
+  // takes the symbol from it, and the notes still name the row drawn.
+  await store.createTicker({ ticker: "SOL", exchange: "ASX", currency: "AUD", name: soul, portfolios: [], watchlists: [], positions: [], custom: {}, tags: [] });
+  const saved = await resolveCliListing("SOL", undefined, deps);
+  expect(saved).toMatchObject({ key: "SOL", request: { symbol: "SOL", exchange: "ASX" }, saved: { metadata: { name: soul } } });
+  expect(await quotedListingChoiceNotes(saved, deps)).toEqual([
+    "SOL -> ASX (Washington H. Soul Pattinson); also SOL:XETRA, Solvay",
+    `SOL is ${soul}. Also a coin: SOL-USD.`,
+  ]);
+});
+
+test("a bare US code names the listing the service marks by the word under another code", async () => {
+  // /market/search?q=LINK on 2026-11-21: the command bar on a Hong Kong desk leads with Link REIT's 0823, `fn DES LINK`
+  // reads Interlink on NASDAQ, and says where the other is.
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const dataProvider = createTestDataProvider({
+    search: async () => [
+      { providerId: "test", symbol: "0823", name: "Link Real Estate Investment Trust", exchange: "HKEX", currency: "HKD", type: "Common Stock",
+        homeListing: true, searchAliases: ["LINK"] },
+      { providerId: "test", symbol: "LINK", name: "Interlink Electronics, Inc.", exchange: "NASDAQ", currency: "USD", type: "Common Stock" },
+      { providerId: "test", symbol: "LINK", name: "Link Net Tbk.", exchange: "JAKARTA", currency: "IDR", type: "Common Stock" },
+    ],
+    getQuote: async (symbol) => {
+      if (symbol !== "LINK") throw new Error(`No quote for ${symbol}`);
+      return createTestQuote({ symbol: "LINK", name: "Interlink Electronics, Inc.", listingExchangeName: "NASDAQ", currency: "USD", instrumentType: "EQUITY" });
+    },
+  });
+  const deps = { store, dataProvider };
+  const link = await resolveCliListing("LINK", undefined, deps);
+  expect(link).toMatchObject({ key: "LINK", request: { symbol: "LINK", exchange: "" } });
+  expect(await quotedListingChoiceNotes(link, deps)).toEqual([
+    "LINK = Interlink Electronics (NASDAQ); Link Real Estate Investment Trust is 0823:HKEX",
+    "LINK is Interlink Electronics, Inc. Also a coin: LINK-USD.",
+  ]);
+});
+
 test("an exchange code the app does not know is refused unless the symbol trades there", async () => {
   const persistence = new AppPersistence(":memory:");
   persistences.push(persistence);
@@ -104,13 +180,14 @@ test("an exchange code the app does not know is refused unless the symbol trades
   // A venue only search knows is still the symbol's own listing; data requests go by its key.
   expect((await resolveCliListing("SAN", "BVL", deps)).request).toEqual({ symbol: "SAN:BVL", exchange: "BVL" });
 
-  // Sanofi in Paris saved under the bare key: the bare symbol is still its US listing, read as with nothing saved.
+  // Sanofi in Paris saved under the bare key: the bare symbol is still its US listing, read by its venue so a report
+  // that loads the store by key draws Banco Santander, the listing its warnings name, never the Sanofi row.
   await store.createTicker({
     ticker: "SAN", exchange: "EPA", currency: "EUR", name: "Sanofi", portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
   });
   const bare = await resolveCliListing("SAN", undefined, deps);
   expect(bare.saved).toBeNull();
-  expect(bare.request).toEqual({ symbol: "SAN", exchange: "" });
+  expect(bare).toMatchObject({ key: "SAN:NYSE", request: { symbol: "SAN:NYSE", exchange: "NYSE" }, bareRead: true });
   expect((await resolveCliListing("SAN:XPAR", undefined, deps)).saved?.metadata.name).toBe("Sanofi");
   expect((await resolveCliListing("SAN:NYSE", undefined, deps)).saved).toBeNull();
 });
