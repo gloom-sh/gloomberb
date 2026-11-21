@@ -403,11 +403,14 @@ export async function withRenamedTickers(
   const read = keys.map((key, index) => listings[index]?.key ?? moved[index]?.tradesAs ?? key);
   // The same company typed twice (SQ,XYZ) is read once.
   const arg = [...new Set(read)].join(", ");
-  const single = listings.length === 1 ? listings[0] : null;
+  // One moved ticker is read on its new symbol's listing, or by that symbol alone when it could not be
+  // resolved: never on the old symbol's listing under the new symbol.
+  const { listing: typed, ...rest } = args;
+  const listing = keys.length === 1 ? listings[0] : typed;
   return {
-    ...args,
+    ...rest,
     arg,
-    ...(single ? { listing: single } : {}),
+    ...(listing ? { listing } : {}),
     listingNotes: [...args.listingNotes ?? [], ...moved.flatMap((change) => change ? [movedListingNote(change)] : [])],
   };
 }
