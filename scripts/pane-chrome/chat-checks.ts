@@ -213,7 +213,7 @@ window.__chat = {
       glyphOverflow,
       rows: inView.map(gap),
       bodies: inView.flatMap((r) => [...r.querySelectorAll('[data-gloom-role=chat-message-body]')].map(gap)),
-      quotes: inView.flatMap((r) => [...r.querySelectorAll('[data-gloom-role=chat-message-row] [style*="text-overflow: ellipsis"]')].map(gap)),
+      quotes: inView.flatMap((r) => [...r.querySelectorAll('[data-gloom-role=chat-message-reply-quote]')].map(gap)),
       widths: [...new Set(rows.map((r) => Math.round(r.getBoundingClientRect().width * 100) / 100))],
       fromBottom: this.state().fromBottom,
     };

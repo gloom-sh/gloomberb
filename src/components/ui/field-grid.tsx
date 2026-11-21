@@ -449,7 +449,7 @@ export function GridFieldView({
         {active || text ? input : (
           <Button
             label={`Edit ${field.label}`}
-            displayLabel={truncate(displayValue, valueWidth)}
+            displayLabel={nativePaneChrome ? displayValue : truncate(displayValue, valueWidth)}
             width={valueWidth}
             variant="plain"
             compact

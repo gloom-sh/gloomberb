@@ -3,7 +3,8 @@ import { StaticChartSurface, type StaticChartOverlay } from "../../../components
 import { Box, Text } from "../../../ui";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
-import { clipToDisplayWidth, displayWidth } from "../../../utils/format";
+import { displayWidth } from "../../../utils/format";
+import { ClippedText } from "../../../components/ui/display";
 import { currencyLabel, scenarioLegsText, scenarioValueUnit, type buildScenario } from "./model";
 
 /** `session` is the extended session the position is valued in (`after hours`), when it is not the regular one. */
@@ -28,10 +29,10 @@ export function ScenarioPayoffChart({ scenario, width, height, focused = false, 
   const date = (value: number) => new Date(value).toISOString().slice(0, 10);
   // The legs the curves value, and the session when it is not the regular one.
   const valued = session ? `valued ${session}` : "";
-  const legs = clipToDisplayWidth(scenarioLegsText(scenario.position), Math.max(0, width - 2 - (valued ? displayWidth(valued) + 3 : 0)));
+  const legsRoom = Math.max(0, width - 2 - (valued ? displayWidth(valued) + 3 : 0));
   return <Box flexDirection="column" width={width} height={height}>
     <Box height={1} paddingX={1} flexDirection="row" gap={3}>
-      <Text fg={colors.text}>{legs}</Text>
+      <ClippedText fg={colors.text} text={scenarioLegsText(scenario.position)} width={legsRoom} />
       {valued ? <Text fg={colors.textMuted}>{valued}</Text> : null}
     </Box>
     <Box height={1} paddingX={1} flexDirection="row" gap={3}>

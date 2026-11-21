@@ -17,7 +17,7 @@ import { useShortcut } from "../react/input";
 import { t, tf } from "../i18n";
 import { useThemeColors } from "../theme/theme-context";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../ui";
-import { clipToDisplayWidth, displayWidth } from "../utils/format";
+import { displayWidth } from "../utils/format";
 import { isPlainKey } from "../utils/keyboard";
 import type { GallerySearchState, LayoutGalleryController } from "./gallery";
 import { MiniWorkspace } from "./mini-workspace";
@@ -61,17 +61,6 @@ function sectionLabel(title: string, count: number): string {
   return tf("{title} ({count})", { title: t(title), count: String(count) });
 }
 
-/**
- * A header's label in `room` cells with its count kept: a long name gives up
- * its own end, so the row never reads `Your layouts (1`.
- */
-function fitSectionLabel(title: string, count: number, room: number): string {
-  const label = sectionLabel(title, count);
-  if (displayWidth(label) <= room) return label;
-  const total = displayWidth(` (${count})`);
-  return `${clipToDisplayWidth(t(title), Math.max(1, room - total))} (${count})`;
-}
-
 /** A collapsible group header, the same row the chat sidebar uses. */
 function SidebarSection({
   title,
@@ -90,7 +79,9 @@ function SidebarSection({
   return (
     <Box height={1} width={width} flexDirection="row" flexShrink={0} style={ROW_INSET}>
       <ActionRow
-        label={fitSectionLabel(title, count, width - SECTION_HEADER_CHROME)}
+        // A long name gives up its own end, never its count: the row never reads `Your layouts (1`.
+        label={sectionLabel(title, count)}
+        keepEnd={` (${count})`}
         expanded={expanded}
         width={Math.max(1, width - 1)}
         onPress={onToggle}

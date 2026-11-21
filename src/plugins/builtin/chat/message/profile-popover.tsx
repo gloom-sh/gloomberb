@@ -1,4 +1,6 @@
 import { Button, Popover } from "../../../../components/ui";
+import { ClippedText } from "../../../../components/ui/display";
+import { NATIVE_CLIP_STYLE } from "../../../../components/ui/clip-style";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
@@ -130,10 +132,9 @@ function HeaderAnalyticsStats({
         const valueWidth = Math.max(1, metricWidth - labelWidth - 1);
         return (
           <Box key={metric.id} width={metricWidth} height={1} flexDirection="row" gap={1}>
-            <Text fg={colors.textMuted}>{truncateWithEllipsis(label, labelWidth)}</Text>
-            <Text fg={analyticsValueColor(metric.id, metric.rawValue)} attributes={TextAttributes.BOLD}>
-              {truncateWithEllipsis(metric.value, valueWidth)}
-            </Text>
+            {/* The desktop cuts the label first, in CSS, as the terminal gives the value its room. */}
+            <ClippedText fg={colors.textMuted} text={label} width={labelWidth} cut={truncateWithEllipsis} flex="0 1000 auto" />
+            <ClippedText fg={analyticsValueColor(metric.id, metric.rawValue)} attributes={TextAttributes.BOLD} text={metric.value} width={valueWidth} cut={truncateWithEllipsis} />
           </Box>
         );
       })}
@@ -169,9 +170,7 @@ function CardHandle({ user, handle, width }: { user: ChatUserSummary; handle: st
   const icons = fitChatPersonIcons(chatPersonIcons(user), width - displayWidth(handle));
   return (
     <>
-      <Text fg={chatAuthorNameColor(user)} attributes={TextAttributes.BOLD}>
-        {truncateToDisplayWidth(handle, Math.max(1, width - icons.length * CHAT_PERSON_ICON_WIDTH))}
-      </Text>
+      <ClippedText fg={chatAuthorNameColor(user)} attributes={TextAttributes.BOLD} text={handle} width={Math.max(1, width - icons.length * CHAT_PERSON_ICON_WIDTH)} />
       <ChatPersonIcons icons={icons} />
     </>
   );
@@ -184,7 +183,7 @@ function NameCardRow({ user, width }: { user: ChatUserSummary; width: number }) 
   return (
     <Box height={1} width={width} flexDirection="row">
       <CardHandle user={user} handle={handle} width={handleWidth} />
-      {name && nameWidth >= 4 ? <Text fg={colors.textDim}>{` ${truncateToDisplayWidth(name, nameWidth)}`}</Text> : null}
+      {name && nameWidth >= 4 ? <ClippedText fg={colors.textDim} lead=" " text={name} width={nameWidth} /> : null}
     </Box>
   );
 }
@@ -206,16 +205,20 @@ function personFactRowWidth(row: { label: string | null; value: string }): numbe
   return (row.label ? displayWidth(row.label) + 1 : 0) + displayWidth(row.value);
 }
 
+/** A fact's label on the desktop and the web gives way to its value, cut in CSS. */
+const FACT_LABEL_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
+
 function PersonFactRows({ rows, width }: { rows: ReturnType<typeof personFactRows>; width: number }) {
+  const { nativePaneChrome } = useUiCapabilities();
   return (
     <>
       {rows.map((row) => {
-        const labelText = row.label ? truncateToDisplayWidth(row.label, Math.max(1, width - 2)) : "";
+        const labelText = !row.label ? "" : nativePaneChrome ? row.label : truncateToDisplayWidth(row.label, Math.max(1, width - 2));
         const valueWidth = Math.max(1, width - (labelText ? displayWidth(labelText) + 1 : 0));
         // A long list of desks wraps under itself rather than losing its end.
         return (
           <Box key={row.id} width={width} flexDirection="row" data-gloom-role={`chat-profile-${row.id}`}>
-            {labelText ? <Text fg={colors.textDim}>{`${labelText} `}</Text> : null}
+            {labelText ? <Text fg={colors.textDim} style={nativePaneChrome ? FACT_LABEL_STYLE : undefined}>{`${labelText} `}</Text> : null}
             <Text fg={row.label ? colors.text : colors.textDim} wrapText width={valueWidth}>{row.value}</Text>
           </Box>
         );
@@ -313,7 +316,7 @@ export function UserProfilePopover({
         <Box flexGrow={1} />
       </Box>
       <PersonFactRows rows={factRows.filter((row) => row.id === "role")} width={headerWidth} />
-      {meta ? <Text fg={colors.textDim}>{truncateWithEllipsis(meta, headerWidth)}</Text> : null}
+      {meta ? <ClippedText fg={colors.textDim} text={meta} width={headerWidth} cut={truncateWithEllipsis} /> : null}
       <PersonFactRows rows={factRows.filter((row) => row.id !== "role")} width={headerWidth} />
       {bio ? (
         <Text fg={colors.text} wrapText width={headerWidth}>

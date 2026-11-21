@@ -3,7 +3,8 @@ import { Box, Text, TextAttributes, type TextareaRenderable } from "../../../../
 import { getMessageComposerBlockHeight, MessageComposer } from "../../../../components/ui";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
-import { truncateToDisplayWidth } from "../../../../utils/format";
+import { ClippedText } from "../../../../components/ui/display";
+import { NATIVE_CLIP_STYLE } from "../../../../components/ui/clip-style";
 import type { ChatMessage } from "../../../../api-client";
 import { InlineAuthActions } from "../../cloud/auth-actions";
 import { Button, ListView } from "../../../../components/ui";
@@ -19,6 +20,9 @@ import type { ComposerShareLink } from "../pane-links/composer";
 import type { ChatMessagePaneLink } from "../pane-links/model";
 
 const DESKTOP_CHAT_INPUT_TOP_MARGIN_PX = 6;
+/** A reply's or an edit's preview gives way to Cancel after it, cut in CSS. */
+const PREVIEW_CLIP_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
+
 /**
  * The line saying why the composer is closed, a blank row, then its button,
  * as a wall sets them. The desktop has no pane border under the button, so a
@@ -154,9 +158,7 @@ export function ChatComposerArea({
     return (
       // Inset like the transcript above it, so the prompt lines up with the messages.
       <Box width={contentWidth + 2} paddingX={1} height={chatAuthPromptRows(nativePaneChrome)} flexDirection="column">
-        <Text fg={colors.positive}>
-          {truncateToDisplayWidth(user ? t("Verify your email to send messages.") : t("Saved login found. Log in again to send."), contentWidth)}
-        </Text>
+        <ClippedText fg={colors.positive} text={user ? t("Verify your email to send messages.") : t("Saved login found. Log in again to send.")} width={contentWidth} />
         <Box marginTop={1}>
           <InlineAuthActions showSignup={false} needsVerification={!!user} />
         </Box>
@@ -182,7 +184,7 @@ export function ChatComposerArea({
       {editingMessage && (
         <Box height={1} width={contentWidth} flexDirection="row">
           <Text fg={colors.textMuted}>{` ${t("editing")} `}</Text>
-          <Text fg={colors.textDim}>{editingPreview ? `: ${editingPreview}` : ""}</Text>
+          <Text fg={colors.textDim} style={nativePaneChrome ? PREVIEW_CLIP_STYLE : undefined}>{editingPreview ? `: ${editingPreview}` : ""}</Text>
           <Box flexGrow={1} />
           <Button stopPropagation
             label={t("Cancel")}
@@ -198,7 +200,7 @@ export function ChatComposerArea({
           <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{`@${replyTo.user.username}`}</Text>
           {isManagedBot(replyTo.user) && <ChatBotIcon />}
           {/* The bot's icon stands where the colon would. */}
-          <Text fg={colors.textDim}>{replyPreview ? `${isManagedBot(replyTo.user) ? " " : ": "}${replyPreview}` : ""}</Text>
+          <Text fg={colors.textDim} style={nativePaneChrome ? PREVIEW_CLIP_STYLE : undefined}>{replyPreview ? `${isManagedBot(replyTo.user) ? " " : ": "}${replyPreview}` : ""}</Text>
           <Box flexGrow={1} />
           <Button stopPropagation
             label={t("Cancel")}

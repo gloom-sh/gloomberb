@@ -64,7 +64,7 @@ function clipWords(text: string, width: number): string {
  * A terminal toggle row's label and detail, cut to fit `width` with an
  * ellipsis: the detail gives way first, at a word. Whole when they fit.
  */
-export function fitToggleRow(label: string, detail: string | undefined, width: number): { label: string; detail: string | undefined } {
+export function terminalToggleRow(label: string, detail: string | undefined, width: number): { label: string; detail: string | undefined } {
   const room = Math.max(0, width - CHECKBOX_PREFIX);
   if (!detail) return { label: clipToDisplayWidth(label, room), detail };
   const available = Math.max(0, room - DETAIL_GAP);
@@ -205,7 +205,7 @@ export function ToggleList({
           );
         }
 
-        const fitted = width != null && !showDescriptions ? fitToggleRow(item.label, item.detail, width) : null;
+        const fitted = width != null && !showDescriptions ? terminalToggleRow(item.label, item.detail, width) : null;
         return (
           <Box
             id={rowIdPrefix ? `${rowIdPrefix}:${item.id}` : undefined}

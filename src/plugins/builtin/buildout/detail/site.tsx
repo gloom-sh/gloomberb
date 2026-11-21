@@ -1,4 +1,5 @@
 import { Section } from "../../../../components";
+import { ClippedText } from "../../../../components/ui/display";
 import { colors } from "../../../../theme/colors";
 import { Box, Text } from "../../../../ui";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
@@ -61,14 +62,18 @@ export function SiteDetail({
               ? `${observation.captureBounds.minLat.toFixed(3)}, ${observation.captureBounds.minLng.toFixed(3)}`
               : null;
             return (
-              <Text key={observation.id ?? index} fg={colors.textMuted}>
-                {truncateWithEllipsis([
+              <ClippedText
+                key={observation.id ?? index}
+                fg={colors.textMuted}
+                text={[
                   dateShort(observation.captureDate),
                   observation.observationSource,
                   observation.note,
                   bounds,
-                ].filter(Boolean).join(" - "), bodyWidth)}
-              </Text>
+                ].filter(Boolean).join(" - ")}
+                width={bodyWidth}
+                cut={truncateWithEllipsis}
+              />
             );
           })}
         </Section>
@@ -101,9 +106,12 @@ export function SiteDetail({
                 {builder.companyTicker
                   ? <ListingBadges tickers={[{ ticker: builder.companyTicker }]} width={Math.min(12, bodyWidth)} />
                   : null}
-                <Text fg={colors.textMuted}>
-                  {truncateWithEllipsis(`${builder.companyName ?? "Company"}${builder.role ? ` - ${builder.role}` : ""}`, Math.max(0, bodyWidth - (builder.companyTicker ? 12 : 0)))}
-                </Text>
+                <ClippedText
+                  fg={colors.textMuted}
+                  text={`${builder.companyName ?? "Company"}${builder.role ? ` - ${builder.role}` : ""}`}
+                  width={Math.max(0, bodyWidth - (builder.companyTicker ? 12 : 0))}
+                  cut={truncateWithEllipsis}
+                />
               </Box>
               <MarkdownBlock text={builder.summary} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
             </Box>

@@ -1,8 +1,9 @@
 import { useThemeColors } from "../../theme/theme-context";
 import { TYPE, WEIGHT } from "../../theme/ui-tokens";
 import { Box, StyledText, Text, TextAttributes } from "../../ui";
-import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
+import { displayWidth } from "../../utils/format";
 import { wrapTextLines } from "../../utils/text-wrap";
+import { ClippedText } from "../ui/display";
 import { splitFigures } from "../ui/prose";
 import type { ArticleBlock } from "./article-text";
 
@@ -267,12 +268,12 @@ function ReaderTable({ rows, geometry }: { rows: readonly string[][]; geometry: 
     <Box flexDirection="column">
       {lines.map((line, index) => (
         <Box key={index} height={1}>
-          <Text
+          <ClippedText
             fg={index === 0 && header ? colors.textDim : colors.text}
             attributes={index === 0 && header ? TextAttributes.BOLD : TextAttributes.NONE}
-          >
-            {truncateToDisplayWidth(line, geometry.measure)}
-          </Text>
+            text={line}
+            width={geometry.measure}
+          />
         </Box>
       ))}
     </Box>

@@ -32,6 +32,7 @@ import {
 import { promptChoice } from "./prompts";
 import { thesisStore } from "./store";
 import { ClippedText } from "../../../../components/ui/display";
+import { NATIVE_CLIP_STYLE } from "../../../../components/ui/clip-style";
 import { useSelectionFill } from "../../../../components/ui/selection-fill";
 import { logFailure } from "../../../../utils/log-failure";
 
@@ -73,28 +74,45 @@ function relative(iso: string | null | undefined): string {
   return `${days}d ago`;
 }
 
-function wrap(text: string, width: number, maxLines: number): string[] {
+/**
+ * Word-wraps text into at most `maxLines` lines of `width` cells. Text that
+ * does not fit ends the last line: the terminal cuts it there with an
+ * ellipsis, the desktop and the web keep the rest of the text on that line
+ * for CSS to end where its box does.
+ */
+function wrap(text: string, width: number, maxLines: number, nativePaneChrome?: boolean): string[] {
   const words = text.replace(/\s+/g, " ").trim().split(" ");
   const lines: string[] = [];
+  const starts: number[] = [];
   let current = "";
-  for (const word of words) {
+  let start = 0;
+  for (const [index, word] of words.entries()) {
     const candidate = current ? `${current} ${word}` : word;
     if (displayWidth(candidate) <= width) {
       current = candidate;
     } else {
-      if (current) lines.push(current);
+      if (current) {
+        lines.push(current);
+        starts.push(start);
+      }
       current = word;
+      start = index;
       if (lines.length === maxLines) break;
     }
   }
-  if (current && lines.length < maxLines) lines.push(current);
+  if (current && lines.length < maxLines) {
+    lines.push(current);
+    starts.push(start);
+  }
   if (lines.length === maxLines && words.join(" ").length > lines.join(" ").length) {
-    lines[maxLines - 1] = truncateToDisplayWidth(`${lines[maxLines - 1]}…`, width);
+    lines[maxLines - 1] = nativePaneChrome
+      ? words.slice(starts[maxLines - 1]).join(" ")
+      : truncateToDisplayWidth(`${lines[maxLines - 1]}…`, width);
   }
   return lines;
 }
 
-function buildRows(thesis: CloudThesis, signals: readonly ThesisSignal[], width: number): Row[] {
+function buildRows(thesis: CloudThesis, signals: readonly ThesisSignal[], width: number, nativePaneChrome?: boolean): Row[] {
   const document = thesis.document;
   const rows: Row[] = [];
   const open = openSignals(signals);
@@ -119,7 +137,7 @@ function buildRows(thesis: CloudThesis, signals: readonly ThesisSignal[], width:
   const review = latestReviewSummary(signals);
   if (review) {
     rows.push({ kind: "heading", id: "h:review", label: `${SECTION_LABEL.review} (${relative(review.createdAt)})`, section: "review" });
-    for (const [index, line] of wrap(review.reason, width - 3, 6).entries()) {
+    for (const [index, line] of wrap(review.reason, width - 3, 6, nativePaneChrome).entries()) {
       rows.push({ kind: "text", id: `r:${index}`, section: "review", text: line, dim: true });
     }
   }
@@ -130,10 +148,9 @@ function isSelectable(row: Row): boolean {
   return row.kind === "pillar" || row.kind === "kill" || row.kind === "catalyst" || row.kind === "signal";
 }
 
-function twoColumn(left: string, right: string, width: number): { left: string; right: string } {
-  const rightWidth = displayWidth(right);
-  const leftWidth = Math.max(8, width - rightWidth - 1);
-  return { left: truncateToDisplayWidth(left, leftWidth), right };
+/** The cells a row's left text has in the terminal beside its right text and a gap. */
+function leftCells(right: string, width: number): number {
+  return Math.max(8, width - displayWidth(right) - 1);
 }
 
 export interface ThesisDetailProps {
@@ -182,7 +199,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
 
   // Two cells of padding plus the list scrollbar column.
   const contentWidth = Math.max(20, width - 3);
-  const rows = useMemo(() => buildRows(thesis, signals, contentWidth), [contentWidth, signals, thesis]);
+  const rows = useMemo(() => buildRows(thesis, signals, contentWidth, nativePaneChrome), [contentWidth, nativePaneChrome, signals, thesis]);
   const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === selectedId));
   const selectedRow = rows[selectedIndex] ?? null;
 
@@ -362,6 +379,8 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
   const renderRow = useCallback((item: ListViewItem, state: { selected: boolean }) => {
     const row = rows.find((entry) => entry.id === item.id);
     if (!row) return null;
+    // The desktop keeps a row's right text whole after a gap; the left text gives way, cut by CSS.
+    const twoColumnGap = nativePaneChrome ? { gap: 1 } : {};
     const lit = state.selected && selectionFill.lit;
     // On the quieter fill a row's colours are lifted where they would not read.
     const ink = (color: string) => (state.selected ? selectionFill.ink(color) : color);
@@ -387,21 +406,20 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
       const pillar = row.item;
       const right = pillar.metric ? `${formatBound(pillar.metric)}  ${pillar.status}` : pillar.status;
       const scope = pillar.scope ? `${pillar.scope}: ` : "";
-      const { left, right: rightText } = twoColumn(` ${pillarGlyph(pillar.status)} ${scope}${pillar.text}`, right, contentWidth);
       const statusColor = pillar.status === "broken" ? colors.negative : pillar.status === "weakening" ? colors.warning : pillar.status === "intact" ? colors.positive : dim;
       return (
-        <Box flexDirection="row" width={contentWidth} justifyContent="space-between">
-          <Text fg={fg}>{left}</Text>
-          <Text fg={state.selected ? fg : statusColor}>{rightText}</Text>
+        <Box flexDirection="row" width={contentWidth} justifyContent="space-between" {...twoColumnGap}>
+          <ClippedText fg={fg} text={` ${pillarGlyph(pillar.status)} ${scope}${pillar.text}`} width={leftCells(right, contentWidth)} />
+          <Text fg={state.selected ? fg : statusColor}>{right}</Text>
         </Box>
       );
     }
     if (row.kind === "kill") {
       const condition = row.item;
-      const { left, right } = twoColumn(` ${condition.triggered ? "✗" : " "} ${condition.text}`, condition.triggered ? "FIRED" : "not fired", contentWidth);
+      const right = condition.triggered ? "FIRED" : "not fired";
       return (
-        <Box flexDirection="row" width={contentWidth} justifyContent="space-between">
-          <Text fg={condition.triggered && !state.selected ? colors.negative : fg}>{left}</Text>
+        <Box flexDirection="row" width={contentWidth} justifyContent="space-between" {...twoColumnGap}>
+          <ClippedText fg={condition.triggered && !state.selected ? colors.negative : fg} text={` ${condition.triggered ? "✗" : " "} ${condition.text}`} width={leftCells(right, contentWidth)} />
           <Text fg={state.selected ? fg : condition.triggered ? colors.negative : dim}>{right}</Text>
         </Box>
       );
@@ -412,12 +430,11 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
       const days = catalyst.date ? daysUntil(catalyst.date) : null;
       const when = catalyst.date ? `${catalyst.date}${days !== null && stateLabel !== "hit" && stateLabel !== "missed" ? ` · ${describeDays(days)}` : ""}` : "";
       const right = stateLabel === "hit" || stateLabel === "missed" ? `${when}  ${stateLabel}` : stateLabel === "passed" ? `${when}  slipped` : when;
-      const { left, right: rightText } = twoColumn(`   ${catalyst.text}`, right, contentWidth);
       const tone = stateLabel === "missed" || stateLabel === "passed" ? colors.negative : stateLabel === "hit" ? colors.positive : stateLabel === "due" ? colors.warning : dim;
       return (
-        <Box flexDirection="row" width={contentWidth} justifyContent="space-between">
-          <Text fg={fg}>{left}</Text>
-          <Text fg={state.selected ? fg : tone}>{rightText}</Text>
+        <Box flexDirection="row" width={contentWidth} justifyContent="space-between" {...twoColumnGap}>
+          <ClippedText fg={fg} text={`   ${catalyst.text}`} width={leftCells(right, contentWidth)} />
+          <Text fg={state.selected ? fg : tone}>{right}</Text>
         </Box>
       );
     }
@@ -427,17 +444,16 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
     const right = `${who} · ${relative(signal.createdAt)}`;
     // The verdict is a badge (its own padding plus a gap), the target the rest.
     const badgeWidth = displayWidth(signal.verdict) + 3;
-    const { left, right: rightText } = twoColumn(target, right, contentWidth - badgeWidth);
     return (
-      <Box flexDirection="row" width={contentWidth} justifyContent="space-between">
+      <Box flexDirection="row" width={contentWidth} justifyContent="space-between" {...twoColumnGap}>
         <Box flexDirection="row" gap={1} flexShrink={1} minWidth={0} overflow="hidden">
           <Badge label={signal.verdict} tone={verdictTone(signal.verdict)} />
-          <Text fg={fg}>{left}</Text>
+          <ClippedText fg={fg} text={target} width={leftCells(right, contentWidth - badgeWidth)} />
         </Box>
-        <Text fg={dim}>{rightText}</Text>
+        <Text fg={dim}>{right}</Text>
       </Box>
     );
-  }, [contentWidth, rows, selectionFill.lit, thesis.document]);
+  }, [contentWidth, nativePaneChrome, rows, selectionFill.lit, thesis.document]);
 
   const owner = isTeam ? teamStore.getTeam(thesis.owner.id)?.name ?? "team" : null;
   const nextDue = thesis.document.catalysts
@@ -454,7 +470,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
   ].filter(Boolean).join(" · ");
   const reviewLine = thesis.reviewedAt ? `Reviewed ${relative(thesis.reviewedAt)}` : "Never reviewed";
   const due = reviewDue(thesis);
-  const summaryLines = thesis.document.summary ? wrap(thesis.document.summary, contentWidth, 3) : [];
+  const summaryLines = thesis.document.summary ? wrap(thesis.document.summary, contentWidth, 3, nativePaneChrome) : [];
   const evidence = thesis.document.evidence.symbols.length ? `Listening to ${thesis.document.evidence.symbols.join(", ")}` : null;
   const headerHeight = 2 + summaryLines.length + (evidence ? 1 : 0) + 1;
   // The selected row's particulars live in a strip under the list, so every
@@ -468,16 +484,16 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
       const sourceText = source?.title ?? (source?.kind === "user" ? "Filed by a teammate" : source?.kind ?? "");
       const when = source?.at ? ` · ${source.at.slice(0, 10)}` : "";
       if (sourceText) lines.push({ text: `${sourceText}${when}`, dim: true, clip: true });
-      for (const line of wrap(row.item.reason, contentWidth, 3)) lines.push({ text: line, dim: false });
+      for (const line of wrap(row.item.reason, contentWidth, 3, nativePaneChrome)) lines.push({ text: line, dim: false });
       if (row.item.confidence !== null) lines.push({ text: `confidence ${Math.round(row.item.confidence * 100)}%`, dim: true });
     } else if (row.kind === "pillar") {
       if (row.item.metric) lines.push({ text: `Checks itself: ${metricLabel(row.item.metric.key)} ${formatBound(row.item.metric)}`, dim: true });
-      if (row.item.note) for (const line of wrap(row.item.note, contentWidth, 2)) lines.push({ text: line, dim: false });
+      if (row.item.note) for (const line of wrap(row.item.note, contentWidth, 2, nativePaneChrome)) lines.push({ text: line, dim: false });
     } else if (row.kind === "kill" && row.item.note) {
-      for (const line of wrap(row.item.note, contentWidth, 2)) lines.push({ text: line, dim: false });
+      for (const line of wrap(row.item.note, contentWidth, 2, nativePaneChrome)) lines.push({ text: line, dim: false });
     }
     return lines;
-  }, [contentWidth, selectedRow]);
+  }, [contentWidth, nativePaneChrome, selectedRow]);
   const stripHeight = stripLines.length ? stripLines.length + 1 : 0;
 
   return (
@@ -495,7 +511,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
       </Box>
       {summaryLines.map((line, index) => (
         <Box key={index} height={1}>
-          <Text fg={colors.text}>{line}</Text>
+          <Text fg={colors.text} style={nativePaneChrome ? NATIVE_CLIP_STYLE : undefined}>{line}</Text>
         </Box>
       ))}
       {evidence && (
@@ -539,7 +555,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
           {stripLines.map((line, index) => (
             <Box key={index} height={1}>
               {line.clip ? <ClippedText fg={line.dim ? colors.textDim : colors.text} text={line.text} width={contentWidth} />
-                : <Text fg={line.dim ? colors.textDim : colors.text}>{line.text}</Text>}
+                : <Text fg={line.dim ? colors.textDim : colors.text} style={nativePaneChrome ? NATIVE_CLIP_STYLE : undefined}>{line.text}</Text>}
             </Box>
           ))}
         </Box>

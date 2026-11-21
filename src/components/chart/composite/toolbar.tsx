@@ -262,6 +262,11 @@ function ChartColorSwatch({
   );
 }
 
+/** The terminal names the tool after its glyphs, cut to the room its buttons leave (the desktop has a tooltip). */
+function terminalToolCaption(name: string, room: number): string {
+  return room === Infinity ? name : clipToDisplayWidth(name, room);
+}
+
 export function ChartToolbar({
   armedTool,
   isDesktopWeb,
@@ -308,7 +313,7 @@ export function ChartToolbar({
   const swatches = showColors ? CHART_DRAWING_COLORS.length : 0;
   const captionRoom = maxWidth === undefined ? Infinity
     : maxWidth - 3 * (1 + tools.length) - 2 * swatches - (1 + tools.length + swatches);
-  const caption = captionRoom === Infinity ? toolName(captionTool) : clipToDisplayWidth(toolName(captionTool), captionRoom);
+  const caption = isDesktopWeb ? "" : terminalToolCaption(toolName(captionTool), captionRoom);
   return (
     <Box
       ref={barRef}

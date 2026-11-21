@@ -21,7 +21,7 @@ import type {
 import type { WindowEditState } from "../window-edit/mode";
 import {
   paneHeaderTitleStart,
-  stackTabSpans,
+  terminalStackTabSpans,
   terminalHeaderTitleWidth,
   terminalHeaderTrailingWidth,
   type PaneHeaderQuickSetting,
@@ -77,7 +77,7 @@ function getVisibleFloatingRect(
 
 /**
  * The tab of a stack whose title is `x` cells into its header's title, laid
- * out as the header lays it out (`stackTabSpans`) in a header `width` wide
+ * out as the header lays it out (`terminalStackTabSpans`) in a header `width` wide
  * that shows `shown`.
  */
 function stackTabAt(
@@ -95,7 +95,7 @@ function stackTabAt(
   });
   const trailing = terminalHeaderTrailingWidth(getPaneQuickSettings(shown), paneMap.get(shown)?.instance.locked === true, true);
   const titleWidth = terminalHeaderTitleWidth(header.width, { framed: header.framed, corner: header.corner, trailing });
-  const span = stackTabSpans(titles, stack.indexOf(shown), titleWidth)
+  const span = terminalStackTabSpans(titles, stack.indexOf(shown), titleWidth)
     .find((candidate) => x >= candidate.start && x < candidate.start + displayWidth(candidate.text));
   return span ? stack[span.index]! : null;
 }

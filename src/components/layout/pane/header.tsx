@@ -65,7 +65,7 @@ const STACK_TAB_MIN_WIDTH = 4;
 /** Terminal: between the last tab named and the count of those left out. */
 const STACK_TAB_MORE_GAP = " ";
 
-/** Terminal: one tab of a stack as its header lays it out (`stackTabSpans`). */
+/** Terminal: one tab of a stack as its header lays it out (`terminalStackTabSpans`). */
 export interface StackTabSpan {
   /** The tab's place in the stack; for the `more` count, the tab a press on it shows. */
   index: number;
@@ -88,7 +88,7 @@ export interface StackTabSpan {
  * there is no room for it beside a letter of that name. The pointer runtime
  * finds the tab under a press with the same spans.
  */
-export function stackTabSpans(
+export function terminalStackTabSpans(
   titles: readonly string[],
   activeIndex = -1,
   width = Number.POSITIVE_INFINITY,
@@ -173,10 +173,10 @@ export function terminalHeaderTitleWidth(
   return Math.max(0, width - frame - PANE_HEADER_GRIP.length - trailing - PANE_HEADER_ACTION.length - cornerWidth);
 }
 
-/** Terminal: a stack's tabs as `stackTabSpans` lays them out, the shown one in `activeFg`, the rest dim, padded to `width` with `pad`. */
+/** Terminal: a stack's tabs as `terminalStackTabSpans` lays them out, the shown one in `activeFg`, the rest dim, padded to `width` with `pad`. */
 function TerminalStackTabs({ stack, spans, width, activeFg, pad }: {
   stack: PaneHeaderStack;
-  spans: ReturnType<typeof stackTabSpans>;
+  spans: ReturnType<typeof terminalStackTabSpans>;
   width: number;
   activeFg: string;
   pad: boolean;
@@ -211,7 +211,7 @@ function stackActiveIndex(stack: PaneHeaderStack): number {
 }
 
 /** Terminal: how wide a stack's tabs are as laid out. */
-function stackSpansWidth(spans: ReturnType<typeof stackTabSpans>): number {
+function stackSpansWidth(spans: ReturnType<typeof terminalStackTabSpans>): number {
   const last = spans.at(-1);
   return last ? last.start + displayWidth(last.text) : 0;
 }
@@ -313,7 +313,7 @@ const QUICK_SETTING_LABEL_MIN_WIDTH = 4;
  * fits before the frame's corner, else before it, else on the roomier side,
  * cut to fit. It never covers the glyph, which keeps the pointer.
  */
-export function quickSettingLabelPlacement(
+export function terminalQuickSettingLabelPlacement(
   label: string,
   { buttonStart, buttonWidth, width, framed }: {
     /** Cells from the header's left edge to the setting's button (its glyph and the space either side). */
@@ -351,7 +351,7 @@ function quickSettingButtonStarts(quickSettings: readonly PaneHeaderQuickSetting
 
 /**
  * Terminal: the hovered quick setting's name and state, drawn over the
- * header's own row (`quickSettingLabelPlacement`) in the tooltip surface.
+ * header's own row (`terminalQuickSettingLabelPlacement`) in the tooltip surface.
  */
 function TerminalQuickSettingLabel({ setting, buttonStart, width, framed }: {
   setting: PaneHeaderQuickSetting;
@@ -359,7 +359,7 @@ function TerminalQuickSettingLabel({ setting, buttonStart, width, framed }: {
   width: number;
   framed: boolean;
 }) {
-  const placement = quickSettingLabelPlacement(t(quickSettingTitle(setting)), {
+  const placement = terminalQuickSettingLabelPlacement(t(quickSettingTitle(setting)), {
     buttonStart,
     buttonWidth: displayWidth(quickSettingText(setting)),
     width,
@@ -794,7 +794,7 @@ export function PaneHeader({
     const innerWidth = Math.max(0, width - 4);
     const titleWidth = terminalHeaderTitleWidth(width, { framed: true, corner: closeText.length > 0, trailing: terminalQuickSettingsWidth });
     const clippedTitle = truncateToDisplayWidth(title, titleWidth);
-    const spans = stack ? stackTabSpans(stack.tabs.map((tab) => tab.title), stackActiveIndex(stack), titleWidth) : null;
+    const spans = stack ? terminalStackTabSpans(stack.tabs.map((tab) => tab.title), stackActiveIndex(stack), titleWidth) : null;
     const titleShown = spans ? Math.min(titleWidth, stackSpansWidth(spans)) : displayWidth(clippedTitle);
     const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - titleShown - terminalQuickSettingsWidth - actionText.length - closeText.length);
     const fill = "─".repeat(fillLen);
@@ -852,7 +852,7 @@ export function PaneHeader({
 
   const titleWidth = terminalHeaderTitleWidth(width, { framed: false, corner: closeText.length > 0, trailing: terminalQuickSettingsWidth });
   const clippedTitle = truncateToDisplayWidth(title, titleWidth);
-  const spans = stack ? stackTabSpans(stack.tabs.map((tab) => tab.title), stackActiveIndex(stack), titleWidth) : null;
+  const spans = stack ? terminalStackTabSpans(stack.tabs.map((tab) => tab.title), stackActiveIndex(stack), titleWidth) : null;
   const padding = " ".repeat(Math.max(0, titleWidth - displayWidth(clippedTitle)));
   // After the grip and the title padded to its width.
   const terminalSettings = terminalQuickSettings(PANE_HEADER_GRIP.length + titleWidth, false);

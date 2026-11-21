@@ -352,13 +352,14 @@ export function FundamentalsGrid({
       const colWidth = colWidths[offset] ?? baseColWidth;
       const labelWidth = gridLabelWidth(colWidth);
       const valueWidth = Math.max(1, colWidth - labelWidth);
-      // A long value (an industry, a SIC title) is cut from the end, never from the label side.
-      const value = truncateToDisplayWidth(field.value, valueWidth);
-      const detailRoom = valueWidth - displayWidth(value) - 1;
+      // A long value (an industry, a SIC title) is cut from the end, never from the label side:
+      // ColumnGridPair cuts it, and its detail, in cells or by CSS. This is the room the cut value leaves.
+      const valueCells = nativePaneChrome ? Math.min(displayWidth(field.value), valueWidth) : displayWidth(truncateToDisplayWidth(field.value, valueWidth));
+      const detailRoom = valueWidth - valueCells - 1;
       const details = typeof field.detail === "string" ? [field.detail] : field.detail ?? [];
       // A cut "in 4..." misleads; a title cut to "Semicond..." still names it.
       const detail = details.find((text) => displayWidth(text) <= detailRoom)
-        ?? (field.clipDetail && details[0] && detailRoom >= 4 ? truncateToDisplayWidth(details[0], detailRoom) : "");
+        ?? (field.clipDetail && details[0] && detailRoom >= 4 ? nativePaneChrome ? details[0] : truncateToDisplayWidth(details[0], detailRoom) : "");
       const content = (
         <ColumnGridPair
           label={t(field.label)}

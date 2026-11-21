@@ -11,7 +11,8 @@ import type { BrokerAdapter, BrokerConfigField } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
 import { formatRelativeAge } from "../../../utils/datetime-format";
-import { formatCurrency, truncateToDisplayWidth } from "../../../utils/format";
+import { formatCurrency } from "../../../utils/format";
+import { ClippedText } from "../../../components/ui/display";
 import { t, tf } from "../../../i18n";
 import type { BrokerProfileRow } from "./model";
 import type { BrokerRowActivity } from "./pane-actions";
@@ -331,12 +332,8 @@ export function BrokerDetailContent({
     <ScrollBox ref={scrollRef} flexGrow={1} scrollY>
       <Box flexDirection="column" paddingX={1}>
         {/* The stack title already names the profile; the body starts with its state. */}
-        <Text fg={status.color} attributes={TextAttributes.BOLD}>
-          {truncateToDisplayWidth(status.text, width)}
-        </Text>
-        <Text fg={colors.textDim}>
-          {truncateToDisplayWidth(`${row.brokerName} · ${row.mode} · ${row.id}`, width)}
-        </Text>
+        <ClippedText fg={status.color} attributes={TextAttributes.BOLD} text={status.text} width={width} />
+        <ClippedText fg={colors.textDim} text={`${row.brokerName} · ${row.mode} · ${row.id}`} width={width} />
         <Text fg={statusMessageColor} width={width} wrapText>
           {detailStatusMessage}
         </Text>
@@ -383,9 +380,7 @@ export function BrokerDetailContent({
             {accounts.length === 0 ? (
               <Text fg={colors.textDim}>{t("No accounts loaded. Test/connect or sync this profile.")}</Text>
             ) : accounts.map((account) => (
-              <Text key={account.accountId} fg={colors.textDim}>
-                {truncateToDisplayWidth(accountDetail(account), width)}
-              </Text>
+              <ClippedText key={account.accountId} fg={colors.textDim} text={accountDetail(account)} width={width} />
             ))}
           </Box>
         )}

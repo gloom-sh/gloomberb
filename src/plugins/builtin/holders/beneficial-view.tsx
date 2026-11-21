@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Box, Text, TextAttributes, useRendererHost } from "../../../ui";
+import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
 import {
   DataTableView,
   EmptyState,
@@ -29,6 +29,7 @@ import {
   buildBeneficialColumns,
   buildBeneficialRows,
   DEFAULT_BENEFICIAL_SORT,
+  filerNameParts,
   formatFilerName,
   formatOwnerShares,
   formatPercentOfClass,
@@ -169,6 +170,7 @@ export function BeneficialOwnersView({
       : null
   ), []);
 
+  const { nativePaneChrome } = useUiCapabilities();
   const renderCell = useCallback((
     item: BeneficialItem,
     column: BeneficialColumn,
@@ -181,13 +183,18 @@ export function BeneficialOwnersView({
     const exited = row.stake === "exited";
     const tone = exited ? colors.textMuted : colors.text;
     switch (column.id) {
-      case "filer":
+      case "filer": {
+        const filer = filerNameParts(row.holderName, row.otherPersons, column.width);
         return {
-          text: formatFilerName(row.holderName, row.otherPersons, column.width),
+          // The desktop and the web cut the name by CSS, keeping the count.
+          ...(nativePaneChrome
+            ? { text: `${filer.name}${filer.count}`, ...(filer.count ? { keepEnd: filer.count } : {}) }
+            : { text: formatFilerName(row.holderName, row.otherPersons, column.width) }),
           value: row.holderName,
           color: exited ? colors.textMuted : rowState.selected ? colors.selectedText : colors.textBright,
           attributes: exited ? undefined : TextAttributes.BOLD,
         };
+      }
       case "form":
         return { text: row.formLabel, color: tone };
       case "percentOfClass": {
@@ -217,7 +224,7 @@ export function BeneficialOwnersView({
         return { text: action.label, color: action.value === 0 ? colors.textDim : priceColor(action.value) };
       }
     }
-  }, []);
+  }, [nativePaneChrome]);
 
   const authWall = !payload && isCloudSessionRequired(resource.error);
   const error = authWall ? null : resource.error;

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { Box } from "../../../ui";
-import { PaneHeader, quickSettingLabelPlacement, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./header";
+import { PaneHeader, terminalQuickSettingLabelPlacement, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./header";
 
 const tui = createOpenTuiTestHarness();
 
@@ -44,13 +44,13 @@ describe("a quick setting's terminal hover label", () => {
   test("goes after the glyph when it fits before the corner, else before it, else cut on the roomier side", () => {
     const at = { buttonWidth: 3, framed: true };
     // 20 cells after the button, the label's 9 fit there.
-    expect(quickSettingLabelPlacement("IV: on", { ...at, buttonStart: 10, width: 35 })).toEqual({ left: 13, text: " IV: on " });
+    expect(terminalQuickSettingLabelPlacement("IV: on", { ...at, buttonStart: 10, width: 35 })).toEqual({ left: 13, text: " IV: on " });
     // 4 after, 16 before (past the frame's corner): it ends where the button starts.
-    expect(quickSettingLabelPlacement("IV: on", { ...at, buttonStart: 18, width: 27 })).toEqual({ left: 10, text: " IV: on " });
+    expect(terminalQuickSettingLabelPlacement("IV: on", { ...at, buttonStart: 18, width: 27 })).toEqual({ left: 10, text: " IV: on " });
     // Room for neither: cut to the side with more room.
-    expect(quickSettingLabelPlacement("Current ATM IV: on", { ...at, buttonStart: 12, width: 24 })).toEqual({ left: 2, text: " Current… " });
+    expect(terminalQuickSettingLabelPlacement("Current ATM IV: on", { ...at, buttonStart: 12, width: 24 })).toEqual({ left: 2, text: " Current… " });
     // No room for a letter and the ellipsis either side.
-    expect(quickSettingLabelPlacement("Current ATM IV: on", { ...at, buttonStart: 4, width: 11 })).toBeNull();
+    expect(terminalQuickSettingLabelPlacement("Current ATM IV: on", { ...at, buttonStart: 4, width: 11 })).toBeNull();
   });
 
   test("a focused pane's header names the setting and its state beside the glyph, and moves nothing", async () => {

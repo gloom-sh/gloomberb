@@ -3,7 +3,7 @@ import { getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { Box, Text, useUiHost } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { higherContrast } from "../../../theme/color-utils";
-import { truncateToDisplayWidth } from "../../../utils/format";
+import { NATIVE_CLIP_STYLE } from "../../ui/clip-style";
 import type { FloatingResizeCorner, FloatingRect, LayoutBounds, DockGeometryOptions } from "../../../layout/pane-manager";
 import {
   windowEditHasPendingCommit,
@@ -50,7 +50,8 @@ const POINTER_HELP = "click a window to select it, drag to resize";
 /**
  * Lays the key help over the panel's help lines in order, a whole item at a
  * time. The pointer hint takes what room is left on the last line; keys that
- * still do not fit are cut from the end, which holds the least used ones.
+ * still do not fit stay on the last line, which CSS cuts where the panel
+ * ends: its end holds the least used ones.
  */
 export function wrapWindowEditHelp(items: readonly string[], width: number, lineCount: number): string[] {
   const lines: string[] = [];
@@ -71,7 +72,7 @@ export function wrapWindowEditHelp(items: readonly string[], width: number, line
   } else if (last >= 0 && `${lines[last]}${HELP_SEPARATOR}${POINTER_HELP}`.length <= width) {
     lines[last] = `${lines[last]}${HELP_SEPARATOR}${POINTER_HELP}`;
   }
-  return lines.slice(0, lineCount).map((line) => truncateToDisplayWidth(line, width));
+  return lines.slice(0, lineCount);
 }
 
 export function NativeWindowEditStatus({
@@ -111,11 +112,12 @@ export function NativeWindowEditStatus({
       paddingX={1}
       data-gloom-role="window-mode-status"
     >
-      <Text fg={textColor} bold selectable={false} width={lineWidth}>
-        {truncateToDisplayWidth(`${status}${pending}`, lineWidth)}
+      {/* The desktop's panel: each line ends in an ellipsis where the panel does. */}
+      <Text fg={textColor} bold selectable={false} width={lineWidth} style={NATIVE_CLIP_STYLE}>
+        {`${status}${pending}`}
       </Text>
       {help.map((line, index) => (
-        <Text key={index} fg={textColor} selectable={false} width={lineWidth}>
+        <Text key={index} fg={textColor} selectable={false} width={lineWidth} style={NATIVE_CLIP_STYLE}>
           {line}
         </Text>
       ))}
