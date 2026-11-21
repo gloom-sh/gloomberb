@@ -149,6 +149,14 @@ describe("pane function capabilities", () => {
     expect(isDataPaneForDomFallback(helpPane)).toBe(false);
   });
 
+  test("tab labels resolve like option ids and are included in invalid choices", () => {
+    const capability = getPaneFunctionCapability({ id: "vol-surface", paneId: dummyPane.id, label: "Volatility Surface",
+      description: "Volatility Surface", headless: volSurfaceHeadless }, dummyPane);
+    expect(normalizeCapabilityOptions(capability, { tab: "3d SURFACE" }).tab).toBe("surface");
+    expect(normalizeCapabilityOptions(capability, { tab: "surface" }).tab).toBe("surface");
+    expect(() => normalizeCapabilityOptions(capability, { tab: "wrong" })).toThrow('"3D surface" (surface)');
+  });
+
   test("every expiry option takes a date or Unix seconds and names both forms when it cannot read one", () => {
     const options: Array<[string, HeadlessPaneDefinition, string, string | number]> = [
       ["vol-surface", volSurfaceHeadless, "expiration", 1799971200],

@@ -85,7 +85,8 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
     options: [
       { key: "limit", shot: REPORT_ROWS, type: "string", defaultValue: "100", description: "Rows per REST page, up to 200 for hiring and 500 for apps." },
       { key: "offset", shot: REPORT_PAGE, type: "string", defaultValue: "0", description: "Continuation offset from the prior report metadata." },
-      { key: "tab", type: "enum", settingKey: "tab", values: [...["table", "chart", "mix", "peers", "evidence"], ...(kind === "hiring" ? ["moves", "expansion", "anomalies", "building"] : [])].map((value) => ({ value })), defaultValue: "table",
+      { key: "tab", type: "enum", settingKey: "tab", values: [{ value: "table" }, { value: "chart" }, { value: "mix", label: kind === "apps" ? "Markets" : "Mix" }, { value: "peers", label: kind === "apps" ? "Companies" : "Peers" }, { value: "evidence" },
+        ...(kind === "hiring" ? ["moves", "expansion", "anomalies", "building"].map((value) => ({ value })) : [])], defaultValue: "table",
         description: kind === "hiring" ? "Table, dated history, role mix, peers, source evidence, moves against the company's own weeks and peers, first roles in a new country or city, place and role-family spikes, or the role families and themes whose share of new roles rose." : "Table, dated history, geographic or role mix, peers, or source evidence." },
       ...(kind === "hiring" ? [
         { key: "moves", type: "enum" as const, settingKey: "movesFilter", values: MOVES_FILTERS.map(({ value }) => ({ value })), defaultValue: "moves", description: "Which hiring moves the board lists: own moves, one direction, or every measured company." },

@@ -321,6 +321,8 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 
 #### Company function notes
 
+For panes with tabs, `gloom fn` and `gloom shot` accept the displayed tab label or its ID as `--tab`, regardless of case. Quote labels that contain spaces.
+
 - **`GR`:** beta and alpha regress the first ticker's daily returns on the second's and say so (`EQT on UNG: beta`). Text prints the rolling correlation to three decimals, `--json` and `--csv` keep every digit.
 - **`ERN`:** the bar's Range looks back or ahead, as in `EVTS`. Names narrows the reports to Mine, one portfolio or watchlist, a broad sector, or an industry. Sectors and industries are grouped separately, with each fund named beside its group.
 - **`EVTS`:** in the pane and `gloom shot EVTS`, a ticker opens the market board on its next report day, or its latest past report when no next date is known, and selects its row. A date outside the stored board's horizon keeps the named company's report from `ERN`. If no date is known, the footer says so. An explicit week or day, or a range chosen in the pane, stays put; the footer says when the ticker reports outside it. The text report says whether the ticker is on its board (`ERN <ticker>` has its own dates). The bar's Range gives a week (`gloom fn EVTS --week last`, `this` or `next`), or one day (`--date 2026-10-15`) whose reports carry their actuals and surprises. Without a ticker, the default is today, the next session and the rest of its week.
@@ -849,6 +851,7 @@ That returns valuation, cash flows and yield shocks. Use `--price 103.333937` in
 - Generic tickers take OI for the open interest switch (CL1OI). UNIT says what a price counts, as `quote` does ("USD / barrel", "US cents / bushel").
 - Search matches the root's name and code, "No. 11" and "#11" alike (`FUT "sugar no. 11"`). A sector or group word lists its rows: `FUT softs` (coffee, sugar, cocoa, cotton, orange juice), `grains`, `agriculture`, `metals`, `energy`, `livestock`, `currencies`, `rates`. `FUT TTF` (`gloom fn FUT TTF`, `shot FUT TTF`) opens the board searched for that contract.
 - CHG% always shows, and the week's and month's returns come before UNIT (a cent price still reads 280.15¢). CONTRACT keeps at least 24 cells, so 1W joins from a 71-cell board, 1M from 80, UNIT from 106 and CHG from 117.
+- When a market is closed, **Price** shows the session's settlement (`S`) when known, or the last trade (`T`). A settled row's change is measured from the prior session's settlement when available.
 - `--tab markets|inventories|positioning|crops` opens the workspace on that board (`gloom fn FUT --tab inventories`). FUT takes no other option and refuses one it does not know.
 - FUT and CTM list COMEX metals (HG copper, ALI aluminium), not LME or Shanghai (SHFE) contracts. The IMF's monthly world prices are the nearest public series: `gloom fred PCOPPUSDM` and `gloom fred PALUMUSDM`, in USD per metric ton.
 
@@ -1034,9 +1037,9 @@ gloom alerts add 13f 1067983               # a fund by its SEC CIK
 gloom alerts add BRK.B filing 13F          # the 13F of the company's own filer, as 13f 1067983
 ```
 
-These rules, except an IV level and an earnings, CPI, FOMC or calendar date, are checked only for a signed-in account. One added while signed out is saved and reads `needs sign-in` in `gloom alerts list` and its CSV and **Needs sign-in** in **Events** and `fn ALRT --tab events`, with one line on how to sign in, until a session is saved.
+An IV level, earnings, CPI, FOMC or calendar date alert can run while signed out. Other event alerts require either sign-in or Pro. A rule that only needs an account reads `needs sign-in` in `gloom alerts list` and **Needs sign-in** in **Events** and `fn ALRT --tab events` until you sign in.
 
-Options flow and IV spike alerts are checked only for an account with Pro, and **Add Event Alert** marks them (Pro). Without Pro, signed out or on a free plan, one is saved and reads `needs Pro` in `gloom alerts list` and **Needs Pro** in **Events** and `fn ALRT --tab events`, with one line saying what is free: `Free: OMON chain, price and move alerts.` (an IV spike's starts with IV level alerts). `alerts list` repeats the Pro note `alerts add` prints for them.
+Options flow, IV spike, catalyst, hiring move and perpetuals threshold alerts require Pro to be checked. **Add Event Alert** marks them (Pro). If you save one while signed out or on Free, it reads `needs Pro` in `gloom alerts list` and **Needs Pro** in **Events** and `fn ALRT --tab events`.
 
 A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere, and an IV level also takes `BTC-USD` and `ETH-USD`. A news rule on a coin points to a keyword alert, which reads every story, on the words typed when they name the coin (`alerts add BTC-USD news bitcoin ETF` points to `gloom alerts add news "bitcoin ETF"`), else on its name: `gloom alerts add news bitcoin`. An IV spike's contract may be typed as OCC writes it or as traders do (`SPY 680C 11/19`, `SPY Nov 19 680 call`, `SPY261119C680`): one that names exactly one listed contract is read as it (`Read "SPY 680C 11/19" as SPY261119C00680000`), a date without a year being the next listed one; one that names none is refused with the OCC form and a listed contract to copy. The contract must be live: one past its expiry is refused (`Not a live contract: IBIT200101C00045000 expired on 2020-01-01.`). `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
 
@@ -1056,6 +1059,8 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 | an IPO | `IPO` searched for its company or keyword |
 | options flow on your lists | `FLOW` |
 | breaking news with no symbol | `FIRST` |
+
+**Trading session.** Price and move alerts use **Regular and extended** by default, including rules saved before the session choice was added. Pick **Regular hours only** in the **Session** field or pass `--session regular` (for example, `gloom alerts add FSLR above 140 --session regular`) to ignore prices outside the regular session. ALRT and `gloom alerts list` show which session each rule watches.
 
 **Moves from the previous close.** `alerts add <symbol> moves|up|down <percent>` alerts on the day's move rather than a level, for any listing or currency pair: `alerts add GBPUSD=X moves 0.5%` either way, `alerts add AZN.L down 3%`. The move is the one the quote's change shows, measured from the close it names (`-0.43% vs Thu 5 Nov close`). A rule goes off once a session and arms itself again for the next one, when a quote dates a later session: a pair's print after the Friday close, a weekend quote, or a stream and a poll a day apart never set it off twice. A level written with a signed percent is that move (`below -3%` is down 3%, said so); one with an unsigned percent (`below 3%`) is refused, as a price level is a price.
 
@@ -1144,7 +1149,7 @@ gloom alerts add "Industrial Profits" --country CN --days 2
 
 Earnings alerts follow US listings. A bare symbol is read as `quote` reads it, so `D05` (DBS on SGX) gets the same refusal as `0700:HKEX`, and a listing that stopped trading is refused as a price alert's is.
 
-The next date comes from `ERN`, the BLS release calendar behind `CPI`, the Fed meeting calendar behind `WIRP` and, for any other release, the economic calendar `ECO` and `econ` list. A symbol with no upcoming earnings date, or an event with no known next date, gets no alert. The **Events** tab and `alerts list` show each alert's next event date and state.
+If the next earnings date has not been announced, the rule is saved and waits for it. The **Events** tab and `alerts list` show that it is waiting, then show the date once known. Other calendar events still need a known next date unless the command says the rule can wait for one.
 
 **A release by name.** `alerts add <event> [--country <code>] [--days <n>]` takes any release in the economic calendar, as `econ` names it:
 

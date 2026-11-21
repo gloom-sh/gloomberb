@@ -11,7 +11,7 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
     freshness: { source: litigation ? "Court and agency dockets" : "Regulator, court and trade records", status: "not-a-feed", basis: "published records" },
     argument: { kind: "ticker", optional: !litigation, description: litigation ? "Company ticker, including exchange-qualified international listings." : "Optional ticker; omit for market-wide events." },
     options: [
-      { key: "tab", type: "enum", values: [{ value: "calendar" }, { value: "changes" }], defaultValue: "calendar", description: "Dated events or observed revisions." },
+      { key: "tab", type: "enum", values: [{ value: "calendar", label: litigation ? "Dockets" : "Calendar" }, { value: "changes" }], defaultValue: "calendar", description: "Dated events or observed revisions." },
       { key: "type", type: "enum", values: CATALYST_TYPES.map((value) => ({ value })), description: "Event type." },
       ...["agency", "country", "sector", "status"].map((key) => ({ key, type: "string" as const, description: `Filter by ${key}.` })),
       { key: "search", type: "string", description: "Filter by text." },

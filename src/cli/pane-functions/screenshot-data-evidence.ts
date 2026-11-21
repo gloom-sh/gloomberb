@@ -270,6 +270,7 @@ export function shotSemanticRowCount(
 ): number {
   const evidenceHook = paneScreenshotEvidenceHook(resolved);
   if (evidenceHook) return renderedPaneEvidence(evidenceHook, semanticUi)?.plottedValueCount ?? 0;
+  if (resolved.pane?.id === "quick-notes") return semanticUi.filter((node) => node.role === "report-note").length;
   if (resolved.capability.id === "chart-composer") {
     const metadata = semanticUi.find((node) => (
       node.role === "chart-data" && node.metadata?.kind === "chart-composer"

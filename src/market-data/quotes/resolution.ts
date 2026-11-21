@@ -444,7 +444,7 @@ export function resolveCanonicalQuote(
     assignField(resolved, provenance, "lastTradePrice", priceProvider);
     if (finitePositiveNumber(priceProvider.lastTradeTime)) assignField(resolved, provenance, "lastTradeTime", priceProvider);
   }
-  assignDailyChangeFields(resolved, provenance, priceProvider, compatiblePriceCandidates);
+  assignDailyChangeFields(resolved, provenance, priceProvider, priceProvider?.futuresPriceKind ? [priceProvider] : compatiblePriceCandidates);
   provenance.price = toProvenance(priceProvider);
 
   const sessionProvider = sessionCandidates[0];
@@ -507,6 +507,7 @@ export function resolveCanonicalQuote(
     price: Number(resolved.price ?? priceProvider?.price ?? 0),
     priceBasis: priceProvider?.priceBasis,
     priceObservation: priceProvider?.priceObservation,
+    futuresPriceKind: priceProvider?.futuresPriceKind,
     // The price's own source unit, like its basis; another provider's divisor does not apply.
     ...(typeof priceProvider?.providerPriceDivisor === "number" ? { providerPriceDivisor: priceProvider.providerPriceDivisor } : {}),
     currency: String(resolved.currency ?? priceProvider?.currency ?? contributions[0]!.currency ?? ""),

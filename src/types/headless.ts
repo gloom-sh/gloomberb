@@ -42,6 +42,7 @@ export interface HeadlessPaneReference {
 
 export interface HeadlessPaneOptionValue {
   value: string;
+  label?: string;
   aliases?: string[];
 }
 
@@ -923,6 +924,8 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
     load: () => Promise<HeadlessPaneResultByShape[Shape]>,
     given: ReadonlySet<string>,
   ): HeadlessShotState | Promise<HeadlessShotState>;
+  /** Device-only state the screenshot pane needs in its isolated persistence store. */
+  shotDeviceState?: ReadonlyArray<{ pluginId: string; key: string }>;
   /** What is true of every load: its source, and whether it is a feed. */
   freshness?: HeadlessPaneFreshness;
   /**

@@ -14,7 +14,7 @@ export const creditHeadless: HeadlessPaneDefinition<"bundle"> = {
     "Undisclosed terms remain unavailable.", "Headroom requires exact covenant definitions and supported reported financials.", "Amounts retain their native currency.",
   ] },
   options: [
-    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "capital", values: CREDIT_TABS.map(({ value }) => ({ value })), description: "Capital structure, covenants, maturity wall or global risk screen." },
+    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "capital", values: [...CREDIT_TABS], description: "Capital structure, covenants, maturity wall or global risk screen." },
     { key: "instrument", type: "string", settingKey: "instrument", description: "Instrument id whose complete evidence and amendment history to open." },
     { key: "fact", type: "string", settingKey: "fact", description: "Fact id to open within an instrument evidence view." },
     { key: "view", type: "enum", settingKey: "view", defaultValue: "terms", values: [{ value: "terms" }, { value: "history" }], description: "Current instrument terms or immutable revisions." },

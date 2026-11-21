@@ -1,4 +1,5 @@
 import { logFailure } from "../../../utils/log-failure";
+import { matchOptionChoice, optionChoiceNames } from "../../../utils/option-choice";
 import { Box } from "../../../ui";
 import { getCurrentPluginTarget } from "../../current-target";
 import { recordResearchActivity, recordResearchTabView } from "../../../api-client/research-activity";
@@ -228,7 +229,14 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     config,
     hasOptionsChain,
   });
-  const savedTabId = allTabs.some((tab) => tab.id === activeTabId) ? activeTabId : (allTabs[0]?.id ?? "overview");
+  const tabItemsKey = allTabs.map((tab) => `${tab.id}:${tab.name}:${tab.order}`).join("\0");
+  const groups = useMemo(() => groupTickerResearchTabs(allTabs), [tabItemsKey]);
+  const tabChoices = useMemo(() => [
+    ...allTabs.map((tab) => ({ value: tab.id, label: t(tab.name), viewId: tab.id })),
+    ...groups.filter((group) => !group.id.startsWith("tab:") && !allTabs.some((tab) => tab.id === group.id))
+      .map((group) => ({ value: group.id, label: t(group.name), viewId: tickerResearchGroupView(group, undefined) })),
+  ], [groups]);
+  const savedTabId = matchOptionChoice(tabChoices, activeTabId)?.viewId ?? allTabs[0]?.id ?? "overview";
   const proOnlyTabIds = useMemo(
     () => new Set(tickerResearchTabs.filter((tab) => tab.proOnly).map((tab) => tab.id)),
     [tickerResearchTabs],
@@ -245,14 +253,14 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     });
   // `gloom fn DES ARCC --tab x` opens on a tab the ticker has, or fails naming the ones it has: an id no tab has at
   // once, a tab this ticker does not show (financials of a fund without statements) once its data is in.
-  const missingTab = !paneSettings.hideTabs && !!ticker && !allTabs.some((tab) => tab.id === committedActiveTabId)
-    && (financials != null || !tickerResearchTabs.some((tab) => tab.id === committedActiveTabId));
+  const missingTab = !paneSettings.hideTabs && !!ticker && !matchOptionChoice(tabChoices, committedActiveTabId)
+    && (financials != null || !matchOptionChoice(tickerResearchTabs.map((tab) => ({ value: tab.id, label: t(tab.name) })), committedActiveTabId));
   useRemoteUiNode(missingTab ? {
     role: "report-failure",
     label: "No such tab",
     getMetadata: () => ({
       message: `${ticker!.metadata.ticker} has no ${committedActiveTabId} tab.`,
-      details: `Tabs: ${allTabs.map((tab) => tab.id).join(", ")}.`,
+      details: `Tabs: ${optionChoiceNames(tabChoices)}.`,
     }),
   } : null);
   // The address names the tab on screen, so a copied link opens what was seen.
@@ -317,9 +325,6 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   }, [chooseTab, consumedTabAt, requestedTabAt, requestedTabId, setActiveTabId, setConsumedTabAt, visibleTabIdKey]);
   // A quote tick re-renders this pane; the strips only have to re-render
   // when a tab appears, disappears, or is renamed.
-  const tabItemsKey = allTabs.map((tab) => `${tab.id}:${tab.name}:${tab.order}`).join("\0");
-  // The top strip is the groups; a view keeps its own tab id everywhere else.
-  const groups = useMemo(() => groupTickerResearchTabs(allTabs), [tabItemsKey]);
   const groupItems = useMemo(
     () => groups.map((group) => ({ label: t(group.name), value: group.id })),
     [groups],

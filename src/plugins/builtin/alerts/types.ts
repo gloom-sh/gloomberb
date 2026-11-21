@@ -11,6 +11,7 @@ export interface AlertRule {
   exchange?: string;
   condition: AlertCondition;
   targetPrice: number;
+  regularHoursOnly?: true;
   metric?: import("./metric-model").AlertMetric;
   /**
    * A move from the previous close rather than a price level: `targetPrice` is

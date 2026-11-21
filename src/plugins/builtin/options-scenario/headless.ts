@@ -55,7 +55,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     + "a call against the shares they cover: net premium, floor, cap and breakevens of the hedged position.",
   discovery: { screenshotReadiness: "ready", limitations: ["European scenario values do not model early assignment or exercise."] },
   options: [
-    { key: "tab", type: "enum", values: ["payoff", "grid", "legs"].map((value) => ({ value })), defaultValue: "payoff",
+    { key: "tab", type: "enum", values: [{ value: "payoff" }, { value: "grid", label: "P&L grid" }, { value: "legs" }], defaultValue: "payoff",
       description: "Initial view", pluginState: { pluginId: "ticker-research", key: "activeTabId" } },
     { key: "legs", type: "string", description: "Semicolon-separated side,strike,YYYY-MM-DD,signed quantity,entry price per share,IV percent[,multiplier]" },
     { key: "strategy", type: "enum", values: SCENARIO_STRATEGIES.map((value) => ({ value })),
