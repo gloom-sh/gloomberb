@@ -11,8 +11,8 @@ import { debugLog } from "../utils/debug-log";
 
 /** GUI builds apply data at most this often, aligned to animation frames (~15 Hz). */
 const GUI_DATA_FRAME_MIN_INTERVAL_MS = 66;
-/** Batch terminal market-data updates to at most twice a second. */
-export const TERMINAL_DATA_FRAME_INTERVAL_MS = 500;
+/** OpenTUI redraws are expensive; at most 4 Hz keeps visible quotes lively without a render storm. */
+export const TERMINAL_DATA_FRAME_INTERVAL_MS = 250;
 /** A hidden document pauses animation frames; data still drains this often. */
 const HIDDEN_DOCUMENT_FRAME_FALLBACK_MS = 1_000;
 /**

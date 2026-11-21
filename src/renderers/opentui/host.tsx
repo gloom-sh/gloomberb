@@ -146,8 +146,8 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
   renderer.on("capabilities", (capabilities: { kitty_keyboard?: boolean } | null) => {
     setTerminalReportsControlKeys(capabilities?.kitty_keyboard === true);
   });
-  // Streamed quotes apply and notify at most twice a second: a burst costs
-  // one redraw, and an expensive layout gets fewer still.
+  // Streamed quotes apply and notify at most four times a second: a burst
+  // costs one redraw, and an expensive layout gets fewer still.
   installMarketDataFrameDriver(withLoadPacing(createTimerFrameDriver(TERMINAL_DATA_FRAME_INTERVAL_MS)));
   const stopInteractionPerformanceRecorder = installInteractionPerformanceRecorder(renderer);
   renderer.once("destroy", stopInteractionPerformanceRecorder);
