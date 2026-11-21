@@ -1292,7 +1292,7 @@ A US symbol that changed says so in one line.
 - **The new symbol.** The symbol a company renamed into (`META`, `XYZ`, `METV`) prints nothing extra, but its `history` from before the change says so: `Includes FB-era bars: META was FB until 2022-06-09`.
 - **In the app.** `DES FB` says the same line in the pane's data warnings, and typing `FB` in the command bar offers **FB as a ticker** under Send Feedback.
 
-A split the bars run across is said too: `history NFLX --from 2025-11-12 --to 2025-11-20` adds `Splits in range: NFLX 10-for-1 on 2025-11-17; bars before it are split-adjusted.`, and `events` and `EVT` give a split in share terms (`10-for-1`; DBS's 2024 bonus issue is `11-for-10, 1 new share for every 10 held`).
+A split the bars run across is said too: `history NFLX --from 2025-11-12 --to 2025-11-20` flags the bar it took effect in `split` and adds `Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split); bars before it are split-adjusted.` (a window over the same days gets the same bars, whichever day it starts on), and `events` and `EVT` give a split in share terms (`10-for-1`; DBS's 2024 bonus issue is `11-for-10, 1 new share for every 10 held`).
 
 In `--json`, each row's `tickerChange` carries `kind`, `note`, `changes` and, for a company that moved, `tradesAs`, `issuer` and `listed`. A renamed company's new symbol has `kind` `formerly` and the symbol it had before (`METV was META until 2022-01-31`).
 
@@ -1409,6 +1409,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 - `gap` after any calendar month with no monthly bar, or three whole weeks with no weekly, daily or intraday bar.
 - `jump` when its close is over 100 times the close before it or under a hundredth of it.
+- `split` marks the bar a split took effect in (the next session's when the split day has no bar). It is no break: split-adjusted bars read on across it, and the split note names it.
 - A warning names each break, oldest first (`No bars for 2001-07, 2002-09 and 2026-02 to 2026-03 (2 months)`, `Close rises 564x from 0.0049 on 1980-07-01 to 2.763 on 1992-12-01`), and the heading line ends with `unbroken from 1992-12-01` (`metadata.unbrokenFrom`).
 - `fn HP` and the `HP` pane name missing bars the same way, and the pane marks a change measured across them with `*` (`+3.42%*`).
 

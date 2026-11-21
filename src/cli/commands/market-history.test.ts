@@ -455,7 +455,8 @@ test("a past window reads its own dates' bars, in the size its span takes, with 
       requestedWindow: { from: "2007-01-01", to: "2009-12-31" }, requestedRange: null, interval: "1d",
       maxDrawdown: { peak: { date: "2007-05-09", close: 53.2 }, trough: { date: "2009-03-09", close: 15.9 }, recovered: null },
     });
-    expect(crisis.freshness).toMatchObject({ status: "not-a-feed", basis: "daily bars, 2007 to 2009" });
+    // The closing line names the days the bars shown run over, as the heading does, not the window asked for.
+    expect(crisis.freshness).toMatchObject({ status: "not-a-feed", basis: "daily bars, 2007-05-09 to 2009-12-31" });
 
     // Thirty years come in monthly bars, from the month --from falls in, with no word of data starting late.
     const long = await run(["JPM", "--from", "1990-09-15", "--to", "2020"]);
@@ -1388,7 +1389,7 @@ test("a share's fall on a demerger's ex-date is flagged, said, and no drawdown i
 
 // `history NFLX --from 2025-11-12 --to 2025-11-20` ran across the 10-for-1 split of 2025-11-17 in split-adjusted bars,
 // and said nothing of it, while META's FB-era bars say what they are.
-test("bars across a split say so, and a range that starts on the split day or a spinoff factor does not", async () => {
+test("the bar a split took effect in is flagged and the note says the bars before it are split-adjusted; a spinoff factor is no split", async () => {
   pinClosedSession();
   const days = ["2025-11-12", "2025-11-13", "2025-11-14", "2025-11-17", "2025-11-18", "2025-11-19", "2025-11-20"];
   const run = async (from: string, splits: Array<{ date: string; fromFactor: number; toFactor: number; ratio: number }>) => {
@@ -1399,14 +1400,27 @@ test("bars across a split say so, and a range that starts on the split day or a 
       }),
       getCorporateActions: async () => ({ symbol: "NFLX", dividends: [], splits, earnings: [] }),
     });
-    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-split-fixture"), dataProvider });
+    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-split-fixture"), dataProvider }, { format: "json" });
     await history.execute(["NFLX", "--from", from, "--to", "2025-11-20"], cli.context);
-    return cli.printed[0]!.result.warnings ?? [];
+    const result = cli.printed[0]!.result;
+    const flagged = (result.data as Array<{ date: string; flag: string | null }>).filter((row) => row.flag?.split(",").includes("split"));
+    return { warnings: result.warnings ?? [], flagged: flagged.map((row) => row.date) };
   };
   const tenForOne = { date: "2025-11-17", fromFactor: 1, toFactor: 10, ratio: 10 };
-  expect(await run("2025-11-12", [tenForOne])).toContain("Splits in range: NFLX 10-for-1 on 2025-11-17; bars before it are split-adjusted.");
-  expect((await run("2025-11-17", [tenForOne])).join("\n")).not.toContain("Splits in range");
-  expect((await run("2025-11-12", [{ date: "2025-11-17", fromFactor: 1000, toFactor: 1253, ratio: 1.253 }])).join("\n")).not.toContain("Splits in range");
+  expect(await run("2025-11-12", [tenForOne])).toEqual({
+    warnings: expect.arrayContaining(["Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split); bars before it are split-adjusted."]),
+    flagged: ["2025-11-17"],
+  });
+  // FFAI's 1-for-150 is a split however many shares it joins; one on a day with no bar flags the next session's.
+  const reverse = await run("2025-11-12", [{ date: "2025-11-16", fromFactor: 150, toFactor: 1, ratio: 1 / 150 }]);
+  expect(reverse.flagged).toEqual(["2025-11-17"]);
+  expect(reverse.warnings).toContain("Splits in range: NFLX 1-for-150 reverse on 2025-11-16 (flag split); bars before it are split-adjusted.");
+  // A window that opens on the split day flags it, with no bar before it to adjust.
+  expect(await run("2025-11-17", [tenForOne])).toEqual({
+    warnings: expect.arrayContaining(["Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split)."]), flagged: ["2025-11-17"],
+  });
+  expect(await run("2025-11-18", [tenForOne])).toMatchObject({ flagged: [] });
+  expect(await run("2025-11-12", [{ date: "2025-11-17", fromFactor: 1000, toFactor: 1253, ratio: 1.253 }])).toMatchObject({ flagged: [] });
 });
 
 test("weekly and monthly bars split their drawdown at the bar a demerger falls in, as daily bars do", async () => {

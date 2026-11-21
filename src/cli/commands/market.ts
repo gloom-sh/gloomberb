@@ -148,7 +148,7 @@ import {
 import { historyCoverageNotice, WindowBeforeFirstBarError } from "../../sources/history-coverage";
 import { fetchHistoryResult } from "../../sources/history-result";
 import { settleWithin } from "../../utils/async-deadline";
-import { demergerRuns, demergerSuccessor, hasPriceBreak, historyDemergerNote, withDemergerFlags } from "../history-demergers";
+import { demergerRuns, demergerSuccessor, hasPriceBreak, historyDemergerNote, SPLIT_FLAG, withDemergerFlags, withSplitFlags } from "../history-demergers";
 import type { FxInterventionsPayload } from "../../api-client/fx-interventions";
 import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
@@ -2258,10 +2258,11 @@ async function loadListingHistory(
   // One read of the listing's corporate actions serves both, asked only for a share or a fund.
   const actions = shareActionsReader(market, listing, instrumentType);
   const demerged = await listingDemergerFlags(forming?.rows ?? served, actions);
-  const data = demerged.rows;
-  // NFLX's bars across its 10-for-1 split are in post-split shares, as META's FB-era bars say they were FB's. A long
-  // list skips the read, as it skips the other lookups.
-  const splitNote = lookups ? historySplitNote(listing.symbol, data, await actions.splits()) : null;
+  // NFLX's bars across its 10-for-1 split are in post-split shares, as META's FB-era bars say they were FB's, and the
+  // bar it took effect in is flagged. A long list skips the read, as it skips the other lookups.
+  const splits = lookups ? await actions.splits() : [];
+  const data = withSplitFlags(demerged.rows, splits);
+  const splitNote = historySplitNote(listing.symbol, data, splits);
   const interval = data[0]?.interval ?? null;
   // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
   const intraday = data.some((row) => row.date.length > 10);
@@ -2277,10 +2278,13 @@ async function loadListingHistory(
   const source = loaded.sourceName ? { source: loaded.sourceName } : {};
   // A coin's volume unit, or what an index's volume counts (a day's total, an intraday count).
   const volumeNote = historyVolumeNote(volume, interval, historyVolumeBasis(data));
-  // A window that closed before today is the history asked for: no later bar makes it stale.
+  // A window that closed before today is the history asked for: no later bar makes it stale. The line names the days
+  // its bars run over, as the heading does (a window from a Saturday starts at Monday's bar).
+  const [shownFrom, shownTo] = [data[0]?.date.slice(0, 10), data.at(-1)?.date.slice(0, 10)];
+  const shownDays = !window ? "" : shownFrom && shownTo ? shownFrom === shownTo ? shownFrom : `${shownFrom} to ${shownTo}` : priceWindowText(window);
   const freshness = withSavedCopy(window && isPastPriceWindow(window) ? rowsFreshness(data, {
     ...source,
-    status: "not-a-feed", basis: `${interval ? BAR_INTERVAL_LABELS[interval] : "price"} bars, ${priceWindowText(window)}`, observedKey: "date", oldest: null,
+    status: "not-a-feed", basis: `${interval ? BAR_INTERVAL_LABELS[interval] : "price"} bars, ${shownDays}`, observedKey: "date", oldest: null,
     ...(volumeNote ? { note: volumeNote } : {}),
   }) : rowsFreshness(data, {
     ...source,
@@ -2371,23 +2375,26 @@ async function listingDemergerFlags(
 }
 
 /**
- * "Splits in range: NFLX 10-for-1 on 2025-11-17; bars before it are split-adjusted.": the splits that took effect
- * after the first bar shown and by the last, which the bars run across in post-split shares. Null with none, or for
- * a factor no share count states (a spinoff's price adjustment, which the demerger note covers).
+ * "Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split); bars before it are split-adjusted.": the splits whose
+ * bar is flagged (withSplitFlags), which the bars run across in post-split shares. Null with none, or for a factor no
+ * share count states (a spinoff's price adjustment, which the demerger note covers).
  */
 function historySplitNote(symbol: string, rows: readonly HistoryRow[], splits: readonly SplitAction[]): string | null {
+  const flagged = rows.filter((row) => row.flag?.split(",").includes(SPLIT_FLAG));
   const first = rows[0]?.date.slice(0, 10);
   const last = rows.at(-1)?.date.slice(0, 10);
-  if (!first || !last || first === last) return null;
+  if (!first || !last || flagged.length === 0) return null;
   const inside = splits
-    .filter((split) => /^\d{4}-\d{2}-\d{2}/.test(split.date) && split.date.slice(0, 10) > first && split.date.slice(0, 10) <= last)
+    .filter((split) => /^\d{4}-\d{2}-\d{2}/.test(split.date) && split.date.slice(0, 10) >= first && split.date.slice(0, 10) <= last)
     .sort((left, right) => left.date.localeCompare(right.date))
     .flatMap((split) => {
       const terms = splitShareTerms(split);
       return terms ? [`${terms.split(",")[0]} on ${split.date.slice(0, 10)}`] : [];
     });
   if (inside.length === 0) return null;
-  return `Splits in range: ${symbol} ${inside.join(" and ")}; bars before ${inside.length === 1 ? "it" : "each"} are split-adjusted.`;
+  // A window that opens on the split day has no bar before it to adjust.
+  const adjusted = flagged.some((row) => row !== rows[0]) ? `; bars before ${inside.length === 1 ? "it" : "each"} are split-adjusted` : "";
+  return `Splits in range: ${symbol} ${inside.join(" and ")} (flag ${SPLIT_FLAG})${adjusted}.`;
 }
 
 /**
