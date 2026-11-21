@@ -9,7 +9,7 @@ import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, H
 import { formatUtcDayTime } from "../../../utils/utc-time";
 import { REFERENCE_DATA } from "../shared/report-freshness";
 import { columnValue, formatGeoValue, isChangeColumn, layerCoverageNote, parseLayerTokens, parseMapPreset, plainGeoValue, resolveActiveLayers, tickerLinkKey } from "./layers";
-import { filterWorldVenues, formatVenueLocalTime, venueSession } from "./model";
+import { filterWorldVenues, formatVenueCountdown, formatVenueLocalTime, venueRemainingSeconds, venueSession } from "./model";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 import { rowWindowCutNote } from "../../../cli/row-window";
 import { mapHomeArea, mapPlaceBbox, nearestPlaces, resolveMapPlace, type MapStart } from "./place";
@@ -50,6 +50,8 @@ const VENUE_COLUMNS: HeadlessPaneColumn[] = [
   // The state by the exchange's calendar: a holiday, or a US venue's pre-market and after-hours around its core session.
   { key: "session", header: "Session" },
   { key: "localTime", header: "Local" },
+  // When the core session next opens or closes, as the pane's header says it (opens 36h 54m); an export writes the instant.
+  { key: "nextChangeAt", header: "Next", textFormat: (_value, row) => typeof row.nextText === "string" ? row.nextText : "" },
 ];
 
 /** What a page of rows the server cut at `--limit` says of the rest: "first 6 of 137 rows (--limit 6)". */
@@ -64,25 +66,37 @@ async function venueRows(context: HeadlessPaneContext, query: string, start: Map
   const response = await context.apiClient.getCloudWorldVenues();
   if (!response.data) throw new Error(response.reasonCode ?? "World venue data unavailable");
   const now = Date.now();
+  const { checkedAt } = response.data;
   const venues = nearestPlaces(filterWorldVenues(response.data.venues, query), start.place, (venue) => venue);
   const shown = limit == null ? venues : venues.slice(0, limit);
   return {
     columns: VENUE_COLUMNS,
-    rows: shown.map((venue) => ({
-      mic: venue.mic,
-      name: venue.title,
-      city: venue.city,
-      country: venue.country,
-      session: venueSession(venue),
-      open: venue.isOpen,
-      localTime: formatVenueLocalTime(venue.timezone, now),
-      lon: venue.longitude,
-      lat: venue.latitude,
-    })),
+    rows: shown.map((venue) => {
+      // Counted from when the service read the sessions, as the pane counts it.
+      const remaining = Number.isFinite(checkedAt) ? venueRemainingSeconds(venue, checkedAt, now) : null;
+      const stated = venue.isOpen ? venue.timeToCloseSeconds : venue.timeToOpenSeconds;
+      return {
+        mic: venue.mic,
+        name: venue.title,
+        city: venue.city,
+        country: venue.country,
+        session: venueSession(venue),
+        open: venue.isOpen,
+        localTime: formatVenueLocalTime(venue.timezone, now),
+        nextChange: remaining == null ? null : venue.isOpen ? "closes" : "opens",
+        nextChangeAt: remaining == null || stated == null ? null : new Date(checkedAt + stated * 1_000).toISOString(),
+        nextText: remaining == null ? null : `${venue.isOpen ? "closes" : "opens"} ${formatVenueCountdown(remaining)}`,
+        lon: venue.longitude,
+        lat: venue.latitude,
+      };
+    }),
     freshness: REFERENCE_DATA,
     errors: start.note ? [start.note] : [],
     notes: pageCutNote(shown.length, venues.length, limit),
-    metadata: { layer: "venues", stale: response.stale === true, total: venues.length, ...(start.place ? { place: start.place } : {}) },
+    // The service's states are stale once a session it stated should have opened or closed since it read them: the
+    // flag the footer reads, which the response and its payload each carry.
+    metadata: { layer: "venues", stale: response.stale === true || response.data.stale === true, total: venues.length,
+      ...(start.place ? { place: start.place } : {}) },
   };
 }
 
