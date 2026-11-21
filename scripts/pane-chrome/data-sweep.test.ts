@@ -14,7 +14,7 @@ import { catalystEmptyTitle, catalystQuery } from "../../src/plugins/builtin/cat
 import { appsUnmappedReason, NO_CURRENT_ROLE_EVIDENCE } from "../../src/plugins/builtin/company-attention/model";
 import { companyEmptyState } from "../../src/plugins/builtin/company-kpis/model";
 import { CREDIT_EMPTY_TITLE } from "../../src/plugins/builtin/credit-documents/model";
-import { noCallsText } from "../../src/plugins/builtin/earnings-calls/format";
+import { noCallsText, searchingCallsTitle } from "../../src/plugins/builtin/earnings-calls/format";
 import { rippleEmptyText } from "../../src/plugins/builtin/earnings-ripple/model";
 import { boardRangeWords, noCalendarReportsTitle } from "../../src/plugins/builtin/earnings/calendar-model";
 import { NO_ESTIMATE_PERIODS_TITLE } from "../../src/plugins/builtin/estimate-revisions/model";
@@ -31,7 +31,7 @@ import { shortWatchEmptyTitle } from "../../src/plugins/builtin/short-interest/w
 import { NO_CASHTAG_STATE } from "../../src/plugins/builtin/social-mentions/model";
 import { parseViewSpecOr } from "../../src/plugins/builtin/custom-view/view-spec";
 import type { RegistryPlugin } from "../../src/plugins/marketplace/model";
-import { assessCapture, captureEvidence, EXPECTED_EMPTY, exampleArgs, functionCards, planSweep, REVIEWED_EMPTY, runCommand, selectCases, sessionlessAssessment, type Assessment, type CommandResult } from "./data-sweep";
+import { assessCapture, captureEvidence, EXPECTED_EMPTY, exampleArgs, functionCards, planSweep, REVIEWED_EMPTY, REVIEWED_PENDING, runCommand, selectCases, sessionlessAssessment, type Assessment, type CommandResult } from "./data-sweep";
 import { planPlugins, pluginInstallRef, pluginLaneEnv, REVIEWED_PLUGINS } from "./data-sweep-plugins";
 
 const entry = (changes: Partial<PaneCatalogEntry> = {}): PaneCatalogEntry => ({
@@ -342,6 +342,38 @@ test("reviewed source empty states remain findings, while mixed faults and unkno
   }
   for (const text of ["No covered estimate periods. Backend unavailable.", "Not yet available", "No results"]) {
     expect(assessCapture(capture(empty, { stateText: { empty: [text] } }, 2), "EM").status).toBe("failure");
+  }
+});
+
+// Every pending state is the pane's own builder output, as the reviewed empty states are.
+const PENDING: Array<[token: string, text: string]> = [
+  ...["PLPC", "DWSN", "7203:JPX"].map((symbol): [string, string] => ["CALLS", searchingCallsTitle(symbol)]),
+];
+
+test("a pane still waiting on its service's search is pending, read from the copy it draws, and any fault still fails", () => {
+  for (const [token, expected] of Object.entries(REVIEWED_PENDING)) {
+    expect(PENDING.some((entry) => entry[0] === token && expected.test(entry[1])), `${token} regex matches a drawn pending state`).toBe(true);
+  }
+  for (const [token, text] of PENDING) {
+    // As a capture of CALLS PLPC on its first open of the day reports it: complete, empty, no rows, exit 2.
+    const empty = { usable: false, complete: true, empty: true, rowCount: 0, unusableReason: `The pane rendered an empty state. It reads "${text}"` };
+    const render = { visibleText: `${token} ${text}`, footerText: "", emptyStateDetected: true, emptyStateText: [text], emptyStateMarkers: [], stateText: { empty: [text] } };
+    expect(assessCapture(capture(empty, render, 2), token), text).toMatchObject({ status: "pending", stateText: { empty: [text] } });
+    for (const fault of [{ loadingStateDetected: true }, { errorStateDetected: true }, { accessGate: "pro" },
+      { visibleText: `${token} ${text} UNKNOWN_STATUS` }, { errorStateMarkers: ["Request failed"] }]) {
+      expect(assessCapture(capture(empty, { ...render, ...fault }, 2), token).status).toBe("failure");
+    }
+    expect(assessCapture(capture(empty, render, 1), token).status).toBe("failure");
+    // The same words in another pane are not its pending state.
+    expect(assessCapture(capture(empty, render, 2), "GUIDE").status).toBe("failure");
+  }
+  // Searching is neither the reviewed answer that there are no calls nor read as one.
+  expect(REVIEWED_EMPTY.CALLS![1].test(searchingCallsTitle("PLPC"))).toBe(false);
+  expect(REVIEWED_PENDING.CALLS!.test(drawn(noCallsText("PLPC")))).toBe(false);
+  // A reworded or extended searching copy is no longer the reviewed one.
+  for (const text of ["Looking for PLPC's earnings calls", "Looking for PLPC's earnings calls... Request failed", "Still looking for PLPC's earnings calls..."]) {
+    const render = { emptyStateDetected: true, stateText: { empty: [text] } };
+    expect(assessCapture(capture({ usable: false, empty: true, rowCount: 0 }, render, 2), "CALLS").status).toBe("failure");
   }
 });
 

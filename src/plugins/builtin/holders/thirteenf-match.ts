@@ -14,6 +14,14 @@ export interface Holder13FMatch {
 
 const HOLDER_MATCH_LIMIT = 25;
 const HOLDER_MATCH_CONCURRENCY = 4;
+/**
+ * How long matching may take in all. Each holder is two 13F reads (a fund
+ * search, then its filings), four holders at a time; with the 13F service
+ * answering, 25 holders land in a few seconds. A service that does not answer
+ * must not hold the pane, or a capture of it, on what is an enhancement: past
+ * this the lookups still running stop, and their holders stay unmatched.
+ */
+const HOLDER_MATCH_BUDGET_MS = 15_000;
 
 function normalizeName(value: string): string {
   return value
@@ -74,24 +82,28 @@ export function matchFilerToHolder<Row extends { id: string; name: string }>(
 export async function loadHolder13FMatches(
   rows: HolderRow[],
   signal: AbortSignal,
+  { budgetMs = HOLDER_MATCH_BUDGET_MS }: { budgetMs?: number } = {},
 ): Promise<Map<string, Holder13FMatch>> {
   const now = new Date();
   const from = isoDateYearsAgo(2, now);
   const to = isoDateToday(now);
   const matches = new Map<string, Holder13FMatch>();
   const sourceRows = rows.filter((row) => row.name).slice(0, HOLDER_MATCH_LIMIT);
+  const budget = new AbortController();
+  const timer = setTimeout(() => budget.abort(new DOMException("13F matching ran out of time", "TimeoutError")), budgetMs);
+  const reads = AbortSignal.any([signal, budget.signal]);
 
   let index = 0;
   async function worker() {
-    while (!signal.aborted && index < sourceRows.length) {
+    while (!reads.aborted && index < sourceRows.length) {
       const row = sourceRows[index++];
       if (!row) continue;
       try {
-        const funds = await searchThirteenFFunds(row.name, 25, signal);
+        const funds = await searchThirteenFFunds(row.name, 25, reads);
         if (funds.length >= 25) continue;
         const fund = bestFundMatch(row.name, funds);
         if (!fund) continue;
-        const forms = await listThirteenFForms(fund.cik, from, to, 100, signal);
+        const forms = await listThirteenFForms(fund.cik, from, to, 100, reads);
         const report = buildPeriodReports(forms)[0];
         const form = report?.filings.at(-1);
         matches.set(row.id, {
@@ -103,15 +115,22 @@ export async function loadHolder13FMatches(
         });
       } catch (error) {
         // Matching 13F metadata is an enhancement; holder rows should remain usable.
-        if (!signal.aborted) logFailure("holders.thirteenf-match", "Match holder fund filings failed")(error);
+        if (!reads.aborted) logFailure("holders.thirteenf-match", "Match holder fund filings failed")(error);
       }
     }
   }
 
-  await Promise.all(Array.from(
-    { length: Math.min(HOLDER_MATCH_CONCURRENCY, sourceRows.length) },
-    () => worker(),
-  ));
+  try {
+    await Promise.all(Array.from(
+      { length: Math.min(HOLDER_MATCH_CONCURRENCY, sourceRows.length) },
+      () => worker(),
+    ));
+  } finally {
+    clearTimeout(timer);
+  }
+  if (budget.signal.aborted && !signal.aborted) {
+    logFailure("holders.thirteenf-match", "13F matching stopped at its time budget; the holders not matched by then stay unmatched")(budget.signal.reason);
+  }
 
   return matches;
 }

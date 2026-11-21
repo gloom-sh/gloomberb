@@ -31,6 +31,15 @@ export function noCallsText(ticker: string): { title: string; message: string } 
   return { title: `Earnings calls for ${ticker} are not yet available.`, message: "Calls appear once the company's investor site or filings list a webcast." };
 }
 
+/**
+ * What the pane reads while the service is still searching for a company's
+ * calls (its first open of the day): the pane asks again until the search
+ * lands, then shows the calls or `noCallsText`.
+ */
+export function searchingCallsTitle(ticker: string): string {
+  return `Looking for ${ticker}'s earnings calls...`;
+}
+
 export function formatCallDate(value: string | null): string {
   return formatShortDate(value, { day: "2-digit", year: "2-digit", fallback: MISSING_VALUE });
 }

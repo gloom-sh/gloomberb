@@ -195,7 +195,7 @@ export function planSweep(entries: readonly PaneCatalogEntry[], cards: readonly 
 
 export interface CommandResult { stdout: string; stderr: string; exitCode: number; timedOut: boolean }
 export interface Assessment {
-  status: "pass" | "partial" | "expected-empty" | "no-coverage" | "market-closed" | "unsupported" | "failure" | "timeout" | "invalid-output" | "command-error";
+  status: "pass" | "partial" | "pending" | "expected-empty" | "no-coverage" | "market-closed" | "unsupported" | "failure" | "timeout" | "invalid-output" | "command-error";
   reason: string | null;
   states: string[];
   stateText: { error?: string[]; empty?: string[] };
@@ -255,6 +255,16 @@ export const EXPECTED_EMPTY: Record<string, RegExp> = {
   ERN: /^No reports on the calendar /m,
   // A company nobody had asked about: the server looks for its careers system, the pane fills in when it is read.
   JOBS: /^Looking for \S+'s careers system\./m,
+};
+
+/**
+ * Reviewed states of a pane whose service is still working on its answer, matched on the pane's whole copy.
+ * CALLS on a company's first open of the day: the server is searching for its calls, and the pane asks again
+ * until the search lands, then shows the calls or its reviewed no-coverage copy. The capture is taken before
+ * that, so it is pending, not a failure and not a reviewed empty answer.
+ */
+export const REVIEWED_PENDING: Record<string, RegExp> = {
+  CALLS: /^Looking for \S+'s earnings calls\.\.\.$/,
 };
 
 export function assessCapture(result: CommandResult, token: string): Assessment {
@@ -324,11 +334,13 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
     return { ...evidence, status: "failure" };
   }
   const said = [...(stateText.empty ?? []), ...(render.emptyStateText ?? []), ...(render.emptyStateMarkers ?? [])].join("\n");
-  let expected: "no-coverage" | "market-closed" | "expected-empty" | "unsupported" | null = negativeFcf ? "unsupported" : missingIv ? "no-coverage" : null;
+  let expected: "pending" | "no-coverage" | "market-closed" | "expected-empty" | "unsupported" | null = negativeFcf ? "unsupported" : missingIv ? "no-coverage" : null;
   if (!shot.usable && hasEmpty && (shot.empty || shot.rowCount === 0)) {
     const reviewed = REVIEWED_EMPTY[token];
+    const pending = REVIEWED_PENDING[token];
     const texts = [stateText.empty, render.emptyStateText, render.emptyStateMarkers].filter((lines) => lines?.length).map((lines) => lines!.join(" ").replace(/\s+/g, " ").trim());
     if (!expected && reviewed && texts.length && texts.every((text) => reviewed[1].test(text))) expected = reviewed[0];
+    if (!expected && pending && texts.length && texts.every((text) => pending.test(text))) expected = "pending";
     if (!expected && token === "RIPL" && texts.length && texts.every((text) => /^No US-listed customer or supplier with a share of revenue is disclosed for \S+, so no report date was looked up from \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2} \(the next \d+ days\)\.$/.test(text))) expected = "no-coverage";
     if (!expected && (/\bno (?:analyst |estimate |ratings? )?coverage\b|\bnot covered\b/i.test(said)
       || (token === "ANR" && /\bsource lists them mainly for North American listings\b/.test(said)))) {

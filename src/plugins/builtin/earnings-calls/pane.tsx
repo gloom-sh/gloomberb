@@ -53,7 +53,7 @@ import {
 import { isPermanentClientError } from "../../../api-client/errors";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
-import { callPeriod, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment, noCallsText } from "./format";
+import { callPeriod, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment, noCallsText, searchingCallsTitle } from "./format";
 import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, originalIsMachineTranscript, translatedFrom, turnParagraphs } from "./model";
 import { READER_TABS, TranscriptView, type ReaderTab, type TranscriptPlayback } from "./transcript-view";
 import { PLAYBACK_RATES, SEEK_STEP_SECONDS, useCallPlayback } from "./use-call-playback";
@@ -1019,7 +1019,7 @@ function CallsListView({
   // for the company, or it has nothing to search for.
   if (ticker && calls.length === 0) {
     return listPending ? (
-      <PaneStatusBody empty align="center" emptyTitle={`Looking for ${ticker}'s earnings calls...`} />
+      <PaneStatusBody empty align="center" emptyTitle={searchingCallsTitle(ticker)} />
     ) : (
       <EmptyState {...noCallsText(ticker)} />
     );
