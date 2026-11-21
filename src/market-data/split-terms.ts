@@ -1,6 +1,6 @@
 import type { SplitAction } from "../types/financials";
 
-/** A factor with more shares than this on either side is no share count a split states: GE's 1253:1000 spinoff adjustment. */
+/** A factor with more shares than this on a side, and no single share on the other, is no share count a split states: GE's 1253:1000 spinoff adjustment. */
 const MAX_SPLIT_SHARES = 100;
 
 function greatestCommonDivisor(a: number, b: number): number {
@@ -20,7 +20,8 @@ export function splitShareTerms(split: Pick<SplitAction, "fromFactor" | "toFacto
   const divisor = greatestCommonDivisor(to!, from!);
   const after = to! / divisor;
   const before = from! / divisor;
-  if (Math.max(after, before) > MAX_SPLIT_SHARES) return null;
+  // One share for many (FFAI's 1-for-150 reverse split) is a split however many: an adjustment is never a whole 1:N.
+  if (Math.min(after, before) !== 1 && Math.max(after, before) > MAX_SPLIT_SHARES) return null;
   if (after < before) return `${after}-for-${before} reverse`;
   if (before === 1) return `${after}-for-1`;
   const added = after - before;

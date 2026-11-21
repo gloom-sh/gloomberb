@@ -6,6 +6,7 @@ import { createSnapshotDataProvider } from "../../../market-data/snapshot-provid
 import { chartHeadless, loadChartPaneModel, type ChartPaneModel } from "./headless";
 import { buildIntradayPriceChartPreset, buildCustomChartPreset } from "./presets";
 import { loadIntradayWindow, resolveIntradayRequest, resolveIntradaySessionWindow } from "./session-history";
+import { HistoryRetentionError } from "../../../sources/history-retention";
 
 // Synthetic domain boundary, not a replay of a published exchange tape. CME
 // permits negative CL prices: cmegroup.com/notices/clearing/2020/04/Chadv20-160.html
@@ -250,6 +251,24 @@ describe("intraday request failures", () => {
         else expect(loaded.unavailableReason).toContain("No intraday price history is available");
       }
     }
+  });
+
+  test("a session older than the source keeps at the resolution says how far back it goes and where that day's bar is, not to try again", async () => {
+    const observedAt = Math.floor(Date.now() / 1000) * 1000;
+    const loaded = await loadIntradayWindow({
+      provider: createTestDataProvider({
+        getDetailedPriceHistory: async () => {
+          throw new HistoryRetentionError({ version: 1, source: "gloom", symbol: "ACME", exchange: "NYSE", interval: "1min",
+            requestedStart: Date.parse("2020-04-20T00:00:00Z"), requestedEnd: Date.parse("2020-04-21T00:00:00Z"),
+            observedAt, availableStart: observedAt - 30 * 86_400_000 });
+        },
+        getPriceHistoryForResolution: async () => bars([10, 11], new Date(observedAt).toISOString().slice(0, 10)),
+      }),
+      symbol: "ACME", exchange: "NYSE", request,
+    });
+    expect(loaded.points).toEqual([]);
+    expect(loaded.unavailableReason).toMatch(/^1m history starts \d{1,2} \w{3}( \d{4})?; the source keeps the last 30 days\. /);
+    expect(loaded.unavailableReason).toEndWith("That session's daily bar: gloom history ACME --from 2020-04-20 --to 2020-04-20.");
   });
 
   test("a usable fallback succeeds after a failed request and preserves the chosen acquisition", async () => {

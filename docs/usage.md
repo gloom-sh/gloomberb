@@ -1292,7 +1292,7 @@ A US symbol that changed says so in one line.
 - **The new symbol.** The symbol a company renamed into (`META`, `XYZ`, `METV`) prints nothing extra, but its `history` from before the change says so: `Includes FB-era bars: META was FB until 2022-06-09`.
 - **In the app.** `DES FB` says the same line in the pane's data warnings, and typing `FB` in the command bar offers **FB as a ticker** under Send Feedback.
 
-A split the bars run across is said too: `history NFLX --from 2025-11-12 --to 2025-11-20` adds `Splits in range: NFLX 10-for-1 on 2025-11-17; bars before it are split-adjusted.`, and `events` and `EVT` give a split in share terms (`10-for-1`; DBS's 2024 bonus issue is `11-for-10, 1 new share for every 10 held`).
+A split the bars run across is said too: `history NFLX --from 2025-11-12 --to 2025-11-20` flags the bar it took effect in `split` and adds `Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split); bars before it are split-adjusted.` (a window over the same days gets the same bars, whichever day it starts on), and `events` and `EVT` give a split in share terms (`10-for-1`; DBS's 2024 bonus issue is `11-for-10, 1 new share for every 10 held`).
 
 In `--json`, each row's `tickerChange` carries `kind`, `note`, `changes` and, for a company that moved, `tradesAs`, `issuer` and `listed`. A renamed company's new symbol has `kind` `formerly` and the symbol it had before (`METV was META until 2022-01-31`).
 
@@ -1394,7 +1394,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - `--range YTD` (any case) is the year's daily bars from the prior year's last close, the one year-to-date returns are measured from (`history LMT --range YTD` starts at 31 Dec 2025).
 - `--range ALL` reaches back up to 50 years. When the source's first bar is well inside that, a warning says where it starts (`ALL starts 2014-09; the source has no earlier bar` for BTC-USD), or why nothing older is served (`Price history starts 1992-12-01; old-shekel quotes before 1992 are not served.`).
 - `gloom help history` ends with where long history is. ZAR has daily FRED data from 1980 (`fred DEXSFUS`). NGN, SAR and ILS have no FRED series, daily bars for the last five years (`fn G USDNGN=X --rangePreset 5Y --chartResolution 1d`) and monthly bars only before that (`history USDNGN=X --range ALL`).
-- `--interval 1s` says `No second or tick bars; 1-minute bars: fn GIP HYG; for a US listing, each trade: fn TAS HYG (a window: --from 10:30 --to 10:35), each quote: fn QR HYG.` (`fn GIP <ticker> --chartResolution 1s`, `30s` or `tick` and `catalog tick` say the same).
+- `--interval 1s` says `No second or tick bars; 1-minute bars: fn GIP HYG; for a US listing, the latest session's trades: fn TAS HYG (--from 10:30 --to 10:35), and quotes: fn QR HYG.` (`fn GIP <ticker> --chartResolution 1s`, `30s` or `tick` and `catalog tick` say the same).
 
 **What the output says**
 
@@ -1409,6 +1409,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 - `gap` after any calendar month with no monthly bar, or three whole weeks with no weekly, daily or intraday bar.
 - `jump` when its close is over 100 times the close before it or under a hundredth of it.
+- `split` marks the bar a split took effect in (the next session's when the split day has no bar). It is no break: split-adjusted bars read on across it, and the split note names it.
 - A warning names each break, oldest first (`No bars for 2001-07, 2002-09 and 2026-02 to 2026-03 (2 months)`, `Close rises 564x from 0.0049 on 1980-07-01 to 2.763 on 1992-12-01`), and the heading line ends with `unbroken from 1992-12-01` (`metadata.unbrokenFrom`).
 - `fn HP` and the `HP` pane name missing bars the same way, and the pane marks a change measured across them with `*` (`+3.42%*`).
 
@@ -1875,7 +1876,7 @@ A company's listings are the ones Gloom Cloud groups under one issuer (share cla
 
 ### Time and sales windows
 
-`gloom fn TAS HYG --from 10:30 --to 10:35` lists the trades and quotes of a window of the session the tape serves, oldest first. Times are New York's clock (`14:30Z` for UTC), and either bound alone runs the window to that end of the session. A bound outside what is served is refused with the window that is. See [Time and sales](research-data.md#time-and-sales-tas-qr) for the limits.
+`gloom fn TAS HYG --from 10:30 --to 10:35` lists the trades and quotes of a window of the session the tape serves, oldest first. Times are New York's clock (`14:30Z` for UTC, or a full timestamp such as `2026-11-20T14:30:00Z`), and either bound alone runs the window to that end of the session. A bound outside what is served is refused with the window that is. See [Time and sales](research-data.md#time-and-sales-tas-qr) for the limits.
 
 `gloom fn CDX` dates each index by its own trade date. While today's New York date still trades, it marks the index `so far` with its prints and last print. HY and EM add a spread equivalent of their price. `fn CDX --explain` defines the columns, and [Index and sovereign CDS](credit-reference.md) explains points, upfront, the roll and the conversion.
 

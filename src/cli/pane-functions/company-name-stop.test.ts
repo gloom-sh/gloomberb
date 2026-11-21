@@ -151,16 +151,17 @@ test("quote reads a one-word name a source timed out on as its company, or says 
 
 // Each lowercase symbol of a list cost a quote to check whether it was a company's name, however long the list.
 test("a long list is tickers: its lowercase symbols cost no quote each to be read as names; a short one still reads them", async () => {
+  // The symbols quoted, each once: the router serves a symbol's second read (whether it moved) from its first.
   const quotes = async (arg: string) => {
-    let asked = 0;
+    const asked = new Set<string>();
     const dataProvider = createTestDataProvider({
       getQuote: async (symbol) => {
-        asked += 1;
+        asked.add(symbol);
         return createTestQuote({ symbol, currency: "USD" });
       },
     });
     expect((await run(["RV", arg], dataProvider)).error).toBeNull();
-    return asked;
+    return asked.size;
   };
   const many = Array.from({ length: MAX_CHOICE_LOOKUPS + 1 }, (_, index) => `t${String.fromCharCode(97 + index)}x`);
   expect(await quotes(many.join(","))).toBe(0);

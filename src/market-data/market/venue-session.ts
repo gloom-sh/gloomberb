@@ -6,6 +6,7 @@ import {
   isRegularSessionTime,
   isTradingWeekday,
   isVenueTradingDay,
+  latestRegularSessionClose,
   middayBreakOn,
   nextRegularSessionOpen,
   regularSessionCloseOn,
@@ -69,4 +70,21 @@ export function venueSessionNow(exchange: string | undefined, now: number): Venu
     if (closed != null && now >= closed && now < closed + US_AFTER_HOURS_MS) return { phase: "after-hours", timeZone, ...opening };
   }
   return { phase: "closed", timeZone, ...opening };
+}
+
+/**
+ * The trading day a list of one market's shares taken at `at` shows, while
+ * that market is shut (`now` closed, a holiday or a US pre-market): the
+ * latest regular session that had closed by then, by its local date. MOST's
+ * Most Active list read on Saturday is Friday's session, not Saturday 14:53.
+ * Null while the market trades (its regular session or after-hours), for a
+ * list taken during a regular session (that session so far, however old),
+ * and for a venue whose calendar the app does not know.
+ */
+export function shownSessionDay(exchange: string, at: number, now: number): string | null {
+  const phase = venueSessionNow(exchange, now)?.phase;
+  if (phase !== "closed" && phase !== "holiday" && phase !== "pre-market") return null;
+  const venue = canonicalExchange(exchange);
+  if (!Number.isFinite(at) || isRegularSessionTime(venue, at)) return null;
+  return latestRegularSessionClose(venue, at)?.date ?? null;
 }

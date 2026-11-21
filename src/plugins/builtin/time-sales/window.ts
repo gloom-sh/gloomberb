@@ -4,25 +4,47 @@ import { formatUtcDayTime } from "../../../utils/utc-time";
 import { tapeTimeKey } from "./model";
 
 /**
- * A time of day as `--from` and `--to` take it: `10:30` or `10:30:15` on New
- * York's clock, the session's own, or `14:30Z` / `14:30 UTC` on UTC's.
+ * A time as `--from` and `--to` take it: a time of day, `10:30` or `10:30:15`
+ * on New York's clock, the session's own, or `14:30Z` / `14:30 UTC` on UTC's;
+ * or a timestamp, `2026-11-20T14:30:00Z` (with an offset, or bare on New
+ * York's clock), which also names its day (`instant`).
  */
 export interface TapeClock {
   /** Seconds after midnight. */
   seconds: number;
   zone: "new-york" | "utc";
+  /** A timestamp's own instant, which may fall on a day other than the served session's. */
+  instant?: number;
 }
 
 const CLOCK = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(et|ny|z|utc)?$/i;
+/** `2026-11-20T14:30:00Z`, `2026-11-20 09:30`, `2026-11-20T09:30:00.250-05:00`. */
+const TIMESTAMP = /^(\d{4}-\d{2}-\d{2})[t ](\d{1,2}:\d{2}(?::\d{2})?)(?:\.\d+)?\s*(z|utc|[+-]\d{2}:?\d{2})?$/i;
 
 export function parseTapeClock(value: string): TapeClock {
+  const stamp = TIMESTAMP.exec(value.trim());
+  if (stamp) return timestampClock(value, stamp[1]!, stamp[2]!, stamp[3]);
   const match = CLOCK.exec(value.trim());
   const [hours, minutes, seconds] = [match?.[1], match?.[2], match?.[3] ?? "0"].map(Number);
   if (!match || hours! > 23 || minutes! > 59 || seconds! > 59) {
-    throw new Error(`${value.trim() || "An empty time"} is not a time of day: use 10:30 or 10:30:15 (New York time), or 14:30Z (UTC).`);
+    throw new Error(`${value.trim() || "An empty time"} is not a time: use 10:30 or 10:30:15 (New York time), 14:30Z (UTC), or 2026-11-20T14:30:00Z.`);
   }
   const zone = /^(z|utc)$/i.test(match[4] ?? "") ? "utc" : "new-york";
   return { seconds: hours! * 3600 + minutes! * 60 + seconds!, zone };
+}
+
+/** A timestamp's clock and instant: on UTC's clock with `Z` or an offset, on New York's without. */
+function timestampClock(value: string, date: string, time: string, zone: string | undefined): TapeClock {
+  const clock = parseTapeClock(time);
+  const offset = zone && !/^(z|utc)$/i.test(zone) ? /^([+-])(\d{2}):?(\d{2})$/.exec(zone) : null;
+  const day = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(day) || new Date(day).toISOString().slice(0, 10) !== date) {
+    throw new Error(`${value.trim()} is not a time: use 10:30 or 10:30:15 (New York time), 14:30Z (UTC), or 2026-11-20T14:30:00Z.`);
+  }
+  if (!zone) return { ...clock, instant: newYorkInstant(date, clock.seconds) };
+  const offsetSeconds = offset ? (offset[1] === "-" ? -1 : 1) * (Number(offset[2]) * 3600 + Number(offset[3]) * 60) : 0;
+  const instant = day + (clock.seconds - offsetSeconds) * 1000;
+  return { seconds: Math.floor((instant - Date.parse(`${new Date(instant).toISOString().slice(0, 10)}T00:00:00Z`)) / 1000), zone: "utc", instant };
 }
 
 /** The option's value as the report reads it again: the time as typed, checked. */
@@ -119,8 +141,15 @@ function servedWindowText(served: ServedWindow): string {
  * defaulting to that end of what is served. A bound outside it, or a `--to`
  * not after `--from`, is refused with what is served.
  */
-export function tapeWindowRange(served: ServedWindow, from: TapeClock | null, to: TapeClock | null): TapeRange {
-  const instant = (clock: TapeClock) => clock.zone === "utc"
+export function tapeWindowRange(served: ServedWindow, from: TapeClock | null, to: TapeClock | null, symbol = "<ticker>"): TapeRange {
+  // A timestamp on another day than the served session's: TAS reads the latest session only; older minutes are bars.
+  const elsewhere = [from, to].find((clock) => clock?.instant != null && newYorkParts(clock.instant).date !== served.date);
+  if (elsewhere?.instant != null) {
+    const day = newYorkParts(elsewhere.instant).date;
+    throw new Error(`TAS serves the latest session only, ${sessionDay(served.date)}; ${sessionDay(day)} is not on it. `
+      + `That day's 1-minute bars: fn GIP ${symbol} --session ${day} --chart-resolution 1m.`);
+  }
+  const instant = (clock: TapeClock) => clock.instant != null ? clock.instant : clock.zone === "utc"
     // A UTC time is on the UTC day the session's New York times fall on; 00:00 UTC is the evening before's end.
     ? Date.parse(`${new Date(served.from).toISOString().slice(0, 10)}T00:00:00Z`) + clock.seconds * 1000
     : newYorkInstant(served.date, clock.seconds);

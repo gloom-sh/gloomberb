@@ -10,6 +10,7 @@ import {
   nextRegularSessionOpen,
 } from "../../market-data/market/freshness";
 import { futuresWeekendClosure } from "../../market-data/market/futures-week";
+import { shownSessionDay } from "../../market-data/market/venue-session";
 import { currentFxClosureStart, isFxWeekClosePrint, nextFxWeekOpen } from "../../utils/fx-market-hours";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import type { ReportTime } from "../../utils/utc-time";
@@ -358,5 +359,29 @@ export function reportMarketSession(
     },
     closeDate,
     closeMarket: closeDate && newest ? closeMarketOf(newest.exchange, newest.session) : null,
+  };
+}
+
+/**
+ * A declared session list's session (`sessionList`), once its market is
+ * shut: the trading day the list taken at `at` shows (`shownSessionDay`, or
+ * the day the list states), whose trading day that is, and where the market
+ * stands now. Null while the market trades, or for a list taken during a
+ * regular session.
+ */
+export function shownSessionList(
+  list: { exchange: string; session?: string; part?: "pre-market" | "after-hours" },
+  at: number,
+  now: number,
+): { closeDate: string; closeMarket: string; market: ReportMarket | null; part?: "pre-market" | "after-hours" } | null {
+  const exchange = canonicalExchange(list.exchange);
+  const shown = exchange ? shownSessionDay(exchange, at, now) : null;
+  if (!shown) return null;
+  const stated = list.session && /^\d{4}-\d{2}-\d{2}$/.test(list.session) && list.session <= shown ? list.session : null;
+  return {
+    closeDate: stated ?? shown,
+    closeMarket: isUsListingExchange(exchange) ? "US" : exchange,
+    market: reportMarketSession([{ exchange, time: null }], now).market,
+    ...(list.part ? { part: list.part } : {}),
   };
 }

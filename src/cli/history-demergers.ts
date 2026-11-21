@@ -1,7 +1,10 @@
-import type { DemergerAction } from "../types/financials";
+import type { DemergerAction, SplitAction } from "../types/financials";
+import { splitShareTerms } from "../market-data/split-terms";
 
 /** The flag a bar takes when a business was demerged out of the listing at it. */
 export const DEMERGER_FLAG = "demerger";
+/** The flag the bar a split took effect in takes: the first in post-split shares. */
+export const SPLIT_FLAG = "split";
 
 /**
  * A close this far below the one before can be a business leaving the line
@@ -36,25 +39,45 @@ export function demergerSuccessor(action: Pick<DemergerAction, "successor">): st
 }
 
 /**
- * The bar a demerger's ex-date falls in: the daily bar of that session (the
- * next one when the source has none of it), or the week's or month's bar
- * that holds it. -1 when the bars do not reach it.
+ * The bar a corporate action's ex-date falls in: the daily bar of that
+ * session (the next one when the source has none of it), or the week's or
+ * month's bar that holds it. -1 when the bars do not reach it, or, with
+ * `barBefore`, when no bar comes before it (a demerger's fall needs one).
  */
-function demergerBarIndex(rows: readonly DemergerRow[], exDate: string): number {
+function actionBarIndex(rows: readonly DemergerRow[], exDate: string, barBefore: boolean): number {
   const day = (row: DemergerRow) => row.date.slice(0, 10);
   const interval = rows[0]?.interval;
+  const first = barBefore ? 1 : 0;
   if (interval === "1wk" || interval === "1mo") {
     const holding = rows.findLastIndex((row) => day(row) <= exDate);
-    if (holding <= 0) return -1;
+    if (holding < first) return -1;
     // The last bar holds the ex-date only when its week or month runs over it.
     const start = day(rows[holding]!);
     const within = interval === "1mo" ? start.slice(0, 7) === exDate.slice(0, 7)
       : Date.parse(`${exDate}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`) < 7 * 86_400_000;
     return holding < rows.length - 1 || within ? holding : -1;
   }
-  const first = rows.findIndex((row) => day(row) >= exDate);
-  // A bar before the ex-date is needed for the fall to be in the rows at all.
-  return first > 0 ? first : -1;
+  const index = rows.findIndex((row) => day(row) >= exDate);
+  // An ex-date before the first daily bar is not in the rows, however near.
+  return index >= first && (index > 0 || day(rows[0]!) === exDate) ? index : -1;
+}
+
+/**
+ * The rows with the bar each split took effect in flagged `split` (FFAI's
+ * 1-for-150 reverse on 2026-07-24), as `history` marks it beside the note
+ * naming it. A factor no share count states is left to the demerger flag.
+ */
+export function withSplitFlags<Row extends DemergerRow>(rows: readonly Row[], splits: readonly SplitAction[]): Row[] {
+  const marked = [...rows];
+  for (const split of splits) {
+    if (!/^\d{4}-\d{2}-\d{2}/.test(split.date) || !splitShareTerms(split)) continue;
+    const index = actionBarIndex(marked, split.date.slice(0, 10), false);
+    if (index < 0) continue;
+    const row = marked[index]!;
+    const codes = (row.flag ?? "").split(",").filter(Boolean);
+    if (!codes.includes(SPLIT_FLAG)) marked[index] = { ...row, flag: [...codes, SPLIT_FLAG].join(",") };
+  }
+  return marked;
 }
 
 /**
@@ -66,7 +89,7 @@ export function withDemergerFlags<Row extends DemergerRow>(rows: readonly Row[],
   const marked = [...rows];
   const breaks: Array<{ date: string; action: DemergerAction }> = [];
   for (const action of [...demergers].sort((left, right) => left.exDate.localeCompare(right.exDate))) {
-    const index = demergerBarIndex(marked, action.exDate);
+    const index = actionBarIndex(marked, action.exDate, true);
     if (index < 0) continue;
     const row = marked[index]!;
     const codes = (row.flag ?? "").split(",").filter(Boolean);

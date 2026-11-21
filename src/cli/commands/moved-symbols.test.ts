@@ -273,6 +273,22 @@ test("fn HIVG and fn VCA of a moved symbol serve nothing and name the new symbol
   ]);
 });
 
+test("fn of a function that reads a company by symbol reads a moved one as its new symbol; a refusal names the code typed", async () => {
+  const dino = createTestQuote({ symbol: "DINO", name: "HF Sinclair Corp", price: 52.1, listingExchangeName: "NYSE", exchangeName: "NYSE", marketState: "REGULAR" });
+  const provider = source(undefined, { getQuote: async (symbol) => symbol === "DINO" ? dino : (await source().getQuote(symbol))! });
+  // The quote board asks for DINO and says why; HFC's 2022 line is never its row.
+  const board = await runFn(["QQ", "HFC"], provider);
+  expect(board.error).toBeNull();
+  expect(board.printed!.result.warnings).toContain("HFC became DINO on 2022-03-15; showing DINO.");
+  expect(JSON.stringify(board.printed!.result.data)).toContain("DINO");
+  expect(JSON.stringify(board.printed!.result.data)).not.toContain("36.39");
+  // A pane that shows one ticker refuses it, with the code as typed: DES is Ticker Research's alias of T.
+  for (const code of ["DES", "T"]) {
+    const { error } = await runFn([code, "HFC"]);
+    expect((error as Error).message, code).toBe(`HFC became DINO on 2022-03-15: \`gloom fn ${code} DINO\``);
+  }
+});
+
 test("fn given a company's name where its ticker goes answers as quote does: not a ticker, and the search that finds it", async () => {
   for (const code of ["RDCF", "HIVG"]) {
     const { error, printed } = await runFn([code, "Palantir"]);

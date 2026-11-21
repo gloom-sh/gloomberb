@@ -20,6 +20,8 @@ import {
 import { uncoveredInstrumentKind, uncoveredInstrumentMessage, uncoveredInstrumentsMessage } from "../../tickers/instrument-coverage";
 import { uncoveredInstrumentCommand } from "../uncovered-instrument";
 import { listingAbroadVenue } from "../../utils/sec";
+import { parsePublicTickerKey } from "../../utils/exchanges";
+import { movedListing, movedListingNote } from "../../tickers/listing-fate";
 import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
 import { readNameEntries } from "../name-entries";
 import { bankFigurePointer, bankWordPointer } from "../known-gaps";
@@ -361,6 +363,65 @@ export async function applyListingArgument(
     ...(notes.length > 0 ? { listingNotes: notes } : {}),
     ...(refused.length > 0 ? { refusedListings: refused } : {}),
   };
+}
+
+/**
+ * `fn CSP SQ` is `fn CSP XYZ`: a ticker whose company moved (SQ became XYZ on
+ * 2025-01-21), with nothing new listed under it, is read as the symbol the
+ * company trades as now before the function asks for anything, and the report
+ * says so. Without this a function that reads a company's data by symbol
+ * answers the old one's dead end: a stale quote, no earnings, or a 13F source
+ * that gives up after 20 s. A pane that shows one ticker as Ticker Research
+ * does (`isTickerLinkPeer`), and a function that reads each symbol's fate
+ * itself (`readsSymbolFate`), refuse such a ticker instead and name the new
+ * one; a list longer than a few lookups is read as typed. Null when nothing
+ * moved.
+ */
+export async function withRenamedTickers(
+  context: MarketContext,
+  args: ParsedPaneFunctionArgs,
+  resolved: Pick<ResolvedPaneFunction, "headless" | "template" | "instance">,
+  linkPeer: boolean,
+): Promise<ParsedPaneFunctionArgs | null> {
+  const kind = resolved.headless?.argument.kind ?? resolved.template?.shortcut?.argKind;
+  if (linkPeer || resolved.headless?.readsSymbolFate || !args.arg.trim()
+    || !(kind === "ticker" || kind === "tickers" || kind === "symbol-list" || kind === "ticker-list")) return null;
+  const keys = kind === "ticker" ? [args.arg.trim()] : splitSymbolArgs([args.arg]);
+  if (keys.length === 0 || keys.length > MAX_CHOICE_LOOKUPS) return null;
+  const moved = await Promise.all(keys.map((key) => {
+    // One ticker is asked for as the function will ask for it (on its saved venue); a list's by key.
+    const { symbol, exchange } = keys.length === 1 && args.listing ? args.listing.request : parsePublicTickerKey(key);
+    return movedListing({ symbol, exchange: exchange ?? "" }, context.dataProvider)
+      .catch(logFailure("cli.pane-functions-resolver", "Read whether a ticker moved failed", null));
+  }));
+  if (!moved.some(Boolean)) return null;
+  const listings = await Promise.all(keys.map(async (key, index) => {
+    const change = moved[index];
+    return change ? resolveCliListing(change.tradesAs, undefined, context)
+      .catch(logFailure("cli.pane-functions-resolver", "Read a moved ticker's new symbol failed", null)) : null;
+  }));
+  const read = keys.map((key, index) => listings[index]?.key ?? moved[index]?.tradesAs ?? key);
+  // The same company typed twice (SQ,XYZ) is read once.
+  const arg = [...new Set(read)].join(", ");
+  const single = listings.length === 1 ? listings[0] : null;
+  return {
+    ...args,
+    arg,
+    ...(single ? { listing: single } : {}),
+    listingNotes: [...args.listingNotes ?? [], ...moved.flatMap((change) => change ? [movedListingNote(change)] : [])],
+  };
+}
+
+/**
+ * The function's code as typed when it is one of the function's codes (`DES`
+ * for Ticker Research, whose code is T), else its own: what a command line
+ * the report suggests (a renamed ticker's retry) starts with.
+ */
+export function typedFunctionCode(typed: string, resolved: Pick<ResolvedPaneFunction, "token" | "template">): string {
+  const word = typed.trim().toUpperCase();
+  const shortcut = resolved.template?.shortcut;
+  const codes = [shortcut?.prefix, ...shortcut?.aliases ?? []].filter((code): code is string => !!code);
+  return codes.some((code) => code.toUpperCase() === word) ? word : resolved.token;
 }
 
 /**

@@ -16,6 +16,7 @@ import type { HeadlessPaneColumn } from "../../../types/headless";
 import { isSessionTab, resolveSide } from "./session";
 import { hasPartialFloat, minFloatShares, normalizeMinFloat, PARTIAL_FLOAT_NOTE } from "./min-float";
 import { savedCopyMark } from "../../../data/saved-copies";
+import { SESSION_PART, US_LIST_VENUE } from "./footer";
 
 const rowPrice = (value: unknown, row: Record<string, unknown>) => formatMoverPrice(typeof value === "number" ? value : null, typeof row.currency === "string" ? row.currency : "", moverReferencePrice(row as unknown as MarketMoverRow));
 
@@ -162,8 +163,12 @@ export function createMarketMoversHeadless(
           })),
           ...(hasPartialFloat(payload.items) ? { notes: [PARTIAL_FLOAT_NOTE] } : {}),
           metadata: { list: tab, side, session: payload.session, phase: payload.phase, asOf: payload.asOf, stale: payload.stale === true, minFloat },
-          // A Pro account's list is the live board; the free one says it is delayed.
-          ...(payload.access === "delayed" ? {} : { freshness: { status: "live" as const } }),
+          // A Pro account's list is the live board; the free one says it is delayed. Once its session is over, the
+          // list is dated by that session, `US trading day Fri 20 Nov 2026 pre-market`, not by when it was read.
+          freshness: {
+            ...(payload.access === "delayed" ? {} : { status: "live" as const }),
+            ...(payload.phase === "closed" ? { sessionList: { exchange: US_LIST_VENUE, ...(payload.session ? { session: payload.session } : {}), ...(SESSION_PART[tab] ? { part: SESSION_PART[tab] } : {}) } } : {}),
+          },
         };
       }
       // Trending carries no float, so a minimum does not apply to it.
@@ -202,11 +207,13 @@ export function createMarketMoversHeadless(
         // A list served from a saved copy ends with when it was saved.
         metadata: { ...savedCopyMark(result), list: tab, source: result.source, stale: result.stale, rankedBy, minFloat: floatFiltered ? minFloat : null },
         // A Pro account's Gainers, Losers and Most Active are the real-time lists. The footer is the list's own time,
-        // which a Most Active row read from the day's stored snapshot (dated midnight) would otherwise set.
-        ...(result.source === "cloud" || result.asOf != null ? { freshness: {
+        // which a Most Active row read from the day's stored snapshot (dated midnight) would otherwise set. Once the
+        // market has shut it is the session the list shows, `US trading day Fri 20 Nov 2026 close`, as HM's is.
+        freshness: {
           ...(result.source === "cloud" ? { status: "live" as const } : {}),
           ...(result.asOf != null ? { asOf: result.asOf } : {}),
-        } } : {}),
+          sessionList: { exchange: US_LIST_VENUE },
+        },
       };
     },
   };

@@ -95,11 +95,14 @@ describe("cloud session token from the environment", () => {
       await runPaneFunction(["QQ", "QQQ,MU:NASDAQ,NEW:NASDAQ"], cli.context);
       expect(reads.map(({ symbol }) => symbol).sort()).toEqual(["MU", "NEW", "QQQ"]);
       expect(reads.every(({ authenticated }) => authenticated)).toBe(true);
-      expect(cli.printed[0]?.result.data.rows).toMatchObject([
+      const rows = cli.printed[0]?.result.data.rows as Array<{ change: unknown; changePercent: unknown }>;
+      expect(rows).toMatchObject([
         { symbol: "QQQ", feed: "live" },
         { symbol: "MU:NASDAQ", feed: "live" },
-        { symbol: "NEW:NASDAQ", feed: "live", change: Number.NaN, changePercent: Number.NaN, changeBasis: "No previous close" },
+        { symbol: "NEW:NASDAQ", feed: "live", changeBasis: "No previous close" },
       ]);
+      // No change on a first session: NaN as read, null once read again from the saved copy; both print as missing.
+      expect([rows[2]!.change, rows[2]!.changePercent].some((value) => typeof value === "number" && Number.isFinite(value))).toBe(false);
     } finally {
       apiClient.setSessionToken(initialToken);
       setCloudApiFetchTransport(null);
