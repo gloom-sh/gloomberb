@@ -97,7 +97,7 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
     limitations: ["Pro dataset; free accounts receive a limited preview.", "Published procurement records; source coverage varies by jurisdiction.",
       "Currencies and prime awards, subawards and notices are separate.", "Award obligations are not revenue or remaining backlog.", "Unresolved recipients retain their legal names."] },
   options: [
-    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "feed", values: [...AWARD_TABS.map(({ value }) => ({ value })), { value: "all" }], description: "Feed, company history, agencies, sectors, events, or all sections." },
+    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "feed", values: [...AWARD_TABS, { value: "all" }], description: "Feed, company history, agencies, sectors, events, or all sections." },
     { key: "view", type: "enum", settingKey: "leaderView", defaultValue: "companies", values: [{ value: "companies" }, { value: "sectors" }], description: "Sectors tab: company leaders or sector totals." },
     ...FILTER_KEYS.map((key) => key === "from" || key === "to"
       ? { key, type: "string" as const, settingKey: key, placeholder: "date", description: `${key === "from" ? "Start" : "End"} of the date range, as ${DATE_OPTION_EXAMPLES}.`,

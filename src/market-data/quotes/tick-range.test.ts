@@ -55,6 +55,15 @@ test("ticks that name no session are kept as an after-hours quote shows them, ac
   }
 });
 
+test("regular-only extrema survive mixed-session frames without taking extended prints", () => {
+  const pre = foldStreamTick(null, { price: 99, marketState: "PRE", preMarketPrice: 145 } as Quote)!;
+  const regular = foldStreamTick(pre, quoteOf({ named: 137.59 }))!;
+  const closing = foldStreamTick(foldStreamTick(null, quoteOf({ named: 138 })), { price: 140, marketState: "POST", postMarketPrice: 141.7 } as Quote)!;
+  const merged = mergeStreamTickRanges(regular, closing);
+  expect(shape(merged.regular)).toEqual(expected([137.59, 138]));
+  expect(shape(readStreamTickRange(JSON.parse(JSON.stringify(merged)))?.regular)).toEqual(expected([137.59, 138]));
+});
+
 test("a range read back from JSON keeps its sessions and drops what is not one", () => {
   const range = [{ afterHours: 105 }, { afterHours: 103 }, { named: 100 }].reduce<StreamTickRange | null>(
     (folded, tick) => foldStreamTick(folded, quoteOf(tick as Tick)), null)!;

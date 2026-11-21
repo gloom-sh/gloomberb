@@ -6,6 +6,7 @@ import type { ListingDeps } from "../../../tickers/listing-venues";
 import type { Quote } from "../../../types/financials";
 import { isPenceQuotedLine, isSharePriceQuote } from "../../../market-data/market/format";
 import { formatUtcDayTime } from "../../../utils/utc-time";
+import { isRegularSessionPrint } from "../../../market-data/quotes/tick-range";
 import { coerceFieldString } from "../helpers";
 import type {
   CommandBarFieldValue,
@@ -149,13 +150,11 @@ export function useAlertWorkflowQuoteSync({
     const read = () => void resolveAlertListing(alertWorkflowSymbol, null, listingDeps)
       .then(({ quote, fate }) => {
         if (quoteRequestRef.current !== requestId) return;
-        // An alert is judged on the latest print, extended hours included: the target starts there.
         const print = getLatestPrintDisplay(quote);
         if (!quote || !print || !Number.isFinite(print.price)) {
           throw new Error(tf('No quote found for "{symbol}".', { symbol: alertWorkflowSymbol }));
         }
 
-        const quotePrice = isPenceQuotedLine(quote) ? `${Number((print.price * 100).toPrecision(12))}p` : formatAlertWorkflowPrice(print.price);
         updateRoute((route) => {
           if (!isSetAlertWorkflow(route)) return route;
           if (normalizeAlertWorkflowSymbol(route.values.symbol) !== alertWorkflowSymbol) return route;
@@ -163,6 +162,8 @@ export function useAlertWorkflowQuoteSync({
           const currentPrice = coerceFieldString(route.values.price).trim();
           const previousAutoPrice = String(route.payloadMeta?.alertAutoPrice ?? "");
           const shouldPrefill = currentPrice.length === 0 || currentPrice === previousAutoPrice;
+          const waiting = route.values["price:session"] === "regular" && !isRegularSessionPrint(quote);
+          const quotePrice = waiting ? "" : isPenceQuotedLine(quote) ? `${Number((print.price * 100).toPrecision(12))}p` : formatAlertWorkflowPrice(print.price);
           const nextValues = shouldPrefill
             ? { ...route.values, price: quotePrice }
             : route.values;
@@ -173,7 +174,8 @@ export function useAlertWorkflowQuoteSync({
             fields: updateAlertWorkflowFieldDescriptions(route.fields, {
               // What became of the symbol goes under its quote, which names the listing: FB is a fund now, and Meta trades as META.
               symbol: [formatAlertWorkflowQuote(quote), ...fate].join("\n"),
-              price: tf("Current price {price}; edit to set the target.", { price: formatAlertWorkflowCurrentPrice(print, quote) }),
+              price: waiting ? "Enter a target. The alert waits for a regular-hours quote."
+                : tf("Current price {price}; edit to set the target.", { price: formatAlertWorkflowCurrentPrice(print, quote) }),
             }, nextValues, quote),
             payloadMeta: {
               ...(route.payloadMeta ?? {}),
@@ -207,5 +209,5 @@ export function useAlertWorkflowQuoteSync({
       });
     const timer = setTimeout(read, ALERT_WORKFLOW_READ_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [alertWorkflowActive, alertWorkflowSymbol, listingDeps, updateRoute]);
+  }, [alertWorkflowActive, alertWorkflowSymbol, route.values["price:session"], listingDeps, updateRoute]);
 }

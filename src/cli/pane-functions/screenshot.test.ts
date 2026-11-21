@@ -20,6 +20,26 @@ import { paneStateMarkers, shotStatusDateClipped, type DesktopPaneShotPayload, t
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
+import { JsonPersistence } from "../../data/json-persistence";
+import { alertsHeadless } from "../../plugins/builtin/alerts/headless";
+import { ALERTS_PLUGIN_ID } from "../../plugins/builtin/alerts/constants";
+import { FIRED_LOG_KEY } from "../../plugins/builtin/alerts/fired-log";
+import { resumeStateKey } from "../../plugins/registry/plugin-state";
+
+test("ALRT capture copies the local fired log without copying unrelated saved state", async () => {
+  const persistence = new JsonPersistence();
+  const key = resumeStateKey(FIRED_LOG_KEY);
+  const log = [{ id: "local-fire", rule: "FSLR above 140", firedAt: 1795218720000 }];
+  persistence.pluginState.set(ALERTS_PLUGIN_ID, key, log);
+  persistence.pluginState.set(ALERTS_PLUGIN_ID, resumeStateKey("other"), "unrelated state");
+  const resolved = { token: "ALRT", headless: alertsHeadless, pane: { id: "alerts" }, options: { tab: "history" },
+    capability: { id: "alerts", options: alertsHeadless.options },
+    instance: { instanceId: "alerts:test", paneId: "alerts", settings: {}, binding: { kind: "none" } } } as unknown as ResolvedPaneFunction;
+  const shot = await buildDesktopShotPayload(resolved, {
+    config: createDefaultConfig("/tmp/alert-history-shot"), dataProvider: { id: "offline" }, persistence,
+  } as unknown as MarketContext, "", { tab: "history" }, 800, 600, null, 1, null);
+  expect(shot.deviceState).toEqual([{ pluginId: ALERTS_PLUGIN_ID, key, value: log }]);
+});
 
 test("a dropped essential figure is a screenshot gap even when its table holds the same value", () => {
   const semanticUi = [{ id: "figures", role: "figure-layout", label: "Essential figures", actions: [],

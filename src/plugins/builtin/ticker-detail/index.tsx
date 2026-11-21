@@ -36,7 +36,7 @@ import {
 // `--statement` and `--period` open the financials tab on them; a value the tab has none of is refused.
 const RESEARCH_VIEW_REPORT_OPTIONS: PaneReportOptionDef[] = [
   { key: "tab", aliases: ["activeTab", "activeTabId", "paneTab"], type: "string", placeholder: "view",
-    description: "Tab or view to open, by its id (overview, chart, financials, risk-factors); one the ticker has no tab for fails, naming the ones it has.",
+    description: "Tab or view to open, by label or id (Events, Corporate Actions, risk-factors); an unknown tab lists the available choices.",
     example: "--tab risk-factors" },
   { key: "statement", aliases: ["financialStatement"], type: "enum", values: FINANCIAL_STATEMENT_VALUES,
     description: "Financials statement or ratio tab to open; opens the financials tab." },

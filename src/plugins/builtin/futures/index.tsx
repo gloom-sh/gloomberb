@@ -64,6 +64,7 @@ import {
   DEFAULT_FUTURES_COLUMN_IDS,
   FUTURES_COLUMN_DEFS,
   FUTURES_REPORT_COLUMNS,
+  futuresClosePriceKind,
   renderFuturesCell,
   resolveFuturesColumnIds,
   usesSessionText,
@@ -177,6 +178,13 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
   const terms = useFuturesBoardTerms(listedContracts, !!dataProvider && paneVisible);
   // Each move measured as `quote` measures it with the row's terms, so a row never flips between references at the reopen.
   const shownQuotes = useMemo(() => futuresBoardQuotes(quotes, terms), [quotes, terms]);
+  const showPriceBasis = listedContracts.some((contract) => futuresClosePriceKind(contract, shownQuotes.get(contract.symbol)?.quote) != null);
+  const priceBasisNote = showPriceBasis ? "Price: S = settlement, T = last trade (settlement unconfirmed)" : null;
+  useRemoteUiNode(priceBasisNote ? {
+    role: "report-notice",
+    label: "Price basis",
+    getMetadata: () => ({ text: priceBasisNote }),
+  } : null);
 
   const visibleCollapsed = effectiveCollapsedSectors(collapsedSectors, searchQuery);
   const rows = useMemo(
@@ -212,7 +220,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     return [
       state?.loading, state?.stale,
       quote?.price, quote?.change, quote?.changePercent, quote?.previousClose, quote?.volume, quote?.lastUpdated, quote?.symbol, quote?.name,
-      futuresSessionQuote(row.contract, quote)?.marketState,
+      futuresSessionQuote(row.contract, quote)?.marketState, quote?.futuresPriceKind,
       values?.loading, ...Object.values(values?.values ?? {}),
       contract?.loading, contract?.terms?.spec?.unit, contract?.terms?.deliveryMonth, contract?.terms?.nearest?.contract,
       contract?.terms?.nearest?.lastTrade,
@@ -333,6 +341,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     const info: PaneFooterSegment[] = quoteBoardFooterInfo(status);
     if (errorMessage) info.push({ id: "reason", parts: [{ text: errorMessage, tone: "warning" }] });
     if (quoteDelay) info.push(quoteDelay);
+    if (priceBasisNote) info.push({ id: "price-basis", parts: [{ text: priceBasisNote, tone: "muted" }] });
     return {
       info,
       hints: [{ id: "search", key: "/", label: "search", onPress: focusSearch }],
@@ -342,6 +351,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     focusSearch,
     noQuotes,
     quoteDelay,
+    priceBasisNote,
     status.latestTs,
     status.loading,
     status.savedAt,

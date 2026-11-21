@@ -257,7 +257,7 @@ test("an alert for results is due from the report day until the actual EPS is in
 });
 
 test("the app alerts for results once the actual EPS lands, keeping the report day until then, and then follows the next report", async () => {
-  const rule = { ...createScheduledAlert({ kind: "earnings", symbol: "CRWV", exchange: "" }, "results", "2026-10-20", 1_000) };
+  const rule = createScheduledAlert({ kind: "earnings", symbol: "CRWV", exchange: "" }, "results", null, 1_000);
   const store = new Map<string, string>([[EVENT_ALERTS_KEY, JSON.stringify([rule])]]);
   const notifications: string[] = [];
   let saved = Promise.withResolvers<void>();
@@ -271,10 +271,12 @@ test("the app alerts for results once the actual EPS lands, keeping the report d
     log: { info() {}, warn() {}, error() {}, debug() {} },
   };
   let reported: number | null = null;
+  let announced = false;
   const reads: string[] = [];
   const sources: ScheduledEventSources = {
     // Once the day has passed, the calendar's next report is next quarter's.
-    earnings: async () => [{ symbol: "CRWV", earningsDate: new Date("2026-10-20T20:00:00Z") }, { symbol: "CRWV", earningsDate: new Date("2027-01-26T20:00:00Z") }],
+    earnings: async () => announced
+      ? [{ symbol: "CRWV", earningsDate: new Date("2026-10-20T20:00:00Z") }, { symbol: "CRWV", earningsDate: new Date("2027-01-26T20:00:00Z") }] : [],
     cpi: async () => ({ release: { nextReleaseAt: null } }),
     fomc: async () => [],
     results: async (symbols, from, to) => {
@@ -289,10 +291,15 @@ test("the app alerts for results once the actual EPS lands, keeping the report d
     await Bun.sleep(20);
   };
   try {
-    // The morning before an after-close report: nothing yet, and no write.
+    await check();
+    expect(notifications).toEqual([]);
+    expect(reads).toEqual([]);
+    announced = true;
     await check();
     expect(notifications).toEqual([]);
     expect(reads).toEqual(["CRWV 2026-10-17 2026-10-23"]);
+    expect(readEventAlerts(store.get(EVENT_ALERTS_KEY)!).rules[0]?.eventDate).toBe("2026-10-20");
+    saved = Promise.withResolvers<void>();
 
     // The next morning the calendar has moved on, but the rule still waits on the 20th; the actual is in.
     now = Date.parse("2026-10-21T13:00:00Z");

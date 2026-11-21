@@ -11,7 +11,8 @@ import { findCollection } from "../portfolio-list/cli/render";
 import { alertListing, readingSessionWords } from "./format";
 import { createAlert, sameLevelRule } from "./alert-engine";
 import { moveBasisText, moveCondition, movePercentText, moveReached, moveRuleWords, parseMovePercent } from "./move";
-import { moveQuoteFields } from "./quotes";
+import { alertQuoteListingFields, moveQuoteFields } from "./quotes";
+import { acceptsAlertSession } from "./session";
 import type { AlertCondition, AlertRule } from "./types";
 
 /** Listings quoted in one request: as many as a signed-out caller's batch may read. */
@@ -22,6 +23,7 @@ export const MAX_BULK_ALERTS = 500;
 
 /** What `alerts add` was asked for when it names a move. */
 export interface MoveAddRequest {
+  regularHoursOnly?: true;
   kind: "move";
   /** As typed; empty with `--watchlist`. */
   symbols: string[];
@@ -184,7 +186,8 @@ export function planMoveAlerts(request: MoveAddRequest, listings: readonly MoveL
     const alert: AlertRule = {
       ...createAlert(entry.listing.symbol, request.condition, request.percent, entry.listing.exchange),
       move: true,
-      ...moveQuoteFields(entry.quote, now),
+      ...request.regularHoursOnly ? { regularHoursOnly: true } : {},
+      ...acceptsAlertSession(request, entry.quote) ? moveQuoteFields(entry.quote, now) : alertQuoteListingFields(entry.quote),
     };
     const savedRule = saved.find((other) => sameLevelRule(other, alert));
     const made = savedRule ? undefined : plan.added.find((other) => sameLevelRule(other, alert));

@@ -37,6 +37,7 @@ import { readScheduledRule, scheduledEventName } from "./scheduled";
 import { readAlertStores } from "./storage";
 import { MOVE_CHECKS_KEY, readMoveChecks, withMoveChecks } from "./move-checks";
 import type { AlertRule } from "./types";
+import { alertSessionLabel } from "./session";
 
 type AlertsTab = "prices" | "events" | "history";
 
@@ -76,6 +77,7 @@ const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   // A measure's last reading in words, last so the columns before it keep their places: an RRG quadrant with the strength and momentum that place it,
   // a move with its close, and a price or move read off a pre-market, after-hours or overnight print with that session, as `alerts list` says it.
   { key: "reading", header: "Reading" },
+  { key: "session", header: "Session" },
 ];
 /** The terminal table keeps the pane's columns: the Quote cell already says the quote's age and feed. */
 const PRICE_TEXT_COLUMNS: HeadlessPaneColumn[] = [
@@ -87,7 +89,7 @@ const PRICE_TEXT_COLUMNS: HeadlessPaneColumn[] = [
 const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "event", header: "Event" },
   { key: "following", header: "Following" },
-  { key: "eventDate", header: "Event date", textFormat: (value, row) => text(value) || (row.leadDays == null ? "" : "not known yet") },
+  { key: "eventDate", header: "Event date", textFormat: (value, row) => text(value) || (row.kind === "earnings_date" ? "waiting for next date" : row.leadDays == null ? "" : "not known yet") },
   // A results alert waits for the report instead of a lead time.
   { key: "leadDays", header: "Days before", align: "right", textFormat: (value, row) => (row.when === "results" ? "results" : value == null ? MISSING_VALUE : String(value)) },
   { key: "state", header: "State" },
@@ -124,6 +126,7 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
   const session = readingSessionWords(alert);
   return {
     ...stored,
+    session: alert.metric ? null : alertSessionLabel(alert),
     awayPercent: away != null && Number.isFinite(away) ? Number(away.toFixed(2)) : null,
     quoteAt: quoted ? firedAlertTime(alert.lastQuoteUpdatedAt) : null,
     quoteSource: quoted ? alert.metric && closeBasis(alert.metric) || quoteSourceWords(alert.lastQuoteSource) : null,
@@ -267,6 +270,7 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
   description: "Your alerts: price, valuation and daily technical alerts with current price and distance to target, event alerts (earnings, CPI, FOMC and other economic calendar releases, filings, news, IV levels, market moves) or the alerts that went off, from this app and, signed in, Gloom Cloud.",
   freshness: { source: "Your alerts", status: "not-a-feed", basis: "your alert rules" },
   argument: { kind: "none" },
+  shotDeviceState: [FIRED_LOG_KEY, MOVE_CHECKS_KEY, IV_LEVEL_CHECKS_KEY].map((key) => ({ pluginId: ALERTS_PLUGIN_ID, key })),
   options: [{
     key: "tab",
     description: "Alerts tab: prices, events or history (alerts that went off; Gloom Cloud's deliveries when signed in).",

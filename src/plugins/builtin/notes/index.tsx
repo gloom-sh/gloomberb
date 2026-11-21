@@ -32,7 +32,7 @@ export const notesPlugin: GloomPlugin = {
     // First signed-in launch: the .md files on disk go up, then stay on disk
     // as the export format. Older cloud copies never overwrite newer files.
     const migrate = async () => {
-      if (migrating || !apiClient.isVerified() || notesMigratedAt(ctx.persistence)) return;
+      if (ctx.runtime === "command" || migrating || !apiClient.isVerified() || notesMigratedAt(ctx.persistence)) return;
       const cloud = registry.cloud({ kind: "user" });
       if (!cloud) return;
       migrating = true;

@@ -73,6 +73,13 @@ export const notesHeadless = {
     { key: "text", header: "Text", textHeader: "First line", shrink: true, textFormat: (value) => firstLine(typeof value === "string" ? value : "") },
   ],
   discovery: { screenshotReadiness: "ready" },
+  async shotState(_args, load) {
+    if (apiClient.getSessionToken()) return {};
+    const { rows } = await load();
+    return { settings: { localNotesSnapshot: rows.flatMap(({ id, title, updated, text }) =>
+      typeof id === "string" && typeof title === "string" && typeof text === "string"
+        ? [{ id, title, updatedAt: typeof updated === "string" ? Date.parse(updated) : undefined, text }] : []) } };
+  },
   async load(_args, context) {
     const { store, offline } = await personalStore(context);
     const index = [...await store.loadQuickNotesIndex()].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));

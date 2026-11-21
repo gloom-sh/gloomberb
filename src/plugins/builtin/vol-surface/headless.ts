@@ -210,7 +210,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { suggestFor: IMPLIED_VOL_WORDS },
   describe: (args) => `OVDV ${args.symbols[0] ?? ""}`,
   options: [
-    { key: "tab", type: "enum", values: SURFACE_TABS.map((value) => ({ value })),
+    { key: "tab", type: "enum", values: SURFACE_TABS.map((value) => value === "surface" ? { value, label: "3D surface" } : { value }),
       defaultValue: "surface", description: "Initial view; the report prints that view's figures", pluginState: { pluginId: "ticker-research", key: "activeTabId" } },
     { key: "ivSource", type: "enum", values: [{ value: "recomputed" }, { value: "provider" }], defaultValue: "recomputed", description: "Quote-derived IV or provider comparison" },
     { key: "priceSide", type: "enum", values: [{ value: "mid" }, { value: "bid" }, { value: "ask" }], defaultValue: "mid", description: "Quote side used by the IV solver" },

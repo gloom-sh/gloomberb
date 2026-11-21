@@ -134,7 +134,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
     ],
   },
   options: [
-    { key: "tab", type: "enum", values: POSITIONING_TABS.map((tab) => ({ value: tab.value })), defaultValue: initialTab,
+    { key: "tab", type: "enum", values: POSITIONING_TABS, defaultValue: initialTab,
       settingKey: "tab", description: "View the pane opens on: strikes, expiries or gex" },
     // `--expiration` too, as options and OVDV spell it.
     { key: "expiry", aliases: ["expiration"], type: "string", settingKey: "expiry", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiry 2027-01-15",

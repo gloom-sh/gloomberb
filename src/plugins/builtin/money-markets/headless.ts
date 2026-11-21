@@ -32,7 +32,7 @@ export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "none" },
   freshness: FRED_FRESHNESS,
   options: [{ key: "tab", type: "enum", description: "Money-market view: US rates, bills or liquidity, or Hong Kong's Exchange Fund Bill yields.",
-    values: MONEY_MARKET_TABS.map(({ value }) => ({ value })), defaultValue: "rates" }],
+    values: MONEY_MARKET_TABS.map(({ value, label }) => ({ value, label })), defaultValue: "rates" }],
   describe: (args) => isHongKongTab(args.options.tab) ? "Hong Kong money markets" : "US money markets",
   async load(args, ctx) {
     const hongKong = isHongKongTab(args.options.tab);

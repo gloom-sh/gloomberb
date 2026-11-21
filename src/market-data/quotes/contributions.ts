@@ -210,6 +210,7 @@ export function mergeQuoteContribution(
       postMarketChangePercent: next.postMarketChangePercent,
     } : {}),
     priceBasis: next.priceBasis,
+    futuresPriceKind: next.futuresPriceKind,
     // Said of this observation's price; a tick that does not say leaves it unknown.
     extendedSessionPrint: next.extendedSessionPrint,
     overnightPrice: next.overnightPrice,

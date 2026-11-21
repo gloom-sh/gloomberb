@@ -1,3 +1,4 @@
+import { matchOptionChoice, optionChoiceNames } from "../../utils/option-choice";
 import type {
   HeadlessPaneArgumentDef,
   HeadlessPaneDefinition,
@@ -147,10 +148,8 @@ export function optionFlags(option: PaneFunctionOptionDef): string {
 
 /** The option values a typed word is, by value or alias: `gas` is JODI's `--commodity gas`. */
 function optionValueOf(options: readonly PaneFunctionOptionDef[], typed: string): string | null {
-  const token = optionToken(typed);
   for (const option of options) {
-    const value = option.values?.find((candidate) => optionToken(candidate.value) === token
-      || candidate.aliases?.some((alias) => optionToken(alias) === token));
+    const value = matchOptionChoice(option.values ?? [], typed);
     if (value) return `${optionFlag(option.key)} ${value.value}`;
   }
   return null;
@@ -289,15 +288,11 @@ export function capabilityHasOption(capability: PaneFunctionCapability, key: str
 }
 
 function normalizeEnumValue(option: PaneFunctionOptionDef, rawValue: string, argument: string | null): string {
-  const token = optionToken(rawValue);
-  const match = option.values?.find((candidate) => (
-    optionToken(candidate.value) === token
-    || candidate.aliases?.some((alias) => optionToken(alias) === token)
-  ));
+  const match = matchOptionChoice(option.values ?? [], rawValue);
   if (match) return match.value;
   const hint = option.invalidValueHint?.(rawValue, argument);
   throw new Error(
-    `Invalid ${optionFlag(option.key)} value "${rawValue}".${hint ? ` ${hint}` : ""} Use one of: ${option.values?.map(({ value }) => value).join(", ") ?? ""}.`,
+    `Invalid ${optionFlag(option.key)} value "${rawValue}".${hint ? ` ${hint}` : ""} Use one of: ${optionChoiceNames(option.values ?? [])}.`,
   );
 }
 

@@ -83,6 +83,15 @@ export function alertQuote(quote: Quote, symbol: string): Quote {
   };
 }
 
+export function alertQuoteListingFields(quote: Quote): Pick<AlertRule, "lastQuoteCurrency" | "lastQuoteExchange" | "lastQuotePence"> {
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  return {
+    ...(quote.currency ? { lastQuoteCurrency: quote.currency } : {}),
+    ...(exchange ? { lastQuoteExchange: canonicalExchange(exchange) } : {}),
+    lastQuotePence: isPenceQuotedLine(quote) || undefined,
+  };
+}
+
 export function quoteAlertFields(
   quote: Quote,
   checkedAt = Date.now(),
@@ -98,17 +107,13 @@ export function quoteAlertFields(
   | "lastQuotePence"
   | "lastQuoteSession"
 > & { lastCheckError?: undefined } {
-  const exchange = quote.listingExchangeName || quote.exchangeName;
   return {
     lastCheckedPrice: quote.price,
     lastCheckedAt: checkedAt,
     lastQuoteUpdatedAt: quote.lastUpdated,
     lastQuoteSource: quote.dataSource,
     lastQuoteProviderId: quote.providerId,
-    ...(quote.currency ? { lastQuoteCurrency: quote.currency } : {}),
-    ...(exchange ? { lastQuoteExchange: canonicalExchange(exchange) } : {}),
-    // A London line in pence writes its levels in pence; a quote that is not clears it.
-    lastQuotePence: isPenceQuotedLine(quote) || undefined,
+    ...alertQuoteListingFields(quote),
     // An after-hours print says so wherever the reading is shown, as `quote` names it beside Last.
     lastQuoteSession: extendedPrintSession(quote, quote.price) ?? undefined,
     lastCheckError: undefined,
