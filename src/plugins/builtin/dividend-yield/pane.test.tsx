@@ -368,11 +368,11 @@ test("cash paid again after a year of none reads N/M for its growth, never a per
   expect(shown).not.toMatch(/1Y growth\s+n\/a/);
 });
 
-test.each([32, 46, 52, 60, 80, 120])("an undated payout keeps its label, value and basis detail without shortening unrelated labels at %d columns", async (width) => {
+test.each([32, 46, 52, 60, 80, 120])("a payout keeps its label, value and basis detail without shortening unrelated labels at %d columns", async (width) => {
   const data = await quarterlyIncome();
   const shown = await renderLoaded({ ...data, metrics: { ...data.metrics, payoutRatio: 0.47 } }, width, 40);
   expect(shown).toMatch(/Payout\s+47\.0%/);
-  expect(shown).toContain("Basis/date unstated");
+  expect(shown).toContain("TTM diluted EPS");
   expect(shown).not.toMatch(/Payout[^\n]*…/);
   if (width >= 80) {
     expect(shown).toContain("TTM/share");

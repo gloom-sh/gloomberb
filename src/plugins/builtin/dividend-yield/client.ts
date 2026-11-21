@@ -184,6 +184,8 @@ export interface DividendData {
   stale?: boolean;
   priceAsOf?: string;
   priceStale?: boolean;
+  /** The quote's providerPriceDivisor (100 for a line quoted in pence), so the price keeps the decimals it trades in. */
+  priceQuotedUnitDivisor?: number;
   /**
    * A crypto token: it pays no distributions, and a yield it earns (USDY's) accrues in its price, so it has no cash
    * yield to show, never 0.00% (TOKEN_YIELD_NOTE).
@@ -248,7 +250,9 @@ export async function fetchDividendData(
   }).sort((a, b) => b.exDate.getTime() - a.exDate.getTime()) : [];
   // A regular payment and an extra one on one ex-date are one row of the history: the row says it is both.
   const combined = combinedPaymentTimes(listed);
-  const payments = combined.size ? listed.map((payment) => combined.has(payment.exDate.getTime()) ? { ...payment, combined: true as const } : payment) : listed;
+  const merged = combined.size ? listed.map((payment) => combined.has(payment.exDate.getTime()) ? { ...payment, combined: true as const } : payment) : listed;
+  // A declared row is the issuer's (or the server's) own: it says itself whether its conversion is fixed.
+  const payments = convertedFrom ? withUnfixedConversions(merged, quoteFields, cashCurrency, new Set(declared.map((row) => row.exDate))) : merged;
   if (!historyError && actions && (actions.coverage?.dividends === "unavailable" || payments.length !== distributions.length)) {
     // A read with no rows is not an incomplete one.
     historyError = actions.dividends.length === 0 ? unavailableDividendHistory(triedAt) : incompleteDividendHistory(triedAt);
@@ -298,7 +302,8 @@ export async function fetchDividendData(
   if (metrics.forwardRate != null && metrics.forwardBasis === "uneven" && metrics.trailingEstimates?.length) {
     metrics.forwardEstimate = metrics.trailingEstimates.at(-1);
   } else if (metrics.forwardRate != null && metrics.forwardBasis !== "uneven" && convertedFrom && (!announced || announced.paidAmount == null || !annualCount)) {
-    metrics.forwardEstimate = announcedCash?.cashEstimate ?? { declaredCurrency: convertedFrom,
+    // Without an announcement the rate annualizes the latest distribution: one still unfixed is its estimate too.
+    metrics.forwardEstimate = announcedCash?.cashEstimate ?? (!announced ? metrics.trailingEstimates?.at(-1) : undefined) ?? { declaredCurrency: convertedFrom,
       ...(announced ? { declaredAmount: announced.amount, fixingDate: announced.fixingDate } : {}),
       basis: announced ? "Indicated annual rate converted from the declared currency; the issuer's cash-currency conversion is not fixed."
         : "Indicated annual rate converted from the declared currency; the conversion rate and fixing date are unavailable.",
@@ -321,6 +326,34 @@ export async function fetchDividendData(
     stale: response.stale === true || response.data.stale === true || actions?.stale === true || actions?.declaredCash?.stale === true,
     notes: ["Cash yield excludes taxes and reinvestment. Unannounced future payments and tax components are not modeled."],
   };
+}
+
+const DAY_MS = 86_400_000;
+/** Ex-dates this close are one distribution on two listings (SHEL:LSE ex 12 Nov, SHEL:NYSE ex 13 Nov), as the server pairs them. */
+const SAME_DISTRIBUTION_DAYS = 4;
+
+/**
+ * History payments in a currency the company does not declare in that are
+ * not paid yet, marked as estimates as an issuer's unfixed conversion is (HSBA's):
+ * the amount is the source's conversion at a market rate until the issuer
+ * fixes its own, near the pay date. Shell's 29.858244p for its 12 Nov
+ * $0.3906, paid 21 Dec, is one. A payment is unpaid by its own pay date, or
+ * by the summary's for the distribution its ex-date names; one with neither
+ * is left as it is.
+ */
+function withUnfixedConversions(payments: DividendPayment[], summary: QuoteSummaryDividendFields | null, cashCurrency: string,
+  declaredExDates: ReadonlySet<string>, now = new Date()): DividendPayment[] {
+  const today = now.toISOString().slice(0, 10);
+  const statedEx = reportedDividendDate(summary?.exDividendDate ?? null);
+  const statedPay = reportedDividendDate(summary?.dividendDate ?? null);
+  return payments.map((payment) => {
+    if (!payment.declared || payment.cashEstimate || payment.exDate > now || declaredExDates.has(payment.exDate.toISOString().slice(0, 10))) return payment;
+    const payDate = payment.paymentDate
+      ?? (statedEx && statedPay && Math.abs(statedEx.getTime() - payment.exDate.getTime()) <= SAME_DISTRIBUTION_DAYS * DAY_MS ? statedPay : null);
+    if (!payDate || payDate.toISOString().slice(0, 10) <= today) return payment;
+    return { ...payment, cashEstimate: { declaredCurrency: payment.declared.currency, declaredAmount: payment.declared.amount,
+      basis: `Reported cash estimate; the issuer's ${cashCurrency} conversion is not fixed.` } };
+  });
 }
 
 function reportedDividendDate(timestamp: number | null): Date | null {
@@ -364,6 +397,11 @@ export function buildDividendMetrics(
   const paymentDates = payments.flatMap((payment) => payment.paymentDate && payment.paymentDate >= today ? [payment.paymentDate] : []);
   if (reportedPayDate && reportedPayDate >= today) paymentDates.push(reportedPayDate);
   const nextPayDate = paymentDates.length ? new Date(Math.min(...paymentDates.map((date) => date.getTime()))) : null;
+  // A date the summary carries from the company's other listing names it, where it is the one shown.
+  const carriedFrom = (shown: Date | null, reported: Date | null, listing: string | undefined) =>
+    listing && shown && reported && shown.getTime() === reported.getTime() ? listing : undefined;
+  const nextExDividendDateListing = carriedFrom(nextExDividendDate, reportedExDate, quoteFields?.exDividendDateListing);
+  const nextPayDateListing = carriedFrom(nextPayDate, reportedPayDate, quoteFields?.dividendDateListing);
 
   // A dividend that has stopped has no forward rate, whatever is still stated for it.
   // Without a usable history only the latest date known says it, on the annual window.
@@ -417,6 +455,8 @@ export function buildDividendMetrics(
     lastExDividendDate,
     nextExDividendDate,
     nextPayDate,
+    ...nextExDividendDateListing ? { nextExDividendDateListing } : {},
+    ...nextPayDateListing ? { nextPayDateListing } : {},
   }, currentPrice);
 }
 

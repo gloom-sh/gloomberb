@@ -13,6 +13,7 @@ import { sessionQuotes } from "../../../test-support/test-fixture-session-quotes
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
 import { equityScreenerHeadless } from "./headless";
 import { liveScreenPlaces, overlayLiveScreenRows, placeLiveScreenRows, screenExtendedSessions, sortLiveScreenRows } from "./live";
+import { formatScreenMetric } from "./model";
 import { screenFixture } from "./test-fixture";
 
 afterEach(() => setCliColorEnabledOverride(null));
@@ -175,6 +176,23 @@ test("the EQS pane, its report and `quote` agree on Last and Chg% in every sessi
       expect(text).toContain({ PRE: "Pre-Market", POST: "After Hours", OVERNIGHT: "Overnight" }[extended!.session]);
     }
   }
+});
+
+test("a London line quoted in pence keeps its pence in Last, in the pane and the report, as quote prints it", async () => {
+  // GCP:LSE at 82.8p, shown in pounds: £0.828, never £0.83; SHEL's 3,574.5p is £35.745.
+  for (const [pence, shown, cell] of [[82.8, "£0.828", "0.828"], [3574.5, "£35.745", "35.745"]] as const) {
+    const snapshot = { ...snapshotRow(pence / 100, -1.2), symbol: "GCP", exchange: "LSE", currency: "GBP" };
+    snapshot.metrics.price = metric(pence / 100, "GBP", "2026-10-09");
+    const quote: Quote = { ...quotes().regular, symbol: "GCP.L", currency: "GBP", providerPriceDivisor: 100, listingExchangeName: "LSE",
+      price: pence / 100, change: 0, changePercent: -1.2, previousClose: pence / 100, marketState: "CLOSED", regularClose: undefined };
+    const pane = paneRow(snapshot, quote);
+    expect(pane.quotedUnitDivisor).toBe(100);
+    expect(formatScreenMetric("price", pane.metrics.price, pane.quotedUnitDivisor)).toBe(cell);
+    const { text } = await report(snapshot, quote);
+    expect(text.split("\n").find((entry) => entry.startsWith("GCP "))).toContain(` ${shown} `);
+  }
+  // A line priced in its currency's own unit keeps two decimals.
+  expect(formatScreenMetric("price", metric(0.828, "USD", "2026-10-09"))).toBe("0.83");
 });
 
 test("a sort on a figure the quotes move is redone on the figures shown; other sorts keep the snapshot's order", () => {

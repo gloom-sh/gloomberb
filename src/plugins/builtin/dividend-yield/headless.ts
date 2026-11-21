@@ -8,7 +8,7 @@ import { fetchDividendData, requestDividendHistory, statedForwardRate, TOKEN_YIE
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
 import {
-  COMBINED_PAYMENT, convertedFromText, distinctEstimateTexts, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
+  carriedDateText, COMBINED_PAYMENT, convertedFromText, distinctEstimateTexts, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
 } from "./view";
 import { MISSING_VALUE, formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -156,8 +156,12 @@ function growthText(growth: number | null, payments: GrowthPayments | null | und
 
 const isoDay = (date: Date | null | undefined): string | null => date ? date.toISOString().slice(0, 10) : null;
 
-function dateEntry(label: string, date: Date | null) {
-  return { label, value: date, formatted: date ? date.toISOString().slice(0, 10) : "—" };
+/** The payout figure's label, naming what it is over as the ranking's title does. */
+const PAYOUT_LABEL = `Payout (${PAYOUT_BASIS})`;
+
+/** A date, with the company's other listing it is stated by where it is not this one's: `2026-12-17 (from HSBA:LSE)`. */
+function dateEntry(label: string, date: Date | null, listing?: string) {
+  return { label, value: date, formatted: date ? `${date.toISOString().slice(0, 10)}${listing ? ` ${carriedDateText(listing)}` : ""}` : "—" };
 }
 
 /** The next pay date, when it is the one stated beside the ex-date the forward rate is dated by. */
@@ -242,8 +246,8 @@ export function projectDividendYieldHeadless(
     ({ label, value: roundedRatio(value), formatted: growthText(value, payments, notMeaningful) });
   const datesAndCash = [
     dateEntry("Last ex-dividend", metrics.lastExDividendDate),
-    dateEntry("Next ex-dividend", metrics.nextExDividendDate),
-    metrics.nextPayDate ? dateEntry("Next pay", metrics.nextPayDate) : { label: "Next pay", value: null, formatted: "Unavailable" },
+    dateEntry("Next ex-dividend", metrics.nextExDividendDate, metrics.nextExDividendDateListing),
+    metrics.nextPayDate ? dateEntry("Next pay", metrics.nextPayDate, metrics.nextPayDateListing) : { label: "Next pay", value: null, formatted: "Unavailable" },
     ...(data.payments.length > 0 && metrics.trailingRate === 0
       ? [{ label: "Cash status", value: "No cash distributions reported in the past 12 months." }] : []),
   ];
@@ -259,7 +263,8 @@ export function projectDividendYieldHeadless(
         title: "Dividend metrics",
         // What the text report says of each figure: its basis, its date and why one is missing, in one line.
         textEntries: [
-          { label: "Price", value: data.price, ...(data.price != null && currency ? { formatted: formatMarketPriceWithCurrency(data.price, currency, { minimumFractionDigits: currencyPriceMinDigits(currency) }) } : {}) },
+          { label: "Price", value: data.price, ...(data.price != null && currency ? { formatted: formatMarketPriceWithCurrency(data.price, currency, {
+            minimumFractionDigits: currencyPriceMinDigits(currency), ...data.priceQuotedUnitDivisor ? { quotedUnitDivisor: data.priceQuotedUnitDivisor } : {} }) } : {}) },
           ...(data.stale ? [{ label: "History status", value: staleHistoryText(data.fetchedAt) }] : []),
           ...(priceStatusText ? [{ label: "Price status", value: priceStatusText }] : []),
           { label: trailingLabel, value: roundedRatio(metrics.trailingYield),
@@ -278,7 +283,7 @@ export function projectDividendYieldHeadless(
           { label: "Trailing rate", value: metrics.trailingRate, formatted: cashRate(metrics.trailingRate, trailingEstimated) },
           { label: "Forward rate", value: metrics.forwardRate, formatted: `${cashRate(metrics.forwardRate, forwardEstimated)}${trailingForward ? ` (${UNEVEN_REGULAR_PAYMENTS})` : ""}` },
           ...estimateTexts.map((estimate) => ({ label: "Estimated", value: estimate })),
-          { label: "Payout (basis/date unstated)", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio) },
+          { label: PAYOUT_LABEL, value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio) },
           growthEntry("1Y Cash Growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful),
           growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),
           { label: "Frequency", value: metrics.paymentFrequency },
@@ -301,7 +306,7 @@ export function projectDividendYieldHeadless(
             asOf: metrics.trailingRate == null ? null : lastEx },
           { label: `Forward rate${trailingForwardLabel}`, value: metrics.forwardRate, ...(metrics.forwardRate != null && currency && !convertedFrom ? { unit: currency } : { formatted: cashRate(metrics.forwardRate) }),
             asOf: metrics.forwardRate == null ? null : metrics.forwardRateAsOf },
-          { label: "Payout (basis/date unstated)", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio),
+          { label: PAYOUT_LABEL, value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio),
             exportUnit: "pct", asOf: null },
           { ...growthEntry("1Y Cash Growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful), exportUnit: "pct", asOf: metrics.growth1Y == null ? null : lastEx },
           { ...growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful), exportUnit: "pct", asOf: metrics.growth3Y == null ? null : lastEx },
@@ -348,6 +353,9 @@ export function projectDividendYieldHeadless(
       forwardRateEstimate: metrics.forwardEstimate ?? null,
       trailingRateEstimates: metrics.trailingEstimates ?? [],
       nextPayDateStatus: metrics.nextPayDate ? "announced" : "unavailable",
+      // The company's other listing a date is stated by, where this listing's sources state none (0005:HKEX's pay date is HSBA:LSE's).
+      nextPayDateListing: metrics.nextPayDateListing ?? null,
+      nextExDividendDateListing: metrics.nextExDividendDateListing ?? null,
       declaredCashAsOf: data.declaredCashAsOf ?? null,
       cashVerificationWarning: data.cashVerificationWarning ?? null,
       // Set when a monthly payer's history stops more than 40 days ago: its forward yield is withheld and its trailing yield counts the history to then.

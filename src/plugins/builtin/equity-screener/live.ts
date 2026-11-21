@@ -13,7 +13,11 @@ import { isValuationMultiple, screenRowId } from "./model";
  * cap are the regular session's, and a pre-market, after-hours or overnight
  * print rides beside them in `extended`, measured from that session's close.
  */
-export type LiveScreenRow = ScreenRow & { extended?: ExtendedSessionDisplay };
+export type LiveScreenRow = ScreenRow & {
+  extended?: ExtendedSessionDisplay;
+  /** The quote's providerPriceDivisor (100 for a line quoted in pence): its price keeps the decimals it trades in. */
+  quotedUnitDivisor?: number;
+};
 
 function metricTime(metric: ScreenMetric | undefined): number | null {
   const stamp = metric?.observedAt ?? metric?.asOf ?? null;
@@ -37,10 +41,18 @@ function liveMetric(metric: ScreenMetric, value: number, asOf: string, observedA
  */
 const PRICE_MULTIPLE_FIELDS = ["trailingPE", "forwardPE", "priceToBook"] as const;
 
-/** The company's name as its quote gives it, so a row reads as `quote` does; the snapshot's without one. */
-function quoteNamed(row: ScreenRow, quote: Quote): ScreenRow {
+/**
+ * The company's name as its quote gives it, so a row reads as `quote` does
+ * (the snapshot's without one), and the unit its quote is in: a line quoted
+ * in pence keeps its pence decimals (GCP's £0.828).
+ */
+function quoteNamed(row: ScreenRow, quote: Quote): LiveScreenRow {
   const name = quote.name?.trim();
-  return name && name !== row.name ? { ...row, name } : row;
+  const divisor = quote.providerPriceDivisor;
+  const quoted = divisor != null && Number.isFinite(divisor) && divisor > 1 && (!row.currency || quote.currency?.trim() === row.currency);
+  return name && name !== row.name || quoted
+    ? { ...row, ...name && name !== row.name ? { name } : {}, ...quoted ? { quotedUnitDivisor: divisor } : {} }
+    : row;
 }
 
 /**

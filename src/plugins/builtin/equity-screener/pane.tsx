@@ -236,7 +236,7 @@ function ScreenDetail({
               <KeyValueRow
                 label={screenLabel(field)}
                 labelWidth={24}
-                value={screenDetailValue(field, metric)}
+                value={screenDetailValue(field, metric, row.quotedUnitDivisor)}
                 detail={
                   metric.value === null
                     ? (reason ?? "unavailable")
@@ -252,7 +252,7 @@ function ScreenDetail({
                 <KeyValueRow
                   label={EXTENDED_SESSION_LABELS[extended.session]}
                   labelWidth={24}
-                  value={`${formatScreenValue("price", extended.price)} ${row.metrics.price.unit}`}
+                  value={`${formatScreenValue("price", extended.price, row.quotedUnitDivisor)} ${row.metrics.price.unit}`}
                   detail={`${formatPercentRaw(extended.changePercent)}${extended.mark ? " mid" : ""}`}
                 />
               ) : null}
@@ -1127,7 +1127,7 @@ function EquityScreenView({
                 const sign = screenSignValue(field, observation.value);
                 const change = sign == null ? undefined : priceColor(sign, colors);
                 return {
-                  text: formatScreenMetric(field, observation),
+                  text: formatScreenMetric(field, observation, row.quotedUnitDivisor),
                   color: observation.state === "stale" ? colors.warning : change,
                 };
               }
