@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { getListingSymbol, getListingSymbolsToTry, listingSuffixExchange, listingSuffixVenue } from "./listing-symbols";
+import {
+  getListingSymbol,
+  getListingSymbolsToTry,
+  listingSuffixConflictsWithExchange,
+  listingSuffixExchange,
+  listingSuffixVenue,
+} from "./listing-symbols";
 
 describe("Listing symbol aliases", () => {
   test("canonicalizes MIC aliases before applying exchange suffixes", () => {
@@ -25,6 +31,27 @@ describe("Listing symbol aliases", () => {
       expect(listingSuffixExchange(listed!)).toBe(venue!);
     }
     expect(getListingSymbol("REP", "MCE")).toBe("REP.MC");
+  });
+
+  test("a Prague listing takes .PR, never the Philippine .PS the PSE code once stood for", () => {
+    for (const venue of ["PSE", "XPRA", "PRA"]) {
+      expect(getListingSymbol("CEZ", venue), venue).toBe("CEZ.PR");
+      expect(getListingSymbolsToTry("CEZ", venue), venue).toEqual(["CEZ.PR"]);
+      expect(getListingSymbolsToTry("CEZ", venue, { exactExchange: true }), venue).toEqual(["CEZ.PR"]);
+    }
+    expect(listingSuffixVenue("CEZ.PR")).toEqual({ symbol: "CEZ", exchange: "PSE" });
+    expect(listingSuffixConflictsWithExchange("CEZ.PR", "PSE")).toBe(false);
+    // A Philippine symbol stays whole, naming no venue.
+    expect(getListingSymbol("AC.PS", "")).toBe("AC.PS");
+    expect(listingSuffixVenue("AC.PS")).toBeNull();
+  });
+
+  test("a Pakistan Stock Exchange listing takes .KA, and .KA names it back", () => {
+    expect(getListingSymbol("OGDC", "PSX")).toBe("OGDC.KA");
+    expect(getListingSymbolsToTry("OGDC", "PSX", { exactExchange: true })).toEqual(["OGDC.KA"]);
+    expect(listingSuffixVenue("OGDC.KA")).toEqual({ symbol: "OGDC", exchange: "PSX" });
+    expect(listingSuffixVenue("LUCK.KA", "PSX")).toEqual({ symbol: "LUCK", exchange: "PSX" });
+    expect(listingSuffixConflictsWithExchange("OGDC.KA", "PSX")).toBe(false);
   });
 
   test("a TSX Venture listing takes .V now that VENTURE reads as TSXV, and .V names it back", () => {
