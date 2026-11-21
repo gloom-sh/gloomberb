@@ -75,6 +75,12 @@ function pruneSpec(spec: ChartSpec): ChartSpec {
   return { ...rebound, panels, studies };
 }
 
+/** The series in `color`, or with undefined in the theme's colour again. */
+function withSeriesColor(series: ChartSeriesSpec, color: string | undefined): ChartSeriesSpec {
+  const { color: _previous, ...rest } = series;
+  return color === undefined ? rest : { ...rest, color };
+}
+
 function replaceAt<T>(values: readonly T[], index: number, value: T): T[] {
   return values.map((entry, entryIndex) => entryIndex === index ? value : entry);
 }
@@ -589,6 +595,7 @@ export function useSeriesEditorController({
     selected,
     handlers: {
       setStyle: setSelectedStyle,
+      setColor: (color) => updateSelected((series) => withSeriesColor(series, color)),
       setTransform: setSelectedTransform,
       setAxis: (axis) => updateSelected((series) => ({ ...series, axis })),
       setVisibility: setSelectedVisibility,

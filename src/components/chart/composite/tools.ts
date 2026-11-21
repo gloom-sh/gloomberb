@@ -12,6 +12,7 @@ import type {
 } from "./types";
 import { clamp } from "../../../utils/math";
 import { isRecord } from "../../../utils/guards";
+import { CHART_PALETTE, nextChartPaletteColor } from "../../../theme/chart-palette";
 
 /** Pointer tools that take the drag away from panning while one is picked. */
 export type ChartToolKind = "measure" | "zoom" | "line" | "pencil" | "level" | "rect" | "fib" | "ray";
@@ -177,14 +178,6 @@ export interface ChartDrawingHit {
   /** Grabbed endpoint, or null when the whole shape was grabbed. */
   pointIndex: number | null;
 }
-
-export const CHART_DRAWING_COLORS = [
-  "#f5a524",
-  "#4c9aff",
-  "#33c481",
-  "#ff5c7a",
-  "#c084fc",
-] as const;
 
 export interface ChartToolDrag {
   kind: ChartToolKind;
@@ -464,9 +457,9 @@ export function shiftDrawing(
   return { ...drawing, points };
 }
 
+/** The drawing colour after `color`: a drawing always takes one of the palette's. */
 export function nextDrawingColor(color: string): string {
-  const index = CHART_DRAWING_COLORS.indexOf(color as typeof CHART_DRAWING_COLORS[number]);
-  return CHART_DRAWING_COLORS[(index + 1) % CHART_DRAWING_COLORS.length]!;
+  return nextChartPaletteColor(color, false) ?? CHART_PALETTE[0];
 }
 
 export function resolveChartToolKind(modifiers: {

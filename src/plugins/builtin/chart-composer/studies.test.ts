@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
+  builtinStudyColor,
   builtinStudyPeriod,
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
   parseVwapAnchor,
   setBuiltinStudies,
+  setBuiltinStudyColor,
   setBuiltinStudyPeriod,
   setPairStudies,
 } from "./studies";
+import { parseChartSpec } from "./chart-spec";
+import { CHART_PALETTE } from "../../../theme/chart-palette";
 import { createTestResolvedSeries, createTestSeriesPoint } from "../../../test-support/time-series";
 import { chartStudyLabel } from "./settings";
 import { buildComparisonChartPreset, buildPriceChartPreset } from "./presets";
@@ -103,6 +107,21 @@ describe("chart composer studies", () => {
     // An indicator that is not on keeps its default and is left alone.
     expect(setBuiltinStudyPeriod(toggled, "ema20", 9)).toBe(toggled);
     expect(builtinStudyPeriod(toggled, "ema20")).toBe(20);
+  });
+
+  test("a picked colour survives other indicators, a period edit and a reload, and Auto gives it back to the theme", () => {
+    const picked = setBuiltinStudyColor(setBuiltinStudies(buildPriceChartPreset("AAPL"), ["sma50"]), "sma50", CHART_PALETTE[3]);
+    const edited = setBuiltinStudies(setBuiltinStudies(setBuiltinStudyPeriod(picked, "sma50", 30), ["sma50", "rsi14"]), ["sma50"]);
+    // Kept in the pane's settings and read back, as a restart or a share link reads it.
+    const reload = (spec: typeof edited) => parseChartSpec(JSON.parse(JSON.stringify(spec)))!;
+    const reloaded = reload(edited);
+    expect(builtinStudyColor(reloaded, "sma50")).toBe(CHART_PALETTE[3]);
+    expect(builtinStudyPeriod(reloaded, "sma50")).toBe(30);
+
+    const auto = reload(setBuiltinStudyColor(reloaded, "sma50", undefined));
+    expect(builtinStudyColor(auto, "sma50")).toBeUndefined();
+    // An indicator that is not on is left alone.
+    expect(setBuiltinStudyColor(auto, "ema20", CHART_PALETTE[0])).toBe(auto);
   });
 });
 
