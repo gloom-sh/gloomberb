@@ -2261,8 +2261,9 @@ async function loadListingHistory(
   // NFLX's bars across its 10-for-1 split are in post-split shares, as META's FB-era bars say they were FB's, and the
   // bar it took effect in is flagged. A long list skips the read, as it skips the other lookups.
   const splits = lookups ? await actions.splits() : [];
-  const data = withSplitFlags(demerged.rows, splits);
-  const splitNote = historySplitNote(listing.symbol, data, splits);
+  const flaggedSplits = withSplitFlags(demerged.rows, splits);
+  const data = flaggedSplits.rows;
+  const splitNote = historySplitNote(listing.symbol, flaggedSplits.splits);
   const interval = data[0]?.interval ?? null;
   // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
   const intraday = data.some((row) => row.date.length > 10);
@@ -2375,26 +2376,16 @@ async function listingDemergerFlags(
 }
 
 /**
- * "Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split); bars before it are split-adjusted.": the splits whose
- * bar is flagged (withSplitFlags), which the bars run across in post-split shares. Null with none, or for a factor no
- * share count states (a spinoff's price adjustment, which the demerger note covers).
+ * "Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split); bars before it are split-adjusted.": the splits a bar is
+ * flagged for (withSplitFlags), which the bars run across in post-split shares, whatever bar size holds them. Null
+ * with none.
  */
-function historySplitNote(symbol: string, rows: readonly HistoryRow[], splits: readonly SplitAction[]): string | null {
-  const flagged = rows.filter((row) => row.flag?.split(",").includes(SPLIT_FLAG));
-  const first = rows[0]?.date.slice(0, 10);
-  const last = rows.at(-1)?.date.slice(0, 10);
-  if (!first || !last || flagged.length === 0) return null;
-  const inside = splits
-    .filter((split) => /^\d{4}-\d{2}-\d{2}/.test(split.date) && split.date.slice(0, 10) >= first && split.date.slice(0, 10) <= last)
-    .sort((left, right) => left.date.localeCompare(right.date))
-    .flatMap((split) => {
-      const terms = splitShareTerms(split);
-      return terms ? [`${terms.split(",")[0]} on ${split.date.slice(0, 10)}`] : [];
-    });
-  if (inside.length === 0) return null;
-  // A window that opens on the split day has no bar before it to adjust.
-  const adjusted = flagged.some((row) => row !== rows[0]) ? `; bars before ${inside.length === 1 ? "it" : "each"} are split-adjusted` : "";
-  return `Splits in range: ${symbol} ${inside.join(" and ")} (flag ${SPLIT_FLAG})${adjusted}.`;
+function historySplitNote(symbol: string, flagged: ReadonlyArray<{ split: SplitAction; barBefore: boolean }>): string | null {
+  if (flagged.length === 0) return null;
+  const named = flagged.map(({ split }) => `${splitShareTerms(split)!.split(",")[0]} on ${split.date.slice(0, 10)}`);
+  // A window that opens on the split's bar has no bar before it to adjust.
+  const adjusted = flagged.some(({ barBefore }) => barBefore) ? `; bars before ${named.length === 1 ? "it" : "each"} are split-adjusted` : "";
+  return `Splits in range: ${symbol} ${named.join(" and ")} (flag ${SPLIT_FLAG})${adjusted}.`;
 }
 
 /**

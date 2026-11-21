@@ -1876,7 +1876,7 @@ A company's listings are the ones Gloom Cloud groups under one issuer (share cla
 
 ### Time and sales windows
 
-`gloom fn TAS HYG --from 10:30 --to 10:35` lists the trades and quotes of a window of the session the tape serves, oldest first. Times are New York's clock (`14:30Z` for UTC, or a full timestamp such as `2026-11-20T14:30:00Z`), and either bound alone runs the window to that end of the session. A bound outside what is served is refused with the window that is. See [Time and sales](research-data.md#time-and-sales-tas-qr) for the limits.
+`gloom fn TAS HYG --from 10:30 --to 10:35` lists the trades and quotes of a window of the session the tape serves, oldest first. Times are New York's clock (`14:30Z` for UTC, or a full timestamp such as `2026-11-20T14:30:00Z`; a timestamp without `Z` or an offset is New York time), and either bound alone runs the window to that end of the session. A bound outside what is served is refused with the window that is. See [Time and sales](research-data.md#time-and-sales-tas-qr) for the limits.
 
 `gloom fn CDX` dates each index by its own trade date. While today's New York date still trades, it marks the index `so far` with its prints and last print. HY and EM add a spread equivalent of their price. `fn CDX --explain` defines the columns, and [Index and sovereign CDS](credit-reference.md) explains points, upfront, the roll and the conversion.
 

@@ -74,7 +74,7 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "tab", type: "enum", settingKey: "tab", values: [{ value: "trades", label: "Trades" }, { value: "quotes", label: "NBBO" }], description: "Which tape to show first." },
     { key: "limit", shot: REPORT_ROWS, type: "integer", minimum: 1, maximum: 1000, defaultValue: 100, description: "Maximum recent prints in the report." },
     { key: "from", shot: WINDOW_OPTION, type: "string", defaultValue: "", placeholder: "time", example: "--from 10:30 --to 10:35",
-      description: "Start of a window of the served session (the latest): 10:30 or 10:30:15 on New York's clock, 14:30Z on UTC's, or a timestamp such as 2026-11-20T14:30:00Z."
+      description: "Start of a window of the served session (the latest): 10:30 or 10:30:15 on New York's clock, 14:30Z on UTC's, or a timestamp such as 2026-11-20T14:30:00Z (New York time without Z or an offset)."
         + " The report then lists that window's prints oldest first; without --to it runs to the end of what is served.",
       normalize: normalizeTapeClock },
     { key: "to", shot: WINDOW_OPTION, type: "string", defaultValue: "", placeholder: "time",

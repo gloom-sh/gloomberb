@@ -65,19 +65,27 @@ function actionBarIndex(rows: readonly DemergerRow[], exDate: string, barBefore:
 /**
  * The rows with the bar each split took effect in flagged `split` (FFAI's
  * 1-for-150 reverse on 2026-07-24), as `history` marks it beside the note
- * naming it. A factor no share count states is left to the demerger flag.
+ * naming it, and those splits, oldest first, each with whether a bar comes
+ * before its own: a weekly or monthly bar holds the split anywhere in its
+ * period, the last one too. A factor no share count states is left to the
+ * demerger flag.
  */
-export function withSplitFlags<Row extends DemergerRow>(rows: readonly Row[], splits: readonly SplitAction[]): Row[] {
+export function withSplitFlags<Row extends DemergerRow>(rows: readonly Row[], splits: readonly SplitAction[]): {
+  rows: Row[];
+  splits: Array<{ split: SplitAction; barBefore: boolean }>;
+} {
   const marked = [...rows];
-  for (const split of splits) {
+  const flagged: Array<{ split: SplitAction; barBefore: boolean }> = [];
+  for (const split of [...splits].sort((left, right) => left.date.localeCompare(right.date))) {
     if (!/^\d{4}-\d{2}-\d{2}/.test(split.date) || !splitShareTerms(split)) continue;
     const index = actionBarIndex(marked, split.date.slice(0, 10), false);
     if (index < 0) continue;
     const row = marked[index]!;
     const codes = (row.flag ?? "").split(",").filter(Boolean);
     if (!codes.includes(SPLIT_FLAG)) marked[index] = { ...row, flag: [...codes, SPLIT_FLAG].join(",") };
+    flagged.push({ split, barBefore: index > 0 });
   }
-  return marked;
+  return { rows: marked, splits: flagged };
 }
 
 /**
