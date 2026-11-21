@@ -204,15 +204,19 @@ function numericCodeGrid(rows: readonly string[][]): boolean {
     && rows.every((cells) => cells.every((cell) => !cell || NUMERIC_CODE.test(cell.trim())));
 }
 
+/** A numeric exchange code on a line of its own, bare or with its market: `8058`, `8058:TSE`, `7203.T`, `0700.HK`. */
+const NUMERIC_LISTING = /^\d{4,6}(?:[.:][A-Za-z]{1,6})?$/;
+
 /**
- * A line of a list that holds several entries, each a symbol: `8001.t, 8002:TSE, 8053`. A numeric code among them
- * is a listing, but a whole number after a symbol with only numbers after it is that symbol's value (`ED, 2582`),
- * unless the list's own lines are numeric codes (`codes`: `8058` on a line of its own), and a shorter number, a
- * figure, a rating or a name anywhere on the line is a value too.
+ * A line of a list that holds several entries, each a symbol: `8001.t, 8002:TSE, 8053`. Numeric codes side by side
+ * are listings (`0700, 9988`), but a whole number beside a symbol is a listing only when the list's own lines are
+ * numeric codes (`codes`: `8058` or `8058:TSE` on a line of its own); elsewhere it is that symbol's value, a quantity
+ * or a price (`ED, 2582`, `AAPL, 1500, USD`). A shorter number, a figure, a rating or a name anywhere on the line is a
+ * value too.
  */
 function isSymbolsLine(cells: readonly string[], codes: boolean): boolean {
   const code = (cell: string) => NUMERIC_CODE.test(cell.trim());
-  if (!codes && cells.length > 1 && !code(cells[0]!) && cells.slice(1).every(code)) return false;
+  if (!codes && cells.some(code) && cells.some((cell) => !code(cell) && !isJunkCell(cell))) return false;
   return cells.every((cell) => isJunkCell(cell) || isTerminalCodeCell(cell) || isSymbolWords(cell)
     || (isGridSymbol(cell) && (!isFigure(cell) || code(cell))));
 }
@@ -225,7 +229,7 @@ function isSymbolsLine(cells: readonly string[], codes: boolean): boolean {
  */
 function isRaggedList(rows: readonly string[][]): boolean {
   const lines = rows.map((cells) => cells.filter(Boolean));
-  const codes = lines.some((cells) => cells.length === 1 && NUMERIC_CODE.test(cells[0]!.trim()));
+  const codes = lines.some((cells) => cells.length === 1 && NUMERIC_LISTING.test(cells[0]!.trim()));
   return lines.some((cells) => cells.length > 1) && lines.every((cells) => cells.length <= 1 || isSymbolsLine(cells, codes));
 }
 

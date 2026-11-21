@@ -77,8 +77,15 @@ test("a ragged list of symbol lines beside a line holding a name reads every sym
   expect(parseSymbolText("0700, 9988\nTencent Holdings\n").symbols).toEqual(["0700", "9988", "Tencent Holdings"]);
   expect(parseSymbolText("9988.HK, 8053\n8058\nMitsubishi Corp\n").symbols).toEqual(["9988.HK", "8053", "8058", "Mitsubishi Corp"]);
   // A price, a quantity, a rating or a name beside a symbol is a table's row, whatever line beside it holds one entry.
-  for (const row of ["ED, 2582", "AAPL, 150", "AAPL, 2.5", "AAPL, BUY", "AAPL, Apple Inc"]) {
+  for (const row of ["ED, 2582", "AAPL, 150", "AAPL, 2.5", "AAPL, BUY", "AAPL, Apple Inc", "AAPL, 1500, USD", "TSLA, 1200, Tesla"]) {
     expect(parseSymbolText(`${row}\nMitsubishi Corp\n`).symbols, row).toEqual([row.split(", ")[0]!, "Mitsubishi Corp"]);
+  }
+  // A quantity of four digits or more reads like a Tokyo or Hong Kong code, but beside a symbol and a currency or a
+  // name it is the symbol's value, so 1500 never reaches the lookup as a listing.
+  for (const rows of ["AAPL, 1500, USD\nMSFT, 2000, USD\n", "TSLA, 1200, Tesla\n"]) {
+    const read = parseSymbolText(rows);
+    expect(read.symbols, rows).toEqual(rows.trim().split("\n").map((row) => row.split(", ")[0]!));
+    expect(read.ignored, rows).toEqual(rows.trim().split("\n").flatMap((row) => row.split(", ").slice(1)));
   }
 });
 
