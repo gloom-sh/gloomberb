@@ -112,7 +112,7 @@ export function formatCurrencyCode(
  * an amount converted at a market rate (Shell's 29.858244p before its sterling
  * fixing) or a sum of them is no finer than that, 29.8582p.
  */
-export function distributionAmountDigits(currency = "USD"): number {
+function distributionAmountDigits(currency = "USD"): number {
   return minorUnitSign(currency) ? 4 : currencyPriceDigits(currency) + 4;
 }
 
