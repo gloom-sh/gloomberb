@@ -19,6 +19,8 @@ import type {
   EarningsEvent,
   SecFilingDocument,
   SecFilingItem,
+  SecFilingsPage,
+  SecFilingsPageQuery,
   SecForm4Trade,
   BatchedReadMethod,
   MarketDataRequestContext,
@@ -42,7 +44,9 @@ import {
   type CloudHoldersPayload,
   type CloudMarketResponse,
   type CloudPricePointPayload,
+  type CloudSecFilingsResponse,
 } from "../../api-client";
+import type { CloudSecFilingsParams } from "../../api-client/paths";
 import type { NewsArticle, NewsQuery } from "../../types/news-source";
 import { normalizeNewsFeed } from "../../news/news-model";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
@@ -168,6 +172,13 @@ function mapCloudSecFiling(item: {
       ? { pressReleaseUrl: item.pressReleaseUrl } : {}),
     ...(form4 ? { form4 } : {}),
   };
+}
+
+/** Each form's newest filing day as the service sent it, or null when it sent none (an older server). */
+function readNewestByForm(value: unknown): Record<string, string> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .filter((entry): entry is [string, string] => !!entry[0].trim() && typeof entry[1] === "string" && /^\d{4}-\d{2}-\d{2}$/.test(entry[1])));
 }
 
 /** A Form 4's trade as the service summarized it, or null when it sent none or an unreadable one. */
@@ -763,23 +774,49 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getSecFilings(ticker: string, count = 15, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingItem[]> {
+    return (await this.readSecFilings(ticker, exchange, context, { limit: count, offset: 0 })).filings;
+  }
+
+  async getSecFilingsPage(ticker: string, query: SecFilingsPageQuery, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingsPage> {
+    const { filings, response } = await this.readSecFilings(ticker, exchange, context, {
+      forms: query.forms, limit: query.limit, offset: query.offset ?? 0, newestByForm: true,
+    });
+    const newestByForm = readNewestByForm(response.newestByForm);
+    return {
+      filings,
+      hasMore: response.hasMore === true,
+      nextOffset: typeof response.nextOffset === "number" ? response.nextOffset : (query.offset ?? 0) + response.filings.length,
+      ...(newestByForm ? { newestByForm } : {}),
+    };
+  }
+
+  /** A listing's filings as the service lists them, checked to be its company's when it trades abroad. */
+  private async readSecFilings(
+    ticker: string,
+    exchange: string | undefined,
+    context: MarketDataRequestContext | undefined,
+    page: Pick<CloudSecFilingsParams, "forms" | "limit" | "offset" | "newestByForm">,
+  ): Promise<{ filings: SecFilingItem[]; response: CloudSecFilingsResponse }> {
     rejectPerpetual(ticker, exchange, "SEC filings");
     rejectPredictionMarket(ticker, exchange);
     const venue = nonUsSecListingVenue(ticker, exchange);
     const name = venue ? context?.listingName?.trim() || await this.listingName(ticker, venue) || undefined : undefined;
-    const filings = await withCloudFallback(async () => {
-      const response = await apiClient.getCloudSecFilings({ ticker, exchange, name, limit: count, offset: 0 });
+    const { filings, response } = await withCloudFallback(async () => {
+      const response = await apiClient.getCloudSecFilings({ ticker, exchange, name, ...page });
       // A foreign line's filings read from its company's home line say whose, each of them.
       const companyFrom = readCompanyFrom(response.companyFrom);
-      return response.filings.map((filing) => companyFrom ? { ...mapCloudSecFiling(filing), companyFrom } : mapCloudSecFiling(filing));
+      return {
+        response,
+        filings: response.filings.map((filing) => companyFrom ? { ...mapCloudSecFiling(filing), companyFrom } : mapCloudSecFiling(filing)),
+      };
     }, `Cloud SEC filings are unavailable for ${ticker}`);
     // The service matched a line read from its company's home line to the company itself.
-    if (!venue || filings.length === 0 || filings[0]!.companyFrom) return filings;
+    if (!venue || filings.length === 0 || filings[0]!.companyFrom) return { filings, response };
     const symbol = parsePublicTickerKey(ticker).symbol;
     // Without the listing's company the filings cannot be told apart from another company's.
     if (!name) throw createProviderMiss(`SEC filings for ${symbol} could not be matched to its ${venue} listing`);
     assertSecRegistrantMatches(filings, { symbol, exchange: venue, name });
-    return filings;
+    return { filings, response };
   }
 
   /** The company a listing belongs to, from its own quote; null when the quote prices another venue. */

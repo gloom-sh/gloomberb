@@ -45,6 +45,7 @@ const assetDataPayloads: Record<string, PayloadBuilder> = {
   getExchangeRate: (fromCurrency) => ({ fromCurrency }),
   search: (query, context) => ({ query, context }),
   getSecFilings: (ticker, count, exchange, context) => ({ ticker, count, exchange, context }),
+  getSecFilingsPage: (ticker, query, exchange, context) => ({ ticker, query, exchange, context }),
   getHolders: (ticker, exchange, context) => ({ ticker, exchange, context }),
   getAnalystResearch: (ticker, exchange, context) => ({ ticker, exchange, context }),
   getCorporateActions: (ticker, exchange, context) => ({ ticker, exchange, context }),

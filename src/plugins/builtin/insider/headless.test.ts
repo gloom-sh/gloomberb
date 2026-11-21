@@ -2,7 +2,8 @@ import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
-import type { SecFilingItem } from "../../../types/data-provider";
+import type { DataProvider, SecFilingItem, SecFilingsPageQuery } from "../../../types/data-provider";
+import { secFilingsPageFromList } from "../../../sources/provider-router/sec-filings-page";
 import { loadParsedInsiderFilings } from "./client";
 import { createInsiderHeadless } from "./headless";
 import type { ParsedInsiderFiling } from "./model";
@@ -132,12 +133,26 @@ describe("insider client", () => {
     expect(maxActive).toBe(4);
   });
 
-  test("a foreign private issuer whose Form 4s are all filed as an owner has none, and says why", async () => {
+  // A source that pages one form says beside its first page what else the
+  // company files (`newestByForm`); one that does not has its whole list read.
+  const listings: Record<string, (filings: SecFilingItem[]) => Partial<DataProvider>> = {
+    "a whole list": (filings) => ({ getSecFilings: async () => filings }),
+    "pages of Form 4s": (filings) => ({
+      getSecFilings: async () => { throw new Error("the whole list was read"); },
+      getSecFilingsPage: async (_symbol, query) => secFilingsPageFromList(filings, query),
+    }),
+    "pages from a source that predates newestByForm": (filings) => ({
+      getSecFilings: async () => filings,
+      getSecFilingsPage: async (_symbol, query) => ({ ...secFilingsPageFromList(filings, query), newestByForm: undefined }),
+    }),
+  };
+
+  test.each(Object.keys(listings))("a foreign private issuer whose Form 4s are all filed as an owner has none, and says why: %s", async (source) => {
     let lookups = 0;
     const load = (filings: SecFilingItem[]) => createInsiderHeadless().load(args("", 20), {
       ...createTestHeadlessContext(),
       marketData: createTestDataProvider({
-        getSecFilings: async () => filings,
+        ...listings[source]!(filings),
         getSecFilingContent: async (filing) => form4(filing.accessionNumber === "own" ? "2488" : "1580608", "BANCO SANTANDER"),
         // Its listings place the company at home, Spain, whose managers report under MAR.
         getIssuerListings: async () => {
@@ -164,13 +179,45 @@ describe("insider client", () => {
     const history = await load([listed("6k", "6-K", "2026-10-08"), ...owned, listed("own", "4", "2005-01-01")]);
     expect(history.rows.map((row) => row.accessionNumber)).toEqual(["own"]);
     expect(history.metadata?.foreignPrivateIssuer).toBe(false);
+
   });
 
-  test("a listing abroad whose company files nothing with the SEC says so by name, as filings does", async () => {
+  // PG's whole list, some 6,000 filings of every form, was read to keep its Form 4s.
+  test("pages the company's Form 4s, leaving unread those the list's summary names another issuer in", async () => {
+    const asked: SecFilingsPageQuery[] = [];
+    const read: string[] = [];
+    // A first page of Form 4s the company filed as an owner of another company, its own on the next.
+    const filings = [
+      ...Array.from({ length: 100 }, (_, index) => ({
+        ...listed(`owned-${index}`, "4", "2026-08-20"),
+        form4: { ownerName: "BANCO SANTANDER", issuerName: "SANTANDER CONSUMER USA", issuerTicker: "SC", issuerCik: "0001580608", code: "S", side: "sell" as const, shares: 1, price: 1 },
+      })),
+      listed("own", "4", "2026-08-01"),
+      listed("10q", "10-Q", "2026-07-30"),
+    ];
+    const provider = createTestDataProvider({
+      getSecFilingsPage: async (_symbol, query) => {
+        asked.push(query);
+        return secFilingsPageFromList(filings, query);
+      },
+      getSecFilingContent: async (filing) => {
+        read.push(filing.accessionNumber);
+        return form4("2488");
+      },
+    });
+
+    const result = await loadParsedInsiderFilings(provider, "AMD", { limit: 1 });
+
+    expect(result.parsed.map(({ filing }) => filing.accessionNumber)).toEqual(["own"]);
+    expect(asked).toEqual([{ forms: ["4"], limit: 100, offset: 0 }, { forms: ["4"], limit: 100, offset: 100 }]);
+    expect(read).toEqual(["own"]);
+  });
+
+  test.each(Object.keys(listings))("a listing abroad whose company files nothing with the SEC says so by name, as filings does: %s", async (source) => {
     const load = (symbol: string) => createInsiderHeadless().load({ ...args(), rawArgument: symbol, argument: symbol, symbols: [symbol] }, {
       ...createTestHeadlessContext(),
       marketData: createTestDataProvider({
-        getSecFilings: async () => [],
+        ...listings[source]!([]),
         getSecFilingContent: async () => null,
         getQuote: async (_symbol, exchange) => createTestQuote({ symbol: "CAR.AX", name: "CAR Group Limited", currency: "AUD", listingExchangeName: exchange }),
       }),

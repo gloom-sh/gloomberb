@@ -260,6 +260,8 @@ export type CloudSecFilingsParams = {
   offset?: number;
   /** Only these forms, each with its amendment (`8-K` is also `8-K/A`). A server that predates the filter sends every form. */
   forms?: readonly string[];
+  /** Also the newest filing day of each form the whole list holds (`newestByForm`), whatever the page's forms. */
+  newestByForm?: boolean;
 };
 
 export type CloudSecFilingParams = {
@@ -468,6 +470,7 @@ export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
   if (params.offset != null) search.set("offset", String(params.offset));
   if (params.forms?.length) search.set("form", params.forms.join(","));
   if (params.proceedsSince) search.set("proceedsSince", params.proceedsSince);
+  if (params.newestByForm) search.set("newestByForm", "1");
   setListingAbroad(search, abroad);
   return appendQuery("/cloud/sec/filings", search);
 }
