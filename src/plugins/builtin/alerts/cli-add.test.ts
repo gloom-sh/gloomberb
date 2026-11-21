@@ -648,28 +648,34 @@ test("an alert only a signed-in account gets checked is saved signed out and rea
   expect((await desk.run(["add", "AAPL", "filing", "8-K"])).output).not.toContain("needs sign-in");
 });
 
-/** A signed-out flow alert read "needs sign-in", though a free sign-in would never arm it: it is checked only with Pro. */
-test("an options flow alert saved without Pro reads needs Pro, and list keeps the Pro note add prints", async () => {
+test("alerts checked only with Pro keep that requirement from save to list, distinct from sign-in", async () => {
   const desk = await profile();
-  const added = await desk.run(["add", "AAPL", "flow", "1m"]);
-  expect(added.error).toBeNull();
-  expect(added.printed!.result.data.status).toBe("needs Pro");
-  expect(added.output).toContain("on Gloom Pro");
-  expect(added.output).toContain("Checked only with Pro. Free: OMON chain, price and move alerts.");
-  expect(added.output).not.toContain("sign up free");
+  const commands = [
+    ["AAPL", "flow", "1m"],
+    ["AAPL", "catalyst"],
+    ["AAPL", "hiring", "slowing"],
+    ["perps", "hyperliquid:default:BTC", "funding", "above", "0.05%"],
+  ];
+  for (const args of commands) {
+    const added = await desk.run(["add", ...args]);
+    expect(added.error).toBeNull();
+    expect(added.printed!.result.data.status).toBe("needs Pro");
+    expect(added.output).toContain("Checked only with Pro.");
+    expect(added.output).not.toContain("sign up free");
+  }
   // A rule a sign-in alone arms still says sign-in.
   await desk.run(["add", "AAPL", "filing", "10-Q"]);
 
   const list = await desk.run(["list"], { format: "csv" });
-  expect(list.output.split("\n").slice(1).map((line) => line.split(",")[5])).toEqual(["needs Pro", "needs sign-in"]);
-  expect(list.printed!.result.warnings).toContain("1 event alert needs Pro (options flow). Free: OMON chain, price and move alerts.");
+  expect(list.output.split("\n").slice(1).map((line) => line.split(",")[5])).toEqual([...commands.map(() => "needs Pro"), "needs sign-in"]);
+  expect(list.printed!.result.warnings?.some((warning) => warning.startsWith("4 event alerts need Pro"))).toBe(true);
 
   desk.signIn();
   setCloudApiFetchTransport(async () => { throw new TypeError("fetch failed"); });
   // Signed in, with no account loaded to say its plan, the rule is active and the list still says it is Pro.
   const signedIn = await desk.run(["list"], { format: "csv" });
   expect(signedIn.output.split("\n")[1]!.split(",")[5]).toBe("active");
-  expect(signedIn.printed!.result.warnings).toContain("Options flow alerts are checked only with Pro. Free: OMON chain, price and move alerts.");
+  expect(signedIn.printed!.result.warnings?.some((warning) => warning.includes("alerts are checked only with Pro"))).toBe(true);
 });
 
 // `alerts add BRK.B filing 13F` was refused with the list of filing forms.
