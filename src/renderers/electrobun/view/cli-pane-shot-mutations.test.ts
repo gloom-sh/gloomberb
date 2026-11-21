@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { changedThePage, SHOT_MUTATION_OPTIONS } from "./cli-pane-shot-mutations";
+import { changedThePage, createShotStabilityCheck, SHOT_MUTATION_OPTIONS } from "./cli-pane-shot-mutations";
 
 test("a capture waits on what changes the page, not on an input's name cleared and set back as React renders it", async () => {
   const window = new Window();
@@ -31,4 +31,12 @@ test("a capture waits on what changes the page, not on an input's name cleared a
   expect([rerender, figure, row]).toEqual([false, true, true]);
   observer.disconnect();
   await window.happyDOM.close();
+});
+
+test("a text report settles without waiting for ten frames, but a late commit restarts its quiet window", () => {
+  const report = createShotStabilityCheck(true);
+  const shot = createShotStabilityCheck(false);
+  const frames = [[0, true], [32, true], [70, false], [90, true], [140, true], [166, true]] as const;
+  expect(frames.map(([time, stable]) => report(time, stable))).toEqual([false, false, false, false, false, true]);
+  expect(frames.some(([time, stable]) => shot(time, stable))).toBe(false);
 });

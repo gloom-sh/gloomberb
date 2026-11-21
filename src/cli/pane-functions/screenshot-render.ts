@@ -329,6 +329,8 @@ export async function renderDesktopShot({
       loadModel,
     );
     onDrawing?.();
+    const tab = payload.paneState[payload.paneId]?.activeTabId;
+    if (!captureImage && resolved.template?.id === "new-ticker-detail-pane" && (!tab || tab === "overview")) payload.readTickerReport = true;
     if (statusLine && captureImage && shotHasStatusLine(resolved)) payload.statusLine = true;
     const fitRoles = [
       ...(fitRows && paneFitsRows(resolved) ? ["data-table-body-scroll"] : []),

@@ -13,8 +13,10 @@ const ready = <T>(data: T): QueryEntry<T> => ({ phase: "ready", data, lastGoodDa
 
 test("an FX pair's IV is its currency fund's IV30 on the ranked close, with how many of the fund's expiries price at the money", async () => {
   const asked: string[] = [];
+  const ivResponse = Promise.withResolvers<void>();
   const iv = { impliedVolatility: async (path: string) => {
     asked.push(path);
+    await ivResponse.promise;
     return { version: 1, symbol: "FXY", asOf: "2026-11-07", status: "ready", coverage: null, warnings: [],
       stats: { iv30: { value: 0.0807, date: "2026-11-04", method: "trade-close", rank: 29, percentile: 16, low: 0.058, high: 0.135,
         samples: 162, windowStart: "2025-11-04" }, iv90: null },
@@ -26,8 +28,20 @@ test("an FX pair's IV is its currency fund's IV30 on the ranked close, with how 
   // Two listed expiries, neither with a two-sided quote: none prices an ATM IV.
   const expiries = [Math.floor((now + 13 * day) / 1000), Math.floor((now + 41 * day) / 1000)];
   const chain: OptionsChain = { underlyingSymbol: "FXY", expirationDates: expiries, calls: [], puts: [] };
-  const surface = { now: () => now, loadYieldCurve: async () => [], loadOptions: async () => ready(chain) };
-  const proxy = await loadFxVolProxy({ symbol: "USDJPY=X" }, { iv, surface });
+  let catalogueReads = 0;
+  const surface = { now: () => now, loadYieldCurve: async () => [], loadOptions: async ({ expirationDate }: { expirationDate?: number }) => {
+    if (expirationDate == null) catalogueReads += 1;
+    return ready(chain);
+  } };
+  const load = loadFxVolProxy({ symbol: "USDJPY=X", preloadCatalogue: true }, { iv, surface });
+  try {
+    await Bun.sleep(0);
+    expect(catalogueReads).toBe(1);
+  } finally {
+    ivResponse.resolve();
+  }
+  const proxy = await load;
+  expect(catalogueReads).toBe(1);
   expect(proxy).toMatchObject({ pair: "USDJPY", fund: "FXY", iv30: { value: 0.0807, date: "2026-11-04", method: "trade-close" },
     expiries: { usable: 0, read: 2 }, error: null });
   expect(asked[0]).toContain("symbol=FXY");

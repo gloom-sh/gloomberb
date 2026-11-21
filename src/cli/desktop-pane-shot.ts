@@ -78,6 +78,8 @@ export interface DesktopPaneShotPayload {
    * once the pane has loaded. Absent for `--no-status` and for reports.
    */
   statusLine?: boolean;
+  /** A DES overview report tracks its deferred snapshot explicitly, rather than settling like a screenshot. */
+  readTickerReport?: boolean;
   /**
    * The tallest the capture may grow, in cells, to show every row its tables
    * scroll past or all the text its reader scrolls past; absent keeps the
@@ -348,6 +350,7 @@ export async function renderDesktopPaneScreenshot(
         deviceScaleFactor: payload.deviceScaleFactor ?? DEFAULT_DEVICE_SCALE_FACTOR,
         userDataDir: join(tempDir, "chrome-profile"),
         captureImage: options.captureImage !== false,
+        readTickerReport: payload.readTickerReport,
         statusLine: payload.statusLine ? options.statusLine : undefined,
         ...(payload.maxHeightCells ? {
           fitRows: {
@@ -779,6 +782,7 @@ async function capturePageScreenshot({
   deviceScaleFactor,
   userDataDir,
   captureImage,
+  readTickerReport = false,
   statusLine,
   fitRows,
 }: {
@@ -789,6 +793,7 @@ async function capturePageScreenshot({
   deviceScaleFactor: number;
   userDataDir: string;
   captureImage: boolean;
+  readTickerReport?: boolean;
   statusLine?: ShotStatusLine;
   fitRows?: { heightCells: number; maxHeightCells: number; roles: readonly string[] };
 }): Promise<DesktopPaneShotRenderResult & { image?: Uint8Array }> {
@@ -806,7 +811,7 @@ async function capturePageScreenshot({
       color: { r: 0, g: 0, b: 0, a: 0 },
     });
     await browser.open(url);
-    await waitForShotReady(session);
+    await waitForShotReady(session, readTickerReport ? 20 : 100);
     if (fitRows) await growToFitRows(session, { widthPx, heightPx, deviceScaleFactor, ...fitRows });
     if (captureImage) await hideCutRows(session);
     let rendered = await readRenderedPaneState(session);
@@ -1368,7 +1373,7 @@ async function fitShotStatusLine(session: CdpPage, { variants, dates }: ShotStat
   return typeof value === "string" ? value : null;
 }
 
-async function waitForShotReady(session: CdpPage): Promise<void> {
+async function waitForShotReady(session: CdpPage, pollMs = 100): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < SHOT_READY_TIMEOUT_MS) {
     const result = await session.send("Runtime.evaluate", {
@@ -1378,7 +1383,7 @@ async function waitForShotReady(session: CdpPage): Promise<void> {
     const value = result.result?.value;
     if (value?.error) throw new Error(value.error);
     if (value?.ready) return;
-    await sleep(100);
+    await sleep(pollMs);
   }
   throw new Error("Timed out waiting for the desktop pane screenshot renderer.");
 }

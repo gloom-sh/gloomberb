@@ -1,7 +1,7 @@
 import { logFailure } from "../utils/log-failure";
 import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 import { fxRateCurrencies } from "../utils/currency-units";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { SecFilingDocument, SecFilingItem } from "../types/data-provider";
 import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
@@ -32,6 +32,8 @@ import { describeFormerIssuer, describeTickerChange, type TickerChangeLookup } f
 import type { TickerChanges } from "../types/ticker-changes";
 
 const TICKER_FINANCIALS_LOAD_DELAY_MS = 250;
+/** Lets a pane capture wait for a snapshot even before its debounce starts the request. */
+export const TickerSnapshotLoadTracker = createContext<(() => () => void) | null>(null);
 export const DEFAULT_LIVE_CHART_REFRESH_INTERVAL_MS = 60_000;
 
 interface ChartQueryOptions {
@@ -93,6 +95,7 @@ function useTickerInstrument(symbol: string | null | undefined, ticker: TickerRe
 }
 
 export function useTickerFinancials(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): TickerFinancials | null {
+  const trackLoad = useContext(TickerSnapshotLoadTracker);
   const instrument = useTickerInstrument(symbol, ticker);
   const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;
   const keys = useMemo(() => (
@@ -115,11 +118,16 @@ export function useTickerFinancials(symbol: string | null | undefined, ticker: T
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !instrument) return;
+    const finish = trackLoad?.();
     const timeoutId = setTimeout(() => {
-      void coordinator.loadSnapshot(instrument).catch(logFailure("market-data.hooks", "Loading a financial snapshot failed"));
+      void coordinator.loadSnapshot(instrument).catch(logFailure("market-data.hooks", "Loading a financial snapshot failed"))
+        .finally(() => finish?.());
     }, TICKER_FINANCIALS_LOAD_DELAY_MS);
-    return () => clearTimeout(timeoutId);
-  }, [instrumentKey]);
+    return () => {
+      clearTimeout(timeoutId);
+      finish?.();
+    };
+  }, [instrumentKey, trackLoad]);
 
   return financials;
 }

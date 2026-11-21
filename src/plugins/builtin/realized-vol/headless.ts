@@ -101,7 +101,7 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
         }
       };
       const fxProxy = async (): Promise<FxVolProxy | null> => !args.options.showIv || !fx ? null
-        : loadFxVolProxy({ symbol: instrument.symbol, exchange: instrument.exchange, signal: ctx.signal },
+        : loadFxVolProxy({ symbol: instrument.symbol, exchange: instrument.exchange, signal: ctx.signal, preloadCatalogue: true },
           { iv: ctx.apiClient, surface: createSurfaceDependencies(ctx.marketData, ctx.apiClient) });
       const [history, iv, proxy] = await Promise.all([
         loadRealizedVolatilityHistory({ instrument, signal: ctx.signal }, createRealizedVolatilityDependencies(ctx.marketData)), currentIv(),
