@@ -597,7 +597,7 @@ date,value
 
 #### Series and panels
 
-Open **Series** to add, remove, reorder or hide series and choose each one's field, chart style, transform, axis, panel, period and panel scale. Price data supports candles, hollow candles, Heikin Ashi, OHLC, HLC, line and area. Heikin Ashi bars average each bar with the one before, so its legend reads those averages while the last price marker keeps the traded close. Rising candles take their series' colour; Candle Colours in pane settings (`Ctrl+,`) switches them to Gains & losses, the theme's gain colour against its loss colour (green and red, or blue and vermillion in the Colorblind themes). Scalar data supports line, area, step, column and point. Panels can use independent left/right axes and linear or logarithmic scales.
+Open **Series** to add, remove, reorder or hide series and choose each one's field, chart style, colour, transform, axis, panel, period and panel scale. Colour is Auto, the theme's colour for the series, until you pick one of the five the drawing tools use; Auto keeps following the theme, and a pick stays with the pane, its saved layouts and share links, drawn a shade darker on a light theme so it reads. Price data supports candles, hollow candles, Heikin Ashi, OHLC, HLC, line and area. Heikin Ashi bars average each bar with the one before, so its legend reads those averages while the last price marker keeps the traded close. Rising candles take their series' colour; Candle Colours in pane settings (`Ctrl+,`) switches them to Gains & losses, the theme's gain colour against its loss colour (green and red, or blue and vermillion in the Colorblind themes). Scalar data supports line, area, step, column and point. Panels can use independent left/right axes and linear or logarithmic scales.
 
 #### Financial periods
 
@@ -667,7 +667,7 @@ On intraday charts, bars outside the venue's regular session (pre-market, after-
 
 #### Trader studies
 
-In the Indicators dialog (`i`), the highlighted study's setting sits beside Done: Period (`p`) for SMA, EMA, Bollinger, RSI and ATR, Bands (`b`) for VWAP, Rows (`n`) for the volume profile and Anchors (`a`) for anchored VWAP.
+In the Indicators dialog (`i`), the highlighted study's setting sits beside Done: Period (`p`) for SMA, EMA, Bollinger, RSI and ATR, Bands (`b`) for VWAP, Rows (`n`) for the volume profile and Anchors (`a`) for anchored VWAP. Its Colour line above them picks the study's colour, Auto or one of the drawing tools' five, with a click or `c` for the next, as a series' colour is picked. The legend and the crosshair's axis labels take it with the line. A study has one colour: Bollinger and VWAP draw every band in it, MACD its MACD line (the signal and histogram keep theirs so the three stay apart), and anchored VWAP its first anchor (each later one keeps its own).
 
 - **Volume** bars take the price's colour where the bar rose and the falling colour where it fell, like the candles. Picking a colour for the volume study draws every bar in it instead. An index has no volume of its own: its bars are the combined volume of its members, named `Members' volume`, with no unit and no unit warning. A stock's or fund's volume is in shares and a future's in contracts; a coin's, a bond's and a listing whose type is unknown say under the chart's data warnings (`!`) that the unit is unknown.
 - **VWAP** is the volume-weighted average of the typical price, (high + low + close) / 3, from each session open. It needs intraday bars, and Bands add and subtract a whole number of volume-weighted standard deviations.

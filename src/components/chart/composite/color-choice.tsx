@@ -1,4 +1,4 @@
-import { Box, Text, useUiCapabilities } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { hoverBg } from "../../../theme/colors";
 import { useThemeColors, useThemeId } from "../../../theme/theme-context";
 import { CHART_PALETTE, chartPaletteColor, chartPaletteColorName } from "../../../theme/chart-palette";
@@ -26,6 +26,7 @@ export function ChartColorSwatch({
   isDesktopWeb,
   label,
   disabled = false,
+  segment = false,
   onPress,
 }: {
   color: string;
@@ -34,6 +35,8 @@ export function ChartColorSwatch({
   /** What it is called to assistive technology and in the desktop's tooltip. */
   label: string;
   disabled?: boolean;
+  /** One segment of a terminal strip of choices, as a segmented control draws its options. */
+  segment?: boolean;
   onPress: () => void;
 }) {
   const colors = useThemeColors();
@@ -43,10 +46,10 @@ export function ChartColorSwatch({
       flexDirection="row"
       alignItems="center"
       justifyContent="center"
-      width={2}
+      width={segment ? 3 : 2}
       height={1}
       flexShrink={0}
-      backgroundColor={active && !disabled ? colors.selected : undefined}
+      backgroundColor={active && !disabled ? colors.selected : segment ? colors.panel : undefined}
       hoverBackgroundColor={disabled ? undefined : hoverBg(colors)}
       onMouseDown={(event: ChartMouseEvent) => {
         consumeChartMouseEvent(event);
@@ -112,6 +115,7 @@ export function ChartColorChoice({
   shortcutScope?: string;
 }) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
+  const colors = useThemeColors();
   const bindings = useKeybindings();
   const choices: Array<string | undefined> = [undefined, ...CHART_PALETTE];
   useRemoteUiNode({
@@ -149,28 +153,43 @@ export function ChartColorChoice({
     allowEditable,
   });
 
+  const auto = value === undefined && !disabled;
+  // The terminal draws the choices as a segmented control's strip, beside the
+  // form's other choices; the desktop draws the toolbar's round swatches.
   return (
     <Box
       flexDirection="row"
       alignItems="center"
-      gap={1}
       flexShrink={0}
       data-gloom-role="chart-color-choice"
       style={isDesktopWeb ? { gap: "var(--gloom-space-xs)" } : undefined}
     >
-      <Button
-        label="Auto"
-        variant="quiet"
-        active={value === undefined && !disabled}
-        disabled={disabled}
-        onPress={() => onChange(undefined)}
-      />
+      {isDesktopWeb ? (
+        <Button label="Auto" variant="quiet" active={auto} disabled={disabled} onPress={() => onChange(undefined)} />
+      ) : (
+        <Box
+          backgroundColor={auto ? colors.selected : colors.panel}
+          hoverBackgroundColor={disabled || auto ? undefined : hoverBg(colors)}
+          cursor={disabled ? undefined : "pointer"}
+          onMouseDown={() => {
+            if (!disabled) onChange(undefined);
+          }}
+        >
+          <Text
+            fg={disabled ? colors.textMuted : auto ? colors.selectedText : colors.textDim}
+            attributes={auto ? TextAttributes.BOLD : 0}
+          >
+            {" Auto "}
+          </Text>
+        </Box>
+      )}
       {CHART_PALETTE.map((color) => (
         <ChartColorSwatch
           key={color}
           color={color}
           active={value === color}
           disabled={disabled}
+          segment={!isDesktopWeb}
           isDesktopWeb={isDesktopWeb}
           label={`${label}: ${chartPaletteColorName(color)}`}
           onPress={() => onChange(color)}
