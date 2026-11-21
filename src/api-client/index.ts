@@ -638,10 +638,12 @@ class GloomApiClient {
   createBrowserHandoff = this.auth.createBrowserHandoff.bind(this.auth);
 
   /**
-   * Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser.
-   * `link` is a short link to the same checkout, to read or scan on another
-   * device. Older servers send none. `lang` is the app's language, for the
-   * text the server adds to the checkout page.
+   * Creates a Stripe checkout session for Cloud Pro. `link` is a short link to
+   * the same checkout, to read or scan on another device, and the page the
+   * browser opens: it leads through the server, which sees what the browser
+   * carries (an invite link it opened). `url` is Stripe's page, which older
+   * servers send alone. `lang` is the app's language, for the text the server
+   * adds to the checkout page.
    */
   async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string; link?: string }> {
     return this.request<{ url: string; link?: string }>("/stripe/checkout", {

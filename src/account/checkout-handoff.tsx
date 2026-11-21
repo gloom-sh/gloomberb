@@ -24,7 +24,10 @@ import { accountSession } from "./session";
 
 /** The checkout once it exists; the browser may still be opening it. */
 export interface CheckoutHandoffTarget {
-  /** The checkout page itself, which the browser button opens again. */
+  /**
+   * What the browser opened for the checkout, and the browser button opens
+   * again: the short link when there is one, else Stripe's page itself.
+   */
   url: string;
   /** A short link to the same checkout, to read or scan; null when the server sent none. */
   link: string | null;
@@ -155,7 +158,7 @@ function CheckoutHandoffDialog({
   });
 
   const title = t("Finish checkout in your browser");
-  // Where nothing opened, the terminal host left Stripe's own link on the clipboard.
+  // Where nothing opened, the terminal host left the link it was given on the clipboard.
   const subtitle = !target || opened !== false
     ? t("Pro turns on here as soon as it's done.")
     : target.link
