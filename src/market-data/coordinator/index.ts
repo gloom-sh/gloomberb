@@ -166,6 +166,12 @@ export interface MarketDataCoordinatorOptions {
   frames?: DataFrameScheduler;
 }
 
+/** A chain that is one slice of `expiration`: it holds contracts, every one of them expiring then. */
+function isOptionsSliceOf(chain: OptionsChain | null | undefined, expiration: number): boolean {
+  const contracts = chain ? [...chain.calls, ...chain.puts] : [];
+  return contracts.length > 0 && contracts.every((contract) => contract.expiration === expiration);
+}
+
 export class MarketDataCoordinator {
   private readonly events: MarketDataCoordinatorEvents;
   private readonly inFlight = new Map<string, Promise<unknown>>();
@@ -757,17 +763,16 @@ export class MarketDataCoordinator {
         // Wait for its identity before requesting the same expiry again. A
         // stored catalogue read again in the background is that request too:
         // a long-lived app's OMON opens on its saved copy, and asking for the
-        // expiry beside it built the chain twice.
+        // expiry beside it built the chain twice. Another expiry than the
+        // stored slice's is read beside that refresh, not after it.
         await (this.optionsLoads.get(`${defaultKey}|refresh`) ?? this.optionsLoads.get(defaultKey));
-        await this.backgroundRefresh(defaultKey);
+        if (isOptionsSliceOf(this.optionsStore.get(defaultKey).data, request.expirationDate)) await this.backgroundRefresh(defaultKey);
         const catalogue = this.optionsStore.get(defaultKey);
-        const contracts = catalogue.data ? [...catalogue.data.calls, ...catalogue.data.puts] : [];
         const now = Date.now();
         const fresh = (entry: QueryEntry<OptionsChain>) => hasFreshReadyEntry(entry, OPTIONS_CACHE_TTL_MS, now)
           && !entry.error && (entry.staleAt == null || entry.staleAt > now);
-        if (fresh(catalogue) && contracts.length > 0
-          && catalogue.data!.expirationDates.includes(request.expirationDate)
-          && contracts.every((contract) => contract.expiration === request.expirationDate)) {
+        if (fresh(catalogue) && isOptionsSliceOf(catalogue.data, request.expirationDate)
+          && catalogue.data!.expirationDates.includes(request.expirationDate)) {
           const current = this.optionsStore.get(key);
           const currentNewer = current.fetchedAt != null && (current.fetchedAt > (catalogue.fetchedAt ?? 0)
             || (current.fetchedAt === catalogue.fetchedAt && (current.responseSequence ?? 0) >= (catalogue.responseSequence ?? 0)));

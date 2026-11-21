@@ -62,14 +62,16 @@ test("concurrent catalogue and explicit requests share the default slice without
 
 // A long-lived app opens OMON on its stored catalogue and reads it again in
 // the background: the expiry asked beside it built the same chain again.
-test("an explicit expiry waits for the stored catalogue's background refresh and reuses its slice", async () => {
+test("the stored catalogue's expiry waits for its background refresh and reuses its slice, another is read beside it", async () => {
   const calls: (number | undefined)[] = [];
   let fail = false;
+  let catalogueHeld: Promise<void> = Promise.resolve();
   const provider = createTestDataProvider({
     getOptionsChain: async (_symbol, _exchange, expiration) => {
       const failing = fail;
       calls.push(expiration);
       await Bun.sleep(1);
+      if (expiration == null) await catalogueHeld;
       if (failing) throw new Error("refresh failed");
       return chain(expiration);
     },
@@ -106,6 +108,17 @@ test("an explicit expiry waits for the stored catalogue's background refresh and
   fail = false;
   await failing.loadOptions({ instrument, expirationDate: first });
   expect(calls).toEqual([undefined, first]);
+
+  // Another expiry than the stored slice's is read beside the refresh, not after it.
+  let release!: () => void;
+  catalogueHeld = new Promise((resolve) => { release = resolve; });
+  calls.length = 0;
+  queries.clear();
+  const beside = new MarketDataCoordinator(provider);
+  await beside.loadOptions({ instrument });
+  expect((await beside.loadOptions({ instrument, expirationDate: second })).data?.calls[0]?.expiration).toBe(second);
+  expect(calls).toEqual([undefined, second]);
+  release();
 });
 
 test("empty, mixed-expiry, unlisted or stale default slices never prove an explicit expiry", async () => {
