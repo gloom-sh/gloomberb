@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from "fs/promises";
 import { dirname, join, relative } from "path";
 import { WEB_BUNDLED_PLUGIN_PACKAGES } from "../src/plugins/web-bundled";
-import { WORLD_MAP_DATA_SPECIFIER } from "../src/renderers/dom/build-assets";
+import { ES2023_ARRAY_METHODS, es2023ArrayMethodsScript, WORLD_MAP_DATA_SPECIFIER } from "../src/renderers/dom/build-assets";
 import { isProxiedHost } from "../src/utils/plugin-proxy-hosts";
 import { IMMUTABLE_ASSET_PATH, SECURITY_HEADERS } from "../src/renderers/cloudflare/worker";
 import { WEB_LINK_ONLY_HOSTS } from "./web-link-hosts";
@@ -109,6 +109,23 @@ for (const packageName of WEB_BUNDLED_PLUGIN_PACKAGES) {
   } else if (!appBundle.includes(`/${module}`)) {
     failures.push(`${module}: built but not referenced by the app bundle`);
   }
+}
+
+// Chrome before 110 and Firefox before 115 lack the ES2023 array methods: each page bundle starts with their polyfill, and a script that runs before the bundle may not call them.
+const arrayPolyfill = await es2023ArrayMethodsScript();
+const shareBundleName = named("assets/share", "main", ".js")[0];
+if (!shareBundleName) failures.push("assets/share/main-<hash>.js: missing share bundle");
+for (const entry of [appBundleName, shareBundleName]) {
+  if (entry && !(await readFile(join(root, ...entry.split("/")), "utf8")).startsWith(arrayPolyfill)) {
+    failures.push(`${entry}: does not start with the array polyfill (src/renderers/dom/es2023-array-methods.ts)`);
+  }
+}
+for (const path of outputFiles.filter((file) => file.endsWith(".js"))) {
+  const name = relative(root, path).replaceAll("\\", "/");
+  if (name === appBundleName || name === shareBundleName || name.startsWith("assets/plugins/") || name.endsWith(".chunk.js")) continue;
+  const content = await readFile(path, "utf8");
+  const called = ES2023_ARRAY_METHODS.filter((method) => new RegExp(`\\.${method}\\b`).test(content));
+  if (called.length) failures.push(`${name}: calls .${called.join(", .")} before any array polyfill has run`);
 }
 
 /**
