@@ -335,6 +335,21 @@ export function getActiveQuoteDisplay(quote: Quote | null | undefined): ActiveQu
   return { price: quote.price, change: quote.change, changePercent: quote.changePercent };
 }
 
+/**
+ * The quote with `display` as its print in the session getActiveQuoteDisplay
+ * reads, which then reads it back: the quote as another tick of that session
+ * left it. An after-hours move follows from its price and previous close.
+ */
+export function withActiveQuoteDisplay(quote: Quote, display: ActiveQuoteDisplay): Quote {
+  if ((quote.marketState === "PRE" || quote.marketState === "PREPRE") && isPositive(quote.preMarketPrice)) {
+    return { ...quote, preMarketPrice: display.price, preMarketChange: display.change, preMarketChangePercent: display.changePercent };
+  }
+  if ((quote.marketState === "POST" || quote.marketState === "POSTPOST") && quote.postMarketPrice != null) {
+    return { ...quote, postMarketPrice: display.price };
+  }
+  return { ...quote, price: display.price, change: display.change ?? Number.NaN, changePercent: display.changePercent ?? Number.NaN };
+}
+
 /** A price and its move, with the extended session it is a print of when it is not the regular session's. */
 export interface SessionPriceDisplay extends ActiveQuoteDisplay {
   /** Set when the price is a pre-market, after-hours or overnight print. */

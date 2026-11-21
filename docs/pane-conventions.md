@@ -940,7 +940,9 @@ header, with the detail's height.
   A pane that only needs the symbol uses `usePaneTickerIdentity`, not
   `usePaneTicker`, which re-renders on every tick. Tables fed by ticks keep
   `renderCell` stable (read data through refs) and pass `getRowVersion`, so
-  one symbol's tick redraws one row.
+  one symbol's tick redraws one row. A table that need not rerender its parent
+  for a tick can instead use `rowSource` to subscribe each visible row; keep
+  row identity, order, geometry and `omitWhenEmpty` changes in `items`.
 - Everything interactive works by mouse and keyboard through the kit.
   Pane-local keys are single unmodified letters declared as hints, and a
   hint is the binding: the footer presses it while the pane is focused, so

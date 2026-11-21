@@ -1,6 +1,7 @@
-import { getSharedMarketDataCoordinator, type MarketDataCoordinator } from "../../../market-data/coordinator";
+import { getSharedMarketDataCoordinator, type MarketDataCoordinator, type StreamTickFollow } from "../../../market-data/coordinator";
 import type { QuoteSubscriptionHandle } from "../../../market-data/coordinator/quotes";
-import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { getActiveQuoteDisplay, withActiveQuoteDisplay } from "../../../market-data/market/status";
+import type { StreamTickRange, StreamTickReading } from "../../../market-data/quotes/tick-range";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { isAppVisible, subscribeAppVisibility } from "../../../state/app/activity";
@@ -47,9 +48,20 @@ export function readStreamedAlertQuote(
   return streamedAlertQuote(resolveEntryData(coordinator.getQuoteEntry(alertInstrument(alert))), now);
 }
 
+/**
+ * A streamed alert quote as it read at another tick its frame folded in: that
+ * tick's price, move and print time on the newest quote's session and listing.
+ */
+export function alertQuoteAtTick(quote: Quote, tick: StreamTickReading, now = Date.now()): Quote | null {
+  const atTick = streamedAlertQuote(withActiveQuoteDisplay(quote, tick), now);
+  return atTick && { ...atTick, lastUpdated: tick.lastUpdated ?? quote.lastUpdated };
+}
+
 export interface AlertQuoteStream {
   /** Re-read the active alerts and follow exactly their symbols. */
   sync(): void;
+  /** The range of each symbol's ticks since the last take that priced other than its quote, by quote key. */
+  takeTicks(): Map<string, StreamTickRange>;
   dispose(): void;
 }
 
@@ -78,10 +90,14 @@ export function createAlertQuoteStream({
   let handle: QuoteSubscriptionHandle | null = null;
   let keySignature = "";
   let unsubscribeKeys: (() => void) | null = null;
+  // Every tick is judged, not only the newest one each frame applies.
+  let ticks: StreamTickFollow | null = null;
 
   const teardown = () => {
     unsubscribeKeys?.();
     unsubscribeKeys = null;
+    ticks?.dispose();
+    ticks = null;
     keySignature = "";
     handle?.();
     handle = null;
@@ -115,8 +131,10 @@ export function createAlertQuoteStream({
     const signature = keys.join("\u001f");
     if (signature === keySignature) return;
     unsubscribeKeys?.();
+    ticks?.dispose();
     keySignature = signature;
     unsubscribeKeys = next.subscribeKeys(keys, onQuotes);
+    ticks = next.followStreamTicks(keys, onQuotes);
   };
 
   const unsubscribeVisibility = subscribeAppVisibility(sync);
@@ -124,6 +142,7 @@ export function createAlertQuoteStream({
 
   const stream: AlertQuoteStream = {
     sync,
+    takeTicks: () => ticks?.take() ?? new Map(),
     dispose() {
       if (disposed) return;
       disposed = true;

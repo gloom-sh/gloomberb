@@ -1,5 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { PerpBoardRow, PerpMarketPayload } from "../../../api-client/perps";
@@ -26,10 +26,18 @@ import { perpFreshness } from "./freshness";
 import { Depth, Liquidations } from "./cascade-tabs";
 import { useFreshnessStatusLine } from "./status-line";
 import { useLivePerpRows, useLivePerpTableRows } from "./live-rows";
+import { perpBoardRowSource, readPerpBoardRow } from "./board-row-source";
 import { aprFormula, ASSET_FILTERS, BOARD_SORTS, boardColumns, collectedVenueCount, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
   HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isAssetTab, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
   positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueAprSummary, venueLabel, venueName, venuesOf, type HistoryMetric,
   type PerpColumnId, type PerpTab, type RankingKey } from "./model";
+
+/** Parent actions and tab routing depend on selection identity, not changing quote values. */
+function sameListSelection(a: PerpBoardRow | null, b: PerpBoardRow | null): boolean {
+  return a === b || !!a && !!b
+    && a.marketId === b.marketId && a.baseAsset === b.baseAsset && a.assetClass === b.assetClass
+    && a.sourceUrl === b.sourceUrl && underlyingTicker(a) === underlyingTicker(b);
+}
 
 const NO_ROWS: readonly PerpBoardRow[] = [];
 const rowItself = (row: PerpBoardRow) => row;
@@ -213,6 +221,28 @@ function LockedPreview({ text, role, onPress }: { text: string; role: string; on
   return <Box paddingX={1}><UpgradeLabel text={text} onPress={onPress} role={role} /></Box>;
 }
 
+/** Stream and date only the rows in view, without rerendering the board for each tick. */
+function BoardStatus({ rows, range, pinned, updatedAt, loading, error, stale, notice, focused }: {
+  rows: readonly PerpBoardRow[]; range: { start: number; end: number }; pinned: PerpBoardRow | null;
+  updatedAt: number | null; loading: boolean; error: string | null; stale?: boolean; notice?: string | null; focused: boolean;
+}) {
+  const shown = useMemo(() => rows.slice(range.start, range.end), [rows, range]);
+  const followed = useMemo(() => {
+    const unique = new Map<string, PerpBoardRow>();
+    if (pinned) unique.set(pinned.marketId, pinned);
+    for (const row of shown) unique.set(row.marketId, row);
+    return [...unique.values()];
+  }, [pinned, shown]);
+  const stream = useLivePerpRows(followed, { surface: "screener" });
+  const liveById = new Map(stream.rows.map((row) => [row.marketId, row]));
+  const visible = shown.map((row) => liveById.get(row.marketId) ?? row);
+  const live = visible.length > 0 && visible.every((row) => stream.liveMarkets.has(row.marketId));
+  const line = usePerpStatusLine(visible, visible, updatedAt, live);
+  usePaneStatusFooter({ registrationId: "perps:board", loading, error, stale, info: line });
+  usePaneNoticeFooter({ registrationId: "perps:board-notice", focused, notices: notice ? [notice] : [] });
+  return null;
+}
+
 function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabProps) {
   const colors = useThemeColors();
   const upgrade = useCloudUpgradeAction("perp");
@@ -233,20 +263,19 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   const data = resource.data?.payload;
   const venues = useMemo(() => venuesOf(data?.rows ?? []), [data]);
   const fetchedRows = useMemo(() => venue === "all" ? data?.rows ?? [] : (data?.rows ?? []).filter((row) => row.venue === venue), [data, venue]);
-  // The rows in view move with the quote stream.
   const pinned = fetchedRows.find((row) => row.marketId === selectedId) ?? null;
-  const stream = useLivePerpTableRows(fetchedRows, rowItself, replaced, { pinned });
-  const rows = stream.items;
+  const [range, setRange] = useState({ start: 0, end: 40 });
+  const onVisibleRangeChange = useCallback((next: { start: number; end: number }) => {
+    setRange((previous) => previous.start === next.start && previous.end === next.end ? previous : next);
+  }, []);
+  const rows = fetchedRows;
   const selected = rows.find((row) => row.marketId === selectedId) ?? rows[0] ?? null;
   useEffect(() => { onPick(selected); }, [selected, onPick]);
   const columns = useMemo(() => boardColumns(width), [width]);
+  const renderCell = useCallback((row: PerpBoardRow, column: { id: string }) => perpCell(row, column.id as PerpColumnId, colors), [colors]);
   const locked = typeof data?.locked === "number" ? data.locked : 0;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });
-  const line = usePerpStatusLine(stream.shown, stream.shown, resource.updatedAt, stream.live);
-  usePaneStatusFooter({ registrationId: "perps:board", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
-  usePaneNoticeFooter({ registrationId: "perps:board-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="view perpetual markets" needsVerification={session.needsVerification} />;
   const narrow = (apply: () => void) => { apply(); setSelected(null); };
   const lock = locked ? <LockedPreview text={moreText(locked, "markets")} onPress={upgrade} role="perps-board-upgrade" /> : null;
   const queryBar = <QueryBar width={width} search={{ focused, value: search, onChange: (value) => narrow(() => setSearch(value)), placeholder: "Search markets", debounceMs: 300, ...querySearch.searchProps }}
@@ -257,15 +286,20 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
         onChange: (value: string) => narrow(() => setVenue(value)) },
       { id: "sort", label: "Sort", value: sort, options: BOARD_SORTS.map((value) => ({ value, label: sortLabel(value) })), onChange: (value: string) => narrow(() => setSort(value)) },
     ]} />;
-  return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual markets">
+  return <>
+    <BoardStatus rows={rows} range={range} pinned={pinned} updatedAt={resource.updatedAt} loading={resource.loading}
+      error={data ? resource.error : null} stale={resource.data?.stale} notice={resource.data?.refreshError} focused={focused} />
+    {!data && isCloudSessionRequired(resource.error) ? <SignInWall placement="perps-signin" action="view perpetual markets" needsVerification={session.needsVerification} /> :
+    <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual markets">
     <DataTableView<PerpBoardRow> columns={columns} items={rows} focused={focused && !querySearch.active} rootWidth={width} rootHeight={height} rootBefore={queryBar}
-      getItemKey={(row) => row.marketId} sortColumnId={null} sortDirection="desc" resetScrollKey={`${JSON.stringify(query)}:${venue}`} onVisibleRangeChange={stream.onVisibleRangeChange}
-      selection={{ kind: "id", selectedId: selected?.marketId ?? null, getId: (row) => row.marketId, onChange: setSelected }} onActivate={(row) => onOpen(row)}
-      renderCell={(row, column) => perpCell(row, column.id as PerpColumnId, colors)} selectedTextOverridesCellColor
+      getItemKey={(row) => row.marketId} sortColumnId={null} sortDirection="desc" resetScrollKey={`${JSON.stringify(query)}:${venue}`} onVisibleRangeChange={onVisibleRangeChange}
+      selection={{ kind: "id", selectedId: selected?.marketId ?? null, getId: (row) => row.marketId, onChange: setSelected }} onActivate={(row) => onOpen(readPerpBoardRow(row))}
+      rowSource={perpBoardRowSource} renderCell={renderCell} selectedTextOverridesCellColor
       emptyStateTitle="No markets match these filters." emptyContent={lock && <Box paddingX={1} paddingY={1}><EmptyState title="No preview markets match." actions={<UpgradeLabel text={moreText(locked, "markets")} onPress={upgrade} role="perps-board-upgrade" />} /></Box>}
       bodyAfter={lock}
       getExportMetadata={() => [["As of", data?.asOf ?? ""], ["Units", "funding per its own interval, APR, premium and changes in percent; open interest in USD; long share in percent of accounts, each venue's definition"]]} />
-  </PaneStatusBody>;
+    </PaneStatusBody>}
+  </>;
 }
 
 type Ranked = { list: RankingKey; row: PerpBoardRow };
@@ -399,7 +433,14 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   // The row under a list's cursor, and the last one any list had: an empty list keeps the market it was given.
   const [listRow, setListRow] = useState<PerpBoardRow | null>(null);
   const [picked, setPicked] = useState<PerpBoardRow | null>(null);
-  const pick = useCallback((row: PerpBoardRow | null) => { setListRow(row); if (row) setPicked(row); }, []);
+  // The board needs every quote tick; its parent only needs selection metadata.
+  // Keep the latest row for actions without rerendering the entire pane on a price tick.
+  const latestListRow = useRef<PerpBoardRow | null>(null);
+  const pick = useCallback((row: PerpBoardRow | null) => {
+    latestListRow.current = row;
+    setListRow((previous) => sameListSelection(previous, row) ? previous : row);
+    if (row) setPicked((previous) => sameListSelection(previous, row) ? previous : row);
+  }, []);
   const [openingRange] = usePaneSettingValue("days", "7");
   const [range, setRange] = usePluginPaneState<string>("perps:range", openingRange);
   const [openingMetric] = usePaneSettingValue("metric", "funding");
@@ -426,6 +467,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
     if (assetOnly && isMarketTab(next)) setSearch(compareAsset);
     else if (carried && isMarketTab(next) && !marketTab) setSearch(carried.marketId);
     if (carried && isAssetTab(next) && !assetOnly) setCompareAsset(carried.baseAsset);
+    latestListRow.current = null;
     setListRow(null);
     setTab(next);
   }, [assetOnly, carried, compareAsset, marketTab, setSearch, setCompareAsset, setTab]);
@@ -442,7 +484,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const underlying = current ? underlyingTicker(current) : null;
   const preview = marketTab ? data?.access === "preview" : !access.hasProAccess;
   const hints: PaneHint[] = [
-    ...(current && marketAction ? [{ id: marketAction.id, key: marketAction.key, label: marketAction.label, onPress: () => marketAction.onPress(current) }] : []),
+    ...(current && marketAction ? [{ id: marketAction.id, key: marketAction.key, label: marketAction.label, onPress: () => marketAction.onPress(marketTab ? current : readPerpBoardRow(latestListRow.current ?? current)) }] : []),
     ...(current && getSharedRegistry()?.commands.has("set-event-alert") ? [{ id: "alert", key: "a", label: "lert", onPress: () => {
       if (!openFormModal({ kind: "plugin-command", commandId: "set-event-alert", values: { event: "perps_threshold", "perps_threshold:marketId": current.marketId } })) notify({ body: "Open this from the main window.", type: "info" });
     } }] : []),

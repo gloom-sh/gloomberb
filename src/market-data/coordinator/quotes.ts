@@ -8,6 +8,7 @@ import type { QueryEntry } from "../result-types";
 import { buildQuoteKey, instrumentFromQuoteTarget, toMarketDataContext } from "../selectors";
 import { measurePerf } from "../../utils/perf-marks";
 import { quoteStampBucket } from "../quotes/freshness";
+import { foldStreamTick, type StreamTickRange } from "../quotes/tick-range";
 import { withSavedCopyMarkOf } from "../../data/saved-copies";
 import {
   failureStatus,
@@ -46,6 +47,8 @@ export interface QuoteSubscriptionEntry {
 interface PendingStreamQuote {
   instrument: InstrumentRef;
   quote: Quote;
+  /** Every tick since the key last applied, for a key whose ticks are followed (`followsTicks`). */
+  ticks: StreamTickRange | null;
 }
 
 export const QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS = 250;
@@ -223,8 +226,10 @@ export class QuoteSubscriptionManager {
 
   constructor(
     private readonly dataProvider: DataProvider,
-    private readonly applyQuote: (instrument: InstrumentRef, quote: Quote) => void,
+    private readonly applyQuote: (instrument: InstrumentRef, quote: Quote, ticks: StreamTickRange | null) => void,
     private readonly frames: DataFrameScheduler = marketDataFrames,
+    /** Whether a reader judges every tick of a key, not only the one a frame applies. */
+    private readonly followsTicks: (key: string) => boolean = () => false,
   ) {}
 
   subscribe(targets: QuoteSubscriptionRequest[]): QuoteSubscriptionHandle {
@@ -417,8 +422,11 @@ export class QuoteSubscriptionManager {
     const subscription = this.quoteSubscriptions.get(key);
     if (!subscription || subscription.targets.size === 0) return;
 
-    // Latest tick per key wins; the frame applies whatever is newest.
-    this.pendingStreamQuotes.set(key, { instrument, quote });
+    // Latest tick per key wins; the frame applies whatever is newest, and a
+    // followed key keeps the range of the ticks it folded in.
+    const pending = this.pendingStreamQuotes.get(key);
+    const ticks = this.followsTicks(key) ? foldStreamTick(pending?.ticks ?? null, quote) : null;
+    this.pendingStreamQuotes.set(key, { instrument, quote, ticks });
     this.frames.request(this.streamQuoteFrame, this.streamQuoteRequest(
       this.streamQuoteDueAt(key, subscription.target),
       isForegroundQuoteTarget(subscription.target),
@@ -475,7 +483,7 @@ export class QuoteSubscriptionManager {
     // section that can hold the frame.
     measurePerf("market-data.stream-quote-flush", () => {
       for (const pending of due) {
-        this.applyQuote(pending.instrument, pending.quote);
+        this.applyQuote(pending.instrument, pending.quote, pending.ticks);
       }
     }, { count: due.length });
   }

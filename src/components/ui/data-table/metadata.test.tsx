@@ -67,6 +67,36 @@ async function renderTable(selectedId: string | null, reportEveryRow?: boolean) 
 }
 
 describe("DataTable remote metadata", () => {
+  test("reports and exports the latest externally updated row without rerendering the table", async () => {
+    const original = { id: "one", name: "Before" };
+    let current = original;
+    let version = 0;
+    const listeners = new Set<() => void>();
+    const source = {
+      subscribe(_row: typeof original, listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+      version: () => version,
+      read: () => current,
+    };
+    function TableWithLiveRow() {
+      const scrollRef = useRef<ScrollBoxRenderable>(null);
+      return <DataTable columns={[{ id: "name", label: "Name", width: 12, align: "left" }]}
+        items={[original]} sortColumnId={null} sortDirection="asc" scrollRef={scrollRef} headerScrollRef={scrollRef}
+        syncHeaderScroll={() => {}} onBodyScrollActivity={() => {}} getItemKey={(row) => row.id}
+        isSelected={() => false} onSelect={() => {}} rowSource={source} renderCell={(row) => ({ text: row.name })}
+        exportIdentity={{ headers: ["Identity"], cells: (row) => [row.name] }}
+        emptyStateTitle="No rows" reportEveryRow />;
+    }
+    const registry = createRemoteUiRegistry();
+    const state = createInitialState(createDefaultConfig(":memory:"));
+    await tui.render(<RemoteUiRegistryProvider registry={registry}><AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="live-export"><TableWithLiveRow /></PaneInstanceProvider>
+    </AppContext></RemoteUiRegistryProvider>, { width: 40, height: 6 });
+    expect(JSON.stringify(registry.snapshot())).toContain("Before");
+    await act(async () => { current = { ...original, name: "After" }; version++; for (const listener of listeners) listener(); });
+    expect(JSON.stringify(registry.snapshot())).toContain("After");
+    await exportPaneTable("live-export", "live.csv");
+    expect(takeSavedTextFile()?.text).toContain("Name,Identity\nAfter,After");
+  });
   test("an omitted column stays report-only in JSON and present in the registered CSV export", async () => {
     function OptionalTable() {
       const scrollRef = useRef<ScrollBoxRenderable>(null);

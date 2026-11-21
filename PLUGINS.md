@@ -1187,6 +1187,8 @@ Panes can expose per-instance settings that persist with the layout. These setti
 
 Table panes built with the shared `DataTable` can opt into an Excel-compatible CSV action with `tableExport: true`. The action exports the current sorted, filtered rows and visible columns. It is available when the pane has one active table. Right-aligned number columns export as plain numbers with the unit in the header; a cell's optional `value` (the full-precision number, or an ISO date) replaces its text in the export.
 
+For a table whose visible rows follow independent live data, `rowSource` can subscribe each mounted row separately. Its `subscribe(item, listener)` returns an unsubscribe, `version(item)` returns a number that stays unchanged between updates, and `read(item)` returns the current row. Keep the source object and `renderCell` stable. The source updates cell values only: change `items` when row identity, order, geometry or an `omitWhenEmpty` column changes. Reports and CSV read the current row through `read`, including rows outside the viewport.
+
 ```typescript
 ctx.registerPane({
   id: "my-pane",

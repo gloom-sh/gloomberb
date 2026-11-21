@@ -36,6 +36,7 @@ import type {
 } from "../types";
 import { resolveDataTableScrollTop } from "../visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
+import { ObservedTableRow } from "../observed-row";
 import { useStableColumns } from "../stable-columns";
 import { COLUMN_DRAG_THRESHOLD_CELLS, columnDropBoundary, columnDropIndex } from "../column-order";
 import {
@@ -367,6 +368,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   renderCell,
   selectedTextOverridesCellColor = false,
   getRowVersion,
+  rowSource,
   renderSectionHeader,
   getRowBackgroundColor,
   emptyContent,
@@ -1024,7 +1026,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
               () => visibleItems.map((item, visibleIndex) => {
                 const index = startIndex + visibleIndex;
                 const itemKey = getItemKey(item, index);
-                return (
+                const renderRow = (item: T) => (
                   <OpenTuiDataTableRow<T, C>
                     key={itemKey}
                     colors={colors}
@@ -1058,6 +1060,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     columnsKey={columnsKey}
                   />
                 );
+                return rowSource ? <ObservedTableRow key={itemKey} item={item} source={rowSource}>{renderRow}</ObservedTableRow> : renderRow(item);
               }),
               {
                 columnCount: displayColumns.length,

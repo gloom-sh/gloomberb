@@ -38,6 +38,7 @@ import {
   formatAlertDescription,
   levelAlreadyMet,
   sameLevelRule,
+  tickTrigger,
 } from "./alert-engine";
 import {
   MOVE_KIND_CHOICE,
@@ -66,7 +67,9 @@ import {
   loadAlerts,
   saveAlerts,
 } from "./storage";
-import { createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream } from "./live";
+import { alertInstrument, alertQuoteAtTick, createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream } from "./live";
+import { buildQuoteKey } from "../../../market-data/selectors";
+import type { StreamTickRange } from "../../../market-data/quotes/tick-range";
 import { isPenceQuotedLine, isSharePriceQuote } from "../../../market-data/market/format";
 import { alertPriceText, alertPriceWithCurrency, alertQuoteTime } from "./price-text";
 import { judgeMove, moveBasisText, moveFiredText, MOVE_DELIVERY } from "./move";
@@ -183,13 +186,26 @@ export const alertsPlugin: GloomPlugin = {
       }
     };
 
+    /** The quote at a tick a frame folded in that sets a move rule off, when the newest quote does not. */
+    const movedTick = (alert: AlertRule, quote: Quote, ticks: StreamTickRange, now: number): Quote | null => {
+      if (judgeMove(alert, quote, now).fired) return null;
+      const edges = alert.condition === "above" ? [ticks.high] : alert.condition === "below" ? [ticks.low] : [ticks.high, ticks.low];
+      for (const tick of edges) {
+        const atTick = alertQuoteAtTick(quote, tick, now);
+        if (atTick && judgeMove(alert, atTick, now).fired) return atTick;
+      }
+      return null;
+    };
+
     // The last price each alert was judged on by the stream. `crosses` needs
     // it tick to tick, and writing it to the store on every tick would churn
-    // the saved config.
+    // the saved config. An alert with one also judges every tick its symbol's
+    // frames folded in since, so a tick that crossed and came back counts.
     const streamedBaselines = new Map<string, number>();
     let lastStreamPersistAt = 0;
     const evaluateStreamed = () => {
       if (generation !== pollGeneration) return;
+      const tickRanges = alertStream?.takeTicks() ?? new Map<string, StreamTickRange>();
       const alerts = loadJudgedAlerts();
       const now = Date.now();
       let persist = false;
@@ -199,9 +215,16 @@ export const alertsPlugin: GloomPlugin = {
         if (alert.metric || (alert.status !== "active" && !alert.move)) continue;
         const quote = readStreamedAlertQuote(alert, undefined, now);
         if (!quote) continue;
+        // A new or edited alert's first check judges its quote alone: earlier ticks may be from before it.
+        const ticks = alert.lastCheckedPrice != null && streamedBaselines.has(alert.id)
+          ? tickRanges.get(buildQuoteKey(alertInstrument(alert))) : undefined;
         if (alert.move) {
           const status = alert.status;
-          if (checkMove(alert, quote, now) || alert.status !== status) persist = true;
+          const atTick = ticks ? movedTick(alert, quote, ticks, now) : null;
+          // Gone off at the tick, the rule still keeps the newest quote's reading.
+          const firedAtTick = atTick ? checkMove(alert, atTick, now) : false;
+          if (checkMove(alert, quote, now) || firedAtTick || alert.status !== status) persist = true;
+          streamedBaselines.set(alert.id, quote.price);
           touched = true;
           movesTouched = true;
           continue;
@@ -212,11 +235,16 @@ export const alertsPlugin: GloomPlugin = {
         const stored = alert.lastCheckedPrice;
         const previous = stored == null ? undefined : streamedBaselines.get(alert.id) ?? stored;
         if (stored == null) persist = true;
-        if (evaluateAlert({ ...alert, lastCheckedPrice: previous }, quote.price)) {
+        const judged = { ...alert, lastCheckedPrice: previous };
+        const firesNow = evaluateAlert(judged, quote.price);
+        const tick = ticks && !firesNow ? tickTrigger(judged, ticks) : null;
+        // Noted at the price that crossed: the newest, or a tick that came back before its frame.
+        const firedOn = firesNow ? quote : tick ? alertQuoteAtTick(quote, tick, now) : null;
+        if (firedOn) {
           alert.status = "triggered";
           alert.triggeredAt = now;
-          ctx.log.info("stream: TRIGGERED", { symbol: alert.symbol, price: quote.price });
-          notifyTriggered(alert, quote, now);
+          ctx.log.info("stream: TRIGGERED", { symbol: alert.symbol, price: firedOn.price });
+          notifyTriggered(alert, firedOn, now);
           persist = true;
         }
         streamedBaselines.set(alert.id, quote.price);

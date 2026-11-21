@@ -23,6 +23,7 @@ import type {
 } from "../../../components/ui/data-table";
 import { resolveDataTableScrollTop } from "../../../components/ui/data-table/visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../../../components/ui/data-table/hooks";
+import { ObservedTableRow } from "../../../components/ui/data-table/observed-row";
 import {
   buildTableGridTemplateColumns,
   getTableWidth,
@@ -106,6 +107,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   renderCell,
   selectedTextOverridesCellColor = false,
   getRowVersion,
+  rowSource,
   renderSectionHeader,
   getRowBackgroundColor,
   emptyContent,
@@ -493,7 +495,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                 if (!item) return null;
                 const selected = isSelected(item, row.index);
                 const itemKey = getItemKey(item, row.index);
-                return (
+                const renderRow = (item: T) => (
                   <WebDataTableRow<T, C>
                     key={itemKey}
                     rowSize={row.size}
@@ -525,6 +527,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                     selectedTextOverridesCellColor={selectedTextOverridesCellColor}
                   />
                 );
+                return rowSource ? <ObservedTableRow key={itemKey} item={item} source={rowSource}>{renderRow}</ObservedTableRow> : renderRow(item);
               }),
             {
               columnCount: columns.length,

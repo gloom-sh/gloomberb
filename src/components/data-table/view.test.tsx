@@ -428,6 +428,56 @@ describe("DataTableView", () => {
   });
 });
 
+test("an external row update redraws only that row", async () => {
+  const data: Row[] = [
+    { type: "row", id: "btc", title: "BTC 10" },
+    { type: "row", id: "eth", title: "ETH 20" },
+  ];
+  const values = new Map(data.map((row) => [row.id, row]));
+  const versions = new Map<string, number>();
+  const listeners = new Map<string, Set<() => void>>();
+  const source = {
+    subscribe(row: Row, listener: () => void) {
+      const set = listeners.get(row.id) ?? new Set();
+      set.add(listener); listeners.set(row.id, set);
+      return () => { set.delete(listener); };
+    },
+    version: (row: Row) => versions.get(row.id) ?? 0,
+    read: (row: Row) => values.get(row.id) ?? row,
+  };
+  const renders = new Map<string, number>();
+  const renderCell = (row: Row): DataTableCell => {
+    renders.set(row.id, (renders.get(row.id) ?? 0) + 1);
+    return { text: row.title };
+  };
+  const state = createInitialState(createDefaultConfig(":memory:"));
+  let boardRenders = 0;
+  function Board() {
+    boardRenders++;
+    return <DataTableView<Row, Column> focused selection={{ kind: "none" }} columns={columns} items={data}
+      sortColumnId={null} sortDirection="asc" getItemKey={(row) => row.id} rowSource={source}
+      renderCell={renderCell} emptyStateTitle="No rows" />;
+  }
+  await tui.render(<AppContext value={createStaticAppStore(state)}><PaneInstanceProvider paneId="observed-table">
+    <Board />
+  </PaneInstanceProvider></AppContext>, { width: 60, height: 12 });
+  await renderSettled();
+  const boardRendersBefore = boardRenders;
+  renders.clear();
+  await act(async () => {
+    values.set("btc", { type: "row", id: "btc", title: "BTC 11" });
+    versions.set("btc", 1);
+    for (const listener of listeners.get("btc") ?? []) listener();
+  });
+  await renderSettled();
+  expect(tui.frame()).toContain("BTC 11");
+  expect(renders.get("btc") ?? 0).toBeGreaterThan(0);
+  expect(renders.get("eth") ?? 0).toBe(0);
+  expect(boardRenders).toBe(boardRendersBefore);
+  await tui.destroy();
+  expect([...listeners.values()].every((set) => set.size === 0)).toBe(true);
+});
+
 test("fulfills a center request after rows are laid out and then leaves manual scrolling alone", async () => {
   const scrollSources: Array<"programmatic" | "user" | undefined> = [];
   await tui.render(
