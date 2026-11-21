@@ -666,6 +666,28 @@ test("a code its exchange withdrew is that company, gone on its day for its reas
   expect(await notTradedMessage(await resolveCliListing("0011", "BURSAMY", deps), deps)).toBeNull();
 });
 
+test("name search starts before the bare quote answers, but a real ticker still wins", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const quote = Promise.withResolvers<ReturnType<typeof createTestQuote>>();
+  const searches: string[] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      searches.push(query);
+      return [{ providerId: "test", symbol: "AVGO", name: "Broadcom Inc.", exchange: "NASDAQ", type: "Common Stock", currency: "USD", homeListing: true }];
+    },
+    getQuote: async () => quote.promise,
+  });
+  const listing = resolveCliListing("Broadcom", undefined, { dataProvider, store: new TickerRepository(persistence.tickers) });
+  try {
+    await Bun.sleep(0);
+    expect(searches).toContain("Broadcom");
+  } finally {
+    quote.resolve(createTestQuote({ symbol: "BROADCOM", currency: "USD" }));
+    expect((await listing).key).toBe("BROADCOM");
+  }
+});
+
 test("a company's name typed where any command takes a symbol is read as quote reads it, and words typed apart as one name first", async () => {
   const persistence = new AppPersistence(":memory:");
   persistences.push(persistence);

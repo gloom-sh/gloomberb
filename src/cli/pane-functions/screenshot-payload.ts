@@ -179,11 +179,11 @@ interface ShotSymbolCapture {
  * (or each period's start): each cadence is its own, under the listing the
  * pane asks for. Without daily closes the weekly bars stand alone, as in the app.
  */
-async function weeklyAndDailyHistoryVariants(
-  context: MarketContext, ticker: TickerRecord, exchange: string, weekly: TickerFinancials["priceHistory"],
+async function shotDailyHistory(
+  context: MarketContext, ticker: TickerRecord, exchange: string,
   /** DES's window (priceReturnDailyWindow), which it asks for by its dates; PEB's is the 5Y range. */
   window?: { start: Date; end: Date },
-): Promise<NonNullable<SnapshotMarketData["historyVariants"]>> {
+) {
   const target = { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange ?? "" };
   const provider = context.dataProvider;
   const read = window
@@ -192,7 +192,7 @@ async function weeklyAndDailyHistoryVariants(
       ?? provider.getDetailedPriceHistory?.(target.symbol, exchange, window.start, window.end, "1d", toMarketDataContext(target))
     : provider.getPriceHistoryForResolution?.(target.symbol, exchange, "5Y", "1d", toMarketDataContext(target));
   const daily = await (read ?? Promise.resolve([])).catch(logFailure("cli.pane-functions.screenshot-payload", "Read daily closes for a capture failed", []));
-  return [{ target, resolution: "1wk", points: weekly ?? [] }, ...(daily.length ? [{ target, resolution: "1d" as const, points: daily }] : [])];
+  return { target, daily };
 }
 
 export async function buildDesktopShotPayload(
@@ -325,6 +325,9 @@ export async function buildDesktopShotPayload(
       ?? data.quote?.listingExchangeName
       ?? data.quote?.exchangeName
       ?? "";
+    const overview = resolved.pane.id === TICKER_RESEARCH_PANE_ID && resolved.template?.id !== "adr-pair-pane" && !isFinancialAnalysisFunction(resolved);
+    const overviewTicker = overview ? entry.tickerFile ?? await createFallbackTicker(symbol, data, context) : null;
+    const returnHistory = overviewTicker ? shotDailyHistory(context, overviewTicker, exchange, priceReturnDailyWindow()) : null;
     const fiveYearsDaily = resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "macro-day";
     // KELLY's History tab reads monthly returns off the daily closes its own request names, from the month-end
     // before the window, as the KELLY report does; a source with no dated history, its trailing range.
@@ -370,17 +373,17 @@ export async function buildDesktopShotPayload(
       data = await withShotPriceHistory(context, symbol, entry.tickerFile, data);
     }
     const capture: ShotSymbolCapture = {
-      ticker: entry.tickerFile ?? await createFallbackTicker(symbol, data, context),
+      ticker: overviewTicker ?? entry.tickerFile ?? await createFallbackTicker(symbol, data, context),
       financials: [symbol, data],
     };
     if (resolved.pane.id === "time-sales") {
       capture.tape = [entry.instrument.symbol, exchange, await fetchTape(entry.instrument.symbol, exchange)];
     }
     // DES (the research pane's overview, not its financials or the ADR pair) measures returns on daily closes.
-    const overview = resolved.pane.id === TICKER_RESEARCH_PANE_ID && resolved.template?.id !== "adr-pair-pane" && !isFinancialAnalysisFunction(resolved);
     if (resolved.pane.id === "pe-band" || overview) {
-      capture.historyVariants = await weeklyAndDailyHistoryVariants(context, capture.ticker, exchange, data.priceHistory,
-        overview ? priceReturnDailyWindow() : undefined);
+      const { target, daily } = await (returnHistory ?? shotDailyHistory(context, capture.ticker, exchange));
+      capture.historyVariants = [{ target, resolution: "1wk", points: data.priceHistory ?? [] },
+        ...(daily.length ? [{ target, resolution: "1d" as const, points: daily }] : [])];
     }
     if (includeOptionsChains && context.dataProvider.getOptionsChain) {
       // A future with no chain of its own is the pane's to explain (the listed alternative), not a failed shot.

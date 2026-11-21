@@ -2048,8 +2048,9 @@ async function readBareCompanyName(parsed: ListingArg, typed: string, deps: List
   const word = typed.trim();
   if (parsed.exchange || !NAME_WRITTEN_WORD.test(word) || word.toUpperCase() !== parsed.symbol) return null;
   if (await deps.store.loadTicker(parsed.symbol).catch(logFailure("cli.listing-arg", "Read a saved word failed", null))) return null;
+  const name = oneWordCompanyName(word, deps).catch(logFailure("cli.listing-arg", "Read a word as a company's name failed", null));
   if (!await nothingTradesAs(parsed.symbol, ownQuote)) return null;
-  const named = await oneWordCompanyName(word, deps).catch(logFailure("cli.listing-arg", "Read a word as a company's name failed", null));
+  const named = await name;
   // A code listed abroad under the word (FP on TSXV and BVB) is a symbol, whose listings the command names: never a name.
   return named && named.symbol.toUpperCase() !== parsed.symbol ? named : null;
 }
