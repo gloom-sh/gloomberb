@@ -1634,6 +1634,8 @@ export const ja: Record<string, string> = {
   "Pay with another card": "別のカードで支払う",
   "One better trade pays for Pro": "良い取引ひとつで Pro の元が取れる",
   "Pro is free for {days} days. $0 today, then {price} from {date}. Card required. Cancel before and you pay nothing.": "Pro は {days} 日間無料。本日 $0、{date} から {price}。カード登録が必要。それまでに解約すれば料金はかかりません。",
+  "New accounts get Pro free for {days} days, then {price}. Card required. Cancel before and you pay nothing.": "新規アカウントは Pro が {days} 日間無料、その後 {price}。カード登録が必要。それまでに解約すれば料金はかかりません。",
+  "First an account, then Pro.": "まずアカウント、次に Pro。",
   "Continue to checkout": "チェックアウトへ進む",
   "{price}, billed today. Cancel anytime.": "{price}、本日請求。いつでも解約可。",
   "{price}. Cancel anytime.": "{price}。いつでも解約可。",
