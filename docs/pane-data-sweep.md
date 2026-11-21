@@ -67,7 +67,10 @@ codes. Only reviewed coverage/session codes in matching legitimate empty states
 retain their separate classification; other codes, error evidence or invalid CLI
 exits take precedence. Reviewed event-list empties (no halts,
 calendar reports or recorded analyst actions), explicit no-coverage and closed-session list
-states are distinct from passes and unexplained failures. A usable strict capture
+states are distinct from passes and unexplained failures. A pane whose service is
+still working on its answer and says so in its reviewed copy (CALLS on a company's
+first open of the day, "Looking for PLPC's earnings calls...") is **pending**: a
+non-pass finding that does not fail the run. A usable strict capture
 with a data gap or an unannounced viewport cut is **partial**, not a pass or a
 broken-pane assertion. A table's own scroll indicator or row count is not a
 viewport-cut finding. Blank columns, loading,
