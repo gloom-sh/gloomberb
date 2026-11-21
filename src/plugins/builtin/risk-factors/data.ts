@@ -67,12 +67,13 @@ function loadCached<T extends object>(
   const request: ActiveRequest<T> = { client, store, promise: null! };
   const current = () => active.get(key) === request && persistence === store;
   request.promise = Promise.resolve().then(fetch).then((payload) => {
-    const fetchedAt = Date.now();
+    let saved: ReturnType<PluginPersistence["setResource"]> | undefined;
     if (current()) {
       failedRefreshes.delete(failedKey);
-      store?.setResource(kind, key, payload, { ...options, cachePolicy: policy });
+      saved = store?.setResource(kind, key, payload, { ...options, cachePolicy: policy });
     }
-    return { ...payload, fetchedAt, stale: false };
+    // The saved copy's own time, so the reply and a later read of the copy agree to the millisecond.
+    return { ...payload, fetchedAt: saved?.fetchedAt ?? Date.now(), stale: false };
   }).catch((error: unknown) => {
     // A failed forced refresh must be retried when this pane is reopened, even
     // when the previously cached value has not reached its ordinary TTL yet.

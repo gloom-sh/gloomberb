@@ -3,6 +3,7 @@ import type { CloudRiskReportListPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { withTickingClock } from "../../../test-support/ticking-clock";
 import { attachRiskFactorsPersistence, getSavedRiskReport, resetRiskFactorsPersistence, loadRiskReportsWithClient, loadRiskReportWithClient } from "./data";
 import { savedCopyAt } from "../../../data/saved-copies";
 import { list, report } from "./test-fixtures";
@@ -21,7 +22,7 @@ function client() {
 test("the reader can open only the exact listing, year and account's saved report", async () => {
   attachRiskFactorsPersistence(new MemoryPluginPersistence());
   const request = { displayScope: "subscriber-one", exchange: "NYSE" };
-  const loaded = await loadRiskReportWithClient(client(), "ACME", 2025, request);
+  const loaded = await withTickingClock(() => loadRiskReportWithClient(client(), "ACME", 2025, request));
 
   expect(savedCopyAt(getSavedRiskReport("ACME", 2025, request))).toBe(loaded.fetchedAt);
   expect(getSavedRiskReport("ACME", 2026, request)).toBeNull();

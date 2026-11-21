@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { CloudEarningsCallListPayload, CloudEarningsCallPayload, CloudEarningsTranscriptPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { withTickingClock } from "../../../test-support/ticking-clock";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import {
   attachEarningsCallsPersistence,
@@ -420,4 +421,17 @@ test("a calendar answered at the server's limit is cut, says so, and stays so fr
   // One call short of the limit is the whole of the days.
   answer = async () => ({ calls: full.slice(1) });
   expect((await loadUpcomingCallsWithClient(client, days, { force: true })).truncated).toBeUndefined();
+});
+
+test("a fresh list and calendar carry the time their saved copies were stamped with", async () => {
+  attachEarningsCallsPersistence(new MemoryPluginPersistence());
+  const days = { from: "2026-10-21", to: "2026-10-23" };
+  const client = clientWith(async () => ({ calls: [{ ...calls[0]!, callAt: "2026-10-21T20:30:00Z" }] }));
+
+  await withTickingClock(async () => {
+    const list = await loadEarningsCallsWithClient(client, "SYN", { limit: 50 });
+    expect((await loadEarningsCallsWithClient(client, "SYN", { limit: 50 })).fetchedAt).toBe(list.fetchedAt);
+    const calendar = await loadUpcomingCallsWithClient(client, days);
+    expect((await loadUpcomingCallsWithClient(client, days)).fetchedAt).toBe(calendar.fetchedAt);
+  });
 });
