@@ -1634,6 +1634,8 @@ export const zhCN: Record<string, string> = {
   "Pay with another card": "换一张卡付款",
   "One better trade pays for Pro": "一笔更好的交易，就能抵上 Pro 的费用",
   "Pro is free for {days} days. $0 today, then {price} from {date}. Card required. Cancel before and you pay nothing.": "Pro 可免费使用 {days} 天。今天 $0，{date} 起 {price}。需要绑卡。在此之前取消则无需付费。",
+  "New accounts get Pro free for {days} days, then {price}. Card required. Cancel before and you pay nothing.": "新账户可免费使用 Pro {days} 天，之后 {price}。需要绑卡。在此之前取消则无需付费。",
+  "First an account, then Pro.": "先创建账户，再开通 Pro。",
   "Continue to checkout": "前往结账",
   "{price}, billed today. Cancel anytime.": "{price}，今天扣款。随时取消。",
   "{price}. Cancel anytime.": "{price}。随时取消。",
