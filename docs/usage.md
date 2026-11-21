@@ -704,7 +704,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | Shortcut | Function |
 |----------|----------|
 | `TOP` | The 20 top-ranked market stories |
-| `HM` | Market heatmap of the 500 largest US stocks by sector and industry, large US ETFs, and the portfolio pane's selected list |
+| `HM` | Market heatmap of the 500 largest US stocks by sector and industry, large US ETFs, and any of your portfolios and watchlists |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
 | `SCAN` | Your own live intraday scan of US stocks: moves, volume spikes, new highs and lows, VWAP crosses and gaps, with alerts ([Live scanner](#live-scanner)) |
@@ -798,7 +798,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 - `--group industry` breaks it down by industry, and `--universe us-etf` summarizes the ETF board as one group.
 - `--json` adds the board's figures in `data.metadata.board`. A name with no move yet counts toward size but not move or breadth (`data.metadata.noMove`).
 
-`HM` has a third tab, named for the list open in the portfolio pane (your first portfolio when none is open).
+`HM` has a third tab, **My Lists**, showing one of your portfolios or watchlists. Its **List** menu, above the map, picks any of them; until you pick one it shows the list open in the portfolio pane (your first portfolio when none is open), and a pick holds until that pane switches to another list.
 
 - It sizes a portfolio's holdings by market value in the portfolio's currency, whatever **Size by** says, and a watchlist's names by the square root of their market cap in your base currency.
 - A name without a position, quote, market cap or exchange rate gets the smallest tile and no figure, and past 160 names the smallest tiles are left out (the footer says so).

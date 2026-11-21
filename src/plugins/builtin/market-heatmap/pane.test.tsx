@@ -130,6 +130,55 @@ test("portfolio tab draws the list selected in the portfolio pane", async () => 
   expect(api).not.toHaveBeenCalled();
 });
 
+// The tab showed whichever list the focused portfolio pane had, so a watchlist imported beside an empty portfolio could
+// only be reached by clicking into the pane that showed it.
+test("My Lists picks any portfolio or watchlist with the mouse, and the followed pane switching lists takes over", async () => {
+  const api = spyOn(apiClient, "getMarketHeatmap");
+  restore = () => api.mockRestore();
+  const id = "market-heatmap", Pane = marketHeatmapPlugin.panes![0]!.component;
+  const config = createTestPaneConfig(":memory:", { instanceId: id, paneId: id, settings: { universe: "portfolio", liveStreaming: false } });
+  config.watchlists = [...config.watchlists, { id: "tokyo", name: "Tokyo" }];
+  config.layout.instances.push({ instanceId: "portfolio-list:main", paneId: "portfolio-list", params: { collectionId: "main" }, binding: { kind: "none" } });
+  const initial = createInitialState(config);
+  initial.tickers.set("8058:JPX", createTestTicker("8058:JPX", "Mitsubishi", { watchlists: ["tokyo"] }));
+  initial.tickers.set("NVDA", createTestTicker("NVDA", "NVIDIA", { watchlists: ["watchlist"] }));
+  initial.focusedPaneId = id;
+  let dispatch: Dispatch<AppAction> = () => {};
+  function Harness() {
+    const [state, send] = useReducer(appReducer, initial);
+    dispatch = send;
+    return (
+      <TestPaneFrame state={state} dispatch={send} paneId={id} pluginId={id}
+        runtime={createTestPluginRuntime({ getMarketData: () => null })} width={100} height={16}>
+        {(body) => <Pane paneId={id} paneType={id} focused {...body} />}
+      </TestPaneFrame>
+    );
+  }
+  await act(async () => { await tui.render(<Harness />, { width: 100, height: 16 }); });
+  await settleFrame(tui.setup(), 8);
+  // The portfolio pane's empty portfolio, and the way to another list.
+  expect(tui.frame()).toContain("My Lists");
+  expect(tui.frame()).toContain("Main Portfolio");
+  expect(tui.frame()).toContain("Pick another list from List above");
+
+  await tui.clickFrameText("Main Portfolio");
+  await settleFrame(tui.setup(), 4);
+  await tui.clickFrameText("Tokyo");
+  await settleFrame(tui.setup(), 8);
+  expect(tui.frame()).toContain("8058:JPX");
+  expect(tui.frame()).not.toContain("No symbols in this list.");
+
+  // Moving into the portfolio pane chooses nothing; that pane switching lists does.
+  await act(async () => { dispatch({ type: "FOCUS_PANE", paneId: "portfolio-list:main" }); });
+  await settleFrame(tui.setup(), 6);
+  expect(tui.frame()).toContain("8058:JPX");
+  await act(async () => { dispatch({ type: "UPDATE_PANE_STATE", paneId: "portfolio-list:main", patch: { collectionId: "watchlist" } }); });
+  await settleFrame(tui.setup(), 8);
+  expect(tui.frame()).toContain("NVDA");
+  expect(tui.frame()).not.toContain("8058:JPX");
+  expect(api).not.toHaveBeenCalled();
+});
+
 test("US Stocks draws sector blocks, and the arrows and Enter reach tiles across them", async () => {
   const stock = (symbol: string, size: number, sector: string, industry: string, changePercent: number) => ({
     symbol, name: symbol, price: 100, change: 0, changePercent, hasChange: true, size, sizeKind: "market-cap" as const,

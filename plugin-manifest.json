@@ -978,7 +978,7 @@
     {
       "id": "market-heatmap",
       "name": "Market Heatmap",
-      "description": "Largest US stocks and ETFs, or the portfolio pane's list, sized by the day's move, market cap or position value and colored by daily move",
+      "description": "Largest US stocks and ETFs, or any of your portfolios and watchlists, sized by the day's move, market cap or position value and colored by daily move",
       "tagline": "The largest US stocks and ETFs as a heatmap.",
       "categories": [
         "markets"
@@ -1001,7 +1001,7 @@
           {
             "code": "HM",
             "name": "Market Heatmap",
-            "description": "Largest US stocks and ETFs, or the portfolio pane's list, sized by the day's move, market cap or position value and colored by daily move."
+            "description": "Largest US stocks and ETFs, or any of your portfolios and watchlists, sized by the day's move, market cap or position value and colored by daily move."
           }
         ]
       },
