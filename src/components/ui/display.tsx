@@ -242,6 +242,13 @@ const NATIVE_BADGE_TEXT_STYLE = { fontWeight: "var(--gloom-weight-regular)" };
  * whole line, as ticker chips do; a browser without `text-box` keeps it too.
  */
 const NATIVE_LOWERCASE_BADGE_TEXT_STYLE = { ...NATIVE_BADGE_TEXT_STYLE, textBox: "trim-both ex alphabetic" };
+/**
+ * A label cut where its chip ends (`maxWidth`). Its box is cut to x-height and
+ * baseline when it has lowercase letters, so the clip would take their tops and
+ * tails too: room above and below holds them, and the margin gives it back, so
+ * the label sits where an uncut one does.
+ */
+const NATIVE_CLIPPED_BADGE_TEXT_STYLE = { ...NATIVE_CLIP_STYLE, paddingBlock: "0.5em", marginBlock: "-0.5em" };
 const LOWERCASE = /\p{Ll}/u;
 
 export function Badge({ label, tone = "neutral", color, variant = "subtle", icon, translate = true, maxWidth }: BadgeProps) {
@@ -267,7 +274,7 @@ export function Badge({ label, tone = "neutral", color, variant = "subtle", icon
       {nativeIcon ? <Icon name={nativeIcon} color={foreground} fullHeight /> : null}
       {shown || !nativeIcon ? (
         <Text fg={foreground} attributes={TextAttributes.BOLD}
-          style={!nativePaneChrome ? undefined : maxWidth !== undefined ? { ...textStyle, ...NATIVE_CLIP_STYLE } : textStyle}>{shown}</Text>
+          style={!nativePaneChrome ? undefined : maxWidth !== undefined ? { ...textStyle, ...NATIVE_CLIPPED_BADGE_TEXT_STYLE } : textStyle}>{shown}</Text>
       ) : null}
     </Box>
   );
