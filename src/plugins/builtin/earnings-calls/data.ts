@@ -260,8 +260,9 @@ export async function loadEarningsCallsWithClient(
       const settled = !value.pending && calls.every((call) => call.hasTranscript);
       // Only the latest request for this scope may change persistence. A slow
       // earlier load must not rewind a force refresh or a new plugin session.
+      let saved: ReturnType<PluginPersistence["setResource"]> | undefined;
       if (activeListFetches.get(key) === request && persistence === store && settled) {
-        store?.setResource(LIST_KIND, key, value, {
+        saved = store?.setResource(LIST_KIND, key, value, {
           sourceKey: CACHE_SOURCE,
           schemaVersion: LIST_CACHE_SCHEMA_VERSION,
           cachePolicy: LIST_CACHE_POLICY,
@@ -272,7 +273,7 @@ export async function loadEarningsCallsWithClient(
       return {
         ...value,
         ...sourceScope(calls),
-        fetchedAt: Date.now(),
+        fetchedAt: saved?.fetchedAt ?? Date.now(),
         stale: false,
       };
     })
@@ -383,14 +384,15 @@ export async function loadUpcomingCallsWithClient(
         // A full answer may stop partway through the last day it reaches.
         ...(answered.length >= UPCOMING_LIMIT ? { truncated: true } : {}),
       };
+      let saved: ReturnType<PluginPersistence["setResource"]> | undefined;
       if (key !== null && activeUpcomingFetches.get(key) === request && persistence === store) {
-        store?.setResource(UPCOMING_KIND, key, value, {
+        saved = store?.setResource(UPCOMING_KIND, key, value, {
           sourceKey: CACHE_SOURCE,
           schemaVersion: UPCOMING_CACHE_SCHEMA_VERSION,
           cachePolicy: UPCOMING_CACHE_POLICY,
         });
       }
-      return upcomingFromCache(value, Date.now(), false);
+      return upcomingFromCache(value, saved?.fetchedAt ?? Date.now(), false);
     })
     .catch((error: unknown) => {
       const errorStatus = statusOf(error);

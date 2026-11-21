@@ -61,13 +61,13 @@ test("old failed requests cannot carry metadata across reset and attachment", as
   expect(cache.get("key")?.refreshError).toBeUndefined();
 });
 
-test("failure status survives distinct retrieval and persistence timestamps without another request", async () => {
+test("failure status survives a clock that moves between reads without another request", async () => {
   let time = 1_000_000;
   clock = spyOn(Date, "now").mockImplementation(() => time++);
   const cache = createSeriesCache("test", 60_000);
   cache.attach(new MemoryPluginPersistence());
   const initial = await cache.loadEntry("key", async () => observations);
-  expect(cache.get("key")?.fetchedAt).not.toBe(initial.fetchedAt);
+  expect(cache.get("key")).toMatchObject({ fetchedAt: initial.fetchedAt });
   await cache.loadEntry("key", async () => { throw new Error("outage"); }, { force: true });
   const cached = await cache.loadEntry("key", async () => { throw new Error("must not request"); });
   expect(cached).toMatchObject({ fetchedAt: initial.fetchedAt, stale: true, refreshError: "outage" });
