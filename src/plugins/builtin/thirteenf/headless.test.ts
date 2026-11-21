@@ -413,7 +413,7 @@ describe("13F headless model", () => {
       const result = await headless.load(loadArgs, createTestHeadlessContext({ marketData: createMovedSymbolsProvider() }));
       expect(asked).toEqual(["DINO"]);
       expect(result.metadata).toMatchObject({ view: "ticker-holdings", ticker: "DINO" });
-      expect(result.metadata?.notices?.[0]).toBe("HFC became DINO on 2022-03-15; showing DINO.");
+      expect((result.metadata?.notices as string[] | undefined)?.[0]).toBe("HFC became DINO on 2022-03-15; showing DINO.");
       expect(typeof headless.describe === "function" ? headless.describe(loadArgs, result) : null).toBe("13F Holders | DINO");
     });
 

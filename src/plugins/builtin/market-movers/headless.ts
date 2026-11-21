@@ -167,7 +167,7 @@ export function createMarketMoversHeadless(
           // list is dated by that session, `US trading day Fri 20 Nov 2026 pre-market`, not by when it was read.
           freshness: {
             ...(payload.access === "delayed" ? {} : { status: "live" as const }),
-            ...(payload.phase === "closed" ? { sessionList: { exchange: US_LIST_VENUE, session: payload.session, ...(SESSION_PART[tab] ? { part: SESSION_PART[tab] } : {}) } } : {}),
+            ...(payload.phase === "closed" ? { sessionList: { exchange: US_LIST_VENUE, ...(payload.session ? { session: payload.session } : {}), ...(SESSION_PART[tab] ? { part: SESSION_PART[tab] } : {}) } } : {}),
           },
         };
       }
