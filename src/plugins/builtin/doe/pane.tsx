@@ -149,7 +149,8 @@ export function DoePane({ width, height, focused }: PaneProps) {
   const data = resource.data?.payload ?? null;
   // The server not serving the board yet is a state of the data, not a failure.
   const notAvailable = !data && resource.error === DOE_NOT_AVAILABLE;
-  const { strip, rows: tabRows } = usePaneTabs({ tabs: [...DOE_TABS], activeValue: tab, onSelect: selectTab, focused, dense: true });
+  // No board is shown while the note stands in for it: none of its tabs is the open one.
+  const { strip, rows: tabRows } = usePaneTabs({ tabs: [...DOE_TABS], activeValue: covering ? null : tab, onSelect: selectTab, focused, dense: true });
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });
   // A refresh that failed shows the board an earlier read saved, and says when that copy is from.
