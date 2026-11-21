@@ -26,8 +26,8 @@ function subMinuteListing(symbol: string): SubMinuteListing {
 
 /**
  * Where data finer than a minute is: nowhere as bars. GIP draws 1-minute
- * bars; for a US listing TAS lists each trade (a window of the session with
- * `--from`/`--to`) and QR each quote. `history --interval`, GIP's
+ * bars; for a US listing TAS lists each trade of the latest session (a window
+ * of it with `--from`/`--to`) and QR each quote, and no older session. `history --interval`, GIP's
  * `--chart-resolution 1s` and QR on a listing abroad all say this. The tape
  * covers US equities only, and TAS and QR answer anything else with an
  * error or an empty table, so a listing without one is told only the bars
@@ -47,7 +47,7 @@ export function subMinuteDataMessage(symbol = "<ticker>", listing: SubMinuteList
     case "other":
       return `${none}; 1-minute bars: fn GIP ${symbol}. Trades and quotes cover US equities only.`;
     default:
-      return `${none}; 1-minute bars: fn GIP ${symbol}; for a US listing, each trade: fn TAS ${symbol} (a window: --from 10:30 --to 10:35), each quote: fn QR ${symbol}.`;
+      return `${none}; 1-minute bars: fn GIP ${symbol}; for a US listing, the latest session's trades: fn TAS ${symbol} (--from 10:30 --to 10:35), and quotes: fn QR ${symbol}.`;
   }
 }
 

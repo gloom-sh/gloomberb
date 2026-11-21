@@ -21,8 +21,21 @@ test("a window's times are New York's clock on the served session's date, throug
   expect(tapeWindowRange(october, parseTapeClock("14:30Z"), parseTapeClock("14:31 UTC"))).toEqual({ from: "2026-10-16T14:30:00.000Z", to: "2026-10-16T14:31:00.000Z" });
   // Without --from the window opens with the SIP day at 04:00 New York.
   expect(tapeWindowRange(october, null, parseTapeClock("4:01")).from).toBe("2026-10-16T08:00:00.000Z");
-  expect(() => parseTapeClock("25:00")).toThrow("25:00 is not a time of day: use 10:30 or 10:30:15 (New York time), or 14:30Z (UTC).");
-  expect(() => parseTapeClock("10.30")).toThrow("not a time of day");
+  expect(() => parseTapeClock("25:00")).toThrow("25:00 is not a time: use 10:30 or 10:30:15 (New York time), 14:30Z (UTC), or 2026-11-20T14:30:00Z.");
+  expect(() => parseTapeClock("10.30")).toThrow("not a time");
+});
+
+test("a timestamp is its own instant: on the served session it bounds the window, on another day it says the depth and where that day is", () => {
+  const october = closed("2026-10-16");
+  expect(tapeWindowRange(october, parseTapeClock("2026-10-16T14:30:00Z"), parseTapeClock("2026-10-16 10:35"))).toEqual({
+    from: "2026-10-16T14:30:00.000Z", to: "2026-10-16T14:35:00.000Z",
+  });
+  expect(tapeWindowRange(october, parseTapeClock("2026-10-16T10:30:00.250-04:00"), null).from).toBe("2026-10-16T14:30:00.000Z");
+  // 00:30 UTC on the 17th is 20:30 the evening before in New York: the served session's day, past its end.
+  expect(() => tapeWindowRange(october, parseTapeClock("2026-10-17T00:30:00Z"), null)).toThrow("is outside the window TAS serves");
+  expect(() => tapeWindowRange(october, parseTapeClock("2026-07-24T13:30:00Z"), null, "FFAI")).toThrow(
+    "TAS serves the latest session only, Fri 16 Oct 2026; Fri 24 Jul 2026 is not on it. That day's 1-minute bars: fn GIP FFAI --session 2026-07-24 --chart-resolution 1m.");
+  expect(() => parseTapeClock("2026-02-30T10:00:00Z")).toThrow("not a time");
 });
 
 test("a bound outside the served window is refused with the window that is served, its end the feed cutoff while the session runs", () => {

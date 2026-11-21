@@ -1394,7 +1394,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - `--range YTD` (any case) is the year's daily bars from the prior year's last close, the one year-to-date returns are measured from (`history LMT --range YTD` starts at 31 Dec 2025).
 - `--range ALL` reaches back up to 50 years. When the source's first bar is well inside that, a warning says where it starts (`ALL starts 2014-09; the source has no earlier bar` for BTC-USD), or why nothing older is served (`Price history starts 1992-12-01; old-shekel quotes before 1992 are not served.`).
 - `gloom help history` ends with where long history is. ZAR has daily FRED data from 1980 (`fred DEXSFUS`). NGN, SAR and ILS have no FRED series, daily bars for the last five years (`fn G USDNGN=X --rangePreset 5Y --chartResolution 1d`) and monthly bars only before that (`history USDNGN=X --range ALL`).
-- `--interval 1s` says `No second or tick bars; 1-minute bars: fn GIP HYG; for a US listing, each trade: fn TAS HYG (a window: --from 10:30 --to 10:35), each quote: fn QR HYG.` (`fn GIP <ticker> --chartResolution 1s`, `30s` or `tick` and `catalog tick` say the same).
+- `--interval 1s` says `No second or tick bars; 1-minute bars: fn GIP HYG; for a US listing, the latest session's trades: fn TAS HYG (--from 10:30 --to 10:35), and quotes: fn QR HYG.` (`fn GIP <ticker> --chartResolution 1s`, `30s` or `tick` and `catalog tick` say the same).
 
 **What the output says**
 

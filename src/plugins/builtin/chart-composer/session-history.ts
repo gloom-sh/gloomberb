@@ -15,6 +15,7 @@ import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date"
 import { pricePointIntegrity } from "../../../utils/price-history-integrity";
 import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 import { fetchHistoryResult } from "../../../sources/history-result";
+import { historyRetentionNotice, isHistoryRetentionError, type HistoryRetention } from "../../../sources/history-retention";
 import type { PriceHistoryResult } from "../../../types/price-history";
 
 export type IntradayRangePreset = "1D" | "1W";
@@ -207,10 +208,14 @@ export function resolveIntradayRequest(options: {
   return { rangePreset, resolution, session };
 }
 
-function unavailableReason(symbol: string, request: IntradayRequest, kind: "empty" | "not-intraday" | "failed"): string {
+function unavailableReason(symbol: string, request: IntradayRequest, kind: "empty" | "not-intraday" | "failed", retention?: HistoryRetention, timeZone: string | null = null): string {
   const window = request.session
     ? `session ${request.session}`
     : request.rangePreset === "1W" ? "the latest five sessions" : "the latest session";
+  // A session older than the source keeps at the resolution: how far back it goes, and where that day's prices are.
+  if (retention && request.session) {
+    return `${historyRetentionNotice(retention, request.resolution, timeZone)} That session's daily bar: gloom history ${symbol} --from ${request.session} --to ${request.session}.`;
+  }
   if (kind === "failed") return `Intraday history request failed for ${symbol}. Try again.`;
   return kind === "not-intraday"
     ? `The market-data provider did not return intraday bars for ${symbol} for ${window}.`
@@ -219,6 +224,8 @@ function unavailableReason(symbol: string, request: IntradayRequest, kind: "empt
 
 interface IntradayHistoryAttempt extends PriceHistoryResult {
   requestFailed?: true;
+  /** The session asked for is older than the source keeps at the resolution. */
+  retention?: HistoryRetention;
 }
 
 async function loadTrailingHistory(
@@ -255,7 +262,9 @@ async function loadHistoricalFallback(
   if (request.session) {
     const bounds = sessionUtcBounds(request.session, timeZone);
     return await fetchHistoryResult(provider, symbol, exchange,
-      { kind: "detail", start: bounds.start, end: bounds.end, interval: request.resolution }, context).catch(logFailure("chart-composer.session-history", "Load requested intraday session failed", failed)) ?? empty;
+      { kind: "detail", start: bounds.start, end: bounds.end, interval: request.resolution }, context).catch((error: unknown) => (
+      isHistoryRetentionError(error) ? { ...empty, retention: error.retention }
+        : logFailure("chart-composer.session-history", "Load requested intraday session failed", failed)(error))) ?? empty;
   }
   const end = new Date(now.getTime() - HISTORICAL_RETRY_DELAY_MS);
   const lookbackDays = request.rangePreset === "1W" ? 35 : 8;
@@ -288,6 +297,7 @@ export async function loadIntradayWindow(options: {
         options.request, options.context,
       );
   let requestFailed = acquisition.requestFailed === true;
+  const retention = acquisition.retention;
   let raw = acquisition.points;
   let window = resolveIntradaySessionWindow(raw, {
     rangePreset: options.request.rangePreset,
@@ -334,6 +344,8 @@ export async function loadIntradayWindow(options: {
         options.symbol,
         options.request,
         requestFailed ? "failed" : sawNonIntradayData ? "not-intraday" : "empty",
+        retention,
+        timeZone,
       ),
     };
   }
