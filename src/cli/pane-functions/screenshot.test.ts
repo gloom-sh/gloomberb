@@ -1642,6 +1642,23 @@ test("a CTM capture states the delay its contracts' source does, as fn CTM does,
   expect(formatFreshnessLine(report.freshness)).toContain("10 min delayed");
 });
 
+test("an ADR capture names its two markets' opens, never the Sunday reopen of the rate it converts by (DES adr-vs-home)", () => {
+  // Sun 22 Nov 2026: SHEL:NYSE and SHEL:LSE closed on Fri 20 Nov; USD/GBP's week reopens at 22:00 UTC that evening.
+  const NOW = Date.parse("2026-11-22T10:00:00Z");
+  const closed = { dataSource: "delayed", delayMinutes: 15, marketState: "CLOSED" } as const;
+  const receipt = createTestQuote({ symbol: "SHEL", ...closed, listingExchangeName: "NYSE", exchangeName: "NYSE", lastUpdated: Date.parse("2026-11-20T21:00:00Z") } as never);
+  const home = createTestQuote({ symbol: "SHEL.L", currency: "GBp", ...closed, listingExchangeName: "LSE", exchangeName: "LSE", lastUpdated: Date.parse("2026-11-20T16:35:00Z") } as never);
+  const rate = createTestQuote({ symbol: "GBPUSD=X", currency: "USD", ...closed, listingExchangeName: "CCY", exchangeName: "CCY", lastUpdated: Date.parse("2026-11-20T21:59:00Z") } as never);
+  const payload = { financials: [["SHEL", { quote: receipt }]], instrumentFinancials: [] } as unknown as Pick<DesktopPaneShotPayload, "financials" | "instrumentFinancials">;
+  const pane = { reportFreshness: undefined } as ResolvedPaneFunction["pane"];
+  const line = shotFreshness({ pane }, payload, { semanticUi: [], footerText: "", rows: [] }, [home, rate], undefined, NOW).variants[0]!;
+  expect(line).toContain("LSE opens Mon 08:00 UTC, 08:00 GMT · US Mon 14:30 UTC, 09:30 ET");
+  expect(line).not.toContain("22:00");
+  // The receipt alone opens with its own market.
+  expect(shotFreshness({ pane }, payload, { semanticUi: [], footerText: "", rows: [] }, [rate], undefined, NOW).variants[0])
+    .toContain("regular session opens Mon 14:30 UTC, 09:30 ET");
+});
+
 test("a pane with no market data is not dated by the quotes the page loaded for something else (CHG, BR, ACM, CAT)", () => {
   const NOW = Date.parse("2026-10-24T00:23:00Z");
   // A portfolio holding's quote, which the page loads whatever pane it shows.

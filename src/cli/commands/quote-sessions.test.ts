@@ -286,8 +286,9 @@ test("quote's change basis follows Chg% in the table, with the holiday under it,
     expect(text).toContain("\nHKEX closed Mon 19 Oct, holiday");
     const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
     expect(csv[0]).toContain(",Chg%,Pre-Market,");
-    expect(csv[0]).toContain(",Updated,Chg Basis,Chg Basis Note,Pre-Market Chg%,After Hours Chg%,Overnight Chg%,status,symbol_or_series,");
-    expect(csv[1]).toContain(",vs Fri 16 Oct close,\"HKEX closed Mon 19 Oct, holiday\",,,,,3042:HKEX,");
+    expect(csv[0]).toContain(",Updated,Chg Basis,Chg Basis Note,Pre-Market Chg%,After Hours Chg%,Overnight Chg%,"
+      + "Pre-Market Updated,After Hours Updated,Overnight Updated,status,symbol_or_series,");
+    expect(csv[1]).toContain(",vs Fri 16 Oct close,\"HKEX closed Mon 19 Oct, holiday\",,,,,,,,3042:HKEX,");
     const row = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n")[0]!);
     const keys = Object.keys(row);
     expect(keys.slice(keys.indexOf("error"), keys.indexOf("error") + 3)).toEqual(["error", "changeBasis", "changeBasisNote"]);
@@ -331,9 +332,10 @@ test("a pre-market nothing has traded in reads as the close it stands at in quot
   setSystemTime(new Date("2026-10-16T08:14:00Z"));
   try {
     const { rows, text } = await compare([waiting, printed]);
-    expect(rows.map(({ session, sessionLabel, updatedAt }) => ({ session, sessionLabel, updatedAt }))).toEqual([
-      { session: "PRE-MKT", sessionLabel: "Thu close", updatedAt: thursdayClose },
-      { session: "PRE-MKT", sessionLabel: "PRE-MKT", updatedAt: "2026-10-16T08:03:45.000Z" },
+    // A traded pre-market's Last is still Thursday's close, the print its own time.
+    expect(rows.map(({ session, sessionLabel, updatedAt, extendedUpdatedAt }) => ({ session, sessionLabel, updatedAt, extendedUpdatedAt }))).toEqual([
+      { session: "PRE-MKT", sessionLabel: "Thu close", updatedAt: thursdayClose, extendedUpdatedAt: "" },
+      { session: "PRE-MKT", sessionLabel: "PRE-MKT", updatedAt: thursdayClose, extendedUpdatedAt: "2026-10-16T08:03:45.000Z" },
     ]);
     expect(text.split("\n").find((line) => line.startsWith("PLTR"))).toContain("Thu close");
     // CSV keeps the state the Session column always held.
@@ -378,9 +380,13 @@ test("quote --csv writes plain numbers, an extended print and its move apart, an
     const columns = header!.split(",");
     const rows = lines.map((line) => line.match(/("[^"]*"|[^,]*)(,|$)/g)!.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "")));
     const cell = (symbol: string, column: string) => rows.find((row) => row[0] === symbol)![columns.indexOf(column)];
-    expect(columns.slice(-9)).toEqual(["After Hours Chg%", "Overnight Chg%", "status",
-      "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "retrieved_at"]);
+    expect(columns.slice(-12)).toEqual(["After Hours Chg%", "Overnight Chg%", "Pre-Market Updated", "After Hours Updated", "Overnight Updated",
+      "status", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "retrieved_at"]);
     expect([cell("AAPL", "Last"), cell("AAPL", "After Hours"), cell("AAPL", "After Hours Chg%"), cell("AAPL", "status")]).toEqual(["336.64", "336.08", "-0.17", ""]);
+    // Each price by its own time: Last is Friday's 20:00 UTC close, the after-hours print is from 23:59 UTC.
+    expect([cell("AAPL", "Updated"), cell("AAPL", "After Hours Updated"), cell("AAPL", "as_of")])
+      .toEqual(["2026-10-09T20:00:00.000Z", "2026-10-09T23:59:31.000Z", "2026-10-09T20:00:00.000Z"]);
+    expect([cell("7203:JPX", "Updated"), cell("7203:JPX", "After Hours Updated")]).toEqual(["2026-10-09T06:30:00.000Z", ""]);
     // A vendor's suffixed symbol is the listing its quote confirms, as RV names it.
     expect([cell("7203:JPX", "Last"), cell("7203:JPX", "Cur"), cell("7203:JPX", "currency_or_unit")]).toEqual(["2910.5", "JPY", "JPY"]);
     expect([cell("0QQQ:LSE", "Last"), cell("0QQQ:LSE", "Chg%"), cell("0QQQ:LSE", "status")]).toEqual(["12.5", "", "Chg%: no previous close"]);
@@ -438,6 +444,7 @@ test("compare writes a day's range as two numbers that are empty, with the range
     const columns = Object.keys(first!);
     expect(columns.slice(columns.indexOf("Chg Basis Note"), columns.indexOf("status"))).toEqual([
       "Chg Basis Note", "Pre-Market Chg%", "After Hours Chg%", "Overnight Chg%", "Day Low", "Day High", "Feed", "Updated",
+      "Pre-Market Updated", "After Hours Updated", "Overnight Updated",
     ]);
   } finally {
     setSystemTime();

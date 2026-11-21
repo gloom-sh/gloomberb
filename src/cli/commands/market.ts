@@ -7,6 +7,7 @@ import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, RANGE_HISTORY_RESOLUTION } from "../../time-series/resolution";
 import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
 import { barCloseSession } from "../../market-data/market/bar-period";
+import { regularSessionCloseOn } from "../../market-data/market/freshness";
 import type { EarningsEvent, MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
@@ -579,7 +580,7 @@ async function readListedSymbols(
 const QUOTE_CSV_SECTION = {
   title: "CSV",
   lines: [
-    "Last, Chg%, Prev Close and each extended print are plain numbers. Cur is the currency; currency_or_unit is the unit: the currency, a pair's quote currency per base (JPY per USD for USDJPY=X), index points or pct for a yield. A pre-market, after-hours or overnight print's move is in Pre-Market Chg%, After Hours Chg% or Overnight Chg%, and compare's day range in Day Low and Day High, after the columns the export already had.",
+    "Last, Chg%, Prev Close and each extended print are plain numbers. Cur is the currency; currency_or_unit is the unit: the currency, a pair's quote currency per base (JPY per USD for USDJPY=X), index points or pct for a yield. A pre-market, after-hours or overnight print's move is in Pre-Market Chg%, After Hours Chg% or Overnight Chg%, and compare's day range in Day Low and Day High, after the columns the export already had. Updated is when Last was observed (a close beside an extended print, at the venue's close), and each print's own time is in Pre-Market Updated, After Hours Updated or Overnight Updated, last of all.",
     "A row with no figure says why in its status column, never NaN; a symbol with no quote is also named on standard error.",
     "A list from --file or standard input has a row for every line, in its order, one that names no listing with its reason in status; its export adds input, the line as typed, and duplicate_of, the input of an earlier row that is the same listing.",
   ],
@@ -660,7 +661,7 @@ const CHANGE_BASIS_EXPORT_COLUMNS = [
  */
 function quoteTextColumns<Column extends { key: string }>(columns: Column[]): Array<Column | typeof CHANGE_BASIS_COLUMN> {
   const exported = new Set([...CHANGE_BASIS_EXPORT_COLUMNS, ...EXTENDED_CHANGE_EXPORT_COLUMNS, ...DAY_RANGE_EXPORT_COLUMNS, CHANGE_BP_EXPORT_COLUMN,
-    ...LIST_INPUT_EXPORT_COLUMNS].map((column) => column.key));
+    ...LIST_INPUT_EXPORT_COLUMNS, ...EXTENDED_TIME_EXPORT_COLUMNS].map((column) => column.key));
   const kept = columns.filter((column) => !exported.has(column.key));
   const at = kept.findIndex((column) => column.key === "changePercent") + 1;
   return [...kept.slice(0, at), CHANGE_BASIS_COLUMN, ...kept.slice(at)];
@@ -719,6 +720,18 @@ const EXTENDED_CHANGE_EXPORT_COLUMNS = EXTENDED_SESSIONS.map((session) => ({
   key: `${extendedKey(session)}ChangePercent`,
   header: `${EXTENDED_SESSION_LABELS[session]} Chg%`,
   value: (row: QuoteRow) => row.extendedSession === session ? row.extendedChangePercent : null,
+}));
+
+/**
+ * When each extended print was observed, as Updated dates Last: SHEL:NYSE's
+ * after-hours print at 00:04 UTC beside its 21:00 UTC close. Last of all an
+ * export's columns, so one read by position stays where it was; the table
+ * puts the time beside the print.
+ */
+const EXTENDED_TIME_EXPORT_COLUMNS = EXTENDED_SESSIONS.map((session) => ({
+  key: `${extendedKey(session)}UpdatedAt`,
+  header: `${EXTENDED_SESSION_LABELS[session]} Updated`,
+  value: (row: QuoteRow) => row.extendedSession === session && row.extendedUpdatedAt ? row.extendedUpdatedAt : null,
 }));
 
 /**
@@ -963,6 +976,9 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     const closeDate = extended && !result.futuresContract && !quote?.nominalPrice && !quote?.dailyClose ? headlineCloseDate(quote) : null;
     const printedAt = closeDate ? extendedPrintTime(quote) : null;
     const closeBesidePrint = closeDate && printedAt != null ? { date: closeDate, printedAt } : null;
+    // Last and an extended print are two observations: a close beside a print is dated by the venue's close, the print by its own time.
+    const closedAt = closeBesidePrint ? regularSessionCloseOn(quote?.listingExchangeName || quote?.exchangeName, closeBesidePrint.date) : null;
+    const extendedAt = extended ? extendedPrintTime(quote) : null;
     return {
       symbol: quoteRowSymbol(result),
       name: quote?.name || result.listing?.name || "",
@@ -1004,14 +1020,17 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       source: quote?.dataSource ?? quote?.providerId ?? "",
       feed: quoteFeedState(quote, now),
       ...quote?.priceVenue ? { priceVenue: quote.priceVenue } : {},
-      // When the price Last shows was observed: in a pre-market nothing has traded in, the close it stands at.
-      updatedAt: quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "",
+      // When the price Last shows was observed: in a pre-market nothing has traded in, the close it stands at; beside an
+      // extended print, the close it is, the print keeping its own time in its session's Updated column.
+      updatedAt: closedAt != null ? new Date(closedAt).toISOString() : quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "",
       input: result.input ?? "",
       duplicateOf: result.duplicateOf ?? "",
       error: result.error ?? "",
       // Last, so a row read by position keeps every field where it was.
       changeBasis: predates ? "" : basisLabel(result, now),
       changeBasisNote: changeBasisNote(rowChangeBasis(result), now) ?? "",
+      // When the extended print was observed, which Updated (Last's time) is not beside a close.
+      extendedUpdatedAt: extendedAt != null ? new Date(extendedAt).toISOString() : "",
       // A price nothing traded at names the venue session it is the nominal close of; the quote keeps its last trade.
       ...quote?.nominalPrice ? { nominalLabel: nominalSessionLabel(quote) ?? undefined } : {},
       // A price with no live quote behind it, the close of the latest daily bar, names that session.
@@ -1464,9 +1483,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const pair = listingDepositaryPair({ quote: row.quote });
         if (!pair) return [];
         const receiptSide = isReceiptSide({ quote: row.quote });
-        const receiptQuoted = receiptSide || data.some((other) => other !== row && isReceiptSide({ quote: other.quote })
+        const receipt = receiptSide ? null : data.find((other) => other !== row && isReceiptSide({ quote: other.quote })
           && listingDepositaryPair({ quote: other.quote })?.receipt === pair.receipt);
-        return receiptQuoted ? [`${row.target.symbol}: ${depositaryPairText(pair, receiptSide)}.`] : [];
+        // Each line by its venue, as the table names it (SHEL:LSE, SHEL:NYSE).
+        const receiptVenue = receipt ? receipt.target.exchange || receipt.quote?.listingExchangeName || receipt.quote?.exchangeName : null;
+        return receiptSide || receipt ? [`${row.target.symbol}: ${depositaryPairText(pair, receiptSide, receiptVenue)}.`] : [];
       }),
       ...endedNotes.flatMap((note) => note ?? []),
       // A commodity's word read as a security's ticker (WTI is W&T Offshore, GOLD is Gold.com) names the future it may have meant.
@@ -1481,7 +1502,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     ];
     const holdsYield = data.some((row) => isYieldIndexSymbol(row.target.symbol));
     const columns = [...commandName === "compare" ? compareColumns() : quoteColumns(), ...holdsYield ? [CHANGE_BP_EXPORT_COLUMN] : [],
-      ...listInputs ? LIST_INPUT_EXPORT_COLUMNS : []];
+      ...listInputs ? LIST_INPUT_EXPORT_COLUMNS : [], ...EXTENDED_TIME_EXPORT_COLUMNS];
     // An export of a list read from a file or standard input has a row for every line, in its order: one no listing was
     // read for says why in its status, as its line on stderr does. The table keeps a row per listing.
     const rows = listInputs && ctx.cliOptions.format !== "text"

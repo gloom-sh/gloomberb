@@ -7,7 +7,7 @@ import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketForma
 import { heldCurrencyUnit } from "../../../../utils/currency-units";
 import { adrRatioText } from "../../../../utils/depositary-receipt";
 import {
-  compareDepositaryPair, dollarPairLabel, formatPairRate, isReceiptSide, listingDepositaryPair, pairPriceInput, pairTimeText,
+  compareDepositaryPair, dollarPairLabel, formatPairRate, isReceiptSide, listingDepositaryPair, pairListingKey, pairPriceInput, pairTimeText,
   premiumText, ratioCount, spotRateKind, type DepositaryPairComparison, type PairPriceInput, type PairSpotInput,
 } from "../../../../market-data/depositary-pair";
 import { AH_SPOT_LABEL, ahListingKey, type AhComparison } from "../../../../market-data/ah-pair";
@@ -78,7 +78,9 @@ export function adrPairComparison(
   spot: PairSpotInput | null,
   now = Date.now(),
 ): DepositaryPairComparison | null {
-  return compareDepositaryPair(legs.pair.ratio, pairPriceInput(legs.receiptKey, quotes.receipt), pairPriceInput(legs.homeKey, quotes.home), spot, now);
+  // Each leg named as every other listing is (SHEL:LSE, SHEL:NYSE), not as its source writes it (SHEL.L).
+  const receiptKey = pairListingKey(legs.receiptKey, quotes.receipt?.listingExchangeName || quotes.receipt?.exchangeName);
+  return compareDepositaryPair(legs.pair.ratio, pairPriceInput(receiptKey, quotes.receipt), pairPriceInput(pairListingKey(legs.homeKey), quotes.home), spot, now);
 }
 
 export interface AdrPairFigure {

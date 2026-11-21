@@ -27,6 +27,7 @@ import {
   type ReportFreshness,
 } from "./freshness";
 import { quotesFreshness } from "../freshness";
+import { isCurrencyPairListing } from "../../utils/fx-market-hours";
 import type { BrokerNameOf } from "../../market-data/quotes/export-identity";
 import { paneFitsRows, shotMaxHeightCells, buildDesktopShotPayload } from "./screenshot-payload";
 import { resolveDesktopShotApiProxy, createDesktopShotBridge } from "./screenshot-bridge";
@@ -91,16 +92,21 @@ export function shotFreshness(
 ): CaptureStatusLine {
   const published = renderedReportFreshness(render.semanticUi ?? []);
   const declared = { ...declaredReportFreshness(resolved), ...published };
-  const quotes = [
+  const loaded = [
     ...payload.financials.map(([, financials]) => financials.quote),
     ...(payload.instrumentFinancials ?? []).map(({ financials }) => financials.quote),
     ...bridgedQuotes,
   ];
+  // A rate the page converts by (USD/GBP beside an ADR and its home line) is no market of the capture's: its week's
+  // Sunday reopen read as theirs (`reopens Sun 22:00 UTC` on SHEL:NYSE, which opens Mon 14:30 UTC). A page of rates keeps them.
+  const listings = loaded.filter((quote) => quote && !isCurrencyPairListing(quote.symbol, quote.listingExchangeName || quote.exchangeName));
+  const quotes = listings.length > 0 ? listings : loaded;
   // A pane that publishes the observations behind its figures (FXC's rates) dates itself.
   const observed = renderedReportObservations(render.semanticUi ?? []);
   const quoted = declared.status || observed.length > 0
     ? undefined
-    : quotesFreshness(quotes, declared.source ? { source: declared.source } : undefined, now, sourceName);
+    // Quotes across markets name each one's session and open (`LSE opens Mon 08:00 UTC · US Mon 14:30 UTC`), as compare and QM do.
+    : quotesFreshness(quotes, { ...declared.source ? { source: declared.source } : {}, datesEachVenue: true }, now, sourceName);
   return captureStatusLine({
     report,
     selfDated: Object.keys(published).length > 0 || observed.length > 0,
