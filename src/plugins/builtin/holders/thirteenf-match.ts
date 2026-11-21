@@ -21,7 +21,7 @@ const HOLDER_MATCH_CONCURRENCY = 4;
  * must not hold the pane, or a capture of it, on what is an enhancement: past
  * this the lookups still running stop, and their holders stay unmatched.
  */
-export const HOLDER_MATCH_BUDGET_MS = 15_000;
+const HOLDER_MATCH_BUDGET_MS = 15_000;
 
 function normalizeName(value: string): string {
   return value
