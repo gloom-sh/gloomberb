@@ -57,7 +57,7 @@ import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
 import { resumeStateKey } from "../../plugins/registry/plugin-state";
 import { logFailure } from "../../utils/log-failure";
-import { windowRows, type RowWindow, type RowWindowOptions } from "../row-window";
+import { rowWindowCutNote, windowRows, type RowWindowOptions } from "../row-window";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -1153,13 +1153,6 @@ function withUnreached(
   return nothingServed && unreached ? { ...freshness, unreached: true } : freshness;
 }
 
-/** What a cut says: which rows of how many it kept, and of which table when the report has several. */
-function cutNote(window: RowWindowOptions, cut: RowWindow<unknown>, table?: string): string | null {
-  if (cut.rows.length >= cut.total) return null;
-  const kept = `${window.tail != null ? (cut.kept === "newest" ? "newest" : "last") : "first"} ${cut.rows.length} of ${cut.total} rows`;
-  return `${table ? `${table}: ` : ""}${cut.note ?? `${kept} (--${window.tail != null ? "tail" : "limit"} ${window.tail ?? window.limit})`}`;
-}
-
 /**
  * The report's rows as `--limit` and `--tail` keep them, for a function with no option of its own for them
  * (`fn CTM CL --limit 3`): the first or last n of each table, of a series' points the oldest or newest n, as every
@@ -1169,7 +1162,7 @@ function windowHeadlessResult(shape: HeadlessPaneDefinition["shape"], result: He
   const notes: string[] = [];
   const cut = <Row,>(rows: readonly Row[], table?: string, dateOf?: (row: Row) => unknown): Row[] => {
     const kept = windowRows(rows, window, dateOf);
-    const note = cutNote(window, kept, table);
+    const note = rowWindowCutNote(window, { ...kept, shown: kept.rows.length }, { table });
     if (note) notes.push(note);
     return kept.rows;
   };

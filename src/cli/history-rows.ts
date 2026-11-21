@@ -17,7 +17,7 @@ import { parsePublicTickerKey } from "../utils/exchanges";
 import { currencyUnitLabel, resolveCurrencyUnit } from "../utils/currency-units";
 import { dailyBarDate, getPricePointTimestamp } from "../utils/price-history";
 import {
-  CLOSE_COPIED_FLAG, CLOSE_REBUILT_FLAG, isWickFlag, latestTradeIndex, missingVolumeNotice, OPEN_WITHHELD_FLAG, priceHistoryIntegrityNotice,
+  CLOSE_COPIED_FLAG, CLOSE_REBUILT_FLAG, isWickFlag, missingVolumeNotice, OPEN_WITHHELD_FLAG, priceHistoryIntegrityNotice, priceOnlyPoint,
   pricePointIntegrityFlags, pricePointOpenWithheld, pricePointValues, pricePointWickFlags,
 } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
@@ -436,13 +436,15 @@ export function historyRows(
   const times = points.map(getPricePointTimestamp);
   const intraday = resolution ? isIntradayResolution(resolution) : looksIntraday(times);
   const interval = historyInterval(times, resolution);
-  // The latest trade some sources end intraday bars with is part of the bar before it, with no volume of its own.
-  const latestTrade = intraday ? latestTradeIndex(times) : -1;
+  // The latest trade some sources end intraday bars with, inside the bar before it or after the last one, has no
+  // volume of its own: its 0 reads as none (priceOnlyPoint).
+  const latestTrade = intraday ? priceOnlyPoint(points)?.index ?? -1 : -1;
   const rows = points.map((point, index) => {
     const time = times[index]!;
     const iso = Number.isFinite(time) ? new Date(time).toISOString() : "";
     const flags = historyBarFlags(point);
-    const values = historyBarValues(point, interval === "1mo");
+    const read = historyBarValues(point, interval === "1mo");
+    const values = index === latestTrade && read.volume === 0 ? { ...read, volume: null } : read;
     const price = (value: number | null) => value == null ? null : cleanBarPrice(value, priceDivisor);
     return {
       date: intraday ? iso.replace(".000Z", "Z") : iso.slice(0, 10),
@@ -739,13 +741,14 @@ export function venueTradingDay(venue: string | undefined, now: number): string 
  * day's bar is final (partial)", the bars rebuilt from hourly bars, a
  * future's closed session that "closes on its last trade until its
  * settlement is confirmed (unsettled)", and the latest trade an intraday
- * history ends with when it has no volume (latestTradeIndex). Null when no
+ * history ends with when it has no volume (priceOnlyPoint). Null when no
  * bar is any of them. `tradingDay`: the venue's day in session now, null
  * when none is; left out when the venue's hours are not known, every
  * partial bar is then still forming.
  */
 export function historyBarStatusNote(
-  rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "unsettled" | "sessionClose" | "beforeClose" | "volume" | "interval">[],
+  rows: readonly Pick<HistoryRow,
+    "date" | "open" | "high" | "low" | "close" | "partial" | "filled" | "unsettled" | "sessionClose" | "beforeClose" | "volume" | "interval">[],
   options: { tradingDay?: string | null } = {},
 ): string | null {
   // A day's bar the data service still marks partial once its session has closed: its own daily bar is not in yet.
@@ -753,7 +756,8 @@ export function historyBarStatusNote(
     options.tradingDay !== undefined && row.interval === "1d" && row.date.slice(0, 10) !== options.tradingDay;
   const partial = rows.filter((row) => row.partial && !closed(row));
   const settling = rows.filter((row) => row.partial && closed(row));
-  const latest = rows[latestTradeIndex(rows.map((row) => Date.parse(row.date)))];
+  const priceOnly = priceOnlyPoint(rows);
+  const latest = priceOnly ? rows[priceOnly.index] : undefined;
   const filled = rows.filter((row) => row.filled);
   const unsettled = rows.filter((row) => row.unsettled);
   const closes = rows.filter((row) => row.sessionClose);
@@ -786,7 +790,7 @@ export function historyBarStatusNote(
       : null,
     // Its blank volume beside bars that have one, said once rather than counted as a bar without volume.
     latest && latest.volume == null && historyReportsVolume(rows)
-      ? `${latest.date} is the latest trade, inside the bar before it, with no volume of its own`
+      ? `${latest.date} is the latest trade, ${priceOnly?.insideBar ? "inside the bar before it" : "after the last bar"}, with no volume of its own`
       : null,
   ].filter((note): note is string => note != null);
   return notes.length > 0 ? notes.join("; ") : null;
@@ -806,10 +810,10 @@ export function historyReportsVolume(rows: readonly Pick<HistoryRow, "volume">[]
  * are said by their own notes and not counted.
  */
 export function historyMissingVolumeNote(
-  rows: readonly Pick<HistoryRow, "date" | "volume" | "venueVolume" | "partial" | "filled" | "flag">[],
+  rows: readonly Pick<HistoryRow, "date" | "open" | "high" | "low" | "close" | "volume" | "venueVolume" | "partial" | "filled" | "flag">[],
 ): string | null {
   if (!historyReportsVolume(rows)) return null;
-  const latestTrade = latestTradeIndex(rows.map((row) => Date.parse(row.date)));
+  const latestTrade = priceOnlyPoint(rows)?.index;
   const missing = rows.filter((row, index) => row.volume == null && row.venueVolume == null && !row.partial && !row.filled
     && blankingCodes(row).length === 0 && index !== latestTrade).length;
   return missingVolumeNotice(missing, rows.length) ?? null;

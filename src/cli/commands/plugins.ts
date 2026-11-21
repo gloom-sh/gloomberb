@@ -41,6 +41,7 @@ import {
 } from "../../utils/cli-output";
 import type { CliCommandContext } from "../../types/plugin";
 import { fail } from "../errors";
+import { windowTextRows } from "../row-window";
 import { VERSION } from "../../version";
 
 /**
@@ -419,15 +420,17 @@ export async function listPlugins(ctx: CliCommandContext, options: { check?: boo
       if (rows.length === 0) {
         return cliStyles.muted("No plugins installed. Install one with gloom install <user/repo>.");
       }
+      const shown = windowTextRows(rows, ctx.cliOptions);
       return [
         renderTable(
           columns.map(({ header, shrink }) => ({ header, shrink })),
-          rows.map((row) => columns.map(({ key }) => {
+          shown.rows.map((row) => columns.map(({ key }) => {
             if (key === "folder") return row.name === row.id ? "" : cliStyles.muted(row.name);
             const value = String(row[key as keyof InstalledPluginRow] ?? "");
             return key === "update" && value && value !== "up to date" ? cliStyles.warning(value) : value;
           })),
         ),
+        ...shown.note ? [cliStyles.muted(shown.note)] : [],
         ...rows.filter((row) => row.blocked).map((row) => cliStyles.warning(`${row.id} is not loaded: ${row.blocked}`)),
         "",
         renderStats([["Directory", cliStyles.muted(PLUGINS_DIR)]]),

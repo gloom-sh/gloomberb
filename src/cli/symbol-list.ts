@@ -204,6 +204,35 @@ function numericCodeGrid(rows: readonly string[][]): boolean {
     && rows.every((cells) => cells.every((cell) => !cell || NUMERIC_CODE.test(cell.trim())));
 }
 
+/** A numeric exchange code on a line of its own, bare or with its market: `8058`, `8058:TSE`, `7203.T`, `0700.HK`. */
+const NUMERIC_LISTING = /^\d{4,6}(?:[.:][A-Za-z]{1,6})?$/;
+
+/**
+ * A line of a list that holds several entries, each a symbol: `8001.t, 8002:TSE, 8053`. Numeric codes side by side
+ * are listings (`0700, 9988`), but a whole number beside a symbol is a listing only when the list's own lines are
+ * numeric codes (`codes`: `8058` or `8058:TSE` on a line of its own); elsewhere it is that symbol's value, a quantity
+ * or a price (`ED, 2582`, `AAPL, 1500, USD`). A shorter number, a figure, a rating or a name anywhere on the line is a
+ * value too.
+ */
+function isSymbolsLine(cells: readonly string[], codes: boolean): boolean {
+  const code = (cell: string) => NUMERIC_CODE.test(cell.trim());
+  if (!codes && cells.some(code) && cells.some((cell) => !code(cell) && !isJunkCell(cell))) return false;
+  return cells.every((cell) => isJunkCell(cell) || isTerminalCodeCell(cell) || isSymbolWords(cell)
+    || (isGridSymbol(cell) && (!isFigure(cell) || code(cell))));
+}
+
+/**
+ * A list pasted from several places, ragged as such a list is: lines of symbols split by commas (`8001.t, 8002:TSE`)
+ * beside lines of one entry each, a company's name among them (`"Mitsubishi Corp"`). Every line is one entry or a
+ * line of symbols (`isSymbolsLine`), and some line is several, so no line holds a name, a price or a rating beside a
+ * symbol, as a table's rows do.
+ */
+function isRaggedList(rows: readonly string[][]): boolean {
+  const lines = rows.map((cells) => cells.filter(Boolean));
+  const codes = lines.some((cells) => cells.length === 1 && NUMERIC_LISTING.test(cells[0]!.trim()));
+  return lines.some((cells) => cells.length > 1) && lines.every((cells) => cells.length <= 1 || isSymbolsLine(cells, codes));
+}
+
 /** How many cells a table's ignored-cells note names before it counts the rest. */
 const IGNORED_PREVIEW = 8;
 
@@ -270,7 +299,9 @@ function isWordHeader(records: readonly string[][]): boolean {
  * command can name them. A list split by commas, spaces or newlines gives
  * every entry, even when a line of it is ragged or carries a stray separator
  * (`"BIMAS ,"`); a cell that names nothing (`N/A`, `$$$`) does not make it a
- * table, and is refused by the lookup. A list of lines gives each line whole,
+ * table, and is refused by the lookup. So does a ragged list pasted from
+ * several places: lines of symbols split by commas beside lines of one entry,
+ * a company's name among them (`isRaggedList`). A list of lines gives each line whole,
  * and a list of names split by semicolons or commas (one line, or one name a
  * line) each cell, as `entries`: a line with spaces is a company's name
  * (`Altria Group`) or symbols on one line, which reading the entries tells
@@ -309,6 +340,8 @@ export function parseSymbolText(text: string): SymbolText {
   // a cell of words is read as a typed entry is, so its symbols split.
   const spaced = cleaned.some((cells) => cells.some((cell) => !isTerminalCodeCell(cell) && isSymbolWords(cell)));
   if (grid) return { symbols: records.flat().filter(Boolean), ignored: [], ...spaced ? { entries: true as const } : {} };
+  // A ragged list (lines of symbols beside a line holding a company's name) is a list, read as typed entries are.
+  if (isRaggedList(cleaned)) return { symbols: records.flat().filter(Boolean), ignored: [], entries: true };
   // Names split by semicolons or commas, with no figures: one pasted line, or one name a line with a separator left
   // on it, is a list. A name beside a sector or any other text is a table, read by its first column below.
   const names = cleaned.some((cells) => /\s/.test(cells[0] ?? ""));

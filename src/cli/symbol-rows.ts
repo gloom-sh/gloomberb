@@ -354,7 +354,12 @@ export function summarizeSymbolRows(rows: readonly SymbolRow[], verb: Verb, repe
   const choices = inputs("needs_choice");
   if (choices.length > 0) groups.push(`${choices.length} need${choices.length === 1 ? "s" : ""} a choice: ${choices.join(", ")}`);
   const failed = inputs("failed");
-  if (failed.length > 0) groups.push(`${failed.length} not ${verb === "add" ? "added" : "removed"}: ${failed.join(", ")}`);
+  // Codes left for a choice of exchange that all list on one venue: the flag that adds them there.
+  const shared = verb === "add" ? sharedExchangeChoice(rows) : null;
+  const flag = shared
+    ? ` (${shared.inputs.length === failed.length ? "each lists" : `${shared.inputs.length} of them list`} on ${shared.exchange}: add them with --exchange ${shared.exchange})`
+    : "";
+  if (failed.length > 0) groups.push(`${failed.length} not ${verb === "add" ? "added" : "removed"}: ${failed.join(", ")}${flag}`);
   const unanswered = inputs("not_looked_up");
   if (unanswered.length > 0) groups.push(`${unanswered.length} not looked up: ${unanswered.join(", ")}`);
   const junk = inputs("not_a_symbol");
@@ -379,16 +384,42 @@ const MAIN_VENUE_SHARE = 0.1;
  * or a name can land on. Null for a short list, or one with no row off them.
  */
 function offVenueRows(rows: readonly SymbolRow[]): { main: string[]; rows: SymbolRow[] } | null {
-  // A pair or a coin has no venue to be off; the US exchanges are one market.
-  const market = (row: SymbolRow) => isUsListingExchange(row.exchange!) ? "US" : canonicalExchange(row.exchange!);
+  const { main, landed } = mainVenues(rows);
+  if (landed.length < MAIN_VENUES_FROM) return null;
+  const off = landed.filter((row) => !main.includes(rowMarket(row)));
+  return main.length > 0 && off.length > 0 ? { main, rows: off } : null;
+}
+
+/** A pair or a coin has no venue to be off; the US exchanges are one market. */
+function rowMarket(row: SymbolRow): string {
+  return isUsListingExchange(row.exchange!) ? "US" : canonicalExchange(row.exchange!);
+}
+
+/** The rows of an add that landed on a venue, and the venues most of them did, the most first (`MAIN_VENUE_SHARE`). */
+function mainVenues(rows: readonly SymbolRow[]): { main: string[]; landed: SymbolRow[] } {
   const landed = rows.filter((row) => (row.status === "added" || row.status === "already_listed") && row.exchange
     && !isCurrencyPairListing(row.symbol ?? undefined, row.exchange) && !UNVENUED.has(canonicalExchange(row.exchange)));
-  if (landed.length < MAIN_VENUES_FROM) return null;
   const counts = new Map<string, number>();
-  for (const row of landed) counts.set(market(row), (counts.get(market(row)) ?? 0) + 1);
+  for (const row of landed) counts.set(rowMarket(row), (counts.get(rowMarket(row)) ?? 0) + 1);
   const main = [...counts].filter(([, count]) => count >= landed.length * MAIN_VENUE_SHARE).sort((a, b) => b[1] - a[1]).map(([venue]) => venue);
-  const off = landed.filter((row) => !main.includes(market(row)));
-  return main.length > 0 && off.length > 0 ? { main, rows: off } : null;
+  return { main, landed };
+}
+
+/**
+ * The one exchange the codes of an add left for a choice of exchange ("Choose an exchange for 8058: 8058:JPX,
+ * 8058:HKEX") all list on, with those codes as typed: the list's main venue among the exchanges they share, else the
+ * only one they share. `--exchange` with it adds them all there. Null for fewer than two such codes, or none shared.
+ */
+export function sharedExchangeChoice(rows: readonly SymbolRow[]): { exchange: string; inputs: string[] } | null {
+  const asked = rows.filter((row) => row.status === "failed" && (row.choices?.length ?? 0) > 0 && !row.successor);
+  if (asked.length < 2) return null;
+  const venues = asked.map((row) => new Set(row.choices!.flatMap((choice) => {
+    const exchange = parsePublicTickerKey(choice.key).exchange;
+    return exchange ? [canonicalExchange(exchange)] : [];
+  })));
+  const shared = [...venues[0]!].filter((venue) => venues.every((set) => set.has(venue)));
+  const exchange = mainVenues(rows).main.find((venue) => shared.includes(venue)) ?? (shared.length === 1 ? shared[0] : undefined);
+  return exchange ? { exchange, inputs: asked.map((row) => symbolInputKey(row.input)) } : null;
 }
 
 /** Venues a row is on that are no market of listings: currencies, coins, perpetuals. */

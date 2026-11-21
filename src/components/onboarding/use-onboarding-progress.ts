@@ -14,6 +14,7 @@ import {
   applyFirstRunLayout,
   buildFirstRunLayout,
   FIRST_RUN_WATCHLIST,
+  firstRunWatchlist,
   isCompactHomeViewport,
   onboardingDeskLayoutId,
   planFirstRunWatchlist,
@@ -166,18 +167,16 @@ export function useOnboardingWorkspace({
     desks: readonly DeskKey[],
     picks: readonly FirstRunPick[] = [],
   ): Promise<AppConfig> => {
-    let config = baseConfig;
+    // A run from Settings leaves a watchlist the user has as it is. A first run fills the app's own list, never one
+    // holding names the user put there: the starters get a list of their own (`firstRunWatchlist`).
     const rerun = getOnboardingProgress(baseConfig).rerun === true;
-    let watchlistId = config.watchlists[0]?.id;
-    // A run from Settings leaves a watchlist the user has as it is.
-    const seedWatchlist = !rerun || !watchlistId;
-    if (!watchlistId) {
-      watchlistId = "watchlist";
-      config = { ...config, watchlists: [{ id: watchlistId, name: "Watchlist" }] };
-    }
-    const plan = seedWatchlist
-      ? planFirstRunWatchlist(stateRef.current.tickers, watchlistId, portfolioId, picks)
-      : { create: [], update: [] };
+    const kept = rerun ? baseConfig.watchlists[0] : undefined;
+    const { config, watchlistId } = kept
+      ? { config: baseConfig, watchlistId: kept.id }
+      : firstRunWatchlist(baseConfig, stateRef.current.tickers);
+    const plan = kept
+      ? { create: [], update: [] }
+      : planFirstRunWatchlist(stateRef.current.tickers, watchlistId, portfolioId, picks);
     for (const metadata of plan.create) {
       try {
         const ticker = await pluginRegistry.tickerRepository.createTicker(metadata);

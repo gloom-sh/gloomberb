@@ -1,5 +1,8 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
-import { pricePointIntegrity, pricePointOpenWithheld, pricePointValues, pricePointWicks, priceHistoryIntegrityNotice, mergePriceHistoryIntegrity, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
+import {
+  pricePointIntegrity, pricePointOpenWithheld, pricePointValues, pricePointWicks, priceHistoryIntegrityNotice, priceOnlyPoint,
+  mergePriceHistoryIntegrity, type PriceHistoryIntegrity,
+} from "../utils/price-history-integrity";
 import { canonicalTimeSeriesFieldId, isFundamentalFieldId, isMarketFieldId } from "./field-catalog";
 import { extractFundamentalSeries } from "./fundamentals";
 import type { ChartSeriesPriceHistoryIntegrity, ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
@@ -109,10 +112,13 @@ export function extractPriceSeries(
   const fieldId = canonicalTimeSeriesFieldId(source.fieldId);
   if (!isMarketFieldId(fieldId)) return [];
   const aggregated = aggregatePriceHistory(priceHistory, source.period ?? "auto");
+  // A price on its own at the end of intraday bars (a closing auction's price) has no volume of its own, never 0.
+  const priceOnly = priceOnlyPoint(aggregated)?.index;
   return aggregated.map((point, index) => {
     // A roll is the contract changing from the bar before, which a window's first bar knows from the bars before it.
     const before = index > 0 ? aggregated[index - 1]!.contract : undefined;
-    const { integrity, ...values } = pricePointValues(point, point.integrity);
+    const { integrity, ...read } = pricePointValues(point, point.integrity);
+    const values = index === priceOnly && read.volume === 0 ? { ...read, volume: null } : read;
     const value = fieldId === "market.open"
       ? values.open
       : fieldId === "market.high"
