@@ -113,7 +113,7 @@ describe("13F data cache", () => {
       return json([{ accession_number: "healthy", cik: "1", company_name: "Healthy Fund", period_of_report: "2026-06-30", filed_as_of_date: "2026-08-14", submission_type: "13F-HR", table_value_total: 100, table_entry_total: 1 }]);
     });
     const result = await loadBrowserRows("byTicker", "AAA");
-    expect(result.warning).toContain("30 Sep quarter not complete yet; showing 30 Jun");
+    expect(result.warning).toContain("30 Sep holders not indexed yet (13Fs due 16 Nov); showing 30 Jun");
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({ cik: "0000000001", name: "Healthy Fund", tableValueTotal: 100 });
     expect(result.rows[1]).toMatchObject({ cik: "0000000002", name: "0000000002" });

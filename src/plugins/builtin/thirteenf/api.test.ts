@@ -124,6 +124,14 @@ test("a source outage is said as one when Gloom Cloud answered, and its stored c
   expect(store.getResource("forms13f-api", "/forms?cik=0001067983&from=2022-11-08&to=2026-11-08&limit=100&offset=0", {
     sourceKey: "forms13f", allowExpired: true,
   })).toBeNull();
+  // A list read for one quarter's report is dated by that quarter's filings, not an older quarter's read days before.
+  const newest = { ...form, accession_number: "0001193125-26-480001", period_of_report: "2026-09-30", stored_as_of: "2026-11-21T15:37:00.000Z" };
+  cloud = () => Response.json([newest, { ...form, stored_as_of: storedAsOf }]);
+  const shown: number[] = [];
+  for (const shownPeriod of ["newest", "2026-09-30", "2026-06-30"]) {
+    await listThirteenFForms("1067983", "2022-11-08", "2026-11-08", 100, undefined, { onSavedCopy: savedAt => shown.push(savedAt), shownPeriod });
+  }
+  expect(shown).toEqual([Date.parse(newest.stored_as_of), Date.parse(newest.stored_as_of), Date.parse(storedAsOf)]);
 });
 
 test("a second caller for a missing response awaits the download already in flight", async () => {

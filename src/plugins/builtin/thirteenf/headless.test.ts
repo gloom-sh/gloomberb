@@ -396,7 +396,7 @@ describe("13F headless model", () => {
       expect(result.metadata?.notices).toEqual([
         "Period 2026-06-30 vs 2026-03-31 | 60 holders (0 new), 0 exited | Value (USD) as reported at period end, not today's price",
         "Showing 40 of 60 funds; the 40 shown hold $4.0k | more: --offset 40 or --limit 200",
-        "30 Sep quarter not complete yet; showing 30 Jun",
+        "30 Sep holders not indexed yet (13Fs due 16 Nov); showing 30 Jun",
       ]);
       expect(typeof headless.describe === "function" ? headless.describe(loadArgs, result) : null).toBe("13F Holders | KO");
     });
