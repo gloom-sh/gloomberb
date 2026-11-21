@@ -4,6 +4,7 @@ import {
 } from "../../../utils/financial-statements";
 import { canonicalExchange, isUsEquityExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
+import { quotesSourceName } from "../../../market-data/quotes/export-identity";
 import { quoteMonitorColumns, quoteMonitorRow, QUOTE_MONITOR_BASE_COLUMNS, QUOTE_MONITOR_ROW_KEYS } from "./quote-monitor/rows";
 import type {
   HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionValues, HeadlessRowsResult,
@@ -52,7 +53,7 @@ import {
 import {
   loadHeadlessContractPriceUnit, loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
-import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
+import { barHistoryFreshness, brokerNameOf, REPORTED_DATA } from "../shared/report-freshness";
 import {
   BAR_INTERVAL_LABELS, barPriceDecimals, cleanBarPrice, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyBarFlags,
   historyBarValues, historyExportUnit, historyMissingPeriodsNote, historyPriceDecimals, historyUnit, priceTableIntegrityNotice, quotedPriceDivisor,
@@ -658,12 +659,13 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
       return quote;
     });
     const now = Date.now();
-    // A broker's quote names the broker as its source.
-    const brokerName = (providerId: string) => ctx.resolveBroker?.(providerId)?.name;
+    const brokerName = brokerNameOf(ctx);
     const rows = loaded.entries.map(({ symbol, data: quote }) => quoteMonitorRow(symbol, quote, now, brokerName));
     const columns = quoteMonitorColumns(rows);
     return {
       rows,
+      // The report cites the sources its rows name, never Gloom Cloud for a quote that is not its own.
+      ...loaded.entries.length > 0 ? { freshness: { source: quotesSourceName(loaded.entries.map(({ data }) => data), brokerName) || null } } : {},
       // An extended column or Chg bp only when a row has one, so a closed board stays as narrow as before.
       ...(columns.length > QUOTE_MONITOR_BASE_COLUMNS.length ? { columns } : {}),
       // Each exported row names its ticker, its unit, its source and when its own price was observed.

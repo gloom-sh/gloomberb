@@ -31,3 +31,13 @@ test("the board's Export CSV is fn QQ's file: each card's listing, its move as s
     setSystemTime();
   }
 });
+
+test("the board's Export CSV leaves a source with no name blank, never Gloom Cloud or its id", () => {
+  const pluginQuote = { symbol: "ESZ26", name: "E-mini S&P 500 Dec 2026", instrumentType: "FUTURE", currency: "USD", price: 6251.25, change: 11.25,
+    changePercent: 0.18, marketState: "CLOSED", dataSource: "snapshot", providerId: "acme-feed", lastUpdated: Date.parse("2026-11-13T20:00:00Z") } as Quote;
+  const csv = quoteMonitorCsv([{ symbol: "ESZ26", instrument: { symbol: "ESZ26", exchange: "CME" }, quote: pluginQuote }], Date.parse("2026-11-13T20:05:00Z"))
+    .slice(EXCEL_CSV_BOM.length).split("\n");
+  expect(csv[1]!.split(",").at(-3)).toBe("");
+  expect(csv.join("\n")).not.toContain("acme-feed");
+  expect(csv.join("\n")).not.toContain("Gloom Cloud");
+});

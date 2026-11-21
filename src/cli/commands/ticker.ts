@@ -1933,7 +1933,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const recentSecFilings = await withFilingSummaries(secFilings, dataProvider);
 
     // The quote is the feed in this report; without one, the fundamentals date it.
-    const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
+    const freshness = quote ? quotesFreshness([quote], undefined, undefined, dataProvider.sourceNameOf) : fundamentalsFreshness(resolvedFinancials);
     // A listing with no quote and no bar in over a month stopped trading: the line under its name says when.
     const lastTraded = quote ? null : await loadNoQuoteLastTraded({ symbol: requestSymbol, exchange }, dataProvider);
     // The profile under its symbol is another listing's only on evidence: another issuer's name, or one abroad.

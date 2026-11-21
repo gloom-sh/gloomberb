@@ -78,6 +78,7 @@ import { DAILY_CLOSES } from "../../plugins/builtin/shared/report-freshness";
 import { canonicalTimeZone, localTimeSuffix, newestReportTime, oldestReportTime, timeZoneCity, zonedClock } from "../../utils/utc-time";
 import { zonedDayStart } from "../../utils/zoned-date-time";
 import { quotesFreshness, rowsFreshness } from "../freshness";
+import type { Quote } from "../../types/financials";
 import { periodicityOf } from "../pane-functions/freshness";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import {
@@ -210,6 +211,14 @@ function roundedPercent(value: number | null): number | null {
   return value == null ? null : Number(value.toFixed(2));
 }
 
+/** How current the quotes a batch read gave are, their source named as the router names the providers behind them. */
+function resultsFreshness(
+  results: ReadonlyArray<{ quote: Quote | null | undefined }>,
+  provider: Pick<import("../../sources/provider-router").AssetDataRouter, "sourceNameOf">,
+) {
+  return quotesFreshness(results.map((result) => result.quote), undefined, undefined, provider.sourceNameOf);
+}
+
 function quoteRows(results: Awaited<ReturnType<NonNullable<import("../../types/data-provider").AssetDataProvider["getQuotesBatch"]>>>) {
   return results.map((result) => {
     const quote = result.quote;
@@ -258,7 +267,7 @@ async function runHongKongMovers(args: string[], ctx: Parameters<CliCommandDef["
       metadata: { market: HONG_KONG_MOVERS_MARKET, category: list === "gainers" ? "day_gainers" : "day_losers", rankedBy: "regular",
         universe: { description: "HKEX common stocks in the app's built-in list of large listings, worth HK$10B or more, quoted in the current or last session",
           count: results.length, listed: universe.length } },
-      freshness: quotesFreshness(results.map((result) => result.quote)),
+      freshness: resultsFreshness(results, services.dataProvider),
     }, {
       heading: `Hong Kong ${list}\n${hongKongUniverseNote(results.length, universe.length)}`,
       columns: [
@@ -292,7 +301,7 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
         trending.map(({ symbol }) => ({ symbol, exchange: "" })),
         { forceRefresh: ctx.cliOptions.refresh },
       );
-      ctx.printResult({ data: quoteRows(results), metadata: { category }, freshness: quotesFreshness(results.map((result) => result.quote)) }, {
+      ctx.printResult({ data: quoteRows(results), metadata: { category }, freshness: resultsFreshness(results, services.dataProvider) }, {
         textColumns: MOVER_COLUMNS.filter((column) => column.key !== "volume"),
       });
     });
@@ -349,7 +358,7 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
       symbols.map((symbol) => ({ symbol, exchange: "" })),
       { forceRefresh: ctx.cliOptions.refresh },
     );
-    ctx.printResult({ data: quoteRows(results), metadata, freshness: quotesFreshness(results.map((result) => result.quote)) }, {
+    ctx.printResult({ data: quoteRows(results), metadata, freshness: resultsFreshness(results, services.dataProvider) }, {
       columns: [
         { key: "symbol", header: "Symbol" },
         { key: "name", header: "Name" },
