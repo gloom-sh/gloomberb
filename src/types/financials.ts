@@ -500,6 +500,13 @@ export interface Fundamentals extends DepositaryReceiptFacts {
    * can be repriced from a live quote; absent otherwise.
    */
   dividendRate?: number;
+  /**
+   * `uneven-regular-payments`: `dividendRate` (a forward one) is the trailing
+   * year's regular payments summed, as DVD's forward rate reads a year whose
+   * payments differ too widely for one to stand for it (HSBC's three interims
+   * beside its final). Absent where the latest distribution is annualized.
+   */
+  dividendRateBasis?: "uneven-regular-payments";
   revenue?: number;
   netIncome?: number;
   eps?: number;

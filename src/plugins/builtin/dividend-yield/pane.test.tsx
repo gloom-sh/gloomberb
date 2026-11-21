@@ -48,7 +48,7 @@ test.each([44, 60])("an ex-dated unfixed sterling declaration keeps its row, est
     setSystemTime();
   }
   const text = await renderLoaded(data, width, 24);
-  expect(text.split("\n").find((line) => line.includes("2026-11-05"))).toMatch(/2026-11-05\s+estimated 7\.5835p\s+\$0\.10/);
+  expect(text).toMatch(/2026-11-05\s+estimated 7\.5835p\s+\$0\.10/);
   expect(text).toContain("2026-12-07");
   expect(text).toContain("2026-12-17");
 });

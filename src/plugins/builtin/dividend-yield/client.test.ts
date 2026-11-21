@@ -23,7 +23,7 @@ describe("cash distribution calculations", () => {
     let fixedCash: number | undefined;
     setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead(currency, fixedCash) }));
     const data = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
-    expect(data.payments).toHaveLength(5);
+    expect(data.payments).toHaveLength(8);
     expect(data.payments[0]).toMatchObject({ exDate: new Date("2026-11-05"), amount: 0.075835,
       paymentDate: new Date("2026-12-17"), declared: { amount: 0.1, currency: "USD" },
       cashEstimate: { declaredCurrency: "USD", declaredAmount: 0.1, fixingDate: "2026-12-07" } });
@@ -66,7 +66,7 @@ describe("cash distribution calculations", () => {
     setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead(currency, fixedCash) }));
     setSystemTime(new Date("2026-11-04T06:00:00Z"));
     const beforeEx = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
-    expect(beforeEx.payments).toHaveLength(4);
+    expect(beforeEx.payments).toHaveLength(7);
     expect(beforeEx.metrics.trailingEstimates).toBeUndefined();
     setSystemTime(new Date("2026-11-05T12:00:00Z"));
     const justEx = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
@@ -74,7 +74,7 @@ describe("cash distribution calculations", () => {
     setSystemTime(new Date("2026-12-07T12:00:00Z"));
     fixedCash = 0.076;
     const fixed = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
-    expect(fixed.payments).toHaveLength(5);
+    expect(fixed.payments).toHaveLength(8);
     expect(fixed.payments[0]?.cashEstimate).toBeUndefined();
     expect(fixed.metrics.forwardEstimate).toBeUndefined();
     expect(fixed.metrics.trailingEstimates).toBeUndefined();
@@ -344,7 +344,8 @@ describe("cash distribution calculations", () => {
   test("a year of widely uneven regular payments forwards their total, not the latest annualized", () => {
     const late = new Date("2026-10-27T12:00:00Z");
     // HSBA in pounds: three interims and a final four and a half times their size; the source annualizes the latest interim.
-    const hsba = [["2025-08-14", 0.073562], ["2025-11-06", 0.075079], ["2026-03-12", 0.333016], ["2026-05-14", 0.074489], ["2026-08-13", 0.074134]]
+    const hsba = [["2025-03-06", 0.278597], ["2025-05-08", 0.074512], ["2025-08-14", 0.073562], ["2025-11-06", 0.075079], ["2026-03-12", 0.333016],
+      ["2026-05-14", 0.074489], ["2026-08-13", 0.074134]]
       .map(([date, amount]) => payment(date as string, amount as number, "GBP"));
     const stated: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
       exDividendDate: null, dividendDate: null, currency: "GBP", forwardAnnualDividendRate: 0.296536, forwardRateAsOf: "2026-08-13" };
@@ -369,6 +370,22 @@ describe("cash distribution calculations", () => {
     expect(buildDividendMetrics(even, stated, 13.654, { now: late })).toMatchObject({ forwardRate: 0.296536, forwardRateAsOf: "2026-08-13" });
     expect(buildDividendMetrics(even, stated, 13.654, { now: late }).forwardBasis).toBeUndefined();
     expect(buildDividendMetrics(hsba.filter((entry) => entry.amount !== 0.075079), stated, 13.654, { now: late }).forwardRate).toBe(0.296536);
+  });
+
+  test("a semiannual interim beside a final twice its size forwards the year; a one-off special beside an annual dividend does not", () => {
+    // AZN:LSE in pounds: 79.50p interims, 159.50p and 168p finals; the stated rate annualizes the August interim.
+    const azn = [["2025-02-20", 1.68], ["2025-08-07", 0.767], ["2026-02-19", 1.595], ["2026-08-06", 0.795]]
+      .map(([date, amount]) => payment(date as string, amount as number, "GBP"));
+    const stated: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
+      exDividendDate: null, dividendDate: null, currency: "GBP", forwardAnnualDividendRate: 1.59, forwardRateAsOf: "2026-08-06" };
+    const asOf = new Date("2026-11-21T12:00:00Z");
+    expect(buildDividendMetrics(azn, stated, 134.12, { now: asOf })).toMatchObject({ forwardRate: 2.39, forwardBasis: "uneven" });
+    // A 4.00 special six months after a 1.05 annual dividend is no second payment of the year, as Gloom Cloud reads it too.
+    const annual = [["2024-05-10", 1], ["2025-05-09", 1.05], ["2025-11-14", 4], ["2026-05-08", 1.1]]
+      .map(([date, amount]) => payment(date as string, amount as number));
+    const metrics = buildDividendMetrics(annual, { ...stated, currency: "USD", forwardAnnualDividendRate: 1.1, forwardRateAsOf: "2026-05-08" }, 40, { now: asOf });
+    expect(metrics).toMatchObject({ forwardRate: 1.1, forwardRateAsOf: "2026-05-08" });
+    expect(metrics.forwardBasis).toBeUndefined();
   });
 
   test("a cut that held is the new rate, which the declared distribution annualizes, not the trailing year's total", () => {

@@ -111,7 +111,7 @@ import { providerMissReason } from "../../sources/provider-errors";
 import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../report-tables";
 import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
-import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
+import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, UNEVEN_REGULAR_PAYMENTS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
 import { atLivePriceEarnings, historyTrailingDividendYield, measuresTrailingYield, statedYearRange } from "../../market-data/quotes/live-valuation";
 import { loadOfferingFilings, loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
@@ -772,7 +772,8 @@ function forwardYieldFigure(
   const figure = percentFigure(reportedDividendYield(fundamentals, distributions), formatFractionPercentCell);
   if (fundamentals?.dividendYield == null) return figure;
   const basis = fundamentals.dividendYieldBasis === "forward"
-    ? forwardDividendBasis(fundamentals.exDividendDate, { declared: distributions?.rows, currency: distributions?.currency })
+    ? fundamentals.dividendRateBasis === "uneven-regular-payments" ? UNEVEN_REGULAR_PAYMENTS
+      : forwardDividendBasis(fundamentals.exDividendDate, { declared: distributions?.rows, currency: distributions?.currency })
     : fundamentals.dividendYieldBasis === "trailing" ? TRAILING_DIVIDEND_BASIS : null;
   // A bond fund's says first that it is not the SEC yield on the next line, which its label keeps short.
   const said = [bond ? NOT_SEC_YIELD : null, basis].filter(Boolean).join("; ");
