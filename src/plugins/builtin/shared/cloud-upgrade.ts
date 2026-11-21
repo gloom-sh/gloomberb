@@ -136,10 +136,19 @@ function cloudUpgradeReturnTo(): string | undefined {
 async function resolveCloudUpgradeUrl(page: CloudUpgradePage, options: CloudUpgradeOptions): Promise<string> {
   const returnTo = cloudUpgradeReturnTo();
   if (page === "cloud") return researchUpgradeUrl(returnTo);
-  const { url } = page === "portal"
-    ? await apiClient.createBillingPortal()
-    : await apiClient.createCloudCheckout(returnTo, options.interval ?? "month");
-  return url;
+  if (page === "portal") return (await apiClient.createBillingPortal()).url;
+  return checkoutBrowserUrl(await apiClient.createCloudCheckout(returnTo, options.interval ?? "month"));
+}
+
+/**
+ * The page a checkout opens in the browser: its short link when the server
+ * sent one, which leads to the same checkout. The app makes the checkout from
+ * its own process, so an invite link opened in the browser only reaches the
+ * checkout (and its friend's discount) when the browser goes through the
+ * server first. Stripe's own page from older servers.
+ */
+function checkoutBrowserUrl({ url, link }: { url: string; link?: string }): string {
+  return link ?? url;
 }
 
 /** Opens checkout, the billing portal or the Cloud page in the user's browser. */
@@ -164,11 +173,14 @@ async function openCheckoutWithHandoff(
   options: CloudUpgradeOptions,
 ): Promise<void> {
   const target = apiClient.createCloudCheckout(cloudUpgradeReturnTo(), options.interval ?? "month")
-    .then(({ url, link }): CheckoutHandoffTarget => ({
-      url,
-      link: link ?? null,
-      opened: rendererHost.openExternal(url).then((result) => result !== false, logFailure("shared.cloud-upgrade", "Open checkout in the browser failed", false)),
-    }));
+    .then((checkout): CheckoutHandoffTarget => {
+      const url = checkoutBrowserUrl(checkout);
+      return {
+        url,
+        link: checkout.link ?? null,
+        opened: rendererHost.openExternal(url).then((result) => result !== false, logFailure("shared.cloud-upgrade", "Open checkout in the browser failed", false)),
+      };
+    });
   void promptCheckoutHandoff(dialog, target);
   await (await target).opened;
 }

@@ -154,6 +154,28 @@ async function renderHandoff(open: (url: string) => Promise<boolean | void>): Pr
   return upgrade;
 }
 
+test("the browser opens the checkout's short link when the server sends one, and Stripe's page when it sends none", async () => {
+  let link: string | undefined = LINK;
+  apiClient.createCloudCheckout = (async () => {
+    checkouts += 1;
+    return { url: "https://checkout.example/session", ...(link ? { link } : {}) };
+  }) as typeof apiClient.createCloudCheckout;
+  const upgrade = await renderUpgradeAction();
+
+  await act(async () => {
+    await upgrade({ sheet: false });
+  });
+  expect(opened).toEqual([LINK]);
+
+  resetCloudUpgradeGuardForTests();
+  link = undefined;
+  await act(async () => {
+    await upgrade({ sheet: false });
+  });
+  expect(opened).toEqual([LINK, "https://checkout.example/session"]);
+  expect(checkouts).toBe(2);
+});
+
 test("checkout opens under the hand-off, which reopens the same checkout and closes once Pro arrives", async () => {
   // A terminal over SSH: the opener takes its time, then nothing opened.
   const firstOpen = Promise.withResolvers<boolean>();
@@ -172,11 +194,12 @@ test("checkout opens under the hand-off, which reopens the same checkout and clo
   });
   await tui.waitForFrameToContain("No browser opens from here.");
 
-  // The browser button opens the same checkout again, not a second one.
+  // The browser button opens the same checkout again, not a second one, and
+  // both go through the short link, as the QR code does.
   await act(async () => {
     await tui.emitKeypress({ name: "b", sequence: "b" });
   });
-  expect(opened).toEqual(["https://checkout.example/session", "https://checkout.example/session"]);
+  expect(opened).toEqual([LINK, LINK]);
   expect(checkouts).toBe(1);
 
   await act(async () => {
